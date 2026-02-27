@@ -1,8 +1,10 @@
 use crate::app_state::{PaneLoadState, RenderState};
+use crate::codex_lane::CodexLaneCommand;
 use crate::codex_lane::{
     CodexLaneCommandKind, CodexLaneCommandResponse, CodexLaneCommandStatus, CodexLaneNotification,
     CodexLaneSnapshot,
 };
+use codex_client::{SkillsListExtraRootsForCwd, SkillsListParams};
 
 pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: CodexLaneSnapshot) {
     state
@@ -44,6 +46,10 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
         state.autopilot_chat.last_error = None;
     } else if response.command == CodexLaneCommandKind::SkillsList {
         state.skill_registry.last_error = None;
+    } else if response.command == CodexLaneCommandKind::SkillsConfigWrite {
+        state.skill_registry.last_error = None;
+        state.skill_registry.last_action = Some("skills/config/write applied; refreshing list".to_string());
+        queue_skills_list_refresh(state);
     }
     state.sync_health.last_action = Some(format!(
         "codex {} {}",
@@ -54,6 +60,40 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
     state.sync_health.last_applied_event_seq =
         state.sync_health.last_applied_event_seq.saturating_add(1);
     state.sync_health.cursor_last_advanced_seconds_ago = 0;
+}
+
+fn queue_skills_list_refresh(state: &mut RenderState) {
+    let cwd = match std::env::current_dir() {
+        Ok(cwd) => cwd,
+        Err(error) => {
+            state.skill_registry.last_error =
+                Some(format!("Failed to refresh skills/list after config write: {error}"));
+            state.skill_registry.load_state = PaneLoadState::Error;
+            return;
+        }
+    };
+    let repo_skills_root = cwd.join("skills");
+    if !repo_skills_root.is_absolute() || !repo_skills_root.exists() {
+        state.skill_registry.last_error = Some(format!(
+            "Cannot refresh codex skills/list; invalid root {}",
+            repo_skills_root.display()
+        ));
+        state.skill_registry.load_state = PaneLoadState::Error;
+        return;
+    }
+
+    let params = SkillsListParams {
+        cwds: vec![cwd.clone()],
+        force_reload: true,
+        per_cwd_extra_user_roots: Some(vec![SkillsListExtraRootsForCwd {
+            cwd,
+            extra_user_roots: vec![repo_skills_root],
+        }]),
+    };
+    if let Err(error) = state.queue_codex_command(CodexLaneCommand::SkillsList(params)) {
+        state.skill_registry.last_error = Some(error);
+        state.skill_registry.load_state = PaneLoadState::Error;
+    }
 }
 
 pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLaneNotification) {

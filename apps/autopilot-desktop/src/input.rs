@@ -749,9 +749,27 @@ fn run_chat_submit_action(state: &mut crate::app_state::RenderState) -> bool {
     state.chat_inputs.composer.set_value(String::new());
     state.autopilot_chat.submit_prompt(prompt.clone());
 
+    let mut input = vec![UserInput::Text { text: prompt }];
+    if let Some(index) = state.skill_registry.selected_skill_index
+        && let Some(skill) = state.skill_registry.discovered_skills.get(index)
+    {
+        if skill.enabled {
+            let skill_path = std::path::PathBuf::from(skill.path.clone());
+            input.push(UserInput::Skill {
+                name: skill.name.clone(),
+                path: skill_path,
+            });
+        } else {
+            state.autopilot_chat.last_error = Some(format!(
+                "Selected skill '{}' is disabled; enable it first.",
+                skill.name
+            ));
+        }
+    }
+
     let command = crate::codex_lane::CodexLaneCommand::TurnStart(TurnStartParams {
         thread_id,
-        input: vec![UserInput::Text { text: prompt }],
+        input,
         model: Some(state.autopilot_chat.current_model().to_string()),
         effort: None,
         summary: None,

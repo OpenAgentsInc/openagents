@@ -7,7 +7,8 @@ use crate::pane_renderer::{
 };
 use crate::pane_system::{
     skill_registry_discover_button_bounds, skill_registry_inspect_button_bounds,
-    skill_registry_install_button_bounds, skill_trust_attestations_button_bounds,
+    skill_registry_install_button_bounds, skill_registry_row_bounds,
+    skill_registry_visible_row_count, skill_trust_attestations_button_bounds,
     skill_trust_kill_switch_button_bounds, skill_trust_refresh_button_bounds,
     skill_trust_revoke_button_bounds,
 };
@@ -22,10 +23,20 @@ pub fn paint_skill_registry_pane(
     let discover = skill_registry_discover_button_bounds(content_bounds);
     let inspect = skill_registry_inspect_button_bounds(content_bounds);
     let install = skill_registry_install_button_bounds(content_bounds);
+    let install_label = pane_state
+        .selected_skill_index
+        .and_then(|index| pane_state.discovered_skills.get(index))
+        .map_or("Enable/Disable", |skill| {
+            if skill.enabled {
+                "Disable Skill"
+            } else {
+                "Enable Skill"
+            }
+        });
 
     paint_action_button(discover, "Discover", paint);
     paint_action_button(inspect, "Inspect Manifest", paint);
-    paint_action_button(install, "Install Skill", paint);
+    paint_action_button(install, install_label, paint);
 
     let mut y = paint_state_summary(
         paint,
@@ -90,14 +101,14 @@ pub fn paint_skill_registry_pane(
             .unwrap_or("n/a"),
     );
 
-    y = paint_label_line(
+    let mut y = paint_label_line(
         paint,
         content_bounds.origin.x + 12.0,
         y,
         "Repo skills root",
         pane_state.repo_skills_root.as_deref().unwrap_or("n/a"),
     );
-    y = paint_label_line(
+    let _ = paint_label_line(
         paint,
         content_bounds.origin.x + 12.0,
         y,
@@ -105,21 +116,64 @@ pub fn paint_skill_registry_pane(
         &pane_state.discovered_skills.len().to_string(),
     );
 
-    for skill in pane_state.discovered_skills.iter().take(6) {
-        let label = format!(
-            "{} [{}] {} ({}) deps:{}",
+    let visible_rows = skill_registry_visible_row_count(pane_state.discovered_skills.len());
+    for row_index in 0..visible_rows {
+        let Some(skill) = pane_state.discovered_skills.get(row_index) else {
+            continue;
+        };
+        let row_bounds = skill_registry_row_bounds(content_bounds, row_index);
+        let selected = pane_state.selected_skill_index == Some(row_index);
+
+        paint.scene.draw_quad(
+            wgpui::Quad::new(row_bounds)
+                .with_background(if selected {
+                    wgpui::theme::bg::ELEVATED.with_alpha(0.92)
+                } else {
+                    wgpui::theme::bg::APP.with_alpha(0.64)
+                })
+                .with_border(wgpui::theme::border::DEFAULT, 1.0)
+                .with_corner_radius(4.0),
+        );
+        let row_label = format!(
+            "{} [{}] {} deps:{}",
             skill.name,
             if skill.enabled { "enabled" } else { "disabled" },
             skill.scope,
-            skill.path,
             skill.dependency_count
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            &row_label,
+            wgpui::Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 16.0),
+            10.0,
+            if selected {
+                wgpui::theme::accent::PRIMARY
+            } else {
+                wgpui::theme::text::MUTED
+            },
+        ));
+    }
+
+    y = skill_registry_row_bounds(content_bounds, visible_rows).max_y() + 10.0;
+    if let Some(index) = pane_state.selected_skill_index
+        && let Some(skill) = pane_state.discovered_skills.get(index)
+    {
+        let selected_details = format!(
+            "{} ({}) path={} deps={} interface={}",
+            skill.name,
+            skill.scope,
+            skill.path,
+            skill.dependency_count,
+            skill
+                .interface_display_name
+                .as_deref()
+                .unwrap_or("n/a")
         );
         y = paint_multiline_phrase(
             paint,
             content_bounds.origin.x + 12.0,
             y,
-            "codex skill",
-            &label,
+            "Selected",
+            &selected_details,
         );
     }
 

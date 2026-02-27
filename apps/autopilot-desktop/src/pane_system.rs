@@ -29,6 +29,9 @@ const CHAT_HEADER_BUTTON_WIDTH: f32 = 110.0;
 const CHAT_THREAD_ROW_HEIGHT: f32 = 24.0;
 const CHAT_THREAD_ROW_GAP: f32 = 4.0;
 const CHAT_MAX_THREAD_ROWS: usize = 10;
+const SKILL_REGISTRY_ROW_HEIGHT: f32 = 28.0;
+const SKILL_REGISTRY_ROW_GAP: f32 = 6.0;
+const SKILL_REGISTRY_MAX_ROWS: usize = 8;
 const JOB_INBOX_BUTTON_HEIGHT: f32 = 30.0;
 const JOB_INBOX_BUTTON_GAP: f32 = 10.0;
 const JOB_INBOX_ROW_GAP: f32 = 6.0;
@@ -148,6 +151,7 @@ pub enum SkillRegistryPaneAction {
     DiscoverSkills,
     InspectManifest,
     InstallSelectedSkill,
+    SelectRow(usize),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1231,6 +1235,20 @@ pub fn skill_registry_install_button_bounds(content_bounds: Bounds) -> Bounds {
     )
 }
 
+pub fn skill_registry_row_bounds(content_bounds: Bounds, index: usize) -> Bounds {
+    let discover = skill_registry_discover_button_bounds(content_bounds);
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        discover.max_y() + CHAT_PAD + index as f32 * (SKILL_REGISTRY_ROW_HEIGHT + SKILL_REGISTRY_ROW_GAP),
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(180.0),
+        SKILL_REGISTRY_ROW_HEIGHT,
+    )
+}
+
+pub fn skill_registry_visible_row_count(total_rows: usize) -> usize {
+    total_rows.min(SKILL_REGISTRY_MAX_ROWS)
+}
+
 pub fn skill_trust_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         content_bounds.origin.x + CHAT_PAD,
@@ -1749,6 +1767,15 @@ fn pane_hit_action_for_pane(
                 return Some(PaneHitAction::SkillRegistry(
                     SkillRegistryPaneAction::InstallSelectedSkill,
                 ));
+            }
+            let visible_rows =
+                skill_registry_visible_row_count(state.skill_registry.discovered_skills.len());
+            for row_index in 0..visible_rows {
+                if skill_registry_row_bounds(content_bounds, row_index).contains(point) {
+                    return Some(PaneHitAction::SkillRegistry(
+                        SkillRegistryPaneAction::SelectRow(row_index),
+                    ));
+                }
             }
             None
         }
