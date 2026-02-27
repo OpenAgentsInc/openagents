@@ -46,34 +46,12 @@ pub fn pane_specs() -> &'static [PaneSpec] {
 }
 
 pub fn pane_spec(kind: PaneKind) -> &'static PaneSpec {
-    match kind {
-        PaneKind::Empty => &PANE_SPECS[0],
-        PaneKind::AutopilotChat => &PANE_SPECS[1],
-        PaneKind::GoOnline => &PANE_SPECS[2],
-        PaneKind::ProviderStatus => &PANE_SPECS[3],
-        PaneKind::EarningsScoreboard => &PANE_SPECS[4],
-        PaneKind::RelayConnections => &PANE_SPECS[5],
-        PaneKind::SyncHealth => &PANE_SPECS[6],
-        PaneKind::NetworkRequests => &PANE_SPECS[7],
-        PaneKind::StarterJobs => &PANE_SPECS[8],
-        PaneKind::ActivityFeed => &PANE_SPECS[9],
-        PaneKind::AlertsRecovery => &PANE_SPECS[10],
-        PaneKind::Settings => &PANE_SPECS[11],
-        PaneKind::JobInbox => &PANE_SPECS[12],
-        PaneKind::ActiveJob => &PANE_SPECS[13],
-        PaneKind::JobHistory => &PANE_SPECS[14],
-        PaneKind::NostrIdentity => &PANE_SPECS[15],
-        PaneKind::SparkWallet => &PANE_SPECS[16],
-        PaneKind::SparkCreateInvoice => &PANE_SPECS[17],
-        PaneKind::SparkPayInvoice => &PANE_SPECS[18],
-        PaneKind::AgentProfileState => &PANE_SPECS[19],
-        PaneKind::AgentScheduleTick => &PANE_SPECS[20],
-        PaneKind::TrajectoryAudit => &PANE_SPECS[21],
-        PaneKind::SkillRegistry => &PANE_SPECS[22],
-        PaneKind::SkillTrustRevocation => &PANE_SPECS[23],
-        PaneKind::CreditDesk => &PANE_SPECS[24],
-        PaneKind::CreditSettlementLedger => &PANE_SPECS[25],
+    for spec in pane_specs() {
+        if spec.kind == kind {
+            return spec;
+        }
     }
+    panic!("missing pane spec for kind {kind:?}");
 }
 
 pub fn pane_spec_by_command_id(command_id: &str) -> Option<&'static PaneSpec> {
