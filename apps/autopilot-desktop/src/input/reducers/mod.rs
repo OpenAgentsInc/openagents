@@ -1,20 +1,37 @@
 //! Runtime update reducers are split by domain to keep `input.rs` focused on event routing.
 
 mod ac;
+mod jobs;
 mod sa;
 mod skl;
 pub(super) mod wallet;
 
 use crate::app_state::RenderState;
 use crate::pane_system::{
-    AgentProfileStatePaneAction, AgentScheduleTickPaneAction, CreditDeskPaneAction,
-    CreditSettlementLedgerPaneAction, SkillRegistryPaneAction, SkillTrustRevocationPaneAction,
+    ActiveJobPaneAction, AgentProfileStatePaneAction, AgentScheduleTickPaneAction,
+    CreditDeskPaneAction, CreditSettlementLedgerPaneAction, JobHistoryPaneAction,
+    JobInboxPaneAction, SkillRegistryPaneAction, SkillTrustRevocationPaneAction,
     TrajectoryAuditPaneAction,
 };
 use crate::runtime_lanes::{
     AcLaneUpdate, RuntimeCommandResponse, RuntimeCommandStatus, RuntimeLane, SaLaneUpdate,
     SklLaneUpdate,
 };
+
+pub(super) fn run_job_inbox_action(state: &mut RenderState, action: JobInboxPaneAction) -> bool {
+    jobs::run_job_inbox_action(state, action)
+}
+
+pub(super) fn run_active_job_action(state: &mut RenderState, action: ActiveJobPaneAction) -> bool {
+    jobs::run_active_job_action(state, action)
+}
+
+pub(super) fn run_job_history_action(
+    state: &mut RenderState,
+    action: JobHistoryPaneAction,
+) -> bool {
+    jobs::run_job_history_action(state, action)
+}
 
 pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
     let mut changed = false;
@@ -24,7 +41,7 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
         match update {
             SaLaneUpdate::Snapshot(snapshot) => sa::apply_lane_snapshot(state, *snapshot),
             SaLaneUpdate::CommandResponse(response) => {
-                apply_runtime_command_response(state, response)
+                apply_runtime_command_response(state, response);
             }
         }
     }

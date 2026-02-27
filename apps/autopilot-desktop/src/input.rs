@@ -19,10 +19,9 @@ use crate::hotbar::{
 };
 use crate::pane_registry::pane_spec_by_command_id;
 use crate::pane_system::{
-    ActiveJobPaneAction, ActivityFeedPaneAction, AgentNetworkSimulationPaneAction,
-    AlertsRecoveryPaneAction, EarningsScoreboardPaneAction, JobInboxPaneAction,
-    NetworkRequestsPaneAction, PaneController, PaneHitAction, PaneInput,
-    RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction, SettingsPaneAction,
+    ActivityFeedPaneAction, AgentNetworkSimulationPaneAction, AlertsRecoveryPaneAction,
+    EarningsScoreboardPaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction,
+    PaneInput, RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction, SettingsPaneAction,
     StarterJobsPaneAction, SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction,
     dispatch_chat_input_event, dispatch_create_invoice_input_event,
     dispatch_job_history_input_event, dispatch_network_requests_input_event,
@@ -452,9 +451,9 @@ fn run_pane_hit_action(state: &mut crate::app_state::RenderState, action: PaneHi
         PaneHitAction::ActivityFeed(action) => run_activity_feed_action(state, action),
         PaneHitAction::AlertsRecovery(action) => run_alerts_recovery_action(state, action),
         PaneHitAction::Settings(action) => run_settings_action(state, action),
-        PaneHitAction::JobInbox(action) => run_job_inbox_action(state, action),
-        PaneHitAction::ActiveJob(action) => run_active_job_action(state, action),
-        PaneHitAction::JobHistory(action) => run_job_history_action(state, action),
+        PaneHitAction::JobInbox(action) => reducers::run_job_inbox_action(state, action),
+        PaneHitAction::ActiveJob(action) => reducers::run_active_job_action(state, action),
+        PaneHitAction::JobHistory(action) => reducers::run_job_history_action(state, action),
         PaneHitAction::AgentProfileState(action) => {
             reducers::run_agent_profile_state_action(state, action)
         }
@@ -754,182 +753,6 @@ fn run_earnings_scoreboard_action(
     match action {
         EarningsScoreboardPaneAction::Refresh => {
             refresh_earnings_scoreboard(state, std::time::Instant::now());
-            true
-        }
-    }
-}
-
-fn run_job_inbox_action(
-    state: &mut crate::app_state::RenderState,
-    action: JobInboxPaneAction,
-) -> bool {
-    match action {
-        JobInboxPaneAction::SelectRow(index) => {
-            if !state.job_inbox.select_by_index(index) {
-                state.job_inbox.last_error = Some("Request row out of range".to_string());
-                state.job_inbox.load_state = crate::app_state::PaneLoadState::Error;
-            } else {
-                state.job_inbox.load_state = crate::app_state::PaneLoadState::Ready;
-            }
-            true
-        }
-        JobInboxPaneAction::AcceptSelected => {
-            match state
-                .job_inbox
-                .decide_selected(true, "validated + queued for runtime")
-            {
-                Ok(request_id) => {
-                    state.job_inbox.load_state = crate::app_state::PaneLoadState::Ready;
-                    state.provider_runtime.queue_depth =
-                        state.provider_runtime.queue_depth.saturating_add(1);
-                    state.provider_runtime.last_result =
-                        Some(format!("runtime accepted request {request_id}"));
-                    if let Some(request) = state
-                        .job_inbox
-                        .requests
-                        .iter_mut()
-                        .find(|request| request.request_id == request_id)
-                    {
-                        request.skill_scope_id = request.skill_scope_id.clone().or_else(|| {
-                            state
-                                .network_requests
-                                .submitted
-                                .first()
-                                .and_then(|submitted| submitted.skill_scope_id.clone())
-                        });
-                        request.skl_manifest_a = request
-                            .skl_manifest_a
-                            .clone()
-                            .or_else(|| state.skl_lane.manifest_a.clone());
-                        request.skl_manifest_event_id = request
-                            .skl_manifest_event_id
-                            .clone()
-                            .or_else(|| state.skl_lane.manifest_event_id.clone());
-                        request.sa_tick_request_event_id = request
-                            .sa_tick_request_event_id
-                            .clone()
-                            .or_else(|| state.sa_lane.last_tick_request_event_id.clone());
-                        request.sa_tick_result_event_id = request
-                            .sa_tick_result_event_id
-                            .clone()
-                            .or_else(|| state.sa_lane.last_tick_result_event_id.clone());
-                        request.ac_envelope_event_id = request
-                            .ac_envelope_event_id
-                            .clone()
-                            .or_else(|| state.ac_lane.envelope_event_id.clone());
-                    }
-                    let selected_request = state
-                        .job_inbox
-                        .requests
-                        .iter()
-                        .find(|request| request.request_id == request_id)
-                        .cloned();
-                    if let Some(request) = selected_request.as_ref() {
-                        state.active_job.start_from_request(request);
-                        let _ = PaneController::create_for_kind(
-                            state,
-                            crate::app_state::PaneKind::ActiveJob,
-                        );
-                    }
-                }
-                Err(error) => {
-                    state.job_inbox.last_error = Some(error);
-                    state.job_inbox.load_state = crate::app_state::PaneLoadState::Error;
-                }
-            }
-            true
-        }
-        JobInboxPaneAction::RejectSelected => {
-            match state
-                .job_inbox
-                .decide_selected(false, "failed policy preflight")
-            {
-                Ok(request_id) => {
-                    state.job_inbox.load_state = crate::app_state::PaneLoadState::Ready;
-                    state.provider_runtime.last_result =
-                        Some(format!("runtime rejected request {request_id}"));
-                }
-                Err(error) => {
-                    state.job_inbox.last_error = Some(error);
-                    state.job_inbox.load_state = crate::app_state::PaneLoadState::Error;
-                }
-            }
-            true
-        }
-    }
-}
-
-fn run_active_job_action(
-    state: &mut crate::app_state::RenderState,
-    action: ActiveJobPaneAction,
-) -> bool {
-    let now = std::time::Instant::now();
-    match action {
-        ActiveJobPaneAction::AdvanceStage => {
-            if let Ok(stage) = state.active_job.advance_stage() {
-                state.provider_runtime.last_result =
-                    Some(format!("active job advanced to {}", stage.label()));
-                if stage == crate::app_state::JobLifecycleStage::Paid {
-                    state.provider_runtime.queue_depth =
-                        state.provider_runtime.queue_depth.saturating_sub(1);
-                    state.provider_runtime.last_completed_job_at = Some(now);
-                    if let Some(job) = state.active_job.job.as_ref() {
-                        state.job_history.record_from_active_job(
-                            job,
-                            crate::app_state::JobHistoryStatus::Succeeded,
-                        );
-                    }
-                }
-            }
-            refresh_earnings_scoreboard(state, now);
-            true
-        }
-        ActiveJobPaneAction::AbortJob => {
-            if state
-                .active_job
-                .abort_job("operator requested abort")
-                .is_ok()
-            {
-                state.provider_runtime.last_result = Some("active job aborted".to_string());
-                state.provider_runtime.queue_depth =
-                    state.provider_runtime.queue_depth.saturating_sub(1);
-                state.provider_runtime.last_completed_job_at = Some(now);
-                if let Some(job) = state.active_job.job.as_ref() {
-                    state
-                        .job_history
-                        .record_from_active_job(job, crate::app_state::JobHistoryStatus::Failed);
-                }
-            }
-            refresh_earnings_scoreboard(state, now);
-            true
-        }
-    }
-}
-
-fn run_job_history_action(
-    state: &mut crate::app_state::RenderState,
-    action: crate::pane_system::JobHistoryPaneAction,
-) -> bool {
-    let now = std::time::Instant::now();
-    match action {
-        crate::pane_system::JobHistoryPaneAction::CycleStatusFilter => {
-            state.job_history.cycle_status_filter();
-            refresh_earnings_scoreboard(state, now);
-            true
-        }
-        crate::pane_system::JobHistoryPaneAction::CycleTimeRange => {
-            state.job_history.cycle_time_range();
-            refresh_earnings_scoreboard(state, now);
-            true
-        }
-        crate::pane_system::JobHistoryPaneAction::PreviousPage => {
-            state.job_history.previous_page();
-            refresh_earnings_scoreboard(state, now);
-            true
-        }
-        crate::pane_system::JobHistoryPaneAction::NextPage => {
-            state.job_history.next_page();
-            refresh_earnings_scoreboard(state, now);
             true
         }
     }
