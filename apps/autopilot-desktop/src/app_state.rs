@@ -367,7 +367,10 @@ impl AutopilotChatState {
     }
 
     pub fn set_thread_entries(&mut self, entries: Vec<AutopilotThreadListEntry>) {
-        self.threads = entries.iter().map(|entry| entry.thread_id.clone()).collect();
+        self.threads = entries
+            .iter()
+            .map(|entry| entry.thread_id.clone())
+            .collect();
         self.thread_metadata.clear();
         for entry in entries {
             self.thread_metadata.insert(
@@ -404,6 +407,14 @@ impl AutopilotChatState {
             self.threads.insert(0, thread_id.clone());
         }
         self.active_thread_id = Some(thread_id);
+    }
+
+    pub fn remove_thread(&mut self, thread_id: &str) {
+        self.threads.retain(|value| value != thread_id);
+        self.thread_metadata.remove(thread_id);
+        if self.active_thread_id.as_deref() == Some(thread_id) {
+            self.active_thread_id = self.threads.first().cloned();
+        }
     }
 
     pub fn submit_prompt(&mut self, prompt: String) {

@@ -4,7 +4,7 @@ use crate::codex_lane::{
     CodexLaneCommandKind, CodexLaneCommandResponse, CodexLaneCommandStatus, CodexLaneNotification,
     CodexLaneSnapshot,
 };
-use codex_client::{SkillsListExtraRootsForCwd, SkillsListParams};
+use codex_client::{SkillsListExtraRootsForCwd, SkillsListParams, ThreadStartParams};
 
 pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: CodexLaneSnapshot) {
     state
@@ -44,7 +44,20 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
                 "codex thread/resume rejected seq={} active_thread={:?} error={}",
                 response.command_seq, state.autopilot_chat.active_thread_id, message
             );
-            state.autopilot_chat.last_error = Some(message);
+            let active_thread_id = state.autopilot_chat.active_thread_id.clone();
+            let is_missing_rollout = message.contains("no rollout found for thread id");
+            if is_missing_rollout {
+                if let Some(thread_id) = active_thread_id.as_ref() {
+                    state.autopilot_chat.remove_thread(thread_id);
+                }
+                state.autopilot_chat.last_error = Some(
+                    "Selected thread is missing a rollout on disk; removed stale entry and started a new thread."
+                        .to_string(),
+                );
+                queue_new_thread(state);
+            } else {
+                state.autopilot_chat.last_error = Some(message);
+            }
         } else if response.command == CodexLaneCommandKind::SkillsList {
             state.skill_registry.load_state = PaneLoadState::Error;
             state.skill_registry.last_error = response
@@ -105,6 +118,22 @@ fn queue_skills_list_refresh(state: &mut RenderState) {
     if let Err(error) = state.queue_codex_command(CodexLaneCommand::SkillsList(params)) {
         state.skill_registry.last_error = Some(error);
         state.skill_registry.load_state = PaneLoadState::Error;
+    }
+}
+
+fn queue_new_thread(state: &mut RenderState) {
+    let cwd = std::env::current_dir().ok();
+    let command = CodexLaneCommand::ThreadStart(ThreadStartParams {
+        model: Some(state.autopilot_chat.current_model().to_string()),
+        model_provider: None,
+        cwd: cwd.and_then(|value| value.into_os_string().into_string().ok()),
+        approval_policy: None,
+        sandbox: None,
+    });
+    if let Err(error) = state.queue_codex_command(command) {
+        state.autopilot_chat.last_error = Some(format!(
+            "Failed to start replacement thread after stale resume: {error}"
+        ));
     }
 }
 

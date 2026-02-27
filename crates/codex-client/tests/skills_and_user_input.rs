@@ -191,6 +191,47 @@ fn skills_list_response_deserializes_errors_and_enabled_state() -> anyhow::Resul
     Ok(())
 }
 
+#[test]
+fn thread_list_response_deserializes_structured_status_and_paths() -> anyhow::Result<()> {
+    let response_json = json!({
+        "data": [
+            {
+                "id": "019ca108-a6c0-75b3-b11b-c4f3f0e67a9e",
+                "preview": "hello",
+                "modelProvider": "openai",
+                "cwd": "/Users/christopherdavid/code/openagents",
+                "path": "/Users/christopherdavid/.codex/sessions/2026/02/27/019ca108-a6c0-75b3-b11b-c4f3f0e67a9e.jsonl",
+                "createdAt": 1761930000,
+                "updatedAt": 1761930123,
+                "status": {
+                    "type": "active",
+                    "activeFlags": ["waitingOnUserInput"]
+                }
+            }
+        ],
+        "nextCursor": null
+    });
+
+    let response: codex_client::ThreadListResponse = serde_json::from_value(response_json)?;
+    assert_eq!(response.data.len(), 1);
+    let thread = &response.data[0];
+    assert_eq!(thread.id, "019ca108-a6c0-75b3-b11b-c4f3f0e67a9e");
+    assert_eq!(
+        thread.cwd.as_ref().map(|cwd| cwd.display().to_string()),
+        Some("/Users/christopherdavid/code/openagents".to_string())
+    );
+    assert_eq!(
+        thread.path.as_ref().map(|path| path.display().to_string()),
+        Some(
+            "/Users/christopherdavid/.codex/sessions/2026/02/27/019ca108-a6c0-75b3-b11b-c4f3f0e67a9e.jsonl"
+                .to_string()
+        )
+    );
+    assert!(thread.status.is_some());
+
+    Ok(())
+}
+
 #[tokio::test]
 async fn turn_start_request_includes_skill_input() -> anyhow::Result<()> {
     let (client_stream, server_stream) = tokio::io::duplex(16 * 1024);

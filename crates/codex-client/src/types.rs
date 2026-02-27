@@ -219,7 +219,7 @@ pub struct ThreadSummary {
     #[serde(default)]
     pub updated_at: i64,
     #[serde(default)]
-    pub status: Option<String>,
+    pub status: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
