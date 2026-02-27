@@ -2829,9 +2829,9 @@ mod tests {
         JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest,
         JobInboxState, JobInboxValidation, JobLifecycleStage, NetworkRequestStatus,
         NetworkRequestsState, NostrSecretState, ProviderBlocker, ProviderMode,
-        ProviderRuntimeState, RecoveryAlertRow, RelayConnectionStatus, RelayConnectionsState,
-        SettingsState, SparkPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
-        SyncHealthState, SyncRecoveryPhase,
+        ProviderRuntimeState, RecoveryAlertRow, RelayConnectionRow, RelayConnectionStatus,
+        RelayConnectionsState, SettingsState, SparkPaneState, StarterJobRow, StarterJobStatus,
+        StarterJobsState, SyncHealthState, SyncRecoveryPhase,
     };
 
     fn fixture_inbox_request(
@@ -3203,6 +3203,28 @@ mod tests {
     }
 
     #[test]
+    fn sync_health_marks_resubscribing_when_relays_are_lost() {
+        let provider = ProviderRuntimeState::default();
+        let mut relays = RelayConnectionsState::default();
+        relays.relays.push(RelayConnectionRow {
+            url: "wss://relay-a.example".to_string(),
+            status: RelayConnectionStatus::Connected,
+            latency_ms: Some(42),
+            last_seen_seconds_ago: Some(0),
+            last_error: None,
+        });
+        let mut sync = SyncHealthState::default();
+
+        sync.refresh_from_runtime(std::time::Instant::now(), &provider, &relays);
+        assert_eq!(sync.subscription_state, "subscribed");
+
+        relays.relays[0].status = RelayConnectionStatus::Error;
+        relays.relays[0].last_error = Some("relay dropped connection".to_string());
+        sync.refresh_from_runtime(std::time::Instant::now(), &provider, &relays);
+        assert_eq!(sync.subscription_state, "resubscribing");
+    }
+
+    #[test]
     fn network_requests_submit_validates_and_records_stream_link() {
         let mut requests = NetworkRequestsState::default();
         let request_id = requests
@@ -3359,5 +3381,24 @@ mod tests {
         assert!(score.jobs_today >= 1);
         assert!(score.sats_today >= 1);
         assert!(!score.is_stale(now));
+    }
+
+    #[test]
+    fn earnings_scoreboard_surfaces_wallet_errors() {
+        let mut score = EarningsScoreboardState::default();
+        let provider = ProviderRuntimeState::default();
+        let history = JobHistoryState::default();
+        let mut spark = SparkPaneState::default();
+        spark.last_error = Some("wallet backend unavailable".to_string());
+
+        score.refresh_from_sources(std::time::Instant::now(), &provider, &history, &spark);
+
+        assert_eq!(score.load_state, super::PaneLoadState::Error);
+        assert!(
+            score
+                .last_error
+                .as_deref()
+                .is_some_and(|error| error.contains("wallet backend unavailable"))
+        );
     }
 }
