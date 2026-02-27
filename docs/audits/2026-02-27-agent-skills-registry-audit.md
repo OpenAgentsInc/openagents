@@ -107,11 +107,11 @@ Rules:
 Suggested metadata keys for bridge mapping:
 
 - `metadata.oa.project`
-- `metadata.oa.nostr.identifier` (maps to SKL `d`)
-- `metadata.oa.nostr.version`
-- `metadata.oa.nostr.expiry_unix`
-- `metadata.oa.nostr.capabilities_csv`
-- `metadata.oa.nostr.author_npub` (optional)
+- `metadata.oa.identifier` (maps to SKL `d`)
+- `metadata.oa.version`
+- `metadata.oa.expires_at_unix`
+- `metadata.oa.capabilities`
+- `metadata.oa.author_npub` (optional)
 
 This keeps files Agent Skills-compatible while carrying enough data to derive SKL manifests.
 
@@ -129,7 +129,7 @@ This keeps files Agent Skills-compatible while carrying enough data to derive SK
    - run `skills-ref validate <skill-dir>` for changed skills
    - run registry-wide validation in CI/local script
 5. Versioning/release contract:
-   - bump `metadata.oa.nostr.version` on behavioral changes
+   - bump `metadata.oa.version` on behavioral changes
    - publish new `33400`/`33401` entries for released versions
 
 ## Implementation Sync Plan

@@ -72,29 +72,32 @@ pub fn derive_manifest_from_skill_payload(
     let map = parse_frontmatter(frontmatter)?;
 
     let name = string_field(&map, "name").ok_or(YamlDerivationError::MissingField("name"))?;
-    let identifier = string_field_path(&map, &["metadata", "oa", "nostr", "identifier"])
+    let identifier = string_field_path(&map, &["metadata", "oa", "identifier"])
+        .or_else(|| string_field_path(&map, &["metadata", "oa", "nostr", "identifier"]))
         .or_else(|| string_field(&map, "d"))
         .or_else(|| string_field(&map, "identifier"))
         .unwrap_or_else(|| name.clone());
-    let version = string_field_path(&map, &["metadata", "oa", "nostr", "version"])
+    let version = string_field_path(&map, &["metadata", "oa", "version"])
+        .or_else(|| string_field_path(&map, &["metadata", "oa", "nostr", "version"]))
         .or_else(|| string_field(&map, "version"))
         .ok_or(YamlDerivationError::MissingField("version"))?;
     let description = string_field(&map, "description")
         .ok_or(YamlDerivationError::MissingField("description"))?;
-    let expiry = u64_field_path(&map, &["metadata", "oa", "nostr", "expiry_unix"])
+    let expiry = u64_field_path(&map, &["metadata", "oa", "expires_at_unix"])
+        .or_else(|| u64_field_path(&map, &["metadata", "oa", "expires_at"]))
+        .or_else(|| u64_field_path(&map, &["metadata", "oa", "nostr", "expiry_unix"]))
         .or_else(|| u64_field(&map, "expiry"))
         .ok_or(YamlDerivationError::MissingField("expiry"))?;
 
-    let capabilities = sequence_string_field_path(&map, &["metadata", "oa", "nostr", "capabilities"])
+    let capabilities = sequence_string_field_path(&map, &["metadata", "oa", "capabilities"])
         .or_else(|| {
-            string_field_path(&map, &["metadata", "oa", "nostr", "capabilities_csv"]).map(
-                |raw| {
-                    raw.split(|character: char| character == ',' || character.is_whitespace())
-                        .filter(|value| !value.is_empty())
-                        .map(str::to_string)
-                        .collect::<Vec<_>>()
-                },
-            )
+            string_field_path(&map, &["metadata", "oa", "capabilities"])
+                .map(|raw| split_capabilities(&raw))
+        })
+        .or_else(|| sequence_string_field_path(&map, &["metadata", "oa", "nostr", "capabilities"]))
+        .or_else(|| {
+            string_field_path(&map, &["metadata", "oa", "nostr", "capabilities_csv"])
+                .map(|raw| split_capabilities(&raw))
         })
         .or_else(|| sequence_string_field(&map, "capabilities"))
         .unwrap_or_default();
@@ -111,19 +114,26 @@ pub fn derive_manifest_from_skill_payload(
     )
     .with_content(body.to_string());
 
-    if let Some(author_npub) = string_field_path(&map, &["metadata", "oa", "nostr", "author_npub"])
+    if let Some(author_npub) = string_field_path(&map, &["metadata", "oa", "author_npub"])
+        .or_else(|| string_field_path(&map, &["metadata", "oa", "nostr", "author_npub"]))
         .or_else(|| string_field(&map, "author_npub"))
     {
         manifest = manifest.with_author_npub(author_npub);
     }
-    if let Some(author_pubkey) =
-        string_field_path(&map, &["metadata", "oa", "nostr", "author_pubkey"])
-            .or_else(|| string_field(&map, "author_pubkey"))
+    if let Some(author_pubkey) = string_field_path(&map, &["metadata", "oa", "author_pubkey"])
+        .or_else(|| string_field_path(&map, &["metadata", "oa", "nostr", "author_pubkey"]))
+        .or_else(|| string_field(&map, "author_pubkey"))
     {
         manifest = manifest.with_author_pubkey(author_pubkey);
     }
     if let Some(previous_event_id) =
-        string_field_path(&map, &["metadata", "oa", "nostr", "previous_manifest_event_id"])
+        string_field_path(&map, &["metadata", "oa", "previous_manifest_event_id"])
+            .or_else(|| {
+                string_field_path(
+                    &map,
+                    &["metadata", "oa", "nostr", "previous_manifest_event_id"],
+                )
+            })
             .or_else(|| string_field(&map, "previous_manifest_event_id"))
             .or_else(|| string_field(&map, "v"))
     {
@@ -187,8 +197,7 @@ fn value_field_path<'a>(map: &'a serde_yaml::Mapping, path: &[&str]) -> Option<&
 }
 
 fn string_field(map: &serde_yaml::Mapping, key: &str) -> Option<String> {
-    value_field(map, key)
-        .and_then(|value| value.as_str().map(str::to_string))
+    value_field(map, key).and_then(|value| value.as_str().map(str::to_string))
 }
 
 fn string_field_path(map: &serde_yaml::Mapping, path: &[&str]) -> Option<String> {
@@ -237,6 +246,13 @@ fn sequence_string_field_path(map: &serde_yaml::Mapping, path: &[&str]) -> Optio
                 .map(str::to_string)
                 .collect()
         })
+}
+
+fn split_capabilities(raw: &str) -> Vec<String> {
+    raw.split(|character: char| character == ',' || character.is_whitespace())
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .collect::<Vec<_>>()
 }
 
 fn hash_bytes(payload: &[u8]) -> String {
@@ -296,13 +312,11 @@ Minor prompt hardening
             derived.event_template.kind,
             super::super::manifest::KIND_SKILL_MANIFEST
         );
-        assert!(
-            derived
-                .event_template
-                .tags
-                .iter()
-                .any(|tag| tag[0] == "manifest_hash" && tag[1] == derived.normalized_payload_hash)
-        );
+        assert!(derived
+            .event_template
+            .tags
+            .iter()
+            .any(|tag| tag[0] == "manifest_hash" && tag[1] == derived.normalized_payload_hash));
     }
 
     #[test]
@@ -340,12 +354,13 @@ description: Integrate Mezo testnet and mainnet flows
 metadata:
   oa:
     project: mezo
-    nostr:
-      identifier: mezo
-      version: "0.3.0"
-      expiry_unix: 1756000000
-      capabilities_csv: "http:outbound filesystem:read"
-      author_npub: npub1author
+    identifier: mezo
+    version: "0.3.0"
+    expires_at_unix: 1756000000
+    capabilities:
+      - http:outbound
+      - filesystem:read
+    author_npub: npub1author
 ---
 Skill instructions
 "#;
@@ -364,18 +379,43 @@ Skill instructions
             derived.manifest.author_npub,
             Some("npub1author".to_string())
         );
-        assert!(
-            derived
-                .manifest
-                .capabilities
-                .contains(&"http:outbound".to_string())
-        );
-        assert!(
-            derived
-                .manifest
-                .capabilities
-                .contains(&"filesystem:read".to_string())
-        );
+        assert!(derived
+            .manifest
+            .capabilities
+            .contains(&"http:outbound".to_string()));
+        assert!(derived
+            .manifest
+            .capabilities
+            .contains(&"filesystem:read".to_string()));
+    }
+
+    #[test]
+    fn test_derive_manifest_from_deprecated_oa_nostr_metadata_bridge() {
+        let payload = r#"---
+name: mezo
+description: Integrate Mezo testnet and mainnet flows
+metadata:
+  oa:
+    project: mezo
+    nostr:
+      identifier: mezo
+      version: "0.3.0"
+      expiry_unix: 1756000000
+      capabilities_csv: "http:outbound filesystem:read"
+      author_npub: npub1author
+---
+Skill instructions
+"#;
+
+        let derived =
+            derive_manifest_from_skill_payload(payload, "publisherpubkey", 1_740_400_005).unwrap();
+
+        assert_eq!(derived.manifest.identifier, "mezo");
+        assert_eq!(derived.manifest.version, "0.3.0");
+        assert!(derived
+            .manifest
+            .capabilities
+            .contains(&"filesystem:read".to_string()));
     }
 
     #[test]
@@ -405,15 +445,13 @@ name: invalid-skill
 description: missing required version mapping
 metadata:
   oa:
-    nostr:
-      expiry_unix: 1756000000
+    expires_at_unix: 1756000000
 ---
 Body
 "#;
 
-        let err =
-            derive_manifest_from_skill_payload(payload, "publisherpubkey", 1_740_400_003)
-                .unwrap_err();
+        let err = derive_manifest_from_skill_payload(payload, "publisherpubkey", 1_740_400_003)
+            .unwrap_err();
         assert!(matches!(err, YamlDerivationError::MissingField("version")));
     }
 }

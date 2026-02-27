@@ -5,11 +5,12 @@ compatibility: Requires bash, curl, Node.js 20+, and internet access to npm and 
 metadata:
   oa:
     project: moneydevkit
-    nostr:
-      identifier: moneydevkit
-      version: "0.1.0"
-      expiry_unix: "1798761600"
-      capabilities_csv: "http:outbound filesystem:read"
+    identifier: moneydevkit
+    version: "0.1.0"
+    expires_at_unix: 1798761600
+    capabilities:
+      - http:outbound
+      - filesystem:read
 ---
 
 # Money Dev Kit

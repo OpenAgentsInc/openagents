@@ -225,9 +225,7 @@ fn resolve_skill_md_path(skill_dir: &Path) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        discover_local_skills_in, derive_local_skill_manifest_in, resolve_local_skill_in,
-    };
+    use super::{derive_local_skill_manifest_in, discover_local_skills_in, resolve_local_skill_in};
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -327,11 +325,12 @@ name: agent-wallet-ops
 description: Operate agent wallet commands
 metadata:
   oa:
-    nostr:
-      identifier: agent-wallet-ops
-      version: "0.1.0"
-      expiry_unix: 1756000000
-      capabilities_csv: "http:outbound filesystem:read"
+    identifier: agent-wallet-ops
+    version: "0.1.0"
+    expires_at_unix: 1756000000
+    capabilities:
+      - http:outbound
+      - filesystem:read
 ---
 Run wallet checks
 "#,

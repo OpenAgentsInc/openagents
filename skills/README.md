@@ -58,11 +58,17 @@ OpenAgents-specific SKL bridge metadata lives under `metadata.oa.*` only.
 Recommended keys:
 
 - `metadata.oa.project`
-- `metadata.oa.nostr.identifier`
-- `metadata.oa.nostr.version`
-- `metadata.oa.nostr.expiry_unix`
-- `metadata.oa.nostr.capabilities_csv`
-- `metadata.oa.nostr.author_npub` (optional)
+- `metadata.oa.identifier`
+- `metadata.oa.version`
+- `metadata.oa.expires_at_unix`
+- `metadata.oa.capabilities`
+- `metadata.oa.author_npub` (optional)
+- `metadata.oa.author_pubkey` (optional)
+- `metadata.oa.previous_manifest_event_id` (optional)
+
+Deprecated but still parsed for compatibility:
+
+- `metadata.oa.nostr.*` keys
 
 ## Validation Contract
 
@@ -82,7 +88,7 @@ Validation fails on:
 
 ## Versioning Contract
 
-- Bump `metadata.oa.nostr.version` when behavior changes.
+- Bump `metadata.oa.version` when behavior changes.
 - SKL publish flow should emit updated `33400` manifest + `33401` version log for releases.
 
 ## Contribution Workflow
