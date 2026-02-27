@@ -21,9 +21,17 @@ Temporary exceptions are allowed only when all of the following are true:
 
 - Run `scripts/lint/clippy-regression-check.sh` before commit.
 - Use `scripts/lint/touched-clippy-gate.sh` (clean-on-touch gate) for changed files.
+- Enforce strict production hardening lanes with `scripts/lint/strict-production-hardening-check.sh`.
 - Track pre-existing debt in `scripts/lint/clippy-debt-allowlist.toml`.
 - Validate allowlist structure with `scripts/lint/clippy-debt-allowlist-check.sh`.
 - Enforce high-churn warning ceilings with `scripts/lint/clippy-warning-budget-check.sh`.
+
+## Strict Production Lanes
+
+- Required strict commands:
+  - `cargo clippy -p nostr --lib --no-deps -- -D clippy::unwrap_used -D clippy::expect_used -D clippy::panic`
+  - `cargo clippy -p autopilot-desktop --bin autopilot-desktop --no-deps -- -D clippy::unwrap_used -D clippy::expect_used -D clippy::panic`
+- These are run via `scripts/lint/strict-production-hardening-check.sh` and are part of `scripts/lint/clippy-regression-check.sh`.
 
 ## Allowlist Rules
 

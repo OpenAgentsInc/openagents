@@ -24,6 +24,11 @@ if ! "$ROOT_DIR/scripts/lint/touched-clippy-gate.sh"; then
     exit 1
 fi
 
+if ! "$ROOT_DIR/scripts/lint/strict-production-hardening-check.sh"; then
+    printf 'Strict production hardening gate failed.\n' >&2
+    exit 1
+fi
+
 if ! "$ROOT_DIR/scripts/lint/clippy-warning-budget-check.sh"; then
     printf 'Clippy warning budget gate failed.\n' >&2
     exit 1
