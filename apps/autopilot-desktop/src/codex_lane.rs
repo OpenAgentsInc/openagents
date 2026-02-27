@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread::JoinHandle;
@@ -7,12 +7,16 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use codex_client::{
     AppServerChannels, AppServerClient, AppServerConfig, AppServerNotification, AppServerRequest,
-    AskForApproval, ClientInfo, InitializeCapabilities, InitializeParams, ModelListParams,
+    AppServerRequestId, AskForApproval, ChatgptAuthTokensRefreshParams,
+    ChatgptAuthTokensRefreshResponse, ClientInfo, CommandExecutionRequestApprovalParams,
+    CommandExecutionRequestApprovalResponse, DynamicToolCallOutputContentItem,
+    DynamicToolCallParams, DynamicToolCallResponse, FileChangeRequestApprovalParams,
+    FileChangeRequestApprovalResponse, InitializeCapabilities, InitializeParams, ModelListParams,
     SkillScope, SkillsConfigWriteParams, SkillsListParams, SkillsListResponse, ThreadArchiveParams,
     ThreadCompactStartParams, ThreadForkParams, ThreadListParams, ThreadLoadedListParams,
     ThreadReadParams, ThreadResumeParams, ThreadRollbackParams, ThreadSetNameParams,
-    ThreadStartParams, ThreadUnarchiveParams, ThreadUnsubscribeParams, TurnInterruptParams,
-    TurnStartParams,
+    ThreadStartParams, ThreadUnarchiveParams, ThreadUnsubscribeParams, ToolRequestUserInputParams,
+    ToolRequestUserInputResponse, TurnInterruptParams, TurnStartParams,
 };
 use serde_json::Value;
 use tokio::runtime::Runtime;
@@ -105,6 +109,11 @@ pub enum CodexLaneCommandKind {
     ThreadLoadedList,
     TurnStart,
     TurnInterrupt,
+    ServerRequestCommandApprovalRespond,
+    ServerRequestFileApprovalRespond,
+    ServerRequestToolCallRespond,
+    ServerRequestToolUserInputRespond,
+    ServerRequestAuthRefreshRespond,
     SkillsList,
     SkillsConfigWrite,
 }
@@ -126,6 +135,13 @@ impl CodexLaneCommandKind {
             Self::ThreadLoadedList => "thread/loaded/list",
             Self::TurnStart => "turn/start",
             Self::TurnInterrupt => "turn/interrupt",
+            Self::ServerRequestCommandApprovalRespond => {
+                "item/commandExecution/requestApproval:respond"
+            }
+            Self::ServerRequestFileApprovalRespond => "item/fileChange/requestApproval:respond",
+            Self::ServerRequestToolCallRespond => "item/tool/call:respond",
+            Self::ServerRequestToolUserInputRespond => "item/tool/requestUserInput:respond",
+            Self::ServerRequestAuthRefreshRespond => "account/chatgptAuthTokens/refresh:respond",
             Self::SkillsList => "skills/list",
             Self::SkillsConfigWrite => "skills/config/write",
         }
@@ -174,6 +190,26 @@ pub enum CodexLaneCommand {
     ThreadLoadedList(ThreadLoadedListParams),
     TurnStart(TurnStartParams),
     TurnInterrupt(TurnInterruptParams),
+    ServerRequestCommandApprovalRespond {
+        request_id: AppServerRequestId,
+        response: CommandExecutionRequestApprovalResponse,
+    },
+    ServerRequestFileApprovalRespond {
+        request_id: AppServerRequestId,
+        response: FileChangeRequestApprovalResponse,
+    },
+    ServerRequestToolCallRespond {
+        request_id: AppServerRequestId,
+        response: DynamicToolCallResponse,
+    },
+    ServerRequestToolUserInputRespond {
+        request_id: AppServerRequestId,
+        response: ToolRequestUserInputResponse,
+    },
+    ServerRequestAuthRefreshRespond {
+        request_id: AppServerRequestId,
+        response: ChatgptAuthTokensRefreshResponse,
+    },
     SkillsList(SkillsListParams),
     SkillsConfigWrite(SkillsConfigWriteParams),
 }
@@ -195,6 +231,21 @@ impl CodexLaneCommand {
             Self::ThreadLoadedList(_) => CodexLaneCommandKind::ThreadLoadedList,
             Self::TurnStart(_) => CodexLaneCommandKind::TurnStart,
             Self::TurnInterrupt(_) => CodexLaneCommandKind::TurnInterrupt,
+            Self::ServerRequestCommandApprovalRespond { .. } => {
+                CodexLaneCommandKind::ServerRequestCommandApprovalRespond
+            }
+            Self::ServerRequestFileApprovalRespond { .. } => {
+                CodexLaneCommandKind::ServerRequestFileApprovalRespond
+            }
+            Self::ServerRequestToolCallRespond { .. } => {
+                CodexLaneCommandKind::ServerRequestToolCallRespond
+            }
+            Self::ServerRequestToolUserInputRespond { .. } => {
+                CodexLaneCommandKind::ServerRequestToolUserInputRespond
+            }
+            Self::ServerRequestAuthRefreshRespond { .. } => {
+                CodexLaneCommandKind::ServerRequestAuthRefreshRespond
+            }
             Self::SkillsList(_) => CodexLaneCommandKind::SkillsList,
             Self::SkillsConfigWrite(_) => CodexLaneCommandKind::SkillsConfigWrite,
         }
@@ -290,6 +341,26 @@ pub enum CodexLaneNotification {
         turn_id: String,
         message: String,
     },
+    CommandApprovalRequested {
+        request_id: AppServerRequestId,
+        request: CodexCommandApprovalRequest,
+    },
+    FileChangeApprovalRequested {
+        request_id: AppServerRequestId,
+        request: CodexFileChangeApprovalRequest,
+    },
+    ToolCallRequested {
+        request_id: AppServerRequestId,
+        request: CodexToolCallRequest,
+    },
+    ToolUserInputRequested {
+        request_id: AppServerRequestId,
+        request: CodexToolUserInputRequest,
+    },
+    AuthTokensRefreshRequested {
+        request_id: AppServerRequestId,
+        request: CodexAuthTokensRefreshRequest,
+    },
     ServerRequest {
         method: String,
     },
@@ -329,6 +400,56 @@ pub struct CodexThreadListEntry {
 pub struct CodexTurnPlanStep {
     pub step: String,
     pub status: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexCommandApprovalRequest {
+    pub thread_id: String,
+    pub turn_id: String,
+    pub item_id: String,
+    pub reason: Option<String>,
+    pub command: Option<String>,
+    pub cwd: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexFileChangeApprovalRequest {
+    pub thread_id: String,
+    pub turn_id: String,
+    pub item_id: String,
+    pub reason: Option<String>,
+    pub grant_root: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexToolCallRequest {
+    pub thread_id: String,
+    pub turn_id: String,
+    pub call_id: String,
+    pub tool: String,
+    pub arguments: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexToolUserInputQuestion {
+    pub id: String,
+    pub header: String,
+    pub question: String,
+    pub options: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexToolUserInputRequest {
+    pub thread_id: String,
+    pub turn_id: String,
+    pub item_id: String,
+    pub questions: Vec<CodexToolUserInputQuestion>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexAuthTokensRefreshRequest {
+    pub reason: String,
+    pub previous_account_id: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -443,6 +564,7 @@ struct CodexLaneState {
     snapshot: CodexLaneSnapshot,
     client: Option<AppServerClient>,
     channels: Option<AppServerChannels>,
+    pending_server_requests: HashMap<AppServerRequestId, String>,
 }
 
 struct CodexCommandEffect {
@@ -456,6 +578,7 @@ impl CodexLaneState {
             snapshot: CodexLaneSnapshot::default(),
             client: None,
             channels: None,
+            pending_server_requests: HashMap::new(),
         }
     }
 
@@ -624,8 +747,10 @@ impl CodexLaneState {
             error: None,
         };
 
-        let result = if let Some(client) = self.client.as_ref() {
-            Self::dispatch_command(runtime, client, envelope.command)
+        let result = if let Some(client) = self.client.take() {
+            let result = self.dispatch_command(runtime, &client, envelope.command);
+            self.client = Some(client);
+            result
         } else {
             Err(anyhow::anyhow!("Codex lane unavailable"))
         };
@@ -674,6 +799,7 @@ impl CodexLaneState {
     }
 
     fn dispatch_command(
+        &mut self,
         runtime: &Runtime,
         client: &AppServerClient,
         command: CodexLaneCommand,
@@ -804,6 +930,86 @@ impl CodexLaneState {
                     notification: None,
                 })
             }
+            CodexLaneCommand::ServerRequestCommandApprovalRespond {
+                request_id,
+                response,
+            } => {
+                self.respond_to_server_request_value(
+                    runtime,
+                    client,
+                    request_id,
+                    "item/commandExecution/requestApproval",
+                    serde_json::to_value(response)?,
+                )?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: None,
+                })
+            }
+            CodexLaneCommand::ServerRequestFileApprovalRespond {
+                request_id,
+                response,
+            } => {
+                self.respond_to_server_request_value(
+                    runtime,
+                    client,
+                    request_id,
+                    "item/fileChange/requestApproval",
+                    serde_json::to_value(response)?,
+                )?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: None,
+                })
+            }
+            CodexLaneCommand::ServerRequestToolCallRespond {
+                request_id,
+                response,
+            } => {
+                self.respond_to_server_request_value(
+                    runtime,
+                    client,
+                    request_id,
+                    "item/tool/call",
+                    serde_json::to_value(response)?,
+                )?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: None,
+                })
+            }
+            CodexLaneCommand::ServerRequestToolUserInputRespond {
+                request_id,
+                response,
+            } => {
+                self.respond_to_server_request_value(
+                    runtime,
+                    client,
+                    request_id,
+                    "item/tool/requestUserInput",
+                    serde_json::to_value(response)?,
+                )?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: None,
+                })
+            }
+            CodexLaneCommand::ServerRequestAuthRefreshRespond {
+                request_id,
+                response,
+            } => {
+                self.respond_to_server_request_value(
+                    runtime,
+                    client,
+                    request_id,
+                    "account/chatgptAuthTokens/refresh",
+                    serde_json::to_value(response)?,
+                )?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: None,
+                })
+            }
             CodexLaneCommand::SkillsList(params) => {
                 let response = runtime.block_on(client.skills_list(params))?;
                 let entries = summarize_skills_list_response(response);
@@ -865,6 +1071,7 @@ impl CodexLaneState {
         if disconnected {
             self.client = None;
             self.channels = None;
+            self.pending_server_requests.clear();
             self.set_error(update_tx, "Codex lane disconnected from app-server", true);
         }
     }
@@ -882,9 +1089,259 @@ impl CodexLaneState {
         ));
 
         if let Some(client) = self.client.as_ref() {
-            let ack = serde_json::json!({ "status": "unsupported" });
-            let _ = runtime.block_on(client.respond(request.id, &ack));
+            match request.method.as_str() {
+                "item/commandExecution/requestApproval" => {
+                    let parsed = request
+                        .params
+                        .clone()
+                        .ok_or_else(|| anyhow::anyhow!("missing request params"))
+                        .and_then(|params| {
+                            serde_json::from_value::<CommandExecutionRequestApprovalParams>(params)
+                                .map_err(|error| anyhow::anyhow!(error))
+                        });
+                    match parsed {
+                        Ok(params) => {
+                            self.pending_server_requests
+                                .insert(request.id.clone(), request.method.clone());
+                            let _ = update_tx.send(CodexLaneUpdate::Notification(
+                                CodexLaneNotification::CommandApprovalRequested {
+                                    request_id: request.id,
+                                    request: CodexCommandApprovalRequest {
+                                        thread_id: params.thread_id,
+                                        turn_id: params.turn_id,
+                                        item_id: params.item_id,
+                                        reason: params.reason,
+                                        command: params.command,
+                                        cwd: params.cwd.map(|path| path.display().to_string()),
+                                    },
+                                },
+                            ));
+                        }
+                        Err(error) => {
+                            eprintln!(
+                                "codex server request parse failed method={} error={}",
+                                request.method, error
+                            );
+                            let _ = runtime.block_on(client.respond(
+                                request.id,
+                                &CommandExecutionRequestApprovalResponse {
+                                    decision: codex_client::ApprovalDecision::Decline,
+                                },
+                            ));
+                        }
+                    }
+                }
+                "item/fileChange/requestApproval" => {
+                    let parsed = request
+                        .params
+                        .clone()
+                        .ok_or_else(|| anyhow::anyhow!("missing request params"))
+                        .and_then(|params| {
+                            serde_json::from_value::<FileChangeRequestApprovalParams>(params)
+                                .map_err(|error| anyhow::anyhow!(error))
+                        });
+                    match parsed {
+                        Ok(params) => {
+                            self.pending_server_requests
+                                .insert(request.id.clone(), request.method.clone());
+                            let _ = update_tx.send(CodexLaneUpdate::Notification(
+                                CodexLaneNotification::FileChangeApprovalRequested {
+                                    request_id: request.id,
+                                    request: CodexFileChangeApprovalRequest {
+                                        thread_id: params.thread_id,
+                                        turn_id: params.turn_id,
+                                        item_id: params.item_id,
+                                        reason: params.reason,
+                                        grant_root: params
+                                            .grant_root
+                                            .map(|path| path.display().to_string()),
+                                    },
+                                },
+                            ));
+                        }
+                        Err(error) => {
+                            eprintln!(
+                                "codex server request parse failed method={} error={}",
+                                request.method, error
+                            );
+                            let _ = runtime.block_on(client.respond(
+                                request.id,
+                                &FileChangeRequestApprovalResponse {
+                                    decision: codex_client::ApprovalDecision::Decline,
+                                },
+                            ));
+                        }
+                    }
+                }
+                "item/tool/call" => {
+                    let parsed = request
+                        .params
+                        .clone()
+                        .ok_or_else(|| anyhow::anyhow!("missing request params"))
+                        .and_then(|params| {
+                            serde_json::from_value::<DynamicToolCallParams>(params)
+                                .map_err(|error| anyhow::anyhow!(error))
+                        });
+                    match parsed {
+                        Ok(params) => {
+                            self.pending_server_requests
+                                .insert(request.id.clone(), request.method.clone());
+                            let _ = update_tx.send(CodexLaneUpdate::Notification(
+                                CodexLaneNotification::ToolCallRequested {
+                                    request_id: request.id,
+                                    request: CodexToolCallRequest {
+                                        thread_id: params.thread_id,
+                                        turn_id: params.turn_id,
+                                        call_id: params.call_id,
+                                        tool: params.tool,
+                                        arguments: serde_json::to_string(&params.arguments)
+                                            .unwrap_or_else(|_| "{}".to_string()),
+                                    },
+                                },
+                            ));
+                        }
+                        Err(error) => {
+                            eprintln!(
+                                "codex server request parse failed method={} error={}",
+                                request.method, error
+                            );
+                            let _ = runtime.block_on(client.respond(
+                                request.id,
+                                &DynamicToolCallResponse {
+                                    content_items: vec![DynamicToolCallOutputContentItem::InputText {
+                                        text: format!(
+                                            "OpenAgents desktop failed to parse tool request: {error}"
+                                        ),
+                                    }],
+                                    success: false,
+                                },
+                            ));
+                        }
+                    }
+                }
+                "item/tool/requestUserInput" => {
+                    let parsed = request
+                        .params
+                        .clone()
+                        .ok_or_else(|| anyhow::anyhow!("missing request params"))
+                        .and_then(|params| {
+                            serde_json::from_value::<ToolRequestUserInputParams>(params)
+                                .map_err(|error| anyhow::anyhow!(error))
+                        });
+                    match parsed {
+                        Ok(params) => {
+                            self.pending_server_requests
+                                .insert(request.id.clone(), request.method.clone());
+                            let _ = update_tx.send(CodexLaneUpdate::Notification(
+                                CodexLaneNotification::ToolUserInputRequested {
+                                    request_id: request.id,
+                                    request: CodexToolUserInputRequest {
+                                        thread_id: params.thread_id,
+                                        turn_id: params.turn_id,
+                                        item_id: params.item_id,
+                                        questions: params
+                                            .questions
+                                            .into_iter()
+                                            .map(|question| CodexToolUserInputQuestion {
+                                                id: question.id,
+                                                header: question.header,
+                                                question: question.question,
+                                                options: question
+                                                    .options
+                                                    .unwrap_or_default()
+                                                    .into_iter()
+                                                    .map(|option| option.label)
+                                                    .collect(),
+                                            })
+                                            .collect(),
+                                    },
+                                },
+                            ));
+                        }
+                        Err(error) => {
+                            eprintln!(
+                                "codex server request parse failed method={} error={}",
+                                request.method, error
+                            );
+                            let _ = runtime.block_on(client.respond(
+                                request.id,
+                                &ToolRequestUserInputResponse {
+                                    answers: HashMap::new(),
+                                },
+                            ));
+                        }
+                    }
+                }
+                "account/chatgptAuthTokens/refresh" => {
+                    let parsed = request
+                        .params
+                        .clone()
+                        .ok_or_else(|| anyhow::anyhow!("missing request params"))
+                        .and_then(|params| {
+                            serde_json::from_value::<ChatgptAuthTokensRefreshParams>(params)
+                                .map_err(|error| anyhow::anyhow!(error))
+                        });
+                    match parsed {
+                        Ok(params) => {
+                            self.pending_server_requests
+                                .insert(request.id.clone(), request.method.clone());
+                            let _ = update_tx.send(CodexLaneUpdate::Notification(
+                                CodexLaneNotification::AuthTokensRefreshRequested {
+                                    request_id: request.id,
+                                    request: CodexAuthTokensRefreshRequest {
+                                        reason: params.reason,
+                                        previous_account_id: params.previous_account_id,
+                                    },
+                                },
+                            ));
+                        }
+                        Err(error) => {
+                            eprintln!(
+                                "codex server request parse failed method={} error={}",
+                                request.method, error
+                            );
+                            let _ = runtime.block_on(client.respond(
+                                request.id,
+                                &ChatgptAuthTokensRefreshResponse {
+                                    access_token: String::new(),
+                                    chatgpt_account_id: String::new(),
+                                    chatgpt_plan_type: None,
+                                },
+                            ));
+                        }
+                    }
+                }
+                _ => {
+                    let ack = serde_json::json!({ "status": "unsupported" });
+                    let _ = runtime.block_on(client.respond(request.id, &ack));
+                }
+            }
         }
+    }
+
+    fn respond_to_server_request_value(
+        &mut self,
+        runtime: &Runtime,
+        client: &AppServerClient,
+        request_id: AppServerRequestId,
+        expected_method: &str,
+        response: Value,
+    ) -> Result<()> {
+        let Some(method) = self.pending_server_requests.remove(&request_id) else {
+            return Err(anyhow::anyhow!("server request id not pending"));
+        };
+
+        if method != expected_method {
+            self.pending_server_requests
+                .insert(request_id.clone(), method.clone());
+            return Err(anyhow::anyhow!(
+                "server request method mismatch: expected {}, got {}",
+                expected_method,
+                method
+            ));
+        }
+
+        runtime.block_on(client.respond(request_id, &response))
     }
 
     fn shutdown(&mut self, runtime: &Runtime, update_tx: &Sender<CodexLaneUpdate>) {
@@ -892,6 +1349,7 @@ impl CodexLaneState {
             let _ = runtime.block_on(client.shutdown());
         }
         self.channels = None;
+        self.pending_server_requests.clear();
         self.snapshot.lifecycle = CodexLaneLifecycle::Stopped;
         self.snapshot.last_status = Some("Codex lane stopped".to_string());
         self.snapshot.last_error = None;
@@ -1866,6 +2324,195 @@ mod tests {
                 thread_name: Some("Renamed Thread".to_string()),
             })
         );
+    }
+
+    #[test]
+    fn server_request_command_approval_round_trip() {
+        let (client_stream, server_stream) = tokio::io::duplex(16 * 1024);
+        let (client_read, client_write) = tokio::io::split(client_stream);
+        let (server_read, mut server_write) = tokio::io::split(server_stream);
+        let runtime_guard = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap_or_else(|_| panic!("failed to build runtime"));
+        let _entered = runtime_guard.enter();
+        let (client, channels) =
+            AppServerClient::connect_with_io(Box::new(client_write), Box::new(client_read), None);
+        drop(_entered);
+
+        let saw_approval_response = Arc::new(AtomicBool::new(false));
+        let saw_approval_response_clone = Arc::clone(&saw_approval_response);
+        let server = std::thread::spawn(move || {
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(_) => return,
+            };
+            runtime.block_on(async move {
+                let mut reader = BufReader::new(server_read);
+                let mut request_line = String::new();
+                let mut sent_approval_request = false;
+
+                loop {
+                    request_line.clear();
+                    let bytes = reader.read_line(&mut request_line).await.unwrap_or(0);
+                    if bytes == 0 {
+                        break;
+                    }
+                    let value: Value = match serde_json::from_str(request_line.trim()) {
+                        Ok(value) => value,
+                        Err(_) => continue,
+                    };
+
+                    let method = value
+                        .get("method")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
+
+                    if method == "initialize" {
+                        let response = json!({
+                            "id": value["id"].clone(),
+                            "result": {"userAgent": "test-agent"}
+                        });
+                        if let Ok(line) = serde_json::to_string(&response) {
+                            let _ = server_write.write_all(format!("{line}\n").as_bytes()).await;
+                            let _ = server_write.flush().await;
+                        }
+                        continue;
+                    }
+
+                    if method == "thread/start" {
+                        let response = json!({
+                            "id": value["id"].clone(),
+                            "result": {
+                                "thread": {"id": "thread-bootstrap"},
+                                "model": "gpt-5-codex"
+                            }
+                        });
+                        if let Ok(line) = serde_json::to_string(&response) {
+                            let _ = server_write.write_all(format!("{line}\n").as_bytes()).await;
+                            let _ = server_write.flush().await;
+                        }
+                        continue;
+                    }
+
+                    if method == "model/list" {
+                        let response = json!({
+                            "id": value["id"].clone(),
+                            "result": {
+                                "data": [],
+                                "nextCursor": null
+                            }
+                        });
+                        if let Ok(line) = serde_json::to_string(&response) {
+                            let _ = server_write.write_all(format!("{line}\n").as_bytes()).await;
+                            let _ = server_write.flush().await;
+                        }
+                        continue;
+                    }
+
+                    if method == "thread/list" {
+                        let response = json!({
+                            "id": value["id"].clone(),
+                            "result": {"data": [], "nextCursor": null}
+                        });
+                        if let Ok(line) = serde_json::to_string(&response) {
+                            let _ = server_write.write_all(format!("{line}\n").as_bytes()).await;
+                            let _ = server_write.flush().await;
+                        }
+
+                        let approval_request = json!({
+                            "jsonrpc": "2.0",
+                            "id": "approve-1",
+                            "method": "item/commandExecution/requestApproval",
+                            "params": {
+                                "threadId": "thread-bootstrap",
+                                "turnId": "turn-1",
+                                "itemId": "item-1",
+                                "reason": "needs approval",
+                                "command": "ls"
+                            }
+                        });
+                        if let Ok(line) = serde_json::to_string(&approval_request) {
+                            let _ = server_write.write_all(format!("{line}\n").as_bytes()).await;
+                            let _ = server_write.flush().await;
+                        }
+                        sent_approval_request = true;
+                        continue;
+                    }
+
+                    if sent_approval_request {
+                        let id = value.get("id");
+                        let decision = value
+                            .get("result")
+                            .and_then(|result| result.get("decision"))
+                            .and_then(Value::as_str);
+                        if id == Some(&json!("approve-1")) && decision == Some("accept") {
+                            saw_approval_response_clone.store(true, Ordering::SeqCst);
+                            break;
+                        }
+                    }
+                }
+                drop(server_write);
+            });
+        });
+
+        let mut worker = CodexLaneWorker::spawn_with_runtime(
+            CodexLaneConfig::default(),
+            Box::new(SingleClientRuntime::new((client, channels), runtime_guard)),
+        );
+        let _ = wait_for_snapshot(&mut worker, Duration::from_secs(2), |snapshot| {
+            snapshot.lifecycle == CodexLaneLifecycle::Ready
+        });
+        let _ = worker.enqueue(
+            990,
+            CodexLaneCommand::ThreadList(ThreadListParams::default()),
+        );
+
+        let mut approval_request_id = None;
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() <= deadline && approval_request_id.is_none() {
+            for update in worker.drain_updates() {
+                if let CodexLaneUpdate::Notification(
+                    CodexLaneNotification::CommandApprovalRequested { request_id, .. },
+                ) = update
+                {
+                    approval_request_id = Some(request_id);
+                }
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        let Some(request_id) = approval_request_id else {
+            worker.shutdown();
+            let _ = server.join();
+            panic!("expected command approval request");
+        };
+        let enqueue_result = worker.enqueue(
+            991,
+            CodexLaneCommand::ServerRequestCommandApprovalRespond {
+                request_id,
+                response: codex_client::CommandExecutionRequestApprovalResponse {
+                    decision: codex_client::ApprovalDecision::Accept,
+                },
+            },
+        );
+        assert!(enqueue_result.is_ok());
+
+        let response = wait_for_command_response(&mut worker, Duration::from_secs(2), |response| {
+            response.command_seq == 991
+        });
+        assert_eq!(
+            response.command,
+            CodexLaneCommandKind::ServerRequestCommandApprovalRespond
+        );
+        assert_eq!(response.status, CodexLaneCommandStatus::Accepted);
+        assert!(saw_approval_response.load(Ordering::SeqCst));
+
+        worker.shutdown();
+        let _ = server.join();
     }
 
     #[test]

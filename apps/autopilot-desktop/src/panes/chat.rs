@@ -8,13 +8,17 @@ use crate::pane_renderer::{paint_action_button, split_text_for_display};
 use crate::pane_system::{
     chat_composer_input_bounds, chat_cycle_model_button_bounds, chat_interrupt_button_bounds,
     chat_refresh_threads_button_bounds, chat_send_button_bounds,
-    chat_thread_action_archive_button_bounds, chat_thread_action_compact_button_bounds,
-    chat_thread_action_fork_button_bounds, chat_thread_action_rename_button_bounds,
-    chat_thread_action_rollback_button_bounds, chat_thread_action_unarchive_button_bounds,
-    chat_thread_action_unsubscribe_button_bounds, chat_thread_filter_archived_button_bounds,
-    chat_thread_filter_provider_button_bounds, chat_thread_filter_sort_button_bounds,
-    chat_thread_filter_source_button_bounds, chat_thread_rail_bounds, chat_thread_row_bounds,
-    chat_transcript_bounds, chat_visible_thread_row_count, pane_content_bounds,
+    chat_server_auth_refresh_button_bounds, chat_server_request_accept_button_bounds,
+    chat_server_request_cancel_button_bounds, chat_server_request_decline_button_bounds,
+    chat_server_request_session_button_bounds, chat_server_tool_call_button_bounds,
+    chat_server_user_input_button_bounds, chat_thread_action_archive_button_bounds,
+    chat_thread_action_compact_button_bounds, chat_thread_action_fork_button_bounds,
+    chat_thread_action_rename_button_bounds, chat_thread_action_rollback_button_bounds,
+    chat_thread_action_unarchive_button_bounds, chat_thread_action_unsubscribe_button_bounds,
+    chat_thread_filter_archived_button_bounds, chat_thread_filter_provider_button_bounds,
+    chat_thread_filter_sort_button_bounds, chat_thread_filter_source_button_bounds,
+    chat_thread_rail_bounds, chat_thread_row_bounds, chat_transcript_bounds,
+    chat_visible_thread_row_count, pane_content_bounds,
 };
 
 pub fn paint(
@@ -30,6 +34,13 @@ pub fn paint(
     let refresh_bounds = chat_refresh_threads_button_bounds(content_bounds);
     let model_bounds = chat_cycle_model_button_bounds(content_bounds);
     let interrupt_bounds = chat_interrupt_button_bounds(content_bounds);
+    let approval_accept_bounds = chat_server_request_accept_button_bounds(content_bounds);
+    let approval_session_bounds = chat_server_request_session_button_bounds(content_bounds);
+    let approval_decline_bounds = chat_server_request_decline_button_bounds(content_bounds);
+    let approval_cancel_bounds = chat_server_request_cancel_button_bounds(content_bounds);
+    let tool_call_bounds = chat_server_tool_call_button_bounds(content_bounds);
+    let user_input_bounds = chat_server_user_input_button_bounds(content_bounds);
+    let auth_refresh_bounds = chat_server_auth_refresh_button_bounds(content_bounds);
     let archived_filter_bounds = chat_thread_filter_archived_button_bounds(content_bounds);
     let sort_filter_bounds = chat_thread_filter_sort_button_bounds(content_bounds);
     let source_filter_bounds = chat_thread_filter_source_button_bounds(content_bounds);
@@ -124,6 +135,23 @@ pub fn paint(
     paint_action_button(unsubscribe_bounds, "Unsub", paint);
     paint_action_button(model_bounds, "Cycle Model", paint);
     paint_action_button(interrupt_bounds, "Interrupt", paint);
+    if !autopilot_chat.pending_command_approvals.is_empty()
+        || !autopilot_chat.pending_file_change_approvals.is_empty()
+    {
+        paint_action_button(approval_accept_bounds, "Approve", paint);
+        paint_action_button(approval_session_bounds, "Approve Session", paint);
+        paint_action_button(approval_decline_bounds, "Decline", paint);
+        paint_action_button(approval_cancel_bounds, "Cancel", paint);
+    }
+    if !autopilot_chat.pending_tool_calls.is_empty() {
+        paint_action_button(tool_call_bounds, "Respond Tool Call", paint);
+    }
+    if !autopilot_chat.pending_tool_user_input.is_empty() {
+        paint_action_button(user_input_bounds, "Submit Tool Input", paint);
+    }
+    if !autopilot_chat.pending_auth_refresh.is_empty() {
+        paint_action_button(auth_refresh_bounds, "Send Auth Refresh", paint);
+    }
 
     let visible_threads = chat_visible_thread_row_count(autopilot_chat.threads.len());
     for row_index in 0..visible_threads {
@@ -193,10 +221,22 @@ pub fn paint(
             )
         })
         .unwrap_or_else(|| "tokens(n/a)".to_string());
+    let pending_server_summary = format!(
+        "approvals={} file={} tool={} input={} auth={}",
+        autopilot_chat.pending_command_approvals.len(),
+        autopilot_chat.pending_file_change_approvals.len(),
+        autopilot_chat.pending_tool_calls.len(),
+        autopilot_chat.pending_tool_user_input.len(),
+        autopilot_chat.pending_auth_refresh.len()
+    );
     paint.scene.draw_text(paint.text.layout_mono(
         &format!(
-            "thread={}({}) turn={} {}",
-            active_thread_status, active_thread_loaded, turn_status, token_summary
+            "thread={}({}) turn={} {} {}",
+            active_thread_status,
+            active_thread_loaded,
+            turn_status,
+            token_summary,
+            pending_server_summary
         ),
         Point::new(
             transcript_bounds.origin.x + 10.0,
@@ -207,6 +247,90 @@ pub fn paint(
     ));
 
     let mut y = transcript_bounds.origin.y + 84.0;
+    if let Some(request) = autopilot_chat.pending_command_approvals.first() {
+        let summary = request
+            .command
+            .as_deref()
+            .or(request.reason.as_deref())
+            .unwrap_or("command approval pending");
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!(
+                "approval(cmd) {} thread={} turn={} item={} cwd={}",
+                summary,
+                request.thread_id,
+                request.turn_id,
+                request.item_id,
+                request.cwd.as_deref().unwrap_or("n/a")
+            ),
+            Point::new(transcript_bounds.origin.x + 10.0, y),
+            10.0,
+            theme::status::WARNING,
+        ));
+        y += 14.0;
+    } else if let Some(request) = autopilot_chat.pending_file_change_approvals.first() {
+        let summary = request
+            .grant_root
+            .as_deref()
+            .or(request.reason.as_deref())
+            .unwrap_or("file-change approval pending");
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!(
+                "approval(file) {} thread={} turn={} item={}",
+                summary, request.thread_id, request.turn_id, request.item_id
+            ),
+            Point::new(transcript_bounds.origin.x + 10.0, y),
+            10.0,
+            theme::status::WARNING,
+        ));
+        y += 14.0;
+    }
+    if let Some(request) = autopilot_chat.pending_tool_calls.first() {
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!(
+                "tool/call pending tool={} thread={} turn={} args={}",
+                request.tool, request.thread_id, request.turn_id, request.arguments
+            ),
+            Point::new(transcript_bounds.origin.x + 10.0, y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        y += 14.0;
+    }
+    if let Some(request) = autopilot_chat.pending_tool_user_input.first() {
+        let first_question = request.questions.first();
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!(
+                "tool/requestUserInput pending thread={} turn={} item={} questions={} first={} | {}",
+                request.thread_id,
+                request.turn_id,
+                request.item_id,
+                request.questions.len(),
+                first_question
+                    .map(|question| question.header.as_str())
+                    .unwrap_or("n/a"),
+                first_question
+                    .map(|question| question.question.as_str())
+                    .unwrap_or("n/a")
+            ),
+            Point::new(transcript_bounds.origin.x + 10.0, y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        y += 14.0;
+    }
+    if let Some(request) = autopilot_chat.pending_auth_refresh.first() {
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!(
+                "auth refresh pending reason={} account={}",
+                request.reason,
+                request.previous_account_id.as_deref().unwrap_or("n/a")
+            ),
+            Point::new(transcript_bounds.origin.x + 10.0, y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        y += 14.0;
+    }
     if !autopilot_chat.turn_plan.is_empty() {
         let plan_compact = autopilot_chat
             .turn_plan

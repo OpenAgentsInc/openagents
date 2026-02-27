@@ -268,6 +268,61 @@ pub struct AutopilotTurnPlanStep {
 }
 
 #[derive(Clone)]
+pub struct AutopilotApprovalRequest {
+    pub request_id: codex_client::AppServerRequestId,
+    pub thread_id: String,
+    pub turn_id: String,
+    pub item_id: String,
+    pub reason: Option<String>,
+    pub command: Option<String>,
+    pub cwd: Option<String>,
+}
+
+#[derive(Clone)]
+pub struct AutopilotFileChangeApprovalRequest {
+    pub request_id: codex_client::AppServerRequestId,
+    pub thread_id: String,
+    pub turn_id: String,
+    pub item_id: String,
+    pub reason: Option<String>,
+    pub grant_root: Option<String>,
+}
+
+#[derive(Clone)]
+pub struct AutopilotToolCallRequest {
+    pub request_id: codex_client::AppServerRequestId,
+    pub thread_id: String,
+    pub turn_id: String,
+    pub call_id: String,
+    pub tool: String,
+    pub arguments: String,
+}
+
+#[derive(Clone)]
+pub struct AutopilotToolUserInputQuestion {
+    pub id: String,
+    pub header: String,
+    pub question: String,
+    pub options: Vec<String>,
+}
+
+#[derive(Clone)]
+pub struct AutopilotToolUserInputRequest {
+    pub request_id: codex_client::AppServerRequestId,
+    pub thread_id: String,
+    pub turn_id: String,
+    pub item_id: String,
+    pub questions: Vec<AutopilotToolUserInputQuestion>,
+}
+
+#[derive(Clone)]
+pub struct AutopilotAuthRefreshRequest {
+    pub request_id: codex_client::AppServerRequestId,
+    pub reason: String,
+    pub previous_account_id: Option<String>,
+}
+
+#[derive(Clone)]
 pub struct AutopilotThreadMetadata {
     pub thread_name: Option<String>,
     pub status: Option<String>,
@@ -310,6 +365,14 @@ pub struct AutopilotChatState {
     pub turn_plan: Vec<AutopilotTurnPlanStep>,
     pub turn_diff: Option<String>,
     pub turn_timeline: Vec<String>,
+    pub pending_command_approvals: Vec<AutopilotApprovalRequest>,
+    pub pending_file_change_approvals: Vec<AutopilotFileChangeApprovalRequest>,
+    pub pending_tool_calls: Vec<AutopilotToolCallRequest>,
+    pub pending_tool_user_input: Vec<AutopilotToolUserInputRequest>,
+    pub pending_auth_refresh: Vec<AutopilotAuthRefreshRequest>,
+    pub auth_refresh_access_token: String,
+    pub auth_refresh_account_id: String,
+    pub auth_refresh_plan_type: String,
     pub thread_filter_archived: Option<bool>,
     pub thread_filter_sort_key: codex_client::ThreadSortKey,
     pub thread_filter_source_kind: Option<codex_client::ThreadSourceKind>,
@@ -348,6 +411,14 @@ impl Default for AutopilotChatState {
             turn_plan: Vec::new(),
             turn_diff: None,
             turn_timeline: Vec::new(),
+            pending_command_approvals: Vec::new(),
+            pending_file_change_approvals: Vec::new(),
+            pending_tool_calls: Vec::new(),
+            pending_tool_user_input: Vec::new(),
+            pending_auth_refresh: Vec::new(),
+            auth_refresh_access_token: std::env::var("OPENAI_ACCESS_TOKEN").unwrap_or_default(),
+            auth_refresh_account_id: std::env::var("OPENAI_CHATGPT_ACCOUNT_ID").unwrap_or_default(),
+            auth_refresh_plan_type: std::env::var("OPENAI_CHATGPT_PLAN_TYPE").unwrap_or_default(),
             thread_filter_archived: Some(false),
             thread_filter_sort_key: codex_client::ThreadSortKey::UpdatedAt,
             thread_filter_source_kind: None,
@@ -742,6 +813,66 @@ impl AutopilotChatState {
         let value = format!("Thread {}", self.thread_rename_counter);
         self.thread_rename_counter = self.thread_rename_counter.saturating_add(1);
         value
+    }
+
+    pub fn enqueue_command_approval(&mut self, request: AutopilotApprovalRequest) {
+        self.pending_command_approvals.push(request);
+    }
+
+    pub fn enqueue_file_change_approval(&mut self, request: AutopilotFileChangeApprovalRequest) {
+        self.pending_file_change_approvals.push(request);
+    }
+
+    pub fn enqueue_tool_call(&mut self, request: AutopilotToolCallRequest) {
+        self.pending_tool_calls.push(request);
+    }
+
+    pub fn enqueue_tool_user_input(&mut self, request: AutopilotToolUserInputRequest) {
+        self.pending_tool_user_input.push(request);
+    }
+
+    pub fn enqueue_auth_refresh(&mut self, request: AutopilotAuthRefreshRequest) {
+        self.pending_auth_refresh.push(request);
+    }
+
+    pub fn pop_command_approval(&mut self) -> Option<AutopilotApprovalRequest> {
+        if self.pending_command_approvals.is_empty() {
+            None
+        } else {
+            Some(self.pending_command_approvals.remove(0))
+        }
+    }
+
+    pub fn pop_file_change_approval(&mut self) -> Option<AutopilotFileChangeApprovalRequest> {
+        if self.pending_file_change_approvals.is_empty() {
+            None
+        } else {
+            Some(self.pending_file_change_approvals.remove(0))
+        }
+    }
+
+    pub fn pop_tool_call(&mut self) -> Option<AutopilotToolCallRequest> {
+        if self.pending_tool_calls.is_empty() {
+            None
+        } else {
+            Some(self.pending_tool_calls.remove(0))
+        }
+    }
+
+    pub fn pop_tool_user_input(&mut self) -> Option<AutopilotToolUserInputRequest> {
+        if self.pending_tool_user_input.is_empty() {
+            None
+        } else {
+            Some(self.pending_tool_user_input.remove(0))
+        }
+    }
+
+    pub fn pop_auth_refresh(&mut self) -> Option<AutopilotAuthRefreshRequest> {
+        if self.pending_auth_refresh.is_empty() {
+            None
+        } else {
+            Some(self.pending_auth_refresh.remove(0))
+        }
     }
 
     pub fn has_pending_messages(&self) -> bool {

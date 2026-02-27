@@ -340,6 +340,104 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
         CodexLaneNotification::TurnError { message, .. } => {
             state.autopilot_chat.mark_turn_error(message);
         }
+        CodexLaneNotification::CommandApprovalRequested {
+            request_id,
+            request,
+        } => {
+            state.autopilot_chat.enqueue_command_approval(
+                crate::app_state::AutopilotApprovalRequest {
+                    request_id,
+                    thread_id: request.thread_id,
+                    turn_id: request.turn_id,
+                    item_id: request.item_id,
+                    reason: request.reason,
+                    command: request.command,
+                    cwd: request.cwd,
+                },
+            );
+            state
+                .autopilot_chat
+                .record_turn_timeline_event("command approval requested");
+        }
+        CodexLaneNotification::FileChangeApprovalRequested {
+            request_id,
+            request,
+        } => {
+            state.autopilot_chat.enqueue_file_change_approval(
+                crate::app_state::AutopilotFileChangeApprovalRequest {
+                    request_id,
+                    thread_id: request.thread_id,
+                    turn_id: request.turn_id,
+                    item_id: request.item_id,
+                    reason: request.reason,
+                    grant_root: request.grant_root,
+                },
+            );
+            state
+                .autopilot_chat
+                .record_turn_timeline_event("file-change approval requested");
+        }
+        CodexLaneNotification::ToolCallRequested {
+            request_id,
+            request,
+        } => {
+            state
+                .autopilot_chat
+                .enqueue_tool_call(crate::app_state::AutopilotToolCallRequest {
+                    request_id,
+                    thread_id: request.thread_id,
+                    turn_id: request.turn_id,
+                    call_id: request.call_id,
+                    tool: request.tool,
+                    arguments: request.arguments,
+                });
+            state
+                .autopilot_chat
+                .record_turn_timeline_event("tool call requested");
+        }
+        CodexLaneNotification::ToolUserInputRequested {
+            request_id,
+            request,
+        } => {
+            state.autopilot_chat.enqueue_tool_user_input(
+                crate::app_state::AutopilotToolUserInputRequest {
+                    request_id,
+                    thread_id: request.thread_id,
+                    turn_id: request.turn_id,
+                    item_id: request.item_id,
+                    questions: request
+                        .questions
+                        .into_iter()
+                        .map(
+                            |question| crate::app_state::AutopilotToolUserInputQuestion {
+                                id: question.id,
+                                header: question.header,
+                                question: question.question,
+                                options: question.options,
+                            },
+                        )
+                        .collect(),
+                },
+            );
+            state
+                .autopilot_chat
+                .record_turn_timeline_event("tool user-input requested");
+        }
+        CodexLaneNotification::AuthTokensRefreshRequested {
+            request_id,
+            request,
+        } => {
+            state.autopilot_chat.enqueue_auth_refresh(
+                crate::app_state::AutopilotAuthRefreshRequest {
+                    request_id,
+                    reason: request.reason,
+                    previous_account_id: request.previous_account_id,
+                },
+            );
+            state
+                .autopilot_chat
+                .record_turn_timeline_event("auth token refresh requested");
+        }
         CodexLaneNotification::ServerRequest { .. } | CodexLaneNotification::Raw { .. } => {}
     }
 

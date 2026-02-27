@@ -220,6 +220,13 @@ pub enum PaneHitAction {
     ChatRollbackThread,
     ChatCompactThread,
     ChatUnsubscribeThread,
+    ChatRespondApprovalAccept,
+    ChatRespondApprovalAcceptSession,
+    ChatRespondApprovalDecline,
+    ChatRespondApprovalCancel,
+    ChatRespondToolCall,
+    ChatRespondToolUserInput,
+    ChatRespondAuthRefresh,
     ChatSelectThread(usize),
     GoOnlineToggle,
     EarningsScoreboard(EarningsScoreboardPaneAction),
@@ -789,6 +796,46 @@ pub fn chat_send_button_bounds(content_bounds: Bounds) -> Bounds {
         CHAT_SEND_WIDTH,
         CHAT_COMPOSER_HEIGHT,
     )
+}
+
+pub fn chat_server_request_accept_button_bounds(content_bounds: Bounds) -> Bounds {
+    let transcript = chat_transcript_bounds(content_bounds);
+    Bounds::new(
+        transcript.origin.x + 240.0,
+        transcript.origin.y + 28.0,
+        96.0,
+        24.0,
+    )
+}
+
+pub fn chat_server_request_session_button_bounds(content_bounds: Bounds) -> Bounds {
+    let accept = chat_server_request_accept_button_bounds(content_bounds);
+    Bounds::new(accept.max_x() + 6.0, accept.origin.y, 96.0, 24.0)
+}
+
+pub fn chat_server_request_decline_button_bounds(content_bounds: Bounds) -> Bounds {
+    let session = chat_server_request_session_button_bounds(content_bounds);
+    Bounds::new(session.max_x() + 6.0, session.origin.y, 96.0, 24.0)
+}
+
+pub fn chat_server_request_cancel_button_bounds(content_bounds: Bounds) -> Bounds {
+    let decline = chat_server_request_decline_button_bounds(content_bounds);
+    Bounds::new(decline.max_x() + 6.0, decline.origin.y, 96.0, 24.0)
+}
+
+pub fn chat_server_tool_call_button_bounds(content_bounds: Bounds) -> Bounds {
+    let accept = chat_server_request_accept_button_bounds(content_bounds);
+    Bounds::new(accept.origin.x, accept.max_y() + 6.0, 120.0, 24.0)
+}
+
+pub fn chat_server_user_input_button_bounds(content_bounds: Bounds) -> Bounds {
+    let tool = chat_server_tool_call_button_bounds(content_bounds);
+    Bounds::new(tool.max_x() + 6.0, tool.origin.y, 140.0, 24.0)
+}
+
+pub fn chat_server_auth_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    let user_input = chat_server_user_input_button_bounds(content_bounds);
+    Bounds::new(user_input.max_x() + 6.0, user_input.origin.y, 140.0, 24.0)
 }
 
 pub fn chat_composer_input_bounds(content_bounds: Bounds) -> Bounds {
@@ -1647,6 +1694,27 @@ fn pane_hit_action_for_pane(
             }
             if chat_thread_action_unsubscribe_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::ChatUnsubscribeThread);
+            }
+            if chat_server_request_accept_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatRespondApprovalAccept);
+            }
+            if chat_server_request_session_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatRespondApprovalAcceptSession);
+            }
+            if chat_server_request_decline_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatRespondApprovalDecline);
+            }
+            if chat_server_request_cancel_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatRespondApprovalCancel);
+            }
+            if chat_server_tool_call_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatRespondToolCall);
+            }
+            if chat_server_user_input_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatRespondToolUserInput);
+            }
+            if chat_server_auth_refresh_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatRespondAuthRefresh);
             }
             let visible_threads = chat_visible_thread_row_count(state.autopilot_chat.threads.len());
             for row_index in 0..visible_threads {

@@ -592,7 +592,15 @@ pub struct CommandExecutionRequestApprovalParams {
     pub thread_id: String,
     pub turn_id: String,
     pub item_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub approval_id: Option<String>,
     pub reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub available_decisions: Option<Vec<ApprovalDecision>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -602,6 +610,8 @@ pub struct FileChangeRequestApprovalParams {
     pub turn_id: String,
     pub item_id: String,
     pub reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub grant_root: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -611,6 +621,8 @@ pub enum ApprovalDecision {
     AcceptForSession,
     Decline,
     Cancel,
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -625,6 +637,102 @@ pub struct ApprovalResponse {
     pub decision: ApprovalDecision,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub accept_settings: Option<ApprovalAcceptSettings>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandExecutionRequestApprovalResponse {
+    pub decision: ApprovalDecision,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileChangeRequestApprovalResponse {
+    pub decision: ApprovalDecision,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DynamicToolCallParams {
+    pub thread_id: String,
+    pub turn_id: String,
+    pub call_id: String,
+    pub tool: String,
+    pub arguments: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum DynamicToolCallOutputContentItem {
+    #[serde(rename_all = "camelCase")]
+    InputText { text: String },
+    #[serde(rename_all = "camelCase")]
+    InputImage { image_url: String },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DynamicToolCallResponse {
+    pub content_items: Vec<DynamicToolCallOutputContentItem>,
+    pub success: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolRequestUserInputOption {
+    pub label: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolRequestUserInputQuestion {
+    pub id: String,
+    pub header: String,
+    pub question: String,
+    #[serde(default)]
+    pub is_other: bool,
+    #[serde(default)]
+    pub is_secret: bool,
+    pub options: Option<Vec<ToolRequestUserInputOption>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolRequestUserInputParams {
+    pub thread_id: String,
+    pub turn_id: String,
+    pub item_id: String,
+    pub questions: Vec<ToolRequestUserInputQuestion>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolRequestUserInputAnswer {
+    pub answers: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolRequestUserInputResponse {
+    pub answers: HashMap<String, ToolRequestUserInputAnswer>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatgptAuthTokensRefreshParams {
+    pub reason: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_account_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatgptAuthTokensRefreshResponse {
+    pub access_token: String,
+    pub chatgpt_account_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chatgpt_plan_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

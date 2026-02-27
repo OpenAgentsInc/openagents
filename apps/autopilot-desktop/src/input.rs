@@ -1,9 +1,13 @@
 use codex_client::{
+    ApprovalDecision, ChatgptAuthTokensRefreshResponse, CommandExecutionRequestApprovalResponse,
+    DynamicToolCallOutputContentItem, DynamicToolCallResponse, FileChangeRequestApprovalResponse,
     ThreadArchiveParams, ThreadCompactStartParams, ThreadForkParams, ThreadLoadedListParams,
     ThreadResumeParams, ThreadRollbackParams, ThreadSetNameParams, ThreadUnarchiveParams,
-    ThreadUnsubscribeParams, TurnStartParams, UserInput,
+    ThreadUnsubscribeParams, ToolRequestUserInputAnswer, ToolRequestUserInputResponse,
+    TurnStartParams, UserInput,
 };
 use nostr::regenerate_identity;
+use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use wgpui::clipboard::copy_to_clipboard;
@@ -426,6 +430,21 @@ fn run_pane_hit_action(state: &mut crate::app_state::RenderState, action: PaneHi
         PaneHitAction::ChatRollbackThread => run_chat_rollback_thread_action(state),
         PaneHitAction::ChatCompactThread => run_chat_compact_thread_action(state),
         PaneHitAction::ChatUnsubscribeThread => run_chat_unsubscribe_thread_action(state),
+        PaneHitAction::ChatRespondApprovalAccept => {
+            run_chat_approval_response_action(state, ApprovalDecision::Accept)
+        }
+        PaneHitAction::ChatRespondApprovalAcceptSession => {
+            run_chat_approval_response_action(state, ApprovalDecision::AcceptForSession)
+        }
+        PaneHitAction::ChatRespondApprovalDecline => {
+            run_chat_approval_response_action(state, ApprovalDecision::Decline)
+        }
+        PaneHitAction::ChatRespondApprovalCancel => {
+            run_chat_approval_response_action(state, ApprovalDecision::Cancel)
+        }
+        PaneHitAction::ChatRespondToolCall => run_chat_tool_call_response_action(state),
+        PaneHitAction::ChatRespondToolUserInput => run_chat_tool_user_input_response_action(state),
+        PaneHitAction::ChatRespondAuthRefresh => run_chat_auth_refresh_response_action(state),
         PaneHitAction::ChatSelectThread(index) => run_chat_select_thread_action(state, index),
         PaneHitAction::GoOnlineToggle => {
             let wants_online = matches!(
@@ -1042,6 +1061,190 @@ fn run_chat_select_thread_action(state: &mut crate::app_state::RenderState, inde
     });
     if let Err(error) = state.queue_codex_command(command) {
         state.autopilot_chat.last_error = Some(error);
+    }
+    true
+}
+
+fn run_chat_approval_response_action(
+    state: &mut crate::app_state::RenderState,
+    decision: ApprovalDecision,
+) -> bool {
+    if let Some(request) = state.autopilot_chat.pop_command_approval() {
+        let command = crate::codex_lane::CodexLaneCommand::ServerRequestCommandApprovalRespond {
+            request_id: request.request_id.clone(),
+            response: CommandExecutionRequestApprovalResponse {
+                decision: decision.clone(),
+            },
+        };
+        if let Err(error) = state.queue_codex_command(command) {
+            state
+                .autopilot_chat
+                .pending_command_approvals
+                .insert(0, request);
+            state.autopilot_chat.last_error = Some(error);
+        } else {
+            state
+                .autopilot_chat
+                .record_turn_timeline_event(format!("command approval response: {:?}", decision));
+        }
+        return true;
+    }
+
+    if let Some(request) = state.autopilot_chat.pop_file_change_approval() {
+        let command = crate::codex_lane::CodexLaneCommand::ServerRequestFileApprovalRespond {
+            request_id: request.request_id.clone(),
+            response: FileChangeRequestApprovalResponse { decision },
+        };
+        if let Err(error) = state.queue_codex_command(command) {
+            state
+                .autopilot_chat
+                .pending_file_change_approvals
+                .insert(0, request);
+            state.autopilot_chat.last_error = Some(error);
+        } else {
+            state
+                .autopilot_chat
+                .record_turn_timeline_event("file-change approval response submitted");
+        }
+        return true;
+    }
+
+    state.autopilot_chat.last_error = Some("No pending approval requests".to_string());
+    true
+}
+
+fn run_chat_tool_call_response_action(state: &mut crate::app_state::RenderState) -> bool {
+    let Some(request) = state.autopilot_chat.pop_tool_call() else {
+        state.autopilot_chat.last_error = Some("No pending tool calls".to_string());
+        return true;
+    };
+
+    let command = crate::codex_lane::CodexLaneCommand::ServerRequestToolCallRespond {
+        request_id: request.request_id.clone(),
+        response: DynamicToolCallResponse {
+            content_items: vec![DynamicToolCallOutputContentItem::InputText {
+                text: format!(
+                    "OpenAgents desktop acknowledged tool '{}' for call '{}'",
+                    request.tool, request.call_id
+                ),
+            }],
+            success: true,
+        },
+    };
+    if let Err(error) = state.queue_codex_command(command) {
+        state.autopilot_chat.pending_tool_calls.insert(0, request);
+        state.autopilot_chat.last_error = Some(error);
+    } else {
+        state
+            .autopilot_chat
+            .record_turn_timeline_event("tool call response submitted");
+    }
+    true
+}
+
+fn run_chat_tool_user_input_response_action(state: &mut crate::app_state::RenderState) -> bool {
+    let Some(request) = state.autopilot_chat.pop_tool_user_input() else {
+        state.autopilot_chat.last_error = Some("No pending tool user-input requests".to_string());
+        return true;
+    };
+
+    let mut answers = HashMap::new();
+    for question in &request.questions {
+        let value = if let Some(first) = question.options.first() {
+            vec![first.clone()]
+        } else {
+            vec!["ok".to_string()]
+        };
+        answers.insert(
+            question.id.clone(),
+            ToolRequestUserInputAnswer { answers: value },
+        );
+    }
+
+    let command = crate::codex_lane::CodexLaneCommand::ServerRequestToolUserInputRespond {
+        request_id: request.request_id.clone(),
+        response: ToolRequestUserInputResponse { answers },
+    };
+    if let Err(error) = state.queue_codex_command(command) {
+        state
+            .autopilot_chat
+            .pending_tool_user_input
+            .insert(0, request);
+        state.autopilot_chat.last_error = Some(error);
+    } else {
+        state
+            .autopilot_chat
+            .record_turn_timeline_event("tool user-input response submitted");
+    }
+    true
+}
+
+fn run_chat_auth_refresh_response_action(state: &mut crate::app_state::RenderState) -> bool {
+    let Some(request) = state.autopilot_chat.pop_auth_refresh() else {
+        state.autopilot_chat.last_error = Some("No pending auth refresh requests".to_string());
+        return true;
+    };
+
+    let access_token = if state
+        .autopilot_chat
+        .auth_refresh_access_token
+        .trim()
+        .is_empty()
+    {
+        std::env::var("OPENAI_ACCESS_TOKEN").unwrap_or_default()
+    } else {
+        state.autopilot_chat.auth_refresh_access_token.clone()
+    };
+    let account_id = if state
+        .autopilot_chat
+        .auth_refresh_account_id
+        .trim()
+        .is_empty()
+    {
+        request
+            .previous_account_id
+            .clone()
+            .unwrap_or_else(|| std::env::var("OPENAI_CHATGPT_ACCOUNT_ID").unwrap_or_default())
+    } else {
+        state.autopilot_chat.auth_refresh_account_id.clone()
+    };
+    let plan_type = if state
+        .autopilot_chat
+        .auth_refresh_plan_type
+        .trim()
+        .is_empty()
+    {
+        std::env::var("OPENAI_CHATGPT_PLAN_TYPE").unwrap_or_default()
+    } else {
+        state.autopilot_chat.auth_refresh_plan_type.clone()
+    };
+
+    if access_token.trim().is_empty() || account_id.trim().is_empty() {
+        state.autopilot_chat.pending_auth_refresh.insert(0, request);
+        state.autopilot_chat.last_error =
+            Some("Missing OPENAI_ACCESS_TOKEN or account id for auth refresh response".to_string());
+        return true;
+    }
+
+    let command = crate::codex_lane::CodexLaneCommand::ServerRequestAuthRefreshRespond {
+        request_id: request.request_id.clone(),
+        response: ChatgptAuthTokensRefreshResponse {
+            access_token,
+            chatgpt_account_id: account_id,
+            chatgpt_plan_type: if plan_type.trim().is_empty() {
+                None
+            } else {
+                Some(plan_type)
+            },
+        },
+    };
+    if let Err(error) = state.queue_codex_command(command) {
+        state.autopilot_chat.pending_auth_refresh.insert(0, request);
+        state.autopilot_chat.last_error = Some(error);
+    } else {
+        state
+            .autopilot_chat
+            .record_turn_timeline_event("auth refresh response submitted");
     }
     true
 }
