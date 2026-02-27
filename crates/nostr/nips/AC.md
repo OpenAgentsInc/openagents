@@ -1,6 +1,8 @@
-# NIP-AC
+NIP-AC
+======
 
-## Agent Credit
+Agent Credit
+------------
 
 `draft` `optional`
 

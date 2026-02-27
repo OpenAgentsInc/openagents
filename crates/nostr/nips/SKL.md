@@ -1,10 +1,12 @@
-# NIP-SKL
+NIP-SKL
+=======
 
-## Agent Skill Registry
+Agent Skill Registry
+--------------------
 
 `draft` `optional`
 
-NIP-SKL defines the registry and trust substrate for agent skills on Nostr.
+This NIP defines the registry and trust substrate for agent skills on Nostr.
 
 ## Abstract
 
