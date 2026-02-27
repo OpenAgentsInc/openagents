@@ -455,6 +455,8 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             PaneKind::NetworkRequests => {
                 if network_requests_type_input_bounds(content_bounds).contains(point)
                     || network_requests_payload_input_bounds(content_bounds).contains(point)
+                    || network_requests_skill_scope_input_bounds(content_bounds).contains(point)
+                    || network_requests_credit_envelope_input_bounds(content_bounds).contains(point)
                     || network_requests_budget_input_bounds(content_bounds).contains(point)
                     || network_requests_timeout_input_bounds(content_bounds).contains(point)
                 {
@@ -666,11 +668,31 @@ pub fn network_requests_payload_input_bounds(content_bounds: Bounds) -> Bounds {
     )
 }
 
-pub fn network_requests_budget_input_bounds(content_bounds: Bounds) -> Bounds {
+pub fn network_requests_skill_scope_input_bounds(content_bounds: Bounds) -> Bounds {
     let payload = network_requests_payload_input_bounds(content_bounds);
     Bounds::new(
         content_bounds.origin.x + CHAT_PAD,
         payload.max_y() + 10.0,
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(260.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn network_requests_credit_envelope_input_bounds(content_bounds: Bounds) -> Bounds {
+    let scope = network_requests_skill_scope_input_bounds(content_bounds);
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        scope.max_y() + 10.0,
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(260.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn network_requests_budget_input_bounds(content_bounds: Bounds) -> Bounds {
+    let envelope = network_requests_credit_envelope_input_bounds(content_bounds);
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        envelope.max_y() + 10.0,
         (content_bounds.size.width * 0.2).clamp(120.0, 180.0),
         JOB_INBOX_BUTTON_HEIGHT,
     )
@@ -1331,6 +1353,24 @@ pub fn dispatch_network_requests_input_event(state: &mut RenderState, event: &In
         .is_handled();
     handled |= state
         .network_requests_inputs
+        .skill_scope_id
+        .event(
+            event,
+            network_requests_skill_scope_input_bounds(content_bounds),
+            &mut state.event_context,
+        )
+        .is_handled();
+    handled |= state
+        .network_requests_inputs
+        .credit_envelope_ref
+        .event(
+            event,
+            network_requests_credit_envelope_input_bounds(content_bounds),
+            &mut state.event_context,
+        )
+        .is_handled();
+    handled |= state
+        .network_requests_inputs
         .budget_sats
         .event(
             event,
@@ -1471,7 +1511,8 @@ mod tests {
         job_history_prev_page_button_bounds, job_history_search_input_bounds,
         job_history_status_button_bounds, job_history_time_button_bounds,
         job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
-        network_requests_budget_input_bounds, network_requests_payload_input_bounds,
+        network_requests_budget_input_bounds, network_requests_credit_envelope_input_bounds,
+        network_requests_payload_input_bounds, network_requests_skill_scope_input_bounds,
         network_requests_submit_button_bounds, network_requests_timeout_input_bounds,
         network_requests_type_input_bounds, nostr_copy_secret_button_bounds,
         nostr_regenerate_button_bounds, nostr_reveal_button_bounds, pane_content_bounds,
@@ -1573,12 +1614,16 @@ mod tests {
         let content = Bounds::new(0.0, 0.0, 900.0, 420.0);
         let request_type = network_requests_type_input_bounds(content);
         let payload = network_requests_payload_input_bounds(content);
+        let scope = network_requests_skill_scope_input_bounds(content);
+        let envelope = network_requests_credit_envelope_input_bounds(content);
         let budget = network_requests_budget_input_bounds(content);
         let timeout = network_requests_timeout_input_bounds(content);
         let submit = network_requests_submit_button_bounds(content);
 
         assert!(request_type.max_y() < payload.min_y());
-        assert!(payload.max_y() < budget.min_y());
+        assert!(payload.max_y() < scope.min_y());
+        assert!(scope.max_y() < envelope.min_y());
+        assert!(envelope.max_y() < budget.min_y());
         assert!(budget.max_x() < timeout.min_x());
         assert!(timeout.max_x() < submit.min_x());
     }

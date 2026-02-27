@@ -368,6 +368,8 @@ pub enum AcCreditCommand {
         scope: String,
         request_type: String,
         payload: String,
+        skill_scope_id: Option<String>,
+        credit_envelope_ref: Option<String>,
         requested_sats: u64,
         timeout_seconds: u64,
     },
@@ -978,6 +980,8 @@ fn handle_ac_command(
             scope,
             request_type,
             payload,
+            skill_scope_id,
+            credit_envelope_ref,
             requested_sats,
             timeout_seconds,
         } => {
@@ -995,11 +999,27 @@ fn handle_ac_command(
                     "scope/request_type/payload are required and sats/timeout must be > 0",
                 );
             }
+            if scope.starts_with("skill:")
+                && skill_scope_id
+                    .as_deref()
+                    .is_none_or(|skill_scope| skill_scope.trim().is_empty())
+            {
+                return RuntimeCommandResponse::rejected(
+                    envelope.command_seq,
+                    RuntimeLane::AcCredit,
+                    RuntimeCommandKind::PublishCreditIntent,
+                    RuntimeCommandErrorClass::Validation,
+                    "skill scope requests require skill_scope_id",
+                );
+            }
 
             let event_id = next_event_id("ac", KIND_CREDIT_INTENT, next_event_seq);
             snapshot.intent_event_id = Some(event_id.clone());
             snapshot.available_credit_sats = requested_sats;
             snapshot.credit_available = true;
+            if let Some(envelope_ref) = credit_envelope_ref {
+                snapshot.envelope_event_id = Some(envelope_ref);
+            }
             snapshot.last_error = None;
             *snapshot_changed = true;
             RuntimeCommandResponse::accepted(

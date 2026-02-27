@@ -203,6 +203,8 @@ fn bootstrap_runtime_lanes(state: &mut RenderState) {
         scope: "bootstrap:credit".to_string(),
         request_type: "bootstrap.credit".to_string(),
         payload: "{\"bootstrap\":true}".to_string(),
+        skill_scope_id: Some("33400:npub1agent:summarize-text:0.1.0".to_string()),
+        credit_envelope_ref: None,
         requested_sats: 1500,
         timeout_seconds: 60,
     });
@@ -255,6 +257,9 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             state.nostr_identity_error.as_deref(),
             &state.nostr_secret_state,
             &state.autopilot_chat,
+            &state.sa_lane,
+            &state.skl_lane,
+            &state.ac_lane,
             &state.provider_runtime,
             provider_blockers.as_slice(),
             &state.earnings_scoreboard,

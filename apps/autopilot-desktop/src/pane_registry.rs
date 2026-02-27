@@ -138,7 +138,7 @@ const PANE_SPECS: [PaneSpec; 19] = [
         command: Some(PaneCommandSpec {
             id: "pane.go_online",
             label: "Go Online",
-            description: "Open provider mode toggle and lifecycle controls",
+            description: "Open SA runner toggle with SKL trust gate and AC lane status",
             keybinding: None,
         }),
         hotbar: None,
@@ -213,7 +213,7 @@ const PANE_SPECS: [PaneSpec; 19] = [
         command: Some(PaneCommandSpec {
             id: "pane.network_requests",
             label: "Network Requests",
-            description: "Open buyer-side request composer for network submission",
+            description: "Open buyer composer with skill scope and credit envelope references",
             keybinding: None,
         }),
         hotbar: None,
@@ -243,7 +243,7 @@ const PANE_SPECS: [PaneSpec; 19] = [
         command: Some(PaneCommandSpec {
             id: "pane.activity_feed",
             label: "Activity Feed",
-            description: "Open unified stream for chat/job/wallet/network/sync events",
+            description: "Open unified stream including SA/SKL/AC runtime classes",
             keybinding: None,
         }),
         hotbar: None,
@@ -258,7 +258,7 @@ const PANE_SPECS: [PaneSpec; 19] = [
         command: Some(PaneCommandSpec {
             id: "pane.alerts_recovery",
             label: "Alerts and Recovery",
-            description: "Open incident alerts, remediation steps, and recovery actions",
+            description: "Open incident queue including trust and credit lane recovery",
             keybinding: None,
         }),
         hotbar: None,
@@ -288,7 +288,7 @@ const PANE_SPECS: [PaneSpec; 19] = [
         command: Some(PaneCommandSpec {
             id: "pane.job_inbox",
             label: "Job Inbox",
-            description: "Open incoming NIP-90 request intake pane",
+            description: "Open incoming requests with SA/SKL/AC linkage metadata",
             keybinding: None,
         }),
         hotbar: None,
@@ -303,7 +303,7 @@ const PANE_SPECS: [PaneSpec; 19] = [
         command: Some(PaneCommandSpec {
             id: "pane.active_job",
             label: "Active Job",
-            description: "Open in-flight job lifecycle timeline pane",
+            description: "Open in-flight job lifecycle with SA tick, trajectory, and AC links",
             keybinding: None,
         }),
         hotbar: None,
@@ -318,7 +318,7 @@ const PANE_SPECS: [PaneSpec; 19] = [
         command: Some(PaneCommandSpec {
             id: "pane.job_history",
             label: "Job History",
-            description: "Open deterministic completed/failed job receipts pane",
+            description: "Open immutable receipts with SA/SKL/AC proof links",
             keybinding: None,
         }),
         hotbar: None,
@@ -333,7 +333,7 @@ const PANE_SPECS: [PaneSpec; 19] = [
         command: Some(PaneCommandSpec {
             id: "pane.identity_keys",
             label: "Identity Keys",
-            description: "Open Nostr keys (NIP-06) pane",
+            description: "Open Nostr keys plus agent/skill derivation previews",
             keybinding: Some("2"),
         }),
         hotbar: Some(PaneHotbarSpec {

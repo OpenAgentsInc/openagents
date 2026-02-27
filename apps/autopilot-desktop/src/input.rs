@@ -28,7 +28,7 @@ use crate::render::{logical_size, render_frame};
 use crate::runtime_lanes::{
     AcCreditCommand, AcLaneUpdate, RuntimeCommandErrorClass, RuntimeCommandResponse,
     RuntimeCommandStatus, RuntimeLane, SaLaneUpdate, SaLifecycleCommand, SaRunnerMode,
-    SklLaneUpdate,
+    SklDiscoveryTrustCommand, SklLaneUpdate,
 };
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
 use crate::spark_wallet::SparkWalletCommand;
@@ -747,6 +747,40 @@ fn run_job_inbox_action(
                         state.provider_runtime.queue_depth.saturating_add(1);
                     state.provider_runtime.last_result =
                         Some(format!("runtime accepted request {request_id}"));
+                    if let Some(request) = state
+                        .job_inbox
+                        .requests
+                        .iter_mut()
+                        .find(|request| request.request_id == request_id)
+                    {
+                        request.skill_scope_id = request.skill_scope_id.clone().or_else(|| {
+                            state
+                                .network_requests
+                                .submitted
+                                .first()
+                                .and_then(|submitted| submitted.skill_scope_id.clone())
+                        });
+                        request.skl_manifest_a = request
+                            .skl_manifest_a
+                            .clone()
+                            .or_else(|| state.skl_lane.manifest_a.clone());
+                        request.skl_manifest_event_id = request
+                            .skl_manifest_event_id
+                            .clone()
+                            .or_else(|| state.skl_lane.manifest_event_id.clone());
+                        request.sa_tick_request_event_id = request
+                            .sa_tick_request_event_id
+                            .clone()
+                            .or_else(|| state.sa_lane.last_tick_request_event_id.clone());
+                        request.sa_tick_result_event_id = request
+                            .sa_tick_result_event_id
+                            .clone()
+                            .or_else(|| state.sa_lane.last_tick_result_event_id.clone());
+                        request.ac_envelope_event_id = request
+                            .ac_envelope_event_id
+                            .clone()
+                            .or_else(|| state.ac_lane.envelope_event_id.clone());
+                    }
                     let selected_request = state
                         .job_inbox
                         .requests
@@ -950,6 +984,14 @@ fn run_network_requests_action(
                 .get_value()
                 .trim()
                 .to_string();
+            let skill_scope_id =
+                normalize_optional_text(state.network_requests_inputs.skill_scope_id.get_value());
+            let credit_envelope_ref = normalize_optional_text(
+                state
+                    .network_requests_inputs
+                    .credit_envelope_ref
+                    .get_value(),
+            );
             let budget_sats = match parse_positive_amount_str(
                 state.network_requests_inputs.budget_sats.get_value(),
                 "Budget sats",
@@ -973,11 +1015,17 @@ fn run_network_requests_action(
                 }
             };
 
-            let scope = format!("network:{}:{}", request_type, budget_sats);
+            let scope = if let Some(skill_scope) = skill_scope_id.as_deref() {
+                format!("skill:{skill_scope}:constraints")
+            } else {
+                format!("network:{request_type}:{budget_sats}")
+            };
             let queue_result = state.queue_ac_command(AcCreditCommand::PublishCreditIntent {
                 scope,
                 request_type: request_type.clone(),
                 payload: payload.clone(),
+                skill_scope_id: skill_scope_id.clone(),
+                credit_envelope_ref: credit_envelope_ref.clone(),
                 requested_sats: budget_sats,
                 timeout_seconds,
             });
@@ -986,6 +1034,8 @@ fn run_network_requests_action(
                     match state.network_requests.queue_request_submission(
                         &request_type,
                         &payload,
+                        skill_scope_id,
+                        credit_envelope_ref,
                         budget_sats,
                         timeout_seconds,
                         command_seq,
@@ -1050,6 +1100,21 @@ fn run_starter_jobs_action(
                                 .job_history
                                 .reference_epoch_seconds
                                 .saturating_add(state.job_history.rows.len() as u64 * 19),
+                            skill_scope_id: state
+                                .network_requests
+                                .submitted
+                                .first()
+                                .and_then(|request| request.skill_scope_id.clone()),
+                            skl_manifest_a: state.skl_lane.manifest_a.clone(),
+                            skl_manifest_event_id: state.skl_lane.manifest_event_id.clone(),
+                            sa_tick_result_event_id: state
+                                .sa_lane
+                                .last_tick_result_event_id
+                                .clone(),
+                            sa_trajectory_session_id: Some("traj:starter-job".to_string()),
+                            ac_envelope_event_id: state.ac_lane.envelope_event_id.clone(),
+                            ac_settlement_event_id: state.ac_lane.settlement_event_id.clone(),
+                            ac_default_event_id: None,
                             payout_sats,
                             result_hash: "sha256:starter-job".to_string(),
                             payment_pointer: payout_pointer,
@@ -1168,18 +1233,49 @@ fn run_alerts_recovery_action(
                     }
                 }
                 AlertDomain::ProviderRuntime => {
-                    let blockers = state.provider_blockers();
-                    state
-                        .provider_runtime
-                        .toggle_online(std::time::Instant::now(), blockers.as_slice());
-                    Ok(format!(
-                        "Provider mode toggled to {}",
-                        state.provider_runtime.mode.label()
-                    ))
+                    let wants_online = matches!(
+                        state.provider_runtime.mode,
+                        ProviderMode::Offline | ProviderMode::Degraded
+                    );
+                    match state.queue_sa_command(SaLifecycleCommand::SetRunnerOnline {
+                        online: wants_online,
+                    }) {
+                        Ok(command_seq) => {
+                            Ok(format!("Queued SA runner recovery command #{command_seq}"))
+                        }
+                        Err(error) => Err(error),
+                    }
                 }
                 AlertDomain::Sync => {
                     state.sync_health.rebootstrap();
                     Ok("Sync rebootstrap started".to_string())
+                }
+                AlertDomain::SkillTrust => {
+                    match state.queue_skl_command(SklDiscoveryTrustCommand::SubmitSkillSearch {
+                        query: "trust.recovery".to_string(),
+                        limit: 8,
+                    }) {
+                        Ok(command_seq) => {
+                            Ok(format!("Queued SKL trust refresh command #{command_seq}"))
+                        }
+                        Err(error) => Err(error),
+                    }
+                }
+                AlertDomain::Credit => {
+                    match state.queue_ac_command(AcCreditCommand::PublishCreditIntent {
+                        scope: "credit:recovery".to_string(),
+                        request_type: "credit.recovery".to_string(),
+                        payload: "{\"recovery\":true}".to_string(),
+                        skill_scope_id: None,
+                        credit_envelope_ref: state.ac_lane.envelope_event_id.clone(),
+                        requested_sats: 1200,
+                        timeout_seconds: 60,
+                    }) {
+                        Ok(command_seq) => {
+                            Ok(format!("Queued AC credit refresh command #{command_seq}"))
+                        }
+                        Err(error) => Err(error),
+                    }
                 }
             };
 
@@ -1361,6 +1457,73 @@ fn build_activity_feed_snapshot_events(
         });
     }
 
+    if let Some(profile_event_id) = state.sa_lane.profile_event_id.as_deref() {
+        rows.push(ActivityEventRow {
+            event_id: format!("sa:profile:{profile_event_id}"),
+            domain: ActivityEventDomain::Sa,
+            source_tag: ActivityEventDomain::Sa.source_tag().to_string(),
+            occurred_at_epoch_seconds: now_epoch.saturating_sub(3),
+            summary: format!("SA profile {}", state.sa_lane.mode.label()),
+            detail: profile_event_id.to_string(),
+        });
+    }
+    if let Some(tick_event_id) = state.sa_lane.last_tick_result_event_id.as_deref() {
+        rows.push(ActivityEventRow {
+            event_id: format!("sa:tick:{tick_event_id}"),
+            domain: ActivityEventDomain::Sa,
+            source_tag: ActivityEventDomain::Sa.source_tag().to_string(),
+            occurred_at_epoch_seconds: now_epoch.saturating_sub(4),
+            summary: format!("SA tick {}", state.sa_lane.tick_count),
+            detail: tick_event_id.to_string(),
+        });
+    }
+
+    if let Some(manifest) = state.skl_lane.manifest_a.as_deref() {
+        rows.push(ActivityEventRow {
+            event_id: format!("skl:manifest:{manifest}"),
+            domain: ActivityEventDomain::Skl,
+            source_tag: ActivityEventDomain::Skl.source_tag().to_string(),
+            occurred_at_epoch_seconds: now_epoch.saturating_sub(5),
+            summary: format!("SKL trust {}", state.skl_lane.trust_tier.label()),
+            detail: manifest.to_string(),
+        });
+    }
+
+    if let Some(intent_event_id) = state.ac_lane.intent_event_id.as_deref() {
+        rows.push(ActivityEventRow {
+            event_id: format!("ac:intent:{intent_event_id}"),
+            domain: ActivityEventDomain::Ac,
+            source_tag: ActivityEventDomain::Ac.source_tag().to_string(),
+            occurred_at_epoch_seconds: now_epoch.saturating_sub(6),
+            summary: if state.ac_lane.credit_available {
+                "AC credit available".to_string()
+            } else {
+                "AC credit unavailable".to_string()
+            },
+            detail: intent_event_id.to_string(),
+        });
+    }
+
+    for response in state.runtime_command_responses.iter().rev().take(12) {
+        let domain = match response.lane {
+            RuntimeLane::SaLifecycle => ActivityEventDomain::Sa,
+            RuntimeLane::SklDiscoveryTrust => ActivityEventDomain::Skl,
+            RuntimeLane::AcCredit => ActivityEventDomain::Ac,
+        };
+        rows.push(ActivityEventRow {
+            event_id: format!("runtime:cmd:{}", response.command_seq),
+            domain,
+            source_tag: domain.source_tag().to_string(),
+            occurred_at_epoch_seconds: now_epoch
+                .saturating_sub(7_u64.saturating_add(response.command_seq)),
+            summary: format!("{} {}", response.command.label(), response.status.label()),
+            detail: response
+                .event_id
+                .clone()
+                .unwrap_or_else(|| "event:n/a".to_string()),
+        });
+    }
+
     rows.push(ActivityEventRow {
         event_id: format!("sync:cursor:{}", state.sync_health.last_applied_event_seq),
         domain: ActivityEventDomain::Sync,
@@ -1502,6 +1665,10 @@ fn apply_runtime_command_response(
         }
     }
 
+    if response.status != RuntimeCommandStatus::Accepted {
+        upsert_runtime_incident_alert(state, &response);
+    }
+
     state.sync_health.last_applied_event_seq =
         state.sync_health.last_applied_event_seq.saturating_add(1);
     state.sync_health.cursor_last_advanced_seconds_ago = 0;
@@ -1522,6 +1689,80 @@ fn command_response_summary(response: &RuntimeCommandResponse) -> String {
         parts.push(format!("{}:{}", error.class.label(), error.message));
     }
     parts.join(" | ")
+}
+
+fn upsert_runtime_incident_alert(
+    state: &mut crate::app_state::RenderState,
+    response: &RuntimeCommandResponse,
+) {
+    let domain = match response.lane {
+        RuntimeLane::SaLifecycle => AlertDomain::ProviderRuntime,
+        RuntimeLane::SklDiscoveryTrust => AlertDomain::SkillTrust,
+        RuntimeLane::AcCredit => AlertDomain::Credit,
+    };
+    let severity = match response.status {
+        RuntimeCommandStatus::Accepted => crate::app_state::AlertSeverity::Info,
+        RuntimeCommandStatus::Retryable => crate::app_state::AlertSeverity::Warning,
+        RuntimeCommandStatus::Rejected => crate::app_state::AlertSeverity::Critical,
+    };
+    let alert_id = format!(
+        "alert:{}:{}",
+        response.lane.label(),
+        response.command.label()
+    );
+    let summary = if let Some(error) = response.error.as_ref() {
+        format!(
+            "{} {} ({})",
+            response.command.label(),
+            response.status.label(),
+            error.class.label()
+        )
+    } else {
+        format!("{} {}", response.command.label(), response.status.label())
+    };
+    let remediation = if let Some(error) = response.error.as_ref() {
+        format!(
+            "Investigate {} lane command failure: {}",
+            response.lane.label(),
+            error.message
+        )
+    } else {
+        format!("Review {} lane runtime status.", response.lane.label())
+    };
+
+    if let Some(existing) = state
+        .alerts_recovery
+        .alerts
+        .iter_mut()
+        .find(|alert| alert.alert_id == alert_id)
+    {
+        existing.domain = domain;
+        existing.severity = severity;
+        existing.lifecycle = crate::app_state::AlertLifecycle::Active;
+        existing.summary = summary;
+        existing.remediation = remediation;
+        existing.last_transition_epoch_seconds =
+            existing.last_transition_epoch_seconds.saturating_add(1);
+    } else {
+        state
+            .alerts_recovery
+            .alerts
+            .push(crate::app_state::RecoveryAlertRow {
+                alert_id,
+                domain,
+                severity,
+                lifecycle: crate::app_state::AlertLifecycle::Active,
+                summary,
+                remediation,
+                last_transition_epoch_seconds: state
+                    .job_history
+                    .reference_epoch_seconds
+                    .saturating_add(state.alerts_recovery.alerts.len() as u64 * 29),
+            });
+    }
+    state.alerts_recovery.load_state = crate::app_state::PaneLoadState::Ready;
+    state.alerts_recovery.last_error = None;
+    state.alerts_recovery.last_action = Some("Updated runtime incident queue".to_string());
 }
 
 fn run_spark_action(state: &mut crate::app_state::RenderState, action: SparkPaneAction) -> bool {
@@ -1794,6 +2035,11 @@ fn create_invoice_inputs_focused(state: &crate::app_state::RenderState) -> bool 
 fn network_requests_inputs_focused(state: &crate::app_state::RenderState) -> bool {
     state.network_requests_inputs.request_type.is_focused()
         || state.network_requests_inputs.payload.is_focused()
+        || state.network_requests_inputs.skill_scope_id.is_focused()
+        || state
+            .network_requests_inputs
+            .credit_envelope_ref
+            .is_focused()
         || state.network_requests_inputs.budget_sats.is_focused()
         || state.network_requests_inputs.timeout_seconds.is_focused()
 }

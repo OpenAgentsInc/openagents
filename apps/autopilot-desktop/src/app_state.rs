@@ -12,7 +12,8 @@ use winit::window::Window;
 
 use crate::runtime_lanes::{
     AcCreditCommand, AcLaneSnapshot, AcLaneWorker, RuntimeCommandResponse, SaLaneSnapshot,
-    SaLaneWorker, SaLifecycleCommand, SklDiscoveryTrustCommand, SklLaneSnapshot, SklLaneWorker,
+    SaLaneWorker, SaLifecycleCommand, SkillTrustTier, SklDiscoveryTrustCommand, SklLaneSnapshot,
+    SklLaneWorker,
 };
 use crate::spark_wallet::{SparkPaneState, SparkWalletWorker};
 
@@ -148,6 +149,8 @@ impl Default for RelayConnectionsPaneInputs {
 pub struct NetworkRequestsPaneInputs {
     pub request_type: TextInput,
     pub payload: TextInput,
+    pub skill_scope_id: TextInput,
+    pub credit_envelope_ref: TextInput,
     pub budget_sats: TextInput,
     pub timeout_seconds: TextInput,
 }
@@ -159,6 +162,10 @@ impl Default for NetworkRequestsPaneInputs {
                 .value("summarize.text")
                 .placeholder("Request type"),
             payload: TextInput::new().placeholder("Request payload"),
+            skill_scope_id: TextInput::new()
+                .value("33400:npub1agent:summarize-text:0.1.0")
+                .placeholder("Skill scope id (optional)"),
+            credit_envelope_ref: TextInput::new().placeholder("Credit envelope id (optional)"),
             budget_sats: TextInput::new().value("1500").placeholder("Budget sats"),
             timeout_seconds: TextInput::new().value("60").placeholder("Timeout seconds"),
         }
@@ -362,6 +369,8 @@ impl ProviderMode {
 pub enum ProviderBlocker {
     IdentityMissing,
     WalletError,
+    SkillTrustUnavailable,
+    CreditLaneUnavailable,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -678,6 +687,8 @@ pub struct SubmittedNetworkRequest {
     pub request_id: String,
     pub request_type: String,
     pub payload: String,
+    pub skill_scope_id: Option<String>,
+    pub credit_envelope_ref: Option<String>,
     pub budget_sats: u64,
     pub timeout_seconds: u64,
     pub response_stream_id: String,
@@ -713,6 +724,8 @@ impl NetworkRequestsState {
         &mut self,
         request_type: &str,
         payload: &str,
+        skill_scope_id: Option<String>,
+        credit_envelope_ref: Option<String>,
         budget_sats: u64,
         timeout_seconds: u64,
         authority_command_seq: u64,
@@ -744,6 +757,8 @@ impl NetworkRequestsState {
                 request_id: request_id.clone(),
                 request_type: request_type.to_string(),
                 payload: payload.to_string(),
+                skill_scope_id,
+                credit_envelope_ref,
                 budget_sats,
                 timeout_seconds,
                 response_stream_id: stream_id,
@@ -916,6 +931,9 @@ pub enum ActivityEventDomain {
     Wallet,
     Network,
     Sync,
+    Sa,
+    Skl,
+    Ac,
 }
 
 impl ActivityEventDomain {
@@ -926,6 +944,9 @@ impl ActivityEventDomain {
             Self::Wallet => "wallet",
             Self::Network => "network",
             Self::Sync => "sync",
+            Self::Sa => "sa",
+            Self::Skl => "skl",
+            Self::Ac => "ac",
         }
     }
 
@@ -936,6 +957,9 @@ impl ActivityEventDomain {
             Self::Wallet => "spark.wallet",
             Self::Network => "nip90.network",
             Self::Sync => "spacetime.sync",
+            Self::Sa => "nostr.sa",
+            Self::Skl => "nostr.skl",
+            Self::Ac => "nostr.ac",
         }
     }
 }
@@ -948,10 +972,13 @@ pub enum ActivityFeedFilter {
     Wallet,
     Network,
     Sync,
+    Sa,
+    Skl,
+    Ac,
 }
 
 impl ActivityFeedFilter {
-    pub const fn all() -> [Self; 6] {
+    pub const fn all() -> [Self; 9] {
         [
             Self::All,
             Self::Chat,
@@ -959,6 +986,9 @@ impl ActivityFeedFilter {
             Self::Wallet,
             Self::Network,
             Self::Sync,
+            Self::Sa,
+            Self::Skl,
+            Self::Ac,
         ]
     }
 
@@ -970,6 +1000,9 @@ impl ActivityFeedFilter {
             Self::Wallet => "wallet",
             Self::Network => "network",
             Self::Sync => "sync",
+            Self::Sa => "sa",
+            Self::Skl => "skl",
+            Self::Ac => "ac",
         }
     }
 
@@ -981,6 +1014,9 @@ impl ActivityFeedFilter {
             Self::Wallet => domain == ActivityEventDomain::Wallet,
             Self::Network => domain == ActivityEventDomain::Network,
             Self::Sync => domain == ActivityEventDomain::Sync,
+            Self::Sa => domain == ActivityEventDomain::Sa,
+            Self::Skl => domain == ActivityEventDomain::Skl,
+            Self::Ac => domain == ActivityEventDomain::Ac,
         }
     }
 }
@@ -1133,6 +1169,8 @@ pub enum AlertDomain {
     Relays,
     ProviderRuntime,
     Sync,
+    SkillTrust,
+    Credit,
 }
 
 impl AlertDomain {
@@ -1143,6 +1181,8 @@ impl AlertDomain {
             Self::Relays => "relays",
             Self::ProviderRuntime => "provider",
             Self::Sync => "sync",
+            Self::SkillTrust => "skill-trust",
+            Self::Credit => "credit",
         }
     }
 }
@@ -1558,6 +1598,12 @@ pub struct JobInboxRequest {
     pub request_id: String,
     pub requester: String,
     pub capability: String,
+    pub skill_scope_id: Option<String>,
+    pub skl_manifest_a: Option<String>,
+    pub skl_manifest_event_id: Option<String>,
+    pub sa_tick_request_event_id: Option<String>,
+    pub sa_tick_result_event_id: Option<String>,
+    pub ac_envelope_event_id: Option<String>,
     pub price_sats: u64,
     pub ttl_seconds: u64,
     pub validation: JobInboxValidation,
@@ -1571,6 +1617,12 @@ pub struct JobInboxNetworkRequest {
     pub request_id: String,
     pub requester: String,
     pub capability: String,
+    pub skill_scope_id: Option<String>,
+    pub skl_manifest_a: Option<String>,
+    pub skl_manifest_event_id: Option<String>,
+    pub sa_tick_request_event_id: Option<String>,
+    pub sa_tick_result_event_id: Option<String>,
+    pub ac_envelope_event_id: Option<String>,
     pub price_sats: u64,
     pub ttl_seconds: u64,
     pub validation: JobInboxValidation,
@@ -1609,6 +1661,12 @@ impl JobInboxState {
         {
             existing.requester = request.requester;
             existing.capability = request.capability;
+            existing.skill_scope_id = request.skill_scope_id;
+            existing.skl_manifest_a = request.skl_manifest_a;
+            existing.skl_manifest_event_id = request.skl_manifest_event_id;
+            existing.sa_tick_request_event_id = request.sa_tick_request_event_id;
+            existing.sa_tick_result_event_id = request.sa_tick_result_event_id;
+            existing.ac_envelope_event_id = request.ac_envelope_event_id;
             existing.price_sats = request.price_sats;
             existing.ttl_seconds = request.ttl_seconds;
             existing.validation = request.validation;
@@ -1621,6 +1679,12 @@ impl JobInboxState {
             request_id: request.request_id,
             requester: request.requester,
             capability: request.capability,
+            skill_scope_id: request.skill_scope_id,
+            skl_manifest_a: request.skl_manifest_a,
+            skl_manifest_event_id: request.skl_manifest_event_id,
+            sa_tick_request_event_id: request.sa_tick_request_event_id,
+            sa_tick_result_event_id: request.sa_tick_result_event_id,
+            ac_envelope_event_id: request.ac_envelope_event_id,
             price_sats: request.price_sats,
             ttl_seconds: request.ttl_seconds,
             validation: request.validation,
@@ -1719,6 +1783,15 @@ pub struct ActiveJobRecord {
     pub request_id: String,
     pub requester: String,
     pub capability: String,
+    pub skill_scope_id: Option<String>,
+    pub skl_manifest_a: Option<String>,
+    pub skl_manifest_event_id: Option<String>,
+    pub sa_tick_request_event_id: Option<String>,
+    pub sa_tick_result_event_id: Option<String>,
+    pub sa_trajectory_session_id: Option<String>,
+    pub ac_envelope_event_id: Option<String>,
+    pub ac_settlement_event_id: Option<String>,
+    pub ac_default_event_id: Option<String>,
     pub quoted_price_sats: u64,
     pub stage: JobLifecycleStage,
     pub invoice_id: Option<String>,
@@ -1757,6 +1830,15 @@ impl ActiveJobState {
             request_id: request.request_id.clone(),
             requester: request.requester.clone(),
             capability: request.capability.clone(),
+            skill_scope_id: request.skill_scope_id.clone(),
+            skl_manifest_a: request.skl_manifest_a.clone(),
+            skl_manifest_event_id: request.skl_manifest_event_id.clone(),
+            sa_tick_request_event_id: request.sa_tick_request_event_id.clone(),
+            sa_tick_result_event_id: request.sa_tick_result_event_id.clone(),
+            sa_trajectory_session_id: Some(format!("traj:{}", request.request_id)),
+            ac_envelope_event_id: request.ac_envelope_event_id.clone(),
+            ac_settlement_event_id: None,
+            ac_default_event_id: None,
             quoted_price_sats: request.price_sats,
             stage: JobLifecycleStage::Accepted,
             invoice_id: None,
@@ -1805,9 +1887,15 @@ impl ActiveJobState {
         job.stage = next_stage;
         if next_stage == JobLifecycleStage::Delivered {
             job.invoice_id = Some(format!("inv-{}", job.request_id));
+            if job.sa_tick_result_event_id.is_none() {
+                job.sa_tick_result_event_id = Some(format!("sa:39211:{}", job.request_id));
+            }
         }
         if next_stage == JobLifecycleStage::Paid {
             job.payment_id = Some(format!("pay-{}", job.request_id));
+            if job.ac_settlement_event_id.is_none() {
+                job.ac_settlement_event_id = Some(format!("ac:39244:{}", job.request_id));
+            }
         }
         self.append_event(format!("stage advanced to {}", next_stage.label()));
         self.last_error = None;
@@ -1832,6 +1920,9 @@ impl ActiveJobState {
         let reason_text = reason.trim().to_string();
         job.stage = JobLifecycleStage::Failed;
         job.failure_reason = Some(reason_text.clone());
+        if job.ac_default_event_id.is_none() {
+            job.ac_default_event_id = Some(format!("ac:39245:{}", job.request_id));
+        }
         self.append_event(format!("job aborted: {reason_text}"));
         self.last_error = None;
         self.load_state = PaneLoadState::Ready;
@@ -1918,6 +2009,14 @@ pub struct JobHistoryReceiptRow {
     pub job_id: String,
     pub status: JobHistoryStatus,
     pub completed_at_epoch_seconds: u64,
+    pub skill_scope_id: Option<String>,
+    pub skl_manifest_a: Option<String>,
+    pub skl_manifest_event_id: Option<String>,
+    pub sa_tick_result_event_id: Option<String>,
+    pub sa_trajectory_session_id: Option<String>,
+    pub ac_envelope_event_id: Option<String>,
+    pub ac_settlement_event_id: Option<String>,
+    pub ac_default_event_id: Option<String>,
     pub payout_sats: u64,
     pub result_hash: String,
     pub payment_pointer: String,
@@ -2025,6 +2124,14 @@ impl JobHistoryState {
             job_id: job.job_id.clone(),
             status,
             completed_at_epoch_seconds: completed,
+            skill_scope_id: job.skill_scope_id.clone(),
+            skl_manifest_a: job.skl_manifest_a.clone(),
+            skl_manifest_event_id: job.skl_manifest_event_id.clone(),
+            sa_tick_result_event_id: job.sa_tick_result_event_id.clone(),
+            sa_trajectory_session_id: job.sa_trajectory_session_id.clone(),
+            ac_envelope_event_id: job.ac_envelope_event_id.clone(),
+            ac_settlement_event_id: job.ac_settlement_event_id.clone(),
+            ac_default_event_id: job.ac_default_event_id.clone(),
             payout_sats: if status == JobHistoryStatus::Succeeded {
                 job.quoted_price_sats
             } else {
@@ -2176,6 +2283,8 @@ impl ProviderBlocker {
         match self {
             Self::IdentityMissing => "IDENTITY_MISSING",
             Self::WalletError => "WALLET_ERROR",
+            Self::SkillTrustUnavailable => "SKL_TRUST_UNAVAILABLE",
+            Self::CreditLaneUnavailable => "AC_CREDIT_UNAVAILABLE",
         }
     }
 
@@ -2183,6 +2292,8 @@ impl ProviderBlocker {
         match self {
             Self::IdentityMissing => "Nostr identity is not ready",
             Self::WalletError => "Spark wallet reports an error",
+            Self::SkillTrustUnavailable => "SKL trust gate is not trusted",
+            Self::CreditLaneUnavailable => "AC credit lane is not available",
         }
     }
 }
@@ -2482,6 +2593,12 @@ impl RenderState {
         if self.spark_wallet.last_error.is_some() {
             blockers.push(ProviderBlocker::WalletError);
         }
+        if self.skl_lane.trust_tier != SkillTrustTier::Trusted {
+            blockers.push(ProviderBlocker::SkillTrustUnavailable);
+        }
+        if !self.ac_lane.credit_available {
+            blockers.push(ProviderBlocker::CreditLaneUnavailable);
+        }
         blockers
     }
 }
@@ -2511,6 +2628,12 @@ mod tests {
             request_id: request_id.to_string(),
             requester: format!("npub1{request_id}"),
             capability: capability.to_string(),
+            skill_scope_id: None,
+            skl_manifest_a: None,
+            skl_manifest_event_id: None,
+            sa_tick_request_event_id: None,
+            sa_tick_result_event_id: None,
+            ac_envelope_event_id: None,
             price_sats,
             ttl_seconds,
             validation,
@@ -2535,6 +2658,14 @@ mod tests {
             job_id: job_id.to_string(),
             status,
             completed_at_epoch_seconds,
+            skill_scope_id: None,
+            skl_manifest_a: None,
+            skl_manifest_event_id: None,
+            sa_tick_result_event_id: None,
+            sa_trajectory_session_id: None,
+            ac_envelope_event_id: None,
+            ac_settlement_event_id: None,
+            ac_default_event_id: None,
             payout_sats,
             result_hash: format!("sha256:{job_id}"),
             payment_pointer: format!("pay:{job_id}"),
@@ -2790,6 +2921,14 @@ mod tests {
             job_id: "job-bootstrap-000".to_string(),
             status: JobHistoryStatus::Failed,
             completed_at_epoch_seconds: history.reference_epoch_seconds + 10,
+            skill_scope_id: None,
+            skl_manifest_a: None,
+            skl_manifest_event_id: None,
+            sa_tick_result_event_id: None,
+            sa_trajectory_session_id: None,
+            ac_envelope_event_id: None,
+            ac_settlement_event_id: None,
+            ac_default_event_id: None,
             payout_sats: 0,
             result_hash: "sha256:updated".to_string(),
             payment_pointer: "pay:updated".to_string(),
@@ -2850,7 +2989,15 @@ mod tests {
     fn network_requests_submit_validates_and_records_stream_link() {
         let mut requests = NetworkRequestsState::default();
         let request_id = requests
-            .queue_request_submission("translate.text", "{\"text\":\"hola\"}", 1200, 90, 44)
+            .queue_request_submission(
+                "translate.text",
+                "{\"text\":\"hola\"}",
+                Some("33400:npub1agent:summarize-text:0.1.0".to_string()),
+                Some("ac:39242:00000001".to_string()),
+                1200,
+                90,
+                44,
+            )
             .expect("request should be accepted");
         let first = requests
             .submitted

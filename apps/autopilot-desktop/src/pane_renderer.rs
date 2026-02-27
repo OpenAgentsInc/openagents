@@ -18,7 +18,8 @@ use crate::pane_system::{
     job_history_search_input_bounds, job_history_status_button_bounds,
     job_history_time_button_bounds, job_inbox_accept_button_bounds, job_inbox_reject_button_bounds,
     job_inbox_row_bounds, job_inbox_visible_row_count, network_requests_budget_input_bounds,
-    network_requests_payload_input_bounds, network_requests_submit_button_bounds,
+    network_requests_credit_envelope_input_bounds, network_requests_payload_input_bounds,
+    network_requests_skill_scope_input_bounds, network_requests_submit_button_bounds,
     network_requests_timeout_input_bounds, network_requests_type_input_bounds,
     nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds, nostr_reveal_button_bounds,
     pane_content_bounds, settings_provider_queue_input_bounds, settings_relay_input_bounds,
@@ -46,6 +47,9 @@ impl PaneRenderer {
         nostr_identity_error: Option<&str>,
         nostr_secret_state: &NostrSecretState,
         autopilot_chat: &AutopilotChatState,
+        sa_lane: &crate::runtime_lanes::SaLaneSnapshot,
+        skl_lane: &crate::runtime_lanes::SklLaneSnapshot,
+        ac_lane: &crate::runtime_lanes::AcLaneSnapshot,
         provider_runtime: &ProviderRuntimeState,
         provider_blockers: &[ProviderBlocker],
         earnings_scoreboard: &EarningsScoreboardState,
@@ -105,6 +109,9 @@ impl PaneRenderer {
                     paint_go_online_pane(
                         content_bounds,
                         provider_runtime,
+                        sa_lane,
+                        skl_lane,
+                        ac_lane,
                         provider_blockers,
                         paint,
                     );
@@ -221,6 +228,9 @@ fn paint_autopilot_chat_pane(
 fn paint_go_online_pane(
     content_bounds: Bounds,
     provider_runtime: &ProviderRuntimeState,
+    sa_lane: &crate::runtime_lanes::SaLaneSnapshot,
+    skl_lane: &crate::runtime_lanes::SklLaneSnapshot,
+    ac_lane: &crate::runtime_lanes::AcLaneSnapshot,
     provider_blockers: &[ProviderBlocker],
     paint: &mut PaintContext,
 ) {
@@ -249,6 +259,52 @@ fn paint_go_online_pane(
         y,
         "Uptime (s)",
         &provider_runtime.uptime_seconds(now).to_string(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "SA runner mode",
+        sa_lane.mode.label(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "SA profile event",
+        sa_lane.profile_event_id.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "SKL trust tier",
+        skl_lane.trust_tier.label(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "SKL manifest",
+        skl_lane.manifest_a.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "AC credit lane",
+        if ac_lane.credit_available {
+            "available"
+        } else {
+            "unavailable"
+        },
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "AC envelope",
+        ac_lane.envelope_event_id.as_deref().unwrap_or("n/a"),
     );
 
     if provider_blockers.is_empty() {
@@ -690,6 +746,8 @@ fn paint_network_requests_pane(
 
     let request_type_bounds = network_requests_type_input_bounds(content_bounds);
     let payload_bounds = network_requests_payload_input_bounds(content_bounds);
+    let skill_scope_bounds = network_requests_skill_scope_input_bounds(content_bounds);
+    let envelope_bounds = network_requests_credit_envelope_input_bounds(content_bounds);
     let budget_bounds = network_requests_budget_input_bounds(content_bounds);
     let timeout_bounds = network_requests_timeout_input_bounds(content_bounds);
     let submit_bounds = network_requests_submit_button_bounds(content_bounds);
@@ -701,6 +759,12 @@ fn paint_network_requests_pane(
         .payload
         .set_max_width(payload_bounds.size.width);
     network_requests_inputs
+        .skill_scope_id
+        .set_max_width(skill_scope_bounds.size.width);
+    network_requests_inputs
+        .credit_envelope_ref
+        .set_max_width(envelope_bounds.size.width);
+    network_requests_inputs
         .budget_sats
         .set_max_width(budget_bounds.size.width);
     network_requests_inputs
@@ -711,6 +775,12 @@ fn paint_network_requests_pane(
         .request_type
         .paint(request_type_bounds, paint);
     network_requests_inputs.payload.paint(payload_bounds, paint);
+    network_requests_inputs
+        .skill_scope_id
+        .paint(skill_scope_bounds, paint);
+    network_requests_inputs
+        .credit_envelope_ref
+        .paint(envelope_bounds, paint);
     network_requests_inputs
         .budget_sats
         .paint(budget_bounds, paint);
@@ -737,6 +807,21 @@ fn paint_network_requests_pane(
     paint.scene.draw_text(paint.text.layout(
         "Budget sats",
         Point::new(budget_bounds.origin.x, budget_bounds.origin.y - 12.0),
+        10.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        "Skill scope id",
+        Point::new(
+            skill_scope_bounds.origin.x,
+            skill_scope_bounds.origin.y - 12.0,
+        ),
+        10.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        "Credit envelope ref",
+        Point::new(envelope_bounds.origin.x, envelope_bounds.origin.y - 12.0),
         10.0,
         theme::text::MUTED,
     ));
@@ -787,9 +872,11 @@ fn paint_network_requests_pane(
             NetworkRequestStatus::Failed => theme::status::ERROR,
         };
         let summary = format!(
-            "{} {} budget:{} timeout:{}s stream:{} [{}|{}|{}|{}]",
+            "{} {} scope:{} env:{} budget:{} timeout:{}s stream:{} [{}|{}|{}|{}]",
             request.request_id,
             request.request_type,
+            request.skill_scope_id.as_deref().unwrap_or("none"),
+            request.credit_envelope_ref.as_deref().unwrap_or("none"),
             request.budget_sats,
             request.timeout_seconds,
             request.response_stream_id,
@@ -959,6 +1046,9 @@ fn paint_activity_feed_pane(
             ActivityEventDomain::Wallet => theme::status::SUCCESS,
             ActivityEventDomain::Network => theme::text::PRIMARY,
             ActivityEventDomain::Sync => theme::text::MUTED,
+            ActivityEventDomain::Sa => theme::accent::PRIMARY,
+            ActivityEventDomain::Skl => theme::status::SUCCESS,
+            ActivityEventDomain::Ac => theme::status::ERROR,
         };
         paint.scene.draw_text(paint.text.layout_mono(
             &format!(
@@ -1357,6 +1447,32 @@ fn paint_nostr_identity_pane(
             "Private key (hex)",
             &private_hex_display,
         );
+        let agent_preview = match nostr::derive_agent_keypair(&identity.mnemonic, 0)
+            .and_then(|keypair| keypair.npub())
+        {
+            Ok(value) => value,
+            Err(error) => format!("error:{error}"),
+        };
+        y = paint_label_line(
+            paint,
+            content_bounds.origin.x + 12.0,
+            y,
+            "Agent account[0] npub",
+            &agent_preview,
+        );
+        let skill_preview = match nostr::derive_skill_keypair(&identity.mnemonic, 0, 1, 0)
+            .and_then(|keypair| keypair.npub())
+        {
+            Ok(value) => value,
+            Err(error) => format!("error:{error}"),
+        };
+        y = paint_label_line(
+            paint,
+            content_bounds.origin.x + 12.0,
+            y,
+            "Skill[agent0:1:0] npub",
+            &skill_preview,
+        );
         let _ = paint_multiline_phrase(
             paint,
             content_bounds.origin.x + 12.0,
@@ -1455,10 +1571,12 @@ fn paint_job_inbox_pane(
             crate::app_state::JobInboxValidation::Invalid(_) => theme::status::ERROR,
         };
         let summary = format!(
-            "#{} {} {} {} sats ttl:{}s {} {}",
+            "#{} {} {} scope:{} env:{} {} sats ttl:{}s {} {}",
             request.arrival_seq,
             request.request_id,
             request.capability,
+            request.skill_scope_id.as_deref().unwrap_or("none"),
+            request.ac_envelope_event_id.as_deref().unwrap_or("none"),
             request.price_sats,
             request.ttl_seconds,
             request.validation.label(),
@@ -1489,7 +1607,38 @@ fn paint_job_inbox_pane(
             "Selected request id",
             &selected.request_id,
         );
-        let _ = paint_label_line(paint, x, line_y, "Decision", &selected.decision.label());
+        line_y = paint_label_line(paint, x, line_y, "Decision", &selected.decision.label());
+        line_y = paint_label_line(
+            paint,
+            x,
+            line_y,
+            "Skill scope",
+            selected.skill_scope_id.as_deref().unwrap_or("none"),
+        );
+        line_y = paint_label_line(
+            paint,
+            x,
+            line_y,
+            "SKL manifest a",
+            selected.skl_manifest_a.as_deref().unwrap_or("none"),
+        );
+        line_y = paint_label_line(
+            paint,
+            x,
+            line_y,
+            "SA tick request",
+            selected
+                .sa_tick_request_event_id
+                .as_deref()
+                .unwrap_or("none"),
+        );
+        let _ = paint_label_line(
+            paint,
+            x,
+            line_y,
+            "AC envelope",
+            selected.ac_envelope_event_id.as_deref().unwrap_or("none"),
+        );
     }
 }
 
@@ -1614,6 +1763,62 @@ fn paint_active_job_pane(
     }
 
     let mut metadata_y = timeline_y + 6.0;
+    metadata_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        metadata_y,
+        "Skill scope",
+        job.skill_scope_id.as_deref().unwrap_or("none"),
+    );
+    metadata_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        metadata_y,
+        "SKL manifest",
+        job.skl_manifest_a.as_deref().unwrap_or("none"),
+    );
+    metadata_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        metadata_y,
+        "SA tick request",
+        job.sa_tick_request_event_id.as_deref().unwrap_or("none"),
+    );
+    metadata_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        metadata_y,
+        "SA tick result",
+        job.sa_tick_result_event_id.as_deref().unwrap_or("none"),
+    );
+    metadata_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        metadata_y,
+        "Trajectory session",
+        job.sa_trajectory_session_id.as_deref().unwrap_or("none"),
+    );
+    metadata_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        metadata_y,
+        "AC envelope",
+        job.ac_envelope_event_id.as_deref().unwrap_or("none"),
+    );
+    metadata_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        metadata_y,
+        "AC settlement",
+        job.ac_settlement_event_id.as_deref().unwrap_or("none"),
+    );
+    metadata_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        metadata_y,
+        "AC default",
+        job.ac_default_event_id.as_deref().unwrap_or("none"),
+    );
     metadata_y = paint_label_line(
         paint,
         content_bounds.origin.x + 12.0,
@@ -1775,10 +1980,14 @@ fn paint_job_history_pane(
                 .with_corner_radius(4.0),
         );
         let row_line = format!(
-            "{} {} ts:{} {} {}",
+            "{} {} ts:{} scope:{} tick:{} set:{} def:{} {} {}",
             row.job_id,
             row.status.label(),
             row.completed_at_epoch_seconds,
+            row.skill_scope_id.as_deref().unwrap_or("none"),
+            row.sa_tick_result_event_id.as_deref().unwrap_or("none"),
+            row.ac_settlement_event_id.as_deref().unwrap_or("none"),
+            row.ac_default_event_id.as_deref().unwrap_or("none"),
             row.result_hash,
             row.payment_pointer
         );
