@@ -8,11 +8,16 @@ pub struct LocalSkill {
     pub project: String,
     pub name: String,
     pub skill_md_path: PathBuf,
+    pub is_project_root: bool,
 }
 
 impl LocalSkill {
     pub fn slug(&self) -> String {
-        format!("{}/{}", self.project, self.name)
+        if self.is_project_root {
+            self.project.clone()
+        } else {
+            format!("{}/{}", self.project, self.name)
+        }
     }
 }
 
@@ -72,6 +77,8 @@ fn discover_local_skills_in(skills_root: &Path) -> Result<Vec<LocalSkill>, Strin
             continue;
         }
         let project_name = project_entry.file_name().to_string_lossy().to_string();
+        let root_skill_md = resolve_skill_md_path(&project_path);
+        let mut project_nested_skills = Vec::new();
 
         for skill_entry in fs::read_dir(&project_path).map_err(|error| {
             format!(
@@ -93,12 +100,31 @@ fn discover_local_skills_in(skills_root: &Path) -> Result<Vec<LocalSkill>, Strin
 
             let skill_md_path = resolve_skill_md_path(&skill_path);
             if let Some(skill_md_path) = skill_md_path {
-                skills.push(LocalSkill {
+                project_nested_skills.push(LocalSkill {
                     project: project_name.clone(),
                     name: skill_name,
                     skill_md_path,
+                    is_project_root: false,
                 });
             }
+        }
+
+        if root_skill_md.is_some() && !project_nested_skills.is_empty() {
+            return Err(format!(
+                "project '{}' mixes root SKILL.md with nested skill directories; use one layout",
+                project_name
+            ));
+        }
+
+        if let Some(skill_md_path) = root_skill_md {
+            skills.push(LocalSkill {
+                project: project_name.clone(),
+                name: project_name,
+                skill_md_path,
+                is_project_root: true,
+            });
+        } else {
+            skills.extend(project_nested_skills);
         }
     }
 
@@ -158,6 +184,10 @@ fn resolve_local_skill_in(skills_root: &Path, skill_slug: &str) -> Result<LocalS
             });
     }
 
+    if let Some(match_by_slug) = skills.iter().find(|skill| skill.slug() == skill_slug) {
+        return Ok(match_by_slug.clone());
+    }
+
     let matches: Vec<LocalSkill> = skills
         .into_iter()
         .filter(|skill| skill.name == skill_slug)
@@ -212,7 +242,7 @@ mod tests {
         root
     }
 
-    fn write_skill(root: &PathBuf, project: &str, name: &str, body: &str) -> PathBuf {
+    fn write_nested_skill(root: &PathBuf, project: &str, name: &str, body: &str) -> PathBuf {
         let skill_dir = root.join(project).join(name);
         fs::create_dir_all(&skill_dir).expect("create skill dir");
         let skill_path = skill_dir.join("SKILL.md");
@@ -221,19 +251,42 @@ mod tests {
     }
 
     #[test]
-    fn discover_local_skills_reads_project_namespace_layout() {
+    fn discover_local_skills_reads_single_skill_project_root_layout() {
         let root = create_temp_skills_root();
-        write_skill(
+        let project_dir = root.join("mezo");
+        fs::create_dir_all(&project_dir).expect("create project dir");
+        fs::write(
+            project_dir.join("SKILL.md"),
+            "---\nname: mezo\ndescription: test\n---\nbody\n",
+        )
+        .expect("write project root SKILL.md");
+
+        let skills = discover_local_skills_in(&root).expect("discover skills");
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].project, "mezo");
+        assert_eq!(skills[0].name, "mezo");
+        assert!(skills[0].is_project_root);
+        assert_eq!(skills[0].slug(), "mezo");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn discover_local_skills_reads_nested_multi_skill_layout() {
+        let root = create_temp_skills_root();
+        write_nested_skill(
             &root,
             "mezo",
-            "integration",
-            "---\nname: integration\ndescription: test\n---\nbody\n",
+            "wallet-ops",
+            "---\nname: wallet-ops\ndescription: test\n---\nbody\n",
         );
 
         let skills = discover_local_skills_in(&root).expect("discover skills");
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].project, "mezo");
-        assert_eq!(skills[0].name, "integration");
+        assert_eq!(skills[0].name, "wallet-ops");
+        assert!(!skills[0].is_project_root);
+        assert_eq!(skills[0].slug(), "mezo/wallet-ops");
 
         let _ = fs::remove_dir_all(root);
     }
@@ -241,23 +294,23 @@ mod tests {
     #[test]
     fn resolve_local_skill_requires_disambiguation_when_names_collide() {
         let root = create_temp_skills_root();
-        write_skill(
+        write_nested_skill(
             &root,
             "mezo",
-            "integration",
-            "---\nname: integration\ndescription: test\n---\nbody\n",
+            "wallet-ops",
+            "---\nname: wallet-ops\ndescription: test\n---\nbody\n",
         );
-        write_skill(
+        write_nested_skill(
             &root,
             "neutron",
-            "integration",
-            "---\nname: integration\ndescription: test\n---\nbody\n",
+            "wallet-ops",
+            "---\nname: wallet-ops\ndescription: test\n---\nbody\n",
         );
 
-        let error = resolve_local_skill_in(&root, "integration").unwrap_err();
+        let error = resolve_local_skill_in(&root, "wallet-ops").unwrap_err();
         assert!(error.contains("ambiguous"));
-        assert!(error.contains("mezo/integration"));
-        assert!(error.contains("neutron/integration"));
+        assert!(error.contains("mezo/wallet-ops"));
+        assert!(error.contains("neutron/wallet-ops"));
 
         let _ = fs::remove_dir_all(root);
     }
@@ -265,7 +318,7 @@ mod tests {
     #[test]
     fn derive_local_skill_manifest_uses_skill_payload_derivation() {
         let root = create_temp_skills_root();
-        write_skill(
+        write_nested_skill(
             &root,
             "moneydevkit",
             "agent-wallet-ops",
@@ -296,6 +349,29 @@ Run wallet checks
         assert_eq!(derived.local_skill.name, "agent-wallet-ops");
         assert_eq!(derived.derived.manifest.identifier, "agent-wallet-ops");
         assert_eq!(derived.derived.manifest.version, "0.1.0");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn discover_local_skills_rejects_mixed_root_and_nested_layout() {
+        let root = create_temp_skills_root();
+        let project_dir = root.join("mezo");
+        fs::create_dir_all(&project_dir).expect("create project dir");
+        fs::write(
+            project_dir.join("SKILL.md"),
+            "---\nname: mezo\ndescription: test\n---\nbody\n",
+        )
+        .expect("write project root SKILL.md");
+        write_nested_skill(
+            &root,
+            "mezo",
+            "wallet-ops",
+            "---\nname: wallet-ops\ndescription: test\n---\nbody\n",
+        );
+
+        let error = discover_local_skills_in(&root).unwrap_err();
+        assert!(error.contains("mixes root SKILL.md with nested skill directories"));
 
         let _ = fs::remove_dir_all(root);
     }

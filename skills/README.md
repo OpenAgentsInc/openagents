@@ -10,9 +10,12 @@ This directory is the project-owned Agent Skills registry.
 
 ## Directory Contract
 
-- Root layout: `skills/<project>/<skill-name>/SKILL.md`
-- One skill per skill directory.
-- `SKILL.md` `name` must match `<skill-name>`.
+- Single-skill project layout: `skills/<project>/SKILL.md`
+- Multi-skill project layout: `skills/<project>/<skill-name>/SKILL.md`
+- Do not mix layouts within the same project namespace.
+- `SKILL.md` `name` must match the containing skill directory:
+  - single-skill projects: `<project>`
+  - multi-skill projects: `<skill-name>`
 - Use uppercase `SKILL.md` for canonical file naming.
 
 Example:
@@ -20,11 +23,14 @@ Example:
 ```text
 skills/
   mezo/
-    integration/
+    SKILL.md
+    references/
+    scripts/
+  neutron/
+    validator-ops/
       SKILL.md
-      references/
-      scripts/
-      assets/
+    wallet-ops/
+      SKILL.md
 ```
 
 ## Authoring Contract
@@ -81,6 +87,6 @@ Validation fails on:
 
 ## Contribution Workflow
 
-1. Add or update skill files under `skills/<project>/<skill-name>/`.
+1. Add or update skill files under `skills/<project>/` (single-skill) or `skills/<project>/<skill-name>/` (multi-skill).
 2. Run `scripts/skills/validate_registry.sh`.
 3. Include the validation result in your issue/PR notes.

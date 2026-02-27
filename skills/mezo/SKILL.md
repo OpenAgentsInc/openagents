@@ -1,18 +1,18 @@
 ---
-name: integration
+name: mezo
 description: Integrate applications and agent workflows with the Mezo protocol. Use when a task requires Mezo network setup (testnet/mainnet), Hardhat or Foundry configuration, Mezo Passport wallet connection, mezod/validator-kit operational guidance, contract deployment verification, or Mezo-specific dApp requirements such as BTC gas and MUSD integration expectations.
 compatibility: Requires bash and curl; Node.js is needed for Hardhat/Passport workflows and Go is needed for mezod workflows.
 metadata:
   oa:
     project: mezo
     nostr:
-      identifier: mezo-integration
+      identifier: mezo
       version: "0.1.0"
       expiry_unix: "1798761600"
       capabilities_csv: "http:outbound filesystem:read"
 ---
 
-# Mezo Integration
+# Mezo
 
 Execute this workflow when the user needs practical Mezo integration work, not generic blockchain advice.
 

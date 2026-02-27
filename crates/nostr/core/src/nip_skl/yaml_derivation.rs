@@ -335,13 +335,13 @@ Minor prompt hardening
     #[test]
     fn test_derive_manifest_from_agent_skills_frontmatter_metadata_bridge() {
         let payload = r#"---
-name: mezo-integration
+name: mezo
 description: Integrate Mezo testnet and mainnet flows
 metadata:
   oa:
     project: mezo
     nostr:
-      identifier: mezo-integration
+      identifier: mezo
       version: "0.3.0"
       expiry_unix: 1756000000
       capabilities_csv: "http:outbound filesystem:read"
@@ -353,8 +353,8 @@ Skill instructions
         let derived =
             derive_manifest_from_skill_payload(payload, "publisherpubkey", 1_740_400_001).unwrap();
 
-        assert_eq!(derived.manifest.identifier, "mezo-integration");
-        assert_eq!(derived.manifest.name, "mezo-integration");
+        assert_eq!(derived.manifest.identifier, "mezo");
+        assert_eq!(derived.manifest.name, "mezo");
         assert_eq!(derived.manifest.version, "0.3.0");
         assert_eq!(
             derived.manifest.description,

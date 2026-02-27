@@ -60,7 +60,9 @@ Current lane behavior remains simulation-first for relay transport, but now incl
 
 - local registry discovery + manifest derivation utility:
   - `apps/autopilot-desktop/src/skills_registry.rs`
-- SKL manifest/version commands validate against local `skills/<project>/<skill-name>/SKILL.md`.
+- SKL manifest/version commands validate against local project skills:
+  - single-skill: `skills/<project>/SKILL.md`
+  - multi-skill: `skills/<project>/<skill-name>/SKILL.md`
 
 ## 2.4 Local skills registry status
 
@@ -70,8 +72,8 @@ Implemented:
 - validation script: `scripts/skills/validate_registry.sh`
 - lint gate integration via `scripts/lint/clippy-regression-check.sh`
 - first concrete skills:
-  - `skills/mezo/integration`
-  - `skills/moneydevkit/integration`
+  - `skills/mezo`
+  - `skills/moneydevkit`
 
 ## 3. What Remains (MVP Hardening)
 

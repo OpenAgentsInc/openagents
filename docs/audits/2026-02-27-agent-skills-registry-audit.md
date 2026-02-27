@@ -85,18 +85,22 @@ Use a project-namespace layout:
 skills/
   README.md
   neutron/
-    neutron-api-integration/
+    SKILL.md
+    scripts/                        # optional
+    references/                     # optional
+    assets/                         # optional
+  mezo/
+    wallet-ops/
       SKILL.md
-      agents/openai.yaml            # optional, recommended
-      scripts/                      # optional
-      references/                   # optional
-      assets/                       # optional
+    validator-ops/
+      SKILL.md
 ```
 
 Rules:
 
-- One skill per skill directory (`skills/<project>/<skill-name>/SKILL.md`).
-- `SKILL.md` `name` must match `<skill-name>`.
+- Single-skill project layout: `skills/<project>/SKILL.md`.
+- Multi-skill project layout: `skills/<project>/<skill-name>/SKILL.md`.
+- `SKILL.md` `name` must match `<project>` for single-skill projects, or `<skill-name>` for multi-skill projects.
 - Keep Agent Skills protocol-compliant top-level frontmatter fields only.
 - Put OpenAgents/Nostr bridge metadata under `metadata` keys (namespaced), not new top-level keys.
 
@@ -115,7 +119,7 @@ This keeps files Agent Skills-compatible while carrying enough data to derive SK
 
 `skills/README.md` should define:
 
-1. Directory contract (`skills/<project>/<skill-name>/SKILL.md`).
+1. Directory contract (single-skill `skills/<project>/SKILL.md`; multi-skill `skills/<project>/<skill-name>/SKILL.md`).
 2. Authoring contract:
    - required frontmatter fields
    - allowed optional fields
