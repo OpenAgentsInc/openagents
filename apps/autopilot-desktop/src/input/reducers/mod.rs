@@ -17,7 +17,7 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
     for update in state.sa_lane_worker.drain_updates() {
         changed = true;
         match update {
-            SaLaneUpdate::Snapshot(snapshot) => sa::apply_lane_snapshot(state, snapshot),
+            SaLaneUpdate::Snapshot(snapshot) => sa::apply_lane_snapshot(state, *snapshot),
             SaLaneUpdate::CommandResponse(response) => apply_runtime_command_response(state, response),
         }
     }
@@ -25,7 +25,7 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
     for update in state.skl_lane_worker.drain_updates() {
         changed = true;
         match update {
-            SklLaneUpdate::Snapshot(snapshot) => skl::apply_lane_snapshot(state, snapshot),
+            SklLaneUpdate::Snapshot(snapshot) => skl::apply_lane_snapshot(state, *snapshot),
             SklLaneUpdate::CommandResponse(response) => {
                 apply_runtime_command_response(state, response);
             }
@@ -35,7 +35,7 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
     for update in state.ac_lane_worker.drain_updates() {
         changed = true;
         match update {
-            AcLaneUpdate::Snapshot(snapshot) => ac::apply_lane_snapshot(state, snapshot),
+            AcLaneUpdate::Snapshot(snapshot) => ac::apply_lane_snapshot(state, *snapshot),
             AcLaneUpdate::CommandResponse(response) => {
                 apply_runtime_command_response(state, response);
             }

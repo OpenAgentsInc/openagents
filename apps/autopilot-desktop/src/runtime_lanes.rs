@@ -387,19 +387,19 @@ pub enum AcCreditCommand {
 
 #[derive(Clone, Debug)]
 pub enum SaLaneUpdate {
-    Snapshot(SaLaneSnapshot),
+    Snapshot(Box<SaLaneSnapshot>),
     CommandResponse(RuntimeCommandResponse),
 }
 
 #[derive(Clone, Debug)]
 pub enum SklLaneUpdate {
-    Snapshot(SklLaneSnapshot),
+    Snapshot(Box<SklLaneSnapshot>),
     CommandResponse(RuntimeCommandResponse),
 }
 
 #[derive(Clone, Debug)]
 pub enum AcLaneUpdate {
-    Snapshot(AcLaneSnapshot),
+    Snapshot(Box<AcLaneSnapshot>),
     CommandResponse(RuntimeCommandResponse),
 }
 
@@ -539,7 +539,7 @@ fn run_sa_lane_loop(command_rx: Receiver<SequencedSaCommand>, update_tx: Sender<
                     &mut snapshot_changed,
                 );
                 if snapshot_changed {
-                    let _ = update_tx.send(SaLaneUpdate::Snapshot(snapshot.clone()));
+                    let _ = update_tx.send(SaLaneUpdate::Snapshot(Box::new(snapshot.clone())));
                 }
                 let _ = update_tx.send(SaLaneUpdate::CommandResponse(response));
             }
@@ -582,7 +582,7 @@ fn run_sa_lane_loop(command_rx: Receiver<SequencedSaCommand>, update_tx: Sender<
         }
 
         if snapshot_changed {
-            let _ = update_tx.send(SaLaneUpdate::Snapshot(snapshot.clone()));
+            let _ = update_tx.send(SaLaneUpdate::Snapshot(Box::new(snapshot.clone())));
         }
     }
 }
@@ -759,7 +759,7 @@ fn run_skl_lane_loop(command_rx: Receiver<SequencedSklCommand>, update_tx: Sende
                     &mut snapshot_changed,
                 );
                 if snapshot_changed {
-                    let _ = update_tx.send(SklLaneUpdate::Snapshot(snapshot.clone()));
+                    let _ = update_tx.send(SklLaneUpdate::Snapshot(Box::new(snapshot.clone())));
                 }
                 let _ = update_tx.send(SklLaneUpdate::CommandResponse(response));
             }
@@ -773,7 +773,7 @@ fn run_skl_lane_loop(command_rx: Receiver<SequencedSklCommand>, update_tx: Sende
             snapshot.trust_tier = SkillTrustTier::Trusted;
             snapshot.last_error = None;
             provisional_since = None;
-            let _ = update_tx.send(SklLaneUpdate::Snapshot(snapshot.clone()));
+            let _ = update_tx.send(SklLaneUpdate::Snapshot(Box::new(snapshot.clone())));
         }
     }
 }
@@ -908,7 +908,7 @@ fn run_ac_lane_loop(command_rx: Receiver<SequencedAcCommand>, update_tx: Sender<
                     &mut snapshot_changed,
                 );
                 if snapshot_changed {
-                    let _ = update_tx.send(AcLaneUpdate::Snapshot(snapshot.clone()));
+                    let _ = update_tx.send(AcLaneUpdate::Snapshot(Box::new(snapshot.clone())));
                 }
                 let _ = update_tx.send(AcLaneUpdate::CommandResponse(response));
             }
