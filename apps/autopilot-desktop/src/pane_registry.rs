@@ -82,7 +82,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 27] = [
+const PANE_SPECS: [PaneSpec; 29] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -494,6 +494,36 @@ const PANE_SPECS: [PaneSpec; 27] = [
             id: "pane.agent_network_simulation",
             label: "Sovereign Agent Simulation",
             description: "Open multi-agent simulation using NIP-28 chat with SA/SKL/AC flow",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::TreasuryExchangeSimulation,
+        title: "Treasury Exchange Simulation",
+        default_width: 980.0,
+        default_height: 460.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.treasury_exchange_simulation",
+            label: "Treasury Exchange Simulation",
+            description: "Open NIP-69/60/61/87/89/47 market and liquidity simulation",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::RelaySecuritySimulation,
+        title: "Relay Security Simulation",
+        default_width: 980.0,
+        default_height: 460.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.relay_security_simulation",
+            label: "Relay Security Simulation",
+            description: "Open NIP-11/42/65/46/17/59/98/77 secure relay simulation",
             keybinding: None,
         }),
         hotbar: None,

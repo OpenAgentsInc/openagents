@@ -64,6 +64,8 @@ pub enum PaneKind {
     CreditDesk,
     CreditSettlementLedger,
     AgentNetworkSimulation,
+    TreasuryExchangeSimulation,
+    RelaySecuritySimulation,
 }
 
 #[derive(Clone, Copy)]
@@ -2554,6 +2556,487 @@ impl AgentNetworkSimulationPaneState {
     }
 }
 
+pub struct TreasuryExchangeSimulationPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub rounds_run: u32,
+    pub order_event_id: Option<String>,
+    pub mint_reference: Option<String>,
+    pub wallet_connect_url: Option<String>,
+    pub total_liquidity_sats: u64,
+    pub trade_volume_sats: u64,
+    pub events: Vec<AgentNetworkSimulationEvent>,
+    next_seq: u64,
+}
+
+impl Default for TreasuryExchangeSimulationPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some(
+                "Run simulation to model treasury + exchange NIP interactions".to_string(),
+            ),
+            rounds_run: 0,
+            order_event_id: None,
+            mint_reference: None,
+            wallet_connect_url: None,
+            total_liquidity_sats: 0,
+            trade_volume_sats: 0,
+            events: Vec::new(),
+            next_seq: 1,
+        }
+    }
+}
+
+impl TreasuryExchangeSimulationPaneState {
+    pub fn run_round(&mut self, now_epoch_seconds: u64) -> Result<(), String> {
+        let round = self.rounds_run.saturating_add(1);
+        let swap_sats = 40_000_u64.saturating_add(u64::from(round) * 5_000);
+
+        let handler = nostr::nip89::HandlerInfo::new(
+            "npub1treasury",
+            nostr::nip89::HandlerType::Agent,
+            nostr::nip89::HandlerMetadata::new(
+                "Treasury Agent",
+                "Provides FX and liquidity routing for agent payments",
+            ),
+        )
+        .add_capability("fx.quote.btcusd")
+        .add_capability("swap.cashu.lightning")
+        .with_pricing(
+            nostr::nip89::PricingInfo::new(25)
+                .with_model("per-swap")
+                .with_currency("sat"),
+        );
+        let handler_tags = handler.to_tags();
+        self.push_event(
+            "NIP-89",
+            &format!("sim:{}:{:08x}", nostr::nip89::KIND_HANDLER_INFO, round),
+            format!("announced treasury handler ({} tags)", handler_tags.len()),
+        );
+
+        let mint_tags = nostr::nip87::create_cashu_mint_tags(
+            "mint-pubkey-alpha",
+            "https://mint.openagents.dev",
+            &[1, 2, 3, 4, 5, 11, 12],
+            nostr::nip87::MintNetwork::Mainnet,
+        );
+        let mint = nostr::nip87::parse_cashu_mint(
+            nostr::nip87::KIND_CASHU_MINT,
+            &mint_tags,
+            "{\"name\":\"OpenAgents Mint\"}",
+        )
+        .map_err(|error| error.to_string())?;
+        self.mint_reference = Some(format!("{} ({})", mint.url, mint.network.as_str()));
+        self.push_event(
+            "NIP-87",
+            &format!("sim:{}:{:08x}", nostr::nip87::KIND_CASHU_MINT, round),
+            format!("discovered mint {} with {} nuts", mint.url, mint.nuts.len()),
+        );
+
+        let order_id = format!("order-{:04}", round);
+        let expires_at = now_epoch_seconds.saturating_add(900);
+        let order_event = nostr::Event {
+            id: format!("sim:{}:{:08x}", nostr::nip69::P2P_ORDER_KIND, round),
+            pubkey: "npub1treasury".to_string(),
+            created_at: now_epoch_seconds,
+            kind: nostr::nip69::P2P_ORDER_KIND,
+            tags: vec![
+                vec!["d".to_string(), order_id.clone()],
+                vec!["k".to_string(), "sell".to_string()],
+                vec!["f".to_string(), "USD".to_string()],
+                vec!["s".to_string(), "pending".to_string()],
+                vec!["amt".to_string(), swap_sats.to_string()],
+                vec!["fa".to_string(), "1250".to_string()],
+                vec!["pm".to_string(), "wire".to_string(), "cashapp".to_string()],
+                vec!["premium".to_string(), "1.5".to_string()],
+                vec!["network".to_string(), "bitcoin".to_string()],
+                vec!["layer".to_string(), "lightning".to_string()],
+                vec!["expires_at".to_string(), expires_at.to_string()],
+                vec!["expiration".to_string(), expires_at.to_string()],
+                vec!["y".to_string(), "openagents-exchange".to_string()],
+            ],
+            content: String::new(),
+            sig: format!("sim-signature-{round}"),
+        };
+        let order = nostr::nip69::P2POrder::from_event(order_event.clone())
+            .map_err(|error| error.to_string())?;
+        self.order_event_id = Some(order_event.id.clone());
+        self.push_event(
+            "NIP-69",
+            &order_event.id,
+            format!(
+                "published {} order {} for {} sats",
+                order.order_type.as_str(),
+                order.order_id,
+                order.amount_sats
+            ),
+        );
+
+        let token_content = nostr::nip60::TokenContent::new(
+            mint.url.clone(),
+            vec![nostr::nip60::CashuProof::new(
+                format!("proof-{round:04}"),
+                swap_sats,
+                format!("secret-{round:04}"),
+                format!("C-{round:04}"),
+            )],
+        )
+        .with_unit("sat".to_string());
+        let locked_sats = token_content.total_amount();
+        self.total_liquidity_sats = self.total_liquidity_sats.saturating_add(locked_sats);
+        self.push_event(
+            "NIP-60",
+            &format!("sim:{}:{:08x}", nostr::nip60::TOKEN_KIND, round),
+            format!("locked {} sats in wallet token batch", locked_sats),
+        );
+
+        let nutzap_proof = nostr::nip61::NutzapProof::new(
+            swap_sats,
+            format!("C-{round:04}"),
+            format!("proof-{round:04}"),
+            format!("secret-{round:04}"),
+        );
+        let proof_tag =
+            nostr::nip61::create_proof_tag(&nutzap_proof).map_err(|error| error.to_string())?;
+        self.push_event(
+            "NIP-61",
+            &format!("sim:{}:{:08x}", nostr::nip61::NUTZAP_KIND, round),
+            format!(
+                "created nutzap settlement proof ({} fields)",
+                proof_tag.len()
+            ),
+        );
+
+        let wallet_connect_url = nostr::nip47::NostrWalletConnectUrl::new(
+            "walletpubkey123",
+            vec!["wss://relay.openagents.dev".to_string()],
+            format!("secret-{round:04}"),
+        )
+        .with_lud16("treasury@openagents.dev")
+        .to_string();
+        self.wallet_connect_url = Some(wallet_connect_url.clone());
+        self.push_event(
+            "NIP-47",
+            &format!("sim:{}:{:08x}", nostr::nip47::REQUEST_KIND, round),
+            format!(
+                "prepared wallet connect session ({} chars)",
+                wallet_connect_url.len()
+            ),
+        );
+
+        let reputation_label = nostr::nip32::LabelEvent::new(
+            vec![nostr::nip32::Label::new("success", "exchange/trade")],
+            vec![nostr::nip32::LabelTarget::event(
+                order_event.id.clone(),
+                Some("wss://relay.openagents.dev"),
+            )],
+        )
+        .with_content("atomic swap completed within policy bounds");
+        self.push_event(
+            "NIP-32",
+            &format!("sim:{}:{:08x}", nostr::nip32::KIND_LABEL, round),
+            format!(
+                "emitted trade attestation ({} tags)",
+                reputation_label.to_tags().len()
+            ),
+        );
+
+        self.rounds_run = round;
+        self.trade_volume_sats = self.trade_volume_sats.saturating_add(swap_sats);
+        self.load_state = PaneLoadState::Ready;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Round {round}: routed {} sats through discovery, orderbook, wallet and settlement rails",
+            swap_sats
+        ));
+        Ok(())
+    }
+
+    pub fn reset(&mut self) {
+        self.load_state = PaneLoadState::Ready;
+        self.last_error = None;
+        self.last_action = Some("Treasury exchange simulation reset".to_string());
+        self.rounds_run = 0;
+        self.order_event_id = None;
+        self.mint_reference = None;
+        self.wallet_connect_url = None;
+        self.total_liquidity_sats = 0;
+        self.trade_volume_sats = 0;
+        self.events.clear();
+        self.next_seq = 1;
+    }
+
+    fn push_event(&mut self, protocol: &str, event_ref: &str, summary: String) {
+        self.events.push(AgentNetworkSimulationEvent {
+            seq: self.next_seq,
+            protocol: protocol.to_string(),
+            event_ref: event_ref.to_string(),
+            summary,
+        });
+        self.next_seq = self.next_seq.saturating_add(1);
+        if self.events.len() > 18 {
+            let overflow = self.events.len().saturating_sub(18);
+            self.events.drain(0..overflow);
+        }
+    }
+}
+
+pub struct RelaySecuritySimulationPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub relay_url: String,
+    pub challenge: String,
+    pub auth_event_id: Option<String>,
+    pub rounds_run: u32,
+    pub dm_relay_count: u32,
+    pub sync_ranges: u32,
+    pub events: Vec<AgentNetworkSimulationEvent>,
+    next_seq: u64,
+}
+
+impl Default for RelaySecuritySimulationPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some(
+                "Run simulation to model secure relay, auth, and sync lifecycle".to_string(),
+            ),
+            relay_url: "wss://relay.openagents.dev".to_string(),
+            challenge: "auth-bootstrap".to_string(),
+            auth_event_id: None,
+            rounds_run: 0,
+            dm_relay_count: 0,
+            sync_ranges: 0,
+            events: Vec::new(),
+            next_seq: 1,
+        }
+    }
+}
+
+impl RelaySecuritySimulationPaneState {
+    pub fn run_round(&mut self, now_epoch_seconds: u64) -> Result<(), String> {
+        let round = self.rounds_run.saturating_add(1);
+
+        let relay_doc = nostr::nip11::RelayInformationDocument {
+            name: Some("OpenAgents Auth Relay".to_string()),
+            description: Some("Relay exposing auth, DM, and audit sync capabilities".to_string()),
+            supported_nips: Some(vec![11, 17, 42, 46, 65, 77, 98]),
+            limitation: Some(nostr::nip11::RelayLimitation {
+                auth_required: Some(true),
+                restricted_writes: Some(true),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let relay_doc_json = relay_doc.to_json().map_err(|error| error.to_string())?;
+        let relay_doc_roundtrip =
+            nostr::nip11::RelayInformationDocument::from_json(&relay_doc_json)
+                .map_err(|error| error.to_string())?;
+        self.push_event(
+            "NIP-11",
+            &format!("sim:30111:{:08x}", round),
+            format!(
+                "loaded relay document ({} advertised nips)",
+                relay_doc_roundtrip
+                    .supported_nips
+                    .map_or(0, |nips| nips.len())
+            ),
+        );
+
+        let relay_list = nostr::nip65::RelayListMetadata::new(vec![
+            nostr::nip65::RelayEntry::write(self.relay_url.clone()),
+            nostr::nip65::RelayEntry::read("wss://relay.backup.openagents.dev".to_string()),
+        ]);
+        self.dm_relay_count = relay_list.all_relays().len() as u32;
+        self.push_event(
+            "NIP-65",
+            &format!(
+                "sim:{}:{:08x}",
+                nostr::nip65::RELAY_LIST_METADATA_KIND,
+                round
+            ),
+            format!(
+                "published relay list (read={} write={})",
+                relay_list.read_relays().len(),
+                relay_list.write_relays().len()
+            ),
+        );
+
+        let challenge = format!("auth-{round:04x}");
+        self.challenge = challenge.clone();
+        let auth_template = nostr::nip42::create_auth_event_template(&self.relay_url, &challenge);
+        let auth_event = nostr::Event {
+            id: format!("sim:{}:{:08x}", nostr::nip42::AUTH_KIND, round),
+            pubkey: "npub1agentalpha".to_string(),
+            created_at: auth_template.created_at,
+            kind: auth_template.kind,
+            tags: auth_template.tags,
+            content: auth_template.content,
+            sig: format!("sim-auth-signature-{round}"),
+        };
+        nostr::nip42::validate_auth_event(
+            &auth_event,
+            &self.relay_url,
+            &challenge,
+            Some(auth_event.created_at),
+        )
+        .map_err(|error| error.to_string())?;
+        self.auth_event_id = Some(auth_event.id.clone());
+        self.push_event(
+            "NIP-42",
+            &auth_event.id,
+            "validated relay authentication event".to_string(),
+        );
+
+        let signer_request = nostr::nip46::NostrConnectRequest::get_public_key();
+        let signer_request_json = signer_request
+            .to_json()
+            .map_err(|error| error.to_string())?;
+        self.push_event(
+            "NIP-46",
+            &format!("sim:{}:{:08x}", nostr::nip46::KIND_NOSTR_CONNECT, round),
+            format!(
+                "queued remote signing request {} ({} bytes)",
+                signer_request.id,
+                signer_request_json.len()
+            ),
+        );
+
+        let sender_sk = nostr::generate_secret_key();
+        let recipient_sk = nostr::generate_secret_key();
+        let recipient_pk = nostr::get_public_key_hex(&recipient_sk).map_err(|e| e.to_string())?;
+        let message =
+            nostr::nip17::ChatMessage::new(format!("relay-auth heartbeat {} confirmed", round))
+                .add_recipient(recipient_pk.clone(), Some(self.relay_url.clone()))
+                .subject("secure-ops");
+        let wrapped = nostr::nip17::send_chat_message(
+            &message,
+            &sender_sk,
+            &recipient_pk,
+            now_epoch_seconds.saturating_add(3),
+        )
+        .map_err(|error| error.to_string())?;
+        let received = nostr::nip17::receive_chat_message(&wrapped, &recipient_sk)
+            .map_err(|e| e.to_string())?;
+        self.push_event(
+            "NIP-17",
+            &format!("sim:{}:{:08x}", nostr::nip17::KIND_CHAT_MESSAGE, round),
+            format!(
+                "sent private chat message to {} recipient(s)",
+                received.recipients.len()
+            ),
+        );
+        self.push_event(
+            "NIP-59",
+            &format!("sim:{}:{:08x}", nostr::nip59::KIND_GIFT_WRAP, round),
+            format!("wrapped private message event (kind {})", wrapped.kind),
+        );
+
+        let endpoint = format!("https://api.openagents.dev/v1/relay/check/{round}");
+        let payload = format!(
+            "{{\"challenge\":\"{}\",\"relay\":\"{}\"}}",
+            challenge, self.relay_url
+        );
+        let payload_hash = nostr::nip98::hash_payload(payload.as_bytes());
+        let http_auth =
+            nostr::nip98::HttpAuth::new(endpoint.clone(), nostr::nip98::HttpMethod::Post)
+                .with_payload_hash(payload_hash.clone());
+        let http_auth_tags = http_auth.to_tags();
+        let validation = nostr::nip98::ValidationParams::new(
+            endpoint,
+            nostr::nip98::HttpMethod::Post,
+            now_epoch_seconds.saturating_add(4),
+        )
+        .with_payload_hash(payload_hash)
+        .with_timestamp_window(120);
+        nostr::nip98::validate_http_auth_event(
+            nostr::nip98::KIND_HTTP_AUTH,
+            now_epoch_seconds.saturating_add(4),
+            &http_auth_tags,
+            &validation,
+        )
+        .map_err(|error| error.to_string())?;
+        self.push_event(
+            "NIP-98",
+            &format!("sim:{}:{:08x}", nostr::nip98::KIND_HTTP_AUTH, round),
+            "validated HTTP auth request tags".to_string(),
+        );
+
+        let round_byte = (round % u32::from(u8::MAX.saturating_sub(2))).saturating_add(1) as u8;
+        let mut records = vec![
+            nostr::nip77::Record::new(now_epoch_seconds.saturating_add(1), [round_byte; 32]),
+            nostr::nip77::Record::new(
+                now_epoch_seconds.saturating_add(2),
+                [round_byte.saturating_add(1); 32],
+            ),
+            nostr::nip77::Record::new(
+                now_epoch_seconds.saturating_add(3),
+                [round_byte.saturating_add(2); 32],
+            ),
+        ];
+        nostr::nip77::sort_records(&mut records);
+        let ids: Vec<nostr::nip77::EventId> = records.iter().map(|record| record.id).collect();
+        let fingerprint = nostr::nip77::calculate_fingerprint(&ids);
+        let negentropy =
+            nostr::nip77::NegentropyMessage::new(vec![nostr::nip77::Range::fingerprint(
+                nostr::nip77::Bound::infinity(),
+                fingerprint,
+            )]);
+        let encoded = negentropy.encode_hex().map_err(|error| error.to_string())?;
+        let decoded =
+            nostr::nip77::NegentropyMessage::decode_hex(&encoded).map_err(|e| e.to_string())?;
+        self.sync_ranges = self.sync_ranges.saturating_add(decoded.ranges.len() as u32);
+        self.push_event(
+            "NIP-77",
+            &format!("sim:30077:{:08x}", round),
+            format!(
+                "reconciled negentropy message ({} hex chars)",
+                encoded.len()
+            ),
+        );
+
+        self.rounds_run = round;
+        self.load_state = PaneLoadState::Ready;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Round {round}: relay auth, private messaging, HTTP auth, and negentropy sync succeeded"
+        ));
+        Ok(())
+    }
+
+    pub fn reset(&mut self) {
+        self.load_state = PaneLoadState::Ready;
+        self.last_error = None;
+        self.last_action = Some("Relay security simulation reset".to_string());
+        self.challenge = "auth-bootstrap".to_string();
+        self.auth_event_id = None;
+        self.rounds_run = 0;
+        self.dm_relay_count = 0;
+        self.sync_ranges = 0;
+        self.events.clear();
+        self.next_seq = 1;
+    }
+
+    fn push_event(&mut self, protocol: &str, event_ref: &str, summary: String) {
+        self.events.push(AgentNetworkSimulationEvent {
+            seq: self.next_seq,
+            protocol: protocol.to_string(),
+            event_ref: event_ref.to_string(),
+            summary,
+        });
+        self.next_seq = self.next_seq.saturating_add(1);
+        if self.events.len() > 18 {
+            let overflow = self.events.len().saturating_sub(18);
+            self.events.drain(0..overflow);
+        }
+    }
+}
+
 pub struct EarningsScoreboardState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
@@ -2724,6 +3207,8 @@ impl_pane_status_access!(
     CreditDeskPaneState,
     CreditSettlementLedgerPaneState,
     AgentNetworkSimulationPaneState,
+    TreasuryExchangeSimulationPaneState,
+    RelaySecuritySimulationPaneState,
 );
 
 pub struct RenderState {
@@ -2782,6 +3267,8 @@ pub struct RenderState {
     pub credit_desk: CreditDeskPaneState,
     pub credit_settlement_ledger: CreditSettlementLedgerPaneState,
     pub agent_network_simulation: AgentNetworkSimulationPaneState,
+    pub treasury_exchange_simulation: TreasuryExchangeSimulationPaneState,
+    pub relay_security_simulation: RelaySecuritySimulationPaneState,
     pub next_pane_id: u64,
     pub next_z_index: i32,
     pub pane_drag_mode: Option<PaneDragMode>,
@@ -2849,8 +3336,9 @@ mod tests {
         JobInboxDecision, JobInboxNetworkRequest, JobInboxState, JobInboxValidation,
         JobLifecycleStage, NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState,
         NostrSecretState, ProviderRuntimeState, RecoveryAlertRow, RelayConnectionRow,
-        RelayConnectionStatus, RelayConnectionsState, SettingsState, SparkPaneState, StarterJobRow,
-        StarterJobStatus, StarterJobsState, SyncHealthState, SyncRecoveryPhase,
+        RelayConnectionStatus, RelayConnectionsState, RelaySecuritySimulationPaneState,
+        SettingsState, SparkPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
+        SyncHealthState, SyncRecoveryPhase, TreasuryExchangeSimulationPaneState,
     };
 
     fn fixture_inbox_request(
@@ -3258,6 +3746,45 @@ mod tests {
         state.reset();
         assert_eq!(state.rounds_run, 0);
         assert!(state.channel_event_id.is_none());
+        assert!(state.events.is_empty());
+    }
+
+    #[test]
+    fn treasury_exchange_simulation_rounds_generate_exchange_and_wallet_events() {
+        let mut state = TreasuryExchangeSimulationPaneState::default();
+        state
+            .run_round(1_761_920_900)
+            .expect("treasury simulation round should succeed");
+        assert_eq!(state.rounds_run, 1);
+        assert!(state.order_event_id.is_some());
+        assert!(state.mint_reference.is_some());
+        assert!(state.wallet_connect_url.is_some());
+        assert!(state.trade_volume_sats > 0);
+        assert!(state.events.iter().any(|event| event.protocol == "NIP-69"));
+        assert!(state.events.iter().any(|event| event.protocol == "NIP-60"));
+        assert!(state.events.iter().any(|event| event.protocol == "NIP-61"));
+
+        state.reset();
+        assert_eq!(state.rounds_run, 0);
+        assert!(state.events.is_empty());
+    }
+
+    #[test]
+    fn relay_security_simulation_rounds_generate_auth_privacy_and_sync_events() {
+        let mut state = RelaySecuritySimulationPaneState::default();
+        state
+            .run_round(1_761_921_000)
+            .expect("relay security simulation round should succeed");
+        assert_eq!(state.rounds_run, 1);
+        assert!(state.auth_event_id.is_some());
+        assert!(state.dm_relay_count >= 2);
+        assert!(state.sync_ranges > 0);
+        assert!(state.events.iter().any(|event| event.protocol == "NIP-42"));
+        assert!(state.events.iter().any(|event| event.protocol == "NIP-59"));
+        assert!(state.events.iter().any(|event| event.protocol == "NIP-77"));
+
+        state.reset();
+        assert_eq!(state.rounds_run, 0);
         assert!(state.events.is_empty());
     }
 

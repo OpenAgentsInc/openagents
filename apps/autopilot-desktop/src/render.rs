@@ -169,6 +169,10 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             credit_desk: crate::app_state::CreditDeskPaneState::default(),
             credit_settlement_ledger: crate::app_state::CreditSettlementLedgerPaneState::default(),
             agent_network_simulation: crate::app_state::AgentNetworkSimulationPaneState::default(),
+            treasury_exchange_simulation:
+                crate::app_state::TreasuryExchangeSimulationPaneState::default(),
+            relay_security_simulation: crate::app_state::RelaySecuritySimulationPaneState::default(
+            ),
             next_pane_id: 1,
             next_z_index: 1,
             pane_drag_mode: None,
@@ -289,6 +293,8 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &state.credit_desk,
             &state.credit_settlement_ledger,
             &state.agent_network_simulation,
+            &state.treasury_exchange_simulation,
+            &state.relay_security_simulation,
             &state.spark_wallet,
             &mut state.spark_inputs,
             &mut state.pay_invoice_inputs,
@@ -490,6 +496,14 @@ mod tests {
         assert!(commands.iter().any(|command| {
             command.id == "pane.agent_network_simulation"
                 && command.label == "Sovereign Agent Simulation"
+        }));
+        assert!(commands.iter().any(|command| {
+            command.id == "pane.treasury_exchange_simulation"
+                && command.label == "Treasury Exchange Simulation"
+        }));
+        assert!(commands.iter().any(|command| {
+            command.id == "pane.relay_security_simulation"
+                && command.label == "Relay Security Simulation"
         }));
     }
 

@@ -6,9 +6,10 @@ use crate::app_state::{
     EarningsScoreboardState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
     JobLifecycleStage, NetworkRequestStatus, NetworkRequestsPaneInputs, NetworkRequestsState,
     NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs, ProviderBlocker,
-    ProviderRuntimeState, RelayConnectionsPaneInputs, RelayConnectionsState, SettingsPaneInputs,
-    SettingsState, SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs,
-    StarterJobStatus, StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
+    ProviderRuntimeState, RelayConnectionsPaneInputs, RelayConnectionsState,
+    RelaySecuritySimulationPaneState, SettingsPaneInputs, SettingsState, SkillRegistryPaneState,
+    SkillTrustRevocationPaneState, SparkPaneInputs, StarterJobStatus, StarterJobsState,
+    SyncHealthState, TrajectoryAuditPaneState, TreasuryExchangeSimulationPaneState,
 };
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
@@ -76,6 +77,8 @@ impl PaneRenderer {
         credit_desk: &CreditDeskPaneState,
         credit_settlement_ledger: &CreditSettlementLedgerPaneState,
         agent_network_simulation: &AgentNetworkSimulationPaneState,
+        treasury_exchange_simulation: &TreasuryExchangeSimulationPaneState,
+        relay_security_simulation: &RelaySecuritySimulationPaneState,
         spark_wallet: &SparkPaneState,
         spark_inputs: &mut SparkPaneInputs,
         pay_invoice_inputs: &mut PayInvoicePaneInputs,
@@ -230,6 +233,20 @@ impl PaneRenderer {
                     simulation_pane::paint_agent_network_simulation_pane(
                         content_bounds,
                         agent_network_simulation,
+                        paint,
+                    );
+                }
+                PaneKind::TreasuryExchangeSimulation => {
+                    simulation_pane::paint_treasury_exchange_simulation_pane(
+                        content_bounds,
+                        treasury_exchange_simulation,
+                        paint,
+                    );
+                }
+                PaneKind::RelaySecuritySimulation => {
+                    simulation_pane::paint_relay_security_simulation_pane(
+                        content_bounds,
+                        relay_security_simulation,
                         paint,
                     );
                 }

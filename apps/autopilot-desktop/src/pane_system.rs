@@ -175,6 +175,18 @@ pub enum AgentNetworkSimulationPaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TreasuryExchangeSimulationPaneAction {
+    RunRound,
+    Reset,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RelaySecuritySimulationPaneAction {
+    RunRound,
+    Reset,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PaneHitAction {
     NostrRegenerate,
     NostrReveal,
@@ -200,6 +212,8 @@ pub enum PaneHitAction {
     CreditDesk(CreditDeskPaneAction),
     CreditSettlementLedger(CreditSettlementLedgerPaneAction),
     AgentNetworkSimulation(AgentNetworkSimulationPaneAction),
+    TreasuryExchangeSimulation(TreasuryExchangeSimulationPaneAction),
+    RelaySecuritySimulation(RelaySecuritySimulationPaneAction),
     Spark(SparkPaneAction),
     SparkCreateInvoice(CreateInvoicePaneAction),
     SparkPayInvoice(PayInvoicePaneAction),
@@ -577,7 +591,9 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::SkillTrustRevocation
             | PaneKind::CreditDesk
             | PaneKind::CreditSettlementLedger
-            | PaneKind::AgentNetworkSimulation => {}
+            | PaneKind::AgentNetworkSimulation
+            | PaneKind::TreasuryExchangeSimulation
+            | PaneKind::RelaySecuritySimulation => {}
         }
 
         if pane_hit_action_for_pane(state, pane, point).is_some() {
@@ -1297,6 +1313,44 @@ pub fn agent_network_simulation_reset_button_bounds(content_bounds: Bounds) -> B
     )
 }
 
+pub fn treasury_exchange_simulation_run_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.26).clamp(180.0, 280.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn treasury_exchange_simulation_reset_button_bounds(content_bounds: Bounds) -> Bounds {
+    let run = treasury_exchange_simulation_run_button_bounds(content_bounds);
+    Bounds::new(
+        run.max_x() + JOB_INBOX_BUTTON_GAP,
+        run.origin.y,
+        (content_bounds.size.width * 0.22).clamp(140.0, 220.0),
+        run.size.height,
+    )
+}
+
+pub fn relay_security_simulation_run_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.26).clamp(180.0, 280.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn relay_security_simulation_reset_button_bounds(content_bounds: Bounds) -> Bounds {
+    let run = relay_security_simulation_run_button_bounds(content_bounds);
+    Bounds::new(
+        run.max_x() + JOB_INBOX_BUTTON_GAP,
+        run.origin.y,
+        (content_bounds.size.width * 0.22).clamp(140.0, 220.0),
+        run.size.height,
+    )
+}
+
 pub fn nostr_regenerate_button_bounds(content_bounds: Bounds) -> Bounds {
     let (regenerate_bounds, _, _) = nostr_button_bounds(content_bounds);
     regenerate_bounds
@@ -1716,6 +1770,32 @@ fn pane_hit_action_for_pane(
             if agent_network_simulation_reset_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::AgentNetworkSimulation(
                     AgentNetworkSimulationPaneAction::Reset,
+                ));
+            }
+            None
+        }
+        PaneKind::TreasuryExchangeSimulation => {
+            if treasury_exchange_simulation_run_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::TreasuryExchangeSimulation(
+                    TreasuryExchangeSimulationPaneAction::RunRound,
+                ));
+            }
+            if treasury_exchange_simulation_reset_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::TreasuryExchangeSimulation(
+                    TreasuryExchangeSimulationPaneAction::Reset,
+                ));
+            }
+            None
+        }
+        PaneKind::RelaySecuritySimulation => {
+            if relay_security_simulation_run_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::RelaySecuritySimulation(
+                    RelaySecuritySimulationPaneAction::RunRound,
+                ));
+            }
+            if relay_security_simulation_reset_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::RelaySecuritySimulation(
+                    RelaySecuritySimulationPaneAction::Reset,
                 ));
             }
             None
