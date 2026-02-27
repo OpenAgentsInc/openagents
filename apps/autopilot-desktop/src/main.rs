@@ -3,6 +3,7 @@
 mod app_state;
 mod hotbar;
 mod input;
+mod nip_sa_wallet_bridge;
 mod pane_registry;
 mod pane_renderer;
 mod pane_system;

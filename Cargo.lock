@@ -3539,7 +3539,6 @@ dependencies = [
  "hex",
  "hkdf",
  "hmac",
- "openagents-spark",
  "rand 0.9.2",
  "regex",
  "scrypt",
@@ -3548,7 +3547,6 @@ dependencies = [
  "serde_yaml",
  "sha2",
  "thiserror 2.0.17",
- "tokio",
  "unicode-normalization",
  "urlencoding",
 ]

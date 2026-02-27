@@ -39,16 +39,6 @@ unicode-normalization = { version = "0.1.25", optional = true }
 urlencoding = "2.1.3"
 async-trait = "0.1"
 
-[dependencies.spark]
-package = "openagents-spark"
-path = "../../spark"
-optional = true
-
-[dependencies.tokio]
-version = "1"
-features = ["sync"]
-optional = true
-
 [features]
 default = ["full"]
 full = [
@@ -63,4 +53,3 @@ full = [
     "dep:unicode-normalization",
 ]
 minimal = []
-spark-integration = ["dep:spark", "dep:tokio"]

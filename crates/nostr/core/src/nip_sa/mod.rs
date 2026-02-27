@@ -36,8 +36,6 @@
 //! - [`tick`] - Tick Request/Result events (kinds:39210, 39211)
 //! - [`trajectory`] - Trajectory Session/Event (kinds:39230, 39231)
 //! - [`skill`] - Skill License/Delivery events (kinds:39220, 39221)
-//! - [`wallet_integration`] (feature-gated) - Integration with Spark wallet
-//!   for balance queries
 //! - [`budget`] - Budget constraints and spending enforcement
 //!
 //! ## Specification
@@ -52,8 +50,6 @@ pub mod skill;
 pub mod state;
 pub mod tick;
 pub mod trajectory;
-#[cfg(feature = "spark-integration")]
-pub mod wallet_integration;
 
 // Re-export key types for convenience
 pub use budget::*;
@@ -64,5 +60,3 @@ pub use skill::*;
 pub use state::*;
 pub use tick::*;
 pub use trajectory::*;
-#[cfg(feature = "spark-integration")]
-pub use wallet_integration::*;
