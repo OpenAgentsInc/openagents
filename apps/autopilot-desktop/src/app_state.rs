@@ -626,7 +626,6 @@ impl ActivityFeedState {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AlertSeverity {
     Info,
@@ -644,7 +643,6 @@ impl AlertSeverity {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AlertLifecycle {
     Active,
@@ -662,7 +660,7 @@ impl AlertLifecycle {
     }
 }
 
-#[allow(dead_code)]
+#[allow(dead_code)] // Identity/wallet/relay/sync domains are reserved for non-command alert ingestion paths.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AlertDomain {
     Identity,
@@ -1058,7 +1056,6 @@ fn parse_settings_document(raw: &str) -> Result<SettingsDocumentV1, String> {
     Ok(document)
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum JobInboxValidation {
     Valid,
@@ -1076,7 +1073,6 @@ impl JobInboxValidation {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum JobInboxDecision {
     Pending,
@@ -1112,7 +1108,6 @@ pub struct JobInboxRequest {
     pub decision: JobInboxDecision,
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct JobInboxNetworkRequest {
     pub request_id: String,
@@ -1135,7 +1130,6 @@ pub struct JobInboxState {
     pub last_action: Option<String>,
     pub requests: Vec<JobInboxRequest>,
     pub selected_request_id: Option<String>,
-    #[allow(dead_code)]
     next_arrival_seq: u64,
 }
 
@@ -1153,7 +1147,6 @@ impl Default for JobInboxState {
 }
 
 impl JobInboxState {
-    #[allow(dead_code)]
     pub fn upsert_network_request(&mut self, request: JobInboxNetworkRequest) {
         if let Some(existing) = self
             .requests

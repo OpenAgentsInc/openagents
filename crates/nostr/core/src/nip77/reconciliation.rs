@@ -5,7 +5,6 @@ use super::{
 
 /// State for tracking reconciliation progress
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // Will be used in process_message() implementation
 pub struct ReconciliationState {
     /// Local event records (sorted)
     pub records: Vec<Record>,
@@ -19,7 +18,6 @@ pub struct ReconciliationState {
 
 impl ReconciliationState {
     /// Create new reconciliation state with sorted records
-    #[allow(dead_code)] // Will be used in process_message() implementation
     pub fn new(mut records: Vec<Record>) -> Self {
         sort_records(&mut records);
         Self {
@@ -33,7 +31,6 @@ impl ReconciliationState {
     /// Find records within a bound range
     ///
     /// Returns indices of records where lower_bound <= record < upper_bound
-    #[allow(dead_code)] // Will be used in process_message() implementation
     pub fn find_records_in_range(&self, lower: &Bound, upper: &Bound) -> Vec<usize> {
         let mut indices = Vec::new();
 
@@ -76,7 +73,6 @@ impl ReconciliationState {
     }
 
     /// Calculate fingerprint for records in a range
-    #[allow(dead_code)] // Will be used in process_message() implementation
     pub fn calculate_range_fingerprint(&self, lower: &Bound, upper: &Bound) -> [u8; 16] {
         let indices = self.find_records_in_range(lower, upper);
         let ids: Vec<EventId> = indices.iter().map(|&i| self.records[i].id).collect();
@@ -89,7 +85,6 @@ impl ReconciliationState {
     /// - If range has 0 records: return empty (skip range)
     /// - If range has 1 record: return ID list
     /// - If range has multiple: split at midpoint
-    #[allow(dead_code)] // Will be used in process_message() implementation
     pub fn split_range(&self, lower: &Bound, upper: &Bound) -> Result<Vec<Range>> {
         let indices = self.find_records_in_range(lower, upper);
 
@@ -122,7 +117,6 @@ impl ReconciliationState {
     }
 
     /// Add an ID to the "have" set (we have, remote needs)
-    #[allow(dead_code)] // Will be used in process_message() implementation
     pub fn add_have(&mut self, id: EventId) {
         if !self.have.contains(&id) {
             self.have.push(id);
@@ -130,7 +124,6 @@ impl ReconciliationState {
     }
 
     /// Add an ID to the "need" set (remote has, we need)
-    #[allow(dead_code)] // Will be called by process_message()
     pub fn add_need(&mut self, id: EventId) {
         if !self.need.contains(&id) {
             self.need.push(id);
@@ -149,7 +142,6 @@ impl ReconciliationState {
     ///    - Add IDs they have but we don't to "need" set
     ///
     /// Returns a response message with our ranges
-    #[allow(dead_code)] // Will be used in relay/client integration
     pub fn process_message(&mut self, incoming: &NegentropyMessage) -> Result<NegentropyMessage> {
         let mut response_ranges = Vec::new();
         let mut prev_bound = Bound::zero();
@@ -224,7 +216,6 @@ impl ReconciliationState {
     ///
     /// Reconciliation is complete when both sides have exchanged ID lists
     /// for all ranges (no more fingerprints to compare)
-    #[allow(dead_code)] // Will be used in relay/client integration
     pub fn is_complete(&self, last_message: &NegentropyMessage) -> bool {
         // If all ranges are Skip or IdList (no Fingerprint), we're done
         last_message

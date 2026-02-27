@@ -5,7 +5,7 @@ use std::time::Instant;
 use crate::app_state::{PaneLoadState, PaneStatusAccess, ProviderRuntimeState};
 use crate::runtime_lanes::RuntimeCommandResponse;
 
-#[allow(dead_code)]
+#[allow(dead_code)] // Disconnected/error are emitted by relay lane integration during reconnect failures.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RelayConnectionStatus {
     Connected,
@@ -233,7 +233,7 @@ impl SyncHealthState {
     }
 }
 
-#[allow(dead_code)]
+#[allow(dead_code)] // Completed is reserved for final stream closure once settlement receipts are ingested.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NetworkRequestStatus {
     Submitted,
@@ -419,7 +419,7 @@ impl NetworkRequestsState {
     }
 }
 
-#[allow(dead_code)]
+#[allow(dead_code)] // Queued/running map to staged starter-demand lane events that are not yet emitted.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StarterJobStatus {
     Queued,

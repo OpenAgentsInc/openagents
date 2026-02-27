@@ -2,7 +2,6 @@ use super::{BitcoinLayer, DOCUMENT_TYPE, OrderStatus, OrderType};
 
 /// Builder for creating P2P order events
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct P2POrderBuilder {
     order_id: String,
     order_type: OrderType,
@@ -22,7 +21,6 @@ pub struct P2POrderBuilder {
     bond: Option<u64>,
 }
 
-#[allow(dead_code)]
 impl P2POrderBuilder {
     /// Create a new order builder
     pub fn new(order_id: impl Into<String>) -> Self {

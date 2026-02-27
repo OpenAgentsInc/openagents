@@ -10,7 +10,8 @@ use winit::keyboard::{
 };
 
 use crate::app_state::{
-    ActivityEventDomain, ActivityEventRow, AlertDomain, App, NetworkRequestSubmission, ProviderMode,
+    ActivityEventDomain, ActivityEventRow, AlertDomain, App, JobInboxNetworkRequest,
+    JobInboxValidation, NetworkRequestSubmission, ProviderMode,
 };
 use crate::hotbar::{
     HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_SPARK_WALLET, activate_hotbar_slot,
@@ -1224,6 +1225,10 @@ fn run_network_requests_action(
             });
             match queue_result {
                 Ok(command_seq) => {
+                    let inbox_request_type = request_type.clone();
+                    let inbox_payload = payload.clone();
+                    let inbox_skill_scope_id = skill_scope_id.clone();
+                    let inbox_credit_envelope_ref = credit_envelope_ref.clone();
                     match state.network_requests.queue_request_submission(
                         NetworkRequestSubmission {
                             request_type,
@@ -1239,6 +1244,38 @@ fn run_network_requests_action(
                             state.provider_runtime.last_result = Some(format!(
                                 "Queued network request {request_id} -> AC cmd#{command_seq}"
                             ));
+                            let validation =
+                                if inbox_payload.to_ascii_lowercase().contains("invalid") {
+                                    JobInboxValidation::Invalid(
+                                        "payload contains reserved invalid marker".to_string(),
+                                    )
+                                } else if inbox_payload.len() < 12 {
+                                    JobInboxValidation::Pending
+                                } else {
+                                    JobInboxValidation::Valid
+                                };
+                            state
+                                .job_inbox
+                                .upsert_network_request(JobInboxNetworkRequest {
+                                    request_id: request_id.clone(),
+                                    requester: "network-buyer".to_string(),
+                                    capability: inbox_request_type,
+                                    skill_scope_id: inbox_skill_scope_id,
+                                    skl_manifest_a: state.skl_lane.manifest_a.clone(),
+                                    skl_manifest_event_id: state.skl_lane.manifest_event_id.clone(),
+                                    sa_tick_request_event_id: state
+                                        .sa_lane
+                                        .last_tick_request_event_id
+                                        .clone(),
+                                    sa_tick_result_event_id: state
+                                        .sa_lane
+                                        .last_tick_result_event_id
+                                        .clone(),
+                                    ac_envelope_event_id: inbox_credit_envelope_ref,
+                                    price_sats: budget_sats,
+                                    ttl_seconds: timeout_seconds,
+                                    validation,
+                                });
                             state.sync_health.last_applied_event_seq =
                                 state.sync_health.last_applied_event_seq.saturating_add(1);
                             state.sync_health.cursor_last_advanced_seconds_ago = 0;
