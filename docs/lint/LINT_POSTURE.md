@@ -25,6 +25,7 @@ Temporary exceptions are allowed only when all of the following are true:
 - Track pre-existing debt in `scripts/lint/clippy-debt-allowlist.toml`.
 - Validate allowlist structure with `scripts/lint/clippy-debt-allowlist-check.sh`.
 - Enforce high-churn warning ceilings with `scripts/lint/clippy-warning-budget-check.sh`.
+- Validate repo-managed Agent Skills with `scripts/skills/validate_registry.sh`.
 
 ## Strict Production Lanes
 

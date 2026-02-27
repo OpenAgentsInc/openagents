@@ -25,5 +25,6 @@ Ownership boundaries are defined in [docs/OWNERSHIP.md](docs/OWNERSHIP.md).
 - Shared dependency hygiene is guarded by `scripts/lint/workspace-dependency-drift-check.sh`.
 - Architecture boundary hygiene is guarded by `scripts/lint/ownership-boundary-check.sh`.
 - Clean-on-touch clippy hygiene is guarded by `scripts/lint/touched-clippy-gate.sh` with tracked debt in `scripts/lint/clippy-debt-allowlist.toml`.
+- Repo-managed Agent Skills validation is guarded by `scripts/skills/validate_registry.sh`.
 
 For contributor guardrails and scope rules, see [AGENTS.md](AGENTS.md).
