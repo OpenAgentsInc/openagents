@@ -1,4 +1,4 @@
-use wgpui::{Component, InputEvent, PaintContext, Point, Quad, theme};
+use wgpui::{theme, Bounds, Component, InputEvent, PaintContext, Point, Quad};
 
 use crate::app_state::{
     AutopilotChatState, AutopilotMessageStatus, AutopilotRole, ChatPaneInputs, PaneKind,
@@ -6,12 +6,13 @@ use crate::app_state::{
 };
 use crate::pane_renderer::{paint_action_button, split_text_for_display};
 use crate::pane_system::{
-    chat_composer_input_bounds, chat_send_button_bounds, chat_thread_rail_bounds,
-    chat_transcript_bounds, pane_content_bounds,
+    chat_composer_input_bounds, chat_cycle_model_button_bounds, chat_refresh_threads_button_bounds,
+    chat_send_button_bounds, chat_thread_rail_bounds, chat_thread_row_bounds,
+    chat_transcript_bounds, chat_visible_thread_row_count, pane_content_bounds,
 };
 
 pub fn paint(
-    content_bounds: wgpui::Bounds,
+    content_bounds: Bounds,
     autopilot_chat: &AutopilotChatState,
     chat_inputs: &mut ChatPaneInputs,
     paint: &mut PaintContext,
@@ -20,6 +21,8 @@ pub fn paint(
     let transcript_bounds = chat_transcript_bounds(content_bounds);
     let composer_bounds = chat_composer_input_bounds(content_bounds);
     let send_bounds = chat_send_button_bounds(content_bounds);
+    let refresh_bounds = chat_refresh_threads_button_bounds(content_bounds);
+    let model_bounds = chat_cycle_model_button_bounds(content_bounds);
 
     paint.scene.draw_quad(
         Quad::new(rail_bounds)
@@ -40,24 +43,71 @@ pub fn paint(
         11.0,
         theme::text::MUTED,
     ));
-    let mut thread_y = rail_bounds.origin.y + 30.0;
-    for (idx, thread) in autopilot_chat.threads.iter().enumerate() {
-        let color = if idx == autopilot_chat.active_thread {
-            theme::text::PRIMARY
-        } else {
-            theme::text::MUTED
+    paint.scene.draw_text(paint.text.layout(
+        "Codex",
+        Point::new(
+            transcript_bounds.origin.x + 10.0,
+            transcript_bounds.origin.y + 14.0,
+        ),
+        11.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        &format!(
+            "status={} model={} effort={}",
+            autopilot_chat.connection_status,
+            autopilot_chat.current_model(),
+            autopilot_chat
+                .reasoning_effort
+                .as_deref()
+                .unwrap_or("default")
+        ),
+        Point::new(
+            transcript_bounds.origin.x + 10.0,
+            transcript_bounds.origin.y + 42.0,
+        ),
+        10.0,
+        theme::text::MUTED,
+    ));
+
+    paint_action_button(refresh_bounds, "Refresh", paint);
+    paint_action_button(model_bounds, "Cycle Model", paint);
+
+    let visible_threads = chat_visible_thread_row_count(autopilot_chat.threads.len());
+    for row_index in 0..visible_threads {
+        let row_bounds = chat_thread_row_bounds(content_bounds, row_index);
+        let Some(thread_id) = autopilot_chat.threads.get(row_index) else {
+            continue;
         };
-        paint.scene.draw_text(paint.text.layout(
-            thread,
-            Point::new(rail_bounds.origin.x + 10.0, thread_y),
-            11.0,
-            color,
+        let is_active = autopilot_chat
+            .active_thread_id
+            .as_deref()
+            .is_some_and(|active| active == thread_id);
+
+        paint.scene.draw_quad(
+            Quad::new(row_bounds)
+                .with_background(if is_active {
+                    theme::bg::ELEVATED.with_alpha(0.9)
+                } else {
+                    theme::bg::APP.with_alpha(0.6)
+                })
+                .with_border(theme::border::DEFAULT, 1.0)
+                .with_corner_radius(4.0),
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            thread_id,
+            Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 15.0),
+            10.0,
+            if is_active {
+                theme::accent::PRIMARY
+            } else {
+                theme::text::MUTED
+            },
         ));
-        thread_y += 16.0;
     }
 
-    let mut y = transcript_bounds.origin.y + 10.0;
-    for message in autopilot_chat.messages.iter().rev().take(12).rev() {
+    let mut y = transcript_bounds.origin.y + 70.0;
+    for message in autopilot_chat.messages.iter().rev().take(14).rev() {
         let status = match message.status {
             AutopilotMessageStatus::Queued => "queued",
             AutopilotMessageStatus::Running => "running",
@@ -66,7 +116,7 @@ pub fn paint(
         };
         let role = match message.role {
             AutopilotRole::User => "you",
-            AutopilotRole::Autopilot => "autopilot",
+            AutopilotRole::Codex => "codex",
         };
         let status_color = match message.status {
             AutopilotMessageStatus::Queued => theme::text::MUTED,
@@ -82,7 +132,16 @@ pub fn paint(
             status_color,
         ));
         y += 14.0;
-        for line in split_text_for_display(&message.content, 78) {
+
+        let content = if message.content.trim().is_empty()
+            && matches!(message.status, AutopilotMessageStatus::Queued)
+        {
+            "Waiting for Codex response...".to_string()
+        } else {
+            message.content.clone()
+        };
+
+        for line in split_text_for_display(&content, 78) {
             paint.scene.draw_text(paint.text.layout(
                 &line,
                 Point::new(transcript_bounds.origin.x + 10.0, y),

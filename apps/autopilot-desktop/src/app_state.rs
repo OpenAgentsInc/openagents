@@ -230,7 +230,7 @@ pub struct ChatPaneInputs {
 impl Default for ChatPaneInputs {
     fn default() -> Self {
         Self {
-            composer: TextInput::new().placeholder("Ask Autopilot to do work..."),
+            composer: TextInput::new().placeholder("Ask Codex to do work..."),
         }
     }
 }
@@ -238,7 +238,7 @@ impl Default for ChatPaneInputs {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AutopilotRole {
     User,
-    Autopilot,
+    Codex,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -254,47 +254,104 @@ pub struct AutopilotMessage {
     pub role: AutopilotRole,
     pub status: AutopilotMessageStatus,
     pub content: String,
-    pub status_due_at: Option<Instant>,
 }
 
 pub struct AutopilotChatState {
+    pub connection_status: String,
+    pub models: Vec<String>,
+    pub selected_model: usize,
+    pub reasoning_effort: Option<String>,
     pub threads: Vec<String>,
-    pub active_thread: usize,
+    pub active_thread_id: Option<String>,
     pub messages: Vec<AutopilotMessage>,
     pub next_message_id: u64,
+    pub active_turn_id: Option<String>,
+    pub active_assistant_message_id: Option<u64>,
     pub last_error: Option<String>,
 }
 
 impl Default for AutopilotChatState {
     fn default() -> Self {
         Self {
-            threads: vec!["Main".to_string()],
-            active_thread: 0,
+            connection_status: "starting".to_string(),
+            models: vec![
+                "gpt-5-codex".to_string(),
+                "gpt-5-codex-mini".to_string(),
+                "gpt-5-codex-low".to_string(),
+            ],
+            selected_model: 0,
+            reasoning_effort: Some("medium".to_string()),
+            threads: Vec::new(),
+            active_thread_id: None,
             messages: vec![AutopilotMessage {
                 id: 1,
-                role: AutopilotRole::Autopilot,
+                role: AutopilotRole::Codex,
                 status: AutopilotMessageStatus::Done,
-                content: "Autopilot ready. Ask for a task to start.".to_string(),
-                status_due_at: None,
+                content: "Codex lane connecting...".to_string(),
             }],
             next_message_id: 2,
+            active_turn_id: None,
+            active_assistant_message_id: None,
             last_error: None,
         }
     }
 }
 
 impl AutopilotChatState {
-    pub fn submit_prompt(&mut self, now: Instant, prompt: String) {
+    pub fn current_model(&self) -> &str {
+        self.models
+            .get(self.selected_model)
+            .map(String::as_str)
+            .unwrap_or("gpt-5-codex")
+    }
+
+    pub fn cycle_model(&mut self) {
+        if self.models.is_empty() {
+            return;
+        }
+        self.selected_model = (self.selected_model + 1) % self.models.len();
+        self.last_error = None;
+    }
+
+    pub fn set_connection_status(&mut self, status: impl Into<String>) {
+        self.connection_status = status.into();
+    }
+
+    pub fn set_threads(&mut self, threads: Vec<String>) {
+        self.threads = threads;
+        if let Some(active_id) = self.active_thread_id.as_ref() {
+            if !self.threads.iter().any(|thread_id| thread_id == active_id) {
+                self.active_thread_id = self.threads.first().cloned();
+            }
+        } else {
+            self.active_thread_id = self.threads.first().cloned();
+        }
+    }
+
+    pub fn select_thread_by_index(&mut self, index: usize) -> Option<String> {
+        let thread_id = self.threads.get(index).cloned()?;
+        self.active_thread_id = Some(thread_id.clone());
+        self.last_error = None;
+        Some(thread_id)
+    }
+
+    pub fn ensure_thread(&mut self, thread_id: String) {
+        if !self.threads.iter().any(|existing| existing == &thread_id) {
+            self.threads.insert(0, thread_id.clone());
+        }
+        self.active_thread_id = Some(thread_id);
+    }
+
+    pub fn submit_prompt(&mut self, prompt: String) {
         self.last_error = None;
         let trimmed = prompt.trim();
         if trimmed.is_empty() {
             self.last_error = Some("Prompt cannot be empty".to_string());
             self.messages.push(AutopilotMessage {
                 id: self.next_message_id,
-                role: AutopilotRole::Autopilot,
+                role: AutopilotRole::Codex,
                 status: AutopilotMessageStatus::Error,
                 content: "Cannot run empty prompt".to_string(),
-                status_due_at: None,
             });
             self.next_message_id = self.next_message_id.saturating_add(1);
             return;
@@ -305,52 +362,89 @@ impl AutopilotChatState {
             role: AutopilotRole::User,
             status: AutopilotMessageStatus::Done,
             content: trimmed.to_string(),
-            status_due_at: None,
         });
         self.next_message_id = self.next_message_id.saturating_add(1);
 
+        let assistant_message_id = self.next_message_id;
         self.messages.push(AutopilotMessage {
-            id: self.next_message_id,
-            role: AutopilotRole::Autopilot,
+            id: assistant_message_id,
+            role: AutopilotRole::Codex,
             status: AutopilotMessageStatus::Queued,
-            content: format!("Queued local execution for: {trimmed}"),
-            status_due_at: Some(now + Duration::from_millis(280)),
+            content: String::new(),
         });
         self.next_message_id = self.next_message_id.saturating_add(1);
+        self.active_assistant_message_id = Some(assistant_message_id);
     }
 
-    pub fn tick(&mut self, now: Instant) -> bool {
-        let mut changed = false;
-        for message in &mut self.messages {
-            match message.status {
-                AutopilotMessageStatus::Queued => {
-                    if message.status_due_at.is_some_and(|due| now >= due) {
-                        message.status = AutopilotMessageStatus::Running;
-                        message.status_due_at = Some(now + Duration::from_millis(620));
-                        message.content = message.content.replacen(
-                            "Queued local execution",
-                            "Running local execution",
-                            1,
-                        );
-                        changed = true;
-                    }
-                }
-                AutopilotMessageStatus::Running => {
-                    if message.status_due_at.is_some_and(|due| now >= due) {
-                        message.status = AutopilotMessageStatus::Done;
-                        message.status_due_at = None;
-                        message.content = message.content.replacen(
-                            "Running local execution",
-                            "Completed local execution",
-                            1,
-                        );
-                        changed = true;
-                    }
-                }
-                AutopilotMessageStatus::Done | AutopilotMessageStatus::Error => {}
+    pub fn mark_turn_started(&mut self, turn_id: String) {
+        self.active_turn_id = Some(turn_id);
+        if let Some(assistant_message_id) = self.active_assistant_message_id
+            && let Some(message) = self
+                .messages
+                .iter_mut()
+                .find(|message| message.id == assistant_message_id)
+        {
+            message.status = AutopilotMessageStatus::Running;
+        }
+    }
+
+    pub fn append_turn_delta(&mut self, delta: &str) {
+        if let Some(assistant_message_id) = self.active_assistant_message_id
+            && let Some(message) = self
+                .messages
+                .iter_mut()
+                .find(|message| message.id == assistant_message_id)
+        {
+            message.status = AutopilotMessageStatus::Running;
+            message.content.push_str(delta);
+        }
+    }
+
+    pub fn mark_turn_completed(&mut self) {
+        if let Some(assistant_message_id) = self.active_assistant_message_id
+            && let Some(message) = self
+                .messages
+                .iter_mut()
+                .find(|message| message.id == assistant_message_id)
+        {
+            message.status = AutopilotMessageStatus::Done;
+        }
+        self.active_turn_id = None;
+        self.active_assistant_message_id = None;
+    }
+
+    pub fn mark_turn_error(&mut self, error: impl Into<String>) {
+        let error = error.into();
+        if let Some(assistant_message_id) = self.active_assistant_message_id
+            && let Some(message) = self
+                .messages
+                .iter_mut()
+                .find(|message| message.id == assistant_message_id)
+        {
+            message.status = AutopilotMessageStatus::Error;
+            if message.content.trim().is_empty() {
+                message.content = error.clone();
             }
         }
-        changed
+        self.last_error = Some(error);
+        self.active_turn_id = None;
+        self.active_assistant_message_id = None;
+    }
+
+    pub fn mark_pending_turn_dispatch_failed(&mut self, error: impl Into<String>) {
+        let error = error.into();
+        if let Some(assistant_message_id) = self.active_assistant_message_id
+            && let Some(message) = self
+                .messages
+                .iter_mut()
+                .find(|message| message.id == assistant_message_id)
+        {
+            message.status = AutopilotMessageStatus::Error;
+            message.content = error.clone();
+        }
+        self.last_error = Some(error);
+        self.active_turn_id = None;
+        self.active_assistant_message_id = None;
     }
 
     pub fn has_pending_messages(&self) -> bool {
@@ -2672,25 +2766,31 @@ mod tests {
     }
 
     #[test]
-    fn chat_state_progresses_queued_to_done() {
+    fn chat_state_tracks_codex_turn_lifecycle() {
         let mut chat = AutopilotChatState::default();
-        let now = std::time::Instant::now();
-        chat.submit_prompt(now, "ping".to_string());
+        chat.ensure_thread("thread-1".to_string());
+        chat.submit_prompt("ping".to_string());
         assert!(
             chat.messages
                 .iter()
                 .any(|message| message.status == AutopilotMessageStatus::Queued)
         );
 
-        assert!(chat.tick(now + std::time::Duration::from_millis(300)));
+        chat.mark_turn_started("turn-1".to_string());
         assert!(
             chat.messages
                 .iter()
                 .any(|message| message.status == AutopilotMessageStatus::Running)
         );
 
-        assert!(chat.tick(now + std::time::Duration::from_secs(2)));
+        chat.append_turn_delta("pong");
+        chat.mark_turn_completed();
         assert!(!chat.has_pending_messages());
+        assert!(
+            chat.messages
+                .iter()
+                .any(|message| message.content.contains("pong"))
+        );
     }
 
     #[test]

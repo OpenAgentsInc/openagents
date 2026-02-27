@@ -1,6 +1,7 @@
 use nostr::regenerate_identity;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use codex_client::{ThreadListParams, ThreadResumeParams, TurnStartParams, UserInput};
 use wgpui::clipboard::copy_to_clipboard;
 use wgpui::{Bounds, Component, InputEvent, Key, Modifiers, MouseButton, NamedKey, Point};
 use winit::event::{ElementState, WindowEvent};
@@ -54,9 +55,6 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
         state.window.request_redraw();
     }
     let now = std::time::Instant::now();
-    if state.autopilot_chat.tick(now) {
-        state.window.request_redraw();
-    }
     refresh_earnings_scoreboard(state, now);
     refresh_sync_health(state);
 
@@ -410,6 +408,9 @@ fn run_pane_hit_action(state: &mut crate::app_state::RenderState, action: PaneHi
             true
         }
         PaneHitAction::ChatSend => run_chat_submit_action(state),
+        PaneHitAction::ChatRefreshThreads => run_chat_refresh_threads_action(state),
+        PaneHitAction::ChatCycleModel => run_chat_cycle_model_action(state),
+        PaneHitAction::ChatSelectThread(index) => run_chat_select_thread_action(state, index),
         PaneHitAction::GoOnlineToggle => {
             let wants_online = matches!(
                 state.provider_runtime.mode,
@@ -739,11 +740,66 @@ fn run_chat_submit_action(state: &mut crate::app_state::RenderState) -> bool {
         state.autopilot_chat.last_error = Some("Prompt cannot be empty".to_string());
         return true;
     }
+    let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() else {
+        state.autopilot_chat.last_error =
+            Some("No active thread yet. Wait for Codex lane readiness.".to_string());
+        return true;
+    };
 
     state.chat_inputs.composer.set_value(String::new());
-    state
-        .autopilot_chat
-        .submit_prompt(std::time::Instant::now(), prompt);
+    state.autopilot_chat.submit_prompt(prompt.clone());
+
+    let command = crate::codex_lane::CodexLaneCommand::TurnStart(TurnStartParams {
+        thread_id,
+        input: vec![UserInput::Text { text: prompt }],
+        model: Some(state.autopilot_chat.current_model().to_string()),
+        effort: None,
+        summary: None,
+        approval_policy: None,
+        sandbox_policy: None,
+        cwd: None,
+    });
+
+    if let Err(error) = state.queue_codex_command(command) {
+        state.autopilot_chat.mark_pending_turn_dispatch_failed(error);
+    }
+    true
+}
+
+fn run_chat_refresh_threads_action(state: &mut crate::app_state::RenderState) -> bool {
+    let command = crate::codex_lane::CodexLaneCommand::ThreadList(ThreadListParams::default());
+    if let Err(error) = state.queue_codex_command(command) {
+        state.autopilot_chat.last_error = Some(error);
+    } else {
+        state.autopilot_chat.last_error = None;
+    }
+    true
+}
+
+fn run_chat_cycle_model_action(state: &mut crate::app_state::RenderState) -> bool {
+    state.autopilot_chat.cycle_model();
+    true
+}
+
+fn run_chat_select_thread_action(
+    state: &mut crate::app_state::RenderState,
+    index: usize,
+) -> bool {
+    let Some(thread_id) = state.autopilot_chat.select_thread_by_index(index) else {
+        return false;
+    };
+
+    let command = crate::codex_lane::CodexLaneCommand::ThreadResume(ThreadResumeParams {
+        thread_id,
+        model: Some(state.autopilot_chat.current_model().to_string()),
+        model_provider: None,
+        cwd: None,
+        approval_policy: None,
+        sandbox: None,
+    });
+    if let Err(error) = state.queue_codex_command(command) {
+        state.autopilot_chat.last_error = Some(error);
+    }
     true
 }
 
@@ -1447,7 +1503,7 @@ fn build_activity_feed_snapshot_events(
     for message in state.autopilot_chat.messages.iter().rev().take(6) {
         let role = match message.role {
             crate::app_state::AutopilotRole::User => "user",
-            crate::app_state::AutopilotRole::Autopilot => "autopilot",
+            crate::app_state::AutopilotRole::Codex => "codex",
         };
         let status = match message.status {
             crate::app_state::AutopilotMessageStatus::Queued => "queued",

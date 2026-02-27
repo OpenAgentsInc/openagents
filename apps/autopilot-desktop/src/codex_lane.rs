@@ -133,6 +133,7 @@ pub struct CodexLaneCommandResponse {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub enum CodexLaneCommand {
     ThreadStart(ThreadStartParams),
     ThreadResume(ThreadResumeParams),
@@ -161,6 +162,12 @@ impl CodexLaneCommand {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CodexLaneNotification {
+    ThreadListLoaded {
+        thread_ids: Vec<String>,
+    },
+    ThreadSelected {
+        thread_id: String,
+    },
     ThreadStarted {
         thread_id: String,
     },
@@ -305,6 +312,11 @@ struct CodexLaneState {
     channels: Option<AppServerChannels>,
 }
 
+struct CodexCommandEffect {
+    active_thread_id: Option<String>,
+    notification: Option<CodexLaneNotification>,
+}
+
 impl CodexLaneState {
     fn new() -> Self {
         Self {
@@ -387,7 +399,17 @@ impl CodexLaneState {
                 let started = runtime.block_on(client.thread_start(thread_start));
                 match started {
                     Ok(response) => {
-                        self.snapshot.active_thread_id = Some(response.thread.id);
+                        let thread_id = response.thread.id;
+                        self.snapshot.active_thread_id = Some(thread_id.clone());
+                        let _ =
+                            update_tx.send(CodexLaneUpdate::Notification(
+                                CodexLaneNotification::ThreadSelected { thread_id: thread_id.clone() },
+                            ));
+                        let _ = update_tx.send(CodexLaneUpdate::Notification(
+                            CodexLaneNotification::ThreadListLoaded {
+                                thread_ids: vec![thread_id],
+                            },
+                        ));
                         self.set_ready(update_tx, "Codex lane ready");
                     }
                     Err(error) => {
@@ -425,10 +447,13 @@ impl CodexLaneState {
         };
 
         match result {
-            Ok(active_thread_id) => {
-                if let Some(thread_id) = active_thread_id {
+            Ok(effect) => {
+                if let Some(thread_id) = effect.active_thread_id {
                     self.snapshot.active_thread_id = Some(thread_id);
                     self.publish_snapshot(update_tx);
+                }
+                if let Some(notification) = effect.notification {
+                    let _ = update_tx.send(CodexLaneUpdate::Notification(notification));
                 }
             }
             Err(error) => {
@@ -444,8 +469,10 @@ impl CodexLaneState {
                     response.status = CodexLaneCommandStatus::Retryable;
                 } else if self.client.is_none() {
                     response.status = CodexLaneCommandStatus::Retryable;
+                    self.set_error(update_tx, format!("Codex lane unavailable: {message}"), false);
                 } else {
                     response.status = CodexLaneCommandStatus::Rejected;
+                    self.set_error(update_tx, format!("Codex lane command failed: {message}"), false);
                 }
                 response.error = Some(message);
             }
@@ -458,39 +485,67 @@ impl CodexLaneState {
         runtime: &Runtime,
         client: &AppServerClient,
         command: CodexLaneCommand,
-    ) -> Result<Option<String>> {
+    ) -> Result<CodexCommandEffect> {
         match command {
             CodexLaneCommand::ThreadStart(params) => {
                 let response = runtime.block_on(client.thread_start(params))?;
-                Ok(Some(response.thread.id))
+                let thread_id = response.thread.id;
+                Ok(CodexCommandEffect {
+                    active_thread_id: Some(thread_id.clone()),
+                    notification: Some(CodexLaneNotification::ThreadSelected { thread_id }),
+                })
             }
             CodexLaneCommand::ThreadResume(params) => {
                 let response = runtime.block_on(client.thread_resume(params))?;
-                Ok(Some(response.thread.id))
+                let thread_id = response.thread.id;
+                Ok(CodexCommandEffect {
+                    active_thread_id: Some(thread_id.clone()),
+                    notification: Some(CodexLaneNotification::ThreadSelected { thread_id }),
+                })
             }
             CodexLaneCommand::ThreadRead(params) => {
                 let response = runtime.block_on(client.thread_read(params))?;
-                Ok(Some(response.thread.id))
+                let thread_id = response.thread.id;
+                Ok(CodexCommandEffect {
+                    active_thread_id: Some(thread_id.clone()),
+                    notification: Some(CodexLaneNotification::ThreadSelected { thread_id }),
+                })
             }
             CodexLaneCommand::ThreadList(params) => {
-                let _ = runtime.block_on(client.thread_list(params))?;
-                Ok(None)
+                let response = runtime.block_on(client.thread_list(params))?;
+                let thread_ids = response.data.into_iter().map(|thread| thread.id).collect();
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::ThreadListLoaded { thread_ids }),
+                })
             }
             CodexLaneCommand::TurnStart(params) => {
                 let _ = runtime.block_on(client.turn_start(params))?;
-                Ok(None)
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: None,
+                })
             }
             CodexLaneCommand::TurnInterrupt(params) => {
                 let _ = runtime.block_on(client.turn_interrupt(params))?;
-                Ok(None)
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: None,
+                })
             }
             CodexLaneCommand::SkillsList(params) => {
                 let _ = runtime.block_on(client.skills_list(params))?;
-                Ok(None)
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: None,
+                })
             }
             CodexLaneCommand::SkillsConfigWrite(params) => {
                 let _ = runtime.block_on(client.skills_config_write(params))?;
-                Ok(None)
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: None,
+                })
             }
         }
     }
@@ -698,6 +753,10 @@ fn is_disconnect_error(error: &anyhow::Error) -> bool {
         || text.contains("channel closed")
         || text.contains("broken pipe")
         || text.contains("transport endpoint is not connected")
+        || text.contains("request canceled")
+        || text.contains("app-server write failed")
+        || text.contains("app-server request canceled")
+        || text.contains("app-server connection closed")
 }
 
 #[cfg(test)]
@@ -861,10 +920,24 @@ mod tests {
             snapshot.lifecycle == CodexLaneLifecycle::Ready
         });
 
+        let enqueue_result = worker.enqueue(
+            7,
+            CodexLaneCommand::ThreadList(ThreadListParams::default()),
+        );
+        assert!(enqueue_result.is_ok());
+
         let disconnected = wait_for_snapshot(&mut worker, Duration::from_secs(2), |snapshot| {
             snapshot.lifecycle == CodexLaneLifecycle::Disconnected
+                || snapshot.lifecycle == CodexLaneLifecycle::Error
         });
-        assert_eq!(disconnected.lifecycle, CodexLaneLifecycle::Disconnected);
+        assert!(
+            matches!(
+                disconnected.lifecycle,
+                CodexLaneLifecycle::Disconnected | CodexLaneLifecycle::Error
+            ),
+            "expected disconnected/error lifecycle, got {:?}",
+            disconnected.lifecycle
+        );
 
         worker.shutdown();
         let _ = server.join();

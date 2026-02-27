@@ -24,6 +24,11 @@ const CHAT_PAD: f32 = 12.0;
 const CHAT_THREAD_RAIL_WIDTH: f32 = 170.0;
 const CHAT_COMPOSER_HEIGHT: f32 = 30.0;
 const CHAT_SEND_WIDTH: f32 = 92.0;
+const CHAT_HEADER_BUTTON_HEIGHT: f32 = 26.0;
+const CHAT_HEADER_BUTTON_WIDTH: f32 = 110.0;
+const CHAT_THREAD_ROW_HEIGHT: f32 = 24.0;
+const CHAT_THREAD_ROW_GAP: f32 = 4.0;
+const CHAT_MAX_THREAD_ROWS: usize = 10;
 const JOB_INBOX_BUTTON_HEIGHT: f32 = 30.0;
 const JOB_INBOX_BUTTON_GAP: f32 = 10.0;
 const JOB_INBOX_ROW_GAP: f32 = 6.0;
@@ -192,6 +197,9 @@ pub enum PaneHitAction {
     NostrReveal,
     NostrCopySecret,
     ChatSend,
+    ChatRefreshThreads,
+    ChatCycleModel,
+    ChatSelectThread(usize),
     GoOnlineToggle,
     EarningsScoreboard(EarningsScoreboardPaneAction),
     RelayConnections(RelayConnectionsPaneAction),
@@ -622,6 +630,42 @@ pub fn chat_thread_rail_bounds(content_bounds: Bounds) -> Bounds {
         CHAT_THREAD_RAIL_WIDTH,
         (content_bounds.size.height - CHAT_PAD * 2.0).max(120.0),
     )
+}
+
+pub fn chat_refresh_threads_button_bounds(content_bounds: Bounds) -> Bounds {
+    let rail = chat_thread_rail_bounds(content_bounds);
+    Bounds::new(
+        rail.origin.x + 10.0,
+        rail.origin.y + 28.0,
+        CHAT_HEADER_BUTTON_WIDTH,
+        CHAT_HEADER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_cycle_model_button_bounds(content_bounds: Bounds) -> Bounds {
+    let transcript = chat_transcript_bounds(content_bounds);
+    Bounds::new(
+        transcript.origin.x + 10.0,
+        transcript.origin.y + 28.0,
+        CHAT_HEADER_BUTTON_WIDTH,
+        CHAT_HEADER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_thread_row_bounds(content_bounds: Bounds, index: usize) -> Bounds {
+    let rail = chat_thread_rail_bounds(content_bounds);
+    let refresh = chat_refresh_threads_button_bounds(content_bounds);
+    let y = refresh.max_y() + 10.0 + index as f32 * (CHAT_THREAD_ROW_HEIGHT + CHAT_THREAD_ROW_GAP);
+    Bounds::new(
+        rail.origin.x + 10.0,
+        y,
+        (rail.size.width - 20.0).max(80.0),
+        CHAT_THREAD_ROW_HEIGHT,
+    )
+}
+
+pub fn chat_visible_thread_row_count(total_threads: usize) -> usize {
+    total_threads.min(CHAT_MAX_THREAD_ROWS)
 }
 
 pub fn chat_send_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -1430,10 +1474,21 @@ fn pane_hit_action_for_pane(
         }
         PaneKind::AutopilotChat => {
             if chat_send_button_bounds(content_bounds).contains(point) {
-                Some(PaneHitAction::ChatSend)
-            } else {
-                None
+                return Some(PaneHitAction::ChatSend);
             }
+            if chat_refresh_threads_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatRefreshThreads);
+            }
+            if chat_cycle_model_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatCycleModel);
+            }
+            let visible_threads = chat_visible_thread_row_count(state.autopilot_chat.threads.len());
+            for row_index in 0..visible_threads {
+                if chat_thread_row_bounds(content_bounds, row_index).contains(point) {
+                    return Some(PaneHitAction::ChatSelectThread(row_index));
+                }
+            }
+            None
         }
         PaneKind::GoOnline => {
             if go_online_toggle_button_bounds(content_bounds).contains(point) {
