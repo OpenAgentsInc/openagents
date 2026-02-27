@@ -8,6 +8,10 @@ Agent Skill Registry
 
 This NIP defines the registry and trust substrate for agent skills on Nostr.
 
+Sovereign agents improve by acquiring new capabilities—skills—from marketplaces and publishers they may not know. Without a shared notion of *what* a skill is, *who* published it, and *whether* it is safe to load, agents cannot safely adopt new capabilities and marketplaces cannot interoperate. NIP-SKL provides canonical skill identity, versioned manifests, and attestation/revocation semantics so that runtimes, marketplaces, and credit systems all refer to the same skill and can evaluate trust consistently.
+
+This NIP is designed to **fit alongside** NIP-SA (Sovereign Agents) and NIP-AC (Agent Credit): NIP-SA defines the fulfillment layer (license issuance, encrypted delivery, execution lifecycle); NIP-AC defines outcome-scoped credit for paying for skills and compute. SKL is the **identity and trust layer** both depend on—the registry that answers “what is this skill?” and “is it safe to load?” without tying the answer to a single vendor or ecosystem.
+
 ## Abstract
 
 Core responsibilities are:
