@@ -75,6 +75,12 @@ pub const RESTRICTED_PREFIX: &str = "restricted";
 /// Maximum acceptable time difference for authentication events (10 minutes in seconds)
 pub const MAX_TIME_DIFF: u64 = 600;
 
+fn unix_now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs())
+}
+
 /// Errors that can occur during NIP-42 operations.
 #[derive(Debug, Error)]
 pub enum Nip42Error {
@@ -216,10 +222,7 @@ pub fn create_auth_event_tags(relay_url: &str, challenge: &str) -> Vec<Vec<Strin
 /// ```
 pub fn create_auth_event_template(relay_url: &str, challenge: &str) -> EventTemplate {
     EventTemplate {
-        created_at: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs(),
+        created_at: unix_now_secs(),
         kind: AUTH_KIND,
         tags: create_auth_event_tags(relay_url, challenge),
         content: String::new(),
@@ -301,12 +304,7 @@ pub fn validate_auth_event(
     }
 
     // Check timestamp (must be within ~10 minutes)
-    let now = current_time.unwrap_or_else(|| {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs()
-    });
+    let now = current_time.unwrap_or_else(unix_now_secs);
 
     let time_diff = event.created_at.abs_diff(now);
 

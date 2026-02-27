@@ -46,12 +46,10 @@ pub fn pane_specs() -> &'static [PaneSpec] {
 }
 
 pub fn pane_spec(kind: PaneKind) -> &'static PaneSpec {
-    for spec in pane_specs() {
-        if spec.kind == kind {
-            return spec;
-        }
-    }
-    panic!("missing pane spec for kind {kind:?}");
+    pane_specs()
+        .iter()
+        .find(|spec| spec.kind == kind)
+        .unwrap_or(&PANE_SPECS[0])
 }
 
 pub fn pane_spec_by_command_id(command_id: &str) -> Option<&'static PaneSpec> {

@@ -258,13 +258,8 @@ impl HandlerInfo {
             .tags
             .iter()
             .find(|t| t.len() >= 2 && t[0] == "price")
-            .and_then(|t| t[1].parse::<u64>().ok())
-            .map(|amount| {
-                let tag = event
-                    .tags
-                    .iter()
-                    .find(|t| t.len() >= 2 && t[0] == "price")
-                    .unwrap();
+            .and_then(|tag| {
+                let amount = tag[1].parse::<u64>().ok()?;
                 let mut pricing = PricingInfo::new(amount);
                 if tag.len() >= 3 {
                     pricing = pricing.with_model(tag[2].clone());
@@ -272,7 +267,7 @@ impl HandlerInfo {
                 if tag.len() >= 4 {
                     pricing = pricing.with_currency(tag[3].clone());
                 }
-                pricing
+                Some(pricing)
             });
 
         // Parse metadata from content (JSON)

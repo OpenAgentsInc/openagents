@@ -16,6 +16,12 @@ pub const P2P_ORDER_KIND: u16 = 38383;
 /// Document type tag value
 pub const DOCUMENT_TYPE: &str = "order";
 
+fn unix_now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs())
+}
+
 /// Errors that can occur during NIP-69 operations
 #[derive(Debug, Error)]
 pub enum Nip69Error {
@@ -497,10 +503,7 @@ pub struct P2POrderBuilder {
 impl P2POrderBuilder {
     /// Create a new order builder
     pub fn new(order_id: impl Into<String>) -> Self {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        let now = unix_now_secs();
 
         Self {
             order_id: order_id.into(),
