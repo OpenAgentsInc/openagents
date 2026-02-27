@@ -1,8 +1,9 @@
 use std::path::PathBuf;
 
 use codex_client::{
-    AppServerClient, SkillScope, SkillsConfigWriteParams, SkillsListExtraRootsForCwd,
-    SkillsListParams, TurnStartParams, UserInput,
+    AppServerClient, ClientInfo, InitializeCapabilities, InitializeParams, ModelListParams,
+    SkillScope, SkillsConfigWriteParams, SkillsListExtraRootsForCwd, SkillsListParams,
+    ThreadListParams, ThreadSortKey, ThreadSourceKind, TurnStartParams, UserInput,
 };
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -39,6 +40,66 @@ fn user_input_skill_and_mention_round_trip() -> anyhow::Result<()> {
         _ => return Err(anyhow::anyhow!("expected mention variant")),
     }
 
+    Ok(())
+}
+
+#[test]
+fn initialize_params_serialize_capabilities() -> anyhow::Result<()> {
+    let params = InitializeParams {
+        client_info: ClientInfo {
+            name: "openagents".to_string(),
+            title: Some("OpenAgents".to_string()),
+            version: "0.1.0".to_string(),
+        },
+        capabilities: Some(InitializeCapabilities {
+            experimental_api: true,
+            opt_out_notification_methods: Some(vec![
+                "item/agentMessage/delta".to_string(),
+                "item/reasoning/textDelta".to_string(),
+            ]),
+        }),
+    };
+
+    let value = serde_json::to_value(params)?;
+    assert_eq!(value["capabilities"]["experimentalApi"], Value::Bool(true));
+    assert_eq!(
+        value["capabilities"]["optOutNotificationMethods"],
+        json!(["item/agentMessage/delta", "item/reasoning/textDelta"])
+    );
+    Ok(())
+}
+
+#[test]
+fn thread_list_and_model_list_params_include_new_filters() -> anyhow::Result<()> {
+    let thread_list = ThreadListParams {
+        cursor: Some("cursor-1".to_string()),
+        limit: Some(25),
+        sort_key: Some(ThreadSortKey::UpdatedAt),
+        model_providers: Some(vec!["openai".to_string()]),
+        source_kinds: Some(vec![ThreadSourceKind::AppServer]),
+        archived: Some(true),
+        cwd: Some("/repo".to_string()),
+        search_term: Some("refactor".to_string()),
+    };
+    let thread_value = serde_json::to_value(thread_list)?;
+    assert_eq!(
+        thread_value["sortKey"],
+        Value::String("updated_at".to_string())
+    );
+    assert_eq!(thread_value["sourceKinds"], json!(["appServer"]));
+    assert_eq!(thread_value["archived"], Value::Bool(true));
+    assert_eq!(
+        thread_value["searchTerm"],
+        Value::String("refactor".to_string())
+    );
+
+    let model_list = ModelListParams {
+        cursor: Some("cursor-2".to_string()),
+        limit: Some(10),
+        include_hidden: Some(true),
+    };
+    let model_value = serde_json::to_value(model_list)?;
+    assert_eq!(model_value["includeHidden"], Value::Bool(true));
     Ok(())
 }
 
@@ -288,18 +349,22 @@ async fn turn_start_request_includes_skill_input() -> anyhow::Result<()> {
             input: vec![
                 UserInput::Text {
                     text: "run integration".to_string(),
+                    text_elements: Vec::new(),
                 },
                 UserInput::Skill {
                     name: "mezo".to_string(),
                     path: PathBuf::from("/repo/skills/mezo/SKILL.md"),
                 },
             ],
+            cwd: None,
+            approval_policy: None,
+            sandbox_policy: None,
             model: None,
             effort: None,
             summary: None,
-            approval_policy: None,
-            sandbox_policy: None,
-            cwd: None,
+            personality: None,
+            output_schema: None,
+            collaboration_mode: None,
         })
         .await?;
 

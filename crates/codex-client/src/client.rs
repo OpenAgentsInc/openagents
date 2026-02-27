@@ -17,6 +17,110 @@ use tokio::sync::{Mutex, mpsc, oneshot};
 
 use crate::types::*;
 
+pub const SUPPORTED_CLIENT_REQUEST_METHODS: &[&str] = &[
+    "initialize",
+    "thread/start",
+    "thread/resume",
+    "thread/fork",
+    "thread/archive",
+    "thread/unsubscribe",
+    "thread/name/set",
+    "thread/unarchive",
+    "thread/compact/start",
+    "thread/backgroundTerminals/clean",
+    "thread/rollback",
+    "thread/list",
+    "thread/loaded/list",
+    "thread/read",
+    "skills/list",
+    "skills/remote/list",
+    "skills/remote/export",
+    "app/list",
+    "skills/config/write",
+    "turn/start",
+    "turn/steer",
+    "turn/interrupt",
+    "thread/realtime/start",
+    "thread/realtime/appendAudio",
+    "thread/realtime/appendText",
+    "thread/realtime/stop",
+    "review/start",
+    "model/list",
+    "experimentalFeature/list",
+    "collaborationMode/list",
+    "mcpServer/oauth/login",
+    "config/mcpServer/reload",
+    "mcpServerStatus/list",
+    "windowsSandbox/setupStart",
+    "account/login/start",
+    "account/login/cancel",
+    "account/logout",
+    "account/rateLimits/read",
+    "feedback/upload",
+    "command/exec",
+    "config/read",
+    "externalAgentConfig/detect",
+    "externalAgentConfig/import",
+    "config/value/write",
+    "config/batchWrite",
+    "configRequirements/read",
+    "account/read",
+    "mock/experimentalMethod",
+];
+
+pub const SUPPORTED_SERVER_NOTIFICATION_METHODS: &[&str] = &[
+    "error",
+    "thread/started",
+    "thread/status/changed",
+    "thread/archived",
+    "thread/unarchived",
+    "thread/closed",
+    "thread/name/updated",
+    "thread/tokenUsage/updated",
+    "turn/started",
+    "turn/completed",
+    "turn/diff/updated",
+    "turn/plan/updated",
+    "item/started",
+    "item/completed",
+    "rawResponseItem/completed",
+    "item/agentMessage/delta",
+    "item/plan/delta",
+    "item/commandExecution/outputDelta",
+    "item/commandExecution/terminalInteraction",
+    "item/fileChange/outputDelta",
+    "item/mcpToolCall/progress",
+    "mcpServer/oauthLogin/completed",
+    "account/updated",
+    "account/rateLimits/updated",
+    "account/login/completed",
+    "app/list/updated",
+    "item/reasoning/summaryTextDelta",
+    "item/reasoning/summaryPartAdded",
+    "item/reasoning/textDelta",
+    "thread/compacted",
+    "model/rerouted",
+    "deprecationNotice",
+    "configWarning",
+    "fuzzyFileSearch/sessionUpdated",
+    "fuzzyFileSearch/sessionCompleted",
+    "thread/realtime/started",
+    "thread/realtime/itemAdded",
+    "thread/realtime/outputAudio/delta",
+    "thread/realtime/error",
+    "thread/realtime/closed",
+    "windows/worldWritableWarning",
+    "windowsSandbox/setupCompleted",
+];
+
+pub const SUPPORTED_SERVER_REQUEST_METHODS: &[&str] = &[
+    "item/commandExecution/requestApproval",
+    "item/fileChange/requestApproval",
+    "item/tool/requestUserInput",
+    "item/tool/call",
+    "account/chatgptAuthTokens/refresh",
+];
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum AppServerRequestId {
@@ -433,8 +537,11 @@ impl AppServerClient {
         )
     }
 
-    pub async fn initialize(&self, info: ClientInfo) -> Result<InitializeResponse> {
-        let params = InitializeParams { client_info: info };
+    pub async fn initialize<T>(&self, params: T) -> Result<InitializeResponse>
+    where
+        T: Into<InitializeParams>,
+    {
+        let params = params.into();
         let response = self.transport.request("initialize", Some(&params)).await;
         match response {
             Ok(result) => {
@@ -462,6 +569,10 @@ impl AppServerClient {
         self.transport.request("thread/resume", Some(&params)).await
     }
 
+    pub async fn thread_fork(&self, params: ThreadForkParams) -> Result<ThreadForkResponse> {
+        self.transport.request("thread/fork", Some(&params)).await
+    }
+
     pub async fn thread_read(&self, params: ThreadReadParams) -> Result<ThreadReadResponse> {
         self.transport.request("thread/read", Some(&params)).await
     }
@@ -479,8 +590,89 @@ impl AppServerClient {
         self.transport.request("thread/list", Some(&params)).await
     }
 
+    pub async fn thread_loaded_list(
+        &self,
+        params: ThreadLoadedListParams,
+    ) -> Result<ThreadLoadedListResponse> {
+        self.transport
+            .request("thread/loaded/list", Some(&params))
+            .await
+    }
+
+    pub async fn thread_unsubscribe(
+        &self,
+        params: ThreadUnsubscribeParams,
+    ) -> Result<ThreadUnsubscribeResponse> {
+        self.transport
+            .request("thread/unsubscribe", Some(&params))
+            .await
+    }
+
+    pub async fn thread_name_set(
+        &self,
+        params: ThreadSetNameParams,
+    ) -> Result<ThreadSetNameResponse> {
+        self.transport
+            .request("thread/name/set", Some(&params))
+            .await
+    }
+
+    pub async fn thread_unarchive(
+        &self,
+        params: ThreadUnarchiveParams,
+    ) -> Result<ThreadUnarchiveResponse> {
+        self.transport
+            .request("thread/unarchive", Some(&params))
+            .await
+    }
+
+    pub async fn thread_compact_start(
+        &self,
+        params: ThreadCompactStartParams,
+    ) -> Result<ThreadCompactStartResponse> {
+        self.transport
+            .request("thread/compact/start", Some(&params))
+            .await
+    }
+
+    pub async fn thread_background_terminals_clean(
+        &self,
+        params: ThreadBackgroundTerminalsCleanParams,
+    ) -> Result<ThreadBackgroundTerminalsCleanResponse> {
+        self.transport
+            .request("thread/backgroundTerminals/clean", Some(&params))
+            .await
+    }
+
+    pub async fn thread_rollback(
+        &self,
+        params: ThreadRollbackParams,
+    ) -> Result<ThreadRollbackResponse> {
+        self.transport
+            .request("thread/rollback", Some(&params))
+            .await
+    }
+
     pub async fn model_list(&self, params: ModelListParams) -> Result<ModelListResponse> {
         self.transport.request("model/list", Some(&params)).await
+    }
+
+    pub async fn collaboration_mode_list(
+        &self,
+        params: CollaborationModeListParams,
+    ) -> Result<CollaborationModeListResponse> {
+        self.transport
+            .request("collaborationMode/list", Some(&params))
+            .await
+    }
+
+    pub async fn experimental_feature_list(
+        &self,
+        params: ExperimentalFeatureListParams,
+    ) -> Result<ExperimentalFeatureListResponse> {
+        self.transport
+            .request("experimentalFeature/list", Some(&params))
+            .await
     }
 
     pub async fn config_read(&self, params: ConfigReadParams) -> Result<ConfigReadResponse> {
@@ -503,6 +695,39 @@ impl AppServerClient {
     ) -> Result<ConfigWriteResponse> {
         self.transport
             .request("config/batchWrite", Some(&params))
+            .await
+    }
+
+    pub async fn config_requirements_read(&self) -> Result<ConfigRequirementsReadResponse> {
+        self.transport
+            .request::<Option<()>, _>("configRequirements/read", None)
+            .await
+    }
+
+    pub async fn external_agent_config_detect(
+        &self,
+        params: ExternalAgentConfigDetectParams,
+    ) -> Result<ExternalAgentConfigDetectResponse> {
+        self.transport
+            .request("externalAgentConfig/detect", Some(&params))
+            .await
+    }
+
+    pub async fn external_agent_config_import(
+        &self,
+        params: ExternalAgentConfigImportParams,
+    ) -> Result<ExternalAgentConfigImportResponse> {
+        self.transport
+            .request("externalAgentConfig/import", Some(&params))
+            .await
+    }
+
+    pub async fn feedback_upload(
+        &self,
+        params: FeedbackUploadParams,
+    ) -> Result<FeedbackUploadResponse> {
+        self.transport
+            .request("feedback/upload", Some(&params))
             .await
     }
 
@@ -558,8 +783,36 @@ impl AppServerClient {
             .await
     }
 
+    pub async fn mcp_server_reload(&self) -> Result<McpServerRefreshResponse> {
+        self.transport
+            .request::<Option<()>, _>("config/mcpServer/reload", None)
+            .await
+    }
+
     pub async fn skills_list(&self, params: SkillsListParams) -> Result<SkillsListResponse> {
         self.transport.request("skills/list", Some(&params)).await
+    }
+
+    pub async fn skills_remote_list(
+        &self,
+        params: SkillsRemoteReadParams,
+    ) -> Result<SkillsRemoteReadResponse> {
+        self.transport
+            .request("skills/remote/list", Some(&params))
+            .await
+    }
+
+    pub async fn skills_remote_export(
+        &self,
+        params: SkillsRemoteWriteParams,
+    ) -> Result<SkillsRemoteWriteResponse> {
+        self.transport
+            .request("skills/remote/export", Some(&params))
+            .await
+    }
+
+    pub async fn app_list(&self, params: AppsListParams) -> Result<AppsListResponse> {
+        self.transport.request("app/list", Some(&params)).await
     }
 
     pub async fn skills_config_write(
@@ -584,12 +837,97 @@ impl AppServerClient {
             .await
     }
 
+    pub async fn turn_steer(&self, params: TurnSteerParams) -> Result<TurnSteerResponse> {
+        self.transport.request("turn/steer", Some(&params)).await
+    }
+
     pub async fn review_start(&self, params: ReviewStartParams) -> Result<ReviewStartResponse> {
         self.transport.request("review/start", Some(&params)).await
     }
 
+    pub async fn thread_realtime_start(
+        &self,
+        params: ThreadRealtimeStartParams,
+    ) -> Result<ThreadRealtimeStartResponse> {
+        self.transport
+            .request("thread/realtime/start", Some(&params))
+            .await
+    }
+
+    pub async fn thread_realtime_append_audio(
+        &self,
+        params: ThreadRealtimeAppendAudioParams,
+    ) -> Result<ThreadRealtimeAppendAudioResponse> {
+        self.transport
+            .request("thread/realtime/appendAudio", Some(&params))
+            .await
+    }
+
+    pub async fn thread_realtime_append_text(
+        &self,
+        params: ThreadRealtimeAppendTextParams,
+    ) -> Result<ThreadRealtimeAppendTextResponse> {
+        self.transport
+            .request("thread/realtime/appendText", Some(&params))
+            .await
+    }
+
+    pub async fn thread_realtime_stop(
+        &self,
+        params: ThreadRealtimeStopParams,
+    ) -> Result<ThreadRealtimeStopResponse> {
+        self.transport
+            .request("thread/realtime/stop", Some(&params))
+            .await
+    }
+
     pub async fn command_exec(&self, params: CommandExecParams) -> Result<CommandExecResponse> {
         self.transport.request("command/exec", Some(&params)).await
+    }
+
+    pub async fn windows_sandbox_setup_start(
+        &self,
+        params: WindowsSandboxSetupStartParams,
+    ) -> Result<WindowsSandboxSetupStartResponse> {
+        self.transport
+            .request("windowsSandbox/setupStart", Some(&params))
+            .await
+    }
+
+    pub async fn fuzzy_file_search_session_start(
+        &self,
+        params: FuzzyFileSearchSessionStartParams,
+    ) -> Result<FuzzyFileSearchSessionStartResponse> {
+        self.transport
+            .request("fuzzyFileSearch/sessionStart", Some(&params))
+            .await
+    }
+
+    pub async fn fuzzy_file_search_session_update(
+        &self,
+        params: FuzzyFileSearchSessionUpdateParams,
+    ) -> Result<FuzzyFileSearchSessionUpdateResponse> {
+        self.transport
+            .request("fuzzyFileSearch/sessionUpdate", Some(&params))
+            .await
+    }
+
+    pub async fn fuzzy_file_search_session_stop(
+        &self,
+        params: FuzzyFileSearchSessionStopParams,
+    ) -> Result<FuzzyFileSearchSessionStopResponse> {
+        self.transport
+            .request("fuzzyFileSearch/sessionStop", Some(&params))
+            .await
+    }
+
+    pub async fn mock_experimental_method(
+        &self,
+        params: MockExperimentalMethodParams,
+    ) -> Result<MockExperimentalMethodResponse> {
+        self.transport
+            .request("mock/experimentalMethod", Some(&params))
+            .await
     }
 
     pub async fn respond<T>(&self, id: AppServerRequestId, result: &T) -> Result<()>

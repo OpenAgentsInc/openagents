@@ -762,12 +762,15 @@ fn run_chat_submit_action(state: &mut crate::app_state::RenderState) -> bool {
     let command = crate::codex_lane::CodexLaneCommand::TurnStart(TurnStartParams {
         thread_id,
         input,
+        cwd: None,
+        approval_policy: None,
+        sandbox_policy: None,
         model: Some(state.autopilot_chat.current_model().to_string()),
         effort: None,
         summary: None,
-        approval_policy: None,
-        sandbox_policy: None,
-        cwd: None,
+        personality: None,
+        output_schema: None,
+        collaboration_mode: None,
     });
 
     if let Err(error) = state.queue_codex_command(command) {
@@ -782,7 +785,10 @@ fn assemble_chat_turn_input(
     prompt: String,
     selected_skill: Option<(&str, &str, bool)>,
 ) -> (Vec<UserInput>, Option<String>) {
-    let mut input = vec![UserInput::Text { text: prompt }];
+    let mut input = vec![UserInput::Text {
+        text: prompt,
+        text_elements: Vec::new(),
+    }];
     let mut last_error = None;
     if let Some((name, path, enabled)) = selected_skill {
         if enabled {
@@ -2425,7 +2431,7 @@ mod tests {
         assert_eq!(input.len(), 2);
         assert!(matches!(
             &input[0],
-            UserInput::Text { text } if text == "build mezo integration"
+            UserInput::Text { text, .. } if text == "build mezo integration"
         ));
         assert!(matches!(
             &input[1],
@@ -2444,7 +2450,7 @@ mod tests {
         assert_eq!(input.len(), 1);
         assert!(matches!(
             &input[0],
-            UserInput::Text { text } if text == "build mezo integration"
+            UserInput::Text { text, .. } if text == "build mezo integration"
         ));
         assert_eq!(
             last_error.as_deref(),

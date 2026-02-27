@@ -7,9 +7,9 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use codex_client::{
     AppServerChannels, AppServerClient, AppServerConfig, AppServerNotification, AppServerRequest,
-    AskForApproval, ClientInfo, ModelListParams, SkillScope, SkillsConfigWriteParams,
-    SkillsListParams, SkillsListResponse, ThreadListParams, ThreadReadParams, ThreadResumeParams,
-    ThreadStartParams, TurnInterruptParams, TurnStartParams,
+    AskForApproval, ClientInfo, InitializeCapabilities, InitializeParams, ModelListParams,
+    SkillScope, SkillsConfigWriteParams, SkillsListParams, SkillsListResponse, ThreadListParams,
+    ThreadReadParams, ThreadResumeParams, ThreadStartParams, TurnInterruptParams, TurnStartParams,
 };
 use serde_json::Value;
 use tokio::runtime::Runtime;
@@ -24,6 +24,8 @@ pub struct CodexLaneConfig {
     pub bootstrap_model: Option<String>,
     pub client_info: ClientInfo,
     pub approval_policy: Option<AskForApproval>,
+    pub experimental_api: bool,
+    pub opt_out_notification_methods: Vec<String>,
 }
 
 impl Default for CodexLaneConfig {
@@ -38,6 +40,8 @@ impl Default for CodexLaneConfig {
                 version: env!("CARGO_PKG_VERSION").to_string(),
             },
             approval_policy: Some(AskForApproval::OnRequest),
+            experimental_api: false,
+            opt_out_notification_methods: Vec::new(),
         }
     }
 }
@@ -411,7 +415,25 @@ impl CodexLaneState {
         self.channels = Some(channels);
 
         if let Some(client) = self.client.as_ref() {
-            let initialized = runtime.block_on(client.initialize(config.client_info.clone()));
+            let capabilities = if config.experimental_api
+                || !config.opt_out_notification_methods.is_empty()
+            {
+                Some(InitializeCapabilities {
+                    experimental_api: config.experimental_api,
+                    opt_out_notification_methods: if config.opt_out_notification_methods.is_empty()
+                    {
+                        None
+                    } else {
+                        Some(config.opt_out_notification_methods.clone())
+                    },
+                })
+            } else {
+                None
+            };
+            let initialized = runtime.block_on(client.initialize(InitializeParams {
+                client_info: config.client_info.clone(),
+                capabilities,
+            }));
             if let Err(error) = initialized {
                 self.set_error(
                     update_tx,
@@ -443,7 +465,10 @@ impl CodexLaneState {
                             CodexLaneNotification::ThreadListLoaded {
                                 entries: vec![CodexThreadListEntry {
                                     thread_id,
-                                    cwd: config.cwd.as_ref().map(|value| value.display().to_string()),
+                                    cwd: config
+                                        .cwd
+                                        .as_ref()
+                                        .map(|value| value.display().to_string()),
                                     path: None,
                                 }],
                             },
@@ -878,6 +903,7 @@ fn fetch_model_catalog(
         let response = runtime.block_on(client.model_list(ModelListParams {
             cursor: cursor.clone(),
             limit: Some(100),
+            include_hidden: None,
         }))?;
 
         for model in response.data {
@@ -1774,5 +1800,4 @@ mod tests {
             error: Some("missing command response".to_string()),
         })
     }
-
 }
