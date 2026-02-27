@@ -10,12 +10,14 @@ pub mod nip59;
 pub mod nip90;
 pub mod nip99;
 pub mod nip_sa;
+pub mod nip_skl;
 
 pub use identity::{
     ENV_IDENTITY_MNEMONIC_PATH, NostrIdentity, identity_mnemonic_path, load_identity_from_path,
     load_or_create_identity, regenerate_identity,
 };
 pub use nip_sa::*;
+pub use nip_skl::*;
 pub use nip01::{Event, EventTemplate, KindClassification, UnsignedEvent};
 #[cfg(feature = "full")]
 pub use nip01::{
