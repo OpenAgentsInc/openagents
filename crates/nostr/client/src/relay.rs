@@ -374,9 +374,8 @@ pub fn parse_relay_message(text: &str) -> Result<Option<RelayMessage>> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_parse_event_message() {
-        let event = Event {
+    fn sample_event() -> Event {
+        Event {
             id: "id".to_string(),
             pubkey: "pubkey".to_string(),
             created_at: 1,
@@ -384,15 +383,251 @@ mod tests {
             tags: vec![],
             content: "hello".to_string(),
             sig: "sig".to_string(),
-        };
-        let text = serde_json::to_string(&json!(["EVENT", "sub", event])).unwrap();
-        let parsed = parse_relay_message(&text).unwrap();
-        match parsed {
-            Some(RelayMessage::Event(sub_id, event)) => {
-                assert_eq!(sub_id, "sub");
-                assert_eq!(event.content, "hello");
-            }
-            _ => panic!("unexpected parse result"),
         }
+    }
+
+    fn assert_relay_message(actual: RelayMessage, expected: RelayMessage) {
+        assert_eq!(
+            std::mem::discriminant(&actual),
+            std::mem::discriminant(&expected),
+            "mismatched relay message variants: actual={actual:?}, expected={expected:?}"
+        );
+
+        match (actual, expected) {
+            (
+                RelayMessage::Event(actual_sub, actual_event),
+                RelayMessage::Event(expected_sub, expected_event),
+            ) => {
+                assert_eq!(actual_sub, expected_sub);
+                assert_eq!(actual_event.id, expected_event.id);
+                assert_eq!(actual_event.pubkey, expected_event.pubkey);
+                assert_eq!(actual_event.created_at, expected_event.created_at);
+                assert_eq!(actual_event.kind, expected_event.kind);
+                assert_eq!(actual_event.tags, expected_event.tags);
+                assert_eq!(actual_event.content, expected_event.content);
+                assert_eq!(actual_event.sig, expected_event.sig);
+            }
+            (
+                RelayMessage::Ok(actual_id, actual_accepted, actual_message),
+                RelayMessage::Ok(expected_id, expected_accepted, expected_message),
+            ) => {
+                assert_eq!(actual_id, expected_id);
+                assert_eq!(actual_accepted, expected_accepted);
+                assert_eq!(actual_message, expected_message);
+            }
+            (RelayMessage::Eose(actual_sub), RelayMessage::Eose(expected_sub)) => {
+                assert_eq!(actual_sub, expected_sub);
+            }
+            (RelayMessage::Notice(actual_message), RelayMessage::Notice(expected_message)) => {
+                assert_eq!(actual_message, expected_message);
+            }
+            (RelayMessage::Auth(actual_challenge), RelayMessage::Auth(expected_challenge)) => {
+                assert_eq!(actual_challenge, expected_challenge);
+            }
+            _ => {}
+        }
+    }
+
+    fn encode_inbound_message(message: &RelayMessage) -> Value {
+        match message {
+            RelayMessage::Event(subscription_id, event) => {
+                json!(["EVENT", subscription_id, event])
+            }
+            RelayMessage::Ok(event_id, accepted, message_text) => {
+                json!(["OK", event_id, accepted, message_text])
+            }
+            RelayMessage::Eose(subscription_id) => json!(["EOSE", subscription_id]),
+            RelayMessage::Notice(message_text) => json!(["NOTICE", message_text]),
+            RelayMessage::Auth(challenge) => json!(["AUTH", challenge]),
+        }
+    }
+
+    #[test]
+    fn parse_known_message_kinds() -> Result<()> {
+        let expected_messages = vec![
+            RelayMessage::Event("sub".to_string(), sample_event()),
+            RelayMessage::Ok("event-id".to_string(), true, "accepted".to_string()),
+            RelayMessage::Eose("sub".to_string()),
+            RelayMessage::Notice("relay notice".to_string()),
+            RelayMessage::Auth("challenge-token".to_string()),
+        ];
+
+        for expected in expected_messages {
+            let text = serde_json::to_string(&encode_inbound_message(&expected))?;
+            let parsed = parse_relay_message(&text)?;
+            let actual = parsed.ok_or_else(|| {
+                ClientError::Internal("expected parsed relay message, got None".to_string())
+            })?;
+            assert_relay_message(actual, expected);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_unknown_message_kind_returns_none() -> Result<()> {
+        let parsed = parse_relay_message(r#"["UNKNOWN","data"]"#)?;
+        assert!(parsed.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn parse_malformed_structures() {
+        struct Case {
+            name: &'static str,
+            input: &'static str,
+            expected_error_fragment: &'static str,
+        }
+
+        let cases = vec![
+            Case {
+                name: "non-array payload",
+                input: r#"{"kind":"EVENT"}"#,
+                expected_error_fragment: "expected JSON array relay message",
+            },
+            Case {
+                name: "kind is not string",
+                input: "[123]",
+                expected_error_fragment: "missing relay message kind",
+            },
+            Case {
+                name: "event too short",
+                input: r#"["EVENT","sub"]"#,
+                expected_error_fragment: "invalid EVENT message",
+            },
+            Case {
+                name: "ok too short",
+                input: r#"["OK","event-id",true]"#,
+                expected_error_fragment: "invalid OK message",
+            },
+            Case {
+                name: "eose too short",
+                input: r#"["EOSE"]"#,
+                expected_error_fragment: "invalid EOSE message",
+            },
+            Case {
+                name: "notice too short",
+                input: r#"["NOTICE"]"#,
+                expected_error_fragment: "invalid NOTICE message",
+            },
+            Case {
+                name: "auth too short",
+                input: r#"["AUTH"]"#,
+                expected_error_fragment: "invalid AUTH message",
+            },
+        ];
+
+        let empty = parse_relay_message("[]");
+        assert!(
+            matches!(empty, Ok(None)),
+            "empty array should parse to None"
+        );
+
+        for case in cases {
+            let result = parse_relay_message(case.input);
+            assert!(result.is_err(), "{}: expected an error", case.name);
+
+            if let Err(error) = result {
+                let rendered = error.to_string();
+                assert!(
+                    rendered.contains(case.expected_error_fragment),
+                    "{}: expected error fragment '{}' in '{}'",
+                    case.name,
+                    case.expected_error_fragment,
+                    rendered
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn parse_malformed_field_types() {
+        struct Case {
+            name: &'static str,
+            input: &'static str,
+            expected_error_fragment: &'static str,
+        }
+
+        let cases = vec![
+            Case {
+                name: "event subscription id type",
+                input: r#"["EVENT",123,{"id":"id"}]"#,
+                expected_error_fragment: "invalid EVENT subscription id",
+            },
+            Case {
+                name: "event payload shape",
+                input: r#"["EVENT","sub",{"id":"id"}]"#,
+                expected_error_fragment: "invalid EVENT payload",
+            },
+            Case {
+                name: "ok event id type",
+                input: r#"["OK",123,true,"accepted"]"#,
+                expected_error_fragment: "invalid OK event id",
+            },
+            Case {
+                name: "ok accepted type",
+                input: r#"["OK","event-id","yes","accepted"]"#,
+                expected_error_fragment: "invalid OK accepted flag",
+            },
+            Case {
+                name: "ok message text type",
+                input: r#"["OK","event-id",true,42]"#,
+                expected_error_fragment: "invalid OK message text",
+            },
+            Case {
+                name: "eose subscription id type",
+                input: r#"["EOSE",42]"#,
+                expected_error_fragment: "invalid EOSE subscription id",
+            },
+            Case {
+                name: "notice text type",
+                input: r#"["NOTICE",{"text":"msg"}]"#,
+                expected_error_fragment: "invalid NOTICE message text",
+            },
+            Case {
+                name: "auth challenge type",
+                input: r#"["AUTH",{"challenge":"token"}]"#,
+                expected_error_fragment: "invalid AUTH challenge",
+            },
+        ];
+
+        for case in cases {
+            let result = parse_relay_message(case.input);
+            assert!(result.is_err(), "{}: expected an error", case.name);
+
+            if let Err(error) = result {
+                let rendered = error.to_string();
+                assert!(
+                    rendered.contains(case.expected_error_fragment),
+                    "{}: expected error fragment '{}' in '{}'",
+                    case.name,
+                    case.expected_error_fragment,
+                    rendered
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn inbound_roundtrip_preserves_messages() -> Result<()> {
+        let messages = vec![
+            RelayMessage::Event("sub".to_string(), sample_event()),
+            RelayMessage::Ok("event-id".to_string(), false, "rejected".to_string()),
+            RelayMessage::Eose("sub-2".to_string()),
+            RelayMessage::Notice("maintenance".to_string()),
+            RelayMessage::Auth("challenge-2".to_string()),
+        ];
+
+        for expected in messages {
+            let encoded = encode_inbound_message(&expected);
+            let text = serde_json::to_string(&encoded)?;
+            let parsed = parse_relay_message(&text)?;
+            let actual = parsed.ok_or_else(|| {
+                ClientError::Internal("expected parsed relay message, got None".to_string())
+            })?;
+            assert_relay_message(actual, expected);
+        }
+
+        Ok(())
     }
 }
