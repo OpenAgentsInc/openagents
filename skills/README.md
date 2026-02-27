@@ -4,12 +4,12 @@ This directory is the project-owned Agent Skills registry.
 
 ## Skills Table Of Contents
 
-| Skill | Description | Path |
-| --- | --- | --- |
-| [charms](./charms/SKILL.md) | Charms workflows for Bitcoin app contracts, spell proving, and UTXO asset operations. | `skills/charms/SKILL.md` |
-| [mezo](./mezo/SKILL.md) | Mezo integration workflows for apps, autonomous agents, and Mezo Earn operations. | `skills/mezo/SKILL.md` |
-| [moneydevkit](./moneydevkit/SKILL.md) | Money Dev Kit workflows for Lightning checkout and agent wallets. | `skills/moneydevkit/SKILL.md` |
-| [neutronpay](./neutronpay/SKILL.md) | Neutronpay MCP and SDK workflows for Lightning, stablecoin, and fiat payments. | `skills/neutronpay/SKILL.md` |
+| Skill | Description |
+| --- | --- |
+| [charms](./charms/SKILL.md) | Charms workflows for Bitcoin app contracts, spell proving, and UTXO asset operations. |
+| [mezo](./mezo/SKILL.md) | Mezo integration workflows for apps, autonomous agents, and Mezo Earn operations. |
+| [moneydevkit](./moneydevkit/SKILL.md) | Money Dev Kit workflows for Lightning checkout and agent wallets. |
+| [neutronpay](./neutronpay/SKILL.md) | Neutronpay MCP and SDK workflows for Lightning, stablecoin, and fiat payments. |
 
 ## Why Skills Matter
 
