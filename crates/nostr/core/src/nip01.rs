@@ -41,6 +41,9 @@ pub enum Nip01Error {
 
     #[error("invalid signature: {0}")]
     InvalidSignature(String),
+
+    #[error("system time error: {0}")]
+    Time(String),
 }
 
 /// A signed Nostr event.
@@ -87,14 +90,10 @@ pub struct UnsignedEvent {
 /// Creating a text note:
 ///
 /// ```
-/// use nostr::nip01::EventTemplate;
-/// use std::time::{SystemTime, UNIX_EPOCH};
+/// use nostr::nip01::{EventTemplate, unix_now_secs};
 ///
 /// let template = EventTemplate {
-///     created_at: SystemTime::now()
-///         .duration_since(UNIX_EPOCH)
-///         .unwrap()
-///         .as_secs(),
+///     created_at: unix_now_secs().unwrap_or_default(),
 ///     kind: 1,  // Short text note
 ///     tags: vec![],
 ///     content: "Hello Nostr!".to_string(),
@@ -107,14 +106,10 @@ pub struct UnsignedEvent {
 /// Creating an event with tags:
 ///
 /// ```
-/// use nostr::nip01::EventTemplate;
-/// use std::time::{SystemTime, UNIX_EPOCH};
+/// use nostr::nip01::{EventTemplate, unix_now_secs};
 ///
 /// let template = EventTemplate {
-///     created_at: SystemTime::now()
-///         .duration_since(UNIX_EPOCH)
-///         .unwrap()
-///         .as_secs(),
+///     created_at: unix_now_secs().unwrap_or_default(),
 ///     kind: 1,
 ///     tags: vec![
 ///         vec!["e".to_string(), "event_id_to_reply_to".to_string()],
@@ -155,6 +150,14 @@ pub const KIND_METADATA: u16 = 0;
 pub const KIND_SHORT_TEXT_NOTE: u16 = 1;
 pub const KIND_RECOMMEND_RELAY: u16 = 2;
 pub const KIND_CONTACTS: u16 = 3;
+
+/// Get the current Unix timestamp in seconds.
+pub fn unix_now_secs() -> Result<u64, Nip01Error> {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .map_err(|error| Nip01Error::Time(error.to_string()))
+}
 
 /// Generate a random 32-byte secret key.
 #[cfg(feature = "full")]

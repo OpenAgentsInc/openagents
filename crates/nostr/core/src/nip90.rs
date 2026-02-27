@@ -1074,9 +1074,7 @@ pub fn get_request_kind(result_kind: u16) -> Option<u16> {
 }
 
 fn event_timestamp_now() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_secs())
+    crate::nip01::unix_now_secs().map_or(0, |timestamp| timestamp)
 }
 
 /// Create an EventTemplate for a job request.

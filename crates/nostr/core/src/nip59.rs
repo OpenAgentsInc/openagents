@@ -112,9 +112,7 @@ impl Rumor {
 
 /// Generate a random timestamp up to 2 days in the past.
 pub fn random_timestamp() -> u64 {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_secs());
+    let now = crate::nip01::unix_now_secs().map_or(0, |timestamp| timestamp);
 
     // Random offset between 0 and 2 days
     let offset = rand::random::<u64>() % TWO_DAYS_SECS as u64;
@@ -386,12 +384,7 @@ mod tests {
 
     #[test]
     fn test_random_timestamp_in_past() {
-        use std::time::{SystemTime, UNIX_EPOCH};
-
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        let now = crate::nip01::unix_now_secs().unwrap_or_default();
 
         let random_ts = random_timestamp();
 

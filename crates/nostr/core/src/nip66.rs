@@ -526,10 +526,7 @@ mod tests {
             pubkey: pubkey.to_string(),
             tags,
             content: content.to_string(),
-            created_at: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
+            created_at: crate::nip01::unix_now_secs().unwrap_or_default(),
             sig: String::new(),
         }
     }

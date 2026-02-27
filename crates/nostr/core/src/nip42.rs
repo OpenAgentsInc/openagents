@@ -76,9 +76,7 @@ pub const RESTRICTED_PREFIX: &str = "restricted";
 pub const MAX_TIME_DIFF: u64 = 600;
 
 fn unix_now_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_secs())
+    crate::nip01::unix_now_secs().map_or(0, |timestamp| timestamp)
 }
 
 /// Errors that can occur during NIP-42 operations.
@@ -410,10 +408,7 @@ mod tests {
     }
 
     fn current_time() -> u64 {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs()
+        crate::nip01::unix_now_secs().map_or(0, |timestamp| timestamp)
     }
 
     #[test]

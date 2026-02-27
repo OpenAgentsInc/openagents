@@ -65,10 +65,9 @@ pub enum Nip40Error {
 }
 
 fn unix_timestamp_now_i64() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+    crate::nip01::unix_now_secs()
         .ok()
-        .and_then(|duration| i64::try_from(duration.as_secs()).ok())
+        .and_then(|timestamp| i64::try_from(timestamp).ok())
         .unwrap_or(i64::MAX)
 }
 

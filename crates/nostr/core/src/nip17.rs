@@ -639,13 +639,9 @@ pub fn receive_file_message(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn now() -> u64 {
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs()
+        crate::nip01::unix_now_secs().unwrap_or_default()
     }
 
     #[test]

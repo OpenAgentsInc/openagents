@@ -425,9 +425,7 @@ impl StateMetadata {
 impl Goal {
     /// Create a new goal
     pub fn new(id: impl Into<String>, description: impl Into<String>, priority: u32) -> Self {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |duration| duration.as_secs());
+        let now = crate::nip01::unix_now_secs().map_or(0, |timestamp| timestamp);
 
         Self {
             id: id.into(),
@@ -468,9 +466,7 @@ impl Goal {
 impl MemoryEntry {
     /// Create a new memory entry
     pub fn new(memory_type: impl Into<String>, content: impl Into<String>) -> Self {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |duration| duration.as_secs());
+        let now = crate::nip01::unix_now_secs().map_or(0, |timestamp| timestamp);
 
         Self {
             memory_type: memory_type.into(),
