@@ -76,6 +76,9 @@ pub enum SkillError {
 
     #[error("missing capability: {0}")]
     MissingCapability(String),
+
+    #[error("invalid SKL reference: {0}")]
+    InvalidReference(String),
 }
 
 /// Skill license metadata (stored in content field)
@@ -273,12 +276,29 @@ impl SkillLicense {
 
     /// Validate the license
     pub fn validate(&self, current_time: u64) -> Result<(), SkillError> {
+        self.validate_skl_references()?;
         if self.content.is_expired(current_time) {
             return Err(SkillError::LicenseExpired(format!(
                 "license for {} expired at {}",
                 self.content.skill_id,
                 self.content.expires_at.unwrap()
             )));
+        }
+        Ok(())
+    }
+
+    /// Validate SKL canonical references carried by the license.
+    pub fn validate_skl_references(&self) -> Result<(), SkillError> {
+        if !self.skill_address.starts_with("33400:") {
+            return Err(SkillError::InvalidReference(format!(
+                "license skill address must start with 33400:, got {}",
+                self.skill_address
+            )));
+        }
+        if self.manifest_event_id.trim().is_empty() {
+            return Err(SkillError::InvalidReference(
+                "manifest event id cannot be empty".to_string(),
+            ));
         }
         Ok(())
     }
@@ -356,11 +376,207 @@ impl SkillDelivery {
             vec!["hash".to_string(), self.content.content_hash.clone()],
         ]
     }
+
+    /// Validate SKL canonical references carried by the delivery.
+    pub fn validate_skl_references(&self) -> Result<(), SkillError> {
+        if !self.skill_address.starts_with("33400:") {
+            return Err(SkillError::InvalidReference(format!(
+                "delivery skill address must start with 33400:, got {}",
+                self.skill_address
+            )));
+        }
+        if self.manifest_event_id.trim().is_empty() {
+            return Err(SkillError::InvalidReference(
+                "manifest event id cannot be empty".to_string(),
+            ));
+        }
+        if self.license_id.trim().is_empty() {
+            return Err(SkillError::InvalidReference(
+                "license event id cannot be empty".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Trust-gated fulfillment decision for SA skill delivery.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FulfillmentGateOutcome {
+    pub allowed: bool,
+    pub reason: String,
+}
+
+impl FulfillmentGateOutcome {
+    fn allow() -> Self {
+        Self {
+            allowed: true,
+            reason: "allowed".to_string(),
+        }
+    }
+
+    fn deny(reason: impl Into<String>) -> Self {
+        Self {
+            allowed: false,
+            reason: reason.into(),
+        }
+    }
+}
+
+/// Evaluate SA skill fulfillment gate using SKL manifest validation, trust policy,
+/// and revocation state.
+///
+/// Deny conditions:
+/// - license/delivery SKL references are malformed
+/// - license/delivery references are inconsistent with each other
+/// - provided manifest event is invalid or mismatched against license/delivery refs
+/// - trust policy does not return `Trusted`
+/// - manifest has authoritative publisher-origin revocation
+pub fn evaluate_fulfillment_gate(
+    license: &SkillLicense,
+    delivery: &SkillDelivery,
+    manifest_event: &crate::Event,
+    label_events: &[crate::Event],
+    deletion_events: &[crate::Event],
+    trust_policy: &crate::nip_skl::TrustPolicy,
+) -> FulfillmentGateOutcome {
+    if let Err(error) = license.validate_skl_references() {
+        return FulfillmentGateOutcome::deny(format!("license reference check failed: {}", error));
+    }
+    if let Err(error) = delivery.validate_skl_references() {
+        return FulfillmentGateOutcome::deny(format!("delivery reference check failed: {}", error));
+    }
+    if license.skill_address != delivery.skill_address {
+        return FulfillmentGateOutcome::deny(
+            "license/delivery mismatch: skill address differs".to_string(),
+        );
+    }
+    if license.manifest_event_id != delivery.manifest_event_id {
+        return FulfillmentGateOutcome::deny(
+            "license/delivery mismatch: manifest event id differs".to_string(),
+        );
+    }
+
+    let manifest = match crate::nip_skl::SkillManifest::from_event(manifest_event) {
+        Ok(manifest) => manifest,
+        Err(error) => {
+            return FulfillmentGateOutcome::deny(format!("manifest validation failed: {}", error));
+        }
+    };
+
+    let canonical_address = format!("33400:{}:{}", manifest_event.pubkey, manifest.identifier);
+    if license.skill_address != canonical_address || delivery.skill_address != canonical_address {
+        return FulfillmentGateOutcome::deny(format!(
+            "canonical address mismatch: expected {}",
+            canonical_address
+        ));
+    }
+    if license.manifest_event_id != manifest_event.id
+        || delivery.manifest_event_id != manifest_event.id
+    {
+        return FulfillmentGateOutcome::deny("manifest event id mismatch".to_string());
+    }
+
+    let trust = crate::nip_skl::evaluate_skill_trust(
+        &canonical_address,
+        Some(&manifest_event.id),
+        &manifest_event.pubkey,
+        label_events,
+        trust_policy,
+    );
+    if trust.decision != crate::nip_skl::TrustDecision::Trusted {
+        return FulfillmentGateOutcome::deny(format!(
+            "trust gate denied: {}",
+            trust.reasons.join("; ")
+        ));
+    }
+
+    let revocation = crate::nip_skl::manifest_revocation_status(
+        &manifest_event.pubkey,
+        &manifest_event.id,
+        &canonical_address,
+        deletion_events,
+    );
+    if revocation.revoked {
+        return FulfillmentGateOutcome::deny(format!(
+            "manifest revoked{}",
+            revocation
+                .reason
+                .as_ref()
+                .map(|reason| format!(": {}", reason))
+                .unwrap_or_default()
+        ));
+    }
+
+    FulfillmentGateOutcome::allow()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::nip_skl::{SkillManifest, TrustPolicy};
+
+    const HASH: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    fn manifest_event() -> crate::Event {
+        let manifest = SkillManifest::new(
+            "web-scraper",
+            "Web Scraper",
+            "1.0.0",
+            "Fetch and parse pages",
+            HASH,
+            vec!["http:outbound".to_string()],
+            1_756_000_000,
+        );
+        let template = manifest
+            .to_event_template("skill-pubkey", 1_703_000_000)
+            .unwrap();
+        crate::Event {
+            id: "manifest-event-id".to_string(),
+            pubkey: "skill-pubkey".to_string(),
+            created_at: template.created_at,
+            kind: template.kind,
+            tags: template.tags,
+            content: template.content,
+            sig: "sig".to_string(),
+        }
+    }
+
+    fn trusted_label_event(skill_address: &str, manifest_event_id: &str) -> crate::Event {
+        crate::Event {
+            id: "label-event-id".to_string(),
+            pubkey: "auditor-pubkey".to_string(),
+            created_at: 1_703_000_100,
+            kind: crate::nip32::KIND_LABEL as u16,
+            tags: vec![
+                vec!["L".to_string(), "skill-security".to_string()],
+                vec![
+                    "l".to_string(),
+                    "audit-passed".to_string(),
+                    "skill-security".to_string(),
+                ],
+                vec!["a".to_string(), skill_address.to_string()],
+                vec!["e".to_string(), manifest_event_id.to_string()],
+            ],
+            content: String::new(),
+            sig: "sig".to_string(),
+        }
+    }
+
+    fn revocation_event(skill_address: &str, manifest_event_id: &str) -> crate::Event {
+        crate::Event {
+            id: "delete-event-id".to_string(),
+            pubkey: "skill-pubkey".to_string(),
+            created_at: 1_703_000_200,
+            kind: crate::nip09::DELETION_REQUEST_KIND,
+            tags: vec![
+                vec!["e".to_string(), manifest_event_id.to_string()],
+                vec!["a".to_string(), skill_address.to_string()],
+                vec!["k".to_string(), "33400".to_string()],
+            ],
+            content: "critical-vuln".to_string(),
+            sig: "sig".to_string(),
+        }
+    }
 
     #[test]
     fn test_skill_license_content_creation() {
@@ -627,5 +843,129 @@ mod tests {
         );
         assert_eq!(tags[4], vec!["type", "rust"]);
         assert_eq!(tags[5], vec!["hash", "abc123"]);
+    }
+
+    #[test]
+    fn test_fulfillment_gate_blocks_untrusted_manifest() {
+        let manifest_event = manifest_event();
+        let skill_address = "33400:skill-pubkey:web-scraper";
+
+        let license = SkillLicense::new(
+            SkillLicenseContent::new(
+                "license-123",
+                "web-scraper",
+                "1.0.0",
+                1_703_000_000,
+                vec!["http:outbound".to_string()],
+            ),
+            "agent-pubkey",
+            skill_address,
+            "manifest-event-id",
+            1000,
+        );
+
+        let delivery = SkillDelivery::new(
+            SkillDeliveryContent::new("license-123", "encrypted", "prompt", "abc123"),
+            "agent-pubkey",
+            skill_address,
+            "manifest-event-id",
+            "license-event-id",
+        );
+
+        let outcome = evaluate_fulfillment_gate(
+            &license,
+            &delivery,
+            &manifest_event,
+            &[],
+            &[],
+            &TrustPolicy::default(),
+        );
+        assert!(!outcome.allowed);
+        assert!(outcome.reason.contains("trust gate denied"));
+    }
+
+    #[test]
+    fn test_fulfillment_gate_blocks_revoked_manifest() {
+        let manifest_event = manifest_event();
+        let skill_address = "33400:skill-pubkey:web-scraper";
+
+        let license = SkillLicense::new(
+            SkillLicenseContent::new(
+                "license-123",
+                "web-scraper",
+                "1.0.0",
+                1_703_000_000,
+                vec!["http:outbound".to_string()],
+            ),
+            "agent-pubkey",
+            skill_address,
+            "manifest-event-id",
+            1000,
+        );
+
+        let delivery = SkillDelivery::new(
+            SkillDeliveryContent::new("license-123", "encrypted", "prompt", "abc123"),
+            "agent-pubkey",
+            skill_address,
+            "manifest-event-id",
+            "license-event-id",
+        );
+
+        let labels = vec![trusted_label_event(skill_address, "manifest-event-id")];
+        let deletions = vec![revocation_event(skill_address, "manifest-event-id")];
+
+        let outcome = evaluate_fulfillment_gate(
+            &license,
+            &delivery,
+            &manifest_event,
+            &labels,
+            &deletions,
+            &TrustPolicy::default(),
+        );
+
+        assert!(!outcome.allowed);
+        assert!(outcome.reason.contains("manifest revoked"));
+    }
+
+    #[test]
+    fn test_fulfillment_gate_allows_trusted_active_manifest() {
+        let manifest_event = manifest_event();
+        let skill_address = "33400:skill-pubkey:web-scraper";
+
+        let license = SkillLicense::new(
+            SkillLicenseContent::new(
+                "license-123",
+                "web-scraper",
+                "1.0.0",
+                1_703_000_000,
+                vec!["http:outbound".to_string()],
+            ),
+            "agent-pubkey",
+            skill_address,
+            "manifest-event-id",
+            1000,
+        );
+
+        let delivery = SkillDelivery::new(
+            SkillDeliveryContent::new("license-123", "encrypted", "prompt", "abc123"),
+            "agent-pubkey",
+            skill_address,
+            "manifest-event-id",
+            "license-event-id",
+        );
+
+        let labels = vec![trusted_label_event(skill_address, "manifest-event-id")];
+
+        let outcome = evaluate_fulfillment_gate(
+            &license,
+            &delivery,
+            &manifest_event,
+            &labels,
+            &[],
+            &TrustPolicy::default(),
+        );
+
+        assert!(outcome.allowed);
+        assert_eq!(outcome.reason, "allowed");
     }
 }
