@@ -10,6 +10,7 @@ use wgpui::renderer::Renderer;
 use wgpui::{Bounds, EventContext, Modifiers, Point, TextSystem};
 use winit::window::Window;
 
+use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 use crate::runtime_lanes::{
     AcCreditCommand, AcLaneSnapshot, AcLaneWorker, RuntimeCommandResponse, SaLaneSnapshot,
     SaLaneWorker, SaLifecycleCommand, SkillTrustTier, SklDiscoveryTrustCommand, SklLaneSnapshot,
@@ -2245,7 +2246,7 @@ impl EarningsScoreboardState {
         self.lifetime_sats = spark_wallet
             .balance
             .as_ref()
-            .map_or(0, |balance| balance.total_sats());
+            .map_or(0, spark_total_balance_sats);
 
         let threshold = job_history.reference_epoch_seconds.saturating_sub(86_400);
         self.jobs_today = job_history

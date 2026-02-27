@@ -9,7 +9,7 @@
 # - Entries added on/after 2026-02-27 must include expiry_issue or expires_on.
 # - Budgets are exact; if current warnings drop below budget, lower the budget in the same PR.
 
-apps/autopilot-desktop/src/nip_sa_wallet_bridge.rs | budget:2 | owner:autopilot | added:2026-02-27 | reason: wallet bridge lane extraction pending | expiry_issue:#2397
+apps/autopilot-desktop/src/nip_sa_wallet_bridge.rs | budget:0 | owner:autopilot | added:2026-02-27 | reason: keep wallet bridge warning-free after runtime wiring | expiry_issue:#2397
 apps/autopilot-desktop/src/app_state.rs | budget:0 | owner:autopilot | added:2026-02-27 | reason: keep post-refactor clippy warning-free | expiry_issue:#2397
 apps/autopilot-desktop/src/input/reducers/mod.rs | budget:0 | owner:autopilot | added:2026-02-27 | reason: keep reducer orchestration warning-free | expiry_issue:#2397
 crates/nostr/core/src/nip60.rs | budget:7 | owner:nostr | added:2026-02-27 | reason: staged nip60 lint debt burn-down | expiry_issue:#2397

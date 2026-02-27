@@ -1,4 +1,3 @@
-use nostr::AgentStateContent;
 use openagents_spark::Balance;
 
 /// Convert Spark's layered balance representation to the total sats tracked by NIP-SA state.
@@ -9,8 +8,9 @@ pub fn spark_total_balance_sats(balance: &Balance) -> u64 {
 /// Sync NIP-SA state wallet balance from an optional Spark balance snapshot.
 ///
 /// Returns the updated wallet balance in sats.
+#[cfg(test)]
 pub fn sync_agent_state_wallet_balance(
-    state: &mut AgentStateContent,
+    state: &mut nostr::AgentStateContent,
     spark_balance: Option<&Balance>,
 ) -> u64 {
     let total = spark_balance.map_or(0, spark_total_balance_sats);
@@ -21,6 +21,7 @@ pub fn sync_agent_state_wallet_balance(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nostr::AgentStateContent;
 
     #[test]
     fn sync_from_balance_snapshot_updates_state() {
