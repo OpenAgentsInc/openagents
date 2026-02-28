@@ -20,10 +20,16 @@ Use `docs/audits/TEMPLATE.md` as the baseline structure.
 ## Minimum Workflow
 
 1. Create/confirm the monthly audit issue in GitHub.
-2. Run the checks listed in the template.
-3. Write findings and trend deltas vs prior audit.
-4. Open follow-up cleanup issues for concrete actions.
-5. Close the monthly audit issue only after the report is committed.
+2. Run the standard audit command:
+   - `./scripts/audits/run-architecture-audit.sh`
+   - Optional output path override: `./scripts/audits/run-architecture-audit.sh /tmp/audit.json`
+3. Review the machine-readable snapshot:
+   - Default path: `docs/audits/snapshots/YYYY-MM-DD-architecture-audit.json`
+   - Per-check logs: `docs/audits/snapshots/YYYY-MM-DD-architecture-audit.json.logs/`
+4. Run any additional checks listed in the template if needed for deeper investigation.
+5. Write findings and trend deltas vs prior audit.
+6. Open follow-up cleanup issues for concrete actions.
+7. Close the monthly audit issue only after the report is committed.
 
 ## Scheduling Rule
 
