@@ -873,7 +873,9 @@ impl AutopilotChatState {
             }
             if let Some(structured) = message.structured.as_mut() {
                 structured.answer.push_str(delta);
-                structured.events.push(format!("answer+{}", delta.chars().count()));
+                structured
+                    .events
+                    .push(format!("answer+{}", delta.chars().count()));
                 message.content = structured.rendered_content();
             } else {
                 message.content.push_str(delta);

@@ -170,7 +170,9 @@ pub(super) fn run_chat_cycle_model_action(state: &mut crate::app_state::RenderSt
     true
 }
 
-pub(super) fn run_chat_toggle_archived_filter_action(state: &mut crate::app_state::RenderState) -> bool {
+pub(super) fn run_chat_toggle_archived_filter_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
     state.autopilot_chat.cycle_thread_filter_archived();
     run_chat_refresh_threads_action(state)
 }
@@ -180,12 +182,16 @@ pub(super) fn run_chat_cycle_sort_filter_action(state: &mut crate::app_state::Re
     run_chat_refresh_threads_action(state)
 }
 
-pub(super) fn run_chat_cycle_source_filter_action(state: &mut crate::app_state::RenderState) -> bool {
+pub(super) fn run_chat_cycle_source_filter_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
     state.autopilot_chat.cycle_thread_filter_source_kind();
     run_chat_refresh_threads_action(state)
 }
 
-pub(super) fn run_chat_cycle_provider_filter_action(state: &mut crate::app_state::RenderState) -> bool {
+pub(super) fn run_chat_cycle_provider_filter_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
     state.autopilot_chat.cycle_thread_filter_model_provider();
     run_chat_refresh_threads_action(state)
 }
@@ -328,7 +334,9 @@ pub(super) fn run_chat_compact_thread_action(state: &mut crate::app_state::Rende
     true
 }
 
-pub(super) fn run_chat_unsubscribe_thread_action(state: &mut crate::app_state::RenderState) -> bool {
+pub(super) fn run_chat_unsubscribe_thread_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
     let Some(thread_id) = active_thread_id(state) else {
         state.autopilot_chat.last_error = Some("No active thread to unsubscribe".to_string());
         return true;
@@ -342,7 +350,10 @@ pub(super) fn run_chat_unsubscribe_thread_action(state: &mut crate::app_state::R
     true
 }
 
-pub(super) fn run_chat_select_thread_action(state: &mut crate::app_state::RenderState, index: usize) -> bool {
+pub(super) fn run_chat_select_thread_action(
+    state: &mut crate::app_state::RenderState,
+    index: usize,
+) -> bool {
     let Some(target) = state.autopilot_chat.select_thread_by_index(index) else {
         return false;
     };
@@ -437,7 +448,9 @@ pub(super) fn run_chat_approval_response_action(
     true
 }
 
-pub(super) fn run_chat_tool_call_response_action(state: &mut crate::app_state::RenderState) -> bool {
+pub(super) fn run_chat_tool_call_response_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
     let Some(request) = state.autopilot_chat.pop_tool_call() else {
         state.autopilot_chat.last_error = Some("No pending tool calls".to_string());
         return true;
@@ -466,7 +479,9 @@ pub(super) fn run_chat_tool_call_response_action(state: &mut crate::app_state::R
     true
 }
 
-pub(super) fn run_chat_tool_user_input_response_action(state: &mut crate::app_state::RenderState) -> bool {
+pub(super) fn run_chat_tool_user_input_response_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
     let Some(request) = state.autopilot_chat.pop_tool_user_input() else {
         state.autopilot_chat.last_error = Some("No pending tool user-input requests".to_string());
         return true;
@@ -503,7 +518,9 @@ pub(super) fn run_chat_tool_user_input_response_action(state: &mut crate::app_st
     true
 }
 
-pub(super) fn run_chat_auth_refresh_response_action(state: &mut crate::app_state::RenderState) -> bool {
+pub(super) fn run_chat_auth_refresh_response_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
     let Some(request) = state.autopilot_chat.pop_auth_refresh() else {
         state.autopilot_chat.last_error = Some("No pending auth refresh requests".to_string());
         return true;
@@ -2305,7 +2322,10 @@ pub(super) fn build_activity_feed_snapshot_events(
     rows
 }
 
-pub(super) fn refresh_earnings_scoreboard(state: &mut crate::app_state::RenderState, now: std::time::Instant) {
+pub(super) fn refresh_earnings_scoreboard(
+    state: &mut crate::app_state::RenderState,
+    now: std::time::Instant,
+) {
     state.earnings_scoreboard.refresh_from_sources(
         now,
         &state.provider_runtime,
@@ -2396,7 +2416,10 @@ pub(super) fn upsert_runtime_incident_alert(
     state.alerts_recovery.last_action = Some("Updated runtime incident queue".to_string());
 }
 
-pub(super) fn run_spark_action(state: &mut crate::app_state::RenderState, action: SparkPaneAction) -> bool {
+pub(super) fn run_spark_action(
+    state: &mut crate::app_state::RenderState,
+    action: SparkPaneAction,
+) -> bool {
     if action == SparkPaneAction::CopySparkAddress {
         state.spark_wallet.last_error = None;
         let notice = match state.spark_wallet.spark_address.as_deref() {
@@ -2604,7 +2627,11 @@ pub(super) fn next_trajectory_step_filter(current: &str) -> String {
     }
 }
 
-pub(super) fn trajectory_verification_hash(session_id: &str, tick_event: &str, tick_count: u64) -> String {
+pub(super) fn trajectory_verification_hash(
+    session_id: &str,
+    tick_event: &str,
+    tick_count: u64,
+) -> String {
     let mut hasher = DefaultHasher::new();
     session_id.hash(&mut hasher);
     tick_event.hash(&mut hasher);
@@ -2627,7 +2654,10 @@ pub(super) fn skill_scope_from_scope(scope: &str) -> Option<String> {
     }
 }
 
-pub(super) fn parse_optional_positive_amount_str(raw: &str, label: &str) -> Result<Option<u64>, String> {
+pub(super) fn parse_optional_positive_amount_str(
+    raw: &str,
+    label: &str,
+) -> Result<Option<u64>, String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Ok(None);
@@ -2635,7 +2665,10 @@ pub(super) fn parse_optional_positive_amount_str(raw: &str, label: &str) -> Resu
     parse_positive_amount_str(trimmed, label).map(Some)
 }
 
-pub(super) fn queue_spark_command(state: &mut crate::app_state::RenderState, command: SparkWalletCommand) {
+pub(super) fn queue_spark_command(
+    state: &mut crate::app_state::RenderState,
+    command: SparkWalletCommand,
+) {
     state.spark_wallet.last_error = None;
     if let Err(error) = state.spark_worker.enqueue(command) {
         state.spark_wallet.last_error = Some(error);
@@ -2654,4 +2687,3 @@ pub(super) fn parse_positive_amount_str(raw: &str, label: &str) -> Result<u64, S
         Err(error) => Err(format!("{label} must be a valid integer: {error}")),
     }
 }
-

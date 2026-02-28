@@ -21,7 +21,9 @@ pub(super) fn is_disconnect_error(error: &anyhow::Error) -> bool {
         || text.contains("app-server connection closed")
 }
 
-pub(super) fn summarize_skills_list_response(response: SkillsListResponse) -> Vec<CodexSkillListEntry> {
+pub(super) fn summarize_skills_list_response(
+    response: SkillsListResponse,
+) -> Vec<CodexSkillListEntry> {
     response
         .data
         .into_iter()
