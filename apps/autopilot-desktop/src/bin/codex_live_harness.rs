@@ -652,7 +652,7 @@ async fn run(args: HarnessArgs) -> Result<()> {
             .turn_start(TurnStartParams {
                 thread_id: new_thread_id.clone(),
                 input: vec![codex_client::UserInput::Text {
-                    text: prompt,
+                    text: prompt.clone(),
                     text_elements: Vec::new(),
                 }],
                 cwd: None,
@@ -670,13 +670,19 @@ async fn run(args: HarnessArgs) -> Result<()> {
         println!("turn/start turn_id={}", turn.turn.id);
         drain_and_print("post-send", &mut channels, &args).await;
 
-        let after_turn = client
-            .thread_read(ThreadReadParams {
-                thread_id: new_thread_id.clone(),
-                include_turns: true,
-            })
-            .await
-            .with_context(|| format!("thread/read failed for post-send {}", new_thread_id))?;
+        let after_turn = wait_for_materialized_thread_after_turn(
+            &client,
+            &new_thread_id,
+            &prompt,
+            Duration::from_millis(args.timeout_ms.saturating_mul(2).max(2_000)),
+        )
+        .await
+        .with_context(|| {
+            format!(
+                "post-send materialization check failed for thread {}",
+                new_thread_id
+            )
+        })?;
         println!(
             "thread/read after-send id={} turns={} transcript_messages={}",
             new_thread_id,
@@ -1022,6 +1028,71 @@ fn transcript_message_count(thread: &ThreadSnapshot) -> usize {
                 .count()
         })
         .sum()
+}
+
+fn thread_contains_text(thread: &ThreadSnapshot, needle: &str) -> bool {
+    if needle.trim().is_empty() {
+        return true;
+    }
+    let needle_lower = needle.to_lowercase();
+    thread.turns.iter().any(|turn| {
+        turn.items.iter().any(|item| {
+            collect_message_text(item)
+                .map(|text| text.to_lowercase().contains(&needle_lower))
+                .unwrap_or(false)
+        })
+    })
+}
+
+async fn wait_for_materialized_thread_after_turn(
+    client: &AppServerClient,
+    thread_id: &str,
+    prompt: &str,
+    timeout: Duration,
+) -> Result<codex_client::ThreadReadResponse> {
+    let deadline = Instant::now() + timeout;
+    let mut attempts: u32 = 0;
+    let mut last_observation = "no thread/read attempts made".to_string();
+
+    while Instant::now() <= deadline {
+        attempts = attempts.saturating_add(1);
+        match client
+            .thread_read(ThreadReadParams {
+                thread_id: thread_id.to_string(),
+                include_turns: true,
+            })
+            .await
+        {
+            Ok(response) => {
+                let message_count = transcript_message_count(&response.thread);
+                let prompt_seen = thread_contains_text(&response.thread, prompt);
+                if message_count > 0 && prompt_seen {
+                    println!(
+                        "post-send materialization check passed attempts={} messages={} prompt_seen={}",
+                        attempts, message_count, prompt_seen
+                    );
+                    return Ok(response);
+                }
+                last_observation = format!(
+                    "thread/read attempts={} turns={} messages={} prompt_seen={}",
+                    attempts,
+                    response.thread.turns.len(),
+                    message_count,
+                    prompt_seen
+                );
+            }
+            Err(error) => {
+                last_observation = format!("thread/read attempts={} error={}", attempts, error);
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+
+    bail!(
+        "timed out waiting for materialized post-send transcript for thread {}: {}",
+        thread_id,
+        last_observation
+    )
 }
 
 async fn drain_and_print(label: &str, channels: &mut AppServerChannels, args: &HarnessArgs) {

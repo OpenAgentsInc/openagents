@@ -2133,7 +2133,10 @@ fn normalize_notification(notification: AppServerNotification) -> Option<CodexLa
     match method.as_str() {
         "thread/started" => {
             let thread_id = thread_id_from_params(params.as_ref())?;
-            Some(CodexLaneNotification::ThreadStarted { thread_id })
+            Some(CodexLaneNotification::ThreadStatusChanged {
+                thread_id,
+                status: "active".to_string(),
+            })
         }
         "thread/status/changed" => {
             let params = params?;
@@ -3298,6 +3301,20 @@ mod tests {
 
     #[test]
     fn thread_lifecycle_notifications_are_normalized() {
+        let started = normalize_notification(codex_client::AppServerNotification {
+            method: "thread/started".to_string(),
+            params: Some(json!({
+                "threadId": "thread-0"
+            })),
+        });
+        assert_eq!(
+            started,
+            Some(CodexLaneNotification::ThreadStatusChanged {
+                thread_id: "thread-0".to_string(),
+                status: "active".to_string(),
+            })
+        );
+
         let status = normalize_notification(codex_client::AppServerNotification {
             method: "thread/status/changed".to_string(),
             params: Some(json!({
