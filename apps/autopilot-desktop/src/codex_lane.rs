@@ -30,7 +30,7 @@ use serde_json::Value;
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc::error::TryRecvError as TokioTryRecvError;
 
-const CODEX_LANE_POLL: Duration = Duration::from_millis(80);
+const CODEX_LANE_POLL: Duration = Duration::from_millis(16);
 
 #[derive(Clone, Debug)]
 pub struct CodexLaneConfig {
@@ -2111,7 +2111,10 @@ fn run_codex_lane_loop(
     config: CodexLaneConfig,
     mut runtime_impl: Box<dyn CodexLaneRuntime>,
 ) {
-    let runtime = match tokio::runtime::Builder::new_current_thread()
+    // Use a multithread runtime so the app-server reader task keeps advancing even while
+    // this lane thread blocks on std::sync::mpsc::recv_timeout waiting for commands.
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
         .enable_all()
         .build()
     {
@@ -3564,6 +3567,144 @@ mod tests {
         assert!(saw_delta, "missing item/agentMessage/delta notification");
         assert!(saw_turn_completed, "missing turn/completed notification");
         assert!(saw_turn_error, "missing error notification");
+
+        worker.shutdown();
+        let _ = server.join();
+    }
+
+    #[test]
+    fn delayed_notifications_forward_without_followup_command() {
+        let (client_stream, server_stream) = tokio::io::duplex(16 * 1024);
+        let (client_read, client_write) = tokio::io::split(client_stream);
+        let (server_read, mut server_write) = tokio::io::split(server_stream);
+        let runtime_guard = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap_or_else(|_| panic!("failed to build runtime"));
+        let _entered = runtime_guard.enter();
+        let (client, channels) =
+            AppServerClient::connect_with_io(Box::new(client_write), Box::new(client_read), None);
+        drop(_entered);
+
+        let server = std::thread::spawn(move || {
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(_) => return,
+            };
+            runtime.block_on(async move {
+                let mut reader = BufReader::new(server_read);
+                let mut request_line = String::new();
+                let mut saw_thread_loaded_list = false;
+                loop {
+                    request_line.clear();
+                    let bytes = reader.read_line(&mut request_line).await.unwrap_or(0);
+                    if bytes == 0 {
+                        break;
+                    }
+                    let value: Value = match serde_json::from_str(request_line.trim()) {
+                        Ok(value) => value,
+                        Err(_) => continue,
+                    };
+                    if value.get("id").is_none() {
+                        continue;
+                    }
+
+                    let method = value
+                        .get("method")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
+                    let response = match method {
+                        "initialize" => json!({
+                            "id": value["id"].clone(),
+                            "result": {"userAgent": "test-agent"}
+                        }),
+                        "model/list" => json!({
+                            "id": value["id"].clone(),
+                            "result": {"data": [], "nextCursor": null}
+                        }),
+                        "thread/list" => json!({
+                            "id": value["id"].clone(),
+                            "result": {"data": [], "nextCursor": null}
+                        }),
+                        "thread/loaded/list" => {
+                            saw_thread_loaded_list = true;
+                            json!({
+                                "id": value["id"].clone(),
+                                "result": {"data": [], "nextCursor": null}
+                            })
+                        }
+                        _ => json!({
+                            "id": value["id"].clone(),
+                            "result": {}
+                        }),
+                    };
+
+                    if let Ok(line) = serde_json::to_string(&response) {
+                        let _ = server_write.write_all(format!("{line}\n").as_bytes()).await;
+                        let _ = server_write.flush().await;
+                    }
+
+                    if saw_thread_loaded_list {
+                        // Send a delayed notification while the lane is idle (no new commands).
+                        tokio::time::sleep(Duration::from_millis(250)).await;
+                        let notification = json!({
+                            "jsonrpc": "2.0",
+                            "method": "item/agentMessage/delta",
+                            "params": {
+                                "threadId": "thread-delayed",
+                                "turnId": "turn-delayed",
+                                "itemId": "item-delayed",
+                                "delta": "hello from delayed stream"
+                            }
+                        });
+                        if let Ok(line) = serde_json::to_string(&notification) {
+                            let _ = server_write.write_all(format!("{line}\n").as_bytes()).await;
+                            let _ = server_write.flush().await;
+                        }
+                        tokio::time::sleep(Duration::from_millis(50)).await;
+                        break;
+                    }
+                }
+                drop(server_write);
+            });
+        });
+
+        let mut config = CodexLaneConfig::default();
+        config.bootstrap_thread = false;
+        let mut worker = CodexLaneWorker::spawn_with_runtime(
+            config,
+            Box::new(SingleClientRuntime::new((client, channels), runtime_guard)),
+        );
+
+        let _ = wait_for_snapshot(&mut worker, Duration::from_secs(2), |snapshot| {
+            snapshot.lifecycle == CodexLaneLifecycle::Ready
+        });
+
+        let mut saw_delta = false;
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() <= deadline && !saw_delta {
+            for update in worker.drain_updates() {
+                if let CodexLaneUpdate::Notification(CodexLaneNotification::AgentMessageDelta {
+                    thread_id,
+                    turn_id,
+                    item_id,
+                    delta,
+                }) = update
+                    && thread_id == "thread-delayed"
+                    && turn_id == "turn-delayed"
+                    && item_id == "item-delayed"
+                    && delta == "hello from delayed stream"
+                {
+                    saw_delta = true;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        assert!(saw_delta, "missing delayed notification while lane idled");
 
         worker.shutdown();
         let _ = server.join();

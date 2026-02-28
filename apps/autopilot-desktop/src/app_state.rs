@@ -829,7 +829,8 @@ impl AutopilotChatState {
     pub fn mark_turn_completed_for(&mut self, turn_id: &str) {
         let assistant_message_id = self
             .turn_assistant_message_ids
-            .remove(turn_id)
+            .get(turn_id)
+            .copied()
             .or_else(|| self.bind_turn_to_assistant_message(turn_id));
         if let Some(assistant_message_id) = assistant_message_id
             && let Some(message) = self
@@ -862,7 +863,8 @@ impl AutopilotChatState {
         let error = error.into();
         let assistant_message_id = self
             .turn_assistant_message_ids
-            .remove(turn_id)
+            .get(turn_id)
+            .copied()
             .or_else(|| self.bind_turn_to_assistant_message(turn_id))
             .or(self.active_assistant_message_id);
         if let Some(assistant_message_id) = assistant_message_id
@@ -3887,6 +3889,39 @@ mod tests {
             Some("resp-second")
         );
         assert!(!chat.has_pending_messages());
+    }
+
+    #[test]
+    fn chat_state_preserves_turn_binding_after_completion_for_late_events() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-1".to_string());
+        chat.submit_prompt("first".to_string());
+        let first_assistant_id = chat
+            .messages
+            .iter()
+            .rev()
+            .find(|message| {
+                message.role == AutopilotRole::Codex
+                    && message.status == AutopilotMessageStatus::Queued
+            })
+            .map(|message| message.id)
+            .unwrap_or_default();
+
+        chat.mark_turn_started("turn-1".to_string());
+        chat.append_turn_delta_for_turn("turn-1", "resp");
+        chat.mark_turn_completed_for("turn-1");
+
+        // Queue another prompt so there is a fresh pending assistant slot.
+        chat.submit_prompt("second".to_string());
+        chat.append_turn_delta_for_turn("turn-1", "-late");
+
+        assert_eq!(
+            chat.messages
+                .iter()
+                .find(|message| message.id == first_assistant_id)
+                .map(|message| message.content.as_str()),
+            Some("resp-late")
+        );
     }
 
     #[test]
