@@ -151,21 +151,9 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let spark_worker = crate::spark_wallet::SparkWalletWorker::spawn(spark_wallet.network);
         let settings = crate::app_state::SettingsState::load_from_disk();
         let settings_inputs = crate::app_state::SettingsPaneInputs::from_state(&settings);
-        let mut credentials = crate::app_state::CredentialsState::load_from_disk();
+        let credentials = crate::app_state::CredentialsState::load_from_disk();
         let credentials_inputs = crate::app_state::CredentialsPaneInputs::from_state(&credentials);
-        let mut codex_lane_config = CodexLaneConfig::default();
-        let codex_scope = crate::credentials::CREDENTIAL_SCOPE_CODEX
-            | crate::credentials::CREDENTIAL_SCOPE_SKILLS
-            | crate::credentials::CREDENTIAL_SCOPE_GLOBAL;
-        match credentials.resolve_env_for_scope(codex_scope) {
-            Ok(env) => {
-                codex_lane_config.env = env;
-            }
-            Err(error) => {
-                credentials.last_error = Some(error);
-                credentials.load_state = crate::app_state::PaneLoadState::Error;
-            }
-        }
+        let codex_lane_config = CodexLaneConfig::default();
         let codex_lane_worker = CodexLaneWorker::spawn(codex_lane_config.clone());
         let sa_lane_worker = SaLaneWorker::spawn();
         let skl_lane_worker = SklLaneWorker::spawn();
@@ -271,7 +259,6 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             command_palette,
             command_palette_actions,
         };
-        state.sync_credentials_runtime(false);
         bootstrap_runtime_lanes(&mut state);
         open_startup_panes(&mut state);
         Ok(state)

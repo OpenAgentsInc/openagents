@@ -100,10 +100,6 @@ impl CredentialRepository {
         };
         merge_template_records(&mut records);
         sort_records(&mut records);
-
-        for record in &mut records {
-            record.has_value = self.read_value(record.name.as_str())?.is_some();
-        }
         Ok(records)
     }
 
@@ -254,12 +250,13 @@ fn serialize_credentials_metadata(records: &[CredentialRecord]) -> String {
     let mut lines = vec![format!("schema_version={CREDENTIALS_SCHEMA_VERSION}")];
     for record in records {
         lines.push(format!(
-            "entry={}|{}|{}|{}|{}",
+            "entry={}|{}|{}|{}|{}|{}",
             record.name,
             bool_flag(record.enabled),
             bool_flag(record.secret),
             bool_flag(record.template),
             record.scopes & CREDENTIAL_SCOPE_ALL,
+            bool_flag(record.has_value),
         ));
     }
     lines.push(String::new());
@@ -314,6 +311,7 @@ fn parse_credentials_metadata(raw: &str) -> Result<Vec<CredentialRecord>, String
                         name_raw
                     ));
                 };
+                let has_value_raw = parts.next();
                 if parts.next().is_some() {
                     return Err(format!(
                         "Invalid credential entry {}: too many fields",
@@ -338,13 +336,17 @@ fn parse_credentials_metadata(raw: &str) -> Result<Vec<CredentialRecord>, String
                         normalized_name.as_str()
                     )
                 })? & CREDENTIAL_SCOPE_ALL;
+                let has_value = match has_value_raw {
+                    Some(raw) => parse_bool_flag(raw)?,
+                    None => false,
+                };
                 records.push(CredentialRecord {
                     name: normalized_name,
                     enabled,
                     secret,
                     template,
                     scopes,
-                    has_value: false,
+                    has_value,
                 });
             }
             _ => {}
