@@ -416,6 +416,8 @@ pub struct AutopilotChatState {
     pub thread_filter_model_provider: Option<String>,
     pub thread_filter_search_term: String,
     pub thread_rename_counter: u64,
+    pub transcript_scroll_offset: f32,
+    pub transcript_follow_tail: bool,
     pub last_error: Option<String>,
 }
 
@@ -465,6 +467,8 @@ impl Default for AutopilotChatState {
             thread_filter_model_provider: None,
             thread_filter_search_term: String::new(),
             thread_rename_counter: 1,
+            transcript_scroll_offset: 0.0,
+            transcript_follow_tail: true,
             last_error: None,
         }
     }
@@ -498,6 +502,36 @@ impl Default for SidebarState {
 }
 
 impl AutopilotChatState {
+    pub fn reset_transcript_scroll(&mut self) {
+        self.transcript_scroll_offset = 0.0;
+        self.transcript_follow_tail = true;
+    }
+
+    pub fn transcript_effective_scroll_offset(&self, max_scroll: f32) -> f32 {
+        let max_scroll = max_scroll.max(0.0);
+        if self.transcript_follow_tail {
+            max_scroll
+        } else {
+            self.transcript_scroll_offset.clamp(0.0, max_scroll)
+        }
+    }
+
+    pub fn scroll_transcript_by(&mut self, delta: f32, max_scroll: f32) {
+        let max_scroll = max_scroll.max(0.0);
+        if max_scroll <= 0.0 {
+            self.reset_transcript_scroll();
+            return;
+        }
+
+        let mut offset = self.transcript_effective_scroll_offset(max_scroll) + delta;
+        if !offset.is_finite() {
+            offset = max_scroll;
+        }
+        offset = offset.clamp(0.0, max_scroll);
+        self.transcript_scroll_offset = offset;
+        self.transcript_follow_tail = (max_scroll - offset).abs() <= 1.0;
+    }
+
     pub fn current_model(&self) -> &str {
         self.models
             .get(self.selected_model)
@@ -624,6 +658,7 @@ impl AutopilotChatState {
     pub fn select_thread_by_index(&mut self, index: usize) -> Option<AutopilotThreadResumeTarget> {
         let thread_id = self.threads.get(index).cloned()?;
         self.active_thread_id = Some(thread_id.clone());
+        self.reset_transcript_scroll();
         self.last_error = None;
         let metadata = self.thread_metadata.get(&thread_id).cloned();
         Some(AutopilotThreadResumeTarget {
@@ -655,6 +690,7 @@ impl AutopilotChatState {
     pub fn ensure_thread(&mut self, thread_id: String) {
         self.remember_thread(thread_id.clone());
         self.active_thread_id = Some(thread_id);
+        self.reset_transcript_scroll();
     }
 
     pub fn is_active_thread(&self, thread_id: &str) -> bool {

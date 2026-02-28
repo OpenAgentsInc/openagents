@@ -21,7 +21,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use wgpui::clipboard::copy_to_clipboard;
 use wgpui::{Bounds, Component, InputEvent, Key, Modifiers, MouseButton, NamedKey, Point};
-use winit::event::{ElementState, WindowEvent};
+use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow};
 use winit::keyboard::{
     Key as WinitLogicalKey, KeyCode, ModifiersState, NamedKey as WinitNamedKey, PhysicalKey,
@@ -44,11 +44,12 @@ use crate::pane_system::{
     PaneHitAction, PaneInput, RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction,
     SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StarterJobsPaneAction, SyncHealthPaneAction,
     TreasuryExchangeSimulationPaneAction, clamp_all_panes_to_window, dispatch_chat_input_event,
-    dispatch_create_invoice_input_event, dispatch_credentials_input_event,
-    dispatch_job_history_input_event, dispatch_network_requests_input_event,
-    dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
-    dispatch_settings_input_event, dispatch_spark_input_event, pane_indices_by_z_desc,
-    pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
+    dispatch_chat_scroll_event, dispatch_create_invoice_input_event,
+    dispatch_credentials_input_event, dispatch_job_history_input_event,
+    dispatch_network_requests_input_event, dispatch_pay_invoice_input_event,
+    dispatch_relay_connections_input_event, dispatch_settings_input_event,
+    dispatch_spark_input_event, pane_indices_by_z_desc, pane_z_sort_invocation_count,
+    topmost_pane_hit_action_in_order,
 };
 use crate::render::{
     logical_size, render_frame, sidebar_go_online_button_bounds, sidebar_handle_bounds,
@@ -189,6 +190,16 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                         state.window.request_redraw();
                     }
                 }
+            }
+        }
+        WindowEvent::MouseWheel { delta, .. } => {
+            let (dx, dy) = match delta {
+                MouseScrollDelta::LineDelta(x, y) => (-x * 24.0, -y * 24.0),
+                MouseScrollDelta::PixelDelta(pos) => (-pos.x as f32, -pos.y as f32),
+            };
+            let scroll_event = InputEvent::Scroll { dx, dy };
+            if dispatch_mouse_scroll(state, app.cursor_position, &scroll_event) {
+                state.window.request_redraw();
             }
         }
         WindowEvent::KeyboardInput { event, .. } => {
@@ -407,6 +418,20 @@ fn dispatch_mouse_up(
         .event(event, state.hotbar_bounds, &mut state.event_context)
         .is_handled();
     handled |= process_hotbar_clicks(state);
+    handled
+}
+
+fn dispatch_mouse_scroll(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+    event: &InputEvent,
+) -> bool {
+    let mut handled = false;
+    if let InputEvent::Scroll { dy, .. } = event {
+        handled |= dispatch_chat_scroll_event(state, point, *dy);
+    }
+    handled |= dispatch_text_inputs(state, event);
+    handled |= PaneInput::dispatch_frame_event(state, event);
     handled
 }
 
@@ -2910,11 +2935,7 @@ fn run_credentials_action(
                 .to_string();
             eprintln!(
                 "credentials/save value requested selected={} chars={}",
-                state
-                    .credentials
-                    .selected_name
-                    .as_deref()
-                    .unwrap_or("none"),
+                state.credentials.selected_name.as_deref().unwrap_or("none"),
                 value.chars().count()
             );
             let saved = state.credentials.set_selected_value(value.as_str());

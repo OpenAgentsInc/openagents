@@ -2858,6 +2858,14 @@ pub fn dispatch_chat_input_event(state: &mut RenderState, event: &InputEvent) ->
     chat_pane::dispatch_input_event(state, event)
 }
 
+pub fn dispatch_chat_scroll_event(
+    state: &mut RenderState,
+    cursor_position: Point,
+    scroll_dy: f32,
+) -> bool {
+    chat_pane::dispatch_transcript_scroll_event(state, cursor_position, scroll_dy)
+}
+
 pub fn dispatch_job_history_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
     let top_history = state
         .panes
