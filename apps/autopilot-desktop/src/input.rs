@@ -43,13 +43,16 @@ use crate::pane_system::{
     EarningsScoreboardPaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction,
     PaneInput, RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction, SettingsPaneAction,
     StarterJobsPaneAction, SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction,
+    clamp_all_panes_to_window,
     dispatch_chat_input_event, dispatch_create_invoice_input_event,
     dispatch_job_history_input_event, dispatch_network_requests_input_event,
     dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
     dispatch_settings_input_event, dispatch_spark_input_event, pane_indices_by_z_desc,
-    pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
+    pane_z_sort_invocation_count, topmost_pane_hit_action_in_order, SIDEBAR_DEFAULT_WIDTH,
 };
-use crate::render::{logical_size, render_frame};
+use crate::render::{
+    logical_size, render_frame, sidebar_go_online_button_bounds, sidebar_handle_bounds,
+};
 use crate::runtime_lanes::{
     AcCreditCommand, RuntimeCommandErrorClass, RuntimeCommandResponse, RuntimeCommandStatus,
     RuntimeLane, SaLifecycleCommand, SklDiscoveryTrustCommand,
@@ -279,7 +282,12 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
 }
 
 fn dispatch_mouse_move(state: &mut crate::app_state::RenderState, point: Point) -> bool {
-    let mut handled = PaneController::update_drag(state, point);
+    let mut handled = handle_sidebar_mouse_move(state, point);
+    if handled {
+        return true;
+    }
+
+    handled = PaneController::update_drag(state, point);
     let event = InputEvent::MouseMove {
         x: point.x,
         y: point.y,
@@ -300,6 +308,21 @@ fn dispatch_mouse_down(
     button: MouseButton,
     event: &InputEvent,
 ) -> bool {
+    // Sidebar handle gets first chance at mouse-down so panes don't steal drags.
+    if handle_sidebar_mouse_down(state, point, button) {
+        return true;
+    }
+
+    // Sidebar "Go Online" button (when panel is open).
+    if button == MouseButton::Left && state.sidebar.is_open {
+        let go_online_bounds = sidebar_go_online_button_bounds(state);
+        if go_online_bounds.size.width > 0.0 && go_online_bounds.contains(point) {
+            if run_pane_hit_action(state, PaneHitAction::GoOnlineToggle) {
+                return true;
+            }
+        }
+    }
+
     let mut handled = false;
     if state.hotbar_bounds.contains(point) {
         handled |= state
@@ -329,7 +352,8 @@ fn dispatch_mouse_up(
     point: Point,
     event: &InputEvent,
 ) -> bool {
-    let mut handled = PaneInput::handle_mouse_up(state, event);
+    let mut handled = handle_sidebar_mouse_up(state, point, event);
+    handled |= PaneInput::handle_mouse_up(state, event);
     handled |= dispatch_text_inputs(state, event);
     handled |= dispatch_pane_actions(state, point);
     handled |= state
@@ -371,6 +395,115 @@ fn dispatch_pane_actions(state: &mut crate::app_state::RenderState, point: Point
     );
 
     handled
+}
+
+fn sidebar_settings_icon_bounds(state: &crate::app_state::RenderState) -> Bounds {
+    let logical = logical_size(&state.config, state.scale_factor);
+    let width = logical.width;
+    let height = logical.height;
+
+    if !state.sidebar.is_open {
+        return Bounds::new(-1000.0, -1000.0, 0.0, 0.0);
+    }
+
+    let min_sidebar_width = 220.0;
+    let max_sidebar_width = (width * 0.5).max(min_sidebar_width);
+    let configured_width = state
+        .sidebar
+        .width
+        .max(min_sidebar_width)
+        .min(max_sidebar_width);
+    let panel_width = configured_width;
+    let sidebar_x = (width - panel_width).max(0.0);
+
+    let icon_size = 16.0;
+    let padding = 12.0;
+    let icon_x = sidebar_x + panel_width - icon_size - padding;
+    let icon_y = height - icon_size - padding;
+    Bounds::new(icon_x, icon_y, icon_size, icon_size)
+}
+
+fn handle_sidebar_mouse_down(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+    button: MouseButton,
+) -> bool {
+    if button != MouseButton::Left {
+        return false;
+    }
+    let handle = sidebar_handle_bounds(state);
+    if !handle.contains(point) {
+        return false;
+    }
+
+    state.sidebar.is_pressed = true;
+    state.sidebar.is_dragging = false;
+    state.sidebar.drag_start_x = point.x;
+    state.sidebar.drag_start_width = state.sidebar.width;
+    true
+}
+
+fn handle_sidebar_mouse_move(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+) -> bool {
+    let icon_bounds = sidebar_settings_icon_bounds(state);
+    let hover = icon_bounds.contains(point);
+    let mut handled = false;
+    if hover != state.sidebar.settings_hover {
+        state.sidebar.settings_hover = hover;
+        handled = true;
+    }
+
+    if !state.sidebar.is_pressed {
+        return handled;
+    }
+
+    let dx = point.x - state.sidebar.drag_start_x;
+    let logical = logical_size(&state.config, state.scale_factor);
+
+    // Start a drag only after a small horizontal threshold, and only when open.
+    if !state.sidebar.is_dragging {
+        if dx.abs() < 3.0 || !state.sidebar.is_open {
+            return handled;
+        }
+        state.sidebar.is_dragging = true;
+    }
+
+    let min_sidebar_width = 220.0;
+    let max_sidebar_width = (logical.width * 0.5).max(min_sidebar_width);
+    let mut new_width = state.sidebar.drag_start_width - dx;
+    new_width = new_width.max(min_sidebar_width).min(max_sidebar_width);
+    state.sidebar.width = new_width;
+    clamp_all_panes_to_window(state);
+    true
+}
+
+fn handle_sidebar_mouse_up(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+    _event: &InputEvent,
+) -> bool {
+    if !state.sidebar.is_pressed {
+        return false;
+    }
+
+    let was_dragging = state.sidebar.is_dragging;
+    state.sidebar.is_pressed = false;
+    state.sidebar.is_dragging = false;
+
+    let handle = sidebar_handle_bounds(state);
+    if !was_dragging && handle.contains(point) {
+        // Treat as a click: toggle open/closed.
+        state.sidebar.is_open = !state.sidebar.is_open;
+        if state.sidebar.is_open && state.sidebar.width < 50.0 {
+            state.sidebar.width = SIDEBAR_DEFAULT_WIDTH;
+        }
+        clamp_all_panes_to_window(state);
+        return true;
+    }
+
+    was_dragging
 }
 
 fn dispatch_keyboard_submit_actions(
