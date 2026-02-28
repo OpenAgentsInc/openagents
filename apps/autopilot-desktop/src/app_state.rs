@@ -838,12 +838,6 @@ impl AutopilotChatState {
             if self.active_turn_id.as_deref() == Some(turn_id) {
                 message.status = AutopilotMessageStatus::Running;
             }
-            if message.content.ends_with(delta) {
-                return;
-            }
-            if delta.len() >= 32 && delta.contains('\n') && message.content.contains(delta) {
-                return;
-            }
             message.content.push_str(delta);
         }
     }
@@ -870,38 +864,12 @@ impl AutopilotChatState {
                 message.content.push_str("Reasoning:\n");
             }
             if !message.content.starts_with("Reasoning:\n") {
-                if message.content.ends_with(delta) {
-                    return;
-                }
-                if delta.len() >= 32 && delta.contains('\n') && message.content.contains(delta) {
-                    return;
-                }
-                if delta.starts_with("**") && !message.content.ends_with('\n') {
-                    message.content.push_str("\n\n");
-                }
                 message.content.push_str(delta);
                 return;
             }
             let has_answer = message.content.contains("\n\nAnswer:\n");
             if has_answer {
                 return;
-            }
-            if message.content.ends_with(delta) {
-                return;
-            }
-            if delta.len() >= 32 && delta.contains('\n') && message.content.contains(delta) {
-                return;
-            }
-            let reasoning_body = message
-                .content
-                .strip_prefix("Reasoning:\n")
-                .unwrap_or_default()
-                .trim_end();
-            if !reasoning_body.is_empty()
-                && delta.starts_with("**")
-                && !message.content.ends_with('\n')
-            {
-                message.content.push_str("\n\n");
             }
             message.content.push_str(delta);
         }
@@ -4526,54 +4494,6 @@ mod tests {
             .find(|message| message.id == assistant_id)
             .expect("codex message should exist");
         assert_eq!(codex.content, combined);
-    }
-
-    #[test]
-    fn chat_state_inserts_spacing_before_reasoning_markdown_heading() {
-        let mut chat = AutopilotChatState::default();
-        chat.ensure_thread("thread-1".to_string());
-        chat.submit_prompt("hello".to_string());
-        chat.mark_turn_started("turn-1".to_string());
-
-        chat.append_turn_reasoning_delta_for_turn("turn-1", "First sentence.");
-        chat.append_turn_reasoning_delta_for_turn("turn-1", "**Heading**\nDetail.");
-        let assistant_id = *chat
-            .turn_assistant_message_ids
-            .get("turn-1")
-            .expect("turn should bind to an assistant message");
-
-        let codex = chat
-            .messages
-            .iter()
-            .find(|message| message.id == assistant_id)
-            .expect("codex message should exist");
-        assert_eq!(
-            codex.content,
-            "Reasoning:\nFirst sentence.\n\n**Heading**\nDetail."
-        );
-    }
-
-    #[test]
-    fn chat_state_skips_duplicate_large_reasoning_block() {
-        let mut chat = AutopilotChatState::default();
-        chat.ensure_thread("thread-1".to_string());
-        chat.submit_prompt("hello".to_string());
-        chat.mark_turn_started("turn-1".to_string());
-
-        let repeated = "**Plan**\nLine one with enough characters to trigger dedupe.\nLine two.";
-        chat.append_turn_reasoning_delta_for_turn("turn-1", repeated);
-        chat.append_turn_reasoning_delta_for_turn("turn-1", repeated);
-        let assistant_id = *chat
-            .turn_assistant_message_ids
-            .get("turn-1")
-            .expect("turn should bind to an assistant message");
-
-        let codex = chat
-            .messages
-            .iter()
-            .find(|message| message.id == assistant_id)
-            .expect("codex message should exist");
-        assert_eq!(codex.content.matches("**Plan**").count(), 1);
     }
 
     #[test]

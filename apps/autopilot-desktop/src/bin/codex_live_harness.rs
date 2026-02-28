@@ -22,6 +22,31 @@ use codex_client::{
 };
 use serde_json::Value;
 
+const LEGACY_NOTIFICATION_OPT_OUT_METHODS: &[&str] = &[
+    "codex/event/agent_message_content_delta",
+    "codex/event/agent_message_delta",
+    "codex/event/agent_message",
+    "codex/event/agent_reasoning_delta",
+    "codex/event/agent_reasoning_content_delta",
+    "codex/event/agent_reasoning_raw_content_delta",
+    "codex/event/agent_reasoning_section_break",
+    "codex/event/agent_reasoning",
+    "codex/event/reasoning_content_delta",
+    "codex/event/reasoning_raw_content_delta",
+    "codex/event/item_started",
+    "codex/event/item_completed",
+    "codex/event/task_started",
+    "codex/event/task_complete",
+    "codex/event/task_failed",
+    "codex/event/task_error",
+    "codex/event/thread_status",
+    "codex/event/thread_name_changed",
+    "codex/event/turn_diff",
+    "codex/event/turn_plan",
+    "codex/event/token_count",
+    "codex/event/user_message",
+];
+
 #[derive(Debug)]
 struct HarnessArgs {
     cwd: PathBuf,
@@ -219,13 +244,18 @@ async fn run(args: HarnessArgs) -> Result<()> {
             },
             capabilities: Some(InitializeCapabilities {
                 experimental_api: true,
-                opt_out_notification_methods: None,
+                opt_out_notification_methods: Some(
+                    LEGACY_NOTIFICATION_OPT_OUT_METHODS
+                        .iter()
+                        .map(|method| method.to_string())
+                        .collect(),
+                ),
             }),
         })
         .await
         .context("codex initialize failed")?;
 
-    drain_and_print("post-initialize", &mut channels, &args).await;
+    drain_and_print("post-initialize", &mut channels, &args).await?;
 
     let _account = run_probe(
         "account/read",
@@ -691,7 +721,7 @@ async fn run(args: HarnessArgs) -> Result<()> {
     } else {
         println!("thread/read prior skipped (no prior thread available)");
     }
-    drain_and_print("post-refresh", &mut channels, &args).await;
+    drain_and_print("post-refresh", &mut channels, &args).await?;
 
     println!();
     println!("simulate_click chat.new_thread -> thread/start");
@@ -747,7 +777,7 @@ async fn run(args: HarnessArgs) -> Result<()> {
             previous_thread_id, new_thread_id, !same_thread
         );
     }
-    drain_and_print("post-new-chat", &mut channels, &args).await;
+    drain_and_print("post-new-chat", &mut channels, &args).await?;
 
     let mut last_turn_id: Option<String> = None;
     if let Some(prompt) = args
@@ -1160,7 +1190,10 @@ where
             None
         }
     };
-    drain_and_print(&format!("post-{label}"), channels, args).await;
+    if let Err(error) = drain_and_print(&format!("post-{label}"), channels, args).await {
+        println!("  post-{label} drain error: {error}");
+        return None;
+    }
     value
 }
 
@@ -1426,7 +1459,11 @@ async fn wait_for_materialized_thread_after_turn(
     )
 }
 
-async fn drain_and_print(label: &str, channels: &mut AppServerChannels, args: &HarnessArgs) {
+async fn drain_and_print(
+    label: &str,
+    channels: &mut AppServerChannels,
+    args: &HarnessArgs,
+) -> Result<ChannelEventBatch> {
     let events = collect_channel_events(
         channels,
         Duration::from_millis(args.drain_ms),
@@ -1434,6 +1471,22 @@ async fn drain_and_print(label: &str, channels: &mut AppServerChannels, args: &H
     )
     .await;
     print_events(label, &events, args.max_events);
+    let leaked_opt_out_methods = events
+        .notification_methods
+        .iter()
+        .filter(|method| LEGACY_NOTIFICATION_OPT_OUT_METHODS.contains(&method.as_str()))
+        .cloned()
+        .collect::<std::collections::BTreeSet<_>>();
+    if !leaked_opt_out_methods.is_empty() {
+        bail!(
+            "{label} emitted opted-out legacy notifications: {}",
+            leaked_opt_out_methods
+                .into_iter()
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+    Ok(events)
 }
 
 async fn collect_channel_events(
