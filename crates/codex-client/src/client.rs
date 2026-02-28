@@ -109,6 +109,7 @@ pub const SUPPORTED_SERVER_NOTIFICATION_METHODS: &[&str] = &[
     "thread/realtime/outputAudio/delta",
     "thread/realtime/error",
     "thread/realtime/closed",
+    "serverRequest/resolved",
     "windows/worldWritableWarning",
     "windowsSandbox/setupCompleted",
 ];

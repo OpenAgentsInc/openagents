@@ -71,13 +71,13 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
         changed = true;
         match update {
             crate::codex_lane::CodexLaneUpdate::Snapshot(snapshot) => {
-                codex::apply_lane_snapshot(state, *snapshot)
+                codex::apply_lane_snapshot(state, *snapshot);
             }
             crate::codex_lane::CodexLaneUpdate::CommandResponse(response) => {
-                codex::apply_command_response(state, response)
+                codex::apply_command_response(state, response);
             }
             crate::codex_lane::CodexLaneUpdate::Notification(notification) => {
-                codex::apply_notification(state, notification)
+                codex::apply_notification(state, notification);
             }
         }
     }
