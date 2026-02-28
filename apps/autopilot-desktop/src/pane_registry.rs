@@ -89,12 +89,7 @@ const PANE_SPECS: [PaneSpec; 38] = [
         singleton: false,
         startup: false,
         command: None,
-        hotbar: Some(PaneHotbarSpec {
-            slot: HOTBAR_SLOT_NEW_CHAT,
-            icon: "+",
-            tooltip: "New pane",
-            shortcut: None,
-        }),
+        hotbar: None,
     },
     PaneSpec {
         kind: PaneKind::AutopilotChat,
@@ -109,7 +104,12 @@ const PANE_SPECS: [PaneSpec; 38] = [
             description: "Open Codex chat threads and model controls",
             keybinding: None,
         }),
-        hotbar: None,
+        hotbar: Some(PaneHotbarSpec {
+            slot: HOTBAR_SLOT_NEW_CHAT,
+            icon: "<>",
+            tooltip: "Codex",
+            shortcut: None,
+        }),
     },
     PaneSpec {
         kind: PaneKind::CodexAccount,
