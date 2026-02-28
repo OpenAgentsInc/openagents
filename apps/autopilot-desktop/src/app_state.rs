@@ -100,6 +100,12 @@ pub enum PaneDragMode {
     },
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct ChatTranscriptPressState {
+    pub message_id: u64,
+    pub started_at: Instant,
+}
+
 pub struct DesktopPane {
     pub id: u64,
     pub title: String,
@@ -419,6 +425,8 @@ pub struct AutopilotChatState {
     pub transcript_scroll_offset: f32,
     pub transcript_follow_tail: bool,
     pub last_error: Option<String>,
+    pub copy_notice: Option<String>,
+    pub copy_notice_until: Option<Instant>,
 }
 
 impl Default for AutopilotChatState {
@@ -470,6 +478,8 @@ impl Default for AutopilotChatState {
             transcript_scroll_offset: 0.0,
             transcript_follow_tail: true,
             last_error: None,
+            copy_notice: None,
+            copy_notice_until: None,
         }
     }
 }
@@ -1011,6 +1021,20 @@ impl AutopilotChatState {
             cached_input_tokens,
             output_tokens,
         });
+    }
+
+    pub fn set_copy_notice(&mut self, now: Instant, message: String) {
+        self.copy_notice = Some(message);
+        self.copy_notice_until = Some(now + Duration::from_secs(3));
+    }
+
+    pub fn expire_copy_notice(&mut self, now: Instant) -> bool {
+        if self.copy_notice_until.is_some_and(|until| until <= now) {
+            self.copy_notice = None;
+            self.copy_notice_until = None;
+            return true;
+        }
+        false
     }
 
     pub fn set_turn_plan(&mut self, explanation: Option<String>, plan: Vec<AutopilotTurnPlanStep>) {
@@ -3921,6 +3945,7 @@ pub struct RenderState {
     pub job_history_inputs: JobHistoryPaneInputs,
     pub chat_inputs: ChatPaneInputs,
     pub autopilot_chat: AutopilotChatState,
+    pub chat_transcript_press: Option<ChatTranscriptPressState>,
     pub codex_account: CodexAccountPaneState,
     pub codex_models: CodexModelsPaneState,
     pub codex_config: CodexConfigPaneState,
@@ -4285,6 +4310,18 @@ mod tests {
                 .iter()
                 .any(|message| message.content.contains("pong"))
         );
+    }
+
+    #[test]
+    fn chat_copy_notice_expires() {
+        let mut chat = AutopilotChatState::default();
+        let now = std::time::Instant::now();
+        chat.set_copy_notice(now, "Copied message".to_string());
+        assert_eq!(chat.copy_notice.as_deref(), Some("Copied message"));
+
+        let expired_at = now + std::time::Duration::from_secs(4);
+        assert!(chat.expire_copy_notice(expired_at));
+        assert!(chat.copy_notice.is_none());
     }
 
     #[test]

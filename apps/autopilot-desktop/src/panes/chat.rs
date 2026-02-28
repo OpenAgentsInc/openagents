@@ -1,8 +1,8 @@
 use wgpui::{Bounds, Component, InputEvent, PaintContext, Point, Quad, theme};
 
 use crate::app_state::{
-    AutopilotChatState, AutopilotMessageStatus, AutopilotRole, ChatPaneInputs, PaneKind,
-    RenderState,
+    AutopilotChatState, AutopilotMessage, AutopilotMessageStatus, AutopilotRole, ChatPaneInputs,
+    PaneKind, RenderState,
 };
 use crate::pane_renderer::{paint_action_button, split_text_for_display};
 use crate::pane_system::{
@@ -103,13 +103,7 @@ fn transcript_content_height(autopilot_chat: &AutopilotChatState) -> f32 {
 
     for message in &autopilot_chat.messages {
         height += CHAT_TRANSCRIPT_LINE_HEIGHT;
-        let content = if message.content.trim().is_empty()
-            && matches!(message.status, AutopilotMessageStatus::Queued)
-        {
-            "Waiting for Codex response...".to_string()
-        } else {
-            message.content.clone()
-        };
+        let content = message_display_content(message);
         let display_lines = chat_display_lines(&content, 78);
         let rendered_lines = display_lines.len().min(CHAT_MAX_RENDER_LINES_PER_MESSAGE);
         height += rendered_lines as f32 * CHAT_TRANSCRIPT_LINE_HEIGHT;
@@ -120,6 +114,116 @@ fn transcript_content_height(autopilot_chat: &AutopilotChatState) -> f32 {
     }
 
     height + 8.0
+}
+
+fn message_display_content(message: &AutopilotMessage) -> String {
+    if message.content.trim().is_empty() && matches!(message.status, AutopilotMessageStatus::Queued)
+    {
+        "Waiting for Codex response...".to_string()
+    } else {
+        message.content.clone()
+    }
+}
+
+fn advance_transcript_prefix_lines(mut y: f32, autopilot_chat: &AutopilotChatState) -> f32 {
+    if !autopilot_chat.pending_command_approvals.is_empty()
+        || !autopilot_chat.pending_file_change_approvals.is_empty()
+    {
+        y += CHAT_TRANSCRIPT_LINE_HEIGHT;
+    }
+    if !autopilot_chat.pending_tool_calls.is_empty() {
+        y += CHAT_TRANSCRIPT_LINE_HEIGHT;
+    }
+    if !autopilot_chat.pending_tool_user_input.is_empty() {
+        y += CHAT_TRANSCRIPT_LINE_HEIGHT;
+    }
+    if !autopilot_chat.pending_auth_refresh.is_empty() {
+        y += CHAT_TRANSCRIPT_LINE_HEIGHT;
+    }
+    if !autopilot_chat.turn_plan.is_empty() {
+        y += CHAT_TRANSCRIPT_LINE_HEIGHT;
+    }
+    if autopilot_chat
+        .turn_diff
+        .as_deref()
+        .and_then(|diff| diff.lines().next())
+        .is_some_and(|line| !line.is_empty())
+    {
+        y += CHAT_TRANSCRIPT_LINE_HEIGHT;
+    }
+    y + autopilot_chat.turn_timeline.iter().rev().take(2).count() as f32
+        * CHAT_TRANSCRIPT_LINE_HEIGHT
+}
+
+fn transcript_message_layouts(
+    content_bounds: Bounds,
+    autopilot_chat: &AutopilotChatState,
+) -> Vec<(u64, Bounds)> {
+    let transcript_scroll_clip = transcript_scroll_clip_bounds(content_bounds, autopilot_chat);
+    let transcript_content_height = transcript_content_height(autopilot_chat);
+    let transcript_max_scroll =
+        (transcript_content_height - transcript_scroll_clip.size.height).max(0.0);
+    let transcript_scroll_offset =
+        autopilot_chat.transcript_effective_scroll_offset(transcript_max_scroll);
+
+    let mut y = transcript_scroll_clip.origin.y + 8.0 - transcript_scroll_offset;
+    y = advance_transcript_prefix_lines(y, autopilot_chat);
+
+    let mut layouts = Vec::with_capacity(autopilot_chat.messages.len());
+    for message in &autopilot_chat.messages {
+        let start_y = y;
+        y += CHAT_TRANSCRIPT_LINE_HEIGHT;
+
+        let content = message_display_content(message);
+        let display_lines = chat_display_lines(&content, 78);
+        let rendered_lines = display_lines.len().min(CHAT_MAX_RENDER_LINES_PER_MESSAGE);
+        y += rendered_lines as f32 * CHAT_TRANSCRIPT_LINE_HEIGHT;
+        if display_lines.len() > CHAT_MAX_RENDER_LINES_PER_MESSAGE {
+            y += CHAT_TRANSCRIPT_LINE_HEIGHT;
+        }
+        y += 8.0;
+
+        layouts.push((
+            message.id,
+            Bounds::new(
+                transcript_scroll_clip.origin.x,
+                start_y,
+                transcript_scroll_clip.size.width,
+                (y - start_y).max(0.0),
+            ),
+        ));
+    }
+    layouts
+}
+
+fn top_chat_content_bounds(state: &RenderState) -> Option<Bounds> {
+    state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == PaneKind::AutopilotChat)
+        .max_by_key(|pane| pane.z_index)
+        .map(|pane| pane_content_bounds(pane.bounds))
+}
+
+pub fn transcript_message_id_at_point(state: &RenderState, point: Point) -> Option<u64> {
+    let content_bounds = top_chat_content_bounds(state)?;
+    let clip = transcript_scroll_clip_bounds(content_bounds, &state.autopilot_chat);
+    if !clip.contains(point) {
+        return None;
+    }
+    transcript_message_layouts(content_bounds, &state.autopilot_chat)
+        .into_iter()
+        .find(|(_, bounds)| bounds.contains(point))
+        .map(|(id, _)| id)
+}
+
+pub fn transcript_message_copy_text_by_id(state: &RenderState, message_id: u64) -> Option<String> {
+    state
+        .autopilot_chat
+        .messages
+        .iter()
+        .find(|message| message.id == message_id)
+        .map(message_display_content)
 }
 
 pub fn paint(
@@ -515,13 +619,7 @@ pub fn paint(
         ));
         y += 14.0;
 
-        let content = if message.content.trim().is_empty()
-            && matches!(message.status, AutopilotMessageStatus::Queued)
-        {
-            "Waiting for Codex response...".to_string()
-        } else {
-            message.content.clone()
-        };
+        let content = message_display_content(message);
 
         let display_lines = chat_display_lines(&content, 78);
         for line in display_lines.iter().take(CHAT_MAX_RENDER_LINES_PER_MESSAGE) {
@@ -549,15 +647,22 @@ pub fn paint(
     }
     paint.scene.pop_clip();
 
+    let mut footer_y = transcript_bounds.max_y() - 14.0;
     if let Some(error) = autopilot_chat.last_error.as_deref() {
         paint.scene.draw_text(paint.text.layout(
             error,
-            Point::new(
-                transcript_bounds.origin.x + 10.0,
-                transcript_bounds.max_y() - 14.0,
-            ),
+            Point::new(transcript_bounds.origin.x + 10.0, footer_y),
             11.0,
             theme::status::ERROR,
+        ));
+        footer_y -= CHAT_TRANSCRIPT_LINE_HEIGHT;
+    }
+    if let Some(copy_notice) = autopilot_chat.copy_notice.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            copy_notice,
+            Point::new(transcript_bounds.origin.x + 10.0, footer_y),
+            11.0,
+            theme::status::SUCCESS,
         ));
     }
 
