@@ -213,6 +213,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             job_history_inputs: crate::app_state::JobHistoryPaneInputs::default(),
             chat_inputs: crate::app_state::ChatPaneInputs::default(),
             autopilot_chat: crate::app_state::AutopilotChatState::default(),
+            chat_transcript_press: None,
             codex_account: crate::app_state::CodexAccountPaneState::default(),
             codex_models: crate::app_state::CodexModelsPaneState::default(),
             codex_config: crate::app_state::CodexConfigPaneState::default(),

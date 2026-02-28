@@ -28,8 +28,8 @@ use winit::keyboard::{
 };
 
 use crate::app_state::{
-    ActivityEventDomain, ActivityEventRow, AlertDomain, App, JobInboxNetworkRequest,
-    JobInboxValidation, NetworkRequestSubmission, ProviderMode,
+    ActivityEventDomain, ActivityEventRow, AlertDomain, App, ChatTranscriptPressState,
+    JobInboxNetworkRequest, JobInboxValidation, NetworkRequestSubmission, ProviderMode,
 };
 use crate::hotbar::{
     HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_SPARK_WALLET, activate_hotbar_slot,
@@ -51,6 +51,7 @@ use crate::pane_system::{
     dispatch_spark_input_event, pane_indices_by_z_desc, pane_z_sort_invocation_count,
     topmost_pane_hit_action_in_order,
 };
+use crate::panes::chat as chat_pane;
 use crate::render::{
     logical_size, render_frame, sidebar_go_online_button_bounds, sidebar_handle_bounds,
 };
@@ -62,6 +63,8 @@ use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPane
 use crate::spark_wallet::SparkWalletCommand;
 
 mod reducers;
+
+const CHAT_MESSAGE_LONG_PRESS_MS: u64 = 450;
 
 pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: WindowEvent) {
     let Some(state) = &mut app.state else {
@@ -323,16 +326,19 @@ pub fn handle_about_to_wait(app: &mut App, event_loop: &ActiveEventLoop) {
 
 fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     let mut changed = false;
+    let now = std::time::Instant::now();
     if reducers::drain_spark_worker_updates(state) {
         changed = true;
     }
     if reducers::drain_runtime_lane_updates(state) {
         changed = true;
     }
-    if state.nostr_secret_state.expire(std::time::Instant::now()) {
+    if state.nostr_secret_state.expire(now) {
         changed = true;
     }
-    let now = std::time::Instant::now();
+    if state.autopilot_chat.expire_copy_notice(now) {
+        changed = true;
+    }
     refresh_earnings_scoreboard(state, now);
     refresh_sync_health(state);
     changed
@@ -369,6 +375,7 @@ fn dispatch_mouse_down(
     if handle_sidebar_mouse_down(state, point, button) {
         return true;
     }
+    begin_chat_transcript_long_press(state, point, button);
 
     // Sidebar "Go Online" button (when panel is open).
     if button == MouseButton::Left && state.sidebar.is_open {
@@ -409,7 +416,8 @@ fn dispatch_mouse_up(
     point: Point,
     event: &InputEvent,
 ) -> bool {
-    let mut handled = handle_sidebar_mouse_up(state, point, event);
+    let mut handled = handle_chat_transcript_long_press_release(state, point);
+    handled |= handle_sidebar_mouse_up(state, point, event);
     handled |= PaneInput::handle_mouse_up(state, event);
     handled |= dispatch_text_inputs(state, event);
     handled |= dispatch_pane_actions(state, point);
@@ -433,6 +441,60 @@ fn dispatch_mouse_scroll(
     handled |= dispatch_text_inputs(state, event);
     handled |= PaneInput::dispatch_frame_event(state, event);
     handled
+}
+
+fn begin_chat_transcript_long_press(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+    button: MouseButton,
+) {
+    state.chat_transcript_press = None;
+    if button != MouseButton::Left {
+        return;
+    }
+
+    let Some(message_id) = chat_pane::transcript_message_id_at_point(state, point) else {
+        return;
+    };
+    state.chat_transcript_press = Some(ChatTranscriptPressState {
+        message_id,
+        started_at: std::time::Instant::now(),
+    });
+}
+
+fn handle_chat_transcript_long_press_release(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+) -> bool {
+    let Some(press) = state.chat_transcript_press.take() else {
+        return false;
+    };
+
+    let now = std::time::Instant::now();
+    if now.duration_since(press.started_at)
+        < std::time::Duration::from_millis(CHAT_MESSAGE_LONG_PRESS_MS)
+    {
+        return false;
+    }
+
+    let Some(released_message_id) = chat_pane::transcript_message_id_at_point(state, point) else {
+        return false;
+    };
+    if released_message_id != press.message_id {
+        return false;
+    }
+
+    let Some(message_text) = chat_pane::transcript_message_copy_text_by_id(state, press.message_id)
+    else {
+        return false;
+    };
+
+    let notice = match copy_to_clipboard(&message_text) {
+        Ok(()) => "Copied message to clipboard".to_string(),
+        Err(error) => format!("Failed to copy message: {error}"),
+    };
+    state.autopilot_chat.set_copy_notice(now, notice);
+    true
 }
 
 fn dispatch_text_inputs(state: &mut crate::app_state::RenderState, event: &InputEvent) -> bool {
