@@ -21,6 +21,8 @@ use crate::pane_system::{
     chat_visible_thread_row_count, pane_content_bounds,
 };
 
+const CHAT_MAX_RENDER_LINES_PER_MESSAGE: usize = 24;
+
 pub fn paint(
     content_bounds: Bounds,
     autopilot_chat: &AutopilotChatState,
@@ -246,7 +248,15 @@ pub fn paint(
         theme::text::MUTED,
     ));
 
-    let mut y = transcript_bounds.origin.y + 84.0;
+    let transcript_scroll_clip = Bounds::new(
+        transcript_bounds.origin.x + 8.0,
+        transcript_bounds.origin.y + 72.0,
+        (transcript_bounds.size.width - 16.0).max(0.0),
+        (composer_bounds.origin.y - transcript_bounds.origin.y - 80.0).max(0.0),
+    );
+
+    paint.scene.push_clip(transcript_scroll_clip);
+    let mut y = transcript_scroll_clip.origin.y + 8.0;
     if let Some(request) = autopilot_chat.pending_command_approvals.first() {
         let summary = request
             .command
@@ -402,17 +412,34 @@ pub fn paint(
             message.content.clone()
         };
 
-        for line in split_text_for_display(&content, 78) {
+        let display_lines = chat_display_lines(&content, 78);
+        for line in display_lines
+            .iter()
+            .take(CHAT_MAX_RENDER_LINES_PER_MESSAGE)
+        {
             paint.scene.draw_text(paint.text.layout(
-                &line,
+                line,
                 Point::new(transcript_bounds.origin.x + 10.0, y),
                 11.0,
                 theme::text::PRIMARY,
             ));
             y += 14.0;
         }
+        if display_lines.len() > CHAT_MAX_RENDER_LINES_PER_MESSAGE {
+            paint.scene.draw_text(paint.text.layout_mono(
+                &format!(
+                    "... [{} more lines truncated]",
+                    display_lines.len() - CHAT_MAX_RENDER_LINES_PER_MESSAGE
+                ),
+                Point::new(transcript_bounds.origin.x + 10.0, y),
+                10.0,
+                theme::text::MUTED,
+            ));
+            y += 14.0;
+        }
         y += 8.0;
     }
+    paint.scene.pop_clip();
 
     if let Some(error) = autopilot_chat.last_error.as_deref() {
         paint.scene.draw_text(paint.text.layout(
@@ -450,4 +477,80 @@ pub fn dispatch_input_event(state: &mut RenderState, event: &InputEvent) -> bool
         .composer
         .event(event, composer_bounds, &mut state.event_context)
         .is_handled()
+}
+
+fn chat_display_lines(text: &str, chunk_len: usize) -> Vec<String> {
+    let sanitized = sanitize_chat_text(text);
+    let mut lines = Vec::new();
+    for raw_line in sanitized.lines() {
+        if raw_line.trim().is_empty() {
+            lines.push(String::new());
+            continue;
+        }
+        lines.extend(split_text_for_display(raw_line, chunk_len.max(1)));
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines
+}
+
+fn sanitize_chat_text(text: &str) -> String {
+    let mut output = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\u{1b}' {
+            match chars.next() {
+                Some('[') => {
+                    // CSI: consume until final byte.
+                    while let Some(next) = chars.next() {
+                        if ('@'..='~').contains(&next) {
+                            break;
+                        }
+                    }
+                }
+                Some(']') => {
+                    // OSC: consume until BEL or ST (ESC \).
+                    while let Some(next) = chars.next() {
+                        if next == '\u{7}' {
+                            break;
+                        }
+                        if next == '\u{1b}' && matches!(chars.peek(), Some('\\')) {
+                            chars.next();
+                            break;
+                        }
+                    }
+                }
+                Some(_) | None => {}
+            }
+            continue;
+        }
+
+        if ch == '\r' {
+            continue;
+        }
+
+        if ch == '\n' || ch == '\t' || !ch.is_control() {
+            output.push(ch);
+        }
+    }
+    output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{chat_display_lines, sanitize_chat_text};
+
+    #[test]
+    fn sanitize_chat_text_strips_ansi_and_control_chars() {
+        let raw = "ok\u{1b}[31m red\u{1b}[0m\tline\r\nnext\u{7}";
+        let sanitized = sanitize_chat_text(raw);
+        assert_eq!(sanitized, "ok red\tline\nnext");
+    }
+
+    #[test]
+    fn chat_display_lines_preserves_newlines_and_wraps() {
+        let lines = chat_display_lines("first\nsecond line", 6);
+        assert_eq!(lines, vec!["first", "second", " line"]);
+    }
 }
