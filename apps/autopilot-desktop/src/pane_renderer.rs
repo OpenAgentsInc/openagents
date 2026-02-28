@@ -2474,7 +2474,7 @@ pub(crate) fn paint_source_badge(content_bounds: Bounds, source: &str, paint: &m
 pub(crate) fn paint_action_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
     paint.scene.draw_quad(
         Quad::new(bounds)
-            .with_background(theme::accent::PRIMARY.with_alpha(0.15))
+            .with_background(theme::bg::HOVER)
             .with_border(theme::accent::PRIMARY, 1.0)
             .with_corner_radius(4.0),
     );
@@ -2488,7 +2488,7 @@ pub(crate) fn paint_action_button(bounds: Bounds, label: &str, paint: &mut Paint
 
 fn paint_filter_button(bounds: Bounds, label: &str, active: bool, paint: &mut PaintContext) {
     let background = if active {
-        theme::accent::PRIMARY.with_alpha(0.22)
+        theme::bg::HOVER
     } else {
         theme::bg::APP.with_alpha(0.68)
     };

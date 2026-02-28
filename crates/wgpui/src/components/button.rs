@@ -135,14 +135,14 @@ impl Button {
 
     fn colors(&self) -> (Hsla, Hsla, Hsla) {
         let mut bg = self.style.background.unwrap_or_else(|| match self.variant {
-            ButtonVariant::Primary => theme::accent::PRIMARY,
+            ButtonVariant::Primary => theme::bg::HOVER,
             ButtonVariant::Secondary => theme::bg::MUTED,
             ButtonVariant::Ghost => Hsla::transparent(),
             ButtonVariant::Danger => theme::status::ERROR,
         });
 
         let text = self.style.text_color.unwrap_or_else(|| match self.variant {
-            ButtonVariant::Primary => theme::bg::APP,
+            ButtonVariant::Primary => theme::text::PRIMARY,
             ButtonVariant::Danger => Hsla::new(0.0, 0.0, 1.0, 1.0),
             ButtonVariant::Secondary | ButtonVariant::Ghost => theme::text::PRIMARY,
         });
