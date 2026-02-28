@@ -1149,9 +1149,10 @@ fn run_chat_submit_action(state: &mut crate::app_state::RenderState) -> bool {
         sandbox: None,
         path: resume_path.clone().map(std::path::PathBuf::from),
     });
-    eprintln!(
+    tracing::info!(
         "codex turn/start preflight resume thread_id={} path={:?}",
-        thread_id, resume_path
+        thread_id,
+        resume_path
     );
     if let Err(error) = state.queue_codex_command(resume_command) {
         state
@@ -1174,15 +1175,18 @@ fn run_chat_submit_action(state: &mut crate::app_state::RenderState) -> bool {
         collaboration_mode: None,
     });
 
-    eprintln!(
+    tracing::info!(
         "codex turn/start request thread_id={} model={} chars={}",
-        thread_id, model_label, prompt_chars
+        thread_id,
+        model_label,
+        prompt_chars
     );
     match state.queue_codex_command(command) {
         Ok(seq) => {
-            eprintln!(
+            tracing::info!(
                 "codex turn/start queued seq={} thread_id={}",
-                seq, thread_id
+                seq,
+                thread_id
             );
         }
         Err(error) => {
@@ -1452,9 +1456,12 @@ fn run_chat_select_thread_action(state: &mut crate::app_state::RenderState, inde
         None
     };
 
-    eprintln!(
+    tracing::info!(
         "codex thread/resume target id={} cwd={:?} path={:?} experimental_api={}",
-        target.thread_id, target.cwd, resume_path, experimental_api
+        target.thread_id,
+        target.cwd,
+        resume_path,
+        experimental_api
     );
 
     let command = crate::codex_lane::CodexLaneCommand::ThreadResume(ThreadResumeParams {
@@ -3145,7 +3152,7 @@ fn run_credentials_action(
                 .variable_value
                 .get_value()
                 .to_string();
-            eprintln!(
+            tracing::info!(
                 "credentials/save value requested selected={} chars={}",
                 state.credentials.selected_name.as_deref().unwrap_or("none"),
                 value.chars().count()
@@ -3158,7 +3165,7 @@ fn run_credentials_action(
                     .variable_value
                     .set_value(String::new());
                 restart_codex = true;
-                eprintln!("credentials/save value stored; syncing runtime");
+                tracing::info!("credentials/save value stored; syncing runtime");
             }
             saved
         }
@@ -3219,14 +3226,14 @@ fn run_credentials_action(
             state.credentials.sync_inputs(&mut state.credentials_inputs);
             if sync_runtime {
                 state.sync_credentials_runtime(restart_codex);
-                eprintln!(
+                tracing::info!(
                     "credentials/runtime sync complete restart_codex={}",
                     restart_codex
                 );
             }
         }
         Err(error) => {
-            eprintln!("credentials pane action failed: {error}");
+            tracing::info!("credentials pane action failed: {error}");
             state.credentials.last_error = Some(error);
             state.credentials.load_state = crate::app_state::PaneLoadState::Error;
         }

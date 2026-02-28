@@ -4136,13 +4136,13 @@ impl RenderState {
     }
 
     pub fn restart_codex_lane(&mut self) {
-        eprintln!("codex lane restart requested");
+        tracing::info!("codex lane restart requested");
         let replacement = CodexLaneWorker::spawn(self.codex_lane_config.clone());
         let mut previous = std::mem::replace(&mut self.codex_lane_worker, replacement);
         previous.shutdown_async();
         self.codex_lane = CodexLaneSnapshot::default();
         self.autopilot_chat.set_connection_status("starting");
-        eprintln!("codex lane restart dispatched (non-blocking shutdown)");
+        tracing::info!("codex lane restart dispatched (non-blocking shutdown)");
     }
 
     pub fn sync_credentials_runtime(&mut self, restart_codex: bool) {

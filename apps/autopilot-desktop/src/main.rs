@@ -5,6 +5,7 @@ mod codex_lane;
 mod credentials;
 mod hotbar;
 mod input;
+mod logging;
 mod nip_sa_wallet_bridge;
 mod pane_registry;
 mod pane_renderer;
@@ -25,6 +26,7 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::WindowId;
 
 fn main() -> Result<()> {
+    logging::init();
     let event_loop = EventLoop::new().context("failed to create event loop")?;
     let mut app = App::default();
     event_loop

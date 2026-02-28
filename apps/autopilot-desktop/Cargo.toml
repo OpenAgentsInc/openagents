@@ -30,6 +30,8 @@ wgpu = { workspace = true }
 winit = { workspace = true }
 pollster = { workspace = true }
 keyring = { version = "3.6.2", default-features = false, features = ["apple-native", "windows-native", "linux-native"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
 [package.metadata.bundle]
 name = "Autopilot"
