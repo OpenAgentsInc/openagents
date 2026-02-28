@@ -288,6 +288,7 @@ pub enum PaneHitAction {
     NostrCopySecret,
     ChatSend,
     ChatRefreshThreads,
+    ChatNewThread,
     ChatCycleModel,
     ChatInterruptTurn,
     ChatToggleArchivedFilter,
@@ -789,6 +790,16 @@ pub fn chat_refresh_threads_button_bounds(content_bounds: Bounds) -> Bounds {
     )
 }
 
+pub fn chat_new_thread_button_bounds(content_bounds: Bounds) -> Bounds {
+    let refresh = chat_refresh_threads_button_bounds(content_bounds);
+    Bounds::new(
+        refresh.origin.x,
+        refresh.max_y() + 6.0,
+        CHAT_HEADER_BUTTON_WIDTH,
+        CHAT_HEADER_BUTTON_HEIGHT,
+    )
+}
+
 pub fn chat_cycle_model_button_bounds(content_bounds: Bounds) -> Bounds {
     let transcript = chat_transcript_bounds(content_bounds);
     Bounds::new(
@@ -839,10 +850,10 @@ pub fn chat_visible_thread_row_count(content_bounds: Bounds, total_threads: usiz
 }
 
 pub fn chat_thread_filter_archived_button_bounds(content_bounds: Bounds) -> Bounds {
-    let refresh = chat_refresh_threads_button_bounds(content_bounds);
+    let new_thread = chat_new_thread_button_bounds(content_bounds);
     Bounds::new(
-        refresh.origin.x,
-        refresh.max_y() + 8.0,
+        new_thread.origin.x,
+        new_thread.max_y() + 8.0,
         CHAT_THREAD_FILTER_BUTTON_WIDTH,
         CHAT_THREAD_FILTER_BUTTON_HEIGHT,
     )
@@ -1996,6 +2007,9 @@ fn pane_hit_action_for_pane(
             }
             if chat_refresh_threads_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::ChatRefreshThreads);
+            }
+            if chat_new_thread_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatNewThread);
             }
             if chat_cycle_model_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::ChatCycleModel);

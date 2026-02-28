@@ -9,7 +9,7 @@ use codex_client::{
     HazelnutScope, ListMcpServerStatusParams, LoginAccountParams, McpServerOauthLoginParams,
     MergeStrategy, ModelListParams, ProductSurface, ReviewDelivery, ReviewStartParams,
     ReviewTarget, SkillsRemoteReadParams, SkillsRemoteWriteParams, ThreadArchiveParams,
-    ThreadCompactStartParams, ThreadForkParams, ThreadLoadedListParams,
+    ThreadCompactStartParams, ThreadForkParams, ThreadLoadedListParams, ThreadStartParams,
     ThreadRealtimeAppendTextParams, ThreadRealtimeStartParams, ThreadRealtimeStopParams,
     ThreadResumeParams, ThreadRollbackParams, ThreadSetNameParams, ThreadUnarchiveParams,
     ThreadUnsubscribeParams, ToolRequestUserInputAnswer, ToolRequestUserInputResponse,
@@ -558,6 +558,7 @@ fn run_pane_hit_action(state: &mut crate::app_state::RenderState, action: PaneHi
         }
         PaneHitAction::ChatSend => run_chat_submit_action(state),
         PaneHitAction::ChatRefreshThreads => run_chat_refresh_threads_action(state),
+        PaneHitAction::ChatNewThread => run_chat_new_thread_action(state),
         PaneHitAction::ChatCycleModel => run_chat_cycle_model_action(state),
         PaneHitAction::ChatInterruptTurn => run_chat_interrupt_turn_action(state),
         PaneHitAction::ChatToggleArchivedFilter => run_chat_toggle_archived_filter_action(state),
@@ -1024,6 +1025,25 @@ fn run_chat_refresh_threads_action(state: &mut crate::app_state::RenderState) ->
         ) {
             state.autopilot_chat.last_error = Some(error);
         }
+    }
+    true
+}
+
+fn run_chat_new_thread_action(state: &mut crate::app_state::RenderState) -> bool {
+    let cwd = std::env::current_dir()
+        .ok()
+        .and_then(|value| value.into_os_string().into_string().ok());
+    let command = crate::codex_lane::CodexLaneCommand::ThreadStart(ThreadStartParams {
+        model: Some(state.autopilot_chat.current_model().to_string()),
+        model_provider: None,
+        cwd,
+        approval_policy: None,
+        sandbox: None,
+    });
+    if let Err(error) = state.queue_codex_command(command) {
+        state.autopilot_chat.last_error = Some(error);
+    } else {
+        state.autopilot_chat.last_error = None;
     }
     true
 }

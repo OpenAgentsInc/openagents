@@ -7,7 +7,7 @@ use crate::app_state::{
 use crate::pane_renderer::{paint_action_button, split_text_for_display};
 use crate::pane_system::{
     chat_composer_input_bounds, chat_cycle_model_button_bounds, chat_interrupt_button_bounds,
-    chat_refresh_threads_button_bounds, chat_send_button_bounds,
+    chat_new_thread_button_bounds, chat_refresh_threads_button_bounds, chat_send_button_bounds,
     chat_server_auth_refresh_button_bounds, chat_server_request_accept_button_bounds,
     chat_server_request_cancel_button_bounds, chat_server_request_decline_button_bounds,
     chat_server_request_session_button_bounds, chat_server_tool_call_button_bounds,
@@ -34,6 +34,7 @@ pub fn paint(
     let composer_bounds = chat_composer_input_bounds(content_bounds);
     let send_bounds = chat_send_button_bounds(content_bounds);
     let refresh_bounds = chat_refresh_threads_button_bounds(content_bounds);
+    let new_thread_bounds = chat_new_thread_button_bounds(content_bounds);
     let model_bounds = chat_cycle_model_button_bounds(content_bounds);
     let interrupt_bounds = chat_interrupt_button_bounds(content_bounds);
     let approval_accept_bounds = chat_server_request_accept_button_bounds(content_bounds);
@@ -84,6 +85,7 @@ pub fn paint(
         theme::text::MUTED,
     ));
     paint_action_button(refresh_bounds, "Refresh", paint);
+    paint_action_button(new_thread_bounds, "New Chat", paint);
     let archived_filter_label = match autopilot_chat.thread_filter_archived {
         Some(false) => "Live",
         Some(true) => "Archived",
