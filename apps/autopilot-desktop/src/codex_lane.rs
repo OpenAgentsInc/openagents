@@ -60,7 +60,7 @@ impl Default for CodexLaneConfig {
                 version: env!("CARGO_PKG_VERSION").to_string(),
             },
             approval_policy: Some(AskForApproval::OnRequest),
-            experimental_api: false,
+            experimental_api: true,
             opt_out_notification_methods: Vec::new(),
         }
     }
@@ -950,82 +950,88 @@ impl CodexLaneState {
         self.client = Some(client);
         self.channels = Some(channels);
 
-        if let Some(client) = self.client.as_ref() {
-            let capabilities = if config.experimental_api
-                || !config.opt_out_notification_methods.is_empty()
-            {
-                Some(InitializeCapabilities {
-                    experimental_api: config.experimental_api,
-                    opt_out_notification_methods: if config.opt_out_notification_methods.is_empty()
-                    {
-                        None
-                    } else {
-                        Some(config.opt_out_notification_methods.clone())
-                    },
-                })
-            } else {
-                None
+        let capabilities = if config.experimental_api || !config.opt_out_notification_methods.is_empty() {
+            Some(InitializeCapabilities {
+                experimental_api: config.experimental_api,
+                opt_out_notification_methods: if config.opt_out_notification_methods.is_empty() {
+                    None
+                } else {
+                    Some(config.opt_out_notification_methods.clone())
+                },
+            })
+        } else {
+            None
+        };
+        let initialized = {
+            let Some(client) = self.client.as_ref() else {
+                self.set_error(update_tx, "Codex lane unavailable after connect", false);
+                return;
             };
-            let initialized = runtime.block_on(client.initialize(InitializeParams {
+            runtime.block_on(client.initialize(InitializeParams {
                 client_info: config.client_info.clone(),
                 capabilities,
-            }));
-            if let Err(error) = initialized {
-                self.set_error(
-                    update_tx,
-                    format!("Codex lane initialize failed: {error}"),
-                    false,
-                );
-                return;
-            }
+            }))
+        };
+        if let Err(error) = initialized {
+            self.set_error(
+                update_tx,
+                format!("Codex lane initialize failed: {error}"),
+                false,
+            );
+            return;
+        }
 
-            if config.bootstrap_thread {
-                let thread_start = ThreadStartParams {
-                    model: config.bootstrap_model.clone(),
-                    model_provider: None,
-                    cwd: config.cwd.as_ref().map(|path| path.display().to_string()),
-                    approval_policy: config.approval_policy,
-                    sandbox: None,
+        self.set_ready(update_tx, "Codex lane ready");
+        self.publish_models_from_server(runtime, update_tx);
+        let thread_count = self.publish_threads_from_server(runtime, update_tx);
+        if thread_count == 0 && config.bootstrap_thread {
+            let thread_start = ThreadStartParams {
+                model: config.bootstrap_model.clone(),
+                model_provider: None,
+                cwd: config.cwd.as_ref().map(|path| path.display().to_string()),
+                approval_policy: config.approval_policy,
+                sandbox: None,
+            };
+            let started = {
+                let Some(client) = self.client.as_ref() else {
+                    self.set_error(update_tx, "Codex lane unavailable for bootstrap thread", false);
+                    return;
                 };
-                let started = runtime.block_on(client.thread_start(thread_start));
-                match started {
-                    Ok(response) => {
-                        let thread_id = response.thread.id;
-                        self.snapshot.active_thread_id = Some(thread_id.clone());
-                        let _ = update_tx.send(CodexLaneUpdate::Notification(
-                            CodexLaneNotification::ThreadSelected {
-                                thread_id: thread_id.clone(),
-                            },
-                        ));
-                        let _ = update_tx.send(CodexLaneUpdate::Notification(
-                            CodexLaneNotification::ThreadListLoaded {
-                                entries: vec![CodexThreadListEntry {
-                                    thread_id,
-                                    thread_name: None,
-                                    status: Some("idle".to_string()),
-                                    loaded: true,
-                                    cwd: config
-                                        .cwd
-                                        .as_ref()
-                                        .map(|value| value.display().to_string()),
-                                    path: None,
-                                }],
-                            },
-                        ));
-                        self.set_ready(update_tx, "Codex lane ready");
-                        self.publish_models_from_server(runtime, update_tx);
-                    }
-                    Err(error) => {
-                        self.set_error(
-                            update_tx,
-                            format!("Codex lane bootstrap thread failed: {error}"),
-                            false,
-                        );
-                    }
+                runtime.block_on(client.thread_start(thread_start))
+            };
+            match started {
+                Ok(response) => {
+                    let thread_id = response.thread.id;
+                    self.snapshot.active_thread_id = Some(thread_id.clone());
+                    self.publish_snapshot(update_tx);
+                    let _ = update_tx.send(CodexLaneUpdate::Notification(
+                        CodexLaneNotification::ThreadSelected {
+                            thread_id: thread_id.clone(),
+                        },
+                    ));
+                    let _ = update_tx.send(CodexLaneUpdate::Notification(
+                        CodexLaneNotification::ThreadListLoaded {
+                            entries: vec![CodexThreadListEntry {
+                                thread_id,
+                                thread_name: None,
+                                status: Some("idle".to_string()),
+                                loaded: true,
+                                cwd: config
+                                    .cwd
+                                    .as_ref()
+                                    .map(|value| value.display().to_string()),
+                                path: None,
+                            }],
+                        },
+                    ));
                 }
-            } else {
-                self.set_ready(update_tx, "Codex lane ready");
-                self.publish_models_from_server(runtime, update_tx);
+                Err(error) => {
+                    self.set_error(
+                        update_tx,
+                        format!("Codex lane bootstrap thread failed: {error}"),
+                        false,
+                    );
+                }
             }
         }
     }
@@ -1048,6 +1054,62 @@ impl CodexLaneState {
                 default_model,
             },
         ));
+    }
+
+    fn publish_threads_from_server(
+        &mut self,
+        runtime: &Runtime,
+        update_tx: &Sender<CodexLaneUpdate>,
+    ) -> usize {
+        let Some(client) = self.client.as_ref() else {
+            return 0;
+        };
+
+        let mut thread_count = 0;
+
+        if let Ok(response) = runtime.block_on(client.thread_list(ThreadListParams {
+            cursor: None,
+            limit: Some(100),
+            ..ThreadListParams::default()
+        })) {
+            let entries = response
+                .data
+                .into_iter()
+                .map(|thread| CodexThreadListEntry {
+                    thread_id: thread.id,
+                    thread_name: thread.name,
+                    status: thread.status.as_ref().and_then(thread_status_label),
+                    loaded: false,
+                    cwd: thread.cwd.map(|value| value.display().to_string()),
+                    path: thread.path.map(|value| value.display().to_string()),
+                })
+                .collect::<Vec<_>>();
+            thread_count = entries.len();
+            let first_thread = entries.first().map(|entry| entry.thread_id.clone());
+            let _ = update_tx.send(CodexLaneUpdate::Notification(
+                CodexLaneNotification::ThreadListLoaded { entries },
+            ));
+            if let Some(thread_id) = first_thread {
+                self.snapshot.active_thread_id = Some(thread_id.clone());
+                self.publish_snapshot(update_tx);
+                let _ = update_tx.send(CodexLaneUpdate::Notification(
+                    CodexLaneNotification::ThreadSelected { thread_id },
+                ));
+            }
+        }
+
+        if let Ok(response) = runtime.block_on(client.thread_loaded_list(ThreadLoadedListParams {
+            cursor: None,
+            limit: Some(200),
+        })) {
+            let _ = update_tx.send(CodexLaneUpdate::Notification(
+                CodexLaneNotification::ThreadLoadedListLoaded {
+                    thread_ids: response.data,
+                },
+            ));
+        }
+
+        thread_count
     }
 
     fn handle_command(
@@ -2391,16 +2453,24 @@ fn collect_transcript_messages(value: &Value, messages: &mut Vec<CodexThreadTran
 
     let kind = object.get("type").and_then(Value::as_str);
     match kind {
-        Some("user_message") => {
-            if let Some(content) = string_field(value, "message").and_then(non_empty_text) {
+        Some("user_message") | Some("userMessage") => {
+            let content = value
+                .get("content")
+                .and_then(extract_content_text)
+                .or_else(|| string_field(value, "message").and_then(non_empty_text));
+            if let Some(content) = content {
                 messages.push(CodexThreadTranscriptMessage {
                     role: CodexThreadTranscriptRole::User,
                     content,
                 });
             }
         }
-        Some("agent_message") => {
-            if let Some(content) = string_field(value, "message").and_then(non_empty_text) {
+        Some("agent_message") | Some("agentMessage") => {
+            let content = string_field(value, "text")
+                .and_then(non_empty_text)
+                .or_else(|| string_field(value, "message").and_then(non_empty_text))
+                .or_else(|| value.get("content").and_then(extract_content_text));
+            if let Some(content) = content {
                 messages.push(CodexThreadTranscriptMessage {
                     role: CodexThreadTranscriptRole::Codex,
                     content,
@@ -2694,7 +2764,8 @@ mod tests {
     use super::{
         CodexLaneCommand, CodexLaneCommandKind, CodexLaneCommandResponse, CodexLaneCommandStatus,
         CodexLaneConfig, CodexLaneLifecycle, CodexLaneNotification, CodexLaneRuntime,
-        CodexLaneUpdate, CodexLaneWorker, normalize_notification,
+        CodexLaneUpdate, CodexLaneWorker, CodexThreadTranscriptRole,
+        extract_thread_transcript_messages, normalize_notification,
     };
 
     use std::collections::HashSet;
@@ -3348,6 +3419,36 @@ mod tests {
                 success: Some(true),
             })
         );
+    }
+
+    #[test]
+    fn thread_read_parser_handles_camel_case_items() {
+        let thread = codex_client::ThreadSnapshot {
+            id: "thread-1".to_string(),
+            preview: "preview".to_string(),
+            turns: vec![codex_client::ThreadTurn {
+                id: "turn-1".to_string(),
+                items: vec![
+                    json!({
+                        "type": "userMessage",
+                        "content": [
+                            {"type": "text", "text": "hello from user"}
+                        ]
+                    }),
+                    json!({
+                        "type": "agentMessage",
+                        "text": "hello from codex"
+                    }),
+                ],
+            }],
+        };
+
+        let messages = extract_thread_transcript_messages(&thread);
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].role, CodexThreadTranscriptRole::User);
+        assert_eq!(messages[0].content, "hello from user");
+        assert_eq!(messages[1].role, CodexThreadTranscriptRole::Codex);
+        assert_eq!(messages[1].content, "hello from codex");
     }
 
     #[test]

@@ -62,6 +62,15 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
             .as_ref()
             .map(|error| format!("codex {}: {error}", response.status.label()));
         if response.command == CodexLaneCommandKind::TurnStart {
+            eprintln!(
+                "codex turn/start rejected seq={} active_thread={:?} error={}",
+                response.command_seq,
+                state.autopilot_chat.active_thread_id,
+                response
+                    .error
+                    .clone()
+                    .unwrap_or_else(|| "turn/start rejected".to_string())
+            );
             state.autopilot_chat.mark_pending_turn_dispatch_failed(
                 response
                     .error
@@ -99,6 +108,10 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
                 .or_else(|| Some("codex skills/list failed".to_string()));
         }
     } else if response.command == CodexLaneCommandKind::TurnStart {
+        eprintln!(
+            "codex turn/start accepted seq={} active_thread={:?}",
+            response.command_seq, state.autopilot_chat.active_thread_id
+        );
         state.autopilot_chat.last_error = None;
         state.codex_diagnostics.last_error = None;
     } else if response.command == CodexLaneCommandKind::SkillsList {
@@ -315,6 +328,43 @@ fn queue_new_thread(state: &mut RenderState) {
         state.autopilot_chat.last_error = Some(format!(
             "Failed to start replacement thread after stale resume: {error}"
         ));
+    }
+}
+
+fn queue_thread_resume_and_read(state: &mut RenderState, thread_id: String) {
+    let metadata = state.autopilot_chat.thread_metadata.get(&thread_id).cloned();
+    let experimental_api = state.codex_lane_config.experimental_api;
+    let resume_path = if experimental_api {
+        metadata.as_ref().and_then(|value| value.path.clone())
+    } else {
+        None
+    };
+    let cwd = metadata.as_ref().and_then(|value| value.cwd.clone());
+    eprintln!(
+        "codex thread/resume target id={} cwd={:?} path={:?} experimental_api={}",
+        thread_id, cwd, resume_path, experimental_api
+    );
+
+    let command = CodexLaneCommand::ThreadResume(codex_client::ThreadResumeParams {
+        thread_id: thread_id.clone(),
+        model: None,
+        model_provider: None,
+        cwd,
+        approval_policy: None,
+        sandbox: None,
+        path: resume_path.map(std::path::PathBuf::from),
+    });
+    if let Err(error) = state.queue_codex_command(command) {
+        state.autopilot_chat.last_error = Some(error);
+        return;
+    }
+
+    let read = CodexLaneCommand::ThreadRead(codex_client::ThreadReadParams {
+        thread_id,
+        include_turns: true,
+    });
+    if let Err(error) = state.queue_codex_command(read) {
+        state.autopilot_chat.last_error = Some(error);
     }
 }
 
@@ -796,6 +846,9 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     })
                     .collect(),
             );
+            if let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() {
+                queue_thread_resume_and_read(state, thread_id);
+            }
         }
         CodexLaneNotification::ThreadLoadedListLoaded { thread_ids } => {
             state.autopilot_chat.set_thread_loaded_ids(&thread_ids);

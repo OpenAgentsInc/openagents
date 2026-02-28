@@ -920,6 +920,7 @@ where
 
 fn run_chat_submit_action(state: &mut crate::app_state::RenderState) -> bool {
     let prompt = state.chat_inputs.composer.get_value().trim().to_string();
+    let prompt_chars = prompt.chars().count();
     if prompt.is_empty() {
         state.autopilot_chat.last_error = Some("Prompt cannot be empty".to_string());
         return true;
@@ -944,7 +945,7 @@ fn run_chat_submit_action(state: &mut crate::app_state::RenderState) -> bool {
     }
 
     let command = crate::codex_lane::CodexLaneCommand::TurnStart(TurnStartParams {
-        thread_id,
+        thread_id: thread_id.clone(),
         input,
         cwd: None,
         approval_policy: None,
@@ -957,10 +958,24 @@ fn run_chat_submit_action(state: &mut crate::app_state::RenderState) -> bool {
         collaboration_mode: None,
     });
 
-    if let Err(error) = state.queue_codex_command(command) {
-        state
-            .autopilot_chat
-            .mark_pending_turn_dispatch_failed(error);
+    eprintln!(
+        "codex turn/start request thread_id={} model={} chars={}",
+        thread_id,
+        state.autopilot_chat.current_model(),
+        prompt_chars
+    );
+    match state.queue_codex_command(command) {
+        Ok(seq) => {
+            eprintln!(
+                "codex turn/start queued seq={} thread_id={}",
+                seq, thread_id
+            );
+        }
+        Err(error) => {
+            state
+                .autopilot_chat
+                .mark_pending_turn_dispatch_failed(error);
+        }
     }
     true
 }
