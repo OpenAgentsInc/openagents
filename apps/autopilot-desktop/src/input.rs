@@ -260,6 +260,14 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                         state.window.request_redraw();
                     }
                 }
+                PhysicalKey::Code(KeyCode::BracketRight) => {
+                    state.sidebar.is_open = !state.sidebar.is_open;
+                    if state.sidebar.is_open && state.sidebar.width < 50.0 {
+                        state.sidebar.width = SIDEBAR_DEFAULT_WIDTH;
+                    }
+                    clamp_all_panes_to_window(state);
+                    state.window.request_redraw();
+                }
                 key => {
                     if let Some(slot) = hotbar_slot_for_key(key) {
                         activate_hotbar_slot(state, slot);
