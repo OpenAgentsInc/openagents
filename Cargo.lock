@@ -342,6 +342,8 @@ dependencies = [
  "pollster",
  "serde_json",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
  "wgpu",
  "wgpui",
  "winit",

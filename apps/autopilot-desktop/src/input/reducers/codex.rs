@@ -14,7 +14,7 @@ pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: CodexLaneSn
         state.autopilot_chat.ensure_thread(thread_id.clone());
     }
     if let Some(error) = snapshot.last_error.as_ref() {
-        eprintln!("codex lane snapshot error: {}", error);
+        tracing::info!("codex lane snapshot error: {}", error);
         state.autopilot_chat.last_error = Some(error.clone());
         state.codex_diagnostics.last_snapshot_error = Some(error.clone());
         state.codex_diagnostics.last_error = Some(error.clone());
@@ -49,7 +49,7 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
         ),
     );
     if response.status != CodexLaneCommandStatus::Accepted {
-        eprintln!(
+        tracing::info!(
             "codex command rejected command={} status={} seq={} error={}",
             response.command.label(),
             response.status.label(),
@@ -73,7 +73,7 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
             .as_ref()
             .map(|error| format!("codex {}: {error}", response.status.label()));
         if response.command == CodexLaneCommandKind::TurnStart {
-            eprintln!(
+            tracing::info!(
                 "codex turn/start rejected seq={} active_thread={:?} error={}",
                 response.command_seq,
                 state.autopilot_chat.active_thread_id,
@@ -93,9 +93,11 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
                 .error
                 .clone()
                 .unwrap_or_else(|| "thread/resume rejected".to_string());
-            eprintln!(
+            tracing::info!(
                 "codex thread/resume rejected seq={} active_thread={:?} error={}",
-                response.command_seq, state.autopilot_chat.active_thread_id, message
+                response.command_seq,
+                state.autopilot_chat.active_thread_id,
+                message
             );
             let active_thread_id = state.autopilot_chat.active_thread_id.clone();
             let is_missing_rollout = message.contains("no rollout found for thread id");
@@ -119,9 +121,10 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
                 .or_else(|| Some("codex skills/list failed".to_string()));
         }
     } else if response.command == CodexLaneCommandKind::TurnStart {
-        eprintln!(
+        tracing::info!(
             "codex turn/start accepted seq={} active_thread={:?}",
-            response.command_seq, state.autopilot_chat.active_thread_id
+            response.command_seq,
+            state.autopilot_chat.active_thread_id
         );
         state.autopilot_chat.last_error = None;
         state.codex_diagnostics.last_error = None;
@@ -806,7 +809,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             }
         }
         CodexLaneNotification::ThreadListLoaded { entries } => {
-            eprintln!("codex thread/list loaded {} entries", entries.len());
+            tracing::info!("codex thread/list loaded {} entries", entries.len());
             state.autopilot_chat.set_thread_entries(
                 entries
                     .into_iter()
@@ -845,7 +848,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     })
                     .collect::<Vec<_>>();
                 if state.autopilot_chat.has_pending_messages() {
-                    eprintln!(
+                    tracing::info!(
                         "codex thread/read skipped id={} messages={} reason=pending-turn",
                         thread_id,
                         transcript.len()
@@ -855,7 +858,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                         .record_turn_timeline_event("thread/read skipped while turn is pending");
                     return;
                 }
-                eprintln!(
+                tracing::info!(
                     "codex thread/read loaded id={} messages={}",
                     thread_id,
                     transcript.len()
@@ -911,9 +914,11 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
         }
         CodexLaneNotification::ThreadStatusChanged { thread_id, status } => {
             let thread_id = resolve_thread_id(state, thread_id);
-            eprintln!(
+            tracing::info!(
                 "codex thread/status changed thread_id={} status={} active_thread={:?}",
-                thread_id, status, state.autopilot_chat.active_thread_id
+                thread_id,
+                status,
+                state.autopilot_chat.active_thread_id
             );
             state.autopilot_chat.remember_thread(thread_id.clone());
             state
@@ -934,9 +939,10 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                         .active_turn_id
                         .clone()
                         .unwrap_or_default();
-                    eprintln!(
+                    tracing::info!(
                         "codex thread/status idle while turn active; probing thread/read thread_id={} turn_id={}",
-                        thread_id, active_turn
+                        thread_id,
+                        active_turn
                     );
                     state
                         .autopilot_chat
@@ -983,9 +989,11 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
         CodexLaneNotification::TurnStarted { thread_id, turn_id } => {
             let thread_id = resolve_thread_id(state, thread_id);
             let turn_id = resolve_turn_id(state, turn_id);
-            eprintln!(
+            tracing::info!(
                 "codex turn/started thread_id={} turn_id={} active_thread={:?}",
-                thread_id, turn_id, state.autopilot_chat.active_thread_id
+                thread_id,
+                turn_id,
+                state.autopilot_chat.active_thread_id
             );
             state.autopilot_chat.remember_thread(thread_id.clone());
             if state.autopilot_chat.is_active_thread(&thread_id) {
@@ -1021,7 +1029,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
         } => {
             let thread_id = resolve_thread_id(state, thread_id);
             let turn_id = resolve_turn_id(state, turn_id);
-            eprintln!(
+            tracing::info!(
                 "codex item/completed thread_id={} turn_id={} item_id={} item_type={} message_chars={} active_thread={:?}",
                 thread_id,
                 turn_id,
@@ -1056,7 +1064,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
         } => {
             let thread_id = resolve_thread_id(state, thread_id);
             let turn_id = resolve_turn_id(state, turn_id);
-            eprintln!(
+            tracing::info!(
                 "codex agent/delta thread_id={} turn_id={} item_id={} chars={} active_thread={:?}",
                 thread_id,
                 turn_id,
@@ -1070,7 +1078,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     .autopilot_chat
                     .is_duplicate_agent_delta(&turn_id, &item_id, &delta)
                 {
-                    eprintln!(
+                    tracing::info!(
                         "codex agent/delta duplicate suppressed thread_id={} turn_id={} item_id={} chars={}",
                         thread_id,
                         turn_id,
@@ -1098,7 +1106,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
         } => {
             let thread_id = resolve_thread_id(state, thread_id);
             let turn_id = resolve_turn_id(state, turn_id);
-            eprintln!(
+            tracing::info!(
                 "codex agent/completed thread_id={} turn_id={} item_id={} chars={} active_thread={:?}",
                 thread_id,
                 turn_id,
@@ -1128,7 +1136,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
         } => {
             let thread_id = resolve_thread_id(state, thread_id);
             let turn_id = resolve_turn_id(state, turn_id);
-            eprintln!(
+            tracing::info!(
                 "codex reasoning/delta thread_id={} turn_id={} item_id={} chars={} active_thread={:?}",
                 thread_id,
                 turn_id,
@@ -1144,7 +1152,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     item_id_for_dedupe,
                     &delta,
                 ) {
-                    eprintln!(
+                    tracing::info!(
                         "codex reasoning/delta duplicate suppressed thread_id={} turn_id={} item_id={} chars={}",
                         thread_id,
                         turn_id,
@@ -1174,7 +1182,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
         } => {
             let thread_id = resolve_thread_id(state, thread_id);
             let turn_id = resolve_turn_id(state, turn_id);
-            eprintln!(
+            tracing::info!(
                 "codex turn/completed thread_id={} turn_id={} status={:?} final_message_chars={} error={} active_thread={:?}",
                 thread_id,
                 turn_id,
@@ -1222,9 +1230,10 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 let needs_transcript_probe =
                     !had_visible_output && !state.autopilot_chat.turn_has_visible_output(&turn_id);
                 if needs_transcript_probe {
-                    eprintln!(
+                    tracing::info!(
                         "codex turn/completed without visible output; probing thread/read thread_id={} turn_id={}",
-                        thread_id, turn_id
+                        thread_id,
+                        turn_id
                     );
                     if let Err(error) = state.queue_codex_command(CodexLaneCommand::ThreadRead(
                         codex_client::ThreadReadParams {
@@ -1290,9 +1299,12 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
         } => {
             let thread_id = resolve_thread_id(state, thread_id);
             let turn_id = resolve_turn_id(state, turn_id);
-            eprintln!(
+            tracing::info!(
                 "codex turn/error thread_id={} turn_id={} message={} active_thread={:?}",
-                thread_id, turn_id, message, state.autopilot_chat.active_thread_id
+                thread_id,
+                turn_id,
+                message,
+                state.autopilot_chat.active_thread_id
             );
             state.autopilot_chat.remember_thread(thread_id.clone());
             if state.autopilot_chat.is_active_thread(&thread_id) {
@@ -1398,15 +1410,17 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 .record_turn_timeline_event("auth token refresh requested");
         }
         CodexLaneNotification::ServerRequest { method } => {
-            eprintln!(
+            tracing::info!(
                 "codex server/request method={} active_thread={:?}",
-                method, state.autopilot_chat.active_thread_id
+                method,
+                state.autopilot_chat.active_thread_id
             );
         }
         CodexLaneNotification::Raw { method } => {
-            eprintln!(
+            tracing::info!(
                 "codex notify/raw method={} active_thread={:?}",
-                method, state.autopilot_chat.active_thread_id
+                method,
+                state.autopilot_chat.active_thread_id
             );
         }
     }

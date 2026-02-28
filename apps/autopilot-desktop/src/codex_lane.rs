@@ -974,7 +974,7 @@ impl CodexLaneState {
         disconnected: bool,
     ) {
         let message = message.into();
-        eprintln!("codex lane error: {}", message);
+        tracing::info!("codex lane error: {}", message);
         self.snapshot.lifecycle = if disconnected {
             CodexLaneLifecycle::Disconnected
         } else {
@@ -1828,7 +1828,7 @@ impl CodexLaneState {
                         if let Some(normalized) = normalize_notification(notification) {
                             let _ = update_tx.send(CodexLaneUpdate::Notification(normalized));
                         } else {
-                            eprintln!(
+                            tracing::info!(
                                 "codex notify/ignored method={} reason=normalize-none",
                                 method
                             );
@@ -1915,9 +1915,10 @@ impl CodexLaneState {
                             ));
                         }
                         Err(error) => {
-                            eprintln!(
+                            tracing::info!(
                                 "codex server request parse failed method={} error={}",
-                                request.method, error
+                                request.method,
+                                error
                             );
                             let _ = runtime.block_on(client.respond(
                                 request.id,
@@ -1957,9 +1958,10 @@ impl CodexLaneState {
                             ));
                         }
                         Err(error) => {
-                            eprintln!(
+                            tracing::info!(
                                 "codex server request parse failed method={} error={}",
-                                request.method, error
+                                request.method,
+                                error
                             );
                             let _ = runtime.block_on(client.respond(
                                 request.id,
@@ -1998,9 +2000,10 @@ impl CodexLaneState {
                             ));
                         }
                         Err(error) => {
-                            eprintln!(
+                            tracing::info!(
                                 "codex server request parse failed method={} error={}",
-                                request.method, error
+                                request.method,
+                                error
                             );
                             let _ = runtime.block_on(client.respond(
                                 request.id,
@@ -2056,9 +2059,10 @@ impl CodexLaneState {
                             ));
                         }
                         Err(error) => {
-                            eprintln!(
+                            tracing::info!(
                                 "codex server request parse failed method={} error={}",
-                                request.method, error
+                                request.method,
+                                error
                             );
                             let _ = runtime.block_on(client.respond(
                                 request.id,
@@ -2093,9 +2097,10 @@ impl CodexLaneState {
                             ));
                         }
                         Err(error) => {
-                            eprintln!(
+                            tracing::info!(
                                 "codex server request parse failed method={} error={}",
-                                request.method, error
+                                request.method,
+                                error
                             );
                             let _ = runtime.block_on(client.respond(
                                 request.id,
