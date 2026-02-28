@@ -37,7 +37,6 @@ pub mod focus;
 pub mod geometry;
 pub mod hit_test;
 pub mod input;
-pub mod integration;
 pub mod interactive;
 pub mod keymap;
 pub mod layout;
@@ -56,6 +55,10 @@ pub mod text;
 pub mod text_system;
 pub mod theme;
 pub mod tools;
+#[cfg(feature = "non-mvp-surfaces")]
+pub mod non_mvp;
+#[cfg(feature = "non-mvp-surfaces")]
+pub use non_mvp::integration;
 
 pub mod prelude {
     pub mod core {

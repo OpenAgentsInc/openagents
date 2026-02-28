@@ -24,9 +24,10 @@ web = [
 ]
 desktop = ["winit", "pollster"]
 ios = ["pollster"]
+non-mvp-surfaces = [] # Optional surfaces excluded from default MVP runtime path.
 # Optional features - not included in production builds by default
-testing = []  # E2E testing framework (~6,850 lines)
-storybook = [] # Storybook demo lane
+testing = ["non-mvp-surfaces"]  # E2E testing framework (~6,850 lines)
+storybook = ["non-mvp-surfaces"] # Storybook demo lane
 network = ["dep:reqwest"] # Network fetch helpers
 audio = ["dep:rodio", "network"] # Bleeps audio system (~1,163 lines)
 
