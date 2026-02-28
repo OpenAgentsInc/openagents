@@ -4,7 +4,9 @@
 //! via stdin/stdout.
 
 mod client;
+mod protocol_methods;
 mod types;
 
 pub use client::*;
+pub use protocol_methods::*;
 pub use types::*;

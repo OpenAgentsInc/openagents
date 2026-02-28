@@ -1,10 +1,13 @@
 use super::*;
 
-pub(super) fn normalize_notification(notification: AppServerNotification) -> Option<CodexLaneNotification> {
-    let method = notification.method;
+pub(super) fn normalize_notification(
+    notification: AppServerNotification,
+) -> Option<CodexLaneNotification> {
+    let raw_method = notification.method;
+    let method = codex_client::canonical_notification_method(raw_method.as_str());
     let params = notification.params;
 
-    match method.as_str() {
+    match method {
         "thread/started" => {
             let thread_id = thread_id_from_params(params.as_ref())?;
             Some(CodexLaneNotification::ThreadStatusChanged {
@@ -148,7 +151,7 @@ pub(super) fn normalize_notification(notification: AppServerNotification) -> Opt
             let turn_id = turn_id_from_value(&params)?;
             Some(CodexLaneNotification::TurnStarted { thread_id, turn_id })
         }
-        "item/started" | "codex/event/item_started" => {
+        "item/started" => {
             let params = params?;
             Some(CodexLaneNotification::ItemStarted {
                 thread_id: thread_id_field(&params)?,
@@ -157,7 +160,7 @@ pub(super) fn normalize_notification(notification: AppServerNotification) -> Opt
                 item_type: item_type_from_params(&params),
             })
         }
-        "item/completed" | "codex/event/item_completed" => {
+        "item/completed" => {
             let params = params?;
             Some(CodexLaneNotification::ItemCompleted {
                 thread_id: thread_id_field(&params)?,
@@ -167,7 +170,7 @@ pub(super) fn normalize_notification(notification: AppServerNotification) -> Opt
                 message: agent_message_from_item_params(&params),
             })
         }
-        "item/agentMessage/completed" | "item/assistantMessage/completed" => {
+        "item/agentMessage/completed" => {
             let params = params?;
             Some(CodexLaneNotification::ItemCompleted {
                 thread_id: thread_id_field(&params)?,
@@ -177,11 +180,7 @@ pub(super) fn normalize_notification(notification: AppServerNotification) -> Opt
                 message: agent_message_from_item_params(&params),
             })
         }
-        "item/agentMessage/delta"
-        | "item/assistantMessage/delta"
-        | "agent_message/delta"
-        | "agent_message_delta"
-        | "agent_message_content_delta" => {
+        "agent_message_delta" => {
             let params = params?;
             let thread_id = thread_id_field(&params)?;
             let turn_id = turn_id_field(&params)?;
@@ -216,27 +215,7 @@ pub(super) fn normalize_notification(notification: AppServerNotification) -> Opt
                 delta,
             })
         }
-        "codex/event/agent_message_content_delta" | "codex/event/agent_message_delta" => {
-            let params = params?;
-            let msg = params.get("msg")?;
-            Some(CodexLaneNotification::AgentMessageDelta {
-                thread_id: thread_id_field(&params)?,
-                turn_id: turn_id_field(&params)?,
-                item_id: msg
-                    .get("item_id")
-                    .and_then(Value::as_str)
-                    .map(str::to_string)
-                    .or_else(|| string_field(msg, "itemId"))
-                    .unwrap_or_else(|| "event-agent-message".to_string()),
-                delta: msg
-                    .get("delta")
-                    .and_then(Value::as_str)
-                    .map(str::to_string)
-                    .or_else(|| string_field(msg, "text"))
-                    .or_else(|| string_field(msg, "message"))?,
-            })
-        }
-        "codex/event/agent_message" | "agent_message" => {
+        "agent_message" => {
             let params = params?;
             let msg = params.get("msg").unwrap_or(&params);
             Some(CodexLaneNotification::AgentMessageCompleted {
@@ -254,18 +233,7 @@ pub(super) fn normalize_notification(notification: AppServerNotification) -> Opt
                     .or_else(|| string_field(msg, "text"))?,
             })
         }
-        "item/reasoning/summaryTextDelta"
-        | "item/reasoning/textDelta"
-        | "codex/event/reasoning_content_delta"
-        | "codex/event/reasoning_raw_content_delta"
-        | "codex/event/agent_reasoning_content_delta"
-        | "codex/event/agent_reasoning_raw_content_delta"
-        | "reasoning_content_delta"
-        | "reasoning_raw_content_delta"
-        | "agent_reasoning_content_delta"
-        | "agent_reasoning_raw_content_delta"
-        | "codex/event/agent_reasoning_delta"
-        | "agent_reasoning_delta" => {
+        "agent_reasoning_delta" => {
             let params = params?;
             let msg = params.get("msg");
             Some(CodexLaneNotification::ReasoningDelta {
@@ -283,7 +251,7 @@ pub(super) fn normalize_notification(notification: AppServerNotification) -> Opt
                     .or_else(|| msg.and_then(|value| string_field(value, "delta")))?,
             })
         }
-        "codex/event/agent_reasoning" | "agent_reasoning" => {
+        "agent_reasoning" => {
             let params = params?;
             let msg = params.get("msg").unwrap_or(&params);
             Some(CodexLaneNotification::ReasoningDelta {
@@ -300,14 +268,14 @@ pub(super) fn normalize_notification(notification: AppServerNotification) -> Opt
                     .or_else(|| string_field(&params, "message"))?,
             })
         }
-        "codex/event/task_started" | "task_started" => {
+        "task_started" => {
             let params = params?;
             Some(CodexLaneNotification::TurnStarted {
                 thread_id: thread_id_field(&params)?,
                 turn_id: turn_id_field(&params)?,
             })
         }
-        "codex/event/task_complete" | "task_complete" => {
+        "task_complete" => {
             let params = params?;
             let msg = params.get("msg");
             Some(CodexLaneNotification::TurnCompleted {
@@ -327,7 +295,7 @@ pub(super) fn normalize_notification(notification: AppServerNotification) -> Opt
                     .and_then(non_empty_text),
             })
         }
-        "codex/event/task_failed" | "codex/event/task_error" | "task_failed" | "task_error" => {
+        "task_failed" => {
             let params = params?;
             let msg = params.get("msg");
             let message = msg
@@ -416,7 +384,7 @@ pub(super) fn normalize_notification(notification: AppServerNotification) -> Opt
                 output_tokens: i64_field(usage_scope, "outputTokens").unwrap_or_default(),
             })
         }
-        "turn/error" | "error" => {
+        "turn/error" => {
             let params = params?;
             let message = params
                 .get("error")
@@ -432,7 +400,7 @@ pub(super) fn normalize_notification(notification: AppServerNotification) -> Opt
                 message,
             })
         }
-        _ => Some(CodexLaneNotification::Raw { method }),
+        _ => Some(CodexLaneNotification::Raw { method: raw_method }),
     }
 }
 
@@ -529,7 +497,10 @@ pub(super) fn extract_thread_transcript_messages(
     messages
 }
 
-pub(super) fn collect_transcript_messages(value: &Value, messages: &mut Vec<CodexThreadTranscriptMessage>) {
+pub(super) fn collect_transcript_messages(
+    value: &Value,
+    messages: &mut Vec<CodexThreadTranscriptMessage>,
+) {
     let Some(object) = value.as_object() else {
         return;
     };
