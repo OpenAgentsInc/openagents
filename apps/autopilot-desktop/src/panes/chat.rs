@@ -1,10 +1,11 @@
+use wgpui::markdown::{MarkdownConfig, MarkdownParser, MarkdownRenderer};
 use wgpui::{Bounds, Component, InputEvent, PaintContext, Point, Quad, theme};
 
 use crate::app_state::{
     AutopilotChatState, AutopilotMessage, AutopilotMessageStatus, AutopilotRole, ChatPaneInputs,
     PaneKind, RenderState,
 };
-use crate::pane_renderer::{paint_action_button, split_text_for_display};
+use crate::pane_renderer::paint_action_button;
 use crate::pane_system::{
     chat_composer_input_bounds, chat_cycle_model_button_bounds, chat_interrupt_button_bounds,
     chat_new_thread_button_bounds, chat_refresh_threads_button_bounds, chat_send_button_bounds,
@@ -21,8 +22,9 @@ use crate::pane_system::{
     chat_visible_thread_row_count, pane_content_bounds,
 };
 
-const CHAT_MAX_RENDER_LINES_PER_MESSAGE: usize = 24;
 const CHAT_TRANSCRIPT_LINE_HEIGHT: f32 = 14.0;
+const CHAT_MARKDOWN_FONT_SIZE: f32 = 11.0;
+const CHAT_MARKDOWN_MIN_WIDTH: f32 = 84.0;
 
 fn transcript_controls_bottom(content_bounds: Bounds, autopilot_chat: &AutopilotChatState) -> f32 {
     let interrupt_bounds = chat_interrupt_button_bounds(content_bounds);
@@ -70,8 +72,34 @@ fn transcript_scroll_clip_bounds(
     )
 }
 
-fn transcript_content_height(autopilot_chat: &AutopilotChatState) -> f32 {
+fn chat_markdown_config() -> MarkdownConfig {
+    MarkdownConfig {
+        base_font_size: CHAT_MARKDOWN_FONT_SIZE,
+        header_sizes: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+        text_color: theme::text::PRIMARY,
+        ..MarkdownConfig::default()
+    }
+}
+
+fn markdown_body_width(transcript_scroll_clip: Bounds) -> f32 {
+    (transcript_scroll_clip.size.width - 6.0).max(CHAT_MARKDOWN_MIN_WIDTH)
+}
+
+fn message_markdown_source(message: &AutopilotMessage) -> String {
+    sanitize_chat_text(&message_display_content(message))
+}
+
+fn transcript_content_height(
+    content_bounds: Bounds,
+    autopilot_chat: &AutopilotChatState,
+    text_system: &mut wgpui::TextSystem,
+) -> f32 {
     let mut height = 8.0;
+
+    let transcript_scroll_clip = transcript_scroll_clip_bounds(content_bounds, autopilot_chat);
+    let markdown_width = markdown_body_width(transcript_scroll_clip);
+    let markdown_parser = MarkdownParser::new();
+    let markdown_renderer = MarkdownRenderer::with_config(chat_markdown_config());
 
     if !autopilot_chat.pending_command_approvals.is_empty()
         || !autopilot_chat.pending_file_change_approvals.is_empty()
@@ -103,13 +131,11 @@ fn transcript_content_height(autopilot_chat: &AutopilotChatState) -> f32 {
 
     for message in &autopilot_chat.messages {
         height += CHAT_TRANSCRIPT_LINE_HEIGHT;
-        let content = message_display_content(message);
-        let display_lines = chat_display_lines(&content, 78);
-        let rendered_lines = display_lines.len().min(CHAT_MAX_RENDER_LINES_PER_MESSAGE);
-        height += rendered_lines as f32 * CHAT_TRANSCRIPT_LINE_HEIGHT;
-        if display_lines.len() > CHAT_MAX_RENDER_LINES_PER_MESSAGE {
-            height += CHAT_TRANSCRIPT_LINE_HEIGHT;
-        }
+        let markdown_source = message_markdown_source(message);
+        let markdown_document = markdown_parser.parse(&markdown_source);
+        let markdown_size =
+            markdown_renderer.measure(&markdown_document, markdown_width, text_system);
+        height += markdown_size.height.max(CHAT_TRANSCRIPT_LINE_HEIGHT);
         height += 8.0;
     }
 
@@ -156,15 +182,20 @@ fn advance_transcript_prefix_lines(mut y: f32, autopilot_chat: &AutopilotChatSta
 }
 
 fn transcript_message_layouts(
+    state: &mut RenderState,
     content_bounds: Bounds,
-    autopilot_chat: &AutopilotChatState,
 ) -> Vec<(u64, Bounds)> {
+    let autopilot_chat = &state.autopilot_chat;
     let transcript_scroll_clip = transcript_scroll_clip_bounds(content_bounds, autopilot_chat);
-    let transcript_content_height = transcript_content_height(autopilot_chat);
+    let transcript_content_height =
+        transcript_content_height(content_bounds, autopilot_chat, &mut state.text_system);
     let transcript_max_scroll =
         (transcript_content_height - transcript_scroll_clip.size.height).max(0.0);
     let transcript_scroll_offset =
         autopilot_chat.transcript_effective_scroll_offset(transcript_max_scroll);
+    let markdown_width = markdown_body_width(transcript_scroll_clip);
+    let markdown_parser = MarkdownParser::new();
+    let markdown_renderer = MarkdownRenderer::with_config(chat_markdown_config());
 
     let mut y = transcript_scroll_clip.origin.y + 8.0 - transcript_scroll_offset;
     y = advance_transcript_prefix_lines(y, autopilot_chat);
@@ -174,13 +205,13 @@ fn transcript_message_layouts(
         let start_y = y;
         y += CHAT_TRANSCRIPT_LINE_HEIGHT;
 
-        let content = message_display_content(message);
-        let display_lines = chat_display_lines(&content, 78);
-        let rendered_lines = display_lines.len().min(CHAT_MAX_RENDER_LINES_PER_MESSAGE);
-        y += rendered_lines as f32 * CHAT_TRANSCRIPT_LINE_HEIGHT;
-        if display_lines.len() > CHAT_MAX_RENDER_LINES_PER_MESSAGE {
-            y += CHAT_TRANSCRIPT_LINE_HEIGHT;
-        }
+        let markdown_source = message_markdown_source(message);
+        let markdown_document = markdown_parser.parse(&markdown_source);
+        let markdown_height = markdown_renderer
+            .measure(&markdown_document, markdown_width, &mut state.text_system)
+            .height
+            .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+        y += markdown_height;
         y += 8.0;
 
         layouts.push((
@@ -205,13 +236,13 @@ fn top_chat_content_bounds(state: &RenderState) -> Option<Bounds> {
         .map(|pane| pane_content_bounds(pane.bounds))
 }
 
-pub fn transcript_message_id_at_point(state: &RenderState, point: Point) -> Option<u64> {
+pub fn transcript_message_id_at_point(state: &mut RenderState, point: Point) -> Option<u64> {
     let content_bounds = top_chat_content_bounds(state)?;
     let clip = transcript_scroll_clip_bounds(content_bounds, &state.autopilot_chat);
     if !clip.contains(point) {
         return None;
     }
-    transcript_message_layouts(content_bounds, &state.autopilot_chat)
+    transcript_message_layouts(state, content_bounds)
         .into_iter()
         .find(|(_, bounds)| bounds.contains(point))
         .map(|(id, _)| id)
@@ -223,7 +254,7 @@ pub fn transcript_message_copy_text_by_id(state: &RenderState, message_id: u64) 
         .messages
         .iter()
         .find(|message| message.id == message_id)
-        .map(message_display_content)
+        .map(|message| sanitize_chat_text(&message_display_content(message)))
 }
 
 pub fn paint(
@@ -464,11 +495,15 @@ pub fn paint(
     ));
 
     let transcript_scroll_clip = transcript_scroll_clip_bounds(content_bounds, autopilot_chat);
-    let transcript_content_height = transcript_content_height(autopilot_chat);
+    let transcript_content_height =
+        transcript_content_height(content_bounds, autopilot_chat, paint.text);
     let transcript_max_scroll =
         (transcript_content_height - transcript_scroll_clip.size.height).max(0.0);
     let transcript_scroll_offset =
         autopilot_chat.transcript_effective_scroll_offset(transcript_max_scroll);
+    let markdown_parser = MarkdownParser::new();
+    let markdown_renderer = MarkdownRenderer::with_config(chat_markdown_config());
+    let markdown_width = markdown_body_width(transcript_scroll_clip);
 
     paint.scene.push_clip(transcript_scroll_clip);
     let mut y = transcript_scroll_clip.origin.y + 8.0 - transcript_scroll_offset;
@@ -617,32 +652,21 @@ pub fn paint(
             10.0,
             status_color,
         ));
-        y += 14.0;
+        y += CHAT_TRANSCRIPT_LINE_HEIGHT;
 
-        let content = message_display_content(message);
-
-        let display_lines = chat_display_lines(&content, 78);
-        for line in display_lines.iter().take(CHAT_MAX_RENDER_LINES_PER_MESSAGE) {
-            paint.scene.draw_text(paint.text.layout(
-                line,
+        let markdown_source = message_markdown_source(message);
+        let markdown_document = markdown_parser.parse(&markdown_source);
+        let markdown_height = markdown_renderer
+            .render(
+                &markdown_document,
                 Point::new(transcript_bounds.origin.x + 10.0, y),
-                11.0,
-                theme::text::PRIMARY,
-            ));
-            y += 14.0;
-        }
-        if display_lines.len() > CHAT_MAX_RENDER_LINES_PER_MESSAGE {
-            paint.scene.draw_text(paint.text.layout_mono(
-                &format!(
-                    "... [{} more lines truncated]",
-                    display_lines.len() - CHAT_MAX_RENDER_LINES_PER_MESSAGE
-                ),
-                Point::new(transcript_bounds.origin.x + 10.0, y),
-                10.0,
-                theme::text::MUTED,
-            ));
-            y += 14.0;
-        }
+                markdown_width,
+                paint.text,
+                paint.scene,
+            )
+            .height
+            .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+        y += markdown_height;
         y += 8.0;
     }
     paint.scene.pop_clip();
@@ -717,7 +741,11 @@ pub fn dispatch_transcript_scroll_event(
         return false;
     }
 
-    let content_height = transcript_content_height(&state.autopilot_chat);
+    let content_height = transcript_content_height(
+        content_bounds,
+        &state.autopilot_chat,
+        &mut state.text_system,
+    );
     let max_scroll = (content_height - clip.size.height).max(0.0);
     if max_scroll <= 0.0 {
         return false;
@@ -727,22 +755,6 @@ pub fn dispatch_transcript_scroll_event(
         .autopilot_chat
         .scroll_transcript_by(scroll_dy, max_scroll);
     true
-}
-
-fn chat_display_lines(text: &str, chunk_len: usize) -> Vec<String> {
-    let sanitized = sanitize_chat_text(text);
-    let mut lines = Vec::new();
-    for raw_line in sanitized.lines() {
-        if raw_line.trim().is_empty() {
-            lines.push(String::new());
-            continue;
-        }
-        lines.extend(split_text_for_display(raw_line, chunk_len.max(1)));
-    }
-    if lines.is_empty() {
-        lines.push(String::new());
-    }
-    lines
 }
 
 fn sanitize_chat_text(text: &str) -> String {
@@ -789,18 +801,12 @@ fn sanitize_chat_text(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{chat_display_lines, sanitize_chat_text};
+    use super::sanitize_chat_text;
 
     #[test]
     fn sanitize_chat_text_strips_ansi_and_control_chars() {
         let raw = "ok\u{1b}[31m red\u{1b}[0m\tline\r\nnext\u{7}";
         let sanitized = sanitize_chat_text(raw);
         assert_eq!(sanitized, "ok red\tline\nnext");
-    }
-
-    #[test]
-    fn chat_display_lines_preserves_newlines_and_wraps() {
-        let lines = chat_display_lines("first\nsecond line", 6);
-        assert_eq!(lines, vec!["first", "second", " line"]);
     }
 }
