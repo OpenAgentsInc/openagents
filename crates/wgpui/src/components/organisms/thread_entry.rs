@@ -167,14 +167,11 @@ impl Component for ThreadEntry {
             && let EventResult::Handled = self.actions.event(event, actions_bounds, cx)
         {
             // Check if an action was triggered
-            if let Some(action) = self.actions.take_triggered_action() {
-                if let EntryAction::Copy = action {
-                    if let Some(ref text) = self.copyable_text
-                        && copy_to_clipboard(text).is_ok()
-                    {
-                        self.actions.set_copy_feedback();
-                    }
-                }
+            if let Some(EntryAction::Copy) = self.actions.take_triggered_action()
+                && let Some(ref text) = self.copyable_text
+                && copy_to_clipboard(text).is_ok()
+            {
+                self.actions.set_copy_feedback();
             }
             return EventResult::Handled;
         }

@@ -644,7 +644,7 @@ impl StatusUpdate {
             vec![
                 "e".to_string(),
                 self.root_event_id.clone(),
-                "".to_string(),
+                String::new(),
                 "root".to_string(),
             ],
             vec!["p".to_string(), self.repository_owner.clone()],
@@ -655,7 +655,7 @@ impl StatusUpdate {
             tags.push(vec![
                 "e".to_string(),
                 revision_id.clone(),
-                "".to_string(),
+                String::new(),
                 "reply".to_string(),
             ]);
         }

@@ -12,5 +12,6 @@
 apps/autopilot-desktop/src/nip_sa_wallet_bridge.rs | budget:0 | owner:autopilot | added:2026-02-27 | reason: keep wallet bridge warning-free after runtime wiring | expiry_issue:#2397
 apps/autopilot-desktop/src/app_state.rs | budget:0 | owner:autopilot | added:2026-02-27 | reason: keep post-refactor clippy warning-free | expiry_issue:#2397
 apps/autopilot-desktop/src/input/reducers/mod.rs | budget:0 | owner:autopilot | added:2026-02-27 | reason: keep reducer orchestration warning-free | expiry_issue:#2397
-crates/nostr/core/src/nip60.rs | budget:7 | owner:nostr | added:2026-02-27 | reason: staged nip60 lint debt burn-down | expiry_issue:#2397
-crates/nostr/core/src/nip34.rs | budget:2 | owner:nostr | added:2026-02-27 | reason: nip34 parser debt staged behind api cleanup | expiry_issue:#2397
+crates/nostr/core/src/nip60.rs | budget:0 | owner:nostr | added:2026-02-27 | reason: keep nip60 warning-free after doc lint fixes | expiry_issue:#2442
+crates/nostr/core/src/nip34.rs | budget:0 | owner:nostr | added:2026-02-27 | reason: keep nip34 warning-free after string cleanup | expiry_issue:#2442
+crates/wgpui/src/components/organisms/thread_entry.rs | budget:0 | owner:wgpui | added:2026-02-28 | reason: prevent regressions after collapsible-if cleanup | expiry_issue:#2442
