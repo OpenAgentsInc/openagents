@@ -911,6 +911,7 @@ impl CodexLaneState {
         disconnected: bool,
     ) {
         let message = message.into();
+        eprintln!("codex lane error: {}", message);
         self.snapshot.lifecycle = if disconnected {
             CodexLaneLifecycle::Disconnected
         } else {
@@ -1012,7 +1013,7 @@ impl CodexLaneState {
                     self.snapshot.active_thread_id = Some(thread_id.clone());
                     self.publish_snapshot(update_tx);
                     let _ = update_tx.send(CodexLaneUpdate::Notification(
-                        CodexLaneNotification::ThreadSelected {
+                        CodexLaneNotification::ThreadStarted {
                             thread_id: thread_id.clone(),
                         },
                     ));
@@ -1193,7 +1194,7 @@ impl CodexLaneState {
                 let thread_id = response.thread.id;
                 Ok(CodexCommandEffect {
                     active_thread_id: Some(thread_id.clone()),
-                    notification: Some(CodexLaneNotification::ThreadSelected { thread_id }),
+                    notification: Some(CodexLaneNotification::ThreadStarted { thread_id }),
                 })
             }
             CodexLaneCommand::ThreadResume(params) => {

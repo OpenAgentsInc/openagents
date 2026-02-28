@@ -14,6 +14,7 @@ pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: CodexLaneSn
         state.autopilot_chat.ensure_thread(thread_id.clone());
     }
     if let Some(error) = snapshot.last_error.as_ref() {
+        eprintln!("codex lane snapshot error: {}", error);
         state.autopilot_chat.last_error = Some(error.clone());
         state.codex_diagnostics.last_snapshot_error = Some(error.clone());
         state.codex_diagnostics.last_error = Some(error.clone());
@@ -48,6 +49,16 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
         ),
     );
     if response.status != CodexLaneCommandStatus::Accepted {
+        eprintln!(
+            "codex command rejected command={} status={} seq={} error={}",
+            response.command.label(),
+            response.status.label(),
+            response.command_seq,
+            response
+                .error
+                .clone()
+                .unwrap_or_else(|| "unknown error".to_string())
+        );
         state.codex_diagnostics.last_command_failure = Some(format!(
             "{} {} {}",
             response.command.label(),
@@ -887,8 +898,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     .set_active_thread_transcript(&thread_id, transcript);
             }
         }
-        CodexLaneNotification::ThreadSelected { thread_id }
-        | CodexLaneNotification::ThreadStarted { thread_id } => {
+        CodexLaneNotification::ThreadSelected { thread_id } => {
             state.autopilot_chat.ensure_thread(thread_id.clone());
             state
                 .autopilot_chat
@@ -901,6 +911,13 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             )) {
                 state.autopilot_chat.last_error = Some(error);
             }
+        }
+        CodexLaneNotification::ThreadStarted { thread_id } => {
+            state.autopilot_chat.ensure_thread(thread_id.clone());
+            state
+                .autopilot_chat
+                .set_active_thread_transcript(&thread_id, Vec::new());
+            state.autopilot_chat.last_error = None;
         }
         CodexLaneNotification::ThreadStatusChanged { thread_id, status } => {
             state.autopilot_chat.remember_thread(thread_id.clone());
