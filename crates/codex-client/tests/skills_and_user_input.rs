@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 #[test]
-fn user_input_skill_and_mention_round_trip() -> anyhow::Result<()> {
+fn user_input_skill_and_mention_round_trip() {
     let skill_json = json!({
         "type": "skill",
         "name": "mezo",
@@ -21,15 +21,16 @@ fn user_input_skill_and_mention_round_trip() -> anyhow::Result<()> {
         "path": "./config.toml"
     });
 
-    let skill: UserInput = serde_json::from_value(skill_json)?;
-    let mention: UserInput = serde_json::from_value(mention_json)?;
+    let skill: UserInput = serde_json::from_value(skill_json).expect("skill input should parse");
+    let mention: UserInput =
+        serde_json::from_value(mention_json).expect("mention input should parse");
 
     match skill {
         UserInput::Skill { name, path } => {
             assert_eq!(name, "mezo");
             assert_eq!(path, PathBuf::from("/repo/skills/mezo/SKILL.md"));
         }
-        _ => return Err(anyhow::anyhow!("expected skill variant")),
+        _ => panic!("expected skill variant"),
     }
 
     match mention {
@@ -37,14 +38,12 @@ fn user_input_skill_and_mention_round_trip() -> anyhow::Result<()> {
             assert_eq!(name, "config.toml");
             assert_eq!(path, "./config.toml");
         }
-        _ => return Err(anyhow::anyhow!("expected mention variant")),
+        _ => panic!("expected mention variant"),
     }
-
-    Ok(())
 }
 
 #[test]
-fn initialize_params_serialize_capabilities() -> anyhow::Result<()> {
+fn initialize_params_serialize_capabilities() {
     let params = InitializeParams {
         client_info: ClientInfo {
             name: "openagents".to_string(),
@@ -60,17 +59,16 @@ fn initialize_params_serialize_capabilities() -> anyhow::Result<()> {
         }),
     };
 
-    let value = serde_json::to_value(params)?;
+    let value = serde_json::to_value(params).expect("initialize params should serialize");
     assert_eq!(value["capabilities"]["experimentalApi"], Value::Bool(true));
     assert_eq!(
         value["capabilities"]["optOutNotificationMethods"],
         json!(["item/agentMessage/delta", "item/reasoning/textDelta"])
     );
-    Ok(())
 }
 
 #[test]
-fn thread_list_and_model_list_params_include_new_filters() -> anyhow::Result<()> {
+fn thread_list_and_model_list_params_include_new_filters() {
     let thread_list = ThreadListParams {
         cursor: Some("cursor-1".to_string()),
         limit: Some(25),
@@ -81,7 +79,8 @@ fn thread_list_and_model_list_params_include_new_filters() -> anyhow::Result<()>
         cwd: Some("/repo".to_string()),
         search_term: Some("refactor".to_string()),
     };
-    let thread_value = serde_json::to_value(thread_list)?;
+    let thread_value =
+        serde_json::to_value(thread_list).expect("thread list params should serialize");
     assert_eq!(
         thread_value["sortKey"],
         Value::String("updated_at".to_string())
@@ -98,13 +97,12 @@ fn thread_list_and_model_list_params_include_new_filters() -> anyhow::Result<()>
         limit: Some(10),
         include_hidden: Some(true),
     };
-    let model_value = serde_json::to_value(model_list)?;
+    let model_value = serde_json::to_value(model_list).expect("model list params should serialize");
     assert_eq!(model_value["includeHidden"], Value::Bool(true));
-    Ok(())
 }
 
 #[test]
-fn skills_list_params_serialize_extra_roots() -> anyhow::Result<()> {
+fn skills_list_params_serialize_extra_roots() {
     let params = SkillsListParams {
         cwds: vec![PathBuf::from("/repo")],
         force_reload: true,
@@ -114,7 +112,7 @@ fn skills_list_params_serialize_extra_roots() -> anyhow::Result<()> {
         }]),
     };
 
-    let value = serde_json::to_value(params)?;
+    let value = serde_json::to_value(params).expect("skills list params should serialize");
 
     assert_eq!(value["forceReload"], Value::Bool(true));
     assert_eq!(value["cwds"], json!(["/repo"]));
@@ -127,12 +125,10 @@ fn skills_list_params_serialize_extra_roots() -> anyhow::Result<()> {
             }
         ])
     );
-
-    Ok(())
 }
 
 #[test]
-fn skill_metadata_deserializes_enabled_interface_dependencies() -> anyhow::Result<()> {
+fn skill_metadata_deserializes_enabled_interface_dependencies() {
     let metadata_json = json!({
         "name": "mezo",
         "description": "Integrate with Mezo",
@@ -153,29 +149,28 @@ fn skill_metadata_deserializes_enabled_interface_dependencies() -> anyhow::Resul
         "enabled": true
     });
 
-    let skill: codex_client::SkillMetadata = serde_json::from_value(metadata_json)?;
+    let skill: codex_client::SkillMetadata =
+        serde_json::from_value(metadata_json).expect("skill metadata should deserialize");
     assert_eq!(skill.name, "mezo");
     assert_eq!(skill.scope, SkillScope::Repo);
     assert!(skill.enabled);
 
     let interface = match skill.interface {
         Some(interface) => interface,
-        None => return Err(anyhow::anyhow!("missing interface")),
+        None => panic!("missing interface"),
     };
     assert_eq!(interface.display_name.as_deref(), Some("Mezo"));
 
     let dependencies = match skill.dependencies {
         Some(deps) => deps,
-        None => return Err(anyhow::anyhow!("missing dependencies")),
+        None => panic!("missing dependencies"),
     };
     assert_eq!(dependencies.tools.len(), 1);
     assert_eq!(dependencies.tools[0].r#type, "cmd");
-
-    Ok(())
 }
 
 #[test]
-fn skills_list_response_deserializes_errors_and_enabled_state() -> anyhow::Result<()> {
+fn skills_list_response_deserializes_errors_and_enabled_state() {
     let response_json = json!({
         "data": [
             {
@@ -217,7 +212,8 @@ fn skills_list_response_deserializes_errors_and_enabled_state() -> anyhow::Resul
         ]
     });
 
-    let response: codex_client::SkillsListResponse = serde_json::from_value(response_json)?;
+    let response: codex_client::SkillsListResponse =
+        serde_json::from_value(response_json).expect("skills response should deserialize");
     assert_eq!(response.data.len(), 1);
 
     let entry = &response.data[0];
@@ -248,12 +244,10 @@ fn skills_list_response_deserializes_errors_and_enabled_state() -> anyhow::Resul
     let second = &entry.skills[1];
     assert!(!second.enabled);
     assert_eq!(second.scope, SkillScope::Repo);
-
-    Ok(())
 }
 
 #[test]
-fn thread_list_response_deserializes_structured_status_and_paths() -> anyhow::Result<()> {
+fn thread_list_response_deserializes_structured_status_and_paths() {
     let response_json = json!({
         "data": [
             {
@@ -273,7 +267,8 @@ fn thread_list_response_deserializes_structured_status_and_paths() -> anyhow::Re
         "nextCursor": null
     });
 
-    let response: codex_client::ThreadListResponse = serde_json::from_value(response_json)?;
+    let response: codex_client::ThreadListResponse =
+        serde_json::from_value(response_json).expect("thread list response should deserialize");
     assert_eq!(response.data.len(), 1);
     let thread = &response.data[0];
     assert_eq!(thread.id, "019ca108-a6c0-75b3-b11b-c4f3f0e67a9e");
@@ -289,12 +284,10 @@ fn thread_list_response_deserializes_structured_status_and_paths() -> anyhow::Re
         )
     );
     assert!(thread.status.is_some());
-
-    Ok(())
 }
 
 #[tokio::test]
-async fn turn_start_request_includes_skill_input() -> anyhow::Result<()> {
+async fn turn_start_request_includes_skill_input() {
     let (client_stream, server_stream) = tokio::io::duplex(16 * 1024);
     let (client_read, client_write) = tokio::io::split(client_stream);
     let (server_read, mut server_write) = tokio::io::split(server_stream);
@@ -305,12 +298,14 @@ async fn turn_start_request_includes_skill_input() -> anyhow::Result<()> {
     let server = tokio::spawn(async move {
         let mut reader = BufReader::new(server_read);
         let mut request_line = String::new();
-        let bytes = reader.read_line(&mut request_line).await?;
-        if bytes == 0 {
-            return Err(anyhow::anyhow!("missing request"));
-        }
+        let bytes = reader
+            .read_line(&mut request_line)
+            .await
+            .expect("server should read request");
+        assert!(bytes != 0, "missing request");
 
-        let request_json: Value = serde_json::from_str(request_line.trim())?;
+        let request_json: Value =
+            serde_json::from_str(request_line.trim()).expect("request json should parse");
         assert_eq!(
             request_json["method"],
             Value::String("turn/start".to_string())
@@ -336,11 +331,18 @@ async fn turn_start_request_includes_skill_input() -> anyhow::Result<()> {
                 "turn": {"id": "turn-1"}
             }
         });
-        let line = format!("{}\n", serde_json::to_string(&response)?);
-        server_write.write_all(line.as_bytes()).await?;
-        server_write.flush().await?;
-
-        Ok::<(), anyhow::Error>(())
+        let line = format!(
+            "{}\n",
+            serde_json::to_string(&response).expect("response should serialize")
+        );
+        server_write
+            .write_all(line.as_bytes())
+            .await
+            .expect("server should write response");
+        server_write
+            .flush()
+            .await
+            .expect("server should flush response");
     });
 
     let response = client
@@ -366,15 +368,15 @@ async fn turn_start_request_includes_skill_input() -> anyhow::Result<()> {
             output_schema: None,
             collaboration_mode: None,
         })
-        .await?;
+        .await
+        .expect("turn/start should succeed");
 
     assert_eq!(response.turn.id, "turn-1");
-    server.await??;
-    Ok(())
+    server.await.expect("server task should complete");
 }
 
 #[tokio::test]
-async fn skills_config_write_request_round_trip() -> anyhow::Result<()> {
+async fn skills_config_write_request_round_trip() {
     let (client_stream, server_stream) = tokio::io::duplex(16 * 1024);
     let (client_read, client_write) = tokio::io::split(client_stream);
     let (server_read, mut server_write) = tokio::io::split(server_stream);
@@ -385,12 +387,14 @@ async fn skills_config_write_request_round_trip() -> anyhow::Result<()> {
     let server = tokio::spawn(async move {
         let mut reader = BufReader::new(server_read);
         let mut request_line = String::new();
-        let bytes = reader.read_line(&mut request_line).await?;
-        if bytes == 0 {
-            return Err(anyhow::anyhow!("missing request"));
-        }
+        let bytes = reader
+            .read_line(&mut request_line)
+            .await
+            .expect("server should read request");
+        assert!(bytes != 0, "missing request");
 
-        let request_json: Value = serde_json::from_str(request_line.trim())?;
+        let request_json: Value =
+            serde_json::from_str(request_line.trim()).expect("request json should parse");
         assert_eq!(
             request_json["method"],
             Value::String("skills/config/write".to_string())
@@ -409,11 +413,18 @@ async fn skills_config_write_request_round_trip() -> anyhow::Result<()> {
                 "effectiveEnabled": false
             }
         });
-        let line = format!("{}\n", serde_json::to_string(&response)?);
-        server_write.write_all(line.as_bytes()).await?;
-        server_write.flush().await?;
-
-        Ok::<(), anyhow::Error>(())
+        let line = format!(
+            "{}\n",
+            serde_json::to_string(&response).expect("response should serialize")
+        );
+        server_write
+            .write_all(line.as_bytes())
+            .await
+            .expect("server should write response");
+        server_write
+            .flush()
+            .await
+            .expect("server should flush response");
     });
 
     let response = client
@@ -421,10 +432,9 @@ async fn skills_config_write_request_round_trip() -> anyhow::Result<()> {
             path: PathBuf::from("/repo/skills/mezo/SKILL.md"),
             enabled: false,
         })
-        .await?;
+        .await
+        .expect("skills/config/write should succeed");
 
     assert!(!response.effective_enabled);
-    server.await??;
-
-    Ok(())
+    server.await.expect("server task should complete");
 }

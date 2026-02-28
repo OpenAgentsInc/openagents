@@ -125,11 +125,11 @@ mod tests {
     };
 
     #[test]
-    fn nip06_vector_1_matches() -> anyhow::Result<()> {
+    fn nip06_vector_1_matches() {
         let mnemonic =
             "leader monkey parrot ring guide accident before fence cannon height naive bean";
 
-        let keypair = derive_keypair(mnemonic)?;
+        let keypair = derive_keypair(mnemonic).expect("vector keypair derivation should succeed");
 
         assert_eq!(
             keypair.private_key_hex(),
@@ -140,59 +140,58 @@ mod tests {
             "17162c921dc4d2518f9a101db33695df1afb56ab82f5ff3e5da6eec3ca5cd917"
         );
         assert_eq!(
-            keypair.nsec()?,
+            keypair.nsec().expect("nsec encoding should succeed"),
             "nsec10allq0gjx7fddtzef0ax00mdps9t2kmtrldkyjfs8l5xruwvh2dq0lhhkp"
         );
         assert_eq!(
-            keypair.npub()?,
+            keypair.npub().expect("npub encoding should succeed"),
             "npub1zutzeysacnf9rru6zqwmxd54mud0k44tst6l70ja5mhv8jjumytsd2x7nu"
         );
-
-        Ok(())
     }
 
     #[test]
-    fn account_index_changes_keys() -> anyhow::Result<()> {
+    fn account_index_changes_keys() {
         let mnemonic =
             "leader monkey parrot ring guide accident before fence cannon height naive bean";
 
-        let account_zero = derive_keypair_with_account(mnemonic, 0)?;
-        let account_one = derive_keypair_with_account(mnemonic, 1)?;
+        let account_zero = derive_keypair_with_account(mnemonic, 0)
+            .expect("account 0 keypair derivation should succeed");
+        let account_one = derive_keypair_with_account(mnemonic, 1)
+            .expect("account 1 keypair derivation should succeed");
 
         assert_ne!(account_zero.private_key, account_one.private_key);
         assert_ne!(account_zero.public_key, account_one.public_key);
-
-        Ok(())
     }
 
     #[test]
-    fn agent_keypair_alias_matches_account_derivation() -> anyhow::Result<()> {
+    fn agent_keypair_alias_matches_account_derivation() {
         let mnemonic =
             "leader monkey parrot ring guide accident before fence cannon height naive bean";
 
-        let via_account = derive_keypair_with_account(mnemonic, 3)?;
-        let via_agent = derive_agent_keypair(mnemonic, 3)?;
+        let via_account = derive_keypair_with_account(mnemonic, 3)
+            .expect("account keypair derivation should succeed");
+        let via_agent =
+            derive_agent_keypair(mnemonic, 3).expect("agent keypair derivation should succeed");
 
         assert_eq!(via_account.private_key, via_agent.private_key);
         assert_eq!(via_account.public_key, via_agent.public_key);
-
-        Ok(())
     }
 
     #[test]
-    fn skill_derivation_changes_by_type_and_index() -> anyhow::Result<()> {
+    fn skill_derivation_changes_by_type_and_index() {
         let mnemonic =
             "leader monkey parrot ring guide accident before fence cannon height naive bean";
 
-        let payment_skill = derive_skill_keypair(mnemonic, 0, 1, 0)?;
-        let shell_skill = derive_skill_keypair(mnemonic, 0, 3, 0)?;
-        let payment_skill_next = derive_skill_keypair(mnemonic, 0, 1, 1)?;
+        let payment_skill = derive_skill_keypair(mnemonic, 0, 1, 0)
+            .expect("payment skill derivation should succeed");
+        let shell_skill =
+            derive_skill_keypair(mnemonic, 0, 3, 0).expect("shell skill derivation should succeed");
+        let payment_skill_next = derive_skill_keypair(mnemonic, 0, 1, 1)
+            .expect("next payment skill derivation should succeed");
 
         assert_ne!(payment_skill.private_key, shell_skill.private_key);
         assert_ne!(payment_skill.private_key, payment_skill_next.private_key);
         assert_ne!(payment_skill.public_key, shell_skill.public_key);
         assert_ne!(payment_skill.public_key, payment_skill_next.public_key);
-
-        Ok(())
     }
 }

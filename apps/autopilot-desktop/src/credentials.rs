@@ -205,7 +205,7 @@ impl CredentialRepository {
         }
 
         let mut pairs: Vec<(String, String)> = merged.into_iter().collect();
-        pairs.sort_by(|lhs, rhs| lhs.0.cmp(&rhs.0));
+        pairs.sort_by_key(|entry| entry.0.clone());
         Ok(pairs)
     }
 }
@@ -399,7 +399,7 @@ fn dedupe_records(records: &mut Vec<CredentialRecord>) {
 }
 
 fn sort_records(records: &mut [CredentialRecord]) {
-    records.sort_by(|lhs, rhs| record_sort_key(lhs).cmp(&record_sort_key(rhs)));
+    records.sort_by_key(record_sort_key);
 }
 
 fn record_sort_key(record: &CredentialRecord) -> (u8, usize, String) {
