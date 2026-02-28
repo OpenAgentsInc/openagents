@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{cell::RefCell, rc::Rc};
+use std::collections::VecDeque;
 
 use nostr::NostrIdentity;
 use wgpui::components::TextInput;
@@ -367,6 +368,7 @@ pub struct AutopilotChatState {
     pub next_message_id: u64,
     pub active_turn_id: Option<String>,
     pub active_assistant_message_id: Option<u64>,
+    pub pending_assistant_message_ids: VecDeque<u64>,
     pub turn_assistant_message_ids: std::collections::HashMap<String, u64>,
     pub last_turn_status: Option<String>,
     pub token_usage: Option<AutopilotTokenUsage>,
@@ -411,6 +413,7 @@ impl Default for AutopilotChatState {
             next_message_id: 2,
             active_turn_id: None,
             active_assistant_message_id: None,
+            pending_assistant_message_ids: VecDeque::new(),
             turn_assistant_message_ids: std::collections::HashMap::new(),
             last_turn_status: None,
             token_usage: None,
@@ -636,6 +639,7 @@ impl AutopilotChatState {
 
         self.active_turn_id = None;
         self.active_assistant_message_id = None;
+        self.pending_assistant_message_ids.clear();
         self.turn_assistant_message_ids.clear();
         self.last_turn_status = None;
         self.token_usage = None;
@@ -677,21 +681,22 @@ impl AutopilotChatState {
             content: String::new(),
         });
         self.next_message_id = self.next_message_id.saturating_add(1);
+        self.pending_assistant_message_ids
+            .push_back(assistant_message_id);
         self.active_assistant_message_id = Some(assistant_message_id);
     }
 
     pub fn mark_turn_started(&mut self, turn_id: String) {
         self.active_turn_id = Some(turn_id.clone());
         self.last_turn_status = Some("inProgress".to_string());
-        if let Some(assistant_message_id) = self.active_assistant_message_id
+        if let Some(assistant_message_id) = self.bind_turn_to_assistant_message(&turn_id)
             && let Some(message) = self
                 .messages
                 .iter_mut()
                 .find(|message| message.id == assistant_message_id)
         {
             message.status = AutopilotMessageStatus::Running;
-            self.turn_assistant_message_ids
-                .insert(turn_id, assistant_message_id);
+            self.active_assistant_message_id = Some(assistant_message_id);
         }
     }
 
@@ -708,7 +713,7 @@ impl AutopilotChatState {
             .turn_assistant_message_ids
             .get(turn_id)
             .copied()
-            .or(self.active_assistant_message_id);
+            .or_else(|| self.bind_turn_to_assistant_message(turn_id));
         if let Some(assistant_message_id) = assistant_message_id
             && let Some(message) = self
                 .messages
@@ -733,9 +738,8 @@ impl AutopilotChatState {
     pub fn mark_turn_completed_for(&mut self, turn_id: &str) {
         let assistant_message_id = self
             .turn_assistant_message_ids
-            .get(turn_id)
-            .copied()
-            .or(self.active_assistant_message_id);
+            .remove(turn_id)
+            .or_else(|| self.bind_turn_to_assistant_message(turn_id));
         if let Some(assistant_message_id) = assistant_message_id
             && let Some(message) = self
                 .messages
@@ -743,17 +747,34 @@ impl AutopilotChatState {
                 .find(|message| message.id == assistant_message_id)
         {
             message.status = AutopilotMessageStatus::Done;
+            if self.active_assistant_message_id == Some(assistant_message_id) {
+                self.active_assistant_message_id = None;
+            }
         }
         self.last_turn_status = Some("completed".to_string());
         if self.active_turn_id.as_deref() == Some(turn_id) {
             self.active_turn_id = None;
-            self.active_assistant_message_id = None;
         }
     }
 
+    #[allow(dead_code)]
     pub fn mark_turn_error(&mut self, error: impl Into<String>) {
         let error = error.into();
-        if let Some(assistant_message_id) = self.active_assistant_message_id
+        if let Some(turn_id) = self.active_turn_id.clone() {
+            self.mark_turn_error_for(&turn_id, error);
+            return;
+        }
+        self.mark_turn_error_for("unknown-turn", error);
+    }
+
+    pub fn mark_turn_error_for(&mut self, turn_id: &str, error: impl Into<String>) {
+        let error = error.into();
+        let assistant_message_id = self
+            .turn_assistant_message_ids
+            .remove(turn_id)
+            .or_else(|| self.bind_turn_to_assistant_message(turn_id))
+            .or(self.active_assistant_message_id);
+        if let Some(assistant_message_id) = assistant_message_id
             && let Some(message) = self
                 .messages
                 .iter_mut()
@@ -763,11 +784,15 @@ impl AutopilotChatState {
             if message.content.trim().is_empty() {
                 message.content = error.clone();
             }
+            if self.active_assistant_message_id == Some(assistant_message_id) {
+                self.active_assistant_message_id = None;
+            }
         }
         self.last_turn_status = Some("failed".to_string());
         self.last_error = Some(error);
-        self.active_turn_id = None;
-        self.active_assistant_message_id = None;
+        if self.active_turn_id.as_deref() == Some(turn_id) {
+            self.active_turn_id = None;
+        }
     }
 
     pub fn mark_pending_turn_dispatch_failed(&mut self, error: impl Into<String>) {
@@ -781,6 +806,8 @@ impl AutopilotChatState {
             message.status = AutopilotMessageStatus::Error;
             message.content = error.clone();
         }
+        self.pending_assistant_message_ids
+            .retain(|id| Some(*id) != self.active_assistant_message_id);
         self.last_error = Some(error);
         self.last_turn_status = Some("failed".to_string());
         self.active_turn_id = None;
@@ -1019,6 +1046,19 @@ impl AutopilotChatState {
                 AutopilotMessageStatus::Queued | AutopilotMessageStatus::Running
             )
         })
+    }
+
+    fn bind_turn_to_assistant_message(&mut self, turn_id: &str) -> Option<u64> {
+        if let Some(existing) = self.turn_assistant_message_ids.get(turn_id).copied() {
+            return Some(existing);
+        }
+        let assistant_message_id = self
+            .pending_assistant_message_ids
+            .pop_front()
+            .or(self.active_assistant_message_id)?;
+        self.turn_assistant_message_ids
+            .insert(turn_id.to_string(), assistant_message_id);
+        Some(assistant_message_id)
     }
 }
 
@@ -3689,6 +3729,58 @@ mod tests {
         );
         assert_eq!(chat.messages.len(), 1);
         assert_eq!(chat.messages[0].content, "new thread");
+    }
+
+    #[test]
+    fn chat_state_binds_turns_to_assistant_slots_in_submission_order() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-1".to_string());
+        chat.submit_prompt("first".to_string());
+        chat.submit_prompt("second".to_string());
+        let queued_assistant_ids = chat
+            .messages
+            .iter()
+            .filter(|message| {
+                message.role == AutopilotRole::Codex
+                    && message.status == AutopilotMessageStatus::Queued
+            })
+            .map(|message| message.id)
+            .collect::<Vec<_>>();
+        assert_eq!(queued_assistant_ids.len(), 2);
+
+        // The first turn starts after a second prompt was already queued.
+        chat.mark_turn_started("turn-1".to_string());
+        chat.append_turn_delta_for_turn("turn-1", "resp-first");
+        chat.mark_turn_completed_for("turn-1");
+
+        // First assistant slot should carry first turn output.
+        assert_eq!(
+            chat.messages
+                .iter()
+                .find(|message| message.id == queued_assistant_ids[0])
+                .map(|message| message.content.as_str()),
+            Some("resp-first")
+        );
+        assert_eq!(
+            chat.messages
+                .iter()
+                .find(|message| message.id == queued_assistant_ids[1])
+                .map(|message| message.status),
+            Some(AutopilotMessageStatus::Queued)
+        );
+
+        chat.mark_turn_started("turn-2".to_string());
+        chat.append_turn_delta_for_turn("turn-2", "resp-second");
+        chat.mark_turn_completed_for("turn-2");
+
+        assert_eq!(
+            chat.messages
+                .iter()
+                .find(|message| message.id == queued_assistant_ids[1])
+                .map(|message| message.content.as_str()),
+            Some("resp-second")
+        );
+        assert!(!chat.has_pending_messages());
     }
 
     #[test]

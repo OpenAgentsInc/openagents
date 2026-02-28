@@ -1023,7 +1023,8 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 state.autopilot_chat.set_turn_status(status.clone());
                 match status.as_deref() {
                     Some("failed") => {
-                        state.autopilot_chat.mark_turn_error(
+                        state.autopilot_chat.mark_turn_error_for(
+                            &turn_id,
                             error_message.unwrap_or_else(|| "Turn failed".to_string()),
                         );
                     }
@@ -1094,11 +1095,13 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             }
         }
         CodexLaneNotification::TurnError {
-            thread_id, message, ..
+            thread_id,
+            turn_id,
+            message,
         } => {
             state.autopilot_chat.remember_thread(thread_id.clone());
             if state.autopilot_chat.is_active_thread(&thread_id) {
-                state.autopilot_chat.mark_turn_error(message);
+                state.autopilot_chat.mark_turn_error_for(&turn_id, message);
             }
         }
         CodexLaneNotification::CommandApprovalRequested {

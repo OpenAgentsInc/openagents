@@ -674,7 +674,7 @@ async fn run(args: HarnessArgs) -> Result<()> {
             &client,
             &new_thread_id,
             &prompt,
-            Duration::from_millis(args.timeout_ms.saturating_mul(2).max(2_000)),
+            Duration::from_millis(args.timeout_ms.saturating_mul(4).max(15_000)),
         )
         .await
         .with_context(|| {
@@ -1044,6 +1044,51 @@ fn thread_contains_text(thread: &ThreadSnapshot, needle: &str) -> bool {
     })
 }
 
+fn transcript_role_counts(thread: &ThreadSnapshot) -> (usize, usize) {
+    let mut user_count = 0usize;
+    let mut agent_count = 0usize;
+
+    for turn in &thread.turns {
+        for item in &turn.items {
+            let Some(object) = item.as_object() else {
+                continue;
+            };
+
+            let kind = object
+                .get("type")
+                .and_then(Value::as_str)
+                .or_else(|| {
+                    object
+                        .get("payload")
+                        .and_then(Value::as_object)
+                        .and_then(|payload| payload.get("type"))
+                        .and_then(Value::as_str)
+                })
+                .unwrap_or_default();
+
+            let role = object
+                .get("role")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+
+            let has_text = collect_message_text(item).is_some();
+            if !has_text {
+                continue;
+            }
+
+            if matches!(kind, "user_message" | "userMessage") || role == "user" {
+                user_count = user_count.saturating_add(1);
+            } else if matches!(kind, "agent_message" | "agentMessage")
+                || matches!(role, "assistant" | "codex")
+            {
+                agent_count = agent_count.saturating_add(1);
+            }
+        }
+    }
+
+    (user_count, agent_count)
+}
+
 async fn wait_for_materialized_thread_after_turn(
     client: &AppServerClient,
     thread_id: &str,
@@ -1065,19 +1110,22 @@ async fn wait_for_materialized_thread_after_turn(
         {
             Ok(response) => {
                 let message_count = transcript_message_count(&response.thread);
+                let (user_count, agent_count) = transcript_role_counts(&response.thread);
                 let prompt_seen = thread_contains_text(&response.thread, prompt);
-                if message_count > 0 && prompt_seen {
+                if user_count >= 1 && agent_count >= 1 && prompt_seen {
                     println!(
-                        "post-send materialization check passed attempts={} messages={} prompt_seen={}",
-                        attempts, message_count, prompt_seen
+                        "post-send materialization check passed attempts={} messages={} users={} agents={} prompt_seen={}",
+                        attempts, message_count, user_count, agent_count, prompt_seen
                     );
                     return Ok(response);
                 }
                 last_observation = format!(
-                    "thread/read attempts={} turns={} messages={} prompt_seen={}",
+                    "thread/read attempts={} turns={} messages={} users={} agents={} prompt_seen={}",
                     attempts,
                     response.thread.turns.len(),
                     message_count,
+                    user_count,
+                    agent_count,
                     prompt_seen
                 );
             }
