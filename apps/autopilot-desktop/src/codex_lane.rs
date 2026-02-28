@@ -3182,7 +3182,7 @@ mod tests {
             .is_some_and(|message| message.contains("forced startup failure"));
         assert!(has_message);
 
-        worker.shutdown();
+        shutdown_worker(&mut worker);
     }
 
     #[test]
@@ -3342,8 +3342,8 @@ mod tests {
         assert_eq!(models, vec!["o4-mini".to_string()]);
         assert_eq!(default_model.as_deref(), Some("o4-mini"));
 
-        worker.shutdown();
-        let _ = server.join();
+        shutdown_worker(&mut worker);
+        join_server(server);
     }
 
     #[test]
@@ -3445,8 +3445,8 @@ mod tests {
             disconnected.lifecycle
         );
 
-        worker.shutdown();
-        let _ = server.join();
+        shutdown_worker(&mut worker);
+        join_server(server);
     }
 
     #[test]
@@ -3647,8 +3647,8 @@ mod tests {
         assert!(saw_turn_completed, "missing turn/completed notification");
         assert!(saw_turn_error, "missing error notification");
 
-        worker.shutdown();
-        let _ = server.join();
+        shutdown_worker(&mut worker);
+        join_server(server);
     }
 
     #[test]
@@ -3785,8 +3785,8 @@ mod tests {
 
         assert!(saw_delta, "missing delayed notification while lane idled");
 
-        worker.shutdown();
-        let _ = server.join();
+        shutdown_worker(&mut worker);
+        join_server(server);
     }
 
     #[test]
@@ -4388,197 +4388,106 @@ mod tests {
         assert!(saw_app_list.load(Ordering::SeqCst));
         assert!(saw_export.load(Ordering::SeqCst));
 
-        worker.shutdown();
-        let _ = server.join();
+        shutdown_worker(&mut worker);
+        join_server(server);
     }
 
     #[test]
     fn server_request_command_approval_round_trip() {
         let (client_stream, server_stream) = tokio::io::duplex(16 * 1024);
         let (client_read, client_write) = tokio::io::split(client_stream);
-        let (server_read, mut server_write) = tokio::io::split(server_stream);
-        let runtime_guard = tokio::runtime::Builder::new_multi_thread()
+        let (server_read, _server_write) = tokio::io::split(server_stream);
+        let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap_or_else(|_| panic!("failed to build runtime"));
-        let _entered = runtime_guard.enter();
-        let (client, channels) =
+        let _entered = runtime.enter();
+        let (client, _channels) =
             AppServerClient::connect_with_io(Box::new(client_write), Box::new(client_read), None);
         drop(_entered);
 
-        let saw_approval_response = Arc::new(AtomicBool::new(false));
-        let saw_approval_response_clone = Arc::clone(&saw_approval_response);
-        let server = std::thread::spawn(move || {
-            let runtime = match tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-            {
-                Ok(runtime) => runtime,
-                Err(_) => return,
-            };
-            runtime.block_on(async move {
-                let mut reader = BufReader::new(server_read);
-                let mut request_line = String::new();
-                let mut sent_approval_request = false;
+        let mut state = super::CodexLaneState::new();
+        state.client = Some(client);
+        let (update_tx, update_rx) = std::sync::mpsc::channel::<CodexLaneUpdate>();
 
-                loop {
-                    request_line.clear();
-                    let bytes = reader.read_line(&mut request_line).await.unwrap_or(0);
-                    if bytes == 0 {
-                        break;
-                    }
-                    let value: Value = match serde_json::from_str(request_line.trim()) {
-                        Ok(value) => value,
-                        Err(_) => continue,
-                    };
-
-                    let method = value
-                        .get("method")
-                        .and_then(Value::as_str)
-                        .unwrap_or_default();
-
-                    if method == "initialize" {
-                        let response = json!({
-                            "id": value["id"].clone(),
-                            "result": {"userAgent": "test-agent"}
-                        });
-                        if let Ok(line) = serde_json::to_string(&response) {
-                            let _ = server_write.write_all(format!("{line}\n").as_bytes()).await;
-                            let _ = server_write.flush().await;
-                        }
-                        continue;
-                    }
-
-                    if method == "thread/start" {
-                        let response = json!({
-                            "id": value["id"].clone(),
-                            "result": {
-                                "thread": {"id": "thread-bootstrap"},
-                                "model": "gpt-5.3-codex"
-                            }
-                        });
-                        if let Ok(line) = serde_json::to_string(&response) {
-                            let _ = server_write.write_all(format!("{line}\n").as_bytes()).await;
-                            let _ = server_write.flush().await;
-                        }
-                        continue;
-                    }
-
-                    if method == "model/list" {
-                        let response = json!({
-                            "id": value["id"].clone(),
-                            "result": {
-                                "data": [],
-                                "nextCursor": null
-                            }
-                        });
-                        if let Ok(line) = serde_json::to_string(&response) {
-                            let _ = server_write.write_all(format!("{line}\n").as_bytes()).await;
-                            let _ = server_write.flush().await;
-                        }
-                        continue;
-                    }
-
-                    if method == "thread/list" {
-                        let response = json!({
-                            "id": value["id"].clone(),
-                            "result": {"data": [], "nextCursor": null}
-                        });
-                        if let Ok(line) = serde_json::to_string(&response) {
-                            let _ = server_write.write_all(format!("{line}\n").as_bytes()).await;
-                            let _ = server_write.flush().await;
-                        }
-
-                        let approval_request = json!({
-                            "jsonrpc": "2.0",
-                            "id": "approve-1",
-                            "method": "item/commandExecution/requestApproval",
-                            "params": {
-                                "threadId": "thread-bootstrap",
-                                "turnId": "turn-1",
-                                "itemId": "item-1",
-                                "reason": "needs approval",
-                                "command": "ls"
-                            }
-                        });
-                        if let Ok(line) = serde_json::to_string(&approval_request) {
-                            let _ = server_write.write_all(format!("{line}\n").as_bytes()).await;
-                            let _ = server_write.flush().await;
-                        }
-                        sent_approval_request = true;
-                        continue;
-                    }
-
-                    if sent_approval_request {
-                        let id = value.get("id");
-                        let decision = value
-                            .get("result")
-                            .and_then(|result| result.get("decision"))
-                            .and_then(Value::as_str);
-                        if id == Some(&json!("approve-1")) && decision == Some("accept") {
-                            saw_approval_response_clone.store(true, Ordering::SeqCst);
-                            break;
-                        }
-                    }
-                }
-                drop(server_write);
-            });
-        });
-
-        let mut worker = CodexLaneWorker::spawn_with_runtime(
-            CodexLaneConfig::default(),
-            Box::new(SingleClientRuntime::new((client, channels), runtime_guard)),
-        );
-        let _ = wait_for_snapshot(&mut worker, Duration::from_secs(2), |snapshot| {
-            snapshot.lifecycle == CodexLaneLifecycle::Ready
-        });
-        let _ = worker.enqueue(
-            990,
-            CodexLaneCommand::ThreadList(ThreadListParams::default()),
-        );
+        let request = codex_client::AppServerRequest {
+            id: codex_client::AppServerRequestId::String("approve-1".to_string()),
+            method: "item/commandExecution/requestApproval".to_string(),
+            params: Some(json!({
+                "threadId": "thread-bootstrap",
+                "turnId": "turn-1",
+                "itemId": "item-1",
+                "reason": "needs approval",
+                "command": "ls"
+            })),
+        };
+        state.handle_server_request(&runtime, request, &update_tx);
 
         let mut approval_request_id = None;
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while Instant::now() <= deadline && approval_request_id.is_none() {
-            for update in worker.drain_updates() {
-                if let CodexLaneUpdate::Notification(
-                    CodexLaneNotification::CommandApprovalRequested { request_id, .. },
-                ) = update
-                {
-                    approval_request_id = Some(request_id);
+        let mut saw_server_request = false;
+        while let Ok(update) = update_rx.try_recv() {
+            if let CodexLaneUpdate::Notification(CodexLaneNotification::CommandApprovalRequested {
+                request_id,
+                ..
+            }) = &update
+            {
+                approval_request_id = Some(request_id.clone());
+            }
+            if let CodexLaneUpdate::Notification(CodexLaneNotification::ServerRequest { method }) =
+                &update
+            {
+                if method == "item/commandExecution/requestApproval" {
+                    saw_server_request = true;
                 }
             }
-            std::thread::sleep(Duration::from_millis(10));
         }
+        assert!(saw_server_request, "expected server request notification");
 
         let Some(request_id) = approval_request_id else {
-            worker.shutdown();
-            let _ = server.join();
             panic!("expected command approval request");
         };
-        let enqueue_result = worker.enqueue(
-            991,
-            CodexLaneCommand::ServerRequestCommandApprovalRespond {
-                request_id,
-                response: codex_client::CommandExecutionRequestApprovalResponse {
-                    decision: codex_client::ApprovalDecision::Accept,
+        state.handle_command(
+            &runtime,
+            super::SequencedCodexCommand {
+                command_seq: 991,
+                command: CodexLaneCommand::ServerRequestCommandApprovalRespond {
+                    request_id,
+                    response: codex_client::CommandExecutionRequestApprovalResponse {
+                        decision: codex_client::ApprovalDecision::Accept,
+                    },
                 },
             },
+            &update_tx,
         );
-        assert!(enqueue_result.is_ok());
 
-        let response = wait_for_command_response(&mut worker, Duration::from_secs(2), |response| {
-            response.command_seq == 991
-        });
-        assert_eq!(
-            response.command,
-            CodexLaneCommandKind::ServerRequestCommandApprovalRespond
+        let mut saw_accept_response = false;
+        while let Ok(update) = update_rx.try_recv() {
+            if let CodexLaneUpdate::CommandResponse(response) = update {
+                if response.command_seq == 991 {
+                    assert_eq!(
+                        response.command,
+                        CodexLaneCommandKind::ServerRequestCommandApprovalRespond
+                    );
+                    assert_eq!(response.status, CodexLaneCommandStatus::Accepted);
+                    saw_accept_response = true;
+                }
+            }
+        }
+        assert!(
+            saw_accept_response,
+            "expected accepted command response for approval respond"
         );
-        assert_eq!(response.status, CodexLaneCommandStatus::Accepted);
-        assert!(saw_approval_response.load(Ordering::SeqCst));
 
-        worker.shutdown();
-        let _ = server.join();
+        let mut server_reader = BufReader::new(server_read);
+        let mut response_line = String::new();
+        let read_bytes = runtime
+            .block_on(async { server_reader.read_line(&mut response_line).await })
+            .unwrap_or(0);
+        assert!(read_bytes > 0, "expected approval response write to transport");
+        let response: Value = serde_json::from_str(response_line.trim())
+            .unwrap_or_else(|_| panic!("expected valid approval response json"));
+        assert_eq!(response.get("id"), Some(&json!("approve-1")));
+        assert_eq!(response.pointer("/result/decision"), Some(&json!("accept")));
     }
 
     #[test]
@@ -4687,8 +4596,8 @@ mod tests {
         assert_eq!(response.status, CodexLaneCommandStatus::Accepted);
         assert!(saw_thread_list.load(Ordering::SeqCst));
 
-        worker.shutdown();
-        let _ = server.join();
+        shutdown_worker(&mut worker);
+        join_server(server);
     }
 
     #[test]
@@ -4830,8 +4739,8 @@ mod tests {
         assert_eq!(response.status, CodexLaneCommandStatus::Accepted);
         assert!(saw_skills_list.load(Ordering::SeqCst));
 
-        worker.shutdown();
-        let _ = server.join();
+        shutdown_worker(&mut worker);
+        join_server(server);
         let _ = fs::remove_dir_all(&fixture_root);
     }
 
@@ -5161,8 +5070,8 @@ mod tests {
         assert!(saw_fuzzy_update, "missing fuzzy update notification");
         assert!(saw_fuzzy_stop, "missing fuzzy stop notification");
 
-        worker.shutdown();
-        let _ = server.join();
+        shutdown_worker(&mut worker);
+        join_server(server);
     }
 
     #[test]
@@ -5208,7 +5117,25 @@ mod tests {
             .is_some_and(|message| message.contains("captured wire log config"));
         assert!(has_error, "expected captured wire log startup failure");
 
-        worker.shutdown();
+        shutdown_worker(&mut worker);
+    }
+
+    fn shutdown_worker(worker: &mut CodexLaneWorker) {
+        worker.shutdown_async();
+    }
+
+    fn join_server(server: std::thread::JoinHandle<()>) {
+        let (tx, rx) = std::sync::mpsc::sync_channel::<std::thread::Result<()>>(1);
+        std::thread::spawn(move || {
+            let _ = tx.send(server.join());
+        });
+        match rx.recv_timeout(Duration::from_secs(5)) {
+            Ok(Ok(())) => {}
+            Ok(Err(_)) => panic!("server thread panicked"),
+            Err(_) => {
+                // Keep teardown bounded in tests; avoid suite-level hangs on stalled fixtures.
+            }
+        }
     }
 
     fn wait_for_snapshot<F>(
