@@ -13,7 +13,7 @@ OpenAgents uses a strict baseline lint posture:
 Temporary exceptions are allowed only when all of the following are true:
 
 - The exception is scoped to the smallest possible item (statement/function/module).
-- The exception has an inline `reason` that states the invariant.
+- The exception has an inline `reason` that states the invariant and includes an expiry issue reference (e.g. `#2446`).
 - The code path has no practical fallible alternative without harming API clarity or performance.
 - The exception is reviewed and removed when the surrounding code is refactored.
 
@@ -32,6 +32,7 @@ Intentional CLI output exception:
 - Validate allowlist structure with `scripts/lint/clippy-debt-allowlist-check.sh`.
 - Enforce high-churn warning ceilings with `scripts/lint/clippy-warning-budget-check.sh`.
 - Enforce high-risk module size ceilings with `scripts/lint/module-size-budget-check.sh`.
+- Enforce expiry-linked metadata on new `#[allow(...)]` attributes with `scripts/lint/allow-attribute-expiry-check.sh`.
 - Validate repo-managed Agent Skills with `scripts/skills/validate_registry.sh`.
 - Enforce Codex protocol parity and smoke coverage with `scripts/lint/codex-protocol-parity-gate.sh`.
 
@@ -89,5 +90,6 @@ Intentional CLI output exception:
 
 - If you touch a Rust file with existing warnings, either clean them up or add a debt entry that follows the allowlist rules.
 - If you add debt, include a clear owner and time-bound metadata so removal is auditable.
+- New runtime-path `#[allow(...)]` attributes must include `reason = "... #<issue>"` inline metadata.
 - Keep debt entries temporary and delete them as soon as warnings are removed.
 - If a budgeted file warning count drops, lower the budget in `clippy-warning-budgets.toml` before merge.
