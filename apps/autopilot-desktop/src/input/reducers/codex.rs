@@ -867,6 +867,29 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
         }
         CodexLaneNotification::ThreadSelected { thread_id } => {
             state.autopilot_chat.ensure_thread(thread_id.clone());
+            let metadata = state
+                .autopilot_chat
+                .thread_metadata
+                .get(&thread_id)
+                .cloned();
+            let resume_path = if state.codex_lane_config.experimental_api {
+                metadata.as_ref().and_then(|value| value.path.clone())
+            } else {
+                None
+            };
+            if let Err(error) = state.queue_codex_command(CodexLaneCommand::ThreadResume(
+                codex_client::ThreadResumeParams {
+                    thread_id: thread_id.clone(),
+                    model: None,
+                    model_provider: None,
+                    cwd: metadata.as_ref().and_then(|value| value.cwd.clone()),
+                    approval_policy: None,
+                    sandbox: None,
+                    path: resume_path.map(std::path::PathBuf::from),
+                },
+            )) {
+                state.autopilot_chat.last_error = Some(error);
+            }
             state
                 .autopilot_chat
                 .set_active_thread_transcript(&thread_id, Vec::new());
