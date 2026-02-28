@@ -899,6 +899,32 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 state
                     .autopilot_chat
                     .record_turn_timeline_event(format!("thread status: {thread_id} => {status}"));
+                // Recovery probe: if turn-completion notifications are dropped, an idle flip is the
+                // earliest signal that we should fetch the materialized transcript.
+                if status == "idle"
+                    && state.autopilot_chat.active_turn_id.is_some()
+                    && state.autopilot_chat.last_turn_status.as_deref() != Some("syncProbing")
+                {
+                    let active_turn = state.autopilot_chat.active_turn_id.clone().unwrap_or_default();
+                    eprintln!(
+                        "codex thread/status idle while turn active; probing thread/read thread_id={} turn_id={}",
+                        thread_id, active_turn
+                    );
+                    state
+                        .autopilot_chat
+                        .set_turn_status(Some("syncProbing".to_string()));
+                    state
+                        .autopilot_chat
+                        .record_turn_timeline_event("thread idle while turn active; probing transcript");
+                    if let Err(error) = state.queue_codex_command(CodexLaneCommand::ThreadRead(
+                        codex_client::ThreadReadParams {
+                            thread_id: thread_id.clone(),
+                            include_turns: true,
+                        },
+                    )) {
+                        state.autopilot_chat.last_error = Some(error);
+                    }
+                }
             }
         }
         CodexLaneNotification::ThreadArchived { thread_id } => {
@@ -1038,6 +1064,33 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 state.autopilot_chat.mark_turn_completed_for(&turn_id);
             }
         }
+        CodexLaneNotification::ReasoningDelta {
+            thread_id,
+            turn_id,
+            item_id,
+            delta,
+        } => {
+            eprintln!(
+                "codex reasoning/delta thread_id={} turn_id={} item_id={} chars={} active_thread={:?}",
+                thread_id,
+                turn_id,
+                item_id.as_deref().unwrap_or("n/a"),
+                delta.chars().count(),
+                state.autopilot_chat.active_thread_id
+            );
+            state.autopilot_chat.remember_thread(thread_id.clone());
+            if state.autopilot_chat.is_active_thread(&thread_id) {
+                state.autopilot_chat.record_turn_timeline_event(format!(
+                    "reasoning delta: turn={} item={} chars={}",
+                    turn_id,
+                    item_id.as_deref().unwrap_or("n/a"),
+                    delta.chars().count()
+                ));
+                state
+                    .autopilot_chat
+                    .append_turn_reasoning_delta_for_turn(&turn_id, &delta);
+            }
+        }
         CodexLaneNotification::TurnCompleted {
             thread_id,
             turn_id,
@@ -1057,6 +1110,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             );
             state.autopilot_chat.remember_thread(thread_id.clone());
             if state.autopilot_chat.is_active_thread(&thread_id) {
+                let had_visible_output = state.autopilot_chat.turn_has_visible_output(&turn_id);
                 state.autopilot_chat.set_turn_status(status.clone());
                 if let Some(message) = final_message
                     && !message.trim().is_empty()
@@ -1085,13 +1139,23 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                         state.autopilot_chat.mark_turn_completed_for(&turn_id);
                     }
                 }
-                if let Err(error) = state.queue_codex_command(CodexLaneCommand::ThreadRead(
-                    codex_client::ThreadReadParams {
-                        thread_id,
-                        include_turns: true,
-                    },
-                )) {
-                    state.autopilot_chat.last_error = Some(error);
+                // Do not immediately clobber a valid streamed message with a stale/partial
+                // thread/read snapshot. Only re-read when no visible assistant output exists.
+                let needs_transcript_probe =
+                    !had_visible_output && !state.autopilot_chat.turn_has_visible_output(&turn_id);
+                if needs_transcript_probe {
+                    eprintln!(
+                        "codex turn/completed without visible output; probing thread/read thread_id={} turn_id={}",
+                        thread_id, turn_id
+                    );
+                    if let Err(error) = state.queue_codex_command(CodexLaneCommand::ThreadRead(
+                        codex_client::ThreadReadParams {
+                            thread_id,
+                            include_turns: true,
+                        },
+                    )) {
+                        state.autopilot_chat.last_error = Some(error);
+                    }
                 }
             }
         }
@@ -1250,7 +1314,18 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 .autopilot_chat
                 .record_turn_timeline_event("auth token refresh requested");
         }
-        CodexLaneNotification::ServerRequest { .. } | CodexLaneNotification::Raw { .. } => {}
+        CodexLaneNotification::ServerRequest { method } => {
+            eprintln!(
+                "codex server/request method={} active_thread={:?}",
+                method, state.autopilot_chat.active_thread_id
+            );
+        }
+        CodexLaneNotification::Raw { method } => {
+            eprintln!(
+                "codex notify/raw method={} active_thread={:?}",
+                method, state.autopilot_chat.active_thread_id
+            );
+        }
     }
 
     let method_label = notification_method_label(&stored);
@@ -1390,6 +1465,9 @@ fn notification_method_label(notification: &CodexLaneNotification) -> String {
         CodexLaneNotification::AgentMessageDelta { .. } => "item/agentMessage/delta".to_string(),
         CodexLaneNotification::AgentMessageCompleted { .. } => {
             "item/agentMessage/completed".to_string()
+        }
+        CodexLaneNotification::ReasoningDelta { .. } => {
+            "item/reasoning/summaryTextDelta".to_string()
         }
         CodexLaneNotification::TurnCompleted { .. } => "turn/completed".to_string(),
         CodexLaneNotification::TurnDiffUpdated { .. } => "turn/diff/updated".to_string(),

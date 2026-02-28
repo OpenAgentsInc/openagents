@@ -743,6 +743,39 @@ impl AutopilotChatState {
         }
     }
 
+    pub fn append_turn_reasoning_delta_for_turn(&mut self, turn_id: &str, delta: &str) {
+        if delta.is_empty() {
+            return;
+        }
+        let assistant_message_id = self
+            .turn_assistant_message_ids
+            .get(turn_id)
+            .copied()
+            .or_else(|| self.bind_turn_to_assistant_message(turn_id));
+        if let Some(assistant_message_id) = assistant_message_id
+            && let Some(message) = self
+                .messages
+                .iter_mut()
+                .find(|message| message.id == assistant_message_id)
+        {
+            if self.active_turn_id.as_deref() == Some(turn_id) {
+                message.status = AutopilotMessageStatus::Running;
+            }
+            if message.content.trim().is_empty() {
+                message.content.push_str("Reasoning:\n");
+            }
+            if !message.content.starts_with("Reasoning:\n") {
+                message.content.push_str(delta);
+                return;
+            }
+            let has_answer = message.content.contains("\n\nAnswer:\n");
+            if has_answer {
+                return;
+            }
+            message.content.push_str(delta);
+        }
+    }
+
     pub fn set_turn_message_for_turn(&mut self, turn_id: &str, content: &str) {
         if content.trim().is_empty() {
             return;
@@ -760,6 +793,26 @@ impl AutopilotChatState {
         {
             if self.active_turn_id.as_deref() == Some(turn_id) {
                 message.status = AutopilotMessageStatus::Running;
+            }
+            if message.content.trim().is_empty() {
+                message.content = content.to_string();
+                return;
+            }
+            if message.content == content {
+                return;
+            }
+            if let Some(reasoning) = message.content.strip_prefix("Reasoning:\n") {
+                let reasoning_only = reasoning
+                    .split("\n\nAnswer:\n")
+                    .next()
+                    .unwrap_or(reasoning)
+                    .trim_end();
+                if reasoning_only.is_empty() {
+                    message.content = content.to_string();
+                    return;
+                }
+                message.content = format!("Reasoning:\n{reasoning_only}\n\nAnswer:\n{content}");
+                return;
             }
             message.content = content.to_string();
         }
@@ -1084,6 +1137,21 @@ impl AutopilotChatState {
                 AutopilotMessageStatus::Queued | AutopilotMessageStatus::Running
             )
         })
+    }
+
+    pub fn turn_has_visible_output(&self, turn_id: &str) -> bool {
+        let Some(assistant_message_id) = self
+            .turn_assistant_message_ids
+            .get(turn_id)
+            .copied()
+            .or(self.active_assistant_message_id)
+        else {
+            return false;
+        };
+        self.messages
+            .iter()
+            .find(|message| message.id == assistant_message_id)
+            .is_some_and(|message| !message.content.trim().is_empty())
     }
 
     fn bind_turn_to_assistant_message(&mut self, turn_id: &str) -> Option<u64> {

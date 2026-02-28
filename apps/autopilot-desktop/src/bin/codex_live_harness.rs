@@ -669,23 +669,31 @@ async fn run(args: HarnessArgs) -> Result<()> {
             .await
             .context("turn/start failed")?;
         println!("turn/start turn_id={}", turn.turn.id);
-        let post_send_events = collect_channel_events(
+        let post_send_events = collect_until_signal(
             &mut channels,
-            Duration::from_millis(args.drain_ms),
+            Duration::from_millis(args.timeout_ms.saturating_mul(6).max(30_000)),
+            Duration::from_millis(args.drain_ms.clamp(400, 2_000)),
             Duration::from_millis(args.timeout_ms),
+            is_agent_response_signal,
         )
         .await;
-        if !post_send_events
+        print_events("post-send", &post_send_events, args.max_events);
+        let post_send_has_signal = post_send_events
             .notification_methods
             .iter()
-            .any(|method| is_agent_response_signal(method))
-        {
+            .any(|method| is_agent_response_signal(method));
+        if !post_send_has_signal {
+            let methods = if post_send_events.notification_methods.is_empty() {
+                "none".to_string()
+            } else {
+                post_send_events.notification_methods.join(", ")
+            };
             bail!(
-                "post-send notifications for thread {} did not include any agent response signal; expected streaming or completion events",
-                new_thread_id
+                "post-send notifications for thread {} did not include any agent response signal; methods_seen=[{}]",
+                new_thread_id,
+                methods
             );
         }
-        print_events("post-send", post_send_events, args.max_events);
 
         let after_turn = wait_for_materialized_thread_after_turn(
             &client,
@@ -1123,11 +1131,17 @@ fn is_agent_response_signal(method: &str) -> bool {
         "item/agentMessage/delta"
             | "item/assistantMessage/delta"
             | "agent_message/delta"
+            | "agent_message_delta"
+            | "agent_message_content_delta"
             | "item/agentMessage/completed"
             | "item/assistantMessage/completed"
             | "codex/event/agent_message_content_delta"
             | "codex/event/agent_message_delta"
             | "codex/event/agent_message"
+            | "agent_message"
+            | "codex/event/task_complete"
+            | "task_complete"
+            | "turn/completed"
     )
 }
 
@@ -1192,7 +1206,7 @@ async fn drain_and_print(label: &str, channels: &mut AppServerChannels, args: &H
         Duration::from_millis(args.timeout_ms),
     )
     .await;
-    print_events(label, events, args.max_events);
+    print_events(label, &events, args.max_events);
 }
 
 async fn collect_channel_events(
@@ -1245,6 +1259,33 @@ async fn collect_channel_events(
     batch
 }
 
+async fn collect_until_signal<F>(
+    channels: &mut AppServerChannels,
+    overall_timeout: Duration,
+    idle_break: Duration,
+    max_wait_per_batch: Duration,
+    signal: F,
+) -> ChannelEventBatch
+where
+    F: Fn(&str) -> bool,
+{
+    let deadline = Instant::now() + overall_timeout;
+    let mut combined = ChannelEventBatch::default();
+    while Instant::now() < deadline {
+        let batch = collect_channel_events(channels, idle_break, max_wait_per_batch).await;
+        let saw_signal = batch.notification_methods.iter().any(|method| signal(method));
+        combined.notifications.extend(batch.notifications);
+        combined
+            .notification_methods
+            .extend(batch.notification_methods);
+        combined.requests.extend(batch.requests);
+        if saw_signal {
+            break;
+        }
+    }
+    combined
+}
+
 fn notification_summary(notification: &AppServerNotification) -> String {
     format!(
         "notify method={} params={}",
@@ -1284,14 +1325,14 @@ fn compact_json(value: Option<&Value>) -> String {
     }
 }
 
-fn print_events(label: &str, events: ChannelEventBatch, max_events: usize) {
+fn print_events(label: &str, events: &ChannelEventBatch, max_events: usize) {
     println!(
         "{} events: notifications={} requests={}",
         label,
         events.notifications.len(),
         events.requests.len()
     );
-    let mut notification_lines = events.notifications;
+    let mut notification_lines = events.notifications.clone();
     let notification_omitted = notification_lines.len().saturating_sub(max_events);
     notification_lines.truncate(max_events);
     for line in notification_lines {
@@ -1303,7 +1344,7 @@ fn print_events(label: &str, events: ChannelEventBatch, max_events: usize) {
             notification_omitted
         );
     }
-    let mut request_lines = events.requests;
+    let mut request_lines = events.requests.clone();
     let request_omitted = request_lines.len().saturating_sub(max_events);
     request_lines.truncate(max_events);
     for line in request_lines {

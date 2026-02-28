@@ -583,6 +583,12 @@ pub enum CodexLaneNotification {
         item_id: Option<String>,
         message: String,
     },
+    ReasoningDelta {
+        thread_id: String,
+        turn_id: String,
+        item_id: Option<String>,
+        delta: String,
+    },
     TurnCompleted {
         thread_id: String,
         turn_id: String,
@@ -2285,20 +2291,20 @@ fn normalize_notification(notification: AppServerNotification) -> Option<CodexLa
             let turn_id = turn_id_from_value(&params)?;
             Some(CodexLaneNotification::TurnStarted { thread_id, turn_id })
         }
-        "item/started" => {
+        "item/started" | "codex/event/item_started" => {
             let params = params?;
             Some(CodexLaneNotification::ItemStarted {
-                thread_id: string_field(&params, "threadId")?,
-                turn_id: string_field(&params, "turnId")?,
+                thread_id: thread_id_field(&params)?,
+                turn_id: turn_id_field(&params)?,
                 item_id: item_id_from_params(&params),
                 item_type: item_type_from_params(&params),
             })
         }
-        "item/completed" => {
+        "item/completed" | "codex/event/item_completed" => {
             let params = params?;
             Some(CodexLaneNotification::ItemCompleted {
-                thread_id: string_field(&params, "threadId")?,
-                turn_id: string_field(&params, "turnId")?,
+                thread_id: thread_id_field(&params)?,
+                turn_id: turn_id_field(&params)?,
                 item_id: item_id_from_params(&params),
                 item_type: item_type_from_params(&params),
                 message: agent_message_from_item_params(&params),
@@ -2307,30 +2313,58 @@ fn normalize_notification(notification: AppServerNotification) -> Option<CodexLa
         "item/agentMessage/completed" | "item/assistantMessage/completed" => {
             let params = params?;
             Some(CodexLaneNotification::ItemCompleted {
-                thread_id: string_field(&params, "threadId")?,
-                turn_id: string_field(&params, "turnId")?,
+                thread_id: thread_id_field(&params)?,
+                turn_id: turn_id_field(&params)?,
                 item_id: item_id_from_params(&params),
                 item_type: item_type_from_params(&params),
                 message: agent_message_from_item_params(&params),
             })
         }
-        "item/agentMessage/delta" | "item/assistantMessage/delta" | "agent_message/delta" => {
+        "item/agentMessage/delta"
+        | "item/assistantMessage/delta"
+        | "agent_message/delta"
+        | "agent_message_delta"
+        | "agent_message_content_delta" => {
             let params = params?;
+            let thread_id = thread_id_field(&params)?;
+            let turn_id = turn_id_field(&params)?;
+            let (item_id, delta) = if let Some(msg) = params.get("msg") {
+                let item_id = msg
+                    .get("item_id")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+                    .or_else(|| string_field(msg, "itemId"))
+                    .or_else(|| string_field(&params, "itemId"))
+                    .unwrap_or_else(|| "event-agent-message".to_string());
+                let delta = msg
+                    .get("delta")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+                    .or_else(|| string_field(msg, "text"))
+                    .or_else(|| string_field(msg, "message"))
+                    .or_else(|| string_field(&params, "delta"))?;
+                (item_id, delta)
+            } else {
+                (
+                    string_field(&params, "itemId")
+                        .or_else(|| item_id_from_params(&params))
+                        .unwrap_or_else(|| "event-agent-message".to_string()),
+                    string_field(&params, "delta")?,
+                )
+            };
             Some(CodexLaneNotification::AgentMessageDelta {
-                thread_id: string_field(&params, "threadId")?,
-                turn_id: string_field(&params, "turnId")?,
-                item_id: string_field(&params, "itemId")?,
-                delta: string_field(&params, "delta")?,
+                thread_id,
+                turn_id,
+                item_id,
+                delta,
             })
         }
         "codex/event/agent_message_content_delta" | "codex/event/agent_message_delta" => {
             let params = params?;
             let msg = params.get("msg")?;
             Some(CodexLaneNotification::AgentMessageDelta {
-                thread_id: string_field(&params, "conversationId")
-                    .or_else(|| string_field(&params, "threadId"))?,
-                turn_id: string_field(&params, "id")
-                    .or_else(|| string_field(&params, "turnId"))?,
+                thread_id: thread_id_field(&params)?,
+                turn_id: turn_id_field(&params)?,
                 item_id: msg
                     .get("item_id")
                     .and_then(Value::as_str)
@@ -2345,14 +2379,14 @@ fn normalize_notification(notification: AppServerNotification) -> Option<CodexLa
                     .or_else(|| string_field(msg, "message"))?,
             })
         }
-        "codex/event/agent_message" => {
+        "codex/event/agent_message" | "agent_message" => {
             let params = params?;
-            let msg = params.get("msg")?;
+            let msg = params.get("msg").unwrap_or(&params);
             Some(CodexLaneNotification::AgentMessageCompleted {
-                thread_id: string_field(&params, "conversationId")
-                    .or_else(|| string_field(&params, "threadId"))?,
-                turn_id: string_field(&params, "id")
-                    .or_else(|| string_field(&params, "turnId"))?,
+                thread_id: thread_id_field(&params)
+                    .or_else(|| thread_id_field(msg))?,
+                turn_id: turn_id_field(&params)
+                    .or_else(|| turn_id_field(msg))?,
                 item_id: msg
                     .get("item_id")
                     .and_then(Value::as_str)
@@ -2365,14 +2399,67 @@ fn normalize_notification(notification: AppServerNotification) -> Option<CodexLa
                     .or_else(|| string_field(msg, "text"))?,
             })
         }
-        "codex/event/task_complete" => {
+        "item/reasoning/summaryTextDelta"
+        | "item/reasoning/textDelta"
+        | "codex/event/reasoning_content_delta"
+        | "codex/event/reasoning_raw_content_delta"
+        | "codex/event/agent_reasoning_content_delta"
+        | "codex/event/agent_reasoning_raw_content_delta"
+        | "reasoning_content_delta"
+        | "reasoning_raw_content_delta"
+        | "agent_reasoning_content_delta"
+        | "agent_reasoning_raw_content_delta"
+        | "codex/event/agent_reasoning_delta"
+        | "agent_reasoning_delta" => {
+            let params = params?;
+            let msg = params.get("msg");
+            Some(CodexLaneNotification::ReasoningDelta {
+                thread_id: thread_id_field(&params)?,
+                turn_id: turn_id_field(&params)?,
+                item_id: string_field(&params, "itemId").or_else(|| {
+                    msg.and_then(|value| {
+                        value
+                            .get("item_id")
+                            .and_then(Value::as_str)
+                            .map(str::to_string)
+                    })
+                }),
+                delta: string_field(&params, "delta")
+                    .or_else(|| msg.and_then(|value| string_field(value, "delta")))?,
+            })
+        }
+        "codex/event/agent_reasoning" | "agent_reasoning" => {
+            let params = params?;
+            let msg = params.get("msg").unwrap_or(&params);
+            Some(CodexLaneNotification::ReasoningDelta {
+                thread_id: thread_id_field(&params)
+                    .or_else(|| thread_id_field(msg))?,
+                turn_id: turn_id_field(&params)
+                    .or_else(|| turn_id_field(msg))?,
+                item_id: msg
+                    .get("item_id")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+                    .or_else(|| string_field(msg, "itemId")),
+                delta: string_field(msg, "text")
+                    .or_else(|| string_field(msg, "message"))
+                    .or_else(|| string_field(&params, "text"))
+                    .or_else(|| string_field(&params, "message"))?,
+            })
+        }
+        "codex/event/task_started" | "task_started" => {
+            let params = params?;
+            Some(CodexLaneNotification::TurnStarted {
+                thread_id: thread_id_field(&params)?,
+                turn_id: turn_id_field(&params)?,
+            })
+        }
+        "codex/event/task_complete" | "task_complete" => {
             let params = params?;
             let msg = params.get("msg");
             Some(CodexLaneNotification::TurnCompleted {
-                thread_id: string_field(&params, "conversationId")
-                    .or_else(|| string_field(&params, "threadId"))?,
-                turn_id: string_field(&params, "id")
-                    .or_else(|| string_field(&params, "turnId"))?,
+                thread_id: thread_id_field(&params)?,
+                turn_id: turn_id_field(&params)?,
                 status: Some("completed".to_string()),
                 error_message: None,
                 final_message: msg
@@ -2383,10 +2470,11 @@ fn normalize_notification(notification: AppServerNotification) -> Option<CodexLa
                             .and_then(non_empty_text)
                     })
                     .or_else(|| msg.and_then(|value| string_field(value, "message")))
+                    .or_else(|| string_field(&params, "message"))
                     .and_then(non_empty_text),
             })
         }
-        "codex/event/task_failed" | "codex/event/task_error" => {
+        "codex/event/task_failed" | "codex/event/task_error" | "task_failed" | "task_error" => {
             let params = params?;
             let msg = params.get("msg");
             let message = msg
@@ -2398,11 +2486,9 @@ fn normalize_notification(notification: AppServerNotification) -> Option<CodexLa
                 .or_else(|| string_field(&params, "message"))
                 .unwrap_or_else(|| "task failed".to_string());
             Some(CodexLaneNotification::TurnError {
-                thread_id: string_field(&params, "conversationId")
-                    .or_else(|| string_field(&params, "threadId"))
+                thread_id: thread_id_field(&params)
                     .unwrap_or_else(|| "unknown-thread".to_string()),
-                turn_id: string_field(&params, "id")
-                    .or_else(|| string_field(&params, "turnId"))
+                turn_id: turn_id_field(&params)
                     .unwrap_or_else(|| "unknown-turn".to_string()),
                 message,
             })
@@ -2518,20 +2604,31 @@ fn turn_id_from_value(value: &Value) -> Option<String> {
 }
 
 fn item_id_from_params(value: &Value) -> Option<String> {
-    value
-        .get("item")
+    item_value_from_params(value)
         .and_then(|item| item.get("id"))
         .and_then(Value::as_str)
         .map(str::to_string)
         .or_else(|| string_field(value, "itemId"))
+        .or_else(|| {
+            value
+                .get("msg")
+                .and_then(|msg| msg.get("item_id"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
 }
 
 fn item_type_from_params(value: &Value) -> Option<String> {
-    value
-        .get("item")
+    item_value_from_params(value)
         .and_then(|item| item.get("type"))
         .and_then(Value::as_str)
         .map(str::to_string)
+}
+
+fn item_value_from_params(value: &Value) -> Option<&Value> {
+    value
+        .get("item")
+        .or_else(|| value.get("msg").and_then(|msg| msg.get("item")))
 }
 
 fn item_type_is_agent_like(item_type: &str) -> bool {
@@ -2540,7 +2637,7 @@ fn item_type_is_agent_like(item_type: &str) -> bool {
 }
 
 fn agent_message_from_item_params(value: &Value) -> Option<String> {
-    let item = value.get("item")?;
+    let item = item_value_from_params(value)?;
     let item_type = item.get("type").and_then(Value::as_str).unwrap_or_default();
     if !item_type_is_agent_like(item_type) {
         return None;
@@ -2682,6 +2779,19 @@ fn non_empty_text(value: String) -> Option<String> {
     } else {
         Some(value)
     }
+}
+
+fn thread_id_field(value: &Value) -> Option<String> {
+    string_field(value, "threadId")
+        .or_else(|| string_field(value, "conversationId"))
+        .or_else(|| string_field(value, "thread_id"))
+        .or_else(|| string_field(value, "conversation_id"))
+}
+
+fn turn_id_field(value: &Value) -> Option<String> {
+    string_field(value, "turnId")
+        .or_else(|| string_field(value, "id"))
+        .or_else(|| string_field(value, "turn_id"))
 }
 
 fn string_field(value: &Value, field: &str) -> Option<String> {
@@ -3641,6 +3751,31 @@ mod tests {
             })
         );
 
+        let legacy_item_completed = normalize_notification(codex_client::AppServerNotification {
+            method: "codex/event/item_completed".to_string(),
+            params: Some(json!({
+                "conversationId": "thread-1",
+                "id": "turn-1",
+                "msg": {
+                    "item": {
+                        "id": "item-legacy",
+                        "type": "agentMessage",
+                        "text": "legacy final"
+                    }
+                }
+            })),
+        });
+        assert_eq!(
+            legacy_item_completed,
+            Some(CodexLaneNotification::ItemCompleted {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                item_id: Some("item-legacy".to_string()),
+                item_type: Some("agentMessage".to_string()),
+                message: Some("legacy final".to_string()),
+            })
+        );
+
         let task_complete = normalize_notification(codex_client::AppServerNotification {
             method: "codex/event/task_complete".to_string(),
             params: Some(json!({
@@ -3659,6 +3794,126 @@ mod tests {
                 status: Some("completed".to_string()),
                 error_message: None,
                 final_message: Some("task done".to_string()),
+            })
+        );
+
+        let legacy_agent_message = normalize_notification(codex_client::AppServerNotification {
+            method: "agent_message".to_string(),
+            params: Some(json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "message": "legacy done"
+            })),
+        });
+        assert_eq!(
+            legacy_agent_message,
+            Some(CodexLaneNotification::AgentMessageCompleted {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                item_id: None,
+                message: "legacy done".to_string(),
+            })
+        );
+
+        let legacy_task_complete = normalize_notification(codex_client::AppServerNotification {
+            method: "task_complete".to_string(),
+            params: Some(json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "message": "legacy task done"
+            })),
+        });
+        assert_eq!(
+            legacy_task_complete,
+            Some(CodexLaneNotification::TurnCompleted {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                status: Some("completed".to_string()),
+                error_message: None,
+                final_message: Some("legacy task done".to_string()),
+            })
+        );
+
+        let reasoning_delta = normalize_notification(codex_client::AppServerNotification {
+            method: "agent_reasoning_delta".to_string(),
+            params: Some(json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "delta": "thinking"
+            })),
+        });
+        assert_eq!(
+            reasoning_delta,
+            Some(CodexLaneNotification::ReasoningDelta {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                item_id: None,
+                delta: "thinking".to_string(),
+            })
+        );
+
+        let reasoning_content_delta =
+            normalize_notification(codex_client::AppServerNotification {
+                method: "codex/event/reasoning_content_delta".to_string(),
+                params: Some(json!({
+                    "conversationId": "thread-1",
+                    "id": "turn-1",
+                    "msg": {
+                        "item_id": "reasoning-1",
+                        "delta": "plan"
+                    }
+                })),
+            });
+        assert_eq!(
+            reasoning_content_delta,
+            Some(CodexLaneNotification::ReasoningDelta {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                item_id: Some("reasoning-1".to_string()),
+                delta: "plan".to_string(),
+            })
+        );
+
+        let reasoning_raw_content_delta =
+            normalize_notification(codex_client::AppServerNotification {
+                method: "codex/event/agent_reasoning_raw_content_delta".to_string(),
+                params: Some(json!({
+                    "conversation_id": "thread-1",
+                    "turn_id": "turn-1",
+                    "msg": {
+                        "item_id": "reasoning-2",
+                        "delta": "raw thought"
+                    }
+                })),
+            });
+        assert_eq!(
+            reasoning_raw_content_delta,
+            Some(CodexLaneNotification::ReasoningDelta {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                item_id: Some("reasoning-2".to_string()),
+                delta: "raw thought".to_string(),
+            })
+        );
+
+        let reasoning_completed = normalize_notification(codex_client::AppServerNotification {
+            method: "codex/event/agent_reasoning".to_string(),
+            params: Some(json!({
+                "conversationId": "thread-1",
+                "id": "turn-1",
+                "msg": {
+                    "item_id": "reasoning-3",
+                    "text": "final rationale"
+                }
+            })),
+        });
+        assert_eq!(
+            reasoning_completed,
+            Some(CodexLaneNotification::ReasoningDelta {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                item_id: Some("reasoning-3".to_string()),
+                delta: "final rationale".to_string(),
             })
         );
     }
