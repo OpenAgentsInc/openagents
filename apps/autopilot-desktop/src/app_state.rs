@@ -394,11 +394,8 @@ impl Default for AutopilotChatState {
     fn default() -> Self {
         Self {
             connection_status: "starting".to_string(),
-            models: vec![
-                "gpt-5-codex".to_string(),
-                "gpt-5-codex-mini".to_string(),
-                "gpt-5-codex-low".to_string(),
-            ],
+            // "auto" means "let app-server pick the current default model".
+            models: vec!["auto".to_string()],
             selected_model: 0,
             reasoning_effort: Some("medium".to_string()),
             threads: Vec::new(),
@@ -470,16 +467,30 @@ impl AutopilotChatState {
         self.models
             .get(self.selected_model)
             .map(String::as_str)
-            .unwrap_or("gpt-5-codex")
+            .unwrap_or("auto")
+    }
+
+    pub fn selected_model_override(&self) -> Option<String> {
+        let value = self.current_model().trim();
+        if value.is_empty() || value.eq_ignore_ascii_case("auto") {
+            None
+        } else {
+            Some(value.to_string())
+        }
     }
 
     pub fn set_models(&mut self, models: Vec<String>, default_model: Option<String>) {
-        if models.is_empty() {
+        let sanitized = models
+            .into_iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        if sanitized.is_empty() {
             return;
         }
 
         let previous_model = self.models.get(self.selected_model).cloned();
-        self.models = models;
+        self.models = sanitized;
 
         if let Some(default_model) = default_model.as_ref()
             && let Some(index) = self.models.iter().position(|model| model == default_model)

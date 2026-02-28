@@ -49,7 +49,8 @@ impl Default for CodexLaneConfig {
         Self {
             cwd: std::env::current_dir().ok(),
             bootstrap_thread: true,
-            bootstrap_model: Some("gpt-5-codex".to_string()),
+            // Use app-server current default model unless the caller overrides.
+            bootstrap_model: None,
             wire_log_path: std::env::var("OPENAGENTS_CODEX_WIRE_LOG_PATH")
                 .ok()
                 .filter(|value| !value.trim().is_empty())
@@ -950,7 +951,9 @@ impl CodexLaneState {
         self.client = Some(client);
         self.channels = Some(channels);
 
-        let capabilities = if config.experimental_api || !config.opt_out_notification_methods.is_empty() {
+        let capabilities = if config.experimental_api
+            || !config.opt_out_notification_methods.is_empty()
+        {
             Some(InitializeCapabilities {
                 experimental_api: config.experimental_api,
                 opt_out_notification_methods: if config.opt_out_notification_methods.is_empty() {
@@ -994,7 +997,11 @@ impl CodexLaneState {
             };
             let started = {
                 let Some(client) = self.client.as_ref() else {
-                    self.set_error(update_tx, "Codex lane unavailable for bootstrap thread", false);
+                    self.set_error(
+                        update_tx,
+                        "Codex lane unavailable for bootstrap thread",
+                        false,
+                    );
                     return;
                 };
                 runtime.block_on(client.thread_start(thread_start))
@@ -1016,10 +1023,7 @@ impl CodexLaneState {
                                 thread_name: None,
                                 status: Some("idle".to_string()),
                                 loaded: true,
-                                cwd: config
-                                    .cwd
-                                    .as_ref()
-                                    .map(|value| value.display().to_string()),
+                                cwd: config.cwd.as_ref().map(|value| value.display().to_string()),
                                 path: None,
                             }],
                         },
@@ -2905,7 +2909,7 @@ mod tests {
                             "id": value["id"].clone(),
                             "result": {
                                 "thread": {"id": "thread-bootstrap"},
-                                "model": "gpt-5-codex"
+                                "model": "gpt-5.3-codex"
                             }
                         }),
                         "model/list" => {
@@ -3039,7 +3043,7 @@ mod tests {
                             "id": value["id"].clone(),
                             "result": {
                                 "thread": {"id": "thread-bootstrap"},
-                                "model": "gpt-5-codex"
+                                "model": "gpt-5.3-codex"
                             }
                         }),
                         _ => json!({
@@ -3144,7 +3148,7 @@ mod tests {
                                 "id": value["id"].clone(),
                                 "result": {
                                     "thread": {"id": "thread-bootstrap"},
-                                    "model": "gpt-5-codex"
+                                    "model": "gpt-5.3-codex"
                                 }
                             })
                         }
@@ -3508,7 +3512,7 @@ mod tests {
                             "id": value["id"].clone(),
                             "result": {
                                 "thread": {"id": "thread-bootstrap"},
-                                "model": "gpt-5-codex"
+                                "model": "gpt-5.3-codex"
                             }
                         }),
                         "app/list" => {
@@ -3665,7 +3669,7 @@ mod tests {
                             "id": value["id"].clone(),
                             "result": {
                                 "thread": {"id": "thread-bootstrap"},
-                                "model": "gpt-5-codex"
+                                "model": "gpt-5.3-codex"
                             }
                         });
                         if let Ok(line) = serde_json::to_string(&response) {
@@ -3847,7 +3851,7 @@ mod tests {
                             "id": value["id"].clone(),
                             "result": {
                                 "thread": {"id": "thread-bootstrap"},
-                                "model": "gpt-5-codex"
+                                "model": "gpt-5.3-codex"
                             }
                         }),
                         "thread/list" => {
@@ -3963,7 +3967,7 @@ mod tests {
                             "id": value["id"].clone(),
                             "result": {
                                 "thread": {"id": "thread-bootstrap"},
-                                "model": "gpt-5-codex"
+                                "model": "gpt-5.3-codex"
                             }
                         }),
                         "skills/list" => {
@@ -4115,7 +4119,7 @@ mod tests {
                             "id": value["id"].clone(),
                             "result": {
                                 "thread": {"id": "thread-bootstrap"},
-                                "model": "gpt-5-codex"
+                                "model": "gpt-5.3-codex"
                             }
                         }),
                         "model/list" => json!({
@@ -4124,8 +4128,8 @@ mod tests {
                                 "data": [
                                     {
                                         "id": "default",
-                                        "model": "gpt-5-codex",
-                                        "displayName": "gpt-5-codex",
+                                        "model": "gpt-5.3-codex",
+                                        "displayName": "gpt-5.3-codex",
                                         "description": "default",
                                         "supportedReasoningEfforts": [],
                                         "defaultReasoningEffort": "medium",

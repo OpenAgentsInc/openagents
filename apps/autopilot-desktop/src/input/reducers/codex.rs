@@ -318,7 +318,7 @@ fn queue_apps_list_refresh(state: &mut RenderState, force_refetch: bool) {
 fn queue_new_thread(state: &mut RenderState) {
     let cwd = std::env::current_dir().ok();
     let command = CodexLaneCommand::ThreadStart(ThreadStartParams {
-        model: Some(state.autopilot_chat.current_model().to_string()),
+        model: state.autopilot_chat.selected_model_override(),
         model_provider: None,
         cwd: cwd.and_then(|value| value.into_os_string().into_string().ok()),
         approval_policy: None,
@@ -332,7 +332,11 @@ fn queue_new_thread(state: &mut RenderState) {
 }
 
 fn queue_thread_resume_and_read(state: &mut RenderState, thread_id: String) {
-    let metadata = state.autopilot_chat.thread_metadata.get(&thread_id).cloned();
+    let metadata = state
+        .autopilot_chat
+        .thread_metadata
+        .get(&thread_id)
+        .cloned();
     let experimental_api = state.codex_lane_config.experimental_api;
     let resume_path = if experimental_api {
         metadata.as_ref().and_then(|value| value.path.clone())

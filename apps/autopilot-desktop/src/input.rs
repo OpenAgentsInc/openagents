@@ -9,11 +9,11 @@ use codex_client::{
     HazelnutScope, ListMcpServerStatusParams, LoginAccountParams, McpServerOauthLoginParams,
     MergeStrategy, ModelListParams, ProductSurface, ReviewDelivery, ReviewStartParams,
     ReviewTarget, SkillsRemoteReadParams, SkillsRemoteWriteParams, ThreadArchiveParams,
-    ThreadCompactStartParams, ThreadForkParams, ThreadLoadedListParams, ThreadStartParams,
+    ThreadCompactStartParams, ThreadForkParams, ThreadLoadedListParams,
     ThreadRealtimeAppendTextParams, ThreadRealtimeStartParams, ThreadRealtimeStopParams,
-    ThreadResumeParams, ThreadRollbackParams, ThreadSetNameParams, ThreadUnarchiveParams,
-    ThreadUnsubscribeParams, ToolRequestUserInputAnswer, ToolRequestUserInputResponse,
-    TurnStartParams, UserInput, WindowsSandboxSetupStartParams,
+    ThreadResumeParams, ThreadRollbackParams, ThreadSetNameParams, ThreadStartParams,
+    ThreadUnarchiveParams, ThreadUnsubscribeParams, ToolRequestUserInputAnswer,
+    ToolRequestUserInputResponse, TurnStartParams, UserInput, WindowsSandboxSetupStartParams,
 };
 use nostr::regenerate_identity;
 use std::collections::HashMap;
@@ -944,6 +944,8 @@ fn run_chat_submit_action(state: &mut crate::app_state::RenderState) -> bool {
     if let Some(skill_error) = skill_error {
         state.autopilot_chat.last_error = Some(skill_error);
     }
+    let model_override = state.autopilot_chat.selected_model_override();
+    let model_label = model_override.as_deref().unwrap_or("server-default");
 
     let command = crate::codex_lane::CodexLaneCommand::TurnStart(TurnStartParams {
         thread_id: thread_id.clone(),
@@ -951,7 +953,7 @@ fn run_chat_submit_action(state: &mut crate::app_state::RenderState) -> bool {
         cwd: None,
         approval_policy: None,
         sandbox_policy: None,
-        model: Some(state.autopilot_chat.current_model().to_string()),
+        model: model_override.clone(),
         effort: None,
         summary: None,
         personality: None,
@@ -961,9 +963,7 @@ fn run_chat_submit_action(state: &mut crate::app_state::RenderState) -> bool {
 
     eprintln!(
         "codex turn/start request thread_id={} model={} chars={}",
-        thread_id,
-        state.autopilot_chat.current_model(),
-        prompt_chars
+        thread_id, model_label, prompt_chars
     );
     match state.queue_codex_command(command) {
         Ok(seq) => {
@@ -1033,8 +1033,9 @@ fn run_chat_new_thread_action(state: &mut crate::app_state::RenderState) -> bool
     let cwd = std::env::current_dir()
         .ok()
         .and_then(|value| value.into_os_string().into_string().ok());
+    let model_override = state.autopilot_chat.selected_model_override();
     let command = crate::codex_lane::CodexLaneCommand::ThreadStart(ThreadStartParams {
-        model: Some(state.autopilot_chat.current_model().to_string()),
+        model: model_override,
         model_provider: None,
         cwd,
         approval_policy: None,
@@ -1117,10 +1118,11 @@ fn run_chat_fork_thread_action(state: &mut crate::app_state::RenderState) -> boo
     let cwd = std::env::current_dir()
         .ok()
         .and_then(|value| value.into_os_string().into_string().ok());
+    let model_override = state.autopilot_chat.selected_model_override();
     let command = crate::codex_lane::CodexLaneCommand::ThreadFork(ThreadForkParams {
         thread_id,
         path: None,
-        model: Some(state.autopilot_chat.current_model().to_string()),
+        model: model_override,
         model_provider: None,
         cwd,
         approval_policy: None,
@@ -1599,7 +1601,15 @@ fn run_codex_config_action(
             state.codex_config.load_state = crate::app_state::PaneLoadState::Loading;
             state.codex_config.last_error = None;
             state.codex_config.last_action = Some("Queued config/value/write sample".to_string());
-            let value = serde_json::Value::String(state.autopilot_chat.current_model().to_string());
+            let Some(model_override) = state.autopilot_chat.selected_model_override() else {
+                state.codex_config.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_config.last_error = Some(
+                    "Cannot write model sample until model/list resolves a concrete model"
+                        .to_string(),
+                );
+                return true;
+            };
+            let value = serde_json::Value::String(model_override);
             if let Err(error) = state.queue_codex_command(
                 crate::codex_lane::CodexLaneCommand::ConfigValueWrite(ConfigValueWriteParams {
                     key_path: "model".to_string(),
@@ -1618,6 +1628,14 @@ fn run_codex_config_action(
             state.codex_config.load_state = crate::app_state::PaneLoadState::Loading;
             state.codex_config.last_error = None;
             state.codex_config.last_action = Some("Queued config/batchWrite sample".to_string());
+            let Some(model_override) = state.autopilot_chat.selected_model_override() else {
+                state.codex_config.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_config.last_error = Some(
+                    "Cannot write model sample until model/list resolves a concrete model"
+                        .to_string(),
+                );
+                return true;
+            };
             let reasoning = state
                 .autopilot_chat
                 .reasoning_effort
@@ -1628,9 +1646,7 @@ fn run_codex_config_action(
                     edits: vec![
                         ConfigEdit {
                             key_path: "model".to_string(),
-                            value: serde_json::Value::String(
-                                state.autopilot_chat.current_model().to_string(),
-                            ),
+                            value: serde_json::Value::String(model_override),
                             merge_strategy: MergeStrategy::Replace,
                         },
                         ConfigEdit {
