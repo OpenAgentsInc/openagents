@@ -567,7 +567,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             .command_palette
             .paint(Bounds::new(0.0, 0.0, width, height), &mut paint);
 
-        // Sidebar tooltip for the settings icon: light gray pill with dark text.
+        // Sidebar tooltip for the settings icon.
         if state.sidebar.settings_tooltip_t > 0.01 && panel_width > 0.0 {
             let _tooltip_alpha = state.sidebar.settings_tooltip_t;
             let icon_size = 16.0;
@@ -600,7 +600,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             let tooltip_y = tooltip_y.max(4.0);
             let tooltip_bounds = Bounds::new(tooltip_x, tooltip_y, tooltip_width, tooltip_height);
 
-            let tooltip_bg = Hsla::from_hex(0xf1f1f1).with_alpha(_tooltip_alpha);
+            let tooltip_bg = theme::bg::MUTED.with_alpha(_tooltip_alpha);
             paint.scene.draw_quad(
                 Quad::new(tooltip_bounds)
                     .with_background(tooltip_bg)
@@ -609,7 +609,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
 
             // Downward caret at bottom-right of tooltip
             let caret_svg = format!(
-                r##"<svg xmlns="http://www.w3.org/2000/svg" width="{s}" height="{h}" viewBox="0 0 {s} {h}"><polygon points="0,0 {s},0 {mid},{h}" fill="#FFFFFF"/></svg>"##,
+                r##"<svg xmlns="http://www.w3.org/2000/svg" width="{s}" height="{h}" viewBox="0 0 {s} {h}"><polygon points="0,0 {s},0 {mid},{h}" fill="#1A1A1A"/></svg>"##,
                 s = (caret_size * 2.0) as i32,
                 h = caret_size as i32,
                 mid = caret_size as i32,
@@ -622,11 +622,11 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             paint.scene.draw_svg(SvgQuad {
                 bounds: caret_bounds,
                 svg_data: std::sync::Arc::from(caret_svg.as_bytes()),
-                tint: Some(Hsla::from_hex(0xf1f1f1).with_alpha(_tooltip_alpha)),
+                tint: Some(theme::bg::MUTED.with_alpha(_tooltip_alpha)),
             });
 
             // Horizontally centered text — use full tooltip width to avoid clipping
-            let tooltip_text_color = Hsla::new(0.0, 0.0, 0.0, _tooltip_alpha);
+            let tooltip_text_color = theme::text::PRIMARY.with_alpha(_tooltip_alpha);
             let font_size = tooltip_font_size;
             let text_x = tooltip_bounds.origin.x + 5.0;
             let text_y =
