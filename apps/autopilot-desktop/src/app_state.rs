@@ -3099,8 +3099,11 @@ pub struct AgentNetworkSimulationPaneState {
     pub rounds_run: u32,
     pub total_transferred_sats: u64,
     pub learned_skills: Vec<String>,
+    pub auto_run_enabled: bool,
+    pub auto_run_interval: Duration,
     pub events: Vec<AgentNetworkSimulationEvent>,
     next_seq: u64,
+    auto_run_last_tick: Option<Instant>,
 }
 
 impl Default for AgentNetworkSimulationPaneState {
@@ -3114,8 +3117,11 @@ impl Default for AgentNetworkSimulationPaneState {
             rounds_run: 0,
             total_transferred_sats: 0,
             learned_skills: Vec::new(),
+            auto_run_enabled: false,
+            auto_run_interval: Duration::from_millis(120),
             events: Vec::new(),
             next_seq: 1,
+            auto_run_last_tick: None,
         }
     }
 }
@@ -3242,8 +3248,36 @@ impl AgentNetworkSimulationPaneState {
         self.rounds_run = 0;
         self.total_transferred_sats = 0;
         self.learned_skills.clear();
+        self.auto_run_enabled = false;
         self.events.clear();
         self.next_seq = 1;
+        self.auto_run_last_tick = None;
+    }
+
+    pub fn start_auto_run(&mut self, now: Instant) {
+        self.auto_run_enabled = true;
+        self.auto_run_last_tick = Some(now);
+        self.last_error = None;
+        self.last_action = Some("Auto simulation running".to_string());
+    }
+
+    pub fn stop_auto_run(&mut self) {
+        self.auto_run_enabled = false;
+        self.auto_run_last_tick = None;
+        self.last_action = Some("Auto simulation paused".to_string());
+    }
+
+    pub fn should_run_auto_round(&self, now: Instant) -> bool {
+        if !self.auto_run_enabled {
+            return false;
+        }
+        self.auto_run_last_tick.map_or(true, |last| {
+            now.duration_since(last) >= self.auto_run_interval
+        })
+    }
+
+    pub fn mark_auto_round(&mut self, now: Instant) {
+        self.auto_run_last_tick = Some(now);
     }
 
     fn push_event(&mut self, protocol: &str, event_ref: &str, summary: String) {

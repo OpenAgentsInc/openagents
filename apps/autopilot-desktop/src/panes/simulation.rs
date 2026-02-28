@@ -24,7 +24,12 @@ pub fn paint_agent_network_simulation_pane(
 
     let run_bounds = agent_network_simulation_run_button_bounds(content_bounds);
     let reset_bounds = agent_network_simulation_reset_button_bounds(content_bounds);
-    paint_action_button(run_bounds, "Run Simulation Round", paint);
+    let run_label = if pane_state.auto_run_enabled {
+        "Pause Auto Run"
+    } else {
+        "Start Auto Run"
+    };
+    paint_action_button(run_bounds, run_label, paint);
     paint_action_button(reset_bounds, "Reset Simulation", paint);
 
     let mut y = paint_state_summary(

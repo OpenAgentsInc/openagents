@@ -356,6 +356,9 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     if state.autopilot_chat.expire_copy_notice(now) {
         changed = true;
     }
+    if run_auto_agent_network_simulation(state, now) {
+        changed = true;
+    }
     refresh_earnings_scoreboard(state, now);
     refresh_sync_health(state);
     changed
@@ -2353,39 +2356,20 @@ fn run_agent_network_simulation_action(
 ) -> bool {
     match action {
         AgentNetworkSimulationPaneAction::RunRound => {
+            if state.agent_network_simulation.auto_run_enabled {
+                state.agent_network_simulation.stop_auto_run();
+                state.provider_runtime.last_result =
+                    state.agent_network_simulation.last_action.clone();
+                return true;
+            }
+            let now = std::time::Instant::now();
+            state.agent_network_simulation.start_auto_run(now);
             let now_epoch_seconds = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0, |duration| duration.as_secs());
-            match state.agent_network_simulation.run_round(now_epoch_seconds) {
-                Ok(()) => {
-                    state.provider_runtime.last_result =
-                        state.agent_network_simulation.last_action.clone();
-                    let event_id =
-                        format!("sim:round:{}", state.agent_network_simulation.rounds_run);
-                    state
-                        .activity_feed
-                        .upsert_event(crate::app_state::ActivityEventRow {
-                            event_id,
-                            domain: crate::app_state::ActivityEventDomain::Sa,
-                            source_tag: "simulation.nip28".to_string(),
-                            summary: "Sovereign agents ran SA/SKL/AC simulation round".to_string(),
-                            detail: format!(
-                                "round={} transferred_sats={} learned_skills={}",
-                                state.agent_network_simulation.rounds_run,
-                                state.agent_network_simulation.total_transferred_sats,
-                                state.agent_network_simulation.learned_skills.join(", ")
-                            ),
-                            occurred_at_epoch_seconds: now_epoch_seconds,
-                        });
-                    state.activity_feed.load_state = crate::app_state::PaneLoadState::Ready;
-                }
-                Err(error) => {
-                    state.agent_network_simulation.last_error = Some(error);
-                    state.agent_network_simulation.load_state =
-                        crate::app_state::PaneLoadState::Error;
-                }
-            }
-            true
+            let ran_round = run_agent_network_simulation_round(state, now_epoch_seconds);
+            state.agent_network_simulation.mark_auto_round(now);
+            ran_round
         }
         AgentNetworkSimulationPaneAction::Reset => {
             state.agent_network_simulation.reset();
@@ -2393,6 +2377,54 @@ fn run_agent_network_simulation_action(
             true
         }
     }
+}
+
+fn run_agent_network_simulation_round(
+    state: &mut crate::app_state::RenderState,
+    now_epoch_seconds: u64,
+) -> bool {
+    match state.agent_network_simulation.run_round(now_epoch_seconds) {
+        Ok(()) => {
+            state.provider_runtime.last_result = state.agent_network_simulation.last_action.clone();
+            let event_id = format!("sim:round:{}", state.agent_network_simulation.rounds_run);
+            state
+                .activity_feed
+                .upsert_event(crate::app_state::ActivityEventRow {
+                    event_id,
+                    domain: crate::app_state::ActivityEventDomain::Sa,
+                    source_tag: "simulation.nip28".to_string(),
+                    summary: "Sovereign agents ran SA/SKL/AC simulation round".to_string(),
+                    detail: format!(
+                        "round={} transferred_sats={} learned_skills={}",
+                        state.agent_network_simulation.rounds_run,
+                        state.agent_network_simulation.total_transferred_sats,
+                        state.agent_network_simulation.learned_skills.join(", ")
+                    ),
+                    occurred_at_epoch_seconds: now_epoch_seconds,
+                });
+            state.activity_feed.load_state = crate::app_state::PaneLoadState::Ready;
+        }
+        Err(error) => {
+            state.agent_network_simulation.last_error = Some(error);
+            state.agent_network_simulation.load_state = crate::app_state::PaneLoadState::Error;
+        }
+    }
+    true
+}
+
+fn run_auto_agent_network_simulation(
+    state: &mut crate::app_state::RenderState,
+    now: std::time::Instant,
+) -> bool {
+    if !state.agent_network_simulation.should_run_auto_round(now) {
+        return false;
+    }
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs());
+    let changed = run_agent_network_simulation_round(state, now_epoch_seconds);
+    state.agent_network_simulation.mark_auto_round(now);
+    changed
 }
 
 fn run_treasury_exchange_simulation_action(
