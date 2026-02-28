@@ -31,6 +31,7 @@ Intentional CLI output exception:
 - Track pre-existing debt in `scripts/lint/clippy-debt-allowlist.toml`.
 - Validate allowlist structure with `scripts/lint/clippy-debt-allowlist-check.sh`.
 - Enforce high-churn warning ceilings with `scripts/lint/clippy-warning-budget-check.sh`.
+- Enforce high-risk module size ceilings with `scripts/lint/module-size-budget-check.sh`.
 - Validate repo-managed Agent Skills with `scripts/skills/validate_registry.sh`.
 - Enforce Codex protocol parity and smoke coverage with `scripts/lint/codex-protocol-parity-gate.sh`.
 
@@ -68,6 +69,21 @@ Intentional CLI output exception:
 - Budgets are exact:
   - If current warnings exceed a budget, the gate fails.
   - If current warnings fall below a budget, the gate also fails until the budget is lowered in the same change.
+
+## Module-Size Budgets
+
+- High-risk files are tracked in `scripts/lint/module-size-budgets.toml`.
+- Budget entries must include:
+  - `path`
+  - `max_lines:<positive integer>`
+  - `owner:<lane>`
+  - `added:<YYYY-MM-DD>`
+  - `reason:<short reason>`
+  - time-bound metadata (same as allowlist policy)
+- Behavior:
+  - If current LOC exceeds `max_lines`, the gate fails.
+  - If current LOC is at least 90% of `max_lines`, the gate emits a warning.
+  - Raising a `max_lines` budget requires explicit rationale metadata in the budget file.
 
 ## Workflow
 

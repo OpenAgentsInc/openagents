@@ -1,0 +1,8 @@
+# Module-size budgets for high-risk files.
+# Format:
+# path | max_lines:<positive integer> | owner:<lane> | added:<YYYY-MM-DD> | reason:<short description> | expiry_issue:<#...>
+
+apps/autopilot-desktop/src/codex_lane.rs | max_lines:2200 | owner:autopilot | added:2026-02-28 | reason: keep post-split codex lane below re-monolith threshold | expiry_issue:#2445
+apps/autopilot-desktop/src/app_state.rs | max_lines:4000 | owner:autopilot | added:2026-02-28 | reason: keep app state below 4k while domain extraction continues | expiry_issue:#2445
+apps/autopilot-desktop/src/input.rs | max_lines:1700 | owner:autopilot | added:2026-02-28 | reason: cap input orchestrator growth after reducer extraction | expiry_issue:#2445
+apps/autopilot-desktop/src/pane_system.rs | max_lines:3600 | owner:autopilot | added:2026-02-28 | reason: prevent pane system bloat while pane boundaries are hardened | expiry_issue:#2445
