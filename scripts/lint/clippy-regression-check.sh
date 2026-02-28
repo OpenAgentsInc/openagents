@@ -60,6 +60,9 @@ if [[ ! -f "$BASELINE_FILE" ]]; then
     exit 1
 fi
 
+LOG_ROOT="${CLIPPY_REGRESSION_LOG_DIR:-${TMPDIR:-/tmp}/openagents-clippy-regression}"
+mkdir -p "$LOG_ROOT"
+
 # shellcheck disable=SC1090
 source "$BASELINE_FILE"
 
@@ -67,30 +70,35 @@ run_lane() {
     local lane="$1"
     shift
 
-    local tmp
-    tmp="$(mktemp)"
+    local lane_log="$LOG_ROOT/${lane}.log"
     printf 'Running clippy lane: %s\n' "$lane" >&2
 
-    if ! (cd "$ROOT_DIR" && "$@" >"$tmp" 2>&1); then
-        cat "$tmp" >&2
-        rm -f "$tmp"
+    if ! (cd "$ROOT_DIR" && "$@" >"$lane_log" 2>&1); then
+        cat "$lane_log" >&2
+        printf 'Lane log: %s\n' "$lane_log" >&2
         printf 'Lane failed: %s\n' "$lane" >&2
         exit 1
     fi
 
     local count
-    count="$(rg -c '^warning:' "$tmp" 2>/dev/null || true)"
+    count="$(rg -c '^warning:' "$lane_log" 2>/dev/null || true)"
     if [[ -z "$count" ]]; then
         count=0
     fi
 
-    rm -f "$tmp"
-    printf '%s' "$count"
+    printf '%s|%s' "$count" "$lane_log"
 }
 
-current_lib="$(run_lane lib cargo clippy --workspace --lib -- -W clippy::all)"
-current_tests="$(run_lane tests cargo clippy --workspace --tests -- -W clippy::all -A clippy::unwrap_used -A clippy::expect_used -A clippy::panic)"
-current_examples="$(run_lane examples cargo clippy -p wgpui --examples --features desktop -- -W clippy::all)"
+lib_result="$(run_lane lib cargo clippy --workspace --lib -- -W clippy::all)"
+tests_result="$(run_lane tests cargo clippy --workspace --tests -- -W clippy::all -A clippy::unwrap_used -A clippy::expect_used -A clippy::panic)"
+examples_result="$(run_lane examples cargo clippy -p wgpui --examples --features desktop -- -W clippy::all)"
+
+current_lib="${lib_result%%|*}"
+log_lib="${lib_result#*|}"
+current_tests="${tests_result%%|*}"
+log_tests="${tests_result#*|}"
+current_examples="${examples_result%%|*}"
+log_examples="${examples_result#*|}"
 
 status=0
 
@@ -98,18 +106,32 @@ check_lane() {
     local lane="$1"
     local baseline="$2"
     local current="$3"
+    local lane_log="$4"
 
     if (( current > baseline )); then
-        printf 'FAIL %s: baseline=%s current=%s (net-new warnings=%s)\n' \
-            "$lane" "$baseline" "$current" "$(( current - baseline ))" >&2
+        printf 'FAIL %s: baseline=%s current=%s (net-new warnings=%s) log=%s\n' \
+            "$lane" "$baseline" "$current" "$(( current - baseline ))" "$lane_log" >&2
         status=1
     else
-        printf 'PASS %s: baseline=%s current=%s\n' "$lane" "$baseline" "$current"
+        printf 'PASS %s: baseline=%s current=%s log=%s\n' \
+            "$lane" "$baseline" "$current" "$lane_log"
     fi
 }
 
-check_lane lib "${LIB_WARNINGS:-0}" "$current_lib"
-check_lane tests "${TEST_WARNINGS:-0}" "$current_tests"
-check_lane examples "${EXAMPLE_WARNINGS:-0}" "$current_examples"
+check_lane lib "${LIB_WARNINGS:-0}" "$current_lib" "$log_lib"
+check_lane tests "${TEST_WARNINGS:-0}" "$current_tests" "$log_tests"
+check_lane examples "${EXAMPLE_WARNINGS:-0}" "$current_examples" "$log_examples"
 
-exit "$status"
+if (( status != 0 )); then
+    printf 'Clippy regression logs preserved at: %s\n' "$LOG_ROOT" >&2
+    exit "$status"
+fi
+
+if [[ "${CLIPPY_REGRESSION_CLEAN_SUCCESS:-0}" == "1" ]]; then
+    rm -f "$log_lib" "$log_tests" "$log_examples"
+    rmdir "$LOG_ROOT" 2>/dev/null || true
+else
+    printf 'Clippy regression logs written to: %s\n' "$LOG_ROOT"
+fi
+
+exit 0
