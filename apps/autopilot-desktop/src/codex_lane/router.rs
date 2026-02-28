@@ -35,7 +35,7 @@ pub(super) fn run_codex_lane_loop(
 
         match command_rx.recv_timeout(CODEX_LANE_POLL) {
             Ok(CodexLaneControl::Command(envelope)) => {
-                state.handle_command(&runtime, envelope, &update_tx);
+                state.handle_command(&runtime, *envelope, &update_tx);
             }
             Ok(CodexLaneControl::Shutdown) => {
                 state.shutdown(&runtime, &update_tx);

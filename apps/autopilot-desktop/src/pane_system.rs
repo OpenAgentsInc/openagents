@@ -72,6 +72,9 @@ const CREDENTIALS_ROW_GAP: f32 = 6.0;
 const CREDENTIALS_MAX_ROWS: usize = 10;
 static PANE_Z_SORT_INVOCATIONS: AtomicU64 = AtomicU64::new(0);
 
+mod helpers;
+use helpers::*;
+
 pub struct PaneController;
 
 pub struct PaneInput;
@@ -921,21 +924,6 @@ pub fn chat_thread_filter_provider_button_bounds(content_bounds: Bounds) -> Boun
     )
 }
 
-fn chat_thread_action_grid_bounds(content_bounds: Bounds, index: usize) -> Bounds {
-    let source = chat_thread_filter_source_button_bounds(content_bounds);
-    let row = index / 2;
-    let col = index % 2;
-    Bounds::new(
-        source.origin.x
-            + col as f32 * (CHAT_THREAD_ACTION_BUTTON_WIDTH + CHAT_THREAD_ACTION_BUTTON_GAP),
-        source.max_y()
-            + 8.0
-            + row as f32 * (CHAT_THREAD_ACTION_BUTTON_HEIGHT + CHAT_THREAD_ACTION_BUTTON_GAP),
-        CHAT_THREAD_ACTION_BUTTON_WIDTH,
-        CHAT_THREAD_ACTION_BUTTON_HEIGHT,
-    )
-}
-
 pub fn chat_thread_action_fork_button_bounds(content_bounds: Bounds) -> Bounds {
     chat_thread_action_grid_bounds(content_bounds, 0)
 }
@@ -1043,22 +1031,6 @@ pub fn go_online_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
         width,
         34.0,
     )
-}
-
-fn codex_action_button_bounds(
-    content_bounds: Bounds,
-    row: usize,
-    col: usize,
-    columns: usize,
-) -> Bounds {
-    let columns = columns.max(1);
-    let gap = JOB_INBOX_BUTTON_GAP;
-    let usable_width =
-        (content_bounds.size.width - CHAT_PAD * 2.0 - gap * (columns as f32 - 1.0)).max(220.0);
-    let width = (usable_width / columns as f32).clamp(120.0, 220.0);
-    let x = content_bounds.origin.x + CHAT_PAD + col as f32 * (width + gap);
-    let y = content_bounds.origin.y + CHAT_PAD + row as f32 * (JOB_INBOX_BUTTON_HEIGHT + gap);
-    Bounds::new(x, y, width, JOB_INBOX_BUTTON_HEIGHT)
 }
 
 pub fn codex_account_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -1182,10 +1154,6 @@ pub fn codex_remote_skills_visible_row_count(row_count: usize) -> usize {
     row_count.min(CODEX_REMOTE_SKILLS_MAX_ROWS)
 }
 
-fn codex_labs_button_bounds(content_bounds: Bounds, row: usize, col: usize) -> Bounds {
-    codex_action_button_bounds(content_bounds, row, col, 3)
-}
-
 pub fn codex_labs_review_inline_button_bounds(content_bounds: Bounds) -> Bounds {
     codex_labs_button_bounds(content_bounds, 0, 0)
 }
@@ -1236,10 +1204,6 @@ pub fn codex_labs_fuzzy_update_button_bounds(content_bounds: Bounds) -> Bounds {
 
 pub fn codex_labs_fuzzy_stop_button_bounds(content_bounds: Bounds) -> Bounds {
     codex_labs_button_bounds(content_bounds, 4, 0)
-}
-
-fn codex_diagnostics_button_bounds(content_bounds: Bounds, col: usize) -> Bounds {
-    codex_action_button_bounds(content_bounds, 0, col, 3)
 }
 
 pub fn codex_diagnostics_enable_wire_log_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -1572,20 +1536,6 @@ pub fn credentials_value_input_bounds(content_bounds: Bounds) -> Bounds {
         name.origin.y,
         (content_bounds.size.width - CHAT_PAD * 2.0 - name.size.width - CREDENTIALS_BUTTON_GAP)
             .max(240.0),
-        CREDENTIALS_BUTTON_HEIGHT,
-    )
-}
-
-fn credentials_button_bounds(content_bounds: Bounds, row: usize, col: usize) -> Bounds {
-    let top = credentials_name_input_bounds(content_bounds).max_y()
-        + 10.0
-        + row as f32 * (CREDENTIALS_BUTTON_HEIGHT + CREDENTIALS_BUTTON_GAP);
-    Bounds::new(
-        content_bounds.origin.x
-            + CHAT_PAD
-            + col as f32 * (CREDENTIALS_BUTTON_WIDTH + CREDENTIALS_BUTTON_GAP),
-        top,
-        CREDENTIALS_BUTTON_WIDTH,
         CREDENTIALS_BUTTON_HEIGHT,
     )
 }
@@ -2058,29 +2008,6 @@ pub fn nostr_reveal_button_bounds(content_bounds: Bounds) -> Bounds {
 pub fn nostr_copy_secret_button_bounds(content_bounds: Bounds) -> Bounds {
     let (_, _, copy_bounds) = nostr_button_bounds(content_bounds);
     copy_bounds
-}
-
-fn nostr_button_bounds(content_bounds: Bounds) -> (Bounds, Bounds, Bounds) {
-    let gap = 8.0;
-    let button_width = ((content_bounds.size.width - 24.0 - gap * 2.0) / 3.0).clamp(92.0, 156.0);
-    let start_x = content_bounds.origin.x + 12.0;
-    let y = content_bounds.origin.y + 12.0;
-
-    let regenerate_bounds = Bounds::new(start_x, y, button_width, 30.0);
-    let reveal_bounds = Bounds::new(
-        regenerate_bounds.origin.x + button_width + gap,
-        y,
-        button_width,
-        30.0,
-    );
-    let copy_bounds = Bounds::new(
-        reveal_bounds.origin.x + button_width + gap,
-        y,
-        button_width,
-        30.0,
-    );
-
-    (regenerate_bounds, reveal_bounds, copy_bounds)
 }
 
 pub(crate) fn topmost_pane_hit_action_in_order(
@@ -3072,44 +2999,6 @@ fn pane_title(kind: PaneKind, pane_id: u64) -> String {
         PaneKind::Empty => format!("{title} {pane_id}"),
         _ => title.to_string(),
     }
-}
-
-fn pane_title_bounds(bounds: Bounds) -> Bounds {
-    Bounds::new(
-        bounds.origin.x,
-        bounds.origin.y,
-        bounds.size.width,
-        PANE_TITLE_HEIGHT,
-    )
-}
-
-fn cursor_icon_for_resize_edge(edge: ResizeEdge) -> CursorIcon {
-    match edge {
-        ResizeEdge::Top | ResizeEdge::Bottom => CursorIcon::NsResize,
-        ResizeEdge::Left | ResizeEdge::Right => CursorIcon::EwResize,
-        ResizeEdge::TopLeft | ResizeEdge::BottomRight => CursorIcon::NwseResize,
-        ResizeEdge::TopRight | ResizeEdge::BottomLeft => CursorIcon::NeswResize,
-        ResizeEdge::None => CursorIcon::Default,
-    }
-}
-
-fn clamp_bounds_to_window(bounds: Bounds, window_size: Size, sidebar_width: f32) -> Bounds {
-    // Keep panes within the main canvas area and out from under the right sidebar.
-    let reserved_sidebar = sidebar_width.max(0.0);
-    let available_width = window_size.width - reserved_sidebar - PANE_MARGIN * 2.0;
-    let max_width = available_width.max(PANE_MIN_WIDTH);
-    let width = bounds.size.width.clamp(PANE_MIN_WIDTH, max_width);
-
-    let max_height = (window_size.height - PANE_MARGIN - PANE_BOTTOM_RESERVED).max(PANE_MIN_HEIGHT);
-    let height = bounds.size.height.clamp(PANE_MIN_HEIGHT, max_height);
-
-    let max_x = (window_size.width - reserved_sidebar - width - PANE_MARGIN).max(PANE_MARGIN);
-    let max_y = (window_size.height - height - PANE_BOTTOM_RESERVED).max(PANE_MARGIN);
-
-    let x = bounds.origin.x.clamp(PANE_MARGIN, max_x);
-    let y = bounds.origin.y.clamp(PANE_MARGIN, max_y);
-
-    Bounds::new(x, y, width, height)
 }
 
 /// Re-clamp all pane bounds to the current window and sidebar so panes never overlap the sidebar.

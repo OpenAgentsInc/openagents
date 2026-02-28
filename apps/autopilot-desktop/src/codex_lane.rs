@@ -33,6 +33,7 @@ use tokio::sync::mpsc::error::TryRecvError as TokioTryRecvError;
 mod normalizer;
 mod router;
 mod session;
+mod types;
 
 use normalizer::{extract_thread_transcript_messages, normalize_notification, thread_status_label};
 use router::run_codex_lane_loop;
@@ -40,6 +41,7 @@ use session::{
     account_summary, fetch_model_catalog, fetch_model_catalog_entries, is_disconnect_error,
     mcp_auth_status_label, rate_limits_summary, summarize_skills_list_response,
 };
+pub use types::*;
 
 const CODEX_LANE_POLL: Duration = Duration::from_millis(16);
 
@@ -667,137 +669,6 @@ pub enum CodexLaneNotification {
     },
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CodexSkillListEntry {
-    pub cwd: String,
-    pub skills: Vec<CodexSkillSummary>,
-    pub errors: Vec<String>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CodexSkillSummary {
-    pub name: String,
-    pub path: String,
-    pub scope: String,
-    pub enabled: bool,
-    pub interface_display_name: Option<String>,
-    pub dependency_count: usize,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CodexThreadListEntry {
-    pub thread_id: String,
-    pub thread_name: Option<String>,
-    pub status: Option<String>,
-    pub loaded: bool,
-    pub cwd: Option<String>,
-    pub path: Option<String>,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CodexThreadTranscriptRole {
-    User,
-    Codex,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CodexThreadTranscriptMessage {
-    pub role: CodexThreadTranscriptRole,
-    pub content: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CodexModelCatalogEntry {
-    pub model: String,
-    pub display_name: String,
-    pub description: String,
-    pub hidden: bool,
-    pub is_default: bool,
-    pub default_reasoning_effort: String,
-    pub supported_reasoning_efforts: Vec<String>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CodexMcpServerStatusEntry {
-    pub name: String,
-    pub auth_status: String,
-    pub tool_count: usize,
-    pub resource_count: usize,
-    pub template_count: usize,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CodexAppEntry {
-    pub id: String,
-    pub name: String,
-    pub description: Option<String>,
-    pub is_accessible: bool,
-    pub is_enabled: bool,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CodexRemoteSkillEntry {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CodexTurnPlanStep {
-    pub step: String,
-    pub status: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CodexCommandApprovalRequest {
-    pub thread_id: String,
-    pub turn_id: String,
-    pub item_id: String,
-    pub reason: Option<String>,
-    pub command: Option<String>,
-    pub cwd: Option<String>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CodexFileChangeApprovalRequest {
-    pub thread_id: String,
-    pub turn_id: String,
-    pub item_id: String,
-    pub reason: Option<String>,
-    pub grant_root: Option<String>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CodexToolCallRequest {
-    pub thread_id: String,
-    pub turn_id: String,
-    pub call_id: String,
-    pub tool: String,
-    pub arguments: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CodexToolUserInputQuestion {
-    pub id: String,
-    pub header: String,
-    pub question: String,
-    pub options: Vec<String>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CodexToolUserInputRequest {
-    pub thread_id: String,
-    pub turn_id: String,
-    pub item_id: String,
-    pub questions: Vec<CodexToolUserInputQuestion>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CodexAuthTokensRefreshRequest {
-    pub reason: String,
-    pub previous_account_id: Option<String>,
-}
-
 #[derive(Clone, Debug)]
 pub enum CodexLaneUpdate {
     Snapshot(Box<CodexLaneSnapshot>),
@@ -811,7 +682,7 @@ struct SequencedCodexCommand {
 }
 
 enum CodexLaneControl {
-    Command(SequencedCodexCommand),
+    Command(Box<SequencedCodexCommand>),
     Shutdown,
 }
 
@@ -848,10 +719,10 @@ impl CodexLaneWorker {
 
     pub fn enqueue(&self, command_seq: u64, command: CodexLaneCommand) -> Result<(), String> {
         self.command_tx
-            .send(CodexLaneControl::Command(SequencedCodexCommand {
+            .send(CodexLaneControl::Command(Box::new(SequencedCodexCommand {
                 command_seq,
                 command,
-            }))
+            })))
             .map_err(|error| format!("Codex lane offline: {error}"))
     }
 
@@ -920,7 +791,6 @@ impl CodexLaneRuntime for ProcessCodexLaneRuntime {
                 cwd: config.cwd.clone(),
                 wire_log,
                 env: config.env.clone(),
-                ..Default::default()
             }))
             .context("failed to spawn codex app-server")
     }
