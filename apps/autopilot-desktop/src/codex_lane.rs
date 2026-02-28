@@ -31,6 +31,39 @@ use tokio::runtime::Runtime;
 use tokio::sync::mpsc::error::TryRecvError as TokioTryRecvError;
 
 const CODEX_LANE_POLL: Duration = Duration::from_millis(16);
+const DEFAULT_OPT_OUT_NOTIFICATION_METHODS: &[&str] = &[
+    // Legacy codex/event stream mirrors v2 server notifications and causes duplicate
+    // transcript/status updates when both are consumed.
+    "codex/event/agent_message_content_delta",
+    "codex/event/agent_message_delta",
+    "codex/event/agent_message",
+    "codex/event/agent_reasoning_delta",
+    "codex/event/agent_reasoning_content_delta",
+    "codex/event/agent_reasoning_raw_content_delta",
+    "codex/event/agent_reasoning_section_break",
+    "codex/event/agent_reasoning",
+    "codex/event/reasoning_content_delta",
+    "codex/event/reasoning_raw_content_delta",
+    "codex/event/item_started",
+    "codex/event/item_completed",
+    "codex/event/task_started",
+    "codex/event/task_complete",
+    "codex/event/task_failed",
+    "codex/event/task_error",
+    "codex/event/thread_status",
+    "codex/event/thread_name_changed",
+    "codex/event/turn_diff",
+    "codex/event/turn_plan",
+    "codex/event/token_count",
+    "codex/event/user_message",
+];
+
+fn default_opt_out_notification_methods() -> Vec<String> {
+    DEFAULT_OPT_OUT_NOTIFICATION_METHODS
+        .iter()
+        .map(|method| method.to_string())
+        .collect()
+}
 
 #[derive(Clone, Debug)]
 pub struct CodexLaneConfig {
@@ -64,7 +97,7 @@ impl Default for CodexLaneConfig {
             },
             approval_policy: Some(AskForApproval::OnRequest),
             experimental_api: true,
-            opt_out_notification_methods: Vec::new(),
+            opt_out_notification_methods: default_opt_out_notification_methods(),
         }
     }
 }
@@ -3145,6 +3178,27 @@ mod tests {
         assert!(has_message);
 
         worker.shutdown();
+    }
+
+    #[test]
+    fn default_config_opts_out_legacy_codex_event_stream() {
+        let config = CodexLaneConfig::default();
+        let methods = config.opt_out_notification_methods;
+        assert!(
+            methods
+                .iter()
+                .any(|method| method == "codex/event/agent_message_content_delta")
+        );
+        assert!(
+            methods
+                .iter()
+                .any(|method| method == "codex/event/item_completed")
+        );
+        assert!(
+            methods
+                .iter()
+                .any(|method| method == "codex/event/task_complete")
+        );
     }
 
     #[test]
