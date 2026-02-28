@@ -243,9 +243,8 @@ impl Component for Button {
             .as_ref()
             .map(|run| run.bounds())
             .unwrap_or(Bounds::ZERO);
-        let label_line_height = font_size * 1.4;
         let label_size = if label_run.is_some() {
-            Size::new(label_bounds.size.width, label_line_height)
+            Size::new(label_bounds.size.width, label_bounds.size.height)
         } else {
             Size::ZERO
         };
@@ -317,11 +316,9 @@ impl Component for Button {
 
             if let (Some(label_id), Some(mut label_run)) = (label_id, label_run.take()) {
                 let label_layout = layout.layout(label_id);
-                let vertical_offset = (label_size.height - label_bounds.size.height).max(0.0) * 0.5;
                 label_run.origin = Point::new(
                     content_bounds.origin.x + label_layout.origin.x - label_bounds.origin.x,
-                    content_bounds.origin.y + label_layout.origin.y - label_bounds.origin.y
-                        + vertical_offset,
+                    content_bounds.origin.y + label_layout.origin.y - label_bounds.origin.y,
                 );
                 cx.scene.draw_text(label_run);
             }

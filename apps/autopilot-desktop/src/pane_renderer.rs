@@ -46,7 +46,7 @@ use crate::panes::{
     skill as skill_pane, wallet as wallet_pane,
 };
 use crate::spark_wallet::SparkPaneState;
-use wgpui::{Bounds, Component, PaintContext, Point, Quad, theme};
+use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
 
 pub struct PaneRenderer;
 
@@ -2478,12 +2478,7 @@ pub(crate) fn paint_action_button(bounds: Bounds, label: &str, paint: &mut Paint
             .with_border(theme::accent::PRIMARY, 1.0)
             .with_corner_radius(4.0),
     );
-    paint.scene.draw_text(paint.text.layout(
-        label,
-        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 10.0),
-        11.0,
-        theme::text::PRIMARY,
-    ));
+    paint_button_label(bounds, label, 10.0, 11.0, theme::text::PRIMARY, paint);
 }
 
 fn paint_filter_button(bounds: Bounds, label: &str, active: bool, paint: &mut PaintContext) {
@@ -2509,12 +2504,7 @@ fn paint_filter_button(bounds: Bounds, label: &str, active: bool, paint: &mut Pa
             .with_border(border, 1.0)
             .with_corner_radius(4.0),
     );
-    paint.scene.draw_text(paint.text.layout(
-        label,
-        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 9.0),
-        10.0,
-        text,
-    ));
+    paint_button_label(bounds, label, 10.0, 10.0, text, paint);
 }
 
 fn paint_disabled_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
@@ -2524,12 +2514,26 @@ fn paint_disabled_button(bounds: Bounds, label: &str, paint: &mut PaintContext) 
             .with_border(theme::border::DEFAULT, 1.0)
             .with_corner_radius(4.0),
     );
-    paint.scene.draw_text(paint.text.layout(
-        label,
-        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 10.0),
-        11.0,
-        theme::text::MUTED,
-    ));
+    paint_button_label(bounds, label, 10.0, 11.0, theme::text::MUTED, paint);
+}
+
+fn paint_button_label(
+    bounds: Bounds,
+    label: &str,
+    left_padding: f32,
+    font_size: f32,
+    color: Hsla,
+    paint: &mut PaintContext,
+) {
+    let mut run = paint.text.layout(label, Point::ZERO, font_size, color);
+    let run_bounds = run.bounds();
+    let origin = Point::new(
+        bounds.origin.x + left_padding - run_bounds.origin.x,
+        bounds.origin.y + ((bounds.size.height - run_bounds.size.height).max(0.0) * 0.5)
+            - run_bounds.origin.y,
+    );
+    run.origin = origin;
+    paint.scene.draw_text(run);
 }
 
 pub(crate) fn paint_label_line(
