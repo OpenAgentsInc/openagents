@@ -288,6 +288,29 @@ pub struct AutopilotMessage {
     pub role: AutopilotRole,
     pub status: AutopilotMessageStatus,
     pub content: String,
+    pub structured: Option<AutopilotStructuredMessage>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct AutopilotStructuredMessage {
+    pub reasoning: String,
+    pub answer: String,
+    pub events: Vec<String>,
+    pub status: Option<String>,
+}
+
+impl AutopilotStructuredMessage {
+    fn rendered_content(&self) -> String {
+        let reasoning = self.reasoning.trim_end();
+        let answer = self.answer.trim_end();
+        if reasoning.is_empty() {
+            return answer.to_string();
+        }
+        if answer.is_empty() {
+            return format!("Reasoning:\n{reasoning}");
+        }
+        format!("Reasoning:\n{reasoning}\n\nAnswer:\n{answer}")
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -449,6 +472,7 @@ impl Default for AutopilotChatState {
                 role: AutopilotRole::Codex,
                 status: AutopilotMessageStatus::Done,
                 content: "Codex lane connecting...".to_string(),
+                structured: None,
             }],
             next_message_id: 2,
             active_turn_id: None,
@@ -739,6 +763,7 @@ impl AutopilotChatState {
                 role,
                 status: AutopilotMessageStatus::Done,
                 content,
+                structured: None,
             });
             self.next_message_id = self.next_message_id.saturating_add(1);
         }
@@ -748,6 +773,7 @@ impl AutopilotChatState {
                 role: AutopilotRole::Codex,
                 status: AutopilotMessageStatus::Done,
                 content: "No transcript available for this thread yet.".to_string(),
+                structured: None,
             });
             self.next_message_id = self.next_message_id.saturating_add(1);
         }
@@ -779,6 +805,7 @@ impl AutopilotChatState {
                 role: AutopilotRole::Codex,
                 status: AutopilotMessageStatus::Error,
                 content: "Cannot run empty prompt".to_string(),
+                structured: None,
             });
             self.next_message_id = self.next_message_id.saturating_add(1);
             return;
@@ -789,6 +816,7 @@ impl AutopilotChatState {
             role: AutopilotRole::User,
             status: AutopilotMessageStatus::Done,
             content: trimmed.to_string(),
+            structured: None,
         });
         self.next_message_id = self.next_message_id.saturating_add(1);
 
@@ -798,6 +826,7 @@ impl AutopilotChatState {
             role: AutopilotRole::Codex,
             status: AutopilotMessageStatus::Queued,
             content: String::new(),
+            structured: Some(AutopilotStructuredMessage::default()),
         });
         self.next_message_id = self.next_message_id.saturating_add(1);
         self.pending_assistant_message_ids
@@ -842,7 +871,13 @@ impl AutopilotChatState {
             if self.active_turn_id.as_deref() == Some(turn_id) {
                 message.status = AutopilotMessageStatus::Running;
             }
-            message.content.push_str(delta);
+            if let Some(structured) = message.structured.as_mut() {
+                structured.answer.push_str(delta);
+                structured.events.push(format!("answer+{}", delta.chars().count()));
+                message.content = structured.rendered_content();
+            } else {
+                message.content.push_str(delta);
+            }
         }
     }
 
@@ -864,18 +899,19 @@ impl AutopilotChatState {
             if self.active_turn_id.as_deref() == Some(turn_id) {
                 message.status = AutopilotMessageStatus::Running;
             }
-            if message.content.trim().is_empty() {
-                message.content.push_str("Reasoning:\n");
-            }
-            if !message.content.starts_with("Reasoning:\n") {
+            if let Some(structured) = message.structured.as_mut() {
+                // Explicit typed ordering rule: ignore late reasoning after answer streaming starts.
+                if !structured.answer.trim().is_empty() {
+                    return;
+                }
+                structured.reasoning.push_str(delta);
+                structured
+                    .events
+                    .push(format!("reasoning+{}", delta.chars().count()));
+                message.content = structured.rendered_content();
+            } else {
                 message.content.push_str(delta);
-                return;
             }
-            let has_answer = message.content.contains("\n\nAnswer:\n");
-            if has_answer {
-                return;
-            }
-            message.content.push_str(delta);
         }
     }
 
@@ -898,35 +934,21 @@ impl AutopilotChatState {
             if self.active_turn_id.as_deref() == Some(turn_id) {
                 message.status = AutopilotMessageStatus::Running;
             }
-            if message.content.trim().is_empty() {
-                message.content = content.to_string();
-                return;
-            }
-            if message.content == content {
-                return;
-            }
-            if content.starts_with("Reasoning:\n") || content.contains("\n\nAnswer:\n") {
-                message.content = content.to_string();
-                return;
-            }
-            if let Some(reasoning) = message.content.strip_prefix("Reasoning:\n") {
-                let reasoning_only = reasoning
-                    .split("\n\nAnswer:\n")
-                    .next()
-                    .unwrap_or(reasoning)
-                    .trim_end();
-                if reasoning_only.is_empty() {
-                    message.content = content.to_string();
+            if let Some(structured) = message.structured.as_mut() {
+                if structured.answer == content {
                     return;
                 }
-                let candidate = format!("Reasoning:\n{reasoning_only}\n\nAnswer:\n{content}");
-                if message.content == candidate {
-                    return;
+                structured.answer = content.to_string();
+                structured.status = Some("answer".to_string());
+                let rendered = structured.rendered_content();
+                if message.content != rendered {
+                    message.content = rendered;
                 }
-                message.content = candidate;
                 return;
             }
-            message.content = content.to_string();
+            if message.content != content {
+                message.content = content.to_string();
+            }
         }
     }
 
