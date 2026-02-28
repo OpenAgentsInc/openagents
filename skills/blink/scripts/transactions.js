@@ -19,65 +19,7 @@
  * Dependencies: None (uses Node.js built-in fetch)
  */
 
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
-
-const DEFAULT_API_URL = 'https://api.blink.sv/graphql';
-
-function getApiKey() {
-  let key = process.env.BLINK_API_KEY;
-  if (!key) {
-    try {
-      const profile = fs.readFileSync(path.join(os.homedir(), '.profile'), 'utf8');
-      const match = profile.match(/BLINK_API_KEY=["']?([a-zA-Z0-9_]+)["']?/);
-      if (match) key = match[1];
-    } catch {}
-  }
-  if (!key) throw new Error('BLINK_API_KEY not found. Set it in environment or ~/.profile');
-  return key;
-}
-
-function getApiUrl() {
-  return process.env.BLINK_API_URL || DEFAULT_API_URL;
-}
-
-async function graphqlRequest(query, variables = {}) {
-  const apiKey = getApiKey();
-  const apiUrl = getApiUrl();
-
-  const res = await fetch(apiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-API-KEY': apiKey,
-    },
-    body: JSON.stringify({ query, variables }),
-  });
-
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status}: ${await res.text()}`);
-  }
-
-  const json = await res.json();
-  if (json.errors && json.errors.length > 0) {
-    throw new Error(`GraphQL error: ${json.errors.map(e => e.message).join(', ')}`);
-  }
-  return json.data;
-}
-
-const WALLET_QUERY = `
-  query Me {
-    me {
-      defaultAccount {
-        wallets {
-          id
-          walletCurrency
-        }
-      }
-    }
-  }
-`;
+const { getApiKey, getApiUrl, graphqlRequest, getWallet } = require('./_blink_client');
 
 const TRANSACTIONS_QUERY = `
   query Transactions($first: Int, $after: String, $walletIds: [WalletId]) {
@@ -159,15 +101,14 @@ function parseArgs(argv) {
 }
 
 async function main() {
+  const apiKey = getApiKey();
+  const apiUrl = getApiUrl();
   const args = parseArgs(process.argv.slice(2));
 
   // Resolve wallet IDs if filtering
   let walletIds = null;
   if (args.wallet) {
-    const walletData = await graphqlRequest(WALLET_QUERY);
-    if (!walletData.me) throw new Error('Authentication failed. Check your BLINK_API_KEY.');
-    const wallet = walletData.me.defaultAccount.wallets.find(w => w.walletCurrency === args.wallet);
-    if (!wallet) throw new Error(`No ${args.wallet} wallet found on this account.`);
+    const wallet = await getWallet({ apiKey, apiUrl, currency: args.wallet });
     walletIds = [wallet.id];
   }
 
@@ -175,7 +116,12 @@ async function main() {
   if (args.after) variables.after = args.after;
   if (walletIds) variables.walletIds = walletIds;
 
-  const data = await graphqlRequest(TRANSACTIONS_QUERY, variables);
+  const data = await graphqlRequest({
+    query: TRANSACTIONS_QUERY,
+    variables,
+    apiKey,
+    apiUrl,
+  });
   if (!data.me) throw new Error('Authentication failed. Check your BLINK_API_KEY.');
 
   const connection = data.me.defaultAccount.transactions;
@@ -184,7 +130,7 @@ async function main() {
     return;
   }
 
-  const transactions = connection.edges.map(edge => {
+  const transactions = connection.edges.map((edge) => {
     const tx = edge.node;
     const result = {
       id: tx.id,
@@ -240,7 +186,7 @@ async function main() {
   console.log(JSON.stringify(output, null, 2));
 }
 
-main().catch(e => {
+main().catch((e) => {
   console.error('Error:', e.message);
   process.exit(1);
 });

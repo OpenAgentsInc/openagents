@@ -17,65 +17,7 @@
  * Dependencies: None (uses Node.js built-in fetch)
  */
 
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
-
-const DEFAULT_API_URL = 'https://api.blink.sv/graphql';
-
-function getApiKey() {
-  let key = process.env.BLINK_API_KEY;
-  if (!key) {
-    try {
-      const profile = fs.readFileSync(path.join(os.homedir(), '.profile'), 'utf8');
-      const match = profile.match(/BLINK_API_KEY=["']?([a-zA-Z0-9_]+)["']?/);
-      if (match) key = match[1];
-    } catch {}
-  }
-  if (!key) throw new Error('BLINK_API_KEY not found. Set it in environment or ~/.profile');
-  return key;
-}
-
-function getApiUrl() {
-  return process.env.BLINK_API_URL || DEFAULT_API_URL;
-}
-
-async function graphqlRequest(query, variables = {}) {
-  const apiKey = getApiKey();
-  const apiUrl = getApiUrl();
-
-  const res = await fetch(apiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-API-KEY': apiKey,
-    },
-    body: JSON.stringify({ query, variables }),
-  });
-
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status}: ${await res.text()}`);
-  }
-
-  const json = await res.json();
-  if (json.errors && json.errors.length > 0) {
-    throw new Error(`GraphQL error: ${json.errors.map(e => e.message).join(', ')}`);
-  }
-  return json.data;
-}
-
-const WALLET_QUERY = `
-  query Me {
-    me {
-      defaultAccount {
-        wallets {
-          id
-          walletCurrency
-        }
-      }
-    }
-  }
-`;
+const { getApiKey, getApiUrl, graphqlRequest, getAllWallets } = require('./_blink_client');
 
 const CHECK_INVOICE_QUERY = `
   query InvoiceByHash($walletId: WalletId!, $paymentHash: PaymentHash!) {
@@ -124,32 +66,30 @@ async function main() {
     console.error('Warning: payment_hash does not look like a valid 64-char hex string.');
   }
 
-  // Get all wallets and try each one
-  const walletData = await graphqlRequest(WALLET_QUERY);
-  if (!walletData.me) throw new Error('Authentication failed. Check your BLINK_API_KEY.');
+  const apiKey = getApiKey();
+  const apiUrl = getApiUrl();
 
-  const wallets = walletData.me.defaultAccount.wallets;
+  // Get all wallets and try each one
+  const wallets = await getAllWallets({ apiKey, apiUrl });
   let invoice = null;
   let foundInWallet = null;
 
   for (const wallet of wallets) {
-    try {
-      const data = await graphqlRequest(CHECK_INVOICE_QUERY, {
-        walletId: wallet.id,
-        paymentHash,
-      });
+    const data = await graphqlRequest({
+      query: CHECK_INVOICE_QUERY,
+      variables: { walletId: wallet.id, paymentHash },
+      apiKey,
+      apiUrl,
+    });
 
-      const walletResult = data.me.defaultAccount.walletById;
-      const inv = walletResult.invoiceByPaymentHash;
-      if (inv && inv.paymentHash) {
-        invoice = inv;
-        foundInWallet = wallet;
-        break;
-      }
-    } catch {
-      // Invoice not found in this wallet, try next
-      continue;
+    const walletResult = data.me.defaultAccount.walletById;
+    const inv = walletResult.invoiceByPaymentHash;
+    if (inv && inv.paymentHash) {
+      invoice = inv;
+      foundInWallet = wallet;
+      break;
     }
+    // Invoice not found in this wallet — continue to next
   }
 
   if (!invoice) {
@@ -173,7 +113,7 @@ async function main() {
   console.log(JSON.stringify(output, null, 2));
 }
 
-main().catch(e => {
+main().catch((e) => {
   console.error('Error:', e.message);
   process.exit(1);
 });

@@ -8,6 +8,7 @@
  *   node price.js --usd <amount_usd>      — Convert USD to sats
  *   node price.js --history <range>       — Historical BTC prices
  *   node price.js --currencies            — List supported currencies
+ *   node price.js --raw                   — Current price with raw realtimePrice data
  *
  * History ranges: ONE_DAY, ONE_WEEK, ONE_MONTH, ONE_YEAR, FIVE_YEARS
  *
@@ -21,63 +22,9 @@
  * Dependencies: None (uses Node.js built-in fetch)
  */
 
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
+const { getApiKey, getApiUrl, graphqlRequest, CONVERSION_QUERY } = require('./_blink_client');
 
-const DEFAULT_API_URL = 'https://api.blink.sv/graphql';
-
-function getApiKey() {
-  let key = process.env.BLINK_API_KEY;
-  if (!key) {
-    try {
-      const profile = fs.readFileSync(path.join(os.homedir(), '.profile'), 'utf8');
-      const match = profile.match(/BLINK_API_KEY=["']?([a-zA-Z0-9_]+)["']?/);
-      if (match) key = match[1];
-    } catch {}
-  }
-  return key; // may be null — price queries are public
-}
-
-function getApiUrl() {
-  return process.env.BLINK_API_URL || DEFAULT_API_URL;
-}
-
-async function graphqlRequest(query, variables = {}) {
-  const apiKey = getApiKey();
-  const apiUrl = getApiUrl();
-
-  const headers = { 'Content-Type': 'application/json' };
-  if (apiKey) headers['X-API-KEY'] = apiKey;
-
-  const res = await fetch(apiUrl, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ query, variables }),
-  });
-
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status}: ${await res.text()}`);
-  }
-
-  const json = await res.json();
-  if (json.errors && json.errors.length > 0) {
-    throw new Error(`GraphQL error: ${json.errors.map(e => e.message).join(', ')}`);
-  }
-  return json.data;
-}
-
-// ── Queries ───────────────────────────────────────────────────
-
-// Public: converts a fiat amount to sat/cent equivalents (plain integers, no base/offset)
-const CONVERSION_QUERY = `
-  query CurrencyConversion($amount: Float!, $currency: DisplayCurrency!) {
-    currencyConversionEstimation(amount: $amount, currency: $currency) {
-      btcSatAmount
-      usdCentAmount
-    }
-  }
-`;
+// ── Queries ─────────────────────────────────────────────────
 
 // Public: realtime price with raw base/offset (supplementary data)
 const REALTIME_PRICE_QUERY = `
@@ -125,24 +72,36 @@ const CURRENCY_LIST_QUERY = `
   }
 `;
 
-// ── Subcommands ───────────────────────────────────────────────
+// ── Subcommands ─────────────────────────────────────────────
 
-async function cmdCurrentPrice() {
+async function cmdCurrentPrice(apiKey, apiUrl, includeRaw) {
   // Use currencyConversionEstimation to derive BTC/USD price from a $1 reference
-  const data = await graphqlRequest(CONVERSION_QUERY, { amount: 1.0, currency: 'USD' });
+  const data = await graphqlRequest({
+    query: CONVERSION_QUERY,
+    variables: { amount: 1.0, currency: 'USD' },
+    apiKey,
+    apiUrl,
+  });
   const est = data.currencyConversionEstimation;
   // est.btcSatAmount = how many sats $1.00 buys
   const satsPerDollar = est.btcSatAmount;
-  const btcPriceUsd = (100_000_000 / satsPerDollar);
+  const btcPriceUsd = 100_000_000 / satsPerDollar;
   const btcPriceRounded = Math.round(btcPriceUsd * 100) / 100;
 
-  // Also fetch raw realtimePrice for supplementary data
+  // Optionally fetch raw realtimePrice for supplementary data
   let raw = null;
-  try {
-    const rtData = await graphqlRequest(REALTIME_PRICE_QUERY, { currency: 'USD' });
-    raw = rtData.realtimePrice;
-  } catch {
-    // non-fatal
+  if (includeRaw) {
+    try {
+      const rtData = await graphqlRequest({
+        query: REALTIME_PRICE_QUERY,
+        variables: { currency: 'USD' },
+        apiKey,
+        apiUrl,
+      });
+      raw = rtData.realtimePrice;
+    } catch {
+      // non-fatal
+    }
   }
 
   const output = {
@@ -163,9 +122,14 @@ async function cmdCurrentPrice() {
   console.log(JSON.stringify(output, null, 2));
 }
 
-async function cmdSatsToUsd(amountSats) {
+async function cmdSatsToUsd(amountSats, apiKey, apiUrl) {
   // Ask API: "how many sats is $1 worth?" then derive the rate
-  const data = await graphqlRequest(CONVERSION_QUERY, { amount: 1.0, currency: 'USD' });
+  const data = await graphqlRequest({
+    query: CONVERSION_QUERY,
+    variables: { amount: 1.0, currency: 'USD' },
+    apiKey,
+    apiUrl,
+  });
   const est = data.currencyConversionEstimation;
   const satsPerDollar = est.btcSatAmount;
   const usdValue = amountSats / satsPerDollar;
@@ -182,20 +146,26 @@ async function cmdSatsToUsd(amountSats) {
     },
   };
 
-  console.error(`${amountSats.toLocaleString()} sats = $${usdRounded.toFixed(2)} USD (rate: $${btcPriceUsd.toLocaleString()}/BTC)`);
+  console.error(
+    `${amountSats.toLocaleString()} sats = $${usdRounded.toFixed(2)} USD (rate: $${btcPriceUsd.toLocaleString()}/BTC)`,
+  );
   console.log(JSON.stringify(output, null, 2));
 }
 
-async function cmdUsdToSats(amountUsd) {
-  // Ask API: "how many sats is $<amountUsd> worth?"
-  const data = await graphqlRequest(CONVERSION_QUERY, { amount: amountUsd, currency: 'USD' });
+async function cmdUsdToSats(amountUsd, apiKey, apiUrl) {
+  // Single API call: ask "how many sats is $<amountUsd> worth?" and derive rate mathematically
+  const data = await graphqlRequest({
+    query: CONVERSION_QUERY,
+    variables: { amount: amountUsd, currency: 'USD' },
+    apiKey,
+    apiUrl,
+  });
   const est = data.currencyConversionEstimation;
   const sats = est.btcSatAmount;
 
-  // Also get the rate from a $1 reference
-  const rateData = await graphqlRequest(CONVERSION_QUERY, { amount: 1.0, currency: 'USD' });
-  const satsPerDollar = rateData.currencyConversionEstimation.btcSatAmount;
-  const btcPriceUsd = Math.round((100_000_000 / satsPerDollar) * 100) / 100;
+  // Derive satsPerDollar from the same response instead of a second API call
+  const satsPerDollar = amountUsd > 0 ? Math.round(sats / amountUsd) : 0;
+  const btcPriceUsd = satsPerDollar > 0 ? Math.round((100_000_000 / satsPerDollar) * 100) / 100 : 0;
 
   const output = {
     btcPriceUsd,
@@ -207,22 +177,29 @@ async function cmdUsdToSats(amountUsd) {
     },
   };
 
-  console.error(`$${amountUsd.toFixed(2)} USD = ${sats.toLocaleString()} sats (rate: $${btcPriceUsd.toLocaleString()}/BTC)`);
+  console.error(
+    `$${amountUsd.toFixed(2)} USD = ${sats.toLocaleString()} sats (rate: $${btcPriceUsd.toLocaleString()}/BTC)`,
+  );
   console.log(JSON.stringify(output, null, 2));
 }
 
-async function cmdHistory(range) {
+async function cmdHistory(range, apiKey, apiUrl) {
   const validRanges = ['ONE_DAY', 'ONE_WEEK', 'ONE_MONTH', 'ONE_YEAR', 'FIVE_YEARS'];
   if (!validRanges.includes(range)) {
     console.error(`Error: invalid range "${range}". Valid: ${validRanges.join(', ')}`);
     process.exit(1);
   }
 
-  const data = await graphqlRequest(BTC_PRICE_LIST_QUERY, { range });
+  const data = await graphqlRequest({
+    query: BTC_PRICE_LIST_QUERY,
+    variables: { range },
+    apiKey,
+    apiUrl,
+  });
   const prices = data.btcPriceList;
 
   // Convert base/offset to readable USD prices
-  const points = prices.map(p => {
+  const points = prices.map((p) => {
     const priceUsd = p.price.base / Math.pow(10, p.price.offset) / 100; // offset gives cents
     return {
       timestamp: p.timestamp,
@@ -233,7 +210,7 @@ async function cmdHistory(range) {
   });
 
   // Summary stats
-  const usdPrices = points.map(p => p.btcPriceUsd);
+  const usdPrices = points.map((p) => p.btcPriceUsd);
   const current = usdPrices[usdPrices.length - 1] || 0;
   const oldest = usdPrices[0] || 0;
   const high = Math.max(...usdPrices);
@@ -255,18 +232,20 @@ async function cmdHistory(range) {
     prices: points,
   };
 
-  console.error(`BTC price history (${range}): $${oldest.toLocaleString()} → $${current.toLocaleString()} (${changeUsd >= 0 ? '+' : ''}${changeUsd} / ${changePct}%)`);
+  console.error(
+    `BTC price history (${range}): $${oldest.toLocaleString()} → $${current.toLocaleString()} (${changeUsd >= 0 ? '+' : ''}${changeUsd} / ${changePct}%)`,
+  );
   console.error(`Range: $${low.toLocaleString()} – $${high.toLocaleString()} across ${points.length} data points`);
   console.log(JSON.stringify(output, null, 2));
 }
 
-async function cmdCurrencies() {
-  const data = await graphqlRequest(CURRENCY_LIST_QUERY);
+async function cmdCurrencies(apiKey, apiUrl) {
+  const data = await graphqlRequest({ query: CURRENCY_LIST_QUERY, apiKey, apiUrl });
   const currencies = data.currencyList;
 
   const output = {
     count: currencies.length,
-    currencies: currencies.map(c => ({
+    currencies: currencies.map((c) => ({
       id: c.id,
       name: c.name,
       symbol: c.symbol,
@@ -282,50 +261,57 @@ async function cmdCurrencies() {
 // ── Main ────────────────────────────────────────────────────
 
 async function main() {
+  const apiKey = getApiKey({ required: false });
+  const apiUrl = getApiUrl();
   const args = process.argv.slice(2);
 
-  if (args.length === 0) {
+  // Check for --raw flag
+  const includeRaw = args.includes('--raw');
+  const filteredArgs = args.filter((a) => a !== '--raw');
+
+  if (filteredArgs.length === 0) {
     // No args: current BTC/USD price
-    return cmdCurrentPrice();
+    return cmdCurrentPrice(apiKey, apiUrl, includeRaw);
   }
 
-  if (args[0] === '--usd') {
-    const amount = parseFloat(args[1]);
+  if (filteredArgs[0] === '--usd') {
+    const amount = parseFloat(filteredArgs[1]);
     if (isNaN(amount) || amount < 0) {
       console.error('Usage: node price.js --usd <amount_usd>');
       console.error('  amount_usd: USD amount to convert to sats (e.g. 1.50)');
       process.exit(1);
     }
-    return cmdUsdToSats(amount);
+    return cmdUsdToSats(amount, apiKey, apiUrl);
   }
 
-  if (args[0] === '--history') {
-    const range = (args[1] || '').toUpperCase();
+  if (filteredArgs[0] === '--history') {
+    const range = (filteredArgs[1] || '').toUpperCase();
     if (!range) {
       console.error('Usage: node price.js --history <range>');
       console.error('  range: ONE_DAY, ONE_WEEK, ONE_MONTH, ONE_YEAR, FIVE_YEARS');
       process.exit(1);
     }
-    return cmdHistory(range);
+    return cmdHistory(range, apiKey, apiUrl);
   }
 
-  if (args[0] === '--currencies') {
-    return cmdCurrencies();
+  if (filteredArgs[0] === '--currencies') {
+    return cmdCurrencies(apiKey, apiUrl);
   }
 
   // Default: treat first arg as sat amount for conversion
-  const amountSats = parseInt(args[0], 10);
+  const amountSats = parseInt(filteredArgs[0], 10);
   if (isNaN(amountSats) || amountSats < 0) {
     console.error('Usage: node price.js [amount_sats]');
     console.error('       node price.js --usd <amount_usd>');
     console.error('       node price.js --history <range>');
     console.error('       node price.js --currencies');
+    console.error('       node price.js --raw');
     process.exit(1);
   }
-  return cmdSatsToUsd(amountSats);
+  return cmdSatsToUsd(amountSats, apiKey, apiUrl);
 }
 
-main().catch(e => {
+main().catch((e) => {
   console.error('Error:', e.message);
   process.exit(1);
 });
