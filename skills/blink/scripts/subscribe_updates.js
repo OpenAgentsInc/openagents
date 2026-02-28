@@ -13,36 +13,7 @@
  *   BLINK_API_URL  - Optional. Override API endpoint (default: https://api.blink.sv/graphql)
  */
 
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
-
-const DEFAULT_API_URL = 'https://api.blink.sv/graphql';
-
-function getApiKey() {
-  let key = process.env.BLINK_API_KEY;
-  if (!key) {
-    try {
-      const profile = fs.readFileSync(path.join(os.homedir(), '.profile'), 'utf8');
-      const match = profile.match(/BLINK_API_KEY=["']?([a-zA-Z0-9_]+)["']?/);
-      if (match) key = match[1];
-    } catch {}
-  }
-  if (!key) throw new Error('BLINK_API_KEY not found. Set it in environment or ~/.profile');
-  return key;
-}
-
-function getApiUrl() {
-  return process.env.BLINK_API_URL || DEFAULT_API_URL;
-}
-
-function getWsUrl() {
-  const apiUrl = getApiUrl();
-  const url = new URL(apiUrl);
-  url.protocol = url.protocol === 'http:' ? 'ws:' : 'wss:';
-  if (url.hostname.startsWith('api.')) url.hostname = url.hostname.replace(/^api\./, 'ws.');
-  return url.toString();
-}
+const { getApiKey, getWsUrl, requireWebSocket } = require('./_blink_client');
 
 function parseArgs(argv) {
   let timeoutSeconds = 0;
@@ -68,12 +39,48 @@ function parseArgs(argv) {
   return { timeoutSeconds, maxCount };
 }
 
-function requireWebSocket() {
-  if (typeof WebSocket !== 'function') {
-    throw new Error('WebSocket is not available. Run with: node --experimental-websocket subscribe_updates.js ...');
+const MY_UPDATES_SUBSCRIPTION = `subscription myUpdates {
+  myUpdates {
+    update {
+      __typename
+      ... on LnUpdate {
+        transaction {
+          initiationVia {
+            ... on InitiationViaLn {
+              paymentHash
+            }
+          }
+          direction
+          settlementAmount
+          settlementCurrency
+          status
+          createdAt
+          memo
+        }
+      }
+      ... on OnChainUpdate {
+        transaction {
+          direction
+          settlementAmount
+          settlementCurrency
+          status
+          createdAt
+          memo
+        }
+      }
+      ... on IntraLedgerUpdate {
+        transaction {
+          direction
+          settlementAmount
+          settlementCurrency
+          status
+          createdAt
+          memo
+        }
+      }
+    }
   }
-  return WebSocket;
-}
+}`;
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -93,8 +100,14 @@ function main() {
     if (timeoutId) clearTimeout(timeoutId);
     try {
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ id: '1', type: 'complete' }));
-    } catch {}
-    try { ws.close(1000); } catch {}
+    } catch {
+      // best-effort cleanup
+    }
+    try {
+      ws.close(1000);
+    } catch {
+      // best-effort cleanup
+    }
     process.exit(exitCode);
   }
 
@@ -106,10 +119,12 @@ function main() {
   }
 
   ws.onopen = () => {
-    ws.send(JSON.stringify({
-      type: 'connection_init',
-      payload: { 'X-API-KEY': apiKey },
-    }));
+    ws.send(
+      JSON.stringify({
+        type: 'connection_init',
+        payload: { 'X-API-KEY': apiKey },
+      }),
+    );
   };
 
   ws.onmessage = (event) => {
@@ -122,14 +137,16 @@ function main() {
     }
 
     if (message.type === 'connection_ack') {
-      ws.send(JSON.stringify({
-        id: '1',
-        type: 'subscribe',
-        payload: {
-          query: `subscription myUpdates {\n  myUpdates {\n    update {\n      __typename\n      ... on LnUpdate {\n        transaction {\n          initiationVia {\n            ... on InitiationViaLn {\n              paymentHash\n            }\n          }\n          direction\n          settlementAmount\n          settlementCurrency\n          status\n          createdAt\n          memo\n        }\n      }\n      ... on OnChainUpdate {\n        transaction {\n          direction\n          settlementAmount\n          settlementCurrency\n          status\n          createdAt\n          memo\n        }\n      }\n      ... on IntraLedgerUpdate {\n        transaction {\n          direction\n          settlementAmount\n          settlementCurrency\n          status\n          createdAt\n          memo\n        }\n      }\n    }\n  }\n}`,
-          variables: {},
-        },
-      }));
+      ws.send(
+        JSON.stringify({
+          id: '1',
+          type: 'subscribe',
+          payload: {
+            query: MY_UPDATES_SUBSCRIPTION,
+            variables: {},
+          },
+        }),
+      );
       console.error('Subscribed to myUpdates.');
       return;
     }
@@ -146,9 +163,10 @@ function main() {
     }
 
     if (message.type === 'next') {
-      const update = message.payload && message.payload.data && message.payload.data.myUpdates
-        ? message.payload.data.myUpdates.update
-        : null;
+      const update =
+        message.payload && message.payload.data && message.payload.data.myUpdates
+          ? message.payload.data.myUpdates.update
+          : null;
       if (!update || Object.keys(update).length === 0) return;
 
       const out = {
