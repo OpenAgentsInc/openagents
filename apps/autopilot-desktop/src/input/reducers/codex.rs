@@ -885,7 +885,18 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
         }
         CodexLaneNotification::ThreadSelected { thread_id }
         | CodexLaneNotification::ThreadStarted { thread_id } => {
-            state.autopilot_chat.ensure_thread(thread_id);
+            state.autopilot_chat.ensure_thread(thread_id.clone());
+            state
+                .autopilot_chat
+                .set_active_thread_transcript(&thread_id, Vec::new());
+            if let Err(error) = state.queue_codex_command(CodexLaneCommand::ThreadRead(
+                codex_client::ThreadReadParams {
+                    thread_id,
+                    include_turns: true,
+                },
+            )) {
+                state.autopilot_chat.last_error = Some(error);
+            }
         }
         CodexLaneNotification::ThreadStatusChanged { thread_id, status } => {
             state.autopilot_chat.remember_thread(thread_id.clone());
