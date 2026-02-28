@@ -3305,8 +3305,11 @@ pub struct TreasuryExchangeSimulationPaneState {
     pub wallet_connect_url: Option<String>,
     pub total_liquidity_sats: u64,
     pub trade_volume_sats: u64,
+    pub auto_run_enabled: bool,
+    pub auto_run_interval: Duration,
     pub events: Vec<AgentNetworkSimulationEvent>,
     next_seq: u64,
+    auto_run_last_tick: Option<Instant>,
 }
 
 impl Default for TreasuryExchangeSimulationPaneState {
@@ -3323,8 +3326,11 @@ impl Default for TreasuryExchangeSimulationPaneState {
             wallet_connect_url: None,
             total_liquidity_sats: 0,
             trade_volume_sats: 0,
+            auto_run_enabled: false,
+            auto_run_interval: Duration::from_millis(120),
             events: Vec::new(),
             next_seq: 1,
+            auto_run_last_tick: None,
         }
     }
 }
@@ -3504,8 +3510,36 @@ impl TreasuryExchangeSimulationPaneState {
         self.wallet_connect_url = None;
         self.total_liquidity_sats = 0;
         self.trade_volume_sats = 0;
+        self.auto_run_enabled = false;
         self.events.clear();
         self.next_seq = 1;
+        self.auto_run_last_tick = None;
+    }
+
+    pub fn start_auto_run(&mut self, now: Instant) {
+        self.auto_run_enabled = true;
+        self.auto_run_last_tick = Some(now);
+        self.last_error = None;
+        self.last_action = Some("Auto treasury simulation running".to_string());
+    }
+
+    pub fn stop_auto_run(&mut self) {
+        self.auto_run_enabled = false;
+        self.auto_run_last_tick = None;
+        self.last_action = Some("Auto treasury simulation paused".to_string());
+    }
+
+    pub fn should_run_auto_round(&self, now: Instant) -> bool {
+        if !self.auto_run_enabled {
+            return false;
+        }
+        self.auto_run_last_tick.map_or(true, |last| {
+            now.duration_since(last) >= self.auto_run_interval
+        })
+    }
+
+    pub fn mark_auto_round(&mut self, now: Instant) {
+        self.auto_run_last_tick = Some(now);
     }
 
     fn push_event(&mut self, protocol: &str, event_ref: &str, summary: String) {
@@ -3533,8 +3567,11 @@ pub struct RelaySecuritySimulationPaneState {
     pub rounds_run: u32,
     pub dm_relay_count: u32,
     pub sync_ranges: u32,
+    pub auto_run_enabled: bool,
+    pub auto_run_interval: Duration,
     pub events: Vec<AgentNetworkSimulationEvent>,
     next_seq: u64,
+    auto_run_last_tick: Option<Instant>,
 }
 
 impl Default for RelaySecuritySimulationPaneState {
@@ -3551,8 +3588,11 @@ impl Default for RelaySecuritySimulationPaneState {
             rounds_run: 0,
             dm_relay_count: 0,
             sync_ranges: 0,
+            auto_run_enabled: false,
+            auto_run_interval: Duration::from_millis(120),
             events: Vec::new(),
             next_seq: 1,
+            auto_run_last_tick: None,
         }
     }
 }
@@ -3757,8 +3797,36 @@ impl RelaySecuritySimulationPaneState {
         self.rounds_run = 0;
         self.dm_relay_count = 0;
         self.sync_ranges = 0;
+        self.auto_run_enabled = false;
         self.events.clear();
         self.next_seq = 1;
+        self.auto_run_last_tick = None;
+    }
+
+    pub fn start_auto_run(&mut self, now: Instant) {
+        self.auto_run_enabled = true;
+        self.auto_run_last_tick = Some(now);
+        self.last_error = None;
+        self.last_action = Some("Auto relay security simulation running".to_string());
+    }
+
+    pub fn stop_auto_run(&mut self) {
+        self.auto_run_enabled = false;
+        self.auto_run_last_tick = None;
+        self.last_action = Some("Auto relay security simulation paused".to_string());
+    }
+
+    pub fn should_run_auto_round(&self, now: Instant) -> bool {
+        if !self.auto_run_enabled {
+            return false;
+        }
+        self.auto_run_last_tick.map_or(true, |last| {
+            now.duration_since(last) >= self.auto_run_interval
+        })
+    }
+
+    pub fn mark_auto_round(&mut self, now: Instant) {
+        self.auto_run_last_tick = Some(now);
     }
 
     fn push_event(&mut self, protocol: &str, event_ref: &str, summary: String) {

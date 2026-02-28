@@ -98,7 +98,12 @@ pub fn paint_treasury_exchange_simulation_pane(
 
     let run_bounds = treasury_exchange_simulation_run_button_bounds(content_bounds);
     let reset_bounds = treasury_exchange_simulation_reset_button_bounds(content_bounds);
-    paint_action_button(run_bounds, "Run Exchange Round", paint);
+    let run_label = if pane_state.auto_run_enabled {
+        "Pause Auto Run"
+    } else {
+        "Start Auto Run"
+    };
+    paint_action_button(run_bounds, run_label, paint);
     paint_action_button(reset_bounds, "Reset Simulation", paint);
 
     let mut y = paint_state_summary(
@@ -171,7 +176,12 @@ pub fn paint_relay_security_simulation_pane(
 
     let run_bounds = relay_security_simulation_run_button_bounds(content_bounds);
     let reset_bounds = relay_security_simulation_reset_button_bounds(content_bounds);
-    paint_action_button(run_bounds, "Run Security Round", paint);
+    let run_label = if pane_state.auto_run_enabled {
+        "Pause Auto Run"
+    } else {
+        "Start Auto Run"
+    };
+    paint_action_button(run_bounds, run_label, paint);
     paint_action_button(reset_bounds, "Reset Simulation", paint);
 
     let mut y = paint_state_summary(
