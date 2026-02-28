@@ -45,12 +45,13 @@ run_check() {
 
 run_check "fmt_check" "cargo fmt --all -- --check" "01-fmt-check"
 run_check "workspace_check" "cargo check --workspace" "02-workspace-check"
-run_check "ownership_boundary_check" "./scripts/lint/ownership-boundary-check.sh" "03-ownership-boundary"
-run_check "workspace_dependency_drift_check" "./scripts/lint/workspace-dependency-drift-check.sh" "04-workspace-dependency-drift"
-run_check "skills_registry_validate" "./scripts/skills/validate_registry.sh" "05-skills-registry-validate"
-run_check "strict_production_hardening_check" "./scripts/lint/strict-production-hardening-check.sh" "06-strict-production-hardening"
-run_check "clippy_regression_check" "./scripts/lint/clippy-regression-check.sh" "07-clippy-regression"
-run_check "clippy_warning_budget_check" "./scripts/lint/clippy-warning-budget-check.sh" "08-clippy-warning-budget"
+run_check "workspace_test" "cargo test --workspace" "03-workspace-test"
+run_check "ownership_boundary_check" "./scripts/lint/ownership-boundary-check.sh" "04-ownership-boundary"
+run_check "workspace_dependency_drift_check" "./scripts/lint/workspace-dependency-drift-check.sh" "05-workspace-dependency-drift"
+run_check "skills_registry_validate" "./scripts/skills/validate_registry.sh" "06-skills-registry-validate"
+run_check "strict_production_hardening_check" "./scripts/lint/strict-production-hardening-check.sh" "07-strict-production-hardening"
+run_check "clippy_regression_check" "./scripts/lint/clippy-regression-check.sh" "08-clippy-regression"
+run_check "clippy_warning_budget_check" "./scripts/lint/clippy-warning-budget-check.sh" "09-clippy-warning-budget"
 
 python3 - "$ROOT_DIR" >"$tmp_metrics" <<'PY'
 import json
