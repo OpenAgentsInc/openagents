@@ -1775,8 +1775,17 @@ impl CodexLaneState {
             loop {
                 match channels.notifications.try_recv() {
                     Ok(notification) => {
+                        let method = notification.method.clone();
                         if let Some(normalized) = normalize_notification(notification) {
                             let _ = update_tx.send(CodexLaneUpdate::Notification(normalized));
+                        } else {
+                            eprintln!(
+                                "codex notify/ignored method={} reason=normalize-none",
+                                method
+                            );
+                            let _ = update_tx.send(CodexLaneUpdate::Notification(
+                                CodexLaneNotification::Raw { method },
+                            ));
                         }
                     }
                     Err(TokioTryRecvError::Empty) => break,
@@ -2383,10 +2392,8 @@ fn normalize_notification(notification: AppServerNotification) -> Option<CodexLa
             let params = params?;
             let msg = params.get("msg").unwrap_or(&params);
             Some(CodexLaneNotification::AgentMessageCompleted {
-                thread_id: thread_id_field(&params)
-                    .or_else(|| thread_id_field(msg))?,
-                turn_id: turn_id_field(&params)
-                    .or_else(|| turn_id_field(msg))?,
+                thread_id: thread_id_field(&params).or_else(|| thread_id_field(msg))?,
+                turn_id: turn_id_field(&params).or_else(|| turn_id_field(msg))?,
                 item_id: msg
                     .get("item_id")
                     .and_then(Value::as_str)
@@ -2432,10 +2439,8 @@ fn normalize_notification(notification: AppServerNotification) -> Option<CodexLa
             let params = params?;
             let msg = params.get("msg").unwrap_or(&params);
             Some(CodexLaneNotification::ReasoningDelta {
-                thread_id: thread_id_field(&params)
-                    .or_else(|| thread_id_field(msg))?,
-                turn_id: turn_id_field(&params)
-                    .or_else(|| turn_id_field(msg))?,
+                thread_id: thread_id_field(&params).or_else(|| thread_id_field(msg))?,
+                turn_id: turn_id_field(&params).or_else(|| turn_id_field(msg))?,
                 item_id: msg
                     .get("item_id")
                     .and_then(Value::as_str)
@@ -2486,10 +2491,8 @@ fn normalize_notification(notification: AppServerNotification) -> Option<CodexLa
                 .or_else(|| string_field(&params, "message"))
                 .unwrap_or_else(|| "task failed".to_string());
             Some(CodexLaneNotification::TurnError {
-                thread_id: thread_id_field(&params)
-                    .unwrap_or_else(|| "unknown-thread".to_string()),
-                turn_id: turn_id_field(&params)
-                    .unwrap_or_else(|| "unknown-turn".to_string()),
+                thread_id: thread_id_field(&params).unwrap_or_else(|| "unknown-thread".to_string()),
+                turn_id: turn_id_field(&params).unwrap_or_else(|| "unknown-turn".to_string()),
                 message,
             })
         }
@@ -2782,16 +2785,42 @@ fn non_empty_text(value: String) -> Option<String> {
 }
 
 fn thread_id_field(value: &Value) -> Option<String> {
-    string_field(value, "threadId")
-        .or_else(|| string_field(value, "conversationId"))
-        .or_else(|| string_field(value, "thread_id"))
-        .or_else(|| string_field(value, "conversation_id"))
+    non_empty_string_field(value, "threadId")
+        .or_else(|| non_empty_string_field(value, "conversationId"))
+        .or_else(|| non_empty_string_field(value, "thread_id"))
+        .or_else(|| non_empty_string_field(value, "conversation_id"))
+        .or_else(|| {
+            value.get("msg").and_then(|msg| {
+                non_empty_string_field(msg, "threadId")
+                    .or_else(|| non_empty_string_field(msg, "conversationId"))
+                    .or_else(|| non_empty_string_field(msg, "thread_id"))
+                    .or_else(|| non_empty_string_field(msg, "conversation_id"))
+            })
+        })
 }
 
 fn turn_id_field(value: &Value) -> Option<String> {
-    string_field(value, "turnId")
-        .or_else(|| string_field(value, "id"))
-        .or_else(|| string_field(value, "turn_id"))
+    non_empty_string_field(value, "turnId")
+        .or_else(|| non_empty_string_field(value, "id"))
+        .or_else(|| non_empty_string_field(value, "turn_id"))
+        .or_else(|| {
+            value.get("msg").and_then(|msg| {
+                non_empty_string_field(msg, "turnId")
+                    .or_else(|| non_empty_string_field(msg, "turn_id"))
+                    .or_else(|| {
+                        msg.get("turn")
+                            .and_then(|turn| turn.get("id"))
+                            .and_then(Value::as_str)
+                            .map(str::to_string)
+                            .and_then(non_empty_text)
+                    })
+                    .or_else(|| non_empty_string_field(msg, "id"))
+            })
+        })
+}
+
+fn non_empty_string_field(value: &Value, field: &str) -> Option<String> {
+    string_field(value, field).and_then(non_empty_text)
 }
 
 fn string_field(value: &Value, field: &str) -> Option<String> {
@@ -3707,6 +3736,27 @@ mod tests {
             })
         );
 
+        let delta_from_nested_ids = normalize_notification(codex_client::AppServerNotification {
+            method: "codex/event/agent_message_content_delta".to_string(),
+            params: Some(json!({
+                "msg": {
+                    "conversation_id": "thread-1",
+                    "turn_id": "turn-1",
+                    "item_id": "item-1b",
+                    "delta": "nested"
+                }
+            })),
+        });
+        assert_eq!(
+            delta_from_nested_ids,
+            Some(CodexLaneNotification::AgentMessageDelta {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                item_id: "item-1b".to_string(),
+                delta: "nested".to_string(),
+            })
+        );
+
         let completed = normalize_notification(codex_client::AppServerNotification {
             method: "codex/event/agent_message".to_string(),
             params: Some(json!({
@@ -3797,6 +3847,29 @@ mod tests {
             })
         );
 
+        let task_complete_with_nested_turn =
+            normalize_notification(codex_client::AppServerNotification {
+                method: "codex/event/task_complete".to_string(),
+                params: Some(json!({
+                    "conversationId": "thread-1",
+                    "id": "",
+                    "msg": {
+                        "turn_id": "turn-1",
+                        "last_agent_message": "task done nested"
+                    }
+                })),
+            });
+        assert_eq!(
+            task_complete_with_nested_turn,
+            Some(CodexLaneNotification::TurnCompleted {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                status: Some("completed".to_string()),
+                error_message: None,
+                final_message: Some("task done nested".to_string()),
+            })
+        );
+
         let legacy_agent_message = normalize_notification(codex_client::AppServerNotification {
             method: "agent_message".to_string(),
             params: Some(json!({
@@ -3852,18 +3925,17 @@ mod tests {
             })
         );
 
-        let reasoning_content_delta =
-            normalize_notification(codex_client::AppServerNotification {
-                method: "codex/event/reasoning_content_delta".to_string(),
-                params: Some(json!({
-                    "conversationId": "thread-1",
-                    "id": "turn-1",
-                    "msg": {
-                        "item_id": "reasoning-1",
-                        "delta": "plan"
-                    }
-                })),
-            });
+        let reasoning_content_delta = normalize_notification(codex_client::AppServerNotification {
+            method: "codex/event/reasoning_content_delta".to_string(),
+            params: Some(json!({
+                "conversationId": "thread-1",
+                "id": "turn-1",
+                "msg": {
+                    "item_id": "reasoning-1",
+                    "delta": "plan"
+                }
+            })),
+        });
         assert_eq!(
             reasoning_content_delta,
             Some(CodexLaneNotification::ReasoningDelta {

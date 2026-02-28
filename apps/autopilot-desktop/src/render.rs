@@ -498,7 +498,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
 
         // Sidebar tooltip for the settings icon: light gray pill with dark text.
         if state.sidebar.settings_tooltip_t > 0.01 && panel_width > 0.0 {
-            let tooltip_alpha = state.sidebar.settings_tooltip_t;
+            let _tooltip_alpha = state.sidebar.settings_tooltip_t;
             let icon_size = 16.0;
             let padding = 12.0;
             let icon_x = sidebar_x + panel_width - icon_size - padding;
@@ -529,7 +529,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             let tooltip_y = tooltip_y.max(4.0);
             let tooltip_bounds = Bounds::new(tooltip_x, tooltip_y, tooltip_width, tooltip_height);
 
-            let tooltip_bg = Hsla::from_hex(0xf1f1f1).with_alpha(tooltip_alpha);
+            let tooltip_bg = Hsla::from_hex(0xf1f1f1).with_alpha(_tooltip_alpha);
             paint.scene.draw_quad(
                 Quad::new(tooltip_bounds)
                     .with_background(tooltip_bg)
@@ -551,11 +551,11 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             paint.scene.draw_svg(SvgQuad {
                 bounds: caret_bounds,
                 svg_data: std::sync::Arc::from(caret_svg.as_bytes()),
-                tint: Some(Hsla::from_hex(0xf1f1f1).with_alpha(tooltip_alpha)),
+                tint: Some(Hsla::from_hex(0xf1f1f1).with_alpha(_tooltip_alpha)),
             });
 
             // Horizontally centered text — use full tooltip width to avoid clipping
-            let tooltip_text_color = Hsla::new(0.0, 0.0, 0.0, tooltip_alpha);
+            let tooltip_text_color = Hsla::new(0.0, 0.0, 0.0, _tooltip_alpha);
             let font_size = tooltip_font_size;
             let text_x = tooltip_bounds.origin.x + 5.0;
             let text_y = tooltip_bounds.origin.y + (tooltip_bounds.size.height - font_size) * 0.5 - 13.0;
