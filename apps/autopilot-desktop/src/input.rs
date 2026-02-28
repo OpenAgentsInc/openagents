@@ -1073,6 +1073,7 @@ fn run_chat_refresh_threads_action(state: &mut crate::app_state::RenderState) ->
 }
 
 fn run_chat_new_thread_action(state: &mut crate::app_state::RenderState) -> bool {
+    focus_chat_composer(state);
     let cwd = std::env::current_dir()
         .ok()
         .and_then(|value| value.into_os_string().into_string().ok());
@@ -1273,6 +1274,7 @@ fn run_chat_select_thread_action(state: &mut crate::app_state::RenderState, inde
     let Some(target) = state.autopilot_chat.select_thread_by_index(index) else {
         return false;
     };
+    focus_chat_composer(state);
     let experimental_api = state.codex_lane_config.experimental_api;
     let resume_path = if experimental_api {
         target.path.clone()
@@ -3419,6 +3421,33 @@ fn any_text_input_focused(state: &crate::app_state::RenderState) -> bool {
         || settings_inputs_focused(state)
         || state.relay_connections_inputs.relay_url.is_focused()
         || state.job_history_inputs.search_job_id.is_focused()
+}
+
+fn blur_non_chat_text_inputs(state: &mut crate::app_state::RenderState) {
+    state.spark_inputs.invoice_amount.blur();
+    state.spark_inputs.send_request.blur();
+    state.spark_inputs.send_amount.blur();
+    state.pay_invoice_inputs.payment_request.blur();
+    state.pay_invoice_inputs.amount_sats.blur();
+    state.create_invoice_inputs.amount_sats.blur();
+    state.create_invoice_inputs.description.blur();
+    state.create_invoice_inputs.expiry_seconds.blur();
+    state.relay_connections_inputs.relay_url.blur();
+    state.network_requests_inputs.request_type.blur();
+    state.network_requests_inputs.payload.blur();
+    state.network_requests_inputs.skill_scope_id.blur();
+    state.network_requests_inputs.credit_envelope_ref.blur();
+    state.network_requests_inputs.budget_sats.blur();
+    state.network_requests_inputs.timeout_seconds.blur();
+    state.settings_inputs.relay_url.blur();
+    state.settings_inputs.wallet_default_send_sats.blur();
+    state.settings_inputs.provider_max_queue_depth.blur();
+    state.job_history_inputs.search_job_id.blur();
+}
+
+fn focus_chat_composer(state: &mut crate::app_state::RenderState) {
+    blur_non_chat_text_inputs(state);
+    state.chat_inputs.composer.focus();
 }
 
 fn map_modifiers(modifiers: ModifiersState) -> Modifiers {
