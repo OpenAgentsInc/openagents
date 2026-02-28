@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -485,6 +485,23 @@ impl AppServerClient {
     pub async fn spawn(config: AppServerConfig) -> Result<(Self, AppServerChannels)> {
         let command =
             resolve_app_server_command().context("Unable to find codex app-server executable")?;
+        let resolved_program = command.program.clone();
+        let resolved_args = command.args.clone();
+
+        if let Some(version) = probe_executable_version(&resolved_program) {
+            tracing::info!(
+                program = %resolved_program.display(),
+                args = ?resolved_args,
+                version = %version,
+                "Spawning codex app-server process"
+            );
+        } else {
+            tracing::info!(
+                program = %resolved_program.display(),
+                args = ?resolved_args,
+                "Spawning codex app-server process"
+            );
+        }
 
         let mut cmd = Command::new(command.program);
         cmd.args(command.args)
@@ -1107,4 +1124,26 @@ pub fn is_codex_available() -> bool {
         || resolve_codex_bin_from_env().is_some()
         || which::which("codex").is_ok()
         || find_in_common_bins("codex").is_some()
+}
+
+fn probe_executable_version(program: &Path) -> Option<String> {
+    let output = std::process::Command::new(program)
+        .arg("--version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .ok()?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !stdout.is_empty() {
+        return Some(stdout);
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if !stderr.is_empty() {
+        return Some(stderr);
+    }
+
+    None
 }
