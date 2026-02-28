@@ -22,6 +22,105 @@ use crate::pane_system::{
 };
 
 const CHAT_MAX_RENDER_LINES_PER_MESSAGE: usize = 24;
+const CHAT_TRANSCRIPT_LINE_HEIGHT: f32 = 14.0;
+
+fn transcript_controls_bottom(content_bounds: Bounds, autopilot_chat: &AutopilotChatState) -> f32 {
+    let interrupt_bounds = chat_interrupt_button_bounds(content_bounds);
+    let approval_cancel_bounds = chat_server_request_cancel_button_bounds(content_bounds);
+    let tool_call_bounds = chat_server_tool_call_button_bounds(content_bounds);
+    let user_input_bounds = chat_server_user_input_button_bounds(content_bounds);
+    let auth_refresh_bounds = chat_server_auth_refresh_button_bounds(content_bounds);
+
+    let mut controls_bottom = interrupt_bounds.max_y();
+    if !autopilot_chat.pending_command_approvals.is_empty()
+        || !autopilot_chat.pending_file_change_approvals.is_empty()
+    {
+        controls_bottom = controls_bottom.max(approval_cancel_bounds.max_y());
+    }
+    if !autopilot_chat.pending_tool_calls.is_empty() {
+        controls_bottom = controls_bottom.max(tool_call_bounds.max_y());
+    }
+    if !autopilot_chat.pending_tool_user_input.is_empty() {
+        controls_bottom = controls_bottom.max(user_input_bounds.max_y());
+    }
+    if !autopilot_chat.pending_auth_refresh.is_empty() {
+        controls_bottom = controls_bottom.max(auth_refresh_bounds.max_y());
+    }
+    controls_bottom
+}
+
+fn transcript_thread_line_y(content_bounds: Bounds, autopilot_chat: &AutopilotChatState) -> f32 {
+    let status_line_y = transcript_controls_bottom(content_bounds, autopilot_chat) + 12.0;
+    status_line_y + CHAT_TRANSCRIPT_LINE_HEIGHT
+}
+
+fn transcript_scroll_clip_bounds(
+    content_bounds: Bounds,
+    autopilot_chat: &AutopilotChatState,
+) -> Bounds {
+    let transcript_bounds = chat_transcript_bounds(content_bounds);
+    let composer_bounds = chat_composer_input_bounds(content_bounds);
+    let thread_line_y = transcript_thread_line_y(content_bounds, autopilot_chat);
+
+    Bounds::new(
+        transcript_bounds.origin.x + 8.0,
+        thread_line_y + 10.0,
+        (transcript_bounds.size.width - 16.0).max(0.0),
+        (composer_bounds.origin.y - (thread_line_y + 18.0) - 8.0).max(0.0),
+    )
+}
+
+fn transcript_content_height(autopilot_chat: &AutopilotChatState) -> f32 {
+    let mut height = 8.0;
+
+    if !autopilot_chat.pending_command_approvals.is_empty()
+        || !autopilot_chat.pending_file_change_approvals.is_empty()
+    {
+        height += CHAT_TRANSCRIPT_LINE_HEIGHT;
+    }
+    if !autopilot_chat.pending_tool_calls.is_empty() {
+        height += CHAT_TRANSCRIPT_LINE_HEIGHT;
+    }
+    if !autopilot_chat.pending_tool_user_input.is_empty() {
+        height += CHAT_TRANSCRIPT_LINE_HEIGHT;
+    }
+    if !autopilot_chat.pending_auth_refresh.is_empty() {
+        height += CHAT_TRANSCRIPT_LINE_HEIGHT;
+    }
+    if !autopilot_chat.turn_plan.is_empty() {
+        height += CHAT_TRANSCRIPT_LINE_HEIGHT;
+    }
+    if autopilot_chat
+        .turn_diff
+        .as_deref()
+        .and_then(|diff| diff.lines().next())
+        .is_some_and(|line| !line.is_empty())
+    {
+        height += CHAT_TRANSCRIPT_LINE_HEIGHT;
+    }
+    height += autopilot_chat.turn_timeline.iter().rev().take(2).count() as f32
+        * CHAT_TRANSCRIPT_LINE_HEIGHT;
+
+    for message in &autopilot_chat.messages {
+        height += CHAT_TRANSCRIPT_LINE_HEIGHT;
+        let content = if message.content.trim().is_empty()
+            && matches!(message.status, AutopilotMessageStatus::Queued)
+        {
+            "Waiting for Codex response...".to_string()
+        } else {
+            message.content.clone()
+        };
+        let display_lines = chat_display_lines(&content, 78);
+        let rendered_lines = display_lines.len().min(CHAT_MAX_RENDER_LINES_PER_MESSAGE);
+        height += rendered_lines as f32 * CHAT_TRANSCRIPT_LINE_HEIGHT;
+        if display_lines.len() > CHAT_MAX_RENDER_LINES_PER_MESSAGE {
+            height += CHAT_TRANSCRIPT_LINE_HEIGHT;
+        }
+        height += 8.0;
+    }
+
+    height + 8.0
+}
 
 pub fn paint(
     content_bounds: Bounds,
@@ -139,23 +238,9 @@ pub fn paint(
         paint_action_button(auth_refresh_bounds, "Send Auth Refresh", paint);
     }
 
-    let mut transcript_controls_bottom = interrupt_bounds.max_y();
-    if !autopilot_chat.pending_command_approvals.is_empty()
-        || !autopilot_chat.pending_file_change_approvals.is_empty()
-    {
-        transcript_controls_bottom = transcript_controls_bottom.max(approval_cancel_bounds.max_y());
-    }
-    if !autopilot_chat.pending_tool_calls.is_empty() {
-        transcript_controls_bottom = transcript_controls_bottom.max(tool_call_bounds.max_y());
-    }
-    if !autopilot_chat.pending_tool_user_input.is_empty() {
-        transcript_controls_bottom = transcript_controls_bottom.max(user_input_bounds.max_y());
-    }
-    if !autopilot_chat.pending_auth_refresh.is_empty() {
-        transcript_controls_bottom = transcript_controls_bottom.max(auth_refresh_bounds.max_y());
-    }
+    let transcript_controls_bottom = transcript_controls_bottom(content_bounds, autopilot_chat);
     let transcript_status_line_y = transcript_controls_bottom + 12.0;
-    let transcript_thread_line_y = transcript_status_line_y + 14.0;
+    let transcript_thread_line_y = transcript_status_line_y + CHAT_TRANSCRIPT_LINE_HEIGHT;
 
     paint.scene.draw_text(paint.text.layout_mono(
         &format!(
@@ -274,15 +359,15 @@ pub fn paint(
         theme::text::MUTED,
     ));
 
-    let transcript_scroll_clip = Bounds::new(
-        transcript_bounds.origin.x + 8.0,
-        transcript_thread_line_y + 10.0,
-        (transcript_bounds.size.width - 16.0).max(0.0),
-        (composer_bounds.origin.y - (transcript_thread_line_y + 18.0) - 8.0).max(0.0),
-    );
+    let transcript_scroll_clip = transcript_scroll_clip_bounds(content_bounds, autopilot_chat);
+    let transcript_content_height = transcript_content_height(autopilot_chat);
+    let transcript_max_scroll =
+        (transcript_content_height - transcript_scroll_clip.size.height).max(0.0);
+    let transcript_scroll_offset =
+        autopilot_chat.transcript_effective_scroll_offset(transcript_max_scroll);
 
     paint.scene.push_clip(transcript_scroll_clip);
-    let mut y = transcript_scroll_clip.origin.y + 8.0;
+    let mut y = transcript_scroll_clip.origin.y + 8.0 - transcript_scroll_offset;
     if let Some(request) = autopilot_chat.pending_command_approvals.first() {
         let summary = request
             .command
@@ -404,7 +489,7 @@ pub fn paint(
         ));
         y += 14.0;
     }
-    for message in autopilot_chat.messages.iter().rev().take(14).rev() {
+    for message in &autopilot_chat.messages {
         let status = match message.status {
             AutopilotMessageStatus::Queued => "queued",
             AutopilotMessageStatus::Running => "running",
@@ -500,6 +585,43 @@ pub fn dispatch_input_event(state: &mut RenderState, event: &InputEvent) -> bool
         .composer
         .event(event, composer_bounds, &mut state.event_context)
         .is_handled()
+}
+
+pub fn dispatch_transcript_scroll_event(
+    state: &mut RenderState,
+    cursor_position: Point,
+    scroll_dy: f32,
+) -> bool {
+    if scroll_dy.abs() <= f32::EPSILON {
+        return false;
+    }
+
+    let top_chat = state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == PaneKind::AutopilotChat)
+        .max_by_key(|pane| pane.z_index)
+        .map(|pane| pane.bounds);
+    let Some(bounds) = top_chat else {
+        return false;
+    };
+
+    let content_bounds = pane_content_bounds(bounds);
+    let clip = transcript_scroll_clip_bounds(content_bounds, &state.autopilot_chat);
+    if !clip.contains(cursor_position) {
+        return false;
+    }
+
+    let content_height = transcript_content_height(&state.autopilot_chat);
+    let max_scroll = (content_height - clip.size.height).max(0.0);
+    if max_scroll <= 0.0 {
+        return false;
+    }
+
+    state
+        .autopilot_chat
+        .scroll_transcript_by(scroll_dy, max_scroll);
+    true
 }
 
 fn chat_display_lines(text: &str, chunk_len: usize) -> Vec<String> {

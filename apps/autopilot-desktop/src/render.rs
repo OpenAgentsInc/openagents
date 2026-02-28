@@ -69,12 +69,9 @@ fn read_clipboard_with_command(cmd: &str, args: &[&str]) -> Option<String> {
 }
 
 fn configure_event_context_clipboard(event_context: &mut wgpui::EventContext) {
-    event_context.set_clipboard(
-        read_system_clipboard,
-        |text| {
-            let _ = wgpui::clipboard::copy_to_clipboard(text);
-        },
-    );
+    event_context.set_clipboard(read_system_clipboard, |text| {
+        let _ = wgpui::clipboard::copy_to_clipboard(text);
+    });
 }
 
 pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
