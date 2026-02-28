@@ -1,15 +1,17 @@
 use crate::app_state::{
     ActiveJobState, ActivityEventDomain, ActivityFeedFilter, ActivityFeedState,
     AgentNetworkSimulationPaneState, AgentProfileStatePaneState, AgentScheduleTickPaneState,
-    AlertSeverity, AlertsRecoveryState, AutopilotChatState, ChatPaneInputs,
-    CreateInvoicePaneInputs, CreditDeskPaneState, CreditSettlementLedgerPaneState, DesktopPane,
-    EarningsScoreboardState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
-    JobLifecycleStage, NetworkRequestStatus, NetworkRequestsPaneInputs, NetworkRequestsState,
-    NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs, ProviderBlocker,
-    ProviderRuntimeState, RelayConnectionsPaneInputs, RelayConnectionsState,
-    RelaySecuritySimulationPaneState, SettingsPaneInputs, SettingsState, SkillRegistryPaneState,
-    SkillTrustRevocationPaneState, SparkPaneInputs, StarterJobStatus, StarterJobsState,
-    SyncHealthState, TrajectoryAuditPaneState, TreasuryExchangeSimulationPaneState,
+    AlertSeverity, AlertsRecoveryState, AutopilotChatState, ChatPaneInputs, CodexAccountPaneState,
+    CodexAppsPaneState, CodexConfigPaneState, CodexDiagnosticsPaneState, CodexLabsPaneState,
+    CodexMcpPaneState, CodexModelsPaneState, CodexRemoteSkillsPaneState, CreateInvoicePaneInputs,
+    CreditDeskPaneState, CreditSettlementLedgerPaneState, DesktopPane, EarningsScoreboardState,
+    JobHistoryPaneInputs, JobHistoryState, JobInboxState, JobLifecycleStage, NetworkRequestStatus,
+    NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
+    PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, RelayConnectionsPaneInputs,
+    RelayConnectionsState, RelaySecuritySimulationPaneState, SettingsPaneInputs, SettingsState,
+    SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs, StarterJobStatus,
+    StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
+    TreasuryExchangeSimulationPaneState,
 };
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
@@ -32,7 +34,7 @@ use crate::pane_system::{
     starter_jobs_row_bounds, starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
 };
 use crate::panes::{
-    agent as agent_pane, chat as chat_pane, credit as credit_pane,
+    agent as agent_pane, chat as chat_pane, codex as codex_pane, credit as credit_pane,
     relay_connections as relay_connections_pane, simulation as simulation_pane,
     skill as skill_pane, wallet as wallet_pane,
 };
@@ -53,6 +55,14 @@ impl PaneRenderer {
         nostr_identity_error: Option<&str>,
         nostr_secret_state: &NostrSecretState,
         autopilot_chat: &AutopilotChatState,
+        codex_account: &CodexAccountPaneState,
+        codex_models: &CodexModelsPaneState,
+        codex_config: &CodexConfigPaneState,
+        codex_mcp: &CodexMcpPaneState,
+        codex_apps: &CodexAppsPaneState,
+        codex_remote_skills: &CodexRemoteSkillsPaneState,
+        codex_labs: &CodexLabsPaneState,
+        codex_diagnostics: &CodexDiagnosticsPaneState,
         sa_lane: &crate::runtime_lanes::SaLaneSnapshot,
         skl_lane: &crate::runtime_lanes::SklLaneSnapshot,
         ac_lane: &crate::runtime_lanes::AcLaneSnapshot,
@@ -120,6 +130,34 @@ impl PaneRenderer {
                 PaneKind::Empty => paint_empty_pane(content_bounds, paint),
                 PaneKind::AutopilotChat => {
                     paint_autopilot_chat_pane(content_bounds, autopilot_chat, chat_inputs, paint);
+                }
+                PaneKind::CodexAccount => {
+                    codex_pane::paint_account_pane(content_bounds, codex_account, paint);
+                }
+                PaneKind::CodexModels => {
+                    codex_pane::paint_models_pane(content_bounds, codex_models, paint);
+                }
+                PaneKind::CodexConfig => {
+                    codex_pane::paint_config_pane(content_bounds, codex_config, paint);
+                }
+                PaneKind::CodexMcp => {
+                    codex_pane::paint_mcp_pane(content_bounds, codex_mcp, paint);
+                }
+                PaneKind::CodexApps => {
+                    codex_pane::paint_apps_pane(content_bounds, codex_apps, paint);
+                }
+                PaneKind::CodexRemoteSkills => {
+                    codex_pane::paint_remote_skills_pane(
+                        content_bounds,
+                        codex_remote_skills,
+                        paint,
+                    );
+                }
+                PaneKind::CodexLabs => {
+                    codex_pane::paint_labs_pane(content_bounds, codex_labs, paint);
+                }
+                PaneKind::CodexDiagnostics => {
+                    codex_pane::paint_diagnostics_pane(content_bounds, codex_diagnostics, paint);
                 }
                 PaneKind::GoOnline => {
                     paint_go_online_pane(

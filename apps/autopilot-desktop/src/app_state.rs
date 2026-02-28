@@ -16,7 +16,13 @@ use crate::runtime_lanes::{
     SaLaneWorker, SaLifecycleCommand, SkillTrustTier, SklDiscoveryTrustCommand, SklLaneSnapshot,
     SklLaneWorker,
 };
-use crate::spark_wallet::{SparkPaneState, SparkWalletWorker};
+use crate::{
+    codex_lane::{
+        CodexLaneCommand, CodexLaneCommandResponse, CodexLaneNotification, CodexLaneSnapshot,
+        CodexLaneWorker,
+    },
+    spark_wallet::{SparkPaneState, SparkWalletWorker},
+};
 
 pub const WINDOW_TITLE: &str = "Autopilot";
 pub const WINDOW_WIDTH: f64 = 1280.0;
@@ -40,6 +46,14 @@ impl Default for App {
 pub enum PaneKind {
     Empty,
     AutopilotChat,
+    CodexAccount,
+    CodexModels,
+    CodexConfig,
+    CodexMcp,
+    CodexApps,
+    CodexRemoteSkills,
+    CodexLabs,
+    CodexDiagnostics,
     GoOnline,
     ProviderStatus,
     EarningsScoreboard,
@@ -224,7 +238,7 @@ pub struct ChatPaneInputs {
 impl Default for ChatPaneInputs {
     fn default() -> Self {
         Self {
-            composer: TextInput::new().placeholder("Ask Autopilot to do work..."),
+            composer: TextInput::new().placeholder("Ask Codex to do work..."),
         }
     }
 }
@@ -232,7 +246,7 @@ impl Default for ChatPaneInputs {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AutopilotRole {
     User,
-    Autopilot,
+    Codex,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -248,30 +262,177 @@ pub struct AutopilotMessage {
     pub role: AutopilotRole,
     pub status: AutopilotMessageStatus,
     pub content: String,
-    pub status_due_at: Option<Instant>,
+}
+
+pub struct AutopilotTokenUsage {
+    pub input_tokens: i64,
+    pub cached_input_tokens: i64,
+    pub output_tokens: i64,
+}
+
+pub struct AutopilotTurnPlanStep {
+    pub step: String,
+    pub status: String,
+}
+
+#[derive(Clone)]
+pub struct AutopilotApprovalRequest {
+    pub request_id: codex_client::AppServerRequestId,
+    pub thread_id: String,
+    pub turn_id: String,
+    pub item_id: String,
+    pub reason: Option<String>,
+    pub command: Option<String>,
+    pub cwd: Option<String>,
+}
+
+#[derive(Clone)]
+pub struct AutopilotFileChangeApprovalRequest {
+    pub request_id: codex_client::AppServerRequestId,
+    pub thread_id: String,
+    pub turn_id: String,
+    pub item_id: String,
+    pub reason: Option<String>,
+    pub grant_root: Option<String>,
+}
+
+#[derive(Clone)]
+pub struct AutopilotToolCallRequest {
+    pub request_id: codex_client::AppServerRequestId,
+    pub thread_id: String,
+    pub turn_id: String,
+    pub call_id: String,
+    pub tool: String,
+    pub arguments: String,
+}
+
+#[derive(Clone)]
+pub struct AutopilotToolUserInputQuestion {
+    pub id: String,
+    pub header: String,
+    pub question: String,
+    pub options: Vec<String>,
+}
+
+#[derive(Clone)]
+pub struct AutopilotToolUserInputRequest {
+    pub request_id: codex_client::AppServerRequestId,
+    pub thread_id: String,
+    pub turn_id: String,
+    pub item_id: String,
+    pub questions: Vec<AutopilotToolUserInputQuestion>,
+}
+
+#[derive(Clone)]
+pub struct AutopilotAuthRefreshRequest {
+    pub request_id: codex_client::AppServerRequestId,
+    pub reason: String,
+    pub previous_account_id: Option<String>,
+}
+
+#[derive(Clone)]
+pub struct AutopilotThreadMetadata {
+    pub thread_name: Option<String>,
+    pub status: Option<String>,
+    pub loaded: bool,
+    pub cwd: Option<String>,
+    pub path: Option<String>,
+}
+
+pub struct AutopilotThreadResumeTarget {
+    pub thread_id: String,
+    pub cwd: Option<String>,
+    pub path: Option<String>,
+}
+
+#[derive(Clone)]
+pub struct AutopilotThreadListEntry {
+    pub thread_id: String,
+    pub thread_name: Option<String>,
+    pub status: Option<String>,
+    pub loaded: bool,
+    pub cwd: Option<String>,
+    pub path: Option<String>,
 }
 
 pub struct AutopilotChatState {
+    pub connection_status: String,
+    pub models: Vec<String>,
+    pub selected_model: usize,
+    pub reasoning_effort: Option<String>,
     pub threads: Vec<String>,
-    pub active_thread: usize,
+    pub thread_metadata: std::collections::HashMap<String, AutopilotThreadMetadata>,
+    pub active_thread_id: Option<String>,
     pub messages: Vec<AutopilotMessage>,
     pub next_message_id: u64,
+    pub active_turn_id: Option<String>,
+    pub active_assistant_message_id: Option<u64>,
+    pub last_turn_status: Option<String>,
+    pub token_usage: Option<AutopilotTokenUsage>,
+    pub turn_plan_explanation: Option<String>,
+    pub turn_plan: Vec<AutopilotTurnPlanStep>,
+    pub turn_diff: Option<String>,
+    pub turn_timeline: Vec<String>,
+    pub pending_command_approvals: Vec<AutopilotApprovalRequest>,
+    pub pending_file_change_approvals: Vec<AutopilotFileChangeApprovalRequest>,
+    pub pending_tool_calls: Vec<AutopilotToolCallRequest>,
+    pub pending_tool_user_input: Vec<AutopilotToolUserInputRequest>,
+    pub pending_auth_refresh: Vec<AutopilotAuthRefreshRequest>,
+    pub auth_refresh_access_token: String,
+    pub auth_refresh_account_id: String,
+    pub auth_refresh_plan_type: String,
+    pub thread_filter_archived: Option<bool>,
+    pub thread_filter_sort_key: codex_client::ThreadSortKey,
+    pub thread_filter_source_kind: Option<codex_client::ThreadSourceKind>,
+    pub thread_filter_model_provider: Option<String>,
+    pub thread_filter_search_term: String,
+    pub thread_rename_counter: u64,
     pub last_error: Option<String>,
 }
 
 impl Default for AutopilotChatState {
     fn default() -> Self {
         Self {
-            threads: vec!["Main".to_string()],
-            active_thread: 0,
+            connection_status: "starting".to_string(),
+            models: vec![
+                "gpt-5-codex".to_string(),
+                "gpt-5-codex-mini".to_string(),
+                "gpt-5-codex-low".to_string(),
+            ],
+            selected_model: 0,
+            reasoning_effort: Some("medium".to_string()),
+            threads: Vec::new(),
+            thread_metadata: std::collections::HashMap::new(),
+            active_thread_id: None,
             messages: vec![AutopilotMessage {
                 id: 1,
-                role: AutopilotRole::Autopilot,
+                role: AutopilotRole::Codex,
                 status: AutopilotMessageStatus::Done,
-                content: "Autopilot ready. Ask for a task to start.".to_string(),
-                status_due_at: None,
+                content: "Codex lane connecting...".to_string(),
             }],
             next_message_id: 2,
+            active_turn_id: None,
+            active_assistant_message_id: None,
+            last_turn_status: None,
+            token_usage: None,
+            turn_plan_explanation: None,
+            turn_plan: Vec::new(),
+            turn_diff: None,
+            turn_timeline: Vec::new(),
+            pending_command_approvals: Vec::new(),
+            pending_file_change_approvals: Vec::new(),
+            pending_tool_calls: Vec::new(),
+            pending_tool_user_input: Vec::new(),
+            pending_auth_refresh: Vec::new(),
+            auth_refresh_access_token: std::env::var("OPENAI_ACCESS_TOKEN").unwrap_or_default(),
+            auth_refresh_account_id: std::env::var("OPENAI_CHATGPT_ACCOUNT_ID").unwrap_or_default(),
+            auth_refresh_plan_type: std::env::var("OPENAI_CHATGPT_PLAN_TYPE").unwrap_or_default(),
+            thread_filter_archived: Some(false),
+            thread_filter_sort_key: codex_client::ThreadSortKey::UpdatedAt,
+            thread_filter_source_kind: None,
+            thread_filter_model_provider: None,
+            thread_filter_search_term: String::new(),
+            thread_rename_counter: 1,
             last_error: None,
         }
     }
@@ -305,17 +466,126 @@ impl Default for SidebarState {
 }
 
 impl AutopilotChatState {
-    pub fn submit_prompt(&mut self, now: Instant, prompt: String) {
+    pub fn current_model(&self) -> &str {
+        self.models
+            .get(self.selected_model)
+            .map(String::as_str)
+            .unwrap_or("gpt-5-codex")
+    }
+
+    pub fn set_models(&mut self, models: Vec<String>, default_model: Option<String>) {
+        if models.is_empty() {
+            return;
+        }
+
+        let previous_model = self.models.get(self.selected_model).cloned();
+        self.models = models;
+
+        if let Some(default_model) = default_model.as_ref()
+            && let Some(index) = self.models.iter().position(|model| model == default_model)
+        {
+            self.selected_model = index;
+            self.last_error = None;
+            return;
+        }
+
+        if let Some(previous_model) = previous_model.as_ref()
+            && let Some(index) = self.models.iter().position(|model| model == previous_model)
+        {
+            self.selected_model = index;
+            self.last_error = None;
+            return;
+        }
+
+        self.selected_model = 0;
+        self.last_error = None;
+    }
+
+    pub fn cycle_model(&mut self) {
+        if self.models.is_empty() {
+            return;
+        }
+        self.selected_model = (self.selected_model + 1) % self.models.len();
+        self.last_error = None;
+    }
+
+    pub fn set_connection_status(&mut self, status: impl Into<String>) {
+        self.connection_status = status.into();
+    }
+
+    pub fn set_thread_entries(&mut self, entries: Vec<AutopilotThreadListEntry>) {
+        self.threads = entries
+            .iter()
+            .map(|entry| entry.thread_id.clone())
+            .collect();
+        self.thread_metadata.clear();
+        for entry in entries {
+            self.thread_metadata.insert(
+                entry.thread_id.clone(),
+                AutopilotThreadMetadata {
+                    thread_name: entry.thread_name,
+                    status: entry.status,
+                    loaded: entry.loaded,
+                    cwd: entry.cwd,
+                    path: entry.path,
+                },
+            );
+        }
+        if let Some(active_id) = self.active_thread_id.as_ref() {
+            if !self.threads.iter().any(|thread_id| thread_id == active_id) {
+                self.active_thread_id = self.threads.first().cloned();
+            }
+        } else {
+            self.active_thread_id = self.threads.first().cloned();
+        }
+    }
+
+    pub fn select_thread_by_index(&mut self, index: usize) -> Option<AutopilotThreadResumeTarget> {
+        let thread_id = self.threads.get(index).cloned()?;
+        self.active_thread_id = Some(thread_id.clone());
+        self.last_error = None;
+        let metadata = self.thread_metadata.get(&thread_id).cloned();
+        Some(AutopilotThreadResumeTarget {
+            thread_id,
+            cwd: metadata.as_ref().and_then(|value| value.cwd.clone()),
+            path: metadata.and_then(|value| value.path),
+        })
+    }
+
+    pub fn ensure_thread(&mut self, thread_id: String) {
+        if !self.threads.iter().any(|existing| existing == &thread_id) {
+            self.threads.insert(0, thread_id.clone());
+        }
+        self.thread_metadata
+            .entry(thread_id.clone())
+            .or_insert_with(|| AutopilotThreadMetadata {
+                thread_name: None,
+                status: None,
+                loaded: false,
+                cwd: None,
+                path: None,
+            });
+        self.active_thread_id = Some(thread_id);
+    }
+
+    pub fn remove_thread(&mut self, thread_id: &str) {
+        self.threads.retain(|value| value != thread_id);
+        self.thread_metadata.remove(thread_id);
+        if self.active_thread_id.as_deref() == Some(thread_id) {
+            self.active_thread_id = self.threads.first().cloned();
+        }
+    }
+
+    pub fn submit_prompt(&mut self, prompt: String) {
         self.last_error = None;
         let trimmed = prompt.trim();
         if trimmed.is_empty() {
             self.last_error = Some("Prompt cannot be empty".to_string());
             self.messages.push(AutopilotMessage {
                 id: self.next_message_id,
-                role: AutopilotRole::Autopilot,
+                role: AutopilotRole::Codex,
                 status: AutopilotMessageStatus::Error,
                 content: "Cannot run empty prompt".to_string(),
-                status_due_at: None,
             });
             self.next_message_id = self.next_message_id.saturating_add(1);
             return;
@@ -326,52 +596,318 @@ impl AutopilotChatState {
             role: AutopilotRole::User,
             status: AutopilotMessageStatus::Done,
             content: trimmed.to_string(),
-            status_due_at: None,
         });
         self.next_message_id = self.next_message_id.saturating_add(1);
 
+        let assistant_message_id = self.next_message_id;
         self.messages.push(AutopilotMessage {
-            id: self.next_message_id,
-            role: AutopilotRole::Autopilot,
+            id: assistant_message_id,
+            role: AutopilotRole::Codex,
             status: AutopilotMessageStatus::Queued,
-            content: format!("Queued local execution for: {trimmed}"),
-            status_due_at: Some(now + Duration::from_millis(280)),
+            content: String::new(),
         });
         self.next_message_id = self.next_message_id.saturating_add(1);
+        self.active_assistant_message_id = Some(assistant_message_id);
     }
 
-    pub fn tick(&mut self, now: Instant) -> bool {
-        let mut changed = false;
-        for message in &mut self.messages {
-            match message.status {
-                AutopilotMessageStatus::Queued => {
-                    if message.status_due_at.is_some_and(|due| now >= due) {
-                        message.status = AutopilotMessageStatus::Running;
-                        message.status_due_at = Some(now + Duration::from_millis(620));
-                        message.content = message.content.replacen(
-                            "Queued local execution",
-                            "Running local execution",
-                            1,
-                        );
-                        changed = true;
-                    }
-                }
-                AutopilotMessageStatus::Running => {
-                    if message.status_due_at.is_some_and(|due| now >= due) {
-                        message.status = AutopilotMessageStatus::Done;
-                        message.status_due_at = None;
-                        message.content = message.content.replacen(
-                            "Running local execution",
-                            "Completed local execution",
-                            1,
-                        );
-                        changed = true;
-                    }
-                }
-                AutopilotMessageStatus::Done | AutopilotMessageStatus::Error => {}
+    pub fn mark_turn_started(&mut self, turn_id: String) {
+        self.active_turn_id = Some(turn_id);
+        self.last_turn_status = Some("inProgress".to_string());
+        if let Some(assistant_message_id) = self.active_assistant_message_id
+            && let Some(message) = self
+                .messages
+                .iter_mut()
+                .find(|message| message.id == assistant_message_id)
+        {
+            message.status = AutopilotMessageStatus::Running;
+        }
+    }
+
+    pub fn append_turn_delta(&mut self, delta: &str) {
+        if let Some(assistant_message_id) = self.active_assistant_message_id
+            && let Some(message) = self
+                .messages
+                .iter_mut()
+                .find(|message| message.id == assistant_message_id)
+        {
+            message.status = AutopilotMessageStatus::Running;
+            message.content.push_str(delta);
+        }
+    }
+
+    pub fn mark_turn_completed(&mut self) {
+        if let Some(assistant_message_id) = self.active_assistant_message_id
+            && let Some(message) = self
+                .messages
+                .iter_mut()
+                .find(|message| message.id == assistant_message_id)
+        {
+            message.status = AutopilotMessageStatus::Done;
+        }
+        self.last_turn_status = Some("completed".to_string());
+        self.active_turn_id = None;
+        self.active_assistant_message_id = None;
+    }
+
+    pub fn mark_turn_error(&mut self, error: impl Into<String>) {
+        let error = error.into();
+        if let Some(assistant_message_id) = self.active_assistant_message_id
+            && let Some(message) = self
+                .messages
+                .iter_mut()
+                .find(|message| message.id == assistant_message_id)
+        {
+            message.status = AutopilotMessageStatus::Error;
+            if message.content.trim().is_empty() {
+                message.content = error.clone();
             }
         }
-        changed
+        self.last_turn_status = Some("failed".to_string());
+        self.last_error = Some(error);
+        self.active_turn_id = None;
+        self.active_assistant_message_id = None;
+    }
+
+    pub fn mark_pending_turn_dispatch_failed(&mut self, error: impl Into<String>) {
+        let error = error.into();
+        if let Some(assistant_message_id) = self.active_assistant_message_id
+            && let Some(message) = self
+                .messages
+                .iter_mut()
+                .find(|message| message.id == assistant_message_id)
+        {
+            message.status = AutopilotMessageStatus::Error;
+            message.content = error.clone();
+        }
+        self.last_error = Some(error);
+        self.last_turn_status = Some("failed".to_string());
+        self.active_turn_id = None;
+        self.active_assistant_message_id = None;
+    }
+
+    pub fn set_turn_status(&mut self, status: Option<String>) {
+        self.last_turn_status = status;
+    }
+
+    pub fn set_token_usage(
+        &mut self,
+        input_tokens: i64,
+        cached_input_tokens: i64,
+        output_tokens: i64,
+    ) {
+        self.token_usage = Some(AutopilotTokenUsage {
+            input_tokens,
+            cached_input_tokens,
+            output_tokens,
+        });
+    }
+
+    pub fn set_turn_plan(&mut self, explanation: Option<String>, plan: Vec<AutopilotTurnPlanStep>) {
+        self.turn_plan_explanation = explanation;
+        self.turn_plan = plan;
+    }
+
+    pub fn set_turn_diff(&mut self, diff: Option<String>) {
+        self.turn_diff = diff;
+    }
+
+    pub fn record_turn_timeline_event(&mut self, event: impl Into<String>) {
+        self.turn_timeline.push(event.into());
+        if self.turn_timeline.len() > 64 {
+            let overflow = self.turn_timeline.len().saturating_sub(64);
+            self.turn_timeline.drain(0..overflow);
+        }
+    }
+
+    pub fn set_thread_loaded_ids(&mut self, loaded_thread_ids: &[String]) {
+        let loaded_set: std::collections::HashSet<&str> =
+            loaded_thread_ids.iter().map(String::as_str).collect();
+        for (thread_id, metadata) in &mut self.thread_metadata {
+            metadata.loaded = loaded_set.contains(thread_id.as_str());
+        }
+    }
+
+    pub fn set_thread_status(&mut self, thread_id: &str, status: Option<String>) {
+        if let Some(metadata) = self.thread_metadata.get_mut(thread_id) {
+            metadata.status = status;
+            return;
+        }
+        self.thread_metadata.insert(
+            thread_id.to_string(),
+            AutopilotThreadMetadata {
+                thread_name: None,
+                status,
+                loaded: false,
+                cwd: None,
+                path: None,
+            },
+        );
+    }
+
+    pub fn set_thread_name(&mut self, thread_id: &str, thread_name: Option<String>) {
+        if let Some(metadata) = self.thread_metadata.get_mut(thread_id) {
+            metadata.thread_name = thread_name;
+            return;
+        }
+        self.thread_metadata.insert(
+            thread_id.to_string(),
+            AutopilotThreadMetadata {
+                thread_name,
+                status: None,
+                loaded: false,
+                cwd: None,
+                path: None,
+            },
+        );
+    }
+
+    pub fn active_thread_status(&self) -> Option<&str> {
+        let thread_id = self.active_thread_id.as_ref()?;
+        self.thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.status.as_deref())
+    }
+
+    pub fn active_thread_loaded(&self) -> Option<bool> {
+        let thread_id = self.active_thread_id.as_ref()?;
+        self.thread_metadata
+            .get(thread_id)
+            .map(|metadata| metadata.loaded)
+    }
+
+    pub fn thread_label(&self, thread_id: &str) -> String {
+        let short_id = if thread_id.len() > 16 {
+            &thread_id[..16]
+        } else {
+            thread_id
+        };
+        if let Some(metadata) = self.thread_metadata.get(thread_id)
+            && let Some(name) = metadata.thread_name.as_deref()
+            && !name.trim().is_empty()
+        {
+            return format!("{name} [{short_id}]");
+        }
+        short_id.to_string()
+    }
+
+    pub fn cycle_thread_filter_archived(&mut self) {
+        self.thread_filter_archived = match self.thread_filter_archived {
+            Some(false) => Some(true),
+            Some(true) => None,
+            None => Some(false),
+        };
+    }
+
+    pub fn cycle_thread_filter_sort_key(&mut self) {
+        self.thread_filter_sort_key = match self.thread_filter_sort_key {
+            codex_client::ThreadSortKey::CreatedAt => codex_client::ThreadSortKey::UpdatedAt,
+            codex_client::ThreadSortKey::UpdatedAt => codex_client::ThreadSortKey::CreatedAt,
+        };
+    }
+
+    pub fn cycle_thread_filter_source_kind(&mut self) {
+        self.thread_filter_source_kind = match self.thread_filter_source_kind {
+            None => Some(codex_client::ThreadSourceKind::AppServer),
+            Some(codex_client::ThreadSourceKind::AppServer) => {
+                Some(codex_client::ThreadSourceKind::Cli)
+            }
+            Some(codex_client::ThreadSourceKind::Cli) => Some(codex_client::ThreadSourceKind::Exec),
+            Some(codex_client::ThreadSourceKind::Exec) | Some(_) => None,
+        };
+    }
+
+    pub fn cycle_thread_filter_model_provider(&mut self) {
+        self.thread_filter_model_provider = match self.thread_filter_model_provider.as_deref() {
+            None => Some("openai".to_string()),
+            Some("openai") => Some("azure-openai".to_string()),
+            _ => None,
+        };
+    }
+
+    pub fn build_thread_list_params(&self, cwd: Option<String>) -> codex_client::ThreadListParams {
+        codex_client::ThreadListParams {
+            cwd,
+            cursor: None,
+            limit: Some(100),
+            sort_key: Some(self.thread_filter_sort_key),
+            model_providers: self
+                .thread_filter_model_provider
+                .as_ref()
+                .map(|provider| vec![provider.clone()]),
+            source_kinds: self.thread_filter_source_kind.map(|value| vec![value]),
+            archived: self.thread_filter_archived,
+            search_term: if self.thread_filter_search_term.trim().is_empty() {
+                None
+            } else {
+                Some(self.thread_filter_search_term.trim().to_string())
+            },
+        }
+    }
+
+    pub fn next_thread_name(&mut self) -> String {
+        let value = format!("Thread {}", self.thread_rename_counter);
+        self.thread_rename_counter = self.thread_rename_counter.saturating_add(1);
+        value
+    }
+
+    pub fn enqueue_command_approval(&mut self, request: AutopilotApprovalRequest) {
+        self.pending_command_approvals.push(request);
+    }
+
+    pub fn enqueue_file_change_approval(&mut self, request: AutopilotFileChangeApprovalRequest) {
+        self.pending_file_change_approvals.push(request);
+    }
+
+    pub fn enqueue_tool_call(&mut self, request: AutopilotToolCallRequest) {
+        self.pending_tool_calls.push(request);
+    }
+
+    pub fn enqueue_tool_user_input(&mut self, request: AutopilotToolUserInputRequest) {
+        self.pending_tool_user_input.push(request);
+    }
+
+    pub fn enqueue_auth_refresh(&mut self, request: AutopilotAuthRefreshRequest) {
+        self.pending_auth_refresh.push(request);
+    }
+
+    pub fn pop_command_approval(&mut self) -> Option<AutopilotApprovalRequest> {
+        if self.pending_command_approvals.is_empty() {
+            None
+        } else {
+            Some(self.pending_command_approvals.remove(0))
+        }
+    }
+
+    pub fn pop_file_change_approval(&mut self) -> Option<AutopilotFileChangeApprovalRequest> {
+        if self.pending_file_change_approvals.is_empty() {
+            None
+        } else {
+            Some(self.pending_file_change_approvals.remove(0))
+        }
+    }
+
+    pub fn pop_tool_call(&mut self) -> Option<AutopilotToolCallRequest> {
+        if self.pending_tool_calls.is_empty() {
+            None
+        } else {
+            Some(self.pending_tool_calls.remove(0))
+        }
+    }
+
+    pub fn pop_tool_user_input(&mut self) -> Option<AutopilotToolUserInputRequest> {
+        if self.pending_tool_user_input.is_empty() {
+            None
+        } else {
+            Some(self.pending_tool_user_input.remove(0))
+        }
+    }
+
+    pub fn pop_auth_refresh(&mut self) -> Option<AutopilotAuthRefreshRequest> {
+        if self.pending_auth_refresh.is_empty() {
+            None
+        } else {
+            Some(self.pending_auth_refresh.remove(0))
+        }
     }
 
     pub fn has_pending_messages(&self) -> bool {
@@ -1360,6 +1896,261 @@ impl JobHistoryState {
     }
 }
 
+pub struct CodexAccountPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub account_summary: String,
+    pub requires_openai_auth: bool,
+    pub auth_mode: Option<String>,
+    pub pending_login_id: Option<String>,
+    pub pending_login_url: Option<String>,
+    pub rate_limits_summary: Option<String>,
+}
+
+impl Default for CodexAccountPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for account/read".to_string()),
+            account_summary: "unknown".to_string(),
+            requires_openai_auth: true,
+            auth_mode: None,
+            pending_login_id: None,
+            pending_login_url: None,
+            rate_limits_summary: None,
+        }
+    }
+}
+
+pub struct CodexModelCatalogEntryState {
+    pub model: String,
+    pub display_name: String,
+    pub description: String,
+    pub hidden: bool,
+    pub is_default: bool,
+    pub default_reasoning_effort: String,
+    pub supported_reasoning_efforts: Vec<String>,
+}
+
+pub struct CodexModelsPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub include_hidden: bool,
+    pub entries: Vec<CodexModelCatalogEntryState>,
+    pub last_reroute: Option<String>,
+}
+
+impl Default for CodexModelsPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for model/list".to_string()),
+            include_hidden: false,
+            entries: Vec::new(),
+            last_reroute: None,
+        }
+    }
+}
+
+pub struct CodexConfigPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub config_json: String,
+    pub requirements_json: String,
+    pub detected_external_configs: usize,
+}
+
+impl Default for CodexConfigPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for config/read".to_string()),
+            config_json: "{}".to_string(),
+            requirements_json: "null".to_string(),
+            detected_external_configs: 0,
+        }
+    }
+}
+
+pub struct CodexMcpServerEntryState {
+    pub name: String,
+    pub auth_status: String,
+    pub tool_count: usize,
+    pub resource_count: usize,
+    pub template_count: usize,
+}
+
+pub struct CodexMcpPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub servers: Vec<CodexMcpServerEntryState>,
+    pub selected_server_index: Option<usize>,
+    pub last_oauth_url: Option<String>,
+    pub last_oauth_result: Option<String>,
+    pub next_cursor: Option<String>,
+}
+
+impl Default for CodexMcpPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for mcpServerStatus/list".to_string()),
+            servers: Vec::new(),
+            selected_server_index: None,
+            last_oauth_url: None,
+            last_oauth_result: None,
+            next_cursor: None,
+        }
+    }
+}
+
+pub struct CodexAppEntryState {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub is_accessible: bool,
+    pub is_enabled: bool,
+}
+
+pub struct CodexAppsPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub apps: Vec<CodexAppEntryState>,
+    pub selected_app_index: Option<usize>,
+    pub next_cursor: Option<String>,
+    pub update_count: u64,
+}
+
+impl Default for CodexAppsPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for app/list".to_string()),
+            apps: Vec::new(),
+            selected_app_index: None,
+            next_cursor: None,
+            update_count: 0,
+        }
+    }
+}
+
+pub struct CodexRemoteSkillEntryState {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+}
+
+pub struct CodexRemoteSkillsPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub skills: Vec<CodexRemoteSkillEntryState>,
+    pub selected_skill_index: Option<usize>,
+    pub last_exported_path: Option<String>,
+}
+
+impl Default for CodexRemoteSkillsPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for skills/remote/list".to_string()),
+            skills: Vec::new(),
+            selected_skill_index: None,
+            last_exported_path: None,
+        }
+    }
+}
+
+pub struct CodexLabsPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub review_last_turn_id: Option<String>,
+    pub review_last_thread_id: Option<String>,
+    pub command_last_exit_code: Option<i32>,
+    pub command_last_stdout: String,
+    pub command_last_stderr: String,
+    pub collaboration_modes_json: String,
+    pub experimental_features_json: String,
+    pub experimental_enabled: bool,
+    pub realtime_started: bool,
+    pub fuzzy_session_id: String,
+    pub fuzzy_last_status: String,
+    pub windows_last_status: Option<String>,
+}
+
+impl Default for CodexLabsPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Codex Labs ready".to_string()),
+            review_last_turn_id: None,
+            review_last_thread_id: None,
+            command_last_exit_code: None,
+            command_last_stdout: String::new(),
+            command_last_stderr: String::new(),
+            collaboration_modes_json: "[]".to_string(),
+            experimental_features_json: "[]".to_string(),
+            experimental_enabled: false,
+            realtime_started: false,
+            fuzzy_session_id: format!("labs-{}", std::process::id()),
+            fuzzy_last_status: "idle".to_string(),
+            windows_last_status: None,
+        }
+    }
+}
+
+pub struct CodexDiagnosticsMethodCountState {
+    pub method: String,
+    pub count: u64,
+}
+
+pub struct CodexDiagnosticsPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub notification_counts: Vec<CodexDiagnosticsMethodCountState>,
+    pub server_request_counts: Vec<CodexDiagnosticsMethodCountState>,
+    pub raw_events: Vec<String>,
+    pub last_command_failure: Option<String>,
+    pub last_snapshot_error: Option<String>,
+    pub wire_log_path: String,
+    pub wire_log_enabled: bool,
+}
+
+impl Default for CodexDiagnosticsPaneState {
+    fn default() -> Self {
+        let env_wire_log_path = std::env::var("OPENAGENTS_CODEX_WIRE_LOG_PATH").ok();
+        let wire_log_path = env_wire_log_path
+            .clone()
+            .unwrap_or_else(|| "/tmp/openagents-codex-wire.log".to_string());
+        Self {
+            load_state: PaneLoadState::Ready,
+            last_error: None,
+            last_action: Some("Codex diagnostics idle".to_string()),
+            notification_counts: Vec::new(),
+            server_request_counts: Vec::new(),
+            raw_events: Vec::new(),
+            last_command_failure: None,
+            last_snapshot_error: None,
+            wire_log_path: wire_log_path.clone(),
+            wire_log_enabled: env_wire_log_path.is_some(),
+        }
+    }
+}
+
 pub struct AgentProfileStatePaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
@@ -1449,6 +2240,21 @@ pub struct SkillRegistryPaneState {
     pub manifest_event_id: Option<String>,
     pub version_event_id: Option<String>,
     pub search_result_event_id: Option<String>,
+    pub source: String,
+    pub repo_skills_root: Option<String>,
+    pub discovered_skills: Vec<SkillRegistryDiscoveredSkill>,
+    pub discovery_errors: Vec<String>,
+    pub selected_skill_index: Option<usize>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SkillRegistryDiscoveredSkill {
+    pub name: String,
+    pub path: String,
+    pub scope: String,
+    pub enabled: bool,
+    pub interface_display_name: Option<String>,
+    pub dependency_count: usize,
 }
 
 impl Default for SkillRegistryPaneState {
@@ -1464,6 +2270,11 @@ impl Default for SkillRegistryPaneState {
             manifest_event_id: None,
             version_event_id: None,
             search_result_event_id: None,
+            source: "codex".to_string(),
+            repo_skills_root: None,
+            discovered_skills: Vec::new(),
+            discovery_errors: Vec::new(),
+            selected_skill_index: None,
         }
     }
 }
@@ -2368,6 +3179,14 @@ impl NostrSecretState {
 }
 
 impl_pane_status_access!(
+    CodexAccountPaneState,
+    CodexModelsPaneState,
+    CodexConfigPaneState,
+    CodexMcpPaneState,
+    CodexAppsPaneState,
+    CodexRemoteSkillsPaneState,
+    CodexLabsPaneState,
+    CodexDiagnosticsPaneState,
     RelayConnectionsState,
     SyncHealthState,
     NetworkRequestsState,
@@ -2418,6 +3237,20 @@ pub struct RenderState {
     pub job_history_inputs: JobHistoryPaneInputs,
     pub chat_inputs: ChatPaneInputs,
     pub autopilot_chat: AutopilotChatState,
+    pub codex_account: CodexAccountPaneState,
+    pub codex_models: CodexModelsPaneState,
+    pub codex_config: CodexConfigPaneState,
+    pub codex_mcp: CodexMcpPaneState,
+    pub codex_apps: CodexAppsPaneState,
+    pub codex_remote_skills: CodexRemoteSkillsPaneState,
+    pub codex_labs: CodexLabsPaneState,
+    pub codex_diagnostics: CodexDiagnosticsPaneState,
+    pub codex_lane: CodexLaneSnapshot,
+    pub codex_lane_config: crate::codex_lane::CodexLaneConfig,
+    pub codex_lane_worker: CodexLaneWorker,
+    pub codex_command_responses: Vec<CodexLaneCommandResponse>,
+    pub codex_notifications: Vec<CodexLaneNotification>,
+    pub next_codex_command_seq: u64,
     pub sa_lane: SaLaneSnapshot,
     pub skl_lane: SklLaneSnapshot,
     pub ac_lane: AcLaneSnapshot,
@@ -2468,6 +3301,41 @@ impl RenderState {
     pub fn queue_sa_command(&mut self, command: SaLifecycleCommand) -> Result<u64, String> {
         let seq = self.allocate_runtime_command_seq();
         self.sa_lane_worker.enqueue(seq, command).map(|()| seq)
+    }
+
+    fn allocate_codex_command_seq(&mut self) -> u64 {
+        let seq = self.next_codex_command_seq;
+        self.next_codex_command_seq = self.next_codex_command_seq.saturating_add(1);
+        seq
+    }
+
+    pub fn queue_codex_command(&mut self, command: CodexLaneCommand) -> Result<u64, String> {
+        let seq = self.allocate_codex_command_seq();
+        self.codex_lane_worker.enqueue(seq, command).map(|()| seq)
+    }
+
+    pub fn restart_codex_lane(&mut self) {
+        let replacement = CodexLaneWorker::spawn(self.codex_lane_config.clone());
+        let mut previous = std::mem::replace(&mut self.codex_lane_worker, replacement);
+        previous.shutdown();
+        self.codex_lane = CodexLaneSnapshot::default();
+        self.autopilot_chat.set_connection_status("starting");
+    }
+
+    pub fn record_codex_command_response(&mut self, response: CodexLaneCommandResponse) {
+        self.codex_command_responses.push(response);
+        if self.codex_command_responses.len() > 128 {
+            let overflow = self.codex_command_responses.len().saturating_sub(128);
+            self.codex_command_responses.drain(0..overflow);
+        }
+    }
+
+    pub fn record_codex_notification(&mut self, notification: CodexLaneNotification) {
+        self.codex_notifications.push(notification);
+        if self.codex_notifications.len() > 256 {
+            let overflow = self.codex_notifications.len().saturating_sub(256);
+            self.codex_notifications.drain(0..overflow);
+        }
     }
 
     pub fn queue_skl_command(&mut self, command: SklDiscoveryTrustCommand) -> Result<u64, String> {
@@ -2662,25 +3530,79 @@ mod tests {
     }
 
     #[test]
-    fn chat_state_progresses_queued_to_done() {
+    fn chat_state_tracks_codex_turn_lifecycle() {
         let mut chat = AutopilotChatState::default();
-        let now = std::time::Instant::now();
-        chat.submit_prompt(now, "ping".to_string());
+        chat.ensure_thread("thread-1".to_string());
+        chat.submit_prompt("ping".to_string());
         assert!(
             chat.messages
                 .iter()
                 .any(|message| message.status == AutopilotMessageStatus::Queued)
         );
 
-        assert!(chat.tick(now + std::time::Duration::from_millis(300)));
+        chat.mark_turn_started("turn-1".to_string());
         assert!(
             chat.messages
                 .iter()
                 .any(|message| message.status == AutopilotMessageStatus::Running)
         );
 
-        assert!(chat.tick(now + std::time::Duration::from_secs(2)));
+        chat.append_turn_delta("pong");
+        chat.mark_turn_completed();
         assert!(!chat.has_pending_messages());
+        assert!(
+            chat.messages
+                .iter()
+                .any(|message| message.content.contains("pong"))
+        );
+    }
+
+    #[test]
+    fn chat_state_tracks_thread_metadata_and_filters() {
+        let mut chat = AutopilotChatState::default();
+        chat.set_thread_entries(vec![
+            super::AutopilotThreadListEntry {
+                thread_id: "thread-a".to_string(),
+                thread_name: Some("Alpha".to_string()),
+                status: Some("idle".to_string()),
+                loaded: false,
+                cwd: Some("/tmp/a".to_string()),
+                path: Some("/tmp/a.jsonl".to_string()),
+            },
+            super::AutopilotThreadListEntry {
+                thread_id: "thread-b".to_string(),
+                thread_name: None,
+                status: Some("active:waitingOnApproval".to_string()),
+                loaded: false,
+                cwd: Some("/tmp/b".to_string()),
+                path: None,
+            },
+        ]);
+
+        chat.set_thread_loaded_ids(&["thread-b".to_string()]);
+        assert_eq!(chat.active_thread_id.as_deref(), Some("thread-a"));
+        assert_eq!(chat.thread_label("thread-a"), "Alpha [thread-a]");
+        assert_eq!(chat.thread_metadata["thread-a"].loaded, false);
+        assert_eq!(chat.thread_metadata["thread-b"].loaded, true);
+
+        chat.cycle_thread_filter_archived();
+        chat.cycle_thread_filter_sort_key();
+        chat.cycle_thread_filter_source_kind();
+        chat.cycle_thread_filter_model_provider();
+        chat.thread_filter_search_term = "alpha".to_string();
+        let params = chat.build_thread_list_params(Some("/workspace".to_string()));
+        assert_eq!(params.archived, Some(true));
+        assert_eq!(
+            params.sort_key,
+            Some(codex_client::ThreadSortKey::CreatedAt)
+        );
+        assert_eq!(
+            params.source_kinds,
+            Some(vec![codex_client::ThreadSourceKind::AppServer])
+        );
+        assert_eq!(params.model_providers, Some(vec!["openai".to_string()]));
+        assert_eq!(params.search_term.as_deref(), Some("alpha"));
+        assert_eq!(params.cwd.as_deref(), Some("/workspace"));
     }
 
     #[test]

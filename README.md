@@ -26,5 +26,6 @@ Ownership boundaries are defined in [docs/OWNERSHIP.md](docs/OWNERSHIP.md).
 - Architecture boundary hygiene is guarded by `scripts/lint/ownership-boundary-check.sh`.
 - Clean-on-touch clippy hygiene is guarded by `scripts/lint/touched-clippy-gate.sh` with tracked debt in `scripts/lint/clippy-debt-allowlist.toml`.
 - Repo-managed Agent Skills validation is guarded by `scripts/skills/validate_registry.sh`.
+- Codex chat/skills regression coverage: `cargo test -p autopilot-desktop codex_lane`, `cargo test -p autopilot-desktop assemble_chat_turn_input`, and `cargo test -p codex-client --test skills_and_user_input`.
 
 For contributor guardrails and scope rules, see [AGENTS.md](AGENTS.md).

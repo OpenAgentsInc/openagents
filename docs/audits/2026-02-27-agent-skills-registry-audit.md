@@ -85,29 +85,33 @@ Use a project-namespace layout:
 skills/
   README.md
   neutron/
-    neutron-api-integration/
+    SKILL.md
+    scripts/                        # optional
+    references/                     # optional
+    assets/                         # optional
+  mezo/
+    wallet-ops/
       SKILL.md
-      agents/openai.yaml            # optional, recommended
-      scripts/                      # optional
-      references/                   # optional
-      assets/                       # optional
+    validator-ops/
+      SKILL.md
 ```
 
 Rules:
 
-- One skill per skill directory (`skills/<project>/<skill-name>/SKILL.md`).
-- `SKILL.md` `name` must match `<skill-name>`.
+- Single-skill project layout: `skills/<project>/SKILL.md`.
+- Multi-skill project layout: `skills/<project>/<skill-name>/SKILL.md`.
+- `SKILL.md` `name` must match `<project>` for single-skill projects, or `<skill-name>` for multi-skill projects.
 - Keep Agent Skills protocol-compliant top-level frontmatter fields only.
 - Put OpenAgents/Nostr bridge metadata under `metadata` keys (namespaced), not new top-level keys.
 
 Suggested metadata keys for bridge mapping:
 
 - `metadata.oa.project`
-- `metadata.oa.nostr.identifier` (maps to SKL `d`)
-- `metadata.oa.nostr.version`
-- `metadata.oa.nostr.expiry_unix`
-- `metadata.oa.nostr.capabilities_csv`
-- `metadata.oa.nostr.author_npub` (optional)
+- `metadata.oa.identifier` (maps to SKL `d`)
+- `metadata.oa.version`
+- `metadata.oa.expires_at_unix`
+- `metadata.oa.capabilities`
+- `metadata.oa.author_npub` (optional)
 
 This keeps files Agent Skills-compatible while carrying enough data to derive SKL manifests.
 
@@ -115,7 +119,7 @@ This keeps files Agent Skills-compatible while carrying enough data to derive SK
 
 `skills/README.md` should define:
 
-1. Directory contract (`skills/<project>/<skill-name>/SKILL.md`).
+1. Directory contract (single-skill `skills/<project>/SKILL.md`; multi-skill `skills/<project>/<skill-name>/SKILL.md`).
 2. Authoring contract:
    - required frontmatter fields
    - allowed optional fields
@@ -125,7 +129,7 @@ This keeps files Agent Skills-compatible while carrying enough data to derive SK
    - run `skills-ref validate <skill-dir>` for changed skills
    - run registry-wide validation in CI/local script
 5. Versioning/release contract:
-   - bump `metadata.oa.nostr.version` on behavioral changes
+   - bump `metadata.oa.version` on behavioral changes
    - publish new `33400`/`33401` entries for released versions
 
 ## Implementation Sync Plan

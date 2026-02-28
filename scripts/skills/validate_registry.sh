@@ -11,12 +11,38 @@ if [[ ! -d "$SKILLS_ROOT" ]]; then
 fi
 
 skill_dirs=()
-while IFS= read -r skill_md_path; do
-    skill_dirs+=("$(dirname "$skill_md_path")")
-done < <(
-    find "$SKILLS_ROOT" -mindepth 3 -maxdepth 3 -type f \
-        \( -name 'SKILL.md' -o -name 'skill.md' \) | sort
-)
+while IFS= read -r project_dir; do
+    root_skill_path=""
+    if [[ -f "$project_dir/SKILL.md" ]]; then
+        root_skill_path="$project_dir/SKILL.md"
+    elif [[ -f "$project_dir/skill.md" ]]; then
+        root_skill_path="$project_dir/skill.md"
+    fi
+
+    nested_skill_dirs=()
+    while IFS= read -r nested_dir; do
+        if [[ -f "$nested_dir/SKILL.md" || -f "$nested_dir/skill.md" ]]; then
+            nested_skill_dirs+=("$nested_dir")
+        fi
+    done < <(find "$project_dir" -mindepth 1 -maxdepth 1 -type d | sort)
+
+    if [[ -n "$root_skill_path" && ${#nested_skill_dirs[@]} -gt 0 ]]; then
+        printf "Project mixes root SKILL.md with nested skill directories: %s\n" "$project_dir" >&2
+        printf 'Choose one layout:\n' >&2
+        printf ' - single skill at %s/SKILL.md\n' "$project_dir" >&2
+        printf ' - or multiple nested skills at %s/<skill-name>/SKILL.md\n' "$project_dir" >&2
+        exit 1
+    fi
+
+    if [[ -n "$root_skill_path" ]]; then
+        skill_dirs+=("$project_dir")
+        continue
+    fi
+
+    if [[ ${#nested_skill_dirs[@]} -gt 0 ]]; then
+        skill_dirs+=("${nested_skill_dirs[@]}")
+    fi
+done < <(find "$SKILLS_ROOT" -mindepth 1 -maxdepth 1 -type d | sort)
 
 if [[ ${#skill_dirs[@]} -eq 0 ]]; then
     printf 'No skills discovered under %s (nothing to validate).\n' "$SKILLS_ROOT"

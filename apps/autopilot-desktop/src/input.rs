@@ -1,4 +1,22 @@
+use codex_client::{
+    ApprovalDecision, AppsListParams, ChatgptAuthTokensRefreshResponse,
+    CollaborationModeListParams, CommandExecParams, CommandExecutionRequestApprovalResponse,
+    ConfigBatchWriteParams, ConfigEdit, ConfigReadParams, ConfigValueWriteParams,
+    DynamicToolCallOutputContentItem, DynamicToolCallResponse, ExperimentalFeatureListParams,
+    ExternalAgentConfigDetectParams, ExternalAgentConfigImportParams,
+    FileChangeRequestApprovalResponse, FuzzyFileSearchSessionStartParams,
+    FuzzyFileSearchSessionStopParams, FuzzyFileSearchSessionUpdateParams, GetAccountParams,
+    HazelnutScope, ListMcpServerStatusParams, LoginAccountParams, McpServerOauthLoginParams,
+    MergeStrategy, ModelListParams, ProductSurface, ReviewDelivery, ReviewStartParams,
+    ReviewTarget, SkillsRemoteReadParams, SkillsRemoteWriteParams, ThreadArchiveParams,
+    ThreadCompactStartParams, ThreadForkParams, ThreadLoadedListParams,
+    ThreadRealtimeAppendTextParams, ThreadRealtimeStartParams, ThreadRealtimeStopParams,
+    ThreadResumeParams, ThreadRollbackParams, ThreadSetNameParams, ThreadUnarchiveParams,
+    ThreadUnsubscribeParams, ToolRequestUserInputAnswer, ToolRequestUserInputResponse,
+    TurnStartParams, UserInput, WindowsSandboxSetupStartParams,
+};
 use nostr::regenerate_identity;
+use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use wgpui::clipboard::copy_to_clipboard;
@@ -20,17 +38,21 @@ use crate::hotbar::{
 use crate::pane_registry::pane_spec_by_command_id;
 use crate::pane_system::{
     ActivityFeedPaneAction, AgentNetworkSimulationPaneAction, AlertsRecoveryPaneAction,
-    clamp_all_panes_to_window, EarningsScoreboardPaneAction, NetworkRequestsPaneAction,
-    PaneController, PaneHitAction, PaneInput, RelayConnectionsPaneAction,
-    RelaySecuritySimulationPaneAction, SettingsPaneAction, StarterJobsPaneAction,
-    SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction,
+    CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction, CodexDiagnosticsPaneAction,
+    CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction, CodexRemoteSkillsPaneAction,
+    EarningsScoreboardPaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction,
+    PaneInput, RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction, SettingsPaneAction,
+    StarterJobsPaneAction, SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction,
+    clamp_all_panes_to_window,
     dispatch_chat_input_event, dispatch_create_invoice_input_event,
     dispatch_job_history_input_event, dispatch_network_requests_input_event,
     dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
     dispatch_settings_input_event, dispatch_spark_input_event, pane_indices_by_z_desc,
     pane_z_sort_invocation_count, topmost_pane_hit_action_in_order, SIDEBAR_DEFAULT_WIDTH,
 };
-use crate::render::{logical_size, render_frame, sidebar_go_online_button_bounds, sidebar_handle_bounds};
+use crate::render::{
+    logical_size, render_frame, sidebar_go_online_button_bounds, sidebar_handle_bounds,
+};
 use crate::runtime_lanes::{
     AcCreditCommand, RuntimeCommandErrorClass, RuntimeCommandResponse, RuntimeCommandStatus,
     RuntimeLane, SaLifecycleCommand, SklDiscoveryTrustCommand,
@@ -55,15 +77,13 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
         state.window.request_redraw();
     }
     let now = std::time::Instant::now();
-    if state.autopilot_chat.tick(now) {
-        state.window.request_redraw();
-    }
     refresh_earnings_scoreboard(state, now);
     refresh_sync_health(state);
 
     match event {
         WindowEvent::CloseRequested => {
             let _ = state.spark_worker.cancel_pending();
+            state.codex_lane_worker.shutdown();
             event_loop.exit();
         }
         WindowEvent::Resized(new_size) => {
@@ -540,6 +560,36 @@ fn run_pane_hit_action(state: &mut crate::app_state::RenderState, action: PaneHi
             true
         }
         PaneHitAction::ChatSend => run_chat_submit_action(state),
+        PaneHitAction::ChatRefreshThreads => run_chat_refresh_threads_action(state),
+        PaneHitAction::ChatCycleModel => run_chat_cycle_model_action(state),
+        PaneHitAction::ChatInterruptTurn => run_chat_interrupt_turn_action(state),
+        PaneHitAction::ChatToggleArchivedFilter => run_chat_toggle_archived_filter_action(state),
+        PaneHitAction::ChatCycleSortFilter => run_chat_cycle_sort_filter_action(state),
+        PaneHitAction::ChatCycleSourceFilter => run_chat_cycle_source_filter_action(state),
+        PaneHitAction::ChatCycleProviderFilter => run_chat_cycle_provider_filter_action(state),
+        PaneHitAction::ChatForkThread => run_chat_fork_thread_action(state),
+        PaneHitAction::ChatArchiveThread => run_chat_archive_thread_action(state),
+        PaneHitAction::ChatUnarchiveThread => run_chat_unarchive_thread_action(state),
+        PaneHitAction::ChatRenameThread => run_chat_rename_thread_action(state),
+        PaneHitAction::ChatRollbackThread => run_chat_rollback_thread_action(state),
+        PaneHitAction::ChatCompactThread => run_chat_compact_thread_action(state),
+        PaneHitAction::ChatUnsubscribeThread => run_chat_unsubscribe_thread_action(state),
+        PaneHitAction::ChatRespondApprovalAccept => {
+            run_chat_approval_response_action(state, ApprovalDecision::Accept)
+        }
+        PaneHitAction::ChatRespondApprovalAcceptSession => {
+            run_chat_approval_response_action(state, ApprovalDecision::AcceptForSession)
+        }
+        PaneHitAction::ChatRespondApprovalDecline => {
+            run_chat_approval_response_action(state, ApprovalDecision::Decline)
+        }
+        PaneHitAction::ChatRespondApprovalCancel => {
+            run_chat_approval_response_action(state, ApprovalDecision::Cancel)
+        }
+        PaneHitAction::ChatRespondToolCall => run_chat_tool_call_response_action(state),
+        PaneHitAction::ChatRespondToolUserInput => run_chat_tool_user_input_response_action(state),
+        PaneHitAction::ChatRespondAuthRefresh => run_chat_auth_refresh_response_action(state),
+        PaneHitAction::ChatSelectThread(index) => run_chat_select_thread_action(state, index),
         PaneHitAction::GoOnlineToggle => {
             let wants_online = matches!(
                 state.provider_runtime.mode,
@@ -574,6 +624,14 @@ fn run_pane_hit_action(state: &mut crate::app_state::RenderState, action: PaneHi
             }
             true
         }
+        PaneHitAction::CodexAccount(action) => run_codex_account_action(state, action),
+        PaneHitAction::CodexModels(action) => run_codex_models_action(state, action),
+        PaneHitAction::CodexConfig(action) => run_codex_config_action(state, action),
+        PaneHitAction::CodexMcp(action) => run_codex_mcp_action(state, action),
+        PaneHitAction::CodexApps(action) => run_codex_apps_action(state, action),
+        PaneHitAction::CodexRemoteSkills(action) => run_codex_remote_skills_action(state, action),
+        PaneHitAction::CodexLabs(action) => run_codex_labs_action(state, action),
+        PaneHitAction::CodexDiagnostics(action) => run_codex_diagnostics_action(state, action),
         PaneHitAction::EarningsScoreboard(action) => run_earnings_scoreboard_action(state, action),
         PaneHitAction::RelayConnections(action) => run_relay_connections_action(state, action),
         PaneHitAction::SyncHealth(action) => run_sync_health_action(state, action),
@@ -869,12 +927,1140 @@ fn run_chat_submit_action(state: &mut crate::app_state::RenderState) -> bool {
         state.autopilot_chat.last_error = Some("Prompt cannot be empty".to_string());
         return true;
     }
+    let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() else {
+        state.autopilot_chat.last_error =
+            Some("No active thread yet. Wait for Codex lane readiness.".to_string());
+        return true;
+    };
 
     state.chat_inputs.composer.set_value(String::new());
-    state
-        .autopilot_chat
-        .submit_prompt(std::time::Instant::now(), prompt);
+    state.autopilot_chat.submit_prompt(prompt.clone());
+
+    let selected_skill = state
+        .skill_registry
+        .selected_skill_index
+        .and_then(|index| state.skill_registry.discovered_skills.get(index))
+        .map(|skill| (skill.name.as_str(), skill.path.as_str(), skill.enabled));
+    let (input, skill_error) = assemble_chat_turn_input(prompt, selected_skill);
+    if let Some(skill_error) = skill_error {
+        state.autopilot_chat.last_error = Some(skill_error);
+    }
+
+    let command = crate::codex_lane::CodexLaneCommand::TurnStart(TurnStartParams {
+        thread_id,
+        input,
+        cwd: None,
+        approval_policy: None,
+        sandbox_policy: None,
+        model: Some(state.autopilot_chat.current_model().to_string()),
+        effort: None,
+        summary: None,
+        personality: None,
+        output_schema: None,
+        collaboration_mode: None,
+    });
+
+    if let Err(error) = state.queue_codex_command(command) {
+        state
+            .autopilot_chat
+            .mark_pending_turn_dispatch_failed(error);
+    }
     true
+}
+
+fn assemble_chat_turn_input(
+    prompt: String,
+    selected_skill: Option<(&str, &str, bool)>,
+) -> (Vec<UserInput>, Option<String>) {
+    let mut input = vec![UserInput::Text {
+        text: prompt,
+        text_elements: Vec::new(),
+    }];
+    let mut last_error = None;
+    if let Some((name, path, enabled)) = selected_skill {
+        if enabled {
+            input.push(UserInput::Skill {
+                name: name.to_string(),
+                path: std::path::PathBuf::from(path),
+            });
+        } else {
+            last_error = Some(format!(
+                "Selected skill '{}' is disabled; enable it first.",
+                name
+            ));
+        }
+    }
+
+    (input, last_error)
+}
+
+fn run_chat_refresh_threads_action(state: &mut crate::app_state::RenderState) -> bool {
+    let cwd = std::env::current_dir()
+        .ok()
+        .and_then(|value| value.into_os_string().into_string().ok());
+    let params = state.autopilot_chat.build_thread_list_params(cwd);
+    let command = crate::codex_lane::CodexLaneCommand::ThreadList(params);
+    if let Err(error) = state.queue_codex_command(command) {
+        state.autopilot_chat.last_error = Some(error);
+    } else {
+        state.autopilot_chat.last_error = None;
+        if let Err(error) = state.queue_codex_command(
+            crate::codex_lane::CodexLaneCommand::ThreadLoadedList(ThreadLoadedListParams {
+                cursor: None,
+                limit: Some(200),
+            }),
+        ) {
+            state.autopilot_chat.last_error = Some(error);
+        }
+    }
+    true
+}
+
+fn run_chat_cycle_model_action(state: &mut crate::app_state::RenderState) -> bool {
+    state.autopilot_chat.cycle_model();
+    true
+}
+
+fn run_chat_toggle_archived_filter_action(state: &mut crate::app_state::RenderState) -> bool {
+    state.autopilot_chat.cycle_thread_filter_archived();
+    run_chat_refresh_threads_action(state)
+}
+
+fn run_chat_cycle_sort_filter_action(state: &mut crate::app_state::RenderState) -> bool {
+    state.autopilot_chat.cycle_thread_filter_sort_key();
+    run_chat_refresh_threads_action(state)
+}
+
+fn run_chat_cycle_source_filter_action(state: &mut crate::app_state::RenderState) -> bool {
+    state.autopilot_chat.cycle_thread_filter_source_kind();
+    run_chat_refresh_threads_action(state)
+}
+
+fn run_chat_cycle_provider_filter_action(state: &mut crate::app_state::RenderState) -> bool {
+    state.autopilot_chat.cycle_thread_filter_model_provider();
+    run_chat_refresh_threads_action(state)
+}
+
+fn run_chat_interrupt_turn_action(state: &mut crate::app_state::RenderState) -> bool {
+    let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() else {
+        state.autopilot_chat.last_error = Some("No active thread to interrupt".to_string());
+        return true;
+    };
+    let Some(turn_id) = state.autopilot_chat.active_turn_id.clone() else {
+        state.autopilot_chat.last_error = Some("No active turn to interrupt".to_string());
+        return true;
+    };
+
+    let command =
+        crate::codex_lane::CodexLaneCommand::TurnInterrupt(codex_client::TurnInterruptParams {
+            thread_id,
+            turn_id: turn_id.clone(),
+        });
+    match state.queue_codex_command(command) {
+        Ok(_) => {
+            state
+                .autopilot_chat
+                .record_turn_timeline_event(format!("interrupt requested: {turn_id}"));
+            state
+                .autopilot_chat
+                .set_turn_status(Some("interruptRequested".to_string()));
+            state.autopilot_chat.last_error = None;
+        }
+        Err(error) => {
+            state.autopilot_chat.last_error = Some(error);
+        }
+    }
+    true
+}
+
+fn active_thread_id(state: &crate::app_state::RenderState) -> Option<String> {
+    state.autopilot_chat.active_thread_id.clone()
+}
+
+fn run_chat_fork_thread_action(state: &mut crate::app_state::RenderState) -> bool {
+    let Some(thread_id) = active_thread_id(state) else {
+        state.autopilot_chat.last_error = Some("No active thread to fork".to_string());
+        return true;
+    };
+    let cwd = std::env::current_dir()
+        .ok()
+        .and_then(|value| value.into_os_string().into_string().ok());
+    let command = crate::codex_lane::CodexLaneCommand::ThreadFork(ThreadForkParams {
+        thread_id,
+        path: None,
+        model: Some(state.autopilot_chat.current_model().to_string()),
+        model_provider: None,
+        cwd,
+        approval_policy: None,
+        sandbox: None,
+        config: None,
+        base_instructions: None,
+        developer_instructions: None,
+        persist_extended_history: false,
+    });
+    if let Err(error) = state.queue_codex_command(command) {
+        state.autopilot_chat.last_error = Some(error);
+    }
+    true
+}
+
+fn run_chat_archive_thread_action(state: &mut crate::app_state::RenderState) -> bool {
+    let Some(thread_id) = active_thread_id(state) else {
+        state.autopilot_chat.last_error = Some("No active thread to archive".to_string());
+        return true;
+    };
+    if let Err(error) = state.queue_codex_command(
+        crate::codex_lane::CodexLaneCommand::ThreadArchive(ThreadArchiveParams { thread_id }),
+    ) {
+        state.autopilot_chat.last_error = Some(error);
+    }
+    true
+}
+
+fn run_chat_unarchive_thread_action(state: &mut crate::app_state::RenderState) -> bool {
+    let Some(thread_id) = active_thread_id(state) else {
+        state.autopilot_chat.last_error = Some("No active thread to unarchive".to_string());
+        return true;
+    };
+    if let Err(error) = state.queue_codex_command(
+        crate::codex_lane::CodexLaneCommand::ThreadUnarchive(ThreadUnarchiveParams { thread_id }),
+    ) {
+        state.autopilot_chat.last_error = Some(error);
+    }
+    true
+}
+
+fn run_chat_rename_thread_action(state: &mut crate::app_state::RenderState) -> bool {
+    let Some(thread_id) = active_thread_id(state) else {
+        state.autopilot_chat.last_error = Some("No active thread to rename".to_string());
+        return true;
+    };
+    let name = state.autopilot_chat.next_thread_name();
+    let command = crate::codex_lane::CodexLaneCommand::ThreadNameSet(ThreadSetNameParams {
+        thread_id: thread_id.clone(),
+        name: name.clone(),
+    });
+    if let Err(error) = state.queue_codex_command(command) {
+        state.autopilot_chat.last_error = Some(error);
+    } else {
+        state.autopilot_chat.set_thread_name(&thread_id, Some(name));
+    }
+    true
+}
+
+fn run_chat_rollback_thread_action(state: &mut crate::app_state::RenderState) -> bool {
+    let Some(thread_id) = active_thread_id(state) else {
+        state.autopilot_chat.last_error = Some("No active thread to rollback".to_string());
+        return true;
+    };
+    let command = crate::codex_lane::CodexLaneCommand::ThreadRollback(ThreadRollbackParams {
+        thread_id,
+        num_turns: 1,
+    });
+    if let Err(error) = state.queue_codex_command(command) {
+        state.autopilot_chat.last_error = Some(error);
+    }
+    true
+}
+
+fn run_chat_compact_thread_action(state: &mut crate::app_state::RenderState) -> bool {
+    let Some(thread_id) = active_thread_id(state) else {
+        state.autopilot_chat.last_error = Some("No active thread to compact".to_string());
+        return true;
+    };
+    let command =
+        crate::codex_lane::CodexLaneCommand::ThreadCompactStart(ThreadCompactStartParams {
+            thread_id,
+        });
+    if let Err(error) = state.queue_codex_command(command) {
+        state.autopilot_chat.last_error = Some(error);
+    }
+    true
+}
+
+fn run_chat_unsubscribe_thread_action(state: &mut crate::app_state::RenderState) -> bool {
+    let Some(thread_id) = active_thread_id(state) else {
+        state.autopilot_chat.last_error = Some("No active thread to unsubscribe".to_string());
+        return true;
+    };
+    let command = crate::codex_lane::CodexLaneCommand::ThreadUnsubscribe(ThreadUnsubscribeParams {
+        thread_id,
+    });
+    if let Err(error) = state.queue_codex_command(command) {
+        state.autopilot_chat.last_error = Some(error);
+    }
+    true
+}
+
+fn run_chat_select_thread_action(state: &mut crate::app_state::RenderState, index: usize) -> bool {
+    let Some(target) = state.autopilot_chat.select_thread_by_index(index) else {
+        return false;
+    };
+
+    eprintln!(
+        "codex thread/resume target id={} cwd={:?} path={:?}",
+        target.thread_id, target.cwd, target.path
+    );
+
+    let command = crate::codex_lane::CodexLaneCommand::ThreadResume(ThreadResumeParams {
+        thread_id: target.thread_id,
+        model: None,
+        model_provider: None,
+        cwd: target.cwd,
+        approval_policy: None,
+        sandbox: None,
+        path: target.path.map(std::path::PathBuf::from),
+    });
+    if let Err(error) = state.queue_codex_command(command) {
+        state.autopilot_chat.last_error = Some(error);
+    }
+    true
+}
+
+fn run_chat_approval_response_action(
+    state: &mut crate::app_state::RenderState,
+    decision: ApprovalDecision,
+) -> bool {
+    if let Some(request) = state.autopilot_chat.pop_command_approval() {
+        let command = crate::codex_lane::CodexLaneCommand::ServerRequestCommandApprovalRespond {
+            request_id: request.request_id.clone(),
+            response: CommandExecutionRequestApprovalResponse {
+                decision: decision.clone(),
+            },
+        };
+        if let Err(error) = state.queue_codex_command(command) {
+            state
+                .autopilot_chat
+                .pending_command_approvals
+                .insert(0, request);
+            state.autopilot_chat.last_error = Some(error);
+        } else {
+            state
+                .autopilot_chat
+                .record_turn_timeline_event(format!("command approval response: {:?}", decision));
+        }
+        return true;
+    }
+
+    if let Some(request) = state.autopilot_chat.pop_file_change_approval() {
+        let command = crate::codex_lane::CodexLaneCommand::ServerRequestFileApprovalRespond {
+            request_id: request.request_id.clone(),
+            response: FileChangeRequestApprovalResponse { decision },
+        };
+        if let Err(error) = state.queue_codex_command(command) {
+            state
+                .autopilot_chat
+                .pending_file_change_approvals
+                .insert(0, request);
+            state.autopilot_chat.last_error = Some(error);
+        } else {
+            state
+                .autopilot_chat
+                .record_turn_timeline_event("file-change approval response submitted");
+        }
+        return true;
+    }
+
+    state.autopilot_chat.last_error = Some("No pending approval requests".to_string());
+    true
+}
+
+fn run_chat_tool_call_response_action(state: &mut crate::app_state::RenderState) -> bool {
+    let Some(request) = state.autopilot_chat.pop_tool_call() else {
+        state.autopilot_chat.last_error = Some("No pending tool calls".to_string());
+        return true;
+    };
+
+    let command = crate::codex_lane::CodexLaneCommand::ServerRequestToolCallRespond {
+        request_id: request.request_id.clone(),
+        response: DynamicToolCallResponse {
+            content_items: vec![DynamicToolCallOutputContentItem::InputText {
+                text: format!(
+                    "OpenAgents desktop acknowledged tool '{}' for call '{}'",
+                    request.tool, request.call_id
+                ),
+            }],
+            success: true,
+        },
+    };
+    if let Err(error) = state.queue_codex_command(command) {
+        state.autopilot_chat.pending_tool_calls.insert(0, request);
+        state.autopilot_chat.last_error = Some(error);
+    } else {
+        state
+            .autopilot_chat
+            .record_turn_timeline_event("tool call response submitted");
+    }
+    true
+}
+
+fn run_chat_tool_user_input_response_action(state: &mut crate::app_state::RenderState) -> bool {
+    let Some(request) = state.autopilot_chat.pop_tool_user_input() else {
+        state.autopilot_chat.last_error = Some("No pending tool user-input requests".to_string());
+        return true;
+    };
+
+    let mut answers = HashMap::new();
+    for question in &request.questions {
+        let value = if let Some(first) = question.options.first() {
+            vec![first.clone()]
+        } else {
+            vec!["ok".to_string()]
+        };
+        answers.insert(
+            question.id.clone(),
+            ToolRequestUserInputAnswer { answers: value },
+        );
+    }
+
+    let command = crate::codex_lane::CodexLaneCommand::ServerRequestToolUserInputRespond {
+        request_id: request.request_id.clone(),
+        response: ToolRequestUserInputResponse { answers },
+    };
+    if let Err(error) = state.queue_codex_command(command) {
+        state
+            .autopilot_chat
+            .pending_tool_user_input
+            .insert(0, request);
+        state.autopilot_chat.last_error = Some(error);
+    } else {
+        state
+            .autopilot_chat
+            .record_turn_timeline_event("tool user-input response submitted");
+    }
+    true
+}
+
+fn run_chat_auth_refresh_response_action(state: &mut crate::app_state::RenderState) -> bool {
+    let Some(request) = state.autopilot_chat.pop_auth_refresh() else {
+        state.autopilot_chat.last_error = Some("No pending auth refresh requests".to_string());
+        return true;
+    };
+
+    let access_token = if state
+        .autopilot_chat
+        .auth_refresh_access_token
+        .trim()
+        .is_empty()
+    {
+        std::env::var("OPENAI_ACCESS_TOKEN").unwrap_or_default()
+    } else {
+        state.autopilot_chat.auth_refresh_access_token.clone()
+    };
+    let account_id = if state
+        .autopilot_chat
+        .auth_refresh_account_id
+        .trim()
+        .is_empty()
+    {
+        request
+            .previous_account_id
+            .clone()
+            .unwrap_or_else(|| std::env::var("OPENAI_CHATGPT_ACCOUNT_ID").unwrap_or_default())
+    } else {
+        state.autopilot_chat.auth_refresh_account_id.clone()
+    };
+    let plan_type = if state
+        .autopilot_chat
+        .auth_refresh_plan_type
+        .trim()
+        .is_empty()
+    {
+        std::env::var("OPENAI_CHATGPT_PLAN_TYPE").unwrap_or_default()
+    } else {
+        state.autopilot_chat.auth_refresh_plan_type.clone()
+    };
+
+    if access_token.trim().is_empty() || account_id.trim().is_empty() {
+        state.autopilot_chat.pending_auth_refresh.insert(0, request);
+        state.autopilot_chat.last_error =
+            Some("Missing OPENAI_ACCESS_TOKEN or account id for auth refresh response".to_string());
+        return true;
+    }
+
+    let command = crate::codex_lane::CodexLaneCommand::ServerRequestAuthRefreshRespond {
+        request_id: request.request_id.clone(),
+        response: ChatgptAuthTokensRefreshResponse {
+            access_token,
+            chatgpt_account_id: account_id,
+            chatgpt_plan_type: if plan_type.trim().is_empty() {
+                None
+            } else {
+                Some(plan_type)
+            },
+        },
+    };
+    if let Err(error) = state.queue_codex_command(command) {
+        state.autopilot_chat.pending_auth_refresh.insert(0, request);
+        state.autopilot_chat.last_error = Some(error);
+    } else {
+        state
+            .autopilot_chat
+            .record_turn_timeline_event("auth refresh response submitted");
+    }
+    true
+}
+
+fn run_codex_account_action(
+    state: &mut crate::app_state::RenderState,
+    action: CodexAccountPaneAction,
+) -> bool {
+    match action {
+        CodexAccountPaneAction::Refresh => {
+            state.codex_account.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_account.last_error = None;
+            state.codex_account.last_action = Some("Queued account/read".to_string());
+            if let Err(error) = state.queue_codex_command(
+                crate::codex_lane::CodexLaneCommand::AccountRead(GetAccountParams {
+                    refresh_token: true,
+                }),
+            ) {
+                state.codex_account.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_account.last_error = Some(error);
+            }
+            true
+        }
+        CodexAccountPaneAction::LoginChatgpt => {
+            state.codex_account.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_account.last_error = None;
+            state.codex_account.last_action =
+                Some("Queued account/login/start (chatgpt)".to_string());
+            if let Err(error) = state.queue_codex_command(
+                crate::codex_lane::CodexLaneCommand::AccountLoginStart(LoginAccountParams::Chatgpt),
+            ) {
+                state.codex_account.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_account.last_error = Some(error);
+            }
+            true
+        }
+        CodexAccountPaneAction::CancelLogin => {
+            let Some(login_id) = state.codex_account.pending_login_id.clone() else {
+                state.codex_account.last_error = Some("No pending login id to cancel".to_string());
+                return true;
+            };
+            state.codex_account.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_account.last_error = None;
+            state.codex_account.last_action =
+                Some(format!("Queued account/login/cancel for {login_id}"));
+            if let Err(error) =
+                state.queue_codex_command(crate::codex_lane::CodexLaneCommand::AccountLoginCancel(
+                    codex_client::CancelLoginAccountParams { login_id },
+                ))
+            {
+                state.codex_account.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_account.last_error = Some(error);
+            }
+            true
+        }
+        CodexAccountPaneAction::Logout => {
+            state.codex_account.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_account.last_error = None;
+            state.codex_account.last_action = Some("Queued account/logout".to_string());
+            if let Err(error) =
+                state.queue_codex_command(crate::codex_lane::CodexLaneCommand::AccountLogout)
+            {
+                state.codex_account.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_account.last_error = Some(error);
+            }
+            true
+        }
+        CodexAccountPaneAction::RateLimits => {
+            state.codex_account.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_account.last_error = None;
+            state.codex_account.last_action = Some("Queued account/rateLimits/read".to_string());
+            if let Err(error) = state
+                .queue_codex_command(crate::codex_lane::CodexLaneCommand::AccountRateLimitsRead)
+            {
+                state.codex_account.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_account.last_error = Some(error);
+            }
+            true
+        }
+    }
+}
+
+fn run_codex_models_action(
+    state: &mut crate::app_state::RenderState,
+    action: CodexModelsPaneAction,
+) -> bool {
+    match action {
+        CodexModelsPaneAction::Refresh => {
+            state.codex_models.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_models.last_error = None;
+            state.codex_models.last_action = Some(format!(
+                "Queued model/list includeHidden={}",
+                state.codex_models.include_hidden
+            ));
+            if let Err(error) = state.queue_codex_command(
+                crate::codex_lane::CodexLaneCommand::ModelList(ModelListParams {
+                    cursor: None,
+                    limit: Some(100),
+                    include_hidden: Some(state.codex_models.include_hidden),
+                }),
+            ) {
+                state.codex_models.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_models.last_error = Some(error);
+            }
+            true
+        }
+        CodexModelsPaneAction::ToggleHidden => {
+            state.codex_models.include_hidden = !state.codex_models.include_hidden;
+            run_codex_models_action(state, CodexModelsPaneAction::Refresh)
+        }
+    }
+}
+
+fn run_codex_config_action(
+    state: &mut crate::app_state::RenderState,
+    action: CodexConfigPaneAction,
+) -> bool {
+    let cwd = std::env::current_dir()
+        .ok()
+        .and_then(|value| value.into_os_string().into_string().ok());
+    match action {
+        CodexConfigPaneAction::Read => {
+            state.codex_config.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_config.last_error = None;
+            state.codex_config.last_action = Some("Queued config/read".to_string());
+            if let Err(error) = state.queue_codex_command(
+                crate::codex_lane::CodexLaneCommand::ConfigRead(ConfigReadParams {
+                    include_layers: true,
+                    cwd,
+                }),
+            ) {
+                state.codex_config.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_config.last_error = Some(error);
+            }
+            true
+        }
+        CodexConfigPaneAction::Requirements => {
+            state.codex_config.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_config.last_error = None;
+            state.codex_config.last_action = Some("Queued configRequirements/read".to_string());
+            if let Err(error) = state
+                .queue_codex_command(crate::codex_lane::CodexLaneCommand::ConfigRequirementsRead)
+            {
+                state.codex_config.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_config.last_error = Some(error);
+            }
+            true
+        }
+        CodexConfigPaneAction::WriteSample => {
+            state.codex_config.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_config.last_error = None;
+            state.codex_config.last_action = Some("Queued config/value/write sample".to_string());
+            let value = serde_json::Value::String(state.autopilot_chat.current_model().to_string());
+            if let Err(error) = state.queue_codex_command(
+                crate::codex_lane::CodexLaneCommand::ConfigValueWrite(ConfigValueWriteParams {
+                    key_path: "model".to_string(),
+                    value,
+                    merge_strategy: MergeStrategy::Replace,
+                    file_path: None,
+                    expected_version: None,
+                }),
+            ) {
+                state.codex_config.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_config.last_error = Some(error);
+            }
+            true
+        }
+        CodexConfigPaneAction::BatchWriteSample => {
+            state.codex_config.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_config.last_error = None;
+            state.codex_config.last_action = Some("Queued config/batchWrite sample".to_string());
+            let reasoning = state
+                .autopilot_chat
+                .reasoning_effort
+                .clone()
+                .unwrap_or_else(|| "medium".to_string());
+            if let Err(error) = state.queue_codex_command(
+                crate::codex_lane::CodexLaneCommand::ConfigBatchWrite(ConfigBatchWriteParams {
+                    edits: vec![
+                        ConfigEdit {
+                            key_path: "model".to_string(),
+                            value: serde_json::Value::String(
+                                state.autopilot_chat.current_model().to_string(),
+                            ),
+                            merge_strategy: MergeStrategy::Replace,
+                        },
+                        ConfigEdit {
+                            key_path: "modelReasoningEffort".to_string(),
+                            value: serde_json::Value::String(reasoning),
+                            merge_strategy: MergeStrategy::Replace,
+                        },
+                    ],
+                    file_path: None,
+                    expected_version: None,
+                }),
+            ) {
+                state.codex_config.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_config.last_error = Some(error);
+            }
+            true
+        }
+        CodexConfigPaneAction::DetectExternal => {
+            state.codex_config.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_config.last_error = None;
+            state.codex_config.last_action = Some("Queued externalAgentConfig/detect".to_string());
+            let cwds = std::env::current_dir().ok().map(|value| vec![value]);
+            if let Err(error) = state.queue_codex_command(
+                crate::codex_lane::CodexLaneCommand::ExternalAgentConfigDetect(
+                    ExternalAgentConfigDetectParams {
+                        include_home: true,
+                        cwds,
+                    },
+                ),
+            ) {
+                state.codex_config.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_config.last_error = Some(error);
+            }
+            true
+        }
+        CodexConfigPaneAction::ImportExternal => {
+            state.codex_config.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_config.last_error = None;
+            state.codex_config.last_action = Some(
+                "Queued externalAgentConfig/import (migrationItems empty placeholder)".to_string(),
+            );
+            if let Err(error) = state.queue_codex_command(
+                crate::codex_lane::CodexLaneCommand::ExternalAgentConfigImport(
+                    ExternalAgentConfigImportParams {
+                        migration_items: Vec::new(),
+                    },
+                ),
+            ) {
+                state.codex_config.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_config.last_error = Some(error);
+            }
+            true
+        }
+    }
+}
+
+fn run_codex_mcp_action(
+    state: &mut crate::app_state::RenderState,
+    action: CodexMcpPaneAction,
+) -> bool {
+    match action {
+        CodexMcpPaneAction::Refresh => {
+            state.codex_mcp.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_mcp.last_error = None;
+            state.codex_mcp.last_action = Some("Queued mcpServerStatus/list".to_string());
+            if let Err(error) =
+                state.queue_codex_command(crate::codex_lane::CodexLaneCommand::McpServerStatusList(
+                    ListMcpServerStatusParams {
+                        cursor: None,
+                        limit: Some(100),
+                    },
+                ))
+            {
+                state.codex_mcp.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_mcp.last_error = Some(error);
+            }
+            true
+        }
+        CodexMcpPaneAction::LoginSelected => {
+            let selected_name = state
+                .codex_mcp
+                .selected_server_index
+                .and_then(|idx| state.codex_mcp.servers.get(idx))
+                .map(|entry| entry.name.clone());
+            let Some(name) = selected_name else {
+                state.codex_mcp.last_error =
+                    Some("Select an MCP server before starting OAuth login".to_string());
+                return true;
+            };
+            state.codex_mcp.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_mcp.last_error = None;
+            state.codex_mcp.last_action = Some(format!("Queued mcpServer/oauth/login for {name}"));
+            if let Err(error) =
+                state.queue_codex_command(crate::codex_lane::CodexLaneCommand::McpServerOauthLogin(
+                    McpServerOauthLoginParams {
+                        name,
+                        scopes: None,
+                        timeout_secs: Some(180),
+                    },
+                ))
+            {
+                state.codex_mcp.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_mcp.last_error = Some(error);
+            }
+            true
+        }
+        CodexMcpPaneAction::Reload => {
+            state.codex_mcp.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_mcp.last_error = None;
+            state.codex_mcp.last_action = Some("Queued config/mcpServer/reload".to_string());
+            if let Err(error) =
+                state.queue_codex_command(crate::codex_lane::CodexLaneCommand::McpServerReload)
+            {
+                state.codex_mcp.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_mcp.last_error = Some(error);
+            }
+            true
+        }
+        CodexMcpPaneAction::SelectRow(index) => {
+            if index < state.codex_mcp.servers.len() {
+                state.codex_mcp.selected_server_index = Some(index);
+                state.codex_mcp.last_action = Some(format!("Selected MCP row {}", index + 1));
+                state.codex_mcp.last_error = None;
+            }
+            true
+        }
+    }
+}
+
+fn run_codex_apps_action(
+    state: &mut crate::app_state::RenderState,
+    action: CodexAppsPaneAction,
+) -> bool {
+    match action {
+        CodexAppsPaneAction::Refresh => {
+            state.codex_apps.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_apps.last_error = None;
+            state.codex_apps.last_action = Some("Queued app/list".to_string());
+            if let Err(error) = state.queue_codex_command(
+                crate::codex_lane::CodexLaneCommand::AppsList(AppsListParams {
+                    cursor: None,
+                    limit: Some(100),
+                    thread_id: state.autopilot_chat.active_thread_id.clone(),
+                    force_refetch: true,
+                }),
+            ) {
+                state.codex_apps.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_apps.last_error = Some(error);
+            }
+            true
+        }
+        CodexAppsPaneAction::SelectRow(index) => {
+            if index < state.codex_apps.apps.len() {
+                state.codex_apps.selected_app_index = Some(index);
+                state.codex_apps.last_action = Some(format!("Selected app row {}", index + 1));
+                state.codex_apps.last_error = None;
+            }
+            true
+        }
+    }
+}
+
+fn run_codex_remote_skills_action(
+    state: &mut crate::app_state::RenderState,
+    action: CodexRemoteSkillsPaneAction,
+) -> bool {
+    match action {
+        CodexRemoteSkillsPaneAction::Refresh => {
+            state.codex_remote_skills.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_remote_skills.last_error = None;
+            state.codex_remote_skills.last_action = Some("Queued skills/remote/list".to_string());
+            if let Err(error) = state.queue_codex_command(
+                crate::codex_lane::CodexLaneCommand::SkillsRemoteList(SkillsRemoteReadParams {
+                    hazelnut_scope: HazelnutScope::AllShared,
+                    product_surface: ProductSurface::Codex,
+                    enabled: true,
+                }),
+            ) {
+                state.codex_remote_skills.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_remote_skills.last_error = Some(error);
+            }
+            true
+        }
+        CodexRemoteSkillsPaneAction::ExportSelected => {
+            let selected_id = state
+                .codex_remote_skills
+                .selected_skill_index
+                .and_then(|idx| state.codex_remote_skills.skills.get(idx))
+                .map(|entry| entry.id.clone());
+            let Some(hazelnut_id) = selected_id else {
+                state.codex_remote_skills.last_error =
+                    Some("Select a remote skill before export".to_string());
+                return true;
+            };
+            state.codex_remote_skills.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_remote_skills.last_error = None;
+            state.codex_remote_skills.last_action =
+                Some(format!("Queued skills/remote/export for {}", hazelnut_id));
+            if let Err(error) =
+                state.queue_codex_command(crate::codex_lane::CodexLaneCommand::SkillsRemoteExport(
+                    SkillsRemoteWriteParams { hazelnut_id },
+                ))
+            {
+                state.codex_remote_skills.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_remote_skills.last_error = Some(error);
+            }
+            true
+        }
+        CodexRemoteSkillsPaneAction::SelectRow(index) => {
+            if index < state.codex_remote_skills.skills.len() {
+                state.codex_remote_skills.selected_skill_index = Some(index);
+                state.codex_remote_skills.last_action =
+                    Some(format!("Selected remote skill row {}", index + 1));
+                state.codex_remote_skills.last_error = None;
+            }
+            true
+        }
+    }
+}
+
+fn run_codex_labs_action(
+    state: &mut crate::app_state::RenderState,
+    action: CodexLabsPaneAction,
+) -> bool {
+    let cwd = std::env::current_dir()
+        .ok()
+        .and_then(|value| value.into_os_string().into_string().ok());
+    let queue = |state: &mut crate::app_state::RenderState,
+                 action_label: &str,
+                 command: crate::codex_lane::CodexLaneCommand| {
+        state.codex_labs.load_state = crate::app_state::PaneLoadState::Loading;
+        state.codex_labs.last_error = None;
+        state.codex_labs.last_action = Some(action_label.to_string());
+        if let Err(error) = state.queue_codex_command(command) {
+            state.codex_labs.load_state = crate::app_state::PaneLoadState::Error;
+            state.codex_labs.last_error = Some(error);
+        }
+        true
+    };
+
+    match action {
+        CodexLabsPaneAction::ReviewInline | CodexLabsPaneAction::ReviewDetached => {
+            let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() else {
+                state.codex_labs.last_error =
+                    Some("Select an active thread before starting review".to_string());
+                return true;
+            };
+            let delivery = match action {
+                CodexLabsPaneAction::ReviewInline => ReviewDelivery::Inline,
+                CodexLabsPaneAction::ReviewDetached => ReviewDelivery::Detached,
+                _ => ReviewDelivery::Inline,
+            };
+            queue(
+                state,
+                &format!("Queued review/start ({:?})", delivery),
+                crate::codex_lane::CodexLaneCommand::ReviewStart(ReviewStartParams {
+                    thread_id,
+                    target: ReviewTarget::UncommittedChanges,
+                    delivery: Some(delivery),
+                }),
+            )
+        }
+        CodexLabsPaneAction::CommandExec => queue(
+            state,
+            "Queued command/exec",
+            crate::codex_lane::CodexLaneCommand::CommandExec(CommandExecParams {
+                command: vec!["pwd".to_string()],
+                timeout_ms: Some(5000),
+                cwd,
+                sandbox_policy: None,
+            }),
+        ),
+        CodexLabsPaneAction::CollaborationModes => queue(
+            state,
+            "Queued collaborationMode/list",
+            crate::codex_lane::CodexLaneCommand::CollaborationModeList(
+                CollaborationModeListParams::default(),
+            ),
+        ),
+        CodexLabsPaneAction::ExperimentalFeatures => queue(
+            state,
+            "Queued experimentalFeature/list",
+            crate::codex_lane::CodexLaneCommand::ExperimentalFeatureList(
+                ExperimentalFeatureListParams {
+                    cursor: None,
+                    limit: Some(100),
+                },
+            ),
+        ),
+        CodexLabsPaneAction::ToggleExperimental => {
+            state.codex_labs.experimental_enabled = !state.codex_labs.experimental_enabled;
+            state.codex_labs.last_error = None;
+            state.codex_labs.last_action = Some(format!(
+                "Experimental gating set to {}",
+                state.codex_labs.experimental_enabled
+            ));
+            true
+        }
+        CodexLabsPaneAction::RealtimeStart => {
+            if !state.codex_labs.experimental_enabled {
+                state.codex_labs.last_error =
+                    Some("Enable experimental gating before realtime controls".to_string());
+                return true;
+            }
+            let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() else {
+                state.codex_labs.last_error =
+                    Some("Select an active thread before realtime start".to_string());
+                return true;
+            };
+            queue(
+                state,
+                "Queued thread/realtime/start",
+                crate::codex_lane::CodexLaneCommand::ThreadRealtimeStart(
+                    ThreadRealtimeStartParams {
+                        thread_id,
+                        prompt: "Start realtime session".to_string(),
+                        session_id: Some(format!("labs-{}", std::process::id())),
+                    },
+                ),
+            )
+        }
+        CodexLabsPaneAction::RealtimeAppendText => {
+            if !state.codex_labs.experimental_enabled {
+                state.codex_labs.last_error =
+                    Some("Enable experimental gating before realtime controls".to_string());
+                return true;
+            }
+            let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() else {
+                state.codex_labs.last_error =
+                    Some("Select an active thread before realtime append".to_string());
+                return true;
+            };
+            queue(
+                state,
+                "Queued thread/realtime/appendText",
+                crate::codex_lane::CodexLaneCommand::ThreadRealtimeAppendText(
+                    ThreadRealtimeAppendTextParams {
+                        thread_id,
+                        text: "ping from Codex Labs".to_string(),
+                    },
+                ),
+            )
+        }
+        CodexLabsPaneAction::RealtimeStop => {
+            if !state.codex_labs.experimental_enabled {
+                state.codex_labs.last_error =
+                    Some("Enable experimental gating before realtime controls".to_string());
+                return true;
+            }
+            let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() else {
+                state.codex_labs.last_error =
+                    Some("Select an active thread before realtime stop".to_string());
+                return true;
+            };
+            queue(
+                state,
+                "Queued thread/realtime/stop",
+                crate::codex_lane::CodexLaneCommand::ThreadRealtimeStop(ThreadRealtimeStopParams {
+                    thread_id,
+                }),
+            )
+        }
+        CodexLabsPaneAction::WindowsSandboxSetup => {
+            if !state.codex_labs.experimental_enabled {
+                state.codex_labs.last_error =
+                    Some("Enable experimental gating before sandbox setup".to_string());
+                return true;
+            }
+            if !cfg!(target_os = "windows") {
+                state.codex_labs.last_error =
+                    Some("windowsSandbox/setupStart is only available on Windows".to_string());
+                return true;
+            }
+            queue(
+                state,
+                "Queued windowsSandbox/setupStart",
+                crate::codex_lane::CodexLaneCommand::WindowsSandboxSetupStart(
+                    WindowsSandboxSetupStartParams {
+                        mode: "enable".to_string(),
+                    },
+                ),
+            )
+        }
+        CodexLabsPaneAction::FuzzyStart => {
+            if !state.codex_labs.experimental_enabled {
+                state.codex_labs.last_error =
+                    Some("Enable experimental gating before fuzzy session controls".to_string());
+                return true;
+            }
+            let roots = vec![cwd.unwrap_or_else(|| ".".to_string())];
+            queue(
+                state,
+                "Queued fuzzyFileSearch/sessionStart",
+                crate::codex_lane::CodexLaneCommand::FuzzyFileSearchSessionStart(
+                    FuzzyFileSearchSessionStartParams {
+                        session_id: state.codex_labs.fuzzy_session_id.clone(),
+                        roots,
+                    },
+                ),
+            )
+        }
+        CodexLabsPaneAction::FuzzyUpdate => {
+            if !state.codex_labs.experimental_enabled {
+                state.codex_labs.last_error =
+                    Some("Enable experimental gating before fuzzy session controls".to_string());
+                return true;
+            }
+            queue(
+                state,
+                "Queued fuzzyFileSearch/sessionUpdate",
+                crate::codex_lane::CodexLaneCommand::FuzzyFileSearchSessionUpdate(
+                    FuzzyFileSearchSessionUpdateParams {
+                        session_id: state.codex_labs.fuzzy_session_id.clone(),
+                        query: "codex integration".to_string(),
+                    },
+                ),
+            )
+        }
+        CodexLabsPaneAction::FuzzyStop => {
+            if !state.codex_labs.experimental_enabled {
+                state.codex_labs.last_error =
+                    Some("Enable experimental gating before fuzzy session controls".to_string());
+                return true;
+            }
+            queue(
+                state,
+                "Queued fuzzyFileSearch/sessionStop",
+                crate::codex_lane::CodexLaneCommand::FuzzyFileSearchSessionStop(
+                    FuzzyFileSearchSessionStopParams {
+                        session_id: state.codex_labs.fuzzy_session_id.clone(),
+                    },
+                ),
+            )
+        }
+    }
+}
+
+fn run_codex_diagnostics_action(
+    state: &mut crate::app_state::RenderState,
+    action: CodexDiagnosticsPaneAction,
+) -> bool {
+    match action {
+        CodexDiagnosticsPaneAction::EnableWireLog => {
+            let configured_path = if state.codex_diagnostics.wire_log_path.trim().is_empty() {
+                "/tmp/openagents-codex-wire.log".to_string()
+            } else {
+                state.codex_diagnostics.wire_log_path.trim().to_string()
+            };
+            state.codex_diagnostics.wire_log_path = configured_path.clone();
+            state.codex_diagnostics.wire_log_enabled = true;
+            state.codex_diagnostics.last_error = None;
+            state.codex_diagnostics.last_action = Some(format!(
+                "Restarting Codex lane with wire log {}",
+                configured_path
+            ));
+            state.codex_lane_config.wire_log_path = Some(std::path::PathBuf::from(configured_path));
+            state.restart_codex_lane();
+            true
+        }
+        CodexDiagnosticsPaneAction::DisableWireLog => {
+            state.codex_diagnostics.wire_log_enabled = false;
+            state.codex_diagnostics.last_error = None;
+            state.codex_diagnostics.last_action =
+                Some("Restarting Codex lane with wire log disabled".to_string());
+            state.codex_lane_config.wire_log_path = None;
+            state.restart_codex_lane();
+            true
+        }
+        CodexDiagnosticsPaneAction::ClearEvents => {
+            state.codex_diagnostics.notification_counts.clear();
+            state.codex_diagnostics.server_request_counts.clear();
+            state.codex_diagnostics.raw_events.clear();
+            state.codex_diagnostics.last_command_failure = None;
+            state.codex_diagnostics.last_snapshot_error = None;
+            state.codex_diagnostics.last_error = None;
+            state.codex_diagnostics.last_action =
+                Some("Cleared diagnostics event cache".to_string());
+            true
+        }
+    }
 }
 
 fn run_earnings_scoreboard_action(
@@ -1577,7 +2763,7 @@ fn build_activity_feed_snapshot_events(
     for message in state.autopilot_chat.messages.iter().rev().take(6) {
         let role = match message.role {
             crate::app_state::AutopilotRole::User => "user",
-            crate::app_state::AutopilotRole::Autopilot => "autopilot",
+            crate::app_state::AutopilotRole::Codex => "codex",
         };
         let status = match message.status {
             crate::app_state::AutopilotMessageStatus::Queued => "queued",
@@ -2270,14 +3456,17 @@ fn dispatch_command_palette_actions(state: &mut crate::app_state::RenderState) -
 #[cfg(test)]
 mod tests {
     use super::{
-        build_create_invoice_command, build_pay_invoice_command, build_spark_command_for_action,
-        is_command_palette_shortcut, parse_positive_amount_str, validate_lightning_payment_request,
+        assemble_chat_turn_input, build_create_invoice_command, build_pay_invoice_command,
+        build_spark_command_for_action, is_command_palette_shortcut, parse_positive_amount_str,
+        validate_lightning_payment_request,
     };
     use crate::spark_pane::{
         CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction, hit_action, layout,
     };
     use crate::spark_wallet::SparkWalletCommand;
+    use codex_client::UserInput;
     use std::collections::BTreeSet;
+    use std::path::PathBuf;
     use wgpui::{Bounds, Modifiers, Point};
     use winit::keyboard::Key as WinitLogicalKey;
 
@@ -2439,6 +3628,44 @@ mod tests {
                 expiry_seconds: Some(900)
             } if description == "MVP invoice"
         ));
+    }
+
+    #[test]
+    fn assemble_chat_turn_input_attaches_enabled_skill() {
+        let (input, last_error) = assemble_chat_turn_input(
+            "build mezo integration".to_string(),
+            Some(("mezo", "/repo/skills/mezo/SKILL.md", true)),
+        );
+
+        assert!(last_error.is_none());
+        assert_eq!(input.len(), 2);
+        assert!(matches!(
+            &input[0],
+            UserInput::Text { text, .. } if text == "build mezo integration"
+        ));
+        assert!(matches!(
+            &input[1],
+            UserInput::Skill { name, path }
+                if name == "mezo" && path == &PathBuf::from("/repo/skills/mezo/SKILL.md")
+        ));
+    }
+
+    #[test]
+    fn assemble_chat_turn_input_rejects_disabled_skill_attachment() {
+        let (input, last_error) = assemble_chat_turn_input(
+            "build mezo integration".to_string(),
+            Some(("mezo", "/repo/skills/mezo/SKILL.md", false)),
+        );
+
+        assert_eq!(input.len(), 1);
+        assert!(matches!(
+            &input[0],
+            UserInput::Text { text, .. } if text == "build mezo integration"
+        ));
+        assert_eq!(
+            last_error.as_deref(),
+            Some("Selected skill 'mezo' is disabled; enable it first.")
+        );
     }
 
     #[test]

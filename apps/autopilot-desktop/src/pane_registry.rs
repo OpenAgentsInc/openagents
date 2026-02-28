@@ -80,7 +80,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 29] = [
+const PANE_SPECS: [PaneSpec; 37] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -98,15 +98,135 @@ const PANE_SPECS: [PaneSpec; 29] = [
     },
     PaneSpec {
         kind: PaneKind::AutopilotChat,
-        title: "Autopilot Chat",
+        title: "Codex",
         default_width: 940.0,
         default_height: 540.0,
         singleton: true,
         startup: true,
         command: Some(PaneCommandSpec {
-            id: "pane.autopilot_chat",
-            label: "Autopilot Chat",
-            description: "Open chat thread and composer for Autopilot",
+            id: "pane.codex",
+            label: "Codex",
+            description: "Open Codex chat threads and model controls",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::CodexAccount,
+        title: "Codex Account",
+        default_width: 720.0,
+        default_height: 360.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.codex_account",
+            label: "Codex Account",
+            description: "Open Codex account auth and rate-limit controls",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::CodexModels,
+        title: "Codex Models",
+        default_width: 860.0,
+        default_height: 420.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.codex_models",
+            label: "Codex Models",
+            description: "Open Codex model catalog and reroute view",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::CodexConfig,
+        title: "Codex Config",
+        default_width: 860.0,
+        default_height: 420.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.codex_config",
+            label: "Codex Config",
+            description: "Open Codex config, requirements, and external import tools",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::CodexMcp,
+        title: "Codex MCP",
+        default_width: 900.0,
+        default_height: 420.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.codex_mcp",
+            label: "Codex MCP",
+            description: "Open MCP server status, OAuth login, and reload controls",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::CodexApps,
+        title: "Codex Apps",
+        default_width: 920.0,
+        default_height: 460.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.codex_apps",
+            label: "Codex Apps",
+            description: "Open Codex app connector catalog and update visibility",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::CodexRemoteSkills,
+        title: "Codex Remote Skills",
+        default_width: 920.0,
+        default_height: 460.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.codex_remote_skills",
+            label: "Codex Remote Skills",
+            description: "Open remote skill discovery/export while keeping local skills primary",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::CodexLabs,
+        title: "Codex Labs",
+        default_width: 960.0,
+        default_height: 520.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.codex_labs",
+            label: "Codex Labs",
+            description: "Open review, utility exec, and gated experimental Codex controls",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::CodexDiagnostics,
+        title: "Codex Diagnostics",
+        default_width: 980.0,
+        default_height: 560.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.codex_diagnostics",
+            label: "Codex Diagnostics",
+            description: "Open Codex protocol diagnostics, counters, and wire-log controls",
             keybinding: None,
         }),
         hotbar: None,
@@ -597,6 +717,28 @@ mod tests {
                     spec.kind
                 );
             }
+        }
+    }
+
+    #[test]
+    fn codex_feature_family_commands_are_registered() {
+        let required = [
+            "pane.codex",
+            "pane.codex_account",
+            "pane.codex_models",
+            "pane.codex_config",
+            "pane.codex_mcp",
+            "pane.codex_apps",
+            "pane.codex_remote_skills",
+            "pane.codex_labs",
+            "pane.codex_diagnostics",
+        ];
+
+        for command_id in required {
+            assert!(
+                pane_spec_by_command_id(command_id).is_some(),
+                "missing codex pane command registration for {command_id}"
+            );
         }
     }
 }

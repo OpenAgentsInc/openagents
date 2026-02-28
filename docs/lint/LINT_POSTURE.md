@@ -26,6 +26,7 @@ Temporary exceptions are allowed only when all of the following are true:
 - Validate allowlist structure with `scripts/lint/clippy-debt-allowlist-check.sh`.
 - Enforce high-churn warning ceilings with `scripts/lint/clippy-warning-budget-check.sh`.
 - Validate repo-managed Agent Skills with `scripts/skills/validate_registry.sh`.
+- Enforce Codex protocol parity and smoke coverage with `scripts/lint/codex-protocol-parity-gate.sh`.
 
 ## Strict Production Lanes
 

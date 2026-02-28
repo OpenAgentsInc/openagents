@@ -1,6 +1,7 @@
 //! Runtime update reducers are split by domain to keep `input.rs` focused on event routing.
 
 mod ac;
+mod codex;
 mod jobs;
 mod sa;
 mod skl;
@@ -62,6 +63,21 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
             AcLaneUpdate::Snapshot(snapshot) => ac::apply_lane_snapshot(state, *snapshot),
             AcLaneUpdate::CommandResponse(response) => {
                 apply_runtime_command_response(state, response);
+            }
+        }
+    }
+
+    for update in state.codex_lane_worker.drain_updates() {
+        changed = true;
+        match update {
+            crate::codex_lane::CodexLaneUpdate::Snapshot(snapshot) => {
+                codex::apply_lane_snapshot(state, *snapshot)
+            }
+            crate::codex_lane::CodexLaneUpdate::CommandResponse(response) => {
+                codex::apply_command_response(state, response)
+            }
+            crate::codex_lane::CodexLaneUpdate::Notification(notification) => {
+                codex::apply_notification(state, notification)
             }
         }
     }

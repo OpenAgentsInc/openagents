@@ -293,6 +293,9 @@ UPDATED_APP_VERSION=$(read_version_from_section "$APP_CARGO_TOML" "package")
 log "Running ownership boundary check"
 ./scripts/lint/ownership-boundary-check.sh
 
+log "Running Codex protocol parity gate"
+./scripts/lint/codex-protocol-parity-gate.sh
+
 log "Running workspace tests"
 cargo test --workspace
 

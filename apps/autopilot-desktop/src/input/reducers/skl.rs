@@ -1,4 +1,7 @@
+use codex_client::{SkillsConfigWriteParams, SkillsListExtraRootsForCwd, SkillsListParams};
+
 use crate::app_state::{PaneLoadState, RenderState};
+use crate::codex_lane::CodexLaneCommand;
 use crate::pane_system::{SkillRegistryPaneAction, SkillTrustRevocationPaneAction};
 use crate::runtime_lanes::{
     RuntimeCommandResponse, RuntimeCommandStatus, SkillTrustTier, SklDiscoveryTrustCommand,
@@ -71,15 +74,53 @@ pub(super) fn run_skill_registry_action(
 ) -> bool {
     match action {
         SkillRegistryPaneAction::DiscoverSkills => {
-            match state.queue_skl_command(SklDiscoveryTrustCommand::SubmitSkillSearch {
-                query: state.skill_registry.search_query.clone(),
-                limit: 8,
-            }) {
+            let cwd = match std::env::current_dir() {
+                Ok(cwd) => cwd,
+                Err(error) => {
+                    state.skill_registry.last_error =
+                        Some(format!("Failed to resolve cwd for codex skills/list: {error}"));
+                    state.skill_registry.load_state = PaneLoadState::Error;
+                    return true;
+                }
+            };
+            let repo_skills_root = cwd.join("skills");
+            state.skill_registry.repo_skills_root = Some(repo_skills_root.display().to_string());
+            state.skill_registry.source = "codex".to_string();
+
+            if !repo_skills_root.is_absolute() {
+                state.skill_registry.last_error = Some(
+                    "Invalid skills root for codex skills/list: expected absolute path".to_string(),
+                );
+                state.skill_registry.load_state = PaneLoadState::Error;
+                return true;
+            }
+            if !repo_skills_root.exists() {
+                state.skill_registry.last_error = Some(format!(
+                    "Codex skills/list root missing: {}",
+                    repo_skills_root.display()
+                ));
+                state.skill_registry.load_state = PaneLoadState::Error;
+                return true;
+            }
+
+            let params = SkillsListParams {
+                cwds: vec![cwd.clone()],
+                force_reload: true,
+                per_cwd_extra_user_roots: Some(vec![SkillsListExtraRootsForCwd {
+                    cwd,
+                    extra_user_roots: vec![repo_skills_root],
+                }]),
+            };
+
+            match state.queue_codex_command(CodexLaneCommand::SkillsList(params)) {
                 Ok(command_seq) => {
                     state.skill_registry.last_error = None;
                     state.skill_registry.load_state = PaneLoadState::Ready;
-                    state.skill_registry.last_action =
-                        Some(format!("Queued skill discovery command #{command_seq}"));
+                    state.skill_registry.last_action = Some(format!(
+                        "Queued codex skills/list command #{command_seq} (source: codex)"
+                    ));
+                    state.skill_registry.discovered_skills.clear();
+                    state.skill_registry.discovery_errors.clear();
                 }
                 Err(error) => {
                     state.skill_registry.last_error = Some(error);
@@ -107,21 +148,56 @@ pub(super) fn run_skill_registry_action(
             true
         }
         SkillRegistryPaneAction::InstallSelectedSkill => {
-            match state.queue_skl_command(SklDiscoveryTrustCommand::PublishSkillVersionLog {
-                skill_slug: state.skill_registry.manifest_slug.clone(),
-                version: state.skill_registry.manifest_version.clone(),
-                summary: "installed from skill registry pane".to_string(),
-            }) {
+            let Some(selected_index) = state.skill_registry.selected_skill_index else {
+                state.skill_registry.last_error = Some("Select a discovered skill first".to_string());
+                state.skill_registry.load_state = PaneLoadState::Error;
+                return true;
+            };
+            let Some(selected_skill) = state
+                .skill_registry
+                .discovered_skills
+                .get(selected_index)
+                .cloned()
+            else {
+                state.skill_registry.last_error = Some("Selected skill row is no longer valid".to_string());
+                state.skill_registry.load_state = PaneLoadState::Error;
+                return true;
+            };
+
+            let skill_path = std::path::PathBuf::from(selected_skill.path.clone());
+            if !skill_path.is_absolute() {
+                state.skill_registry.last_error =
+                    Some(format!("Selected skill path is not absolute: {}", skill_path.display()));
+                state.skill_registry.load_state = PaneLoadState::Error;
+                return true;
+            }
+            let command = CodexLaneCommand::SkillsConfigWrite(SkillsConfigWriteParams {
+                path: skill_path,
+                enabled: !selected_skill.enabled,
+            });
+            match state.queue_codex_command(command) {
                 Ok(command_seq) => {
                     state.skill_registry.last_error = None;
                     state.skill_registry.load_state = PaneLoadState::Ready;
-                    state.skill_registry.last_action =
-                        Some(format!("Queued install command #{command_seq}"));
+                    state.skill_registry.last_action = Some(format!(
+                        "Queued codex skills/config/write command #{command_seq} for {}",
+                        selected_skill.name
+                    ));
                 }
                 Err(error) => {
                     state.skill_registry.last_error = Some(error);
                     state.skill_registry.load_state = PaneLoadState::Error;
                 }
+            }
+            true
+        }
+        SkillRegistryPaneAction::SelectRow(index) => {
+            if index < state.skill_registry.discovered_skills.len() {
+                state.skill_registry.selected_skill_index = Some(index);
+                state.skill_registry.last_error = None;
+                state.skill_registry.load_state = PaneLoadState::Ready;
+                state.skill_registry.last_action =
+                    Some(format!("Selected skill row {}", index + 1));
             }
             true
         }

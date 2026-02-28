@@ -1,4 +1,4 @@
-use wgpui::{Component, InputEvent, PaintContext, Point, Quad, theme};
+use wgpui::{Bounds, Component, InputEvent, PaintContext, Point, Quad, theme};
 
 use crate::app_state::{
     AutopilotChatState, AutopilotMessageStatus, AutopilotRole, ChatPaneInputs, PaneKind,
@@ -6,12 +6,23 @@ use crate::app_state::{
 };
 use crate::pane_renderer::{paint_action_button, split_text_for_display};
 use crate::pane_system::{
-    chat_composer_input_bounds, chat_send_button_bounds, chat_thread_rail_bounds,
-    chat_transcript_bounds, pane_content_bounds,
+    chat_composer_input_bounds, chat_cycle_model_button_bounds, chat_interrupt_button_bounds,
+    chat_refresh_threads_button_bounds, chat_send_button_bounds,
+    chat_server_auth_refresh_button_bounds, chat_server_request_accept_button_bounds,
+    chat_server_request_cancel_button_bounds, chat_server_request_decline_button_bounds,
+    chat_server_request_session_button_bounds, chat_server_tool_call_button_bounds,
+    chat_server_user_input_button_bounds, chat_thread_action_archive_button_bounds,
+    chat_thread_action_compact_button_bounds, chat_thread_action_fork_button_bounds,
+    chat_thread_action_rename_button_bounds, chat_thread_action_rollback_button_bounds,
+    chat_thread_action_unarchive_button_bounds, chat_thread_action_unsubscribe_button_bounds,
+    chat_thread_filter_archived_button_bounds, chat_thread_filter_provider_button_bounds,
+    chat_thread_filter_sort_button_bounds, chat_thread_filter_source_button_bounds,
+    chat_thread_rail_bounds, chat_thread_row_bounds, chat_transcript_bounds,
+    chat_visible_thread_row_count, pane_content_bounds,
 };
 
 pub fn paint(
-    content_bounds: wgpui::Bounds,
+    content_bounds: Bounds,
     autopilot_chat: &AutopilotChatState,
     chat_inputs: &mut ChatPaneInputs,
     paint: &mut PaintContext,
@@ -20,6 +31,27 @@ pub fn paint(
     let transcript_bounds = chat_transcript_bounds(content_bounds);
     let composer_bounds = chat_composer_input_bounds(content_bounds);
     let send_bounds = chat_send_button_bounds(content_bounds);
+    let refresh_bounds = chat_refresh_threads_button_bounds(content_bounds);
+    let model_bounds = chat_cycle_model_button_bounds(content_bounds);
+    let interrupt_bounds = chat_interrupt_button_bounds(content_bounds);
+    let approval_accept_bounds = chat_server_request_accept_button_bounds(content_bounds);
+    let approval_session_bounds = chat_server_request_session_button_bounds(content_bounds);
+    let approval_decline_bounds = chat_server_request_decline_button_bounds(content_bounds);
+    let approval_cancel_bounds = chat_server_request_cancel_button_bounds(content_bounds);
+    let tool_call_bounds = chat_server_tool_call_button_bounds(content_bounds);
+    let user_input_bounds = chat_server_user_input_button_bounds(content_bounds);
+    let auth_refresh_bounds = chat_server_auth_refresh_button_bounds(content_bounds);
+    let archived_filter_bounds = chat_thread_filter_archived_button_bounds(content_bounds);
+    let sort_filter_bounds = chat_thread_filter_sort_button_bounds(content_bounds);
+    let source_filter_bounds = chat_thread_filter_source_button_bounds(content_bounds);
+    let provider_filter_bounds = chat_thread_filter_provider_button_bounds(content_bounds);
+    let fork_bounds = chat_thread_action_fork_button_bounds(content_bounds);
+    let archive_bounds = chat_thread_action_archive_button_bounds(content_bounds);
+    let unarchive_bounds = chat_thread_action_unarchive_button_bounds(content_bounds);
+    let rename_bounds = chat_thread_action_rename_button_bounds(content_bounds);
+    let rollback_bounds = chat_thread_action_rollback_button_bounds(content_bounds);
+    let compact_bounds = chat_thread_action_compact_button_bounds(content_bounds);
+    let unsubscribe_bounds = chat_thread_action_unsubscribe_button_bounds(content_bounds);
 
     paint.scene.draw_quad(
         Quad::new(rail_bounds)
@@ -40,24 +72,303 @@ pub fn paint(
         11.0,
         theme::text::MUTED,
     ));
-    let mut thread_y = rail_bounds.origin.y + 30.0;
-    for (idx, thread) in autopilot_chat.threads.iter().enumerate() {
-        let color = if idx == autopilot_chat.active_thread {
-            theme::text::PRIMARY
-        } else {
-            theme::text::MUTED
-        };
-        paint.scene.draw_text(paint.text.layout(
-            thread,
-            Point::new(rail_bounds.origin.x + 10.0, thread_y),
-            11.0,
-            color,
-        ));
-        thread_y += 16.0;
+    paint.scene.draw_text(paint.text.layout(
+        "Codex",
+        Point::new(
+            transcript_bounds.origin.x + 10.0,
+            transcript_bounds.origin.y + 14.0,
+        ),
+        11.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        &format!(
+            "status={} model={} effort={}",
+            autopilot_chat.connection_status,
+            autopilot_chat.current_model(),
+            autopilot_chat
+                .reasoning_effort
+                .as_deref()
+                .unwrap_or("default")
+        ),
+        Point::new(
+            transcript_bounds.origin.x + 10.0,
+            transcript_bounds.origin.y + 42.0,
+        ),
+        10.0,
+        theme::text::MUTED,
+    ));
+
+    paint_action_button(refresh_bounds, "Refresh", paint);
+    let archived_filter_label = match autopilot_chat.thread_filter_archived {
+        Some(false) => "Live",
+        Some(true) => "Archived",
+        None => "Any",
+    };
+    paint_action_button(archived_filter_bounds, archived_filter_label, paint);
+    let sort_filter_label = match autopilot_chat.thread_filter_sort_key {
+        codex_client::ThreadSortKey::CreatedAt => "Sort:Created",
+        codex_client::ThreadSortKey::UpdatedAt => "Sort:Updated",
+    };
+    paint_action_button(sort_filter_bounds, sort_filter_label, paint);
+    let source_filter_label = match autopilot_chat.thread_filter_source_kind {
+        None => "Source:Any",
+        Some(codex_client::ThreadSourceKind::AppServer) => "Source:App",
+        Some(codex_client::ThreadSourceKind::Cli) => "Source:CLI",
+        Some(codex_client::ThreadSourceKind::Exec) => "Source:Exec",
+        Some(_) => "Source:Other",
+    };
+    paint_action_button(source_filter_bounds, source_filter_label, paint);
+    let provider_filter_label = match autopilot_chat.thread_filter_model_provider.as_deref() {
+        None => "Provider:*",
+        Some("openai") => "Provider:OA",
+        Some("azure-openai") => "Provider:AZ",
+        Some(_) => "Provider:Other",
+    };
+    paint_action_button(provider_filter_bounds, provider_filter_label, paint);
+    paint_action_button(fork_bounds, "Fork", paint);
+    paint_action_button(archive_bounds, "Archive", paint);
+    paint_action_button(unarchive_bounds, "Unarchive", paint);
+    paint_action_button(rename_bounds, "Rename", paint);
+    paint_action_button(rollback_bounds, "Rollback", paint);
+    paint_action_button(compact_bounds, "Compact", paint);
+    paint_action_button(unsubscribe_bounds, "Unsub", paint);
+    paint_action_button(model_bounds, "Cycle Model", paint);
+    paint_action_button(interrupt_bounds, "Interrupt", paint);
+    if !autopilot_chat.pending_command_approvals.is_empty()
+        || !autopilot_chat.pending_file_change_approvals.is_empty()
+    {
+        paint_action_button(approval_accept_bounds, "Approve", paint);
+        paint_action_button(approval_session_bounds, "Approve Session", paint);
+        paint_action_button(approval_decline_bounds, "Decline", paint);
+        paint_action_button(approval_cancel_bounds, "Cancel", paint);
+    }
+    if !autopilot_chat.pending_tool_calls.is_empty() {
+        paint_action_button(tool_call_bounds, "Respond Tool Call", paint);
+    }
+    if !autopilot_chat.pending_tool_user_input.is_empty() {
+        paint_action_button(user_input_bounds, "Submit Tool Input", paint);
+    }
+    if !autopilot_chat.pending_auth_refresh.is_empty() {
+        paint_action_button(auth_refresh_bounds, "Send Auth Refresh", paint);
     }
 
-    let mut y = transcript_bounds.origin.y + 10.0;
-    for message in autopilot_chat.messages.iter().rev().take(12).rev() {
+    let visible_threads = chat_visible_thread_row_count(autopilot_chat.threads.len());
+    for row_index in 0..visible_threads {
+        let row_bounds = chat_thread_row_bounds(content_bounds, row_index);
+        let Some(thread_id) = autopilot_chat.threads.get(row_index) else {
+            continue;
+        };
+        let is_active = autopilot_chat
+            .active_thread_id
+            .as_deref()
+            .is_some_and(|active| active == thread_id);
+
+        paint.scene.draw_quad(
+            Quad::new(row_bounds)
+                .with_background(if is_active {
+                    theme::bg::ELEVATED.with_alpha(0.9)
+                } else {
+                    theme::bg::APP.with_alpha(0.6)
+                })
+                .with_border(theme::border::DEFAULT, 1.0)
+                .with_corner_radius(4.0),
+        );
+        let status = autopilot_chat
+            .thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.status.as_deref())
+            .unwrap_or("unknown");
+        let loaded = autopilot_chat
+            .thread_metadata
+            .get(thread_id)
+            .is_some_and(|metadata| metadata.loaded);
+        let row_label = format!(
+            "{} [{}|{}]",
+            autopilot_chat.thread_label(thread_id),
+            if loaded { "loaded" } else { "cold" },
+            status
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            &row_label,
+            Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 15.0),
+            10.0,
+            if is_active {
+                theme::accent::PRIMARY
+            } else {
+                theme::text::MUTED
+            },
+        ));
+    }
+
+    let turn_status = autopilot_chat
+        .last_turn_status
+        .as_deref()
+        .unwrap_or("idle")
+        .to_string();
+    let active_thread_status = autopilot_chat.active_thread_status().unwrap_or("n/a");
+    let active_thread_loaded = autopilot_chat
+        .active_thread_loaded()
+        .map(|loaded| if loaded { "loaded" } else { "cold" })
+        .unwrap_or("n/a");
+    let token_summary = autopilot_chat
+        .token_usage
+        .as_ref()
+        .map(|usage| {
+            format!(
+                "tokens(in={}, cache={}, out={})",
+                usage.input_tokens, usage.cached_input_tokens, usage.output_tokens
+            )
+        })
+        .unwrap_or_else(|| "tokens(n/a)".to_string());
+    let pending_server_summary = format!(
+        "approvals={} file={} tool={} input={} auth={}",
+        autopilot_chat.pending_command_approvals.len(),
+        autopilot_chat.pending_file_change_approvals.len(),
+        autopilot_chat.pending_tool_calls.len(),
+        autopilot_chat.pending_tool_user_input.len(),
+        autopilot_chat.pending_auth_refresh.len()
+    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        &format!(
+            "thread={}({}) turn={} {} {}",
+            active_thread_status,
+            active_thread_loaded,
+            turn_status,
+            token_summary,
+            pending_server_summary
+        ),
+        Point::new(
+            transcript_bounds.origin.x + 10.0,
+            transcript_bounds.origin.y + 56.0,
+        ),
+        10.0,
+        theme::text::MUTED,
+    ));
+
+    let mut y = transcript_bounds.origin.y + 84.0;
+    if let Some(request) = autopilot_chat.pending_command_approvals.first() {
+        let summary = request
+            .command
+            .as_deref()
+            .or(request.reason.as_deref())
+            .unwrap_or("command approval pending");
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!(
+                "approval(cmd) {} thread={} turn={} item={} cwd={}",
+                summary,
+                request.thread_id,
+                request.turn_id,
+                request.item_id,
+                request.cwd.as_deref().unwrap_or("n/a")
+            ),
+            Point::new(transcript_bounds.origin.x + 10.0, y),
+            10.0,
+            theme::status::WARNING,
+        ));
+        y += 14.0;
+    } else if let Some(request) = autopilot_chat.pending_file_change_approvals.first() {
+        let summary = request
+            .grant_root
+            .as_deref()
+            .or(request.reason.as_deref())
+            .unwrap_or("file-change approval pending");
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!(
+                "approval(file) {} thread={} turn={} item={}",
+                summary, request.thread_id, request.turn_id, request.item_id
+            ),
+            Point::new(transcript_bounds.origin.x + 10.0, y),
+            10.0,
+            theme::status::WARNING,
+        ));
+        y += 14.0;
+    }
+    if let Some(request) = autopilot_chat.pending_tool_calls.first() {
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!(
+                "tool/call pending tool={} thread={} turn={} args={}",
+                request.tool, request.thread_id, request.turn_id, request.arguments
+            ),
+            Point::new(transcript_bounds.origin.x + 10.0, y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        y += 14.0;
+    }
+    if let Some(request) = autopilot_chat.pending_tool_user_input.first() {
+        let first_question = request.questions.first();
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!(
+                "tool/requestUserInput pending thread={} turn={} item={} questions={} first={} | {}",
+                request.thread_id,
+                request.turn_id,
+                request.item_id,
+                request.questions.len(),
+                first_question
+                    .map(|question| question.header.as_str())
+                    .unwrap_or("n/a"),
+                first_question
+                    .map(|question| question.question.as_str())
+                    .unwrap_or("n/a")
+            ),
+            Point::new(transcript_bounds.origin.x + 10.0, y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        y += 14.0;
+    }
+    if let Some(request) = autopilot_chat.pending_auth_refresh.first() {
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!(
+                "auth refresh pending reason={} account={}",
+                request.reason,
+                request.previous_account_id.as_deref().unwrap_or("n/a")
+            ),
+            Point::new(transcript_bounds.origin.x + 10.0, y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        y += 14.0;
+    }
+    if !autopilot_chat.turn_plan.is_empty() {
+        let plan_compact = autopilot_chat
+            .turn_plan
+            .iter()
+            .take(3)
+            .map(|step| format!("{}:{}", step.status, step.step))
+            .collect::<Vec<_>>()
+            .join(" | ");
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!("plan {}", plan_compact),
+            Point::new(transcript_bounds.origin.x + 10.0, y),
+            10.0,
+            theme::accent::PRIMARY,
+        ));
+        y += 14.0;
+    }
+    if let Some(diff) = autopilot_chat.turn_diff.as_deref() {
+        let diff_preview = diff.lines().next().unwrap_or_default();
+        if !diff_preview.is_empty() {
+            paint.scene.draw_text(paint.text.layout_mono(
+                &format!("diff {}", diff_preview),
+                Point::new(transcript_bounds.origin.x + 10.0, y),
+                10.0,
+                theme::text::MUTED,
+            ));
+            y += 14.0;
+        }
+    }
+    for event in autopilot_chat.turn_timeline.iter().rev().take(2).rev() {
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!("event {}", event),
+            Point::new(transcript_bounds.origin.x + 10.0, y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        y += 14.0;
+    }
+    for message in autopilot_chat.messages.iter().rev().take(14).rev() {
         let status = match message.status {
             AutopilotMessageStatus::Queued => "queued",
             AutopilotMessageStatus::Running => "running",
@@ -66,7 +377,7 @@ pub fn paint(
         };
         let role = match message.role {
             AutopilotRole::User => "you",
-            AutopilotRole::Autopilot => "autopilot",
+            AutopilotRole::Codex => "codex",
         };
         let status_color = match message.status {
             AutopilotMessageStatus::Queued => theme::text::MUTED,
@@ -82,7 +393,16 @@ pub fn paint(
             status_color,
         ));
         y += 14.0;
-        for line in split_text_for_display(&message.content, 78) {
+
+        let content = if message.content.trim().is_empty()
+            && matches!(message.status, AutopilotMessageStatus::Queued)
+        {
+            "Waiting for Codex response...".to_string()
+        } else {
+            message.content.clone()
+        };
+
+        for line in split_text_for_display(&content, 78) {
             paint.scene.draw_text(paint.text.layout(
                 &line,
                 Point::new(transcript_bounds.origin.x + 10.0, y),

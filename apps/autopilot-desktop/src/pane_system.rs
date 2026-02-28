@@ -26,6 +26,28 @@ const CHAT_PAD: f32 = 12.0;
 const CHAT_THREAD_RAIL_WIDTH: f32 = 170.0;
 const CHAT_COMPOSER_HEIGHT: f32 = 30.0;
 const CHAT_SEND_WIDTH: f32 = 92.0;
+const CHAT_HEADER_BUTTON_HEIGHT: f32 = 26.0;
+const CHAT_HEADER_BUTTON_WIDTH: f32 = 110.0;
+const CHAT_THREAD_FILTER_BUTTON_HEIGHT: f32 = 22.0;
+const CHAT_THREAD_FILTER_BUTTON_WIDTH: f32 = 72.0;
+const CHAT_THREAD_ACTION_BUTTON_HEIGHT: f32 = 22.0;
+const CHAT_THREAD_ACTION_BUTTON_WIDTH: f32 = 72.0;
+const CHAT_THREAD_ACTION_BUTTON_GAP: f32 = 4.0;
+const CHAT_THREAD_ROW_HEIGHT: f32 = 24.0;
+const CHAT_THREAD_ROW_GAP: f32 = 4.0;
+const CHAT_MAX_THREAD_ROWS: usize = 10;
+const SKILL_REGISTRY_ROW_HEIGHT: f32 = 28.0;
+const SKILL_REGISTRY_ROW_GAP: f32 = 6.0;
+const SKILL_REGISTRY_MAX_ROWS: usize = 8;
+const CODEX_MCP_ROW_HEIGHT: f32 = 30.0;
+const CODEX_MCP_ROW_GAP: f32 = 6.0;
+const CODEX_MCP_MAX_ROWS: usize = 8;
+const CODEX_APPS_ROW_HEIGHT: f32 = 30.0;
+const CODEX_APPS_ROW_GAP: f32 = 6.0;
+const CODEX_APPS_MAX_ROWS: usize = 8;
+const CODEX_REMOTE_SKILLS_ROW_HEIGHT: f32 = 30.0;
+const CODEX_REMOTE_SKILLS_ROW_GAP: f32 = 6.0;
+const CODEX_REMOTE_SKILLS_MAX_ROWS: usize = 8;
 const JOB_INBOX_BUTTON_HEIGHT: f32 = 30.0;
 const JOB_INBOX_BUTTON_GAP: f32 = 10.0;
 const JOB_INBOX_ROW_GAP: f32 = 6.0;
@@ -67,6 +89,76 @@ pub enum JobHistoryPaneAction {
     CycleTimeRange,
     PreviousPage,
     NextPage,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CodexAccountPaneAction {
+    Refresh,
+    LoginChatgpt,
+    CancelLogin,
+    Logout,
+    RateLimits,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CodexModelsPaneAction {
+    Refresh,
+    ToggleHidden,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CodexConfigPaneAction {
+    Read,
+    Requirements,
+    WriteSample,
+    BatchWriteSample,
+    DetectExternal,
+    ImportExternal,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CodexMcpPaneAction {
+    Refresh,
+    LoginSelected,
+    Reload,
+    SelectRow(usize),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CodexAppsPaneAction {
+    Refresh,
+    SelectRow(usize),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CodexRemoteSkillsPaneAction {
+    Refresh,
+    ExportSelected,
+    SelectRow(usize),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CodexLabsPaneAction {
+    ReviewInline,
+    ReviewDetached,
+    CommandExec,
+    CollaborationModes,
+    ExperimentalFeatures,
+    ToggleExperimental,
+    RealtimeStart,
+    RealtimeAppendText,
+    RealtimeStop,
+    WindowsSandboxSetup,
+    FuzzyStart,
+    FuzzyUpdate,
+    FuzzyStop,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CodexDiagnosticsPaneAction {
+    EnableWireLog,
+    DisableWireLog,
+    ClearEvents,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -145,6 +237,7 @@ pub enum SkillRegistryPaneAction {
     DiscoverSkills,
     InspectManifest,
     InstallSelectedSkill,
+    SelectRow(usize),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -194,7 +287,37 @@ pub enum PaneHitAction {
     NostrReveal,
     NostrCopySecret,
     ChatSend,
+    ChatRefreshThreads,
+    ChatCycleModel,
+    ChatInterruptTurn,
+    ChatToggleArchivedFilter,
+    ChatCycleSortFilter,
+    ChatCycleSourceFilter,
+    ChatCycleProviderFilter,
+    ChatForkThread,
+    ChatArchiveThread,
+    ChatUnarchiveThread,
+    ChatRenameThread,
+    ChatRollbackThread,
+    ChatCompactThread,
+    ChatUnsubscribeThread,
+    ChatRespondApprovalAccept,
+    ChatRespondApprovalAcceptSession,
+    ChatRespondApprovalDecline,
+    ChatRespondApprovalCancel,
+    ChatRespondToolCall,
+    ChatRespondToolUserInput,
+    ChatRespondAuthRefresh,
+    ChatSelectThread(usize),
     GoOnlineToggle,
+    CodexAccount(CodexAccountPaneAction),
+    CodexModels(CodexModelsPaneAction),
+    CodexConfig(CodexConfigPaneAction),
+    CodexMcp(CodexMcpPaneAction),
+    CodexApps(CodexAppsPaneAction),
+    CodexRemoteSkills(CodexRemoteSkillsPaneAction),
+    CodexLabs(CodexLabsPaneAction),
+    CodexDiagnostics(CodexDiagnosticsPaneAction),
     EarningsScoreboard(EarningsScoreboardPaneAction),
     RelayConnections(RelayConnectionsPaneAction),
     SyncHealth(SyncHealthPaneAction),
@@ -598,6 +721,14 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                 }
             }
             PaneKind::Empty
+            | PaneKind::CodexAccount
+            | PaneKind::CodexModels
+            | PaneKind::CodexConfig
+            | PaneKind::CodexMcp
+            | PaneKind::CodexApps
+            | PaneKind::CodexRemoteSkills
+            | PaneKind::CodexLabs
+            | PaneKind::CodexDiagnostics
             | PaneKind::GoOnline
             | PaneKind::ProviderStatus
             | PaneKind::EarningsScoreboard
@@ -648,6 +779,135 @@ pub fn chat_thread_rail_bounds(content_bounds: Bounds) -> Bounds {
     )
 }
 
+pub fn chat_refresh_threads_button_bounds(content_bounds: Bounds) -> Bounds {
+    let rail = chat_thread_rail_bounds(content_bounds);
+    Bounds::new(
+        rail.origin.x + 10.0,
+        rail.origin.y + 28.0,
+        CHAT_HEADER_BUTTON_WIDTH,
+        CHAT_HEADER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_cycle_model_button_bounds(content_bounds: Bounds) -> Bounds {
+    let transcript = chat_transcript_bounds(content_bounds);
+    Bounds::new(
+        transcript.origin.x + 10.0,
+        transcript.origin.y + 28.0,
+        CHAT_HEADER_BUTTON_WIDTH,
+        CHAT_HEADER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_interrupt_button_bounds(content_bounds: Bounds) -> Bounds {
+    let cycle = chat_cycle_model_button_bounds(content_bounds);
+    Bounds::new(
+        cycle.max_x() + 8.0,
+        cycle.origin.y,
+        CHAT_HEADER_BUTTON_WIDTH,
+        CHAT_HEADER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_thread_row_bounds(content_bounds: Bounds, index: usize) -> Bounds {
+    let rail = chat_thread_rail_bounds(content_bounds);
+    let actions_bottom = chat_thread_action_unsubscribe_button_bounds(content_bounds).max_y();
+    let y = actions_bottom + 10.0 + index as f32 * (CHAT_THREAD_ROW_HEIGHT + CHAT_THREAD_ROW_GAP);
+    Bounds::new(
+        rail.origin.x + 10.0,
+        y,
+        (rail.size.width - 20.0).max(80.0),
+        CHAT_THREAD_ROW_HEIGHT,
+    )
+}
+
+pub fn chat_visible_thread_row_count(total_threads: usize) -> usize {
+    total_threads.min(CHAT_MAX_THREAD_ROWS)
+}
+
+pub fn chat_thread_filter_archived_button_bounds(content_bounds: Bounds) -> Bounds {
+    let refresh = chat_refresh_threads_button_bounds(content_bounds);
+    Bounds::new(
+        refresh.origin.x,
+        refresh.max_y() + 8.0,
+        CHAT_THREAD_FILTER_BUTTON_WIDTH,
+        CHAT_THREAD_FILTER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_thread_filter_sort_button_bounds(content_bounds: Bounds) -> Bounds {
+    let archived = chat_thread_filter_archived_button_bounds(content_bounds);
+    Bounds::new(
+        archived.max_x() + CHAT_THREAD_ACTION_BUTTON_GAP,
+        archived.origin.y,
+        CHAT_THREAD_FILTER_BUTTON_WIDTH,
+        CHAT_THREAD_FILTER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_thread_filter_source_button_bounds(content_bounds: Bounds) -> Bounds {
+    let archived = chat_thread_filter_archived_button_bounds(content_bounds);
+    Bounds::new(
+        archived.origin.x,
+        archived.max_y() + CHAT_THREAD_ACTION_BUTTON_GAP,
+        CHAT_THREAD_FILTER_BUTTON_WIDTH,
+        CHAT_THREAD_FILTER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_thread_filter_provider_button_bounds(content_bounds: Bounds) -> Bounds {
+    let source = chat_thread_filter_source_button_bounds(content_bounds);
+    Bounds::new(
+        source.max_x() + CHAT_THREAD_ACTION_BUTTON_GAP,
+        source.origin.y,
+        CHAT_THREAD_FILTER_BUTTON_WIDTH,
+        CHAT_THREAD_FILTER_BUTTON_HEIGHT,
+    )
+}
+
+fn chat_thread_action_grid_bounds(content_bounds: Bounds, index: usize) -> Bounds {
+    let source = chat_thread_filter_source_button_bounds(content_bounds);
+    let row = index / 2;
+    let col = index % 2;
+    Bounds::new(
+        source.origin.x
+            + col as f32 * (CHAT_THREAD_ACTION_BUTTON_WIDTH + CHAT_THREAD_ACTION_BUTTON_GAP),
+        source.max_y()
+            + 8.0
+            + row as f32 * (CHAT_THREAD_ACTION_BUTTON_HEIGHT + CHAT_THREAD_ACTION_BUTTON_GAP),
+        CHAT_THREAD_ACTION_BUTTON_WIDTH,
+        CHAT_THREAD_ACTION_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_thread_action_fork_button_bounds(content_bounds: Bounds) -> Bounds {
+    chat_thread_action_grid_bounds(content_bounds, 0)
+}
+
+pub fn chat_thread_action_archive_button_bounds(content_bounds: Bounds) -> Bounds {
+    chat_thread_action_grid_bounds(content_bounds, 1)
+}
+
+pub fn chat_thread_action_unarchive_button_bounds(content_bounds: Bounds) -> Bounds {
+    chat_thread_action_grid_bounds(content_bounds, 2)
+}
+
+pub fn chat_thread_action_rename_button_bounds(content_bounds: Bounds) -> Bounds {
+    chat_thread_action_grid_bounds(content_bounds, 3)
+}
+
+pub fn chat_thread_action_rollback_button_bounds(content_bounds: Bounds) -> Bounds {
+    chat_thread_action_grid_bounds(content_bounds, 4)
+}
+
+pub fn chat_thread_action_compact_button_bounds(content_bounds: Bounds) -> Bounds {
+    chat_thread_action_grid_bounds(content_bounds, 5)
+}
+
+pub fn chat_thread_action_unsubscribe_button_bounds(content_bounds: Bounds) -> Bounds {
+    chat_thread_action_grid_bounds(content_bounds, 6)
+}
+
 pub fn chat_send_button_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         content_bounds.max_x() - CHAT_PAD - CHAT_SEND_WIDTH,
@@ -655,6 +915,46 @@ pub fn chat_send_button_bounds(content_bounds: Bounds) -> Bounds {
         CHAT_SEND_WIDTH,
         CHAT_COMPOSER_HEIGHT,
     )
+}
+
+pub fn chat_server_request_accept_button_bounds(content_bounds: Bounds) -> Bounds {
+    let transcript = chat_transcript_bounds(content_bounds);
+    Bounds::new(
+        transcript.origin.x + 240.0,
+        transcript.origin.y + 28.0,
+        96.0,
+        24.0,
+    )
+}
+
+pub fn chat_server_request_session_button_bounds(content_bounds: Bounds) -> Bounds {
+    let accept = chat_server_request_accept_button_bounds(content_bounds);
+    Bounds::new(accept.max_x() + 6.0, accept.origin.y, 96.0, 24.0)
+}
+
+pub fn chat_server_request_decline_button_bounds(content_bounds: Bounds) -> Bounds {
+    let session = chat_server_request_session_button_bounds(content_bounds);
+    Bounds::new(session.max_x() + 6.0, session.origin.y, 96.0, 24.0)
+}
+
+pub fn chat_server_request_cancel_button_bounds(content_bounds: Bounds) -> Bounds {
+    let decline = chat_server_request_decline_button_bounds(content_bounds);
+    Bounds::new(decline.max_x() + 6.0, decline.origin.y, 96.0, 24.0)
+}
+
+pub fn chat_server_tool_call_button_bounds(content_bounds: Bounds) -> Bounds {
+    let accept = chat_server_request_accept_button_bounds(content_bounds);
+    Bounds::new(accept.origin.x, accept.max_y() + 6.0, 120.0, 24.0)
+}
+
+pub fn chat_server_user_input_button_bounds(content_bounds: Bounds) -> Bounds {
+    let tool = chat_server_tool_call_button_bounds(content_bounds);
+    Bounds::new(tool.max_x() + 6.0, tool.origin.y, 140.0, 24.0)
+}
+
+pub fn chat_server_auth_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    let user_input = chat_server_user_input_button_bounds(content_bounds);
+    Bounds::new(user_input.max_x() + 6.0, user_input.origin.y, 140.0, 24.0)
 }
 
 pub fn chat_composer_input_bounds(content_bounds: Bounds) -> Bounds {
@@ -687,6 +987,215 @@ pub fn go_online_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
         width,
         34.0,
     )
+}
+
+fn codex_action_button_bounds(
+    content_bounds: Bounds,
+    row: usize,
+    col: usize,
+    columns: usize,
+) -> Bounds {
+    let columns = columns.max(1);
+    let gap = JOB_INBOX_BUTTON_GAP;
+    let usable_width =
+        (content_bounds.size.width - CHAT_PAD * 2.0 - gap * (columns as f32 - 1.0)).max(220.0);
+    let width = (usable_width / columns as f32).clamp(120.0, 220.0);
+    let x = content_bounds.origin.x + CHAT_PAD + col as f32 * (width + gap);
+    let y = content_bounds.origin.y + CHAT_PAD + row as f32 * (JOB_INBOX_BUTTON_HEIGHT + gap);
+    Bounds::new(x, y, width, JOB_INBOX_BUTTON_HEIGHT)
+}
+
+pub fn codex_account_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 0, 3)
+}
+
+pub fn codex_account_login_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 1, 3)
+}
+
+pub fn codex_account_cancel_login_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 2, 3)
+}
+
+pub fn codex_account_logout_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 1, 0, 3)
+}
+
+pub fn codex_account_rate_limits_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 1, 1, 3)
+}
+
+pub fn codex_models_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 0, 2)
+}
+
+pub fn codex_models_toggle_hidden_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 1, 2)
+}
+
+pub fn codex_config_read_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 0, 3)
+}
+
+pub fn codex_config_requirements_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 1, 3)
+}
+
+pub fn codex_config_write_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 2, 3)
+}
+
+pub fn codex_config_batch_write_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 1, 0, 3)
+}
+
+pub fn codex_config_detect_external_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 1, 1, 3)
+}
+
+pub fn codex_config_import_external_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 1, 2, 3)
+}
+
+pub fn codex_mcp_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 0, 3)
+}
+
+pub fn codex_mcp_login_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 1, 3)
+}
+
+pub fn codex_mcp_reload_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 2, 3)
+}
+
+pub fn codex_mcp_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
+    let safe_index = row_index.min(CODEX_MCP_MAX_ROWS.saturating_sub(1));
+    let top = codex_mcp_refresh_button_bounds(content_bounds).max_y() + 12.0;
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        top + safe_index as f32 * (CODEX_MCP_ROW_HEIGHT + CODEX_MCP_ROW_GAP),
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(220.0),
+        CODEX_MCP_ROW_HEIGHT,
+    )
+}
+
+pub fn codex_mcp_visible_row_count(row_count: usize) -> usize {
+    row_count.min(CODEX_MCP_MAX_ROWS)
+}
+
+pub fn codex_apps_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 0, 2)
+}
+
+pub fn codex_apps_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
+    let safe_index = row_index.min(CODEX_APPS_MAX_ROWS.saturating_sub(1));
+    let top = codex_apps_refresh_button_bounds(content_bounds).max_y() + 12.0;
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        top + safe_index as f32 * (CODEX_APPS_ROW_HEIGHT + CODEX_APPS_ROW_GAP),
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(220.0),
+        CODEX_APPS_ROW_HEIGHT,
+    )
+}
+
+pub fn codex_apps_visible_row_count(row_count: usize) -> usize {
+    row_count.min(CODEX_APPS_MAX_ROWS)
+}
+
+pub fn codex_remote_skills_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 0, 2)
+}
+
+pub fn codex_remote_skills_export_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 1, 2)
+}
+
+pub fn codex_remote_skills_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
+    let safe_index = row_index.min(CODEX_REMOTE_SKILLS_MAX_ROWS.saturating_sub(1));
+    let top = codex_remote_skills_refresh_button_bounds(content_bounds).max_y() + 12.0;
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        top + safe_index as f32 * (CODEX_REMOTE_SKILLS_ROW_HEIGHT + CODEX_REMOTE_SKILLS_ROW_GAP),
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(220.0),
+        CODEX_REMOTE_SKILLS_ROW_HEIGHT,
+    )
+}
+
+pub fn codex_remote_skills_visible_row_count(row_count: usize) -> usize {
+    row_count.min(CODEX_REMOTE_SKILLS_MAX_ROWS)
+}
+
+fn codex_labs_button_bounds(content_bounds: Bounds, row: usize, col: usize) -> Bounds {
+    codex_action_button_bounds(content_bounds, row, col, 3)
+}
+
+pub fn codex_labs_review_inline_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_labs_button_bounds(content_bounds, 0, 0)
+}
+
+pub fn codex_labs_review_detached_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_labs_button_bounds(content_bounds, 0, 1)
+}
+
+pub fn codex_labs_command_exec_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_labs_button_bounds(content_bounds, 0, 2)
+}
+
+pub fn codex_labs_collaboration_modes_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_labs_button_bounds(content_bounds, 1, 0)
+}
+
+pub fn codex_labs_experimental_features_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_labs_button_bounds(content_bounds, 1, 1)
+}
+
+pub fn codex_labs_toggle_experimental_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_labs_button_bounds(content_bounds, 1, 2)
+}
+
+pub fn codex_labs_realtime_start_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_labs_button_bounds(content_bounds, 2, 0)
+}
+
+pub fn codex_labs_realtime_append_text_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_labs_button_bounds(content_bounds, 2, 1)
+}
+
+pub fn codex_labs_realtime_stop_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_labs_button_bounds(content_bounds, 2, 2)
+}
+
+pub fn codex_labs_windows_sandbox_setup_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_labs_button_bounds(content_bounds, 3, 0)
+}
+
+pub fn codex_labs_fuzzy_start_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_labs_button_bounds(content_bounds, 3, 1)
+}
+
+pub fn codex_labs_fuzzy_update_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_labs_button_bounds(content_bounds, 3, 2)
+}
+
+pub fn codex_labs_fuzzy_stop_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_labs_button_bounds(content_bounds, 4, 0)
+}
+
+fn codex_diagnostics_button_bounds(content_bounds: Bounds, col: usize) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, col, 3)
+}
+
+pub fn codex_diagnostics_enable_wire_log_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_diagnostics_button_bounds(content_bounds, 0)
+}
+
+pub fn codex_diagnostics_disable_wire_log_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_diagnostics_button_bounds(content_bounds, 1)
+}
+
+pub fn codex_diagnostics_clear_events_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_diagnostics_button_bounds(content_bounds, 2)
 }
 
 pub fn earnings_scoreboard_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -1211,6 +1720,22 @@ pub fn skill_registry_install_button_bounds(content_bounds: Bounds) -> Bounds {
     )
 }
 
+pub fn skill_registry_row_bounds(content_bounds: Bounds, index: usize) -> Bounds {
+    let discover = skill_registry_discover_button_bounds(content_bounds);
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        discover.max_y()
+            + CHAT_PAD
+            + index as f32 * (SKILL_REGISTRY_ROW_HEIGHT + SKILL_REGISTRY_ROW_GAP),
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(180.0),
+        SKILL_REGISTRY_ROW_HEIGHT,
+    )
+}
+
+pub fn skill_registry_visible_row_count(total_rows: usize) -> usize {
+    total_rows.min(SKILL_REGISTRY_MAX_ROWS)
+}
+
 pub fn skill_trust_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         content_bounds.origin.x + CHAT_PAD,
@@ -1454,10 +1979,78 @@ fn pane_hit_action_for_pane(
         }
         PaneKind::AutopilotChat => {
             if chat_send_button_bounds(content_bounds).contains(point) {
-                Some(PaneHitAction::ChatSend)
-            } else {
-                None
+                return Some(PaneHitAction::ChatSend);
             }
+            if chat_refresh_threads_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatRefreshThreads);
+            }
+            if chat_cycle_model_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatCycleModel);
+            }
+            if chat_interrupt_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatInterruptTurn);
+            }
+            if chat_thread_filter_archived_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatToggleArchivedFilter);
+            }
+            if chat_thread_filter_sort_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatCycleSortFilter);
+            }
+            if chat_thread_filter_source_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatCycleSourceFilter);
+            }
+            if chat_thread_filter_provider_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatCycleProviderFilter);
+            }
+            if chat_thread_action_fork_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatForkThread);
+            }
+            if chat_thread_action_archive_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatArchiveThread);
+            }
+            if chat_thread_action_unarchive_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatUnarchiveThread);
+            }
+            if chat_thread_action_rename_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatRenameThread);
+            }
+            if chat_thread_action_rollback_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatRollbackThread);
+            }
+            if chat_thread_action_compact_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatCompactThread);
+            }
+            if chat_thread_action_unsubscribe_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatUnsubscribeThread);
+            }
+            if chat_server_request_accept_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatRespondApprovalAccept);
+            }
+            if chat_server_request_session_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatRespondApprovalAcceptSession);
+            }
+            if chat_server_request_decline_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatRespondApprovalDecline);
+            }
+            if chat_server_request_cancel_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatRespondApprovalCancel);
+            }
+            if chat_server_tool_call_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatRespondToolCall);
+            }
+            if chat_server_user_input_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatRespondToolUserInput);
+            }
+            if chat_server_auth_refresh_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatRespondAuthRefresh);
+            }
+            let visible_threads = chat_visible_thread_row_count(state.autopilot_chat.threads.len());
+            for row_index in 0..visible_threads {
+                if chat_thread_row_bounds(content_bounds, row_index).contains(point) {
+                    return Some(PaneHitAction::ChatSelectThread(row_index));
+                }
+            }
+            None
         }
         PaneKind::GoOnline => {
             if go_online_toggle_button_bounds(content_bounds).contains(point) {
@@ -1465,6 +2058,200 @@ fn pane_hit_action_for_pane(
             } else {
                 None
             }
+        }
+        PaneKind::CodexAccount => {
+            if codex_account_refresh_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexAccount(CodexAccountPaneAction::Refresh));
+            }
+            if codex_account_login_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexAccount(
+                    CodexAccountPaneAction::LoginChatgpt,
+                ));
+            }
+            if codex_account_cancel_login_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexAccount(
+                    CodexAccountPaneAction::CancelLogin,
+                ));
+            }
+            if codex_account_logout_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexAccount(CodexAccountPaneAction::Logout));
+            }
+            if codex_account_rate_limits_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexAccount(
+                    CodexAccountPaneAction::RateLimits,
+                ));
+            }
+            None
+        }
+        PaneKind::CodexModels => {
+            if codex_models_refresh_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexModels(CodexModelsPaneAction::Refresh));
+            }
+            if codex_models_toggle_hidden_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexModels(
+                    CodexModelsPaneAction::ToggleHidden,
+                ));
+            }
+            None
+        }
+        PaneKind::CodexConfig => {
+            if codex_config_read_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexConfig(CodexConfigPaneAction::Read));
+            }
+            if codex_config_requirements_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexConfig(
+                    CodexConfigPaneAction::Requirements,
+                ));
+            }
+            if codex_config_write_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexConfig(
+                    CodexConfigPaneAction::WriteSample,
+                ));
+            }
+            if codex_config_batch_write_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexConfig(
+                    CodexConfigPaneAction::BatchWriteSample,
+                ));
+            }
+            if codex_config_detect_external_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexConfig(
+                    CodexConfigPaneAction::DetectExternal,
+                ));
+            }
+            if codex_config_import_external_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexConfig(
+                    CodexConfigPaneAction::ImportExternal,
+                ));
+            }
+            None
+        }
+        PaneKind::CodexMcp => {
+            if codex_mcp_refresh_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexMcp(CodexMcpPaneAction::Refresh));
+            }
+            if codex_mcp_login_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexMcp(CodexMcpPaneAction::LoginSelected));
+            }
+            if codex_mcp_reload_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexMcp(CodexMcpPaneAction::Reload));
+            }
+            let visible_rows = codex_mcp_visible_row_count(state.codex_mcp.servers.len());
+            for row_index in 0..visible_rows {
+                if codex_mcp_row_bounds(content_bounds, row_index).contains(point) {
+                    return Some(PaneHitAction::CodexMcp(CodexMcpPaneAction::SelectRow(
+                        row_index,
+                    )));
+                }
+            }
+            None
+        }
+        PaneKind::CodexApps => {
+            if codex_apps_refresh_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexApps(CodexAppsPaneAction::Refresh));
+            }
+            let visible_rows = codex_apps_visible_row_count(state.codex_apps.apps.len());
+            for row_index in 0..visible_rows {
+                if codex_apps_row_bounds(content_bounds, row_index).contains(point) {
+                    return Some(PaneHitAction::CodexApps(CodexAppsPaneAction::SelectRow(
+                        row_index,
+                    )));
+                }
+            }
+            None
+        }
+        PaneKind::CodexRemoteSkills => {
+            if codex_remote_skills_refresh_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexRemoteSkills(
+                    CodexRemoteSkillsPaneAction::Refresh,
+                ));
+            }
+            if codex_remote_skills_export_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexRemoteSkills(
+                    CodexRemoteSkillsPaneAction::ExportSelected,
+                ));
+            }
+            let visible_rows =
+                codex_remote_skills_visible_row_count(state.codex_remote_skills.skills.len());
+            for row_index in 0..visible_rows {
+                if codex_remote_skills_row_bounds(content_bounds, row_index).contains(point) {
+                    return Some(PaneHitAction::CodexRemoteSkills(
+                        CodexRemoteSkillsPaneAction::SelectRow(row_index),
+                    ));
+                }
+            }
+            None
+        }
+        PaneKind::CodexLabs => {
+            if codex_labs_review_inline_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexLabs(CodexLabsPaneAction::ReviewInline));
+            }
+            if codex_labs_review_detached_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexLabs(
+                    CodexLabsPaneAction::ReviewDetached,
+                ));
+            }
+            if codex_labs_command_exec_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexLabs(CodexLabsPaneAction::CommandExec));
+            }
+            if codex_labs_collaboration_modes_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexLabs(
+                    CodexLabsPaneAction::CollaborationModes,
+                ));
+            }
+            if codex_labs_experimental_features_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexLabs(
+                    CodexLabsPaneAction::ExperimentalFeatures,
+                ));
+            }
+            if codex_labs_toggle_experimental_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexLabs(
+                    CodexLabsPaneAction::ToggleExperimental,
+                ));
+            }
+            if codex_labs_realtime_start_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexLabs(CodexLabsPaneAction::RealtimeStart));
+            }
+            if codex_labs_realtime_append_text_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexLabs(
+                    CodexLabsPaneAction::RealtimeAppendText,
+                ));
+            }
+            if codex_labs_realtime_stop_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexLabs(CodexLabsPaneAction::RealtimeStop));
+            }
+            if codex_labs_windows_sandbox_setup_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexLabs(
+                    CodexLabsPaneAction::WindowsSandboxSetup,
+                ));
+            }
+            if codex_labs_fuzzy_start_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexLabs(CodexLabsPaneAction::FuzzyStart));
+            }
+            if codex_labs_fuzzy_update_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexLabs(CodexLabsPaneAction::FuzzyUpdate));
+            }
+            if codex_labs_fuzzy_stop_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexLabs(CodexLabsPaneAction::FuzzyStop));
+            }
+            None
+        }
+        PaneKind::CodexDiagnostics => {
+            if codex_diagnostics_enable_wire_log_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexDiagnostics(
+                    CodexDiagnosticsPaneAction::EnableWireLog,
+                ));
+            }
+            if codex_diagnostics_disable_wire_log_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexDiagnostics(
+                    CodexDiagnosticsPaneAction::DisableWireLog,
+                ));
+            }
+            if codex_diagnostics_clear_events_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexDiagnostics(
+                    CodexDiagnosticsPaneAction::ClearEvents,
+                ));
+            }
+            None
         }
         PaneKind::EarningsScoreboard => {
             if earnings_scoreboard_refresh_button_bounds(content_bounds).contains(point) {
@@ -1718,6 +2505,15 @@ fn pane_hit_action_for_pane(
                 return Some(PaneHitAction::SkillRegistry(
                     SkillRegistryPaneAction::InstallSelectedSkill,
                 ));
+            }
+            let visible_rows =
+                skill_registry_visible_row_count(state.skill_registry.discovered_skills.len());
+            for row_index in 0..visible_rows {
+                if skill_registry_row_bounds(content_bounds, row_index).contains(point) {
+                    return Some(PaneHitAction::SkillRegistry(
+                        SkillRegistryPaneAction::SelectRow(row_index),
+                    ));
+                }
             }
             None
         }
@@ -2094,7 +2890,22 @@ mod tests {
         agent_schedule_manual_tick_button_bounds, alerts_recovery_ack_button_bounds,
         alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
         alerts_recovery_row_bounds, chat_composer_input_bounds, chat_send_button_bounds,
-        chat_thread_rail_bounds, chat_transcript_bounds, credit_desk_envelope_button_bounds,
+        chat_thread_rail_bounds, chat_transcript_bounds, codex_account_cancel_login_button_bounds,
+        codex_account_login_button_bounds, codex_account_logout_button_bounds,
+        codex_account_rate_limits_button_bounds, codex_account_refresh_button_bounds,
+        codex_apps_refresh_button_bounds, codex_config_batch_write_button_bounds,
+        codex_config_detect_external_button_bounds, codex_config_import_external_button_bounds,
+        codex_config_read_button_bounds, codex_config_requirements_button_bounds,
+        codex_config_write_button_bounds, codex_diagnostics_clear_events_button_bounds,
+        codex_diagnostics_disable_wire_log_button_bounds,
+        codex_diagnostics_enable_wire_log_button_bounds,
+        codex_labs_collaboration_modes_button_bounds, codex_labs_command_exec_button_bounds,
+        codex_labs_experimental_features_button_bounds, codex_labs_review_detached_button_bounds,
+        codex_labs_review_inline_button_bounds, codex_labs_toggle_experimental_button_bounds,
+        codex_mcp_login_button_bounds, codex_mcp_refresh_button_bounds,
+        codex_mcp_reload_button_bounds, codex_models_refresh_button_bounds,
+        codex_models_toggle_hidden_button_bounds, codex_remote_skills_export_button_bounds,
+        codex_remote_skills_refresh_button_bounds, credit_desk_envelope_button_bounds,
         credit_desk_intent_button_bounds, credit_desk_offer_button_bounds,
         credit_desk_spend_button_bounds, credit_settlement_default_button_bounds,
         credit_settlement_reputation_button_bounds, credit_settlement_verify_button_bounds,
@@ -2180,6 +2991,67 @@ mod tests {
         assert!(content.contains(toggle.origin));
         assert!(toggle.max_x() <= content.max_x());
         assert!(toggle.max_y() <= content.max_y());
+    }
+
+    #[test]
+    fn codex_controls_are_ordered() {
+        let content = Bounds::new(0.0, 0.0, 920.0, 420.0);
+        let account_refresh = codex_account_refresh_button_bounds(content);
+        let account_login = codex_account_login_button_bounds(content);
+        let account_cancel = codex_account_cancel_login_button_bounds(content);
+        let account_logout = codex_account_logout_button_bounds(content);
+        let account_limits = codex_account_rate_limits_button_bounds(content);
+        assert!(account_refresh.max_x() < account_login.min_x());
+        assert!(account_login.max_x() < account_cancel.min_x());
+        assert!(account_refresh.max_y() < account_logout.min_y());
+        assert!(account_logout.max_x() < account_limits.min_x());
+
+        let models_refresh = codex_models_refresh_button_bounds(content);
+        let models_toggle = codex_models_toggle_hidden_button_bounds(content);
+        assert!(models_refresh.max_x() < models_toggle.min_x());
+
+        let config_read = codex_config_read_button_bounds(content);
+        let config_requirements = codex_config_requirements_button_bounds(content);
+        let config_write = codex_config_write_button_bounds(content);
+        let config_batch = codex_config_batch_write_button_bounds(content);
+        let config_detect = codex_config_detect_external_button_bounds(content);
+        let config_import = codex_config_import_external_button_bounds(content);
+        assert!(config_read.max_x() < config_requirements.min_x());
+        assert!(config_requirements.max_x() < config_write.min_x());
+        assert!(config_read.max_y() < config_batch.min_y());
+        assert!(config_batch.max_x() < config_detect.min_x());
+        assert!(config_detect.max_x() < config_import.min_x());
+
+        let mcp_refresh = codex_mcp_refresh_button_bounds(content);
+        let mcp_login = codex_mcp_login_button_bounds(content);
+        let mcp_reload = codex_mcp_reload_button_bounds(content);
+        assert!(mcp_refresh.max_x() < mcp_login.min_x());
+        assert!(mcp_login.max_x() < mcp_reload.min_x());
+
+        let apps_refresh = codex_apps_refresh_button_bounds(content);
+        assert!(apps_refresh.size.width > 0.0);
+
+        let remote_refresh = codex_remote_skills_refresh_button_bounds(content);
+        let remote_export = codex_remote_skills_export_button_bounds(content);
+        assert!(remote_refresh.max_x() < remote_export.min_x());
+
+        let review_inline = codex_labs_review_inline_button_bounds(content);
+        let review_detached = codex_labs_review_detached_button_bounds(content);
+        let command_exec = codex_labs_command_exec_button_bounds(content);
+        assert!(review_inline.max_x() < review_detached.min_x());
+        assert!(review_detached.max_x() < command_exec.min_x());
+
+        let collab = codex_labs_collaboration_modes_button_bounds(content);
+        let features = codex_labs_experimental_features_button_bounds(content);
+        let toggle = codex_labs_toggle_experimental_button_bounds(content);
+        assert!(collab.max_x() < features.min_x());
+        assert!(features.max_x() < toggle.min_x());
+
+        let diagnostics_enable = codex_diagnostics_enable_wire_log_button_bounds(content);
+        let diagnostics_disable = codex_diagnostics_disable_wire_log_button_bounds(content);
+        let diagnostics_clear = codex_diagnostics_clear_events_button_bounds(content);
+        assert!(diagnostics_enable.max_x() < diagnostics_disable.min_x());
+        assert!(diagnostics_disable.max_x() < diagnostics_clear.min_x());
     }
 
     #[test]
