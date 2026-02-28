@@ -512,16 +512,35 @@ impl AutopilotChatState {
         let previous_model = self.models.get(self.selected_model).cloned();
         self.models = sanitized;
 
-        if let Some(default_model) = default_model.as_ref()
-            && let Some(index) = self.models.iter().position(|model| model == default_model)
+        // Preserve an explicit prior user selection first.
+        if let Some(previous_model) = previous_model.as_ref()
+            && !previous_model.eq_ignore_ascii_case("auto")
+            && let Some(index) = self.models.iter().position(|model| model == previous_model)
         {
             self.selected_model = index;
             self.last_error = None;
             return;
         }
 
-        if let Some(previous_model) = previous_model.as_ref()
-            && let Some(index) = self.models.iter().position(|model| model == previous_model)
+        // Prefer current high-quality coding models when available.
+        let preferred_models = [
+            "gpt-5.2-codex",
+            "gpt-5.1-codex-max",
+            "gpt-5.2",
+            "gpt-5.3-codex",
+            "gpt-5.3-codex-spark",
+        ];
+        if let Some(index) = preferred_models
+            .iter()
+            .find_map(|model| self.models.iter().position(|value| value == model))
+        {
+            self.selected_model = index;
+            self.last_error = None;
+            return;
+        }
+
+        if let Some(default_model) = default_model.as_ref()
+            && let Some(index) = self.models.iter().position(|model| model == default_model)
         {
             self.selected_model = index;
             self.last_error = None;
@@ -4028,6 +4047,44 @@ mod tests {
         assert!(chat.is_duplicate_reasoning_delta("turn-1", "rs-1", "plan"));
         assert!(chat.is_duplicate_reasoning_delta("turn-1", "n/a", "plan"));
         assert!(!chat.is_duplicate_reasoning_delta("turn-1", "rs-1", "next"));
+    }
+
+    #[test]
+    fn chat_state_prefers_coding_model_over_server_default() {
+        let mut chat = AutopilotChatState::default();
+        chat.set_models(
+            vec![
+                "gpt-5.3-codex".to_string(),
+                "gpt-5.2-codex".to_string(),
+                "gpt-5.2".to_string(),
+            ],
+            Some("gpt-5.3-codex".to_string()),
+        );
+        assert_eq!(chat.current_model(), "gpt-5.2-codex");
+    }
+
+    #[test]
+    fn chat_state_preserves_explicit_user_model_selection() {
+        let mut chat = AutopilotChatState::default();
+        chat.set_models(
+            vec![
+                "gpt-5.3-codex".to_string(),
+                "gpt-5.2-codex".to_string(),
+                "gpt-5.2".to_string(),
+            ],
+            Some("gpt-5.3-codex".to_string()),
+        );
+        // Simulate user cycling to a specific model.
+        chat.selected_model = 0; // gpt-5.3-codex
+        chat.set_models(
+            vec![
+                "gpt-5.3-codex".to_string(),
+                "gpt-5.2-codex".to_string(),
+                "gpt-5.2".to_string(),
+            ],
+            Some("gpt-5.3-codex".to_string()),
+        );
+        assert_eq!(chat.current_model(), "gpt-5.3-codex");
     }
 
     #[test]

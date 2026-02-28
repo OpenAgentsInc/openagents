@@ -32,6 +32,7 @@ struct HarnessArgs {
     include_writes: bool,
     include_experimental: bool,
     include_thread_mutations: bool,
+    fail_on_echo: bool,
 }
 
 impl Default for HarnessArgs {
@@ -47,6 +48,7 @@ impl Default for HarnessArgs {
             include_writes: false,
             include_experimental: true,
             include_thread_mutations: true,
+            fail_on_echo: true,
         }
     }
 }
@@ -124,6 +126,7 @@ impl HarnessArgs {
                 "--include-writes" => args.include_writes = true,
                 "--skip-experimental" => args.include_experimental = false,
                 "--skip-thread-mutations" => args.include_thread_mutations = false,
+                "--allow-echo-replies" => args.fail_on_echo = false,
                 "--help" | "-h" => {
                     print_usage();
                     std::process::exit(0);
@@ -170,8 +173,8 @@ async fn run(args: HarnessArgs) -> Result<()> {
             .unwrap_or("<none>")
     );
     println!(
-        "include_writes={} include_experimental={} include_thread_mutations={}",
-        args.include_writes, args.include_experimental, args.include_thread_mutations
+        "include_writes={} include_experimental={} include_thread_mutations={} fail_on_echo={}",
+        args.include_writes, args.include_experimental, args.include_thread_mutations, args.fail_on_echo
     );
     println!();
 
@@ -720,6 +723,25 @@ async fn run(args: HarnessArgs) -> Result<()> {
                 new_thread_id
             );
         }
+        if let Some(agent_reply) = latest_agent_message(&after_turn.thread) {
+            println!(
+                "post-send latest_agent_reply={}",
+                summarize_text_for_log(&agent_reply, 96)
+            );
+            if args.fail_on_echo && agent_reply.trim().eq_ignore_ascii_case(prompt.trim()) {
+                let latest_user = latest_user_message(&after_turn.thread)
+                    .unwrap_or_else(|| "<none>".to_string());
+                bail!(
+                    "assistant echo detected for model={} thread={} turn={} prompt={} agent={} latest_user={} (use --allow-echo-replies to bypass)",
+                    resolved_model.as_deref().unwrap_or("server-default"),
+                    new_thread_id,
+                    turn.turn.id,
+                    summarize_text_for_log(&prompt, 72),
+                    summarize_text_for_log(&agent_reply, 72),
+                    summarize_text_for_log(&latest_user, 72),
+                );
+            }
+        }
         last_turn_id = after_turn.thread.turns.last().map(|turn| turn.id.clone());
     } else {
         println!("simulate_click chat.send: skipped (--prompt not provided)");
@@ -1125,6 +1147,73 @@ fn thread_has_agent_role_message(thread: &ThreadSnapshot) -> bool {
     agent_count > 0
 }
 
+fn latest_agent_message(thread: &ThreadSnapshot) -> Option<String> {
+    latest_role_message(thread, TranscriptMessageRole::Agent)
+}
+
+fn latest_user_message(thread: &ThreadSnapshot) -> Option<String> {
+    latest_role_message(thread, TranscriptMessageRole::User)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TranscriptMessageRole {
+    User,
+    Agent,
+}
+
+fn latest_role_message(thread: &ThreadSnapshot, target_role: TranscriptMessageRole) -> Option<String> {
+    for turn in thread.turns.iter().rev() {
+        for item in turn.items.iter().rev() {
+            let Some(text) = collect_message_text(item).map(str::to_string) else {
+                continue;
+            };
+
+            let Some(object) = item.as_object() else {
+                continue;
+            };
+            let kind = object
+                .get("type")
+                .and_then(Value::as_str)
+                .or_else(|| {
+                    object
+                        .get("payload")
+                        .and_then(Value::as_object)
+                        .and_then(|payload| payload.get("type"))
+                        .and_then(Value::as_str)
+                })
+                .unwrap_or_default();
+            let role = object
+                .get("role")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let message_role = if matches!(kind, "user_message" | "userMessage") || role == "user"
+            {
+                TranscriptMessageRole::User
+            } else if matches!(kind, "agent_message" | "agentMessage")
+                || matches!(role, "assistant" | "codex")
+            {
+                TranscriptMessageRole::Agent
+            } else {
+                continue;
+            };
+            if message_role == target_role {
+                return Some(text);
+            }
+        }
+    }
+    None
+}
+
+fn summarize_text_for_log(value: &str, max_chars: usize) -> String {
+    let trimmed = value.trim();
+    if trimmed.chars().count() <= max_chars {
+        return trimmed.to_string();
+    }
+    let mut result = trimmed.chars().take(max_chars).collect::<String>();
+    result.push_str("...");
+    result
+}
+
 fn is_agent_response_signal(method: &str) -> bool {
     matches!(
         method,
@@ -1371,6 +1460,7 @@ fn usage_text() -> String {
         "  --include-writes          Include write/mutation probes (imports, exports, reloads)",
         "  --skip-experimental       Skip experimental method probes",
         "  --skip-thread-mutations   Skip thread mutation probes",
+        "  --allow-echo-replies      Do not fail when assistant reply exactly matches prompt",
         "  --help                    Show this help",
     ]
     .join("\n")
