@@ -226,7 +226,7 @@ impl WalletEvent {
     }
 
     /// Parse wallet configuration tags from decrypted content
-    /// Expected format: [["privkey", "hex"], ["mint", "url1"], ["mint", "url2"]]
+    /// Expected format: `[["privkey", "hex"], ["mint", "url1"], ["mint", "url2"]]`
     pub fn parse_content(decrypted_json: &str) -> Result<HashMap<String, Vec<String>>, Nip60Error> {
         let tags: Vec<Vec<String>> = serde_json::from_str(decrypted_json)?;
         let mut config = HashMap::new();
@@ -271,7 +271,7 @@ impl SpendingHistoryEvent {
     }
 
     /// Parse spending history from decrypted content
-    /// Format: [["direction", "in"], ["amount", "100"], ["unit", "sat"], ["e", "id", "", "created"]]
+    /// Format: `[["direction", "in"], ["amount", "100"], ["unit", "sat"], ["e", "id", "", "created"]]`
     pub fn parse_content(decrypted_json: &str) -> Result<HashMap<String, Vec<String>>, Nip60Error> {
         let tags: Vec<Vec<String>> = serde_json::from_str(decrypted_json)?;
         let mut history = HashMap::new();
