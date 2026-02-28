@@ -77,8 +77,9 @@ pub(super) fn run_skill_registry_action(
             let cwd = match std::env::current_dir() {
                 Ok(cwd) => cwd,
                 Err(error) => {
-                    state.skill_registry.last_error =
-                        Some(format!("Failed to resolve cwd for codex skills/list: {error}"));
+                    state.skill_registry.last_error = Some(format!(
+                        "Failed to resolve cwd for codex skills/list: {error}"
+                    ));
                     state.skill_registry.load_state = PaneLoadState::Error;
                     return true;
                 }
@@ -149,7 +150,8 @@ pub(super) fn run_skill_registry_action(
         }
         SkillRegistryPaneAction::InstallSelectedSkill => {
             let Some(selected_index) = state.skill_registry.selected_skill_index else {
-                state.skill_registry.last_error = Some("Select a discovered skill first".to_string());
+                state.skill_registry.last_error =
+                    Some("Select a discovered skill first".to_string());
                 state.skill_registry.load_state = PaneLoadState::Error;
                 return true;
             };
@@ -159,15 +161,18 @@ pub(super) fn run_skill_registry_action(
                 .get(selected_index)
                 .cloned()
             else {
-                state.skill_registry.last_error = Some("Selected skill row is no longer valid".to_string());
+                state.skill_registry.last_error =
+                    Some("Selected skill row is no longer valid".to_string());
                 state.skill_registry.load_state = PaneLoadState::Error;
                 return true;
             };
 
             let skill_path = std::path::PathBuf::from(selected_skill.path.clone());
             if !skill_path.is_absolute() {
-                state.skill_registry.last_error =
-                    Some(format!("Selected skill path is not absolute: {}", skill_path.display()));
+                state.skill_registry.last_error = Some(format!(
+                    "Selected skill path is not absolute: {}",
+                    skill_path.display()
+                ));
                 state.skill_registry.load_state = PaneLoadState::Error;
                 return true;
             }

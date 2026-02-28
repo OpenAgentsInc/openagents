@@ -35,6 +35,18 @@ This aligns with the SKL protocol direction in [`crates/nostr/nips/SKL.md`](../c
 
 All Autopilot agents in this OpenAgents environment are expected to have access to the skills in this registry, so these skills function as shared capabilities rather than per-agent private prompts.
 
+## Blink Quickstart
+
+Required env vars live in `.env.local` (see `.env.example` for placeholders).
+
+```bash
+# Check balances
+source ~/.profile && node skills/blink/scripts/balance.js
+
+# Create a 1,000 sat invoice (auto-subscribes for payment)
+source ~/.profile && node skills/blink/scripts/create_invoice.js 1000 "Payment for service"
+```
+
 ## Listing Policy
 
 - We generally welcome skills across domains.

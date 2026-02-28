@@ -312,11 +312,13 @@ Minor prompt hardening
             derived.event_template.kind,
             super::super::manifest::KIND_SKILL_MANIFEST
         );
-        assert!(derived
-            .event_template
-            .tags
-            .iter()
-            .any(|tag| tag[0] == "manifest_hash" && tag[1] == derived.normalized_payload_hash));
+        assert!(
+            derived
+                .event_template
+                .tags
+                .iter()
+                .any(|tag| tag[0] == "manifest_hash" && tag[1] == derived.normalized_payload_hash)
+        );
     }
 
     #[test]
@@ -379,14 +381,18 @@ Skill instructions
             derived.manifest.author_npub,
             Some("npub1author".to_string())
         );
-        assert!(derived
-            .manifest
-            .capabilities
-            .contains(&"http:outbound".to_string()));
-        assert!(derived
-            .manifest
-            .capabilities
-            .contains(&"filesystem:read".to_string()));
+        assert!(
+            derived
+                .manifest
+                .capabilities
+                .contains(&"http:outbound".to_string())
+        );
+        assert!(
+            derived
+                .manifest
+                .capabilities
+                .contains(&"filesystem:read".to_string())
+        );
     }
 
     #[test]
@@ -412,10 +418,12 @@ Skill instructions
 
         assert_eq!(derived.manifest.identifier, "mezo");
         assert_eq!(derived.manifest.version, "0.3.0");
-        assert!(derived
-            .manifest
-            .capabilities
-            .contains(&"filesystem:read".to_string()));
+        assert!(
+            derived
+                .manifest
+                .capabilities
+                .contains(&"filesystem:read".to_string())
+        );
     }
 
     #[test]

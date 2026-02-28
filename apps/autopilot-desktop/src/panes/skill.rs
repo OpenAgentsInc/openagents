@@ -163,10 +163,7 @@ pub fn paint_skill_registry_pane(
             skill.scope,
             skill.path,
             skill.dependency_count,
-            skill
-                .interface_display_name
-                .as_deref()
-                .unwrap_or("n/a")
+            skill.interface_display_name.as_deref().unwrap_or("n/a")
         );
         y = paint_multiline_phrase(
             paint,

@@ -439,10 +439,7 @@ pub fn paint(
         };
 
         let display_lines = chat_display_lines(&content, 78);
-        for line in display_lines
-            .iter()
-            .take(CHAT_MAX_RENDER_LINES_PER_MESSAGE)
-        {
+        for line in display_lines.iter().take(CHAT_MAX_RENDER_LINES_PER_MESSAGE) {
             paint.scene.draw_text(paint.text.layout(
                 line,
                 Point::new(transcript_bounds.origin.x + 10.0, y),
