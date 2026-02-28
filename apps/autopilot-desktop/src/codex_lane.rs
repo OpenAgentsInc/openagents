@@ -42,37 +42,11 @@ use session::{
 };
 
 const CODEX_LANE_POLL: Duration = Duration::from_millis(16);
-const DEFAULT_OPT_OUT_NOTIFICATION_METHODS: &[&str] = &[
-    // Legacy codex/event stream mirrors v2 server notifications and causes duplicate
-    // transcript/status updates when both are consumed.
-    "codex/event/agent_message_content_delta",
-    "codex/event/agent_message_delta",
-    "codex/event/agent_message",
-    "codex/event/agent_reasoning_delta",
-    "codex/event/agent_reasoning_content_delta",
-    "codex/event/agent_reasoning_raw_content_delta",
-    "codex/event/agent_reasoning_section_break",
-    "codex/event/agent_reasoning",
-    "codex/event/reasoning_content_delta",
-    "codex/event/reasoning_raw_content_delta",
-    "codex/event/item_started",
-    "codex/event/item_completed",
-    "codex/event/task_started",
-    "codex/event/task_complete",
-    "codex/event/task_failed",
-    "codex/event/task_error",
-    "codex/event/thread_status",
-    "codex/event/thread_name_changed",
-    "codex/event/turn_diff",
-    "codex/event/turn_plan",
-    "codex/event/token_count",
-    "codex/event/user_message",
-];
 
 fn default_opt_out_notification_methods() -> Vec<String> {
-    DEFAULT_OPT_OUT_NOTIFICATION_METHODS
+    codex_client::legacy_codex_event_opt_out_notification_methods()
         .iter()
-        .map(|method| method.to_string())
+        .map(|method| (*method).to_string())
         .collect()
 }
 
