@@ -141,6 +141,7 @@ impl HarnessArgs {
 #[derive(Default)]
 struct ChannelEventBatch {
     notifications: Vec<String>,
+    notification_methods: Vec<String>,
     requests: Vec<String>,
 }
 
@@ -668,7 +669,23 @@ async fn run(args: HarnessArgs) -> Result<()> {
             .await
             .context("turn/start failed")?;
         println!("turn/start turn_id={}", turn.turn.id);
-        drain_and_print("post-send", &mut channels, &args).await;
+        let post_send_events = collect_channel_events(
+            &mut channels,
+            Duration::from_millis(args.drain_ms),
+            Duration::from_millis(args.timeout_ms),
+        )
+        .await;
+        if !post_send_events
+            .notification_methods
+            .iter()
+            .any(|method| is_agent_response_signal(method))
+        {
+            bail!(
+                "post-send notifications for thread {} did not include any agent response signal; expected streaming or completion events",
+                new_thread_id
+            );
+        }
+        print_events("post-send", post_send_events, args.max_events);
 
         let after_turn = wait_for_materialized_thread_after_turn(
             &client,
@@ -689,6 +706,12 @@ async fn run(args: HarnessArgs) -> Result<()> {
             after_turn.thread.turns.len(),
             transcript_message_count(&after_turn.thread)
         );
+        if !thread_has_agent_role_message(&after_turn.thread) {
+            bail!(
+                "post-send transcript for thread {} has no assistant message; expected streaming/completion signal",
+                new_thread_id
+            );
+        }
         last_turn_id = after_turn.thread.turns.last().map(|turn| turn.id.clone());
     } else {
         println!("simulate_click chat.send: skipped (--prompt not provided)");
@@ -1089,6 +1112,25 @@ fn transcript_role_counts(thread: &ThreadSnapshot) -> (usize, usize) {
     (user_count, agent_count)
 }
 
+fn thread_has_agent_role_message(thread: &ThreadSnapshot) -> bool {
+    let (_, agent_count) = transcript_role_counts(thread);
+    agent_count > 0
+}
+
+fn is_agent_response_signal(method: &str) -> bool {
+    matches!(
+        method,
+        "item/agentMessage/delta"
+            | "item/assistantMessage/delta"
+            | "agent_message/delta"
+            | "item/agentMessage/completed"
+            | "item/assistantMessage/completed"
+            | "codex/event/agent_message_content_delta"
+            | "codex/event/agent_message_delta"
+            | "codex/event/agent_message"
+    )
+}
+
 async fn wait_for_materialized_thread_after_turn(
     client: &AppServerClient,
     thread_id: &str,
@@ -1183,6 +1225,9 @@ async fn collect_channel_events(
                 let Some(notification) = maybe else {
                     break;
                 };
+                batch
+                    .notification_methods
+                    .push(notification.method.clone());
                 batch.notifications.push(notification_summary(&notification));
                 last_event = Instant::now();
             }

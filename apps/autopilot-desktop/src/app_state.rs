@@ -530,6 +530,8 @@ impl AutopilotChatState {
     }
 
     pub fn set_thread_entries(&mut self, entries: Vec<AutopilotThreadListEntry>) {
+        let previous_active_thread_id = self.active_thread_id.clone();
+        let previous_metadata = self.thread_metadata.clone();
         self.threads = entries
             .iter()
             .map(|entry| entry.thread_id.clone())
@@ -547,10 +549,24 @@ impl AutopilotChatState {
                 },
             );
         }
-        if let Some(active_id) = self.active_thread_id.as_ref() {
-            if !self.threads.iter().any(|thread_id| thread_id == active_id) {
-                self.active_thread_id = self.threads.first().cloned();
+        if let Some(active_id) = previous_active_thread_id {
+            if !self.threads.iter().any(|thread_id| thread_id == &active_id) {
+                self.threads.insert(0, active_id.clone());
+                self.thread_metadata.insert(
+                    active_id.clone(),
+                    previous_metadata
+                        .get(&active_id)
+                        .cloned()
+                        .unwrap_or(AutopilotThreadMetadata {
+                            thread_name: None,
+                            status: None,
+                            loaded: false,
+                            cwd: None,
+                            path: None,
+                        }),
+                );
             }
+            self.active_thread_id = Some(active_id);
         } else {
             self.active_thread_id = self.threads.first().cloned();
         }
@@ -724,6 +740,28 @@ impl AutopilotChatState {
                 message.status = AutopilotMessageStatus::Running;
             }
             message.content.push_str(delta);
+        }
+    }
+
+    pub fn set_turn_message_for_turn(&mut self, turn_id: &str, content: &str) {
+        if content.trim().is_empty() {
+            return;
+        }
+        let assistant_message_id = self
+            .turn_assistant_message_ids
+            .get(turn_id)
+            .copied()
+            .or_else(|| self.bind_turn_to_assistant_message(turn_id));
+        if let Some(assistant_message_id) = assistant_message_id
+            && let Some(message) = self
+                .messages
+                .iter_mut()
+                .find(|message| message.id == assistant_message_id)
+        {
+            if self.active_turn_id.as_deref() == Some(turn_id) {
+                message.status = AutopilotMessageStatus::Running;
+            }
+            message.content = content.to_string();
         }
     }
 
@@ -3781,6 +3819,32 @@ mod tests {
             Some("resp-second")
         );
         assert!(!chat.has_pending_messages());
+    }
+
+    #[test]
+    fn chat_state_preserves_active_thread_when_list_omits_it() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-active".to_string());
+        chat.set_thread_name("thread-active", Some("Active".to_string()));
+        chat.set_thread_status("thread-active", Some("active".to_string()));
+
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-other".to_string(),
+            thread_name: Some("Other".to_string()),
+            status: Some("idle".to_string()),
+            loaded: false,
+            cwd: Some("/tmp/other".to_string()),
+            path: None,
+        }]);
+
+        assert_eq!(chat.active_thread_id.as_deref(), Some("thread-active"));
+        assert!(chat.threads.iter().any(|thread_id| thread_id == "thread-active"));
+        assert_eq!(
+            chat.thread_metadata
+                .get("thread-active")
+                .and_then(|metadata| metadata.thread_name.as_deref()),
+            Some("Active")
+        );
     }
 
     #[test]

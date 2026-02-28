@@ -342,47 +342,6 @@ fn queue_new_thread(state: &mut RenderState) {
     }
 }
 
-fn queue_thread_resume_and_read(state: &mut RenderState, thread_id: String) {
-    let metadata = state
-        .autopilot_chat
-        .thread_metadata
-        .get(&thread_id)
-        .cloned();
-    let experimental_api = state.codex_lane_config.experimental_api;
-    let resume_path = if experimental_api {
-        metadata.as_ref().and_then(|value| value.path.clone())
-    } else {
-        None
-    };
-    let cwd = metadata.as_ref().and_then(|value| value.cwd.clone());
-    eprintln!(
-        "codex thread/resume target id={} cwd={:?} path={:?} experimental_api={}",
-        thread_id, cwd, resume_path, experimental_api
-    );
-
-    let command = CodexLaneCommand::ThreadResume(codex_client::ThreadResumeParams {
-        thread_id: thread_id.clone(),
-        model: None,
-        model_provider: None,
-        cwd,
-        approval_policy: None,
-        sandbox: None,
-        path: resume_path.map(std::path::PathBuf::from),
-    });
-    if let Err(error) = state.queue_codex_command(command) {
-        state.autopilot_chat.last_error = Some(error);
-        return;
-    }
-
-    let read = CodexLaneCommand::ThreadRead(codex_client::ThreadReadParams {
-        thread_id,
-        include_turns: true,
-    });
-    if let Err(error) = state.queue_codex_command(read) {
-        state.autopilot_chat.last_error = Some(error);
-    }
-}
-
 pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLaneNotification) {
     let stored = notification.clone();
     match notification {
@@ -861,9 +820,6 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     })
                     .collect(),
             );
-            if let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() {
-                queue_thread_resume_and_read(state, thread_id);
-            }
         }
         CodexLaneNotification::ThreadLoadedListLoaded { thread_ids } => {
             state.autopilot_chat.set_thread_loaded_ids(&thread_ids);
@@ -888,6 +844,17 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                         (role, message.content)
                     })
                     .collect::<Vec<_>>();
+                if state.autopilot_chat.has_pending_messages() {
+                    eprintln!(
+                        "codex thread/read skipped id={} messages={} reason=pending-turn",
+                        thread_id,
+                        transcript.len()
+                    );
+                    state
+                        .autopilot_chat
+                        .record_turn_timeline_event("thread/read skipped while turn is pending");
+                    return;
+                }
                 eprintln!(
                     "codex thread/read loaded id={} messages={}",
                     thread_id,
@@ -984,6 +951,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             turn_id,
             item_id,
             item_type,
+            message,
         } => {
             state.autopilot_chat.remember_thread(thread_id.clone());
             if state.autopilot_chat.is_active_thread(&thread_id) {
@@ -992,6 +960,12 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     item_id.as_deref().unwrap_or("n/a"),
                     item_type.as_deref().unwrap_or("n/a")
                 ));
+                if let Some(message) = message {
+                    state
+                        .autopilot_chat
+                        .set_turn_message_for_turn(&turn_id, &message);
+                    state.autopilot_chat.mark_turn_completed_for(&turn_id);
+                }
             }
         }
         CodexLaneNotification::AgentMessageDelta {
@@ -1009,6 +983,26 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     delta.chars().count()
                 ));
                 state.autopilot_chat.append_turn_delta_for_turn(&turn_id, &delta);
+            }
+        }
+        CodexLaneNotification::AgentMessageCompleted {
+            thread_id,
+            turn_id,
+            item_id,
+            message,
+        } => {
+            state.autopilot_chat.remember_thread(thread_id.clone());
+            if state.autopilot_chat.is_active_thread(&thread_id) {
+                state.autopilot_chat.record_turn_timeline_event(format!(
+                    "agent completed: turn={} item={} chars={}",
+                    turn_id,
+                    item_id.as_deref().unwrap_or("n/a"),
+                    message.chars().count()
+                ));
+                state
+                    .autopilot_chat
+                    .set_turn_message_for_turn(&turn_id, &message);
+                state.autopilot_chat.mark_turn_completed_for(&turn_id);
             }
         }
         CodexLaneNotification::TurnCompleted {
@@ -1340,6 +1334,9 @@ fn notification_method_label(notification: &CodexLaneNotification) -> String {
         CodexLaneNotification::ItemStarted { .. } => "item/started".to_string(),
         CodexLaneNotification::ItemCompleted { .. } => "item/completed".to_string(),
         CodexLaneNotification::AgentMessageDelta { .. } => "item/agentMessage/delta".to_string(),
+        CodexLaneNotification::AgentMessageCompleted { .. } => {
+            "item/agentMessage/completed".to_string()
+        }
         CodexLaneNotification::TurnCompleted { .. } => "turn/completed".to_string(),
         CodexLaneNotification::TurnDiffUpdated { .. } => "turn/diff/updated".to_string(),
         CodexLaneNotification::TurnPlanUpdated { .. } => "turn/plan/updated".to_string(),
