@@ -855,6 +855,19 @@ impl CodexLaneWorker {
             let _ = join_handle.join();
         }
     }
+
+    pub fn shutdown_async(&mut self) {
+        if self.shutdown_sent {
+            return;
+        }
+        self.shutdown_sent = true;
+        let _ = self.command_tx.send(CodexLaneControl::Shutdown);
+        if let Some(join_handle) = self.join_handle.take() {
+            std::thread::spawn(move || {
+                let _ = join_handle.join();
+            });
+        }
+    }
 }
 
 impl Drop for CodexLaneWorker {

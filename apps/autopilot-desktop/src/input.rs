@@ -2908,6 +2908,15 @@ fn run_credentials_action(
                 .variable_value
                 .get_value()
                 .to_string();
+            eprintln!(
+                "credentials/save value requested selected={} chars={}",
+                state
+                    .credentials
+                    .selected_name
+                    .as_deref()
+                    .unwrap_or("none"),
+                value.chars().count()
+            );
             let saved = state.credentials.set_selected_value(value.as_str());
             if saved.is_ok() {
                 sync_runtime = true;
@@ -2916,6 +2925,7 @@ fn run_credentials_action(
                     .variable_value
                     .set_value(String::new());
                 restart_codex = true;
+                eprintln!("credentials/save value stored; syncing runtime");
             }
             saved
         }
@@ -2976,6 +2986,10 @@ fn run_credentials_action(
             state.credentials.sync_inputs(&mut state.credentials_inputs);
             if sync_runtime {
                 state.sync_credentials_runtime(restart_codex);
+                eprintln!(
+                    "credentials/runtime sync complete restart_codex={}",
+                    restart_codex
+                );
             }
         }
         Err(error) => {
