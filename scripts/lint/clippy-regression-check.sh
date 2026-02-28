@@ -24,6 +24,11 @@ if ! "$ROOT_DIR/scripts/lint/clippy-debt-allowlist-check.sh"; then
     exit 1
 fi
 
+if ! "$ROOT_DIR/scripts/lint/allow-attribute-expiry-check.sh"; then
+    printf 'Allow-attribute expiry guard failed.\n' >&2
+    exit 1
+fi
+
 if ! "$ROOT_DIR/scripts/lint/touched-clippy-gate.sh"; then
     printf 'Touched-file clippy gate failed.\n' >&2
     exit 1
