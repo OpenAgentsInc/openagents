@@ -108,7 +108,21 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let spark_worker = crate::spark_wallet::SparkWalletWorker::spawn(spark_wallet.network);
         let settings = crate::app_state::SettingsState::load_from_disk();
         let settings_inputs = crate::app_state::SettingsPaneInputs::from_state(&settings);
-        let codex_lane_config = CodexLaneConfig::default();
+        let mut credentials = crate::app_state::CredentialsState::load_from_disk();
+        let credentials_inputs = crate::app_state::CredentialsPaneInputs::from_state(&credentials);
+        let mut codex_lane_config = CodexLaneConfig::default();
+        let codex_scope = crate::credentials::CREDENTIAL_SCOPE_CODEX
+            | crate::credentials::CREDENTIAL_SCOPE_SKILLS
+            | crate::credentials::CREDENTIAL_SCOPE_GLOBAL;
+        match credentials.resolve_env_for_scope(codex_scope) {
+            Ok(env) => {
+                codex_lane_config.env = env;
+            }
+            Err(error) => {
+                credentials.last_error = Some(error);
+                credentials.load_state = crate::app_state::PaneLoadState::Error;
+            }
+        }
         let codex_lane_worker = CodexLaneWorker::spawn(codex_lane_config.clone());
         let sa_lane_worker = SaLaneWorker::spawn();
         let skl_lane_worker = SklLaneWorker::spawn();
@@ -149,6 +163,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             relay_connections_inputs: crate::app_state::RelayConnectionsPaneInputs::default(),
             network_requests_inputs: crate::app_state::NetworkRequestsPaneInputs::default(),
             settings_inputs,
+            credentials_inputs,
             job_history_inputs: crate::app_state::JobHistoryPaneInputs::default(),
             chat_inputs: crate::app_state::ChatPaneInputs::default(),
             autopilot_chat: crate::app_state::AutopilotChatState::default(),
@@ -183,6 +198,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             activity_feed: crate::app_state::ActivityFeedState::default(),
             alerts_recovery: crate::app_state::AlertsRecoveryState::default(),
             settings,
+            credentials,
             job_inbox: crate::app_state::JobInboxState::default(),
             active_job: crate::app_state::ActiveJobState::default(),
             job_history: crate::app_state::JobHistoryState::default(),
@@ -208,6 +224,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             command_palette,
             command_palette_actions,
         };
+        state.sync_credentials_runtime(false);
         bootstrap_runtime_lanes(&mut state);
         open_startup_panes(&mut state);
         Ok(state)
@@ -278,14 +295,23 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
     // Sidebar: when open, reserve a right-hand panel; when closed, only a slim handle remains.
     let min_sidebar_width = 220.0;
     let max_sidebar_width = (width * 0.5).max(min_sidebar_width);
-    let configured_width = state.sidebar.width.max(min_sidebar_width).min(max_sidebar_width);
-    let panel_width = if state.sidebar.is_open { configured_width } else { 0.0 };
+    let configured_width = state
+        .sidebar
+        .width
+        .max(min_sidebar_width)
+        .min(max_sidebar_width);
+    let panel_width = if state.sidebar.is_open {
+        configured_width
+    } else {
+        0.0
+    };
     let sidebar_x = (width - panel_width).max(0.0);
 
     if panel_width > 0.0 {
         let sidebar_color = Hsla::from_hex(0x171718).with_alpha(0.9);
         scene.draw_quad(
-            Quad::new(Bounds::new(sidebar_x, 0.0, panel_width, height)).with_background(sidebar_color),
+            Quad::new(Bounds::new(sidebar_x, 0.0, panel_width, height))
+                .with_background(sidebar_color),
         );
 
         // Settings icon in the bottom-right corner of the sidebar.
@@ -318,7 +344,8 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
     // Draw three small bars to suggest a draggable handle.
     let bar_gap = 6.0;
     for i in 0..3 {
-        let y = handle_bounds.origin.y + i as f32 * (handle_bounds.size.height - 2.0 * bar_gap) / 2.0;
+        let y =
+            handle_bounds.origin.y + i as f32 * (handle_bounds.size.height - 2.0 * bar_gap) / 2.0;
         scene.draw_quad(
             Quad::new(Bounds::new(
                 handle_bounds.origin.x,
@@ -352,7 +379,9 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
         // Use fixed full-window bounds for the grid so dot positions don't shift when the sidebar is dragged.
         // Clip to the main canvas so we don't draw under the sidebar.
         let main_canvas_width = (width - panel_width).max(0.0);
-        paint.scene.push_clip(Bounds::new(0.0, 0.0, main_canvas_width, height));
+        paint
+            .scene
+            .push_clip(Bounds::new(0.0, 0.0, main_canvas_width, height));
         dots_grid.paint(Bounds::new(0.0, 0.0, width, height), &mut paint);
         paint.scene.pop_clip();
 
@@ -379,7 +408,10 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             let offline_x = left_edge;
             paint.scene.draw_text(paint.text.layout(
                 "Offline",
-                Point::new(offline_x, section_top + (track_height - font_size) * 0.5 - 1.0),
+                Point::new(
+                    offline_x,
+                    section_top + (track_height - font_size) * 0.5 - 1.0,
+                ),
                 font_size,
                 theme::text::MUTED,
             ));
@@ -427,7 +459,10 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             let online_x = track_bounds.origin.x + track_width + label_gap;
             paint.scene.draw_text(paint.text.layout(
                 "Online",
-                Point::new(online_x, section_top + (track_height - font_size) * 0.5 - 1.0),
+                Point::new(
+                    online_x,
+                    section_top + (track_height - font_size) * 0.5 - 1.0,
+                ),
                 font_size,
                 theme::text::MUTED,
             ));
@@ -461,6 +496,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &state.activity_feed,
             &state.alerts_recovery,
             &state.settings,
+            &state.credentials,
             &state.job_inbox,
             &state.active_job,
             &state.job_history,
@@ -481,6 +517,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &mut state.relay_connections_inputs,
             &mut state.network_requests_inputs,
             &mut state.settings_inputs,
+            &mut state.credentials_inputs,
             &mut state.job_history_inputs,
             &mut state.chat_inputs,
             &mut paint,
@@ -558,7 +595,8 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             let tooltip_text_color = Hsla::new(0.0, 0.0, 0.0, _tooltip_alpha);
             let font_size = tooltip_font_size;
             let text_x = tooltip_bounds.origin.x + 5.0;
-            let text_y = tooltip_bounds.origin.y + (tooltip_bounds.size.height - font_size) * 0.5 - 13.0;
+            let text_y =
+                tooltip_bounds.origin.y + (tooltip_bounds.size.height - font_size) * 0.5 - 13.0;
             let text_bounds = Bounds::new(text_x, text_y, tooltip_bounds.size.width, font_size);
             let mut label = Text::new(tooltip_text)
                 .font_size(font_size)
@@ -624,8 +662,16 @@ pub fn sidebar_handle_bounds(state: &RenderState) -> Bounds {
     let height = logical.height;
     let min_sidebar_width = 220.0;
     let max_sidebar_width = (width * 0.5).max(min_sidebar_width);
-    let configured_width = state.sidebar.width.max(min_sidebar_width).min(max_sidebar_width);
-    let panel_width = if state.sidebar.is_open { configured_width } else { 0.0 };
+    let configured_width = state
+        .sidebar
+        .width
+        .max(min_sidebar_width)
+        .min(max_sidebar_width);
+    let panel_width = if state.sidebar.is_open {
+        configured_width
+    } else {
+        0.0
+    };
     let sidebar_x = (width - panel_width).max(0.0);
     let handle_height = 40.0;
     let handle_width = 4.0;
@@ -645,8 +691,16 @@ pub fn sidebar_go_online_button_bounds(state: &RenderState) -> Bounds {
     let width = logical.width;
     let min_sidebar_width = 220.0;
     let max_sidebar_width = (width * 0.5).max(min_sidebar_width);
-    let configured_width = state.sidebar.width.max(min_sidebar_width).min(max_sidebar_width);
-    let panel_width = if state.sidebar.is_open { configured_width } else { 0.0 };
+    let configured_width = state
+        .sidebar
+        .width
+        .max(min_sidebar_width)
+        .min(max_sidebar_width);
+    let panel_width = if state.sidebar.is_open {
+        configured_width
+    } else {
+        0.0
+    };
     let sidebar_x = (width - panel_width).max(0.0);
     if panel_width < 1.0 {
         return Bounds::new(-1000.0, -1000.0, 0.0, 0.0);
@@ -660,7 +714,12 @@ pub fn sidebar_go_online_button_bounds(state: &RenderState) -> Bounds {
     let online_w = 28.0;
     let toggle_width = offline_w + label_gap + track_width + label_gap + online_w;
     let right_edge = sidebar_x + panel_width - pad;
-    Bounds::new(right_edge - toggle_width, section_top, toggle_width, track_height)
+    Bounds::new(
+        right_edge - toggle_width,
+        section_top,
+        toggle_width,
+        track_height,
+    )
 }
 
 fn command_registry() -> Vec<Command> {
@@ -746,6 +805,11 @@ mod tests {
             commands
                 .iter()
                 .any(|command| { command.id == "pane.settings" && command.label == "Settings" })
+        );
+        assert!(
+            commands.iter().any(|command| {
+                command.id == "pane.credentials" && command.label == "Credentials"
+            })
         );
         assert!(
             commands

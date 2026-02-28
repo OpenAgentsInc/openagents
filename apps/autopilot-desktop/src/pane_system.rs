@@ -64,6 +64,12 @@ const ACTIVITY_FEED_MAX_ROWS: usize = 8;
 const ALERTS_RECOVERY_ROW_HEIGHT: f32 = 30.0;
 const ALERTS_RECOVERY_ROW_GAP: f32 = 6.0;
 const ALERTS_RECOVERY_MAX_ROWS: usize = 8;
+const CREDENTIALS_BUTTON_HEIGHT: f32 = 28.0;
+const CREDENTIALS_BUTTON_WIDTH: f32 = 116.0;
+const CREDENTIALS_BUTTON_GAP: f32 = 8.0;
+const CREDENTIALS_ROW_HEIGHT: f32 = 28.0;
+const CREDENTIALS_ROW_GAP: f32 = 6.0;
+const CREDENTIALS_MAX_ROWS: usize = 10;
 static PANE_Z_SORT_INVOCATIONS: AtomicU64 = AtomicU64::new(0);
 
 pub struct PaneController;
@@ -212,6 +218,21 @@ pub enum SettingsPaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CredentialsPaneAction {
+    AddCustom,
+    SaveValue,
+    DeleteOrClear,
+    ToggleEnabled,
+    ToggleScopeCodex,
+    ToggleScopeSpark,
+    ToggleScopeSkills,
+    ToggleScopeGlobal,
+    ImportFromEnv,
+    Reload,
+    SelectRow(usize),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AgentProfileStatePaneAction {
     PublishProfile,
     PublishState,
@@ -327,6 +348,7 @@ pub enum PaneHitAction {
     ActivityFeed(ActivityFeedPaneAction),
     AlertsRecovery(AlertsRecoveryPaneAction),
     Settings(SettingsPaneAction),
+    Credentials(CredentialsPaneAction),
     JobInbox(JobInboxPaneAction),
     ActiveJob(ActiveJobPaneAction),
     JobHistory(JobHistoryPaneAction),
@@ -389,8 +411,11 @@ pub fn create_pane(state: &mut RenderState, descriptor: PaneDescriptor) -> u64 {
     let tier = (id as usize - 1) % 10;
     let x = PANE_MARGIN + tier as f32 * PANE_CASCADE_X;
     let y = PANE_MARGIN + tier as f32 * PANE_CASCADE_Y;
-    let bounds =
-        clamp_bounds_to_window(Bounds::new(x, y, descriptor.width, descriptor.height), logical, sidebar_width);
+    let bounds = clamp_bounds_to_window(
+        Bounds::new(x, y, descriptor.width, descriptor.height),
+        logical,
+        sidebar_width,
+    );
 
     let title = pane_title(descriptor.kind, id);
     let pane = DesktopPane {
@@ -694,6 +719,13 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                 if settings_relay_input_bounds(content_bounds).contains(point)
                     || settings_wallet_default_input_bounds(content_bounds).contains(point)
                     || settings_provider_queue_input_bounds(content_bounds).contains(point)
+                {
+                    return CursorIcon::Text;
+                }
+            }
+            PaneKind::Credentials => {
+                if credentials_name_input_bounds(content_bounds).contains(point)
+                    || credentials_value_input_bounds(content_bounds).contains(point)
                 {
                     return CursorIcon::Text;
                 }
@@ -1522,6 +1554,95 @@ pub fn settings_reset_button_bounds(content_bounds: Bounds) -> Bounds {
         168.0,
         JOB_INBOX_BUTTON_HEIGHT,
     )
+}
+
+pub fn credentials_name_input_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.34).clamp(220.0, 340.0),
+        CREDENTIALS_BUTTON_HEIGHT,
+    )
+}
+
+pub fn credentials_value_input_bounds(content_bounds: Bounds) -> Bounds {
+    let name = credentials_name_input_bounds(content_bounds);
+    Bounds::new(
+        name.max_x() + CREDENTIALS_BUTTON_GAP,
+        name.origin.y,
+        (content_bounds.size.width - CHAT_PAD * 2.0 - name.size.width - CREDENTIALS_BUTTON_GAP)
+            .max(240.0),
+        CREDENTIALS_BUTTON_HEIGHT,
+    )
+}
+
+fn credentials_button_bounds(content_bounds: Bounds, row: usize, col: usize) -> Bounds {
+    let top = credentials_name_input_bounds(content_bounds).max_y()
+        + 10.0
+        + row as f32 * (CREDENTIALS_BUTTON_HEIGHT + CREDENTIALS_BUTTON_GAP);
+    Bounds::new(
+        content_bounds.origin.x
+            + CHAT_PAD
+            + col as f32 * (CREDENTIALS_BUTTON_WIDTH + CREDENTIALS_BUTTON_GAP),
+        top,
+        CREDENTIALS_BUTTON_WIDTH,
+        CREDENTIALS_BUTTON_HEIGHT,
+    )
+}
+
+pub fn credentials_add_custom_button_bounds(content_bounds: Bounds) -> Bounds {
+    credentials_button_bounds(content_bounds, 0, 0)
+}
+
+pub fn credentials_save_value_button_bounds(content_bounds: Bounds) -> Bounds {
+    credentials_button_bounds(content_bounds, 0, 1)
+}
+
+pub fn credentials_delete_button_bounds(content_bounds: Bounds) -> Bounds {
+    credentials_button_bounds(content_bounds, 0, 2)
+}
+
+pub fn credentials_toggle_enabled_button_bounds(content_bounds: Bounds) -> Bounds {
+    credentials_button_bounds(content_bounds, 0, 3)
+}
+
+pub fn credentials_import_button_bounds(content_bounds: Bounds) -> Bounds {
+    credentials_button_bounds(content_bounds, 1, 0)
+}
+
+pub fn credentials_reload_button_bounds(content_bounds: Bounds) -> Bounds {
+    credentials_button_bounds(content_bounds, 1, 1)
+}
+
+pub fn credentials_scope_codex_button_bounds(content_bounds: Bounds) -> Bounds {
+    credentials_button_bounds(content_bounds, 1, 2)
+}
+
+pub fn credentials_scope_spark_button_bounds(content_bounds: Bounds) -> Bounds {
+    credentials_button_bounds(content_bounds, 1, 3)
+}
+
+pub fn credentials_scope_skills_button_bounds(content_bounds: Bounds) -> Bounds {
+    credentials_button_bounds(content_bounds, 1, 4)
+}
+
+pub fn credentials_scope_global_button_bounds(content_bounds: Bounds) -> Bounds {
+    credentials_button_bounds(content_bounds, 1, 5)
+}
+
+pub fn credentials_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
+    let safe_index = row_index.min(CREDENTIALS_MAX_ROWS.saturating_sub(1));
+    let top = credentials_import_button_bounds(content_bounds).max_y() + 12.0;
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        top + safe_index as f32 * (CREDENTIALS_ROW_HEIGHT + CREDENTIALS_ROW_GAP),
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(240.0),
+        CREDENTIALS_ROW_HEIGHT,
+    )
+}
+
+pub fn credentials_visible_row_count(row_count: usize) -> usize {
+    row_count.min(CREDENTIALS_MAX_ROWS)
 }
 
 pub fn job_inbox_accept_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -2414,6 +2535,62 @@ fn pane_hit_action_for_pane(
             }
             None
         }
+        PaneKind::Credentials => {
+            if credentials_add_custom_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::Credentials(CredentialsPaneAction::AddCustom));
+            }
+            if credentials_save_value_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::Credentials(CredentialsPaneAction::SaveValue));
+            }
+            if credentials_delete_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::Credentials(
+                    CredentialsPaneAction::DeleteOrClear,
+                ));
+            }
+            if credentials_toggle_enabled_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::Credentials(
+                    CredentialsPaneAction::ToggleEnabled,
+                ));
+            }
+            if credentials_import_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::Credentials(
+                    CredentialsPaneAction::ImportFromEnv,
+                ));
+            }
+            if credentials_reload_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::Credentials(CredentialsPaneAction::Reload));
+            }
+            if credentials_scope_codex_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::Credentials(
+                    CredentialsPaneAction::ToggleScopeCodex,
+                ));
+            }
+            if credentials_scope_spark_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::Credentials(
+                    CredentialsPaneAction::ToggleScopeSpark,
+                ));
+            }
+            if credentials_scope_skills_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::Credentials(
+                    CredentialsPaneAction::ToggleScopeSkills,
+                ));
+            }
+            if credentials_scope_global_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::Credentials(
+                    CredentialsPaneAction::ToggleScopeGlobal,
+                ));
+            }
+
+            let visible_rows = credentials_visible_row_count(state.credentials.entries.len());
+            for row_index in 0..visible_rows {
+                if credentials_row_bounds(content_bounds, row_index).contains(point) {
+                    return Some(PaneHitAction::Credentials(
+                        CredentialsPaneAction::SelectRow(row_index),
+                    ));
+                }
+            }
+            None
+        }
         PaneKind::JobInbox => {
             if job_inbox_accept_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::JobInbox(JobInboxPaneAction::AcceptSelected));
@@ -2819,6 +2996,40 @@ pub fn dispatch_settings_input_event(state: &mut RenderState, event: &InputEvent
         .event(
             event,
             settings_provider_queue_input_bounds(content_bounds),
+            &mut state.event_context,
+        )
+        .is_handled();
+    handled
+}
+
+pub fn dispatch_credentials_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
+    let top_credentials = state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == PaneKind::Credentials)
+        .max_by_key(|pane| pane.z_index)
+        .map(|pane| pane.bounds);
+    let Some(bounds) = top_credentials else {
+        return false;
+    };
+
+    let content_bounds = pane_content_bounds(bounds);
+    let mut handled = false;
+    handled |= state
+        .credentials_inputs
+        .variable_name
+        .event(
+            event,
+            credentials_name_input_bounds(content_bounds),
+            &mut state.event_context,
+        )
+        .is_handled();
+    handled |= state
+        .credentials_inputs
+        .variable_value
+        .event(
+            event,
+            credentials_value_input_bounds(content_bounds),
             &mut state.event_context,
         )
         .is_handled();

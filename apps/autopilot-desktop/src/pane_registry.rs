@@ -80,7 +80,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 37] = [
+const PANE_SPECS: [PaneSpec; 38] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -377,6 +377,21 @@ const PANE_SPECS: [PaneSpec; 37] = [
             id: "pane.settings",
             label: "Settings",
             description: "Open network, wallet, and provider defaults with validation",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::Credentials,
+        title: "Credentials",
+        default_width: 960.0,
+        default_height: 520.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.credentials",
+            label: "Credentials",
+            description: "Open secure API key/env var manager with scoped runtime injection",
             keybinding: None,
         }),
         hotbar: None,

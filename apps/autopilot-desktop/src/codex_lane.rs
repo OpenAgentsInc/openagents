@@ -38,6 +38,7 @@ pub struct CodexLaneConfig {
     pub bootstrap_thread: bool,
     pub bootstrap_model: Option<String>,
     pub wire_log_path: Option<PathBuf>,
+    pub env: Vec<(String, String)>,
     pub client_info: ClientInfo,
     pub approval_policy: Option<AskForApproval>,
     pub experimental_api: bool,
@@ -55,6 +56,7 @@ impl Default for CodexLaneConfig {
                 .ok()
                 .filter(|value| !value.trim().is_empty())
                 .map(PathBuf::from),
+            env: Vec::new(),
             client_info: ClientInfo {
                 name: "openagents-autopilot-desktop".to_string(),
                 title: Some("OpenAgents Autopilot Desktop".to_string()),
@@ -886,6 +888,7 @@ impl CodexLaneRuntime for ProcessCodexLaneRuntime {
             .block_on(AppServerClient::spawn(AppServerConfig {
                 cwd: config.cwd.clone(),
                 wire_log,
+                env: config.env.clone(),
                 ..Default::default()
             }))
             .context("failed to spawn codex app-server")
@@ -3158,7 +3161,9 @@ mod tests {
             runtime.block_on(async move {
                 let mut reader = BufReader::new(server_read);
                 let mut request_line = String::new();
-                let mut handled_requests = 0usize;
+                let mut saw_initialize = false;
+                let mut saw_thread_start = false;
+                let mut saw_model_list_request = false;
                 loop {
                     request_line.clear();
                     let bytes = reader.read_line(&mut request_line).await.unwrap_or(0);
@@ -3172,7 +3177,6 @@ mod tests {
                     if value.get("id").is_none() {
                         continue;
                     }
-                    handled_requests = handled_requests.saturating_add(1);
                     let method = value
                         .get("method")
                         .and_then(Value::as_str)
@@ -3214,11 +3218,14 @@ mod tests {
                             "result": {}
                         }),
                     };
+                    saw_initialize |= method == "initialize";
+                    saw_thread_start |= method == "thread/start";
+                    saw_model_list_request |= method == "model/list";
                     if let Ok(line) = serde_json::to_string(&response) {
                         let _ = server_write.write_all(format!("{line}\n").as_bytes()).await;
                         let _ = server_write.flush().await;
                     }
-                    if handled_requests >= 3 {
+                    if saw_initialize && saw_thread_start && saw_model_list_request {
                         break;
                     }
                 }
@@ -4529,7 +4536,7 @@ mod tests {
             runtime.block_on(async move {
                 let mut reader = BufReader::new(server_read);
                 let mut request_line = String::new();
-                let mut done = false;
+                let mut thread_list_count = 0usize;
                 loop {
                     request_line.clear();
                     let bytes = reader.read_line(&mut request_line).await.unwrap_or(0);
@@ -4561,7 +4568,7 @@ mod tests {
                             }
                         }),
                         "thread/list" => {
-                            done = true;
+                            thread_list_count = thread_list_count.saturating_add(1);
                             saw_thread_list_clone.store(true, Ordering::SeqCst);
                             json!({
                                 "id": value["id"].clone(),
@@ -4578,7 +4585,7 @@ mod tests {
                         let _ = server_write.write_all(format!("{line}\n").as_bytes()).await;
                         let _ = server_write.flush().await;
                     }
-                    if done {
+                    if thread_list_count >= 2 {
                         break;
                     }
                 }

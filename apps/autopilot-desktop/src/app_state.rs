@@ -1,8 +1,8 @@
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{cell::RefCell, rc::Rc};
-use std::collections::VecDeque;
 
 use nostr::NostrIdentity;
 use wgpui::components::TextInput;
@@ -22,7 +22,7 @@ use crate::{
         CodexLaneCommand, CodexLaneCommandResponse, CodexLaneNotification, CodexLaneSnapshot,
         CodexLaneWorker,
     },
-    spark_wallet::{SparkPaneState, SparkWalletWorker},
+    spark_wallet::{SparkPaneState, SparkWalletCommand, SparkWalletWorker},
 };
 
 pub const WINDOW_TITLE: &str = "Autopilot";
@@ -65,6 +65,7 @@ pub enum PaneKind {
     ActivityFeed,
     AlertsRecovery,
     Settings,
+    Credentials,
     JobInbox,
     ActiveJob,
     JobHistory,
@@ -216,6 +217,20 @@ impl Default for SettingsPaneInputs {
             provider_max_queue_depth: TextInput::new()
                 .value("4")
                 .placeholder("Provider max queue depth"),
+        }
+    }
+}
+
+pub struct CredentialsPaneInputs {
+    pub variable_name: TextInput,
+    pub variable_value: TextInput,
+}
+
+impl Default for CredentialsPaneInputs {
+    fn default() -> Self {
+        Self {
+            variable_name: TextInput::new().placeholder("ENV_VAR_NAME"),
+            variable_value: TextInput::new().placeholder("Value (stored in secure keychain)"),
         }
     }
 }
@@ -1707,6 +1722,278 @@ impl SettingsState {
     }
 }
 
+pub struct CredentialsState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub entries: Vec<crate::credentials::CredentialRecord>,
+    pub selected_name: Option<String>,
+    repository: crate::credentials::CredentialRepository,
+}
+
+impl Default for CredentialsState {
+    fn default() -> Self {
+        Self::load_from_disk()
+    }
+}
+
+impl CredentialsState {
+    pub fn load_from_disk() -> Self {
+        let repository = crate::credentials::CredentialRepository::new();
+        let mut state = Self {
+            load_state: PaneLoadState::Ready,
+            last_error: None,
+            last_action: Some("Credential manager ready.".to_string()),
+            entries: Vec::new(),
+            selected_name: None,
+            repository,
+        };
+
+        match state.repository.load_records() {
+            Ok(records) => {
+                state.entries = records;
+                state.selected_name = state.entries.first().map(|entry| entry.name.clone());
+                state.pane_set_ready(format!("Loaded {} credential slots.", state.entries.len()));
+            }
+            Err(error) => {
+                state.entries = crate::credentials::CREDENTIAL_TEMPLATES
+                    .iter()
+                    .map(|template| crate::credentials::CredentialRecord {
+                        name: template.name.to_string(),
+                        enabled: true,
+                        secret: template.secret,
+                        template: true,
+                        scopes: template.scopes,
+                        has_value: false,
+                    })
+                    .collect();
+                state.selected_name = state.entries.first().map(|entry| entry.name.clone());
+                let _ = state.pane_set_error(format!("Credential metadata load error: {error}"));
+                *state.pane_last_action_mut() = Some("Using template credential slots".to_string());
+            }
+        }
+
+        state
+    }
+
+    pub fn selected_entry(&self) -> Option<&crate::credentials::CredentialRecord> {
+        let selected_name = self.selected_name.as_deref()?;
+        self.entries
+            .iter()
+            .find(|entry| entry.name == selected_name)
+    }
+
+    pub fn select_row(&mut self, row_index: usize) -> Result<(), String> {
+        let Some(entry) = self.entries.get(row_index) else {
+            return Err(self.pane_set_error(format!("Credential row {row_index} is out of range")));
+        };
+        self.selected_name = Some(entry.name.clone());
+        self.pane_set_ready(format!("Selected credential {}", entry.name));
+        Ok(())
+    }
+
+    pub fn sync_inputs(&self, inputs: &mut CredentialsPaneInputs) {
+        if let Some(entry) = self.selected_entry() {
+            inputs.variable_name.set_value(entry.name.clone());
+        }
+    }
+
+    pub fn add_custom_entry(&mut self, raw_name: &str) -> Result<(), String> {
+        let normalized = crate::credentials::normalize_env_var_name(raw_name);
+        if !crate::credentials::is_valid_env_var_name(normalized.as_str()) {
+            return Err(
+                self.pane_set_error("Credential name must match [A-Z_][A-Z0-9_]*".to_string())
+            );
+        }
+
+        if self.entries.iter().any(|entry| entry.name == normalized) {
+            self.selected_name = Some(normalized.clone());
+            self.pane_set_ready(format!("Credential {normalized} already exists."));
+            return Ok(());
+        }
+
+        self.entries.push(crate::credentials::CredentialRecord {
+            name: normalized.clone(),
+            enabled: true,
+            secret: crate::credentials::infer_secret_from_name(normalized.as_str()),
+            template: false,
+            scopes: crate::credentials::CREDENTIAL_SCOPE_ALL,
+            has_value: false,
+        });
+        self.selected_name = Some(normalized.clone());
+        self.persist_metadata()?;
+        self.pane_set_ready(format!("Added custom credential slot {normalized}."));
+        Ok(())
+    }
+
+    pub fn set_selected_value(&mut self, value: &str) -> Result<(), String> {
+        let Some(selected_name) = self.selected_name.clone() else {
+            return Err(
+                self.pane_set_error("Select a credential slot before saving a value.".to_string())
+            );
+        };
+        self.repository
+            .set_value(selected_name.as_str(), value)
+            .map_err(|error| self.pane_set_error(error))?;
+        if let Some(entry) = self
+            .entries
+            .iter_mut()
+            .find(|entry| entry.name == selected_name)
+        {
+            entry.has_value = true;
+        }
+        self.persist_metadata()?;
+        self.pane_set_ready(format!(
+            "Stored value for {} in secure storage.",
+            selected_name
+        ));
+        Ok(())
+    }
+
+    pub fn delete_or_clear_selected(&mut self) -> Result<(), String> {
+        let Some(selected_name) = self.selected_name.clone() else {
+            return Err(self
+                .pane_set_error("Select a credential slot before deleting/clearing.".to_string()));
+        };
+        let Some(selected_index) = self
+            .entries
+            .iter()
+            .position(|entry| entry.name == selected_name)
+        else {
+            return Err(
+                self.pane_set_error(format!("Credential {} is not available", selected_name))
+            );
+        };
+
+        self.repository
+            .delete_value(selected_name.as_str())
+            .map_err(|error| self.pane_set_error(error))?;
+
+        let template = self
+            .entries
+            .get(selected_index)
+            .is_some_and(|entry| entry.template);
+        if template {
+            if let Some(entry) = self.entries.get_mut(selected_index) {
+                entry.has_value = false;
+            }
+            self.persist_metadata()?;
+            self.pane_set_ready(format!("Cleared value for {}.", selected_name));
+            return Ok(());
+        }
+
+        self.entries.remove(selected_index);
+        self.persist_metadata()?;
+        self.selected_name = if self.entries.is_empty() {
+            None
+        } else if selected_index < self.entries.len() {
+            Some(self.entries[selected_index].name.clone())
+        } else {
+            Some(
+                self.entries[self.entries.len().saturating_sub(1)]
+                    .name
+                    .clone(),
+            )
+        };
+        self.pane_set_ready(format!("Removed custom credential {}.", selected_name));
+        Ok(())
+    }
+
+    pub fn toggle_selected_enabled(&mut self) -> Result<(), String> {
+        let Some(selected_name) = self.selected_name.clone() else {
+            return Err(self
+                .pane_set_error("Select a credential slot before toggling enabled.".to_string()));
+        };
+        let enabled = if let Some(entry) = self
+            .entries
+            .iter_mut()
+            .find(|entry| entry.name == selected_name)
+        {
+            entry.enabled = !entry.enabled;
+            entry.enabled
+        } else {
+            return Err(
+                self.pane_set_error(format!("Credential {} is not available", selected_name))
+            );
+        };
+        self.persist_metadata()?;
+        self.pane_set_ready(format!(
+            "{} {}",
+            if enabled { "Enabled" } else { "Disabled" },
+            selected_name
+        ));
+        Ok(())
+    }
+
+    pub fn toggle_selected_scope(&mut self, scope_bit: u8) -> Result<(), String> {
+        if scope_bit == 0 || (scope_bit & crate::credentials::CREDENTIAL_SCOPE_ALL) == 0 {
+            return Err(self.pane_set_error("Invalid credential scope".to_string()));
+        }
+        let Some(selected_name) = self.selected_name.clone() else {
+            return Err(
+                self.pane_set_error("Select a credential slot before toggling scope.".to_string())
+            );
+        };
+        let Some(entry) = self
+            .entries
+            .iter_mut()
+            .find(|entry| entry.name == selected_name)
+        else {
+            return Err(
+                self.pane_set_error(format!("Credential {} is not available", selected_name))
+            );
+        };
+        if (entry.scopes & scope_bit) == 0 {
+            entry.scopes |= scope_bit;
+        } else {
+            entry.scopes &= !scope_bit;
+        }
+        self.persist_metadata()?;
+        self.pane_set_ready(format!("Updated scopes for {}.", selected_name));
+        Ok(())
+    }
+
+    pub fn import_from_process_env(&mut self) -> Result<usize, String> {
+        let mut imported = 0usize;
+        for index in 0..self.entries.len() {
+            let name = self.entries[index].name.clone();
+            let from_env = std::env::var(name.as_str())
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            let Some(value) = from_env else {
+                continue;
+            };
+            if let Err(error) = self.repository.set_value(name.as_str(), value.as_str()) {
+                return Err(self.pane_set_error(error));
+            }
+            self.entries[index].has_value = true;
+            imported = imported.saturating_add(1);
+        }
+
+        if imported == 0 {
+            self.pane_set_ready("No matching process env variables to import.");
+        } else {
+            self.pane_set_ready(format!(
+                "Imported {imported} credentials from process environment."
+            ));
+        }
+        Ok(imported)
+    }
+
+    pub fn resolve_env_for_scope(&self, scope: u8) -> Result<Vec<(String, String)>, String> {
+        self.repository
+            .resolve_env_for_scope(self.entries.as_slice(), scope)
+    }
+
+    fn persist_metadata(&mut self) -> Result<(), String> {
+        self.repository
+            .persist_records(self.entries.as_slice())
+            .map_err(|error| self.pane_set_error(error))?;
+        Ok(())
+    }
+}
+
 impl SettingsPaneInputs {
     pub fn from_state(settings: &SettingsState) -> Self {
         Self {
@@ -1729,6 +2016,16 @@ impl SettingsPaneInputs {
             .set_value(settings.document.wallet_default_send_sats.to_string());
         self.provider_max_queue_depth
             .set_value(settings.document.provider_max_queue_depth.to_string());
+    }
+}
+
+impl CredentialsPaneInputs {
+    pub fn from_state(credentials: &CredentialsState) -> Self {
+        let mut inputs = Self::default();
+        if let Some(entry) = credentials.selected_entry() {
+            inputs.variable_name.set_value(entry.name.clone());
+        }
+        inputs
     }
 }
 
@@ -3543,6 +3840,7 @@ impl_pane_status_access!(
     ActivityFeedState,
     AlertsRecoveryState,
     SettingsState,
+    CredentialsState,
     JobInboxState,
     ActiveJobState,
     JobHistoryState,
@@ -3583,6 +3881,7 @@ pub struct RenderState {
     pub relay_connections_inputs: RelayConnectionsPaneInputs,
     pub network_requests_inputs: NetworkRequestsPaneInputs,
     pub settings_inputs: SettingsPaneInputs,
+    pub credentials_inputs: CredentialsPaneInputs,
     pub job_history_inputs: JobHistoryPaneInputs,
     pub chat_inputs: ChatPaneInputs,
     pub autopilot_chat: AutopilotChatState,
@@ -3617,6 +3916,7 @@ pub struct RenderState {
     pub activity_feed: ActivityFeedState,
     pub alerts_recovery: AlertsRecoveryState,
     pub settings: SettingsState,
+    pub credentials: CredentialsState,
     pub job_inbox: JobInboxState,
     pub active_job: ActiveJobState,
     pub job_history: JobHistoryState,
@@ -3669,6 +3969,48 @@ impl RenderState {
         previous.shutdown();
         self.codex_lane = CodexLaneSnapshot::default();
         self.autopilot_chat.set_connection_status("starting");
+    }
+
+    pub fn sync_credentials_runtime(&mut self, restart_codex: bool) {
+        let codex_scope = crate::credentials::CREDENTIAL_SCOPE_CODEX
+            | crate::credentials::CREDENTIAL_SCOPE_SKILLS
+            | crate::credentials::CREDENTIAL_SCOPE_GLOBAL;
+        let spark_scope = crate::credentials::CREDENTIAL_SCOPE_SPARK
+            | crate::credentials::CREDENTIAL_SCOPE_GLOBAL;
+
+        match self.credentials.resolve_env_for_scope(codex_scope) {
+            Ok(codex_env) => {
+                let changed = self.codex_lane_config.env != codex_env;
+                self.codex_lane_config.env = codex_env;
+                if restart_codex && changed {
+                    self.restart_codex_lane();
+                    self.autopilot_chat
+                        .set_connection_status("restarting (credential env updated)");
+                }
+            }
+            Err(error) => {
+                self.credentials.last_error = Some(error);
+                self.credentials.load_state = PaneLoadState::Error;
+            }
+        }
+
+        match self.credentials.resolve_env_for_scope(spark_scope) {
+            Ok(spark_env) => {
+                if let Err(error) = self
+                    .spark_worker
+                    .enqueue(SparkWalletCommand::ConfigureEnv { vars: spark_env })
+                {
+                    self.credentials.last_error = Some(error);
+                    self.credentials.load_state = PaneLoadState::Error;
+                } else {
+                    let _ = self.spark_worker.enqueue(SparkWalletCommand::Refresh);
+                }
+            }
+            Err(error) => {
+                self.credentials.last_error = Some(error);
+                self.credentials.load_state = PaneLoadState::Error;
+            }
+        }
     }
 
     pub fn record_codex_command_response(&mut self, response: CodexLaneCommandResponse) {
@@ -4104,7 +4446,11 @@ mod tests {
         }]);
 
         assert_eq!(chat.active_thread_id.as_deref(), Some("thread-active"));
-        assert!(chat.threads.iter().any(|thread_id| thread_id == "thread-active"));
+        assert!(
+            chat.threads
+                .iter()
+                .any(|thread_id| thread_id == "thread-active")
+        );
         assert_eq!(
             chat.thread_metadata
                 .get("thread-active")
