@@ -15,52 +15,7 @@
  * Dependencies: None (uses Node.js built-in fetch)
  */
 
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
-
-const DEFAULT_API_URL = 'https://api.blink.sv/graphql';
-
-function getApiKey() {
-  let key = process.env.BLINK_API_KEY;
-  if (!key) {
-    try {
-      const profile = fs.readFileSync(path.join(os.homedir(), '.profile'), 'utf8');
-      const match = profile.match(/BLINK_API_KEY=["']?([a-zA-Z0-9_]+)["']?/);
-      if (match) key = match[1];
-    } catch {}
-  }
-  if (!key) throw new Error('BLINK_API_KEY not found. Set it in environment or ~/.profile');
-  return key;
-}
-
-function getApiUrl() {
-  return process.env.BLINK_API_URL || DEFAULT_API_URL;
-}
-
-async function graphqlRequest(query, variables = {}) {
-  const apiKey = getApiKey();
-  const apiUrl = getApiUrl();
-
-  const res = await fetch(apiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-API-KEY': apiKey,
-    },
-    body: JSON.stringify({ query, variables }),
-  });
-
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status}: ${await res.text()}`);
-  }
-
-  const json = await res.json();
-  if (json.errors && json.errors.length > 0) {
-    throw new Error(`GraphQL error: ${json.errors.map(e => e.message).join(', ')}`);
-  }
-  return json.data;
-}
+const { getApiKey, getApiUrl, graphqlRequest, estimateSatsToUsd } = require('./_blink_client');
 
 const ACCOUNT_INFO_QUERY = `
   query AccountInfo {
@@ -108,44 +63,23 @@ const ACCOUNT_INFO_QUERY = `
   }
 `;
 
-// Public query — converts a fiat amount to sat/cent equivalents (no base/offset math)
-const CONVERSION_QUERY = `
-  query CurrencyConversion($amount: Float!, $currency: DisplayCurrency!) {
-    currencyConversionEstimation(amount: $amount, currency: $currency) {
-      btcSatAmount
-      usdCentAmount
-    }
-  }
-`;
-
-// Estimate USD value of a sat amount using currencyConversionEstimation.
-async function estimateSatsToUsd(sats) {
-  if (sats === 0) return 0;
-  try {
-    const data = await graphqlRequest(CONVERSION_QUERY, { amount: 1.0, currency: 'USD' });
-    const est = data.currencyConversionEstimation;
-    if (!est || !est.btcSatAmount || est.btcSatAmount === 0) return null;
-    const usdPerSat = 1.0 / est.btcSatAmount;
-    return Math.round(sats * usdPerSat * 100) / 100;
-  } catch {
-    return null; // non-fatal — USD estimate is best-effort
-  }
-}
-
 function formatLimit(limits) {
   if (!limits || limits.length === 0) return null;
-  return limits.map(l => ({
+  return limits.map((l) => ({
     totalLimitCents: l.totalLimit,
     remainingLimitCents: l.remainingLimit,
     totalLimitUsd: `$${(l.totalLimit / 100).toFixed(2)}`,
-    remainingLimitUsd: l.remainingLimit != null ? `$${(l.remainingLimit / 100).toFixed(2)}` : null,
+    remainingLimitUsd: l.remainingLimit !== null ? `$${(l.remainingLimit / 100).toFixed(2)}` : null,
     intervalSeconds: l.interval,
     intervalHours: l.interval ? Math.round(l.interval / 3600) : null,
   }));
 }
 
 async function main() {
-  const data = await graphqlRequest(ACCOUNT_INFO_QUERY);
+  const apiKey = getApiKey();
+  const apiUrl = getApiUrl();
+
+  const data = await graphqlRequest({ query: ACCOUNT_INFO_QUERY, apiKey, apiUrl });
   if (!data.me) throw new Error('Authentication failed. Check your BLINK_API_KEY.');
 
   const me = data.me;
@@ -161,7 +95,7 @@ async function main() {
       unit: w.walletCurrency === 'BTC' ? 'sats' : 'cents',
     };
     if (w.walletCurrency === 'BTC') {
-      const usdEstimate = await estimateSatsToUsd(w.balance);
+      const usdEstimate = await estimateSatsToUsd({ sats: w.balance, apiKey, apiUrl });
       if (usdEstimate !== null) {
         entry.balanceUsd = usdEstimate;
         entry.balanceUsdFormatted = `$${usdEstimate.toFixed(2)}`;
@@ -193,7 +127,7 @@ async function main() {
   console.log(JSON.stringify(output, null, 2));
 }
 
-main().catch(e => {
+main().catch((e) => {
   console.error('Error:', e.message);
   process.exit(1);
 });
