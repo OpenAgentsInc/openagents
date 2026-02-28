@@ -650,8 +650,10 @@ fn delayed_notifications_forward_without_followup_command() {
         });
     });
 
-    let mut config = CodexLaneConfig::default();
-    config.bootstrap_thread = false;
+    let config = CodexLaneConfig {
+        bootstrap_thread: false,
+        ..CodexLaneConfig::default()
+    };
     let mut worker = CodexLaneWorker::spawn_with_runtime(
         config,
         Box::new(SingleClientRuntime::new((client, channels), runtime_guard)),
@@ -1331,10 +1333,9 @@ fn server_request_command_approval_round_trip() {
         }
         if let CodexLaneUpdate::Notification(CodexLaneNotification::ServerRequest { method }) =
             &update
+            && method == "item/commandExecution/requestApproval"
         {
-            if method == "item/commandExecution/requestApproval" {
-                saw_server_request = true;
-            }
+            saw_server_request = true;
         }
     }
     assert!(saw_server_request, "expected server request notification");
@@ -1358,15 +1359,15 @@ fn server_request_command_approval_round_trip() {
 
     let mut saw_accept_response = false;
     while let Ok(update) = update_rx.try_recv() {
-        if let CodexLaneUpdate::CommandResponse(response) = update {
-            if response.command_seq == 991 {
-                assert_eq!(
-                    response.command,
-                    CodexLaneCommandKind::ServerRequestCommandApprovalRespond
-                );
-                assert_eq!(response.status, CodexLaneCommandStatus::Accepted);
-                saw_accept_response = true;
-            }
+        if let CodexLaneUpdate::CommandResponse(response) = update
+            && response.command_seq == 991
+        {
+            assert_eq!(
+                response.command,
+                CodexLaneCommandKind::ServerRequestCommandApprovalRespond
+            );
+            assert_eq!(response.status, CodexLaneCommandStatus::Accepted);
+            saw_accept_response = true;
         }
     }
     assert!(
@@ -1911,7 +1912,7 @@ fn labs_api_smoke_commands_emit_responses_and_notifications() {
                     CodexLaneNotification::ExperimentalFeaturesLoaded { .. } => saw_features = true,
                     CodexLaneNotification::RealtimeStarted { .. } => saw_realtime_start = true,
                     CodexLaneNotification::RealtimeTextAppended { .. } => {
-                        saw_realtime_append = true
+                        saw_realtime_append = true;
                     }
                     CodexLaneNotification::RealtimeStopped { .. } => saw_realtime_stop = true,
                     CodexLaneNotification::WindowsSandboxSetupStarted { .. } => saw_windows = true,
@@ -1987,8 +1988,10 @@ fn wire_log_path_is_forwarded_to_lane_runtime() {
 
     let expected = unique_fixture_root("wire-log").join("codex-wire.log");
     let saw_expected = Arc::new(AtomicBool::new(false));
-    let mut config = CodexLaneConfig::default();
-    config.wire_log_path = Some(expected.clone());
+    let config = CodexLaneConfig {
+        wire_log_path: Some(expected.clone()),
+        ..CodexLaneConfig::default()
+    };
 
     let mut worker = CodexLaneWorker::spawn_with_runtime(
         config,
@@ -2041,11 +2044,11 @@ where
     let mut matched: Option<super::CodexLaneSnapshot> = None;
     while Instant::now() <= deadline {
         for update in worker.drain_updates() {
-            if let CodexLaneUpdate::Snapshot(snapshot) = update {
-                if predicate(&snapshot) {
-                    matched = Some(*snapshot);
-                    break;
-                }
+            if let CodexLaneUpdate::Snapshot(snapshot) = update
+                && predicate(&snapshot)
+            {
+                matched = Some(*snapshot);
+                break;
             }
         }
         if matched.is_some() {
@@ -2082,11 +2085,11 @@ where
     let mut matched: Option<super::CodexLaneCommandResponse> = None;
     while Instant::now() <= deadline {
         for update in worker.drain_updates() {
-            if let CodexLaneUpdate::CommandResponse(response) = update {
-                if predicate(&response) {
-                    matched = Some(response);
-                    break;
-                }
+            if let CodexLaneUpdate::CommandResponse(response) = update
+                && predicate(&response)
+            {
+                matched = Some(response);
+                break;
             }
         }
         if matched.is_some() {
