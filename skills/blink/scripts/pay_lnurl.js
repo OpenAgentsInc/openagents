@@ -2,15 +2,19 @@
 /**
  * Blink Wallet - Pay to LNURL
  *
- * Usage: node pay_lnurl.js <lnurl> <amount_sats>
+ * Usage: node pay_lnurl.js <lnurl> <amount_sats> [--wallet BTC|USD]
  *
  * Sends satoshis to a raw LNURL payRequest string.
  * For Lightning Addresses (user@domain), use pay_lnaddress.js instead.
- * Automatically resolves the BTC wallet ID from the account.
+ * Automatically resolves the wallet ID from the account.
+ *
+ * When --wallet USD is used, the amount is still specified in satoshis.
+ * The Blink API debits the USD equivalent from the USD wallet automatically.
  *
  * Arguments:
  *   lnurl        - Required. LNURL string (lnurl1...).
  *   amount_sats  - Required. Amount in satoshis to send.
+ *   --wallet     - Optional. Wallet to pay from: BTC (default) or USD.
  *
  * Environment:
  *   BLINK_API_KEY  - Required. Blink API key (format: blink_...)
@@ -95,26 +99,55 @@ const PAY_LNURL_MUTATION = `
   }
 `;
 
-async function getBtcWallet() {
+async function getWallet(currency) {
   const data = await graphqlRequest(WALLET_QUERY);
   if (!data.me) throw new Error('Authentication failed. Check your BLINK_API_KEY.');
-  const btcWallet = data.me.defaultAccount.wallets.find(w => w.walletCurrency === 'BTC');
-  if (!btcWallet) throw new Error('No BTC wallet found on this account.');
-  return btcWallet;
+  const wallet = data.me.defaultAccount.wallets.find(w => w.walletCurrency === currency);
+  if (!wallet) throw new Error(`No ${currency} wallet found on this account.`);
+  return wallet;
+}
+
+function formatBalance(wallet) {
+  if (wallet.walletCurrency === 'USD') {
+    return `$${(wallet.balance / 100).toFixed(2)} (${wallet.balance} cents)`;
+  }
+  return `${wallet.balance} sats`;
+}
+
+function parseArgs(argv) {
+  const args = { lnurl: null, amountSats: null, walletCurrency: 'BTC' };
+  const raw = argv.slice(2);
+  const positional = [];
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] === '--wallet' && i + 1 < raw.length) {
+      const val = raw[i + 1].toUpperCase();
+      if (val !== 'BTC' && val !== 'USD') {
+        console.error('Error: --wallet must be BTC or USD');
+        process.exit(1);
+      }
+      args.walletCurrency = val;
+      i++;
+    } else {
+      positional.push(raw[i]);
+    }
+  }
+  if (positional.length >= 1) args.lnurl = positional[0].trim();
+  if (positional.length >= 2) args.amountSats = parseInt(positional[1], 10);
+  return args;
 }
 
 async function main() {
-  const args = process.argv.slice(2);
-  if (args.length < 2) {
-    console.error('Usage: node pay_lnurl.js <lnurl> <amount_sats>');
+  const args = parseArgs(process.argv);
+  if (!args.lnurl || args.amountSats === null) {
+    console.error('Usage: node pay_lnurl.js <lnurl> <amount_sats> [--wallet BTC|USD]');
     process.exit(1);
   }
 
-  const lnurl = args[0].trim();
-  const amountSats = parseInt(args[1], 10);
+  const lnurl = args.lnurl;
+  const amountSats = args.amountSats;
 
   if (!lnurl.toLowerCase().startsWith('lnurl')) {
-    console.error('Warning: input does not start with "lnurl" — may not be a valid LNURL string.');
+    console.error('Warning: input does not start with "lnurl" \u2014 may not be a valid LNURL string.');
     console.error('For Lightning Addresses (user@domain), use pay_lnaddress.js instead.');
   }
 
@@ -123,17 +156,19 @@ async function main() {
     process.exit(1);
   }
 
-  // Auto-resolve BTC wallet
-  const btcWallet = await getBtcWallet();
+  // Resolve wallet (BTC or USD)
+  const wallet = await getWallet(args.walletCurrency);
 
-  if (btcWallet.balance < amountSats) {
-    console.error(`Warning: wallet balance (${btcWallet.balance} sats) may be insufficient for ${amountSats} sats + fees.`);
+  // Balance warning (BTC balance is in sats, directly comparable; USD balance
+  // is in cents, not directly comparable to sats — skip for USD)
+  if (args.walletCurrency === 'BTC' && wallet.balance < amountSats) {
+    console.error(`Warning: wallet balance (${wallet.balance} sats) may be insufficient for ${amountSats} sats + fees.`);
   }
 
-  console.error(`Sending ${amountSats} sats via LNURL from wallet ${btcWallet.id} (balance: ${btcWallet.balance} sats)`);
+  console.error(`Sending ${amountSats} sats via LNURL from ${args.walletCurrency} wallet ${wallet.id} (balance: ${formatBalance(wallet)})`);
 
   const input = {
-    walletId: btcWallet.id,
+    walletId: wallet.id,
     lnurl,
     amount: amountSats,
   };
@@ -149,9 +184,14 @@ async function main() {
   const output = {
     status: result.status,
     amountSats,
-    walletId: btcWallet.id,
-    balanceBefore: btcWallet.balance,
+    walletId: wallet.id,
+    walletCurrency: args.walletCurrency,
+    balanceBefore: wallet.balance,
   };
+
+  if (args.walletCurrency === 'USD') {
+    output.balanceBeforeFormatted = `$${(wallet.balance / 100).toFixed(2)}`;
+  }
 
   if (result.status === 'SUCCESS') {
     console.error('Payment successful!');

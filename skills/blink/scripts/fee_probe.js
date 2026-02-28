@@ -2,13 +2,17 @@
 /**
  * Blink Wallet - Fee Probe (Estimate Payment Fee)
  *
- * Usage: node fee_probe.js <bolt11_invoice>
+ * Usage: node fee_probe.js <bolt11_invoice> [--wallet BTC|USD]
  *
  * Estimates the fee for paying a Lightning invoice without actually sending.
  * Use this to check costs before committing to a payment.
  *
+ * When --wallet USD is specified, uses the lnUsdInvoiceFeeProbe mutation
+ * to estimate fees from the USD wallet's perspective.
+ *
  * Arguments:
  *   bolt11_invoice  - Required. The BOLT-11 payment request string (lnbc...).
+ *   --wallet        - Optional. Wallet to probe from: BTC (default) or USD.
  *
  * Environment:
  *   BLINK_API_KEY  - Required. Blink API key (format: blink_...)
@@ -78,7 +82,7 @@ const WALLET_QUERY = `
   }
 `;
 
-const FEE_PROBE_MUTATION = `
+const FEE_PROBE_BTC_MUTATION = `
   mutation LnInvoiceFeeProbe($input: LnInvoiceFeeProbeInput!) {
     lnInvoiceFeeProbe(input: $input) {
       amount
@@ -91,35 +95,78 @@ const FEE_PROBE_MUTATION = `
   }
 `;
 
-async function getBtcWallet() {
+const FEE_PROBE_USD_MUTATION = `
+  mutation LnUsdInvoiceFeeProbe($input: LnUsdInvoiceFeeProbeInput!) {
+    lnUsdInvoiceFeeProbe(input: $input) {
+      amount
+      errors {
+        code
+        message
+        path
+      }
+    }
+  }
+`;
+
+async function getWallet(currency) {
   const data = await graphqlRequest(WALLET_QUERY);
   if (!data.me) throw new Error('Authentication failed. Check your BLINK_API_KEY.');
-  const btcWallet = data.me.defaultAccount.wallets.find(w => w.walletCurrency === 'BTC');
-  if (!btcWallet) throw new Error('No BTC wallet found on this account.');
-  return btcWallet;
+  const wallet = data.me.defaultAccount.wallets.find(w => w.walletCurrency === currency);
+  if (!wallet) throw new Error(`No ${currency} wallet found on this account.`);
+  return wallet;
+}
+
+function formatBalance(wallet) {
+  if (wallet.walletCurrency === 'USD') {
+    return `$${(wallet.balance / 100).toFixed(2)} (${wallet.balance} cents)`;
+  }
+  return `${wallet.balance} sats`;
+}
+
+function parseArgs(argv) {
+  const args = { paymentRequest: null, walletCurrency: 'BTC' };
+  const raw = argv.slice(2);
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] === '--wallet' && i + 1 < raw.length) {
+      const val = raw[i + 1].toUpperCase();
+      if (val !== 'BTC' && val !== 'USD') {
+        console.error('Error: --wallet must be BTC or USD');
+        process.exit(1);
+      }
+      args.walletCurrency = val;
+      i++;
+    } else if (!args.paymentRequest) {
+      args.paymentRequest = raw[i].trim();
+    }
+  }
+  return args;
 }
 
 async function main() {
-  const args = process.argv.slice(2);
-  if (args.length < 1) {
-    console.error('Usage: node fee_probe.js <bolt11_invoice>');
+  const args = parseArgs(process.argv);
+  if (!args.paymentRequest) {
+    console.error('Usage: node fee_probe.js <bolt11_invoice> [--wallet BTC|USD]');
     process.exit(1);
   }
 
-  const paymentRequest = args[0].trim();
+  const paymentRequest = args.paymentRequest;
   if (!paymentRequest.startsWith('lnbc') && !paymentRequest.startsWith('lntbs') && !paymentRequest.startsWith('lntb')) {
-    console.error('Warning: invoice does not start with lnbc/lntbs/lntb — may not be a valid BOLT-11 invoice.');
+    console.error('Warning: invoice does not start with lnbc/lntbs/lntb \u2014 may not be a valid BOLT-11 invoice.');
   }
 
-  const btcWallet = await getBtcWallet();
+  const wallet = await getWallet(args.walletCurrency);
 
   const input = {
-    walletId: btcWallet.id,
+    walletId: wallet.id,
     paymentRequest,
   };
 
-  const data = await graphqlRequest(FEE_PROBE_MUTATION, { input });
-  const result = data.lnInvoiceFeeProbe;
+  // Use the appropriate fee probe mutation based on wallet currency
+  const mutation = args.walletCurrency === 'USD' ? FEE_PROBE_USD_MUTATION : FEE_PROBE_BTC_MUTATION;
+  const mutationKey = args.walletCurrency === 'USD' ? 'lnUsdInvoiceFeeProbe' : 'lnInvoiceFeeProbe';
+
+  const data = await graphqlRequest(mutation, { input });
+  const result = data[mutationKey];
 
   if (result.errors && result.errors.length > 0) {
     const errMsg = result.errors.map(e => `${e.message}${e.code ? ` [${e.code}]` : ''}`).join(', ');
@@ -128,9 +175,14 @@ async function main() {
 
   const output = {
     estimatedFeeSats: result.amount,
-    walletId: btcWallet.id,
-    walletBalance: btcWallet.balance,
+    walletId: wallet.id,
+    walletCurrency: args.walletCurrency,
+    walletBalance: wallet.balance,
   };
+
+  if (args.walletCurrency === 'USD') {
+    output.walletBalanceFormatted = `$${(wallet.balance / 100).toFixed(2)}`;
+  }
 
   if (result.amount === 0) {
     console.error('Fee estimate: 0 sats (internal transfer or direct channel)');
