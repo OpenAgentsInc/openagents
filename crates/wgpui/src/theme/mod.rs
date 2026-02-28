@@ -241,8 +241,8 @@ pub mod bg {
     /// Surface/card background - black with 95% opacity
     pub const SURFACE: Hsla = Hsla::new(0.0, 0.0, 0.0, 0.95);
 
-    /// Muted background - matches `bg-muted` (#2A2A2A)
-    pub const MUTED: Hsla = Hsla::new(0.0, 0.0, 0.165, 1.0);
+    /// Muted background - dark neutral (#1A1A1A)
+    pub const MUTED: Hsla = Hsla::new(0.0, 0.0, 0.102, 1.0);
 
     /// Code block background (#101010)
     pub const CODE: Hsla = Hsla::new(0.0, 0.0, 0.063, 1.0);
@@ -253,8 +253,8 @@ pub mod bg {
     /// Hover state background (#1A1A1A)
     pub const HOVER: Hsla = Hsla::new(0.0, 0.0, 0.102, 1.0);
 
-    /// Selected/active state (#2A2A2A)
-    pub const SELECTED: Hsla = Hsla::new(0.0, 0.0, 0.165, 1.0);
+    /// Selected/active state (#1A1A1A)
+    pub const SELECTED: Hsla = Hsla::new(0.0, 0.0, 0.102, 1.0);
 }
 
 /// Text colors aligned with Tailwind's dark theme.
