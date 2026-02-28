@@ -1,3 +1,3 @@
 [alias]
-autopilot = "run -p autopilot-desktop --"
-autopilot-release = "run -p autopilot-desktop --release --"
+autopilot = "run -p autopilot-desktop --bin autopilot-desktop --"
+autopilot-release = "run -p autopilot-desktop --bin autopilot-desktop --release --"
