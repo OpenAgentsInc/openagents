@@ -1043,6 +1043,19 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             );
             state.autopilot_chat.remember_thread(thread_id.clone());
             if state.autopilot_chat.is_active_thread(&thread_id) {
+                if state
+                    .autopilot_chat
+                    .is_duplicate_agent_delta(&turn_id, &item_id, &delta)
+                {
+                    eprintln!(
+                        "codex agent/delta duplicate suppressed thread_id={} turn_id={} item_id={} chars={}",
+                        thread_id,
+                        turn_id,
+                        item_id,
+                        delta.chars().count()
+                    );
+                    return;
+                }
                 state.autopilot_chat.record_turn_timeline_event(format!(
                     "agent delta: turn={} item={} chars={}",
                     turn_id,
@@ -1102,6 +1115,21 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             );
             state.autopilot_chat.remember_thread(thread_id.clone());
             if state.autopilot_chat.is_active_thread(&thread_id) {
+                let item_id_for_dedupe = item_id.as_deref().unwrap_or("n/a");
+                if state.autopilot_chat.is_duplicate_reasoning_delta(
+                    &turn_id,
+                    item_id_for_dedupe,
+                    &delta,
+                ) {
+                    eprintln!(
+                        "codex reasoning/delta duplicate suppressed thread_id={} turn_id={} item_id={} chars={}",
+                        thread_id,
+                        turn_id,
+                        item_id_for_dedupe,
+                        delta.chars().count()
+                    );
+                    return;
+                }
                 state.autopilot_chat.record_turn_timeline_event(format!(
                     "reasoning delta: turn={} item={} chars={}",
                     turn_id,

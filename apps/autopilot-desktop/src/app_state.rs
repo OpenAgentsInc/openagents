@@ -265,6 +265,13 @@ pub struct AutopilotMessage {
     pub content: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct AutopilotDeltaSignature {
+    turn_id: String,
+    item_id: String,
+    delta: String,
+}
+
 pub struct AutopilotTokenUsage {
     pub input_tokens: i64,
     pub cached_input_tokens: i64,
@@ -370,6 +377,10 @@ pub struct AutopilotChatState {
     pub active_assistant_message_id: Option<u64>,
     pub pending_assistant_message_ids: VecDeque<u64>,
     pub turn_assistant_message_ids: std::collections::HashMap<String, u64>,
+    last_agent_item_ids: std::collections::HashMap<String, String>,
+    last_reasoning_item_ids: std::collections::HashMap<String, String>,
+    last_agent_delta_signature: Option<AutopilotDeltaSignature>,
+    last_reasoning_delta_signature: Option<AutopilotDeltaSignature>,
     pub last_turn_status: Option<String>,
     pub token_usage: Option<AutopilotTokenUsage>,
     pub turn_plan_explanation: Option<String>,
@@ -415,6 +426,10 @@ impl Default for AutopilotChatState {
             active_assistant_message_id: None,
             pending_assistant_message_ids: VecDeque::new(),
             turn_assistant_message_ids: std::collections::HashMap::new(),
+            last_agent_item_ids: std::collections::HashMap::new(),
+            last_reasoning_item_ids: std::collections::HashMap::new(),
+            last_agent_delta_signature: None,
+            last_reasoning_delta_signature: None,
             last_turn_status: None,
             token_usage: None,
             turn_plan_explanation: None,
@@ -657,6 +672,10 @@ impl AutopilotChatState {
         self.active_assistant_message_id = None;
         self.pending_assistant_message_ids.clear();
         self.turn_assistant_message_ids.clear();
+        self.last_agent_item_ids.clear();
+        self.last_reasoning_item_ids.clear();
+        self.last_agent_delta_signature = None;
+        self.last_reasoning_delta_signature = None;
         self.last_turn_status = None;
         self.token_usage = None;
         self.turn_plan_explanation = None;
@@ -1167,6 +1186,67 @@ impl AutopilotChatState {
         self.turn_assistant_message_ids
             .insert(turn_id.to_string(), assistant_message_id);
         Some(assistant_message_id)
+    }
+
+    pub fn is_duplicate_agent_delta(&mut self, turn_id: &str, item_id: &str, delta: &str) -> bool {
+        Self::is_duplicate_delta(
+            turn_id,
+            item_id,
+            delta,
+            &mut self.last_agent_item_ids,
+            &mut self.last_agent_delta_signature,
+            |value| value.is_empty() || value == "event-agent-message" || value == "n/a",
+        )
+    }
+
+    pub fn is_duplicate_reasoning_delta(
+        &mut self,
+        turn_id: &str,
+        item_id: &str,
+        delta: &str,
+    ) -> bool {
+        Self::is_duplicate_delta(
+            turn_id,
+            item_id,
+            delta,
+            &mut self.last_reasoning_item_ids,
+            &mut self.last_reasoning_delta_signature,
+            |value| value.is_empty() || value == "event-reasoning" || value == "n/a",
+        )
+    }
+
+    fn is_duplicate_delta(
+        turn_id: &str,
+        item_id: &str,
+        delta: &str,
+        item_ids_by_turn: &mut std::collections::HashMap<String, String>,
+        last_signature: &mut Option<AutopilotDeltaSignature>,
+        is_fallback_item: impl Fn(&str) -> bool,
+    ) -> bool {
+        if delta.is_empty() {
+            return false;
+        }
+
+        let canonical_item_id = if is_fallback_item(item_id) {
+            item_ids_by_turn
+                .get(turn_id)
+                .cloned()
+                .unwrap_or_else(|| item_id.to_string())
+        } else {
+            item_ids_by_turn.insert(turn_id.to_string(), item_id.to_string());
+            item_id.to_string()
+        };
+
+        let candidate = AutopilotDeltaSignature {
+            turn_id: turn_id.to_string(),
+            item_id: canonical_item_id,
+            delta: delta.to_string(),
+        };
+        let duplicate = last_signature
+            .as_ref()
+            .is_some_and(|last| *last == candidate);
+        *last_signature = Some(candidate);
+        duplicate
     }
 }
 
@@ -3922,6 +4002,32 @@ mod tests {
                 .map(|message| message.content.as_str()),
             Some("resp-late")
         );
+    }
+
+    #[test]
+    fn chat_state_dedupes_agent_deltas_with_fallback_item_ids() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-1".to_string());
+        chat.submit_prompt("hello".to_string());
+        chat.mark_turn_started("turn-1".to_string());
+
+        assert!(!chat.is_duplicate_agent_delta("turn-1", "item-1", "abc"));
+        assert!(chat.is_duplicate_agent_delta("turn-1", "item-1", "abc"));
+        assert!(chat.is_duplicate_agent_delta("turn-1", "event-agent-message", "abc"));
+        assert!(!chat.is_duplicate_agent_delta("turn-1", "item-1", "def"));
+    }
+
+    #[test]
+    fn chat_state_dedupes_reasoning_deltas_with_na_item_id() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-1".to_string());
+        chat.submit_prompt("hello".to_string());
+        chat.mark_turn_started("turn-1".to_string());
+
+        assert!(!chat.is_duplicate_reasoning_delta("turn-1", "rs-1", "plan"));
+        assert!(chat.is_duplicate_reasoning_delta("turn-1", "rs-1", "plan"));
+        assert!(chat.is_duplicate_reasoning_delta("turn-1", "n/a", "plan"));
+        assert!(!chat.is_duplicate_reasoning_delta("turn-1", "rs-1", "next"));
     }
 
     #[test]
