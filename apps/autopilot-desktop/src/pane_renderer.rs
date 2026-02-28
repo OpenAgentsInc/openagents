@@ -4,14 +4,14 @@ use crate::app_state::{
     AlertSeverity, AlertsRecoveryState, AutopilotChatState, ChatPaneInputs, CodexAccountPaneState,
     CodexAppsPaneState, CodexConfigPaneState, CodexDiagnosticsPaneState, CodexLabsPaneState,
     CodexMcpPaneState, CodexModelsPaneState, CodexRemoteSkillsPaneState, CreateInvoicePaneInputs,
-    CreditDeskPaneState, CreditSettlementLedgerPaneState, DesktopPane, EarningsScoreboardState,
-    JobHistoryPaneInputs, JobHistoryState, JobInboxState, JobLifecycleStage, NetworkRequestStatus,
-    NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
-    PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, RelayConnectionsPaneInputs,
-    RelayConnectionsState, RelaySecuritySimulationPaneState, SettingsPaneInputs, SettingsState,
-    SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs, StarterJobStatus,
-    StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
-    TreasuryExchangeSimulationPaneState,
+    CredentialsPaneInputs, CredentialsState, CreditDeskPaneState, CreditSettlementLedgerPaneState,
+    DesktopPane, EarningsScoreboardState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
+    JobLifecycleStage, NetworkRequestStatus, NetworkRequestsPaneInputs, NetworkRequestsState,
+    NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs, ProviderBlocker,
+    ProviderRuntimeState, RelayConnectionsPaneInputs, RelayConnectionsState,
+    RelaySecuritySimulationPaneState, SettingsPaneInputs, SettingsState, SkillRegistryPaneState,
+    SkillTrustRevocationPaneState, SparkPaneInputs, StarterJobStatus, StarterJobsState,
+    SyncHealthState, TrajectoryAuditPaneState, TreasuryExchangeSimulationPaneState,
 };
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
@@ -19,11 +19,18 @@ use crate::pane_system::{
     activity_feed_row_bounds, activity_feed_visible_row_count, alerts_recovery_ack_button_bounds,
     alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
     alerts_recovery_row_bounds, alerts_recovery_visible_row_count,
-    earnings_scoreboard_refresh_button_bounds, go_online_toggle_button_bounds,
-    job_history_next_page_button_bounds, job_history_prev_page_button_bounds,
-    job_history_search_input_bounds, job_history_status_button_bounds,
-    job_history_time_button_bounds, job_inbox_accept_button_bounds, job_inbox_reject_button_bounds,
-    job_inbox_row_bounds, job_inbox_visible_row_count, network_requests_budget_input_bounds,
+    credentials_add_custom_button_bounds, credentials_delete_button_bounds,
+    credentials_import_button_bounds, credentials_name_input_bounds,
+    credentials_reload_button_bounds, credentials_row_bounds, credentials_save_value_button_bounds,
+    credentials_scope_codex_button_bounds, credentials_scope_global_button_bounds,
+    credentials_scope_skills_button_bounds, credentials_scope_spark_button_bounds,
+    credentials_toggle_enabled_button_bounds, credentials_value_input_bounds,
+    credentials_visible_row_count, earnings_scoreboard_refresh_button_bounds,
+    go_online_toggle_button_bounds, job_history_next_page_button_bounds,
+    job_history_prev_page_button_bounds, job_history_search_input_bounds,
+    job_history_status_button_bounds, job_history_time_button_bounds,
+    job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
+    job_inbox_visible_row_count, network_requests_budget_input_bounds,
     network_requests_credit_envelope_input_bounds, network_requests_payload_input_bounds,
     network_requests_skill_scope_input_bounds, network_requests_submit_button_bounds,
     network_requests_timeout_input_bounds, network_requests_type_input_bounds,
@@ -76,6 +83,7 @@ impl PaneRenderer {
         activity_feed: &ActivityFeedState,
         alerts_recovery: &AlertsRecoveryState,
         settings: &SettingsState,
+        credentials: &CredentialsState,
         job_inbox: &JobInboxState,
         active_job: &ActiveJobState,
         job_history: &JobHistoryState,
@@ -96,6 +104,7 @@ impl PaneRenderer {
         relay_connections_inputs: &mut RelayConnectionsPaneInputs,
         network_requests_inputs: &mut NetworkRequestsPaneInputs,
         settings_inputs: &mut SettingsPaneInputs,
+        credentials_inputs: &mut CredentialsPaneInputs,
         job_history_inputs: &mut JobHistoryPaneInputs,
         chat_inputs: &mut ChatPaneInputs,
         paint: &mut PaintContext,
@@ -216,6 +225,9 @@ impl PaneRenderer {
                 }
                 PaneKind::Settings => {
                     paint_settings_pane(content_bounds, settings, settings_inputs, paint);
+                }
+                PaneKind::Credentials => {
+                    paint_credentials_pane(content_bounds, credentials, credentials_inputs, paint);
                 }
                 PaneKind::JobInbox => {
                     paint_job_inbox_pane(content_bounds, job_inbox, paint);
@@ -1434,6 +1446,201 @@ fn paint_settings_pane(
             Point::new(content_bounds.origin.x + 12.0, y),
             10.0,
             theme::status::ERROR,
+        ));
+    }
+}
+
+fn paint_credentials_pane(
+    content_bounds: Bounds,
+    credentials: &CredentialsState,
+    credentials_inputs: &mut CredentialsPaneInputs,
+    paint: &mut PaintContext,
+) {
+    paint_source_badge(content_bounds, "local", paint);
+
+    let name_input_bounds = credentials_name_input_bounds(content_bounds);
+    let value_input_bounds = credentials_value_input_bounds(content_bounds);
+    let add_custom_bounds = credentials_add_custom_button_bounds(content_bounds);
+    let save_value_bounds = credentials_save_value_button_bounds(content_bounds);
+    let delete_bounds = credentials_delete_button_bounds(content_bounds);
+    let toggle_enabled_bounds = credentials_toggle_enabled_button_bounds(content_bounds);
+    let import_bounds = credentials_import_button_bounds(content_bounds);
+    let reload_bounds = credentials_reload_button_bounds(content_bounds);
+    let scope_codex_bounds = credentials_scope_codex_button_bounds(content_bounds);
+    let scope_spark_bounds = credentials_scope_spark_button_bounds(content_bounds);
+    let scope_skills_bounds = credentials_scope_skills_button_bounds(content_bounds);
+    let scope_global_bounds = credentials_scope_global_button_bounds(content_bounds);
+
+    paint.scene.draw_text(paint.text.layout(
+        "Variable name",
+        Point::new(name_input_bounds.origin.x, name_input_bounds.origin.y - 8.0),
+        10.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        "Value (secure storage)",
+        Point::new(
+            value_input_bounds.origin.x,
+            value_input_bounds.origin.y - 8.0,
+        ),
+        10.0,
+        theme::text::MUTED,
+    ));
+
+    credentials_inputs
+        .variable_name
+        .set_max_width(name_input_bounds.size.width);
+    credentials_inputs
+        .variable_value
+        .set_max_width(value_input_bounds.size.width);
+    credentials_inputs
+        .variable_name
+        .paint(name_input_bounds, paint);
+    credentials_inputs
+        .variable_value
+        .paint(value_input_bounds, paint);
+
+    let selected = credentials.selected_entry();
+    let selected_template = selected.is_some_and(|entry| entry.template);
+    let selected_enabled = selected.is_some_and(|entry| entry.enabled);
+    let selected_scopes = selected.map_or(0, |entry| entry.scopes);
+
+    paint_action_button(add_custom_bounds, "Add custom", paint);
+    paint_action_button(save_value_bounds, "Save value", paint);
+    paint_action_button(
+        delete_bounds,
+        if selected_template {
+            "Clear value"
+        } else {
+            "Delete slot"
+        },
+        paint,
+    );
+    paint_action_button(
+        toggle_enabled_bounds,
+        if selected_enabled {
+            "Disable slot"
+        } else {
+            "Enable slot"
+        },
+        paint,
+    );
+    paint_action_button(import_bounds, "Import env", paint);
+    paint_action_button(reload_bounds, "Reload", paint);
+    paint_action_button(
+        scope_codex_bounds,
+        &format!(
+            "Codex:{}",
+            if (selected_scopes & crate::credentials::CREDENTIAL_SCOPE_CODEX) != 0 {
+                "on"
+            } else {
+                "off"
+            }
+        ),
+        paint,
+    );
+    paint_action_button(
+        scope_spark_bounds,
+        &format!(
+            "Spark:{}",
+            if (selected_scopes & crate::credentials::CREDENTIAL_SCOPE_SPARK) != 0 {
+                "on"
+            } else {
+                "off"
+            }
+        ),
+        paint,
+    );
+    paint_action_button(
+        scope_skills_bounds,
+        &format!(
+            "Skills:{}",
+            if (selected_scopes & crate::credentials::CREDENTIAL_SCOPE_SKILLS) != 0 {
+                "on"
+            } else {
+                "off"
+            }
+        ),
+        paint,
+    );
+    paint_action_button(
+        scope_global_bounds,
+        &format!(
+            "Global:{}",
+            if (selected_scopes & crate::credentials::CREDENTIAL_SCOPE_GLOBAL) != 0 {
+                "on"
+            } else {
+                "off"
+            }
+        ),
+        paint,
+    );
+
+    let summary_y = paint_state_summary(
+        paint,
+        content_bounds.origin.x + 12.0,
+        scope_global_bounds.max_y() + 10.0,
+        credentials.load_state,
+        &format!("State: {}", credentials.load_state.label()),
+        credentials.last_action.as_deref(),
+        credentials.last_error.as_deref(),
+    );
+
+    let visible_rows = credentials_visible_row_count(credentials.entries.len());
+    if visible_rows == 0 {
+        paint.scene.draw_text(paint.text.layout(
+            "No credential slots available.",
+            Point::new(content_bounds.origin.x + 12.0, summary_y),
+            11.0,
+            theme::text::MUTED,
+        ));
+        return;
+    }
+
+    for row_index in 0..visible_rows {
+        let entry = &credentials.entries[row_index];
+        let row_bounds = credentials_row_bounds(content_bounds, row_index);
+        let selected_row = credentials.selected_name.as_deref() == Some(entry.name.as_str());
+        paint_selectable_row_background(paint, row_bounds, selected_row);
+
+        let entry_type = if entry.template { "template" } else { "custom" };
+        let summary = format!(
+            "{} {} value:{} enabled:{} type:{} scopes:{}{}{}{}",
+            if entry.secret { "[secret]" } else { "[text]" },
+            entry.name,
+            if entry.has_value { "set" } else { "missing" },
+            if entry.enabled { "yes" } else { "no" },
+            entry_type,
+            if (entry.scopes & crate::credentials::CREDENTIAL_SCOPE_CODEX) != 0 {
+                "C"
+            } else {
+                "-"
+            },
+            if (entry.scopes & crate::credentials::CREDENTIAL_SCOPE_SPARK) != 0 {
+                "S"
+            } else {
+                "-"
+            },
+            if (entry.scopes & crate::credentials::CREDENTIAL_SCOPE_SKILLS) != 0 {
+                "K"
+            } else {
+                "-"
+            },
+            if (entry.scopes & crate::credentials::CREDENTIAL_SCOPE_GLOBAL) != 0 {
+                "G"
+            } else {
+                "-"
+            },
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            summary.as_str(),
+            Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 9.0),
+            10.0,
+            if selected_row {
+                theme::text::PRIMARY
+            } else {
+                theme::text::MUTED
+            },
         ));
     }
 }

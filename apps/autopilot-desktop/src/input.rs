@@ -40,15 +40,15 @@ use crate::pane_system::{
     ActivityFeedPaneAction, AgentNetworkSimulationPaneAction, AlertsRecoveryPaneAction,
     CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction, CodexDiagnosticsPaneAction,
     CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction, CodexRemoteSkillsPaneAction,
-    EarningsScoreboardPaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction,
-    PaneInput, RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction,
+    CredentialsPaneAction, EarningsScoreboardPaneAction, NetworkRequestsPaneAction, PaneController,
+    PaneHitAction, PaneInput, RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction,
     SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StarterJobsPaneAction, SyncHealthPaneAction,
     TreasuryExchangeSimulationPaneAction, clamp_all_panes_to_window, dispatch_chat_input_event,
-    dispatch_create_invoice_input_event, dispatch_job_history_input_event,
-    dispatch_network_requests_input_event, dispatch_pay_invoice_input_event,
-    dispatch_relay_connections_input_event, dispatch_settings_input_event,
-    dispatch_spark_input_event, pane_indices_by_z_desc, pane_z_sort_invocation_count,
-    topmost_pane_hit_action_in_order,
+    dispatch_create_invoice_input_event, dispatch_credentials_input_event,
+    dispatch_job_history_input_event, dispatch_network_requests_input_event,
+    dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
+    dispatch_settings_input_event, dispatch_spark_input_event, pane_indices_by_z_desc,
+    pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
 };
 use crate::render::{
     logical_size, render_frame, sidebar_go_online_button_bounds, sidebar_handle_bounds,
@@ -417,6 +417,7 @@ fn dispatch_text_inputs(state: &mut crate::app_state::RenderState, event: &Input
     handled |= dispatch_relay_connections_input_event(state, event);
     handled |= dispatch_network_requests_input_event(state, event);
     handled |= dispatch_settings_input_event(state, event);
+    handled |= dispatch_credentials_input_event(state, event);
     handled |= dispatch_chat_input_event(state, event);
     handled |= dispatch_job_history_input_event(state, event);
     handled
@@ -560,6 +561,7 @@ fn dispatch_keyboard_submit_actions(
         || handle_relay_connections_keyboard_input(state, logical_key)
         || handle_network_requests_keyboard_input(state, logical_key)
         || handle_settings_keyboard_input(state, logical_key)
+        || handle_credentials_keyboard_input(state, logical_key)
         || handle_job_history_keyboard_input(state, logical_key)
 }
 
@@ -684,6 +686,7 @@ fn run_pane_hit_action(state: &mut crate::app_state::RenderState, action: PaneHi
         PaneHitAction::ActivityFeed(action) => run_activity_feed_action(state, action),
         PaneHitAction::AlertsRecovery(action) => run_alerts_recovery_action(state, action),
         PaneHitAction::Settings(action) => run_settings_action(state, action),
+        PaneHitAction::Credentials(action) => run_credentials_action(state, action),
         PaneHitAction::JobInbox(action) => reducers::run_job_inbox_action(state, action),
         PaneHitAction::ActiveJob(action) => reducers::run_active_job_action(state, action),
         PaneHitAction::JobHistory(action) => reducers::run_job_history_action(state, action),
@@ -903,6 +906,27 @@ fn handle_settings_keyboard_input(
         |s| {
             if settings_inputs_focused(s) {
                 return run_settings_action(s, SettingsPaneAction::Save);
+            }
+            false
+        },
+    )
+}
+
+fn handle_credentials_keyboard_input(
+    state: &mut crate::app_state::RenderState,
+    logical_key: &WinitLogicalKey,
+) -> bool {
+    handle_focused_keyboard_submit(
+        state,
+        logical_key,
+        credentials_inputs_focused,
+        dispatch_credentials_input_event,
+        |s| {
+            if s.credentials_inputs.variable_value.is_focused() {
+                return run_credentials_action(s, CredentialsPaneAction::SaveValue);
+            }
+            if s.credentials_inputs.variable_name.is_focused() {
+                return run_credentials_action(s, CredentialsPaneAction::AddCustom);
             }
             false
         },
@@ -2865,6 +2889,105 @@ fn run_settings_action(
     }
 }
 
+fn run_credentials_action(
+    state: &mut crate::app_state::RenderState,
+    action: CredentialsPaneAction,
+) -> bool {
+    let mut restart_codex = false;
+    let mut sync_runtime = false;
+    let result = match action {
+        CredentialsPaneAction::AddCustom => {
+            sync_runtime = true;
+            state
+                .credentials
+                .add_custom_entry(state.credentials_inputs.variable_name.get_value())
+        }
+        CredentialsPaneAction::SaveValue => {
+            let value = state
+                .credentials_inputs
+                .variable_value
+                .get_value()
+                .to_string();
+            let saved = state.credentials.set_selected_value(value.as_str());
+            if saved.is_ok() {
+                sync_runtime = true;
+                state
+                    .credentials_inputs
+                    .variable_value
+                    .set_value(String::new());
+                restart_codex = true;
+            }
+            saved
+        }
+        CredentialsPaneAction::DeleteOrClear => {
+            sync_runtime = true;
+            restart_codex = true;
+            state.credentials.delete_or_clear_selected()
+        }
+        CredentialsPaneAction::ToggleEnabled => {
+            sync_runtime = true;
+            restart_codex = true;
+            state.credentials.toggle_selected_enabled()
+        }
+        CredentialsPaneAction::ToggleScopeCodex => {
+            sync_runtime = true;
+            restart_codex = true;
+            state
+                .credentials
+                .toggle_selected_scope(crate::credentials::CREDENTIAL_SCOPE_CODEX)
+        }
+        CredentialsPaneAction::ToggleScopeSpark => {
+            sync_runtime = true;
+            restart_codex = true;
+            state
+                .credentials
+                .toggle_selected_scope(crate::credentials::CREDENTIAL_SCOPE_SPARK)
+        }
+        CredentialsPaneAction::ToggleScopeSkills => {
+            sync_runtime = true;
+            restart_codex = true;
+            state
+                .credentials
+                .toggle_selected_scope(crate::credentials::CREDENTIAL_SCOPE_SKILLS)
+        }
+        CredentialsPaneAction::ToggleScopeGlobal => {
+            sync_runtime = true;
+            restart_codex = true;
+            state
+                .credentials
+                .toggle_selected_scope(crate::credentials::CREDENTIAL_SCOPE_GLOBAL)
+        }
+        CredentialsPaneAction::ImportFromEnv => {
+            sync_runtime = true;
+            restart_codex = true;
+            state.credentials.import_from_process_env().map(|_| ())
+        }
+        CredentialsPaneAction::Reload => {
+            sync_runtime = true;
+            restart_codex = true;
+            state.credentials = crate::app_state::CredentialsState::load_from_disk();
+            Ok(())
+        }
+        CredentialsPaneAction::SelectRow(row_index) => state.credentials.select_row(row_index),
+    };
+
+    match result {
+        Ok(()) => {
+            state.credentials.sync_inputs(&mut state.credentials_inputs);
+            if sync_runtime {
+                state.sync_credentials_runtime(restart_codex);
+            }
+        }
+        Err(error) => {
+            eprintln!("credentials pane action failed: {error}");
+            state.credentials.last_error = Some(error);
+            state.credentials.load_state = crate::app_state::PaneLoadState::Error;
+        }
+    }
+
+    true
+}
+
 fn build_activity_feed_snapshot_events(
     state: &crate::app_state::RenderState,
 ) -> Vec<ActivityEventRow> {
@@ -3415,6 +3538,11 @@ fn settings_inputs_focused(state: &crate::app_state::RenderState) -> bool {
         || state.settings_inputs.provider_max_queue_depth.is_focused()
 }
 
+fn credentials_inputs_focused(state: &crate::app_state::RenderState) -> bool {
+    state.credentials_inputs.variable_name.is_focused()
+        || state.credentials_inputs.variable_value.is_focused()
+}
+
 fn any_text_input_focused(state: &crate::app_state::RenderState) -> bool {
     state.chat_inputs.composer.is_focused()
         || spark_inputs_focused(state)
@@ -3422,6 +3550,7 @@ fn any_text_input_focused(state: &crate::app_state::RenderState) -> bool {
         || create_invoice_inputs_focused(state)
         || network_requests_inputs_focused(state)
         || settings_inputs_focused(state)
+        || credentials_inputs_focused(state)
         || state.relay_connections_inputs.relay_url.is_focused()
         || state.job_history_inputs.search_job_id.is_focused()
 }
@@ -3445,6 +3574,8 @@ fn blur_non_chat_text_inputs(state: &mut crate::app_state::RenderState) {
     state.settings_inputs.relay_url.blur();
     state.settings_inputs.wallet_default_send_sats.blur();
     state.settings_inputs.provider_max_queue_depth.blur();
+    state.credentials_inputs.variable_name.blur();
+    state.credentials_inputs.variable_value.blur();
     state.job_history_inputs.search_job_id.blur();
 }
 

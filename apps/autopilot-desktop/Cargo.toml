@@ -29,6 +29,7 @@ wgpui = { path = "../../crates/wgpui", default-features = false, features = ["de
 wgpu = { workspace = true }
 winit = { workspace = true }
 pollster = { workspace = true }
+keyring = { version = "3.6.2", default-features = false, features = ["apple-native", "windows-native", "linux-native"] }
 
 [package.metadata.bundle]
 name = "Autopilot"

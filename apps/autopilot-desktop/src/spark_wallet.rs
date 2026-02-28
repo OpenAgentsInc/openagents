@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -17,6 +18,9 @@ const SPARK_ACTION_TIMEOUT: Duration = Duration::from_secs(15);
 #[derive(Clone, Debug)]
 pub enum SparkWalletCommand {
     Refresh,
+    ConfigureEnv {
+        vars: Vec<(String, String)>,
+    },
     GenerateSparkAddress,
     GenerateBitcoinAddress,
     CreateInvoice {
@@ -110,6 +114,7 @@ pub struct SparkPaneState {
     pub last_payment_id: Option<String>,
     pub last_action: Option<String>,
     pub last_error: Option<String>,
+    env_overrides: HashMap<String, String>,
 }
 
 impl Clone for SparkPaneState {
@@ -127,6 +132,7 @@ impl Clone for SparkPaneState {
             last_payment_id: self.last_payment_id.clone(),
             last_action: self.last_action.clone(),
             last_error: self.last_error.clone(),
+            env_overrides: self.env_overrides.clone(),
         }
     }
 }
@@ -152,6 +158,7 @@ impl SparkPaneState {
             last_payment_id: None,
             last_action: None,
             last_error: None,
+            env_overrides: HashMap::new(),
         }
     }
 
@@ -175,6 +182,7 @@ impl SparkPaneState {
     fn apply_command(&mut self, runtime: &Runtime, command: SparkWalletCommand) {
         match command {
             SparkWalletCommand::Refresh => self.refresh(runtime),
+            SparkWalletCommand::ConfigureEnv { vars } => self.configure_env(vars),
             SparkWalletCommand::GenerateSparkAddress => self.request_spark_address(runtime),
             SparkWalletCommand::GenerateBitcoinAddress => self.request_bitcoin_address(runtime),
             SparkWalletCommand::CreateInvoice {
@@ -195,6 +203,30 @@ impl SparkPaneState {
                 self.last_action = Some("Cancelled pending Spark actions".to_string());
             }
         }
+    }
+
+    fn configure_env(&mut self, vars: Vec<(String, String)>) {
+        let mut next = HashMap::<String, String>::new();
+        for (name, value) in vars {
+            let normalized_name = name.trim().to_ascii_uppercase();
+            if normalized_name.is_empty() {
+                continue;
+            }
+            let normalized_value = value.trim().to_string();
+            if normalized_value.is_empty() {
+                continue;
+            }
+            next.insert(normalized_name, normalized_value);
+        }
+
+        if self.env_overrides == next {
+            return;
+        }
+
+        self.env_overrides = next;
+        self.wallet = None;
+        self.last_error = None;
+        self.last_action = Some("Updated Spark credential env overrides".to_string());
     }
 
     fn refresh(&mut self, runtime: &Runtime) {
@@ -396,10 +428,16 @@ impl SparkPaneState {
             )
         })?;
 
-        let api_key = std::env::var(ENV_SPARK_API_KEY)
-            .ok()
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty());
+        let api_key = self
+            .env_overrides
+            .get(ENV_SPARK_API_KEY)
+            .cloned()
+            .or_else(|| {
+                std::env::var(ENV_SPARK_API_KEY)
+                    .ok()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty())
+            });
         let config = WalletConfig {
             network: self.network,
             api_key,

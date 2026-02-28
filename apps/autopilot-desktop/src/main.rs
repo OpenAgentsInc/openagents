@@ -2,6 +2,7 @@
 
 mod app_state;
 mod codex_lane;
+mod credentials;
 mod hotbar;
 mod input;
 mod nip_sa_wallet_bridge;
