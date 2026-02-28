@@ -31,6 +31,52 @@ const GRID_DOT_DISTANCE: f32 = 32.0;
 
 const SETTINGS_SVG_RAW: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path fill="#FFFFFF" d="M249.9 176.3C243.4 179.5 237.1 183.1 231.1 187.2C222.9 192.7 212.6 194.1 203.1 191L131.4 167.2L93.5 232.8L150 283.1C157.4 289.7 161.3 299.3 160.7 309.2C160.2 316.4 160.2 323.8 160.7 331C161.4 340.9 157.4 350.5 150 357.1L93.5 407.3L131.4 473L203.1 449.2C212.5 446.1 222.8 447.5 231.1 453C237.1 457 243.4 460.7 249.9 463.9C258.8 468.3 265.1 476.5 267.1 486.2L282.3 560.2L358.1 560.2L373.3 486.2C375.3 476.5 381.7 468.3 390.5 463.9C397 460.7 403.3 457.1 409.3 453C417.5 447.5 427.8 446.1 437.3 449.2L509 473L546.9 407.3L490.4 357.1C483 350.5 479.1 340.9 479.7 331C479.9 327.4 480.1 323.8 480.1 320.1C480.1 316.4 480 312.8 479.7 309.2C479 299.3 483 289.7 490.4 283.1L546.9 232.9L509 167.2L437.3 191C427.9 194.1 417.6 192.7 409.3 187.2C403.3 183.2 397 179.5 390.5 176.3C381.6 171.9 375.3 163.7 373.3 154L358.1 80L282.3 80L267.1 154C265.1 163.7 258.7 171.9 249.9 176.3zM358.2 48C373.4 48 386.5 58.7 389.5 73.5L404.7 147.5C412.5 151.3 420.1 155.7 427.3 160.6L499 136.8C513.4 132 529.2 138 536.8 151.2L574.7 216.9C582.3 230.1 579.6 246.7 568.2 256.8L511.9 307C512.5 315.6 512.5 324.5 511.9 333L568.4 383.2C579.8 393.3 582.4 410 574.9 423.1L537 488.8C529.4 502 513.6 508 499.2 503.2L427.5 479.4C420.3 484.2 412.8 488.6 404.9 492.5L389.7 566.5C386.6 581.4 373.5 592 358.4 592L282.6 592C267.4 592 254.3 581.3 251.3 566.5L236.1 492.5C228.3 488.7 220.7 484.3 213.5 479.4L141.5 503.2C127.1 508 111.3 502 103.7 488.8L65.8 423.2C58.2 410.1 60.9 393.4 72.3 383.3L128.7 333C128.1 324.4 128.1 315.5 128.7 307L72.2 256.8C60.8 246.7 58.2 230 65.7 216.9L103.7 151.2C111.3 138 127.1 132 141.5 136.8L213.2 160.6C220.4 155.8 227.9 151.4 235.8 147.5L251 73.5C254.1 58.7 267.2 48 282.4 48L358.2 48zM264.3 320C264.3 350.8 289.2 375.7 320 375.7C350.8 375.7 375.7 350.8 375.7 320C375.7 289.2 350.8 264.3 320 264.3C289.2 264.3 264.3 289.2 264.3 320zM319.7 408C271.1 407.8 231.8 368.3 232 319.7C232.2 271.1 271.7 231.8 320.3 232C368.9 232.2 408.2 271.7 408 320.3C407.8 368.9 368.3 408.2 319.7 408z"/></svg>"##;
 
+fn read_system_clipboard() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        read_clipboard_with_command("pbpaste", &[])
+            .or_else(|| read_clipboard_with_command("/usr/bin/pbpaste", &[]))
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        read_clipboard_with_command("wl-paste", &["-n"])
+            .or_else(|| read_clipboard_with_command("xclip", &["-selection", "clipboard", "-o"]))
+            .or_else(|| read_clipboard_with_command("xsel", &["--clipboard", "--output"]))
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        read_clipboard_with_command("powershell", &["-NoProfile", "-Command", "Get-Clipboard"])
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        None
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
+fn read_clipboard_with_command(cmd: &str, args: &[&str]) -> Option<String> {
+    let output = std::process::Command::new(cmd).args(args).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    match String::from_utf8(output.stdout) {
+        Ok(text) => Some(text),
+        Err(error) => Some(String::from_utf8_lossy(error.as_bytes()).to_string()),
+    }
+}
+
+fn configure_event_context_clipboard(event_context: &mut wgpui::EventContext) {
+    event_context.set_clipboard(
+        read_system_clipboard,
+        |text| {
+            let _ = wgpui::clipboard::copy_to_clipboard(text);
+        },
+    );
+}
+
 pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
     let window_attrs = Window::default_attributes()
         .with_title(WINDOW_TITLE)
@@ -138,6 +184,9 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             });
         }
 
+        let mut event_context = wgpui::EventContext::new();
+        configure_event_context_clipboard(&mut event_context);
+
         let mut state = RenderState {
             window,
             surface,
@@ -149,7 +198,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             scale_factor,
             hotbar,
             hotbar_bounds: initial_hotbar_bounds,
-            event_context: wgpui::EventContext::new(),
+            event_context,
             input_modifiers: wgpui::Modifiers::default(),
             panes: Vec::new(),
             nostr_identity,
