@@ -20,7 +20,7 @@ fn supported_method_lists_are_unique() {
 #[test]
 fn client_request_methods_match_upstream_when_available() {
     let Some(common_rs) = load_upstream_common_rs() else {
-        eprintln!("skipping upstream comparison: protocol/common.rs not available");
+        tracing::warn!("skipping upstream comparison: protocol/common.rs not available");
         return;
     };
 
@@ -43,7 +43,7 @@ fn client_request_methods_match_upstream_when_available() {
 #[test]
 fn server_notification_methods_match_upstream_when_available() {
     let Some(common_rs) = load_upstream_common_rs() else {
-        eprintln!("skipping upstream comparison: protocol/common.rs not available");
+        tracing::warn!("skipping upstream comparison: protocol/common.rs not available");
         return;
     };
 
@@ -65,7 +65,7 @@ fn server_notification_methods_match_upstream_when_available() {
 #[test]
 fn server_request_methods_match_upstream_when_available() {
     let Some(common_rs) = load_upstream_common_rs() else {
-        eprintln!("skipping upstream comparison: protocol/common.rs not available");
+        tracing::warn!("skipping upstream comparison: protocol/common.rs not available");
         return;
     };
 

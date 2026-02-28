@@ -983,7 +983,7 @@ impl AutopilotChatState {
         {
             message.status = AutopilotMessageStatus::Error;
             if message.content.trim().is_empty() {
-                message.content = error.clone();
+                message.content.clone_from(&error);
             }
             if self.active_assistant_message_id == Some(assistant_message_id) {
                 self.active_assistant_message_id = None;
@@ -1005,7 +1005,7 @@ impl AutopilotChatState {
                 .find(|message| message.id == assistant_message_id)
         {
             message.status = AutopilotMessageStatus::Error;
-            message.content = error.clone();
+            message.content.clone_from(&error);
         }
         self.pending_assistant_message_ids
             .retain(|id| Some(*id) != self.active_assistant_message_id);
@@ -3271,9 +3271,8 @@ impl AgentNetworkSimulationPaneState {
         if !self.auto_run_enabled {
             return false;
         }
-        self.auto_run_last_tick.map_or(true, |last| {
-            now.duration_since(last) >= self.auto_run_interval
-        })
+        self.auto_run_last_tick
+            .is_none_or(|last| now.duration_since(last) >= self.auto_run_interval)
     }
 
     pub fn mark_auto_round(&mut self, now: Instant) {
@@ -3533,9 +3532,8 @@ impl TreasuryExchangeSimulationPaneState {
         if !self.auto_run_enabled {
             return false;
         }
-        self.auto_run_last_tick.map_or(true, |last| {
-            now.duration_since(last) >= self.auto_run_interval
-        })
+        self.auto_run_last_tick
+            .is_none_or(|last| now.duration_since(last) >= self.auto_run_interval)
     }
 
     pub fn mark_auto_round(&mut self, now: Instant) {
@@ -3820,9 +3818,8 @@ impl RelaySecuritySimulationPaneState {
         if !self.auto_run_enabled {
             return false;
         }
-        self.auto_run_last_tick.map_or(true, |last| {
-            now.duration_since(last) >= self.auto_run_interval
-        })
+        self.auto_run_last_tick
+            .is_none_or(|last| now.duration_since(last) >= self.auto_run_interval)
     }
 
     pub fn mark_auto_round(&mut self, now: Instant) {

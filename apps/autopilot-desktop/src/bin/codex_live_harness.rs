@@ -1,5 +1,11 @@
-#![allow(clippy::print_stdout, reason = "This binary is a CLI diagnostic harness with intentional console output.")]
-#![allow(clippy::print_stderr, reason = "This binary is a CLI diagnostic harness and may emit explicit error lines.")]
+#![allow(
+    clippy::print_stdout,
+    reason = "This binary is a CLI diagnostic harness with intentional console output."
+)]
+#![allow(
+    clippy::print_stderr,
+    reason = "This binary is a CLI diagnostic harness and may emit explicit error lines."
+)]
 
 use std::future::Future;
 use std::path::PathBuf;
@@ -1152,9 +1158,7 @@ fn resolve_model(
     if let Some(model) = args.model_override.as_ref() {
         return Some(model.clone());
     }
-    let Some(model_list) = model_list else {
-        return None;
-    };
+    let model_list = model_list?;
     if let Some(default_model) = model_list
         .data
         .iter()
@@ -1538,7 +1542,7 @@ async fn collect_channel_events(
                 batch.requests.push(request_summary(&request));
                 last_event = Instant::now();
             }
-            _ = tokio::time::sleep(sleep_for) => {}
+            () = tokio::time::sleep(sleep_for) => {}
         }
     }
 
