@@ -237,7 +237,7 @@ const PANE_SPECS: [PaneSpec; 37] = [
         default_width: 560.0,
         default_height: 300.0,
         singleton: true,
-        startup: true,
+        startup: false,
         command: Some(PaneCommandSpec {
             id: "pane.go_online",
             label: "Go Online",
@@ -452,7 +452,7 @@ const PANE_SPECS: [PaneSpec; 37] = [
         default_width: SPARK_PANE_WIDTH,
         default_height: SPARK_PANE_HEIGHT,
         singleton: true,
-        startup: true,
+        startup: false,
         command: Some(PaneCommandSpec {
             id: "pane.wallet",
             label: "Spark Wallet",

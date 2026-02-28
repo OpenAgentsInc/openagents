@@ -806,8 +806,8 @@ mod tests {
     fn startup_pane_set_matches_mvp_core_surfaces() {
         let startup = startup_pane_kinds();
         assert!(startup.contains(&PaneKind::AutopilotChat));
-        assert!(startup.contains(&PaneKind::GoOnline));
-        assert!(startup.contains(&PaneKind::SparkWallet));
+        assert!(!startup.contains(&PaneKind::GoOnline));
+        assert!(!startup.contains(&PaneKind::SparkWallet));
         assert!(!startup.contains(&PaneKind::Empty));
     }
 }
