@@ -10,13 +10,15 @@ use codex_client::{
     ExternalAgentConfigImportParams, FuzzyFileSearchSessionStartParams,
     FuzzyFileSearchSessionStopParams, FuzzyFileSearchSessionUpdateParams, GetAccountParams,
     HazelnutScope, InitializeCapabilities, InitializeParams, ListMcpServerStatusParams,
-    ModelListParams, ProductSurface, ReviewDelivery, ReviewStartParams, ReviewTarget,
-    SkillsListExtraRootsForCwd, SkillsListParams, SkillsRemoteReadParams, SkillsRemoteWriteParams,
-    ThreadArchiveParams, ThreadBackgroundTerminalsCleanParams, ThreadCompactStartParams,
-    ThreadForkParams, ThreadListParams, ThreadLoadedListParams, ThreadReadParams,
-    ThreadRealtimeAppendTextParams, ThreadRealtimeStartParams, ThreadRealtimeStopParams,
-    ThreadRollbackParams, ThreadSetNameParams, ThreadSnapshot, ThreadSortKey, ThreadStartParams,
-    ThreadUnarchiveParams, TurnStartParams, WindowsSandboxSetupStartParams,
+    ModelListParams, ProductSurface, RemoteSkillSummary, ReviewDelivery, ReviewStartParams,
+    ReviewTarget, SkillMetadata, SkillsConfigWriteParams, SkillsListExtraRootsForCwd,
+    SkillsListParams, SkillsListResponse, SkillsRemoteReadParams, SkillsRemoteReadResponse,
+    SkillsRemoteWriteParams, ThreadArchiveParams, ThreadBackgroundTerminalsCleanParams,
+    ThreadCompactStartParams, ThreadForkParams, ThreadListParams, ThreadLoadedListParams,
+    ThreadReadParams, ThreadRealtimeAppendTextParams, ThreadRealtimeStartParams,
+    ThreadRealtimeStopParams, ThreadRollbackParams, ThreadSetNameParams, ThreadSnapshot,
+    ThreadSortKey, ThreadStartParams, ThreadUnarchiveParams, TurnStartParams, UserInput,
+    WindowsSandboxSetupStartParams,
 };
 use serde_json::Value;
 
@@ -25,6 +27,7 @@ struct HarnessArgs {
     cwd: PathBuf,
     model_override: Option<String>,
     prompt: Option<String>,
+    skill_name: Option<String>,
     list_limit: u32,
     drain_ms: u64,
     timeout_ms: u64,
@@ -41,6 +44,7 @@ impl Default for HarnessArgs {
             cwd: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             model_override: None,
             prompt: None,
+            skill_name: None,
             list_limit: 20,
             drain_ms: 700,
             timeout_ms: 4_000,
@@ -83,6 +87,16 @@ impl HarnessArgs {
                         args.prompt = None;
                     } else {
                         args.prompt = Some(value);
+                    }
+                }
+                "--skill" => {
+                    let value = input
+                        .next()
+                        .ok_or_else(|| anyhow!("missing value for --skill"))?;
+                    if value.trim().is_empty() {
+                        args.skill_name = None;
+                    } else {
+                        args.skill_name = Some(value);
                     }
                 }
                 "--list-limit" => {
@@ -145,6 +159,7 @@ impl HarnessArgs {
 struct ChannelEventBatch {
     notifications: Vec<String>,
     notification_methods: Vec<String>,
+    notification_params: Vec<Value>,
     requests: Vec<String>,
 }
 
@@ -173,8 +188,18 @@ async fn run(args: HarnessArgs) -> Result<()> {
             .unwrap_or("<none>")
     );
     println!(
+        "skill={}",
+        args.skill_name
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or("<none>")
+    );
+    println!(
         "include_writes={} include_experimental={} include_thread_mutations={} fail_on_echo={}",
-        args.include_writes, args.include_experimental, args.include_thread_mutations, args.fail_on_echo
+        args.include_writes,
+        args.include_experimental,
+        args.include_thread_mutations,
+        args.fail_on_echo
     );
     println!();
 
@@ -451,6 +476,21 @@ async fn run(args: HarnessArgs) -> Result<()> {
     )
     .await;
 
+    let requested_skill_name = args
+        .skill_name
+        .as_ref()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    if requested_skill_name.is_some()
+        && args
+            .prompt
+            .as_ref()
+            .map(|value| value.trim().is_empty())
+            .unwrap_or(true)
+    {
+        bail!("--skill requires --prompt so turn/start can attach and exercise the skill");
+    }
+
     if args.include_writes {
         if let Some(response) = remote_skills.as_ref() {
             if let Some(skill) = response.data.first() {
@@ -475,35 +515,12 @@ async fn run(args: HarnessArgs) -> Result<()> {
     }
 
     let extra_skills_root = args.cwd.join("skills");
-    let skills_list = run_probe(
+    let mut skills_list = run_probe(
         "skills/list",
         &mut channels,
         &args,
-        client.skills_list(SkillsListParams {
-            cwds: vec![args.cwd.clone()],
-            force_reload: true,
-            per_cwd_extra_user_roots: if extra_skills_root.exists() {
-                Some(vec![SkillsListExtraRootsForCwd {
-                    cwd: args.cwd.clone(),
-                    extra_user_roots: vec![extra_skills_root.clone()],
-                }])
-            } else {
-                None
-            },
-        }),
-        |response| {
-            let skill_count = response
-                .data
-                .iter()
-                .map(|entry| entry.skills.len())
-                .sum::<usize>();
-            let error_count = response
-                .data
-                .iter()
-                .map(|entry| entry.errors.len())
-                .sum::<usize>();
-            format!("skills={} errors={}", skill_count, error_count)
-        },
+        client.skills_list(build_skills_list_params(&args, &extra_skills_root)),
+        summarize_skills_list,
     )
     .await;
 
@@ -520,10 +537,7 @@ async fn run(args: HarnessArgs) -> Result<()> {
                     "skills/config/write",
                     &mut channels,
                     &args,
-                    client.skills_config_write(codex_client::SkillsConfigWriteParams {
-                        path,
-                        enabled,
-                    }),
+                    client.skills_config_write(SkillsConfigWriteParams { path, enabled }),
                     |response| format!("effective_enabled={}", response.effective_enabled),
                 )
                 .await;
@@ -535,6 +549,99 @@ async fn run(args: HarnessArgs) -> Result<()> {
         }
     } else {
         println!("probe skills/config/write: skipped (--include-writes not set)");
+    }
+
+    let mut selected_skill = requested_skill_name
+        .as_deref()
+        .and_then(|query| find_skill_in_list(skills_list.as_ref(), query));
+
+    if selected_skill.is_none()
+        && args.include_writes
+        && requested_skill_name.is_some()
+        && remote_skills.is_some()
+    {
+        let query = requested_skill_name.as_deref().unwrap_or_default();
+        if let Some(remote_match) = find_remote_skill(remote_skills.as_ref(), query) {
+            let exported = run_probe(
+                "skills/remote/export(requested)",
+                &mut channels,
+                &args,
+                client.skills_remote_export(SkillsRemoteWriteParams {
+                    hazelnut_id: remote_match.id.clone(),
+                }),
+                |result| format!("id={} path={}", result.id, result.path.display()),
+            )
+            .await;
+            if let Some(exported_skill) = exported.as_ref() {
+                println!(
+                    "requested skill exported remote_id={} local_path={}",
+                    exported_skill.id,
+                    exported_skill.path.display()
+                );
+            }
+            skills_list = run_probe(
+                "skills/list(reload-after-export)",
+                &mut channels,
+                &args,
+                client.skills_list(build_skills_list_params(&args, &extra_skills_root)),
+                summarize_skills_list,
+            )
+            .await;
+            selected_skill = find_skill_in_list(skills_list.as_ref(), query);
+        }
+    }
+
+    if let Some(query) = requested_skill_name.as_deref() {
+        let mut selected = selected_skill
+            .ok_or_else(|| {
+                anyhow!(
+                    "requested skill '{}' not found in skills/list{}",
+                    query,
+                    if args.include_writes {
+                        ""
+                    } else {
+                        " (rerun with --include-writes to allow remote export)"
+                    }
+                )
+            })
+            .context("skill selection failed")?;
+
+        println!(
+            "selected_skill name={} path={} enabled={} scope={:?}",
+            selected.name,
+            selected.path.display(),
+            selected.enabled,
+            selected.scope
+        );
+
+        if !selected.enabled {
+            if !args.include_writes {
+                bail!(
+                    "requested skill '{}' is disabled at {} (rerun with --include-writes to enable via skills/config/write)",
+                    selected.name,
+                    selected.path.display()
+                );
+            }
+            let enabled_response = run_probe(
+                "skills/config/write(enable-requested)",
+                &mut channels,
+                &args,
+                client.skills_config_write(SkillsConfigWriteParams {
+                    path: selected.path.clone(),
+                    enabled: true,
+                }),
+                |response| format!("effective_enabled={}", response.effective_enabled),
+            )
+            .await;
+            if enabled_response
+                .as_ref()
+                .map(|response| response.effective_enabled)
+                .unwrap_or(false)
+            {
+                selected.enabled = true;
+            }
+        }
+        selected_skill = Some(selected);
     }
 
     println!();
@@ -652,13 +759,25 @@ async fn run(args: HarnessArgs) -> Result<()> {
         println!();
         println!("simulate_click chat.send -> turn/start");
         println!("prompt={prompt}");
+        let mut turn_input = vec![UserInput::Text {
+            text: prompt.clone(),
+            text_elements: Vec::new(),
+        }];
+        if let Some(skill) = selected_skill.as_ref() {
+            println!(
+                "turn/start includes skill name={} path={}",
+                skill.name,
+                skill.path.display()
+            );
+            turn_input.push(UserInput::Skill {
+                name: skill.name.clone(),
+                path: skill.path.clone(),
+            });
+        }
         let turn = client
             .turn_start(TurnStartParams {
                 thread_id: new_thread_id.clone(),
-                input: vec![codex_client::UserInput::Text {
-                    text: prompt.clone(),
-                    text_elements: Vec::new(),
-                }],
+                input: turn_input,
                 cwd: None,
                 approval_policy: None,
                 sandbox_policy: None,
@@ -723,14 +842,23 @@ async fn run(args: HarnessArgs) -> Result<()> {
                 new_thread_id
             );
         }
+        if let Some(skill) = selected_skill.as_ref()
+            && !events_include_skill_payload(&post_send_events, &skill.name)
+        {
+            bail!(
+                "post-send notifications for thread {} did not show attached skill '{}' in turn/start payload",
+                new_thread_id,
+                skill.name
+            );
+        }
         if let Some(agent_reply) = latest_agent_message(&after_turn.thread) {
             println!(
                 "post-send latest_agent_reply={}",
                 summarize_text_for_log(&agent_reply, 96)
             );
             if args.fail_on_echo && agent_reply.trim().eq_ignore_ascii_case(prompt.trim()) {
-                let latest_user = latest_user_message(&after_turn.thread)
-                    .unwrap_or_else(|| "<none>".to_string());
+                let latest_user =
+                    latest_user_message(&after_turn.thread).unwrap_or_else(|| "<none>".to_string());
                 bail!(
                     "assistant echo detected for model={} thread={} turn={} prompt={} agent={} latest_user={} (use --allow-echo-replies to bypass)",
                     resolved_model.as_deref().unwrap_or("server-default"),
@@ -1147,6 +1275,14 @@ fn thread_has_agent_role_message(thread: &ThreadSnapshot) -> bool {
     agent_count > 0
 }
 
+fn events_include_skill_payload(events: &ChannelEventBatch, skill_name: &str) -> bool {
+    let normalized_name = format!("\"name\":\"{}\"", skill_name.to_ascii_lowercase());
+    events.notification_params.iter().any(|params| {
+        let normalized = params.to_string().to_ascii_lowercase();
+        normalized.contains("\"type\":\"skill\"") && normalized.contains(&normalized_name)
+    })
+}
+
 fn latest_agent_message(thread: &ThreadSnapshot) -> Option<String> {
     latest_role_message(thread, TranscriptMessageRole::Agent)
 }
@@ -1161,7 +1297,10 @@ enum TranscriptMessageRole {
     Agent,
 }
 
-fn latest_role_message(thread: &ThreadSnapshot, target_role: TranscriptMessageRole) -> Option<String> {
+fn latest_role_message(
+    thread: &ThreadSnapshot,
+    target_role: TranscriptMessageRole,
+) -> Option<String> {
     for turn in thread.turns.iter().rev() {
         for item in turn.items.iter().rev() {
             let Some(text) = collect_message_text(item).map(str::to_string) else {
@@ -1186,8 +1325,7 @@ fn latest_role_message(thread: &ThreadSnapshot, target_role: TranscriptMessageRo
                 .get("role")
                 .and_then(Value::as_str)
                 .unwrap_or_default();
-            let message_role = if matches!(kind, "user_message" | "userMessage") || role == "user"
-            {
+            let message_role = if matches!(kind, "user_message" | "userMessage") || role == "user" {
                 TranscriptMessageRole::User
             } else if matches!(kind, "agent_message" | "agentMessage")
                 || matches!(role, "assistant" | "codex")
@@ -1331,6 +1469,9 @@ async fn collect_channel_events(
                 batch
                     .notification_methods
                     .push(notification.method.clone());
+                batch
+                    .notification_params
+                    .push(notification.params.clone().unwrap_or(Value::Null));
                 batch.notifications.push(notification_summary(&notification));
                 last_event = Instant::now();
             }
@@ -1362,11 +1503,17 @@ where
     let mut combined = ChannelEventBatch::default();
     while Instant::now() < deadline {
         let batch = collect_channel_events(channels, idle_break, max_wait_per_batch).await;
-        let saw_signal = batch.notification_methods.iter().any(|method| signal(method));
+        let saw_signal = batch
+            .notification_methods
+            .iter()
+            .any(|method| signal(method));
         combined.notifications.extend(batch.notifications);
         combined
             .notification_methods
             .extend(batch.notification_methods);
+        combined
+            .notification_params
+            .extend(batch.notification_params);
         combined.requests.extend(batch.requests);
         if saw_signal {
             break;
@@ -1444,6 +1591,108 @@ fn print_events(label: &str, events: &ChannelEventBatch, max_events: usize) {
     }
 }
 
+fn build_skills_list_params(
+    args: &HarnessArgs,
+    extra_skills_root: &std::path::Path,
+) -> SkillsListParams {
+    SkillsListParams {
+        cwds: vec![args.cwd.clone()],
+        force_reload: true,
+        per_cwd_extra_user_roots: if extra_skills_root.exists() {
+            Some(vec![SkillsListExtraRootsForCwd {
+                cwd: args.cwd.clone(),
+                extra_user_roots: vec![extra_skills_root.to_path_buf()],
+            }])
+        } else {
+            None
+        },
+    }
+}
+
+fn summarize_skills_list(response: &SkillsListResponse) -> String {
+    let skill_count = response
+        .data
+        .iter()
+        .map(|entry| entry.skills.len())
+        .sum::<usize>();
+    let error_count = response
+        .data
+        .iter()
+        .map(|entry| entry.errors.len())
+        .sum::<usize>();
+    format!("skills={} errors={}", skill_count, error_count)
+}
+
+fn find_skill_in_list(response: Option<&SkillsListResponse>, query: &str) -> Option<SkillMetadata> {
+    let normalized_query = query.trim().to_ascii_lowercase();
+    if normalized_query.is_empty() {
+        return None;
+    }
+    let skills = response?
+        .data
+        .iter()
+        .flat_map(|entry| entry.skills.iter().cloned())
+        .collect::<Vec<_>>();
+
+    let exact = skills
+        .iter()
+        .find(|skill| {
+            skill.name.eq_ignore_ascii_case(query)
+                || skill_dir_name(skill)
+                    .map(|name| name.eq_ignore_ascii_case(query))
+                    .unwrap_or(false)
+                || skill.path.to_string_lossy().eq_ignore_ascii_case(query)
+        })
+        .cloned();
+    if exact.is_some() {
+        return exact;
+    }
+
+    skills
+        .iter()
+        .find(|skill| {
+            skill.name.to_ascii_lowercase().contains(&normalized_query)
+                || skill_dir_name(skill)
+                    .map(|name| name.to_ascii_lowercase().contains(&normalized_query))
+                    .unwrap_or(false)
+                || skill
+                    .path
+                    .to_string_lossy()
+                    .to_ascii_lowercase()
+                    .contains(&normalized_query)
+        })
+        .cloned()
+}
+
+fn skill_dir_name(skill: &SkillMetadata) -> Option<&str> {
+    skill.path.parent()?.file_name()?.to_str()
+}
+
+fn find_remote_skill(
+    response: Option<&SkillsRemoteReadResponse>,
+    query: &str,
+) -> Option<RemoteSkillSummary> {
+    let normalized_query = query.trim().to_ascii_lowercase();
+    if normalized_query.is_empty() {
+        return None;
+    }
+    let remote = response?;
+    remote
+        .data
+        .iter()
+        .find(|skill| {
+            skill.id.eq_ignore_ascii_case(query)
+                || skill.name.eq_ignore_ascii_case(query)
+                || skill.id.to_ascii_lowercase().contains(&normalized_query)
+                || skill.name.to_ascii_lowercase().contains(&normalized_query)
+                || skill
+                    .description
+                    .to_ascii_lowercase()
+                    .contains(&normalized_query)
+        })
+        .cloned()
+}
+
 fn usage_text() -> String {
     [
         "Usage:",
@@ -1453,6 +1702,7 @@ fn usage_text() -> String {
         "  --cwd <path>              Workspace cwd to send to app-server",
         "  --model <id>              Explicit model override; default is live model/list default",
         "  --prompt <text>           Optional prompt to send after new thread starts",
+        "  --skill <name>            Optional skill to attach in turn/start",
         "  --list-limit <n>          thread/list limit (default: 20)",
         "  --drain-ms <n>            Idle settle period for channel drains (default: 700)",
         "  --timeout-ms <n>          Max wait per channel drain phase (default: 4000)",
@@ -1468,4 +1718,71 @@ fn usage_text() -> String {
 
 fn print_usage() {
     println!("{}", usage_text());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use codex_client::{SkillScope, SkillsListEntry};
+
+    fn mock_skill(name: &str, path: &str, enabled: bool) -> SkillMetadata {
+        SkillMetadata {
+            name: name.to_string(),
+            description: format!("{name} description"),
+            interface: None,
+            dependencies: None,
+            short_description: None,
+            path: PathBuf::from(path),
+            scope: SkillScope::Repo,
+            enabled,
+        }
+    }
+
+    #[test]
+    fn finds_skill_by_name_and_path_segment() {
+        let list = SkillsListResponse {
+            data: vec![SkillsListEntry {
+                cwd: PathBuf::from("/repo"),
+                skills: vec![
+                    mock_skill("mezo", "/repo/skills/mezo/SKILL.md", true),
+                    mock_skill("blink", "/repo/skills/blink/SKILL.md", false),
+                ],
+                errors: Vec::new(),
+            }],
+        };
+
+        let by_name =
+            find_skill_in_list(Some(&list), "blink").expect("expected to find blink by name");
+        assert_eq!(by_name.name, "blink");
+
+        let by_dir = find_skill_in_list(Some(&list), "skills/blink")
+            .expect("expected to find blink by path segment");
+        assert_eq!(by_dir.name, "blink");
+    }
+
+    #[test]
+    fn finds_remote_skill_by_name_and_id() {
+        let remote = SkillsRemoteReadResponse {
+            data: vec![
+                RemoteSkillSummary {
+                    id: "hazelnut-1".to_string(),
+                    name: "blink".to_string(),
+                    description: "Blink payment helper".to_string(),
+                },
+                RemoteSkillSummary {
+                    id: "hazelnut-2".to_string(),
+                    name: "other".to_string(),
+                    description: "something else".to_string(),
+                },
+            ],
+        };
+
+        let by_name = find_remote_skill(Some(&remote), "blink")
+            .expect("expected to find remote skill by name");
+        assert_eq!(by_name.id, "hazelnut-1");
+
+        let by_id = find_remote_skill(Some(&remote), "hazelnut-2")
+            .expect("expected to find remote skill by id");
+        assert_eq!(by_id.name, "other");
+    }
 }

@@ -57,7 +57,7 @@ The harness currently probes these app-server methods:
   - `thread/loaded/list`
   - `thread/read`
   - `thread/start`
-  - `turn/start` (if `--prompt`)
+  - `turn/start` (if `--prompt`, optional skill attachment via `--skill`)
 - Thread mutation probes (default on, disable with `--skip-thread-mutations`):
   - `thread/name/set`
   - `thread/backgroundTerminals/clean`
@@ -118,6 +118,25 @@ cargo run -p autopilot-desktop --bin codex-live-harness -- \
   --include-writes
 ```
 
+Run a skill-attached turn (example: `blink`):
+
+First install the skill into Codex user skills (one-time):
+
+```bash
+python3 /Users/christopherdavid/.codex/skills/.system/skill-installer/scripts/install-skill-from-github.py \
+  --repo OpenAgentsInc/openagents \
+  --path skills/blink
+```
+
+```bash
+cargo run -p autopilot-desktop --bin codex-live-harness -- \
+  --cwd /Users/christopherdavid/code/openagents \
+  --model gpt-5.2-codex \
+  --include-writes \
+  --skill blink \
+  --prompt "Use the blink skill to summarize available payment operations and first command to check balance."
+```
+
 Override model explicitly:
 
 ```bash
@@ -131,6 +150,9 @@ cargo run -p autopilot-desktop --bin codex-live-harness -- \
 - `--cwd <path>`: working directory sent to app-server
 - `--model <id>`: explicit model override (otherwise use live default model)
 - `--prompt <text>`: sends a turn after `thread/start`
+- `--skill <name>`: resolves and attaches a skill in `turn/start` as `UserInput::Skill`
+  - Lookup order: local `skills/list` name/path match, then optional remote match/export if `--include-writes`
+  - If found but disabled: harness enables it through `skills/config/write` when `--include-writes` is set
 - `--list-limit <n>`: `thread/list` limit (default `20`)
 - `--drain-ms <n>`: idle settle window for collecting events (default `700`)
 - `--timeout-ms <n>`: max wait window for each event drain (default `4000`)
@@ -138,6 +160,7 @@ cargo run -p autopilot-desktop --bin codex-live-harness -- \
 - `--include-writes`: run write/mutation probes for config/skills/mcp/export paths
 - `--skip-experimental`: skip experimental probe group
 - `--skip-thread-mutations`: skip thread mutation probes
+- `--allow-echo-replies`: disable harness failure when assistant echoes prompt exactly
 
 ## Output Format
 
