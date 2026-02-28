@@ -17,6 +17,12 @@ Temporary exceptions are allowed only when all of the following are true:
 - The code path has no practical fallible alternative without harming API clarity or performance.
 - The exception is reviewed and removed when the surrounding code is refactored.
 
+Intentional CLI output exception:
+
+- `autopilot-desktop` production paths must not use `print_*` macros.
+- `apps/autopilot-desktop/src/bin/codex_live_harness.rs` is an explicit exception because it is a human-facing diagnostic CLI and prints probe output by design.
+- Any future CLI-output exception must be documented similarly at file scope with a `reason`.
+
 ## Enforcement
 
 - Run `scripts/lint/clippy-regression-check.sh` before commit.
