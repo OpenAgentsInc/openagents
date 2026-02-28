@@ -526,6 +526,10 @@ pub enum CodexLaneNotification {
     ThreadLoadedListLoaded {
         thread_ids: Vec<String>,
     },
+    ThreadReadLoaded {
+        thread_id: String,
+        messages: Vec<CodexThreadTranscriptMessage>,
+    },
     ThreadSelected {
         thread_id: String,
     },
@@ -653,6 +657,18 @@ pub struct CodexThreadListEntry {
     pub loaded: bool,
     pub cwd: Option<String>,
     pub path: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CodexThreadTranscriptRole {
+    User,
+    Codex,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexThreadTranscriptMessage {
+    pub role: CodexThreadTranscriptRole,
+    pub content: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1183,10 +1199,14 @@ impl CodexLaneState {
             }
             CodexLaneCommand::ThreadRead(params) => {
                 let response = runtime.block_on(client.thread_read(params))?;
-                let thread_id = response.thread.id;
+                let thread_id = response.thread.id.clone();
+                let messages = extract_thread_transcript_messages(&response.thread);
                 Ok(CodexCommandEffect {
                     active_thread_id: Some(thread_id.clone()),
-                    notification: Some(CodexLaneNotification::ThreadSelected { thread_id }),
+                    notification: Some(CodexLaneNotification::ThreadReadLoaded {
+                        thread_id,
+                        messages,
+                    }),
                 })
             }
             CodexLaneCommand::ThreadList(params) => {
@@ -2346,6 +2366,113 @@ fn turn_plan_from_params(value: &Value) -> Vec<CodexTurnPlanStep> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn extract_thread_transcript_messages(
+    thread: &codex_client::ThreadSnapshot,
+) -> Vec<CodexThreadTranscriptMessage> {
+    let mut messages = Vec::new();
+    for turn in &thread.turns {
+        for item in &turn.items {
+            collect_transcript_messages(item, &mut messages);
+        }
+    }
+    messages
+}
+
+fn collect_transcript_messages(value: &Value, messages: &mut Vec<CodexThreadTranscriptMessage>) {
+    let Some(object) = value.as_object() else {
+        return;
+    };
+
+    if let Some(payload) = object.get("payload") {
+        collect_transcript_messages(payload, messages);
+    }
+
+    let kind = object.get("type").and_then(Value::as_str);
+    match kind {
+        Some("user_message") => {
+            if let Some(content) = string_field(value, "message").and_then(non_empty_text) {
+                messages.push(CodexThreadTranscriptMessage {
+                    role: CodexThreadTranscriptRole::User,
+                    content,
+                });
+            }
+        }
+        Some("agent_message") => {
+            if let Some(content) = string_field(value, "message").and_then(non_empty_text) {
+                messages.push(CodexThreadTranscriptMessage {
+                    role: CodexThreadTranscriptRole::Codex,
+                    content,
+                });
+            }
+        }
+        _ => {
+            let Some(role) = object.get("role").and_then(Value::as_str) else {
+                return;
+            };
+            let Some(mapped_role) = map_transcript_role(role) else {
+                return;
+            };
+
+            let content = object
+                .get("content")
+                .and_then(extract_content_text)
+                .or_else(|| string_field(value, "message").and_then(non_empty_text));
+            if let Some(content) = content {
+                messages.push(CodexThreadTranscriptMessage {
+                    role: mapped_role,
+                    content,
+                });
+            }
+        }
+    }
+}
+
+fn map_transcript_role(role: &str) -> Option<CodexThreadTranscriptRole> {
+    match role {
+        "user" => Some(CodexThreadTranscriptRole::User),
+        "assistant" | "codex" => Some(CodexThreadTranscriptRole::Codex),
+        _ => None,
+    }
+}
+
+fn extract_content_text(content: &Value) -> Option<String> {
+    match content {
+        Value::String(value) => non_empty_text(value.to_string()),
+        Value::Array(entries) => {
+            let parts = entries
+                .iter()
+                .filter_map(|entry| {
+                    entry
+                        .get("text")
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                        .or_else(|| entry.as_str().map(str::to_string))
+                })
+                .filter_map(non_empty_text)
+                .collect::<Vec<_>>();
+            if parts.is_empty() {
+                None
+            } else {
+                Some(parts.join("\n"))
+            }
+        }
+        Value::Object(map) => map
+            .get("text")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .and_then(non_empty_text),
+        _ => None,
+    }
+}
+
+fn non_empty_text(value: String) -> Option<String> {
+    if value.trim().is_empty() {
+        None
+    } else {
+        Some(value)
+    }
 }
 
 fn string_field(value: &Value, field: &str) -> Option<String> {

@@ -552,7 +552,8 @@ impl AutopilotChatState {
         })
     }
 
-    pub fn ensure_thread(&mut self, thread_id: String) {
+    pub fn remember_thread(&mut self, thread_id: impl Into<String>) {
+        let thread_id = thread_id.into();
         if !self.threads.iter().any(|existing| existing == &thread_id) {
             self.threads.insert(0, thread_id.clone());
         }
@@ -565,7 +566,18 @@ impl AutopilotChatState {
                 cwd: None,
                 path: None,
             });
+        if self.active_thread_id.is_none() {
+            self.active_thread_id = Some(thread_id);
+        }
+    }
+
+    pub fn ensure_thread(&mut self, thread_id: String) {
+        self.remember_thread(thread_id.clone());
         self.active_thread_id = Some(thread_id);
+    }
+
+    pub fn is_active_thread(&self, thread_id: &str) -> bool {
+        self.active_thread_id.as_deref() == Some(thread_id)
     }
 
     pub fn remove_thread(&mut self, thread_id: &str) {
@@ -574,6 +586,50 @@ impl AutopilotChatState {
         if self.active_thread_id.as_deref() == Some(thread_id) {
             self.active_thread_id = self.threads.first().cloned();
         }
+    }
+
+    pub fn set_active_thread_transcript(
+        &mut self,
+        thread_id: &str,
+        messages: Vec<(AutopilotRole, String)>,
+    ) {
+        if !self.is_active_thread(thread_id) {
+            return;
+        }
+
+        self.messages.clear();
+        self.next_message_id = 1;
+        for (role, content) in messages {
+            if content.trim().is_empty() {
+                continue;
+            }
+            self.messages.push(AutopilotMessage {
+                id: self.next_message_id,
+                role,
+                status: AutopilotMessageStatus::Done,
+                content,
+            });
+            self.next_message_id = self.next_message_id.saturating_add(1);
+        }
+        if self.messages.is_empty() {
+            self.messages.push(AutopilotMessage {
+                id: self.next_message_id,
+                role: AutopilotRole::Codex,
+                status: AutopilotMessageStatus::Done,
+                content: "No transcript available for this thread yet.".to_string(),
+            });
+            self.next_message_id = self.next_message_id.saturating_add(1);
+        }
+
+        self.active_turn_id = None;
+        self.active_assistant_message_id = None;
+        self.last_turn_status = None;
+        self.token_usage = None;
+        self.turn_plan_explanation = None;
+        self.turn_plan.clear();
+        self.turn_diff = None;
+        self.turn_timeline.clear();
+        self.last_error = None;
     }
 
     pub fn submit_prompt(&mut self, prompt: String) {
@@ -3379,14 +3435,15 @@ mod tests {
     use super::{
         ActiveJobState, ActivityEventDomain, ActivityEventRow, ActivityFeedFilter,
         ActivityFeedState, AgentNetworkSimulationPaneState, AlertDomain, AlertLifecycle,
-        AlertsRecoveryState, AutopilotChatState, AutopilotMessageStatus, EarningsScoreboardState,
-        JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange,
-        JobInboxDecision, JobInboxNetworkRequest, JobInboxState, JobInboxValidation,
-        JobLifecycleStage, NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState,
-        NostrSecretState, ProviderRuntimeState, RecoveryAlertRow, RelayConnectionRow,
-        RelayConnectionStatus, RelayConnectionsState, RelaySecuritySimulationPaneState,
-        SettingsState, SparkPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
-        SyncHealthState, SyncRecoveryPhase, TreasuryExchangeSimulationPaneState,
+        AlertsRecoveryState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole,
+        EarningsScoreboardState, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
+        JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest, JobInboxState,
+        JobInboxValidation, JobLifecycleStage, NetworkRequestStatus, NetworkRequestSubmission,
+        NetworkRequestsState, NostrSecretState, ProviderRuntimeState, RecoveryAlertRow,
+        RelayConnectionRow, RelayConnectionStatus, RelayConnectionsState,
+        RelaySecuritySimulationPaneState, SettingsState, SparkPaneState, StarterJobRow,
+        StarterJobStatus, StarterJobsState, SyncHealthState, SyncRecoveryPhase,
+        TreasuryExchangeSimulationPaneState,
     };
 
     fn fixture_inbox_request(
@@ -3555,6 +3612,37 @@ mod tests {
                 .iter()
                 .any(|message| message.content.contains("pong"))
         );
+    }
+
+    #[test]
+    fn chat_state_replaces_transcript_for_active_thread() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-a".to_string());
+        chat.set_active_thread_transcript(
+            "thread-a",
+            vec![
+                (AutopilotRole::User, "hello".to_string()),
+                (AutopilotRole::Codex, "world".to_string()),
+            ],
+        );
+        assert_eq!(chat.messages.len(), 2);
+        assert_eq!(chat.messages[0].content, "hello");
+        assert_eq!(chat.messages[1].content, "world");
+
+        chat.remember_thread("thread-b");
+        chat.set_active_thread_transcript(
+            "thread-b",
+            vec![(AutopilotRole::User, "ignored".to_string())],
+        );
+        assert_eq!(chat.messages[0].content, "hello");
+
+        chat.ensure_thread("thread-b".to_string());
+        chat.set_active_thread_transcript(
+            "thread-b",
+            vec![(AutopilotRole::User, "new thread".to_string())],
+        );
+        assert_eq!(chat.messages.len(), 1);
+        assert_eq!(chat.messages[0].content, "new thread");
     }
 
     #[test]

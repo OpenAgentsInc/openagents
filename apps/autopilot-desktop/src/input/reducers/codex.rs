@@ -2,7 +2,7 @@ use crate::app_state::{PaneLoadState, RenderState};
 use crate::codex_lane::CodexLaneCommand;
 use crate::codex_lane::{
     CodexLaneCommandKind, CodexLaneCommandResponse, CodexLaneCommandStatus, CodexLaneNotification,
-    CodexLaneSnapshot,
+    CodexLaneSnapshot, CodexThreadTranscriptRole,
 };
 use codex_client::{SkillsListExtraRootsForCwd, SkillsListParams, ThreadStartParams};
 
@@ -800,17 +800,50 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
         CodexLaneNotification::ThreadLoadedListLoaded { thread_ids } => {
             state.autopilot_chat.set_thread_loaded_ids(&thread_ids);
         }
+        CodexLaneNotification::ThreadReadLoaded {
+            thread_id,
+            messages,
+        } => {
+            state.autopilot_chat.remember_thread(thread_id.clone());
+            if state.autopilot_chat.is_active_thread(&thread_id) {
+                let transcript = messages
+                    .into_iter()
+                    .map(|message| {
+                        let role = match message.role {
+                            CodexThreadTranscriptRole::User => {
+                                crate::app_state::AutopilotRole::User
+                            }
+                            CodexThreadTranscriptRole::Codex => {
+                                crate::app_state::AutopilotRole::Codex
+                            }
+                        };
+                        (role, message.content)
+                    })
+                    .collect::<Vec<_>>();
+                eprintln!(
+                    "codex thread/read loaded id={} messages={}",
+                    thread_id,
+                    transcript.len()
+                );
+                state
+                    .autopilot_chat
+                    .set_active_thread_transcript(&thread_id, transcript);
+            }
+        }
         CodexLaneNotification::ThreadSelected { thread_id }
         | CodexLaneNotification::ThreadStarted { thread_id } => {
             state.autopilot_chat.ensure_thread(thread_id);
         }
         CodexLaneNotification::ThreadStatusChanged { thread_id, status } => {
+            state.autopilot_chat.remember_thread(thread_id.clone());
             state
                 .autopilot_chat
                 .set_thread_status(&thread_id, Some(status.clone()));
-            state
-                .autopilot_chat
-                .record_turn_timeline_event(format!("thread status: {thread_id} => {status}"));
+            if state.autopilot_chat.is_active_thread(&thread_id) {
+                state
+                    .autopilot_chat
+                    .record_turn_timeline_event(format!("thread status: {thread_id} => {status}"));
+            }
         }
         CodexLaneNotification::ThreadArchived { thread_id } => {
             state
@@ -824,7 +857,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             state
                 .autopilot_chat
                 .set_thread_status(&thread_id, Some("idle".to_string()));
-            state.autopilot_chat.ensure_thread(thread_id);
+            state.autopilot_chat.remember_thread(thread_id);
         }
         CodexLaneNotification::ThreadClosed { thread_id } => {
             state.autopilot_chat.remove_thread(&thread_id);
@@ -838,11 +871,13 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 .set_thread_name(&thread_id, thread_name);
         }
         CodexLaneNotification::TurnStarted { thread_id, turn_id } => {
-            state.autopilot_chat.ensure_thread(thread_id);
-            state
-                .autopilot_chat
-                .record_turn_timeline_event(format!("turn started: {turn_id}"));
-            state.autopilot_chat.mark_turn_started(turn_id);
+            state.autopilot_chat.remember_thread(thread_id.clone());
+            if state.autopilot_chat.is_active_thread(&thread_id) {
+                state
+                    .autopilot_chat
+                    .record_turn_timeline_event(format!("turn started: {turn_id}"));
+                state.autopilot_chat.mark_turn_started(turn_id);
+            }
         }
         CodexLaneNotification::ItemStarted {
             thread_id,
@@ -850,12 +885,14 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             item_id,
             item_type,
         } => {
-            state.autopilot_chat.ensure_thread(thread_id);
-            state.autopilot_chat.record_turn_timeline_event(format!(
-                "item started: turn={turn_id} id={} type={}",
-                item_id.as_deref().unwrap_or("n/a"),
-                item_type.as_deref().unwrap_or("n/a")
-            ));
+            state.autopilot_chat.remember_thread(thread_id.clone());
+            if state.autopilot_chat.is_active_thread(&thread_id) {
+                state.autopilot_chat.record_turn_timeline_event(format!(
+                    "item started: turn={turn_id} id={} type={}",
+                    item_id.as_deref().unwrap_or("n/a"),
+                    item_type.as_deref().unwrap_or("n/a")
+                ));
+            }
         }
         CodexLaneNotification::ItemCompleted {
             thread_id,
@@ -863,75 +900,111 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             item_id,
             item_type,
         } => {
-            state.autopilot_chat.ensure_thread(thread_id);
-            state.autopilot_chat.record_turn_timeline_event(format!(
-                "item completed: turn={turn_id} id={} type={}",
-                item_id.as_deref().unwrap_or("n/a"),
-                item_type.as_deref().unwrap_or("n/a")
-            ));
+            state.autopilot_chat.remember_thread(thread_id.clone());
+            if state.autopilot_chat.is_active_thread(&thread_id) {
+                state.autopilot_chat.record_turn_timeline_event(format!(
+                    "item completed: turn={turn_id} id={} type={}",
+                    item_id.as_deref().unwrap_or("n/a"),
+                    item_type.as_deref().unwrap_or("n/a")
+                ));
+            }
         }
-        CodexLaneNotification::AgentMessageDelta { item_id, delta, .. } => {
-            state.autopilot_chat.record_turn_timeline_event(format!(
-                "agent delta: item={} chars={}",
-                item_id,
-                delta.chars().count()
-            ));
-            state.autopilot_chat.append_turn_delta(&delta);
+        CodexLaneNotification::AgentMessageDelta {
+            thread_id,
+            item_id,
+            delta,
+            ..
+        } => {
+            state.autopilot_chat.remember_thread(thread_id.clone());
+            if state.autopilot_chat.is_active_thread(&thread_id) {
+                state.autopilot_chat.record_turn_timeline_event(format!(
+                    "agent delta: item={} chars={}",
+                    item_id,
+                    delta.chars().count()
+                ));
+                state.autopilot_chat.append_turn_delta(&delta);
+            }
         }
         CodexLaneNotification::TurnCompleted {
+            thread_id,
             status,
             error_message,
             ..
         } => {
-            state.autopilot_chat.set_turn_status(status.clone());
-            match status.as_deref() {
-                Some("failed") => {
-                    state.autopilot_chat.mark_turn_error(
-                        error_message.unwrap_or_else(|| "Turn failed".to_string()),
-                    );
-                }
-                Some("interrupted") => {
-                    state.autopilot_chat.mark_turn_completed();
-                    state
-                        .autopilot_chat
-                        .set_turn_status(Some("interrupted".to_string()));
-                    state
-                        .autopilot_chat
-                        .record_turn_timeline_event("turn interrupted");
-                }
-                _ => {
-                    state.autopilot_chat.mark_turn_completed();
+            state.autopilot_chat.remember_thread(thread_id.clone());
+            if state.autopilot_chat.is_active_thread(&thread_id) {
+                state.autopilot_chat.set_turn_status(status.clone());
+                match status.as_deref() {
+                    Some("failed") => {
+                        state.autopilot_chat.mark_turn_error(
+                            error_message.unwrap_or_else(|| "Turn failed".to_string()),
+                        );
+                    }
+                    Some("interrupted") => {
+                        state.autopilot_chat.mark_turn_completed();
+                        state
+                            .autopilot_chat
+                            .set_turn_status(Some("interrupted".to_string()));
+                        state
+                            .autopilot_chat
+                            .record_turn_timeline_event("turn interrupted");
+                    }
+                    _ => {
+                        state.autopilot_chat.mark_turn_completed();
+                    }
                 }
             }
         }
-        CodexLaneNotification::TurnDiffUpdated { diff, .. } => {
-            state.autopilot_chat.set_turn_diff(Some(diff));
+        CodexLaneNotification::TurnDiffUpdated {
+            thread_id, diff, ..
+        } => {
+            state.autopilot_chat.remember_thread(thread_id.clone());
+            if state.autopilot_chat.is_active_thread(&thread_id) {
+                state.autopilot_chat.set_turn_diff(Some(diff));
+            }
         }
         CodexLaneNotification::TurnPlanUpdated {
-            explanation, plan, ..
+            thread_id,
+            explanation,
+            plan,
+            ..
         } => {
-            state.autopilot_chat.set_turn_plan(
-                explanation,
-                plan.into_iter()
-                    .map(|step| crate::app_state::AutopilotTurnPlanStep {
-                        step: step.step,
-                        status: step.status,
-                    })
-                    .collect(),
-            );
+            state.autopilot_chat.remember_thread(thread_id.clone());
+            if state.autopilot_chat.is_active_thread(&thread_id) {
+                state.autopilot_chat.set_turn_plan(
+                    explanation,
+                    plan.into_iter()
+                        .map(|step| crate::app_state::AutopilotTurnPlanStep {
+                            step: step.step,
+                            status: step.status,
+                        })
+                        .collect(),
+                );
+            }
         }
         CodexLaneNotification::ThreadTokenUsageUpdated {
+            thread_id,
             input_tokens,
             cached_input_tokens,
             output_tokens,
             ..
         } => {
-            state
-                .autopilot_chat
-                .set_token_usage(input_tokens, cached_input_tokens, output_tokens);
+            state.autopilot_chat.remember_thread(thread_id.clone());
+            if state.autopilot_chat.is_active_thread(&thread_id) {
+                state.autopilot_chat.set_token_usage(
+                    input_tokens,
+                    cached_input_tokens,
+                    output_tokens,
+                );
+            }
         }
-        CodexLaneNotification::TurnError { message, .. } => {
-            state.autopilot_chat.mark_turn_error(message);
+        CodexLaneNotification::TurnError {
+            thread_id, message, ..
+        } => {
+            state.autopilot_chat.remember_thread(thread_id.clone());
+            if state.autopilot_chat.is_active_thread(&thread_id) {
+                state.autopilot_chat.mark_turn_error(message);
+            }
         }
         CodexLaneNotification::CommandApprovalRequested {
             request_id,
@@ -1157,6 +1230,7 @@ fn notification_method_label(notification: &CodexLaneNotification) -> String {
         CodexLaneNotification::SkillsRemoteExported { .. } => "skills/remote/export".to_string(),
         CodexLaneNotification::ThreadListLoaded { .. } => "thread/list".to_string(),
         CodexLaneNotification::ThreadLoadedListLoaded { .. } => "thread/loaded/list".to_string(),
+        CodexLaneNotification::ThreadReadLoaded { .. } => "thread/read".to_string(),
         CodexLaneNotification::ThreadSelected { .. } => "thread/selected".to_string(),
         CodexLaneNotification::ThreadStarted { .. } => "thread/started".to_string(),
         CodexLaneNotification::ThreadStatusChanged { .. } => "thread/status/changed".to_string(),

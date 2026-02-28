@@ -41,14 +41,14 @@ use crate::pane_system::{
     CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction, CodexDiagnosticsPaneAction,
     CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction, CodexRemoteSkillsPaneAction,
     EarningsScoreboardPaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction,
-    PaneInput, RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction, SettingsPaneAction,
-    StarterJobsPaneAction, SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction,
-    clamp_all_panes_to_window,
-    dispatch_chat_input_event, dispatch_create_invoice_input_event,
-    dispatch_job_history_input_event, dispatch_network_requests_input_event,
-    dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
-    dispatch_settings_input_event, dispatch_spark_input_event, pane_indices_by_z_desc,
-    pane_z_sort_invocation_count, topmost_pane_hit_action_in_order, SIDEBAR_DEFAULT_WIDTH,
+    PaneInput, RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction,
+    SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StarterJobsPaneAction, SyncHealthPaneAction,
+    TreasuryExchangeSimulationPaneAction, clamp_all_panes_to_window, dispatch_chat_input_event,
+    dispatch_create_invoice_input_event, dispatch_job_history_input_event,
+    dispatch_network_requests_input_event, dispatch_pay_invoice_input_event,
+    dispatch_relay_connections_input_event, dispatch_settings_input_event,
+    dispatch_spark_input_event, pane_indices_by_z_desc, pane_z_sort_invocation_count,
+    topmost_pane_hit_action_in_order,
 };
 use crate::render::{
     logical_size, render_frame, sidebar_go_online_button_bounds, sidebar_handle_bounds,
@@ -443,10 +443,7 @@ fn handle_sidebar_mouse_down(
     true
 }
 
-fn handle_sidebar_mouse_move(
-    state: &mut crate::app_state::RenderState,
-    point: Point,
-) -> bool {
+fn handle_sidebar_mouse_move(state: &mut crate::app_state::RenderState, point: Point) -> bool {
     let icon_bounds = sidebar_settings_icon_bounds(state);
     let hover = icon_bounds.contains(point);
     let mut handled = false;
@@ -1219,6 +1216,18 @@ fn run_chat_select_thread_action(state: &mut crate::app_state::RenderState, inde
     });
     if let Err(error) = state.queue_codex_command(command) {
         state.autopilot_chat.last_error = Some(error);
+        return true;
+    }
+
+    if let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() {
+        let read =
+            crate::codex_lane::CodexLaneCommand::ThreadRead(codex_client::ThreadReadParams {
+                thread_id,
+                include_turns: true,
+            });
+        if let Err(error) = state.queue_codex_command(read) {
+            state.autopilot_chat.last_error = Some(error);
+        }
     }
     true
 }
