@@ -83,24 +83,6 @@ pub fn paint(
         11.0,
         theme::text::MUTED,
     ));
-    paint.scene.draw_text(paint.text.layout_mono(
-        &format!(
-            "status={} model={} effort={}",
-            autopilot_chat.connection_status,
-            autopilot_chat.current_model(),
-            autopilot_chat
-                .reasoning_effort
-                .as_deref()
-                .unwrap_or("default")
-        ),
-        Point::new(
-            transcript_bounds.origin.x + 10.0,
-            transcript_bounds.origin.y + 42.0,
-        ),
-        10.0,
-        theme::text::MUTED,
-    ));
-
     paint_action_button(refresh_bounds, "Refresh", paint);
     let archived_filter_label = match autopilot_chat.thread_filter_archived {
         Some(false) => "Live",
@@ -155,7 +137,51 @@ pub fn paint(
         paint_action_button(auth_refresh_bounds, "Send Auth Refresh", paint);
     }
 
-    let visible_threads = chat_visible_thread_row_count(autopilot_chat.threads.len());
+    let mut transcript_controls_bottom = interrupt_bounds.max_y();
+    if !autopilot_chat.pending_command_approvals.is_empty()
+        || !autopilot_chat.pending_file_change_approvals.is_empty()
+    {
+        transcript_controls_bottom = transcript_controls_bottom.max(approval_cancel_bounds.max_y());
+    }
+    if !autopilot_chat.pending_tool_calls.is_empty() {
+        transcript_controls_bottom = transcript_controls_bottom.max(tool_call_bounds.max_y());
+    }
+    if !autopilot_chat.pending_tool_user_input.is_empty() {
+        transcript_controls_bottom = transcript_controls_bottom.max(user_input_bounds.max_y());
+    }
+    if !autopilot_chat.pending_auth_refresh.is_empty() {
+        transcript_controls_bottom = transcript_controls_bottom.max(auth_refresh_bounds.max_y());
+    }
+    let transcript_status_line_y = transcript_controls_bottom + 12.0;
+    let transcript_thread_line_y = transcript_status_line_y + 14.0;
+
+    paint.scene.draw_text(paint.text.layout_mono(
+        &format!(
+            "status={} model={} effort={}",
+            autopilot_chat.connection_status,
+            autopilot_chat.current_model(),
+            autopilot_chat
+                .reasoning_effort
+                .as_deref()
+                .unwrap_or("default")
+        ),
+        Point::new(transcript_bounds.origin.x + 10.0, transcript_status_line_y),
+        10.0,
+        theme::text::MUTED,
+    ));
+
+    let visible_threads =
+        chat_visible_thread_row_count(content_bounds, autopilot_chat.threads.len());
+    let thread_rows_clip = {
+        let first_row = chat_thread_row_bounds(content_bounds, 0);
+        Bounds::new(
+            rail_bounds.origin.x + 8.0,
+            first_row.origin.y - 2.0,
+            (rail_bounds.size.width - 16.0).max(0.0),
+            (rail_bounds.max_y() - first_row.origin.y + 2.0).max(0.0),
+        )
+    };
+    paint.scene.push_clip(thread_rows_clip);
     for row_index in 0..visible_threads {
         let row_bounds = chat_thread_row_bounds(content_bounds, row_index);
         let Some(thread_id) = autopilot_chat.threads.get(row_index) else {
@@ -202,6 +228,7 @@ pub fn paint(
             },
         ));
     }
+    paint.scene.pop_clip();
 
     let turn_status = autopilot_chat
         .last_turn_status
@@ -240,19 +267,16 @@ pub fn paint(
             token_summary,
             pending_server_summary
         ),
-        Point::new(
-            transcript_bounds.origin.x + 10.0,
-            transcript_bounds.origin.y + 56.0,
-        ),
+        Point::new(transcript_bounds.origin.x + 10.0, transcript_thread_line_y),
         10.0,
         theme::text::MUTED,
     ));
 
     let transcript_scroll_clip = Bounds::new(
         transcript_bounds.origin.x + 8.0,
-        transcript_bounds.origin.y + 72.0,
+        transcript_thread_line_y + 10.0,
         (transcript_bounds.size.width - 16.0).max(0.0),
-        (composer_bounds.origin.y - transcript_bounds.origin.y - 80.0).max(0.0),
+        (composer_bounds.origin.y - (transcript_thread_line_y + 18.0) - 8.0).max(0.0),
     );
 
     paint.scene.push_clip(transcript_scroll_clip);

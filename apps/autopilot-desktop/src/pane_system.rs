@@ -821,8 +821,21 @@ pub fn chat_thread_row_bounds(content_bounds: Bounds, index: usize) -> Bounds {
     )
 }
 
-pub fn chat_visible_thread_row_count(total_threads: usize) -> usize {
-    total_threads.min(CHAT_MAX_THREAD_ROWS)
+pub fn chat_visible_thread_row_count(content_bounds: Bounds, total_threads: usize) -> usize {
+    if total_threads == 0 {
+        return 0;
+    }
+
+    let first_row = chat_thread_row_bounds(content_bounds, 0);
+    let rail = chat_thread_rail_bounds(content_bounds);
+    let available_height = (rail.max_y() - first_row.origin.y).max(0.0);
+    if available_height < CHAT_THREAD_ROW_HEIGHT {
+        return 0;
+    }
+
+    let row_span = CHAT_THREAD_ROW_HEIGHT + CHAT_THREAD_ROW_GAP;
+    let max_fit = ((available_height + CHAT_THREAD_ROW_GAP) / row_span).floor() as usize;
+    total_threads.min(CHAT_MAX_THREAD_ROWS).min(max_fit.max(1))
 }
 
 pub fn chat_thread_filter_archived_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -2044,7 +2057,8 @@ fn pane_hit_action_for_pane(
             if chat_server_auth_refresh_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::ChatRespondAuthRefresh);
             }
-            let visible_threads = chat_visible_thread_row_count(state.autopilot_chat.threads.len());
+            let visible_threads =
+                chat_visible_thread_row_count(content_bounds, state.autopilot_chat.threads.len());
             for row_index in 0..visible_threads {
                 if chat_thread_row_bounds(content_bounds, row_index).contains(point) {
                     return Some(PaneHitAction::ChatSelectThread(row_index));
