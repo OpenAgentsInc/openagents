@@ -359,6 +359,12 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     if run_auto_agent_network_simulation(state, now) {
         changed = true;
     }
+    if run_auto_treasury_exchange_simulation(state, now) {
+        changed = true;
+    }
+    if run_auto_relay_security_simulation(state, now) {
+        changed = true;
+    }
     refresh_earnings_scoreboard(state, now);
     refresh_sync_health(state);
     changed
@@ -2433,44 +2439,20 @@ fn run_treasury_exchange_simulation_action(
 ) -> bool {
     match action {
         TreasuryExchangeSimulationPaneAction::RunRound => {
+            if state.treasury_exchange_simulation.auto_run_enabled {
+                state.treasury_exchange_simulation.stop_auto_run();
+                state.provider_runtime.last_result =
+                    state.treasury_exchange_simulation.last_action.clone();
+                return true;
+            }
+            let now = std::time::Instant::now();
+            state.treasury_exchange_simulation.start_auto_run(now);
             let now_epoch_seconds = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0, |duration| duration.as_secs());
-            match state
-                .treasury_exchange_simulation
-                .run_round(now_epoch_seconds)
-            {
-                Ok(()) => {
-                    state.provider_runtime.last_result =
-                        state.treasury_exchange_simulation.last_action.clone();
-                    let event_id = format!(
-                        "sim:treasury:round:{}",
-                        state.treasury_exchange_simulation.rounds_run
-                    );
-                    state
-                        .activity_feed
-                        .upsert_event(crate::app_state::ActivityEventRow {
-                            event_id,
-                            domain: crate::app_state::ActivityEventDomain::Network,
-                            source_tag: "simulation.nip69".to_string(),
-                            summary: "Treasury + exchange simulation round executed".to_string(),
-                            detail: format!(
-                                "round={} volume_sats={} liquidity_sats={}",
-                                state.treasury_exchange_simulation.rounds_run,
-                                state.treasury_exchange_simulation.trade_volume_sats,
-                                state.treasury_exchange_simulation.total_liquidity_sats
-                            ),
-                            occurred_at_epoch_seconds: now_epoch_seconds,
-                        });
-                    state.activity_feed.load_state = crate::app_state::PaneLoadState::Ready;
-                }
-                Err(error) => {
-                    state.treasury_exchange_simulation.last_error = Some(error);
-                    state.treasury_exchange_simulation.load_state =
-                        crate::app_state::PaneLoadState::Error;
-                }
-            }
-            true
+            let ran_round = run_treasury_exchange_simulation_round(state, now_epoch_seconds);
+            state.treasury_exchange_simulation.mark_auto_round(now);
+            ran_round
         }
         TreasuryExchangeSimulationPaneAction::Reset => {
             state.treasury_exchange_simulation.reset();
@@ -2481,51 +2463,84 @@ fn run_treasury_exchange_simulation_action(
     }
 }
 
+fn run_treasury_exchange_simulation_round(
+    state: &mut crate::app_state::RenderState,
+    now_epoch_seconds: u64,
+) -> bool {
+    match state
+        .treasury_exchange_simulation
+        .run_round(now_epoch_seconds)
+    {
+        Ok(()) => {
+            state.provider_runtime.last_result =
+                state.treasury_exchange_simulation.last_action.clone();
+            let event_id = format!(
+                "sim:treasury:round:{}",
+                state.treasury_exchange_simulation.rounds_run
+            );
+            state
+                .activity_feed
+                .upsert_event(crate::app_state::ActivityEventRow {
+                    event_id,
+                    domain: crate::app_state::ActivityEventDomain::Network,
+                    source_tag: "simulation.nip69".to_string(),
+                    summary: "Treasury + exchange simulation round executed".to_string(),
+                    detail: format!(
+                        "round={} volume_sats={} liquidity_sats={}",
+                        state.treasury_exchange_simulation.rounds_run,
+                        state.treasury_exchange_simulation.trade_volume_sats,
+                        state.treasury_exchange_simulation.total_liquidity_sats
+                    ),
+                    occurred_at_epoch_seconds: now_epoch_seconds,
+                });
+            state.activity_feed.load_state = crate::app_state::PaneLoadState::Ready;
+        }
+        Err(error) => {
+            state.treasury_exchange_simulation.last_error = Some(error);
+            state.treasury_exchange_simulation.load_state = crate::app_state::PaneLoadState::Error;
+        }
+    }
+    true
+}
+
+fn run_auto_treasury_exchange_simulation(
+    state: &mut crate::app_state::RenderState,
+    now: std::time::Instant,
+) -> bool {
+    if !state
+        .treasury_exchange_simulation
+        .should_run_auto_round(now)
+    {
+        return false;
+    }
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs());
+    let changed = run_treasury_exchange_simulation_round(state, now_epoch_seconds);
+    state.treasury_exchange_simulation.mark_auto_round(now);
+    changed
+}
+
 fn run_relay_security_simulation_action(
     state: &mut crate::app_state::RenderState,
     action: RelaySecuritySimulationPaneAction,
 ) -> bool {
     match action {
         RelaySecuritySimulationPaneAction::RunRound => {
+            if state.relay_security_simulation.auto_run_enabled {
+                state.relay_security_simulation.stop_auto_run();
+                state.provider_runtime.last_result =
+                    state.relay_security_simulation.last_action.clone();
+                return true;
+            }
+            let now = std::time::Instant::now();
+            state.relay_security_simulation.start_auto_run(now);
             let now_epoch_seconds = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0, |duration| duration.as_secs());
-            match state.relay_security_simulation.run_round(now_epoch_seconds) {
-                Ok(()) => {
-                    state.provider_runtime.last_result =
-                        state.relay_security_simulation.last_action.clone();
-                    let event_id = format!(
-                        "sim:relay-security:round:{}",
-                        state.relay_security_simulation.rounds_run
-                    );
-                    state
-                        .activity_feed
-                        .upsert_event(crate::app_state::ActivityEventRow {
-                            event_id,
-                            domain: crate::app_state::ActivityEventDomain::Sync,
-                            source_tag: "simulation.nip42".to_string(),
-                            summary: "Relay security simulation round executed".to_string(),
-                            detail: format!(
-                                "round={} auth={} sync_ranges={}",
-                                state.relay_security_simulation.rounds_run,
-                                state
-                                    .relay_security_simulation
-                                    .auth_event_id
-                                    .as_deref()
-                                    .unwrap_or("n/a"),
-                                state.relay_security_simulation.sync_ranges
-                            ),
-                            occurred_at_epoch_seconds: now_epoch_seconds,
-                        });
-                    state.activity_feed.load_state = crate::app_state::PaneLoadState::Ready;
-                }
-                Err(error) => {
-                    state.relay_security_simulation.last_error = Some(error);
-                    state.relay_security_simulation.load_state =
-                        crate::app_state::PaneLoadState::Error;
-                }
-            }
-            true
+            let ran_round = run_relay_security_simulation_round(state, now_epoch_seconds);
+            state.relay_security_simulation.mark_auto_round(now);
+            ran_round
         }
         RelaySecuritySimulationPaneAction::Reset => {
             state.relay_security_simulation.reset();
@@ -2534,6 +2549,62 @@ fn run_relay_security_simulation_action(
             true
         }
     }
+}
+
+fn run_relay_security_simulation_round(
+    state: &mut crate::app_state::RenderState,
+    now_epoch_seconds: u64,
+) -> bool {
+    match state.relay_security_simulation.run_round(now_epoch_seconds) {
+        Ok(()) => {
+            state.provider_runtime.last_result =
+                state.relay_security_simulation.last_action.clone();
+            let event_id = format!(
+                "sim:relay-security:round:{}",
+                state.relay_security_simulation.rounds_run
+            );
+            state
+                .activity_feed
+                .upsert_event(crate::app_state::ActivityEventRow {
+                    event_id,
+                    domain: crate::app_state::ActivityEventDomain::Sync,
+                    source_tag: "simulation.nip42".to_string(),
+                    summary: "Relay security simulation round executed".to_string(),
+                    detail: format!(
+                        "round={} auth={} sync_ranges={}",
+                        state.relay_security_simulation.rounds_run,
+                        state
+                            .relay_security_simulation
+                            .auth_event_id
+                            .as_deref()
+                            .unwrap_or("n/a"),
+                        state.relay_security_simulation.sync_ranges
+                    ),
+                    occurred_at_epoch_seconds: now_epoch_seconds,
+                });
+            state.activity_feed.load_state = crate::app_state::PaneLoadState::Ready;
+        }
+        Err(error) => {
+            state.relay_security_simulation.last_error = Some(error);
+            state.relay_security_simulation.load_state = crate::app_state::PaneLoadState::Error;
+        }
+    }
+    true
+}
+
+fn run_auto_relay_security_simulation(
+    state: &mut crate::app_state::RenderState,
+    now: std::time::Instant,
+) -> bool {
+    if !state.relay_security_simulation.should_run_auto_round(now) {
+        return false;
+    }
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs());
+    let changed = run_relay_security_simulation_round(state, now_epoch_seconds);
+    state.relay_security_simulation.mark_auto_round(now);
+    changed
 }
 
 fn run_relay_connections_action(
