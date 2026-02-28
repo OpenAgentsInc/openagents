@@ -52,4 +52,8 @@ impl ApplicationHandler for App {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         input::handle_window_event(self, event_loop, event);
     }
+
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        input::handle_about_to_wait(self, event_loop);
+    }
 }

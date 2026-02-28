@@ -996,22 +996,24 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
         }
         CodexLaneNotification::AgentMessageDelta {
             thread_id,
+            turn_id,
             item_id,
             delta,
-            ..
         } => {
             state.autopilot_chat.remember_thread(thread_id.clone());
             if state.autopilot_chat.is_active_thread(&thread_id) {
                 state.autopilot_chat.record_turn_timeline_event(format!(
-                    "agent delta: item={} chars={}",
+                    "agent delta: turn={} item={} chars={}",
+                    turn_id,
                     item_id,
                     delta.chars().count()
                 ));
-                state.autopilot_chat.append_turn_delta(&delta);
+                state.autopilot_chat.append_turn_delta_for_turn(&turn_id, &delta);
             }
         }
         CodexLaneNotification::TurnCompleted {
             thread_id,
+            turn_id,
             status,
             error_message,
             ..
@@ -1026,7 +1028,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                         );
                     }
                     Some("interrupted") => {
-                        state.autopilot_chat.mark_turn_completed();
+                        state.autopilot_chat.mark_turn_completed_for(&turn_id);
                         state
                             .autopilot_chat
                             .set_turn_status(Some("interrupted".to_string()));
@@ -1035,8 +1037,16 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                             .record_turn_timeline_event("turn interrupted");
                     }
                     _ => {
-                        state.autopilot_chat.mark_turn_completed();
+                        state.autopilot_chat.mark_turn_completed_for(&turn_id);
                     }
+                }
+                if let Err(error) = state.queue_codex_command(CodexLaneCommand::ThreadRead(
+                    codex_client::ThreadReadParams {
+                        thread_id,
+                        include_turns: true,
+                    },
+                )) {
+                    state.autopilot_chat.last_error = Some(error);
                 }
             }
         }

@@ -22,7 +22,7 @@ use std::hash::{Hash, Hasher};
 use wgpui::clipboard::copy_to_clipboard;
 use wgpui::{Bounds, Component, InputEvent, Key, Modifiers, MouseButton, NamedKey, Point};
 use winit::event::{ElementState, WindowEvent};
-use winit::event_loop::ActiveEventLoop;
+use winit::event_loop::{ActiveEventLoop, ControlFlow};
 use winit::keyboard::{
     Key as WinitLogicalKey, KeyCode, ModifiersState, NamedKey as WinitNamedKey, PhysicalKey,
 };
@@ -67,18 +67,9 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
         return;
     };
 
-    if reducers::drain_spark_worker_updates(state) {
+    if pump_background_state(state) {
         state.window.request_redraw();
     }
-    if reducers::drain_runtime_lane_updates(state) {
-        state.window.request_redraw();
-    }
-    if state.nostr_secret_state.expire(std::time::Instant::now()) {
-        state.window.request_redraw();
-    }
-    let now = std::time::Instant::now();
-    refresh_earnings_scoreboard(state, now);
-    refresh_sync_health(state);
 
     match event {
         WindowEvent::CloseRequested => {
@@ -201,8 +192,10 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
             }
         }
         WindowEvent::KeyboardInput { event, .. } => {
+            let text_input_focused = any_text_input_focused(state);
             if event.state == ElementState::Pressed
                 && is_command_palette_shortcut(&event.logical_key, state.input_modifiers)
+                && !text_input_focused
             {
                 toggle_command_palette(state);
                 state.window.request_redraw();
@@ -242,6 +235,9 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 state.window.request_redraw();
                 return;
             }
+            if text_input_focused {
+                return;
+            }
 
             match event.physical_key {
                 PhysicalKey::Code(KeyCode::Escape) => {
@@ -279,6 +275,53 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
         }
         _ => {}
     }
+}
+
+pub fn handle_about_to_wait(app: &mut App, event_loop: &ActiveEventLoop) {
+    let Some(state) = &mut app.state else {
+        return;
+    };
+
+    let changed = pump_background_state(state);
+    let provider_animating = matches!(
+        state.provider_runtime.mode,
+        ProviderMode::Connecting | ProviderMode::Online
+    );
+    let should_redraw = changed
+        || state.hotbar.is_flashing()
+        || provider_animating
+        || state.autopilot_chat.has_pending_messages();
+    if should_redraw {
+        state.window.request_redraw();
+    }
+
+    // Keep a lightweight cadence so background lane updates (Codex/runtime/spark) are surfaced
+    // even when the user is idle and no UI events are incoming.
+    let poll_interval = if state.autopilot_chat.has_pending_messages() {
+        std::time::Duration::from_millis(16)
+    } else {
+        std::time::Duration::from_millis(50)
+    };
+    event_loop.set_control_flow(ControlFlow::WaitUntil(
+        std::time::Instant::now() + poll_interval,
+    ));
+}
+
+fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
+    let mut changed = false;
+    if reducers::drain_spark_worker_updates(state) {
+        changed = true;
+    }
+    if reducers::drain_runtime_lane_updates(state) {
+        changed = true;
+    }
+    if state.nostr_secret_state.expire(std::time::Instant::now()) {
+        changed = true;
+    }
+    let now = std::time::Instant::now();
+    refresh_earnings_scoreboard(state, now);
+    refresh_sync_health(state);
+    changed
 }
 
 fn dispatch_mouse_move(state: &mut crate::app_state::RenderState, point: Point) -> bool {
@@ -3365,6 +3408,17 @@ fn settings_inputs_focused(state: &crate::app_state::RenderState) -> bool {
     state.settings_inputs.relay_url.is_focused()
         || state.settings_inputs.wallet_default_send_sats.is_focused()
         || state.settings_inputs.provider_max_queue_depth.is_focused()
+}
+
+fn any_text_input_focused(state: &crate::app_state::RenderState) -> bool {
+    state.chat_inputs.composer.is_focused()
+        || spark_inputs_focused(state)
+        || pay_invoice_inputs_focused(state)
+        || create_invoice_inputs_focused(state)
+        || network_requests_inputs_focused(state)
+        || settings_inputs_focused(state)
+        || state.relay_connections_inputs.relay_url.is_focused()
+        || state.job_history_inputs.search_job_id.is_focused()
 }
 
 fn map_modifiers(modifiers: ModifiersState) -> Modifiers {

@@ -367,6 +367,7 @@ pub struct AutopilotChatState {
     pub next_message_id: u64,
     pub active_turn_id: Option<String>,
     pub active_assistant_message_id: Option<u64>,
+    pub turn_assistant_message_ids: std::collections::HashMap<String, u64>,
     pub last_turn_status: Option<String>,
     pub token_usage: Option<AutopilotTokenUsage>,
     pub turn_plan_explanation: Option<String>,
@@ -410,6 +411,7 @@ impl Default for AutopilotChatState {
             next_message_id: 2,
             active_turn_id: None,
             active_assistant_message_id: None,
+            turn_assistant_message_ids: std::collections::HashMap::new(),
             last_turn_status: None,
             token_usage: None,
             turn_plan_explanation: None,
@@ -634,6 +636,7 @@ impl AutopilotChatState {
 
         self.active_turn_id = None;
         self.active_assistant_message_id = None;
+        self.turn_assistant_message_ids.clear();
         self.last_turn_status = None;
         self.token_usage = None;
         self.turn_plan_explanation = None;
@@ -678,7 +681,7 @@ impl AutopilotChatState {
     }
 
     pub fn mark_turn_started(&mut self, turn_id: String) {
-        self.active_turn_id = Some(turn_id);
+        self.active_turn_id = Some(turn_id.clone());
         self.last_turn_status = Some("inProgress".to_string());
         if let Some(assistant_message_id) = self.active_assistant_message_id
             && let Some(message) = self
@@ -687,23 +690,53 @@ impl AutopilotChatState {
                 .find(|message| message.id == assistant_message_id)
         {
             message.status = AutopilotMessageStatus::Running;
+            self.turn_assistant_message_ids
+                .insert(turn_id, assistant_message_id);
         }
     }
 
+    #[allow(dead_code)]
     pub fn append_turn_delta(&mut self, delta: &str) {
-        if let Some(assistant_message_id) = self.active_assistant_message_id
+        let Some(turn_id) = self.active_turn_id.clone() else {
+            return;
+        };
+        self.append_turn_delta_for_turn(&turn_id, delta);
+    }
+
+    pub fn append_turn_delta_for_turn(&mut self, turn_id: &str, delta: &str) {
+        let assistant_message_id = self
+            .turn_assistant_message_ids
+            .get(turn_id)
+            .copied()
+            .or(self.active_assistant_message_id);
+        if let Some(assistant_message_id) = assistant_message_id
             && let Some(message) = self
                 .messages
                 .iter_mut()
                 .find(|message| message.id == assistant_message_id)
         {
-            message.status = AutopilotMessageStatus::Running;
+            if self.active_turn_id.as_deref() == Some(turn_id) {
+                message.status = AutopilotMessageStatus::Running;
+            }
             message.content.push_str(delta);
         }
     }
 
+    #[allow(dead_code)]
     pub fn mark_turn_completed(&mut self) {
-        if let Some(assistant_message_id) = self.active_assistant_message_id
+        let Some(turn_id) = self.active_turn_id.clone() else {
+            return;
+        };
+        self.mark_turn_completed_for(&turn_id);
+    }
+
+    pub fn mark_turn_completed_for(&mut self, turn_id: &str) {
+        let assistant_message_id = self
+            .turn_assistant_message_ids
+            .get(turn_id)
+            .copied()
+            .or(self.active_assistant_message_id);
+        if let Some(assistant_message_id) = assistant_message_id
             && let Some(message) = self
                 .messages
                 .iter_mut()
@@ -712,8 +745,10 @@ impl AutopilotChatState {
             message.status = AutopilotMessageStatus::Done;
         }
         self.last_turn_status = Some("completed".to_string());
-        self.active_turn_id = None;
-        self.active_assistant_message_id = None;
+        if self.active_turn_id.as_deref() == Some(turn_id) {
+            self.active_turn_id = None;
+            self.active_assistant_message_id = None;
+        }
     }
 
     pub fn mark_turn_error(&mut self, error: impl Into<String>) {
