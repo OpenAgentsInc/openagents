@@ -1,3 +1,6 @@
+#![allow(clippy::print_stdout, reason = "This binary is a CLI diagnostic harness with intentional console output.")]
+#![allow(clippy::print_stderr, reason = "This binary is a CLI diagnostic harness and may emit explicit error lines.")]
+
 use std::future::Future;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
