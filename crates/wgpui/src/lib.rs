@@ -42,6 +42,8 @@ pub mod keymap;
 pub mod layout;
 pub mod layout_helpers;
 pub mod markdown;
+#[cfg(feature = "non-mvp-surfaces")]
+pub mod non_mvp;
 pub mod platform;
 pub mod renderer;
 pub mod scene;
@@ -55,8 +57,6 @@ pub mod text;
 pub mod text_system;
 pub mod theme;
 pub mod tools;
-#[cfg(feature = "non-mvp-surfaces")]
-pub mod non_mvp;
 #[cfg(feature = "non-mvp-surfaces")]
 pub use non_mvp::integration;
 

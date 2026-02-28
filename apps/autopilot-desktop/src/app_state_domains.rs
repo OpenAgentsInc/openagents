@@ -1229,4 +1229,3 @@ impl RelaySecuritySimulationPaneState {
         }
     }
 }
-
