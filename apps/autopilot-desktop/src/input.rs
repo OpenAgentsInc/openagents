@@ -255,6 +255,9 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
             }
         }
         WindowEvent::RedrawRequested => {
+            // Keep background lanes advancing even during redraw-heavy periods.
+            // Without this, Codex notifications can backlog until the next input event.
+            let _ = pump_background_state(state);
             if render_frame(state).is_err() {
                 event_loop.exit();
                 return;
