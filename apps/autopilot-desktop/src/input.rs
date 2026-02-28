@@ -26,6 +26,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow};
 use winit::keyboard::{
     Key as WinitLogicalKey, KeyCode, ModifiersState, NamedKey as WinitNamedKey, PhysicalKey,
 };
+use winit::window::Fullscreen;
 
 use crate::app_state::{
     ActivityEventDomain, ActivityEventRow, AlertDomain, App, ChatTranscriptPressState,
@@ -206,6 +207,14 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
             }
         }
         WindowEvent::KeyboardInput { event, .. } => {
+            if event.state == ElementState::Pressed
+                && is_toggle_fullscreen_shortcut(&event.logical_key, state.input_modifiers)
+            {
+                toggle_window_fullscreen(state);
+                state.window.request_redraw();
+                return;
+            }
+
             let text_input_focused = any_text_input_focused(state);
             if event.state == ElementState::Pressed
                 && is_command_palette_shortcut(&event.logical_key, state.input_modifiers)
@@ -3764,6 +3773,15 @@ fn toggle_command_palette(state: &mut crate::app_state::RenderState) {
     }
 }
 
+fn toggle_window_fullscreen(state: &mut crate::app_state::RenderState) {
+    let next_state = if state.window.fullscreen().is_some() {
+        None
+    } else {
+        Some(Fullscreen::Borderless(None))
+    };
+    state.window.set_fullscreen(next_state);
+}
+
 fn command_palette_bounds(state: &crate::app_state::RenderState) -> Bounds {
     let logical = logical_size(&state.config, state.scale_factor);
     Bounds::new(0.0, 0.0, logical.width, logical.height)
@@ -3776,6 +3794,26 @@ fn is_command_palette_shortcut(logical_key: &WinitLogicalKey, modifiers: Modifie
     };
 
     is_k && !modifiers.meta && !modifiers.ctrl && !modifiers.alt
+}
+
+fn is_toggle_fullscreen_shortcut(logical_key: &WinitLogicalKey, modifiers: Modifiers) -> bool {
+    let is_f = match logical_key {
+        WinitLogicalKey::Character(value) => value.eq_ignore_ascii_case("f"),
+        _ => false,
+    };
+    if !is_f || modifiers.alt {
+        return false;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        modifiers.meta && !modifiers.ctrl
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        modifiers.ctrl && !modifiers.meta
+    }
 }
 
 fn dispatch_command_palette_actions(state: &mut crate::app_state::RenderState) -> bool {
@@ -3875,8 +3913,8 @@ fn dispatch_command_palette_actions(state: &mut crate::app_state::RenderState) -
 mod tests {
     use super::{
         assemble_chat_turn_input, build_create_invoice_command, build_pay_invoice_command,
-        build_spark_command_for_action, is_command_palette_shortcut, parse_positive_amount_str,
-        validate_lightning_payment_request,
+        build_spark_command_for_action, is_command_palette_shortcut, is_toggle_fullscreen_shortcut,
+        parse_positive_amount_str, validate_lightning_payment_request,
     };
     use crate::spark_pane::{
         CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction, hit_action, layout,
@@ -4003,6 +4041,40 @@ mod tests {
         assert!(!is_command_palette_shortcut(&key, cmd_mods));
         assert!(!is_command_palette_shortcut(&key, ctrl_mods));
         assert!(is_command_palette_shortcut(&key, none_mods));
+    }
+
+    #[test]
+    fn fullscreen_shortcut_matches_platform_binding() {
+        let key = WinitLogicalKey::Character("f".into());
+        let cmd_mods = Modifiers {
+            meta: true,
+            ..Modifiers::default()
+        };
+        let ctrl_mods = Modifiers {
+            ctrl: true,
+            ..Modifiers::default()
+        };
+        let alt_mods = Modifiers {
+            alt: true,
+            ctrl: true,
+            meta: true,
+            ..Modifiers::default()
+        };
+        let none_mods = Modifiers::default();
+
+        #[cfg(target_os = "macos")]
+        {
+            assert!(is_toggle_fullscreen_shortcut(&key, cmd_mods));
+            assert!(!is_toggle_fullscreen_shortcut(&key, ctrl_mods));
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            assert!(is_toggle_fullscreen_shortcut(&key, ctrl_mods));
+            assert!(!is_toggle_fullscreen_shortcut(&key, cmd_mods));
+        }
+
+        assert!(!is_toggle_fullscreen_shortcut(&key, alt_mods));
+        assert!(!is_toggle_fullscreen_shortcut(&key, none_mods));
     }
 
     #[test]
