@@ -7,6 +7,10 @@ use crate::{Bounds, Hsla, InputEvent, Point, Quad, theme};
 type CommandSelectHandler = Box<dyn FnMut(&Command) + 'static>;
 type CommandCloseHandler = Box<dyn FnMut() + 'static>;
 
+const COMMAND_PALETTE_BG: Hsla = Hsla::new(0.0, 0.0, 0.102, 0.98);
+const COMMAND_PALETTE_INPUT_BG: Hsla = Hsla::new(0.0, 0.0, 0.063, 1.0);
+const COMMAND_PALETTE_SELECTION_BG: Hsla = Hsla::new(0.0, 0.0, 0.16, 1.0);
+
 #[derive(Clone, Debug)]
 pub struct Command {
     pub id: String,
@@ -66,7 +70,7 @@ impl CommandPalette {
             filtered_commands: Vec::new(),
             search_input: TextInput::new()
                 .placeholder("Type a command...")
-                .background(theme::bg::SURFACE),
+                .background(COMMAND_PALETTE_INPUT_BG),
             selected_index: 0,
             is_open: false,
             max_visible_items: 8,
@@ -267,7 +271,7 @@ impl Component for CommandPalette {
 
         cx.scene.draw_quad(
             Quad::new(palette_bounds)
-                .with_background(theme::bg::SURFACE)
+                .with_background(COMMAND_PALETTE_BG)
                 .with_border(theme::border::DEFAULT, 1.0),
         );
 
@@ -288,13 +292,13 @@ impl Component for CommandPalette {
                 let command = &self.commands[cmd_index];
                 let is_selected = vis_index == self.selected_index;
 
-                let bg = if is_selected {
-                    theme::accent::PRIMARY.with_alpha(0.2)
-                } else {
-                    Hsla::transparent()
-                };
-                cx.scene
-                    .draw_quad(Quad::new(item_bounds).with_background(bg));
+                if is_selected {
+                    cx.scene.draw_quad(
+                        Quad::new(item_bounds)
+                            .with_background(COMMAND_PALETTE_SELECTION_BG)
+                            .with_border(theme::border::DEFAULT, 1.0),
+                    );
+                }
 
                 let label_origin = Point::new(
                     item_bounds.origin.x + theme::spacing::SM,
