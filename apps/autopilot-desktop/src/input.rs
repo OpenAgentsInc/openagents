@@ -1196,10 +1196,16 @@ fn run_chat_select_thread_action(state: &mut crate::app_state::RenderState, inde
     let Some(target) = state.autopilot_chat.select_thread_by_index(index) else {
         return false;
     };
+    let experimental_api = state.codex_lane_config.experimental_api;
+    let resume_path = if experimental_api {
+        target.path.clone()
+    } else {
+        None
+    };
 
     eprintln!(
-        "codex thread/resume target id={} cwd={:?} path={:?}",
-        target.thread_id, target.cwd, target.path
+        "codex thread/resume target id={} cwd={:?} path={:?} experimental_api={}",
+        target.thread_id, target.cwd, resume_path, experimental_api
     );
 
     let command = crate::codex_lane::CodexLaneCommand::ThreadResume(ThreadResumeParams {
@@ -1209,7 +1215,7 @@ fn run_chat_select_thread_action(state: &mut crate::app_state::RenderState, inde
         cwd: target.cwd,
         approval_policy: None,
         sandbox: None,
-        path: target.path.map(std::path::PathBuf::from),
+        path: resume_path.map(std::path::PathBuf::from),
     });
     if let Err(error) = state.queue_codex_command(command) {
         state.autopilot_chat.last_error = Some(error);
