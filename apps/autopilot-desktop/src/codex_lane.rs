@@ -588,6 +588,7 @@ pub enum CodexLaneNotification {
         turn_id: String,
         status: Option<String>,
         error_message: Option<String>,
+        final_message: Option<String>,
     },
     TurnDiffUpdated {
         thread_id: String,
@@ -1311,10 +1312,14 @@ impl CodexLaneState {
                 })
             }
             CodexLaneCommand::TurnStart(params) => {
-                let _ = runtime.block_on(client.turn_start(params))?;
+                let thread_id = params.thread_id.clone();
+                let response = runtime.block_on(client.turn_start(params))?;
                 Ok(CodexCommandEffect {
                     active_thread_id: None,
-                    notification: None,
+                    notification: Some(CodexLaneNotification::TurnStarted {
+                        thread_id,
+                        turn_id: response.turn.id,
+                    }),
                 })
             }
             CodexLaneCommand::TurnInterrupt(params) => {
@@ -2360,6 +2365,48 @@ fn normalize_notification(notification: AppServerNotification) -> Option<CodexLa
                     .or_else(|| string_field(msg, "text"))?,
             })
         }
+        "codex/event/task_complete" => {
+            let params = params?;
+            let msg = params.get("msg");
+            Some(CodexLaneNotification::TurnCompleted {
+                thread_id: string_field(&params, "conversationId")
+                    .or_else(|| string_field(&params, "threadId"))?,
+                turn_id: string_field(&params, "id")
+                    .or_else(|| string_field(&params, "turnId"))?,
+                status: Some("completed".to_string()),
+                error_message: None,
+                final_message: msg
+                    .and_then(|value| string_field(value, "last_agent_message"))
+                    .and_then(non_empty_text)
+                    .or_else(|| {
+                        msg.and_then(|value| string_field(value, "lastAgentMessage"))
+                            .and_then(non_empty_text)
+                    })
+                    .or_else(|| msg.and_then(|value| string_field(value, "message")))
+                    .and_then(non_empty_text),
+            })
+        }
+        "codex/event/task_failed" | "codex/event/task_error" => {
+            let params = params?;
+            let msg = params.get("msg");
+            let message = msg
+                .and_then(|value| string_field(value, "message"))
+                .or_else(|| {
+                    msg.and_then(|value| value.get("error"))
+                        .and_then(|error| string_field(error, "message"))
+                })
+                .or_else(|| string_field(&params, "message"))
+                .unwrap_or_else(|| "task failed".to_string());
+            Some(CodexLaneNotification::TurnError {
+                thread_id: string_field(&params, "conversationId")
+                    .or_else(|| string_field(&params, "threadId"))
+                    .unwrap_or_else(|| "unknown-thread".to_string()),
+                turn_id: string_field(&params, "id")
+                    .or_else(|| string_field(&params, "turnId"))
+                    .unwrap_or_else(|| "unknown-turn".to_string()),
+                message,
+            })
+        }
         "turn/completed" => {
             let params = params?;
             let thread_id = string_field(&params, "threadId")?;
@@ -2384,11 +2431,19 @@ fn normalize_notification(notification: AppServerNotification) -> Option<CodexLa
                         .and_then(Value::as_str)
                         .map(str::to_string)
                 });
+            let final_message = params
+                .get("turn")
+                .and_then(|turn| string_field(turn, "lastAgentMessage"))
+                .and_then(non_empty_text)
+                .or_else(|| string_field(&params, "lastAgentMessage").and_then(non_empty_text))
+                .or_else(|| string_field(&params, "last_agent_message").and_then(non_empty_text))
+                .or_else(|| string_field(&params, "message").and_then(non_empty_text));
             Some(CodexLaneNotification::TurnCompleted {
                 thread_id,
                 turn_id,
                 status,
                 error_message,
+                final_message,
             })
         }
         "turn/diff/updated" => {
@@ -3583,6 +3638,27 @@ mod tests {
                 item_id: Some("item-2".to_string()),
                 item_type: Some("agentMessage".to_string()),
                 message: Some("final".to_string()),
+            })
+        );
+
+        let task_complete = normalize_notification(codex_client::AppServerNotification {
+            method: "codex/event/task_complete".to_string(),
+            params: Some(json!({
+                "conversationId": "thread-1",
+                "id": "turn-1",
+                "msg": {
+                    "last_agent_message": "task done"
+                }
+            })),
+        });
+        assert_eq!(
+            task_complete,
+            Some(CodexLaneNotification::TurnCompleted {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                status: Some("completed".to_string()),
+                error_message: None,
+                final_message: Some("task done".to_string()),
             })
         );
     }

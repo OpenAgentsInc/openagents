@@ -887,6 +887,10 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             state.autopilot_chat.last_error = None;
         }
         CodexLaneNotification::ThreadStatusChanged { thread_id, status } => {
+            eprintln!(
+                "codex thread/status changed thread_id={} status={} active_thread={:?}",
+                thread_id, status, state.autopilot_chat.active_thread_id
+            );
             state.autopilot_chat.remember_thread(thread_id.clone());
             state
                 .autopilot_chat
@@ -923,6 +927,10 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 .set_thread_name(&thread_id, thread_name);
         }
         CodexLaneNotification::TurnStarted { thread_id, turn_id } => {
+            eprintln!(
+                "codex turn/started thread_id={} turn_id={} active_thread={:?}",
+                thread_id, turn_id, state.autopilot_chat.active_thread_id
+            );
             state.autopilot_chat.remember_thread(thread_id.clone());
             if state.autopilot_chat.is_active_thread(&thread_id) {
                 state
@@ -953,6 +961,15 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             item_type,
             message,
         } => {
+            eprintln!(
+                "codex item/completed thread_id={} turn_id={} item_id={} item_type={} message_chars={} active_thread={:?}",
+                thread_id,
+                turn_id,
+                item_id.as_deref().unwrap_or("n/a"),
+                item_type.as_deref().unwrap_or("n/a"),
+                message.as_ref().map(|value| value.chars().count()).unwrap_or(0),
+                state.autopilot_chat.active_thread_id
+            );
             state.autopilot_chat.remember_thread(thread_id.clone());
             if state.autopilot_chat.is_active_thread(&thread_id) {
                 state.autopilot_chat.record_turn_timeline_event(format!(
@@ -974,6 +991,14 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             item_id,
             delta,
         } => {
+            eprintln!(
+                "codex agent/delta thread_id={} turn_id={} item_id={} chars={} active_thread={:?}",
+                thread_id,
+                turn_id,
+                item_id,
+                delta.chars().count(),
+                state.autopilot_chat.active_thread_id
+            );
             state.autopilot_chat.remember_thread(thread_id.clone());
             if state.autopilot_chat.is_active_thread(&thread_id) {
                 state.autopilot_chat.record_turn_timeline_event(format!(
@@ -991,6 +1016,14 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             item_id,
             message,
         } => {
+            eprintln!(
+                "codex agent/completed thread_id={} turn_id={} item_id={} chars={} active_thread={:?}",
+                thread_id,
+                turn_id,
+                item_id.as_deref().unwrap_or("n/a"),
+                message.chars().count(),
+                state.autopilot_chat.active_thread_id
+            );
             state.autopilot_chat.remember_thread(thread_id.clone());
             if state.autopilot_chat.is_active_thread(&thread_id) {
                 state.autopilot_chat.record_turn_timeline_event(format!(
@@ -1010,11 +1043,28 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             turn_id,
             status,
             error_message,
+            final_message,
             ..
         } => {
+            eprintln!(
+                "codex turn/completed thread_id={} turn_id={} status={:?} final_message_chars={} error={} active_thread={:?}",
+                thread_id,
+                turn_id,
+                status,
+                final_message.as_ref().map(|value| value.chars().count()).unwrap_or(0),
+                error_message.as_deref().unwrap_or("none"),
+                state.autopilot_chat.active_thread_id
+            );
             state.autopilot_chat.remember_thread(thread_id.clone());
             if state.autopilot_chat.is_active_thread(&thread_id) {
                 state.autopilot_chat.set_turn_status(status.clone());
+                if let Some(message) = final_message
+                    && !message.trim().is_empty()
+                {
+                    state
+                        .autopilot_chat
+                        .set_turn_message_for_turn(&turn_id, &message);
+                }
                 match status.as_deref() {
                     Some("failed") => {
                         state.autopilot_chat.mark_turn_error_for(
@@ -1093,6 +1143,10 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             turn_id,
             message,
         } => {
+            eprintln!(
+                "codex turn/error thread_id={} turn_id={} message={} active_thread={:?}",
+                thread_id, turn_id, message, state.autopilot_chat.active_thread_id
+            );
             state.autopilot_chat.remember_thread(thread_id.clone());
             if state.autopilot_chat.is_active_thread(&thread_id) {
                 state.autopilot_chat.mark_turn_error_for(&turn_id, message);
