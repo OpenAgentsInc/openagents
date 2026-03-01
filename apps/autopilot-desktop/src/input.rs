@@ -84,6 +84,7 @@ use crate::spark_wallet::SparkWalletCommand;
 mod actions;
 mod reducers;
 mod shortcuts;
+mod tool_bridge;
 use actions::*;
 use shortcuts::*;
 
