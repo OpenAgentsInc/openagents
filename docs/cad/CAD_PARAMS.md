@@ -14,6 +14,7 @@ This document defines the Wave 1 CAD parameter store contract.
   - `unitless`
 - `ScalarValue { value, unit }`
 - `ParameterStore { values: BTreeMap<String, ScalarValue> }`
+- `ParameterExpressionStore { expressions: BTreeMap<String, String> }`
 
 ## Validation Rules
 
@@ -24,6 +25,11 @@ This document defines the Wave 1 CAD parameter store contract.
 - Scalar values must be finite (`NaN`/`inf` rejected).
 - Unit parsing rejects unsupported tokens.
 - Required-lookup API enforces expected unit matching.
+- Expression parsing/eval supports `+`, `-`, `*`, `/`, parentheses, and parameter references.
+- Expression evaluation rejects:
+  - dependency cycles
+  - divide-by-zero
+  - unknown references
 
 ## Reviewer Verification
 
