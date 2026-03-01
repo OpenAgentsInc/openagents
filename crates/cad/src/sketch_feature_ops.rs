@@ -231,11 +231,19 @@ pub fn convert_sketch_profile_to_feature_node(
     }
 
     let depends_on = match spec.kind {
-        SketchProfileFeatureKind::Cut => vec![
-            spec.source_feature_id
-                .clone()
-                .expect("cut validate requires source feature"),
-        ],
+        SketchProfileFeatureKind::Cut => {
+            vec![
+                spec.source_feature_id
+                    .clone()
+                    .ok_or_else(|| CadError::ParseFailed {
+                        reason: format!(
+                            "sketch feature {} of kind {} requires source_feature_id",
+                            spec.feature_id,
+                            spec.kind.as_str()
+                        ),
+                    })?,
+            ]
+        }
         _ => spec.source_feature_id.iter().cloned().collect(),
     };
 
