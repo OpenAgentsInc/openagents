@@ -1,0 +1,92 @@
+{
+  "header": {
+    "format": "apcad",
+    "version": 1,
+    "canonical_unit": "mm"
+  },
+  "document_id": "doc-sketch",
+  "stable_ids": {
+    "feature.base": "sid-001"
+  },
+  "metadata": {
+    "title": "Sketch Kickoff"
+  },
+  "analysis_cache": null,
+  "sketch": {
+    "planes": {
+      "plane.front": {
+        "id": "plane.front",
+        "name": "Front",
+        "origin_mm": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "normal": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "x_axis": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "y_axis": [
+          0.0,
+          1.0,
+          0.0
+        ]
+      }
+    },
+    "entities": {
+      "entity.arc.001": {
+        "kind": "arc",
+        "id": "entity.arc.001",
+        "plane_id": "plane.front",
+        "center_mm": [
+          60.0,
+          40.0
+        ],
+        "radius_mm": 20.0,
+        "start_deg": 0.0,
+        "end_deg": 180.0,
+        "anchor_ids": [
+          "anchor.a.center",
+          "anchor.a.start",
+          "anchor.a.end"
+        ],
+        "construction": false
+      },
+      "entity.line.001": {
+        "kind": "line",
+        "id": "entity.line.001",
+        "plane_id": "plane.front",
+        "start_mm": [
+          0.0,
+          0.0
+        ],
+        "end_mm": [
+          120.0,
+          0.0
+        ],
+        "anchor_ids": [
+          "anchor.l.start",
+          "anchor.l.end"
+        ],
+        "construction": false
+      },
+      "entity.point.001": {
+        "kind": "point",
+        "id": "entity.point.001",
+        "plane_id": "plane.front",
+        "position_mm": [
+          15.0,
+          12.0
+        ],
+        "anchor_id": "anchor.p.001",
+        "construction": true
+      }
+    }
+  }
+}

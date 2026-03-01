@@ -32,6 +32,29 @@ Top-level shape:
   },
   "analysis_cache": {
     "weight_kg": "2.71"
+  },
+  "sketch": {
+    "planes": {
+      "plane.front": {
+        "id": "plane.front",
+        "name": "Front",
+        "origin_mm": [0, 0, 0],
+        "normal": [0, 0, 1],
+        "x_axis": [1, 0, 0],
+        "y_axis": [0, 1, 0]
+      }
+    },
+    "entities": {
+      "entity.line.001": {
+        "kind": "line",
+        "id": "entity.line.001",
+        "plane_id": "plane.front",
+        "start_mm": [0, 0],
+        "end_mm": [120, 0],
+        "anchor_ids": ["anchor.l.start", "anchor.l.end"],
+        "construction": false
+      }
+    }
   }
 }
 ```
@@ -42,6 +65,15 @@ Top-level shape:
 2. Stable IDs must preserve semantic labels and deterministic value mapping.
 3. Repeated serialization of equivalent payloads must produce identical JSON bytes.
 4. Optional `analysis_cache` is non-authoritative and may be omitted without invalidating document semantics.
+5. Optional `sketch` block stores deterministic sketch planes/entities keyed by stable IDs.
+
+## Sketch Model (Wave 2 Kickoff)
+
+- `sketch.planes` is a deterministic map keyed by stable `plane_id`.
+- `sketch.entities` is a deterministic map keyed by stable `entity_id`.
+- Entity payloads support `line`, `arc`, and `point`.
+- Every entity references an existing `plane_id` and explicit `anchor_ids`.
+- Envelope parse validates sketch references; invalid cross-refs fail fast.
 
 ## Stable IDs
 
@@ -58,4 +90,5 @@ Top-level shape:
 ## Code References
 
 - `crates/cad/src/format.rs`
+- `crates/cad/src/sketch.rs`
 - `crates/cad/src/lib.rs` (`CadError::Serialization`)
