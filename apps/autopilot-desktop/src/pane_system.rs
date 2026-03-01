@@ -79,6 +79,31 @@ pub struct PaneController;
 
 pub struct PaneInput;
 
+fn focus_chat_composer_for_pane_open(state: &mut RenderState) {
+    state.spark_inputs.invoice_amount.blur();
+    state.spark_inputs.send_request.blur();
+    state.spark_inputs.send_amount.blur();
+    state.pay_invoice_inputs.payment_request.blur();
+    state.pay_invoice_inputs.amount_sats.blur();
+    state.create_invoice_inputs.amount_sats.blur();
+    state.create_invoice_inputs.description.blur();
+    state.create_invoice_inputs.expiry_seconds.blur();
+    state.relay_connections_inputs.relay_url.blur();
+    state.network_requests_inputs.request_type.blur();
+    state.network_requests_inputs.payload.blur();
+    state.network_requests_inputs.skill_scope_id.blur();
+    state.network_requests_inputs.credit_envelope_ref.blur();
+    state.network_requests_inputs.budget_sats.blur();
+    state.network_requests_inputs.timeout_seconds.blur();
+    state.settings_inputs.relay_url.blur();
+    state.settings_inputs.wallet_default_send_sats.blur();
+    state.settings_inputs.provider_max_queue_depth.blur();
+    state.credentials_inputs.variable_name.blur();
+    state.credentials_inputs.variable_value.blur();
+    state.job_history_inputs.search_job_id.blur();
+    state.chat_inputs.composer.focus();
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum JobInboxPaneAction {
     AcceptSelected,
@@ -444,7 +469,11 @@ impl PaneController {
     }
 
     pub fn create_for_kind(state: &mut RenderState, kind: PaneKind) -> u64 {
-        Self::create(state, PaneDescriptor::for_kind(kind))
+        let id = Self::create(state, PaneDescriptor::for_kind(kind));
+        if kind == PaneKind::AutopilotChat {
+            focus_chat_composer_for_pane_open(state);
+        }
+        id
     }
 
     pub fn close(state: &mut RenderState, pane_id: u64) {

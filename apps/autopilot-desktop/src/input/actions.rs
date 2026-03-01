@@ -1,6 +1,7 @@
 use super::*;
 
 pub(super) fn run_chat_submit_action(state: &mut crate::app_state::RenderState) -> bool {
+    focus_chat_composer(state);
     let prompt = state.chat_inputs.composer.get_value().trim().to_string();
     let prompt_chars = prompt.chars().count();
     if prompt.is_empty() {

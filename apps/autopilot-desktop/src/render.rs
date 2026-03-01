@@ -722,9 +722,10 @@ pub fn wallet_balance_chip_bounds_for_logical(logical: Size) -> Bounds {
     let width = available_width
         .min(WALLET_BALANCE_CHIP_MAX_WIDTH)
         .max(WALLET_BALANCE_CHIP_MIN_WIDTH.min(available_width));
+    let y = (logical.height - WALLET_BALANCE_CHIP_MARGIN - WALLET_BALANCE_CHIP_HEIGHT).max(0.0);
     Bounds::new(
         WALLET_BALANCE_CHIP_MARGIN,
-        WALLET_BALANCE_CHIP_MARGIN,
+        y,
         width,
         WALLET_BALANCE_CHIP_HEIGHT,
     )
@@ -960,10 +961,10 @@ mod tests {
     }
 
     #[test]
-    fn wallet_balance_chip_is_anchored_top_left() {
+    fn wallet_balance_chip_is_anchored_bottom_left() {
         let bounds = wallet_balance_chip_bounds_for_logical(Size::new(1280.0, 800.0));
         assert!(bounds.origin.x <= 16.0);
-        assert!(bounds.origin.y <= 16.0);
+        assert!(bounds.max_y() >= 784.0);
         assert!(bounds.size.width >= 140.0);
         assert!(bounds.size.height >= 24.0);
     }
