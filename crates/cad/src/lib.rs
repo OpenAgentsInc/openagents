@@ -7,6 +7,7 @@ use thiserror::Error;
 
 pub mod boolean;
 pub mod eval;
+pub mod format;
 pub mod kernel;
 pub mod policy;
 pub mod primitives;
@@ -26,6 +27,9 @@ pub enum CadError {
     /// Invalid CAD policy or tolerance configuration.
     #[error("invalid policy: {reason}")]
     InvalidPolicy { reason: String },
+    /// Serialization or deserialization failed.
+    #[error("serialization error: {reason}")]
+    Serialization { reason: String },
 }
 
 #[cfg(test)]
@@ -60,6 +64,19 @@ mod tests {
             result,
             Err(CadError::InvalidPolicy {
                 reason: "tolerance must be positive".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn serialization_error_contract_is_stable() {
+        let result: CadResult<()> = Err(CadError::Serialization {
+            reason: "failed to encode json".to_string(),
+        });
+        assert_eq!(
+            result,
+            Err(CadError::Serialization {
+                reason: "failed to encode json".to_string(),
             })
         );
     }
