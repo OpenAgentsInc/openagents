@@ -11,11 +11,11 @@ Implemented now:
 - Mass (`kg`) from selected material density
 - Center of gravity (`mm`)
 - Cost heuristic (`USD`) with deterministic assumptions metadata
+- Deflection heuristic (`mm`) with confidence + model limits metadata
 - Surface area (`mm^2`) and bounding box metadata (used by inspect UI)
 
 Deferred to follow-up issues:
 
-- Deflection heuristics
 - Objective scoring
 
 ## Deterministic Contract
@@ -54,3 +54,4 @@ Core analysis returns structured failures with stable codes and remediation hint
 UI/reducers must surface these failures explicitly and avoid silent corruption.
 
 Cost heuristic model details are documented in `docs/cad/CAD_COST_HEURISTIC.md`.
+Deflection heuristic model details are documented in `docs/cad/CAD_DEFLECTION_HEURISTIC.md`.

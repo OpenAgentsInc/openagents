@@ -1,7 +1,10 @@
 use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use openagents_cad::analysis::{CadBodyAnalysisError, analyze_body_properties};
+use openagents_cad::analysis::{
+    CadBodyAnalysisError, CadDeflectionHeuristicError, CadDeflectionHeuristicInput,
+    analyze_body_properties, estimate_beam_deflection_heuristic,
+};
 use openagents_cad::contracts::{CadWarning, CadWarningCode, CadWarningSeverity};
 use openagents_cad::eval::{EvalCacheEntry, EvalCacheKey, EvalCacheStats};
 use openagents_cad::feature_graph::{FeatureGraph, FeatureNode};
@@ -550,7 +553,7 @@ fn upsert_cad_rebuild_activity_event(state: &mut RenderState, receipt: &CadRebui
         && analysis.variant_id == receipt.variant_id
     {
         format!(
-            "analysis(volume_mm3={}, mass_kg={}, cog_mm={}, cost_usd={}, model_id={})",
+            "analysis(volume_mm3={}, mass_kg={}, cog_mm={}, cost_usd={}, deflection_mm={}, deflection_confidence={}, model_id={})",
             analysis
                 .volume_mm3
                 .map(|value| format!("{value:.3}"))
@@ -567,6 +570,15 @@ fn upsert_cad_rebuild_activity_event(state: &mut RenderState, receipt: &CadRebui
                 .estimated_cost_usd
                 .map(|value| format!("{value:.2}"))
                 .unwrap_or_else(|| "none".to_string()),
+            analysis
+                .max_deflection_mm
+                .map(|value| format!("{value:.3}"))
+                .unwrap_or_else(|| "none".to_string()),
+            analysis
+                .estimator_metadata
+                .get("deflection.confidence")
+                .map(String::as_str)
+                .unwrap_or("none"),
             analysis
                 .estimator_metadata
                 .get("model_id")
@@ -623,6 +635,11 @@ fn upsert_cad_material_activity_event(state: &mut RenderState) {
         .get("derived.complexity_factor")
         .cloned()
         .unwrap_or_else(|| "none".to_string());
+    let deflection_confidence = analysis
+        .estimator_metadata
+        .get("deflection.confidence")
+        .cloned()
+        .unwrap_or_else(|| "none".to_string());
     let occurred_at_epoch_seconds = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
@@ -637,7 +654,7 @@ fn upsert_cad_material_activity_event(state: &mut RenderState) {
         occurred_at_epoch_seconds,
         summary: format!("CAD material -> {material_id}"),
         detail: format!(
-            "variant={} mass_kg={} cost_usd={} model={} complexity={}",
+            "variant={} mass_kg={} cost_usd={} deflection_mm={} deflection_confidence={} model={} complexity={}",
             analysis.variant_id,
             analysis
                 .mass_kg
@@ -647,6 +664,11 @@ fn upsert_cad_material_activity_event(state: &mut RenderState) {
                 .estimated_cost_usd
                 .map(|value| format!("{value:.2}"))
                 .unwrap_or_else(|| "none".to_string()),
+            analysis
+                .max_deflection_mm
+                .map(|value| format!("{value:.3}"))
+                .unwrap_or_else(|| "none".to_string()),
+            deflection_confidence,
             cost_model,
             complexity_factor,
         ),
@@ -865,6 +887,7 @@ struct CadAnalysisComputation {
 enum CadAnalysisComputationError {
     Body(CadBodyAnalysisError),
     Cost(CadCostHeuristicError),
+    Deflection(CadDeflectionHeuristicError),
 }
 
 impl CadAnalysisComputationError {
@@ -872,6 +895,7 @@ impl CadAnalysisComputationError {
         match self {
             Self::Body(error) => error.code.stable_code(),
             Self::Cost(error) => error.code.stable_code(),
+            Self::Deflection(error) => error.code.stable_code(),
         }
     }
 
@@ -879,6 +903,7 @@ impl CadAnalysisComputationError {
         match self {
             Self::Body(error) => error.message.as_str(),
             Self::Cost(error) => error.message.as_str(),
+            Self::Deflection(error) => error.message.as_str(),
         }
     }
 
@@ -886,6 +911,7 @@ impl CadAnalysisComputationError {
         match self {
             Self::Body(error) => error.remediation_hint(),
             Self::Cost(error) => error.remediation_hint(),
+            Self::Deflection(error) => error.remediation_hint(),
         }
     }
 }
@@ -904,6 +930,7 @@ fn analysis_snapshot_from_mesh(
             let mass_kg = Some(receipt.properties.mass_kg);
             let mut estimator_metadata = BTreeMap::new();
             let mut error = None;
+            const DEFLECTION_LOAD_KG: f64 = 10.0;
             let estimated_cost_usd = match estimate_cnc_cost_heuristic_usd(
                 CadCostHeuristicInput {
                     mass_kg: receipt.properties.mass_kg,
@@ -932,6 +959,41 @@ fn analysis_snapshot_from_mesh(
                     None
                 }
             };
+            let mut bounds_size = receipt.properties.bounds_size_mm;
+            bounds_size.sort_by(|lhs, rhs| lhs.total_cmp(rhs));
+            let max_deflection_mm =
+                match estimate_beam_deflection_heuristic(CadDeflectionHeuristicInput {
+                    span_mm: bounds_size[2],
+                    width_mm: bounds_size[1],
+                    thickness_mm: bounds_size[0],
+                    load_kg: DEFLECTION_LOAD_KG,
+                    youngs_modulus_gpa: material.youngs_modulus_gpa,
+                }) {
+                    Ok(deflection) => {
+                        for (key, value) in deflection.metadata {
+                            estimator_metadata.insert(format!("deflection.{key}"), value);
+                        }
+                        Some(deflection.max_deflection_mm)
+                    }
+                    Err(deflection_error) => {
+                        estimator_metadata.insert(
+                            "deflection.error.code".to_string(),
+                            deflection_error.code.stable_code().to_string(),
+                        );
+                        estimator_metadata.insert(
+                            "deflection.error.message".to_string(),
+                            deflection_error.message.clone(),
+                        );
+                        estimator_metadata.insert(
+                            "deflection.error.remediation_hint".to_string(),
+                            deflection_error.remediation_hint().to_string(),
+                        );
+                        if error.is_none() {
+                            error = Some(CadAnalysisComputationError::Deflection(deflection_error));
+                        }
+                        None
+                    }
+                };
             CadAnalysisComputation {
                 snapshot: openagents_cad::contracts::CadAnalysis {
                     document_revision,
@@ -941,7 +1003,7 @@ fn analysis_snapshot_from_mesh(
                     mass_kg,
                     center_of_gravity_mm: Some(receipt.properties.center_of_gravity_mm),
                     estimated_cost_usd,
-                    max_deflection_mm: None,
+                    max_deflection_mm,
                     estimator_metadata,
                     objective_scores: BTreeMap::new(),
                 },
@@ -1439,6 +1501,17 @@ mod tests {
                 .contains_key("assumption.machine_rate_usd_per_min"),
             "cost metadata should expose estimator assumptions"
         );
+        assert!(
+            state
+                .analysis_snapshot
+                .estimator_metadata
+                .contains_key("deflection.confidence"),
+            "deflection metadata should expose confidence label"
+        );
+        assert!(
+            state.analysis_snapshot.max_deflection_mm.unwrap_or(0.0) > 0.0,
+            "deflection heuristic should compute deterministic value"
+        );
 
         assert!(apply_cad_demo_action(
             &mut state,
@@ -1584,6 +1657,10 @@ mod tests {
         assert!(
             state.analysis_snapshot.center_of_gravity_mm.is_some(),
             "rebuild should compute deterministic center of gravity"
+        );
+        assert!(
+            state.analysis_snapshot.max_deflection_mm.unwrap_or(0.0) > 0.0,
+            "rebuild should compute deterministic deflection estimate"
         );
     }
 
