@@ -45,6 +45,7 @@ use crate::pane_system::{
     PaneHitAction, PaneInput, RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction,
     SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StableSatsSimulationPaneAction,
     StarterJobsPaneAction, SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction,
+    cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
     cad_demo_cycle_variant_button_bounds, cad_demo_hidden_line_mode_button_bounds,
     cad_demo_hotkey_profile_button_bounds, cad_demo_projection_mode_button_bounds,
     cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
@@ -505,7 +506,13 @@ fn dispatch_mouse_up(
     handled |= handle_sidebar_mouse_up(state, point, event);
     handled |= PaneInput::handle_mouse_up(state, event);
     handled |= dispatch_text_inputs(state, event);
-    if !camera_drag_consumed_click {
+    let context_menu_handled = if !camera_drag_consumed_click {
+        handle_cad_context_menu_click(state, point, event)
+    } else {
+        false
+    };
+    handled |= context_menu_handled;
+    if !camera_drag_consumed_click && !context_menu_handled {
         let snap_preview_handled = handle_cad_snap_preview_click(state, point, event);
         handled |= snap_preview_handled;
         if !snap_preview_handled {
@@ -518,6 +525,81 @@ fn dispatch_mouse_up(
         .is_handled();
     handled |= process_hotbar_clicks(state);
     handled
+}
+
+fn handle_cad_context_menu_click(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+    event: &InputEvent,
+) -> bool {
+    let InputEvent::MouseUp { button, .. } = event else {
+        return false;
+    };
+
+    let top_cad_content = state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == PaneKind::CadDemo)
+        .max_by_key(|pane| pane.z_index)
+        .map(|pane| pane_content_bounds(pane.bounds));
+
+    if *button == MouseButton::Right {
+        let Some(content_bounds) = top_cad_content else {
+            return false;
+        };
+        if !content_bounds.contains(point) {
+            return false;
+        }
+        let viewport = cad_pane::camera_interaction_bounds(content_bounds);
+        if !viewport.contains(point) {
+            state.cad_demo.close_context_menu();
+            state.cad_demo.last_action = Some("CAD context menu closed".to_string());
+            return true;
+        }
+        let (target_kind, target_ref) = state
+            .cad_demo
+            .infer_context_menu_target_for_viewport_point(point, viewport);
+        state
+            .cad_demo
+            .open_context_menu(point, target_kind, target_ref.clone());
+        state.cad_demo.focused_geometry_ref = Some(target_ref.clone());
+        state.cad_demo.last_action = Some(format!(
+            "CAD context menu open {} ({})",
+            target_ref,
+            target_kind.label()
+        ));
+        return true;
+    }
+
+    if *button != MouseButton::Left || !state.cad_demo.context_menu.is_open {
+        return false;
+    }
+    let Some(content_bounds) = top_cad_content else {
+        state.cad_demo.close_context_menu();
+        return true;
+    };
+    let menu_bounds = cad_demo_context_menu_bounds(
+        content_bounds,
+        state.cad_demo.context_menu.anchor,
+        state.cad_demo.context_menu.items.len(),
+    );
+    if !menu_bounds.contains(point) {
+        state.cad_demo.close_context_menu();
+        state.cad_demo.last_action = Some("CAD context menu dismissed".to_string());
+        return true;
+    }
+
+    for index in 0..state.cad_demo.context_menu.items.len() {
+        if cad_demo_context_menu_row_bounds(menu_bounds, index).contains(point) {
+            if let Some(action) = state.cad_demo.run_context_menu_item(index) {
+                state.cad_demo.last_action = Some(action);
+            }
+            state.cad_demo.close_context_menu();
+            return true;
+        }
+    }
+
+    true
 }
 
 fn handle_cad_snap_preview_click(
@@ -587,6 +669,16 @@ fn cad_camera_target_pane_id(state: &crate::app_state::RenderState, point: Point
         let content_bounds = pane_content_bounds(pane.bounds);
         if !content_bounds.contains(point) {
             return None;
+        }
+        if state.cad_demo.context_menu.is_open {
+            let menu_bounds = cad_demo_context_menu_bounds(
+                content_bounds,
+                state.cad_demo.context_menu.anchor,
+                state.cad_demo.context_menu.items.len(),
+            );
+            if menu_bounds.contains(point) {
+                return None;
+            }
         }
         if cad_demo_cycle_variant_button_bounds(content_bounds).contains(point)
             || cad_demo_reset_button_bounds(content_bounds).contains(point)
