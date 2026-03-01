@@ -1,7 +1,7 @@
 use crate::intent::{
     AdjustParameterIntent, CadAdjustOperation, CadIntent, CadIntentValidationError,
-    CompareVariantsIntent, ExportIntent, SelectIntent, SetMaterialIntent, SetObjectiveIntent,
-    parse_cad_intent_json,
+    CompareVariantsIntent, CreateRackSpecIntent, ExportIntent, SelectIntent, SetMaterialIntent,
+    SetObjectiveIntent, parse_cad_intent_json,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -123,7 +123,91 @@ fn translate_phrase(input: &str) -> Option<CadIntent> {
         }
     }
 
+    if let Some(intent) = translate_rack_design_prompt(&lower) {
+        return Some(intent);
+    }
+
     None
+}
+
+fn translate_rack_design_prompt(lower: &str) -> Option<CadIntent> {
+    let has_design_verb = ["design", "build", "create", "model", "draft"]
+        .iter()
+        .any(|verb| lower.contains(verb));
+    if !has_design_verb || !lower.contains("rack") {
+        return None;
+    }
+
+    let units = infer_units(lower);
+    let material = infer_material(lower);
+    let airflow = infer_airflow(lower);
+    let mount_type = infer_mount_type(lower);
+
+    Some(CadIntent::CreateRackSpec(CreateRackSpecIntent {
+        units,
+        material,
+        airflow,
+        mount_type,
+    }))
+}
+
+fn infer_units(lower: &str) -> String {
+    if lower.contains(" inch") || lower.contains(" inches") || lower.contains('"') {
+        return "in".to_string();
+    }
+    for token in lower.split_whitespace() {
+        if token.len() > 2 && token.ends_with("in") {
+            let value = &token[..token.len().saturating_sub(2)];
+            if value
+                .chars()
+                .all(|ch| ch.is_ascii_digit() || ch == '.' || ch == '-')
+            {
+                return "in".to_string();
+            }
+        }
+    }
+    "mm".to_string()
+}
+
+fn infer_material(lower: &str) -> String {
+    if lower.contains("al-5052") || lower.contains("5052") || lower.contains("sheet metal") {
+        return "al-5052-h32".to_string();
+    }
+    if lower.contains("al-6061")
+        || lower.contains("6061")
+        || lower.contains("aluminum")
+        || lower.contains("aluminium")
+    {
+        return "al-6061-t6".to_string();
+    }
+    if lower.contains("steel") {
+        return "steel-1018".to_string();
+    }
+    "al-6061-t6".to_string()
+}
+
+fn infer_airflow(lower: &str) -> String {
+    if lower.contains("high airflow")
+        || lower.contains("airflow")
+        || lower.contains("vent")
+        || lower.contains("cooling")
+    {
+        return "high".to_string();
+    }
+    if lower.contains("quiet") || lower.contains("acoustic") {
+        return "low".to_string();
+    }
+    "balanced".to_string()
+}
+
+fn infer_mount_type(lower: &str) -> String {
+    if lower.contains("wall") {
+        return "wall".to_string();
+    }
+    if lower.contains("desktop") || lower.contains("desk") || lower.contains("table") {
+        return "desktop".to_string();
+    }
+    "wall".to_string()
 }
 
 fn extract_percent_value(input: &str) -> Option<f64> {
@@ -238,6 +322,22 @@ mod tests {
             CadIntentTranslationOutcome::ParseFailure(error) => {
                 assert_eq!(error.code, "CAD-CHAT-AMBIGUOUS");
                 assert!(error.recovery_prompt.contains("Set material"));
+            }
+            other => panic!("unexpected outcome: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn adapter_translates_rack_design_prompt_into_create_rack_spec() {
+        let outcome = translate_chat_to_cad_intent(
+            "Build a wall-mount rack for 2 Mac Studio units with high airflow in sheet metal",
+        );
+        match outcome {
+            CadIntentTranslationOutcome::Intent(CadIntent::CreateRackSpec(payload)) => {
+                assert_eq!(payload.units, "mm");
+                assert_eq!(payload.material, "al-5052-h32");
+                assert_eq!(payload.airflow, "high");
+                assert_eq!(payload.mount_type, "wall");
             }
             other => panic!("unexpected outcome: {other:?}"),
         }

@@ -86,6 +86,15 @@ fn fail_active_cad_build_session(
     retry_attempts: u8,
     retry_limit: u8,
 ) {
+    tracing::error!(
+        "cad build/fail class={} event_code={} retries={}/{} reason={} remediation_hint={}",
+        class.label(),
+        event_code,
+        retry_attempts,
+        retry_limit,
+        reason,
+        remediation_hint
+    );
     if state.cad_demo.build_session.phase == CadBuildSessionPhase::Idle {
         state.cad_demo.last_error = Some(reason);
         super::sync_cad_build_progress_to_chat(state);

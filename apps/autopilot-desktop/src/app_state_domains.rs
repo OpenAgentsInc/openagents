@@ -1764,7 +1764,7 @@ impl CadDemoPaneState {
             .turn_id
             .clone()
             .unwrap_or_else(|| "unknown-turn".to_string());
-        self.last_build_session = Some(CadBuildSessionArchiveState {
+        let archived = CadBuildSessionArchiveState {
             thread_id,
             turn_id,
             terminal_phase,
@@ -1776,7 +1776,34 @@ impl CadDemoPaneState {
             failure_reason: self.build_session.failure_reason.clone(),
             remediation_hint: self.build_session.remediation_hint.clone(),
             events: self.build_session.events.clone(),
-        });
+        };
+        if terminal_phase == CadBuildSessionPhase::Failed {
+            let latest_event = archived.events.last().cloned();
+            tracing::error!(
+                "cad build/session failed thread_id={} turn_id={} class={} retries={}/{} tool_result={} rebuild_result={} reason={} hint={} latest_event={} latest_detail={}",
+                archived.thread_id,
+                archived.turn_id,
+                archived
+                    .failure_class
+                    .map(|class| class.label().to_string())
+                    .unwrap_or_else(|| "unknown".to_string()),
+                archived.retry_attempts,
+                archived.retry_limit,
+                archived.latest_tool_result.as_deref().unwrap_or("n/a"),
+                archived.latest_rebuild_result.as_deref().unwrap_or("n/a"),
+                archived.failure_reason.as_deref().unwrap_or("n/a"),
+                archived.remediation_hint.as_deref().unwrap_or("n/a"),
+                latest_event
+                    .as_ref()
+                    .map(|event| event.event_code.as_str())
+                    .unwrap_or("n/a"),
+                latest_event
+                    .as_ref()
+                    .map(|event| event.detail.as_str())
+                    .unwrap_or("n/a")
+            );
+        }
+        self.last_build_session = Some(archived);
         self.build_session = CadBuildSessionState::default();
     }
 
