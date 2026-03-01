@@ -189,6 +189,7 @@ Decision criteria to keep objective:
 - rack template generator document: `docs/cad/CAD_RACK_TEMPLATE.md`
 - CAD intent schema document: `docs/cad/CAD_INTENTS.md`
 - CAD intent dispatch document: `docs/cad/CAD_INTENT_DISPATCH.md`
+- CAD chat adapter document: `docs/cad/CAD_CHAT_ADAPTER.md`
 
 ### Eval, Caching, and Concurrency
 

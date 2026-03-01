@@ -5,6 +5,7 @@
 
 pub mod analysis;
 pub mod boolean;
+pub mod chat_adapter;
 pub mod contracts;
 pub mod dispatch;
 pub mod document;
