@@ -249,6 +249,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
                 crate::app_state::TreasuryExchangeSimulationPaneState::default(),
             relay_security_simulation: crate::app_state::RelaySecuritySimulationPaneState::default(
             ),
+            stable_sats_simulation: crate::app_state::StableSatsSimulationPaneState::default(),
             sidebar: SidebarState::default(),
             next_pane_id: 1,
             next_z_index: 1,
@@ -544,6 +545,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &state.agent_network_simulation,
             &state.treasury_exchange_simulation,
             &state.relay_security_simulation,
+            &state.stable_sats_simulation,
             &state.spark_wallet,
             &mut state.spark_inputs,
             &mut state.pay_invoice_inputs,
@@ -897,6 +899,10 @@ mod tests {
         assert!(commands.iter().any(|command| {
             command.id == "pane.relay_security_simulation"
                 && command.label == "Relay Security Simulation"
+        }));
+        assert!(commands.iter().any(|command| {
+            command.id == "pane.stablesats_simulation"
+                && command.label == "StableSats Wallet Simulation"
         }));
     }
 

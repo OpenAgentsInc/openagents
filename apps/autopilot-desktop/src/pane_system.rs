@@ -306,6 +306,12 @@ pub enum RelaySecuritySimulationPaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StableSatsSimulationPaneAction {
+    RunRound,
+    Reset,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PaneHitAction {
     NostrRegenerate,
     NostrReveal,
@@ -365,6 +371,7 @@ pub enum PaneHitAction {
     AgentNetworkSimulation(AgentNetworkSimulationPaneAction),
     TreasuryExchangeSimulation(TreasuryExchangeSimulationPaneAction),
     RelaySecuritySimulation(RelaySecuritySimulationPaneAction),
+    StableSatsSimulation(StableSatsSimulationPaneAction),
     Spark(SparkPaneAction),
     SparkCreateInvoice(CreateInvoicePaneAction),
     SparkPayInvoice(PayInvoicePaneAction),
@@ -784,7 +791,8 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::CreditSettlementLedger
             | PaneKind::AgentNetworkSimulation
             | PaneKind::TreasuryExchangeSimulation
-            | PaneKind::RelaySecuritySimulation => {}
+            | PaneKind::RelaySecuritySimulation
+            | PaneKind::StableSatsSimulation => {}
         }
 
         if pane_hit_action_for_pane(state, pane, point).is_some() {
@@ -1995,6 +2003,25 @@ pub fn relay_security_simulation_reset_button_bounds(content_bounds: Bounds) -> 
     )
 }
 
+pub fn stable_sats_simulation_run_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.28).clamp(180.0, 280.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn stable_sats_simulation_reset_button_bounds(content_bounds: Bounds) -> Bounds {
+    let run = stable_sats_simulation_run_button_bounds(content_bounds);
+    Bounds::new(
+        run.max_x() + JOB_INBOX_BUTTON_GAP,
+        run.origin.y,
+        (content_bounds.size.width * 0.22).clamp(140.0, 220.0),
+        run.size.height,
+    )
+}
+
 pub fn nostr_regenerate_button_bounds(content_bounds: Bounds) -> Bounds {
     let (regenerate_bounds, _, _) = nostr_button_bounds(content_bounds);
     regenerate_bounds
@@ -2748,6 +2775,19 @@ fn pane_hit_action_for_pane(
             if relay_security_simulation_reset_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::RelaySecuritySimulation(
                     RelaySecuritySimulationPaneAction::Reset,
+                ));
+            }
+            None
+        }
+        PaneKind::StableSatsSimulation => {
+            if stable_sats_simulation_run_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::StableSatsSimulation(
+                    StableSatsSimulationPaneAction::RunRound,
+                ));
+            }
+            if stable_sats_simulation_reset_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::StableSatsSimulation(
+                    StableSatsSimulationPaneAction::Reset,
                 ));
             }
             None

@@ -80,7 +80,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 38] = [
+const PANE_SPECS: [PaneSpec; 39] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -657,6 +657,21 @@ const PANE_SPECS: [PaneSpec; 38] = [
             id: "pane.relay_security_simulation",
             label: "Relay Security Simulation",
             description: "Open NIP-11/42/65/46/17/59/98/77 secure relay simulation",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::StableSatsSimulation,
+        title: "StableSats Wallet Simulation",
+        default_width: 980.0,
+        default_height: 460.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.stablesats_simulation",
+            label: "StableSats Wallet Simulation",
+            description: "Open Blink-style BTC/USD balance switching simulation for multiple agents",
             keybinding: None,
         }),
         hotbar: None,

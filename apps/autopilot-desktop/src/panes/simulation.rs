@@ -2,7 +2,7 @@ use wgpui::{PaintContext, Point, theme};
 
 use crate::app_state::{
     AgentNetworkSimulationEvent, AgentNetworkSimulationPaneState, RelaySecuritySimulationPaneState,
-    TreasuryExchangeSimulationPaneState,
+    StableSatsSimulationPaneState, TreasuryExchangeSimulationPaneState,
 };
 use crate::pane_renderer::{
     paint_action_button, paint_label_line, paint_multiline_phrase, paint_source_badge,
@@ -11,6 +11,7 @@ use crate::pane_renderer::{
 use crate::pane_system::{
     agent_network_simulation_reset_button_bounds, agent_network_simulation_run_button_bounds,
     relay_security_simulation_reset_button_bounds, relay_security_simulation_run_button_bounds,
+    stable_sats_simulation_reset_button_bounds, stable_sats_simulation_run_button_bounds,
     treasury_exchange_simulation_reset_button_bounds,
     treasury_exchange_simulation_run_button_bounds,
 };
@@ -232,6 +233,114 @@ pub fn paint_relay_security_simulation_pane(
     paint_simulation_timeline(content_bounds, y, &pane_state.events, paint);
 }
 
+pub fn paint_stable_sats_simulation_pane(
+    content_bounds: wgpui::Bounds,
+    pane_state: &StableSatsSimulationPaneState,
+    paint: &mut PaintContext,
+) {
+    paint_source_badge(content_bounds, "sim+blink", paint);
+
+    let run_bounds = stable_sats_simulation_run_button_bounds(content_bounds);
+    let reset_bounds = stable_sats_simulation_reset_button_bounds(content_bounds);
+    let run_label = if pane_state.auto_run_enabled {
+        "Pause Auto Run"
+    } else {
+        "Start Auto Run"
+    };
+    paint_action_button(run_bounds, run_label, paint);
+    paint_action_button(reset_bounds, "Reset Simulation", paint);
+
+    let mut y = paint_state_summary(
+        paint,
+        content_bounds.origin.x + 12.0,
+        run_bounds.max_y() + 12.0,
+        pane_state.load_state,
+        &format!("State: {}", pane_state.load_state.label()),
+        pane_state.last_action.as_deref(),
+        pane_state.last_error.as_deref(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Rounds run",
+        &pane_state.rounds_run.to_string(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "BTC/USD quote",
+        &format_usd_cents(pane_state.price_usd_cents_per_btc),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Converted sats",
+        &pane_state.total_converted_sats.to_string(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Converted USD",
+        &format_usd_cents(pane_state.total_converted_usd_cents),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Settlement ref",
+        pane_state
+            .last_settlement_ref
+            .as_deref()
+            .unwrap_or("not-settled"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Aggregate BTC",
+        &format!("{} sats", pane_state.total_btc_balance_sats()),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Aggregate USD",
+        &format_usd_cents(pane_state.total_usd_balance_cents()),
+    );
+
+    paint.scene.draw_text(paint.text.layout(
+        "Agent wallet states",
+        Point::new(content_bounds.origin.x + 12.0, y),
+        11.0,
+        theme::text::MUTED,
+    ));
+    let mut row_y = y + 16.0;
+    for agent in pane_state.agents.iter().take(6) {
+        let summary = format!(
+            "{} wallet={} btc={} usd={} switches={} last={}",
+            agent.agent_name,
+            agent.active_wallet.label(),
+            agent.btc_balance_sats,
+            format_usd_cents(agent.usd_balance_cents),
+            agent.switch_count,
+            agent.last_switch_summary
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            &summary,
+            Point::new(content_bounds.origin.x + 12.0, row_y),
+            10.0,
+            theme::text::PRIMARY,
+        ));
+        row_y += 14.0;
+    }
+
+    paint_simulation_timeline(content_bounds, row_y + 6.0, &pane_state.events, paint);
+}
+
 fn paint_simulation_timeline(
     content_bounds: wgpui::Bounds,
     y: f32,
@@ -267,6 +376,9 @@ fn paint_simulation_timeline(
             "NIP-42" => theme::status::SUCCESS,
             "NIP-59" => theme::accent::PRIMARY,
             "NIP-77" => theme::status::ERROR,
+            "BLINK-PRICE" => theme::accent::PRIMARY,
+            "BLINK-SWAP" => theme::status::SUCCESS,
+            "BLINK-LEDGER" => theme::status::ERROR,
             _ => theme::text::PRIMARY,
         };
         let summary = format!(
@@ -281,4 +393,8 @@ fn paint_simulation_timeline(
         ));
         row_y += 14.0;
     }
+}
+
+fn format_usd_cents(usd_cents: u64) -> String {
+    format!("${}.{:02}", usd_cents / 100, usd_cents % 100)
 }
