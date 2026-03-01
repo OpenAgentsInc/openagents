@@ -25,6 +25,19 @@
 
 This receipt is intended for CAD pane telemetry and activity logging.
 
+## Parameter Invalidation
+
+`compute_parameter_invalidation_plan(...)` computes deterministic pruning after parameter edits:
+
+- detects directly affected features from parameter bindings in `FeatureNode.params`
+- propagates invalidation strictly downstream through dependency edges
+- returns:
+  - ordered invalidated feature IDs
+  - directly affected feature IDs
+  - retained upstream hashes from previous rebuild output
+
+This allows incremental rebuild paths to avoid recomputing unaffected upstream nodes.
+
 ## Verification
 
 - `cargo test -p openagents-cad`
