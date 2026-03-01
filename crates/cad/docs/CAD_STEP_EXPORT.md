@@ -11,7 +11,7 @@ In scope:
 - Stable export receipt with byte count + deterministic hash for observability.
 
 Out of scope:
-- STEP import (implemented separately in `docs/cad/CAD_STEP_IMPORT.md`).
+- STEP import (implemented separately in `crates/cad/docs/CAD_STEP_IMPORT.md`).
 - Multi-body assembly structure.
 - High-fidelity analytic B-Rep surfaces beyond faceted export.
 - Non-STEP export formats.

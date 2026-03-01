@@ -314,13 +314,13 @@ Improvement actions:
      - `cargo fmt --all --check` passes at repo level.
 
 11. Add CAD code-health runbook and lane expectations.
-   - Create `docs/cad/CAD_CODE_HEALTH.md`:
+   - Create `crates/cad/docs/CAD_CODE_HEALTH.md`:
      - lint commands
      - formatting commands
      - test lanes
      - policy for `expect/panic` usage.
    - Done criteria:
-     - doc linked from `docs/cad/PLAN.md`.
+     - doc linked from `crates/cad/docs/PLAN.md`.
 
 12. Enforce health gates in ongoing workflow.
    - Add CAD health checks to strict lint/release scripts after baseline:

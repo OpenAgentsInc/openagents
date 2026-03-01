@@ -148,7 +148,7 @@ scripts/lint/strict-production-hardening-check.sh
 
 ## References
 
-- [`docs/cad/PLAN.md`](/Users/christopherdavid/code/openagents/docs/cad/PLAN.md)
-- [`docs/cad/CAD_DEMO_RELEASE_GATES.md`](/Users/christopherdavid/code/openagents/docs/cad/CAD_DEMO_RELEASE_GATES.md)
+- [`crates/cad/docs/PLAN.md`](/Users/christopherdavid/code/openagents/crates/cad/docs/PLAN.md)
+- [`crates/cad/docs/CAD_DEMO_RELEASE_GATES.md`](/Users/christopherdavid/code/openagents/crates/cad/docs/CAD_DEMO_RELEASE_GATES.md)
 - [`scripts/lint/strict-production-hardening-check.sh`](/Users/christopherdavid/code/openagents/scripts/lint/strict-production-hardening-check.sh)
 - [`scripts/lint/cad-clippy.sh`](/Users/christopherdavid/code/openagents/scripts/lint/cad-clippy.sh)

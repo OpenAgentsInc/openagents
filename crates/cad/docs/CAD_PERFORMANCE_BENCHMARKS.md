@@ -1,7 +1,7 @@
 # CAD Performance Benchmark Suite
 
 This benchmark suite provides deterministic CAD demo budget checks tied to Gate
-A/B/E acceptance criteria in `docs/cad/PLAN.md`.
+A/B/E acceptance criteria in `crates/cad/docs/PLAN.md`.
 
 ## Scope
 

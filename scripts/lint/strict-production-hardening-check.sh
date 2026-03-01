@@ -25,7 +25,7 @@ lane_remediation_hint() {
             printf 'Remediation (%s): run scripts/cad/perf-benchmark-ci.sh and compare budget regressions.\n' "$lane" >&2
             ;;
         *)
-            printf 'Remediation (%s): see docs/cad/CAD_CODE_HEALTH.md for lane-specific fix workflow.\n' "$lane" >&2
+            printf 'Remediation (%s): see crates/cad/docs/CAD_CODE_HEALTH.md for lane-specific fix workflow.\n' "$lane" >&2
             ;;
     esac
 }

@@ -1,7 +1,7 @@
 # CAD External Dependency License and Security Posture
 
 Related issues: [#2455](https://github.com/OpenAgentsInc/openagents/issues/2455), [#2453](https://github.com/OpenAgentsInc/openagents/issues/2453)  
-Decision record: `docs/cad/decisions/0001-kernel-strategy.md`
+Decision record: `crates/cad/docs/decisions/0001-kernel-strategy.md`
 
 ## 1) Scope
 
