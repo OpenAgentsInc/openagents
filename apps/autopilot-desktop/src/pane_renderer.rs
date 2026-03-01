@@ -42,7 +42,8 @@ use crate::pane_system::{
     starter_jobs_row_bounds, starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
 };
 use crate::panes::{
-    agent as agent_pane, chat as chat_pane, codex as codex_pane, credit as credit_pane,
+    agent as agent_pane, cad as cad_pane, chat as chat_pane, codex as codex_pane,
+    credit as credit_pane,
     relay_connections as relay_connections_pane, simulation as simulation_pane,
     skill as skill_pane, wallet as wallet_pane,
 };
@@ -302,7 +303,7 @@ impl PaneRenderer {
                     );
                 }
                 PaneKind::CadDemo => {
-                    paint_cad_demo_placeholder(content_bounds, paint);
+                    cad_pane::paint_cad_demo_placeholder_pane(content_bounds, paint);
                 }
                 PaneKind::NostrIdentity => {
                     paint_nostr_identity_pane(
@@ -345,30 +346,6 @@ fn paint_empty_pane(content_bounds: Bounds, paint: &mut PaintContext) {
         theme::text::MUTED,
     );
     paint.scene.draw_text(empty);
-}
-
-fn paint_cad_demo_placeholder(content_bounds: Bounds, paint: &mut PaintContext) {
-    let title = paint.text.layout(
-        "CAD demo registered",
-        Point::new(
-            content_bounds.origin.x + 12.0,
-            content_bounds.origin.y + 16.0,
-        ),
-        12.0,
-        theme::text::PRIMARY,
-    );
-    paint.scene.draw_text(title);
-
-    let copy = paint.text.layout(
-        "Placeholder pane. Geometry rendering arrives in follow-up CAD issues.",
-        Point::new(
-            content_bounds.origin.x + 12.0,
-            content_bounds.origin.y + 36.0,
-        ),
-        11.0,
-        theme::text::MUTED,
-    );
-    paint.scene.draw_text(copy);
 }
 
 fn paint_autopilot_chat_pane(
