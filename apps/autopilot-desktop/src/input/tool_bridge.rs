@@ -166,6 +166,23 @@ struct PaneActionArgs {
     index: Option<usize>,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+struct CadIntentArgs {
+    #[serde(default)]
+    thread_id: Option<String>,
+    #[serde(default)]
+    prompt: Option<String>,
+    #[serde(default)]
+    intent_json: Option<Value>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct CadActionArgs {
+    action: String,
+    #[serde(default)]
+    index: Option<usize>,
+}
+
 pub(super) fn execute_openagents_tool_request(
     state: &mut RenderState,
     request: &AutopilotToolCallRequest,
@@ -211,6 +228,20 @@ pub(super) fn execute_openagents_tool_request(
                 Err(error) => return error,
             };
             execute_pane_action(state, &args)
+        }
+        "openagents.cad.intent" => {
+            let args = match decoded.decode_arguments::<CadIntentArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_cad_intent(state, &args)
+        }
+        "openagents.cad.action" => {
+            let args = match decoded.decode_arguments::<CadActionArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_cad_action(state, &args)
         }
         _ => ToolBridgeResultEnvelope::error(
             "OA-TOOL-NOT-IMPLEMENTED",
@@ -896,6 +927,151 @@ fn apply_pay_invoice_input(state: &mut RenderState, field: &str, value: &str) ->
     true
 }
 
+fn execute_cad_intent(state: &mut RenderState, args: &CadIntentArgs) -> ToolBridgeResultEnvelope {
+    let thread_id = args
+        .thread_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| state.autopilot_chat.active_thread_id.clone())
+        .unwrap_or_else(|| "autopilot.tool.local".to_string());
+
+    let prompt = if let Some(intent_json) = args.intent_json.as_ref() {
+        match serde_json::to_string(intent_json) {
+            Ok(value) => value,
+            Err(error) => {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-CAD-INTENT-JSON-SERIALIZE-FAILED",
+                    format!("Failed to serialize intent_json: {error}"),
+                    json!({ "thread_id": thread_id }),
+                );
+            }
+        }
+    } else if let Some(prompt) = args.prompt.as_ref() {
+        prompt.trim().to_string()
+    } else {
+        String::new()
+    };
+
+    if prompt.is_empty() {
+        return ToolBridgeResultEnvelope::error(
+            "OA-CAD-INTENT-MISSING-PAYLOAD",
+            "Provide either non-empty `prompt` or `intent_json` for openagents.cad.intent",
+            json!({
+                "thread_id": thread_id,
+            }),
+        );
+    }
+
+    let _ = PaneController::create_for_kind(state, PaneKind::CadDemo);
+    let changed = super::reducers::apply_chat_prompt_to_cad_session(state, &thread_id, &prompt);
+    if !changed {
+        return ToolBridgeResultEnvelope::error(
+            "OA-CAD-INTENT-NO-CHANGE",
+            "CAD intent prompt did not produce a CAD mutation",
+            json!({
+                "thread_id": thread_id,
+                "prompt": prompt,
+                "last_error": state.cad_demo.last_error,
+            }),
+        );
+    }
+
+    ToolBridgeResultEnvelope::ok(
+        "OA-CAD-INTENT-OK",
+        "Applied CAD intent prompt through CAD chat adapter",
+        json!({
+            "thread_id": thread_id,
+            "session_id": state.cad_demo.session_id,
+            "document_revision": state.cad_demo.document_revision,
+            "active_variant_id": state.cad_demo.active_variant_id,
+            "last_action": state.cad_demo.last_action,
+            "last_error": state.cad_demo.last_error,
+        }),
+    )
+}
+
+fn execute_cad_action(state: &mut RenderState, args: &CadActionArgs) -> ToolBridgeResultEnvelope {
+    let action_key = normalize_key(&args.action);
+    let action = match cad_action_from_key(action_key.as_str(), args.index) {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+
+    let _ = PaneController::create_for_kind(state, PaneKind::CadDemo);
+    let changed = super::reducers::run_cad_demo_action(state, action);
+    ToolBridgeResultEnvelope::ok(
+        "OA-CAD-ACTION-OK",
+        format!("Executed CAD action '{}'", args.action),
+        json!({
+            "action": args.action,
+            "index": args.index,
+            "changed": changed,
+            "session_id": state.cad_demo.session_id,
+            "document_revision": state.cad_demo.document_revision,
+            "active_variant_id": state.cad_demo.active_variant_id,
+            "last_action": state.cad_demo.last_action,
+            "last_error": state.cad_demo.last_error,
+        }),
+    )
+}
+
+fn cad_action_from_key(
+    action: &str,
+    index: Option<usize>,
+) -> Result<CadDemoPaneAction, ToolBridgeResultEnvelope> {
+    let require_index = |action_label: &str| -> Result<usize, ToolBridgeResultEnvelope> {
+        index.ok_or_else(|| {
+            ToolBridgeResultEnvelope::error(
+                "OA-CAD-ACTION-MISSING-INDEX",
+                format!("CAD action '{}' requires index", action_label),
+                json!({
+                    "action": action_label,
+                }),
+            )
+        })
+    };
+
+    let value = match action {
+        "bootstrap" | "bootstrap_demo" => CadDemoPaneAction::BootstrapDemo,
+        "reset_session" => CadDemoPaneAction::ResetSession,
+        "cycle_variant" => CadDemoPaneAction::CycleVariant,
+        "reset_camera" => CadDemoPaneAction::ResetCamera,
+        "toggle_projection" => CadDemoPaneAction::ToggleProjectionMode,
+        "cycle_section_plane" => CadDemoPaneAction::CycleSectionPlane,
+        "step_section_offset" => CadDemoPaneAction::StepSectionPlaneOffset,
+        "cycle_material" => CadDemoPaneAction::CycleMaterialPreset,
+        "toggle_snap_grid" => CadDemoPaneAction::ToggleSnapGrid,
+        "toggle_snap_origin" => CadDemoPaneAction::ToggleSnapOrigin,
+        "toggle_snap_endpoint" => CadDemoPaneAction::ToggleSnapEndpoint,
+        "toggle_snap_midpoint" => CadDemoPaneAction::ToggleSnapMidpoint,
+        "snap_top" => CadDemoPaneAction::SnapViewTop,
+        "snap_front" => CadDemoPaneAction::SnapViewFront,
+        "snap_right" => CadDemoPaneAction::SnapViewRight,
+        "snap_isometric" => CadDemoPaneAction::SnapViewIsometric,
+        "cycle_hidden_line_mode" => CadDemoPaneAction::CycleHiddenLineMode,
+        "cycle_warning_severity_filter" => CadDemoPaneAction::CycleWarningSeverityFilter,
+        "cycle_warning_code_filter" => CadDemoPaneAction::CycleWarningCodeFilter,
+        "select_warning" => CadDemoPaneAction::SelectWarning(require_index(action)?),
+        "select_warning_marker" => CadDemoPaneAction::SelectWarningMarker(require_index(action)?),
+        "select_timeline_row" => CadDemoPaneAction::SelectTimelineRow(require_index(action)?),
+        "timeline_select_prev" => CadDemoPaneAction::TimelineSelectPrev,
+        "timeline_select_next" => CadDemoPaneAction::TimelineSelectNext,
+        _ => {
+            return Err(ToolBridgeResultEnvelope::error(
+                "OA-CAD-ACTION-UNSUPPORTED",
+                format!("Unsupported CAD action '{}'", action),
+                json!({
+                    "action": action,
+                    "index": index,
+                }),
+            ));
+        }
+    };
+    Ok(value)
+}
+
 fn pane_resolution_error(code: &str, pane_ref: &str) -> ToolBridgeResultEnvelope {
     ToolBridgeResultEnvelope::error(
         code,
@@ -1023,12 +1199,14 @@ fn normalize_key(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        ToolBridgeResultEnvelope, decode_tool_call_request, normalize_key, pane_action_to_hit_action,
-        pane_kind_key, resolve_pane_kind,
+        ToolBridgeResultEnvelope, cad_action_from_key, decode_tool_call_request, normalize_key,
+        pane_action_to_hit_action, pane_kind_key, resolve_pane_kind,
     };
     use crate::app_state::AutopilotToolCallRequest;
     use crate::app_state::PaneKind;
-    use crate::pane_system::{PaneHitAction, RelayConnectionsPaneAction, SettingsPaneAction};
+    use crate::pane_system::{
+        CadDemoPaneAction, PaneHitAction, RelayConnectionsPaneAction, SettingsPaneAction,
+    };
     use crate::spark_pane::SparkPaneAction;
     use codex_client::AppServerRequestId;
     use serde::Deserialize;
@@ -1148,5 +1326,24 @@ mod tests {
                 .expect("with index"),
             PaneHitAction::RelayConnections(RelayConnectionsPaneAction::SelectRow(2))
         );
+    }
+
+    #[test]
+    fn cad_action_mapping_supports_indexed_actions() {
+        assert_eq!(
+            cad_action_from_key("bootstrap", None).expect("bootstrap action"),
+            CadDemoPaneAction::BootstrapDemo
+        );
+        assert_eq!(
+            cad_action_from_key("select_warning", Some(3)).expect("indexed action"),
+            CadDemoPaneAction::SelectWarning(3)
+        );
+    }
+
+    #[test]
+    fn cad_action_mapping_requires_index_when_needed() {
+        let err = cad_action_from_key("select_warning", None)
+            .expect_err("missing index should fail");
+        assert_eq!(err.code, "OA-CAD-ACTION-MISSING-INDEX");
     }
 }
