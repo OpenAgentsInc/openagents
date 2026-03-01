@@ -14,6 +14,35 @@ pub struct CadBodyProperties {
     pub bounds_size_mm: [f64; 3],
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CadEdgeType {
+    Segment,
+    Tagged,
+}
+
+impl CadEdgeType {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Segment => "segment",
+            Self::Tagged => "tagged",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CadFaceProperties {
+    pub face_index: usize,
+    pub area_mm2: f64,
+    pub normal: [f64; 3],
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CadEdgeProperties {
+    pub edge_index: usize,
+    pub length_mm: f64,
+    pub edge_type: CadEdgeType,
+}
+
 /// Estimate body properties from a tessellated mesh and material density.
 pub fn estimate_body_properties(
     payload: &CadMeshPayload,
@@ -98,6 +127,53 @@ pub fn estimate_body_properties(
     })
 }
 
+pub fn face_properties(payload: &CadMeshPayload, face_index: usize) -> Option<CadFaceProperties> {
+    let triangle_offset = face_index.checked_mul(3)?;
+    let i0 = *payload.triangle_indices.get(triangle_offset)? as usize;
+    let i1 = *payload.triangle_indices.get(triangle_offset + 1)? as usize;
+    let i2 = *payload.triangle_indices.get(triangle_offset + 2)? as usize;
+    let p0 = vertex3(payload, i0)?;
+    let p1 = vertex3(payload, i1)?;
+    let p2 = vertex3(payload, i2)?;
+    let edge1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+    let edge2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
+    let cross = cross3(edge1, edge2);
+    let cross_length = length3(cross);
+    let area_mm2 = 0.5 * cross_length;
+    let normal = if cross_length > 1e-12 {
+        [
+            cross[0] / cross_length,
+            cross[1] / cross_length,
+            cross[2] / cross_length,
+        ]
+    } else {
+        [0.0, 0.0, 0.0]
+    };
+    Some(CadFaceProperties {
+        face_index,
+        area_mm2,
+        normal,
+    })
+}
+
+pub fn edge_properties(payload: &CadMeshPayload, edge_index: usize) -> Option<CadEdgeProperties> {
+    let edge = payload.edges.get(edge_index)?;
+    let start = vertex3(payload, edge.start_vertex as usize)?;
+    let end = vertex3(payload, edge.end_vertex as usize)?;
+    let delta = [end[0] - start[0], end[1] - start[1], end[2] - start[2]];
+    let length_mm = length3(delta);
+    let edge_type = if edge.flags == 0 {
+        CadEdgeType::Segment
+    } else {
+        CadEdgeType::Tagged
+    };
+    Some(CadEdgeProperties {
+        edge_index,
+        length_mm,
+        edge_type,
+    })
+}
+
 fn vertex3(payload: &CadMeshPayload, index: usize) -> Option<[f64; 3]> {
     let vertex = payload.vertices.get(index)?;
     Some([
@@ -125,9 +201,12 @@ fn length3(vector: [f64; 3]) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{DENSITY_ALUMINUM_6061_KG_M3, estimate_body_properties};
+    use super::{
+        DENSITY_ALUMINUM_6061_KG_M3, edge_properties, estimate_body_properties, face_properties,
+    };
     use crate::mesh::{
-        CadMeshBounds, CadMeshMaterialSlot, CadMeshPayload, CadMeshTopology, CadMeshVertex,
+        CadMeshBounds, CadMeshEdgeSegment, CadMeshMaterialSlot, CadMeshPayload, CadMeshTopology,
+        CadMeshVertex,
     };
 
     fn tetra_mesh_payload() -> CadMeshPayload {
@@ -205,5 +284,39 @@ mod tests {
         let mut empty = payload;
         empty.vertices.clear();
         assert!(estimate_body_properties(&empty, DENSITY_ALUMINUM_6061_KG_M3).is_none());
+    }
+
+    #[test]
+    fn face_properties_return_area_and_normal() {
+        let payload = tetra_mesh_payload();
+        let face = face_properties(&payload, 0).expect("face properties should resolve");
+        assert_eq!(face.face_index, 0);
+        assert!((face.area_mm2 - 0.5).abs() < 1e-9);
+        assert!((face.normal[2] + 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn edge_properties_return_length_and_type() {
+        let mut payload = tetra_mesh_payload();
+        payload.edges = vec![
+            CadMeshEdgeSegment {
+                start_vertex: 0,
+                end_vertex: 1,
+                flags: 0,
+            },
+            CadMeshEdgeSegment {
+                start_vertex: 1,
+                end_vertex: 2,
+                flags: 7,
+            },
+        ];
+
+        let first = edge_properties(&payload, 0).expect("edge 0 should resolve");
+        assert!((first.length_mm - 1.0).abs() < 1e-9);
+        assert_eq!(first.edge_type.label(), "segment");
+
+        let second = edge_properties(&payload, 1).expect("edge 1 should resolve");
+        assert!((second.length_mm - (2.0f64).sqrt()).abs() < 1e-9);
+        assert_eq!(second.edge_type.label(), "tagged");
     }
 }
