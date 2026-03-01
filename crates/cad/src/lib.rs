@@ -21,6 +21,7 @@ pub mod params;
 pub mod policy;
 pub mod primitives;
 pub mod query;
+pub mod rack;
 pub mod section;
 pub mod selection;
 pub mod semantic_refs;
