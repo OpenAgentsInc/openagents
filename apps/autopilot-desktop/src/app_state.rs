@@ -107,6 +107,20 @@ pub enum PaneDragMode {
     },
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CadCameraDragMode {
+    Orbit,
+    Pan,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct CadCameraDragState {
+    pub pane_id: u64,
+    pub mode: CadCameraDragMode,
+    pub last_mouse: Point,
+    pub moved: bool,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct ChatTranscriptPressState {
     pub message_id: u64,
@@ -2612,6 +2626,7 @@ pub struct RenderState {
     pub next_pane_id: u64,
     pub next_z_index: i32,
     pub pane_drag_mode: Option<PaneDragMode>,
+    pub cad_camera_drag_state: Option<CadCameraDragState>,
     pub pane_resizer: ResizablePane,
     pub hotbar_flash_was_active: bool,
     pub command_palette: CommandPalette,
@@ -2751,12 +2766,12 @@ mod tests {
         ActiveJobState, ActivityEventDomain, ActivityEventRow, ActivityFeedFilter,
         ActivityFeedState, AgentNetworkSimulationPaneState, AlertDomain, AlertLifecycle,
         AlertsRecoveryState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole,
-        CadDemoPaneState, CadHiddenLineMode, EarningsScoreboardState, JobHistoryState, JobHistoryStatus,
-        JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest,
-        JobInboxState, JobInboxValidation, JobLifecycleStage, NetworkRequestStatus,
-        NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderRuntimeState,
-        RecoveryAlertRow, RelayConnectionRow, RelayConnectionStatus, RelayConnectionsState,
-        RelaySecuritySimulationPaneState, SettingsState, SparkPaneState,
+        CadDemoPaneState, CadHiddenLineMode, EarningsScoreboardState, JobHistoryState,
+        JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision,
+        JobInboxNetworkRequest, JobInboxState, JobInboxValidation, JobLifecycleStage,
+        NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState, NostrSecretState,
+        ProviderRuntimeState, RecoveryAlertRow, RelayConnectionRow, RelayConnectionStatus,
+        RelayConnectionsState, RelaySecuritySimulationPaneState, SettingsState, SparkPaneState,
         StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
         SyncHealthState, SyncRecoveryPhase, TreasuryExchangeSimulationPaneState,
     };
@@ -3739,11 +3754,41 @@ mod tests {
         assert!(state.focused_warning_index.is_none());
         assert!(state.focused_geometry_ref.is_none());
         assert_eq!(state.hidden_line_mode, CadHiddenLineMode::Off);
+        assert_eq!(state.camera_zoom, 1.0);
+        assert_eq!(state.camera_pan_x, 0.0);
+        assert_eq!(state.camera_pan_y, 0.0);
+        assert_eq!(state.camera_orbit_yaw_deg, 26.0);
+        assert_eq!(state.camera_orbit_pitch_deg, 18.0);
         assert_eq!(state.history_stack.session_id, "cad.session.local");
         assert_eq!(state.history_stack.len_undo(), 0);
         assert!(state.timeline_rows.is_empty());
         assert!(state.timeline_selected_index.is_none());
         assert_eq!(state.timeline_scroll_offset, 0);
         assert!(state.selected_feature_params.is_empty());
+    }
+
+    #[test]
+    fn cad_camera_methods_are_deterministic_and_clamped() {
+        let mut first = CadDemoPaneState::default();
+        first.orbit_camera_by_drag(480.0, -1200.0);
+        first.pan_camera_by_drag(1200.0, -1600.0);
+        first.zoom_camera_by_scroll(-10_000.0);
+
+        let mut second = CadDemoPaneState::default();
+        second.orbit_camera_by_drag(480.0, -1200.0);
+        second.pan_camera_by_drag(1200.0, -1600.0);
+        second.zoom_camera_by_scroll(-10_000.0);
+
+        assert_eq!(first.camera_orbit_yaw_deg, second.camera_orbit_yaw_deg);
+        assert_eq!(first.camera_orbit_pitch_deg, second.camera_orbit_pitch_deg);
+        assert_eq!(first.camera_pan_x, second.camera_pan_x);
+        assert_eq!(first.camera_pan_y, second.camera_pan_y);
+        assert_eq!(first.camera_zoom, second.camera_zoom);
+        assert!(first.camera_orbit_pitch_deg <= 80.0);
+        assert!(first.camera_orbit_pitch_deg >= -80.0);
+        assert!(first.camera_pan_x <= 800.0);
+        assert!(first.camera_pan_y >= -800.0);
+        assert!(first.camera_zoom <= 4.0);
+        assert!(first.camera_zoom >= 0.35);
     }
 }

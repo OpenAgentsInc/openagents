@@ -28,8 +28,9 @@ use winit::keyboard::{
 use winit::window::Fullscreen;
 
 use crate::app_state::{
-    ActivityEventDomain, ActivityEventRow, AlertDomain, App, ChatTranscriptPressState,
-    JobInboxNetworkRequest, JobInboxValidation, NetworkRequestSubmission, ProviderMode,
+    ActivityEventDomain, ActivityEventRow, AlertDomain, App, CadCameraDragMode, CadCameraDragState,
+    ChatTranscriptPressState, JobInboxNetworkRequest, JobInboxValidation, NetworkRequestSubmission,
+    PaneKind, ProviderMode,
 };
 use crate::hotbar::{
     HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_SPARK_WALLET, activate_hotbar_slot,
@@ -38,21 +39,24 @@ use crate::hotbar::{
 use crate::pane_registry::pane_spec_by_command_id;
 use crate::pane_system::{
     ActivityFeedPaneAction, AgentNetworkSimulationPaneAction, AlertsRecoveryPaneAction,
-    CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction,
+    CadDemoPaneAction, CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction,
     CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction,
-    CredentialsPaneAction, EarningsScoreboardPaneAction, CadDemoPaneAction, NetworkRequestsPaneAction,
-    PaneController, PaneHitAction, PaneInput, RelayConnectionsPaneAction,
-    RelaySecuritySimulationPaneAction,
+    CredentialsPaneAction, EarningsScoreboardPaneAction, NetworkRequestsPaneAction, PaneController,
+    PaneHitAction, PaneInput, RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction,
     SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StableSatsSimulationPaneAction,
     StarterJobsPaneAction, SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction,
+    cad_demo_cycle_variant_button_bounds, cad_demo_hidden_line_mode_button_bounds,
+    cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
+    cad_demo_timeline_panel_bounds, cad_demo_warning_filter_code_button_bounds,
+    cad_demo_warning_filter_severity_button_bounds, cad_demo_warning_panel_bounds,
     clamp_all_panes_to_window, dispatch_chat_input_event, dispatch_chat_scroll_event,
     dispatch_create_invoice_input_event, dispatch_credentials_input_event,
     dispatch_job_history_input_event, dispatch_network_requests_input_event,
     dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
-    dispatch_settings_input_event, dispatch_spark_input_event, pane_indices_by_z_desc,
-    pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
+    dispatch_settings_input_event, dispatch_spark_input_event, pane_content_bounds,
+    pane_indices_by_z_desc, pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
 };
-use crate::panes::chat as chat_pane;
+use crate::panes::{cad as cad_pane, chat as chat_pane};
 use crate::render::{
     logical_size, render_frame, sidebar_go_online_button_bounds, sidebar_handle_bounds,
     wallet_balance_chip_bounds,
@@ -385,6 +389,7 @@ fn dispatch_mouse_move(state: &mut crate::app_state::RenderState, point: Point) 
     }
 
     handled = PaneController::update_drag(state, point);
+    handled |= update_cad_camera_drag(state, point);
     let event = InputEvent::MouseMove {
         x: point.x,
         y: point.y,
@@ -452,6 +457,7 @@ fn dispatch_mouse_down(
         handled |= process_hotbar_clicks(state);
     }
 
+    handled |= begin_cad_camera_drag(state, point, button);
     handled
 }
 
@@ -461,10 +467,14 @@ fn dispatch_mouse_up(
     event: &InputEvent,
 ) -> bool {
     let mut handled = handle_chat_transcript_long_press_release(state, point);
+    let camera_drag_consumed_click = finish_cad_camera_drag(state);
+    handled |= camera_drag_consumed_click;
     handled |= handle_sidebar_mouse_up(state, point, event);
     handled |= PaneInput::handle_mouse_up(state, event);
     handled |= dispatch_text_inputs(state, event);
-    handled |= dispatch_pane_actions(state, point);
+    if !camera_drag_consumed_click {
+        handled |= dispatch_pane_actions(state, point);
+    }
     handled |= state
         .hotbar
         .event(event, state.hotbar_bounds, &mut state.event_context)
@@ -480,11 +490,145 @@ fn dispatch_mouse_scroll(
 ) -> bool {
     let mut handled = false;
     if let InputEvent::Scroll { dy, .. } = event {
-        handled |= dispatch_chat_scroll_event(state, point, *dy);
+        if apply_cad_camera_zoom(state, point, *dy) {
+            handled = true;
+        } else {
+            handled |= dispatch_chat_scroll_event(state, point, *dy);
+        }
     }
     handled |= dispatch_text_inputs(state, event);
     handled |= PaneInput::dispatch_frame_event(state, event);
     handled
+}
+
+fn cad_camera_target_pane_id(state: &crate::app_state::RenderState, point: Point) -> Option<u64> {
+    let pane_order = pane_indices_by_z_desc(state);
+    for pane_idx in pane_order {
+        let pane = &state.panes[pane_idx];
+        if pane.kind != PaneKind::CadDemo || !pane.bounds.contains(point) {
+            continue;
+        }
+        let content_bounds = pane_content_bounds(pane.bounds);
+        if !content_bounds.contains(point) {
+            return None;
+        }
+        if cad_demo_cycle_variant_button_bounds(content_bounds).contains(point)
+            || cad_demo_reset_button_bounds(content_bounds).contains(point)
+            || cad_demo_hidden_line_mode_button_bounds(content_bounds).contains(point)
+            || cad_demo_reset_camera_button_bounds(content_bounds).contains(point)
+            || cad_demo_warning_filter_severity_button_bounds(content_bounds).contains(point)
+            || cad_demo_warning_filter_code_button_bounds(content_bounds).contains(point)
+            || cad_demo_warning_panel_bounds(content_bounds).contains(point)
+            || cad_demo_timeline_panel_bounds(content_bounds).contains(point)
+        {
+            return None;
+        }
+        if cad_pane::camera_interaction_bounds(content_bounds).contains(point) {
+            return Some(pane.id);
+        }
+        return None;
+    }
+    None
+}
+
+fn begin_cad_camera_drag(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+    button: MouseButton,
+) -> bool {
+    if state.pane_drag_mode.is_some() {
+        return false;
+    }
+    let mode = match button {
+        MouseButton::Left => CadCameraDragMode::Orbit,
+        MouseButton::Right => CadCameraDragMode::Pan,
+        _ => return false,
+    };
+    let Some(pane_id) = cad_camera_target_pane_id(state, point) else {
+        return false;
+    };
+    PaneController::bring_to_front(state, pane_id);
+    state.cad_camera_drag_state = Some(CadCameraDragState {
+        pane_id,
+        mode,
+        last_mouse: point,
+        moved: false,
+    });
+    true
+}
+
+fn update_cad_camera_drag(state: &mut crate::app_state::RenderState, point: Point) -> bool {
+    let Some(mut drag) = state.cad_camera_drag_state.take() else {
+        return false;
+    };
+    let pane_exists = state
+        .panes
+        .iter()
+        .any(|pane| pane.id == drag.pane_id && pane.kind == PaneKind::CadDemo);
+    if !pane_exists {
+        return false;
+    }
+    let delta_x = point.x - drag.last_mouse.x;
+    let delta_y = point.y - drag.last_mouse.y;
+    drag.last_mouse = point;
+
+    if delta_x.abs() < f32::EPSILON && delta_y.abs() < f32::EPSILON {
+        state.cad_camera_drag_state = Some(drag);
+        return false;
+    }
+
+    if delta_x.abs() + delta_y.abs() >= 0.75 {
+        drag.moved = true;
+    }
+
+    match drag.mode {
+        CadCameraDragMode::Orbit => state.cad_demo.orbit_camera_by_drag(delta_x, delta_y),
+        CadCameraDragMode::Pan => state.cad_demo.pan_camera_by_drag(delta_x, delta_y),
+    }
+    state.cad_camera_drag_state = Some(drag);
+    true
+}
+
+fn finish_cad_camera_drag(state: &mut crate::app_state::RenderState) -> bool {
+    let Some(drag) = state.cad_camera_drag_state.take() else {
+        return false;
+    };
+    if !drag.moved {
+        return false;
+    }
+    let mode_label = match drag.mode {
+        CadCameraDragMode::Orbit => "orbit",
+        CadCameraDragMode::Pan => "pan",
+    };
+    state.cad_demo.last_action = Some(format!(
+        "CAD camera {mode_label} -> zoom={:.2} pan=({:.0},{:.0}) orbit=({:.0},{:.0})",
+        state.cad_demo.camera_zoom,
+        state.cad_demo.camera_pan_x,
+        state.cad_demo.camera_pan_y,
+        state.cad_demo.camera_orbit_yaw_deg,
+        state.cad_demo.camera_orbit_pitch_deg
+    ));
+    true
+}
+
+fn apply_cad_camera_zoom(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+    scroll_dy: f32,
+) -> bool {
+    if cad_camera_target_pane_id(state, point).is_none() {
+        return false;
+    }
+    let previous = state.cad_demo.camera_zoom;
+    state.cad_demo.zoom_camera_by_scroll(scroll_dy);
+    if (previous - state.cad_demo.camera_zoom).abs() <= f32::EPSILON {
+        return false;
+    }
+    state.cad_demo.last_action = Some(format!(
+        "CAD camera zoom -> {:.2}",
+        state.cad_demo.camera_zoom
+    ));
+    true
 }
 
 fn begin_chat_transcript_long_press(
@@ -1108,14 +1252,18 @@ fn handle_cad_timeline_keyboard_input(
     }
 
     match key {
-        Key::Named(NamedKey::ArrowUp) => reducers::run_cad_demo_action(
-            state,
-            CadDemoPaneAction::TimelineSelectPrev,
-        ),
-        Key::Named(NamedKey::ArrowDown) => reducers::run_cad_demo_action(
-            state,
-            CadDemoPaneAction::TimelineSelectNext,
-        ),
+        Key::Named(NamedKey::ArrowUp) => {
+            reducers::run_cad_demo_action(state, CadDemoPaneAction::TimelineSelectPrev)
+        }
+        Key::Named(NamedKey::ArrowDown) => {
+            reducers::run_cad_demo_action(state, CadDemoPaneAction::TimelineSelectNext)
+        }
+        Key::Named(NamedKey::Home) => {
+            reducers::run_cad_demo_action(state, CadDemoPaneAction::ResetCamera)
+        }
+        Key::Character(value) if value == "0" => {
+            reducers::run_cad_demo_action(state, CadDemoPaneAction::ResetCamera)
+        }
         _ => false,
     }
 }
