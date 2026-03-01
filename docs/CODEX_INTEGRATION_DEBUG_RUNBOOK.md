@@ -12,6 +12,10 @@ This runbook is for diagnosing Codex app-server integration failures in `autopil
    - `Last command failure`
    - `Last snapshot error`
 3. Confirm whether failures are command rejections, lane disconnects, or protocol parse/notification drift.
+4. If the incident is chat-driven CAD, capture:
+   - tool call name (`openagents.cad.intent` / pane tool)
+   - tool response code (`OA-*`)
+   - CAD failure class (`tool_transport`, `intent_parse_validation`, `dispatch_rebuild`).
 
 ## Live Observability
 
@@ -24,6 +28,12 @@ This runbook is for diagnosing Codex app-server integration failures in `autopil
    - `SUPPORTED_CLIENT_REQUEST_METHODS`
    - `SUPPORTED_SERVER_NOTIFICATION_METHODS`
    - `SUPPORTED_SERVER_REQUEST_METHODS`
+3. For CAD incidents, inspect the active chat progress block rows:
+   - phase
+   - tool result
+   - rebuild result
+   - failure class
+   - retries.
 
 ## Wire Log Capture
 
@@ -39,10 +49,15 @@ This runbook is for diagnosing Codex app-server integration failures in `autopil
 
 1. Protocol parity + Codex smoke gate:
    - `./scripts/lint/codex-protocol-parity-gate.sh`
-2. Targeted lane tests:
+2. CAD chat-build release gate:
+   - `./scripts/cad/release-gate-checklist.sh`
+3. Targeted lane tests:
    - `cargo test -p autopilot-desktop thread_lifecycle_notifications_are_normalized -- --nocapture`
    - `cargo test -p autopilot-desktop apps_and_remote_skill_export_emit_notifications -- --nocapture`
    - `cargo test -p autopilot-desktop labs_api_smoke_commands_emit_responses_and_notifications -- --nocapture`
+4. Targeted CAD integration tests:
+   - `cargo test -p autopilot-desktop cad_chat_build_e2e_harness -- --nocapture`
+   - `cargo test -p autopilot-desktop tool_bridge -- --nocapture`
 
 ## Common Failure Patterns
 
@@ -54,6 +69,14 @@ This runbook is for diagnosing Codex app-server integration failures in `autopil
    - verify pane command registration (`pane_registry`) and hit-action routing (`pane_system`, `input`).
 4. Lane startup/disconnect loops:
    - inspect app-server availability, cwd validity, and wire-log output.
+5. CAD tool parse/shape failures:
+   - inspect `openagents.cad.intent` payload shape and `intent_json` schema.
+6. CAD dispatch/rebuild failures:
+   - inspect CAD checkpoint payload and reducer rebuild queue events.
+   - confirm no stale pending request IDs.
+7. CAD tool intentionally disabled:
+   - check `OPENAGENTS_CAD_INTENT_TOOL_ENABLED`.
+   - when disabled, expected code is `OA-CAD-INTENT-DISABLED`.
 
 ## Escalation Data To Include
 
@@ -62,3 +85,10 @@ This runbook is for diagnosing Codex app-server integration failures in `autopil
 3. Relevant wire log excerpts (request + response/notification pair).
 4. Failing test command/output.
 5. Whether failure reproduces against local `~/code/codex` app-server.
+6. CAD checkpoint snippet from tool response (`details.checkpoint`) if incident involved CAD turn.
+
+## Related Docs
+
+- `docs/codex/CODEX_PANE_CAD_TOOLING.md`
+- `docs/codex/CAD_CHAT_BUILD_IMPLEMENTATION.md`
+- `docs/codex/CAD_CHAT_BUILD_RELEASE_RUNBOOK.md`

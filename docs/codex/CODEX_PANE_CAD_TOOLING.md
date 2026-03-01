@@ -15,11 +15,40 @@ The runtime bridge lives in:
 
 The bridge executes tool calls received through Codex app-server `item/tool/call` server requests.
 
+## Implementation Map
+
+Core runtime files:
+
+- `apps/autopilot-desktop/src/input/tool_bridge.rs`
+  - tool decode/dispatch, pane action bridge, CAD tool execution, checkpoint payload contract.
+- `apps/autopilot-desktop/src/input/reducers/codex.rs`
+  - tool-call auto-response handling, transport retries, failure-class inference, chat progress syncing.
+- `apps/autopilot-desktop/src/input/reducers/cad.rs`
+  - CAD chat-intent application, rebuild enqueue/retry, progress block synthesis, harness fixtures.
+- `apps/autopilot-desktop/src/input/actions.rs`
+  - chat submit path, CAD-turn classification, required skill auto-attachment.
+- `apps/autopilot-desktop/src/input/cad_turn_classifier.rs`
+  - deterministic CAD-turn classifier used at turn submission.
+
+See [`CAD_CHAT_BUILD_IMPLEMENTATION.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_IMPLEMENTATION.md) for detailed flow and state-model coverage.
+
 ## Auto-Execution Policy
 
 - Tools in `openagents.*` namespace are auto-executed when requested by Codex.
 - Non-`openagents.*` tool calls are left in pending queue for manual response.
 - All responses are sent via `item/tool/call:respond` with structured JSON payload in `content_items[0].text`.
+
+## Chat-Driven CAD Runtime Sequence
+
+1. User submits prompt in `Autopilot Chat`.
+2. Submit path classifies turn as CAD or non-CAD and records metadata.
+3. CAD turns attach required CAD skills in deterministic order.
+4. Codex emits `item/tool/call` requests.
+5. Desktop auto-executes `openagents.*` tools.
+6. `openagents.cad.intent` applies typed CAD intent and enqueues AI-tagged rebuild trigger.
+7. Rebuild worker commits mesh + receipt.
+8. Checkpoint payload and progress rows are updated for Codex + UI visibility.
+9. Tool-call response is posted back with explicit success/failure code and fallback hints.
 
 ## Response Envelope
 
@@ -50,6 +79,12 @@ Common failure codes:
 - `OA-CAD-INTENT-PARSE-FAILED`
 - `OA-CAD-INTENT-DISPATCH-FAILED`
 - `OA-CAD-INTENT-REBUILD-ENQUEUE-FAILED`
+
+Failure class mapping used by desktop orchestration:
+
+- `tool_transport`: command submit/response transport failures.
+- `intent_parse_validation`: malformed/missing/unsupported CAD intent payloads.
+- `dispatch_rebuild`: intent dispatch or rebuild enqueue/commit failures.
 
 ## Tool Surface
 

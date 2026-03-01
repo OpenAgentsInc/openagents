@@ -8,6 +8,11 @@ This runbook is the release and operations guide for the chat-driven CAD workflo
 
 Use this document as the single-source checklist for launch readiness, regression triage, and safe rollback.
 
+Companion docs:
+
+- [`CAD_CHAT_BUILD_IMPLEMENTATION.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_IMPLEMENTATION.md)
+- [`CODEX_PANE_CAD_TOOLING.md`](/Users/christopherdavid/code/openagents/docs/codex/CODEX_PANE_CAD_TOOLING.md)
+
 ## Feature Readiness Checklist
 
 Release is blocked until all items are green:
