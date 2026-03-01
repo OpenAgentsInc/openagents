@@ -47,6 +47,8 @@ Top-level shape:
 
 - Stable IDs map semantic references to deterministic identifiers.
 - Consumers must not derive behavior from insertion order; key order is lexical.
+- Stable IDs are the persisted view of semantic refs from `CadSemanticRefRegistry`.
+- `valid` and `rebound` refs are persisted; `expired` refs are excluded from `stable_ids`.
 
 ## Error Handling
 

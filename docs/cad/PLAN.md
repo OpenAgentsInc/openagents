@@ -181,6 +181,7 @@ Decision criteria to keep objective:
 - cost heuristic model document: `docs/cad/CAD_COST_HEURISTIC.md`
 - deflection heuristic model document: `docs/cad/CAD_DEFLECTION_HEURISTIC.md`
 - engineering overlay panel document: `docs/cad/CAD_ENGINEERING_OVERLAY.md`
+- semantic ref registry document: `docs/cad/CAD_SEMANTIC_REFS.md`
 - app pane-state document: `docs/cad/CAD_PANE_STATE.md`
 - input reducer scaffold document: `docs/cad/CAD_INPUT_SCAFFOLD.md`
 - params store document: `docs/cad/CAD_PARAMS.md`
