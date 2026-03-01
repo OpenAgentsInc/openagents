@@ -310,9 +310,9 @@ impl AutopilotStructuredMessage {
             return answer.to_string();
         }
         if answer.is_empty() {
-            return format!("Reasoning:\n{reasoning}");
+            return reasoning.to_string();
         }
-        format!("Reasoning:\n{reasoning}\n\nAnswer:\n{answer}")
+        format!("{reasoning}\n\n{answer}")
     }
 }
 
@@ -3535,6 +3535,8 @@ mod tests {
         assert!(state.last_settlement_ref.is_some());
         assert!(state.total_converted_sats > 0);
         assert!(state.total_converted_usd_cents > 0);
+        assert_eq!(state.price_history_usd_cents_per_btc.len(), 1);
+        assert_eq!(state.converted_sats_history.len(), 1);
         assert!(
             state
                 .events
@@ -3566,6 +3568,8 @@ mod tests {
         assert_eq!(state.rounds_run, 0);
         assert!(state.events.is_empty());
         assert!(state.last_settlement_ref.is_none());
+        assert!(state.price_history_usd_cents_per_btc.is_empty());
+        assert!(state.converted_sats_history.is_empty());
     }
 
     #[test]

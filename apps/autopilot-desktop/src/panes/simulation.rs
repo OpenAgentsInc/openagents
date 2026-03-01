@@ -1,4 +1,4 @@
-use wgpui::{PaintContext, Point, theme};
+use wgpui::{Bounds, PaintContext, Point, Quad, theme};
 
 use crate::app_state::{
     AgentNetworkSimulationEvent, AgentNetworkSimulationPaneState, RelaySecuritySimulationPaneState,
@@ -338,7 +338,16 @@ pub fn paint_stable_sats_simulation_pane(
         row_y += 14.0;
     }
 
-    paint_simulation_timeline(content_bounds, row_y + 6.0, &pane_state.events, paint);
+    row_y += 8.0;
+    let graph_end_y = paint_stable_sats_graph(
+        content_bounds,
+        row_y,
+        &pane_state.price_history_usd_cents_per_btc,
+        &pane_state.converted_sats_history,
+        paint,
+    );
+
+    paint_simulation_timeline(content_bounds, graph_end_y + 6.0, &pane_state.events, paint);
 }
 
 fn paint_simulation_timeline(
@@ -347,6 +356,11 @@ fn paint_simulation_timeline(
     events: &[AgentNetworkSimulationEvent],
     paint: &mut PaintContext,
 ) {
+    let max_y = content_bounds.max_y() - 8.0;
+    if y + 10.0 > max_y {
+        return;
+    }
+
     if events.is_empty() {
         paint.scene.draw_text(paint.text.layout(
             "No simulation events yet.",
@@ -363,8 +377,20 @@ fn paint_simulation_timeline(
         11.0,
         theme::text::MUTED,
     ));
-    let mut row_y = y + 16.0;
-    for event in events.iter().rev().take(8) {
+    let row_start_y = y + 16.0;
+    if row_start_y + 8.0 > max_y {
+        return;
+    }
+
+    let row_height = 14.0;
+    let available_height = (max_y - row_start_y).max(0.0);
+    let max_rows = (available_height / row_height).floor() as usize;
+    if max_rows == 0 {
+        return;
+    }
+
+    let mut row_y = row_start_y;
+    for event in events.iter().rev().take(max_rows.min(8)) {
         let color = match event.protocol.as_str() {
             "NIP-28" => theme::accent::PRIMARY,
             "NIP-SKL" => theme::status::SUCCESS,
@@ -397,4 +423,132 @@ fn paint_simulation_timeline(
 
 fn format_usd_cents(usd_cents: u64) -> String {
     format!("${}.{:02}", usd_cents / 100, usd_cents % 100)
+}
+
+fn paint_stable_sats_graph(
+    content_bounds: Bounds,
+    y: f32,
+    price_history: &[u64],
+    converted_sats_history: &[u64],
+    paint: &mut PaintContext,
+) -> f32 {
+    let max_y = content_bounds.max_y() - 8.0;
+    if y + 12.0 > max_y {
+        return y;
+    }
+
+    paint.scene.draw_text(paint.text.layout(
+        "Graph: price + switched sats (last rounds)",
+        Point::new(content_bounds.origin.x + 12.0, y),
+        11.0,
+        theme::text::MUTED,
+    ));
+
+    let available = (max_y - y).max(0.0);
+    let include_legend = available >= 52.0;
+    let legend_space = if include_legend { 19.0 } else { 0.0 };
+    let graph_height_max = available - 14.0 - legend_space;
+    if graph_height_max < 12.0 {
+        return y + 12.0;
+    }
+
+    let graph_height = graph_height_max.min(68.0);
+    let graph_width = (content_bounds.size.width - 24.0).clamp(140.0, 320.0);
+    let graph_bounds = Bounds::new(
+        content_bounds.origin.x + 12.0,
+        y + 14.0,
+        graph_width,
+        graph_height,
+    );
+    paint.scene.draw_quad(
+        Quad::new(graph_bounds)
+            .with_background(theme::bg::ELEVATED)
+            .with_corner_radius(4.0),
+    );
+
+    if price_history.is_empty() || converted_sats_history.is_empty() {
+        paint.scene.draw_text(paint.text.layout(
+            "Run rounds to populate graph data.",
+            Point::new(graph_bounds.origin.x + 8.0, graph_bounds.origin.y + 22.0),
+            10.0,
+            theme::text::MUTED,
+        ));
+        if include_legend {
+            paint.scene.draw_text(paint.text.layout(
+                "blue=BTC/USD quote, green=switched sats",
+                Point::new(graph_bounds.origin.x + 8.0, graph_bounds.max_y() + 10.0),
+                9.0,
+                theme::text::MUTED,
+            ));
+            return graph_bounds.max_y() + 19.0;
+        }
+        return graph_bounds.max_y();
+    }
+
+    let count = price_history
+        .len()
+        .min(converted_sats_history.len())
+        .min(18);
+    let start_price = price_history.len().saturating_sub(count);
+    let start_sats = converted_sats_history.len().saturating_sub(count);
+    let prices = &price_history[start_price..];
+    let sats = &converted_sats_history[start_sats..];
+    let max_price = prices.iter().copied().max().unwrap_or(1).max(1);
+    let max_sats = sats.iter().copied().max().unwrap_or(1).max(1);
+
+    let inner_pad = 6.0;
+    let graph_inner = Bounds::new(
+        graph_bounds.origin.x + inner_pad,
+        graph_bounds.origin.y + inner_pad,
+        graph_bounds.size.width - (inner_pad * 2.0),
+        graph_bounds.size.height - (inner_pad * 2.0),
+    );
+    let group_w = graph_inner.size.width / count as f32;
+    let price_bar_w = (group_w * 0.38).max(2.0);
+    let sats_bar_w = (group_w * 0.38).max(2.0);
+
+    for idx in 0..count {
+        let price_ratio = prices[idx] as f32 / max_price as f32;
+        let sats_ratio = sats[idx] as f32 / max_sats as f32;
+
+        let price_h = (graph_inner.size.height * price_ratio).max(1.0);
+        let sats_h = (graph_inner.size.height * sats_ratio).max(1.0);
+        let base_x = graph_inner.origin.x + group_w * idx as f32;
+
+        let price_bounds = Bounds::new(
+            base_x + 0.5,
+            graph_inner.max_y() - price_h,
+            price_bar_w,
+            price_h,
+        );
+        paint.scene.draw_quad(
+            Quad::new(price_bounds)
+                .with_background(theme::accent::PRIMARY)
+                .with_corner_radius(1.0),
+        );
+
+        let sats_bounds = Bounds::new(
+            base_x + price_bar_w + 1.5,
+            graph_inner.max_y() - sats_h,
+            sats_bar_w,
+            sats_h,
+        );
+        paint.scene.draw_quad(
+            Quad::new(sats_bounds)
+                .with_background(theme::status::SUCCESS)
+                .with_corner_radius(1.0),
+        );
+    }
+
+    if include_legend {
+        paint.scene.draw_text(paint.text.layout(
+            "blue=BTC/USD quote, green=switched sats",
+            Point::new(graph_bounds.origin.x + 8.0, graph_bounds.max_y() + 10.0),
+            9.0,
+            theme::text::MUTED,
+        ));
+        return graph_bounds.max_y() + 19.0;
+    }
+
+    graph_bounds.max_y()
 }
