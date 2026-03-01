@@ -10,11 +10,11 @@ Implemented now:
 - Volume (`mm^3`)
 - Mass (`kg`) from selected material density
 - Center of gravity (`mm`)
+- Cost heuristic (`USD`) with deterministic assumptions metadata
 - Surface area (`mm^2`) and bounding box metadata (used by inspect UI)
 
 Deferred to follow-up issues:
 
-- Cost heuristics
 - Deflection heuristics
 - Objective scoring
 
@@ -52,3 +52,5 @@ Core analysis returns structured failures with stable codes and remediation hint
 - `CAD-ANALYSIS-NONFINITE-VERTEX`
 
 UI/reducers must surface these failures explicitly and avoid silent corruption.
+
+Cost heuristic model details are documented in `docs/cad/CAD_COST_HEURISTIC.md`.

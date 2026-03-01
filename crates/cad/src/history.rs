@@ -48,7 +48,11 @@ impl CadHistoryCommand {
                     gesture_id: prior_gesture,
                     ..
                 },
-            ) => current_name == prior_name && current_gesture == prior_gesture && current_gesture.is_some(),
+            ) => {
+                current_name == prior_name
+                    && current_gesture == prior_gesture
+                    && current_gesture.is_some()
+            }
             _ => false,
         }
     }
@@ -204,7 +208,10 @@ mod tests {
                 message: "warning".to_string(),
                 remediation_hint: "fix".to_string(),
                 semantic_refs: vec![semantic_ref.to_string()],
-                metadata: BTreeMap::from([("deep_link".to_string(), "cad://feature/base".to_string())]),
+                metadata: BTreeMap::from([(
+                    "deep_link".to_string(),
+                    "cad://feature/base".to_string(),
+                )]),
             }],
             analysis: crate::contracts::CadAnalysis {
                 document_revision: revision,
@@ -215,6 +222,10 @@ mod tests {
                 center_of_gravity_mm: Some([10.0, 20.0, 30.0]),
                 estimated_cost_usd: Some(100.0 + revision as f64),
                 max_deflection_mm: Some(0.4),
+                estimator_metadata: BTreeMap::from([(
+                    "cost.model_id".to_string(),
+                    "cad.cost.wave1.v1".to_string(),
+                )]),
                 objective_scores: BTreeMap::from([("weight".to_string(), 0.9)]),
             },
         }
@@ -267,7 +278,12 @@ mod tests {
                 next_material_id: Some("al-5052-h32".to_string()),
             },
             snapshot(2, "hash-2", "rack_outer_face", CadWarningCode::FilletFailed),
-            snapshot(3, "hash-3", "rack_outer_face", CadWarningCode::SelfIntersection),
+            snapshot(
+                3,
+                "hash-3",
+                "rack_outer_face",
+                CadWarningCode::SelfIntersection,
+            ),
         );
 
         let undo_1 = history.undo().expect("undo step 1");
@@ -275,7 +291,11 @@ mod tests {
         assert_eq!(undo_1.snapshot.geometry_hash, "hash-2");
         assert_eq!(undo_2.snapshot.geometry_hash, "hash-1");
         assert_eq!(
-            undo_2.snapshot.stable_ids.get("rack_outer_face").map(String::as_str),
+            undo_2
+                .snapshot
+                .stable_ids
+                .get("rack_outer_face")
+                .map(String::as_str),
             Some("rack_outer_face")
         );
         assert_eq!(
@@ -288,7 +308,10 @@ mod tests {
         let redo_2 = history.redo().expect("redo step 2");
         assert_eq!(redo_1.snapshot.geometry_hash, "hash-2");
         assert_eq!(redo_2.snapshot.geometry_hash, "hash-3");
-        assert_eq!(redo_2.snapshot.warnings[0].code, CadWarningCode::SelfIntersection);
+        assert_eq!(
+            redo_2.snapshot.warnings[0].code,
+            CadWarningCode::SelfIntersection
+        );
     }
 
     #[test]
@@ -319,7 +342,11 @@ mod tests {
             snapshot(4, "h4", "rack_outer_face", CadWarningCode::SliverFace),
         );
 
-        assert_eq!(history.len_undo(), 2, "max stack policy should evict oldest");
+        assert_eq!(
+            history.len_undo(),
+            2,
+            "max stack policy should evict oldest"
+        );
         history.reset_session("cad.session.4");
         assert_eq!(history.session_id, "cad.session.4");
         assert_eq!(history.len_undo(), 0);

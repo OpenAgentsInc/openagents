@@ -7,7 +7,8 @@ use openagents_cad::eval::{EvalCacheEntry, EvalCacheKey, EvalCacheStats};
 use openagents_cad::feature_graph::{FeatureGraph, FeatureNode};
 use openagents_cad::history::{CadHistoryCommand, CadHistorySnapshot};
 use openagents_cad::materials::{
-    DEFAULT_CAD_MATERIAL_ID, estimate_material_cost_usd, material_preset_by_id,
+    CadCostHeuristicError, CadCostHeuristicInput, DEFAULT_CAD_MATERIAL_ID,
+    estimate_cnc_cost_heuristic_usd, material_preset_by_id,
 };
 use openagents_cad::validity::{
     ModelValidityEntity, ModelValiditySnapshot, run_model_validity_checks,
@@ -112,9 +113,10 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
                 state.analysis_snapshot = analysis.snapshot;
                 if let Some(error) = analysis.error {
                     state.last_error = Some(format!(
-                        "CAD core analysis failed ({}): {}",
-                        error.code.stable_code(),
-                        error.message
+                        "CAD core analysis failed ({}): {}. {}",
+                        error.stable_code(),
+                        error.message(),
+                        error.remediation_hint()
                     ));
                 }
             }
@@ -507,9 +509,10 @@ fn apply_completed_rebuild(
     state.analysis_snapshot = analysis.snapshot;
     if let Some(error) = analysis.error {
         state.last_error = Some(format!(
-            "CAD core analysis failed ({}): {}",
-            error.code.stable_code(),
-            error.message
+            "CAD core analysis failed ({}): {}. {}",
+            error.stable_code(),
+            error.message(),
+            error.remediation_hint()
         ));
     }
     refresh_warning_state(state, completed.document_revision, &receipt.variant_id);
@@ -547,7 +550,7 @@ fn upsert_cad_rebuild_activity_event(state: &mut RenderState, receipt: &CadRebui
         && analysis.variant_id == receipt.variant_id
     {
         format!(
-            "analysis(volume_mm3={}, mass_kg={}, cog_mm={})",
+            "analysis(volume_mm3={}, mass_kg={}, cog_mm={}, cost_usd={}, model_id={})",
             analysis
                 .volume_mm3
                 .map(|value| format!("{value:.3}"))
@@ -560,6 +563,15 @@ fn upsert_cad_rebuild_activity_event(state: &mut RenderState, receipt: &CadRebui
                 .center_of_gravity_mm
                 .map(|value| format!("{:.3},{:.3},{:.3}", value[0], value[1], value[2]))
                 .unwrap_or_else(|| "none".to_string()),
+            analysis
+                .estimated_cost_usd
+                .map(|value| format!("{value:.2}"))
+                .unwrap_or_else(|| "none".to_string()),
+            analysis
+                .estimator_metadata
+                .get("model_id")
+                .map(String::as_str)
+                .unwrap_or("none"),
         )
     } else {
         "analysis(pending)".to_string()
@@ -600,6 +612,17 @@ fn upsert_cad_material_activity_event(state: &mut RenderState) {
         .material_id
         .as_deref()
         .unwrap_or(DEFAULT_CAD_MATERIAL_ID);
+    let cost_model = analysis
+        .estimator_metadata
+        .get("model_id")
+        .or_else(|| analysis.estimator_metadata.get("cost.model_id"))
+        .cloned()
+        .unwrap_or_else(|| "none".to_string());
+    let complexity_factor = analysis
+        .estimator_metadata
+        .get("derived.complexity_factor")
+        .cloned()
+        .unwrap_or_else(|| "none".to_string());
     let occurred_at_epoch_seconds = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
@@ -614,7 +637,7 @@ fn upsert_cad_material_activity_event(state: &mut RenderState) {
         occurred_at_epoch_seconds,
         summary: format!("CAD material -> {material_id}"),
         detail: format!(
-            "variant={} mass_kg={} cost_usd={}",
+            "variant={} mass_kg={} cost_usd={} model={} complexity={}",
             analysis.variant_id,
             analysis
                 .mass_kg
@@ -624,6 +647,8 @@ fn upsert_cad_material_activity_event(state: &mut RenderState) {
                 .estimated_cost_usd
                 .map(|value| format!("{value:.2}"))
                 .unwrap_or_else(|| "none".to_string()),
+            cost_model,
+            complexity_factor,
         ),
     });
     state.activity_feed.load_state = PaneLoadState::Ready;
@@ -834,7 +859,35 @@ fn provenance_from_trigger(trigger: &str) -> String {
 
 struct CadAnalysisComputation {
     snapshot: openagents_cad::contracts::CadAnalysis,
-    error: Option<CadBodyAnalysisError>,
+    error: Option<CadAnalysisComputationError>,
+}
+
+enum CadAnalysisComputationError {
+    Body(CadBodyAnalysisError),
+    Cost(CadCostHeuristicError),
+}
+
+impl CadAnalysisComputationError {
+    fn stable_code(&self) -> &'static str {
+        match self {
+            Self::Body(error) => error.code.stable_code(),
+            Self::Cost(error) => error.code.stable_code(),
+        }
+    }
+
+    fn message(&self) -> &str {
+        match self {
+            Self::Body(error) => error.message.as_str(),
+            Self::Cost(error) => error.message.as_str(),
+        }
+    }
+
+    fn remediation_hint(&self) -> &'static str {
+        match self {
+            Self::Body(error) => error.remediation_hint(),
+            Self::Cost(error) => error.remediation_hint(),
+        }
+    }
 }
 
 fn analysis_snapshot_from_mesh(
@@ -849,8 +902,36 @@ fn analysis_snapshot_from_mesh(
     match analyze_body_properties(mesh_payload, material.density_kg_m3) {
         Ok(receipt) => {
             let mass_kg = Some(receipt.properties.mass_kg);
-            let estimated_cost_usd =
-                mass_kg.and_then(|mass| estimate_material_cost_usd(mass, material));
+            let mut estimator_metadata = BTreeMap::new();
+            let mut error = None;
+            let estimated_cost_usd = match estimate_cnc_cost_heuristic_usd(
+                CadCostHeuristicInput {
+                    mass_kg: receipt.properties.mass_kg,
+                    volume_mm3: receipt.properties.volume_mm3,
+                    surface_area_mm2: receipt.properties.surface_area_mm2,
+                    triangle_count: receipt.triangle_count,
+                },
+                material,
+            ) {
+                Ok(cost) => {
+                    estimator_metadata = cost.metadata;
+                    Some(cost.total_cost_usd)
+                }
+                Err(cost_error) => {
+                    estimator_metadata.insert(
+                        "cost.error.code".to_string(),
+                        cost_error.code.stable_code().to_string(),
+                    );
+                    estimator_metadata
+                        .insert("cost.error.message".to_string(), cost_error.message.clone());
+                    estimator_metadata.insert(
+                        "cost.error.remediation_hint".to_string(),
+                        cost_error.remediation_hint().to_string(),
+                    );
+                    error = Some(CadAnalysisComputationError::Cost(cost_error));
+                    None
+                }
+            };
             CadAnalysisComputation {
                 snapshot: openagents_cad::contracts::CadAnalysis {
                     document_revision,
@@ -861,25 +942,39 @@ fn analysis_snapshot_from_mesh(
                     center_of_gravity_mm: Some(receipt.properties.center_of_gravity_mm),
                     estimated_cost_usd,
                     max_deflection_mm: None,
+                    estimator_metadata,
                     objective_scores: BTreeMap::new(),
                 },
-                error: None,
+                error,
             }
         }
-        Err(error) => CadAnalysisComputation {
-            snapshot: openagents_cad::contracts::CadAnalysis {
-                document_revision,
-                variant_id: variant_id.to_string(),
-                material_id: Some(material.id.to_string()),
-                volume_mm3: None,
-                mass_kg: None,
-                center_of_gravity_mm: None,
-                estimated_cost_usd: None,
-                max_deflection_mm: None,
-                objective_scores: BTreeMap::new(),
-            },
-            error: Some(error),
-        },
+        Err(error) => {
+            let remediation_hint = error.remediation_hint().to_string();
+            let error_code = error.code.stable_code().to_string();
+            let error_message = error.message.clone();
+            CadAnalysisComputation {
+                snapshot: openagents_cad::contracts::CadAnalysis {
+                    document_revision,
+                    variant_id: variant_id.to_string(),
+                    material_id: Some(material.id.to_string()),
+                    volume_mm3: None,
+                    mass_kg: None,
+                    center_of_gravity_mm: None,
+                    estimated_cost_usd: None,
+                    max_deflection_mm: None,
+                    estimator_metadata: BTreeMap::from([
+                        ("analysis.error.code".to_string(), error_code),
+                        ("analysis.error.message".to_string(), error_message),
+                        (
+                            "analysis.error.remediation_hint".to_string(),
+                            remediation_hint,
+                        ),
+                    ]),
+                    objective_scores: BTreeMap::new(),
+                },
+                error: Some(CadAnalysisComputationError::Body(error)),
+            }
+        }
     }
 }
 
@@ -1329,6 +1424,21 @@ mod tests {
             .analysis_snapshot
             .estimated_cost_usd
             .expect("cost should exist after rebuild");
+        assert_eq!(
+            state
+                .analysis_snapshot
+                .estimator_metadata
+                .get("model_id")
+                .map(String::as_str),
+            Some(openagents_cad::materials::CAD_COST_HEURISTIC_MODEL_ID)
+        );
+        assert!(
+            state
+                .analysis_snapshot
+                .estimator_metadata
+                .contains_key("assumption.machine_rate_usd_per_min"),
+            "cost metadata should expose estimator assumptions"
+        );
 
         assert!(apply_cad_demo_action(
             &mut state,
@@ -1502,7 +1612,7 @@ mod tests {
         let result = analysis_snapshot_from_mesh(7, "variant.baseline", &payload, "al-6061-t6");
         assert!(result.snapshot.volume_mm3.is_none());
         let error = result.error.expect("analysis error should be surfaced");
-        assert_eq!(error.code.stable_code(), "CAD-ANALYSIS-MISSING-VERTEX");
+        assert_eq!(error.stable_code(), "CAD-ANALYSIS-MISSING-VERTEX");
         assert!(!error.remediation_hint().is_empty());
     }
 
