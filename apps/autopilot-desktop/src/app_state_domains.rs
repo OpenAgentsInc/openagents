@@ -504,6 +504,8 @@ pub struct CadDemoPaneState {
     pub timeline_selected_index: Option<usize>,
     pub timeline_scroll_offset: usize,
     pub selected_feature_params: Vec<(String, String)>,
+    pub dimensions: Vec<CadDimensionState>,
+    pub dimension_edit: Option<CadDimensionEditState>,
     pub context_menu: CadContextMenuState,
     pub cad_events: Vec<openagents_cad::events::CadEvent>,
 }
@@ -957,6 +959,22 @@ pub struct CadTimelineRowState {
     pub params: Vec<(String, String)>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct CadDimensionState {
+    pub dimension_id: String,
+    pub label: String,
+    pub value_mm: f64,
+    pub min_mm: f64,
+    pub max_mm: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct CadDimensionEditState {
+    pub dimension_index: usize,
+    pub draft_value: String,
+    pub last_error: Option<String>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CadContextMenuTargetKind {
     Body,
@@ -1065,6 +1083,36 @@ impl Default for CadDemoPaneState {
             .iter()
             .map(|variant_id| (variant_id.clone(), Vec::new()))
             .collect::<std::collections::BTreeMap<_, _>>();
+        let dimensions = vec![
+            CadDimensionState {
+                dimension_id: "width_mm".to_string(),
+                label: "Width".to_string(),
+                value_mm: 390.0,
+                min_mm: 300.0,
+                max_mm: 520.0,
+            },
+            CadDimensionState {
+                dimension_id: "depth_mm".to_string(),
+                label: "Depth".to_string(),
+                value_mm: 226.0,
+                min_mm: 140.0,
+                max_mm: 320.0,
+            },
+            CadDimensionState {
+                dimension_id: "height_mm".to_string(),
+                label: "Height".to_string(),
+                value_mm: 88.0,
+                min_mm: 40.0,
+                max_mm: 180.0,
+            },
+            CadDimensionState {
+                dimension_id: "wall_mm".to_string(),
+                label: "Wall".to_string(),
+                value_mm: 6.0,
+                min_mm: 2.0,
+                max_mm: 20.0,
+            },
+        ];
         let session_id = "cad.session.local".to_string();
         let document_id = "cad.doc.demo-rack".to_string();
         let document_created_event = openagents_cad::events::CadEvent::new_with_key(
@@ -1138,6 +1186,8 @@ impl Default for CadDemoPaneState {
             timeline_selected_index: None,
             timeline_scroll_offset: 0,
             selected_feature_params: Vec::new(),
+            dimensions,
+            dimension_edit: None,
             context_menu: CadContextMenuState::default(),
             cad_events: vec![document_created_event],
         }
@@ -1221,6 +1271,94 @@ impl CadDemoPaneState {
     pub fn set_hovered_geometry_for_active_variant(&mut self, value: Option<String>) {
         self.hovered_geometry_ref = value;
         self.sync_active_variant_viewport_from_global();
+    }
+
+    pub fn begin_dimension_edit(&mut self, index: usize) -> bool {
+        let Some(dimension) = self.dimensions.get(index) else {
+            return false;
+        };
+        self.dimension_edit = Some(CadDimensionEditState {
+            dimension_index: index,
+            draft_value: format!("{:.3}", dimension.value_mm),
+            last_error: None,
+        });
+        true
+    }
+
+    pub fn append_dimension_edit_char(&mut self, ch: char) -> bool {
+        let Some(edit) = self.dimension_edit.as_mut() else {
+            return false;
+        };
+        if !matches!(ch, '0'..='9' | '.' | '-') {
+            return false;
+        }
+        if ch == '.' && edit.draft_value.contains('.') {
+            return false;
+        }
+        if ch == '-' && !edit.draft_value.is_empty() {
+            return false;
+        }
+        if edit.draft_value.len() >= 24 {
+            return false;
+        }
+        edit.draft_value.push(ch);
+        edit.last_error = None;
+        true
+    }
+
+    pub fn backspace_dimension_edit(&mut self) -> bool {
+        let Some(edit) = self.dimension_edit.as_mut() else {
+            return false;
+        };
+        if edit.draft_value.is_empty() {
+            return false;
+        }
+        edit.draft_value.pop();
+        edit.last_error = None;
+        true
+    }
+
+    pub fn cancel_dimension_edit(&mut self) -> bool {
+        if self.dimension_edit.is_none() {
+            return false;
+        }
+        self.dimension_edit = None;
+        true
+    }
+
+    pub fn commit_dimension_edit(&mut self) -> Result<(String, f64, f64), String> {
+        let Some(edit) = self.dimension_edit.clone() else {
+            return Err("no active dimension edit session".to_string());
+        };
+        let Some(dimension) = self.dimensions.get_mut(edit.dimension_index) else {
+            self.dimension_edit = None;
+            return Err("dimension index out of range".to_string());
+        };
+        let parsed = edit
+            .draft_value
+            .trim()
+            .parse::<f64>()
+            .map_err(|_| "dimension input must be numeric (mm)".to_string())?;
+        if !parsed.is_finite() {
+            return Err("dimension input must be finite".to_string());
+        }
+        if parsed < dimension.min_mm || parsed > dimension.max_mm {
+            return Err(format!(
+                "{} must be between {:.3} and {:.3} mm",
+                dimension.label, dimension.min_mm, dimension.max_mm
+            ));
+        }
+        let previous = dimension.value_mm;
+        dimension.value_mm = parsed;
+        self.dimension_edit = None;
+        Ok((dimension.dimension_id.clone(), previous, parsed))
+    }
+
+    pub fn dimension_value_mm(&self, dimension_id: &str) -> Option<f64> {
+        self.dimensions
+            .iter()
+            .find(|dimension| dimension.dimension_id == dimension_id)
+            .map(|dimension| dimension.value_mm)
     }
 
     pub fn set_variant_analysis_snapshot(

@@ -15,7 +15,8 @@ use crate::app_state::{
 use crate::pane_renderer::paint_action_button;
 use crate::pane_system::{
     cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
-    cad_demo_cycle_variant_button_bounds, cad_demo_hidden_line_mode_button_bounds,
+    cad_demo_cycle_variant_button_bounds, cad_demo_dimension_panel_bounds,
+    cad_demo_dimension_row_bounds, cad_demo_hidden_line_mode_button_bounds,
     cad_demo_hotkey_profile_button_bounds, cad_demo_material_button_bounds,
     cad_demo_projection_mode_button_bounds, cad_demo_reset_button_bounds,
     cad_demo_reset_camera_button_bounds, cad_demo_section_offset_button_bounds,
@@ -182,6 +183,7 @@ pub fn paint_cad_demo_placeholder_pane(
     let section_offset_bounds = cad_demo_section_offset_button_bounds(content_bounds);
     let material_bounds = cad_demo_material_button_bounds(content_bounds);
     let warning_panel = cad_demo_warning_panel_bounds(content_bounds);
+    let dimension_panel = cad_demo_dimension_panel_bounds(content_bounds);
     let timeline_panel = cad_demo_timeline_panel_bounds(content_bounds);
     let severity_filter_bounds = cad_demo_warning_filter_severity_button_bounds(content_bounds);
     let code_filter_bounds = cad_demo_warning_filter_code_button_bounds(content_bounds);
@@ -542,6 +544,79 @@ pub fn paint_cad_demo_placeholder_pane(
                     Point::new(row_bounds.origin.x + 4.0, detail_y),
                     8.0,
                     theme::text::MUTED,
+                ));
+            }
+        }
+    }
+
+    if dimension_panel.size.width > 2.0 && dimension_panel.size.height > 2.0 {
+        paint.scene.draw_quad(
+            Quad::new(dimension_panel)
+                .with_background(theme::bg::SURFACE)
+                .with_corner_radius(4.0)
+                .with_border(theme::border::SUBTLE, 1.0),
+        );
+        paint.scene.draw_text(paint.text.layout(
+            "Dimensions",
+            Point::new(
+                dimension_panel.origin.x + 6.0,
+                dimension_panel.origin.y + 10.0,
+            ),
+            9.0,
+            theme::text::SECONDARY,
+        ));
+
+        for (index, dimension) in pane_state.dimensions.iter().take(4).enumerate() {
+            let row_bounds = cad_demo_dimension_row_bounds(content_bounds, index);
+            if row_bounds.max_y() > dimension_panel.max_y() {
+                break;
+            }
+            let is_editing = pane_state
+                .dimension_edit
+                .as_ref()
+                .is_some_and(|edit| edit.dimension_index == index);
+            if is_editing {
+                paint.scene.draw_quad(
+                    Quad::new(row_bounds)
+                        .with_background(theme::bg::ELEVATED)
+                        .with_corner_radius(3.0),
+                );
+            }
+            let value_text = if is_editing {
+                pane_state
+                    .dimension_edit
+                    .as_ref()
+                    .map(|edit| edit.draft_value.clone())
+                    .unwrap_or_else(|| format!("{:.3}", dimension.value_mm))
+            } else {
+                format!("{:.3}", dimension.value_mm)
+            };
+            let prefix = if is_editing { ">" } else { "" };
+            paint.scene.draw_text(paint.text.layout(
+                &format!("{prefix}{}: {value_text} mm", dimension.label),
+                Point::new(row_bounds.origin.x + 4.0, row_bounds.origin.y + 10.0),
+                8.5,
+                if is_editing {
+                    theme::text::PRIMARY
+                } else {
+                    theme::text::MUTED
+                },
+            ));
+        }
+
+        if let Some(edit) = pane_state.dimension_edit.as_ref()
+            && let Some(error) = edit.last_error.as_deref()
+        {
+            let error_origin = Point::new(
+                dimension_panel.origin.x + 6.0,
+                (dimension_panel.max_y() - 8.0).max(dimension_panel.origin.y + 12.0),
+            );
+            if error_origin.y + 8.0 <= dimension_panel.max_y() {
+                paint.scene.draw_text(paint.text.layout(
+                    error,
+                    error_origin,
+                    7.5,
+                    theme::status::ERROR,
                 ));
             }
         }

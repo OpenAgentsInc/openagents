@@ -3915,6 +3915,44 @@ mod tests {
     }
 
     #[test]
+    fn cad_dimension_editing_is_typed_and_bounded() {
+        let mut state = CadDemoPaneState::default();
+        assert!(state.begin_dimension_edit(0));
+        assert!(state.dimension_edit.is_some());
+
+        // Replace default draft with a typed value.
+        for _ in 0..16 {
+            let _ = state.backspace_dimension_edit();
+        }
+        assert!(state.append_dimension_edit_char('4'));
+        assert!(state.append_dimension_edit_char('2'));
+        assert!(state.append_dimension_edit_char('0'));
+        assert!(state.append_dimension_edit_char('.'));
+        assert!(state.append_dimension_edit_char('5'));
+
+        let (dimension_id, before, after) = state
+            .commit_dimension_edit()
+            .expect("dimension commit should succeed");
+        assert_eq!(dimension_id, "width_mm");
+        assert_eq!(before, 390.0);
+        assert_eq!(after, 420.5);
+        assert!(state.dimension_edit.is_none());
+        assert_eq!(state.dimension_value_mm("width_mm"), Some(420.5));
+
+        assert!(state.begin_dimension_edit(3));
+        for _ in 0..16 {
+            let _ = state.backspace_dimension_edit();
+        }
+        assert!(state.append_dimension_edit_char('9'));
+        assert!(state.append_dimension_edit_char('9'));
+        let error = state
+            .commit_dimension_edit()
+            .expect_err("out-of-range wall edit must fail");
+        assert!(error.contains("Wall"));
+        assert_eq!(state.dimension_value_mm("wall_mm"), Some(6.0));
+    }
+
+    #[test]
     fn cad_snap_modes_and_point_snapping_are_deterministic() {
         let mut first = CadDemoPaneState::default();
         let mut second = CadDemoPaneState::default();

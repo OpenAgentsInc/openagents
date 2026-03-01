@@ -51,9 +51,9 @@ use crate::pane_system::{
     SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StableSatsSimulationPaneAction,
     StarterJobsPaneAction, SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction,
     cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
-    cad_demo_cycle_variant_button_bounds, cad_demo_hidden_line_mode_button_bounds,
-    cad_demo_hotkey_profile_button_bounds, cad_demo_material_button_bounds,
-    cad_demo_projection_mode_button_bounds,
+    cad_demo_cycle_variant_button_bounds, cad_demo_dimension_panel_bounds,
+    cad_demo_hidden_line_mode_button_bounds, cad_demo_hotkey_profile_button_bounds,
+    cad_demo_material_button_bounds, cad_demo_projection_mode_button_bounds,
     cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
     cad_demo_section_offset_button_bounds, cad_demo_section_plane_button_bounds,
     cad_demo_snap_endpoint_button_bounds, cad_demo_snap_grid_button_bounds,
@@ -777,7 +777,8 @@ fn handle_cad_context_menu_click(
                 .get(index)
                 .map(|item| item.id.clone());
             if selected_item_id.as_deref() == Some("body.material") {
-                let _ = reducers::run_cad_demo_action(state, CadDemoPaneAction::CycleMaterialPreset);
+                let _ =
+                    reducers::run_cad_demo_action(state, CadDemoPaneAction::CycleMaterialPreset);
             } else if let Some(action) = state.cad_demo.run_context_menu_item(index) {
                 state.cad_demo.last_action = Some(action);
             }
@@ -896,6 +897,7 @@ fn cad_camera_target_pane_id(state: &crate::app_state::RenderState, point: Point
             || cad_demo_warning_filter_severity_button_bounds(content_bounds).contains(point)
             || cad_demo_warning_filter_code_button_bounds(content_bounds).contains(point)
             || cad_demo_warning_panel_bounds(content_bounds).contains(point)
+            || cad_demo_dimension_panel_bounds(content_bounds).contains(point)
             || cad_demo_timeline_panel_bounds(content_bounds).contains(point)
         {
             return None;
@@ -1645,6 +1647,24 @@ fn handle_cad_timeline_keyboard_input(
         .is_some_and(|pane| pane.kind == crate::app_state::PaneKind::CadDemo);
     if !is_cad_active {
         return false;
+    }
+
+    if state.cad_demo.dimension_edit.is_some() {
+        return match key {
+            Key::Named(NamedKey::Enter) => {
+                reducers::run_cad_demo_action(state, CadDemoPaneAction::DimensionInputCommit)
+            }
+            Key::Named(NamedKey::Escape) => {
+                reducers::run_cad_demo_action(state, CadDemoPaneAction::DimensionInputCancel)
+            }
+            Key::Named(NamedKey::Backspace) => {
+                reducers::run_cad_demo_action(state, CadDemoPaneAction::DimensionInputBackspace)
+            }
+            Key::Character(value) => value.chars().filter(|ch| !ch.is_whitespace()).any(|ch| {
+                reducers::run_cad_demo_action(state, CadDemoPaneAction::DimensionInputChar(ch))
+            }),
+            _ => false,
+        };
     }
 
     match key {
