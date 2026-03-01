@@ -38,6 +38,25 @@ This receipt is intended for CAD pane telemetry and activity logging.
 
 This allows incremental rebuild paths to avoid recomputing unaffected upstream nodes.
 
+## Eval Cache
+
+`EvalCacheStore` provides deterministic per-feature caching keyed by:
+
+- `document_revision`
+- `feature_node_id`
+- `params_hash`
+
+Supporting contracts:
+
+- `EvalCacheKey::from_feature_node(...)`
+- `EvalCacheEntry { geometry_hash }`
+- `EvalCacheStats { hits, misses, evictions }`
+
+Behavior:
+
+- LRU eviction when capacity is exceeded.
+- Explicit hit/miss/eviction accounting for observability.
+
 ## Verification
 
 - `cargo test -p openagents-cad`
