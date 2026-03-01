@@ -468,6 +468,8 @@ pub struct CadDemoPaneState {
     pub warning_hover_index: Option<usize>,
     pub focused_warning_index: Option<usize>,
     pub focused_geometry_ref: Option<String>,
+    pub hovered_geometry_ref: Option<String>,
+    pub selection_store: openagents_cad::selection::CadSelectionStore,
     pub hidden_line_mode: CadHiddenLineMode,
     pub snap_toggles: CadSnapToggles,
     pub projection_mode: CadProjectionMode,
@@ -959,6 +961,7 @@ pub struct CadVariantViewportState {
     pub camera_orbit_yaw_deg: f32,
     pub camera_orbit_pitch_deg: f32,
     pub selected_ref: Option<String>,
+    pub hovered_ref: Option<String>,
 }
 
 impl CadVariantViewportState {
@@ -971,6 +974,7 @@ impl CadVariantViewportState {
             camera_orbit_yaw_deg: 26.0,
             camera_orbit_pitch_deg: 18.0,
             selected_ref: None,
+            hovered_ref: None,
         }
     }
 }
@@ -1013,6 +1017,8 @@ impl Default for CadDemoPaneState {
             warning_hover_index: None,
             focused_warning_index: None,
             focused_geometry_ref: None,
+            hovered_geometry_ref: None,
+            selection_store: openagents_cad::selection::CadSelectionStore::default(),
             hidden_line_mode: CadHiddenLineMode::Shaded,
             snap_toggles: CadSnapToggles::default(),
             projection_mode: CadProjectionMode::Orthographic,
@@ -1053,6 +1059,7 @@ impl CadDemoPaneState {
         active.camera_orbit_yaw_deg = self.camera_orbit_yaw_deg;
         active.camera_orbit_pitch_deg = self.camera_orbit_pitch_deg;
         active.selected_ref = self.focused_geometry_ref.clone();
+        active.hovered_ref = self.hovered_geometry_ref.clone();
     }
 
     fn sync_global_from_variant_viewport(&mut self) {
@@ -1069,6 +1076,7 @@ impl CadDemoPaneState {
         self.camera_orbit_yaw_deg = active.camera_orbit_yaw_deg;
         self.camera_orbit_pitch_deg = active.camera_orbit_pitch_deg;
         self.focused_geometry_ref = active.selected_ref.clone();
+        self.hovered_geometry_ref = active.hovered_ref.clone();
     }
 
     pub fn set_active_variant_tile(&mut self, tile_index: usize) -> bool {
@@ -1088,6 +1096,39 @@ impl CadDemoPaneState {
     pub fn set_focused_geometry_for_active_variant(&mut self, value: Option<String>) {
         self.focused_geometry_ref = value;
         self.sync_active_variant_viewport_from_global();
+    }
+
+    pub fn set_hovered_geometry_for_active_variant(&mut self, value: Option<String>) {
+        self.hovered_geometry_ref = value;
+        self.sync_active_variant_viewport_from_global();
+    }
+
+    pub fn set_hovered_geometry_for_tile_focus(
+        &mut self,
+        tile_index: Option<usize>,
+        hovered_ref: Option<String>,
+    ) -> bool {
+        let mut changed = false;
+        for (index, viewport) in self.variant_viewports.iter_mut().enumerate() {
+            let next_hover = if Some(index) == tile_index {
+                hovered_ref.clone()
+            } else {
+                None
+            };
+            if viewport.hovered_ref != next_hover {
+                viewport.hovered_ref = next_hover;
+                changed = true;
+            }
+        }
+
+        let active_hover = tile_index
+            .filter(|index| *index == self.active_variant_tile_index)
+            .and(hovered_ref);
+        if self.hovered_geometry_ref != active_hover {
+            self.hovered_geometry_ref = active_hover;
+            changed = true;
+        }
+        changed
     }
 
     pub fn reset_camera(&mut self) {
