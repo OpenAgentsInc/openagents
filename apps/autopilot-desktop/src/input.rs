@@ -47,7 +47,9 @@ use crate::pane_system::{
     StarterJobsPaneAction, SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction,
     cad_demo_cycle_variant_button_bounds, cad_demo_hidden_line_mode_button_bounds,
     cad_demo_projection_mode_button_bounds, cad_demo_reset_button_bounds,
-    cad_demo_reset_camera_button_bounds, cad_demo_timeline_panel_bounds,
+    cad_demo_reset_camera_button_bounds, cad_demo_snap_endpoint_button_bounds,
+    cad_demo_snap_grid_button_bounds, cad_demo_snap_midpoint_button_bounds,
+    cad_demo_snap_origin_button_bounds, cad_demo_timeline_panel_bounds,
     cad_demo_view_snap_front_button_bounds, cad_demo_view_snap_iso_button_bounds,
     cad_demo_view_snap_right_button_bounds, cad_demo_view_snap_top_button_bounds,
     cad_demo_warning_filter_code_button_bounds, cad_demo_warning_filter_severity_button_bounds,
@@ -476,7 +478,11 @@ fn dispatch_mouse_up(
     handled |= PaneInput::handle_mouse_up(state, event);
     handled |= dispatch_text_inputs(state, event);
     if !camera_drag_consumed_click {
-        handled |= dispatch_pane_actions(state, point);
+        let snap_preview_handled = handle_cad_snap_preview_click(state, point, event);
+        handled |= snap_preview_handled;
+        if !snap_preview_handled {
+            handled |= dispatch_pane_actions(state, point);
+        }
     }
     handled |= state
         .hotbar
@@ -484,6 +490,45 @@ fn dispatch_mouse_up(
         .is_handled();
     handled |= process_hotbar_clicks(state);
     handled
+}
+
+fn handle_cad_snap_preview_click(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+    event: &InputEvent,
+) -> bool {
+    let InputEvent::MouseUp { button, .. } = event else {
+        return false;
+    };
+    if *button != MouseButton::Left {
+        return false;
+    }
+    if !state.cad_demo.snap_toggles.grid
+        && !state.cad_demo.snap_toggles.origin
+        && !state.cad_demo.snap_toggles.endpoint
+        && !state.cad_demo.snap_toggles.midpoint
+    {
+        return false;
+    }
+
+    let Some(pane_id) = cad_camera_target_pane_id(state, point) else {
+        return false;
+    };
+    let Some(pane) = state.panes.iter().find(|pane| pane.id == pane_id) else {
+        return false;
+    };
+    let content_bounds = pane_content_bounds(pane.bounds);
+    let viewport = cad_pane::camera_interaction_bounds(content_bounds);
+    let snapped = state.cad_demo.apply_snap_to_viewport_point(point, viewport);
+    state.cad_demo.last_action = Some(format!(
+        "CAD snap preview raw=({:.1},{:.1}) snapped=({:.1},{:.1}) {}",
+        point.x,
+        point.y,
+        snapped.x,
+        snapped.y,
+        state.cad_demo.snap_summary(),
+    ));
+    true
 }
 
 fn dispatch_mouse_scroll(
@@ -520,6 +565,10 @@ fn cad_camera_target_pane_id(state: &crate::app_state::RenderState, point: Point
             || cad_demo_hidden_line_mode_button_bounds(content_bounds).contains(point)
             || cad_demo_reset_camera_button_bounds(content_bounds).contains(point)
             || cad_demo_projection_mode_button_bounds(content_bounds).contains(point)
+            || cad_demo_snap_grid_button_bounds(content_bounds).contains(point)
+            || cad_demo_snap_origin_button_bounds(content_bounds).contains(point)
+            || cad_demo_snap_endpoint_button_bounds(content_bounds).contains(point)
+            || cad_demo_snap_midpoint_button_bounds(content_bounds).contains(point)
             || cad_demo_view_snap_top_button_bounds(content_bounds).contains(point)
             || cad_demo_view_snap_front_button_bounds(content_bounds).contains(point)
             || cad_demo_view_snap_right_button_bounds(content_bounds).contains(point)

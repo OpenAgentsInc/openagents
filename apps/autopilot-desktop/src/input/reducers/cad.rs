@@ -11,7 +11,8 @@ use openagents_cad::validity::{
 
 use crate::app_state::{
     ActivityEventDomain, ActivityEventRow, CadCameraViewSnap, CadDemoPaneState,
-    CadDemoWarningState, CadRebuildReceiptState, CadTimelineRowState, PaneLoadState, RenderState,
+    CadDemoWarningState, CadRebuildReceiptState, CadSnapMode, CadTimelineRowState, PaneLoadState,
+    RenderState,
 };
 use crate::cad_rebuild_worker::{
     CadBackgroundRebuildWorker, CadRebuildCompleted, CadRebuildRequest, CadRebuildResponse,
@@ -73,6 +74,42 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
             state.last_action = Some(format!(
                 "CAD projection mode -> {}",
                 state.projection_mode.label()
+            ));
+            true
+        }
+        CadDemoPaneAction::ToggleSnapGrid => {
+            let enabled = state.toggle_snap_mode(CadSnapMode::Grid);
+            state.last_action = Some(format!(
+                "CAD snap grid -> {} ({})",
+                if enabled { "on" } else { "off" },
+                state.snap_summary()
+            ));
+            true
+        }
+        CadDemoPaneAction::ToggleSnapOrigin => {
+            let enabled = state.toggle_snap_mode(CadSnapMode::Origin);
+            state.last_action = Some(format!(
+                "CAD snap origin -> {} ({})",
+                if enabled { "on" } else { "off" },
+                state.snap_summary()
+            ));
+            true
+        }
+        CadDemoPaneAction::ToggleSnapEndpoint => {
+            let enabled = state.toggle_snap_mode(CadSnapMode::Endpoint);
+            state.last_action = Some(format!(
+                "CAD snap endpoint -> {} ({})",
+                if enabled { "on" } else { "off" },
+                state.snap_summary()
+            ));
+            true
+        }
+        CadDemoPaneAction::ToggleSnapMidpoint => {
+            let enabled = state.toggle_snap_mode(CadSnapMode::Midpoint);
+            state.last_action = Some(format!(
+                "CAD snap midpoint -> {} ({})",
+                if enabled { "on" } else { "off" },
+                state.snap_summary()
             ));
             true
         }
@@ -974,6 +1011,31 @@ mod tests {
             state.projection_mode,
             crate::app_state::CadProjectionMode::Orthographic
         );
+    }
+
+    #[test]
+    fn snap_toggle_actions_flip_state_deterministically() {
+        let mut state = CadDemoPaneState::default();
+        assert!(state.snap_toggles.grid);
+        assert!(state.snap_toggles.origin);
+        assert!(!state.snap_toggles.endpoint);
+        assert!(!state.snap_toggles.midpoint);
+
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::ToggleSnapGrid
+        ));
+        assert!(!state.snap_toggles.grid);
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::ToggleSnapEndpoint
+        ));
+        assert!(state.snap_toggles.endpoint);
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::ToggleSnapMidpoint
+        ));
+        assert!(state.snap_toggles.midpoint);
     }
 
     #[test]

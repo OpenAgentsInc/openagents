@@ -11,7 +11,9 @@ use crate::pane_renderer::paint_action_button;
 use crate::pane_system::{
     cad_demo_cycle_variant_button_bounds, cad_demo_hidden_line_mode_button_bounds,
     cad_demo_projection_mode_button_bounds, cad_demo_reset_button_bounds,
-    cad_demo_reset_camera_button_bounds, cad_demo_timeline_panel_bounds,
+    cad_demo_reset_camera_button_bounds, cad_demo_snap_endpoint_button_bounds,
+    cad_demo_snap_grid_button_bounds, cad_demo_snap_midpoint_button_bounds,
+    cad_demo_snap_origin_button_bounds, cad_demo_timeline_panel_bounds,
     cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
     cad_demo_view_snap_front_button_bounds, cad_demo_view_snap_iso_button_bounds,
     cad_demo_view_snap_right_button_bounds, cad_demo_view_snap_top_button_bounds,
@@ -91,12 +93,20 @@ fn cad_demo_body_bounds(content_bounds: Bounds) -> Bounds {
     let hidden_line_bounds = cad_demo_hidden_line_mode_button_bounds(content_bounds);
     let reset_camera_bounds = cad_demo_reset_camera_button_bounds(content_bounds);
     let projection_bounds = cad_demo_projection_mode_button_bounds(content_bounds);
+    let snap_grid_bounds = cad_demo_snap_grid_button_bounds(content_bounds);
+    let snap_origin_bounds = cad_demo_snap_origin_button_bounds(content_bounds);
+    let snap_endpoint_bounds = cad_demo_snap_endpoint_button_bounds(content_bounds);
+    let snap_midpoint_bounds = cad_demo_snap_midpoint_button_bounds(content_bounds);
     let body_top = (cycle_bounds
         .max_y()
         .max(reset_bounds.max_y())
         .max(hidden_line_bounds.max_y())
         .max(reset_camera_bounds.max_y())
         .max(projection_bounds.max_y())
+        .max(snap_grid_bounds.max_y())
+        .max(snap_origin_bounds.max_y())
+        .max(snap_endpoint_bounds.max_y())
+        .max(snap_midpoint_bounds.max_y())
         + 8.0)
         .min(content_bounds.max_y());
     Bounds::new(
@@ -121,6 +131,10 @@ pub fn paint_cad_demo_placeholder_pane(
     let hidden_line_bounds = cad_demo_hidden_line_mode_button_bounds(content_bounds);
     let reset_camera_bounds = cad_demo_reset_camera_button_bounds(content_bounds);
     let projection_bounds = cad_demo_projection_mode_button_bounds(content_bounds);
+    let snap_grid_bounds = cad_demo_snap_grid_button_bounds(content_bounds);
+    let snap_origin_bounds = cad_demo_snap_origin_button_bounds(content_bounds);
+    let snap_endpoint_bounds = cad_demo_snap_endpoint_button_bounds(content_bounds);
+    let snap_midpoint_bounds = cad_demo_snap_midpoint_button_bounds(content_bounds);
     let warning_panel = cad_demo_warning_panel_bounds(content_bounds);
     let timeline_panel = cad_demo_timeline_panel_bounds(content_bounds);
     let severity_filter_bounds = cad_demo_warning_filter_severity_button_bounds(content_bounds);
@@ -136,6 +150,42 @@ pub fn paint_cad_demo_placeholder_pane(
     paint_action_button(
         projection_bounds,
         &format!("Projection: {}", pane_state.projection_mode.label()),
+        paint,
+    );
+    paint_action_button(
+        snap_grid_bounds,
+        if pane_state.snap_toggles.grid {
+            "Grid Snap: On"
+        } else {
+            "Grid Snap: Off"
+        },
+        paint,
+    );
+    paint_action_button(
+        snap_origin_bounds,
+        if pane_state.snap_toggles.origin {
+            "Origin Snap: On"
+        } else {
+            "Origin Snap: Off"
+        },
+        paint,
+    );
+    paint_action_button(
+        snap_endpoint_bounds,
+        if pane_state.snap_toggles.endpoint {
+            "Endpoint Snap: On"
+        } else {
+            "Endpoint Snap: Off"
+        },
+        paint,
+    );
+    paint_action_button(
+        snap_midpoint_bounds,
+        if pane_state.snap_toggles.midpoint {
+            "Midpoint Snap: On"
+        } else {
+            "Midpoint Snap: Off"
+        },
         paint,
     );
     paint_action_button(
@@ -435,7 +485,7 @@ pub fn paint_cad_demo_placeholder_pane(
             .unwrap_or_default();
         paint.scene.draw_text(paint.text.layout(
             &format!(
-                "session={} active={} warnings={}{} cam({}; z={:.2} pan={:.0},{:.0} orbit={:.0}/{:.0})",
+                "session={} active={} warnings={}{} cam({}; z={:.2} pan={:.0},{:.0} orbit={:.0}/{:.0}) snaps[{}]",
                 pane_state.session_id,
                 pane_state.active_variant_id,
                 pane_state.warnings.len(),
@@ -446,6 +496,7 @@ pub fn paint_cad_demo_placeholder_pane(
                 pane_state.camera_pan_y,
                 pane_state.camera_orbit_yaw_deg,
                 pane_state.camera_orbit_pitch_deg,
+                pane_state.snap_summary(),
             ),
             layout.footer_origin,
             9.0,

@@ -2766,7 +2766,7 @@ mod tests {
         ActiveJobState, ActivityEventDomain, ActivityEventRow, ActivityFeedFilter,
         ActivityFeedState, AgentNetworkSimulationPaneState, AlertDomain, AlertLifecycle,
         AlertsRecoveryState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole,
-        CadCameraViewSnap, CadDemoPaneState, CadHiddenLineMode, CadProjectionMode,
+        CadCameraViewSnap, CadDemoPaneState, CadHiddenLineMode, CadProjectionMode, CadSnapMode,
         EarningsScoreboardState, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
         JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest, JobInboxState,
         JobInboxValidation, JobLifecycleStage, NetworkRequestStatus, NetworkRequestSubmission,
@@ -3755,6 +3755,10 @@ mod tests {
         assert!(state.focused_warning_index.is_none());
         assert!(state.focused_geometry_ref.is_none());
         assert_eq!(state.hidden_line_mode, CadHiddenLineMode::Shaded);
+        assert!(state.snap_toggles.grid);
+        assert!(state.snap_toggles.origin);
+        assert!(!state.snap_toggles.endpoint);
+        assert!(!state.snap_toggles.midpoint);
         assert_eq!(state.projection_mode, CadProjectionMode::Orthographic);
         assert_eq!(state.camera_zoom, 1.0);
         assert_eq!(state.camera_pan_x, 0.0);
@@ -3827,5 +3831,23 @@ mod tests {
         assert_eq!(first.projection_mode, CadProjectionMode::Orthographic);
         second.cycle_projection_mode();
         assert_eq!(second.projection_mode, CadProjectionMode::Perspective);
+    }
+
+    #[test]
+    fn cad_snap_modes_and_point_snapping_are_deterministic() {
+        let mut first = CadDemoPaneState::default();
+        let mut second = CadDemoPaneState::default();
+        let viewport = wgpui::Bounds::new(40.0, 30.0, 240.0, 160.0);
+        let point = wgpui::Point::new(149.2, 113.7);
+
+        first.toggle_snap_mode(CadSnapMode::Endpoint);
+        first.toggle_snap_mode(CadSnapMode::Midpoint);
+        second.toggle_snap_mode(CadSnapMode::Endpoint);
+        second.toggle_snap_mode(CadSnapMode::Midpoint);
+
+        let snapped_first = first.apply_snap_to_viewport_point(point, viewport);
+        let snapped_second = second.apply_snap_to_viewport_point(point, viewport);
+        assert_eq!(snapped_first, snapped_second);
+        assert_eq!(first.snap_summary(), second.snap_summary());
     }
 }
