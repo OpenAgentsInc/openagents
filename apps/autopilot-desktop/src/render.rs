@@ -18,6 +18,7 @@ use crate::app_state::{
 };
 use crate::codex_lane::{CodexLaneConfig, CodexLaneSnapshot, CodexLaneWorker};
 use crate::hotbar::{configure_hotbar, hotbar_bounds, new_hotbar};
+use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 use crate::pane_registry::{pane_specs, startup_pane_kinds};
 use crate::pane_renderer::PaneRenderer;
 use crate::pane_system::{PANE_MIN_HEIGHT, PANE_MIN_WIDTH, PaneController};
@@ -28,6 +29,10 @@ use crate::runtime_lanes::{
 use crate::spark_wallet::SparkWalletCommand;
 
 const GRID_DOT_DISTANCE: f32 = 32.0;
+const WALLET_BALANCE_CHIP_MARGIN: f32 = 12.0;
+const WALLET_BALANCE_CHIP_HEIGHT: f32 = 28.0;
+const WALLET_BALANCE_CHIP_MIN_WIDTH: f32 = 140.0;
+const WALLET_BALANCE_CHIP_MAX_WIDTH: f32 = 220.0;
 
 const SETTINGS_SVG_RAW: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path fill="#FFFFFF" d="M249.9 176.3C243.4 179.5 237.1 183.1 231.1 187.2C222.9 192.7 212.6 194.1 203.1 191L131.4 167.2L93.5 232.8L150 283.1C157.4 289.7 161.3 299.3 160.7 309.2C160.2 316.4 160.2 323.8 160.7 331C161.4 340.9 157.4 350.5 150 357.1L93.5 407.3L131.4 473L203.1 449.2C212.5 446.1 222.8 447.5 231.1 453C237.1 457 243.4 460.7 249.9 463.9C258.8 468.3 265.1 476.5 267.1 486.2L282.3 560.2L358.1 560.2L373.3 486.2C375.3 476.5 381.7 468.3 390.5 463.9C397 460.7 403.3 457.1 409.3 453C417.5 447.5 427.8 446.1 437.3 449.2L509 473L546.9 407.3L490.4 357.1C483 350.5 479.1 340.9 479.7 331C479.9 327.4 480.1 323.8 480.1 320.1C480.1 316.4 480 312.8 479.7 309.2C479 299.3 483 289.7 490.4 283.1L546.9 232.9L509 167.2L437.3 191C427.9 194.1 417.6 192.7 409.3 187.2C403.3 183.2 397 179.5 390.5 176.3C381.6 171.9 375.3 163.7 373.3 154L358.1 80L282.3 80L267.1 154C265.1 163.7 258.7 171.9 249.9 176.3zM358.2 48C373.4 48 386.5 58.7 389.5 73.5L404.7 147.5C412.5 151.3 420.1 155.7 427.3 160.6L499 136.8C513.4 132 529.2 138 536.8 151.2L574.7 216.9C582.3 230.1 579.6 246.7 568.2 256.8L511.9 307C512.5 315.6 512.5 324.5 511.9 333L568.4 383.2C579.8 393.3 582.4 410 574.9 423.1L537 488.8C529.4 502 513.6 508 499.2 503.2L427.5 479.4C420.3 484.2 412.8 488.6 404.9 492.5L389.7 566.5C386.6 581.4 373.5 592 358.4 592L282.6 592C267.4 592 254.3 581.3 251.3 566.5L236.1 492.5C228.3 488.7 220.7 484.3 213.5 479.4L141.5 503.2C127.1 508 111.3 502 103.7 488.8L65.8 423.2C58.2 410.1 60.9 393.4 72.3 383.3L128.7 333C128.1 324.4 128.1 315.5 128.7 307L72.2 256.8C60.8 246.7 58.2 230 65.7 216.9L103.7 151.2C111.3 138 127.1 132 141.5 136.8L213.2 160.6C220.4 155.8 227.9 151.4 235.8 147.5L251 73.5C254.1 58.7 267.2 48 282.4 48L358.2 48zM264.3 320C264.3 350.8 289.2 375.7 320 375.7C350.8 375.7 375.7 350.8 375.7 320C375.7 289.2 350.8 264.3 320 264.3C289.2 264.3 264.3 289.2 264.3 320zM319.7 408C271.1 407.8 231.8 368.3 232 319.7C232.2 271.1 271.7 231.8 320.3 232C368.9 232.2 408.2 271.7 408 320.3C407.8 368.9 368.3 408.2 319.7 408z"/></svg>"##;
 
@@ -558,6 +563,29 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
         );
         paint.scene.set_layer(hotbar_layer);
 
+        let wallet_chip_bounds = wallet_balance_chip_bounds_for_logical(logical);
+        let total_sats = state
+            .spark_wallet
+            .balance
+            .as_ref()
+            .map_or(0, spark_total_balance_sats);
+        let wallet_chip_label = format!("{total_sats} sats");
+        paint.scene.draw_quad(
+            Quad::new(wallet_chip_bounds)
+                .with_background(theme::bg::SURFACE.with_alpha(0.88))
+                .with_border(theme::border::DEFAULT, 1.0)
+                .with_corner_radius(6.0),
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            &wallet_chip_label,
+            Point::new(
+                wallet_chip_bounds.origin.x + 10.0,
+                wallet_chip_bounds.origin.y + 17.0,
+            ),
+            11.0,
+            theme::text::PRIMARY,
+        ));
+
         let bar_bounds = hotbar_bounds(logical);
         state.hotbar_bounds = bar_bounds;
         configure_hotbar(&mut state.hotbar);
@@ -689,6 +717,23 @@ pub fn logical_size(config: &wgpu::SurfaceConfiguration, scale_factor: f32) -> S
     Size::new(config.width as f32 / scale, config.height as f32 / scale)
 }
 
+pub fn wallet_balance_chip_bounds_for_logical(logical: Size) -> Bounds {
+    let available_width = (logical.width - WALLET_BALANCE_CHIP_MARGIN * 2.0).max(0.0);
+    let width = available_width
+        .min(WALLET_BALANCE_CHIP_MAX_WIDTH)
+        .max(WALLET_BALANCE_CHIP_MIN_WIDTH.min(available_width));
+    Bounds::new(
+        WALLET_BALANCE_CHIP_MARGIN,
+        WALLET_BALANCE_CHIP_MARGIN,
+        width,
+        WALLET_BALANCE_CHIP_HEIGHT,
+    )
+}
+
+pub fn wallet_balance_chip_bounds(state: &RenderState) -> Bounds {
+    wallet_balance_chip_bounds_for_logical(logical_size(&state.config, state.scale_factor))
+}
+
 /// Bounds of the sidebar resize handle in logical coordinates. Used for hit-testing and cursor.
 pub fn sidebar_handle_bounds(state: &RenderState) -> Bounds {
     let logical = logical_size(&state.config, state.scale_factor);
@@ -774,10 +819,11 @@ fn command_registry() -> Vec<Command> {
 
 #[cfg(test)]
 mod tests {
-    use super::command_registry;
+    use super::{command_registry, wallet_balance_chip_bounds_for_logical};
     use crate::app_state::PaneKind;
     use crate::pane_registry::{pane_spec_by_command_id, pane_specs, startup_pane_kinds};
     use std::collections::BTreeSet;
+    use wgpui::Size;
 
     #[test]
     fn command_registry_matches_pane_specs() {
@@ -911,5 +957,14 @@ mod tests {
         assert!(!startup.contains(&PaneKind::GoOnline));
         assert!(!startup.contains(&PaneKind::SparkWallet));
         assert!(!startup.contains(&PaneKind::Empty));
+    }
+
+    #[test]
+    fn wallet_balance_chip_is_anchored_top_left() {
+        let bounds = wallet_balance_chip_bounds_for_logical(Size::new(1280.0, 800.0));
+        assert!(bounds.origin.x <= 16.0);
+        assert!(bounds.origin.y <= 16.0);
+        assert!(bounds.size.width >= 140.0);
+        assert!(bounds.size.height >= 24.0);
     }
 }
