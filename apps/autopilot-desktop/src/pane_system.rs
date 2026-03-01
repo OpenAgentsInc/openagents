@@ -356,6 +356,99 @@ pub enum CadDemoPaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CadPaletteCommandSpec {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub description: &'static str,
+    pub keybinding: &'static str,
+    pub action: CadDemoPaneAction,
+}
+
+const CAD_PALETTE_COMMAND_SPECS: [CadPaletteCommandSpec; 10] = [
+    CadPaletteCommandSpec {
+        id: "cad.view.snap_top",
+        label: "CAD: Snap View Top",
+        description: "Snap CAD camera to top view",
+        keybinding: "T",
+        action: CadDemoPaneAction::SnapViewTop,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.view.snap_front",
+        label: "CAD: Snap View Front",
+        description: "Snap CAD camera to front view",
+        keybinding: "F",
+        action: CadDemoPaneAction::SnapViewFront,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.view.snap_right",
+        label: "CAD: Snap View Right",
+        description: "Snap CAD camera to right view",
+        keybinding: "R",
+        action: CadDemoPaneAction::SnapViewRight,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.view.snap_isometric",
+        label: "CAD: Snap View Isometric",
+        description: "Snap CAD camera to isometric view",
+        keybinding: "I",
+        action: CadDemoPaneAction::SnapViewIsometric,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.view.toggle_projection",
+        label: "CAD: Toggle Projection",
+        description: "Toggle CAD projection between orthographic and perspective",
+        keybinding: "P",
+        action: CadDemoPaneAction::ToggleProjectionMode,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.render.cycle_mode",
+        label: "CAD: Cycle Render Mode",
+        description: "Cycle CAD render mode (shaded, edges, wireframe)",
+        keybinding: "V",
+        action: CadDemoPaneAction::CycleHiddenLineMode,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.snap.toggle_grid",
+        label: "CAD: Toggle Grid Snap",
+        description: "Toggle CAD grid snap preview",
+        keybinding: "G",
+        action: CadDemoPaneAction::ToggleSnapGrid,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.snap.toggle_origin",
+        label: "CAD: Toggle Origin Snap",
+        description: "Toggle CAD origin snap preview",
+        keybinding: "O",
+        action: CadDemoPaneAction::ToggleSnapOrigin,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.snap.toggle_endpoint",
+        label: "CAD: Toggle Endpoint Snap",
+        description: "Toggle CAD endpoint snap preview",
+        keybinding: "E",
+        action: CadDemoPaneAction::ToggleSnapEndpoint,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.snap.toggle_midpoint",
+        label: "CAD: Toggle Midpoint Snap",
+        description: "Toggle CAD midpoint snap preview",
+        keybinding: "M",
+        action: CadDemoPaneAction::ToggleSnapMidpoint,
+    },
+];
+
+pub fn cad_palette_command_specs() -> &'static [CadPaletteCommandSpec] {
+    &CAD_PALETTE_COMMAND_SPECS
+}
+
+pub fn cad_palette_action_for_command_id(command_id: &str) -> Option<CadDemoPaneAction> {
+    cad_palette_command_specs()
+        .iter()
+        .find(|spec| spec.id == command_id)
+        .map(|spec| spec.action)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PaneHitAction {
     NostrRegenerate,
     NostrReveal,
@@ -3353,14 +3446,14 @@ mod tests {
         cad_demo_view_snap_right_button_bounds, cad_demo_view_snap_top_button_bounds,
         cad_demo_warning_filter_code_button_bounds, cad_demo_warning_filter_severity_button_bounds,
         cad_demo_warning_marker_bounds, cad_demo_warning_panel_bounds, cad_demo_warning_row_bounds,
-        chat_composer_input_bounds, chat_send_button_bounds, chat_transcript_bounds,
-        codex_account_cancel_login_button_bounds, codex_account_login_button_bounds,
-        codex_account_logout_button_bounds, codex_account_rate_limits_button_bounds,
-        codex_account_refresh_button_bounds, codex_apps_refresh_button_bounds,
-        codex_config_batch_write_button_bounds, codex_config_detect_external_button_bounds,
-        codex_config_import_external_button_bounds, codex_config_read_button_bounds,
-        codex_config_requirements_button_bounds, codex_config_write_button_bounds,
-        codex_diagnostics_clear_events_button_bounds,
+        cad_palette_action_for_command_id, cad_palette_command_specs, chat_composer_input_bounds,
+        chat_send_button_bounds, chat_transcript_bounds, codex_account_cancel_login_button_bounds,
+        codex_account_login_button_bounds, codex_account_logout_button_bounds,
+        codex_account_rate_limits_button_bounds, codex_account_refresh_button_bounds,
+        codex_apps_refresh_button_bounds, codex_config_batch_write_button_bounds,
+        codex_config_detect_external_button_bounds, codex_config_import_external_button_bounds,
+        codex_config_read_button_bounds, codex_config_requirements_button_bounds,
+        codex_config_write_button_bounds, codex_diagnostics_clear_events_button_bounds,
         codex_diagnostics_disable_wire_log_button_bounds,
         codex_diagnostics_enable_wire_log_button_bounds,
         codex_labs_collaboration_modes_button_bounds, codex_labs_command_exec_button_bounds,
@@ -3407,6 +3500,34 @@ mod tests {
                 spec.kind
             );
         }
+    }
+
+    #[test]
+    fn cad_palette_command_specs_are_unique_and_resolve_actions() {
+        let specs = cad_palette_command_specs();
+        assert_eq!(
+            specs.len(),
+            10,
+            "cad command palette parity must cover all hotkey actions"
+        );
+
+        let mut ids = std::collections::BTreeSet::new();
+        let mut actions = std::collections::BTreeSet::<String>::new();
+        for spec in specs {
+            assert!(ids.insert(spec.id), "duplicate cad command id {}", spec.id);
+            assert!(
+                actions.insert(format!("{:?}", spec.action)),
+                "duplicate cad command action {:?}",
+                spec.action
+            );
+            assert_eq!(
+                cad_palette_action_for_command_id(spec.id),
+                Some(spec.action),
+                "command id {} must resolve to an action",
+                spec.id
+            );
+        }
+        assert_eq!(cad_palette_action_for_command_id("cad.unknown"), None);
     }
 
     #[test]

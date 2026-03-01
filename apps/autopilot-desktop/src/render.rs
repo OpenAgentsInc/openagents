@@ -21,7 +21,9 @@ use crate::hotbar::{configure_hotbar, hotbar_bounds, new_hotbar};
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 use crate::pane_registry::{pane_specs, startup_pane_kinds};
 use crate::pane_renderer::PaneRenderer;
-use crate::pane_system::{PANE_MIN_HEIGHT, PANE_MIN_WIDTH, PaneController};
+use crate::pane_system::{
+    PANE_MIN_HEIGHT, PANE_MIN_WIDTH, PaneController, cad_palette_command_specs,
+};
 use crate::runtime_lanes::{
     AcCreditCommand, AcLaneSnapshot, AcLaneWorker, SaLaneSnapshot, SaLaneWorker,
     SaLifecycleCommand, SklDiscoveryTrustCommand, SklLaneSnapshot, SklLaneWorker,
@@ -806,7 +808,7 @@ pub fn sidebar_go_online_button_bounds(state: &RenderState) -> Bounds {
 }
 
 fn command_registry() -> Vec<Command> {
-    pane_specs()
+    let mut commands: Vec<Command> = pane_specs()
         .iter()
         .filter_map(|spec| {
             let command = spec.command?;
@@ -818,7 +820,16 @@ fn command_registry() -> Vec<Command> {
             }
             Some(entry)
         })
-        .collect()
+        .collect();
+
+    commands.extend(cad_palette_command_specs().iter().map(|spec| {
+        Command::new(spec.id, spec.label)
+            .description(spec.description)
+            .category("CAD")
+            .keybinding(spec.keybinding)
+    }));
+
+    commands
 }
 
 #[cfg(test)]
@@ -826,6 +837,7 @@ mod tests {
     use super::{command_registry, wallet_balance_chip_bounds_for_logical};
     use crate::app_state::PaneKind;
     use crate::pane_registry::{pane_spec_by_command_id, pane_specs, startup_pane_kinds};
+    use crate::pane_system::cad_palette_command_specs;
     use std::collections::BTreeSet;
     use wgpui::Size;
 
@@ -835,17 +847,29 @@ mod tests {
         let command_ids: BTreeSet<&str> =
             commands.iter().map(|command| command.id.as_str()).collect();
 
-        let expected_ids: BTreeSet<&str> = pane_specs()
+        let pane_command_ids: BTreeSet<&str> = pane_specs()
             .iter()
             .filter_map(|spec| spec.command.map(|command| command.id))
             .collect();
+        let cad_command_ids: BTreeSet<&str> = cad_palette_command_specs()
+            .iter()
+            .map(|spec| spec.id)
+            .collect();
+        let expected_ids: BTreeSet<&str> =
+            pane_command_ids.union(&cad_command_ids).copied().collect();
         assert_eq!(command_ids, expected_ids);
 
         for command in &commands {
-            let spec = pane_spec_by_command_id(&command.id)
-                .expect("command id from registry should resolve to pane spec");
-            let pane_command = spec.command.expect("resolved pane must define a command");
-            assert_eq!(command.label, pane_command.label);
+            if let Some(spec) = pane_spec_by_command_id(&command.id) {
+                let pane_command = spec.command.expect("resolved pane must define a command");
+                assert_eq!(command.label, pane_command.label);
+                continue;
+            }
+            let cad_spec = cad_palette_command_specs()
+                .iter()
+                .find(|spec| spec.id == command.id)
+                .expect("command id from registry should resolve to pane or cad command");
+            assert_eq!(command.label, cad_spec.label);
         }
     }
 
