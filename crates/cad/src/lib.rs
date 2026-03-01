@@ -11,6 +11,7 @@ pub mod eval;
 pub mod features;
 pub mod feature_graph;
 pub mod format;
+pub mod history;
 pub mod kernel;
 pub mod params;
 pub mod policy;
