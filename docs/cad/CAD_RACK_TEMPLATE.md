@@ -104,3 +104,35 @@ Each variant includes objective score values for:
 - `cost`
 - `stiffness`
 - `airflow`
+
+## Geometry Goldens
+
+Golden fixture: `crates/cad/tests/goldens/rack_geometry_snapshots.json`
+
+Covered snapshots:
+
+- `variant.baseline`
+- `variant.lightweight`
+- `variant.low-cost`
+- `variant.stiffness`
+
+Each snapshot records semantic geometry signals needed for deterministic diff review:
+
+- `rebuild_hash`
+- ordered feature IDs
+- per-feature geometry hashes
+- feature records (`feature_id`, op key, dependency hashes, parameter fingerprint)
+- key rack parameters
+- semantic reference mapping
+
+Run:
+
+```bash
+cargo test -p openagents-cad --test rack_geometry_snapshots --quiet
+```
+
+When fixture updates are intentional:
+
+```bash
+CAD_UPDATE_GOLDENS=1 cargo test -p openagents-cad --test rack_geometry_snapshots rack_geometry_snapshots_match_golden_fixture --quiet
+```
