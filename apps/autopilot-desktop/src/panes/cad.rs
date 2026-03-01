@@ -10,11 +10,11 @@ use crate::app_state::{
 use crate::pane_renderer::paint_action_button;
 use crate::pane_system::{
     cad_demo_cycle_variant_button_bounds, cad_demo_hidden_line_mode_button_bounds,
-    cad_demo_projection_mode_button_bounds, cad_demo_reset_button_bounds,
-    cad_demo_reset_camera_button_bounds, cad_demo_snap_endpoint_button_bounds,
-    cad_demo_snap_grid_button_bounds, cad_demo_snap_midpoint_button_bounds,
-    cad_demo_snap_origin_button_bounds, cad_demo_timeline_panel_bounds,
-    cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
+    cad_demo_hotkey_profile_button_bounds, cad_demo_projection_mode_button_bounds,
+    cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
+    cad_demo_snap_endpoint_button_bounds, cad_demo_snap_grid_button_bounds,
+    cad_demo_snap_midpoint_button_bounds, cad_demo_snap_origin_button_bounds,
+    cad_demo_timeline_panel_bounds, cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
     cad_demo_view_snap_front_button_bounds, cad_demo_view_snap_iso_button_bounds,
     cad_demo_view_snap_right_button_bounds, cad_demo_view_snap_top_button_bounds,
     cad_demo_warning_filter_code_button_bounds, cad_demo_warning_filter_severity_button_bounds,
@@ -97,6 +97,7 @@ fn cad_demo_body_bounds(content_bounds: Bounds) -> Bounds {
     let snap_origin_bounds = cad_demo_snap_origin_button_bounds(content_bounds);
     let snap_endpoint_bounds = cad_demo_snap_endpoint_button_bounds(content_bounds);
     let snap_midpoint_bounds = cad_demo_snap_midpoint_button_bounds(content_bounds);
+    let hotkey_bounds = cad_demo_hotkey_profile_button_bounds(content_bounds);
     let body_top = (cycle_bounds
         .max_y()
         .max(reset_bounds.max_y())
@@ -107,6 +108,7 @@ fn cad_demo_body_bounds(content_bounds: Bounds) -> Bounds {
         .max(snap_origin_bounds.max_y())
         .max(snap_endpoint_bounds.max_y())
         .max(snap_midpoint_bounds.max_y())
+        .max(hotkey_bounds.max_y())
         + 8.0)
         .min(content_bounds.max_y());
     Bounds::new(
@@ -135,6 +137,7 @@ pub fn paint_cad_demo_placeholder_pane(
     let snap_origin_bounds = cad_demo_snap_origin_button_bounds(content_bounds);
     let snap_endpoint_bounds = cad_demo_snap_endpoint_button_bounds(content_bounds);
     let snap_midpoint_bounds = cad_demo_snap_midpoint_button_bounds(content_bounds);
+    let hotkey_bounds = cad_demo_hotkey_profile_button_bounds(content_bounds);
     let warning_panel = cad_demo_warning_panel_bounds(content_bounds);
     let timeline_panel = cad_demo_timeline_panel_bounds(content_bounds);
     let severity_filter_bounds = cad_demo_warning_filter_severity_button_bounds(content_bounds);
@@ -186,6 +189,11 @@ pub fn paint_cad_demo_placeholder_pane(
         } else {
             "Midpoint Snap: Off"
         },
+        paint,
+    );
+    paint_action_button(
+        hotkey_bounds,
+        &format!("Hotkeys: {}", pane_state.hotkey_profile),
         paint,
     );
     paint_action_button(
@@ -485,7 +493,7 @@ pub fn paint_cad_demo_placeholder_pane(
             .unwrap_or_default();
         paint.scene.draw_text(paint.text.layout(
             &format!(
-                "session={} active={} warnings={}{} cam({}; z={:.2} pan={:.0},{:.0} orbit={:.0}/{:.0}) snaps[{}]",
+                "session={} active={} warnings={}{} cam({}; z={:.2} pan={:.0},{:.0} orbit={:.0}/{:.0}) snaps[{}] hotkeys[{}]",
                 pane_state.session_id,
                 pane_state.active_variant_id,
                 pane_state.warnings.len(),
@@ -497,6 +505,7 @@ pub fn paint_cad_demo_placeholder_pane(
                 pane_state.camera_orbit_yaw_deg,
                 pane_state.camera_orbit_pitch_deg,
                 pane_state.snap_summary(),
+                pane_state.hotkey_profile,
             ),
             layout.footer_origin,
             9.0,

@@ -469,6 +469,8 @@ pub struct CadDemoPaneState {
     pub hidden_line_mode: CadHiddenLineMode,
     pub snap_toggles: CadSnapToggles,
     pub projection_mode: CadProjectionMode,
+    pub hotkey_profile: String,
+    pub hotkeys: CadHotkeyBindings,
     pub camera_zoom: f32,
     pub camera_pan_x: f32,
     pub camera_pan_y: f32,
@@ -506,6 +508,143 @@ pub enum CadSnapMode {
     Origin,
     Endpoint,
     Midpoint,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum CadHotkeyAction {
+    SnapTop,
+    SnapFront,
+    SnapRight,
+    SnapIsometric,
+    ToggleProjection,
+    CycleRenderMode,
+    ToggleSnapGrid,
+    ToggleSnapOrigin,
+    ToggleSnapEndpoint,
+    ToggleSnapMidpoint,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CadHotkeyBindings {
+    pub snap_top: String,
+    pub snap_front: String,
+    pub snap_right: String,
+    pub snap_isometric: String,
+    pub toggle_projection: String,
+    pub cycle_render_mode: String,
+    pub toggle_snap_grid: String,
+    pub toggle_snap_origin: String,
+    pub toggle_snap_endpoint: String,
+    pub toggle_snap_midpoint: String,
+}
+
+impl Default for CadHotkeyBindings {
+    fn default() -> Self {
+        Self {
+            snap_top: "t".to_string(),
+            snap_front: "f".to_string(),
+            snap_right: "r".to_string(),
+            snap_isometric: "i".to_string(),
+            toggle_projection: "p".to_string(),
+            cycle_render_mode: "v".to_string(),
+            toggle_snap_grid: "g".to_string(),
+            toggle_snap_origin: "o".to_string(),
+            toggle_snap_endpoint: "e".to_string(),
+            toggle_snap_midpoint: "m".to_string(),
+        }
+    }
+}
+
+impl CadHotkeyBindings {
+    pub fn compact_profile() -> Self {
+        Self {
+            snap_top: "7".to_string(),
+            snap_front: "1".to_string(),
+            snap_right: "3".to_string(),
+            snap_isometric: "5".to_string(),
+            toggle_projection: "p".to_string(),
+            cycle_render_mode: "w".to_string(),
+            toggle_snap_grid: "g".to_string(),
+            toggle_snap_origin: "z".to_string(),
+            toggle_snap_endpoint: "x".to_string(),
+            toggle_snap_midpoint: "c".to_string(),
+        }
+    }
+
+    pub fn key_for(&self, action: CadHotkeyAction) -> &str {
+        match action {
+            CadHotkeyAction::SnapTop => &self.snap_top,
+            CadHotkeyAction::SnapFront => &self.snap_front,
+            CadHotkeyAction::SnapRight => &self.snap_right,
+            CadHotkeyAction::SnapIsometric => &self.snap_isometric,
+            CadHotkeyAction::ToggleProjection => &self.toggle_projection,
+            CadHotkeyAction::CycleRenderMode => &self.cycle_render_mode,
+            CadHotkeyAction::ToggleSnapGrid => &self.toggle_snap_grid,
+            CadHotkeyAction::ToggleSnapOrigin => &self.toggle_snap_origin,
+            CadHotkeyAction::ToggleSnapEndpoint => &self.toggle_snap_endpoint,
+            CadHotkeyAction::ToggleSnapMidpoint => &self.toggle_snap_midpoint,
+        }
+    }
+
+    pub fn set_key(&mut self, action: CadHotkeyAction, value: &str) {
+        let normalized = value.trim().to_lowercase();
+        let target = match action {
+            CadHotkeyAction::SnapTop => &mut self.snap_top,
+            CadHotkeyAction::SnapFront => &mut self.snap_front,
+            CadHotkeyAction::SnapRight => &mut self.snap_right,
+            CadHotkeyAction::SnapIsometric => &mut self.snap_isometric,
+            CadHotkeyAction::ToggleProjection => &mut self.toggle_projection,
+            CadHotkeyAction::CycleRenderMode => &mut self.cycle_render_mode,
+            CadHotkeyAction::ToggleSnapGrid => &mut self.toggle_snap_grid,
+            CadHotkeyAction::ToggleSnapOrigin => &mut self.toggle_snap_origin,
+            CadHotkeyAction::ToggleSnapEndpoint => &mut self.toggle_snap_endpoint,
+            CadHotkeyAction::ToggleSnapMidpoint => &mut self.toggle_snap_midpoint,
+        };
+        *target = normalized;
+    }
+
+    pub fn validate_conflicts(&self) -> Result<(), String> {
+        let mut seen = std::collections::BTreeMap::<String, CadHotkeyAction>::new();
+        for action in [
+            CadHotkeyAction::SnapTop,
+            CadHotkeyAction::SnapFront,
+            CadHotkeyAction::SnapRight,
+            CadHotkeyAction::SnapIsometric,
+            CadHotkeyAction::ToggleProjection,
+            CadHotkeyAction::CycleRenderMode,
+            CadHotkeyAction::ToggleSnapGrid,
+            CadHotkeyAction::ToggleSnapOrigin,
+            CadHotkeyAction::ToggleSnapEndpoint,
+            CadHotkeyAction::ToggleSnapMidpoint,
+        ] {
+            let key = self.key_for(action).trim().to_lowercase();
+            if key.is_empty() {
+                return Err(format!("hotkey for {action:?} cannot be empty"));
+            }
+            if let Some(existing) = seen.insert(key.clone(), action) {
+                return Err(format!(
+                    "hotkey conflict: '{key}' already assigned to {existing:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn summary(&self) -> String {
+        format!(
+            "top={} front={} right={} iso={} proj={} render={} grid={} origin={} endpoint={} midpoint={}",
+            self.snap_top,
+            self.snap_front,
+            self.snap_right,
+            self.snap_isometric,
+            self.toggle_projection,
+            self.cycle_render_mode,
+            self.toggle_snap_grid,
+            self.toggle_snap_origin,
+            self.toggle_snap_endpoint,
+            self.toggle_snap_midpoint,
+        )
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -648,6 +787,8 @@ impl Default for CadDemoPaneState {
             hidden_line_mode: CadHiddenLineMode::Shaded,
             snap_toggles: CadSnapToggles::default(),
             projection_mode: CadProjectionMode::Orthographic,
+            hotkey_profile: "default".to_string(),
+            hotkeys: CadHotkeyBindings::default(),
             camera_zoom: 1.0,
             camera_pan_x: 0.0,
             camera_pan_y: 0.0,
@@ -718,6 +859,30 @@ impl CadDemoPaneState {
 
     pub fn cycle_projection_mode(&mut self) {
         self.projection_mode = self.projection_mode.next();
+    }
+
+    pub fn cycle_hotkey_profile(&mut self) -> Result<(), String> {
+        let (profile, bindings) = if self.hotkey_profile == "default" {
+            ("compact".to_string(), CadHotkeyBindings::compact_profile())
+        } else {
+            ("default".to_string(), CadHotkeyBindings::default())
+        };
+        bindings.validate_conflicts()?;
+        self.hotkey_profile = profile;
+        self.hotkeys = bindings;
+        Ok(())
+    }
+
+    pub fn remap_hotkey(&mut self, action: CadHotkeyAction, key: &str) -> Result<(), String> {
+        let mut candidate = self.hotkeys.clone();
+        candidate.set_key(action, key);
+        candidate.validate_conflicts()?;
+        self.hotkeys = candidate;
+        Ok(())
+    }
+
+    pub fn hotkey_matches(&self, action: CadHotkeyAction, value: &str) -> bool {
+        self.hotkeys.key_for(action).eq_ignore_ascii_case(value)
     }
 
     pub fn toggle_snap_mode(&mut self, mode: CadSnapMode) -> bool {

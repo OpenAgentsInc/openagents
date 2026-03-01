@@ -2766,12 +2766,12 @@ mod tests {
         ActiveJobState, ActivityEventDomain, ActivityEventRow, ActivityFeedFilter,
         ActivityFeedState, AgentNetworkSimulationPaneState, AlertDomain, AlertLifecycle,
         AlertsRecoveryState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole,
-        CadCameraViewSnap, CadDemoPaneState, CadHiddenLineMode, CadProjectionMode, CadSnapMode,
-        EarningsScoreboardState, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
-        JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest, JobInboxState,
-        JobInboxValidation, JobLifecycleStage, NetworkRequestStatus, NetworkRequestSubmission,
-        NetworkRequestsState, NostrSecretState, ProviderRuntimeState, RecoveryAlertRow,
-        RelayConnectionRow, RelayConnectionStatus, RelayConnectionsState,
+        CadCameraViewSnap, CadDemoPaneState, CadHiddenLineMode, CadHotkeyAction, CadProjectionMode,
+        CadSnapMode, EarningsScoreboardState, JobHistoryState, JobHistoryStatus,
+        JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest,
+        JobInboxState, JobInboxValidation, JobLifecycleStage, NetworkRequestStatus,
+        NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderRuntimeState,
+        RecoveryAlertRow, RelayConnectionRow, RelayConnectionStatus, RelayConnectionsState,
         RelaySecuritySimulationPaneState, SettingsState, SparkPaneState,
         StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
         SyncHealthState, SyncRecoveryPhase, TreasuryExchangeSimulationPaneState,
@@ -3760,6 +3760,9 @@ mod tests {
         assert!(!state.snap_toggles.endpoint);
         assert!(!state.snap_toggles.midpoint);
         assert_eq!(state.projection_mode, CadProjectionMode::Orthographic);
+        assert_eq!(state.hotkey_profile, "default");
+        assert_eq!(state.hotkeys.snap_top, "t");
+        assert_eq!(state.hotkeys.toggle_projection, "p");
         assert_eq!(state.camera_zoom, 1.0);
         assert_eq!(state.camera_pan_x, 0.0);
         assert_eq!(state.camera_pan_y, 0.0);
@@ -3849,5 +3852,21 @@ mod tests {
         let snapped_second = second.apply_snap_to_viewport_point(point, viewport);
         assert_eq!(snapped_first, snapped_second);
         assert_eq!(first.snap_summary(), second.snap_summary());
+    }
+
+    #[test]
+    fn cad_hotkey_profiles_and_conflict_checks_are_deterministic() {
+        let mut state = CadDemoPaneState::default();
+        assert_eq!(state.hotkey_profile, "default");
+        assert!(state.cycle_hotkey_profile().is_ok());
+        assert_eq!(state.hotkey_profile, "compact");
+        assert_eq!(state.hotkeys.snap_top, "7");
+        assert!(state.hotkey_matches(CadHotkeyAction::SnapTop, "7"));
+
+        let conflict = state.remap_hotkey(CadHotkeyAction::SnapFront, "7");
+        assert!(conflict.is_err());
+
+        assert!(state.remap_hotkey(CadHotkeyAction::SnapFront, "2").is_ok());
+        assert!(state.hotkey_matches(CadHotkeyAction::SnapFront, "2"));
     }
 }
