@@ -166,7 +166,73 @@ Behavior:
 
 - Ensures CAD pane is open.
 - Routes through existing CAD chat-intent adapter path.
-- Returns CAD session/revision/variant summary.
+- Returns versioned CAD checkpoint data (`schema_version: "oa.cad.tool_response.v1"`).
+
+Response `details` shape (success and no-change errors):
+
+```json
+{
+  "schema_version": "oa.cad.tool_response.v1",
+  "thread_id": "thread-id",
+  "rebuild_trigger_prefix": "ai-intent",
+  "checkpoint": {
+    "schema_version": "oa.cad.checkpoint.v1",
+    "source": "openagents.cad.intent",
+    "thread_id": "thread-id",
+    "document": {
+      "id": "cad.doc.demo-rack",
+      "revision": 12
+    },
+    "variant": {
+      "active_id": "variant.baseline",
+      "active_tile_index": 0,
+      "all_ids": ["variant.baseline", "variant.lightweight", "variant.low-cost", "variant.stiffness"]
+    },
+    "context": {
+      "session_id": "cad.session.chat.thread",
+      "active_chat_session_id": "cad.session.chat.thread",
+      "dispatch_session_count": 1
+    },
+    "pending_rebuild": {
+      "is_pending": true,
+      "request_id": 44
+    },
+    "warnings": {
+      "total": 2,
+      "by_severity": {"warning": 1, "error": 1},
+      "by_code": {"W001": 1, "E007": 1}
+    },
+    "analysis": {
+      "variant_id": "variant.baseline",
+      "material_id": "al-6061-t6",
+      "volume_mm3": 3490057.4,
+      "mass_kg": 9.423,
+      "estimated_cost_usd": 139.2,
+      "max_deflection_mm": 0.42,
+      "center_of_gravity_mm": [194.3, 113.0, 41.1]
+    },
+    "build_session": {
+      "phase": "rebuilding",
+      "thread_id": "thread-id",
+      "turn_id": "turn-id",
+      "latest_tool_result": "ok:OA-CAD-INTENT-OK",
+      "latest_rebuild_result": "trigger=ai-intent:setmaterial result=...",
+      "failure_reason": null,
+      "remediation_hint": null
+    },
+    "last_rebuild_receipt": {
+      "event_id": "evt...",
+      "document_revision": 11,
+      "variant_id": "variant.baseline",
+      "rebuild_hash": "rb...",
+      "mesh_hash": "mesh...",
+      "duration_ms": 37
+    },
+    "last_action": "CAD rebuild ...",
+    "last_error": null
+  }
+}
+```
 
 ## `openagents.cad.action`
 
@@ -191,6 +257,40 @@ Representative actions:
 - `snap_top` / `snap_front` / `snap_right` / `snap_isometric`
 - `cycle_hidden_line_mode`
 - `select_warning` / `select_warning_marker` / `select_timeline_row`
+- `snapshot` / `status` (explicit checkpoint fetch, no mutation)
+
+Behavior:
+
+- All CAD actions return a versioned checkpoint payload in `details.checkpoint`.
+- `snapshot` (and alias `status`) maps to a deterministic no-op and always returns current checkpoint state.
+- Agents should branch on `details.checkpoint` fields rather than transcript text.
+
+Minimal checkpoint-only request:
+
+```json
+{
+  "action": "snapshot"
+}
+```
+
+Minimal checkpoint-only response details:
+
+```json
+{
+  "schema_version": "oa.cad.tool_response.v1",
+  "action": "snapshot",
+  "action_key": "snapshot",
+  "changed": false,
+  "checkpoint": {
+    "schema_version": "oa.cad.checkpoint.v1",
+    "document": {"id": "cad.doc.demo-rack", "revision": 12},
+    "variant": {"active_id": "variant.baseline", "active_tile_index": 0, "all_ids": ["variant.baseline", "..."]},
+    "pending_rebuild": {"is_pending": false, "request_id": null},
+    "warnings": {"total": 0, "by_severity": {}, "by_code": {}},
+    "analysis": {"material_id": "al-6061-t6", "volume_mm3": null, "mass_kg": null, "estimated_cost_usd": null, "max_deflection_mm": null, "center_of_gravity_mm": null}
+  }
+}
+```
 
 ## Workflow Examples
 

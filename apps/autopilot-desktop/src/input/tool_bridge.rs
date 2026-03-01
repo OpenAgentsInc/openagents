@@ -31,6 +31,8 @@ pub(super) const OPENAGENTS_TOOL_NAMES: &[&str] = &[
     "openagents.cad.intent",
     "openagents.cad.action",
 ];
+const CAD_TOOL_RESPONSE_SCHEMA_VERSION: &str = "oa.cad.tool_response.v1";
+const CAD_CHECKPOINT_SCHEMA_VERSION: &str = "oa.cad.checkpoint.v1";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ToolBridgeRequest {
@@ -931,6 +933,123 @@ fn apply_pay_invoice_input(state: &mut RenderState, field: &str, value: &str) ->
     true
 }
 
+fn cad_warning_counts(cad_demo: &crate::app_state::CadDemoPaneState) -> (Value, Value) {
+    let mut by_severity = std::collections::BTreeMap::<String, u64>::new();
+    let mut by_code = std::collections::BTreeMap::<String, u64>::new();
+    for warning in &cad_demo.warnings {
+        *by_severity.entry(warning.severity.clone()).or_insert(0) += 1;
+        *by_code.entry(warning.code.clone()).or_insert(0) += 1;
+    }
+    (json!(by_severity), json!(by_code))
+}
+
+fn cad_build_session_checkpoint(cad_demo: &crate::app_state::CadDemoPaneState) -> Value {
+    if cad_demo.build_session.phase != crate::app_state::CadBuildSessionPhase::Idle {
+        return json!({
+            "phase": cad_demo.build_session.phase.label(),
+            "thread_id": cad_demo.build_session.thread_id,
+            "turn_id": cad_demo.build_session.turn_id,
+            "latest_tool_result": cad_demo.build_session.latest_tool_result,
+            "latest_rebuild_result": cad_demo.build_session.latest_rebuild_result,
+            "failure_reason": cad_demo.build_session.failure_reason,
+            "remediation_hint": cad_demo.build_session.remediation_hint,
+        });
+    }
+    if let Some(last) = cad_demo.last_build_session.as_ref() {
+        return json!({
+            "phase": last.terminal_phase.label(),
+            "thread_id": last.thread_id,
+            "turn_id": last.turn_id,
+            "latest_tool_result": last.latest_tool_result,
+            "latest_rebuild_result": last.latest_rebuild_result,
+            "failure_reason": last.failure_reason,
+            "remediation_hint": last.remediation_hint,
+        });
+    }
+    json!({
+        "phase": crate::app_state::CadBuildSessionPhase::Idle.label(),
+        "thread_id": null,
+        "turn_id": null,
+        "latest_tool_result": null,
+        "latest_rebuild_result": null,
+        "failure_reason": null,
+        "remediation_hint": null,
+    })
+}
+
+fn cad_checkpoint_payload(
+    cad_demo: &crate::app_state::CadDemoPaneState,
+    thread_id: Option<&str>,
+    source: &str,
+) -> Value {
+    let (warnings_by_severity, warnings_by_code) = cad_warning_counts(cad_demo);
+    let analysis = &cad_demo.analysis_snapshot;
+    let last_receipt = cad_demo.last_rebuild_receipt.as_ref().map_or_else(
+        || {
+            json!({
+                "event_id": null,
+                "document_revision": null,
+                "variant_id": null,
+                "rebuild_hash": null,
+                "mesh_hash": null,
+                "duration_ms": null,
+            })
+        },
+        |receipt| {
+            json!({
+                "event_id": receipt.event_id,
+                "document_revision": receipt.document_revision,
+                "variant_id": receipt.variant_id,
+                "rebuild_hash": receipt.rebuild_hash,
+                "mesh_hash": receipt.mesh_hash,
+                "duration_ms": receipt.duration_ms,
+            })
+        },
+    );
+
+    json!({
+        "schema_version": CAD_CHECKPOINT_SCHEMA_VERSION,
+        "source": source,
+        "thread_id": thread_id,
+        "document": {
+            "id": cad_demo.document_id,
+            "revision": cad_demo.document_revision,
+        },
+        "variant": {
+            "active_id": cad_demo.active_variant_id,
+            "active_tile_index": cad_demo.active_variant_tile_index,
+            "all_ids": cad_demo.variant_ids,
+        },
+        "context": {
+            "session_id": cad_demo.session_id,
+            "active_chat_session_id": cad_demo.active_chat_session_id,
+            "dispatch_session_count": cad_demo.dispatch_sessions.len(),
+        },
+        "pending_rebuild": {
+            "is_pending": cad_demo.pending_rebuild_request_id.is_some(),
+            "request_id": cad_demo.pending_rebuild_request_id,
+        },
+        "warnings": {
+            "total": cad_demo.warnings.len(),
+            "by_severity": warnings_by_severity,
+            "by_code": warnings_by_code,
+        },
+        "analysis": {
+            "variant_id": analysis.variant_id,
+            "material_id": analysis.material_id,
+            "volume_mm3": analysis.volume_mm3,
+            "mass_kg": analysis.mass_kg,
+            "estimated_cost_usd": analysis.estimated_cost_usd,
+            "max_deflection_mm": analysis.max_deflection_mm,
+            "center_of_gravity_mm": analysis.center_of_gravity_mm,
+        },
+        "build_session": cad_build_session_checkpoint(cad_demo),
+        "last_rebuild_receipt": last_receipt,
+        "last_action": cad_demo.last_action,
+        "last_error": cad_demo.last_error,
+    })
+}
+
 fn execute_cad_intent(state: &mut RenderState, args: &CadIntentArgs) -> ToolBridgeResultEnvelope {
     let thread_id = args
         .thread_id
@@ -980,9 +1099,15 @@ fn execute_cad_intent(state: &mut RenderState, args: &CadIntentArgs) -> ToolBrid
             "OA-CAD-INTENT-NO-CHANGE",
             "CAD intent prompt did not produce a CAD mutation",
             json!({
+                "schema_version": CAD_TOOL_RESPONSE_SCHEMA_VERSION,
                 "thread_id": thread_id,
                 "prompt": prompt,
                 "last_error": state.cad_demo.last_error,
+                "checkpoint": cad_checkpoint_payload(
+                    &state.cad_demo,
+                    Some(thread_id.as_str()),
+                    "openagents.cad.intent",
+                ),
             }),
         );
     }
@@ -991,29 +1116,21 @@ fn execute_cad_intent(state: &mut RenderState, args: &CadIntentArgs) -> ToolBrid
         "OA-CAD-INTENT-OK",
         "Applied CAD intent prompt through CAD chat adapter",
         json!({
+            "schema_version": CAD_TOOL_RESPONSE_SCHEMA_VERSION,
             "thread_id": thread_id,
             "rebuild_trigger_prefix": "ai-intent",
-            "session_id": state.cad_demo.session_id,
-            "document_revision": state.cad_demo.document_revision,
-            "active_variant_id": state.cad_demo.active_variant_id,
-            "pending_rebuild_request_id": state.cad_demo.pending_rebuild_request_id,
-            "last_rebuild_receipt": state.cad_demo.last_rebuild_receipt.as_ref().map(|receipt| {
-                json!({
-                    "event_id": receipt.event_id,
-                    "document_revision": receipt.document_revision,
-                    "variant_id": receipt.variant_id,
-                    "rebuild_hash": receipt.rebuild_hash,
-                    "mesh_hash": receipt.mesh_hash,
-                })
-            }),
-            "last_action": state.cad_demo.last_action,
-            "last_error": state.cad_demo.last_error,
+            "checkpoint": cad_checkpoint_payload(
+                &state.cad_demo,
+                Some(thread_id.as_str()),
+                "openagents.cad.intent",
+            ),
         }),
     )
 }
 
 fn execute_cad_action(state: &mut RenderState, args: &CadActionArgs) -> ToolBridgeResultEnvelope {
     let action_key = normalize_key(&args.action);
+    let is_snapshot_request = matches!(action_key.as_str(), "snapshot" | "status");
     let action = match cad_action_from_key(action_key.as_str(), args.index) {
         Ok(value) => value,
         Err(error) => return error,
@@ -1023,16 +1140,22 @@ fn execute_cad_action(state: &mut RenderState, args: &CadActionArgs) -> ToolBrid
     let changed = super::reducers::run_cad_demo_action(state, action);
     ToolBridgeResultEnvelope::ok(
         "OA-CAD-ACTION-OK",
-        format!("Executed CAD action '{}'", args.action),
+        if is_snapshot_request {
+            "Collected CAD checkpoint snapshot".to_string()
+        } else {
+            format!("Executed CAD action '{}'", args.action)
+        },
         json!({
+            "schema_version": CAD_TOOL_RESPONSE_SCHEMA_VERSION,
             "action": args.action,
+            "action_key": action_key,
             "index": args.index,
             "changed": changed,
-            "session_id": state.cad_demo.session_id,
-            "document_revision": state.cad_demo.document_revision,
-            "active_variant_id": state.cad_demo.active_variant_id,
-            "last_action": state.cad_demo.last_action,
-            "last_error": state.cad_demo.last_error,
+            "checkpoint": cad_checkpoint_payload(
+                &state.cad_demo,
+                state.autopilot_chat.active_thread_id.as_deref(),
+                "openagents.cad.action",
+            ),
         }),
     )
 }
@@ -1078,6 +1201,7 @@ fn cad_action_from_key(
         "select_timeline_row" => CadDemoPaneAction::SelectTimelineRow(require_index(action)?),
         "timeline_select_prev" => CadDemoPaneAction::TimelineSelectPrev,
         "timeline_select_next" => CadDemoPaneAction::TimelineSelectNext,
+        "snapshot" | "status" => CadDemoPaneAction::Noop,
         _ => {
             return Err(ToolBridgeResultEnvelope::error(
                 "OA-CAD-ACTION-UNSUPPORTED",
@@ -1219,11 +1343,11 @@ fn normalize_key(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        ToolBridgeResultEnvelope, cad_action_from_key, decode_tool_call_request, normalize_key,
+        CAD_CHECKPOINT_SCHEMA_VERSION, CAD_TOOL_RESPONSE_SCHEMA_VERSION, ToolBridgeResultEnvelope,
+        cad_action_from_key, cad_checkpoint_payload, decode_tool_call_request, normalize_key,
         pane_action_to_hit_action, pane_kind_key, resolve_pane_kind,
     };
-    use crate::app_state::AutopilotToolCallRequest;
-    use crate::app_state::PaneKind;
+    use crate::app_state::{AutopilotToolCallRequest, CadDemoPaneState, CadDemoWarningState, PaneKind};
     use crate::pane_system::{
         CadDemoPaneAction, PaneHitAction, RelayConnectionsPaneAction, SettingsPaneAction,
     };
@@ -1355,6 +1479,14 @@ mod tests {
             CadDemoPaneAction::BootstrapDemo
         );
         assert_eq!(
+            cad_action_from_key("snapshot", None).expect("snapshot action"),
+            CadDemoPaneAction::Noop
+        );
+        assert_eq!(
+            cad_action_from_key("status", None).expect("status action"),
+            CadDemoPaneAction::Noop
+        );
+        assert_eq!(
             cad_action_from_key("select_warning", Some(3)).expect("indexed action"),
             CadDemoPaneAction::SelectWarning(3)
         );
@@ -1365,5 +1497,81 @@ mod tests {
         let err = cad_action_from_key("select_warning", None)
             .expect_err("missing index should fail");
         assert_eq!(err.code, "OA-CAD-ACTION-MISSING-INDEX");
+    }
+
+    #[test]
+    fn cad_checkpoint_payload_contains_required_contract_fields() {
+        let mut cad_demo = CadDemoPaneState::default();
+        cad_demo.document_revision = 9;
+        cad_demo.pending_rebuild_request_id = Some(41);
+        cad_demo.warnings = vec![
+            CadDemoWarningState {
+                warning_id: "warn-1".to_string(),
+                code: "W001".to_string(),
+                severity: "warning".to_string(),
+                message: "first warning".to_string(),
+                remediation_hint: "do thing".to_string(),
+                semantic_refs: vec!["rack_outer_face".to_string()],
+                deep_link: None,
+                feature_id: "feature.base".to_string(),
+                entity_id: "face.1".to_string(),
+            },
+            CadDemoWarningState {
+                warning_id: "warn-2".to_string(),
+                code: "E007".to_string(),
+                severity: "error".to_string(),
+                message: "second warning".to_string(),
+                remediation_hint: "do other thing".to_string(),
+                semantic_refs: vec!["vent_face_set".to_string()],
+                deep_link: None,
+                feature_id: "feature.vents".to_string(),
+                entity_id: "face.2".to_string(),
+            },
+        ];
+        let payload = cad_checkpoint_payload(&cad_demo, Some("thread-1"), "test-source");
+
+        assert_eq!(
+            payload.get("schema_version"),
+            Some(&serde_json::Value::String(
+                CAD_CHECKPOINT_SCHEMA_VERSION.to_string()
+            ))
+        );
+        assert_eq!(payload.pointer("/source"), Some(&serde_json::json!("test-source")));
+        assert_eq!(payload.pointer("/thread_id"), Some(&serde_json::json!("thread-1")));
+        assert_eq!(payload.pointer("/document/revision"), Some(&serde_json::json!(9)));
+        assert_eq!(
+            payload.pointer("/pending_rebuild/is_pending"),
+            Some(&serde_json::json!(true))
+        );
+        assert_eq!(
+            payload.pointer("/pending_rebuild/request_id"),
+            Some(&serde_json::json!(41))
+        );
+        assert_eq!(payload.pointer("/warnings/total"), Some(&serde_json::json!(2)));
+        assert_eq!(
+            payload.pointer("/warnings/by_severity/error"),
+            Some(&serde_json::json!(1))
+        );
+        assert_eq!(
+            payload.pointer("/warnings/by_code/W001"),
+            Some(&serde_json::json!(1))
+        );
+        assert!(
+            payload
+                .pointer("/analysis/material_id")
+                .is_some_and(|value| !value.is_null())
+        );
+        assert!(payload.get("build_session").is_some());
+        assert!(payload.get("last_rebuild_receipt").is_some());
+
+        let tool_response = serde_json::json!({
+            "schema_version": CAD_TOOL_RESPONSE_SCHEMA_VERSION,
+            "checkpoint": payload,
+        });
+        assert_eq!(
+            tool_response.pointer("/schema_version"),
+            Some(&serde_json::json!(CAD_TOOL_RESPONSE_SCHEMA_VERSION))
+        );
+        assert!(tool_response.pointer("/checkpoint/schema_version").is_some());
     }
 }
