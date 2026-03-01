@@ -350,7 +350,6 @@ fn paint_autopilot_chat_pane(
     chat_inputs: &mut ChatPaneInputs,
     paint: &mut PaintContext,
 ) {
-    paint_source_badge(content_bounds, "local", paint);
     chat_pane::paint(content_bounds, autopilot_chat, chat_inputs, paint);
 }
 

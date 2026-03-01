@@ -19,9 +19,9 @@ fn transcript_scroll_clip_bounds(content_bounds: Bounds) -> Bounds {
     let transcript_bounds = chat_transcript_bounds(content_bounds);
     Bounds::new(
         transcript_bounds.origin.x + 8.0,
-        transcript_bounds.origin.y + 24.0,
+        transcript_bounds.origin.y + 8.0,
         (transcript_bounds.size.width - 16.0).max(0.0),
-        (transcript_bounds.size.height - 32.0).max(0.0),
+        (transcript_bounds.size.height - 24.0).max(0.0),
     )
 }
 
@@ -168,16 +168,6 @@ pub fn paint(
             .with_border(theme::border::DEFAULT, 1.0)
             .with_corner_radius(4.0),
     );
-
-    paint.scene.draw_text(paint.text.layout(
-        "Autopilot Chat",
-        Point::new(
-            transcript_bounds.origin.x + 10.0,
-            transcript_bounds.origin.y + 14.0,
-        ),
-        11.0,
-        theme::text::MUTED,
-    ));
 
     let transcript_scroll_clip = transcript_scroll_clip_bounds(content_bounds);
     let transcript_content_height =

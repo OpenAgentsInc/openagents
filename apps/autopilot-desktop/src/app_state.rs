@@ -266,7 +266,7 @@ pub struct ChatPaneInputs {
 impl Default for ChatPaneInputs {
     fn default() -> Self {
         Self {
-            composer: TextInput::new().placeholder("Message Autopilot Chat..."),
+            composer: TextInput::new().placeholder("Message Autopilot"),
         }
     }
 }

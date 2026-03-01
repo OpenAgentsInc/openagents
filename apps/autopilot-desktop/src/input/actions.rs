@@ -28,37 +28,6 @@ pub(super) fn run_chat_submit_action(state: &mut crate::app_state::RenderState) 
     let model_override = state.autopilot_chat.selected_model_override();
     let model_label = model_override.as_deref().unwrap_or("server-default");
 
-    let resume_target = state
-        .autopilot_chat
-        .thread_metadata
-        .get(&thread_id)
-        .cloned();
-    let resume_path = if state.codex_lane_config.experimental_api {
-        resume_target.as_ref().and_then(|value| value.path.clone())
-    } else {
-        None
-    };
-    let resume_command = crate::codex_lane::CodexLaneCommand::ThreadResume(ThreadResumeParams {
-        thread_id: thread_id.clone(),
-        model: None,
-        model_provider: None,
-        cwd: resume_target.as_ref().and_then(|value| value.cwd.clone()),
-        approval_policy: None,
-        sandbox: None,
-        path: resume_path.clone().map(std::path::PathBuf::from),
-    });
-    tracing::info!(
-        "codex turn/start preflight resume thread_id={} path={:?}",
-        thread_id,
-        resume_path
-    );
-    if let Err(error) = state.queue_codex_command(resume_command) {
-        state
-            .autopilot_chat
-            .mark_pending_turn_dispatch_failed(format!("thread/resume queue failed: {error}"));
-        return true;
-    }
-
     let command = crate::codex_lane::CodexLaneCommand::TurnStart(TurnStartParams {
         thread_id: thread_id.clone(),
         input,
