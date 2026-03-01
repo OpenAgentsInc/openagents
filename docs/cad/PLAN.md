@@ -222,6 +222,7 @@ Use `.apcad` as the CAD document format:
 - stable IDs retained across saves
 - analysis cache optional and non-authoritative
 - storable in standard Autopilot workspace paths
+- spec document: `docs/cad/APCAD_FORMAT.md`
 
 Golden diff expectation:
 
