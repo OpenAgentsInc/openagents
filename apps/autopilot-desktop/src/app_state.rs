@@ -3738,6 +3738,10 @@ mod tests {
         let state = CadDemoPaneState::default();
         assert_eq!(state.load_state, super::PaneLoadState::Ready);
         assert_eq!(state.session_id, "cad.session.local");
+        assert!(state.active_chat_session_id.is_none());
+        assert!(state.chat_thread_session_bindings.is_empty());
+        assert!(state.dispatch_sessions.is_empty());
+        assert!(state.last_chat_intent_name.is_none());
         assert_eq!(state.document_id, "cad.doc.demo-rack");
         assert_eq!(state.document_revision, 0);
         assert_eq!(state.active_variant_id, "variant.baseline");
@@ -4085,5 +4089,63 @@ mod tests {
         assert_eq!(state.analysis_snapshot.mass_kg, Some(2.7));
         assert_eq!(state.warnings.len(), 1);
         assert_eq!(state.warnings[0].warning_id, "w0");
+    }
+
+    #[test]
+    fn cad_chat_session_binding_is_deterministic_per_thread() {
+        let mut state = CadDemoPaneState::default();
+        let first = state.ensure_chat_session_for_thread("thread-alpha");
+        let second = state.ensure_chat_session_for_thread("thread-alpha");
+        let third = state.ensure_chat_session_for_thread("thread-beta");
+
+        assert_eq!(first, second);
+        assert_ne!(first, third);
+        assert_eq!(state.active_chat_session_id.as_deref(), Some(third.as_str()));
+        assert_eq!(
+            state
+                .chat_thread_session_bindings
+                .get("thread-alpha")
+                .map(String::as_str),
+            Some(first.as_str())
+        );
+    }
+
+    #[test]
+    fn cad_chat_followup_intents_reuse_session_dispatch_state() {
+        let mut state = CadDemoPaneState::default();
+        let thread = "thread-followup";
+        let intent_a = openagents_cad::intent::CadIntent::SetMaterial(
+            openagents_cad::intent::SetMaterialIntent {
+                material_id: "al-6061-t6".to_string(),
+            },
+        );
+        let intent_b = openagents_cad::intent::CadIntent::SetObjective(
+            openagents_cad::intent::SetObjectiveIntent {
+                objective: "stiffness".to_string(),
+            },
+        );
+
+        let first = state
+            .apply_chat_intent_for_thread(thread, &intent_a)
+            .expect("first intent should apply");
+        let session = state
+            .active_chat_session_id
+            .clone()
+            .expect("session should exist");
+        let second = state
+            .apply_chat_intent_for_thread(thread, &intent_b)
+            .expect("second intent should apply");
+
+        assert_eq!(first.state_revision, 1);
+        assert_eq!(second.state_revision, 2);
+        assert_eq!(state.session_id, session);
+        assert_eq!(
+            state
+                .dispatch_sessions
+                .get(&session)
+                .map(|dispatch| dispatch.revision),
+            Some(2)
+        );
+        assert_eq!(state.last_chat_intent_name.as_deref(), Some("SetObjective"));
     }
 }

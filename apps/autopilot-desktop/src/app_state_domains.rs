@@ -448,6 +448,11 @@ pub struct CadDemoPaneState {
     pub last_error: Option<String>,
     pub last_action: Option<String>,
     pub session_id: String,
+    pub active_chat_session_id: Option<String>,
+    pub chat_thread_session_bindings: std::collections::BTreeMap<String, String>,
+    pub dispatch_sessions:
+        std::collections::BTreeMap<String, openagents_cad::dispatch::CadDispatchState>,
+    pub last_chat_intent_name: Option<String>,
     pub document_id: String,
     pub document_revision: u64,
     pub active_variant_id: String,
@@ -1064,6 +1069,10 @@ impl Default for CadDemoPaneState {
             last_error: None,
             last_action: Some("CAD demo initialized; waiting for feature graph state".to_string()),
             session_id: "cad.session.local".to_string(),
+            active_chat_session_id: None,
+            chat_thread_session_bindings: std::collections::BTreeMap::new(),
+            dispatch_sessions: std::collections::BTreeMap::new(),
+            last_chat_intent_name: None,
             document_id: "cad.doc.demo-rack".to_string(),
             document_revision: 0,
             active_variant_id: initial_variant_id.clone(),
@@ -1216,6 +1225,58 @@ impl CadDemoPaneState {
             self.warning_hover_index = None;
             self.focused_warning_index = None;
         }
+    }
+
+    pub fn ensure_chat_session_for_thread(&mut self, thread_id: &str) -> String {
+        if let Some(existing) = self.chat_thread_session_bindings.get(thread_id) {
+            self.active_chat_session_id = Some(existing.clone());
+            self.session_id = existing.clone();
+            return existing.clone();
+        }
+        let normalized = thread_id
+            .chars()
+            .map(|ch| {
+                if ch.is_ascii_alphanumeric() {
+                    ch.to_ascii_lowercase()
+                } else {
+                    '-'
+                }
+            })
+            .collect::<String>()
+            .trim_matches('-')
+            .to_string();
+        let session_id = format!("cad.session.chat.{}", if normalized.is_empty() { "thread" } else { normalized.as_str() });
+        self.chat_thread_session_bindings
+            .insert(thread_id.to_string(), session_id.clone());
+        self.dispatch_sessions
+            .entry(session_id.clone())
+            .or_default();
+        self.active_chat_session_id = Some(session_id.clone());
+        self.session_id = session_id.clone();
+        session_id
+    }
+
+    pub fn apply_chat_intent_for_thread(
+        &mut self,
+        thread_id: &str,
+        intent: &openagents_cad::intent::CadIntent,
+    ) -> openagents_cad::CadResult<openagents_cad::dispatch::CadDispatchReceipt> {
+        let session_id = self.ensure_chat_session_for_thread(thread_id);
+        let dispatch_state = self
+            .dispatch_sessions
+            .entry(session_id.clone())
+            .or_default();
+        let receipt = openagents_cad::dispatch::dispatch_cad_intent(intent, dispatch_state)?;
+        self.document_revision = receipt.state_revision;
+        self.last_chat_intent_name = Some(intent.intent_name().to_string());
+        self.last_action = Some(format!(
+            "CAD chat intent {} applied to {} (rev {})",
+            intent.intent_name(),
+            session_id,
+            receipt.state_revision
+        ));
+        self.last_error = None;
+        Ok(receipt)
     }
 
     pub fn set_hovered_geometry_for_tile_focus(
