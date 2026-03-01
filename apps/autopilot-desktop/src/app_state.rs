@@ -89,6 +89,7 @@ pub enum PaneKind {
     TreasuryExchangeSimulation,
     RelaySecuritySimulation,
     StableSatsSimulation,
+    CadDemo,
 }
 
 #[derive(Clone, Copy)]

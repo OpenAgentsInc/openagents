@@ -817,7 +817,8 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::AgentNetworkSimulation
             | PaneKind::TreasuryExchangeSimulation
             | PaneKind::RelaySecuritySimulation
-            | PaneKind::StableSatsSimulation => {}
+            | PaneKind::StableSatsSimulation
+            | PaneKind::CadDemo => {}
         }
 
         if pane_hit_action_for_pane(state, pane, point).is_some() {
@@ -2712,7 +2713,7 @@ fn pane_hit_action_for_pane(
             let layout = spark_pane::pay_invoice_layout(content_bounds);
             spark_pane::hit_pay_invoice_action(layout, point).map(PaneHitAction::SparkPayInvoice)
         }
-        PaneKind::Empty | PaneKind::ProviderStatus => None,
+        PaneKind::Empty | PaneKind::ProviderStatus | PaneKind::CadDemo => None,
     }
 }
 

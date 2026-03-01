@@ -80,7 +80,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 38] = [
+const PANE_SPECS: [PaneSpec; 39] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -661,6 +661,21 @@ const PANE_SPECS: [PaneSpec; 38] = [
         }),
         hotbar: None,
     },
+    PaneSpec {
+        kind: PaneKind::CadDemo,
+        title: "CAD Demo",
+        default_width: 1020.0,
+        default_height: 620.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.cad_demo",
+            label: "CAD Demo",
+            description: "Open the CAD demo pane",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
 ];
 
 #[cfg(test)]
@@ -754,5 +769,17 @@ mod tests {
                 "missing codex pane command registration for {command_id}"
             );
         }
+    }
+
+    #[test]
+    fn cad_demo_command_maps_to_singleton_non_startup_pane() {
+        let spec = pane_spec_by_command_id("pane.cad_demo")
+            .expect("cad demo command should resolve to a pane spec");
+        assert_eq!(spec.kind, PaneKind::CadDemo);
+        assert!(spec.singleton, "cad demo pane must be singleton");
+        assert!(
+            !spec.startup,
+            "cad demo pane should not auto-open during startup"
+        );
     }
 }
