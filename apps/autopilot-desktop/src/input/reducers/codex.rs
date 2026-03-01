@@ -4,22 +4,9 @@ use crate::codex_lane::{
     CodexLaneCommandKind, CodexLaneCommandResponse, CodexLaneCommandStatus, CodexLaneLifecycle,
     CodexLaneNotification, CodexLaneSnapshot, CodexThreadTranscriptRole,
 };
-use codex_client::{
-    SkillsListExtraRootsForCwd, SkillsListParams, ThreadStartParams, TurnInterruptParams,
-};
+use codex_client::{SkillsListExtraRootsForCwd, SkillsListParams, ThreadStartParams};
 
 const CAD_TOOL_RESPONSE_SUBMIT_RETRY_LIMIT: u8 = 2;
-
-fn is_cad_turn_for(state: &RenderState, turn_id: &str) -> bool {
-    state
-        .autopilot_chat
-        .turn_metadata_for(turn_id)
-        .is_some_and(|metadata| metadata.is_cad_turn)
-        || state
-            .autopilot_chat
-            .active_turn_metadata()
-            .is_some_and(|metadata| metadata.is_cad_turn)
-}
 
 fn cad_failure_class_from_tool_response(
     envelope: &super::super::tool_bridge::ToolBridgeResultEnvelope,
@@ -1101,7 +1088,6 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             let item_type_label = item_type.as_deref().unwrap_or("n/a").to_string();
             let is_command_execution_item =
                 item_type_label.eq_ignore_ascii_case("commandExecution");
-            let is_cad_turn = is_cad_turn_for(state, &turn_id);
             state.autopilot_chat.remember_thread(thread_id.clone());
             if state.autopilot_chat.is_active_thread(&thread_id) {
                 state.autopilot_chat.record_turn_timeline_event(format!(
@@ -1109,22 +1095,14 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     item_id.as_deref().unwrap_or("n/a"),
                     item_type_label
                 ));
-                if is_cad_turn && is_command_execution_item {
-                    let policy_message = "CAD turn policy blocked command execution. Start a new thread to load OpenAgents CAD tools, then retry.";
-                    state.autopilot_chat.last_error = Some(policy_message.to_string());
-                    state.autopilot_chat.record_turn_timeline_event(
-                        "cad policy violation: commandExecution item started; interrupt requested",
+                if is_command_execution_item {
+                    tracing::info!(
+                        "codex item/commandExecution started thread_id={} turn_id={} item_id={} active_thread={:?}",
+                        thread_id,
+                        turn_id,
+                        item_id.as_deref().unwrap_or("n/a"),
+                        state.autopilot_chat.active_thread_id
                     );
-                    if let Err(error) = state.queue_codex_command(CodexLaneCommand::TurnInterrupt(
-                        TurnInterruptParams {
-                            thread_id: thread_id.clone(),
-                            turn_id: turn_id.clone(),
-                        },
-                    )) {
-                        state.autopilot_chat.last_error = Some(format!(
-                            "{policy_message} Failed to interrupt turn: {error}"
-                        ));
-                    }
                 }
             }
         }
@@ -1423,44 +1401,28 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             request_id,
             request,
         } => {
-            let resolved_turn_id = resolve_turn_id(state, request.turn_id.clone());
-            if is_cad_turn_for(state, &resolved_turn_id) {
-                let command =
-                    crate::codex_lane::CodexLaneCommand::ServerRequestCommandApprovalRespond {
-                        request_id,
-                        response: codex_client::CommandExecutionRequestApprovalResponse {
-                            decision: codex_client::ApprovalDecision::Decline,
-                        },
-                    };
-                if let Err(error) = state.queue_codex_command(command) {
-                    state.autopilot_chat.last_error = Some(format!(
-                        "CAD turn policy failed to decline command execution request: {error}"
-                    ));
-                } else {
-                    state.autopilot_chat.last_error = Some(
-                        "CAD turn policy declined command execution request. Start a new thread to load OpenAgents CAD tools."
-                            .to_string(),
-                    );
-                    state
-                        .autopilot_chat
-                        .record_turn_timeline_event("cad policy: command approval auto-declined");
-                }
-            } else {
-                state.autopilot_chat.enqueue_command_approval(
-                    crate::app_state::AutopilotApprovalRequest {
-                        request_id,
-                        thread_id: request.thread_id,
-                        turn_id: request.turn_id,
-                        item_id: request.item_id,
-                        reason: request.reason,
-                        command: request.command,
-                        cwd: request.cwd,
-                    },
-                );
-                state
-                    .autopilot_chat
-                    .record_turn_timeline_event("command approval requested");
-            }
+            tracing::info!(
+                "codex command/approval requested thread_id={} turn_id={} item_id={} request_id={:?} active_thread={:?}",
+                request.thread_id,
+                request.turn_id,
+                request.item_id,
+                request_id,
+                state.autopilot_chat.active_thread_id
+            );
+            state.autopilot_chat.enqueue_command_approval(
+                crate::app_state::AutopilotApprovalRequest {
+                    request_id,
+                    thread_id: request.thread_id,
+                    turn_id: request.turn_id,
+                    item_id: request.item_id,
+                    reason: request.reason,
+                    command: request.command,
+                    cwd: request.cwd,
+                },
+            );
+            state
+                .autopilot_chat
+                .record_turn_timeline_event("command approval requested");
         }
         CodexLaneNotification::FileChangeApprovalRequested {
             request_id,
@@ -1492,6 +1454,16 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 tool: request.tool,
                 arguments: request.arguments,
             };
+            tracing::info!(
+                "codex tool/call requested thread_id={} turn_id={} call_id={} tool={} args_chars={} request_id={:?} active_thread={:?}",
+                pending.thread_id,
+                pending.turn_id,
+                pending.call_id,
+                pending.tool,
+                pending.arguments.chars().count(),
+                pending.request_id,
+                state.autopilot_chat.active_thread_id
+            );
 
             if super::super::tool_bridge::is_openagents_tool_namespace(&pending.tool) {
                 let is_cad_intent_tool =
@@ -1544,117 +1516,142 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                         };
                     state.queue_codex_command(command).map(|_| 0u8)
                 };
-                if let Err(error) = submit_result {
-                    state.autopilot_chat.enqueue_tool_call(pending);
-                    state.autopilot_chat.last_error =
-                        Some(format!("Failed to auto-respond to tool call: {}", error));
-                    if is_cad_intent_tool {
-                        state
-                            .cad_demo
-                            .record_agent_build_failure_metric(CadBuildFailureClass::ToolTransport);
-                        fail_active_cad_build_session(
-                            state,
-                            CadBuildFailureClass::ToolTransport,
-                            "cad.build.response.submit_failed",
-                            format!("failed to submit CAD tool response: {error}"),
-                            "verify Codex lane connectivity and retry CAD turn".to_string(),
-                            CAD_TOOL_RESPONSE_SUBMIT_RETRY_LIMIT,
-                            CAD_TOOL_RESPONSE_SUBMIT_RETRY_LIMIT,
+                match submit_result {
+                    Err(error) => {
+                        tracing::info!(
+                            "codex tool/call auto-response failed call_id={} tool={} code={} success={} error={}",
+                            pending.call_id,
+                            pending.tool,
+                            code,
+                            success,
+                            error
                         );
-                    }
-                } else {
-                    if !success {
+                        state.autopilot_chat.enqueue_tool_call(pending);
                         state.autopilot_chat.last_error =
-                            Some(format!("Tool call failed with code {}", code));
-                    }
-                    if is_cad_intent_tool {
-                        if success {
-                            if state.cad_demo.pending_rebuild_request_id.is_some() {
-                                if let Err(error) = state.cad_demo.transition_agent_build_phase(
-                                    CadBuildSessionPhase::Rebuilding,
-                                    "cad.build.rebuilding.wait",
-                                    format!(
-                                        "waiting for request_id={}",
-                                        state.cad_demo.pending_rebuild_request_id.unwrap_or(0)
-                                    ),
-                                ) {
-                                    state.cad_demo.last_error =
-                                        Some(format!("CAD build phase transition failed: {error}"));
-                                }
-                            } else if let Err(error) = state.cad_demo.transition_agent_build_phase(
-                                CadBuildSessionPhase::Summarizing,
-                                "cad.build.summarizing.start",
-                                "tool applied without queued rebuild".to_string(),
-                            ) {
-                                state.cad_demo.last_error =
-                                    Some(format!("CAD build phase transition failed: {error}"));
-                            } else if let Err(error) =
-                                state.cad_demo.complete_agent_build_session(format!(
-                                    "cad intent tool call {} completed without background rebuild",
-                                    pending.call_id
-                                ))
-                            {
-                                state.cad_demo.last_error =
-                                    Some(format!("CAD build session finalize failed: {error}"));
-                            }
-                        } else {
-                            let class = cad_failure_class_from_tool_response(&envelope);
-                            let retry_attempts = envelope
-                                .details
-                                .pointer("/retries/parse_retry_count")
-                                .and_then(serde_json::Value::as_u64)
-                                .or_else(|| {
-                                    envelope
-                                        .details
-                                        .pointer("/retries/dispatch_retry_count")
-                                        .and_then(serde_json::Value::as_u64)
-                                })
-                                .unwrap_or(0)
-                                as u8;
-                            let retry_limit = envelope
-                                .details
-                                .pointer("/retries/parse_retry_limit")
-                                .and_then(serde_json::Value::as_u64)
-                                .or_else(|| {
-                                    envelope
-                                        .details
-                                        .pointer("/retries/dispatch_retry_limit")
-                                        .and_then(serde_json::Value::as_u64)
-                                })
-                                .unwrap_or(0) as u8;
-                            let event_code = match class {
-                                CadBuildFailureClass::IntentParseValidation => {
-                                    "cad.build.intent.parse_failed"
-                                }
-                                CadBuildFailureClass::DispatchRebuild => {
-                                    "cad.build.dispatch.failed"
-                                }
-                                CadBuildFailureClass::ToolTransport => {
-                                    "cad.build.response.submit_failed"
-                                }
-                            };
-                            state.cad_demo.record_agent_build_failure_metric(class);
-                            let remediation_hint = cad_failure_hint_from_tool_response(&envelope);
+                            Some(format!("Failed to auto-respond to tool call: {}", error));
+                        if is_cad_intent_tool {
+                            state.cad_demo.record_agent_build_failure_metric(
+                                CadBuildFailureClass::ToolTransport,
+                            );
                             fail_active_cad_build_session(
                                 state,
-                                class,
-                                event_code,
-                                format!(
-                                    "CAD intent tool failed class={} code={} message={}",
-                                    class.label(),
-                                    code,
-                                    envelope.message
-                                ),
-                                remediation_hint,
-                                retry_attempts,
-                                retry_limit,
+                                CadBuildFailureClass::ToolTransport,
+                                "cad.build.response.submit_failed",
+                                format!("failed to submit CAD tool response: {error}"),
+                                "verify Codex lane connectivity and retry CAD turn".to_string(),
+                                CAD_TOOL_RESPONSE_SUBMIT_RETRY_LIMIT,
+                                CAD_TOOL_RESPONSE_SUBMIT_RETRY_LIMIT,
                             );
                         }
                     }
-                    state.autopilot_chat.record_turn_timeline_event(format!(
-                        "tool call auto-response submitted code={} success={}",
-                        code, success
-                    ));
+                    Ok(retries_used) => {
+                        tracing::info!(
+                            "codex tool/call auto-response submitted call_id={} tool={} code={} success={} retries_used={}",
+                            pending.call_id,
+                            pending.tool,
+                            code,
+                            success,
+                            retries_used
+                        );
+                        if !success {
+                            state.autopilot_chat.last_error =
+                                Some(format!("Tool call failed with code {}", code));
+                        }
+                        if is_cad_intent_tool {
+                            if success {
+                                if state.cad_demo.pending_rebuild_request_id.is_some() {
+                                    if let Err(error) = state.cad_demo.transition_agent_build_phase(
+                                        CadBuildSessionPhase::Rebuilding,
+                                        "cad.build.rebuilding.wait",
+                                        format!(
+                                            "waiting for request_id={}",
+                                            state.cad_demo.pending_rebuild_request_id.unwrap_or(0)
+                                        ),
+                                    ) {
+                                        state.cad_demo.last_error = Some(format!(
+                                            "CAD build phase transition failed: {error}"
+                                        ));
+                                    }
+                                } else if let Err(error) =
+                                    state.cad_demo.transition_agent_build_phase(
+                                        CadBuildSessionPhase::Summarizing,
+                                        "cad.build.summarizing.start",
+                                        "tool applied without queued rebuild".to_string(),
+                                    )
+                                {
+                                    state.cad_demo.last_error = Some(format!(
+                                        "CAD build phase transition failed: {error}"
+                                    ));
+                                } else if let Err(error) =
+                                    state.cad_demo.complete_agent_build_session(format!(
+                                        "cad intent tool call {} completed without background rebuild",
+                                        pending.call_id
+                                    ))
+                                {
+                                    state.cad_demo.last_error =
+                                        Some(format!("CAD build session finalize failed: {error}"));
+                                }
+                            } else {
+                                let class = cad_failure_class_from_tool_response(&envelope);
+                                let retry_attempts = envelope
+                                    .details
+                                    .pointer("/retries/parse_retry_count")
+                                    .and_then(serde_json::Value::as_u64)
+                                    .or_else(|| {
+                                        envelope
+                                            .details
+                                            .pointer("/retries/dispatch_retry_count")
+                                            .and_then(serde_json::Value::as_u64)
+                                    })
+                                    .unwrap_or(0)
+                                    as u8;
+                                let retry_limit = envelope
+                                    .details
+                                    .pointer("/retries/parse_retry_limit")
+                                    .and_then(serde_json::Value::as_u64)
+                                    .or_else(|| {
+                                        envelope
+                                            .details
+                                            .pointer("/retries/dispatch_retry_limit")
+                                            .and_then(serde_json::Value::as_u64)
+                                    })
+                                    .unwrap_or(0)
+                                    as u8;
+                                let event_code = match class {
+                                    CadBuildFailureClass::IntentParseValidation => {
+                                        "cad.build.intent.parse_failed"
+                                    }
+                                    CadBuildFailureClass::DispatchRebuild => {
+                                        "cad.build.dispatch.failed"
+                                    }
+                                    CadBuildFailureClass::ToolTransport => {
+                                        "cad.build.response.submit_failed"
+                                    }
+                                };
+                                state.cad_demo.record_agent_build_failure_metric(class);
+                                let remediation_hint =
+                                    cad_failure_hint_from_tool_response(&envelope);
+                                fail_active_cad_build_session(
+                                    state,
+                                    class,
+                                    event_code,
+                                    format!(
+                                        "CAD intent tool failed class={} code={} message={}",
+                                        class.label(),
+                                        code,
+                                        envelope.message
+                                    ),
+                                    remediation_hint,
+                                    retry_attempts,
+                                    retry_limit,
+                                );
+                            }
+                        }
+                        state.autopilot_chat.record_turn_timeline_event(format!(
+                            "tool call auto-response submitted code={} success={}",
+                            code, success
+                        ));
+                    }
                 }
                 if is_cad_intent_tool {
                     super::sync_cad_build_progress_to_chat(state);
