@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::contracts::{CadSelection, CadSelectionKind, CadSelectionState};
+use crate::hash::stable_hex_digest;
 
 /// Selection filter toggles by entity kind.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -301,9 +302,9 @@ fn build_selection(
         .unwrap_or_else(|| {
             let payload = format!("{:?}|{}", kind, entity_id);
             format!(
-                "sel:{}:{:016x}",
+                "sel:{}:{}",
                 selection_kind_prefix(kind),
-                fnv1a64(payload.as_bytes())
+                stable_hex_digest(payload.as_bytes())
             )
         });
     CadSelection {
@@ -320,17 +321,6 @@ fn selection_kind_prefix(kind: CadSelectionKind) -> &'static str {
         CadSelectionKind::Face => "face",
         CadSelectionKind::Edge => "edge",
     }
-}
-
-fn fnv1a64(bytes: &[u8]) -> u64 {
-    const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
-    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
-    let mut hash = FNV_OFFSET;
-    for byte in bytes {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-    hash
 }
 
 #[cfg(test)]

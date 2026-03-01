@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
+use crate::hash::stable_hex_digest;
 use crate::{CadError, CadResult};
 
 /// Binary contract revision for CAD mesh payloads consumed by render surfaces.
@@ -331,21 +332,12 @@ fn deterministic_mesh_hash(
     append_section(&mut bytes, index_bytes);
     append_section(&mut bytes, edge_bytes);
     append_section(&mut bytes, material_bytes);
-    format!("{:016x}", fnv1a64(&bytes))
+    stable_hex_digest(&bytes)
 }
 
 fn append_section(out: &mut Vec<u8>, section: &[u8]) {
     out.extend_from_slice(&(section.len() as u64).to_le_bytes());
     out.extend_from_slice(section);
-}
-
-fn fnv1a64(input: &[u8]) -> u64 {
-    let mut hash = 0xcbf29ce484222325_u64;
-    for byte in input {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x100000001b3);
-    }
-    hash
 }
 
 #[cfg(test)]

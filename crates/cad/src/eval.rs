@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::feature_graph::{FeatureGraph, FeatureNode};
+use crate::hash::stable_hex_digest;
 use crate::kernel::CadKernelAdapter;
 use crate::policy;
 use crate::primitives::{PrimitiveSpec, build_primitives};
@@ -119,7 +120,7 @@ pub fn evaluate_feature_graph_deterministic(
             dependency_hashes.join(","),
             params_fingerprint
         );
-        let geometry_hash = format!("{:016x}", fnv1a64(payload.as_bytes()));
+        let geometry_hash = stable_hex_digest(payload.as_bytes());
         feature_hashes.insert(node.id.clone(), geometry_hash.clone());
         records.push(FeatureRebuildRecord {
             feature_id: node.id.clone(),
@@ -135,7 +136,7 @@ pub fn evaluate_feature_graph_deterministic(
         .map(|entry| format!("{}:{}", entry.feature_id, entry.geometry_hash))
         .collect::<Vec<_>>()
         .join(",");
-    let rebuild_hash = format!("{:016x}", fnv1a64(rebuild_payload.as_bytes()));
+    let rebuild_hash = stable_hex_digest(rebuild_payload.as_bytes());
 
     Ok(DeterministicRebuildResult {
         ordered_feature_ids,
@@ -343,7 +344,7 @@ fn feature_params_hash(node: &FeatureNode) -> String {
         .map(|(key, value)| format!("{key}={value}"))
         .collect::<Vec<_>>()
         .join(",");
-    format!("{:016x}", fnv1a64(payload.as_bytes()))
+    stable_hex_digest(payload.as_bytes())
 }
 
 fn node_uses_changed_params(node: &FeatureNode, changed_params: &BTreeSet<String>) -> bool {
@@ -361,18 +362,6 @@ fn node_uses_changed_params(node: &FeatureNode, changed_params: &BTreeSet<String
                     .any(|token| token == param)
         })
     })
-}
-
-fn fnv1a64(bytes: &[u8]) -> u64 {
-    const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
-    const FNV_PRIME: u64 = 0x100000001b3;
-
-    let mut hash = FNV_OFFSET_BASIS;
-    for byte in bytes {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-    hash
 }
 
 #[cfg(test)]

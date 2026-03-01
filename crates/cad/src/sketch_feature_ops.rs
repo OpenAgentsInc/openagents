@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::contracts::{CadWarning, CadWarningCode, CadWarningSeverity};
 use crate::feature_graph::FeatureNode;
+use crate::hash::stable_hex_digest;
 use crate::history::CadHistoryCommand;
 use crate::sketch::{CadSketchEntity, CadSketchModel};
 use crate::{CadError, CadResult};
@@ -433,7 +434,7 @@ fn sketch_profile_hash(spec: &SketchProfileFeatureSpec, bounds: [f64; 4]) -> Str
         spec.revolve_angle_deg,
         spec.axis_anchor_ids
     );
-    format!("{:016x}", fnv1a64(payload.as_bytes()))
+    stable_hex_digest(payload.as_bytes())
 }
 
 fn validate_stable_id(value: &str, label: &str) -> CadResult<()> {
@@ -476,17 +477,6 @@ fn arc_point(center: [f64; 2], radius_mm: f64, angle_deg: f64) -> CadResult<[f64
         center[0] + radius_mm * angle.cos(),
         center[1] + radius_mm * angle.sin(),
     ])
-}
-
-fn fnv1a64(bytes: &[u8]) -> u64 {
-    const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
-    const FNV_PRIME: u64 = 0x100000001b3;
-    let mut hash = FNV_OFFSET_BASIS;
-    for byte in bytes {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-    hash
 }
 
 #[cfg(test)]

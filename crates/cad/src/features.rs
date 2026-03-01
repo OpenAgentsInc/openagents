@@ -1,4 +1,5 @@
 use crate::feature_graph::FeatureNode;
+use crate::hash::stable_hex_digest;
 use crate::kernel::CadKernelAdapter;
 use crate::params::{ParameterStore, ScalarUnit};
 use crate::primitives::{BoxPrimitive, CylinderPrimitive, PrimitiveSpec, build_primitive};
@@ -62,7 +63,7 @@ impl BoxFeatureOp {
             "box|feature={}|w={:.6}|d={:.6}|h={:.6}|unit=mm",
             self.feature_id, primitive.width_mm, primitive.depth_mm, primitive.height_mm
         );
-        format!("{:016x}", fnv1a64(payload.as_bytes()))
+        stable_hex_digest(payload.as_bytes())
     }
 }
 
@@ -123,7 +124,7 @@ impl CylinderFeatureOp {
             "cylinder|feature={}|r={:.6}|h={:.6}|unit=mm",
             self.feature_id, primitive.radius_mm, primitive.height_mm
         );
-        format!("{:016x}", fnv1a64(payload.as_bytes()))
+        stable_hex_digest(payload.as_bytes())
     }
 }
 
@@ -265,10 +266,7 @@ impl TransformFeatureOp {
             .map(|value| format!("{value:.8}"))
             .collect::<Vec<_>>()
             .join(",");
-        format!(
-            "{:016x}",
-            fnv1a64(format!("{payload}|m={matrix_payload}").as_bytes())
-        )
+        stable_hex_digest(format!("{payload}|m={matrix_payload}").as_bytes())
     }
 }
 
@@ -345,7 +343,7 @@ impl CutHoleFeatureOp {
             self.tolerance_mm
                 .unwrap_or(crate::policy::BASE_TOLERANCE_MM)
         );
-        format!("{:016x}", fnv1a64(payload.as_bytes()))
+        stable_hex_digest(payload.as_bytes())
     }
 }
 
@@ -516,7 +514,7 @@ impl LinearPatternFeatureOp {
             translation_mm[1],
             translation_mm[2]
         );
-        format!("{:016x}", fnv1a64(payload.as_bytes()))
+        stable_hex_digest(payload.as_bytes())
     }
 
     fn pattern_hash(
@@ -533,7 +531,7 @@ impl LinearPatternFeatureOp {
             "linear_pattern|feature={}|source={}|src_hash={}|instances={}",
             self.feature_id, self.source_feature_id, source_geometry_hash, instance_payload
         );
-        format!("{:016x}", fnv1a64(payload.as_bytes()))
+        stable_hex_digest(payload.as_bytes())
     }
 }
 
@@ -712,7 +710,7 @@ impl FilletPlaceholderFeatureOp {
             self.kind.as_str(),
             radius_mm
         );
-        format!("{:016x}", fnv1a64(payload.as_bytes()))
+        stable_hex_digest(payload.as_bytes())
     }
 }
 
@@ -759,18 +757,6 @@ fn mat_mul(lhs: &[f64; 16], rhs: &[f64; 16]) -> [f64; 16] {
         }
     }
     out
-}
-
-fn fnv1a64(bytes: &[u8]) -> u64 {
-    const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
-    const FNV_PRIME: u64 = 0x100000001b3;
-
-    let mut hash = FNV_OFFSET_BASIS;
-    for byte in bytes {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-    hash
 }
 
 #[cfg(test)]

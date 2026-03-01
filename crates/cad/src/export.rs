@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::hash::stable_hex_digest;
 use crate::mesh::CadMeshPayload;
 use crate::{CadError, CadResult};
 
@@ -166,7 +167,7 @@ pub fn export_step_from_mesh(
     text.push_str("END-ISO-10303-21;\n");
 
     let bytes = text.into_bytes();
-    let deterministic_hash = format!("{:016x}", fnv1a64(&bytes));
+    let deterministic_hash = stable_hex_digest(&bytes);
     let receipt = CadStepExportReceipt {
         document_id: document_id.to_string(),
         document_revision,
@@ -286,18 +287,6 @@ fn export_failed(reason: impl Into<String>) -> CadError {
         format: "step".to_string(),
         reason: reason.into(),
     }
-}
-
-fn fnv1a64(bytes: &[u8]) -> u64 {
-    const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
-    const FNV_PRIME: u64 = 0x100000001b3;
-
-    let mut hash = FNV_OFFSET_BASIS;
-    for byte in bytes {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-    hash
 }
 
 #[cfg(test)]
