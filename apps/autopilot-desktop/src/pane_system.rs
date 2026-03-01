@@ -334,6 +334,7 @@ pub enum CadDemoPaneAction {
     Noop,
     CycleVariant,
     ResetSession,
+    CycleHiddenLineMode,
     CycleWarningSeverityFilter,
     CycleWarningCodeFilter,
     SelectWarning(usize),
@@ -2059,11 +2060,23 @@ pub fn cad_demo_reset_button_bounds(content_bounds: Bounds) -> Bounds {
     )
 }
 
+pub fn cad_demo_hidden_line_mode_button_bounds(content_bounds: Bounds) -> Bounds {
+    let reset = cad_demo_reset_button_bounds(content_bounds);
+    let desired_width = (content_bounds.size.width * 0.22).clamp(140.0, 220.0);
+    let min_x = content_bounds.origin.x + CHAT_PAD;
+    let max_x = content_bounds.max_x() - CHAT_PAD;
+    let origin_x = (reset.max_x() + JOB_INBOX_BUTTON_GAP).max(min_x);
+    let width = desired_width.min((max_x - origin_x).max(40.0));
+    Bounds::new(origin_x, reset.origin.y, width, reset.size.height)
+}
+
 pub fn cad_demo_warning_panel_bounds(content_bounds: Bounds) -> Bounds {
     let width = (content_bounds.size.width * 0.42).clamp(200.0, 300.0);
     let height = (content_bounds.size.height * 0.36).clamp(120.0, 220.0);
-    let origin_x = (content_bounds.max_x() - width - CHAT_PAD).max(content_bounds.origin.x + CHAT_PAD);
-    let origin_y = (content_bounds.max_y() - height - CHAT_PAD).max(content_bounds.origin.y + CHAT_PAD);
+    let origin_x =
+        (content_bounds.max_x() - width - CHAT_PAD).max(content_bounds.origin.x + CHAT_PAD);
+    let origin_y =
+        (content_bounds.max_y() - height - CHAT_PAD).max(content_bounds.origin.y + CHAT_PAD);
     Bounds::new(origin_x, origin_y, width, height)
 }
 
@@ -2105,7 +2118,8 @@ pub fn cad_demo_warning_marker_bounds(content_bounds: Bounds, index: usize) -> B
     let panel = cad_demo_warning_panel_bounds(content_bounds);
     let buttons_bottom = cad_demo_cycle_variant_button_bounds(content_bounds)
         .max_y()
-        .max(cad_demo_reset_button_bounds(content_bounds).max_y());
+        .max(cad_demo_reset_button_bounds(content_bounds).max_y())
+        .max(cad_demo_hidden_line_mode_button_bounds(content_bounds).max_y());
     let viewport_top = (buttons_bottom + 12.0).min(content_bounds.max_y());
     let viewport_bottom = (panel.origin.y - 8.0).max(viewport_top);
     let viewport_height = (viewport_bottom - viewport_top).max(1.0);
@@ -2826,6 +2840,11 @@ fn pane_hit_action_for_pane(
             if cad_demo_reset_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::CadDemo(CadDemoPaneAction::ResetSession));
             }
+            if cad_demo_hidden_line_mode_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CadDemo(
+                    CadDemoPaneAction::CycleHiddenLineMode,
+                ));
+            }
             if cad_demo_warning_filter_severity_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::CadDemo(
                     CadDemoPaneAction::CycleWarningSeverityFilter,
@@ -2838,12 +2857,16 @@ fn pane_hit_action_for_pane(
             }
             for index in 0..10 {
                 if cad_demo_timeline_row_bounds(content_bounds, index).contains(point) {
-                    return Some(PaneHitAction::CadDemo(CadDemoPaneAction::SelectTimelineRow(index)));
+                    return Some(PaneHitAction::CadDemo(
+                        CadDemoPaneAction::SelectTimelineRow(index),
+                    ));
                 }
             }
             for index in 0..8 {
                 if cad_demo_warning_row_bounds(content_bounds, index).contains(point) {
-                    return Some(PaneHitAction::CadDemo(CadDemoPaneAction::SelectWarning(index)));
+                    return Some(PaneHitAction::CadDemo(CadDemoPaneAction::SelectWarning(
+                        index,
+                    )));
                 }
                 if cad_demo_warning_marker_bounds(content_bounds, index).contains(point) {
                     return Some(PaneHitAction::CadDemo(
@@ -3126,14 +3149,19 @@ mod tests {
         agent_schedule_apply_button_bounds, agent_schedule_inspect_button_bounds,
         agent_schedule_manual_tick_button_bounds, alerts_recovery_ack_button_bounds,
         alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
-        alerts_recovery_row_bounds, chat_composer_input_bounds, chat_send_button_bounds,
-        chat_transcript_bounds, codex_account_cancel_login_button_bounds,
-        codex_account_login_button_bounds, codex_account_logout_button_bounds,
-        codex_account_rate_limits_button_bounds, codex_account_refresh_button_bounds,
-        codex_apps_refresh_button_bounds, codex_config_batch_write_button_bounds,
-        codex_config_detect_external_button_bounds, codex_config_import_external_button_bounds,
-        codex_config_read_button_bounds, codex_config_requirements_button_bounds,
-        codex_config_write_button_bounds, codex_diagnostics_clear_events_button_bounds,
+        alerts_recovery_row_bounds, cad_demo_cycle_variant_button_bounds,
+        cad_demo_hidden_line_mode_button_bounds, cad_demo_reset_button_bounds,
+        cad_demo_timeline_panel_bounds, cad_demo_timeline_row_bounds,
+        cad_demo_warning_filter_code_button_bounds, cad_demo_warning_filter_severity_button_bounds,
+        cad_demo_warning_marker_bounds, cad_demo_warning_panel_bounds, cad_demo_warning_row_bounds,
+        chat_composer_input_bounds, chat_send_button_bounds, chat_transcript_bounds,
+        codex_account_cancel_login_button_bounds, codex_account_login_button_bounds,
+        codex_account_logout_button_bounds, codex_account_rate_limits_button_bounds,
+        codex_account_refresh_button_bounds, codex_apps_refresh_button_bounds,
+        codex_config_batch_write_button_bounds, codex_config_detect_external_button_bounds,
+        codex_config_import_external_button_bounds, codex_config_read_button_bounds,
+        codex_config_requirements_button_bounds, codex_config_write_button_bounds,
+        codex_diagnostics_clear_events_button_bounds,
         codex_diagnostics_disable_wire_log_button_bounds,
         codex_diagnostics_enable_wire_log_button_bounds,
         codex_labs_collaboration_modes_button_bounds, codex_labs_command_exec_button_bounds,
@@ -3143,10 +3171,7 @@ mod tests {
         codex_mcp_reload_button_bounds, codex_models_refresh_button_bounds,
         codex_models_toggle_hidden_button_bounds, credit_desk_envelope_button_bounds,
         credit_desk_intent_button_bounds, credit_desk_offer_button_bounds,
-        credit_desk_spend_button_bounds, cad_demo_cycle_variant_button_bounds, cad_demo_timeline_panel_bounds,
-        cad_demo_timeline_row_bounds, cad_demo_warning_panel_bounds, cad_demo_reset_button_bounds, cad_demo_warning_filter_code_button_bounds,
-        cad_demo_warning_filter_severity_button_bounds, cad_demo_warning_marker_bounds,
-        cad_demo_warning_row_bounds, credit_settlement_default_button_bounds,
+        credit_desk_spend_button_bounds, credit_settlement_default_button_bounds,
         credit_settlement_reputation_button_bounds, credit_settlement_verify_button_bounds,
         earnings_scoreboard_refresh_button_bounds, go_online_toggle_button_bounds,
         job_history_next_page_button_bounds, job_history_prev_page_button_bounds,
@@ -3483,11 +3508,16 @@ mod tests {
         let content = Bounds::new(0.0, 0.0, 820.0, 360.0);
         let cycle = cad_demo_cycle_variant_button_bounds(content);
         let reset = cad_demo_reset_button_bounds(content);
+        let hidden_line = cad_demo_hidden_line_mode_button_bounds(content);
         assert!(content.contains(cycle.origin));
         assert!(content.contains(reset.origin));
+        assert!(content.contains(hidden_line.origin));
         assert!(cycle.max_y() <= content.max_y());
         assert!(reset.max_y() <= content.max_y());
+        assert!(hidden_line.max_y() <= content.max_y());
         assert!(cycle.max_x() < reset.min_x());
+        assert!(reset.max_x() <= hidden_line.min_x() + 0.001);
+        assert!(hidden_line.max_x() <= content.max_x() + 0.001);
     }
 
     #[test]

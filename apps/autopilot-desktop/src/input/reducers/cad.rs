@@ -63,6 +63,14 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
             *state = reset;
             true
         }
+        CadDemoPaneAction::CycleHiddenLineMode => {
+            state.hidden_line_mode = state.hidden_line_mode.next();
+            state.last_action = Some(format!(
+                "CAD hidden-line mode -> {}",
+                state.hidden_line_mode.label()
+            ));
+            true
+        }
         CadDemoPaneAction::CycleWarningSeverityFilter => {
             state.warning_filter_severity =
                 next_warning_severity_filter(&state.warning_filter_severity);
@@ -822,6 +830,30 @@ mod tests {
         assert_eq!(state.load_state, crate::app_state::PaneLoadState::Loading);
         assert!(state.pending_rebuild_request_id.is_some());
         assert!(state.last_rebuild_receipt.is_none());
+    }
+
+    #[test]
+    fn hidden_line_mode_cycles_deterministically() {
+        let mut state = CadDemoPaneState::default();
+        assert_eq!(state.hidden_line_mode.label(), "off");
+
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::CycleHiddenLineMode
+        ));
+        assert_eq!(state.hidden_line_mode.label(), "wireframe");
+
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::CycleHiddenLineMode
+        ));
+        assert_eq!(state.hidden_line_mode.label(), "section");
+
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::CycleHiddenLineMode
+        ));
+        assert_eq!(state.hidden_line_mode.label(), "off");
     }
 
     #[test]

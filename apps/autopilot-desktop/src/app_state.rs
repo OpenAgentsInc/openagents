@@ -2751,12 +2751,11 @@ mod tests {
         ActiveJobState, ActivityEventDomain, ActivityEventRow, ActivityFeedFilter,
         ActivityFeedState, AgentNetworkSimulationPaneState, AlertDomain, AlertLifecycle,
         AlertsRecoveryState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole,
-        CadDemoPaneState, EarningsScoreboardState, JobHistoryState, JobHistoryStatus,
-        JobHistoryStatusFilter,
-        JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest, JobInboxState,
-        JobInboxValidation, JobLifecycleStage, NetworkRequestStatus, NetworkRequestSubmission,
-        NetworkRequestsState, NostrSecretState, ProviderRuntimeState, RecoveryAlertRow,
-        RelayConnectionRow, RelayConnectionStatus, RelayConnectionsState,
+        CadDemoPaneState, CadHiddenLineMode, EarningsScoreboardState, JobHistoryState, JobHistoryStatus,
+        JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest,
+        JobInboxState, JobInboxValidation, JobLifecycleStage, NetworkRequestStatus,
+        NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderRuntimeState,
+        RecoveryAlertRow, RelayConnectionRow, RelayConnectionStatus, RelayConnectionsState,
         RelaySecuritySimulationPaneState, SettingsState, SparkPaneState,
         StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
         SyncHealthState, SyncRecoveryPhase, TreasuryExchangeSimulationPaneState,
@@ -3739,6 +3738,7 @@ mod tests {
         assert!(state.warning_hover_index.is_none());
         assert!(state.focused_warning_index.is_none());
         assert!(state.focused_geometry_ref.is_none());
+        assert_eq!(state.hidden_line_mode, CadHiddenLineMode::Off);
         assert_eq!(state.history_stack.session_id, "cad.session.local");
         assert_eq!(state.history_stack.len_undo(), 0);
         assert!(state.timeline_rows.is_empty());
