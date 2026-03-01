@@ -338,6 +338,9 @@ pub enum CadDemoPaneAction {
     CycleWarningCodeFilter,
     SelectWarning(usize),
     SelectWarningMarker(usize),
+    SelectTimelineRow(usize),
+    TimelineSelectPrev,
+    TimelineSelectNext,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2116,6 +2119,31 @@ pub fn cad_demo_warning_marker_bounds(content_bounds: Bounds, index: usize) -> B
     Bounds::new(marker_x, marker_y, marker_size, marker_size)
 }
 
+pub fn cad_demo_timeline_panel_bounds(content_bounds: Bounds) -> Bounds {
+    let warning_panel = cad_demo_warning_panel_bounds(content_bounds);
+    let width = ((warning_panel.origin.x - content_bounds.origin.x) - CHAT_PAD * 2.0).max(180.0);
+    let height = warning_panel.size.height;
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        warning_panel.origin.y,
+        width,
+        height,
+    )
+}
+
+pub fn cad_demo_timeline_row_bounds(content_bounds: Bounds, index: usize) -> Bounds {
+    let panel = cad_demo_timeline_panel_bounds(content_bounds);
+    let top = panel.origin.y + CHAT_PAD * 0.5;
+    let max_origin_y = (panel.max_y() - 16.0).max(top);
+    let origin_y = (top + index as f32 * 18.0).min(max_origin_y);
+    Bounds::new(
+        panel.origin.x + CHAT_PAD * 0.5,
+        origin_y,
+        (panel.size.width - CHAT_PAD).max(24.0),
+        16.0,
+    )
+}
+
 pub fn nostr_regenerate_button_bounds(content_bounds: Bounds) -> Bounds {
     let (regenerate_bounds, _, _) = nostr_button_bounds(content_bounds);
     regenerate_bounds
@@ -2808,6 +2836,11 @@ fn pane_hit_action_for_pane(
                     CadDemoPaneAction::CycleWarningCodeFilter,
                 ));
             }
+            for index in 0..10 {
+                if cad_demo_timeline_row_bounds(content_bounds, index).contains(point) {
+                    return Some(PaneHitAction::CadDemo(CadDemoPaneAction::SelectTimelineRow(index)));
+                }
+            }
             for index in 0..8 {
                 if cad_demo_warning_row_bounds(content_bounds, index).contains(point) {
                     return Some(PaneHitAction::CadDemo(CadDemoPaneAction::SelectWarning(index)));
@@ -3110,8 +3143,8 @@ mod tests {
         codex_mcp_reload_button_bounds, codex_models_refresh_button_bounds,
         codex_models_toggle_hidden_button_bounds, credit_desk_envelope_button_bounds,
         credit_desk_intent_button_bounds, credit_desk_offer_button_bounds,
-        credit_desk_spend_button_bounds, cad_demo_cycle_variant_button_bounds, cad_demo_warning_panel_bounds,
-        cad_demo_reset_button_bounds, cad_demo_warning_filter_code_button_bounds,
+        credit_desk_spend_button_bounds, cad_demo_cycle_variant_button_bounds, cad_demo_timeline_panel_bounds,
+        cad_demo_timeline_row_bounds, cad_demo_warning_panel_bounds, cad_demo_reset_button_bounds, cad_demo_warning_filter_code_button_bounds,
         cad_demo_warning_filter_severity_button_bounds, cad_demo_warning_marker_bounds,
         cad_demo_warning_row_bounds, credit_settlement_default_button_bounds,
         credit_settlement_reputation_button_bounds, credit_settlement_verify_button_bounds,
@@ -3481,6 +3514,21 @@ mod tests {
             assert!(marker.max_x() <= content.max_x() + 0.001);
             assert!(marker.origin.y >= content.origin.y);
             assert!(marker.max_y() <= content.max_y() + 0.001);
+        }
+    }
+
+    #[test]
+    fn cad_timeline_panel_rows_stay_within_content_in_small_panes() {
+        let content = Bounds::new(0.0, 0.0, 360.0, 220.0);
+        let panel = cad_demo_timeline_panel_bounds(content);
+        assert!(content.contains(panel.origin));
+        assert!(panel.max_x() <= content.max_x() + 0.001);
+        assert!(panel.max_y() <= content.max_y() + 0.001);
+        for index in 0..12 {
+            let row = cad_demo_timeline_row_bounds(content, index);
+            assert!(row.origin.x >= panel.origin.x);
+            assert!(row.max_x() <= panel.max_x() + 0.001);
+            assert!(row.max_y() <= panel.max_y() + 0.001);
         }
     }
 

@@ -35,6 +35,11 @@ This document defines the MVP `CadDemoPaneState` container in desktop app state.
 - `warning_hover_index`
 - `focused_warning_index`
 - `focused_geometry_ref`
+- `history_stack`
+- `timeline_rows`
+- `timeline_selected_index`
+- `timeline_scroll_offset`
+- `selected_feature_params`
 
 ## Rebuild Receipt Stream
 
@@ -57,6 +62,8 @@ Receipts are:
 - committed from background worker responses while preserving `last_good_mesh_id` during pending rebuilds
 
 Warning panel state is session-persistent and filterable by severity/code.
+
+Timeline state is selection-aware and auto-scrolls to keep the active feature row visible.
 
 ## Deterministic Defaults
 

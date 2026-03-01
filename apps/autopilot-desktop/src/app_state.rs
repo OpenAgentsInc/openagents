@@ -3738,5 +3738,11 @@ mod tests {
         assert!(state.warning_hover_index.is_none());
         assert!(state.focused_warning_index.is_none());
         assert!(state.focused_geometry_ref.is_none());
+        assert_eq!(state.history_stack.session_id, "cad.session.local");
+        assert_eq!(state.history_stack.len_undo(), 0);
+        assert!(state.timeline_rows.is_empty());
+        assert!(state.timeline_selected_index.is_none());
+        assert_eq!(state.timeline_scroll_offset, 0);
+        assert!(state.selected_feature_params.is_empty());
     }
 }
