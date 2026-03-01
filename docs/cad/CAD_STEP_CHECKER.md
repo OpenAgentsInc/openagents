@@ -2,6 +2,10 @@
 
 This runbook documents the STEP checker utility lane for CAD export validation.
 
+For full CAD quality gate sequencing (including this checker lane), see:
+
+- [`docs/cad/CAD_CODE_HEALTH.md`](/Users/christopherdavid/code/openagents/docs/cad/CAD_CODE_HEALTH.md)
+
 ## Goal
 
 Validate exported STEP files with machine-readable diagnostics and fail fast on:
