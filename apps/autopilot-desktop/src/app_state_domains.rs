@@ -478,11 +478,15 @@ pub struct CadRebuildReceiptState {
     pub document_revision: u64,
     pub variant_id: String,
     pub rebuild_hash: String,
+    pub mesh_hash: String,
     pub duration_ms: u64,
     pub cache_hits: u64,
     pub cache_misses: u64,
     pub cache_evictions: u64,
     pub feature_count: usize,
+    pub vertex_count: usize,
+    pub triangle_count: usize,
+    pub edge_count: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -75,7 +75,8 @@ pub fn paint_cad_demo_placeholder_pane(
         paint,
     );
 
-    let body_top = (cycle_bounds.max_y().max(reset_bounds.max_y()) + 8.0).min(content_bounds.max_y());
+    let body_top =
+        (cycle_bounds.max_y().max(reset_bounds.max_y()) + 8.0).min(content_bounds.max_y());
     let body_bounds = Bounds::new(
         content_bounds.origin.x,
         body_top,
@@ -127,13 +128,18 @@ pub fn paint_cad_demo_placeholder_pane(
         }
 
         if let Some(receipt) = pane_state.last_rebuild_receipt.as_ref() {
-            let latest_label = Point::new(viewport_label.x, viewport_label.y + RECEIPT_LINE_HEIGHT + 2.0);
+            let latest_label = Point::new(
+                viewport_label.x,
+                viewport_label.y + RECEIPT_LINE_HEIGHT + 2.0,
+            );
             if latest_label.y + 9.0 <= layout.viewport_bounds.max_y() {
                 paint.scene.draw_text(paint.text.layout(
                     &format!(
-                        "latest rebuild {}ms hash={} cache(h={},m={},e={})",
+                        "latest rebuild {}ms hash={} mesh={} tris={} cache(h={},m={},e={})",
                         receipt.duration_ms,
                         receipt.rebuild_hash,
+                        receipt.mesh_hash,
+                        receipt.triangle_count,
                         receipt.cache_hits,
                         receipt.cache_misses,
                         receipt.cache_evictions
@@ -166,7 +172,10 @@ pub fn paint_cad_demo_placeholder_pane(
         }
 
         if let Some(mesh_id) = pane_state.last_good_mesh_id.as_ref() {
-            let mesh_line = Point::new(viewport_label.x, viewport_label.y + (RECEIPT_LINE_HEIGHT * 5.0));
+            let mesh_line = Point::new(
+                viewport_label.x,
+                viewport_label.y + (RECEIPT_LINE_HEIGHT * 5.0),
+            );
             if mesh_line.y + 8.0 <= layout.viewport_bounds.max_y() {
                 paint.scene.draw_text(paint.text.layout(
                     &format!("last-good mesh: {mesh_id}"),
@@ -178,7 +187,10 @@ pub fn paint_cad_demo_placeholder_pane(
         }
 
         if let Some(request_id) = pane_state.pending_rebuild_request_id {
-            let pending_line = Point::new(viewport_label.x, viewport_label.y + (RECEIPT_LINE_HEIGHT * 6.0));
+            let pending_line = Point::new(
+                viewport_label.x,
+                viewport_label.y + (RECEIPT_LINE_HEIGHT * 6.0),
+            );
             if pending_line.y + 8.0 <= layout.viewport_bounds.max_y() {
                 paint.scene.draw_text(paint.text.layout(
                     &format!("pending rebuild request: #{request_id}"),
@@ -253,7 +265,10 @@ pub fn paint_cad_demo_placeholder_pane(
         );
         paint.scene.draw_text(paint.text.layout(
             "Feature Timeline",
-            Point::new(timeline_panel.origin.x + 6.0, timeline_panel.origin.y + 10.0),
+            Point::new(
+                timeline_panel.origin.x + 6.0,
+                timeline_panel.origin.y + 10.0,
+            ),
             10.0,
             theme::text::PRIMARY,
         ));
@@ -297,7 +312,12 @@ pub fn paint_cad_demo_placeholder_pane(
                 9.0,
                 theme::text::SECONDARY,
             ));
-            for (offset, (name, value)) in pane_state.selected_feature_params.iter().take(2).enumerate() {
+            for (offset, (name, value)) in pane_state
+                .selected_feature_params
+                .iter()
+                .take(2)
+                .enumerate()
+            {
                 let y = inspector_origin.y + 10.0 + offset as f32 * 9.0;
                 if y + 8.0 > timeline_panel.max_y() {
                     break;
@@ -349,7 +369,9 @@ fn warning_passes_filter(state: &CadDemoPaneState, warning: &CadDemoWarningState
             .severity
             .eq_ignore_ascii_case(&state.warning_filter_severity);
     let code_ok = state.warning_filter_code == "all"
-        || warning.code.eq_ignore_ascii_case(&state.warning_filter_code);
+        || warning
+            .code
+            .eq_ignore_ascii_case(&state.warning_filter_code);
     severity_ok && code_ok
 }
 
