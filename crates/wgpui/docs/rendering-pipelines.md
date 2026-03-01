@@ -1,6 +1,6 @@
 # Rendering Pipelines
 
-WGPUI uses a multi-pipeline GPU rendering architecture built on wgpu. This document covers the four active rendering pipelines (quads, lines, text, and images) plus the generic mesh primitive contract used by upcoming mesh passes.
+WGPUI uses a multi-pipeline GPU rendering architecture built on wgpu. This document covers the active rendering pipelines (quads, lines, text, images, and mesh).
 
 ## Overview
 
@@ -12,16 +12,23 @@ The renderer processes scene primitives through specialized GPU pipelines:
 | Line | Anti-aliased lines, curve segments | `line.wgsl` | `GpuLine` |
 | Text | Glyph rendering from atlas | `text.wgsl` | `GpuTextQuad` |
 | Image | Textured quads (SVGs, images) | `image.wgsl` | `GpuImageQuad` |
-| Mesh (contract) | Product-agnostic indexed mesh payloads | n/a in this phase | `MeshPrimitive` |
+| Mesh | Product-agnostic indexed mesh payloads | `mesh.wgsl` | `MeshPrimitive` |
 
-## Mesh Primitive Contract
+## Mesh Pipeline
 
 `wgpui-core::scene::MeshPrimitive` is available for any surface (not CAD-specific) to submit indexed triangle meshes into the scene graph.
 
 - Includes vertex positions, normals, colors, triangle indices, and optional edge indices.
 - Validation is explicit (`MeshPrimitive::validate`) and returns `MeshPrimitiveError` with remediation hints.
 - Scene integration is generic through `Scene::draw_mesh`, `Scene::meshes`, and `Scene::mesh_primitives_for_layer`.
-- `wgpui-render` currently prepares and tracks mesh metrics, while raster pipeline implementation lands in the follow-up render-pass issue.
+- `wgpui-render` prepares GPU vertex/index buffers per layer and renders triangle lists through `mesh.wgsl`.
+
+### Fallback Behavior
+
+- Mesh primitives that fail scene validation are rejected at `Scene::draw_mesh` (explicit error path).
+- During GPU prepare, empty vertex/index payloads are skipped and counted in `RenderMetrics.mesh_skipped`.
+- During draw, zero-index mesh batches are skipped and counted in `RenderMetrics.mesh_skipped`.
+- These fallback paths are non-fatal and keep other scene primitives rendering.
 
 ## Render Order
 

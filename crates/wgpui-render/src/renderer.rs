@@ -15,6 +15,14 @@ struct Uniforms {
     _padding: f32,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Pod, Zeroable)]
+struct GpuMeshVertex {
+    pub position: [f32; 3],
+    pub normal: [f32; 3],
+    pub color: [f32; 4],
+}
+
 /// Cache key for GPU-uploaded SVG textures.
 #[derive(Clone, Eq, PartialEq, Hash)]
 struct SvgTextureKey {
@@ -42,6 +50,13 @@ struct PreparedSvg {
     cache_key: SvgTextureKey,
 }
 
+/// Prepared mesh batch for rendering.
+struct PreparedMeshBatch {
+    vertex_buffer: wgpu::Buffer,
+    index_buffer: wgpu::Buffer,
+    index_count: u32,
+}
+
 /// Prepared layer data for rendering.
 struct PreparedLayer {
     quad_buffer: Option<wgpu::Buffer>,
@@ -50,7 +65,8 @@ struct PreparedLayer {
     text_count: u32,
     line_buffer: Option<wgpu::Buffer>,
     line_count: u32,
-    mesh_primitives: Vec<MeshPrimitive>,
+    mesh_batches: Vec<PreparedMeshBatch>,
+    mesh_count: u32,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -63,6 +79,8 @@ pub struct RenderMetrics {
     pub mesh_primitives: u32,
     pub mesh_vertices: u32,
     pub mesh_triangles: u32,
+    pub mesh_draw_calls: u32,
+    pub mesh_skipped: u32,
     pub draw_calls: u32,
     pub prepare_cpu_ms: f64,
     pub render_cpu_ms: f64,
@@ -73,6 +91,7 @@ pub struct Renderer {
     text_pipeline: wgpu::RenderPipeline,
     line_pipeline: wgpu::RenderPipeline,
     image_pipeline: wgpu::RenderPipeline,
+    mesh_pipeline: wgpu::RenderPipeline,
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
     #[expect(
@@ -112,6 +131,11 @@ impl Renderer {
         let image_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Image Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/image.wgsl").into()),
+        });
+
+        let mesh_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Mesh Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/mesh.wgsl").into()),
         });
 
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -544,11 +568,72 @@ impl Renderer {
             cache: None,
         });
 
+        let mesh_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Mesh Pipeline Layout"),
+            bind_group_layouts: &[&uniform_bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
+        let mesh_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Mesh Pipeline"),
+            layout: Some(&mesh_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &mesh_shader,
+                entry_point: Some("vs_main"),
+                buffers: &[wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<GpuMeshVertex>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &[
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x3,
+                            offset: 0,
+                            shader_location: 0,
+                        },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x3,
+                            offset: 12,
+                            shader_location: 1,
+                        },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x4,
+                            offset: 24,
+                            shader_location: 2,
+                        },
+                    ],
+                }],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &mesh_shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: surface_format,
+                    blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: Some(wgpu::Face::Back),
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        });
+
         Self {
             quad_pipeline,
             text_pipeline,
             line_pipeline,
             image_pipeline,
+            mesh_pipeline,
             uniform_buffer,
             uniform_bind_group,
             uniform_bind_group_layout,
@@ -620,6 +705,7 @@ impl Renderer {
         let mut mesh_primitives: u32 = 0;
         let mut mesh_vertices: u32 = 0;
         let mut mesh_triangles: u32 = 0;
+        let mut mesh_skipped: u32 = 0;
 
         // Prepare layers in order
         self.prepared_layers.clear();
@@ -630,11 +716,7 @@ impl Renderer {
             let quads = scene.gpu_quads_for_layer(layer, scale_factor);
             let text_quads = scene.gpu_text_quads_for_layer(layer, scale_factor);
             let lines = scene.curve_lines_for_layer(layer, scale_factor);
-            let meshes = scene
-                .mesh_primitives_for_layer(layer)
-                .into_iter()
-                .cloned()
-                .collect::<Vec<_>>();
+            let meshes = scene.mesh_primitives_for_layer(layer);
 
             let quad_buffer = if quads.is_empty() {
                 None
@@ -676,14 +758,36 @@ impl Renderer {
             text_instances += text_quads.len() as u32;
             line_instances += lines.len() as u32;
             mesh_primitives += meshes.len() as u32;
-            mesh_vertices += meshes
-                .iter()
-                .map(|mesh| mesh.vertices.len() as u32)
-                .sum::<u32>();
-            mesh_triangles += meshes
-                .iter()
-                .map(|mesh| (mesh.indices.len() / 3) as u32)
-                .sum::<u32>();
+            let mut mesh_batches = Vec::<PreparedMeshBatch>::new();
+            for mesh in &meshes {
+                if should_skip_mesh(mesh) {
+                    mesh_skipped = mesh_skipped.saturating_add(1);
+                    continue;
+                }
+                mesh_vertices = mesh_vertices.saturating_add(mesh.vertices.len() as u32);
+                mesh_triangles = mesh_triangles.saturating_add((mesh.indices.len() / 3) as u32);
+
+                let gpu_vertices = mesh_to_gpu_vertices(mesh, scale_factor);
+                if gpu_vertices.is_empty() {
+                    mesh_skipped = mesh_skipped.saturating_add(1);
+                    continue;
+                }
+                let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some(&format!("Mesh Vertex Buffer Layer {}", layer)),
+                    contents: bytemuck::cast_slice(&gpu_vertices),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+                let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some(&format!("Mesh Index Buffer Layer {}", layer)),
+                    contents: bytemuck::cast_slice(&mesh.indices),
+                    usage: wgpu::BufferUsages::INDEX,
+                });
+                mesh_batches.push(PreparedMeshBatch {
+                    vertex_buffer,
+                    index_buffer,
+                    index_count: mesh.indices.len() as u32,
+                });
+            }
 
             self.prepared_layers.push(PreparedLayer {
                 quad_buffer,
@@ -692,7 +796,8 @@ impl Renderer {
                 text_count: text_quads.len() as u32,
                 line_buffer,
                 line_count: lines.len() as u32,
-                mesh_primitives: meshes,
+                mesh_count: mesh_batches.len() as u32,
+                mesh_batches,
             });
         }
 
@@ -841,6 +946,8 @@ impl Renderer {
         metrics.mesh_primitives = mesh_primitives;
         metrics.mesh_vertices = mesh_vertices;
         metrics.mesh_triangles = mesh_triangles;
+        metrics.mesh_skipped = mesh_skipped;
+        metrics.mesh_draw_calls = 0;
         metrics.prepare_cpu_ms = prepare_start.elapsed().as_secs_f64() * 1_000.0;
     }
 
@@ -856,6 +963,8 @@ impl Renderer {
     ) {
         let render_start = Instant::now();
         let mut draw_calls: u32 = 0;
+        let mut mesh_draw_calls: u32 = 0;
+        let mut mesh_skipped: u32 = 0;
 
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Render Pass"),
@@ -902,9 +1011,23 @@ impl Renderer {
                 draw_calls += 1;
             }
 
-            // Mesh primitives are prepared and tracked in metrics, but mesh raster pass
-            // is implemented in follow-up issue #2487.
-            let _mesh_count = layer.mesh_primitives.len();
+            // Render prepared mesh batches in-layer.
+            if layer.mesh_count > 0 {
+                render_pass.set_pipeline(&self.mesh_pipeline);
+                render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                for batch in &layer.mesh_batches {
+                    if batch.index_count == 0 {
+                        mesh_skipped = mesh_skipped.saturating_add(1);
+                        continue;
+                    }
+                    render_pass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
+                    render_pass
+                        .set_index_buffer(batch.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                    render_pass.draw_indexed(0..batch.index_count, 0, 0..1);
+                    draw_calls = draw_calls.saturating_add(1);
+                    mesh_draw_calls = mesh_draw_calls.saturating_add(1);
+                }
+            }
         }
 
         // Render SVGs (each SVG has its own texture, so we draw them one at a time)
@@ -926,6 +1049,8 @@ impl Renderer {
 
         let mut metrics = self.metrics.borrow_mut();
         metrics.draw_calls = draw_calls;
+        metrics.mesh_draw_calls = mesh_draw_calls;
+        metrics.mesh_skipped = metrics.mesh_skipped.saturating_add(mesh_skipped);
         metrics.render_cpu_ms = render_start.elapsed().as_secs_f64() * 1_000.0;
     }
 
@@ -943,5 +1068,55 @@ impl Renderer {
 
     pub fn render_metrics(&self) -> RenderMetrics {
         self.metrics.borrow().clone()
+    }
+}
+
+fn mesh_to_gpu_vertices(mesh: &MeshPrimitive, scale_factor: f32) -> Vec<GpuMeshVertex> {
+    mesh.vertices
+        .iter()
+        .map(|vertex| GpuMeshVertex {
+            position: [
+                vertex.position[0] * scale_factor,
+                vertex.position[1] * scale_factor,
+                vertex.position[2] * scale_factor,
+            ],
+            normal: vertex.normal,
+            color: vertex.color,
+        })
+        .collect()
+}
+
+fn should_skip_mesh(mesh: &MeshPrimitive) -> bool {
+    mesh.vertices.is_empty() || mesh.indices.is_empty()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{mesh_to_gpu_vertices, should_skip_mesh};
+    use wgpui_core::scene::{MeshPrimitive, MeshVertex};
+
+    #[test]
+    fn mesh_vertex_conversion_scales_positions_deterministically() {
+        let mesh = MeshPrimitive::new(
+            vec![
+                MeshVertex::new([1.0, 2.0, 3.0], [0.0, 0.0, 1.0], [0.1, 0.2, 0.3, 1.0]),
+                MeshVertex::new([4.0, 5.0, 6.0], [0.0, 1.0, 0.0], [0.4, 0.5, 0.6, 1.0]),
+                MeshVertex::new([7.0, 8.0, 9.0], [1.0, 0.0, 0.0], [0.7, 0.8, 0.9, 1.0]),
+            ],
+            vec![0, 1, 2],
+        );
+        let first = mesh_to_gpu_vertices(&mesh, 2.0);
+        let second = mesh_to_gpu_vertices(&mesh, 2.0);
+        assert_eq!(first, second);
+        assert_eq!(first.len(), 3);
+        assert_eq!(first[0].position, [2.0, 4.0, 6.0]);
+        assert_eq!(first[1].position, [8.0, 10.0, 12.0]);
+        assert_eq!(first[2].position, [14.0, 16.0, 18.0]);
+    }
+
+    #[test]
+    fn empty_mesh_payload_is_marked_for_fallback_skip() {
+        let mesh = MeshPrimitive::new(Vec::new(), Vec::new());
+        assert!(should_skip_mesh(&mesh));
     }
 }
