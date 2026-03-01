@@ -119,4 +119,4 @@ pass:
 
 Checklist details:
 
-- `docs/cad/CAD_DEMO_RELEASE_GATES.md`
+- `crates/cad/docs/CAD_DEMO_RELEASE_GATES.md`

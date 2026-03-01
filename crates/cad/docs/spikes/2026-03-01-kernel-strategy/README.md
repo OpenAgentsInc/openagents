@@ -1,7 +1,7 @@
 # Kernel Strategy Spike (2026-03-01)
 
 Related issue: [#2453](https://github.com/OpenAgentsInc/openagents/issues/2453)  
-Decision record: `docs/cad/decisions/0001-kernel-strategy.md`
+Decision record: `crates/cad/docs/decisions/0001-kernel-strategy.md`
 
 ## Purpose
 

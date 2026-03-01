@@ -58,7 +58,7 @@ Scoring scale: 1 (poor) to 5 (strong)
 
 Short spike artifacts are stored under:
 
-`docs/cad/spikes/2026-03-01-kernel-strategy/`
+`crates/cad/docs/spikes/2026-03-01-kernel-strategy/`
 
 Key observed blockers:
 
@@ -91,7 +91,7 @@ Switch off option A if any of these remain unresolved after the agreed spike win
 ## Required Follow-On Actions
 
 1. Implement `cad::kernel` adapter boundary before higher-level feature work.
-2. Track dependency/license/security posture in CAD docs (`docs/cad/DEPENDENCY_POSTURE.md`).
+2. Track dependency/license/security posture in CAD docs (`crates/cad/docs/DEPENDENCY_POSTURE.md`).
 3. Run full rack corpus once kernel adapter work is in place and attach expanded artifacts.
 
 ## Sign-Off

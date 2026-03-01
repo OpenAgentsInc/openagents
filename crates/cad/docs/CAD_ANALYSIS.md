@@ -53,5 +53,5 @@ Core analysis returns structured failures with stable codes and remediation hint
 
 UI/reducers must surface these failures explicitly and avoid silent corruption.
 
-Cost heuristic model details are documented in `docs/cad/CAD_COST_HEURISTIC.md`.
-Deflection heuristic model details are documented in `docs/cad/CAD_DEFLECTION_HEURISTIC.md`.
+Cost heuristic model details are documented in `crates/cad/docs/CAD_COST_HEURISTIC.md`.
+Deflection heuristic model details are documented in `crates/cad/docs/CAD_DEFLECTION_HEURISTIC.md`.

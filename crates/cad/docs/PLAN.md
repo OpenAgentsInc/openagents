@@ -58,7 +58,7 @@ Implication for CAD:
 
 All CAD implementation work in this plan is gated by the canonical runbook:
 
-- [`docs/cad/CAD_CODE_HEALTH.md`](/Users/christopherdavid/code/openagents/docs/cad/CAD_CODE_HEALTH.md)
+- [`crates/cad/docs/CAD_CODE_HEALTH.md`](/Users/christopherdavid/code/openagents/crates/cad/docs/CAD_CODE_HEALTH.md)
 
 Use that runbook for formatting, CAD clippy policy lanes, release gates, and strict production hardening checks.
 
@@ -165,7 +165,7 @@ Wave 1 chosen direction:
 - Choose A as the default implementation path for demo velocity and STEP credibility.
 - Keep B as fallback if A fails predefined spike criteria.
 - C and D are not selected for Wave 1 due to higher tolerance/robustness risk.
-- Decision record: `docs/cad/decisions/0001-kernel-strategy.md`
+- Decision record: `crates/cad/docs/decisions/0001-kernel-strategy.md`
 
 Decision criteria to keep objective:
 
@@ -182,27 +182,27 @@ Decision criteria to keep objective:
 - Modeling policy: tolerant modeling with explicit tolerance-aware operations.
 - Boolean rule: every boolean returns either valid solid or structured failure; silent corruption is disallowed.
 - Failure receipt payload must include: operation type, operand semantic refs, tolerance used, and classification.
-- policy document: `docs/cad/UNITS_TOLERANCE_POLICY.md`
-- error model document: `docs/cad/CAD_ERROR_MODEL.md`
-- payload contracts document: `docs/cad/CAD_CONTRACTS.md`
-- core analysis behavior document: `docs/cad/CAD_ANALYSIS.md`
-- cost heuristic model document: `docs/cad/CAD_COST_HEURISTIC.md`
-- deflection heuristic model document: `docs/cad/CAD_DEFLECTION_HEURISTIC.md`
-- engineering overlay panel document: `docs/cad/CAD_ENGINEERING_OVERLAY.md`
-- semantic ref registry document: `docs/cad/CAD_SEMANTIC_REFS.md`
-- app pane-state document: `docs/cad/CAD_PANE_STATE.md`
-- input reducer scaffold document: `docs/cad/CAD_INPUT_SCAFFOLD.md`
-- params store document: `docs/cad/CAD_PARAMS.md`
-- feature ops document: `docs/cad/CAD_FEATURE_OPS.md`
-- finishing operations document: `docs/cad/CAD_FINISHING_OPS.md`
-- sketch constraint solver document: `docs/cad/CAD_SKETCH_CONSTRAINTS.md`
-- sketch-to-feature operations document: `docs/cad/CAD_SKETCH_FEATURE_OPS.md`
-- STEP import pipeline document: `docs/cad/CAD_STEP_IMPORT.md`
-- rack template generator document: `docs/cad/CAD_RACK_TEMPLATE.md`
-- CAD intent schema document: `docs/cad/CAD_INTENTS.md`
-- CAD intent dispatch document: `docs/cad/CAD_INTENT_DISPATCH.md`
-- CAD chat adapter document: `docs/cad/CAD_CHAT_ADAPTER.md`
-- CAD chat session lifecycle document: `docs/cad/CAD_CHAT_SESSION_LIFECYCLE.md`
+- policy document: `crates/cad/docs/UNITS_TOLERANCE_POLICY.md`
+- error model document: `crates/cad/docs/CAD_ERROR_MODEL.md`
+- payload contracts document: `crates/cad/docs/CAD_CONTRACTS.md`
+- core analysis behavior document: `crates/cad/docs/CAD_ANALYSIS.md`
+- cost heuristic model document: `crates/cad/docs/CAD_COST_HEURISTIC.md`
+- deflection heuristic model document: `crates/cad/docs/CAD_DEFLECTION_HEURISTIC.md`
+- engineering overlay panel document: `crates/cad/docs/CAD_ENGINEERING_OVERLAY.md`
+- semantic ref registry document: `crates/cad/docs/CAD_SEMANTIC_REFS.md`
+- app pane-state document: `crates/cad/docs/CAD_PANE_STATE.md`
+- input reducer scaffold document: `crates/cad/docs/CAD_INPUT_SCAFFOLD.md`
+- params store document: `crates/cad/docs/CAD_PARAMS.md`
+- feature ops document: `crates/cad/docs/CAD_FEATURE_OPS.md`
+- finishing operations document: `crates/cad/docs/CAD_FINISHING_OPS.md`
+- sketch constraint solver document: `crates/cad/docs/CAD_SKETCH_CONSTRAINTS.md`
+- sketch-to-feature operations document: `crates/cad/docs/CAD_SKETCH_FEATURE_OPS.md`
+- STEP import pipeline document: `crates/cad/docs/CAD_STEP_IMPORT.md`
+- rack template generator document: `crates/cad/docs/CAD_RACK_TEMPLATE.md`
+- CAD intent schema document: `crates/cad/docs/CAD_INTENTS.md`
+- CAD intent dispatch document: `crates/cad/docs/CAD_INTENT_DISPATCH.md`
+- CAD chat adapter document: `crates/cad/docs/CAD_CHAT_ADAPTER.md`
+- CAD chat session lifecycle document: `crates/cad/docs/CAD_CHAT_SESSION_LIFECYCLE.md`
 
 ### Eval, Caching, and Concurrency
 
@@ -250,8 +250,8 @@ Use `.apcad` as the CAD document format:
 - stable IDs retained across saves
 - analysis cache optional and non-authoritative
 - storable in standard Autopilot workspace paths
-- spec document: `docs/cad/APCAD_FORMAT.md`
-- core schema document: `docs/cad/CAD_DOCUMENT_SCHEMA.md`
+- spec document: `crates/cad/docs/APCAD_FORMAT.md`
+- core schema document: `crates/cad/docs/CAD_DOCUMENT_SCHEMA.md`
 
 Golden diff expectation:
 
@@ -322,7 +322,7 @@ If vendoring/adopting external kernel crates:
 - define upstream sync/update cadence
 - declare fork-vs-vendor posture explicitly
 - run dependency security checks on imported code path
-- policy document: `docs/cad/DEPENDENCY_POSTURE.md`
+- policy document: `crates/cad/docs/DEPENDENCY_POSTURE.md`
 
 ## 8) Build Order
 
