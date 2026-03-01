@@ -2766,14 +2766,15 @@ mod tests {
         ActiveJobState, ActivityEventDomain, ActivityEventRow, ActivityFeedFilter,
         ActivityFeedState, AgentNetworkSimulationPaneState, AlertDomain, AlertLifecycle,
         AlertsRecoveryState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole,
-        CadDemoPaneState, CadHiddenLineMode, EarningsScoreboardState, JobHistoryState,
-        JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision,
-        JobInboxNetworkRequest, JobInboxState, JobInboxValidation, JobLifecycleStage,
-        NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState, NostrSecretState,
-        ProviderRuntimeState, RecoveryAlertRow, RelayConnectionRow, RelayConnectionStatus,
-        RelayConnectionsState, RelaySecuritySimulationPaneState, SettingsState, SparkPaneState,
-        StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
-        SyncHealthState, SyncRecoveryPhase, TreasuryExchangeSimulationPaneState,
+        CadCameraViewSnap, CadDemoPaneState, CadHiddenLineMode, EarningsScoreboardState,
+        JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange,
+        JobInboxDecision, JobInboxNetworkRequest, JobInboxState, JobInboxValidation,
+        JobLifecycleStage, NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState,
+        NostrSecretState, ProviderRuntimeState, RecoveryAlertRow, RelayConnectionRow,
+        RelayConnectionStatus, RelayConnectionsState, RelaySecuritySimulationPaneState,
+        SettingsState, SparkPaneState, StableSatsSimulationPaneState, StarterJobRow,
+        StarterJobStatus, StarterJobsState, SyncHealthState, SyncRecoveryPhase,
+        TreasuryExchangeSimulationPaneState,
     };
 
     fn fixture_inbox_request(
@@ -3784,11 +3785,30 @@ mod tests {
         assert_eq!(first.camera_pan_x, second.camera_pan_x);
         assert_eq!(first.camera_pan_y, second.camera_pan_y);
         assert_eq!(first.camera_zoom, second.camera_zoom);
-        assert!(first.camera_orbit_pitch_deg <= 80.0);
-        assert!(first.camera_orbit_pitch_deg >= -80.0);
+        assert!(first.camera_orbit_pitch_deg <= 89.0);
+        assert!(first.camera_orbit_pitch_deg >= -89.0);
         assert!(first.camera_pan_x <= 800.0);
         assert!(first.camera_pan_y >= -800.0);
         assert!(first.camera_zoom <= 4.0);
         assert!(first.camera_zoom >= 0.35);
+    }
+
+    #[test]
+    fn cad_camera_view_snaps_are_deterministic() {
+        let mut first = CadDemoPaneState::default();
+        first.snap_camera_to_view(CadCameraViewSnap::Top);
+        first.snap_camera_to_view(CadCameraViewSnap::Right);
+        first.snap_camera_to_view(CadCameraViewSnap::Isometric);
+
+        let mut second = CadDemoPaneState::default();
+        second.snap_camera_to_view(CadCameraViewSnap::Top);
+        second.snap_camera_to_view(CadCameraViewSnap::Right);
+        second.snap_camera_to_view(CadCameraViewSnap::Isometric);
+
+        assert_eq!(first.camera_orbit_yaw_deg, second.camera_orbit_yaw_deg);
+        assert_eq!(first.camera_orbit_pitch_deg, second.camera_orbit_pitch_deg);
+        assert_eq!(first.camera_pan_x, second.camera_pan_x);
+        assert_eq!(first.camera_pan_y, second.camera_pan_y);
+        assert_eq!(first.active_view_snap(), Some(CadCameraViewSnap::Isometric));
     }
 }

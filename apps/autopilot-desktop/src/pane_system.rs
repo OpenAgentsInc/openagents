@@ -335,6 +335,10 @@ pub enum CadDemoPaneAction {
     CycleVariant,
     ResetSession,
     ResetCamera,
+    SnapViewTop,
+    SnapViewFront,
+    SnapViewRight,
+    SnapViewIsometric,
     CycleHiddenLineMode,
     CycleWarningSeverityFilter,
     CycleWarningCodeFilter,
@@ -2086,6 +2090,55 @@ pub fn cad_demo_reset_camera_button_bounds(content_bounds: Bounds) -> Bounds {
     )
 }
 
+pub fn cad_demo_view_cube_bounds(content_bounds: Bounds) -> Bounds {
+    let buttons_bottom = cad_demo_cycle_variant_button_bounds(content_bounds)
+        .max_y()
+        .max(cad_demo_reset_button_bounds(content_bounds).max_y())
+        .max(cad_demo_hidden_line_mode_button_bounds(content_bounds).max_y())
+        .max(cad_demo_reset_camera_button_bounds(content_bounds).max_y());
+    let warning_top = cad_demo_warning_panel_bounds(content_bounds).origin.y;
+    let min_x = content_bounds.origin.x + CHAT_PAD;
+    let min_y = content_bounds.origin.y + CHAT_PAD;
+    let size = 88.0f32.min((content_bounds.size.width - CHAT_PAD * 2.0).max(40.0));
+    let max_x = (content_bounds.max_x() - CHAT_PAD - size).max(min_x);
+    let max_y = (warning_top - 8.0 - size)
+        .min(content_bounds.max_y() - CHAT_PAD - size)
+        .max(min_y);
+    let origin_x = max_x.max(min_x);
+    let origin_y = (buttons_bottom + 10.0).min(max_y).max(min_y);
+    Bounds::new(origin_x, origin_y, size, size)
+}
+
+pub fn cad_demo_view_snap_top_button_bounds(content_bounds: Bounds) -> Bounds {
+    cad_demo_view_cube_cell_bounds(content_bounds, 0, 0)
+}
+
+pub fn cad_demo_view_snap_front_button_bounds(content_bounds: Bounds) -> Bounds {
+    cad_demo_view_cube_cell_bounds(content_bounds, 1, 0)
+}
+
+pub fn cad_demo_view_snap_right_button_bounds(content_bounds: Bounds) -> Bounds {
+    cad_demo_view_cube_cell_bounds(content_bounds, 0, 1)
+}
+
+pub fn cad_demo_view_snap_iso_button_bounds(content_bounds: Bounds) -> Bounds {
+    cad_demo_view_cube_cell_bounds(content_bounds, 1, 1)
+}
+
+fn cad_demo_view_cube_cell_bounds(content_bounds: Bounds, col: usize, row: usize) -> Bounds {
+    let cube = cad_demo_view_cube_bounds(content_bounds);
+    let inner_pad = 6.0;
+    let gap = 4.0;
+    let cell_width = ((cube.size.width - inner_pad * 2.0 - gap) * 0.5).max(12.0);
+    let cell_height = ((cube.size.height - inner_pad * 2.0 - gap) * 0.5).max(10.0);
+    Bounds::new(
+        cube.origin.x + inner_pad + col as f32 * (cell_width + gap),
+        cube.origin.y + inner_pad + row as f32 * (cell_height + gap),
+        cell_width,
+        cell_height,
+    )
+}
+
 pub fn cad_demo_warning_panel_bounds(content_bounds: Bounds) -> Bounds {
     let width = (content_bounds.size.width * 0.42).clamp(200.0, 300.0);
     let height = (content_bounds.size.height * 0.36).clamp(120.0, 220.0);
@@ -2860,6 +2913,18 @@ fn pane_hit_action_for_pane(
             if cad_demo_reset_camera_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::CadDemo(CadDemoPaneAction::ResetCamera));
             }
+            if cad_demo_view_snap_top_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CadDemo(CadDemoPaneAction::SnapViewTop));
+            }
+            if cad_demo_view_snap_front_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CadDemo(CadDemoPaneAction::SnapViewFront));
+            }
+            if cad_demo_view_snap_right_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CadDemo(CadDemoPaneAction::SnapViewRight));
+            }
+            if cad_demo_view_snap_iso_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CadDemo(CadDemoPaneAction::SnapViewIsometric));
+            }
             if cad_demo_hidden_line_mode_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::CadDemo(
                     CadDemoPaneAction::CycleHiddenLineMode,
@@ -3172,16 +3237,19 @@ mod tests {
         alerts_recovery_row_bounds, cad_demo_cycle_variant_button_bounds,
         cad_demo_hidden_line_mode_button_bounds, cad_demo_reset_button_bounds,
         cad_demo_reset_camera_button_bounds, cad_demo_timeline_panel_bounds,
-        cad_demo_timeline_row_bounds, cad_demo_warning_filter_code_button_bounds,
-        cad_demo_warning_filter_severity_button_bounds, cad_demo_warning_marker_bounds,
-        cad_demo_warning_panel_bounds, cad_demo_warning_row_bounds, chat_composer_input_bounds,
-        chat_send_button_bounds, chat_transcript_bounds, codex_account_cancel_login_button_bounds,
-        codex_account_login_button_bounds, codex_account_logout_button_bounds,
-        codex_account_rate_limits_button_bounds, codex_account_refresh_button_bounds,
-        codex_apps_refresh_button_bounds, codex_config_batch_write_button_bounds,
-        codex_config_detect_external_button_bounds, codex_config_import_external_button_bounds,
-        codex_config_read_button_bounds, codex_config_requirements_button_bounds,
-        codex_config_write_button_bounds, codex_diagnostics_clear_events_button_bounds,
+        cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
+        cad_demo_view_snap_front_button_bounds, cad_demo_view_snap_iso_button_bounds,
+        cad_demo_view_snap_right_button_bounds, cad_demo_view_snap_top_button_bounds,
+        cad_demo_warning_filter_code_button_bounds, cad_demo_warning_filter_severity_button_bounds,
+        cad_demo_warning_marker_bounds, cad_demo_warning_panel_bounds, cad_demo_warning_row_bounds,
+        chat_composer_input_bounds, chat_send_button_bounds, chat_transcript_bounds,
+        codex_account_cancel_login_button_bounds, codex_account_login_button_bounds,
+        codex_account_logout_button_bounds, codex_account_rate_limits_button_bounds,
+        codex_account_refresh_button_bounds, codex_apps_refresh_button_bounds,
+        codex_config_batch_write_button_bounds, codex_config_detect_external_button_bounds,
+        codex_config_import_external_button_bounds, codex_config_read_button_bounds,
+        codex_config_requirements_button_bounds, codex_config_write_button_bounds,
+        codex_diagnostics_clear_events_button_bounds,
         codex_diagnostics_disable_wire_log_button_bounds,
         codex_diagnostics_enable_wire_log_button_bounds,
         codex_labs_collaboration_modes_button_bounds, codex_labs_command_exec_button_bounds,
@@ -3543,6 +3611,28 @@ mod tests {
         assert!(hidden_line.max_x() <= reset_camera.min_x() + 0.001);
         assert!(hidden_line.max_x() <= content.max_x() + 0.001);
         assert!(reset_camera.max_x() <= content.max_x() + 0.001);
+    }
+
+    #[test]
+    fn cad_view_cube_buttons_stay_inside_content_and_non_overlapping() {
+        let content = Bounds::new(0.0, 0.0, 860.0, 420.0);
+        let cube = cad_demo_view_cube_bounds(content);
+        let top = cad_demo_view_snap_top_button_bounds(content);
+        let front = cad_demo_view_snap_front_button_bounds(content);
+        let right = cad_demo_view_snap_right_button_bounds(content);
+        let iso = cad_demo_view_snap_iso_button_bounds(content);
+
+        assert!(content.contains(cube.origin));
+        assert!(cube.max_x() <= content.max_x() + 0.001);
+        assert!(cube.max_y() <= content.max_y() + 0.001);
+        assert!(cube.contains(top.origin));
+        assert!(cube.contains(front.origin));
+        assert!(cube.contains(right.origin));
+        assert!(cube.contains(iso.origin));
+        assert!(top.max_x() <= front.min_x() + 0.001);
+        assert!(top.max_y() <= right.min_y() + 0.001);
+        assert!(right.max_x() <= iso.min_x() + 0.001);
+        assert!(front.max_y() <= iso.min_y() + 0.001);
     }
 
     #[test]

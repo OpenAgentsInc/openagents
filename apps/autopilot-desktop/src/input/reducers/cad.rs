@@ -10,8 +10,8 @@ use openagents_cad::validity::{
 };
 
 use crate::app_state::{
-    ActivityEventDomain, ActivityEventRow, CadDemoPaneState, CadDemoWarningState,
-    CadRebuildReceiptState, CadTimelineRowState, PaneLoadState, RenderState,
+    ActivityEventDomain, ActivityEventRow, CadCameraViewSnap, CadDemoPaneState,
+    CadDemoWarningState, CadRebuildReceiptState, CadTimelineRowState, PaneLoadState, RenderState,
 };
 use crate::cad_rebuild_worker::{
     CadBackgroundRebuildWorker, CadRebuildCompleted, CadRebuildRequest, CadRebuildResponse,
@@ -66,6 +66,26 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
         CadDemoPaneAction::ResetCamera => {
             state.reset_camera();
             state.last_action = Some("CAD camera reset to defaults".to_string());
+            true
+        }
+        CadDemoPaneAction::SnapViewTop => {
+            state.snap_camera_to_view(CadCameraViewSnap::Top);
+            state.last_action = Some("CAD camera snap -> top".to_string());
+            true
+        }
+        CadDemoPaneAction::SnapViewFront => {
+            state.snap_camera_to_view(CadCameraViewSnap::Front);
+            state.last_action = Some("CAD camera snap -> front".to_string());
+            true
+        }
+        CadDemoPaneAction::SnapViewRight => {
+            state.snap_camera_to_view(CadCameraViewSnap::Right);
+            state.last_action = Some("CAD camera snap -> right".to_string());
+            true
+        }
+        CadDemoPaneAction::SnapViewIsometric => {
+            state.snap_camera_to_view(CadCameraViewSnap::Isometric);
+            state.last_action = Some("CAD camera snap -> isometric".to_string());
             true
         }
         CadDemoPaneAction::CycleHiddenLineMode => {
@@ -878,6 +898,47 @@ mod tests {
         assert_eq!(state.camera_pan_y, 0.0);
         assert_eq!(state.camera_orbit_yaw_deg, 26.0);
         assert_eq!(state.camera_orbit_pitch_deg, 18.0);
+    }
+
+    #[test]
+    fn snap_view_actions_set_expected_camera_pose() {
+        let mut state = CadDemoPaneState::default();
+        state.camera_pan_x = 140.0;
+        state.camera_pan_y = -92.0;
+
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::SnapViewTop
+        ));
+        assert_eq!(state.camera_orbit_yaw_deg, 0.0);
+        assert_eq!(state.camera_orbit_pitch_deg, 89.0);
+        assert_eq!(state.camera_pan_x, 0.0);
+        assert_eq!(state.camera_pan_y, 0.0);
+
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::SnapViewFront
+        ));
+        assert_eq!(state.camera_orbit_yaw_deg, 0.0);
+        assert_eq!(state.camera_orbit_pitch_deg, 0.0);
+
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::SnapViewRight
+        ));
+        assert_eq!(state.camera_orbit_yaw_deg, 90.0);
+        assert_eq!(state.camera_orbit_pitch_deg, 0.0);
+
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::SnapViewIsometric
+        ));
+        assert_eq!(state.camera_orbit_yaw_deg, 45.0);
+        assert_eq!(state.camera_orbit_pitch_deg, 35.264);
+        assert_eq!(
+            state.active_view_snap(),
+            Some(crate::app_state::CadCameraViewSnap::Isometric)
+        );
     }
 
     #[test]
