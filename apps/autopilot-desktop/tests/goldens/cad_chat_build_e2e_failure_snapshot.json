@@ -1,0 +1,150 @@
+{
+  "final": {
+    "active_variant_id": "variant.baseline",
+    "analysis": {
+      "document_revision": 0,
+      "estimated_cost_usd": null,
+      "mass_kg": null,
+      "material_id": "al-6061-t6",
+      "max_deflection_mm": null,
+      "variant_id": "variant.baseline",
+      "volume_mm3": null
+    },
+    "final_state_revision": 0,
+    "last_error": null,
+    "receipts": [],
+    "timing": {
+      "total_duration_ms": 0
+    },
+    "warnings": {
+      "codes": [],
+      "count": 0,
+      "critical_count": 0
+    }
+  },
+  "script_id": "cad-chat-build-e2e-failure",
+  "seed": 0,
+  "steps": [
+    {
+      "duration_ms": 0,
+      "index": 0,
+      "kind": "cad_tool_call_intent",
+      "name": "tool-call-parse-failure",
+      "result": {
+        "error_code": "CAD-INTENT-MISSING-INTENT",
+        "error_message": "payload requires string field 'intent'",
+        "progress": {
+          "rows": [
+            {
+              "label": "phase",
+              "tone": "error",
+              "value": "failed"
+            },
+            {
+              "label": "tool",
+              "tone": "info",
+              "value": "failed:OA-CAD-INTENT-PARSE-FAILED"
+            },
+            {
+              "label": "failure_class",
+              "tone": "error",
+              "value": "intent_parse_validation"
+            },
+            {
+              "label": "retries",
+              "tone": "muted",
+              "value": "0/1"
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.failure.metric class=intent_parse_validation count=1"
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.failure.context class=intent_parse_validation retries=0/1"
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.intent.parse_failed intent parse failed CAD-INTENT-MISSING-INTENT: payload requires strin..."
+            },
+            {
+              "label": "failure",
+              "tone": "error",
+              "value": "intent parse failed CAD-INTENT-MISSING-INTENT: payload requires string field 'intent'"
+            },
+            {
+              "label": "hint",
+              "tone": "muted",
+              "value": "retry with explicit intent_json matching CadIntent schema"
+            }
+          ],
+          "status": "failed",
+          "turn_id": "turn.cad-chat-e2e.failure.1"
+        },
+        "status": "rejected_parse"
+      }
+    }
+  ],
+  "thread_id": "thread.cad-chat-e2e-failure",
+  "tool_calls": [
+    {
+      "error_code": "CAD-INTENT-MISSING-INTENT",
+      "error_message": "payload requires string field 'intent'",
+      "progress": {
+        "rows": [
+          {
+            "label": "phase",
+            "tone": "error",
+            "value": "failed"
+          },
+          {
+            "label": "tool",
+            "tone": "info",
+            "value": "failed:OA-CAD-INTENT-PARSE-FAILED"
+          },
+          {
+            "label": "failure_class",
+            "tone": "error",
+            "value": "intent_parse_validation"
+          },
+          {
+            "label": "retries",
+            "tone": "muted",
+            "value": "0/1"
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.failure.metric class=intent_parse_validation count=1"
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.failure.context class=intent_parse_validation retries=0/1"
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.intent.parse_failed intent parse failed CAD-INTENT-MISSING-INTENT: payload requires strin..."
+          },
+          {
+            "label": "failure",
+            "tone": "error",
+            "value": "intent parse failed CAD-INTENT-MISSING-INTENT: payload requires string field 'intent'"
+          },
+          {
+            "label": "hint",
+            "tone": "muted",
+            "value": "retry with explicit intent_json matching CadIntent schema"
+          }
+        ],
+        "status": "failed",
+        "turn_id": "turn.cad-chat-e2e.failure.1"
+      },
+      "status": "rejected_parse"
+    }
+  ]
+}
