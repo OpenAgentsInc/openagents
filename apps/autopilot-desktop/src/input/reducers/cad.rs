@@ -207,15 +207,8 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
             ));
             true
         }
-        CadDemoPaneAction::ResetSession => {
-            let mut reset = CadDemoPaneState::default();
-            reset.last_action = Some("CAD demo session reset".to_string());
-            if let Err(error) = enqueue_rebuild_cycle(&mut reset, "reset-session") {
-                reset.load_state = PaneLoadState::Error;
-                reset.last_error = Some(error);
-            }
-            *state = reset;
-            true
+        CadDemoPaneAction::ResetSession | CadDemoPaneAction::BootstrapDemo => {
+            bootstrap_cad_demo_state(state)
         }
         CadDemoPaneAction::ResetCamera => {
             state.reset_camera();
@@ -559,6 +552,17 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
             }
         },
     }
+}
+
+fn bootstrap_cad_demo_state(state: &mut CadDemoPaneState) -> bool {
+    let mut bootstrap = CadDemoPaneState::default();
+    bootstrap.last_action = Some("CAD demo bootstrapped to deterministic baseline".to_string());
+    if let Err(error) = enqueue_rebuild_cycle(&mut bootstrap, "bootstrap-demo") {
+        bootstrap.load_state = PaneLoadState::Error;
+        bootstrap.last_error = Some(error);
+    }
+    *state = bootstrap;
+    true
 }
 
 fn ensure_worker(state: &mut CadDemoPaneState) -> &CadBackgroundRebuildWorker {
@@ -928,7 +932,7 @@ fn emit_cad_event_for_action(state: &mut RenderState, action: CadDemoPaneAction)
                 ),
             );
         }
-        CadDemoPaneAction::ResetSession => {
+        CadDemoPaneAction::ResetSession | CadDemoPaneAction::BootstrapDemo => {
             emit_cad_event(
                 state,
                 CadEventKind::DocumentCreated,
@@ -1760,6 +1764,48 @@ mod tests {
         panic!("timed out waiting for background CAD rebuild receipt");
     }
 
+    fn bootstrap_signature(state: &CadDemoPaneState) -> String {
+        let viewport_signature = state
+            .variant_viewports
+            .iter()
+            .map(|viewport| {
+                format!(
+                    "{}:{:.2}:{:.2}:{:.2}:{:.2}:{:.2}:{}:{}",
+                    viewport.variant_id,
+                    viewport.camera_zoom,
+                    viewport.camera_pan_x,
+                    viewport.camera_pan_y,
+                    viewport.camera_orbit_yaw_deg,
+                    viewport.camera_orbit_pitch_deg,
+                    viewport.selected_ref.as_deref().unwrap_or("none"),
+                    viewport.hovered_ref.as_deref().unwrap_or("none"),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("|");
+        format!(
+            "load={:?}|err={:?}|action={:?}|session={}|doc={}|rev={}|variant={}|tile={}|next={}\
+|pending={:?}|mesh={:?}|warnings={}|events={}|section={}|snap={}|projection={}|viewport={}",
+            state.load_state,
+            state.last_error,
+            state.last_action,
+            state.session_id,
+            state.document_id,
+            state.document_revision,
+            state.active_variant_id,
+            state.active_variant_tile_index,
+            state.next_rebuild_request_id,
+            state.pending_rebuild_request_id,
+            state.last_good_mesh_id,
+            state.warnings.len(),
+            state.cad_events.len(),
+            state.section_summary(),
+            state.snap_summary(),
+            state.projection_mode.label(),
+            viewport_signature,
+        )
+    }
+
     #[test]
     fn noop_action_is_stable_no_op() {
         let mut state = CadDemoPaneState::default();
@@ -1780,6 +1826,52 @@ mod tests {
         assert_eq!(state.load_state, crate::app_state::PaneLoadState::Loading);
         assert!(state.pending_rebuild_request_id.is_some());
         assert!(state.last_rebuild_receipt.is_none());
+    }
+
+    #[test]
+    fn bootstrap_demo_action_is_idempotent_and_reset_alias_compatible() {
+        let mut state = CadDemoPaneState::default();
+        let _ = apply_cad_demo_action(&mut state, CadDemoPaneAction::CycleVariant);
+        state.camera_zoom = 2.7;
+        state.camera_pan_x = 132.0;
+        state.camera_pan_y = -92.0;
+        state.camera_orbit_yaw_deg = 71.0;
+        state.camera_orbit_pitch_deg = -28.0;
+        state.focused_geometry_ref = Some("cad://feature/feature.custom".to_string());
+        state.warning_filter_code = "cad.test.warning".to_string();
+        state.warning_filter_severity = "critical".to_string();
+
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::BootstrapDemo
+        ));
+        let first_signature = bootstrap_signature(&state);
+        assert_eq!(state.load_state, crate::app_state::PaneLoadState::Loading);
+        assert_eq!(state.pending_rebuild_request_id, Some(1));
+        assert_eq!(state.document_revision, 0);
+        assert_eq!(state.active_variant_id, "variant.baseline");
+        assert_eq!(state.warning_filter_code, "all");
+        assert_eq!(state.warning_filter_severity, "all");
+
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::BootstrapDemo
+        ));
+        let second_signature = bootstrap_signature(&state);
+        assert_eq!(
+            first_signature, second_signature,
+            "bootstrap action must be idempotent"
+        );
+
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::ResetSession
+        ));
+        let reset_signature = bootstrap_signature(&state);
+        assert_eq!(
+            first_signature, reset_signature,
+            "legacy reset action must remain equivalent to bootstrap"
+        );
     }
 
     #[test]

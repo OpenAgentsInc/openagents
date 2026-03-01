@@ -335,6 +335,7 @@ pub enum CadDemoPaneAction {
     Noop,
     CycleVariant,
     ResetSession,
+    BootstrapDemo,
     ResetCamera,
     ToggleProjectionMode,
     CycleSectionPlane,
@@ -381,7 +382,14 @@ pub struct CadPaletteCommandSpec {
     pub action: CadDemoPaneAction,
 }
 
-const CAD_PALETTE_COMMAND_SPECS: [CadPaletteCommandSpec; 21] = [
+const CAD_PALETTE_COMMAND_SPECS: [CadPaletteCommandSpec; 22] = [
+    CadPaletteCommandSpec {
+        id: "cad.demo.bootstrap",
+        label: "CAD: Bootstrap Demo",
+        description: "Reset CAD demo session to deterministic baseline and queue rebuild",
+        keybinding: Some("B"),
+        action: CadDemoPaneAction::BootstrapDemo,
+    },
     CadPaletteCommandSpec {
         id: "cad.view.snap_top",
         label: "CAD: Snap View Top",
@@ -3277,7 +3285,7 @@ fn pane_hit_action_for_pane(
                 return Some(PaneHitAction::CadDemo(CadDemoPaneAction::CycleVariant));
             }
             if cad_demo_reset_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::CadDemo(CadDemoPaneAction::ResetSession));
+                return Some(PaneHitAction::CadDemo(CadDemoPaneAction::BootstrapDemo));
             }
             if cad_demo_reset_camera_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::CadDemo(CadDemoPaneAction::ResetCamera));

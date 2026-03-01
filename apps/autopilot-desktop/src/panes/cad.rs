@@ -189,7 +189,7 @@ pub fn paint_cad_demo_placeholder_pane(
     let severity_filter_bounds = cad_demo_warning_filter_severity_button_bounds(content_bounds);
     let code_filter_bounds = cad_demo_warning_filter_code_button_bounds(content_bounds);
     paint_action_button(cycle_bounds, "Cycle Variant", paint);
-    paint_action_button(reset_bounds, "Reset Session", paint);
+    paint_action_button(reset_bounds, "Bootstrap Demo", paint);
     paint_action_button(
         hidden_line_bounds,
         &format!("Render: {}", pane_state.hidden_line_mode.label()),
