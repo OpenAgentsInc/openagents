@@ -266,7 +266,7 @@ pub struct ChatPaneInputs {
 impl Default for ChatPaneInputs {
     fn default() -> Self {
         Self {
-            composer: TextInput::new().placeholder("Ask Codex to do work..."),
+            composer: TextInput::new().placeholder("Message Autopilot Chat..."),
         }
     }
 }
@@ -461,7 +461,7 @@ pub struct AutopilotChatState {
 impl Default for AutopilotChatState {
     fn default() -> Self {
         Self {
-            connection_status: "starting".to_string(),
+            connection_status: "ready".to_string(),
             // "auto" means "let app-server pick the current default model".
             models: vec!["auto".to_string()],
             selected_model: 0,
@@ -469,14 +469,8 @@ impl Default for AutopilotChatState {
             threads: Vec::new(),
             thread_metadata: std::collections::HashMap::new(),
             active_thread_id: None,
-            messages: vec![AutopilotMessage {
-                id: 1,
-                role: AutopilotRole::Codex,
-                status: AutopilotMessageStatus::Done,
-                content: "Codex lane connecting...".to_string(),
-                structured: None,
-            }],
-            next_message_id: 2,
+            messages: Vec::new(),
+            next_message_id: 1,
             active_turn_id: None,
             active_assistant_message_id: None,
             pending_assistant_message_ids: VecDeque::new(),
