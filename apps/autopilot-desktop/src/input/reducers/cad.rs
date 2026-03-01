@@ -107,13 +107,14 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
         CadDemoPaneAction::CycleMaterialPreset => {
             let material_id = state.cycle_material_preset();
             if let Some(payload) = state.last_good_mesh_payload.as_ref() {
+                let active_variant_id = state.active_variant_id.clone();
                 let analysis = analysis_snapshot_from_mesh(
                     state.document_revision,
-                    &state.active_variant_id,
+                    &active_variant_id,
                     payload,
                     &material_id,
                 );
-                state.analysis_snapshot = analysis.snapshot;
+                state.set_variant_analysis_snapshot(&active_variant_id, analysis.snapshot);
                 if let Some(error) = analysis.error {
                     state.last_error = Some(format!(
                         "CAD core analysis failed ({}): {}. {}",
@@ -509,7 +510,7 @@ fn apply_completed_rebuild(
         &completed.mesh_payload,
         &material_id,
     );
-    state.analysis_snapshot = analysis.snapshot;
+    state.set_variant_analysis_snapshot(&receipt.variant_id, analysis.snapshot);
     if let Some(error) = analysis.error {
         state.last_error = Some(format!(
             "CAD core analysis failed ({}): {}. {}",
@@ -761,14 +762,13 @@ fn build_demo_feature_graph(state: &CadDemoPaneState) -> FeatureGraph {
 fn refresh_warning_state(state: &mut CadDemoPaneState, document_revision: u64, variant_id: &str) {
     let snapshot = build_demo_validity_snapshot(document_revision, variant_id);
     let receipt = run_model_validity_checks(&snapshot);
-    state.warnings = receipt
+    let warnings = receipt
         .warnings
         .iter()
         .enumerate()
         .map(|(index, warning)| warning_to_pane_state(index, warning))
-        .collect();
-    state.warning_hover_index = None;
-    state.focused_warning_index = None;
+        .collect::<Vec<_>>();
+    state.set_variant_warning_set(variant_id, warnings);
     state.set_focused_geometry_for_active_variant(None);
 }
 

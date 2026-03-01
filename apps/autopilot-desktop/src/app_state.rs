@@ -2767,7 +2767,8 @@ mod tests {
         ActiveJobState, ActivityEventDomain, ActivityEventRow, ActivityFeedFilter,
         ActivityFeedState, AgentNetworkSimulationPaneState, AlertDomain, AlertLifecycle,
         AlertsRecoveryState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole,
-        CadCameraViewSnap, CadContextMenuTargetKind, CadDemoPaneState, CadHiddenLineMode,
+        CadCameraViewSnap, CadContextMenuTargetKind, CadDemoPaneState, CadDemoWarningState,
+        CadHiddenLineMode,
         CadHotkeyAction, CadProjectionMode, CadSectionAxis, CadSnapMode, CadThreeDMouseAxis,
         CadThreeDMouseMode, CadThreeDMouseProfile, EarningsScoreboardState, JobHistoryState,
         JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision,
@@ -3757,7 +3758,9 @@ mod tests {
             state.analysis_snapshot.material_id.as_deref(),
             Some("al-6061-t6")
         );
+        assert_eq!(state.variant_analysis_snapshots.len(), 4);
         assert!(state.warnings.is_empty());
+        assert_eq!(state.variant_warning_sets.len(), 4);
         assert_eq!(state.warning_filter_severity, "all");
         assert_eq!(state.warning_filter_code, "all");
         assert!(state.warning_hover_index.is_none());
@@ -4040,5 +4043,47 @@ mod tests {
             "tile 1 hover should persist"
         );
         assert_ne!(state.camera_orbit_yaw_deg, yaw_tile0);
+    }
+
+    #[test]
+    fn cad_variant_tiles_keep_independent_analysis_and_warning_state() {
+        let mut state = CadDemoPaneState::default();
+
+        assert!(state.set_active_variant_tile(0));
+        let mut tile0_analysis = state.analysis_snapshot.clone();
+        tile0_analysis.variant_id = "variant.baseline".to_string();
+        tile0_analysis.mass_kg = Some(2.7);
+        state.set_variant_analysis_snapshot("variant.baseline", tile0_analysis.clone());
+        state.set_variant_warning_set(
+            "variant.baseline",
+            vec![CadDemoWarningState {
+                warning_id: "w0".to_string(),
+                code: "CAD-WARN-SLIVER-FACE".to_string(),
+                severity: "warning".to_string(),
+                message: "sliver".to_string(),
+                remediation_hint: "adjust vent spacing".to_string(),
+                semantic_refs: vec!["vent_face_set".to_string()],
+                deep_link: Some("cad://feature/feature.rack.vent_face_set".to_string()),
+                feature_id: "feature.rack.vent_face_set".to_string(),
+                entity_id: "face.0".to_string(),
+            }],
+        );
+
+        assert!(state.set_active_variant_tile(1));
+        let mut tile1_analysis = state.analysis_snapshot.clone();
+        tile1_analysis.variant_id = "variant.lightweight".to_string();
+        tile1_analysis.mass_kg = Some(2.2);
+        state.set_variant_analysis_snapshot("variant.lightweight", tile1_analysis.clone());
+        state.set_variant_warning_set("variant.lightweight", Vec::new());
+
+        assert_eq!(state.analysis_snapshot.variant_id, "variant.lightweight");
+        assert_eq!(state.analysis_snapshot.mass_kg, Some(2.2));
+        assert!(state.warnings.is_empty());
+
+        assert!(state.set_active_variant_tile(0));
+        assert_eq!(state.analysis_snapshot.variant_id, "variant.baseline");
+        assert_eq!(state.analysis_snapshot.mass_kg, Some(2.7));
+        assert_eq!(state.warnings.len(), 1);
+        assert_eq!(state.warnings[0].warning_id, "w0");
     }
 }

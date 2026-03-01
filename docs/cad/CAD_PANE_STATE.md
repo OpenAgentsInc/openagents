@@ -31,11 +31,14 @@ This document defines the MVP `CadDemoPaneState` container in desktop app state.
 - `last_good_mesh_id`
 - `last_good_mesh_payload`
 - `warnings`
+- `variant_warning_sets` (per-variant warning snapshots)
 - `warning_filter_severity`
 - `warning_filter_code`
 - `warning_hover_index`
 - `focused_warning_index`
 - `focused_geometry_ref`
+- `analysis_snapshot`
+- `variant_analysis_snapshots` (per-variant analysis snapshots)
 - `history_stack`
 - `timeline_rows`
 - `timeline_selected_index`
@@ -69,6 +72,7 @@ Receipts are:
 - sourced from async rebuild+tessellation worker completion (`cad_rebuild_worker`)
 
 Warning panel state is session-persistent and filterable by severity/code.
+Warning and analysis payloads are also stored per variant and restored on tile switch to avoid cross-variant state leakage.
 
 Timeline state is selection-aware and auto-scrolls to keep the active feature row visible.
 
