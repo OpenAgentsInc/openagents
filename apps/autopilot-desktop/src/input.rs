@@ -38,10 +38,11 @@ use crate::hotbar::{
 use crate::pane_registry::pane_spec_by_command_id;
 use crate::pane_system::{
     ActivityFeedPaneAction, AgentNetworkSimulationPaneAction, AlertsRecoveryPaneAction,
-    CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction, CodexDiagnosticsPaneAction,
-    CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction, CredentialsPaneAction,
-    EarningsScoreboardPaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction,
-    PaneInput, RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction,
+    CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction,
+    CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction,
+    CredentialsPaneAction, EarningsScoreboardPaneAction, NetworkRequestsPaneAction,
+    PaneController, PaneHitAction, PaneInput, RelayConnectionsPaneAction,
+    RelaySecuritySimulationPaneAction,
     SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StableSatsSimulationPaneAction,
     StarterJobsPaneAction, SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction,
     clamp_all_panes_to_window, dispatch_chat_input_event, dispatch_chat_scroll_event,
@@ -848,6 +849,7 @@ fn run_pane_hit_action(state: &mut crate::app_state::RenderState, action: PaneHi
         PaneHitAction::StableSatsSimulation(action) => {
             run_stable_sats_simulation_action(state, action)
         }
+        PaneHitAction::CadDemo(action) => reducers::run_cad_demo_action(state, action),
         PaneHitAction::Spark(action) => run_spark_action(state, action),
         PaneHitAction::SparkCreateInvoice(action) => run_create_invoice_action(state, action),
         PaneHitAction::SparkPayInvoice(action) => run_pay_invoice_action(state, action),

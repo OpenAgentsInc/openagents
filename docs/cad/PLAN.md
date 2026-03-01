@@ -178,6 +178,7 @@ Decision criteria to keep objective:
 - error model document: `docs/cad/CAD_ERROR_MODEL.md`
 - payload contracts document: `docs/cad/CAD_CONTRACTS.md`
 - app pane-state document: `docs/cad/CAD_PANE_STATE.md`
+- input reducer scaffold document: `docs/cad/CAD_INPUT_SCAFFOLD.md`
 
 ### Eval, Caching, and Concurrency
 

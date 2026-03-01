@@ -1,6 +1,7 @@
 //! Runtime update reducers are split by domain to keep `input.rs` focused on event routing.
 
 mod ac;
+mod cad;
 mod codex;
 mod jobs;
 mod sa;
@@ -10,7 +11,7 @@ pub(super) mod wallet;
 use crate::app_state::RenderState;
 use crate::pane_system::{
     ActiveJobPaneAction, AgentProfileStatePaneAction, AgentScheduleTickPaneAction,
-    CreditDeskPaneAction, CreditSettlementLedgerPaneAction, JobHistoryPaneAction,
+    CadDemoPaneAction, CreditDeskPaneAction, CreditSettlementLedgerPaneAction, JobHistoryPaneAction,
     JobInboxPaneAction, SkillRegistryPaneAction, SkillTrustRevocationPaneAction,
     TrajectoryAuditPaneAction,
 };
@@ -136,6 +137,10 @@ pub(super) fn run_credit_settlement_ledger_action(
     action: CreditSettlementLedgerPaneAction,
 ) -> bool {
     ac::run_credit_settlement_ledger_action(state, action)
+}
+
+pub(super) fn run_cad_demo_action(state: &mut RenderState, action: CadDemoPaneAction) -> bool {
+    cad::run_cad_demo_action(state, action)
 }
 
 fn apply_runtime_command_response(state: &mut RenderState, response: RuntimeCommandResponse) {
