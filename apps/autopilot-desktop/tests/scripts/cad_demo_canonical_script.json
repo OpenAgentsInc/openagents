@@ -1,0 +1,87 @@
+{
+  "script_id": "cad.demo.canonical.v1",
+  "seed": 2452,
+  "thread_id": "thread.cad-script.canonical",
+  "timing": {
+    "max_total_duration_ms": 4000
+  },
+  "steps": [
+    {
+      "name": "set-material",
+      "kind": "intent_json",
+      "payload": "{\"intent\":\"SetMaterial\",\"material_id\":\"al-6061-t6\"}",
+      "expect": {
+        "status": "applied",
+        "intent": "SetMaterial",
+        "state_revision": 1
+      }
+    },
+    {
+      "name": "set-objective",
+      "kind": "intent_json",
+      "payload": "{\"intent\":\"SetObjective\",\"objective\":\"stiffness\"}",
+      "expect": {
+        "status": "applied",
+        "intent": "SetObjective",
+        "state_revision": 2
+      }
+    },
+    {
+      "name": "cycle-variant-lightweight",
+      "kind": "cycle_variant",
+      "randomized": {
+        "min": 1,
+        "max": 1
+      },
+      "expect": {
+        "status": "cycled",
+        "count": 1,
+        "state_revision": 3,
+        "active_variant_id": "variant.lightweight"
+      }
+    },
+    {
+      "name": "assert-warning-escalation",
+      "kind": "assert_warning_escalation",
+      "min_warning_count": 2,
+      "min_critical_count": 1,
+      "expect": {
+        "status": "asserted",
+        "warning_count": 2,
+        "critical_count": 1
+      }
+    }
+  ],
+  "expect": {
+    "final_state_revision": 3,
+    "active_variant_id": "variant.lightweight",
+    "receipts": [
+      {
+        "document_revision": 3,
+        "variant_id": "variant.lightweight",
+        "rebuild_hash": "f0e53915957af649",
+        "mesh_hash": "a81312570db016cc",
+        "feature_count": 4,
+        "vertex_count": 172,
+        "triangle_count": 296,
+        "edge_count": 188,
+        "cache_hits": 0,
+        "cache_misses": 4,
+        "cache_evictions": 0
+      }
+    ],
+    "warnings": {
+      "count": 2,
+      "critical_count": 1,
+      "codes": [
+        "CAD-WARN-FILLET-FAILED",
+        "CAD-WARN-ZERO-THICKNESS"
+      ]
+    },
+    "analysis": {
+      "document_revision": 3,
+      "variant_id": "variant.lightweight",
+      "material_id": "al-6061-t6"
+    }
+  }
+}
