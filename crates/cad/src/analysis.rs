@@ -2,6 +2,84 @@ use crate::mesh::CadMeshPayload;
 
 pub const DENSITY_ALUMINUM_6061_KG_M3: f64 = 2_700.0;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CadBodyAnalysisErrorCode {
+    EmptyVertices,
+    EmptyTriangles,
+    MalformedTriangles,
+    InvalidDensity,
+    MissingVertex,
+    NonFiniteVertex,
+}
+
+impl CadBodyAnalysisErrorCode {
+    pub fn stable_code(self) -> &'static str {
+        match self {
+            Self::EmptyVertices => "CAD-ANALYSIS-EMPTY-VERTICES",
+            Self::EmptyTriangles => "CAD-ANALYSIS-EMPTY-TRIANGLES",
+            Self::MalformedTriangles => "CAD-ANALYSIS-MALFORMED-TRIANGLES",
+            Self::InvalidDensity => "CAD-ANALYSIS-INVALID-DENSITY",
+            Self::MissingVertex => "CAD-ANALYSIS-MISSING-VERTEX",
+            Self::NonFiniteVertex => "CAD-ANALYSIS-NONFINITE-VERTEX",
+        }
+    }
+
+    pub fn remediation_hint(self) -> &'static str {
+        match self {
+            Self::EmptyVertices => "Rebuild geometry before requesting physical analysis.",
+            Self::EmptyTriangles => "Ensure tessellation produced triangle geometry.",
+            Self::MalformedTriangles => "Re-run tessellation and verify index buffer grouping.",
+            Self::InvalidDensity => "Use a finite material density greater than zero.",
+            Self::MissingVertex => {
+                "Rebuild mesh and verify triangle indices reference valid vertices."
+            }
+            Self::NonFiniteVertex => "Repair geometry so all vertex positions are finite values.",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CadBodyAnalysisError {
+    pub code: CadBodyAnalysisErrorCode,
+    pub message: String,
+}
+
+impl CadBodyAnalysisError {
+    fn new(code: CadBodyAnalysisErrorCode, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+        }
+    }
+
+    pub fn remediation_hint(&self) -> &'static str {
+        self.code.remediation_hint()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CadCenterOfGravitySource {
+    MeshVolume,
+    BoundsCenterFallback,
+}
+
+impl CadCenterOfGravitySource {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::MeshVolume => "mesh_volume",
+            Self::BoundsCenterFallback => "bounds_center_fallback",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CadBodyAnalysisReceipt {
+    pub properties: CadBodyProperties,
+    pub center_of_gravity_source: CadCenterOfGravitySource,
+    pub vertex_count: usize,
+    pub triangle_count: usize,
+}
+
 /// Deterministic body property estimate derived from mesh payload data.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CadBodyProperties {
@@ -48,11 +126,42 @@ pub fn estimate_body_properties(
     payload: &CadMeshPayload,
     density_kg_m3: f64,
 ) -> Option<CadBodyProperties> {
-    if payload.vertices.is_empty() || payload.triangle_indices.len() < 3 || !density_kg_m3.is_finite() {
-        return None;
+    analyze_body_properties(payload, density_kg_m3)
+        .ok()
+        .map(|receipt| receipt.properties)
+}
+
+/// Deterministically compute volume/mass/CoG with explicit failure classification.
+pub fn analyze_body_properties(
+    payload: &CadMeshPayload,
+    density_kg_m3: f64,
+) -> Result<CadBodyAnalysisReceipt, CadBodyAnalysisError> {
+    if payload.vertices.is_empty() {
+        return Err(CadBodyAnalysisError::new(
+            CadBodyAnalysisErrorCode::EmptyVertices,
+            "analysis requires at least one mesh vertex",
+        ));
     }
-    if density_kg_m3 <= 0.0 {
-        return None;
+    if payload.triangle_indices.len() < 3 {
+        return Err(CadBodyAnalysisError::new(
+            CadBodyAnalysisErrorCode::EmptyTriangles,
+            "analysis requires at least one triangle",
+        ));
+    }
+    if !payload.triangle_indices.len().is_multiple_of(3) {
+        return Err(CadBodyAnalysisError::new(
+            CadBodyAnalysisErrorCode::MalformedTriangles,
+            format!(
+                "triangle index buffer length must be divisible by 3, got {}",
+                payload.triangle_indices.len()
+            ),
+        ));
+    }
+    if !density_kg_m3.is_finite() || density_kg_m3 <= 0.0 {
+        return Err(CadBodyAnalysisError::new(
+            CadBodyAnalysisErrorCode::InvalidDensity,
+            format!("density must be finite and > 0, got {density_kg_m3}"),
+        ));
     }
 
     let bounds_min_mm = [
@@ -80,10 +189,10 @@ pub fn estimate_body_properties(
     let mut signed_volume_mm3 = 0.0f64;
     let mut centroid_accum = [0.0f64; 3];
 
-    for triangle in payload.triangle_indices.chunks_exact(3) {
-        let p0 = vertex3(payload, triangle[0] as usize)?;
-        let p1 = vertex3(payload, triangle[1] as usize)?;
-        let p2 = vertex3(payload, triangle[2] as usize)?;
+    for (triangle_index, triangle) in payload.triangle_indices.chunks_exact(3).enumerate() {
+        let p0 = checked_vertex3(payload, triangle[0] as usize, triangle_index)?;
+        let p1 = checked_vertex3(payload, triangle[1] as usize, triangle_index)?;
+        let p2 = checked_vertex3(payload, triangle[2] as usize, triangle_index)?;
 
         let edge1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
         let edge2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
@@ -104,26 +213,37 @@ pub fn estimate_body_properties(
     }
 
     let volume_mm3 = signed_volume_mm3.abs();
-    let center_of_gravity_mm = if signed_volume_mm3.abs() > 1e-9 {
-        [
-            centroid_accum[0] / signed_volume_mm3,
-            centroid_accum[1] / signed_volume_mm3,
-            centroid_accum[2] / signed_volume_mm3,
-        ]
+    let (center_of_gravity_mm, center_of_gravity_source) = if signed_volume_mm3.abs() > 1e-9 {
+        (
+            [
+                centroid_accum[0] / signed_volume_mm3,
+                centroid_accum[1] / signed_volume_mm3,
+                centroid_accum[2] / signed_volume_mm3,
+            ],
+            CadCenterOfGravitySource::MeshVolume,
+        )
     } else {
-        bounds_center_mm
+        (
+            bounds_center_mm,
+            CadCenterOfGravitySource::BoundsCenterFallback,
+        )
     };
     let volume_m3 = volume_mm3 * 1e-9;
     let mass_kg = density_kg_m3 * volume_m3;
 
-    Some(CadBodyProperties {
-        volume_mm3,
-        surface_area_mm2,
-        mass_kg,
-        center_of_gravity_mm,
-        bounds_min_mm,
-        bounds_max_mm,
-        bounds_size_mm,
+    Ok(CadBodyAnalysisReceipt {
+        properties: CadBodyProperties {
+            volume_mm3,
+            surface_area_mm2,
+            mass_kg,
+            center_of_gravity_mm,
+            bounds_min_mm,
+            bounds_max_mm,
+            bounds_size_mm,
+        },
+        center_of_gravity_source,
+        vertex_count: payload.vertices.len(),
+        triangle_count: payload.triangle_indices.len() / 3,
     })
 }
 
@@ -183,6 +303,31 @@ fn vertex3(payload: &CadMeshPayload, index: usize) -> Option<[f64; 3]> {
     ])
 }
 
+fn checked_vertex3(
+    payload: &CadMeshPayload,
+    index: usize,
+    triangle_index: usize,
+) -> Result<[f64; 3], CadBodyAnalysisError> {
+    let Some(vertex) = payload.vertices.get(index) else {
+        return Err(CadBodyAnalysisError::new(
+            CadBodyAnalysisErrorCode::MissingVertex,
+            format!("triangle[{triangle_index}] references missing vertex index {index}"),
+        ));
+    };
+    let coordinates = [
+        f64::from(vertex.position_mm[0]),
+        f64::from(vertex.position_mm[1]),
+        f64::from(vertex.position_mm[2]),
+    ];
+    if coordinates.iter().any(|value| !value.is_finite()) {
+        return Err(CadBodyAnalysisError::new(
+            CadBodyAnalysisErrorCode::NonFiniteVertex,
+            format!("triangle[{triangle_index}] contains non-finite vertex position"),
+        ));
+    }
+    Ok(coordinates)
+}
+
 fn cross3(lhs: [f64; 3], rhs: [f64; 3]) -> [f64; 3] {
     [
         lhs[1] * rhs[2] - lhs[2] * rhs[1],
@@ -202,7 +347,8 @@ fn length3(vector: [f64; 3]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        DENSITY_ALUMINUM_6061_KG_M3, edge_properties, estimate_body_properties, face_properties,
+        CadBodyAnalysisErrorCode, CadCenterOfGravitySource, DENSITY_ALUMINUM_6061_KG_M3,
+        analyze_body_properties, edge_properties, estimate_body_properties, face_properties,
     };
     use crate::mesh::{
         CadMeshBounds, CadMeshEdgeSegment, CadMeshMaterialSlot, CadMeshPayload, CadMeshTopology,
@@ -284,6 +430,83 @@ mod tests {
         let mut empty = payload;
         empty.vertices.clear();
         assert!(estimate_body_properties(&empty, DENSITY_ALUMINUM_6061_KG_M3).is_none());
+    }
+
+    #[test]
+    fn core_analysis_receipt_is_deterministic_and_records_cog_source() {
+        let payload = tetra_mesh_payload();
+        let first = analyze_body_properties(&payload, DENSITY_ALUMINUM_6061_KG_M3)
+            .expect("analysis receipt should resolve");
+        let second = analyze_body_properties(&payload, DENSITY_ALUMINUM_6061_KG_M3)
+            .expect("analysis receipt should stay deterministic");
+
+        assert_eq!(first, second);
+        assert_eq!(first.vertex_count, payload.vertices.len());
+        assert_eq!(first.triangle_count, payload.triangle_indices.len() / 3);
+        assert_eq!(
+            first.center_of_gravity_source,
+            CadCenterOfGravitySource::MeshVolume
+        );
+    }
+
+    #[test]
+    fn degenerate_volume_falls_back_to_bounds_center_for_cog() {
+        let payload = CadMeshPayload {
+            mesh_id: "mesh.planar".to_string(),
+            document_revision: 2,
+            variant_id: "variant.baseline".to_string(),
+            topology: CadMeshTopology::Triangles,
+            vertices: vec![
+                CadMeshVertex {
+                    position_mm: [0.0, 0.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [0.0, 0.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [10.0, 0.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [1.0, 0.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [0.0, 10.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [0.0, 1.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+            ],
+            triangle_indices: vec![0, 1, 2],
+            edges: Vec::new(),
+            material_slots: vec![CadMeshMaterialSlot::default()],
+            bounds: CadMeshBounds {
+                min_mm: [0.0, 0.0, 0.0],
+                max_mm: [10.0, 10.0, 0.0],
+            },
+        };
+
+        let receipt = analyze_body_properties(&payload, DENSITY_ALUMINUM_6061_KG_M3)
+            .expect("planar mesh should still analyze");
+        assert_eq!(
+            receipt.center_of_gravity_source,
+            CadCenterOfGravitySource::BoundsCenterFallback
+        );
+        assert_eq!(receipt.properties.center_of_gravity_mm, [5.0, 5.0, 0.0]);
+        assert_eq!(receipt.properties.volume_mm3, 0.0);
+    }
+
+    #[test]
+    fn missing_vertex_indices_are_classified_with_stable_error_code() {
+        let mut payload = tetra_mesh_payload();
+        payload.triangle_indices[0] = 42;
+        let error = analyze_body_properties(&payload, DENSITY_ALUMINUM_6061_KG_M3)
+            .expect_err("analysis should fail when triangle references missing vertex");
+        assert_eq!(error.code, CadBodyAnalysisErrorCode::MissingVertex);
+        assert_eq!(error.code.stable_code(), "CAD-ANALYSIS-MISSING-VERTEX");
+        assert!(!error.remediation_hint().is_empty());
     }
 
     #[test]

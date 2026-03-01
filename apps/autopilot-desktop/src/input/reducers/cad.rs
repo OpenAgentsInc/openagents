@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use openagents_cad::analysis::estimate_body_properties;
+use openagents_cad::analysis::{CadBodyAnalysisError, analyze_body_properties};
 use openagents_cad::contracts::{CadWarning, CadWarningCode, CadWarningSeverity};
 use openagents_cad::eval::{EvalCacheEntry, EvalCacheKey, EvalCacheStats};
 use openagents_cad::feature_graph::{FeatureGraph, FeatureNode};
@@ -103,12 +103,20 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
         CadDemoPaneAction::CycleMaterialPreset => {
             let material_id = state.cycle_material_preset();
             if let Some(payload) = state.last_good_mesh_payload.as_ref() {
-                state.analysis_snapshot = analysis_snapshot_from_mesh(
+                let analysis = analysis_snapshot_from_mesh(
                     state.document_revision,
                     &state.active_variant_id,
                     payload,
                     &material_id,
                 );
+                state.analysis_snapshot = analysis.snapshot;
+                if let Some(error) = analysis.error {
+                    state.last_error = Some(format!(
+                        "CAD core analysis failed ({}): {}",
+                        error.code.stable_code(),
+                        error.message
+                    ));
+                }
             }
             if let Some(material) = material_preset_by_id(&material_id) {
                 state.last_action = Some(format!(
@@ -490,12 +498,20 @@ fn apply_completed_rebuild(
         .as_deref()
         .unwrap_or(DEFAULT_CAD_MATERIAL_ID)
         .to_string();
-    state.analysis_snapshot = analysis_snapshot_from_mesh(
+    let analysis = analysis_snapshot_from_mesh(
         completed.document_revision,
         &receipt.variant_id,
         &completed.mesh_payload,
         &material_id,
     );
+    state.analysis_snapshot = analysis.snapshot;
+    if let Some(error) = analysis.error {
+        state.last_error = Some(format!(
+            "CAD core analysis failed ({}): {}",
+            error.code.stable_code(),
+            error.message
+        ));
+    }
     refresh_warning_state(state, completed.document_revision, &receipt.variant_id);
     refresh_timeline_state(
         state,
@@ -526,6 +542,28 @@ fn upsert_cad_rebuild_activity_event(state: &mut RenderState, receipt: &CadRebui
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or(0);
+    let analysis = &state.cad_demo.analysis_snapshot;
+    let analysis_detail = if analysis.document_revision == receipt.document_revision
+        && analysis.variant_id == receipt.variant_id
+    {
+        format!(
+            "analysis(volume_mm3={}, mass_kg={}, cog_mm={})",
+            analysis
+                .volume_mm3
+                .map(|value| format!("{value:.3}"))
+                .unwrap_or_else(|| "none".to_string()),
+            analysis
+                .mass_kg
+                .map(|value| format!("{value:.6}"))
+                .unwrap_or_else(|| "none".to_string()),
+            analysis
+                .center_of_gravity_mm
+                .map(|value| format!("{:.3},{:.3},{:.3}", value[0], value[1], value[2]))
+                .unwrap_or_else(|| "none".to_string()),
+        )
+    } else {
+        "analysis(pending)".to_string()
+    };
     state.activity_feed.upsert_event(ActivityEventRow {
         event_id: format!("cad.rebuild.{}", receipt.event_id),
         domain: ActivityEventDomain::Sync,
@@ -536,7 +574,7 @@ fn upsert_cad_rebuild_activity_event(state: &mut RenderState, receipt: &CadRebui
             receipt.document_revision, receipt.duration_ms
         ),
         detail: format!(
-            "variant={} hash={} mesh={} features={} tris={} verts={} cache(h={},m={},e={})",
+            "variant={} hash={} mesh={} features={} tris={} verts={} cache(h={},m={},e={}) {}",
             receipt.variant_id,
             receipt.rebuild_hash,
             receipt.mesh_hash,
@@ -545,7 +583,8 @@ fn upsert_cad_rebuild_activity_event(state: &mut RenderState, receipt: &CadRebui
             receipt.vertex_count,
             receipt.cache_hits,
             receipt.cache_misses,
-            receipt.cache_evictions
+            receipt.cache_evictions,
+            analysis_detail
         ),
     });
     state.activity_feed.load_state = PaneLoadState::Ready;
@@ -588,7 +627,8 @@ fn upsert_cad_material_activity_event(state: &mut RenderState) {
         ),
     });
     state.activity_feed.load_state = PaneLoadState::Ready;
-    state.activity_feed.last_action = Some(format!("CAD material assignment captured ({material_id})"));
+    state.activity_feed.last_action =
+        Some(format!("CAD material assignment captured ({material_id})"));
 }
 
 fn synthetic_duration_ms(feature_count: usize, stats_delta: EvalCacheStats) -> u64 {
@@ -792,29 +832,54 @@ fn provenance_from_trigger(trigger: &str) -> String {
     }
 }
 
+struct CadAnalysisComputation {
+    snapshot: openagents_cad::contracts::CadAnalysis,
+    error: Option<CadBodyAnalysisError>,
+}
+
 fn analysis_snapshot_from_mesh(
     document_revision: u64,
     variant_id: &str,
     mesh_payload: &openagents_cad::mesh::CadMeshPayload,
     material_id: &str,
-) -> openagents_cad::contracts::CadAnalysis {
+) -> CadAnalysisComputation {
     let material = material_preset_by_id(material_id)
         .or_else(|| material_preset_by_id(DEFAULT_CAD_MATERIAL_ID))
         .expect("default CAD material preset should always resolve");
-    let estimate = estimate_body_properties(mesh_payload, material.density_kg_m3);
-    let mass_kg = estimate.map(|value| value.mass_kg);
-    let estimated_cost_usd =
-        mass_kg.and_then(|mass| estimate_material_cost_usd(mass, material));
-    openagents_cad::contracts::CadAnalysis {
-        document_revision,
-        variant_id: variant_id.to_string(),
-        material_id: Some(material.id.to_string()),
-        volume_mm3: estimate.map(|value| value.volume_mm3),
-        mass_kg,
-        center_of_gravity_mm: estimate.map(|value| value.center_of_gravity_mm),
-        estimated_cost_usd,
-        max_deflection_mm: None,
-        objective_scores: BTreeMap::new(),
+    match analyze_body_properties(mesh_payload, material.density_kg_m3) {
+        Ok(receipt) => {
+            let mass_kg = Some(receipt.properties.mass_kg);
+            let estimated_cost_usd =
+                mass_kg.and_then(|mass| estimate_material_cost_usd(mass, material));
+            CadAnalysisComputation {
+                snapshot: openagents_cad::contracts::CadAnalysis {
+                    document_revision,
+                    variant_id: variant_id.to_string(),
+                    material_id: Some(material.id.to_string()),
+                    volume_mm3: Some(receipt.properties.volume_mm3),
+                    mass_kg,
+                    center_of_gravity_mm: Some(receipt.properties.center_of_gravity_mm),
+                    estimated_cost_usd,
+                    max_deflection_mm: None,
+                    objective_scores: BTreeMap::new(),
+                },
+                error: None,
+            }
+        }
+        Err(error) => CadAnalysisComputation {
+            snapshot: openagents_cad::contracts::CadAnalysis {
+                document_revision,
+                variant_id: variant_id.to_string(),
+                material_id: Some(material.id.to_string()),
+                volume_mm3: None,
+                mass_kg: None,
+                center_of_gravity_mm: None,
+                estimated_cost_usd: None,
+                max_deflection_mm: None,
+                objective_scores: BTreeMap::new(),
+            },
+            error: Some(error),
+        },
     }
 }
 
@@ -1062,9 +1127,14 @@ fn select_timeline_row(state: &mut CadDemoPaneState, index: usize) {
 mod tests {
     use std::time::Duration;
 
-    use super::{apply_cad_demo_action, drain_worker_responses_from_pane};
+    use super::{
+        analysis_snapshot_from_mesh, apply_cad_demo_action, drain_worker_responses_from_pane,
+    };
     use crate::app_state::{CadDemoPaneState, CadTimelineRowState};
     use crate::pane_system::CadDemoPaneAction;
+    use openagents_cad::mesh::{
+        CadMeshBounds, CadMeshMaterialSlot, CadMeshPayload, CadMeshTopology, CadMeshVertex,
+    };
 
     fn wait_for_receipt(state: &mut CadDemoPaneState) {
         for _ in 0..64 {
@@ -1393,6 +1463,47 @@ mod tests {
             !state.warnings.is_empty(),
             "warnings should refresh on rebuild commit"
         );
+        assert!(
+            state.analysis_snapshot.volume_mm3.unwrap_or(0.0) > 0.0,
+            "rebuild should compute deterministic volume"
+        );
+        assert!(
+            state.analysis_snapshot.mass_kg.unwrap_or(0.0) > 0.0,
+            "rebuild should compute deterministic mass"
+        );
+        assert!(
+            state.analysis_snapshot.center_of_gravity_mm.is_some(),
+            "rebuild should compute deterministic center of gravity"
+        );
+    }
+
+    #[test]
+    fn analysis_snapshot_classifies_invalid_mesh_failures_explicitly() {
+        let payload = CadMeshPayload {
+            mesh_id: "mesh.invalid.analysis".to_string(),
+            document_revision: 7,
+            variant_id: "variant.baseline".to_string(),
+            topology: CadMeshTopology::Triangles,
+            vertices: vec![CadMeshVertex {
+                position_mm: [0.0, 0.0, 0.0],
+                normal: [0.0, 0.0, 1.0],
+                uv: [0.0, 0.0],
+                material_slot: 0,
+                flags: 0,
+            }],
+            triangle_indices: vec![0, 1, 2],
+            edges: Vec::new(),
+            material_slots: vec![CadMeshMaterialSlot::default()],
+            bounds: CadMeshBounds {
+                min_mm: [0.0, 0.0, 0.0],
+                max_mm: [0.0, 0.0, 0.0],
+            },
+        };
+        let result = analysis_snapshot_from_mesh(7, "variant.baseline", &payload, "al-6061-t6");
+        assert!(result.snapshot.volume_mm3.is_none());
+        let error = result.error.expect("analysis error should be surfaced");
+        assert_eq!(error.code.stable_code(), "CAD-ANALYSIS-MISSING-VERTEX");
+        assert!(!error.remediation_hint().is_empty());
     }
 
     #[test]
