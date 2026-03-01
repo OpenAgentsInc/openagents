@@ -1,0 +1,222 @@
+{
+  "variant.baseline": {
+    "variant_id": "variant.baseline",
+    "objective": "baseline",
+    "seed": 0,
+    "rebuild_hash": "4d87ace07431d037",
+    "ordered_feature_ids": [
+      "feature.base",
+      "feature.edge_marker",
+      "feature.mount_hole",
+      "feature.vent_pattern"
+    ],
+    "feature_hashes": {
+      "feature.base": "fbe1c8b3612e120d",
+      "feature.edge_marker": "504878436a697042",
+      "feature.mount_hole": "ba2f6ceb24dd7c1a",
+      "feature.vent_pattern": "feaa9362f559d485"
+    },
+    "feature_records": [
+      "feature.base|primitive.box.v1|deps=none|params=depth_param=depth_mm,height_param=height_mm,variant=variant.baseline,width_param=width_base_mm|hash=fbe1c8b3612e120d",
+      "feature.edge_marker|fillet.placeholder.v1|deps=feature.base:fbe1c8b3612e120d|params=kind=fillet,radius_param=edge_radius_mm|hash=504878436a697042",
+      "feature.mount_hole|cut.hole.v1|deps=feature.base:fbe1c8b3612e120d|params=depth_param=mount_hole_depth_mm,radius_param=mount_hole_radius_mm|hash=ba2f6ceb24dd7c1a",
+      "feature.vent_pattern|linear.pattern.v1|deps=feature.mount_hole:ba2f6ceb24dd7c1a|params=count_param=vent_count_base,spacing_param=vent_spacing_base_mm|hash=feaa9362f559d485"
+    ],
+    "mesh_hash": "df7a1a4fec1fb377",
+    "mesh_id": "mesh.variant-baseline.4d87ace07431d037",
+    "mesh_vertex_count": 196,
+    "mesh_triangle_count": 332,
+    "mesh_edge_count": 224,
+    "mesh_bounds": "min=[-195.000,-113.000,0.020] max=[195.000,113.000,88.480]",
+    "key_parameters": {
+      "effective_wall_thickness_mm": "6.000000 mm",
+      "frame_depth_mm": "210.000000 mm",
+      "frame_height_mm": "95.000000 mm",
+      "frame_width_mm": "180.000000 mm",
+      "opt_rib_count": "3.000000 unitless",
+      "opt_rib_spacing_mm": "42.000000 mm",
+      "opt_rib_thickness_mm": "3.000000 mm",
+      "vent_cols": "8.000000 unitless",
+      "vent_density_scale": "1.000000 unitless",
+      "vent_hole_radius_mm": "2.000000 mm",
+      "vent_rows": "3.000000 unitless",
+      "vent_spacing_mm": "12.000000 mm",
+      "wall_mount_hole_count": "4.000000 unitless",
+      "wall_thickness_mm": "6.000000 mm"
+    },
+    "semantic_refs": {
+      "mount_hole_pattern": "feature.rack.mount_hole_pattern",
+      "rack_bay_pattern": "feature.rack.bay_pattern",
+      "rack_corner_break": "feature.rack.corner_break",
+      "rack_outer_face": "feature.rack.base",
+      "rack_rib_set": "feature.rack.rib_pattern",
+      "vent_face_set": "feature.rack.vent_face_set",
+      "wall_mount_bracket": "feature.rack.wall_mount_bracket"
+    }
+  },
+  "variant.lightweight": {
+    "variant_id": "variant.lightweight",
+    "objective": "lowest_weight",
+    "seed": 777,
+    "rebuild_hash": "8433410209e90b01",
+    "ordered_feature_ids": [
+      "feature.base",
+      "feature.edge_marker",
+      "feature.mount_hole",
+      "feature.vent_pattern"
+    ],
+    "feature_hashes": {
+      "feature.base": "143856237e4a3255",
+      "feature.edge_marker": "82f39788306e4a33",
+      "feature.mount_hole": "d8ea974040fee92f",
+      "feature.vent_pattern": "fea33e6d62aff484"
+    },
+    "feature_records": [
+      "feature.base|primitive.box.v1|deps=none|params=depth_param=depth_mm,height_param=height_mm,variant=variant.lightweight,width_param=width_light_mm|hash=143856237e4a3255",
+      "feature.edge_marker|fillet.placeholder.v1|deps=feature.base:143856237e4a3255|params=kind=fillet,radius_param=edge_radius_mm|hash=82f39788306e4a33",
+      "feature.mount_hole|cut.hole.v1|deps=feature.base:143856237e4a3255|params=depth_param=mount_hole_depth_mm,radius_param=mount_hole_radius_mm|hash=d8ea974040fee92f",
+      "feature.vent_pattern|linear.pattern.v1|deps=feature.mount_hole:d8ea974040fee92f|params=count_param=vent_count_low,spacing_param=vent_spacing_wide_mm|hash=fea33e6d62aff484"
+    ],
+    "mesh_hash": "1fdf56b571fdd86b",
+    "mesh_id": "mesh.variant-lightweight.8433410209e90b01",
+    "mesh_vertex_count": 212,
+    "mesh_triangle_count": 356,
+    "mesh_edge_count": 248,
+    "mesh_bounds": "min=[-191.000,-114.000,0.030] max=[191.000,114.000,86.300]",
+    "key_parameters": {
+      "effective_wall_thickness_mm": "4.920000 mm",
+      "frame_depth_mm": "210.000000 mm",
+      "frame_height_mm": "95.000000 mm",
+      "frame_width_mm": "180.000000 mm",
+      "opt_rib_count": "2.000000 unitless",
+      "opt_rib_spacing_mm": "42.000000 mm",
+      "opt_rib_thickness_mm": "2.200000 mm",
+      "vent_cols": "10.000000 unitless",
+      "vent_density_scale": "1.250000 unitless",
+      "vent_hole_radius_mm": "2.000000 mm",
+      "vent_rows": "4.000000 unitless",
+      "vent_spacing_mm": "12.000000 mm",
+      "wall_mount_hole_count": "4.000000 unitless",
+      "wall_thickness_mm": "6.000000 mm"
+    },
+    "semantic_refs": {
+      "mount_hole_pattern": "feature.rack.mount_hole_pattern",
+      "rack_bay_pattern": "feature.rack.bay_pattern",
+      "rack_corner_break": "feature.rack.corner_break",
+      "rack_outer_face": "feature.rack.base",
+      "rack_rib_set": "feature.rack.rib_pattern",
+      "vent_face_set": "feature.rack.vent_face_set",
+      "wall_mount_bracket": "feature.rack.wall_mount_bracket"
+    }
+  },
+  "variant.low-cost": {
+    "variant_id": "variant.low-cost",
+    "objective": "lowest_cost",
+    "seed": 777,
+    "rebuild_hash": "39da42f0fb0e703c",
+    "ordered_feature_ids": [
+      "feature.base",
+      "feature.edge_marker",
+      "feature.mount_hole",
+      "feature.vent_pattern"
+    ],
+    "feature_hashes": {
+      "feature.base": "807c024ec69098a2",
+      "feature.edge_marker": "2191a12197659d06",
+      "feature.mount_hole": "f4acfe81016186b2",
+      "feature.vent_pattern": "a686f0cc6335131d"
+    },
+    "feature_records": [
+      "feature.base|primitive.box.v1|deps=none|params=depth_param=depth_mm,height_param=height_mm,variant=variant.low-cost,width_param=width_cost_mm|hash=807c024ec69098a2",
+      "feature.edge_marker|fillet.placeholder.v1|deps=feature.base:807c024ec69098a2|params=kind=fillet,radius_param=edge_radius_mm|hash=2191a12197659d06",
+      "feature.mount_hole|cut.hole.v1|deps=feature.base:807c024ec69098a2|params=depth_param=mount_hole_depth_mm,radius_param=mount_hole_radius_mm|hash=f4acfe81016186b2",
+      "feature.vent_pattern|linear.pattern.v1|deps=feature.mount_hole:f4acfe81016186b2|params=count_param=vent_count_mid,spacing_param=vent_spacing_cost_mm|hash=a686f0cc6335131d"
+    ],
+    "mesh_hash": "e4421d398c254013",
+    "mesh_id": "mesh.variant-low-cost.39da42f0fb0e703c",
+    "mesh_vertex_count": 188,
+    "mesh_triangle_count": 320,
+    "mesh_edge_count": 212,
+    "mesh_bounds": "min=[-196.000,-110.000,0.080] max=[196.000,110.000,82.400]",
+    "key_parameters": {
+      "effective_wall_thickness_mm": "5.400000 mm",
+      "frame_depth_mm": "210.000000 mm",
+      "frame_height_mm": "95.000000 mm",
+      "frame_width_mm": "180.000000 mm",
+      "opt_rib_count": "2.000000 unitless",
+      "opt_rib_spacing_mm": "55.000000 mm",
+      "opt_rib_thickness_mm": "3.000000 mm",
+      "vent_cols": "6.000000 unitless",
+      "vent_density_scale": "0.900000 unitless",
+      "vent_hole_radius_mm": "2.000000 mm",
+      "vent_rows": "2.000000 unitless",
+      "vent_spacing_mm": "12.000000 mm",
+      "wall_mount_hole_count": "2.000000 unitless",
+      "wall_thickness_mm": "6.000000 mm"
+    },
+    "semantic_refs": {
+      "mount_hole_pattern": "feature.rack.mount_hole_pattern",
+      "rack_bay_pattern": "feature.rack.bay_pattern",
+      "rack_corner_break": "feature.rack.corner_break",
+      "rack_outer_face": "feature.rack.base",
+      "rack_rib_set": "feature.rack.rib_pattern",
+      "vent_face_set": "feature.rack.vent_face_set",
+      "wall_mount_bracket": "feature.rack.wall_mount_bracket"
+    }
+  },
+  "variant.stiffness": {
+    "variant_id": "variant.stiffness",
+    "objective": "highest_stiffness",
+    "seed": 777,
+    "rebuild_hash": "1d46b3e7752c02d2",
+    "ordered_feature_ids": [
+      "feature.base",
+      "feature.edge_marker",
+      "feature.mount_hole",
+      "feature.vent_pattern"
+    ],
+    "feature_hashes": {
+      "feature.base": "da3dcd564e1a472c",
+      "feature.edge_marker": "aa7081683cf0f968",
+      "feature.mount_hole": "d8649bd5e6b15cd4",
+      "feature.vent_pattern": "4c76d5ab7fa9a63c"
+    },
+    "feature_records": [
+      "feature.base|primitive.box.v1|deps=none|params=depth_param=depth_mm,height_param=height_mm,variant=variant.stiffness,width_param=width_stiff_mm|hash=da3dcd564e1a472c",
+      "feature.edge_marker|fillet.placeholder.v1|deps=feature.base:da3dcd564e1a472c|params=kind=fillet,radius_param=edge_radius_mm|hash=aa7081683cf0f968",
+      "feature.mount_hole|cut.hole.v1|deps=feature.base:da3dcd564e1a472c|params=depth_param=mount_hole_depth_mm,radius_param=mount_hole_radius_mm|hash=d8649bd5e6b15cd4",
+      "feature.vent_pattern|linear.pattern.v1|deps=feature.mount_hole:d8649bd5e6b15cd4|params=count_param=vent_count_high,spacing_param=vent_spacing_tight_mm|hash=4c76d5ab7fa9a63c"
+    ],
+    "mesh_hash": "0c2a509c31d4ddc8",
+    "mesh_id": "mesh.variant-stiffness.1d46b3e7752c02d2",
+    "mesh_vertex_count": 228,
+    "mesh_triangle_count": 380,
+    "mesh_edge_count": 272,
+    "mesh_bounds": "min=[-199.000,-116.000,0.100] max=[199.000,116.000,94.500]",
+    "key_parameters": {
+      "effective_wall_thickness_mm": "7.680000 mm",
+      "frame_depth_mm": "210.000000 mm",
+      "frame_height_mm": "95.000000 mm",
+      "frame_width_mm": "180.000000 mm",
+      "opt_rib_count": "6.000000 unitless",
+      "opt_rib_spacing_mm": "24.000000 mm",
+      "opt_rib_thickness_mm": "3.800000 mm",
+      "vent_cols": "5.000000 unitless",
+      "vent_density_scale": "0.700000 unitless",
+      "vent_hole_radius_mm": "2.000000 mm",
+      "vent_rows": "2.000000 unitless",
+      "vent_spacing_mm": "12.000000 mm",
+      "wall_mount_hole_count": "4.000000 unitless",
+      "wall_thickness_mm": "6.000000 mm"
+    },
+    "semantic_refs": {
+      "mount_hole_pattern": "feature.rack.mount_hole_pattern",
+      "rack_bay_pattern": "feature.rack.bay_pattern",
+      "rack_corner_break": "feature.rack.corner_break",
+      "rack_outer_face": "feature.rack.base",
+      "rack_rib_set": "feature.rack.rib_pattern",
+      "vent_face_set": "feature.rack.vent_face_set",
+      "wall_mount_bracket": "feature.rack.wall_mount_bracket"
+    }
+  }
+}
