@@ -1,14 +1,14 @@
 use openagents_cad::mesh::{CadMeshPayload, CadMeshVertex};
 use wgpui::{
-    Bounds, MESH_EDGE_FLAG_SELECTED, MeshEdge, MeshPrimitive, MeshVertex, PaintContext, Point,
-    Quad, theme,
+    Bounds, MESH_EDGE_FLAG_SELECTED, MESH_EDGE_FLAG_SILHOUETTE, MeshEdge, MeshPrimitive,
+    MeshVertex, PaintContext, Point, Quad, theme,
 };
 
-use crate::app_state::{CadDemoPaneState, CadDemoWarningState};
+use crate::app_state::{CadDemoPaneState, CadDemoWarningState, CadHiddenLineMode};
 use crate::pane_renderer::paint_action_button;
 use crate::pane_system::{
-    cad_demo_cycle_variant_button_bounds, cad_demo_reset_button_bounds,
-    cad_demo_timeline_panel_bounds, cad_demo_timeline_row_bounds,
+    cad_demo_cycle_variant_button_bounds, cad_demo_hidden_line_mode_button_bounds,
+    cad_demo_reset_button_bounds, cad_demo_timeline_panel_bounds, cad_demo_timeline_row_bounds,
     cad_demo_warning_filter_code_button_bounds, cad_demo_warning_filter_severity_button_bounds,
     cad_demo_warning_marker_bounds, cad_demo_warning_panel_bounds, cad_demo_warning_row_bounds,
 };
@@ -63,12 +63,18 @@ pub fn paint_cad_demo_placeholder_pane(
 ) {
     let cycle_bounds = cad_demo_cycle_variant_button_bounds(content_bounds);
     let reset_bounds = cad_demo_reset_button_bounds(content_bounds);
+    let hidden_line_bounds = cad_demo_hidden_line_mode_button_bounds(content_bounds);
     let warning_panel = cad_demo_warning_panel_bounds(content_bounds);
     let timeline_panel = cad_demo_timeline_panel_bounds(content_bounds);
     let severity_filter_bounds = cad_demo_warning_filter_severity_button_bounds(content_bounds);
     let code_filter_bounds = cad_demo_warning_filter_code_button_bounds(content_bounds);
     paint_action_button(cycle_bounds, "Cycle Variant", paint);
     paint_action_button(reset_bounds, "Reset Session", paint);
+    paint_action_button(
+        hidden_line_bounds,
+        &format!("Hidden Line: {}", pane_state.hidden_line_mode.label()),
+        paint,
+    );
     paint_action_button(
         severity_filter_bounds,
         &format!("Severity: {}", pane_state.warning_filter_severity),
@@ -80,8 +86,12 @@ pub fn paint_cad_demo_placeholder_pane(
         paint,
     );
 
-    let body_top =
-        (cycle_bounds.max_y().max(reset_bounds.max_y()) + 8.0).min(content_bounds.max_y());
+    let body_top = (cycle_bounds
+        .max_y()
+        .max(reset_bounds.max_y())
+        .max(hidden_line_bounds.max_y())
+        + 8.0)
+        .min(content_bounds.max_y());
     let body_bounds = Bounds::new(
         content_bounds.origin.x,
         body_top,
@@ -132,6 +142,7 @@ pub fn paint_cad_demo_placeholder_pane(
                 mesh_payload,
                 layout.viewport_bounds,
                 selected_outline_active,
+                pane_state.hidden_line_mode,
             ) {
                 Ok(mesh) => {
                     paint.scene.push_clip(layout.viewport_bounds);
@@ -427,6 +438,7 @@ fn cad_mesh_to_viewport_primitive(
     payload: &CadMeshPayload,
     viewport_bounds: Bounds,
     selected_outline_active: bool,
+    hidden_line_mode: CadHiddenLineMode,
 ) -> Result<MeshPrimitive, String> {
     if payload.vertices.is_empty() {
         return Err("mesh payload has no vertices".to_string());
@@ -462,15 +474,15 @@ fn cad_mesh_to_viewport_primitive(
         .vertices
         .iter()
         .map(|vertex| {
+            let fill_color = styled_fill_color(
+                slot_to_color
+                    .get(&vertex.material_slot)
+                    .copied()
+                    .unwrap_or([0.78, 0.80, 0.83, 1.0]),
+                hidden_line_mode,
+            );
             project_vertex(
-                vertex,
-                min_x,
-                max_y,
-                min_z,
-                origin_x,
-                origin_y,
-                scale,
-                &slot_to_color,
+                vertex, min_x, max_y, min_z, origin_x, origin_y, scale, fill_color,
             )
         })
         .collect::<Vec<_>>();
@@ -479,6 +491,9 @@ fn cad_mesh_to_viewport_primitive(
         .iter()
         .map(|edge| {
             let mut flags = edge.flags;
+            if hidden_line_mode != CadHiddenLineMode::Off {
+                flags |= MESH_EDGE_FLAG_SILHOUETTE;
+            }
             if selected_outline_active {
                 flags |= MESH_EDGE_FLAG_SELECTED;
             }
@@ -501,12 +516,8 @@ fn project_vertex(
     origin_x: f32,
     origin_y: f32,
     scale: f32,
-    slot_to_color: &std::collections::BTreeMap<u16, [f32; 4]>,
+    color: [f32; 4],
 ) -> MeshVertex {
-    let color = slot_to_color
-        .get(&vertex.material_slot)
-        .copied()
-        .unwrap_or([0.78, 0.80, 0.83, 1.0]);
     let projected_x = origin_x + ((vertex.position_mm[0] - min_x) * scale);
     let projected_y = origin_y + ((max_y - vertex.position_mm[1]) * scale);
     let projected_z = (vertex.position_mm[2] - min_z) * scale * 0.25;
@@ -517,6 +528,19 @@ fn project_vertex(
     )
 }
 
+fn styled_fill_color(base: [f32; 4], mode: CadHiddenLineMode) -> [f32; 4] {
+    match mode {
+        CadHiddenLineMode::Off => base,
+        CadHiddenLineMode::Wireframe => [0.28, 0.32, 0.36, 0.10],
+        CadHiddenLineMode::Section => [
+            (base[0] * 0.45) + 0.20,
+            (base[1] * 0.45) + 0.18,
+            (base[2] * 0.45) + 0.16,
+            0.22,
+        ],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{cad_mesh_to_viewport_primitive, placeholder_layout};
@@ -524,7 +548,9 @@ mod tests {
         CadMeshBounds, CadMeshEdgeSegment, CadMeshMaterialSlot, CadMeshPayload, CadMeshTopology,
         CadMeshVertex,
     };
-    use wgpui::{Bounds, MESH_EDGE_FLAG_SELECTED};
+    use wgpui::{Bounds, MESH_EDGE_FLAG_SELECTED, MESH_EDGE_FLAG_SILHOUETTE};
+
+    use crate::app_state::CadHiddenLineMode;
 
     #[test]
     fn placeholder_layout_stays_within_large_bounds() {
@@ -603,10 +629,12 @@ mod tests {
             },
         };
 
-        let first = cad_mesh_to_viewport_primitive(&payload, viewport, false)
-            .expect("mesh projection should succeed");
-        let second = cad_mesh_to_viewport_primitive(&payload, viewport, false)
-            .expect("mesh projection should remain deterministic");
+        let first =
+            cad_mesh_to_viewport_primitive(&payload, viewport, false, CadHiddenLineMode::Off)
+                .expect("mesh projection should succeed");
+        let second =
+            cad_mesh_to_viewport_primitive(&payload, viewport, false, CadHiddenLineMode::Off)
+                .expect("mesh projection should remain deterministic");
         assert_eq!(first, second);
         for vertex in &first.vertices {
             assert!(vertex.position[0] >= viewport.origin.x - 0.001);
@@ -620,8 +648,9 @@ mod tests {
     fn mesh_projection_rejects_empty_payload() {
         let payload = CadMeshPayload::default();
         let viewport = Bounds::new(0.0, 0.0, 120.0, 80.0);
-        let error = cad_mesh_to_viewport_primitive(&payload, viewport, false)
-            .expect_err("empty payload should fail");
+        let error =
+            cad_mesh_to_viewport_primitive(&payload, viewport, false, CadHiddenLineMode::Off)
+                .expect_err("empty payload should fail");
         assert_eq!(error, "mesh payload has no vertices");
     }
 
@@ -668,9 +697,62 @@ mod tests {
                 max_mm: [10.0, 10.0, 0.0],
             },
         };
-        let mesh = cad_mesh_to_viewport_primitive(&payload, viewport, true)
+        let mesh = cad_mesh_to_viewport_primitive(&payload, viewport, true, CadHiddenLineMode::Off)
             .expect("selected projection should succeed");
         assert_eq!(mesh.edges.len(), 1);
         assert_ne!(mesh.edges[0].flags & MESH_EDGE_FLAG_SELECTED, 0);
+    }
+
+    #[test]
+    fn hidden_line_wireframe_mode_styles_fill_and_edges() {
+        let viewport = Bounds::new(10.0, 10.0, 180.0, 120.0);
+        let payload = CadMeshPayload {
+            mesh_id: "mesh.variant.baseline".to_string(),
+            document_revision: 2,
+            variant_id: "variant.baseline".to_string(),
+            topology: CadMeshTopology::Triangles,
+            vertices: vec![
+                CadMeshVertex {
+                    position_mm: [0.0, 0.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [0.0, 0.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [20.0, 0.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [1.0, 0.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [10.0, 20.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [0.5, 1.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+            ],
+            triangle_indices: vec![0, 1, 2],
+            edges: vec![CadMeshEdgeSegment {
+                start_vertex: 0,
+                end_vertex: 1,
+                flags: 0,
+            }],
+            material_slots: vec![CadMeshMaterialSlot::default()],
+            bounds: CadMeshBounds {
+                min_mm: [0.0, 0.0, 0.0],
+                max_mm: [20.0, 20.0, 0.0],
+            },
+        };
+
+        let mesh =
+            cad_mesh_to_viewport_primitive(&payload, viewport, false, CadHiddenLineMode::Wireframe)
+                .expect("hidden-line wireframe projection should succeed");
+
+        assert_eq!(mesh.edges.len(), 1);
+        assert_ne!(mesh.edges[0].flags & MESH_EDGE_FLAG_SILHOUETTE, 0);
+        assert!(mesh.vertices.iter().all(|vertex| vertex.color[3] <= 0.12));
     }
 }

@@ -466,11 +466,37 @@ pub struct CadDemoPaneState {
     pub warning_hover_index: Option<usize>,
     pub focused_warning_index: Option<usize>,
     pub focused_geometry_ref: Option<String>,
+    pub hidden_line_mode: CadHiddenLineMode,
     pub history_stack: openagents_cad::history::CadHistoryStack,
     pub timeline_rows: Vec<CadTimelineRowState>,
     pub timeline_selected_index: Option<usize>,
     pub timeline_scroll_offset: usize,
     pub selected_feature_params: Vec<(String, String)>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CadHiddenLineMode {
+    Off,
+    Wireframe,
+    Section,
+}
+
+impl CadHiddenLineMode {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Off => Self::Wireframe,
+            Self::Wireframe => Self::Section,
+            Self::Section => Self::Off,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Wireframe => "wireframe",
+            Self::Section => "section",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -544,6 +570,7 @@ impl Default for CadDemoPaneState {
             warning_hover_index: None,
             focused_warning_index: None,
             focused_geometry_ref: None,
+            hidden_line_mode: CadHiddenLineMode::Off,
             history_stack: openagents_cad::history::CadHistoryStack::new("cad.session.local", 128)
                 .expect("cad history max_steps should be valid"),
             timeline_rows: Vec::new(),
