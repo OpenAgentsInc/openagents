@@ -116,6 +116,7 @@ pub enum CadCameraDragMode {
 #[derive(Clone, Copy, Debug)]
 pub struct CadCameraDragState {
     pub pane_id: u64,
+    pub tile_index: usize,
     pub mode: CadCameraDragMode,
     pub last_mouse: Point,
     pub moved: bool,
@@ -3741,6 +3742,9 @@ mod tests {
         assert_eq!(state.active_variant_id, "variant.baseline");
         assert_eq!(state.variant_ids.len(), 4);
         assert_eq!(state.variant_ids[0], "variant.baseline");
+        assert_eq!(state.active_variant_tile_index, 0);
+        assert_eq!(state.variant_viewports.len(), 4);
+        assert_eq!(state.variant_viewports[0].variant_id, "variant.baseline");
         assert!(state.last_rebuild_receipt.is_none());
         assert!(state.rebuild_receipts.is_empty());
         assert_eq!(state.eval_cache.len(), 0);
@@ -3934,5 +3938,35 @@ mod tests {
         state.close_context_menu();
         assert!(!state.context_menu.is_open);
         assert!(state.context_menu.items.is_empty());
+    }
+
+    #[test]
+    fn cad_variant_tiles_keep_independent_camera_and_selection_state() {
+        let mut state = CadDemoPaneState::default();
+        assert!(state.set_active_variant_tile(0));
+        state.orbit_camera_by_drag(12.0, -4.0);
+        state.set_focused_geometry_for_active_variant(Some("face.front".to_string()));
+
+        assert!(state.set_active_variant_tile(1));
+        let tile1_before = state.camera_orbit_yaw_deg;
+        state.orbit_camera_by_drag(-18.0, 6.0);
+        state.set_focused_geometry_for_active_variant(Some("edge.rim".to_string()));
+        assert_ne!(state.camera_orbit_yaw_deg, tile1_before);
+
+        assert!(state.set_active_variant_tile(0));
+        assert_eq!(
+            state.focused_geometry_ref.as_deref(),
+            Some("face.front"),
+            "tile 0 selection should persist"
+        );
+        let yaw_tile0 = state.camera_orbit_yaw_deg;
+
+        assert!(state.set_active_variant_tile(1));
+        assert_eq!(
+            state.focused_geometry_ref.as_deref(),
+            Some("edge.rim"),
+            "tile 1 selection should persist"
+        );
+        assert_ne!(state.camera_orbit_yaw_deg, yaw_tile0);
     }
 }
