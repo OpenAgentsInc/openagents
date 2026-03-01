@@ -301,6 +301,9 @@ impl PaneRenderer {
                         paint,
                     );
                 }
+                PaneKind::CadDemo => {
+                    paint_cad_demo_placeholder(content_bounds, paint);
+                }
                 PaneKind::NostrIdentity => {
                     paint_nostr_identity_pane(
                         content_bounds,
@@ -342,6 +345,30 @@ fn paint_empty_pane(content_bounds: Bounds, paint: &mut PaintContext) {
         theme::text::MUTED,
     );
     paint.scene.draw_text(empty);
+}
+
+fn paint_cad_demo_placeholder(content_bounds: Bounds, paint: &mut PaintContext) {
+    let title = paint.text.layout(
+        "CAD demo registered",
+        Point::new(
+            content_bounds.origin.x + 12.0,
+            content_bounds.origin.y + 16.0,
+        ),
+        12.0,
+        theme::text::PRIMARY,
+    );
+    paint.scene.draw_text(title);
+
+    let copy = paint.text.layout(
+        "Placeholder pane. Geometry rendering arrives in follow-up CAD issues.",
+        Point::new(
+            content_bounds.origin.x + 12.0,
+            content_bounds.origin.y + 36.0,
+        ),
+        11.0,
+        theme::text::MUTED,
+    );
+    paint.scene.draw_text(copy);
 }
 
 fn paint_autopilot_chat_pane(
