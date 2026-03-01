@@ -257,6 +257,10 @@ fn is_supported_tool(tool: &str) -> bool {
     OPENAGENTS_TOOL_NAMES.iter().any(|entry| *entry == tool)
 }
 
+pub(super) fn is_openagents_tool_namespace(tool: &str) -> bool {
+    tool.trim().starts_with(OPENAGENTS_TOOL_PREFIX)
+}
+
 fn execute_pane_list(state: &RenderState) -> ToolBridgeResultEnvelope {
     let registered = pane_specs()
         .iter()

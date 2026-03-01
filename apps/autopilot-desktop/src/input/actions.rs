@@ -427,17 +427,31 @@ pub(super) fn run_chat_tool_call_response_action(
         return true;
     };
 
-    let command = crate::codex_lane::CodexLaneCommand::ServerRequestToolCallRespond {
-        request_id: request.request_id.clone(),
-        response: DynamicToolCallResponse {
+    let request_id = request.request_id.clone();
+    let tool_name = request.tool.clone();
+    let call_id = request.call_id.clone();
+    let response = if super::tool_bridge::is_openagents_tool_namespace(&tool_name) {
+        let envelope = super::tool_bridge::execute_openagents_tool_request(state, &request);
+        state.autopilot_chat.record_turn_timeline_event(format!(
+            "tool call auto-executed tool={} code={} success={}",
+            tool_name, envelope.code, envelope.success
+        ));
+        envelope.to_response()
+    } else {
+        DynamicToolCallResponse {
             content_items: vec![DynamicToolCallOutputContentItem::InputText {
                 text: format!(
                     "OpenAgents desktop acknowledged tool '{}' for call '{}'",
-                    request.tool, request.call_id
+                    tool_name, call_id
                 ),
             }],
             success: true,
-        },
+        }
+    };
+
+    let command = crate::codex_lane::CodexLaneCommand::ServerRequestToolCallRespond {
+        request_id,
+        response,
     };
     if let Err(error) = state.queue_codex_command(command) {
         state.autopilot_chat.pending_tool_calls.insert(0, request);

@@ -1330,19 +1330,46 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             request_id,
             request,
         } => {
-            state
-                .autopilot_chat
-                .enqueue_tool_call(crate::app_state::AutopilotToolCallRequest {
-                    request_id,
-                    thread_id: request.thread_id,
-                    turn_id: request.turn_id,
-                    call_id: request.call_id,
-                    tool: request.tool,
-                    arguments: request.arguments,
-                });
-            state
-                .autopilot_chat
-                .record_turn_timeline_event("tool call requested");
+            let pending = crate::app_state::AutopilotToolCallRequest {
+                request_id,
+                thread_id: request.thread_id,
+                turn_id: request.turn_id,
+                call_id: request.call_id,
+                tool: request.tool,
+                arguments: request.arguments,
+            };
+
+            if super::super::tool_bridge::is_openagents_tool_namespace(&pending.tool) {
+                let envelope =
+                    super::super::tool_bridge::execute_openagents_tool_request(state, &pending);
+                let code = envelope.code.clone();
+                let success = envelope.success;
+                let command = crate::codex_lane::CodexLaneCommand::ServerRequestToolCallRespond {
+                    request_id: pending.request_id.clone(),
+                    response: envelope.to_response(),
+                };
+                if let Err(error) = state.queue_codex_command(command) {
+                    state.autopilot_chat.enqueue_tool_call(pending);
+                    state.autopilot_chat.last_error = Some(format!(
+                        "Failed to auto-respond to tool call: {}",
+                        error
+                    ));
+                } else {
+                    if !success {
+                        state.autopilot_chat.last_error =
+                            Some(format!("Tool call failed with code {}", code));
+                    }
+                    state.autopilot_chat.record_turn_timeline_event(format!(
+                        "tool call auto-response submitted code={} success={}",
+                        code, success
+                    ));
+                }
+            } else {
+                state.autopilot_chat.enqueue_tool_call(pending);
+                state
+                    .autopilot_chat
+                    .record_turn_timeline_event("tool call requested");
+            }
         }
         CodexLaneNotification::ToolUserInputRequested {
             request_id,
