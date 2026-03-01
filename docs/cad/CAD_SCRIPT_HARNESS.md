@@ -72,3 +72,9 @@ Strict lint/check lane integration:
 ```bash
 scripts/cad/headless-script-ci.sh
 ```
+
+Performance suite dependency:
+
+- `cad_demo_canonical_script.json` is also consumed by
+  `cad_performance_benchmark_suite_maps_gate_a_b_e_thresholds` for Gate A/B/E
+  benchmark checks.

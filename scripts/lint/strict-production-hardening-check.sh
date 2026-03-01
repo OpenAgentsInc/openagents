@@ -43,4 +43,8 @@ run_strict_lane \
     cad-headless-script-harness \
     "$ROOT_DIR/scripts/cad/headless-script-ci.sh"
 
+run_strict_lane \
+    cad-perf-benchmark-suite \
+    "$ROOT_DIR/scripts/cad/perf-benchmark-ci.sh"
+
 printf 'Strict production hardening check passed.\n'

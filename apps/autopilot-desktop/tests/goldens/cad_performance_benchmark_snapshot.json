@@ -1,0 +1,32 @@
+{
+  "all_gates_pass": true,
+  "gate_thresholds": {
+    "gate_a": {
+      "pass": true,
+      "rebuild_budget_ms": 80,
+      "rebuild_ms": 18
+    },
+    "gate_b": {
+      "fps_estimate": 69.113,
+      "hit_test_budget_ms": 5.0,
+      "hit_test_ms": 2.509,
+      "mesh_budget_ms": 30,
+      "mesh_generation_ms": 18,
+      "min_fps": 55.0,
+      "pass": true
+    },
+    "gate_e": {
+      "memory_budget_mb": 800,
+      "memory_estimate_mb": 1,
+      "pass": true
+    }
+  },
+  "metrics": {
+    "fps_estimate": 69.113,
+    "hit_test_ms": 2.509,
+    "memory_estimate_mb": 1,
+    "mesh_generation_ms": 18,
+    "rebuild_ms": 18
+  },
+  "source_script": "cad_demo_canonical_script.json"
+}
