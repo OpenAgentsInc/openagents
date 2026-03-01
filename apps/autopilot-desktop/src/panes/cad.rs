@@ -16,7 +16,8 @@ use crate::pane_renderer::paint_action_button;
 use crate::pane_system::{
     cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
     cad_demo_cycle_variant_button_bounds, cad_demo_hidden_line_mode_button_bounds,
-    cad_demo_hotkey_profile_button_bounds, cad_demo_projection_mode_button_bounds,
+    cad_demo_hotkey_profile_button_bounds, cad_demo_material_button_bounds,
+    cad_demo_projection_mode_button_bounds,
     cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
     cad_demo_section_offset_button_bounds, cad_demo_section_plane_button_bounds,
     cad_demo_snap_endpoint_button_bounds, cad_demo_snap_grid_button_bounds,
@@ -107,6 +108,7 @@ fn cad_demo_body_bounds(content_bounds: Bounds) -> Bounds {
     let hotkey_bounds = cad_demo_hotkey_profile_button_bounds(content_bounds);
     let section_plane_bounds = cad_demo_section_plane_button_bounds(content_bounds);
     let section_offset_bounds = cad_demo_section_offset_button_bounds(content_bounds);
+    let material_bounds = cad_demo_material_button_bounds(content_bounds);
     let body_top = (cycle_bounds
         .max_y()
         .max(reset_bounds.max_y())
@@ -120,6 +122,7 @@ fn cad_demo_body_bounds(content_bounds: Bounds) -> Bounds {
         .max(hotkey_bounds.max_y())
         .max(section_plane_bounds.max_y())
         .max(section_offset_bounds.max_y())
+        .max(material_bounds.max_y())
         + 8.0)
         .min(content_bounds.max_y());
     Bounds::new(
@@ -174,6 +177,7 @@ pub fn paint_cad_demo_placeholder_pane(
     let hotkey_bounds = cad_demo_hotkey_profile_button_bounds(content_bounds);
     let section_plane_bounds = cad_demo_section_plane_button_bounds(content_bounds);
     let section_offset_bounds = cad_demo_section_offset_button_bounds(content_bounds);
+    let material_bounds = cad_demo_material_button_bounds(content_bounds);
     let warning_panel = cad_demo_warning_panel_bounds(content_bounds);
     let timeline_panel = cad_demo_timeline_panel_bounds(content_bounds);
     let severity_filter_bounds = cad_demo_warning_filter_severity_button_bounds(content_bounds);
@@ -249,6 +253,18 @@ pub fn paint_cad_demo_placeholder_pane(
         "Slice: --".to_string()
     };
     paint_action_button(section_offset_bounds, section_offset_label.as_str(), paint);
+    paint_action_button(
+        material_bounds,
+        &format!(
+            "Material: {}",
+            pane_state
+                .analysis_snapshot
+                .material_id
+                .as_deref()
+                .unwrap_or(openagents_cad::materials::DEFAULT_CAD_MATERIAL_ID)
+        ),
+        paint,
+    );
     paint_action_button(
         severity_filter_bounds,
         &format!("Severity: {}", pane_state.warning_filter_severity),
@@ -672,9 +688,24 @@ pub fn paint_cad_demo_placeholder_pane(
             .map(|value| format!(" focus={value}"))
             .unwrap_or_default();
         let three_d_mouse_status = pane_state.three_d_mouse_status();
+        let material_id = pane_state
+            .analysis_snapshot
+            .material_id
+            .as_deref()
+            .unwrap_or(openagents_cad::materials::DEFAULT_CAD_MATERIAL_ID);
+        let mass_label = pane_state
+            .analysis_snapshot
+            .mass_kg
+            .map(|value| format!("{value:.3}"))
+            .unwrap_or_else(|| "--".to_string());
+        let cost_label = pane_state
+            .analysis_snapshot
+            .estimated_cost_usd
+            .map(|value| format!("{value:.2}"))
+            .unwrap_or_else(|| "--".to_string());
         paint.scene.draw_text(paint.text.layout(
             &format!(
-                "session={} active={} warnings={}{} cam({}; z={:.2} pan={:.0},{:.0} orbit={:.0}/{:.0}) section[{}] snaps[{}] hotkeys[{}] 3dmouse[{}]",
+                "session={} active={} warnings={}{} cam({}; z={:.2} pan={:.0},{:.0} orbit={:.0}/{:.0}) section[{}] material[{}] mass={}kg cost=${} snaps[{}] hotkeys[{}] 3dmouse[{}]",
                 pane_state.session_id,
                 format!(
                     "{}@tile{}",
@@ -690,6 +721,9 @@ pub fn paint_cad_demo_placeholder_pane(
                 pane_state.camera_orbit_yaw_deg,
                 pane_state.camera_orbit_pitch_deg,
                 pane_state.section_summary(),
+                material_id,
+                mass_label,
+                cost_label,
                 pane_state.snap_summary(),
                 pane_state.hotkey_profile,
                 three_d_mouse_status,

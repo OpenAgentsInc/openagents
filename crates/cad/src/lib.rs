@@ -14,6 +14,7 @@ pub mod features;
 pub mod format;
 pub mod history;
 pub mod kernel;
+pub mod materials;
 pub mod measurement;
 pub mod mesh;
 pub mod params;
