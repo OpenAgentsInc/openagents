@@ -1,6 +1,6 @@
 # Rendering Pipelines
 
-WGPUI uses a multi-pipeline GPU rendering architecture built on wgpu. This document covers the four rendering pipelines: quads, lines, text, and images.
+WGPUI uses a multi-pipeline GPU rendering architecture built on wgpu. This document covers the four active rendering pipelines (quads, lines, text, and images) plus the generic mesh primitive contract used by upcoming mesh passes.
 
 ## Overview
 
@@ -12,6 +12,16 @@ The renderer processes scene primitives through specialized GPU pipelines:
 | Line | Anti-aliased lines, curve segments | `line.wgsl` | `GpuLine` |
 | Text | Glyph rendering from atlas | `text.wgsl` | `GpuTextQuad` |
 | Image | Textured quads (SVGs, images) | `image.wgsl` | `GpuImageQuad` |
+| Mesh (contract) | Product-agnostic indexed mesh payloads | n/a in this phase | `MeshPrimitive` |
+
+## Mesh Primitive Contract
+
+`wgpui-core::scene::MeshPrimitive` is available for any surface (not CAD-specific) to submit indexed triangle meshes into the scene graph.
+
+- Includes vertex positions, normals, colors, triangle indices, and optional edge indices.
+- Validation is explicit (`MeshPrimitive::validate`) and returns `MeshPrimitiveError` with remediation hints.
+- Scene integration is generic through `Scene::draw_mesh`, `Scene::meshes`, and `Scene::mesh_primitives_for_layer`.
+- `wgpui-render` currently prepares and tracks mesh metrics, while raster pipeline implementation lands in the follow-up render-pass issue.
 
 ## Render Order
 

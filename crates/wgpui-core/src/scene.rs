@@ -2,6 +2,8 @@ use crate::color::Hsla;
 use crate::curve::CurvePrimitive;
 use crate::geometry::{Bounds, Point, Size};
 use bytemuck::{Pod, Zeroable};
+use std::error::Error;
+use std::fmt;
 
 /// GPU-ready image/SVG quad for rendering.
 #[repr(C)]
@@ -172,6 +174,213 @@ impl GpuLine {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MeshTopology {
+    TriangleList,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MeshVertex {
+    pub position: [f32; 3],
+    pub normal: [f32; 3],
+    pub color: [f32; 4],
+}
+
+impl MeshVertex {
+    pub fn new(position: [f32; 3], normal: [f32; 3], color: [f32; 4]) -> Self {
+        Self {
+            position,
+            normal,
+            color,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MeshPrimitive {
+    pub vertices: Vec<MeshVertex>,
+    pub indices: Vec<u32>,
+    pub edge_indices: Vec<[u32; 2]>,
+    pub topology: MeshTopology,
+}
+
+impl MeshPrimitive {
+    pub fn new(vertices: Vec<MeshVertex>, indices: Vec<u32>) -> Self {
+        Self {
+            vertices,
+            indices,
+            edge_indices: Vec::new(),
+            topology: MeshTopology::TriangleList,
+        }
+    }
+
+    pub fn with_edges(mut self, edge_indices: Vec<[u32; 2]>) -> Self {
+        self.edge_indices = edge_indices;
+        self
+    }
+
+    pub fn with_topology(mut self, topology: MeshTopology) -> Self {
+        self.topology = topology;
+        self
+    }
+
+    pub fn validate(&self) -> Result<(), MeshPrimitiveError> {
+        if self.vertices.is_empty() {
+            return Err(MeshPrimitiveError::EmptyVertices);
+        }
+        if self.indices.is_empty() {
+            return Err(MeshPrimitiveError::EmptyIndices);
+        }
+        if self.indices.len() % 3 != 0 {
+            return Err(MeshPrimitiveError::InvalidTriangleIndexCount {
+                count: self.indices.len(),
+            });
+        }
+
+        let vertex_count = self.vertices.len() as u32;
+        for (idx, index) in self.indices.iter().enumerate() {
+            if *index >= vertex_count {
+                return Err(MeshPrimitiveError::IndexOutOfRange {
+                    index_position: idx,
+                    index_value: *index,
+                    vertex_count,
+                });
+            }
+        }
+        for (idx, edge) in self.edge_indices.iter().enumerate() {
+            if edge[0] >= vertex_count || edge[1] >= vertex_count {
+                return Err(MeshPrimitiveError::EdgeIndexOutOfRange {
+                    edge_position: idx,
+                    start: edge[0],
+                    end: edge[1],
+                    vertex_count,
+                });
+            }
+            if edge[0] == edge[1] {
+                return Err(MeshPrimitiveError::DegenerateEdge { edge_position: idx });
+            }
+        }
+
+        for (idx, vertex) in self.vertices.iter().enumerate() {
+            if !vertex
+                .position
+                .iter()
+                .chain(vertex.normal.iter())
+                .chain(vertex.color.iter())
+                .all(|value| value.is_finite())
+            {
+                return Err(MeshPrimitiveError::NonFiniteVertex {
+                    vertex_position: idx,
+                });
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn bounds(&self) -> Option<Bounds> {
+        let mut iter = self.vertices.iter();
+        let first = iter.next()?;
+        let mut min = first.position;
+        let mut max = first.position;
+        for vertex in iter {
+            for axis in 0..3 {
+                min[axis] = min[axis].min(vertex.position[axis]);
+                max[axis] = max[axis].max(vertex.position[axis]);
+            }
+        }
+        Some(Bounds::new(
+            min[0],
+            min[1],
+            max[0] - min[0],
+            max[1] - min[1],
+        ))
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum MeshPrimitiveError {
+    EmptyVertices,
+    EmptyIndices,
+    InvalidTriangleIndexCount {
+        count: usize,
+    },
+    IndexOutOfRange {
+        index_position: usize,
+        index_value: u32,
+        vertex_count: u32,
+    },
+    EdgeIndexOutOfRange {
+        edge_position: usize,
+        start: u32,
+        end: u32,
+        vertex_count: u32,
+    },
+    DegenerateEdge {
+        edge_position: usize,
+    },
+    NonFiniteVertex {
+        vertex_position: usize,
+    },
+}
+
+impl MeshPrimitiveError {
+    pub fn remediation_hint(&self) -> &'static str {
+        match self {
+            Self::EmptyVertices => "Provide at least one mesh vertex before issuing draw_mesh.",
+            Self::EmptyIndices => "Provide triangle indices for mesh rasterization.",
+            Self::InvalidTriangleIndexCount { .. } => {
+                "Triangle list indices must be a multiple of 3."
+            }
+            Self::IndexOutOfRange { .. } => {
+                "Ensure all indices reference valid vertices within mesh bounds."
+            }
+            Self::EdgeIndexOutOfRange { .. } => "Ensure edge index pairs reference valid vertices.",
+            Self::DegenerateEdge { .. } => "Ensure each edge pair uses distinct vertex indices.",
+            Self::NonFiniteVertex { .. } => {
+                "Normalize mesh vertex values to finite position/normal/color components."
+            }
+        }
+    }
+}
+
+impl fmt::Display for MeshPrimitiveError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::EmptyVertices => write!(f, "mesh primitive requires at least one vertex"),
+            Self::EmptyIndices => write!(f, "mesh primitive requires triangle indices"),
+            Self::InvalidTriangleIndexCount { count } => {
+                write!(f, "mesh triangle index count {count} is not divisible by 3")
+            }
+            Self::IndexOutOfRange {
+                index_position,
+                index_value,
+                vertex_count,
+            } => write!(
+                f,
+                "mesh index {index_position} has value {index_value} which exceeds vertex_count {vertex_count}"
+            ),
+            Self::EdgeIndexOutOfRange {
+                edge_position,
+                start,
+                end,
+                vertex_count,
+            } => write!(
+                f,
+                "mesh edge {edge_position} has out-of-range vertices {start}->{end}; vertex_count={vertex_count}"
+            ),
+            Self::DegenerateEdge { edge_position } => {
+                write!(f, "mesh edge {edge_position} is degenerate")
+            }
+            Self::NonFiniteVertex { vertex_position } => {
+                write!(f, "mesh vertex {vertex_position} has non-finite components")
+            }
+        }
+    }
+}
+
+impl Error for MeshPrimitiveError {}
+
 #[derive(Clone, Debug)]
 pub struct GlyphInstance {
     pub glyph_id: u16,
@@ -312,6 +521,7 @@ pub struct Scene {
     pub quads: Vec<(u32, Quad, Option<Bounds>)>, // (layer, quad, clip)
     pub text_runs: Vec<(u32, TextRun, Option<Bounds>)>, // (layer, text_run, clip)
     pub curves: Vec<(u32, CurvePrimitive)>,      // (layer, curve)
+    pub meshes: Vec<(u32, MeshPrimitive, Option<Bounds>)>, // (layer, mesh, clip)
     pub svg_quads: Vec<SvgQuad>,
     clip_stack: Vec<Bounds>,
     current_layer: u32,
@@ -326,6 +536,7 @@ impl Scene {
         self.quads.clear();
         self.text_runs.clear();
         self.curves.clear();
+        self.meshes.clear();
         self.svg_quads.clear();
         self.clip_stack.clear();
         self.current_layer = 0;
@@ -378,6 +589,20 @@ impl Scene {
     pub fn draw_curve(&mut self, curve: CurvePrimitive) {
         // TODO: Add clipping support for curves
         self.curves.push((self.current_layer, curve));
+    }
+
+    /// Draw a generic mesh primitive.
+    pub fn draw_mesh(&mut self, mesh: MeshPrimitive) -> Result<(), MeshPrimitiveError> {
+        mesh.validate()?;
+        if let Some(clip) = self.clip_stack.last() {
+            let mesh_bounds = mesh.bounds().unwrap_or(Bounds::ZERO);
+            if mesh_bounds.intersects(clip) {
+                self.meshes.push((self.current_layer, mesh, Some(*clip)));
+            }
+        } else {
+            self.meshes.push((self.current_layer, mesh, None));
+        }
+        Ok(())
     }
 
     /// Convert curves in a layer to GPU lines for rendering.
@@ -466,6 +691,7 @@ impl Scene {
             .map(|(l, _, _)| *l)
             .chain(self.text_runs.iter().map(|(l, _, _)| *l))
             .chain(self.curves.iter().map(|(l, _)| *l))
+            .chain(self.meshes.iter().map(|(l, _, _)| *l))
             .collect();
         layers.sort_unstable();
         layers.dedup();
@@ -482,6 +708,18 @@ impl Scene {
 
     pub fn svg_quads(&self) -> &[SvgQuad] {
         &self.svg_quads
+    }
+
+    pub fn mesh_primitives_for_layer(&self, layer: u32) -> Vec<&MeshPrimitive> {
+        self.meshes
+            .iter()
+            .filter(|(l, _, _)| *l == layer)
+            .map(|(_, mesh, _)| mesh)
+            .collect()
+    }
+
+    pub fn meshes(&self) -> Vec<&MeshPrimitive> {
+        self.meshes.iter().map(|(_, mesh, _)| mesh).collect()
     }
 }
 
@@ -505,6 +743,16 @@ fn clip_to_gpu(clip: Option<Bounds>, scale_factor: f32) -> ([f32; 2], [f32; 2]) 
 mod tests {
     use super::*;
 
+    fn sample_mesh() -> MeshPrimitive {
+        let vertices = vec![
+            MeshVertex::new([0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.4, 0.7, 0.9, 1.0]),
+            MeshVertex::new([10.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.4, 0.7, 0.9, 1.0]),
+            MeshVertex::new([10.0, 10.0, 0.0], [0.0, 0.0, 1.0], [0.4, 0.7, 0.9, 1.0]),
+            MeshVertex::new([0.0, 10.0, 0.0], [0.0, 0.0, 1.0], [0.4, 0.7, 0.9, 1.0]),
+        ];
+        MeshPrimitive::new(vertices, vec![0, 1, 2, 0, 2, 3]).with_edges(vec![[0, 1], [1, 2]])
+    }
+
     #[test]
     fn test_quad_builder() {
         let bounds = Bounds::new(0.0, 0.0, 100.0, 50.0);
@@ -523,6 +771,51 @@ mod tests {
         scene.draw_quad(quad);
 
         assert_eq!(scene.quads().len(), 1);
+    }
+
+    #[test]
+    fn test_mesh_validation_rejects_out_of_range_indices() {
+        let mesh = MeshPrimitive::new(
+            vec![
+                MeshVertex::new([0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 1.0, 1.0]),
+                MeshVertex::new([1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 1.0, 1.0]),
+            ],
+            vec![0, 1, 2],
+        );
+        let error = mesh.validate().expect_err("invalid index must fail");
+        assert_eq!(
+            error,
+            MeshPrimitiveError::IndexOutOfRange {
+                index_position: 2,
+                index_value: 2,
+                vertex_count: 2,
+            }
+        );
+        assert_eq!(
+            error.remediation_hint(),
+            "Ensure all indices reference valid vertices within mesh bounds."
+        );
+    }
+
+    #[test]
+    fn test_scene_draw_mesh_is_layered_and_clipped() {
+        let mut scene = Scene::new();
+        scene.set_layer(3);
+        scene
+            .draw_mesh(sample_mesh())
+            .expect("mesh should validate and draw");
+        assert_eq!(scene.layers(), vec![3]);
+        assert_eq!(scene.mesh_primitives_for_layer(3).len(), 1);
+
+        scene.push_clip(Bounds::new(100.0, 100.0, 10.0, 10.0));
+        scene
+            .draw_mesh(sample_mesh())
+            .expect("mesh validation should still succeed");
+        assert_eq!(
+            scene.mesh_primitives_for_layer(3).len(),
+            1,
+            "out-of-clip mesh should not be retained"
+        );
     }
 
     #[test]
