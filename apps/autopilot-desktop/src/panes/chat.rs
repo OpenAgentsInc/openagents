@@ -17,6 +17,9 @@ const CHAT_MARKDOWN_MIN_WIDTH: f32 = 84.0;
 const CHAT_PROGRESS_HEADER_LINE_HEIGHT: f32 = 12.0;
 const CHAT_PROGRESS_ROW_LINE_HEIGHT: f32 = 12.0;
 const CHAT_PROGRESS_BLOCK_GAP: f32 = 4.0;
+const CHAT_ACTIVITY_HEADER_LINE_HEIGHT: f32 = 12.0;
+const CHAT_ACTIVITY_ROW_LINE_HEIGHT: f32 = 12.0;
+const CHAT_ACTIVITY_MAX_ROWS: usize = 14;
 
 fn transcript_scroll_clip_bounds(content_bounds: Bounds) -> Bounds {
     let transcript_bounds = chat_transcript_bounds(content_bounds);
@@ -126,6 +129,69 @@ fn paint_message_progress_blocks(
     y - start_y
 }
 
+fn is_tool_activity_event(event: &str) -> bool {
+    let normalized = event.trim().to_ascii_lowercase();
+    normalized.contains("tool call")
+        || normalized.contains("tool user-input")
+        || normalized.contains("command approval")
+        || normalized.contains("file-change")
+        || normalized.contains("auth token refresh")
+        || normalized.contains("type=commandexecution")
+}
+
+fn chat_tool_activity_lines(autopilot_chat: &AutopilotChatState) -> Vec<String> {
+    let mut lines = Vec::new();
+
+    if !autopilot_chat.pending_tool_calls.is_empty() {
+        lines.push(format!(
+            "pending tool calls: {}",
+            autopilot_chat.pending_tool_calls.len()
+        ));
+        for call in autopilot_chat.pending_tool_calls.iter().rev().take(3) {
+            lines.push(format!(
+                "tool call queued: {} ({})",
+                call.tool, call.call_id
+            ));
+        }
+    }
+    if !autopilot_chat.pending_command_approvals.is_empty() {
+        lines.push(format!(
+            "pending command approvals: {}",
+            autopilot_chat.pending_command_approvals.len()
+        ));
+    }
+    if !autopilot_chat.pending_file_change_approvals.is_empty() {
+        lines.push(format!(
+            "pending file-change approvals: {}",
+            autopilot_chat.pending_file_change_approvals.len()
+        ));
+    }
+    if !autopilot_chat.pending_tool_user_input.is_empty() {
+        lines.push(format!(
+            "pending tool prompts: {}",
+            autopilot_chat.pending_tool_user_input.len()
+        ));
+    }
+
+    let mut timeline = autopilot_chat
+        .turn_timeline
+        .iter()
+        .filter(|event| is_tool_activity_event(event))
+        .rev()
+        .take(CHAT_ACTIVITY_MAX_ROWS)
+        .cloned()
+        .collect::<Vec<_>>();
+    timeline.reverse();
+    lines.extend(timeline);
+
+    if lines.len() > CHAT_ACTIVITY_MAX_ROWS {
+        let overflow = lines.len().saturating_sub(CHAT_ACTIVITY_MAX_ROWS);
+        lines.drain(0..overflow);
+    }
+
+    lines
+}
+
 fn transcript_content_height(
     content_bounds: Bounds,
     autopilot_chat: &AutopilotChatState,
@@ -146,6 +212,13 @@ fn transcript_content_height(
             markdown_renderer.measure(&markdown_document, markdown_width, text_system);
         height += markdown_size.height.max(CHAT_TRANSCRIPT_LINE_HEIGHT);
         height += message_progress_height(message);
+        height += 8.0;
+    }
+
+    let activity_lines = chat_tool_activity_lines(autopilot_chat);
+    if !activity_lines.is_empty() {
+        height += CHAT_ACTIVITY_HEADER_LINE_HEIGHT;
+        height += CHAT_ACTIVITY_ROW_LINE_HEIGHT * activity_lines.len() as f32;
         height += 8.0;
     }
 
@@ -325,6 +398,28 @@ pub fn paint(
         y += paint_message_progress_blocks(message, transcript_scroll_clip.origin.x, y, paint);
         y += 8.0;
     }
+
+    let activity_lines = chat_tool_activity_lines(autopilot_chat);
+    if !activity_lines.is_empty() {
+        paint.scene.draw_text(paint.text.layout_mono(
+            "[activity]",
+            Point::new(transcript_scroll_clip.origin.x, y),
+            10.0,
+            theme::accent::PRIMARY,
+        ));
+        y += CHAT_ACTIVITY_HEADER_LINE_HEIGHT;
+
+        for line in activity_lines {
+            let line = sanitize_chat_text(&line);
+            paint.scene.draw_text(paint.text.layout(
+                &line,
+                Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                10.0,
+                theme::text::MUTED,
+            ));
+            y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+        }
+    }
     paint.scene.pop_clip();
 
     let mut footer_y = transcript_bounds.max_y() - 14.0;
@@ -457,11 +552,15 @@ fn sanitize_chat_text(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{message_progress_height, progress_status_color, sanitize_chat_text};
-    use crate::app_state::{
-        AutopilotMessage, AutopilotMessageStatus, AutopilotProgressBlock, AutopilotProgressRow,
-        AutopilotRole, AutopilotStructuredMessage,
+    use super::{
+        chat_tool_activity_lines, is_tool_activity_event, message_progress_height,
+        progress_status_color, sanitize_chat_text,
     };
+    use crate::app_state::{
+        AutopilotChatState, AutopilotMessage, AutopilotMessageStatus, AutopilotProgressBlock,
+        AutopilotProgressRow, AutopilotRole, AutopilotStructuredMessage, AutopilotToolCallRequest,
+    };
+    use codex_client::AppServerRequestId;
     use wgpui::theme;
 
     fn fixture_progress_message(status: &str) -> AutopilotMessage {
@@ -515,5 +614,46 @@ mod tests {
         assert_eq!(progress_status_color("done"), theme::status::SUCCESS);
         assert_eq!(progress_status_color("failed"), theme::status::ERROR);
         assert_eq!(progress_status_color("rebuilding"), theme::accent::PRIMARY);
+    }
+
+    #[test]
+    fn tool_activity_event_filter_is_targeted() {
+        assert!(is_tool_activity_event(
+            "item completed: turn=abc id=xyz type=commandExecution"
+        ));
+        assert!(is_tool_activity_event("tool call requested"));
+        assert!(!is_tool_activity_event("reasoning delta: chars=12"));
+    }
+
+    #[test]
+    fn tool_activity_lines_include_pending_tool_calls_and_timeline() {
+        let mut chat = AutopilotChatState::default();
+        chat.pending_tool_calls.push(AutopilotToolCallRequest {
+            request_id: AppServerRequestId::String("r1".to_string()),
+            thread_id: "t1".to_string(),
+            turn_id: "u1".to_string(),
+            call_id: "call_1".to_string(),
+            tool: "openagents.cad.intent".to_string(),
+            arguments: "{}".to_string(),
+        });
+        chat.record_turn_timeline_event(
+            "item completed: turn=u1 id=call_1 type=commandExecution".to_string(),
+        );
+        chat.record_turn_timeline_event("tool call requested".to_string());
+        chat.record_turn_timeline_event("reasoning delta: chars=4".to_string());
+
+        let lines = chat_tool_activity_lines(&chat);
+        assert!(lines.iter().any(|line| line.contains("pending tool calls")));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("openagents.cad.intent"))
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("type=commandExecution"))
+        );
+        assert!(!lines.iter().any(|line| line.contains("reasoning delta")));
     }
 }
