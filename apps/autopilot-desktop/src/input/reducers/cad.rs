@@ -274,6 +274,7 @@ fn apply_completed_rebuild(
         state.rebuild_receipts.drain(0..overflow);
     }
     state.pending_rebuild_request_id = None;
+    state.last_good_mesh_payload = Some(completed.mesh_payload.clone());
     state.last_good_mesh_id = Some(completed.mesh_payload.mesh_id.clone());
     refresh_warning_state(state, completed.document_revision, &receipt.variant_id);
     refresh_timeline_state(

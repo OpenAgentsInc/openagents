@@ -3732,6 +3732,7 @@ mod tests {
         assert_eq!(state.next_rebuild_request_id, 1);
         assert!(state.pending_rebuild_request_id.is_none());
         assert!(state.last_good_mesh_id.is_none());
+        assert!(state.last_good_mesh_payload.is_none());
         assert!(state.warnings.is_empty());
         assert_eq!(state.warning_filter_severity, "all");
         assert_eq!(state.warning_filter_code, "all");
