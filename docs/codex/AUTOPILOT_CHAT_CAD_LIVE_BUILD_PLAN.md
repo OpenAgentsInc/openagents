@@ -10,6 +10,29 @@ Enable a user to ask for a design in the main `Autopilot Chat` pane and have Cod
 4. stream visible build progress while the turn is running,
 5. leave deterministic CAD state, rebuild receipts, and transcript trace after completion.
 
+## Implementation Status (Current `main`)
+
+This plan has been implemented on `main` as a shipped MVP pathway.
+
+Completed outcomes:
+
+- CAD-turn classification + per-turn metadata are active in chat submit path.
+- Deterministic multi-skill turn assembly is active (selected + policy-required skills).
+- Required CAD skills are attached for CAD turns.
+- `openagents.cad.intent` is coupled to deterministic rebuild enqueue/receipt flow with AI trigger provenance.
+- CAD build-session state machine, failure classes, and retry metrics are active.
+- Live CAD build progress is synced into chat progress blocks.
+- CAD tool responses include structured checkpoint payloads for orchestration.
+- Failure handling includes bounded retries and explicit fallback/remediation contracts.
+- Deterministic success/failure e2e harness and goldens are active.
+- Release gates and operator runbook are integrated.
+
+Operational references:
+
+- Contract: [`CODEX_PANE_CAD_TOOLING.md`](/Users/christopherdavid/code/openagents/docs/codex/CODEX_PANE_CAD_TOOLING.md)
+- Architecture details: [`CAD_CHAT_BUILD_IMPLEMENTATION.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_IMPLEMENTATION.md)
+- Release/operations runbook: [`CAD_CHAT_BUILD_RELEASE_RUNBOOK.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_RELEASE_RUNBOOK.md)
+
 This plan is scoped to MVP architecture boundaries:
 
 - `apps/autopilot-desktop` owns chat UX, pane orchestration, Codex lane plumbing, and tool-call execution.

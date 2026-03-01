@@ -1,17 +1,41 @@
 # Codex Integration Docs
 
-This folder is the operational index for Codex integration in desktop MVP.
+This folder is the primary reference set for Codex integration in desktop MVP, with emphasis on pane tooling and chat-driven CAD orchestration.
 
-## Primary Contracts
+## Suggested Reading Order
 
-- [`CODEX_PANE_CAD_TOOLING.md`](/Users/christopherdavid/code/openagents/docs/codex/CODEX_PANE_CAD_TOOLING.md): runtime tool contract for `openagents.pane.*` and `openagents.cad.*`.
-- [`CAD_CHAT_BUILD_RELEASE_RUNBOOK.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_RELEASE_RUNBOOK.md): release checklist, triage flow, rollback controls, and smoke script for chat-driven CAD build.
+1. [`CAD_CHAT_BUILD_IMPLEMENTATION.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_IMPLEMENTATION.md)
+2. [`CODEX_PANE_CAD_TOOLING.md`](/Users/christopherdavid/code/openagents/docs/codex/CODEX_PANE_CAD_TOOLING.md)
+3. [`CAD_CHAT_BUILD_RELEASE_RUNBOOK.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_RELEASE_RUNBOOK.md)
 
-## Planning / Roadmaps
+## Documents
 
-- [`AUTOPILOT_CHAT_CAD_LIVE_BUILD_PLAN.md`](/Users/christopherdavid/code/openagents/docs/codex/AUTOPILOT_CHAT_CAD_LIVE_BUILD_PLAN.md): staged implementation plan and issue breakdown.
-- [`CODEX_PANE_CAD_TOOLING_PLAN.md`](/Users/christopherdavid/code/openagents/docs/codex/CODEX_PANE_CAD_TOOLING_PLAN.md): pane + CAD tooling expansion plan.
+### Implementation + Contracts
 
-## Harness / Debugging
+- [`CAD_CHAT_BUILD_IMPLEMENTATION.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_IMPLEMENTATION.md)
+  - comprehensive shipped architecture, runtime flow, state model, retries/failure classes, tests, and operator controls.
+- [`CODEX_PANE_CAD_TOOLING.md`](/Users/christopherdavid/code/openagents/docs/codex/CODEX_PANE_CAD_TOOLING.md)
+  - runtime API contract for `openagents.pane.*` and `openagents.cad.*` tools.
 
-- [`LIVE_HARNESS.md`](/Users/christopherdavid/code/openagents/docs/codex/LIVE_HARNESS.md): codex live harness probes and usage.
+### Operations + Release
+
+- [`CAD_CHAT_BUILD_RELEASE_RUNBOOK.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_RELEASE_RUNBOOK.md)
+  - release readiness checklist, manual smoke script, failure signatures, rollback toggles, and escalation flow.
+- [`LIVE_HARNESS.md`](/Users/christopherdavid/code/openagents/docs/codex/LIVE_HARNESS.md)
+  - codex live harness probes and manual protocol debugging workflow.
+
+### Plans / Historical Backlog
+
+- [`AUTOPILOT_CHAT_CAD_LIVE_BUILD_PLAN.md`](/Users/christopherdavid/code/openagents/docs/codex/AUTOPILOT_CHAT_CAD_LIVE_BUILD_PLAN.md)
+  - staged rollout plan and issue-by-issue delivery sequence for chat->CAD live build.
+- [`CODEX_PANE_CAD_TOOLING_PLAN.md`](/Users/christopherdavid/code/openagents/docs/codex/CODEX_PANE_CAD_TOOLING_PLAN.md)
+  - original pane and CAD tooling expansion plan.
+
+## Cross-References Outside This Folder
+
+- [`docs/PANES.md`](/Users/christopherdavid/code/openagents/docs/PANES.md)
+  - pane inventory and codex tool control surface summary.
+- [`docs/CODEX_INTEGRATION_RELEASE_CHECKLIST.md`](/Users/christopherdavid/code/openagents/docs/CODEX_INTEGRATION_RELEASE_CHECKLIST.md)
+  - repo-level codex release checks (includes chat-CAD gates).
+- [`docs/CODEX_INTEGRATION_DEBUG_RUNBOOK.md`](/Users/christopherdavid/code/openagents/docs/CODEX_INTEGRATION_DEBUG_RUNBOOK.md)
+  - repo-level codex incident triage and debug command set.

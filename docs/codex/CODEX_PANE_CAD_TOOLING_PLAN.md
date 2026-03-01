@@ -1,5 +1,11 @@
 # Codex Tooling Plan: CAD + Full Pane Manipulation
 
+> Status: Implemented on `main`. Keep this document for planning history.  
+> Current runtime contract and operations docs:
+> - [`CODEX_PANE_CAD_TOOLING.md`](/Users/christopherdavid/code/openagents/docs/codex/CODEX_PANE_CAD_TOOLING.md)
+> - [`CAD_CHAT_BUILD_IMPLEMENTATION.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_IMPLEMENTATION.md)
+> - [`CAD_CHAT_BUILD_RELEASE_RUNBOOK.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_RELEASE_RUNBOOK.md)
+
 ## Objective
 
 Enable Codex to reliably operate OpenAgents desktop UI state through structured tool calls so a user can ask for a workflow and the agent can complete it end-to-end.
