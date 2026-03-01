@@ -4,8 +4,8 @@ This document defines the deterministic two-bay Mac Studio rack template used by
 
 ## Scope
 
-- In scope: deterministic template graph generation, typed parameter schema, semantic references.
-- Out of scope: objective variants, wall-mount toggles, vent/rib optimization hooks (tracked by backlog items 65-68).
+- In scope: deterministic template graph generation, typed parameter schema, semantic references, wall-mount feature toggles.
+- Out of scope: objective variants, vent/rib optimization hooks (tracked by backlog items 66-68).
 
 ## API
 
@@ -32,6 +32,14 @@ Returned payload:
 - `wall_thickness_mm` (`mm`) = `6.0`
 - `corner_radius_mm` (`mm`) = `2.0`
 
+Wall-mount parameters:
+
+- `wall_mount_enabled` (`unitless`) = `1`
+- `wall_mount_hole_count` (`unitless`) = `4`
+- `wall_mount_hole_spacing_mm` (`mm`) = `32.0`
+- `wall_mount_hole_radius_mm` (`mm`) = `2.8`
+- `wall_mount_bracket_thickness_mm` (`mm`) = `6.0`
+
 ## Baseline Feature Graph
 
 Deterministic nodes:
@@ -40,11 +48,16 @@ Deterministic nodes:
 2. `feature.rack.bay_cut` (`cut.hole.v1`)
 3. `feature.rack.bay_pattern` (`linear.pattern.v1`)
 4. `feature.rack.corner_break` (`fillet.placeholder.v1`)
+5. `feature.rack.wall_mount_bracket` (`transform.v1`)
+6. `feature.rack.wall_mount_hole` (`cut.hole.v1`)
+7. `feature.rack.mount_hole_pattern` (`linear.pattern.v1`)
 
 ## Semantic References
 
 - `rack_outer_face`
 - `rack_bay_pattern`
+- `wall_mount_bracket`
+- `mount_hole_pattern`
 - `rack_corner_break`
 
 These references are created through `CadSemanticRefRegistry` and can be persisted through `.apcad` stable IDs.
