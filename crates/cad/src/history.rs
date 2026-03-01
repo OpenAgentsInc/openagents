@@ -192,6 +192,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use crate::contracts::{CadWarning, CadWarningCode, CadWarningSeverity};
+    use crate::keys::warning_metadata as warning_keys;
 
     use super::{CadHistoryCommand, CadHistorySnapshot, CadHistoryStack};
 
@@ -212,7 +213,7 @@ mod tests {
                 remediation_hint: "fix".to_string(),
                 semantic_refs: vec![semantic_ref.to_string()],
                 metadata: BTreeMap::from([(
-                    "deep_link".to_string(),
+                    warning_keys::DEEP_LINK.owned(),
                     "cad://feature/base".to_string(),
                 )]),
             }],
@@ -377,7 +378,7 @@ mod tests {
                 remediation_hint: "close profile loop".to_string(),
                 semantic_refs: vec!["cad://sketch/profile/profile.rack".to_string()],
                 metadata: BTreeMap::from([(
-                    "feature_id".to_string(),
+                    warning_keys::FEATURE_ID.owned(),
                     "feature.sketch.extrude".to_string(),
                 )]),
             }],

@@ -1,6 +1,7 @@
 use crate::feature_graph::FeatureNode;
 use crate::hash::stable_hex_digest;
 use crate::kernel::CadKernelAdapter;
+use crate::keys::feature_params as feature_keys;
 use crate::params::{ParameterStore, ScalarUnit};
 use crate::primitives::{BoxPrimitive, CylinderPrimitive, PrimitiveSpec, build_primitive};
 use crate::{CadError, CadResult};
@@ -641,8 +642,11 @@ impl FilletPlaceholderFeatureOp {
     pub fn to_feature_node(&self) -> CadResult<FeatureNode> {
         self.validate()?;
         let params = BTreeMap::from([
-            ("kind".to_string(), self.kind.as_str().to_string()),
-            ("radius_param".to_string(), self.radius_param.clone()),
+            (feature_keys::KIND.owned(), self.kind.as_str().to_string()),
+            (
+                feature_keys::RADIUS_PARAM.owned(),
+                self.radius_param.clone(),
+            ),
         ]);
         Ok(FeatureNode {
             id: self.feature_id.clone(),
@@ -679,18 +683,18 @@ impl FilletPlaceholderFeatureOp {
         }
         let kind = node
             .params
-            .get("kind")
+            .get(feature_keys::KIND.as_str())
             .ok_or_else(|| CadError::InvalidPrimitive {
                 reason: format!("fillet placeholder node {} missing kind param", node.id),
             })
             .and_then(|value| FilletPlaceholderKind::parse(value))?;
-        let radius_param =
-            node.params
-                .get("radius_param")
-                .cloned()
-                .ok_or_else(|| CadError::InvalidPrimitive {
-                    reason: format!("fillet placeholder node {} missing radius_param", node.id),
-                })?;
+        let radius_param = node
+            .params
+            .get(feature_keys::RADIUS_PARAM.as_str())
+            .cloned()
+            .ok_or_else(|| CadError::InvalidPrimitive {
+                reason: format!("fillet placeholder node {} missing radius_param", node.id),
+            })?;
         let op = Self {
             feature_id: node.id.clone(),
             source_feature_id,
@@ -771,6 +775,7 @@ mod tests {
     };
     use crate::feature_graph::{FeatureGraph, FeatureNode};
     use crate::kernel::CadKernelAdapter;
+    use crate::keys::feature_params as feature_keys;
     use crate::params::{ParameterStore, ScalarUnit, ScalarValue};
     use crate::{CadError, CadResult};
     use std::collections::BTreeMap;
@@ -1450,8 +1455,8 @@ mod tests {
             operation_key: "primitive.box.v1".to_string(),
             depends_on: vec!["feature.base".to_string()],
             params: BTreeMap::from([
-                ("kind".to_string(), "fillet".to_string()),
-                ("radius_param".to_string(), "radius_mm".to_string()),
+                (feature_keys::KIND.owned(), "fillet".to_string()),
+                (feature_keys::RADIUS_PARAM.owned(), "radius_mm".to_string()),
             ]),
         };
         let error =

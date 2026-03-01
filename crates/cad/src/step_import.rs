@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::document::CadDocument;
 use crate::format::ApcadDocumentEnvelope;
 use crate::hash::stable_hex_digest;
+use crate::keys::import_metadata as import_keys;
 use crate::semantic_refs::CadSemanticRefRegistry;
 use crate::step_checker::{CadStepCheckerReport, check_step_text_structural};
 use crate::{CadError, CadResult};
@@ -60,20 +61,20 @@ pub fn import_step_text_to_document(
     document.revision = 1;
     document
         .metadata
-        .insert("import.format".to_string(), "step".to_string());
+        .insert(import_keys::FORMAT.owned(), "step".to_string());
     document
         .metadata
-        .insert("import.hash".to_string(), import_hash.clone());
+        .insert(import_keys::HASH.owned(), import_hash.clone());
     document.metadata.insert(
-        "import.solid_count".to_string(),
+        import_keys::SOLID_COUNT.owned(),
         checker_report.solid_count.to_string(),
     );
     document.metadata.insert(
-        "import.shell_count".to_string(),
+        import_keys::SHELL_COUNT.owned(),
         checker_report.shell_count.to_string(),
     );
     document.metadata.insert(
-        "import.face_count".to_string(),
+        import_keys::FACE_COUNT.owned(),
         checker_report.face_count.to_string(),
     );
 

@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::contracts::{CadWarning, CadWarningCode, CadWarningSeverity};
+use crate::keys::warning_metadata as warning_keys;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModelValidityEntity {
@@ -81,7 +82,8 @@ pub fn run_model_validity_checks(snapshot: &ModelValiditySnapshot) -> CadWarning
             ));
         }
 
-        if entity.sliver_face_count > 0 || entity.min_face_area_mm2 <= snapshot.tolerance_mm.powi(2) {
+        if entity.sliver_face_count > 0 || entity.min_face_area_mm2 <= snapshot.tolerance_mm.powi(2)
+        {
             warnings.push(build_warning(
                 CadWarningCode::SliverFace,
                 CadWarningSeverity::Warning,
@@ -147,11 +149,14 @@ fn build_warning(
     entity: &ModelValidityEntity,
     mut metadata: BTreeMap<String, String>,
 ) -> CadWarning {
-    metadata.insert("entity_id".to_string(), entity.entity_id.clone());
-    metadata.insert("feature_id".to_string(), entity.feature_id.clone());
+    metadata.insert(warning_keys::ENTITY_ID.owned(), entity.entity_id.clone());
+    metadata.insert(warning_keys::FEATURE_ID.owned(), entity.feature_id.clone());
     metadata.insert(
-        "deep_link".to_string(),
-        format!("cad://feature/{}/entity/{}", entity.feature_id, entity.entity_id),
+        warning_keys::DEEP_LINK.owned(),
+        format!(
+            "cad://feature/{}/entity/{}",
+            entity.feature_id, entity.entity_id
+        ),
     );
 
     let semantic_refs = entity
@@ -172,7 +177,7 @@ fn build_warning(
 
 #[cfg(test)]
 mod tests {
-    use super::{ModelValiditySnapshot, run_model_validity_checks};
+    use super::{ModelValiditySnapshot, run_model_validity_checks, warning_keys};
 
     fn load_fixture(name: &str) -> ModelValiditySnapshot {
         let root = env!("CARGO_MANIFEST_DIR");
@@ -213,7 +218,9 @@ mod tests {
         assert_eq!(receipt.severity_counts.get("warning"), Some(&2));
         for warning in &receipt.warnings {
             assert!(
-                warning.metadata.contains_key("deep_link"),
+                warning
+                    .metadata
+                    .contains_key(warning_keys::DEEP_LINK.as_str()),
                 "warning {} should include deep link metadata",
                 warning.code.stable_code()
             );

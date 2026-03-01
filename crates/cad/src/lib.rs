@@ -21,6 +21,7 @@ pub mod hash;
 pub mod history;
 pub mod intent;
 pub mod kernel;
+pub mod keys;
 pub mod materials;
 pub mod measurement;
 pub mod mesh;

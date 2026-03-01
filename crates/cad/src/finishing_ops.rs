@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::contracts::{CadWarning, CadWarningCode, CadWarningSeverity};
 use crate::feature_graph::FeatureNode;
 use crate::hash::stable_hex_digest;
+use crate::keys::{feature_params as feature_keys, warning_metadata as warning_keys};
 use crate::params::{ParameterStore, ScalarUnit};
 use crate::{CadError, CadResult};
 
@@ -141,7 +142,10 @@ impl FilletFeatureOp {
             operation_key: FILLET_OPERATION_KEY.to_string(),
             depends_on: vec![self.source_feature_id.clone()],
             params: BTreeMap::from([
-                ("radius_param".to_string(), self.radius_param.clone()),
+                (
+                    feature_keys::RADIUS_PARAM.owned(),
+                    self.radius_param.clone(),
+                ),
                 (
                     "edge_refs".to_string(),
                     canonical_refs(&self.edge_refs).join(","),
@@ -172,7 +176,7 @@ impl FilletFeatureOp {
                 reason: "fillet node must have exactly one dependency".to_string(),
             });
         }
-        let radius_param = required_param(node, "radius_param")?;
+        let radius_param = required_param(node, feature_keys::RADIUS_PARAM.as_str())?;
         let edge_refs = parse_csv_refs(required_param(node, "edge_refs")?);
         let allow_fallback = parse_bool(required_param(node, "allow_fallback")?)?;
         let op = Self {
@@ -444,15 +448,15 @@ fn evaluate_finishing_value(
                     semantic_refs: vec![format!("cad://feature/{}", request.feature_id)],
                     metadata: BTreeMap::from([
                         (
-                            "operation_key".to_string(),
+                            warning_keys::OPERATION_KEY.owned(),
                             request.operation_key.to_string(),
                         ),
                         (
-                            "classification".to_string(),
+                            warning_keys::CLASSIFICATION.owned(),
                             failure_class.code().to_string(),
                         ),
                         (
-                            "source_feature_id".to_string(),
+                            warning_keys::SOURCE_FEATURE_ID.owned(),
                             request.source_feature_id.to_string(),
                         ),
                     ]),
