@@ -5,9 +5,9 @@ use serde::{Deserialize, Serialize};
 use crate::document::CadDocument;
 use crate::format::ApcadDocumentEnvelope;
 use crate::hash::stable_hex_digest;
-use crate::keys::import_metadata as import_keys;
 use crate::semantic_refs::CadSemanticRefRegistry;
 use crate::step_checker::{CadStepCheckerReport, check_step_text_structural};
+use crate::step_import_metadata::CadStepImportMetadata;
 use crate::{CadError, CadResult};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -15,6 +15,7 @@ pub struct CadStepImportResult {
     pub document: CadDocument,
     pub envelope: ApcadDocumentEnvelope,
     pub checker_report: CadStepCheckerReport,
+    pub import_metadata: CadStepImportMetadata,
     pub import_hash: String,
     pub imported_feature_ids: Vec<String>,
     pub stable_ids: BTreeMap<String, String>,
@@ -57,26 +58,15 @@ pub fn import_step_text_to_document(
     }
 
     let import_hash = stable_hex_digest(step_text.as_bytes());
+    let import_metadata = CadStepImportMetadata::new(
+        import_hash.clone(),
+        checker_report.solid_count,
+        checker_report.shell_count,
+        checker_report.face_count,
+    )?;
     let mut document = CadDocument::new_empty(document_id);
     document.revision = 1;
-    document
-        .metadata
-        .insert(import_keys::FORMAT.owned(), "step".to_string());
-    document
-        .metadata
-        .insert(import_keys::HASH.owned(), import_hash.clone());
-    document.metadata.insert(
-        import_keys::SOLID_COUNT.owned(),
-        checker_report.solid_count.to_string(),
-    );
-    document.metadata.insert(
-        import_keys::SHELL_COUNT.owned(),
-        checker_report.shell_count.to_string(),
-    );
-    document.metadata.insert(
-        import_keys::FACE_COUNT.owned(),
-        checker_report.face_count.to_string(),
-    );
+    import_metadata.encode_into(&mut document.metadata);
 
     let mut registry = CadSemanticRefRegistry::default();
     let mut imported_feature_ids = Vec::<String>::new();
@@ -99,6 +89,7 @@ pub fn import_step_text_to_document(
         document,
         envelope,
         checker_report,
+        import_metadata,
         import_hash,
         imported_feature_ids,
         stable_ids,
@@ -109,9 +100,11 @@ pub fn import_step_text_to_document(
 mod tests {
     use super::import_step_text_to_document;
     use crate::export::export_step_from_mesh;
+    use crate::keys::import_metadata as import_keys;
     use crate::mesh::{
         CadMeshBounds, CadMeshMaterialSlot, CadMeshPayload, CadMeshTopology, CadMeshVertex,
     };
+    use crate::step_import_metadata::CadStepImportMetadata;
 
     fn sample_tetra_mesh() -> CadMeshPayload {
         CadMeshPayload {
@@ -241,6 +234,35 @@ mod tests {
         assert_eq!(first.import_hash, second.import_hash);
         assert_eq!(first.document, second.document);
         assert_eq!(first.stable_ids, second.stable_ids);
+    }
+
+    #[test]
+    fn step_import_result_exposes_typed_metadata_decoded_from_document_map() {
+        let mesh = sample_tetra_mesh();
+        let artifact = export_step_from_mesh(
+            "doc-import-source",
+            mesh.document_revision,
+            &mesh.variant_id,
+            &mesh,
+        )
+        .expect("step export should succeed");
+        let result = import_step_text_to_document(
+            artifact.text().expect("step payload utf8"),
+            "doc-typed-metadata",
+        )
+        .expect("step import should succeed");
+
+        let decoded = CadStepImportMetadata::decode_from(&result.document.metadata)
+            .expect("typed metadata should decode");
+        assert_eq!(decoded, result.import_metadata);
+        assert_eq!(
+            result
+                .document
+                .metadata
+                .get(import_keys::HASH.as_str())
+                .map(String::as_str),
+            Some(result.import_hash.as_str())
+        );
     }
 
     #[test]

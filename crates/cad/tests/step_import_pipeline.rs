@@ -1,9 +1,11 @@
 use openagents_cad::export::export_step_from_mesh;
 use openagents_cad::format::ApcadDocumentEnvelope;
+use openagents_cad::keys::import_metadata as import_keys;
 use openagents_cad::mesh::{
     CadMeshBounds, CadMeshMaterialSlot, CadMeshPayload, CadMeshTopology, CadMeshVertex,
 };
 use openagents_cad::step_import::import_step_text_to_document;
+use openagents_cad::step_import_metadata::CadStepImportMetadata;
 
 fn sample_tetra_mesh() -> CadMeshPayload {
     CadMeshPayload {
@@ -83,7 +85,7 @@ fn step_import_pipeline_maps_stable_ids_and_survives_apcad_reload() {
         imported
             .document
             .metadata
-            .get("import.format")
+            .get(import_keys::FORMAT.as_str())
             .map(String::as_str),
         Some("step")
     );
@@ -91,10 +93,13 @@ fn step_import_pipeline_maps_stable_ids_and_survives_apcad_reload() {
         imported
             .document
             .metadata
-            .get("import.hash")
+            .get(import_keys::HASH.as_str())
             .map(String::as_str),
         Some(imported.import_hash.as_str())
     );
+    let decoded =
+        CadStepImportMetadata::decode_from(&imported.document.metadata).expect("typed metadata");
+    assert_eq!(decoded, imported.import_metadata);
 
     let serialized = imported
         .envelope
