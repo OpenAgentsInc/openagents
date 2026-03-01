@@ -48,6 +48,10 @@ run_strict_lane \
     "$ROOT_DIR/scripts/cad/reliability-20s-ci.sh"
 
 run_strict_lane \
+    cad-demo-release-gates \
+    "$ROOT_DIR/scripts/cad/release-gate-checklist.sh"
+
+run_strict_lane \
     cad-perf-benchmark-suite \
     "$ROOT_DIR/scripts/cad/perf-benchmark-ci.sh"
 

@@ -92,6 +92,7 @@ Script fails fast unless all are true:
 3. Update versions in `Cargo.toml` and `apps/autopilot-desktop/Cargo.toml`.
 4. Run:
    - `scripts/lint/ownership-boundary-check.sh`
+   - `scripts/cad/release-gate-checklist.sh` (CAD demo milestone gate)
    - `cargo test --workspace`
    - `cargo build --release -p autopilot-desktop`
 5. Bundle app with `cargo bundle`.
@@ -108,3 +109,14 @@ Script fails fast unless all are true:
 - If failure happens before commit/tag, no history mutation remains.
 - If commit/tag was created, script prints recovery commands.
 - Script never force-pushes.
+
+## CAD Milestone Gate
+
+For releases that include the CAD demo milestone scope, the release process must
+pass:
+
+- `scripts/cad/release-gate-checklist.sh`
+
+Checklist details:
+
+- `docs/cad/CAD_DEMO_RELEASE_GATES.md`
