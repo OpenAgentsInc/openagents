@@ -340,6 +340,7 @@ pub enum CadDemoPaneAction {
     ToggleSnapOrigin,
     ToggleSnapEndpoint,
     ToggleSnapMidpoint,
+    CycleHotkeyProfile,
     SnapViewTop,
     SnapViewFront,
     SnapViewRight,
@@ -2151,6 +2152,16 @@ pub fn cad_demo_snap_midpoint_button_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(origin_x, endpoint.origin.y, width, endpoint.size.height)
 }
 
+pub fn cad_demo_hotkey_profile_button_bounds(content_bounds: Bounds) -> Bounds {
+    let midpoint = cad_demo_snap_midpoint_button_bounds(content_bounds);
+    let min_x = content_bounds.origin.x + CHAT_PAD;
+    let max_x = content_bounds.max_x() - CHAT_PAD;
+    let origin_x = (midpoint.max_x() + JOB_INBOX_BUTTON_GAP).max(min_x);
+    let desired_width = (content_bounds.size.width * 0.20).clamp(120.0, 210.0);
+    let width = desired_width.min((max_x - origin_x).max(44.0));
+    Bounds::new(origin_x, midpoint.origin.y, width, midpoint.size.height)
+}
+
 fn grid_like_snap_width(content_bounds: Bounds) -> f32 {
     (content_bounds.size.width * 0.16).clamp(92.0, 160.0)
 }
@@ -2166,6 +2177,7 @@ fn cad_demo_controls_bottom(content_bounds: Bounds) -> f32 {
         .max(cad_demo_snap_origin_button_bounds(content_bounds).max_y())
         .max(cad_demo_snap_endpoint_button_bounds(content_bounds).max_y())
         .max(cad_demo_snap_midpoint_button_bounds(content_bounds).max_y())
+        .max(cad_demo_hotkey_profile_button_bounds(content_bounds).max_y())
 }
 
 pub fn cad_demo_view_cube_bounds(content_bounds: Bounds) -> Bounds {
@@ -3004,6 +3016,11 @@ fn pane_hit_action_for_pane(
                     CadDemoPaneAction::ToggleSnapMidpoint,
                 ));
             }
+            if cad_demo_hotkey_profile_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CadDemo(
+                    CadDemoPaneAction::CycleHotkeyProfile,
+                ));
+            }
             if cad_demo_view_snap_top_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::CadDemo(CadDemoPaneAction::SnapViewTop));
             }
@@ -3326,11 +3343,12 @@ mod tests {
         agent_schedule_manual_tick_button_bounds, alerts_recovery_ack_button_bounds,
         alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
         alerts_recovery_row_bounds, cad_demo_cycle_variant_button_bounds,
-        cad_demo_hidden_line_mode_button_bounds, cad_demo_projection_mode_button_bounds,
-        cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
-        cad_demo_snap_endpoint_button_bounds, cad_demo_snap_grid_button_bounds,
-        cad_demo_snap_midpoint_button_bounds, cad_demo_snap_origin_button_bounds,
-        cad_demo_timeline_panel_bounds, cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
+        cad_demo_hidden_line_mode_button_bounds, cad_demo_hotkey_profile_button_bounds,
+        cad_demo_projection_mode_button_bounds, cad_demo_reset_button_bounds,
+        cad_demo_reset_camera_button_bounds, cad_demo_snap_endpoint_button_bounds,
+        cad_demo_snap_grid_button_bounds, cad_demo_snap_midpoint_button_bounds,
+        cad_demo_snap_origin_button_bounds, cad_demo_timeline_panel_bounds,
+        cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
         cad_demo_view_snap_front_button_bounds, cad_demo_view_snap_iso_button_bounds,
         cad_demo_view_snap_right_button_bounds, cad_demo_view_snap_top_button_bounds,
         cad_demo_warning_filter_code_button_bounds, cad_demo_warning_filter_severity_button_bounds,
@@ -3696,6 +3714,7 @@ mod tests {
         let snap_origin = cad_demo_snap_origin_button_bounds(content);
         let snap_endpoint = cad_demo_snap_endpoint_button_bounds(content);
         let snap_midpoint = cad_demo_snap_midpoint_button_bounds(content);
+        let hotkeys = cad_demo_hotkey_profile_button_bounds(content);
         assert!(content.contains(cycle.origin));
         assert!(content.contains(reset.origin));
         assert!(content.contains(hidden_line.origin));
@@ -3705,6 +3724,7 @@ mod tests {
         assert!(content.contains(snap_origin.origin));
         assert!(content.contains(snap_endpoint.origin));
         assert!(content.contains(snap_midpoint.origin));
+        assert!(content.contains(hotkeys.origin));
         assert!(cycle.max_y() <= content.max_y());
         assert!(reset.max_y() <= content.max_y());
         assert!(hidden_line.max_y() <= content.max_y());
@@ -3714,6 +3734,7 @@ mod tests {
         assert!(snap_origin.max_y() <= content.max_y());
         assert!(snap_endpoint.max_y() <= content.max_y());
         assert!(snap_midpoint.max_y() <= content.max_y());
+        assert!(hotkeys.max_y() <= content.max_y());
         assert!(cycle.max_x() < reset.min_x());
         assert!(reset.max_x() <= hidden_line.min_x() + 0.001);
         assert!(hidden_line.max_x() <= reset_camera.min_x() + 0.001);
@@ -3722,6 +3743,7 @@ mod tests {
         assert!(snap_grid.max_x() <= snap_origin.min_x() + 0.001);
         assert!(snap_origin.max_x() <= snap_endpoint.min_x() + 0.001);
         assert!(snap_endpoint.max_x() <= snap_midpoint.min_x() + 0.001);
+        assert!(snap_midpoint.max_x() <= hotkeys.min_x() + 0.001);
         assert!(projection.max_x() <= content.max_x() + 0.001);
     }
 

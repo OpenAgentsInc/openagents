@@ -113,6 +113,21 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
             ));
             true
         }
+        CadDemoPaneAction::CycleHotkeyProfile => match state.cycle_hotkey_profile() {
+            Ok(()) => {
+                state.last_action = Some(format!(
+                    "CAD hotkeys -> {} ({})",
+                    state.hotkey_profile,
+                    state.hotkeys.summary()
+                ));
+                true
+            }
+            Err(error) => {
+                state.last_error = Some(error.clone());
+                state.last_action = Some(format!("CAD hotkey profile cycle failed: {error}"));
+                true
+            }
+        },
         CadDemoPaneAction::SnapViewTop => {
             state.snap_camera_to_view(CadCameraViewSnap::Top);
             state.last_action = Some("CAD camera snap -> top".to_string());
@@ -1036,6 +1051,24 @@ mod tests {
             CadDemoPaneAction::ToggleSnapMidpoint
         ));
         assert!(state.snap_toggles.midpoint);
+    }
+
+    #[test]
+    fn cycle_hotkey_profile_action_updates_profile_with_conflict_checks() {
+        let mut state = CadDemoPaneState::default();
+        assert_eq!(state.hotkey_profile, "default");
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::CycleHotkeyProfile
+        ));
+        assert_eq!(state.hotkey_profile, "compact");
+        assert_eq!(state.hotkeys.snap_top, "7");
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::CycleHotkeyProfile
+        ));
+        assert_eq!(state.hotkey_profile, "default");
+        assert_eq!(state.hotkeys.snap_top, "t");
     }
 
     #[test]
