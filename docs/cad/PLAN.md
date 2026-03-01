@@ -176,6 +176,7 @@ Decision criteria to keep objective:
 - Failure receipt payload must include: operation type, operand semantic refs, tolerance used, and classification.
 - policy document: `docs/cad/UNITS_TOLERANCE_POLICY.md`
 - error model document: `docs/cad/CAD_ERROR_MODEL.md`
+- payload contracts document: `docs/cad/CAD_CONTRACTS.md`
 
 ### Eval, Caching, and Concurrency
 
