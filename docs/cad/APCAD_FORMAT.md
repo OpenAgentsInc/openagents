@@ -54,6 +54,21 @@ Top-level shape:
         "anchor_ids": ["anchor.l.start", "anchor.l.end"],
         "construction": false
       }
+    },
+    "constraints": {
+      "constraint.horizontal.001": {
+        "kind": "horizontal",
+        "id": "constraint.horizontal.001",
+        "line_entity_id": "entity.line.001"
+      },
+      "constraint.dimension.radius.001": {
+        "kind": "dimension",
+        "id": "constraint.dimension.radius.001",
+        "entity_id": "entity.arc.001",
+        "dimension_kind": "radius",
+        "target_mm": 8.0,
+        "tolerance_mm": 0.001
+      }
     }
   }
 }
@@ -71,8 +86,11 @@ Top-level shape:
 
 - `sketch.planes` is a deterministic map keyed by stable `plane_id`.
 - `sketch.entities` is a deterministic map keyed by stable `entity_id`.
+- `sketch.constraints` is a deterministic map keyed by stable `constraint_id`.
 - Entity payloads support `line`, `arc`, and `point`.
+- Constraint payloads support `coincident`, `horizontal`, `vertical`, `tangent`, and `dimension`.
 - Every entity references an existing `plane_id` and explicit `anchor_ids`.
+- Every constraint references valid entities/anchors with strict kind matching.
 - Envelope parse validates sketch references; invalid cross-refs fail fast.
 
 ## Stable IDs
