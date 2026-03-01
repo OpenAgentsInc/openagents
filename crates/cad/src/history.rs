@@ -142,12 +142,10 @@ impl CadHistoryStack {
         if let Some(previous) = self.undo.last()
             && entry.command.can_coalesce_with(&previous.command)
         {
-            let prior = self
-                .undo
-                .pop()
-                .expect("coalesce precondition requires prior entry");
-            entry.command = entry.command.merged_with_prior(&prior.command);
-            entry.before = prior.before;
+            if let Some(prior) = self.undo.pop() {
+                entry.command = entry.command.merged_with_prior(&prior.command);
+                entry.before = prior.before;
+            }
         }
 
         self.undo.push(entry);
