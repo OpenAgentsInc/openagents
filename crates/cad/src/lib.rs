@@ -15,4 +15,5 @@ pub mod kernel;
 pub mod params;
 pub mod policy;
 pub mod primitives;
+pub mod validity;
 pub use error::{CadError, CadErrorCode, CadErrorEvent, CadResult};

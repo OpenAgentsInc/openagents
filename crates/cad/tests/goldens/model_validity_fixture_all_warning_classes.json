@@ -1,0 +1,62 @@
+{
+  "document_revision": 42,
+  "variant_id": "variant.stiffness",
+  "tolerance_mm": 0.01,
+  "entities": [
+    {
+      "entity_id": "body.non_manifold",
+      "feature_id": "feature.base",
+      "semantic_ref": "rack_outer_face",
+      "is_manifold": false,
+      "self_intersection_count": 0,
+      "min_thickness_mm": 2.0,
+      "min_face_area_mm2": 150.0,
+      "sliver_face_count": 0,
+      "fillet_failure_reason": null
+    },
+    {
+      "entity_id": "body.self_intersect",
+      "feature_id": "feature.vent_pattern",
+      "semantic_ref": "vent_face_set",
+      "is_manifold": true,
+      "self_intersection_count": 2,
+      "min_thickness_mm": 1.5,
+      "min_face_area_mm2": 24.0,
+      "sliver_face_count": 0,
+      "fillet_failure_reason": null
+    },
+    {
+      "entity_id": "face.zero_thickness",
+      "feature_id": "feature.mount_hole",
+      "semantic_ref": "mount_hole_face",
+      "is_manifold": true,
+      "self_intersection_count": 0,
+      "min_thickness_mm": 0.005,
+      "min_face_area_mm2": 18.0,
+      "sliver_face_count": 0,
+      "fillet_failure_reason": null
+    },
+    {
+      "entity_id": "face.sliver",
+      "feature_id": "feature.vent_pattern",
+      "semantic_ref": "vent_sliver_face",
+      "is_manifold": true,
+      "self_intersection_count": 0,
+      "min_thickness_mm": 1.2,
+      "min_face_area_mm2": 0.00004,
+      "sliver_face_count": 3,
+      "fillet_failure_reason": null
+    },
+    {
+      "entity_id": "edge.fillet_fail",
+      "feature_id": "feature.edge_marker",
+      "semantic_ref": "edge_blend_set",
+      "is_manifold": true,
+      "self_intersection_count": 0,
+      "min_thickness_mm": 1.6,
+      "min_face_area_mm2": 8.0,
+      "sliver_face_count": 0,
+      "fillet_failure_reason": "radius too large for local curvature"
+    }
+  ]
+}
