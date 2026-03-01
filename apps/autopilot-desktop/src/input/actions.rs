@@ -29,12 +29,8 @@ pub(super) fn run_chat_submit_action(state: &mut crate::app_state::RenderState) 
     ));
     let _ = super::reducers::apply_chat_prompt_to_cad_session(state, &thread_id, &prompt);
 
-    let selected_skill = state
-        .skill_registry
-        .selected_skill_index
-        .and_then(|index| state.skill_registry.discovered_skills.get(index))
-        .map(|skill| (skill.name.as_str(), skill.path.as_str(), skill.enabled));
-    let (input, skill_error) = assemble_chat_turn_input(prompt, selected_skill);
+    let selected_skills = selected_skill_candidates_for_turn(state);
+    let (input, skill_error) = assemble_chat_turn_input(prompt, selected_skills);
     if let Some(skill_error) = skill_error {
         state.autopilot_chat.last_error = Some(skill_error);
     }
@@ -85,30 +81,130 @@ pub(super) fn current_epoch_millis() -> u64 {
         .unwrap_or(0)
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub(super) enum TurnSkillSource {
+    UserSelected,
+    PolicyRequired,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct TurnSkillAttachment {
+    pub name: String,
+    pub path: String,
+    pub enabled: bool,
+    pub source: TurnSkillSource,
+}
+
+pub(super) fn resolve_turn_skill_by_name(
+    discovered_skills: &[crate::app_state::SkillRegistryDiscoveredSkill],
+    skill_name: &str,
+    source: TurnSkillSource,
+) -> Result<TurnSkillAttachment, String> {
+    let trimmed = skill_name.trim();
+    let Some(skill) = discovered_skills
+        .iter()
+        .find(|skill| skill.name.eq_ignore_ascii_case(trimmed))
+    else {
+        return Err(format!(
+            "Skill '{}' is not available in this workspace.",
+            trimmed
+        ));
+    };
+    Ok(TurnSkillAttachment {
+        name: skill.name.clone(),
+        path: skill.path.clone(),
+        enabled: skill.enabled,
+        source,
+    })
+}
+
+pub(super) fn resolve_turn_skill_by_path(
+    discovered_skills: &[crate::app_state::SkillRegistryDiscoveredSkill],
+    skill_path: &str,
+    source: TurnSkillSource,
+) -> Result<TurnSkillAttachment, String> {
+    let trimmed = skill_path.trim();
+    let Some(skill) = discovered_skills.iter().find(|skill| skill.path == trimmed) else {
+        return Err(format!(
+            "Skill path '{}' is not available in this workspace.",
+            trimmed
+        ));
+    };
+    Ok(TurnSkillAttachment {
+        name: skill.name.clone(),
+        path: skill.path.clone(),
+        enabled: skill.enabled,
+        source,
+    })
+}
+
+pub(super) fn selected_skill_candidates_for_turn(
+    state: &crate::app_state::RenderState,
+) -> Vec<TurnSkillAttachment> {
+    state
+        .skill_registry
+        .selected_skill_index
+        .and_then(|index| state.skill_registry.discovered_skills.get(index))
+        .map(|skill| TurnSkillAttachment {
+            name: skill.name.clone(),
+            path: skill.path.clone(),
+            enabled: skill.enabled,
+            source: TurnSkillSource::UserSelected,
+        })
+        .into_iter()
+        .collect()
+}
+
 pub(super) fn assemble_chat_turn_input(
     prompt: String,
-    selected_skill: Option<(&str, &str, bool)>,
+    skill_attachments: Vec<TurnSkillAttachment>,
 ) -> (Vec<UserInput>, Option<String>) {
     let mut input = vec![UserInput::Text {
         text: prompt,
         text_elements: Vec::new(),
     }];
-    let mut last_error = None;
-    if let Some((name, path, enabled)) = selected_skill {
-        if enabled {
-            input.push(UserInput::Skill {
-                name: name.to_string(),
-                path: std::path::PathBuf::from(path),
-            });
-        } else {
-            last_error = Some(format!(
-                "Selected skill '{}' is disabled; enable it first.",
-                name
-            ));
+    let mut last_errors = Vec::new();
+    let mut sorted_attachments = skill_attachments;
+    sorted_attachments.sort_by(|left, right| {
+        left.source
+            .cmp(&right.source)
+            .then_with(|| {
+                left.name
+                    .to_ascii_lowercase()
+                    .cmp(&right.name.to_ascii_lowercase())
+            })
+            .then_with(|| left.path.cmp(&right.path))
+    });
+
+    let mut attached = std::collections::HashSet::new();
+    for attachment in sorted_attachments {
+        let dedupe_key = format!(
+            "{}::{}",
+            attachment.name.to_ascii_lowercase(),
+            attachment.path
+        );
+        if !attached.insert(dedupe_key) {
+            continue;
         }
+        if !attachment.enabled {
+            let label = match attachment.source {
+                TurnSkillSource::UserSelected => "Selected",
+                TurnSkillSource::PolicyRequired => "Required",
+            };
+            last_errors.push(format!(
+                "{} skill '{}' is disabled; enable it first.",
+                label, attachment.name
+            ));
+            continue;
+        }
+        input.push(UserInput::Skill {
+            name: attachment.name,
+            path: std::path::PathBuf::from(attachment.path),
+        });
     }
 
-    (input, last_error)
+    let joined_errors = (!last_errors.is_empty()).then(|| last_errors.join(" | "));
+    (input, joined_errors)
 }
 
 pub(super) fn run_chat_refresh_threads_action(state: &mut crate::app_state::RenderState) -> bool {
