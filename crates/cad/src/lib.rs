@@ -34,6 +34,7 @@ pub mod semantic_refs;
 pub mod sketch;
 pub mod sketch_feature_ops;
 pub mod step_checker;
+pub mod step_import;
 pub mod step_roundtrip;
 pub mod tessellation;
 pub mod validity;

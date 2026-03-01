@@ -189,6 +189,7 @@ Decision criteria to keep objective:
 - finishing operations document: `docs/cad/CAD_FINISHING_OPS.md`
 - sketch constraint solver document: `docs/cad/CAD_SKETCH_CONSTRAINTS.md`
 - sketch-to-feature operations document: `docs/cad/CAD_SKETCH_FEATURE_OPS.md`
+- STEP import pipeline document: `docs/cad/CAD_STEP_IMPORT.md`
 - rack template generator document: `docs/cad/CAD_RACK_TEMPLATE.md`
 - CAD intent schema document: `docs/cad/CAD_INTENTS.md`
 - CAD intent dispatch document: `docs/cad/CAD_INTENT_DISPATCH.md`
