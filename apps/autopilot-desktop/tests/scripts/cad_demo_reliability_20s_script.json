@@ -1,0 +1,134 @@
+{
+  "script_id": "cad.demo.reliability.20s.v1",
+  "seed": 2537,
+  "thread_id": "thread.cad-script.reliability",
+  "timing": {
+    "max_total_duration_ms": 20000
+  },
+  "steps": [
+    {
+      "name": "create-rack-spec",
+      "kind": "intent_json",
+      "payload": "{\"intent\":\"CreateRackSpec\",\"units\":\"mm\",\"material\":\"al-6061-t6\",\"airflow\":\"balanced\",\"mount_type\":\"wall\"}",
+      "expect": {
+        "status": "applied",
+        "intent": "CreateRackSpec",
+        "state_revision": 1
+      }
+    },
+    {
+      "name": "generate-variants",
+      "kind": "intent_json",
+      "payload": "{\"intent\":\"GenerateVariants\",\"count\":4,\"objective_set\":\"rack.demo.v1\"}",
+      "expect": {
+        "status": "applied",
+        "intent": "GenerateVariants",
+        "state_revision": 2
+      }
+    },
+    {
+      "name": "cycle-variant-lightweight",
+      "kind": "cycle_variant",
+      "count": 1,
+      "expect": {
+        "status": "cycled",
+        "state_revision": 3,
+        "active_variant_id": "variant.lightweight",
+        "has_mesh_payload": true,
+        "pending_rebuild_request_id": null
+      }
+    },
+    {
+      "name": "cycle-variant-low-cost",
+      "kind": "cycle_variant",
+      "count": 1,
+      "expect": {
+        "status": "cycled",
+        "state_revision": 4,
+        "active_variant_id": "variant.low-cost",
+        "has_mesh_payload": true,
+        "pending_rebuild_request_id": null
+      }
+    },
+    {
+      "name": "cycle-variant-stiffness",
+      "kind": "cycle_variant",
+      "count": 1,
+      "expect": {
+        "status": "cycled",
+        "state_revision": 5,
+        "active_variant_id": "variant.stiffness",
+        "has_mesh_payload": true,
+        "pending_rebuild_request_id": null
+      }
+    },
+    {
+      "name": "manual-dimension-edit",
+      "kind": "dimension_edit",
+      "index": 0,
+      "value": "421.000",
+      "expect": {
+        "status": "edited",
+        "state_revision": 6,
+        "updated_value_mm": 421.0,
+        "has_mesh_payload": true,
+        "pending_rebuild_request_id": null
+      }
+    },
+    {
+      "name": "manual-timeline-select",
+      "kind": "select_timeline_row",
+      "index": 0,
+      "expect": {
+        "status": "selected",
+        "timeline_selected_index": 0,
+        "state_revision": 6
+      }
+    },
+    {
+      "name": "assert-warning-escalation",
+      "kind": "assert_warning_escalation",
+      "min_warning_count": 1,
+      "min_critical_count": 1,
+      "expect": {
+        "status": "asserted",
+        "warning_count": 1,
+        "critical_count": 1
+      }
+    }
+  ],
+  "expect": {
+    "final_state_revision": 6,
+    "active_variant_id": "variant.stiffness",
+    "last_error": null,
+    "receipts": [
+      {
+        "document_revision": 3,
+        "variant_id": "variant.lightweight"
+      },
+      {
+        "document_revision": 4,
+        "variant_id": "variant.low-cost"
+      },
+      {
+        "document_revision": 5,
+        "variant_id": "variant.stiffness"
+      },
+      {
+        "document_revision": 6,
+        "variant_id": "variant.stiffness"
+      }
+    ],
+    "warnings": {
+      "count": 1,
+      "critical_count": 1,
+      "codes": [
+        "CAD-WARN-SELF-INTERSECTION"
+      ]
+    },
+    "analysis": {
+      "document_revision": 6,
+      "variant_id": "variant.stiffness"
+    }
+  }
+}

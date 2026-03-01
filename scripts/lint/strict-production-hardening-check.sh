@@ -44,6 +44,10 @@ run_strict_lane \
     "$ROOT_DIR/scripts/cad/headless-script-ci.sh"
 
 run_strict_lane \
+    cad-20s-reliability \
+    "$ROOT_DIR/scripts/cad/reliability-20s-ci.sh"
+
+run_strict_lane \
     cad-perf-benchmark-suite \
     "$ROOT_DIR/scripts/cad/perf-benchmark-ci.sh"
 
