@@ -349,6 +349,15 @@ pub struct AutopilotTurnPlanStep {
     pub status: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AutopilotTurnMetadata {
+    pub submission_seq: u64,
+    pub thread_id: String,
+    pub is_cad_turn: bool,
+    pub classifier_reason: String,
+    pub submitted_at_epoch_ms: u64,
+}
+
 #[derive(Clone)]
 pub struct AutopilotApprovalRequest {
     pub request_id: codex_client::AppServerRequestId,
@@ -445,6 +454,10 @@ pub struct AutopilotChatState {
     pub active_assistant_message_id: Option<u64>,
     pub pending_assistant_message_ids: VecDeque<u64>,
     pub turn_assistant_message_ids: std::collections::HashMap<String, u64>,
+    pub next_turn_submission_seq: u64,
+    pub pending_turn_metadata: VecDeque<AutopilotTurnMetadata>,
+    pub turn_metadata_by_turn_id: std::collections::HashMap<String, AutopilotTurnMetadata>,
+    pub last_submitted_turn_metadata: Option<AutopilotTurnMetadata>,
     last_agent_item_ids: std::collections::HashMap<String, String>,
     last_reasoning_item_ids: std::collections::HashMap<String, String>,
     last_agent_delta_signature: Option<AutopilotDeltaSignature>,
@@ -495,6 +508,10 @@ impl Default for AutopilotChatState {
             active_assistant_message_id: None,
             pending_assistant_message_ids: VecDeque::new(),
             turn_assistant_message_ids: std::collections::HashMap::new(),
+            next_turn_submission_seq: 1,
+            pending_turn_metadata: VecDeque::new(),
+            turn_metadata_by_turn_id: std::collections::HashMap::new(),
+            last_submitted_turn_metadata: None,
             last_agent_item_ids: std::collections::HashMap::new(),
             last_reasoning_item_ids: std::collections::HashMap::new(),
             last_agent_delta_signature: None,
@@ -754,6 +771,17 @@ impl AutopilotChatState {
     pub fn remove_thread(&mut self, thread_id: &str) {
         self.threads.retain(|value| value != thread_id);
         self.thread_metadata.remove(thread_id);
+        self.pending_turn_metadata
+            .retain(|metadata| metadata.thread_id != thread_id);
+        self.turn_metadata_by_turn_id
+            .retain(|_, metadata| metadata.thread_id != thread_id);
+        if self
+            .last_submitted_turn_metadata
+            .as_ref()
+            .is_some_and(|metadata| metadata.thread_id == thread_id)
+        {
+            self.last_submitted_turn_metadata = None;
+        }
         if self.active_thread_id.as_deref() == Some(thread_id) {
             self.active_thread_id = self.threads.first().cloned();
         }
@@ -788,6 +816,17 @@ impl AutopilotChatState {
         self.active_assistant_message_id = None;
         self.pending_assistant_message_ids.clear();
         self.turn_assistant_message_ids.clear();
+        self.pending_turn_metadata
+            .retain(|metadata| metadata.thread_id != thread_id);
+        self.turn_metadata_by_turn_id
+            .retain(|_, metadata| metadata.thread_id != thread_id);
+        if self
+            .last_submitted_turn_metadata
+            .as_ref()
+            .is_some_and(|metadata| metadata.thread_id == thread_id)
+        {
+            self.last_submitted_turn_metadata = None;
+        }
         self.last_agent_item_ids.clear();
         self.last_reasoning_item_ids.clear();
         self.last_agent_delta_signature = None;
@@ -840,8 +879,58 @@ impl AutopilotChatState {
         self.active_assistant_message_id = Some(assistant_message_id);
     }
 
+    pub fn record_turn_submission_metadata(
+        &mut self,
+        thread_id: &str,
+        is_cad_turn: bool,
+        classifier_reason: impl Into<String>,
+        submitted_at_epoch_ms: u64,
+    ) {
+        let metadata = AutopilotTurnMetadata {
+            submission_seq: self.next_turn_submission_seq,
+            thread_id: thread_id.to_string(),
+            is_cad_turn,
+            classifier_reason: classifier_reason.into(),
+            submitted_at_epoch_ms,
+        };
+        self.next_turn_submission_seq = self.next_turn_submission_seq.saturating_add(1);
+        self.last_submitted_turn_metadata = Some(metadata.clone());
+        self.pending_turn_metadata.push_back(metadata);
+        if self.pending_turn_metadata.len() > 64 {
+            let overflow = self.pending_turn_metadata.len().saturating_sub(64);
+            self.pending_turn_metadata.drain(0..overflow);
+        }
+    }
+
+    pub fn turn_metadata_for(&self, turn_id: &str) -> Option<&AutopilotTurnMetadata> {
+        self.turn_metadata_by_turn_id.get(turn_id)
+    }
+
+    pub fn active_turn_metadata(&self) -> Option<&AutopilotTurnMetadata> {
+        self.active_turn_id
+            .as_deref()
+            .and_then(|turn_id| self.turn_metadata_for(turn_id))
+            .or(self.last_submitted_turn_metadata.as_ref())
+    }
+
     pub fn mark_turn_started(&mut self, turn_id: String) {
         self.active_turn_id = Some(turn_id.clone());
+        if let Some(metadata) = self.pending_turn_metadata.pop_front() {
+            self.turn_metadata_by_turn_id
+                .insert(turn_id.clone(), metadata);
+            if self.turn_metadata_by_turn_id.len() > 64 {
+                let mut sorted = self
+                    .turn_metadata_by_turn_id
+                    .iter()
+                    .map(|(key, value)| (key.clone(), value.submission_seq))
+                    .collect::<Vec<_>>();
+                sorted.sort_by_key(|(_, seq)| *seq);
+                let overflow = sorted.len().saturating_sub(64);
+                for (key, _) in sorted.into_iter().take(overflow) {
+                    self.turn_metadata_by_turn_id.remove(&key);
+                }
+            }
+        }
         self.last_turn_status = Some("inProgress".to_string());
         if let Some(assistant_message_id) = self.bind_turn_to_assistant_message(&turn_id)
             && let Some(message) = self
@@ -1032,6 +1121,7 @@ impl AutopilotChatState {
 
     pub fn mark_pending_turn_dispatch_failed(&mut self, error: impl Into<String>) {
         let error = error.into();
+        let _ = self.pending_turn_metadata.pop_front();
         if let Some(assistant_message_id) = self.active_assistant_message_id
             && let Some(message) = self
                 .messages
@@ -2953,6 +3043,66 @@ mod tests {
                 .iter()
                 .any(|message| message.content.contains("pong"))
         );
+    }
+
+    #[test]
+    fn chat_state_records_turn_metadata_and_binds_to_started_turn() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-1".to_string());
+        chat.submit_prompt("design a rack".to_string());
+        chat.record_turn_submission_metadata("thread-1", true, "keyword-pair:design+rack", 1000);
+
+        let pending = chat
+            .active_turn_metadata()
+            .expect("latest submitted metadata should be available");
+        assert!(pending.is_cad_turn);
+        assert_eq!(pending.classifier_reason, "keyword-pair:design+rack");
+
+        chat.mark_turn_started("turn-1".to_string());
+        let bound = chat
+            .turn_metadata_for("turn-1")
+            .expect("turn metadata should bind when turn starts");
+        assert!(bound.is_cad_turn);
+        assert_eq!(bound.classifier_reason, "keyword-pair:design+rack");
+        assert_eq!(chat.active_turn_metadata(), Some(bound));
+    }
+
+    #[test]
+    fn chat_state_binds_turn_metadata_in_submission_order() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-1".to_string());
+
+        chat.submit_prompt("summarize commits".to_string());
+        chat.record_turn_submission_metadata("thread-1", false, "no-cad-signals", 1010);
+        chat.submit_prompt("design wall mount bracket".to_string());
+        chat.record_turn_submission_metadata("thread-1", true, "keyword-pair:design+bracket", 1020);
+
+        chat.mark_turn_started("turn-a".to_string());
+        chat.mark_turn_started("turn-b".to_string());
+
+        let first = chat
+            .turn_metadata_for("turn-a")
+            .expect("first turn metadata should bind");
+        assert!(!first.is_cad_turn);
+        assert_eq!(first.classifier_reason, "no-cad-signals");
+
+        let second = chat
+            .turn_metadata_for("turn-b")
+            .expect("second turn metadata should bind");
+        assert!(second.is_cad_turn);
+        assert_eq!(second.classifier_reason, "keyword-pair:design+bracket");
+    }
+
+    #[test]
+    fn chat_state_drops_pending_metadata_when_dispatch_fails() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-1".to_string());
+        chat.submit_prompt("design fixture".to_string());
+        chat.record_turn_submission_metadata("thread-1", true, "keyword-pair:design+fixture", 1200);
+        assert_eq!(chat.pending_turn_metadata.len(), 1);
+
+        chat.mark_pending_turn_dispatch_failed("queue failed");
+        assert!(chat.pending_turn_metadata.is_empty());
     }
 
     #[test]

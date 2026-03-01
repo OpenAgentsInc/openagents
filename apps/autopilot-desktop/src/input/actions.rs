@@ -16,6 +16,17 @@ pub(super) fn run_chat_submit_action(state: &mut crate::app_state::RenderState) 
 
     state.chat_inputs.composer.set_value(String::new());
     state.autopilot_chat.submit_prompt(prompt.clone());
+    let classification = super::cad_turn_classifier::classify_chat_prompt(&prompt);
+    state.autopilot_chat.record_turn_submission_metadata(
+        &thread_id,
+        classification.is_cad_turn,
+        classification.reason.clone(),
+        current_epoch_millis(),
+    );
+    state.autopilot_chat.record_turn_timeline_event(format!(
+        "cad-turn classifier: is_cad_turn={} reason={}",
+        classification.is_cad_turn, classification.reason
+    ));
     let _ = super::reducers::apply_chat_prompt_to_cad_session(state, &thread_id, &prompt);
 
     let selected_skill = state
@@ -65,6 +76,13 @@ pub(super) fn run_chat_submit_action(state: &mut crate::app_state::RenderState) 
         }
     }
     true
+}
+
+pub(super) fn current_epoch_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 pub(super) fn assemble_chat_turn_input(
