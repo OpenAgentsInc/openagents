@@ -1063,7 +1063,7 @@ impl Default for CadDemoPaneState {
             analysis_snapshot: openagents_cad::contracts::CadAnalysis {
                 document_revision: 0,
                 variant_id: initial_variant_id,
-                material_id: Some("al-6061-t6".to_string()),
+                material_id: Some(openagents_cad::materials::DEFAULT_CAD_MATERIAL_ID.to_string()),
                 volume_mm3: None,
                 mass_kg: None,
                 center_of_gravity_mm: None,
@@ -1332,6 +1332,17 @@ impl CadDemoPaneState {
                 self.section_offset_normalized,
             )
         })
+    }
+
+    pub fn cycle_material_preset(&mut self) -> String {
+        let current = self
+            .analysis_snapshot
+            .material_id
+            .as_deref()
+            .unwrap_or(openagents_cad::materials::DEFAULT_CAD_MATERIAL_ID);
+        let next = openagents_cad::materials::next_material_preset_id(current).to_string();
+        self.analysis_snapshot.material_id = Some(next.clone());
+        next
     }
 
     pub fn cycle_hotkey_profile(&mut self) -> Result<(), String> {

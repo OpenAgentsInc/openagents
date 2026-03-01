@@ -1,11 +1,14 @@
 use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use openagents_cad::analysis::{DENSITY_ALUMINUM_6061_KG_M3, estimate_body_properties};
+use openagents_cad::analysis::estimate_body_properties;
 use openagents_cad::contracts::{CadWarning, CadWarningCode, CadWarningSeverity};
 use openagents_cad::eval::{EvalCacheEntry, EvalCacheKey, EvalCacheStats};
 use openagents_cad::feature_graph::{FeatureGraph, FeatureNode};
 use openagents_cad::history::{CadHistoryCommand, CadHistorySnapshot};
+use openagents_cad::materials::{
+    DEFAULT_CAD_MATERIAL_ID, estimate_material_cost_usd, material_preset_by_id,
+};
 use openagents_cad::validity::{
     ModelValidityEntity, ModelValiditySnapshot, run_model_validity_checks,
 };
@@ -22,6 +25,9 @@ use crate::pane_system::CadDemoPaneAction;
 
 pub(super) fn run_cad_demo_action(state: &mut RenderState, action: CadDemoPaneAction) -> bool {
     let action_changed = apply_cad_demo_action(&mut state.cad_demo, action);
+    if action_changed && matches!(action, CadDemoPaneAction::CycleMaterialPreset) {
+        upsert_cad_material_activity_event(state);
+    }
     let receipts = drain_worker_responses_from_pane(&mut state.cad_demo, 12);
     for receipt in &receipts {
         upsert_cad_rebuild_activity_event(state, receipt);
@@ -92,6 +98,26 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
                 "CAD section offset -> {offset:+.1} ({})",
                 state.section_summary()
             ));
+            true
+        }
+        CadDemoPaneAction::CycleMaterialPreset => {
+            let material_id = state.cycle_material_preset();
+            if let Some(payload) = state.last_good_mesh_payload.as_ref() {
+                state.analysis_snapshot = analysis_snapshot_from_mesh(
+                    state.document_revision,
+                    &state.active_variant_id,
+                    payload,
+                    &material_id,
+                );
+            }
+            if let Some(material) = material_preset_by_id(&material_id) {
+                state.last_action = Some(format!(
+                    "CAD material -> {} ({}, {} kg/m^3)",
+                    material.id, material.label, material.density_kg_m3
+                ));
+            } else {
+                state.last_action = Some(format!("CAD material -> {material_id}"));
+            }
             true
         }
         CadDemoPaneAction::ToggleSnapGrid => {
@@ -458,10 +484,17 @@ fn apply_completed_rebuild(
     state.pending_rebuild_request_id = None;
     state.last_good_mesh_payload = Some(completed.mesh_payload.clone());
     state.last_good_mesh_id = Some(completed.mesh_payload.mesh_id.clone());
+    let material_id = state
+        .analysis_snapshot
+        .material_id
+        .as_deref()
+        .unwrap_or(DEFAULT_CAD_MATERIAL_ID)
+        .to_string();
     state.analysis_snapshot = analysis_snapshot_from_mesh(
         completed.document_revision,
         &receipt.variant_id,
         &completed.mesh_payload,
+        &material_id,
     );
     refresh_warning_state(state, completed.document_revision, &receipt.variant_id);
     refresh_timeline_state(
@@ -520,6 +553,42 @@ fn upsert_cad_rebuild_activity_event(state: &mut RenderState, receipt: &CadRebui
         "CAD rebuild receipt captured ({})",
         receipt.mesh_hash
     ));
+}
+
+fn upsert_cad_material_activity_event(state: &mut RenderState) {
+    let analysis = &state.cad_demo.analysis_snapshot;
+    let material_id = analysis
+        .material_id
+        .as_deref()
+        .unwrap_or(DEFAULT_CAD_MATERIAL_ID);
+    let occurred_at_epoch_seconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    state.activity_feed.upsert_event(ActivityEventRow {
+        event_id: format!(
+            "cad.material.{}:{}",
+            analysis.document_revision, state.cad_demo.active_variant_id
+        ),
+        domain: ActivityEventDomain::Sync,
+        source_tag: "cad.material".to_string(),
+        occurred_at_epoch_seconds,
+        summary: format!("CAD material -> {material_id}"),
+        detail: format!(
+            "variant={} mass_kg={} cost_usd={}",
+            analysis.variant_id,
+            analysis
+                .mass_kg
+                .map(|value| format!("{value:.6}"))
+                .unwrap_or_else(|| "none".to_string()),
+            analysis
+                .estimated_cost_usd
+                .map(|value| format!("{value:.2}"))
+                .unwrap_or_else(|| "none".to_string()),
+        ),
+    });
+    state.activity_feed.load_state = PaneLoadState::Ready;
+    state.activity_feed.last_action = Some(format!("CAD material assignment captured ({material_id})"));
 }
 
 fn synthetic_duration_ms(feature_count: usize, stats_delta: EvalCacheStats) -> u64 {
@@ -727,16 +796,23 @@ fn analysis_snapshot_from_mesh(
     document_revision: u64,
     variant_id: &str,
     mesh_payload: &openagents_cad::mesh::CadMeshPayload,
+    material_id: &str,
 ) -> openagents_cad::contracts::CadAnalysis {
-    let estimate = estimate_body_properties(mesh_payload, DENSITY_ALUMINUM_6061_KG_M3);
+    let material = material_preset_by_id(material_id)
+        .or_else(|| material_preset_by_id(DEFAULT_CAD_MATERIAL_ID))
+        .expect("default CAD material preset should always resolve");
+    let estimate = estimate_body_properties(mesh_payload, material.density_kg_m3);
+    let mass_kg = estimate.map(|value| value.mass_kg);
+    let estimated_cost_usd =
+        mass_kg.and_then(|mass| estimate_material_cost_usd(mass, material));
     openagents_cad::contracts::CadAnalysis {
         document_revision,
         variant_id: variant_id.to_string(),
-        material_id: Some("al-6061-t6".to_string()),
+        material_id: Some(material.id.to_string()),
         volume_mm3: estimate.map(|value| value.volume_mm3),
-        mass_kg: estimate.map(|value| value.mass_kg),
+        mass_kg,
         center_of_gravity_mm: estimate.map(|value| value.center_of_gravity_mm),
-        estimated_cost_usd: None,
+        estimated_cost_usd,
         max_deflection_mm: None,
         objective_scores: BTreeMap::new(),
     }
@@ -1163,6 +1239,66 @@ mod tests {
             CadDemoPaneAction::CycleSectionPlane
         ));
         assert_eq!(state.section_summary(), "off");
+    }
+
+    #[test]
+    fn cycling_material_recomputes_mass_and_cost_paths() {
+        let mut state = CadDemoPaneState::default();
+        let _ = apply_cad_demo_action(&mut state, CadDemoPaneAction::CycleVariant);
+        wait_for_receipt(&mut state);
+
+        assert_eq!(
+            state.analysis_snapshot.material_id.as_deref(),
+            Some("al-6061-t6")
+        );
+        let first_mass = state
+            .analysis_snapshot
+            .mass_kg
+            .expect("mass should exist after rebuild");
+        let first_cost = state
+            .analysis_snapshot
+            .estimated_cost_usd
+            .expect("cost should exist after rebuild");
+
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::CycleMaterialPreset
+        ));
+        assert_eq!(
+            state.analysis_snapshot.material_id.as_deref(),
+            Some("al-5052-h32")
+        );
+        let second_mass = state
+            .analysis_snapshot
+            .mass_kg
+            .expect("mass should remain available after material change");
+        let second_cost = state
+            .analysis_snapshot
+            .estimated_cost_usd
+            .expect("cost should remain available after material change");
+        assert_ne!(first_mass, second_mass);
+        assert_ne!(first_cost, second_cost);
+
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::CycleMaterialPreset
+        ));
+        assert_eq!(
+            state.analysis_snapshot.material_id.as_deref(),
+            Some("steel-1018")
+        );
+        let steel_mass = state
+            .analysis_snapshot
+            .mass_kg
+            .expect("steel mass should be computed");
+        assert!(
+            steel_mass > second_mass,
+            "steel density should produce larger mass for same volume"
+        );
+        assert!(
+            state.analysis_snapshot.estimated_cost_usd.unwrap_or(0.0) > 0.0,
+            "material assignment should keep deterministic cost estimate available"
+        );
     }
 
     #[test]

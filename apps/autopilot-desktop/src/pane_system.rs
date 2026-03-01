@@ -339,6 +339,7 @@ pub enum CadDemoPaneAction {
     ToggleProjectionMode,
     CycleSectionPlane,
     StepSectionPlaneOffset,
+    CycleMaterialPreset,
     ToggleSnapGrid,
     ToggleSnapOrigin,
     ToggleSnapEndpoint,
@@ -375,7 +376,7 @@ pub struct CadPaletteCommandSpec {
     pub action: CadDemoPaneAction,
 }
 
-const CAD_PALETTE_COMMAND_SPECS: [CadPaletteCommandSpec; 20] = [
+const CAD_PALETTE_COMMAND_SPECS: [CadPaletteCommandSpec; 21] = [
     CadPaletteCommandSpec {
         id: "cad.view.snap_top",
         label: "CAD: Snap View Top",
@@ -431,6 +432,13 @@ const CAD_PALETTE_COMMAND_SPECS: [CadPaletteCommandSpec; 20] = [
         description: "Step section clipping plane offset",
         keybinding: None,
         action: CadDemoPaneAction::StepSectionPlaneOffset,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.material.cycle",
+        label: "CAD: Cycle Material",
+        description: "Cycle material preset used by mass/cost analysis",
+        keybinding: None,
+        action: CadDemoPaneAction::CycleMaterialPreset,
     },
     CadPaletteCommandSpec {
         id: "cad.snap.toggle_grid",
@@ -2361,6 +2369,21 @@ pub fn cad_demo_section_offset_button_bounds(content_bounds: Bounds) -> Bounds {
     )
 }
 
+pub fn cad_demo_material_button_bounds(content_bounds: Bounds) -> Bounds {
+    let section_offset = cad_demo_section_offset_button_bounds(content_bounds);
+    let min_x = content_bounds.origin.x + CHAT_PAD;
+    let max_x = content_bounds.max_x() - CHAT_PAD;
+    let origin_x = (section_offset.max_x() + JOB_INBOX_BUTTON_GAP).max(min_x);
+    let desired_width = (content_bounds.size.width * 0.24).clamp(140.0, 240.0);
+    let width = desired_width.min((max_x - origin_x).max(44.0));
+    Bounds::new(
+        origin_x,
+        section_offset.origin.y,
+        width,
+        section_offset.size.height,
+    )
+}
+
 fn grid_like_snap_width(content_bounds: Bounds) -> f32 {
     (content_bounds.size.width * 0.16).clamp(92.0, 160.0)
 }
@@ -2379,6 +2402,7 @@ fn cad_demo_controls_bottom(content_bounds: Bounds) -> f32 {
         .max(cad_demo_hotkey_profile_button_bounds(content_bounds).max_y())
         .max(cad_demo_section_plane_button_bounds(content_bounds).max_y())
         .max(cad_demo_section_offset_button_bounds(content_bounds).max_y())
+        .max(cad_demo_material_button_bounds(content_bounds).max_y())
 }
 
 pub fn cad_demo_view_cube_bounds(content_bounds: Bounds) -> Bounds {
@@ -3235,6 +3259,9 @@ fn pane_hit_action_for_pane(
                     CadDemoPaneAction::StepSectionPlaneOffset,
                 ));
             }
+            if cad_demo_material_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CadDemo(CadDemoPaneAction::CycleMaterialPreset));
+            }
             if cad_demo_snap_grid_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::CadDemo(CadDemoPaneAction::ToggleSnapGrid));
             }
@@ -3581,6 +3608,7 @@ mod tests {
         cad_demo_cycle_variant_button_bounds, cad_demo_hidden_line_mode_button_bounds,
         cad_demo_hotkey_profile_button_bounds, cad_demo_projection_mode_button_bounds,
         cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
+        cad_demo_material_button_bounds,
         cad_demo_section_offset_button_bounds, cad_demo_section_plane_button_bounds,
         cad_demo_snap_endpoint_button_bounds, cad_demo_snap_grid_button_bounds,
         cad_demo_snap_midpoint_button_bounds, cad_demo_snap_origin_button_bounds,
@@ -3980,6 +4008,7 @@ mod tests {
         let hotkeys = cad_demo_hotkey_profile_button_bounds(content);
         let section_plane = cad_demo_section_plane_button_bounds(content);
         let section_offset = cad_demo_section_offset_button_bounds(content);
+        let material = cad_demo_material_button_bounds(content);
         assert!(content.contains(cycle.origin));
         assert!(content.contains(reset.origin));
         assert!(content.contains(hidden_line.origin));
@@ -3992,6 +4021,7 @@ mod tests {
         assert!(content.contains(hotkeys.origin));
         assert!(content.contains(section_plane.origin));
         assert!(content.contains(section_offset.origin));
+        assert!(content.contains(material.origin));
         assert!(cycle.max_y() <= content.max_y());
         assert!(reset.max_y() <= content.max_y());
         assert!(hidden_line.max_y() <= content.max_y());
@@ -4004,6 +4034,7 @@ mod tests {
         assert!(hotkeys.max_y() <= content.max_y());
         assert!(section_plane.max_y() <= content.max_y());
         assert!(section_offset.max_y() <= content.max_y());
+        assert!(material.max_y() <= content.max_y());
         assert!(cycle.max_x() < reset.min_x());
         assert!(reset.max_x() <= hidden_line.min_x() + 0.001);
         assert!(hidden_line.max_x() <= reset_camera.min_x() + 0.001);
@@ -4015,6 +4046,7 @@ mod tests {
         assert!(snap_midpoint.max_x() <= hotkeys.min_x() + 0.001);
         assert!(section_plane.origin.y >= hotkeys.max_y() - 0.001);
         assert!(section_plane.max_x() <= section_offset.min_x() + 0.001);
+        assert!(section_offset.max_x() <= material.min_x() + 0.001);
         assert!(projection.max_x() <= content.max_x() + 0.001);
     }
 

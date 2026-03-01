@@ -52,7 +52,8 @@ use crate::pane_system::{
     StarterJobsPaneAction, SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction,
     cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
     cad_demo_cycle_variant_button_bounds, cad_demo_hidden_line_mode_button_bounds,
-    cad_demo_hotkey_profile_button_bounds, cad_demo_projection_mode_button_bounds,
+    cad_demo_hotkey_profile_button_bounds, cad_demo_material_button_bounds,
+    cad_demo_projection_mode_button_bounds,
     cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
     cad_demo_section_offset_button_bounds, cad_demo_section_plane_button_bounds,
     cad_demo_snap_endpoint_button_bounds, cad_demo_snap_grid_button_bounds,
@@ -769,7 +770,15 @@ fn handle_cad_context_menu_click(
 
     for index in 0..state.cad_demo.context_menu.items.len() {
         if cad_demo_context_menu_row_bounds(menu_bounds, index).contains(point) {
-            if let Some(action) = state.cad_demo.run_context_menu_item(index) {
+            let selected_item_id = state
+                .cad_demo
+                .context_menu
+                .items
+                .get(index)
+                .map(|item| item.id.clone());
+            if selected_item_id.as_deref() == Some("body.material") {
+                let _ = reducers::run_cad_demo_action(state, CadDemoPaneAction::CycleMaterialPreset);
+            } else if let Some(action) = state.cad_demo.run_context_menu_item(index) {
                 state.cad_demo.last_action = Some(action);
             }
             state.cad_demo.close_context_menu();
@@ -874,6 +883,7 @@ fn cad_camera_target_pane_id(state: &crate::app_state::RenderState, point: Point
             || cad_demo_projection_mode_button_bounds(content_bounds).contains(point)
             || cad_demo_section_plane_button_bounds(content_bounds).contains(point)
             || cad_demo_section_offset_button_bounds(content_bounds).contains(point)
+            || cad_demo_material_button_bounds(content_bounds).contains(point)
             || cad_demo_snap_grid_button_bounds(content_bounds).contains(point)
             || cad_demo_snap_origin_button_bounds(content_bounds).contains(point)
             || cad_demo_snap_endpoint_button_bounds(content_bounds).contains(point)

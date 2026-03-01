@@ -3753,6 +3753,10 @@ mod tests {
         assert!(state.pending_rebuild_request_id.is_none());
         assert!(state.last_good_mesh_id.is_none());
         assert!(state.last_good_mesh_payload.is_none());
+        assert_eq!(
+            state.analysis_snapshot.material_id.as_deref(),
+            Some("al-6061-t6")
+        );
         assert!(state.warnings.is_empty());
         assert_eq!(state.warning_filter_severity, "all");
         assert_eq!(state.warning_filter_code, "all");
@@ -3865,6 +3869,23 @@ mod tests {
         assert_eq!(state.cycle_section_axis(), None);
         assert_eq!(state.section_offset_normalized, 0.0);
         assert!(state.section_plane().is_none());
+    }
+
+    #[test]
+    fn cad_material_cycle_is_deterministic() {
+        let mut state = CadDemoPaneState::default();
+        assert_eq!(
+            state.analysis_snapshot.material_id.as_deref(),
+            Some("al-6061-t6")
+        );
+        assert_eq!(state.cycle_material_preset(), "al-5052-h32");
+        assert_eq!(
+            state.analysis_snapshot.material_id.as_deref(),
+            Some("al-5052-h32")
+        );
+        assert_eq!(state.cycle_material_preset(), "steel-1018");
+        assert_eq!(state.cycle_material_preset(), "ti-6al-4v");
+        assert_eq!(state.cycle_material_preset(), "al-6061-t6");
     }
 
     #[test]
