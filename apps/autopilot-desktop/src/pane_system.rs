@@ -335,6 +335,7 @@ pub enum CadDemoPaneAction {
     CycleVariant,
     ResetSession,
     ResetCamera,
+    ToggleProjectionMode,
     SnapViewTop,
     SnapViewFront,
     SnapViewRight,
@@ -2090,12 +2091,28 @@ pub fn cad_demo_reset_camera_button_bounds(content_bounds: Bounds) -> Bounds {
     )
 }
 
+pub fn cad_demo_projection_mode_button_bounds(content_bounds: Bounds) -> Bounds {
+    let reset_camera = cad_demo_reset_camera_button_bounds(content_bounds);
+    let desired_width = (content_bounds.size.width * 0.2).clamp(130.0, 210.0);
+    let min_x = content_bounds.origin.x + CHAT_PAD;
+    let max_x = content_bounds.max_x() - CHAT_PAD;
+    let origin_x = (reset_camera.max_x() + JOB_INBOX_BUTTON_GAP).max(min_x);
+    let width = desired_width.min((max_x - origin_x).max(40.0));
+    Bounds::new(
+        origin_x,
+        reset_camera.origin.y,
+        width,
+        reset_camera.size.height,
+    )
+}
+
 pub fn cad_demo_view_cube_bounds(content_bounds: Bounds) -> Bounds {
     let buttons_bottom = cad_demo_cycle_variant_button_bounds(content_bounds)
         .max_y()
         .max(cad_demo_reset_button_bounds(content_bounds).max_y())
         .max(cad_demo_hidden_line_mode_button_bounds(content_bounds).max_y())
-        .max(cad_demo_reset_camera_button_bounds(content_bounds).max_y());
+        .max(cad_demo_reset_camera_button_bounds(content_bounds).max_y())
+        .max(cad_demo_projection_mode_button_bounds(content_bounds).max_y());
     let warning_top = cad_demo_warning_panel_bounds(content_bounds).origin.y;
     let min_x = content_bounds.origin.x + CHAT_PAD;
     let min_y = content_bounds.origin.y + CHAT_PAD;
@@ -2189,7 +2206,8 @@ pub fn cad_demo_warning_marker_bounds(content_bounds: Bounds, index: usize) -> B
         .max_y()
         .max(cad_demo_reset_button_bounds(content_bounds).max_y())
         .max(cad_demo_hidden_line_mode_button_bounds(content_bounds).max_y())
-        .max(cad_demo_reset_camera_button_bounds(content_bounds).max_y());
+        .max(cad_demo_reset_camera_button_bounds(content_bounds).max_y())
+        .max(cad_demo_projection_mode_button_bounds(content_bounds).max_y());
     let viewport_top = (buttons_bottom + 12.0).min(content_bounds.max_y());
     let viewport_bottom = (panel.origin.y - 8.0).max(viewport_top);
     let viewport_height = (viewport_bottom - viewport_top).max(1.0);
@@ -2913,6 +2931,11 @@ fn pane_hit_action_for_pane(
             if cad_demo_reset_camera_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::CadDemo(CadDemoPaneAction::ResetCamera));
             }
+            if cad_demo_projection_mode_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CadDemo(
+                    CadDemoPaneAction::ToggleProjectionMode,
+                ));
+            }
             if cad_demo_view_snap_top_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::CadDemo(CadDemoPaneAction::SnapViewTop));
             }
@@ -3235,9 +3258,9 @@ mod tests {
         agent_schedule_manual_tick_button_bounds, alerts_recovery_ack_button_bounds,
         alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
         alerts_recovery_row_bounds, cad_demo_cycle_variant_button_bounds,
-        cad_demo_hidden_line_mode_button_bounds, cad_demo_reset_button_bounds,
-        cad_demo_reset_camera_button_bounds, cad_demo_timeline_panel_bounds,
-        cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
+        cad_demo_hidden_line_mode_button_bounds, cad_demo_projection_mode_button_bounds,
+        cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
+        cad_demo_timeline_panel_bounds, cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
         cad_demo_view_snap_front_button_bounds, cad_demo_view_snap_iso_button_bounds,
         cad_demo_view_snap_right_button_bounds, cad_demo_view_snap_top_button_bounds,
         cad_demo_warning_filter_code_button_bounds, cad_demo_warning_filter_severity_button_bounds,
@@ -3598,19 +3621,22 @@ mod tests {
         let reset = cad_demo_reset_button_bounds(content);
         let hidden_line = cad_demo_hidden_line_mode_button_bounds(content);
         let reset_camera = cad_demo_reset_camera_button_bounds(content);
+        let projection = cad_demo_projection_mode_button_bounds(content);
         assert!(content.contains(cycle.origin));
         assert!(content.contains(reset.origin));
         assert!(content.contains(hidden_line.origin));
         assert!(content.contains(reset_camera.origin));
+        assert!(content.contains(projection.origin));
         assert!(cycle.max_y() <= content.max_y());
         assert!(reset.max_y() <= content.max_y());
         assert!(hidden_line.max_y() <= content.max_y());
         assert!(reset_camera.max_y() <= content.max_y());
+        assert!(projection.max_y() <= content.max_y());
         assert!(cycle.max_x() < reset.min_x());
         assert!(reset.max_x() <= hidden_line.min_x() + 0.001);
         assert!(hidden_line.max_x() <= reset_camera.min_x() + 0.001);
-        assert!(hidden_line.max_x() <= content.max_x() + 0.001);
-        assert!(reset_camera.max_x() <= content.max_x() + 0.001);
+        assert!(reset_camera.max_x() <= projection.min_x() + 0.001);
+        assert!(projection.max_x() <= content.max_x() + 0.001);
     }
 
     #[test]

@@ -467,6 +467,7 @@ pub struct CadDemoPaneState {
     pub focused_warning_index: Option<usize>,
     pub focused_geometry_ref: Option<String>,
     pub hidden_line_mode: CadHiddenLineMode,
+    pub projection_mode: CadProjectionMode,
     pub camera_zoom: f32,
     pub camera_pan_x: f32,
     pub camera_pan_y: f32,
@@ -494,6 +495,28 @@ impl CadCameraViewSnap {
             Self::Top => (0.0, 89.0),
             Self::Front => (0.0, 0.0),
             Self::Right => (90.0, 0.0),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CadProjectionMode {
+    Orthographic,
+    Perspective,
+}
+
+impl CadProjectionMode {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Orthographic => Self::Perspective,
+            Self::Perspective => Self::Orthographic,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Orthographic => "ortho",
+            Self::Perspective => "perspective",
         }
     }
 }
@@ -595,6 +618,7 @@ impl Default for CadDemoPaneState {
             focused_warning_index: None,
             focused_geometry_ref: None,
             hidden_line_mode: CadHiddenLineMode::Off,
+            projection_mode: CadProjectionMode::Orthographic,
             camera_zoom: 1.0,
             camera_pan_x: 0.0,
             camera_pan_y: 0.0,
@@ -661,6 +685,10 @@ impl CadDemoPaneState {
             (self.camera_orbit_yaw_deg - yaw).abs() <= SNAP_TOLERANCE_DEG
                 && (self.camera_orbit_pitch_deg - pitch).abs() <= SNAP_TOLERANCE_DEG
         })
+    }
+
+    pub fn cycle_projection_mode(&mut self) {
+        self.projection_mode = self.projection_mode.next();
     }
 }
 

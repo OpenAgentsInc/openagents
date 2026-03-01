@@ -2766,15 +2766,15 @@ mod tests {
         ActiveJobState, ActivityEventDomain, ActivityEventRow, ActivityFeedFilter,
         ActivityFeedState, AgentNetworkSimulationPaneState, AlertDomain, AlertLifecycle,
         AlertsRecoveryState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole,
-        CadCameraViewSnap, CadDemoPaneState, CadHiddenLineMode, EarningsScoreboardState,
-        JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange,
-        JobInboxDecision, JobInboxNetworkRequest, JobInboxState, JobInboxValidation,
-        JobLifecycleStage, NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState,
-        NostrSecretState, ProviderRuntimeState, RecoveryAlertRow, RelayConnectionRow,
-        RelayConnectionStatus, RelayConnectionsState, RelaySecuritySimulationPaneState,
-        SettingsState, SparkPaneState, StableSatsSimulationPaneState, StarterJobRow,
-        StarterJobStatus, StarterJobsState, SyncHealthState, SyncRecoveryPhase,
-        TreasuryExchangeSimulationPaneState,
+        CadCameraViewSnap, CadDemoPaneState, CadHiddenLineMode, CadProjectionMode,
+        EarningsScoreboardState, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
+        JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest, JobInboxState,
+        JobInboxValidation, JobLifecycleStage, NetworkRequestStatus, NetworkRequestSubmission,
+        NetworkRequestsState, NostrSecretState, ProviderRuntimeState, RecoveryAlertRow,
+        RelayConnectionRow, RelayConnectionStatus, RelayConnectionsState,
+        RelaySecuritySimulationPaneState, SettingsState, SparkPaneState,
+        StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
+        SyncHealthState, SyncRecoveryPhase, TreasuryExchangeSimulationPaneState,
     };
 
     fn fixture_inbox_request(
@@ -3755,6 +3755,7 @@ mod tests {
         assert!(state.focused_warning_index.is_none());
         assert!(state.focused_geometry_ref.is_none());
         assert_eq!(state.hidden_line_mode, CadHiddenLineMode::Off);
+        assert_eq!(state.projection_mode, CadProjectionMode::Orthographic);
         assert_eq!(state.camera_zoom, 1.0);
         assert_eq!(state.camera_pan_x, 0.0);
         assert_eq!(state.camera_pan_y, 0.0);
@@ -3810,5 +3811,21 @@ mod tests {
         assert_eq!(first.camera_pan_x, second.camera_pan_x);
         assert_eq!(first.camera_pan_y, second.camera_pan_y);
         assert_eq!(first.active_view_snap(), Some(CadCameraViewSnap::Isometric));
+    }
+
+    #[test]
+    fn cad_projection_mode_cycles_deterministically() {
+        let mut first = CadDemoPaneState::default();
+        first.cycle_projection_mode();
+        first.cycle_projection_mode();
+
+        let mut second = CadDemoPaneState::default();
+        second.cycle_projection_mode();
+        second.cycle_projection_mode();
+
+        assert_eq!(first.projection_mode, second.projection_mode);
+        assert_eq!(first.projection_mode, CadProjectionMode::Orthographic);
+        second.cycle_projection_mode();
+        assert_eq!(second.projection_mode, CadProjectionMode::Perspective);
     }
 }
