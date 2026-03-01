@@ -365,6 +365,11 @@ pub enum CadDemoPaneAction {
     SelectTimelineRow(usize),
     TimelineSelectPrev,
     TimelineSelectNext,
+    StartDimensionEdit(usize),
+    DimensionInputChar(char),
+    DimensionInputBackspace,
+    DimensionInputCommit,
+    DimensionInputCancel,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2536,6 +2541,37 @@ pub fn cad_demo_warning_marker_bounds(content_bounds: Bounds, index: usize) -> B
     Bounds::new(marker_x, marker_y, marker_size, marker_size)
 }
 
+pub fn cad_demo_dimension_panel_bounds(content_bounds: Bounds) -> Bounds {
+    let warning_panel = cad_demo_warning_panel_bounds(content_bounds);
+    let width = (content_bounds.size.width * 0.24).clamp(150.0, 210.0);
+    let height = 98.0;
+    let origin_x = content_bounds.origin.x + CHAT_PAD;
+    let max_origin_y = (warning_panel.origin.y - height - 10.0).max(content_bounds.origin.y + 10.0);
+    let base_top =
+        (cad_demo_controls_bottom(content_bounds) + 10.0).max(content_bounds.origin.y + 10.0);
+    let origin_y = base_top.min(max_origin_y);
+    Bounds::new(
+        origin_x,
+        origin_y,
+        width.min((warning_panel.origin.x - origin_x - 8.0).max(120.0)),
+        height.max(72.0),
+    )
+}
+
+pub fn cad_demo_dimension_row_bounds(content_bounds: Bounds, index: usize) -> Bounds {
+    let panel = cad_demo_dimension_panel_bounds(content_bounds);
+    let safe_index = index.min(7);
+    let top = panel.origin.y + 22.0;
+    let max_origin_y = (panel.max_y() - 16.0).max(top);
+    let origin_y = (top + safe_index as f32 * 18.0).min(max_origin_y);
+    Bounds::new(
+        panel.origin.x + 6.0,
+        origin_y,
+        (panel.size.width - 12.0).max(24.0),
+        16.0,
+    )
+}
+
 pub fn cad_demo_timeline_panel_bounds(content_bounds: Bounds) -> Bounds {
     let warning_panel = cad_demo_warning_panel_bounds(content_bounds);
     let width = ((warning_panel.origin.x - content_bounds.origin.x) - CHAT_PAD * 2.0).max(180.0);
@@ -3260,7 +3296,9 @@ fn pane_hit_action_for_pane(
                 ));
             }
             if cad_demo_material_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::CadDemo(CadDemoPaneAction::CycleMaterialPreset));
+                return Some(PaneHitAction::CadDemo(
+                    CadDemoPaneAction::CycleMaterialPreset,
+                ));
             }
             if cad_demo_snap_grid_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::CadDemo(CadDemoPaneAction::ToggleSnapGrid));
@@ -3309,6 +3347,13 @@ fn pane_hit_action_for_pane(
                 return Some(PaneHitAction::CadDemo(
                     CadDemoPaneAction::CycleWarningCodeFilter,
                 ));
+            }
+            for index in 0..4 {
+                if cad_demo_dimension_row_bounds(content_bounds, index).contains(point) {
+                    return Some(PaneHitAction::CadDemo(
+                        CadDemoPaneAction::StartDimensionEdit(index),
+                    ));
+                }
             }
             for index in 0..10 {
                 if cad_demo_timeline_row_bounds(content_bounds, index).contains(point) {
@@ -3605,14 +3650,15 @@ mod tests {
         agent_schedule_manual_tick_button_bounds, alerts_recovery_ack_button_bounds,
         alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
         alerts_recovery_row_bounds, cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
-        cad_demo_cycle_variant_button_bounds, cad_demo_hidden_line_mode_button_bounds,
-        cad_demo_hotkey_profile_button_bounds, cad_demo_projection_mode_button_bounds,
-        cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
-        cad_demo_material_button_bounds,
-        cad_demo_section_offset_button_bounds, cad_demo_section_plane_button_bounds,
-        cad_demo_snap_endpoint_button_bounds, cad_demo_snap_grid_button_bounds,
-        cad_demo_snap_midpoint_button_bounds, cad_demo_snap_origin_button_bounds,
-        cad_demo_timeline_panel_bounds, cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
+        cad_demo_cycle_variant_button_bounds, cad_demo_dimension_panel_bounds,
+        cad_demo_dimension_row_bounds, cad_demo_hidden_line_mode_button_bounds,
+        cad_demo_hotkey_profile_button_bounds, cad_demo_material_button_bounds,
+        cad_demo_projection_mode_button_bounds, cad_demo_reset_button_bounds,
+        cad_demo_reset_camera_button_bounds, cad_demo_section_offset_button_bounds,
+        cad_demo_section_plane_button_bounds, cad_demo_snap_endpoint_button_bounds,
+        cad_demo_snap_grid_button_bounds, cad_demo_snap_midpoint_button_bounds,
+        cad_demo_snap_origin_button_bounds, cad_demo_timeline_panel_bounds,
+        cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
         cad_demo_view_snap_front_button_bounds, cad_demo_view_snap_iso_button_bounds,
         cad_demo_view_snap_right_button_bounds, cad_demo_view_snap_top_button_bounds,
         cad_demo_warning_filter_code_button_bounds, cad_demo_warning_filter_severity_button_bounds,
@@ -4127,6 +4173,22 @@ mod tests {
             let row = cad_demo_timeline_row_bounds(content, index);
             assert!(row.origin.x >= panel.origin.x);
             assert!(row.max_x() <= panel.max_x() + 0.001);
+            assert!(row.max_y() <= panel.max_y() + 0.001);
+        }
+    }
+
+    #[test]
+    fn cad_dimension_panel_rows_stay_within_content() {
+        let content = Bounds::new(0.0, 0.0, 840.0, 420.0);
+        let panel = cad_demo_dimension_panel_bounds(content);
+        assert!(content.contains(panel.origin));
+        assert!(panel.max_x() <= content.max_x() + 0.001);
+        assert!(panel.max_y() <= content.max_y() + 0.001);
+        for index in 0..4 {
+            let row = cad_demo_dimension_row_bounds(content, index);
+            assert!(row.origin.x >= panel.origin.x);
+            assert!(row.max_x() <= panel.max_x() + 0.001);
+            assert!(row.origin.y >= panel.origin.y);
             assert!(row.max_y() <= panel.max_y() + 0.001);
         }
     }

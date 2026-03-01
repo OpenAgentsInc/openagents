@@ -106,24 +106,39 @@ fn tessellate_feature_node(
     let jitter = hash_jitter(geometry_hash);
     match node.operation_key.as_str() {
         "primitive.box.v1" => {
-            let min = [
-                -profile.width_mm * 0.5,
-                -profile.depth_mm * 0.5,
-                0.0 + jitter,
-            ];
-            let max = [
-                profile.width_mm * 0.5,
-                profile.depth_mm * 0.5,
-                profile.height_mm,
-            ];
+            let width_mm = node_param_f32(node, "width_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(profile.width_mm);
+            let depth_mm = node_param_f32(node, "depth_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(profile.depth_mm);
+            let height_mm = node_param_f32(node, "height_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(profile.height_mm);
+            let min = [-width_mm * 0.5, -depth_mm * 0.5, 0.0 + jitter];
+            let max = [width_mm * 0.5, depth_mm * 0.5, height_mm];
             builder.add_box(min, max, 0, 1);
             Ok(())
         }
         "cut.hole.v1" => {
-            let depth_z = profile.height_mm * 0.15;
-            let z = profile.height_mm * 0.65;
-            let x_margin = profile.width_mm * 0.42;
-            let y_margin = profile.depth_mm * 0.38;
+            let width_mm = node_param_f32(node, "width_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(profile.width_mm);
+            let depth_mm = node_param_f32(node, "depth_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(profile.depth_mm);
+            let height_mm = node_param_f32(node, "height_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(profile.height_mm);
+            let radius_mm = node_param_f32(node, "mount_hole_radius_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(profile.mount_hole_radius_mm);
+            let depth_z = node_param_f32(node, "mount_hole_depth_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(height_mm * 0.15);
+            let z = height_mm * 0.65;
+            let x_margin = width_mm * 0.42;
+            let y_margin = depth_mm * 0.38;
             let centers = [
                 [-x_margin, -y_margin, z],
                 [x_margin, -y_margin, z],
@@ -131,37 +146,57 @@ fn tessellate_feature_node(
                 [x_margin, y_margin, z],
             ];
             for center in centers {
-                builder.add_cylinder_z(center, profile.mount_hole_radius_mm, depth_z, 14, 1, 2);
+                builder.add_cylinder_z(center, radius_mm, depth_z, 14, 1, 2);
             }
             Ok(())
         }
         "linear.pattern.v1" => {
-            let vent_width = profile.vent_spacing_mm * 0.42;
-            let vent_depth = profile.depth_mm * 0.72;
-            let start_x = -((profile.vent_count as f32 - 1.0) * profile.vent_spacing_mm) * 0.5;
-            for index in 0..profile.vent_count {
-                let x = start_x + (index as f32 * profile.vent_spacing_mm);
+            let depth_mm = node_param_f32(node, "depth_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(profile.depth_mm);
+            let height_mm = node_param_f32(node, "height_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(profile.height_mm);
+            let vent_spacing_mm = node_param_f32(node, "vent_spacing_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(profile.vent_spacing_mm);
+            let vent_count = node_param_u32(node, "vent_count")
+                .map(|value| value.clamp(1, 16) as usize)
+                .unwrap_or(profile.vent_count);
+            let vent_width = vent_spacing_mm * 0.42;
+            let vent_depth = depth_mm * 0.72;
+            let start_x = -((vent_count as f32 - 1.0) * vent_spacing_mm) * 0.5;
+            for index in 0..vent_count {
+                let x = start_x + (index as f32 * vent_spacing_mm);
                 let min = [
                     x - (vent_width * 0.5),
                     -vent_depth * 0.5,
-                    profile.height_mm * 0.72 + jitter,
+                    height_mm * 0.72 + jitter,
                 ];
-                let max = [
-                    x + (vent_width * 0.5),
-                    vent_depth * 0.5,
-                    profile.height_mm * 0.9,
-                ];
+                let max = [x + (vent_width * 0.5), vent_depth * 0.5, height_mm * 0.9];
                 builder.add_box(min, max, 1, 4);
             }
             Ok(())
         }
         "fillet.placeholder.v1" => {
-            let z = profile.height_mm + (profile.wall_mm * 0.05) + jitter;
+            let width_mm = node_param_f32(node, "width_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(profile.width_mm);
+            let depth_mm = node_param_f32(node, "depth_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(profile.depth_mm);
+            let height_mm = node_param_f32(node, "height_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(profile.height_mm);
+            let wall_mm = node_param_f32(node, "wall_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(profile.wall_mm);
+            let z = height_mm + (wall_mm * 0.05) + jitter;
             let corners = [
-                [-profile.width_mm * 0.5, -profile.depth_mm * 0.5, z],
-                [profile.width_mm * 0.5, -profile.depth_mm * 0.5, z],
-                [profile.width_mm * 0.5, profile.depth_mm * 0.5, z],
-                [-profile.width_mm * 0.5, profile.depth_mm * 0.5, z],
+                [-width_mm * 0.5, -depth_mm * 0.5, z],
+                [width_mm * 0.5, -depth_mm * 0.5, z],
+                [width_mm * 0.5, depth_mm * 0.5, z],
+                [-width_mm * 0.5, depth_mm * 0.5, z],
             ];
             let mut vertex_indices = [0_u32; 4];
             for (index, corner) in corners.into_iter().enumerate() {
@@ -179,6 +214,14 @@ fn tessellate_feature_node(
             ),
         }),
     }
+}
+
+fn node_param_f32(node: &FeatureNode, key: &str) -> Option<f32> {
+    node.params.get(key)?.parse::<f32>().ok()
+}
+
+fn node_param_u32(node: &FeatureNode, key: &str) -> Option<u32> {
+    node.params.get(key)?.parse::<u32>().ok()
 }
 
 fn material_slots() -> Vec<CadMeshMaterialSlot> {

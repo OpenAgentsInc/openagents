@@ -407,6 +407,72 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
             select_timeline_row(state, next);
             true
         }
+        CadDemoPaneAction::StartDimensionEdit(index) => {
+            if state.begin_dimension_edit(index) {
+                if let Some(dimension) = state.dimensions.get(index) {
+                    state.last_action = Some(format!(
+                        "CAD dimension edit -> {} ({:.3} mm)",
+                        dimension.label, dimension.value_mm
+                    ));
+                }
+                state.last_error = None;
+                true
+            } else {
+                false
+            }
+        }
+        CadDemoPaneAction::DimensionInputChar(ch) => {
+            if state.append_dimension_edit_char(ch) {
+                state.last_error = None;
+                state.last_action = Some(format!("CAD dimension input -> '{ch}'"));
+                true
+            } else {
+                false
+            }
+        }
+        CadDemoPaneAction::DimensionInputBackspace => {
+            if state.backspace_dimension_edit() {
+                state.last_error = None;
+                state.last_action = Some("CAD dimension input backspace".to_string());
+                true
+            } else {
+                false
+            }
+        }
+        CadDemoPaneAction::DimensionInputCancel => {
+            if state.cancel_dimension_edit() {
+                state.last_error = None;
+                state.last_action = Some("CAD dimension edit cancelled".to_string());
+                true
+            } else {
+                false
+            }
+        }
+        CadDemoPaneAction::DimensionInputCommit => match state.commit_dimension_edit() {
+            Ok((dimension_id, previous, updated)) => {
+                state.document_revision = state.document_revision.saturating_add(1);
+                let trigger = format!("edit-dimension:{dimension_id}");
+                if let Err(error) = enqueue_rebuild_cycle(state, trigger.as_str()) {
+                    state.load_state = PaneLoadState::Error;
+                    state.last_error = Some(error);
+                } else {
+                    state.last_error = None;
+                }
+                state.last_action = Some(format!(
+                    "CAD dimension {} {:.3} -> {:.3} mm",
+                    dimension_id, previous, updated
+                ));
+                true
+            }
+            Err(error) => {
+                if let Some(edit) = state.dimension_edit.as_mut() {
+                    edit.last_error = Some(error.clone());
+                }
+                state.last_error = Some(error.clone());
+                state.last_action = Some(format!("CAD dimension edit failed: {error}"));
+                true
+            }
+        },
     }
 }
 
@@ -829,7 +895,8 @@ fn emit_cad_event_for_action(state: &mut RenderState, action: CadDemoPaneAction)
         }
         CadDemoPaneAction::CycleMaterialPreset
         | CadDemoPaneAction::CycleSectionPlane
-        | CadDemoPaneAction::StepSectionPlaneOffset => {
+        | CadDemoPaneAction::StepSectionPlaneOffset
+        | CadDemoPaneAction::DimensionInputCommit => {
             emit_cad_event(
                 state,
                 CadEventKind::ParameterUpdated,
@@ -921,13 +988,42 @@ fn stats_delta(before: EvalCacheStats, after: EvalCacheStats) -> EvalCacheStats 
 }
 
 fn build_demo_feature_graph(state: &CadDemoPaneState) -> FeatureGraph {
-    let (width_param, vent_spacing_param, vent_count_param) = match state.active_variant_id.as_str()
-    {
-        "variant.lightweight" => ("width_light_mm", "vent_spacing_wide_mm", "vent_count_low"),
-        "variant.low-cost" => ("width_cost_mm", "vent_spacing_cost_mm", "vent_count_mid"),
-        "variant.stiffness" => ("width_stiff_mm", "vent_spacing_tight_mm", "vent_count_high"),
-        _ => ("width_base_mm", "vent_spacing_base_mm", "vent_count_base"),
-    };
+    let width_mm = dimension_value_mm(state, "width_mm", 390.0);
+    let depth_mm = dimension_value_mm(state, "depth_mm", 226.0);
+    let height_mm = dimension_value_mm(state, "height_mm", 88.0);
+    let wall_mm = dimension_value_mm(state, "wall_mm", 6.0);
+
+    let (variant_width_mm, variant_depth_mm, variant_height_mm, vent_spacing_mm, vent_count) =
+        match state.active_variant_id.as_str() {
+            "variant.lightweight" => (
+                (width_mm - 8.0).max(300.0),
+                (depth_mm + 2.0).max(140.0),
+                (height_mm - 2.0).max(40.0),
+                34.0,
+                5_u32,
+            ),
+            "variant.low-cost" => (
+                (width_mm + 2.0).max(300.0),
+                (depth_mm - 2.0).max(140.0),
+                height_mm.max(40.0),
+                28.0,
+                6_u32,
+            ),
+            "variant.stiffness" => (
+                (width_mm + 5.0).max(300.0),
+                (depth_mm + 6.0).max(140.0),
+                (height_mm + 3.0).max(40.0),
+                24.0,
+                8_u32,
+            ),
+            _ => (
+                width_mm.max(300.0),
+                depth_mm.max(140.0),
+                height_mm.max(40.0),
+                30.0,
+                6_u32,
+            ),
+        };
 
     let feature_nodes = vec![
         FeatureNode {
@@ -936,10 +1032,14 @@ fn build_demo_feature_graph(state: &CadDemoPaneState) -> FeatureGraph {
             operation_key: "primitive.box.v1".to_string(),
             depends_on: Vec::new(),
             params: BTreeMap::from([
-                ("width_param".to_string(), width_param.to_string()),
+                ("width_param".to_string(), "width_mm".to_string()),
                 ("depth_param".to_string(), "depth_mm".to_string()),
                 ("height_param".to_string(), "height_mm".to_string()),
                 ("variant".to_string(), state.active_variant_id.clone()),
+                ("width_mm".to_string(), format!("{variant_width_mm:.3}")),
+                ("depth_mm".to_string(), format!("{variant_depth_mm:.3}")),
+                ("height_mm".to_string(), format!("{variant_height_mm:.3}")),
+                ("wall_mm".to_string(), format!("{wall_mm:.3}")),
             ]),
         },
         FeatureNode {
@@ -953,6 +1053,14 @@ fn build_demo_feature_graph(state: &CadDemoPaneState) -> FeatureGraph {
                     "mount_hole_radius_mm".to_string(),
                 ),
                 ("depth_param".to_string(), "mount_hole_depth_mm".to_string()),
+                ("mount_hole_radius_mm".to_string(), "4.400".to_string()),
+                (
+                    "mount_hole_depth_mm".to_string(),
+                    format!("{:.3}", (variant_height_mm * 0.15).max(6.0)),
+                ),
+                ("width_mm".to_string(), format!("{variant_width_mm:.3}")),
+                ("depth_mm".to_string(), format!("{variant_depth_mm:.3}")),
+                ("height_mm".to_string(), format!("{variant_height_mm:.3}")),
             ]),
         },
         FeatureNode {
@@ -961,8 +1069,16 @@ fn build_demo_feature_graph(state: &CadDemoPaneState) -> FeatureGraph {
             operation_key: "linear.pattern.v1".to_string(),
             depends_on: vec!["feature.mount_hole".to_string()],
             params: BTreeMap::from([
-                ("count_param".to_string(), vent_count_param.to_string()),
-                ("spacing_param".to_string(), vent_spacing_param.to_string()),
+                ("count_param".to_string(), "vent_count".to_string()),
+                ("spacing_param".to_string(), "vent_spacing_mm".to_string()),
+                ("vent_count".to_string(), vent_count.to_string()),
+                (
+                    "vent_spacing_mm".to_string(),
+                    format!("{vent_spacing_mm:.3}"),
+                ),
+                ("width_mm".to_string(), format!("{variant_width_mm:.3}")),
+                ("depth_mm".to_string(), format!("{variant_depth_mm:.3}")),
+                ("height_mm".to_string(), format!("{variant_height_mm:.3}")),
             ]),
         },
         FeatureNode {
@@ -973,6 +1089,14 @@ fn build_demo_feature_graph(state: &CadDemoPaneState) -> FeatureGraph {
             params: BTreeMap::from([
                 ("radius_param".to_string(), "edge_radius_mm".to_string()),
                 ("kind".to_string(), "fillet".to_string()),
+                (
+                    "edge_radius_mm".to_string(),
+                    format!("{:.3}", (wall_mm * 0.45).max(1.0)),
+                ),
+                ("width_mm".to_string(), format!("{variant_width_mm:.3}")),
+                ("depth_mm".to_string(), format!("{variant_depth_mm:.3}")),
+                ("height_mm".to_string(), format!("{variant_height_mm:.3}")),
+                ("wall_mm".to_string(), format!("{wall_mm:.3}")),
             ]),
         },
     ];
@@ -980,6 +1104,10 @@ fn build_demo_feature_graph(state: &CadDemoPaneState) -> FeatureGraph {
     FeatureGraph {
         nodes: feature_nodes,
     }
+}
+
+fn dimension_value_mm(state: &CadDemoPaneState, dimension_id: &str, fallback: f64) -> f64 {
+    state.dimension_value_mm(dimension_id).unwrap_or(fallback)
 }
 
 fn refresh_warning_state(state: &mut CadDemoPaneState, document_revision: u64, variant_id: &str) {
@@ -1567,6 +1695,33 @@ mod tests {
         assert_eq!(state.load_state, crate::app_state::PaneLoadState::Loading);
         assert!(state.pending_rebuild_request_id.is_some());
         assert!(state.last_rebuild_receipt.is_none());
+    }
+
+    #[test]
+    fn dimension_commit_queues_rebuild_and_updates_value() {
+        let mut state = CadDemoPaneState::default();
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::StartDimensionEdit(0)
+        ));
+        for _ in 0..16 {
+            let _ = apply_cad_demo_action(&mut state, CadDemoPaneAction::DimensionInputBackspace);
+        }
+        for ch in ['4', '2', '1', '.', '0'] {
+            assert!(apply_cad_demo_action(
+                &mut state,
+                CadDemoPaneAction::DimensionInputChar(ch)
+            ));
+        }
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::DimensionInputCommit
+        ));
+        assert_eq!(state.dimension_value_mm("width_mm"), Some(421.0));
+        assert_eq!(state.document_revision, 1);
+        assert_eq!(state.load_state, crate::app_state::PaneLoadState::Loading);
+        wait_for_receipt(&mut state);
+        assert_eq!(state.load_state, crate::app_state::PaneLoadState::Ready);
     }
 
     #[test]
