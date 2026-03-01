@@ -5,6 +5,28 @@ use crate::params::{ParameterStore, ScalarUnit, ScalarValue};
 use crate::semantic_refs::CadSemanticRefRegistry;
 use crate::{CadError, CadResult};
 
+/// Wall-mount feature controls for the rack template.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RackWallMountConfig {
+    pub enabled: bool,
+    pub hole_count: u8,
+    pub hole_spacing_mm: f64,
+    pub hole_radius_mm: f64,
+    pub bracket_thickness_mm: f64,
+}
+
+impl Default for RackWallMountConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            hole_count: 4,
+            hole_spacing_mm: 32.0,
+            hole_radius_mm: 2.8,
+            bracket_thickness_mm: 6.0,
+        }
+    }
+}
+
 /// Deterministic two-bay Mac Studio rack template parameters.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MacStudioRackTemplateParams {
@@ -16,6 +38,7 @@ pub struct MacStudioRackTemplateParams {
     pub bay_cut_radius_mm: f64,
     pub wall_thickness_mm: f64,
     pub corner_radius_mm: f64,
+    pub wall_mount: RackWallMountConfig,
 }
 
 impl Default for MacStudioRackTemplateParams {
@@ -30,6 +53,7 @@ impl Default for MacStudioRackTemplateParams {
             bay_cut_radius_mm: 19.0,
             wall_thickness_mm: 6.0,
             corner_radius_mm: 2.0,
+            wall_mount: RackWallMountConfig::default(),
         }
     }
 }
@@ -50,6 +74,15 @@ impl MacStudioRackTemplateParams {
             ("bay_cut_radius_mm", self.bay_cut_radius_mm),
             ("wall_thickness_mm", self.wall_thickness_mm),
             ("corner_radius_mm", self.corner_radius_mm),
+            (
+                "wall_mount.hole_spacing_mm",
+                self.wall_mount.hole_spacing_mm,
+            ),
+            ("wall_mount.hole_radius_mm", self.wall_mount.hole_radius_mm),
+            (
+                "wall_mount.bracket_thickness_mm",
+                self.wall_mount.bracket_thickness_mm,
+            ),
         ] {
             if !value.is_finite() || value <= 0.0 {
                 return Err(CadError::InvalidParameter {
@@ -57,6 +90,12 @@ impl MacStudioRackTemplateParams {
                     reason: "value must be finite and > 0".to_string(),
                 });
             }
+        }
+        if self.wall_mount.hole_count < 2 {
+            return Err(CadError::InvalidParameter {
+                name: "wall_mount.hole_count".to_string(),
+                reason: "wall mount hole count must be >= 2".to_string(),
+            });
         }
         Ok(())
     }
@@ -120,6 +159,41 @@ impl MacStudioRackTemplateParams {
                 unit: ScalarUnit::Unitless,
             },
         )?;
+        params.set(
+            "wall_mount_enabled",
+            ScalarValue {
+                value: if self.wall_mount.enabled { 1.0 } else { 0.0 },
+                unit: ScalarUnit::Unitless,
+            },
+        )?;
+        params.set(
+            "wall_mount_hole_count",
+            ScalarValue {
+                value: f64::from(self.wall_mount.hole_count),
+                unit: ScalarUnit::Unitless,
+            },
+        )?;
+        params.set(
+            "wall_mount_hole_spacing_mm",
+            ScalarValue {
+                value: self.wall_mount.hole_spacing_mm,
+                unit: ScalarUnit::Millimeter,
+            },
+        )?;
+        params.set(
+            "wall_mount_hole_radius_mm",
+            ScalarValue {
+                value: self.wall_mount.hole_radius_mm,
+                unit: ScalarUnit::Millimeter,
+            },
+        )?;
+        params.set(
+            "wall_mount_bracket_thickness_mm",
+            ScalarValue {
+                value: self.wall_mount.bracket_thickness_mm,
+                unit: ScalarUnit::Millimeter,
+            },
+        )?;
         Ok(params)
     }
 }
@@ -150,6 +224,10 @@ pub fn generate_mac_studio_rack_template(
                     ("width_param".to_string(), "frame_width_mm".to_string()),
                     ("depth_param".to_string(), "frame_depth_mm".to_string()),
                     ("height_param".to_string(), "frame_height_mm".to_string()),
+                    (
+                        "thickness_param".to_string(),
+                        "wall_thickness_mm".to_string(),
+                    ),
                 ]),
             },
             FeatureNode {
@@ -173,6 +251,53 @@ pub fn generate_mac_studio_rack_template(
                 ]),
             },
             FeatureNode {
+                id: "feature.rack.wall_mount_bracket".to_string(),
+                name: "wall_mount_bracket".to_string(),
+                operation_key: "transform.v1".to_string(),
+                depends_on: vec!["feature.rack.base".to_string()],
+                params: BTreeMap::from([
+                    (
+                        "offset_param".to_string(),
+                        "wall_mount_bracket_thickness_mm".to_string(),
+                    ),
+                    ("enabled_param".to_string(), "wall_mount_enabled".to_string()),
+                ]),
+            },
+            FeatureNode {
+                id: "feature.rack.wall_mount_hole".to_string(),
+                name: "wall_mount_hole".to_string(),
+                operation_key: "cut.hole.v1".to_string(),
+                depends_on: vec!["feature.rack.wall_mount_bracket".to_string()],
+                params: BTreeMap::from([
+                    (
+                        "radius_param".to_string(),
+                        "wall_mount_hole_radius_mm".to_string(),
+                    ),
+                    (
+                        "depth_param".to_string(),
+                        "wall_mount_bracket_thickness_mm".to_string(),
+                    ),
+                    ("enabled_param".to_string(), "wall_mount_enabled".to_string()),
+                ]),
+            },
+            FeatureNode {
+                id: "feature.rack.mount_hole_pattern".to_string(),
+                name: "mount_hole_pattern".to_string(),
+                operation_key: "linear.pattern.v1".to_string(),
+                depends_on: vec!["feature.rack.wall_mount_hole".to_string()],
+                params: BTreeMap::from([
+                    (
+                        "count_param".to_string(),
+                        "wall_mount_hole_count".to_string(),
+                    ),
+                    (
+                        "spacing_param".to_string(),
+                        "wall_mount_hole_spacing_mm".to_string(),
+                    ),
+                    ("enabled_param".to_string(), "wall_mount_enabled".to_string()),
+                ]),
+            },
+            FeatureNode {
                 id: "feature.rack.corner_break".to_string(),
                 name: "corner_break".to_string(),
                 operation_key: "fillet.placeholder.v1".to_string(),
@@ -192,6 +317,16 @@ pub fn generate_mac_studio_rack_template(
         "rack_bay_pattern",
         "feature.rack.bay_pattern",
         "feature.rack.bay_pattern",
+    )?;
+    semantic_refs.register(
+        "wall_mount_bracket",
+        "feature.rack.wall_mount_bracket",
+        "feature.rack.wall_mount_bracket",
+    )?;
+    semantic_refs.register(
+        "mount_hole_pattern",
+        "feature.rack.mount_hole_pattern",
+        "feature.rack.mount_hole_pattern",
     )?;
     semantic_refs.register(
         "rack_corner_break",
@@ -267,8 +402,8 @@ mod tests {
     fn rack_template_rejects_invalid_bay_count() {
         let mut params = MacStudioRackTemplateParams::default();
         params.bay_count = 3;
-        let error = generate_mac_studio_rack_template(&params)
-            .expect_err("bay count other than 2 should fail");
+        let error =
+            generate_mac_studio_rack_template(&params).expect_err("bay count other than 2 should fail");
         assert!(error.to_string().contains("requires exactly 2 bays"));
     }
 
@@ -278,7 +413,36 @@ mod tests {
         let rack = generate_mac_studio_rack_template(&params).expect("template should generate");
         assert!(rack.semantic_refs.resolve("rack_outer_face").is_some());
         assert!(rack.semantic_refs.resolve("rack_bay_pattern").is_some());
+        assert!(rack.semantic_refs.resolve("mount_hole_pattern").is_some());
+        assert!(rack.semantic_refs.resolve("wall_mount_bracket").is_some());
         assert!(rack.semantic_refs.resolve("rack_corner_break").is_some());
+    }
+
+    #[test]
+    fn wall_mount_toggle_keeps_feature_ids_stable() {
+        let enabled = generate_mac_studio_rack_template(&MacStudioRackTemplateParams::default())
+            .expect("enabled template should generate");
+        let mut disabled_params = MacStudioRackTemplateParams::default();
+        disabled_params.wall_mount.enabled = false;
+        let disabled =
+            generate_mac_studio_rack_template(&disabled_params).expect("disabled template should generate");
+
+        let enabled_ids = enabled
+            .feature_graph
+            .nodes
+            .iter()
+            .map(|node| node.id.as_str())
+            .collect::<Vec<_>>();
+        let disabled_ids = disabled
+            .feature_graph
+            .nodes
+            .iter()
+            .map(|node| node.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(enabled_ids, disabled_ids);
+        assert!(enabled.semantic_refs.resolve("mount_hole_pattern").is_some());
+        assert!(disabled.semantic_refs.resolve("mount_hole_pattern").is_some());
     }
 
     fn openagents_unit_mm() -> crate::params::ScalarUnit {
