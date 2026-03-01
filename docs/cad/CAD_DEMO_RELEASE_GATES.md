@@ -2,6 +2,10 @@
 
 This checklist is the blocking release gate for the CAD demo milestone.
 
+Companion runbook for local/CI lane execution:
+
+- [`docs/cad/CAD_CODE_HEALTH.md`](/Users/christopherdavid/code/openagents/docs/cad/CAD_CODE_HEALTH.md)
+
 Command:
 
 ```bash

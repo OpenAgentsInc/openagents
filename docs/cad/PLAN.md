@@ -54,6 +54,14 @@ Implication for CAD:
 - `apps/autopilot-desktop` owns pane UX, orchestration, and Codex chat integration.
 - `crates/wgpui` only gets generic rendering/input primitives needed by any app.
 
+## 3.1) CAD Code Health Runbook
+
+All CAD implementation work in this plan is gated by the canonical runbook:
+
+- [`docs/cad/CAD_CODE_HEALTH.md`](/Users/christopherdavid/code/openagents/docs/cad/CAD_CODE_HEALTH.md)
+
+Use that runbook for formatting, CAD clippy policy lanes, release gates, and strict production hardening checks.
+
 ## 4) What We Borrow From `vcad` (and What We Don’t)
 
 Reviewed sources include:
