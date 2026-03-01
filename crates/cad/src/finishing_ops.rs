@@ -328,16 +328,16 @@ pub fn evaluate_fillet_feature(
         .source_min_thickness_mm
         .map(|value| (value * 0.45).max(1.0))
         .unwrap_or(12.0);
-    evaluate_finishing_value(
-        &op.feature_id,
-        &op.source_feature_id,
-        FILLET_OPERATION_KEY,
-        "fillet",
-        radius_mm,
+    evaluate_finishing_value(FinishingEvalRequest {
+        feature_id: &op.feature_id,
+        source_feature_id: &op.source_feature_id,
+        operation_key: FILLET_OPERATION_KEY,
+        operation_label: "fillet",
+        value_mm: radius_mm,
         risk_threshold_mm,
-        op.allow_fallback,
+        allow_fallback: op.allow_fallback,
         context,
-    )
+    })
 }
 
 pub fn evaluate_chamfer_feature(
@@ -352,16 +352,16 @@ pub fn evaluate_chamfer_feature(
         .source_min_thickness_mm
         .map(|value| (value * 0.40).max(0.8))
         .unwrap_or(10.0);
-    evaluate_finishing_value(
-        &op.feature_id,
-        &op.source_feature_id,
-        CHAMFER_OPERATION_KEY,
-        "chamfer",
-        distance_mm,
+    evaluate_finishing_value(FinishingEvalRequest {
+        feature_id: &op.feature_id,
+        source_feature_id: &op.source_feature_id,
+        operation_key: CHAMFER_OPERATION_KEY,
+        operation_label: "chamfer",
+        value_mm: distance_mm,
         risk_threshold_mm,
-        op.allow_fallback,
+        allow_fallback: op.allow_fallback,
         context,
-    )
+    })
 }
 
 pub fn evaluate_shell_feature(
@@ -377,55 +377,61 @@ pub fn evaluate_shell_feature(
         .source_min_thickness_mm
         .map(|value| (value * 0.35).max(0.8))
         .unwrap_or(6.0);
-    evaluate_finishing_value(
-        &op.feature_id,
-        &op.source_feature_id,
-        SHELL_OPERATION_KEY,
-        "shell",
-        thickness_mm,
+    evaluate_finishing_value(FinishingEvalRequest {
+        feature_id: &op.feature_id,
+        source_feature_id: &op.source_feature_id,
+        operation_key: SHELL_OPERATION_KEY,
+        operation_label: "shell",
+        value_mm: thickness_mm,
         risk_threshold_mm,
-        op.allow_fallback,
+        allow_fallback: op.allow_fallback,
         context,
-    )
+    })
 }
 
-fn evaluate_finishing_value(
-    feature_id: &str,
-    source_feature_id: &str,
-    operation_key: &str,
-    operation_label: &str,
+struct FinishingEvalRequest<'a> {
+    feature_id: &'a str,
+    source_feature_id: &'a str,
+    operation_key: &'a str,
+    operation_label: &'a str,
     value_mm: f64,
     risk_threshold_mm: f64,
     allow_fallback: bool,
-    context: &FinishingContext,
+    context: &'a FinishingContext,
+}
+
+fn evaluate_finishing_value(
+    request: FinishingEvalRequest<'_>,
 ) -> CadResult<FinishingFeatureResult> {
-    if !value_mm.is_finite() || value_mm <= 0.0 {
+    if !request.value_mm.is_finite() || request.value_mm <= 0.0 {
         return Err(CadError::EvalFailed {
             reason: format!(
                 "{}: {} value must be finite and > 0 (class={})",
-                operation_key,
-                operation_label,
+                request.operation_key,
+                request.operation_label,
                 FinishingFailureClass::InvalidInput.code()
             ),
         });
     }
-    if value_mm > risk_threshold_mm {
-        let failure_class = if operation_key == SHELL_OPERATION_KEY {
+    if request.value_mm > request.risk_threshold_mm {
+        let failure_class = if request.operation_key == SHELL_OPERATION_KEY {
             FinishingFailureClass::ZeroThicknessRisk
         } else {
             FinishingFailureClass::TopologyRisk
         };
-        if allow_fallback {
+        if request.allow_fallback {
             let fallback_message = format!(
                 "{operation_label} value {:.6}mm exceeded threshold {:.6}mm; fallback kept source geometry",
-                value_mm, risk_threshold_mm
+                request.value_mm,
+                request.risk_threshold_mm,
+                operation_label = request.operation_label
             );
             return Ok(FinishingFeatureResult {
-                feature_id: feature_id.to_string(),
-                source_feature_id: source_feature_id.to_string(),
-                operation_key: operation_key.to_string(),
+                feature_id: request.feature_id.to_string(),
+                source_feature_id: request.source_feature_id.to_string(),
+                operation_key: request.operation_key.to_string(),
                 status: FinishingStatus::FallbackKeptSource,
-                geometry_hash: context.source_geometry_hash.clone(),
+                geometry_hash: request.context.source_geometry_hash.clone(),
                 failure_classification: Some(failure_class),
                 fallback_message: Some(fallback_message.clone()),
                 remediation_hint: failure_class.remediation_hint().to_string(),
@@ -434,16 +440,19 @@ fn evaluate_finishing_value(
                     severity: CadWarningSeverity::Warning,
                     message: fallback_message,
                     remediation_hint: failure_class.remediation_hint().to_string(),
-                    semantic_refs: vec![format!("cad://feature/{feature_id}")],
+                    semantic_refs: vec![format!("cad://feature/{}", request.feature_id)],
                     metadata: BTreeMap::from([
-                        ("operation_key".to_string(), operation_key.to_string()),
+                        (
+                            "operation_key".to_string(),
+                            request.operation_key.to_string(),
+                        ),
                         (
                             "classification".to_string(),
                             failure_class.code().to_string(),
                         ),
                         (
                             "source_feature_id".to_string(),
-                            source_feature_id.to_string(),
+                            request.source_feature_id.to_string(),
                         ),
                     ]),
                 }],
@@ -452,10 +461,10 @@ fn evaluate_finishing_value(
         return Err(CadError::EvalFailed {
             reason: format!(
                 "{}: {} value {:.6}mm exceeded threshold {:.6}mm (class={}) remediation={}",
-                operation_key,
-                operation_label,
-                value_mm,
-                risk_threshold_mm,
+                request.operation_key,
+                request.operation_label,
+                request.value_mm,
+                request.risk_threshold_mm,
                 failure_class.code(),
                 failure_class.remediation_hint()
             ),
@@ -464,18 +473,18 @@ fn evaluate_finishing_value(
 
     let payload = format!(
         "{}|feature={}|source={}|src_hash={}|value_mm={:.6}|threshold={:.6}",
-        operation_key,
-        feature_id,
-        source_feature_id,
-        context.source_geometry_hash,
-        value_mm,
-        risk_threshold_mm
+        request.operation_key,
+        request.feature_id,
+        request.source_feature_id,
+        request.context.source_geometry_hash,
+        request.value_mm,
+        request.risk_threshold_mm
     );
     let geometry_hash = format!("{:016x}", fnv1a64(payload.as_bytes()));
     Ok(FinishingFeatureResult {
-        feature_id: feature_id.to_string(),
-        source_feature_id: source_feature_id.to_string(),
-        operation_key: operation_key.to_string(),
+        feature_id: request.feature_id.to_string(),
+        source_feature_id: request.source_feature_id.to_string(),
+        operation_key: request.operation_key.to_string(),
         status: FinishingStatus::Applied,
         geometry_hash,
         failure_classification: None,

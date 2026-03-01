@@ -388,7 +388,7 @@ fn canonical_anchor(anchor: &str, adjacency: &BTreeMap<String, BTreeSet<String>>
             continue;
         }
         if current < canonical {
-            canonical = current.clone();
+            canonical.clone_from(&current);
         }
         if let Some(neighbors) = adjacency.get(&current) {
             for neighbor in neighbors {

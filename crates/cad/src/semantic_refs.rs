@@ -132,7 +132,7 @@ impl CadSemanticRefRegistry {
                         entry.status = CadSemanticRefStatus::Valid;
                         receipt.retained = receipt.retained.saturating_add(1);
                     } else {
-                        entry.entity_id = entity_id.clone();
+                        entry.entity_id.clone_from(entity_id);
                         entry.status = CadSemanticRefStatus::Rebound;
                         receipt.rebound = receipt.rebound.saturating_add(1);
                     }

@@ -98,7 +98,9 @@ impl CadSelectionStore {
     pub fn set_filter(&mut self, filter: CadSelectionFilter) -> bool {
         let previous = self.state.clone();
         self.filter = filter;
-        self.state.selected.retain(|selection| filter.allows(selection.kind));
+        self.state
+            .selected
+            .retain(|selection| filter.allows(selection.kind));
         if self
             .state
             .primary
@@ -133,7 +135,9 @@ impl CadSelectionStore {
         let previous = self.state.clone();
         let selection = build_selection(kind, entity_id.into(), semantic_ref);
         self.state.primary = Some(selection.clone());
-        self.state.selected.retain(|item| item.selection_id != selection.selection_id);
+        self.state
+            .selected
+            .retain(|item| item.selection_id != selection.selection_id);
         self.state.selected.push(selection);
         self.canonicalize_state();
         self.bump_revision_if_changed(previous)
@@ -158,14 +162,21 @@ impl CadSelectionStore {
         {
             return false;
         }
-        self.state.selected.retain(|item| item.selection_id != selection.selection_id);
+        self.state
+            .selected
+            .retain(|item| item.selection_id != selection.selection_id);
         self.state.selected.push(selection);
         self.canonicalize_state();
         self.bump_revision_if_changed(previous)
     }
 
     pub fn secondary(&self) -> Vec<CadSelection> {
-        let Some(primary_id) = self.state.primary.as_ref().map(|selection| &selection.selection_id) else {
+        let Some(primary_id) = self
+            .state
+            .primary
+            .as_ref()
+            .map(|selection| &selection.selection_id)
+        else {
             return self.state.selected.clone();
         };
         self.state
@@ -195,7 +206,7 @@ impl CadSelectionStore {
                     continue;
                 };
                 if mapped_entity != &current.entity_id {
-                    current.entity_id = mapped_entity.clone();
+                    current.entity_id.clone_from(mapped_entity);
                     rebound_count = rebound_count.saturating_add(1);
                 }
             }
@@ -347,7 +358,10 @@ mod tests {
 
         let state = store.state();
         assert_eq!(
-            state.primary.as_ref().map(|selection| selection.selection_id.as_str()),
+            state
+                .primary
+                .as_ref()
+                .map(|selection| selection.selection_id.as_str()),
             Some("sel:face:rack_outer_face")
         );
         assert_eq!(state.selected.len(), 3);
@@ -438,7 +452,11 @@ mod tests {
         assert_eq!(receipt.kept_count, 2);
         assert!(receipt.next_revision > previous_revision);
         assert_eq!(
-            store.state().primary.as_ref().map(|selection| selection.entity_id.as_str()),
+            store
+                .state()
+                .primary
+                .as_ref()
+                .map(|selection| selection.entity_id.as_str()),
             Some("face.41")
         );
     }
@@ -459,7 +477,11 @@ mod tests {
         assert_eq!(receipt.dropped_count, 1);
         assert_eq!(receipt.kept_count, 1);
         assert_eq!(
-            store.state().primary.as_ref().map(|selection| selection.kind),
+            store
+                .state()
+                .primary
+                .as_ref()
+                .map(|selection| selection.kind),
             Some(CadSelectionKind::Body)
         );
         assert_eq!(store.state().selected.len(), 1);

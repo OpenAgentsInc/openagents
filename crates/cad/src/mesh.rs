@@ -8,15 +8,10 @@ use crate::{CadError, CadResult};
 pub const CAD_MESH_BINARY_CONTRACT_VERSION: u16 = 1;
 
 /// Primitive topology emitted by CAD mesh payloads.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub enum CadMeshTopology {
+    #[default]
     Triangles,
-}
-
-impl Default for CadMeshTopology {
-    fn default() -> Self {
-        Self::Triangles
-    }
 }
 
 /// Axis-aligned mesh bounds in canonical units (millimeters).
@@ -159,7 +154,7 @@ impl CadMeshPayload {
                 reason: "mesh payload must include triangle indices".to_string(),
             });
         }
-        if self.triangle_indices.len() % 3 != 0 {
+        if !self.triangle_indices.len().is_multiple_of(3) {
             return Err(CadError::InvalidPrimitive {
                 reason: format!(
                     "triangle index count {} must be divisible by 3",
@@ -177,7 +172,10 @@ impl CadMeshPayload {
 
         let mut material_slots = BTreeSet::<u16>::new();
         for material in &self.material_slots {
-            if !material.base_color_rgba.iter().all(|value| value.is_finite())
+            if !material
+                .base_color_rgba
+                .iter()
+                .all(|value| value.is_finite())
                 || !material.roughness.is_finite()
                 || !material.metallic.is_finite()
             {
@@ -265,7 +263,13 @@ impl CadMeshPayload {
             material.append_le_bytes(&mut material_bytes);
         }
 
-        let deterministic_hash = deterministic_mesh_hash(self, &vertex_bytes, &index_bytes, &edge_bytes, &material_bytes);
+        let deterministic_hash = deterministic_mesh_hash(
+            self,
+            &vertex_bytes,
+            &index_bytes,
+            &edge_bytes,
+            &material_bytes,
+        );
         Ok(CadMeshBinaryPayload {
             contract_version: CAD_MESH_BINARY_CONTRACT_VERSION,
             vertex_bytes,
@@ -434,7 +438,10 @@ mod tests {
         assert_eq!(encoded_a, encoded_b);
         assert_eq!(encoded_a.vertex_bytes.len(), 3 * CadMeshVertex::BINARY_SIZE);
         assert_eq!(encoded_a.index_bytes.len(), 3 * 4);
-        assert_eq!(encoded_a.edge_bytes.len(), 2 * CadMeshEdgeSegment::BINARY_SIZE);
+        assert_eq!(
+            encoded_a.edge_bytes.len(),
+            2 * CadMeshEdgeSegment::BINARY_SIZE
+        );
         assert_eq!(
             encoded_a.material_bytes.len(),
             CadMeshMaterialSlot::BINARY_SIZE

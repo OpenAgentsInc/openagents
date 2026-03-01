@@ -1121,9 +1121,11 @@ impl Default for CadDemoPaneState {
             document_id.clone(),
             0,
             Some(initial_variant_id.clone()),
-            "CAD document created",
-            format!("session={} document={document_id}", session_id),
-            Some("document-created".to_string()),
+            openagents_cad::events::CadEventMessage::new(
+                "CAD document created",
+                format!("session={} document={document_id}", session_id),
+            )
+            .with_key("document-created"),
         );
         Self {
             load_state: PaneLoadState::Ready,
