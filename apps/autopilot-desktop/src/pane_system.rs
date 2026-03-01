@@ -10,7 +10,10 @@ use crate::pane_registry::pane_spec;
 use crate::panes::{
     chat as chat_pane, relay_connections as relay_connections_pane, wallet as wallet_pane,
 };
-use crate::render::{logical_size, sidebar_go_online_button_bounds, sidebar_handle_bounds};
+use crate::render::{
+    logical_size, sidebar_go_online_button_bounds, sidebar_handle_bounds,
+    wallet_balance_chip_bounds,
+};
 use crate::spark_pane::{self, CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
 
 pub const PANE_TITLE_HEIGHT: f32 = 28.0;
@@ -666,6 +669,11 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
 
     let go_online_bounds = sidebar_go_online_button_bounds(state);
     if go_online_bounds.size.width > 0.0 && go_online_bounds.contains(point) {
+        return CursorIcon::Pointer;
+    }
+
+    let wallet_bounds = wallet_balance_chip_bounds(state);
+    if wallet_bounds.size.width > 0.0 && wallet_bounds.contains(point) {
         return CursorIcon::Pointer;
     }
 

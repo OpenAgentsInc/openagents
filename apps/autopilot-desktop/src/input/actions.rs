@@ -2,53 +2,97 @@ use super::*;
 
 pub(super) fn run_chat_submit_action(state: &mut crate::app_state::RenderState) -> bool {
     let prompt = state.chat_inputs.composer.get_value().trim().to_string();
+    let prompt_chars = prompt.chars().count();
     if prompt.is_empty() {
         state.autopilot_chat.last_error = Some("Prompt cannot be empty".to_string());
         return true;
     }
-
-    const LOCAL_THREAD_ID: &str = "autopilot-chat-local";
-    const DUMMY_REPLY: &str = "Autopilot Chat demo response: message received.";
-
-    if state.autopilot_chat.active_thread_id.is_none() {
-        state
-            .autopilot_chat
-            .ensure_thread(LOCAL_THREAD_ID.to_string());
-        state
-            .autopilot_chat
-            .set_thread_name(LOCAL_THREAD_ID, Some("Autopilot Chat".to_string()));
-        state
-            .autopilot_chat
-            .set_thread_status(LOCAL_THREAD_ID, Some("local".to_string()));
-    }
+    let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() else {
+        state.autopilot_chat.last_error =
+            Some("No active thread yet. Wait for Codex lane readiness.".to_string());
+        return true;
+    };
 
     state.chat_inputs.composer.set_value(String::new());
-    state.autopilot_chat.submit_prompt(prompt);
+    state.autopilot_chat.submit_prompt(prompt.clone());
 
-    let assistant_message_id = state.autopilot_chat.active_assistant_message_id;
-    if let Some(message_id) = assistant_message_id {
-        if let Some(message) = state
-            .autopilot_chat
-            .messages
-            .iter_mut()
-            .find(|message| message.id == message_id)
-        {
-            message.status = crate::app_state::AutopilotMessageStatus::Done;
-            message.content = DUMMY_REPLY.to_string();
-            message.structured = None;
-        }
+    let selected_skill = state
+        .skill_registry
+        .selected_skill_index
+        .and_then(|index| state.skill_registry.discovered_skills.get(index))
+        .map(|skill| (skill.name.as_str(), skill.path.as_str(), skill.enabled));
+    let (input, skill_error) = assemble_chat_turn_input(prompt, selected_skill);
+    if let Some(skill_error) = skill_error {
+        state.autopilot_chat.last_error = Some(skill_error);
+    }
+    let model_override = state.autopilot_chat.selected_model_override();
+    let model_label = model_override.as_deref().unwrap_or("server-default");
+
+    let resume_target = state
+        .autopilot_chat
+        .thread_metadata
+        .get(&thread_id)
+        .cloned();
+    let resume_path = if state.codex_lane_config.experimental_api {
+        resume_target.as_ref().and_then(|value| value.path.clone())
+    } else {
+        None
+    };
+    let resume_command = crate::codex_lane::CodexLaneCommand::ThreadResume(ThreadResumeParams {
+        thread_id: thread_id.clone(),
+        model: None,
+        model_provider: None,
+        cwd: resume_target.as_ref().and_then(|value| value.cwd.clone()),
+        approval_policy: None,
+        sandbox: None,
+        path: resume_path.clone().map(std::path::PathBuf::from),
+    });
+    tracing::info!(
+        "codex turn/start preflight resume thread_id={} path={:?}",
+        thread_id,
+        resume_path
+    );
+    if let Err(error) = state.queue_codex_command(resume_command) {
         state
             .autopilot_chat
-            .pending_assistant_message_ids
-            .retain(|queued_id| *queued_id != message_id);
+            .mark_pending_turn_dispatch_failed(format!("thread/resume queue failed: {error}"));
+        return true;
     }
 
-    state.autopilot_chat.active_assistant_message_id = None;
-    state.autopilot_chat.active_turn_id = None;
-    state
-        .autopilot_chat
-        .set_turn_status(Some("completed".to_string()));
-    state.autopilot_chat.last_error = None;
+    let command = crate::codex_lane::CodexLaneCommand::TurnStart(TurnStartParams {
+        thread_id: thread_id.clone(),
+        input,
+        cwd: None,
+        approval_policy: None,
+        sandbox_policy: None,
+        model: model_override.clone(),
+        effort: None,
+        summary: None,
+        personality: None,
+        output_schema: None,
+        collaboration_mode: None,
+    });
+
+    tracing::info!(
+        "codex turn/start request thread_id={} model={} chars={}",
+        thread_id,
+        model_label,
+        prompt_chars
+    );
+    match state.queue_codex_command(command) {
+        Ok(seq) => {
+            tracing::info!(
+                "codex turn/start queued seq={} thread_id={}",
+                seq,
+                thread_id
+            );
+        }
+        Err(error) => {
+            state
+                .autopilot_chat
+                .mark_pending_turn_dispatch_failed(error);
+        }
+    }
     true
 }
 

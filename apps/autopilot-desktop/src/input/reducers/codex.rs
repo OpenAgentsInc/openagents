@@ -1,8 +1,8 @@
 use crate::app_state::{PaneLoadState, RenderState};
 use crate::codex_lane::CodexLaneCommand;
 use crate::codex_lane::{
-    CodexLaneCommandKind, CodexLaneCommandResponse, CodexLaneCommandStatus, CodexLaneNotification,
-    CodexLaneSnapshot, CodexThreadTranscriptRole,
+    CodexLaneCommandKind, CodexLaneCommandResponse, CodexLaneCommandStatus, CodexLaneLifecycle,
+    CodexLaneNotification, CodexLaneSnapshot, CodexThreadTranscriptRole,
 };
 use codex_client::{SkillsListExtraRootsForCwd, SkillsListParams, ThreadStartParams};
 
@@ -10,8 +10,10 @@ pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: CodexLaneSn
     state
         .autopilot_chat
         .set_connection_status(snapshot.lifecycle.label().to_string());
-    if let Some(thread_id) = snapshot.active_thread_id.as_ref() {
-        state.autopilot_chat.ensure_thread(thread_id.clone());
+    if snapshot.lifecycle != CodexLaneLifecycle::Ready
+        && state.autopilot_chat.startup_new_thread_bootstrap_pending
+    {
+        state.autopilot_chat.startup_new_thread_bootstrap_sent = false;
     }
     if let Some(error) = snapshot.last_error.as_ref() {
         tracing::info!("codex lane snapshot error: {}", error);
@@ -109,7 +111,10 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
                     "Selected thread is missing a rollout on disk; removed stale entry and started a new thread."
                         .to_string(),
                 );
-                queue_new_thread(state);
+                queue_new_thread(
+                    state,
+                    "Failed to start replacement thread after stale resume",
+                );
             } else {
                 state.autopilot_chat.last_error = Some(message);
             }
@@ -316,7 +321,7 @@ fn queue_apps_list_refresh(state: &mut RenderState, force_refetch: bool) {
     }
 }
 
-fn queue_new_thread(state: &mut RenderState) {
+fn queue_new_thread(state: &mut RenderState, error_prefix: &str) -> bool {
     let cwd = std::env::current_dir().ok();
     let command = CodexLaneCommand::ThreadStart(ThreadStartParams {
         model: state.autopilot_chat.selected_model_override(),
@@ -326,10 +331,10 @@ fn queue_new_thread(state: &mut RenderState) {
         sandbox: None,
     });
     if let Err(error) = state.queue_codex_command(command) {
-        state.autopilot_chat.last_error = Some(format!(
-            "Failed to start replacement thread after stale resume: {error}"
-        ));
+        state.autopilot_chat.last_error = Some(format!("{error_prefix}: {error}"));
+        return false;
     }
+    true
 }
 
 pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLaneNotification) {
@@ -828,40 +833,52 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             }
         }
         CodexLaneNotification::ThreadSelected { thread_id } => {
-            state.autopilot_chat.ensure_thread(thread_id.clone());
-            let metadata = state
-                .autopilot_chat
-                .thread_metadata
-                .get(&thread_id)
-                .cloned();
-            let resume_path = if state.codex_lane_config.experimental_api {
-                metadata.as_ref().and_then(|value| value.path.clone())
+            if state.autopilot_chat.startup_new_thread_bootstrap_pending {
+                if !state.autopilot_chat.startup_new_thread_bootstrap_sent
+                    && queue_new_thread(state, "Failed to start initial Autopilot Chat thread")
+                {
+                    state.autopilot_chat.startup_new_thread_bootstrap_sent = true;
+                }
+                tracing::info!(
+                    "codex thread/selected ignored during startup bootstrap thread_id={}",
+                    thread_id
+                );
             } else {
-                None
-            };
-            if let Err(error) = state.queue_codex_command(CodexLaneCommand::ThreadResume(
-                codex_client::ThreadResumeParams {
-                    thread_id: thread_id.clone(),
-                    model: None,
-                    model_provider: None,
-                    cwd: metadata.as_ref().and_then(|value| value.cwd.clone()),
-                    approval_policy: None,
-                    sandbox: None,
-                    path: resume_path.map(std::path::PathBuf::from),
-                },
-            )) {
-                state.autopilot_chat.last_error = Some(error);
-            }
-            state
-                .autopilot_chat
-                .set_active_thread_transcript(&thread_id, Vec::new());
-            if let Err(error) = state.queue_codex_command(CodexLaneCommand::ThreadRead(
-                codex_client::ThreadReadParams {
-                    thread_id,
-                    include_turns: true,
-                },
-            )) {
-                state.autopilot_chat.last_error = Some(error);
+                state.autopilot_chat.ensure_thread(thread_id.clone());
+                let metadata = state
+                    .autopilot_chat
+                    .thread_metadata
+                    .get(&thread_id)
+                    .cloned();
+                let resume_path = if state.codex_lane_config.experimental_api {
+                    metadata.as_ref().and_then(|value| value.path.clone())
+                } else {
+                    None
+                };
+                if let Err(error) = state.queue_codex_command(CodexLaneCommand::ThreadResume(
+                    codex_client::ThreadResumeParams {
+                        thread_id: thread_id.clone(),
+                        model: None,
+                        model_provider: None,
+                        cwd: metadata.as_ref().and_then(|value| value.cwd.clone()),
+                        approval_policy: None,
+                        sandbox: None,
+                        path: resume_path.map(std::path::PathBuf::from),
+                    },
+                )) {
+                    state.autopilot_chat.last_error = Some(error);
+                }
+                state
+                    .autopilot_chat
+                    .set_active_thread_transcript(&thread_id, Vec::new());
+                if let Err(error) = state.queue_codex_command(CodexLaneCommand::ThreadRead(
+                    codex_client::ThreadReadParams {
+                        thread_id,
+                        include_turns: true,
+                    },
+                )) {
+                    state.autopilot_chat.last_error = Some(error);
+                }
             }
         }
         CodexLaneNotification::ThreadStarted { thread_id } => {
@@ -869,6 +886,8 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             state
                 .autopilot_chat
                 .set_active_thread_transcript(&thread_id, Vec::new());
+            state.autopilot_chat.startup_new_thread_bootstrap_pending = false;
+            state.autopilot_chat.startup_new_thread_bootstrap_sent = false;
             state.autopilot_chat.last_error = None;
         }
         CodexLaneNotification::ThreadStatusChanged { thread_id, status } => {

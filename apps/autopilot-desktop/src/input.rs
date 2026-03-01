@@ -12,7 +12,7 @@ use codex_client::{
     ThreadRealtimeAppendTextParams, ThreadRealtimeStartParams, ThreadRealtimeStopParams,
     ThreadResumeParams, ThreadRollbackParams, ThreadSetNameParams, ThreadStartParams,
     ThreadUnarchiveParams, ThreadUnsubscribeParams, ToolRequestUserInputAnswer,
-    ToolRequestUserInputResponse, UserInput, WindowsSandboxSetupStartParams,
+    ToolRequestUserInputResponse, TurnStartParams, UserInput, WindowsSandboxSetupStartParams,
 };
 use nostr::regenerate_identity;
 use std::collections::HashMap;
@@ -54,6 +54,7 @@ use crate::pane_system::{
 use crate::panes::chat as chat_pane;
 use crate::render::{
     logical_size, render_frame, sidebar_go_online_button_bounds, sidebar_handle_bounds,
+    wallet_balance_chip_bounds,
 };
 use crate::runtime_lanes::{
     AcCreditCommand, RuntimeCommandErrorClass, RuntimeCommandResponse, RuntimeCommandStatus,
@@ -416,6 +417,15 @@ fn dispatch_mouse_down(
             && go_online_bounds.contains(point)
             && run_pane_hit_action(state, PaneHitAction::GoOnlineToggle)
         {
+            return true;
+        }
+    }
+
+    if button == MouseButton::Left {
+        let wallet_bounds = wallet_balance_chip_bounds(state);
+        if wallet_bounds.size.width > 0.0 && wallet_bounds.contains(point) {
+            PaneController::create_for_kind(state, crate::app_state::PaneKind::SparkWallet);
+            queue_spark_command(state, SparkWalletCommand::Refresh);
             return true;
         }
     }
