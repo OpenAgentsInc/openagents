@@ -222,3 +222,27 @@ Current pane badge mapping:
 - Chat, Codex Account, Codex Models, Codex Config, Codex MCP, Codex Apps, Codex Labs, Codex Diagnostics, Go Online, Provider Status, Relay Connections, Sync Health, Network Requests, Starter Jobs, Activity Feed, Alerts and Recovery, Settings, Earnings Scoreboard, Job Inbox, Active Job, Job History, Agent Profile and State, Agent Schedule and Tick, Trajectory Audit, Agent Skill Registry, Skill Trust and Revocation, Credit Desk, Credit Settlement Ledger, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
 - Wallet worker updates are shared across wallet-related panes.
 - When a new invoice is created in the wallet pane, that invoice is prefilled into send/payment request inputs.
+
+## Codex Tool Control
+
+Panes and CAD can be manipulated through Codex `item/tool/call` requests in the `openagents.*` namespace.
+
+Supported tool names:
+
+- `openagents.pane.list`
+- `openagents.pane.open`
+- `openagents.pane.focus`
+- `openagents.pane.close`
+- `openagents.pane.set_input`
+- `openagents.pane.action`
+- `openagents.cad.intent`
+- `openagents.cad.action`
+
+Execution behavior:
+
+- `openagents.*` calls are auto-executed by desktop and auto-responded through Codex lane.
+- Non-OpenAgents tool calls remain pending for manual response.
+
+Full contract and examples:
+
+- [`docs/codex/CODEX_PANE_CAD_TOOLING.md`](/Users/christopherdavid/code/openagents/docs/codex/CODEX_PANE_CAD_TOOLING.md)
