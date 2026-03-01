@@ -2276,7 +2276,74 @@ mod tests {
                         "state_revision": state.document_revision,
                         "active_variant_id": state.active_variant_id,
                         "last_receipt": state.last_rebuild_receipt.as_ref().map(receipt_json),
+                        "has_mesh_payload": state.last_good_mesh_payload.is_some(),
+                        "last_good_mesh_id": state.last_good_mesh_id,
+                        "pending_rebuild_request_id": state.pending_rebuild_request_id,
                         "warning_codes": warning_codes,
+                    })
+                }
+                "dimension_edit" => {
+                    let dimension_index = required_u64(step, "index", &step_path) as usize;
+                    let value = required_str(step, "value", &step_path);
+                    let previous_value_mm = state
+                        .dimensions
+                        .get(dimension_index)
+                        .map(|dimension| dimension.value_mm)
+                        .unwrap_or_default();
+                    assert!(
+                        apply_cad_demo_action(
+                            &mut state,
+                            CadDemoPaneAction::StartDimensionEdit(dimension_index)
+                        ),
+                        "dimension_edit step should open edit state for index {dimension_index}"
+                    );
+                    for _ in 0..24 {
+                        let _ = apply_cad_demo_action(
+                            &mut state,
+                            CadDemoPaneAction::DimensionInputBackspace,
+                        );
+                    }
+                    for ch in value.chars() {
+                        assert!(
+                            apply_cad_demo_action(&mut state, CadDemoPaneAction::DimensionInputChar(ch)),
+                            "dimension_edit should accept character '{}'",
+                            ch
+                        );
+                    }
+                    assert!(
+                        apply_cad_demo_action(&mut state, CadDemoPaneAction::DimensionInputCommit),
+                        "dimension_edit should commit for index {dimension_index}"
+                    );
+                    wait_for_receipt(&mut state);
+                    let updated_value_mm = state
+                        .dimensions
+                        .get(dimension_index)
+                        .map(|dimension| dimension.value_mm)
+                        .unwrap_or_default();
+                    json!({
+                        "status": "edited",
+                        "dimension_index": dimension_index,
+                        "state_revision": state.document_revision,
+                        "previous_value_mm": previous_value_mm,
+                        "updated_value_mm": updated_value_mm,
+                        "last_receipt": state.last_rebuild_receipt.as_ref().map(receipt_json),
+                        "has_mesh_payload": state.last_good_mesh_payload.is_some(),
+                        "last_good_mesh_id": state.last_good_mesh_id,
+                        "pending_rebuild_request_id": state.pending_rebuild_request_id,
+                    })
+                }
+                "select_timeline_row" => {
+                    let row_index = required_u64(step, "index", &step_path) as usize;
+                    assert!(
+                        apply_cad_demo_action(&mut state, CadDemoPaneAction::SelectTimelineRow(row_index)),
+                        "select_timeline_row should succeed for index {row_index}"
+                    );
+                    json!({
+                        "status": "selected",
+                        "row_index": row_index,
+                        "timeline_selected_index": state.timeline_selected_index,
+                        "focused_geometry_ref": state.focused_geometry_ref,
+                        "state_revision": state.document_revision,
                     })
                 }
                 "inject_rebuild_failure" => {
@@ -3357,6 +3424,120 @@ mod tests {
                 .and_then(Value::as_u64)
                 .unwrap_or(u64::MAX)
                 < 800
+        );
+    }
+
+    #[test]
+    fn cad_demo_20s_reliability_script_has_no_stalls_flicker_or_state_loss() {
+        let (state, report) =
+            execute_headless_cad_script_fixture("cad_demo_reliability_20s_script.json");
+
+        let steps = report
+            .get("steps")
+            .and_then(Value::as_array)
+            .expect("reliability report should include steps");
+        assert!(
+            !steps.is_empty(),
+            "reliability report should include scripted steps"
+        );
+
+        let mut previous_revision = 0u64;
+        for (index, step) in steps.iter().enumerate() {
+            let duration_ms = step
+                .get("duration_ms")
+                .and_then(Value::as_u64)
+                .unwrap_or_default();
+            assert!(
+                duration_ms <= 2500,
+                "no-stall criteria failed at step {index}: duration_ms={duration_ms}"
+            );
+
+            let result = step.get("result").expect("step result should exist");
+            let status = result
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            assert!(
+                !status.starts_with("rejected"),
+                "state-loss criteria failed at step {index}: status={status}"
+            );
+            assert!(
+                status != "failure_injected",
+                "reliability script should not inject explicit failures"
+            );
+
+            let revision = result
+                .get("state_revision")
+                .and_then(Value::as_u64)
+                .unwrap_or(previous_revision);
+            assert!(
+                revision >= previous_revision,
+                "state revision regressed at step {index}: {} -> {}",
+                previous_revision,
+                revision
+            );
+            previous_revision = revision;
+
+            let kind = step
+                .get("kind")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if kind == "cycle_variant" || kind == "dimension_edit" {
+                assert_eq!(
+                    result.get("has_mesh_payload").and_then(Value::as_bool),
+                    Some(true),
+                    "flicker criteria failed at step {index}: mesh payload missing"
+                );
+                assert!(
+                    result
+                        .get("last_good_mesh_id")
+                        .and_then(Value::as_str)
+                        .map(|value| !value.trim().is_empty())
+                        .unwrap_or(false),
+                    "flicker criteria failed at step {index}: last_good_mesh_id missing"
+                );
+                assert_eq!(
+                    result.get("pending_rebuild_request_id"),
+                    Some(&Value::Null),
+                    "flicker criteria failed at step {index}: pending rebuild should be cleared"
+                );
+                assert!(
+                    result
+                        .get("last_receipt")
+                        .and_then(Value::as_object)
+                        .is_some(),
+                    "state-loss criteria failed at step {index}: rebuild receipt missing"
+                );
+            }
+        }
+
+        let final_snapshot = report
+            .get("final")
+            .and_then(Value::as_object)
+            .expect("reliability report should include final snapshot");
+        assert_eq!(
+            final_snapshot
+                .get("last_error")
+                .cloned()
+                .unwrap_or(Value::Null),
+            Value::Null,
+            "reliability run should finish without last_error"
+        );
+        assert_eq!(
+            final_snapshot
+                .get("receipts")
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(4),
+            "reliability run should complete four deterministic rebuild receipts"
+        );
+
+        let perf_snapshot =
+            cad_performance_snapshot_from_state(&state, "cad_demo_reliability_20s_script.json");
+        assert_eq!(
+            perf_snapshot.get("all_gates_pass").and_then(Value::as_bool),
+            Some(true),
+            "budget regression criteria failed during reliability run"
         );
     }
 }

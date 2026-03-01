@@ -10,6 +10,7 @@ This harness runs deterministic `CadIntent` and pane-action sequences against
 - Script fixtures:
   - `apps/autopilot-desktop/tests/scripts/cad_demo_canonical_script.json`
   - `apps/autopilot-desktop/tests/scripts/cad_demo_failure_paths_script.json`
+  - `apps/autopilot-desktop/tests/scripts/cad_demo_reliability_20s_script.json`
 
 ## Script Format
 
@@ -78,3 +79,5 @@ Performance suite dependency:
 - `cad_demo_canonical_script.json` is also consumed by
   `cad_performance_benchmark_suite_maps_gate_a_b_e_thresholds` for Gate A/B/E
   benchmark checks.
+- `cad_demo_reliability_20s_script.json` is consumed by
+  `cad_demo_20s_reliability_script_has_no_stalls_flicker_or_state_loss`.
