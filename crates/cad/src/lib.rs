@@ -13,6 +13,7 @@ pub mod feature_graph;
 pub mod features;
 pub mod format;
 pub mod history;
+pub mod intent;
 pub mod kernel;
 pub mod materials;
 pub mod measurement;

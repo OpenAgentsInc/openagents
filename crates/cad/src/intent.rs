@@ -1,0 +1,435 @@
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value, json};
+
+use crate::{CadError, CadResult};
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct CadIntentValidationError {
+    pub code: String,
+    pub intent: Option<String>,
+    pub field: Option<String>,
+    pub message: String,
+}
+
+impl CadIntentValidationError {
+    fn new(
+        code: impl Into<String>,
+        intent: Option<String>,
+        field: Option<String>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            code: code.into(),
+            intent,
+            field,
+            message: message.into(),
+        }
+    }
+
+    pub fn to_cad_error(&self) -> CadError {
+        CadError::ParseFailed {
+            reason: format!("{}: {}", self.code, self.message),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum CadAdjustOperation {
+    #[serde(rename = "set")]
+    Set,
+    #[serde(rename = "increase")]
+    Increase,
+    #[serde(rename = "decrease")]
+    Decrease,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateRackSpecIntent {
+    pub units: String,
+    pub material: String,
+    pub airflow: String,
+    pub mount_type: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GenerateVariantsIntent {
+    pub count: u8,
+    pub objective_set: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SetObjectiveIntent {
+    pub objective: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AdjustParameterIntent {
+    pub parameter: String,
+    pub operation: CadAdjustOperation,
+    pub value: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SetMaterialIntent {
+    pub material_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AddVentPatternIntent {
+    pub pattern: String,
+    pub size_mm: f64,
+    pub density: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SelectIntent {
+    pub selector: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CompareVariantsIntent {
+    pub variant_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExportIntent {
+    pub format: String,
+    pub variant_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum CadIntent {
+    CreateRackSpec(CreateRackSpecIntent),
+    GenerateVariants(GenerateVariantsIntent),
+    SetObjective(SetObjectiveIntent),
+    AdjustParameter(AdjustParameterIntent),
+    SetMaterial(SetMaterialIntent),
+    AddVentPattern(AddVentPatternIntent),
+    Select(SelectIntent),
+    CompareVariants(CompareVariantsIntent),
+    Export(ExportIntent),
+}
+
+impl CadIntent {
+    pub fn intent_name(&self) -> &'static str {
+        match self {
+            Self::CreateRackSpec(_) => "CreateRackSpec",
+            Self::GenerateVariants(_) => "GenerateVariants",
+            Self::SetObjective(_) => "SetObjective",
+            Self::AdjustParameter(_) => "AdjustParameter",
+            Self::SetMaterial(_) => "SetMaterial",
+            Self::AddVentPattern(_) => "AddVentPattern",
+            Self::Select(_) => "Select",
+            Self::CompareVariants(_) => "CompareVariants",
+            Self::Export(_) => "Export",
+        }
+    }
+}
+
+pub fn allowed_intent_names() -> [&'static str; 9] {
+    [
+        "CreateRackSpec",
+        "GenerateVariants",
+        "SetObjective",
+        "AdjustParameter",
+        "SetMaterial",
+        "AddVentPattern",
+        "Select",
+        "CompareVariants",
+        "Export",
+    ]
+}
+
+pub fn cad_intent_json_schema() -> Value {
+    json!({
+      "schema_version": 1,
+      "type": "object",
+      "required": ["intent"],
+      "allowed_intents": allowed_intent_names(),
+      "intents": {
+        "CreateRackSpec": {"required": ["units", "material", "airflow", "mount_type"]},
+        "GenerateVariants": {"required": ["count", "objective_set"]},
+        "SetObjective": {"required": ["objective"]},
+        "AdjustParameter": {"required": ["parameter", "operation", "value"]},
+        "SetMaterial": {"required": ["material_id"]},
+        "AddVentPattern": {"required": ["pattern", "size_mm", "density"]},
+        "Select": {"required": ["selector"]},
+        "CompareVariants": {"required": ["variant_ids"]},
+        "Export": {"required": ["format", "variant_id"]}
+      }
+    })
+}
+
+pub fn parse_cad_intent_json(payload: &str) -> Result<CadIntent, CadIntentValidationError> {
+    let root: Value = serde_json::from_str(payload).map_err(|error| {
+        CadIntentValidationError::new(
+            "CAD-INTENT-INVALID-JSON",
+            None,
+            None,
+            format!("invalid json payload: {error}"),
+        )
+    })?;
+    let Some(object) = root.as_object() else {
+        return Err(CadIntentValidationError::new(
+            "CAD-INTENT-INVALID-SHAPE",
+            None,
+            None,
+            "payload must be a JSON object",
+        ));
+    };
+    let Some(intent_name) = object.get("intent").and_then(Value::as_str) else {
+        return Err(CadIntentValidationError::new(
+            "CAD-INTENT-MISSING-INTENT",
+            None,
+            Some("intent".to_string()),
+            "payload requires string field 'intent'",
+        ));
+    };
+
+    let content = strip_intent_field(object);
+    let parsed = match intent_name {
+        "CreateRackSpec" => parse_payload::<CreateRackSpecIntent>(intent_name, content)
+            .map(CadIntent::CreateRackSpec),
+        "GenerateVariants" => parse_payload::<GenerateVariantsIntent>(intent_name, content)
+            .map(CadIntent::GenerateVariants),
+        "SetObjective" => parse_payload::<SetObjectiveIntent>(intent_name, content)
+            .map(CadIntent::SetObjective),
+        "AdjustParameter" => parse_payload::<AdjustParameterIntent>(intent_name, content)
+            .map(CadIntent::AdjustParameter),
+        "SetMaterial" => parse_payload::<SetMaterialIntent>(intent_name, content)
+            .map(CadIntent::SetMaterial),
+        "AddVentPattern" => parse_payload::<AddVentPatternIntent>(intent_name, content)
+            .map(CadIntent::AddVentPattern),
+        "Select" => parse_payload::<SelectIntent>(intent_name, content).map(CadIntent::Select),
+        "CompareVariants" => parse_payload::<CompareVariantsIntent>(intent_name, content)
+            .map(CadIntent::CompareVariants),
+        "Export" => parse_payload::<ExportIntent>(intent_name, content).map(CadIntent::Export),
+        _ => Err(CadIntentValidationError::new(
+            "CAD-INTENT-UNKNOWN-OP",
+            Some(intent_name.to_string()),
+            Some("intent".to_string()),
+            format!(
+                "unsupported intent '{}'; allowed intents: {}",
+                intent_name,
+                allowed_intent_names().join(", ")
+            ),
+        )),
+    }?;
+    validate_cad_intent(&parsed)?;
+    Ok(parsed)
+}
+
+pub fn parse_cad_intent_json_cad_result(payload: &str) -> CadResult<CadIntent> {
+    parse_cad_intent_json(payload).map_err(|error| error.to_cad_error())
+}
+
+pub fn validate_cad_intent(intent: &CadIntent) -> Result<(), CadIntentValidationError> {
+    match intent {
+        CadIntent::CreateRackSpec(payload) => {
+            validate_non_empty("CreateRackSpec", "units", &payload.units)?;
+            validate_non_empty("CreateRackSpec", "material", &payload.material)?;
+            validate_non_empty("CreateRackSpec", "airflow", &payload.airflow)?;
+            validate_non_empty("CreateRackSpec", "mount_type", &payload.mount_type)?;
+        }
+        CadIntent::GenerateVariants(payload) => {
+            if payload.count == 0 || payload.count > 4 {
+                return Err(CadIntentValidationError::new(
+                    "CAD-INTENT-INVALID-RANGE",
+                    Some("GenerateVariants".to_string()),
+                    Some("count".to_string()),
+                    "count must be in range [1, 4]",
+                ));
+            }
+            validate_non_empty("GenerateVariants", "objective_set", &payload.objective_set)?;
+        }
+        CadIntent::SetObjective(payload) => {
+            validate_non_empty("SetObjective", "objective", &payload.objective)?;
+        }
+        CadIntent::AdjustParameter(payload) => {
+            validate_non_empty("AdjustParameter", "parameter", &payload.parameter)?;
+            if !payload.value.is_finite() {
+                return Err(CadIntentValidationError::new(
+                    "CAD-INTENT-INVALID-NUMBER",
+                    Some("AdjustParameter".to_string()),
+                    Some("value".to_string()),
+                    "value must be a finite number",
+                ));
+            }
+        }
+        CadIntent::SetMaterial(payload) => {
+            validate_non_empty("SetMaterial", "material_id", &payload.material_id)?;
+        }
+        CadIntent::AddVentPattern(payload) => {
+            validate_non_empty("AddVentPattern", "pattern", &payload.pattern)?;
+            if !payload.size_mm.is_finite() || payload.size_mm <= 0.0 {
+                return Err(CadIntentValidationError::new(
+                    "CAD-INTENT-INVALID-RANGE",
+                    Some("AddVentPattern".to_string()),
+                    Some("size_mm".to_string()),
+                    "size_mm must be finite and > 0",
+                ));
+            }
+            if !payload.density.is_finite() || payload.density <= 0.0 {
+                return Err(CadIntentValidationError::new(
+                    "CAD-INTENT-INVALID-RANGE",
+                    Some("AddVentPattern".to_string()),
+                    Some("density".to_string()),
+                    "density must be finite and > 0",
+                ));
+            }
+        }
+        CadIntent::Select(payload) => {
+            validate_non_empty("Select", "selector", &payload.selector)?;
+        }
+        CadIntent::CompareVariants(payload) => {
+            if payload.variant_ids.is_empty() {
+                return Err(CadIntentValidationError::new(
+                    "CAD-INTENT-INVALID-RANGE",
+                    Some("CompareVariants".to_string()),
+                    Some("variant_ids".to_string()),
+                    "variant_ids must include at least one ID",
+                ));
+            }
+            for variant in &payload.variant_ids {
+                if variant.trim().is_empty() {
+                    return Err(CadIntentValidationError::new(
+                        "CAD-INTENT-INVALID-FIELD",
+                        Some("CompareVariants".to_string()),
+                        Some("variant_ids".to_string()),
+                        "variant IDs must not be empty",
+                    ));
+                }
+            }
+        }
+        CadIntent::Export(payload) => {
+            validate_non_empty("Export", "format", &payload.format)?;
+            validate_non_empty("Export", "variant_id", &payload.variant_id)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_non_empty(
+    intent: &str,
+    field: &str,
+    value: &str,
+) -> Result<(), CadIntentValidationError> {
+    if value.trim().is_empty() {
+        return Err(CadIntentValidationError::new(
+            "CAD-INTENT-INVALID-FIELD",
+            Some(intent.to_string()),
+            Some(field.to_string()),
+            format!("{} must not be empty", field),
+        ));
+    }
+    Ok(())
+}
+
+fn strip_intent_field(object: &Map<String, Value>) -> Value {
+    let mut content = object.clone();
+    let _ = content.remove("intent");
+    Value::Object(content)
+}
+
+fn parse_payload<T>(intent_name: &str, payload: Value) -> Result<T, CadIntentValidationError>
+where
+    T: for<'de> Deserialize<'de>,
+{
+    serde_json::from_value::<T>(payload).map_err(|error| {
+        CadIntentValidationError::new(
+            "CAD-INTENT-INVALID-PAYLOAD",
+            Some(intent_name.to_string()),
+            None,
+            format!("intent payload failed schema validation: {error}"),
+        )
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        CadIntent, CadIntentValidationError, allowed_intent_names, cad_intent_json_schema,
+        parse_cad_intent_json, parse_cad_intent_json_cad_result,
+    };
+
+    #[test]
+    fn schema_lists_allowed_intents() {
+        let schema = cad_intent_json_schema();
+        let names = schema
+            .get("allowed_intents")
+            .and_then(|value| value.as_array())
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(names.len(), allowed_intent_names().len());
+        assert!(names.iter().any(|value| value == "CreateRackSpec"));
+    }
+
+    #[test]
+    fn parse_rejects_unknown_intent() {
+        let payload = r#"{"intent":"InventOperation","foo":1}"#;
+        let error = parse_cad_intent_json(payload).expect_err("unknown intent should fail");
+        assert_eq!(error.code, "CAD-INTENT-UNKNOWN-OP");
+        assert_eq!(error.field.as_deref(), Some("intent"));
+    }
+
+    #[test]
+    fn parse_rejects_unknown_fields_via_strict_schema() {
+        let payload = r#"{"intent":"SetMaterial","material_id":"al-6061-t6","x":1}"#;
+        let error = parse_cad_intent_json(payload)
+            .expect_err("unknown field in strict schema should fail");
+        assert_eq!(error.code, "CAD-INTENT-INVALID-PAYLOAD");
+    }
+
+    #[test]
+    fn parse_and_validate_happy_path() {
+        let payload =
+            r#"{"intent":"AdjustParameter","parameter":"vent_spacing_mm","operation":"set","value":14.5}"#;
+        let intent = parse_cad_intent_json(payload).expect("payload should parse");
+        match intent {
+            CadIntent::AdjustParameter(value) => {
+                assert_eq!(value.parameter, "vent_spacing_mm");
+                assert!((value.value - 14.5).abs() < f64::EPSILON);
+            }
+            other => panic!("unexpected intent variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_reports_machine_readable_range_errors() {
+        let payload = r#"{"intent":"GenerateVariants","count":0,"objective_set":"rack-demo"}"#;
+        let error = parse_cad_intent_json(payload).expect_err("count 0 should fail");
+        assert_eq!(error.code, "CAD-INTENT-INVALID-RANGE");
+        assert_eq!(error.intent.as_deref(), Some("GenerateVariants"));
+        assert_eq!(error.field.as_deref(), Some("count"));
+    }
+
+    #[test]
+    fn cad_result_bridge_maps_to_parse_failed() {
+        let payload = r#"{"intent":"SetMaterial","material_id":""}"#;
+        let error = parse_cad_intent_json_cad_result(payload)
+            .expect_err("invalid intent should map to cad error");
+        assert!(error.to_string().contains("parse failed"));
+    }
+
+    #[test]
+    fn validation_error_payload_is_serde_stable() {
+        let error = CadIntentValidationError {
+            code: "CAD-INTENT-INVALID-FIELD".to_string(),
+            intent: Some("SetObjective".to_string()),
+            field: Some("objective".to_string()),
+            message: "objective must not be empty".to_string(),
+        };
+        let encoded = serde_json::to_string(&error).expect("error should serialize");
+        assert!(encoded.contains("CAD-INTENT-INVALID-FIELD"));
+        assert!(encoded.contains("SetObjective"));
+    }
+}
