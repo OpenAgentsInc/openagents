@@ -18,6 +18,7 @@ pub mod params;
 pub mod policy;
 pub mod primitives;
 pub mod query;
+pub mod selection;
 pub mod tessellation;
 pub mod validity;
 pub use error::{CadError, CadErrorCode, CadErrorEvent, CadResult};
