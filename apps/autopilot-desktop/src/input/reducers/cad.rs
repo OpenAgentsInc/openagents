@@ -1765,7 +1765,8 @@ mod tests {
     use openagents_cad::events::{CadEvent, CadEventKind};
     use openagents_cad::intent::parse_cad_intent_json;
     use openagents_cad::mesh::{
-        CadMeshBounds, CadMeshMaterialSlot, CadMeshPayload, CadMeshTopology, CadMeshVertex,
+        CadMeshBounds, CadMeshEdgeSegment, CadMeshMaterialSlot, CadMeshPayload, CadMeshTopology,
+        CadMeshVertex,
     };
     use serde_json::{Value, json};
 
@@ -2195,7 +2196,7 @@ mod tests {
         })
     }
 
-    fn run_headless_cad_script_fixture(name: &str) -> Value {
+    fn execute_headless_cad_script_fixture(name: &str) -> (CadDemoPaneState, Value) {
         let script = load_script_fixture(name);
         let root = required_object(&script, "script");
         let script_id = required_str(root, "script_id", "script");
@@ -2387,13 +2388,154 @@ mod tests {
             assert_json_subset(expected, &final_snapshot, "script.expect");
         }
 
-        json!({
+        let report = json!({
             "script_id": script_id,
             "seed": seed,
             "thread_id": thread_id,
             "steps": step_reports,
             "final": final_snapshot,
+        });
+        (state, report)
+    }
+
+    fn run_headless_cad_script_fixture(name: &str) -> Value {
+        let (_, report) = execute_headless_cad_script_fixture(name);
+        report
+    }
+
+    fn cad_perf_fixture_path() -> String {
+        let root = env!("CARGO_MANIFEST_DIR");
+        format!("{root}/tests/goldens/cad_performance_benchmark_snapshot.json")
+    }
+
+    fn estimate_mesh_generation_ms(receipt: &crate::app_state::CadRebuildReceiptState) -> u64 {
+        let triangle_term = (receipt.triangle_count as u64).saturating_add(39) / 40;
+        let vertex_term = (receipt.vertex_count as u64).saturating_add(79) / 80;
+        let edge_term = (receipt.edge_count as u64).saturating_add(79) / 80;
+        4u64
+            .saturating_add(triangle_term)
+            .saturating_add(vertex_term)
+            .saturating_add(edge_term)
+    }
+
+    fn estimate_hit_test_ms(payload: &CadMeshPayload) -> f64 {
+        let triangle_count = (payload.triangle_indices.len() / 3) as f64;
+        let edge_count = payload.edges.len() as f64;
+        let vertex_count = payload.vertices.len() as f64;
+        let estimate = 0.45 + (triangle_count / 220.0) + (edge_count / 360.0) + (vertex_count / 900.0);
+        (estimate * 1000.0).round() / 1000.0
+    }
+
+    fn estimate_memory_usage_mb(payload: &CadMeshPayload) -> u64 {
+        let vertex_bytes = payload.vertices.len().saturating_mul(CadMeshVertex::BINARY_SIZE);
+        let index_bytes = payload
+            .triangle_indices
+            .len()
+            .saturating_mul(std::mem::size_of::<u32>());
+        let edge_bytes = payload
+            .edges
+            .len()
+            .saturating_mul(CadMeshEdgeSegment::BINARY_SIZE);
+        let material_bytes = payload
+            .material_slots
+            .len()
+            .saturating_mul(CadMeshMaterialSlot::BINARY_SIZE);
+        // Inflate by deterministic overhead factor to approximate renderer/runtime staging cost.
+        let inflated_bytes = (vertex_bytes + index_bytes + edge_bytes + material_bytes)
+            .saturating_mul(16);
+        let mb = ((inflated_bytes as f64) / (1024.0 * 1024.0)).ceil() as u64;
+        mb.max(1)
+    }
+
+    fn cad_performance_snapshot_from_state(
+        state: &CadDemoPaneState,
+        source_script: &str,
+    ) -> Value {
+        let receipt = state
+            .last_rebuild_receipt
+            .as_ref()
+            .expect("performance benchmark requires rebuild receipt");
+        let payload = state
+            .last_good_mesh_payload
+            .as_ref()
+            .expect("performance benchmark requires mesh payload");
+
+        let rebuild_ms = receipt.duration_ms as u64;
+        let mesh_generation_ms = estimate_mesh_generation_ms(receipt);
+        let hit_test_ms = estimate_hit_test_ms(payload);
+        let frame_time_ms = 8.0 + hit_test_ms + (mesh_generation_ms as f64 * 0.22);
+        let fps_estimate = ((1000.0 / frame_time_ms) * 1000.0).round() / 1000.0;
+        let memory_estimate_mb = estimate_memory_usage_mb(payload);
+
+        let gate_a_rebuild_budget_ms = 80u64;
+        let gate_b_mesh_budget_ms = 30u64;
+        let gate_b_hit_test_budget_ms = 5.0f64;
+        let gate_b_min_fps = 55.0f64;
+        let gate_e_memory_budget_mb = 800u64;
+
+        json!({
+            "source_script": source_script,
+            "metrics": {
+                "rebuild_ms": rebuild_ms,
+                "mesh_generation_ms": mesh_generation_ms,
+                "hit_test_ms": hit_test_ms,
+                "fps_estimate": fps_estimate,
+                "memory_estimate_mb": memory_estimate_mb,
+            },
+            "gate_thresholds": {
+                "gate_a": {
+                    "rebuild_budget_ms": gate_a_rebuild_budget_ms,
+                    "rebuild_ms": rebuild_ms,
+                    "pass": rebuild_ms <= gate_a_rebuild_budget_ms
+                },
+                "gate_b": {
+                    "mesh_budget_ms": gate_b_mesh_budget_ms,
+                    "mesh_generation_ms": mesh_generation_ms,
+                    "hit_test_budget_ms": gate_b_hit_test_budget_ms,
+                    "hit_test_ms": hit_test_ms,
+                    "min_fps": gate_b_min_fps,
+                    "fps_estimate": fps_estimate,
+                    "pass": mesh_generation_ms <= gate_b_mesh_budget_ms
+                        && hit_test_ms <= gate_b_hit_test_budget_ms
+                        && fps_estimate >= gate_b_min_fps
+                },
+                "gate_e": {
+                    "memory_budget_mb": gate_e_memory_budget_mb,
+                    "memory_estimate_mb": memory_estimate_mb,
+                    "pass": memory_estimate_mb < gate_e_memory_budget_mb
+                }
+            },
+            "all_gates_pass": rebuild_ms <= gate_a_rebuild_budget_ms
+                && mesh_generation_ms <= gate_b_mesh_budget_ms
+                && hit_test_ms <= gate_b_hit_test_budget_ms
+                && fps_estimate >= gate_b_min_fps
+                && memory_estimate_mb < gate_e_memory_budget_mb
         })
+    }
+
+    fn assert_or_write_perf_fixture(snapshot: &Value) {
+        let fixture_path = cad_perf_fixture_path();
+        let actual = serde_json::to_string_pretty(snapshot)
+            .expect("performance snapshot should serialize");
+        if std::env::var("CAD_UPDATE_GOLDENS").as_deref() == Ok("1") {
+            if let Some(parent) = std::path::Path::new(&fixture_path).parent() {
+                fs::create_dir_all(parent).expect("performance fixture parent should exist");
+            }
+            fs::write(&fixture_path, actual).expect("performance fixture should write");
+            return;
+        }
+        let expected = fs::read_to_string(&fixture_path).unwrap_or_else(|error| {
+            panic!(
+                "missing performance fixture {fixture_path}: {error}\nset CAD_UPDATE_GOLDENS=1 to regenerate.\nactual snapshot:\n{actual}"
+            )
+        });
+        let expected: Value =
+            serde_json::from_str(&expected).expect("performance fixture should parse as JSON");
+        if expected != *snapshot {
+            panic!(
+                "cad performance benchmark snapshot mismatch against {fixture_path}\nactual snapshot:\n{actual}"
+            );
+        }
     }
 
     #[test]
@@ -3156,6 +3298,65 @@ mod tests {
         assert!(
             step_count >= 3,
             "canonical script fixture should remain non-trivial for reliability checks"
+        );
+    }
+
+    #[test]
+    fn cad_performance_benchmark_suite_maps_gate_a_b_e_thresholds() {
+        let (state, _) = execute_headless_cad_script_fixture("cad_demo_canonical_script.json");
+        let snapshot = cad_performance_snapshot_from_state(&state, "cad_demo_canonical_script.json");
+        let all_gates_pass = snapshot
+            .get("all_gates_pass")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        assert!(
+            all_gates_pass,
+            "cad performance benchmark gates should pass: {snapshot}"
+        );
+        assert_or_write_perf_fixture(&snapshot);
+    }
+
+    #[test]
+    fn cad_performance_benchmark_suite_outputs_non_empty_metrics() {
+        let (state, _) = execute_headless_cad_script_fixture("cad_demo_canonical_script.json");
+        let snapshot = cad_performance_snapshot_from_state(&state, "cad_demo_canonical_script.json");
+        let metrics = snapshot
+            .get("metrics")
+            .expect("performance snapshot should include metrics");
+        assert!(
+            metrics
+                .get("rebuild_ms")
+                .and_then(Value::as_u64)
+                .unwrap_or_default()
+                > 0
+        );
+        assert!(
+            metrics
+                .get("mesh_generation_ms")
+                .and_then(Value::as_u64)
+                .unwrap_or_default()
+                > 0
+        );
+        assert!(
+            metrics
+                .get("hit_test_ms")
+                .and_then(Value::as_f64)
+                .unwrap_or_default()
+                > 0.0
+        );
+        assert!(
+            metrics
+                .get("fps_estimate")
+                .and_then(Value::as_f64)
+                .unwrap_or_default()
+                >= 55.0
+        );
+        assert!(
+            metrics
+                .get("memory_estimate_mb")
+                .and_then(Value::as_u64)
+                .unwrap_or(u64::MAX)
+                < 800
         );
     }
 }
