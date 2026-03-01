@@ -15,6 +15,7 @@ pub mod format;
 pub mod history;
 pub mod kernel;
 pub mod mesh;
+pub mod measurement;
 pub mod params;
 pub mod policy;
 pub mod primitives;

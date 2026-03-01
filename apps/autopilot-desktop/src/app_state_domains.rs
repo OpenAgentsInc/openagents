@@ -471,6 +471,10 @@ pub struct CadDemoPaneState {
     pub hovered_geometry_ref: Option<String>,
     pub selection_store: openagents_cad::selection::CadSelectionStore,
     pub analysis_snapshot: openagents_cad::contracts::CadAnalysis,
+    pub measurement_tile_index: Option<usize>,
+    pub measurement_points: Vec<Point>,
+    pub measurement_distance_px: Option<f64>,
+    pub measurement_angle_deg: Option<f64>,
     pub hidden_line_mode: CadHiddenLineMode,
     pub snap_toggles: CadSnapToggles,
     pub projection_mode: CadProjectionMode,
@@ -1032,6 +1036,10 @@ impl Default for CadDemoPaneState {
                 max_deflection_mm: None,
                 objective_scores: std::collections::BTreeMap::new(),
             },
+            measurement_tile_index: None,
+            measurement_points: Vec::new(),
+            measurement_distance_px: None,
+            measurement_angle_deg: None,
             hidden_line_mode: CadHiddenLineMode::Shaded,
             snap_toggles: CadSnapToggles::default(),
             projection_mode: CadProjectionMode::Orthographic,
@@ -1142,6 +1150,40 @@ impl CadDemoPaneState {
             changed = true;
         }
         changed
+    }
+
+    pub fn record_measurement_snap_point(&mut self, tile_index: usize, snapped: Point) -> bool {
+        if tile_index >= self.variant_viewports.len() {
+            return false;
+        }
+        if self.measurement_tile_index != Some(tile_index) || self.measurement_points.len() >= 2 {
+            self.measurement_tile_index = Some(tile_index);
+            self.measurement_points.clear();
+            self.measurement_distance_px = None;
+            self.measurement_angle_deg = None;
+        }
+        self.measurement_points.push(snapped);
+        if self.measurement_points.len() < 2 {
+            return true;
+        }
+
+        let a = self.measurement_points[0];
+        let b = self.measurement_points[1];
+        let a3 =
+            openagents_cad::measurement::CadMeasurePoint3::new(f64::from(a.x), f64::from(a.y), 0.0);
+        let b3 =
+            openagents_cad::measurement::CadMeasurePoint3::new(f64::from(b.x), f64::from(b.y), 0.0);
+        let delta = openagents_cad::measurement::vector_between_points(a3, b3);
+        let tolerance = openagents_cad::policy::resolve_tolerance_mm(None);
+        self.measurement_distance_px = Some(openagents_cad::measurement::distance_between_points(
+            a3, b3, tolerance,
+        ));
+        self.measurement_angle_deg = openagents_cad::measurement::angle_between_vectors_deg(
+            delta,
+            openagents_cad::measurement::CadMeasurePoint3::new(1.0, 0.0, 0.0),
+            tolerance,
+        );
+        true
     }
 
     pub fn reset_camera(&mut self) {

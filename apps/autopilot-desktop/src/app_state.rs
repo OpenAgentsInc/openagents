@@ -3865,6 +3865,24 @@ mod tests {
     }
 
     #[test]
+    fn cad_measurement_points_produce_deterministic_distance_and_angle() {
+        let mut state = CadDemoPaneState::default();
+        assert!(state.record_measurement_snap_point(0, wgpui::Point::new(100.0, 80.0)));
+        assert!(state.record_measurement_snap_point(0, wgpui::Point::new(160.0, 80.0)));
+
+        assert_eq!(state.measurement_tile_index, Some(0));
+        assert_eq!(state.measurement_points.len(), 2);
+        assert_eq!(state.measurement_distance_px, Some(60.0));
+        assert_eq!(state.measurement_angle_deg, Some(0.0));
+
+        assert!(state.record_measurement_snap_point(1, wgpui::Point::new(20.0, 20.0)));
+        assert_eq!(state.measurement_tile_index, Some(1));
+        assert_eq!(state.measurement_points.len(), 1);
+        assert!(state.measurement_distance_px.is_none());
+        assert!(state.measurement_angle_deg.is_none());
+    }
+
+    #[test]
     fn cad_hotkey_profiles_and_conflict_checks_are_deterministic() {
         let mut state = CadDemoPaneState::default();
         assert_eq!(state.hotkey_profile, "default");
