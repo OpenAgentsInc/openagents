@@ -36,6 +36,23 @@ pub(super) const OPENAGENTS_TOOL_NAMES: &[&str] = &[
 const CAD_TOOL_RESPONSE_SCHEMA_VERSION: &str = "oa.cad.tool_response.v1";
 const CAD_CHECKPOINT_SCHEMA_VERSION: &str = "oa.cad.checkpoint.v1";
 const CAD_INTENT_PARSE_RETRY_LIMIT: u8 = 1;
+const CAD_INTENT_TOOL_ENABLED_ENV: &str = "OPENAGENTS_CAD_INTENT_TOOL_ENABLED";
+
+fn parse_bool_env_override(raw: &str) -> Option<bool> {
+    let normalized = raw.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "1" | "true" | "yes" | "on" => Some(true),
+        "0" | "false" | "no" | "off" => Some(false),
+        _ => None,
+    }
+}
+
+fn env_flag_enabled(name: &str, default: bool) -> bool {
+    match std::env::var(name) {
+        Ok(raw) => parse_bool_env_override(&raw).unwrap_or(default),
+        Err(_) => default,
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ToolBridgeRequest {
@@ -1362,6 +1379,31 @@ fn execute_cad_intent(state: &mut RenderState, args: &CadIntentArgs) -> ToolBrid
         .or_else(|| state.autopilot_chat.active_thread_id.clone())
         .unwrap_or_else(|| "autopilot.tool.local".to_string());
 
+    if !env_flag_enabled(CAD_INTENT_TOOL_ENABLED_ENV, true) {
+        return ToolBridgeResultEnvelope::error(
+            "OA-CAD-INTENT-DISABLED",
+            "CAD intent tool is disabled by operator flag",
+            json!({
+                "schema_version": CAD_TOOL_RESPONSE_SCHEMA_VERSION,
+                "failure_class": cad_failure_class_label(CadBuildFailureClass::DispatchRebuild),
+                "thread_id": thread_id,
+                "flag": {
+                    "name": CAD_INTENT_TOOL_ENABLED_ENV,
+                    "value": false,
+                },
+                "fallback": {
+                    "strategy": "safe_abort",
+                    "remediation_hint": "set OPENAGENTS_CAD_INTENT_TOOL_ENABLED=1 to re-enable CAD intent tool execution",
+                },
+                "checkpoint": cad_checkpoint_payload(
+                    &state.cad_demo,
+                    Some(thread_id.as_str()),
+                    "openagents.cad.intent",
+                ),
+            }),
+        );
+    }
+
     let mut prompt = if let Some(intent_json) = args.intent_json.as_ref() {
         match serde_json::to_string(intent_json) {
             Ok(value) => value,
@@ -1791,7 +1833,7 @@ mod tests {
         CAD_CHECKPOINT_SCHEMA_VERSION, CAD_TOOL_RESPONSE_SCHEMA_VERSION, ToolBridgeResultEnvelope,
         cad_action_from_key, cad_checkpoint_payload, cad_parse_retry_prompt,
         decode_tool_call_request, normalize_key, pane_action_to_hit_action, pane_kind_key,
-        resolve_pane_kind,
+        parse_bool_env_override, resolve_pane_kind,
     };
     use crate::app_state::{
         AutopilotToolCallRequest, CadDemoPaneState, CadDemoWarningState, PaneKind,
@@ -2076,5 +2118,18 @@ mod tests {
     fn cad_parse_retry_prompt_rejects_non_object_payloads() {
         assert!(cad_parse_retry_prompt("[1,2,3]").is_none());
         assert!(cad_parse_retry_prompt("no json here").is_none());
+    }
+
+    #[test]
+    fn parse_bool_env_override_supports_common_values() {
+        assert_eq!(parse_bool_env_override("1"), Some(true));
+        assert_eq!(parse_bool_env_override("true"), Some(true));
+        assert_eq!(parse_bool_env_override("YES"), Some(true));
+        assert_eq!(parse_bool_env_override("on"), Some(true));
+        assert_eq!(parse_bool_env_override("0"), Some(false));
+        assert_eq!(parse_bool_env_override("false"), Some(false));
+        assert_eq!(parse_bool_env_override("No"), Some(false));
+        assert_eq!(parse_bool_env_override("off"), Some(false));
+        assert_eq!(parse_bool_env_override("unexpected"), None);
     }
 }
