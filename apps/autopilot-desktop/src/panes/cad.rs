@@ -18,6 +18,7 @@ use crate::pane_system::{
     cad_demo_cycle_variant_button_bounds, cad_demo_hidden_line_mode_button_bounds,
     cad_demo_hotkey_profile_button_bounds, cad_demo_projection_mode_button_bounds,
     cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
+    cad_demo_section_offset_button_bounds, cad_demo_section_plane_button_bounds,
     cad_demo_snap_endpoint_button_bounds, cad_demo_snap_grid_button_bounds,
     cad_demo_snap_midpoint_button_bounds, cad_demo_snap_origin_button_bounds,
     cad_demo_timeline_panel_bounds, cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
@@ -104,6 +105,8 @@ fn cad_demo_body_bounds(content_bounds: Bounds) -> Bounds {
     let snap_endpoint_bounds = cad_demo_snap_endpoint_button_bounds(content_bounds);
     let snap_midpoint_bounds = cad_demo_snap_midpoint_button_bounds(content_bounds);
     let hotkey_bounds = cad_demo_hotkey_profile_button_bounds(content_bounds);
+    let section_plane_bounds = cad_demo_section_plane_button_bounds(content_bounds);
+    let section_offset_bounds = cad_demo_section_offset_button_bounds(content_bounds);
     let body_top = (cycle_bounds
         .max_y()
         .max(reset_bounds.max_y())
@@ -115,6 +118,8 @@ fn cad_demo_body_bounds(content_bounds: Bounds) -> Bounds {
         .max(snap_endpoint_bounds.max_y())
         .max(snap_midpoint_bounds.max_y())
         .max(hotkey_bounds.max_y())
+        .max(section_plane_bounds.max_y())
+        .max(section_offset_bounds.max_y())
         + 8.0)
         .min(content_bounds.max_y());
     Bounds::new(
@@ -167,6 +172,8 @@ pub fn paint_cad_demo_placeholder_pane(
     let snap_endpoint_bounds = cad_demo_snap_endpoint_button_bounds(content_bounds);
     let snap_midpoint_bounds = cad_demo_snap_midpoint_button_bounds(content_bounds);
     let hotkey_bounds = cad_demo_hotkey_profile_button_bounds(content_bounds);
+    let section_plane_bounds = cad_demo_section_plane_button_bounds(content_bounds);
+    let section_offset_bounds = cad_demo_section_offset_button_bounds(content_bounds);
     let warning_panel = cad_demo_warning_panel_bounds(content_bounds);
     let timeline_panel = cad_demo_timeline_panel_bounds(content_bounds);
     let severity_filter_bounds = cad_demo_warning_filter_severity_button_bounds(content_bounds);
@@ -226,6 +233,23 @@ pub fn paint_cad_demo_placeholder_pane(
         paint,
     );
     paint_action_button(
+        section_plane_bounds,
+        &format!(
+            "Section: {}",
+            pane_state
+                .section_axis
+                .map(|axis| axis.label().to_string())
+                .unwrap_or_else(|| "off".to_string())
+        ),
+        paint,
+    );
+    let section_offset_label = if pane_state.section_axis.is_some() {
+        format!("Slice: {:+.1}", pane_state.section_offset_normalized)
+    } else {
+        "Slice: --".to_string()
+    };
+    paint_action_button(section_offset_bounds, section_offset_label.as_str(), paint);
+    paint_action_button(
         severity_filter_bounds,
         &format!("Severity: {}", pane_state.warning_filter_severity),
         paint,
@@ -269,8 +293,37 @@ pub fn paint_cad_demo_placeholder_pane(
                 .with_corner_radius(4.0),
         );
 
-        let mesh_payload = pane_state.last_good_mesh_payload.as_ref();
+        let base_mesh_payload = pane_state.last_good_mesh_payload.as_ref();
         let mut viewport_status = "4-up variant viewport ready".to_string();
+        let mut section_clip_failed = false;
+        let section_mesh_payload = if let Some(payload) = base_mesh_payload {
+            if let Some(section_plane) = pane_state.section_plane() {
+                match openagents_cad::section::clip_mesh_payload(
+                    payload,
+                    section_plane,
+                    openagents_cad::policy::resolve_tolerance_mm(None) as f32,
+                ) {
+                    Ok(clipped) => {
+                        viewport_status = format!("section {}", pane_state.section_summary());
+                        Some(clipped)
+                    }
+                    Err(error) => {
+                        section_clip_failed = true;
+                        viewport_status = format!("section clip failed: {error}");
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        let mesh_payload = if section_clip_failed {
+            None
+        } else {
+            section_mesh_payload.as_ref().or(base_mesh_payload)
+        };
 
         for tile_index in 0..4 {
             let tile_bounds = variant_tile_bounds(content_bounds, tile_index);
@@ -391,10 +444,14 @@ pub fn paint_cad_demo_placeholder_pane(
                     let second = pane_state.measurement_points[1];
                     Point::new((first.x + second.x) * 0.5, (first.y + second.y) * 0.5)
                 } else {
-                    pane_state.measurement_points.first().copied().unwrap_or(Point::new(
-                        tile_bounds.origin.x + 8.0,
-                        tile_bounds.origin.y + 16.0,
-                    ))
+                    pane_state
+                        .measurement_points
+                        .first()
+                        .copied()
+                        .unwrap_or(Point::new(
+                            tile_bounds.origin.x + 8.0,
+                            tile_bounds.origin.y + 16.0,
+                        ))
                 };
                 let label_origin = Point::new(
                     anchor
@@ -617,7 +674,7 @@ pub fn paint_cad_demo_placeholder_pane(
         let three_d_mouse_status = pane_state.three_d_mouse_status();
         paint.scene.draw_text(paint.text.layout(
             &format!(
-                "session={} active={} warnings={}{} cam({}; z={:.2} pan={:.0},{:.0} orbit={:.0}/{:.0}) snaps[{}] hotkeys[{}] 3dmouse[{}]",
+                "session={} active={} warnings={}{} cam({}; z={:.2} pan={:.0},{:.0} orbit={:.0}/{:.0}) section[{}] snaps[{}] hotkeys[{}] 3dmouse[{}]",
                 pane_state.session_id,
                 format!(
                     "{}@tile{}",
@@ -632,6 +689,7 @@ pub fn paint_cad_demo_placeholder_pane(
                 pane_state.camera_pan_y,
                 pane_state.camera_orbit_yaw_deg,
                 pane_state.camera_orbit_pitch_deg,
+                pane_state.section_summary(),
                 pane_state.snap_summary(),
                 pane_state.hotkey_profile,
                 three_d_mouse_status,
@@ -1072,7 +1130,9 @@ mod tests {
     };
     use wgpui::{Bounds, MESH_EDGE_FLAG_SELECTED, MESH_EDGE_FLAG_SILHOUETTE, Point};
 
-    use crate::app_state::{CadDemoPaneState, CadHiddenLineMode, CadProjectionMode};
+    use crate::app_state::{
+        CadDemoPaneState, CadHiddenLineMode, CadProjectionMode, CadSectionAxis,
+    };
 
     fn default_camera_pose() -> CadCameraPose {
         CadCameraPose {
@@ -1428,6 +1488,183 @@ mod tests {
         assert_eq!(edge_lines.0, "Edge Inspect");
         assert!(edge_lines.1.iter().any(|line| line.contains("Length")));
         assert!(edge_lines.1.iter().any(|line| line.contains("Type")));
+    }
+
+    #[test]
+    fn selection_inspect_lines_remain_available_with_section_mode_enabled() {
+        let payload = CadMeshPayload {
+            mesh_id: "mesh.inspect.section".to_string(),
+            document_revision: 3,
+            variant_id: "variant.baseline".to_string(),
+            topology: CadMeshTopology::Triangles,
+            vertices: vec![
+                CadMeshVertex {
+                    position_mm: [0.0, 0.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [0.0, 0.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [10.0, 0.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [1.0, 0.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [0.0, 10.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [0.0, 1.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [0.0, 0.0, 10.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [1.0, 1.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+            ],
+            triangle_indices: vec![0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3],
+            edges: Vec::new(),
+            material_slots: vec![CadMeshMaterialSlot::default()],
+            bounds: CadMeshBounds {
+                min_mm: [0.0, 0.0, 0.0],
+                max_mm: [10.0, 10.0, 10.0],
+            },
+        };
+        let estimate = estimate_body_properties(&payload, DENSITY_ALUMINUM_6061_KG_M3)
+            .expect("body estimate should exist");
+        let mut state = CadDemoPaneState::default();
+        state.last_good_mesh_payload = Some(payload);
+        state.analysis_snapshot.volume_mm3 = Some(estimate.volume_mm3);
+        state.analysis_snapshot.mass_kg = Some(estimate.mass_kg);
+        state.analysis_snapshot.center_of_gravity_mm = Some(estimate.center_of_gravity_mm);
+        state.section_axis = Some(CadSectionAxis::X);
+        state.section_offset_normalized = 0.2;
+        let _ = state.selection_store.set_primary(
+            CadSelectionKind::Body,
+            "body.0",
+            Some("body.0".to_string()),
+        );
+
+        let inspect = selection_inspect_lines(&state).expect("inspect should remain available");
+        assert_eq!(inspect.0, "Body Inspect");
+        assert!(inspect.1.iter().any(|line| line.contains("Volume")));
+    }
+
+    #[test]
+    fn section_clipping_remains_compatible_with_hidden_line_modes() {
+        let viewport = Bounds::new(10.0, 10.0, 180.0, 120.0);
+        let payload = CadMeshPayload {
+            mesh_id: "mesh.variant.section".to_string(),
+            document_revision: 2,
+            variant_id: "variant.baseline".to_string(),
+            topology: CadMeshTopology::Triangles,
+            vertices: vec![
+                CadMeshVertex {
+                    position_mm: [0.0, 0.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [0.0, 0.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [0.0, 20.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [0.0, 1.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [12.0, 0.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [0.5, 0.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [12.0, 20.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [0.5, 1.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [20.0, 0.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [1.0, 0.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [20.0, 20.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [1.0, 1.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+            ],
+            triangle_indices: vec![0, 1, 2, 2, 3, 4, 3, 5, 4],
+            edges: vec![
+                CadMeshEdgeSegment {
+                    start_vertex: 2,
+                    end_vertex: 3,
+                    flags: 0,
+                },
+                CadMeshEdgeSegment {
+                    start_vertex: 4,
+                    end_vertex: 5,
+                    flags: 0,
+                },
+            ],
+            material_slots: vec![CadMeshMaterialSlot::default()],
+            bounds: CadMeshBounds {
+                min_mm: [0.0, 0.0, 0.0],
+                max_mm: [20.0, 20.0, 0.0],
+            },
+        };
+        let sectioned = openagents_cad::section::clip_mesh_payload(
+            &payload,
+            openagents_cad::section::CadSectionPlane::new(
+                openagents_cad::section::CadSectionAxis::X,
+                0.0,
+            ),
+            openagents_cad::policy::resolve_tolerance_mm(None) as f32,
+        )
+        .expect("section clipping should succeed");
+        let shaded_edges = cad_mesh_to_viewport_primitive(
+            &sectioned,
+            viewport,
+            false,
+            CadHiddenLineMode::ShadedEdges,
+            default_camera_pose(),
+        )
+        .expect("sectioned shaded+edges projection should succeed");
+        let wireframe = cad_mesh_to_viewport_primitive(
+            &sectioned,
+            viewport,
+            false,
+            CadHiddenLineMode::Wireframe,
+            default_camera_pose(),
+        )
+        .expect("sectioned wireframe projection should succeed");
+
+        assert!(!shaded_edges.edges.is_empty());
+        assert!(!wireframe.edges.is_empty());
+        assert_eq!(
+            wireframe,
+            cad_mesh_to_viewport_primitive(
+                &sectioned,
+                viewport,
+                false,
+                CadHiddenLineMode::Wireframe,
+                default_camera_pose(),
+            )
+            .expect("wireframe should remain deterministic")
+        );
     }
 
     #[test]
