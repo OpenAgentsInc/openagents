@@ -767,16 +767,6 @@ impl AutopilotChatState {
             });
             self.next_message_id = self.next_message_id.saturating_add(1);
         }
-        if self.messages.is_empty() {
-            self.messages.push(AutopilotMessage {
-                id: self.next_message_id,
-                role: AutopilotRole::Codex,
-                status: AutopilotMessageStatus::Done,
-                content: "No transcript available for this thread yet.".to_string(),
-                structured: None,
-            });
-            self.next_message_id = self.next_message_id.saturating_add(1);
-        }
 
         self.active_turn_id = None;
         self.active_assistant_message_id = None;

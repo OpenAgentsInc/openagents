@@ -209,9 +209,14 @@ pub fn paint(
             AutopilotMessageStatus::Done => theme::status::SUCCESS,
             AutopilotMessageStatus::Error => theme::status::ERROR,
         };
+        let role_label = if status == "done" {
+            format!("[{role}]")
+        } else {
+            format!("[{role}] [{status}]")
+        };
 
         paint.scene.draw_text(paint.text.layout_mono(
-            &format!("[{role}] [{status}]"),
+            &role_label,
             Point::new(transcript_scroll_clip.origin.x, y),
             10.0,
             status_color,
