@@ -32,6 +32,11 @@ This document tracks feature-op contracts built on the CAD kernel adapter path.
   - stable `pattern_index` assignment (`start_index + offset`)
   - deterministic per-instance geometry hashes and aggregate pattern hash
   - structured validation failures for zero direction, non-integer count, and invalid spacing
+- `FilletPlaceholderFeatureOp` (`crates/cad/src/features.rs`)
+  - no-op marker contract for fillet/chamfer graph compatibility
+  - serializes to feature graph node with operation key `fillet.placeholder.v1`
+  - deterministic rebuild output (`geometry_hash`) with source hash passthrough
+  - explicit validation and parsing failures for malformed marker payloads
 
 ## Golden Hash Fixtures
 
