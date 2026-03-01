@@ -374,6 +374,159 @@ pub struct MacStudioRackTemplate {
     pub metadata: BTreeMap<String, String>,
 }
 
+/// Deterministic objective presets for rack variant generation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RackObjectivePreset {
+    LowestWeight,
+    LowestCost,
+    HighestStiffness,
+    AirflowBiased,
+}
+
+impl RackObjectivePreset {
+    pub fn variant_id(self) -> &'static str {
+        match self {
+            Self::LowestWeight => "variant.lightweight",
+            Self::LowestCost => "variant.low-cost",
+            Self::HighestStiffness => "variant.stiffness",
+            Self::AirflowBiased => "variant.airflow",
+        }
+    }
+
+    fn all() -> [Self; 4] {
+        [
+            Self::LowestWeight,
+            Self::LowestCost,
+            Self::HighestStiffness,
+            Self::AirflowBiased,
+        ]
+    }
+}
+
+/// Deterministic objective variant payload with score outputs.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RackObjectiveVariant {
+    pub variant_id: String,
+    pub objective: RackObjectivePreset,
+    pub seed: u64,
+    pub params: MacStudioRackTemplateParams,
+    pub template: MacStudioRackTemplate,
+    pub objective_scores: BTreeMap<String, f64>,
+}
+
+/// Generate four deterministic objective variants from a baseline template seed.
+pub fn generate_objective_variants(
+    base: &MacStudioRackTemplateParams,
+    seed: u64,
+) -> CadResult<Vec<RackObjectiveVariant>> {
+    let mut variants = Vec::with_capacity(4);
+    for objective in RackObjectivePreset::all() {
+        let mut params = base.clone();
+        apply_objective_preset(&mut params, objective);
+        let mut template = generate_mac_studio_rack_template(&params)?;
+        template.metadata.insert(
+            "variant.objective".to_string(),
+            objective.variant_id().to_string(),
+        );
+        template
+            .metadata
+            .insert("variant.seed".to_string(), seed.to_string());
+        let objective_scores = objective_scores_for(&params, objective, seed);
+        variants.push(RackObjectiveVariant {
+            variant_id: objective.variant_id().to_string(),
+            objective,
+            seed,
+            params,
+            template,
+            objective_scores,
+        });
+    }
+    Ok(variants)
+}
+
+fn apply_objective_preset(params: &mut MacStudioRackTemplateParams, objective: RackObjectivePreset) {
+    match objective {
+        RackObjectivePreset::LowestWeight => {
+            params.optimization.wall_thickness_scale = 0.82;
+            params.optimization.rib_count = 2;
+            params.optimization.rib_thickness_mm = 2.2;
+            params.vent.rows = 4;
+            params.vent.cols = 10;
+            params.vent.density_scale = 1.25;
+        }
+        RackObjectivePreset::LowestCost => {
+            params.optimization.wall_thickness_scale = 0.9;
+            params.optimization.rib_count = 2;
+            params.optimization.rib_spacing_mm = 55.0;
+            params.vent.rows = 2;
+            params.vent.cols = 6;
+            params.vent.density_scale = 0.9;
+            params.wall_mount.hole_count = 2;
+        }
+        RackObjectivePreset::HighestStiffness => {
+            params.optimization.wall_thickness_scale = 1.28;
+            params.optimization.rib_count = 6;
+            params.optimization.rib_spacing_mm = 24.0;
+            params.optimization.rib_thickness_mm = 3.8;
+            params.vent.rows = 2;
+            params.vent.cols = 5;
+            params.vent.density_scale = 0.7;
+        }
+        RackObjectivePreset::AirflowBiased => {
+            params.optimization.wall_thickness_scale = 0.95;
+            params.optimization.rib_count = 3;
+            params.optimization.rib_spacing_mm = 48.0;
+            params.vent.rows = 5;
+            params.vent.cols = 12;
+            params.vent.spacing_mm = 9.5;
+            params.vent.hole_radius_mm = 2.4;
+            params.vent.density_scale = 1.5;
+        }
+    }
+}
+
+fn objective_scores_for(
+    params: &MacStudioRackTemplateParams,
+    objective: RackObjectivePreset,
+    seed: u64,
+) -> BTreeMap<String, f64> {
+    let thickness = params.wall_thickness_mm * params.optimization.wall_thickness_scale;
+    let rib_factor = f64::from(params.optimization.rib_count) * params.optimization.rib_thickness_mm;
+    let vent_factor = f64::from(params.vent.rows) * f64::from(params.vent.cols) * params.vent.density_scale;
+    let mount_factor = f64::from(params.wall_mount.hole_count) * params.wall_mount.hole_radius_mm;
+
+    let weight_score = (1.0 / (thickness * 0.6 + rib_factor * 0.3 + mount_factor * 0.1)).min(1.0);
+    let cost_score = (1.0 / (thickness * 0.55 + rib_factor * 0.35 + vent_factor * 0.1)).min(1.0);
+    let stiffness_score = ((thickness * 0.55 + rib_factor * 0.45) / 20.0).min(1.0);
+    let airflow_score = ((vent_factor * 0.8 + params.vent.hole_radius_mm * 2.0) / 80.0).min(1.0);
+    let seed_bias = seeded_bias(seed, objective);
+
+    BTreeMap::from([
+        ("weight".to_string(), round4((weight_score + seed_bias).clamp(0.0, 1.0))),
+        ("cost".to_string(), round4((cost_score + seed_bias).clamp(0.0, 1.0))),
+        ("stiffness".to_string(), round4((stiffness_score + seed_bias).clamp(0.0, 1.0))),
+        ("airflow".to_string(), round4((airflow_score + seed_bias).clamp(0.0, 1.0))),
+    ])
+}
+
+fn seeded_bias(seed: u64, objective: RackObjectivePreset) -> f64 {
+    let objective_id = match objective {
+        RackObjectivePreset::LowestWeight => 11_u64,
+        RackObjectivePreset::LowestCost => 23_u64,
+        RackObjectivePreset::HighestStiffness => 37_u64,
+        RackObjectivePreset::AirflowBiased => 49_u64,
+    };
+    let mixed = seed
+        .wrapping_mul(0x9e3779b97f4a7c15)
+        .wrapping_add(objective_id);
+    let normalized = (mixed % 1000) as f64 / 1000.0;
+    (normalized - 0.5) * 0.01
+}
+
+fn round4(value: f64) -> f64 {
+    (value * 10_000.0).round() / 10_000.0
+}
+
 /// Build deterministic two-bay rack template graph + parameter schema + semantic refs.
 pub fn generate_mac_studio_rack_template(
     params: &MacStudioRackTemplateParams,
@@ -588,7 +741,10 @@ pub fn generate_mac_studio_rack_template(
 
 #[cfg(test)]
 mod tests {
-    use super::{generate_mac_studio_rack_template, MacStudioRackTemplateParams};
+    use super::{
+        RackObjectivePreset, generate_mac_studio_rack_template, generate_objective_variants,
+        MacStudioRackTemplateParams,
+    };
 
     #[test]
     fn rack_template_generator_is_deterministic() {
@@ -761,6 +917,46 @@ mod tests {
                 .unwrap_or_default(),
             5.1
         );
+    }
+
+    #[test]
+    fn objective_engine_generates_four_seeded_variants_deterministically() {
+        let baseline = MacStudioRackTemplateParams::default();
+        let left = generate_objective_variants(&baseline, 42).expect("left variants should build");
+        let right =
+            generate_objective_variants(&baseline, 42).expect("right variants should build");
+        assert_eq!(left, right);
+        assert_eq!(left.len(), 4);
+        assert_eq!(left[0].objective, RackObjectivePreset::LowestWeight);
+        assert_eq!(left[1].objective, RackObjectivePreset::LowestCost);
+        assert_eq!(left[2].objective, RackObjectivePreset::HighestStiffness);
+        assert_eq!(left[3].objective, RackObjectivePreset::AirflowBiased);
+    }
+
+    #[test]
+    fn objective_engine_emits_expected_variant_ids_and_scores() {
+        let baseline = MacStudioRackTemplateParams::default();
+        let variants =
+            generate_objective_variants(&baseline, 777).expect("variants should generate");
+        let ids = variants
+            .iter()
+            .map(|variant| variant.variant_id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            ids,
+            vec![
+                "variant.lightweight",
+                "variant.low-cost",
+                "variant.stiffness",
+                "variant.airflow"
+            ]
+        );
+        for variant in variants {
+            assert!(variant.objective_scores.contains_key("weight"));
+            assert!(variant.objective_scores.contains_key("cost"));
+            assert!(variant.objective_scores.contains_key("stiffness"));
+            assert!(variant.objective_scores.contains_key("airflow"));
+        }
     }
 
     fn openagents_unit_mm() -> crate::params::ScalarUnit {
