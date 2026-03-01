@@ -467,6 +467,7 @@ pub struct CadDemoPaneState {
     pub focused_warning_index: Option<usize>,
     pub focused_geometry_ref: Option<String>,
     pub hidden_line_mode: CadHiddenLineMode,
+    pub snap_toggles: CadSnapToggles,
     pub projection_mode: CadProjectionMode,
     pub camera_zoom: f32,
     pub camera_pan_x: f32,
@@ -495,6 +496,33 @@ impl CadCameraViewSnap {
             Self::Top => (0.0, 89.0),
             Self::Front => (0.0, 0.0),
             Self::Right => (90.0, 0.0),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CadSnapMode {
+    Grid,
+    Origin,
+    Endpoint,
+    Midpoint,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CadSnapToggles {
+    pub grid: bool,
+    pub origin: bool,
+    pub endpoint: bool,
+    pub midpoint: bool,
+}
+
+impl Default for CadSnapToggles {
+    fn default() -> Self {
+        Self {
+            grid: true,
+            origin: true,
+            endpoint: false,
+            midpoint: false,
         }
     }
 }
@@ -618,6 +646,7 @@ impl Default for CadDemoPaneState {
             focused_warning_index: None,
             focused_geometry_ref: None,
             hidden_line_mode: CadHiddenLineMode::Shaded,
+            snap_toggles: CadSnapToggles::default(),
             projection_mode: CadProjectionMode::Orthographic,
             camera_zoom: 1.0,
             camera_pan_x: 0.0,
@@ -689,6 +718,81 @@ impl CadDemoPaneState {
 
     pub fn cycle_projection_mode(&mut self) {
         self.projection_mode = self.projection_mode.next();
+    }
+
+    pub fn toggle_snap_mode(&mut self, mode: CadSnapMode) -> bool {
+        let target = match mode {
+            CadSnapMode::Grid => &mut self.snap_toggles.grid,
+            CadSnapMode::Origin => &mut self.snap_toggles.origin,
+            CadSnapMode::Endpoint => &mut self.snap_toggles.endpoint,
+            CadSnapMode::Midpoint => &mut self.snap_toggles.midpoint,
+        };
+        *target = !*target;
+        *target
+    }
+
+    pub fn snap_summary(&self) -> String {
+        format!(
+            "grid={} origin={} endpoint={} midpoint={}",
+            self.snap_toggles.grid as u8,
+            self.snap_toggles.origin as u8,
+            self.snap_toggles.endpoint as u8,
+            self.snap_toggles.midpoint as u8,
+        )
+    }
+
+    pub fn apply_snap_to_viewport_point(&self, point: Point, viewport: Bounds) -> Point {
+        let mut snapped = point;
+        if self.snap_toggles.grid {
+            const GRID_STEP: f32 = 12.0;
+            let grid_x = ((snapped.x - viewport.origin.x) / GRID_STEP).round() * GRID_STEP;
+            let grid_y = ((snapped.y - viewport.origin.y) / GRID_STEP).round() * GRID_STEP;
+            snapped.x = viewport.origin.x + grid_x;
+            snapped.y = viewport.origin.y + grid_y;
+        }
+
+        let top_left = viewport.origin;
+        let top_right = Point::new(viewport.max_x(), viewport.origin.y);
+        let bottom_left = Point::new(viewport.origin.x, viewport.max_y());
+        let bottom_right = Point::new(viewport.max_x(), viewport.max_y());
+        let center = Point::new(
+            viewport.origin.x + viewport.size.width * 0.5,
+            viewport.origin.y + viewport.size.height * 0.5,
+        );
+        let top_mid = Point::new(center.x, viewport.origin.y);
+        let bottom_mid = Point::new(center.x, viewport.max_y());
+        let left_mid = Point::new(viewport.origin.x, center.y);
+        let right_mid = Point::new(viewport.max_x(), center.y);
+
+        if self.snap_toggles.origin {
+            snapped = snap_to_anchor_if_near(snapped, center, 16.0);
+        }
+        if self.snap_toggles.endpoint {
+            for anchor in [top_left, top_right, bottom_left, bottom_right] {
+                snapped = snap_to_anchor_if_near(snapped, anchor, 14.0);
+            }
+        }
+        if self.snap_toggles.midpoint {
+            for anchor in [top_mid, bottom_mid, left_mid, right_mid] {
+                snapped = snap_to_anchor_if_near(snapped, anchor, 14.0);
+            }
+        }
+
+        let min_x = viewport.origin.x.min(viewport.max_x());
+        let max_x = viewport.origin.x.max(viewport.max_x());
+        let min_y = viewport.origin.y.min(viewport.max_y());
+        let max_y = viewport.origin.y.max(viewport.max_y());
+        Point::new(snapped.x.clamp(min_x, max_x), snapped.y.clamp(min_y, max_y))
+    }
+}
+
+fn snap_to_anchor_if_near(point: Point, anchor: Point, threshold_px: f32) -> Point {
+    let dx = point.x - anchor.x;
+    let dy = point.y - anchor.y;
+    if (dx * dx + dy * dy) <= threshold_px * threshold_px {
+        anchor
+    } else {
+        point
     }
 }
 
