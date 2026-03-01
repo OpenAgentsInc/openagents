@@ -177,6 +177,7 @@ Decision criteria to keep objective:
 - policy document: `docs/cad/UNITS_TOLERANCE_POLICY.md`
 - error model document: `docs/cad/CAD_ERROR_MODEL.md`
 - payload contracts document: `docs/cad/CAD_CONTRACTS.md`
+- core analysis behavior document: `docs/cad/CAD_ANALYSIS.md`
 - app pane-state document: `docs/cad/CAD_PANE_STATE.md`
 - input reducer scaffold document: `docs/cad/CAD_INPUT_SCAFFOLD.md`
 - params store document: `docs/cad/CAD_PARAMS.md`
