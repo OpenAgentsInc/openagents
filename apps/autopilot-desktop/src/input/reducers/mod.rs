@@ -151,6 +151,20 @@ pub(super) fn apply_chat_prompt_to_cad_session(
     cad::apply_chat_prompt_to_cad_session(state, thread_id, prompt)
 }
 
+pub(super) fn apply_chat_prompt_to_cad_session_with_trigger(
+    state: &mut RenderState,
+    thread_id: &str,
+    prompt: &str,
+    rebuild_trigger_prefix: Option<&str>,
+) -> bool {
+    cad::apply_chat_prompt_to_cad_session_with_trigger(
+        state,
+        thread_id,
+        prompt,
+        rebuild_trigger_prefix,
+    )
+}
+
 fn apply_runtime_command_response(state: &mut RenderState, response: RuntimeCommandResponse) {
     let summary = command_response_summary(&response);
     match response.lane {
