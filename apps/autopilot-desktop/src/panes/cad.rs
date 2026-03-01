@@ -4,6 +4,7 @@ use crate::app_state::{CadDemoPaneState, CadDemoWarningState};
 use crate::pane_renderer::paint_action_button;
 use crate::pane_system::{
     cad_demo_cycle_variant_button_bounds, cad_demo_reset_button_bounds,
+    cad_demo_timeline_panel_bounds, cad_demo_timeline_row_bounds,
     cad_demo_warning_filter_code_button_bounds, cad_demo_warning_filter_severity_button_bounds,
     cad_demo_warning_marker_bounds, cad_demo_warning_panel_bounds, cad_demo_warning_row_bounds,
 };
@@ -58,6 +59,7 @@ pub fn paint_cad_demo_placeholder_pane(
     let cycle_bounds = cad_demo_cycle_variant_button_bounds(content_bounds);
     let reset_bounds = cad_demo_reset_button_bounds(content_bounds);
     let warning_panel = cad_demo_warning_panel_bounds(content_bounds);
+    let timeline_panel = cad_demo_timeline_panel_bounds(content_bounds);
     let severity_filter_bounds = cad_demo_warning_filter_severity_button_bounds(content_bounds);
     let code_filter_bounds = cad_demo_warning_filter_code_button_bounds(content_bounds);
     paint_action_button(cycle_bounds, "Cycle Variant", paint);
@@ -242,6 +244,74 @@ pub fn paint_cad_demo_placeholder_pane(
         }
     }
 
+    if timeline_panel.size.width > 2.0 && timeline_panel.size.height > 2.0 {
+        paint.scene.draw_quad(
+            Quad::new(timeline_panel)
+                .with_background(theme::bg::SURFACE)
+                .with_corner_radius(4.0)
+                .with_border(theme::border::SUBTLE, 1.0),
+        );
+        paint.scene.draw_text(paint.text.layout(
+            "Feature Timeline",
+            Point::new(timeline_panel.origin.x + 6.0, timeline_panel.origin.y + 10.0),
+            10.0,
+            theme::text::PRIMARY,
+        ));
+
+        for visible_index in 0..10 {
+            let actual_index = pane_state.timeline_scroll_offset + visible_index;
+            if actual_index >= pane_state.timeline_rows.len() {
+                break;
+            }
+            let row = &pane_state.timeline_rows[actual_index];
+            let row_bounds = cad_demo_timeline_row_bounds(content_bounds, visible_index);
+            if row_bounds.max_y() > timeline_panel.max_y() {
+                break;
+            }
+            if pane_state.timeline_selected_index == Some(actual_index) {
+                paint.scene.draw_quad(
+                    Quad::new(row_bounds)
+                        .with_background(theme::bg::ELEVATED)
+                        .with_corner_radius(3.0),
+                );
+            }
+            paint.scene.draw_text(paint.text.layout(
+                &format!(
+                    "{} [{}] {} ({})",
+                    row.feature_name, row.status_badge, row.op_type, row.provenance
+                ),
+                Point::new(row_bounds.origin.x + 4.0, row_bounds.origin.y + 9.0),
+                9.0,
+                timeline_row_color(row),
+            ));
+        }
+
+        if pane_state.timeline_selected_index.is_some() {
+            let inspector_origin = Point::new(
+                timeline_panel.origin.x + 6.0,
+                (timeline_panel.max_y() - 34.0).max(timeline_panel.origin.y + 14.0),
+            );
+            paint.scene.draw_text(paint.text.layout(
+                "Params:",
+                inspector_origin,
+                9.0,
+                theme::text::SECONDARY,
+            ));
+            for (offset, (name, value)) in pane_state.selected_feature_params.iter().take(2).enumerate() {
+                let y = inspector_origin.y + 10.0 + offset as f32 * 9.0;
+                if y + 8.0 > timeline_panel.max_y() {
+                    break;
+                }
+                paint.scene.draw_text(paint.text.layout(
+                    &format!("{name}={value}"),
+                    Point::new(inspector_origin.x, y),
+                    8.0,
+                    theme::text::MUTED,
+                ));
+            }
+        }
+    }
+
     if layout.footer_origin.y + 8.0 <= content_bounds.max_y() {
         let focus_suffix = pane_state
             .focused_geometry_ref
@@ -291,6 +361,14 @@ fn warning_color(warning: &CadDemoWarningState) -> wgpui::Hsla {
         return theme::status::WARNING;
     }
     theme::text::MUTED
+}
+
+fn timeline_row_color(row: &crate::app_state::CadTimelineRowState) -> wgpui::Hsla {
+    match row.status_badge.as_str() {
+        "fail" => theme::status::ERROR,
+        "warn" => theme::status::WARNING,
+        _ => theme::text::SECONDARY,
+    }
 }
 
 #[cfg(test)]

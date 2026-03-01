@@ -1,16 +1,17 @@
 use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use openagents_cad::contracts::{CadWarning, CadWarningSeverity};
+use openagents_cad::contracts::{CadWarning, CadWarningCode, CadWarningSeverity};
 use openagents_cad::eval::{EvalCacheEntry, EvalCacheKey, EvalCacheStats};
 use openagents_cad::feature_graph::{FeatureGraph, FeatureNode};
+use openagents_cad::history::{CadHistoryCommand, CadHistorySnapshot};
 use openagents_cad::validity::{
     ModelValidityEntity, ModelValiditySnapshot, run_model_validity_checks,
 };
 
 use crate::app_state::{
     ActivityEventDomain, ActivityEventRow, CadDemoPaneState, CadDemoWarningState,
-    CadRebuildReceiptState, PaneLoadState, RenderState,
+    CadRebuildReceiptState, CadTimelineRowState, PaneLoadState, RenderState,
 };
 use crate::cad_rebuild_worker::{
     CadBackgroundRebuildWorker, CadRebuildCompleted, CadRebuildRequest, CadRebuildResponse,
@@ -95,6 +96,33 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
                 false
             }
         }
+        CadDemoPaneAction::SelectTimelineRow(visible_index) => {
+            let actual_index = state.timeline_scroll_offset.saturating_add(visible_index);
+            if actual_index < state.timeline_rows.len() {
+                select_timeline_row(state, actual_index);
+                true
+            } else {
+                false
+            }
+        }
+        CadDemoPaneAction::TimelineSelectPrev => {
+            if state.timeline_rows.is_empty() {
+                return false;
+            }
+            let current = state.timeline_selected_index.unwrap_or(0);
+            let next = current.saturating_sub(1);
+            select_timeline_row(state, next);
+            true
+        }
+        CadDemoPaneAction::TimelineSelectNext => {
+            if state.timeline_rows.is_empty() {
+                return false;
+            }
+            let current = state.timeline_selected_index.unwrap_or(0);
+            let next = (current + 1).min(state.timeline_rows.len().saturating_sub(1));
+            select_timeline_row(state, next);
+            true
+        }
     }
 }
 
@@ -176,6 +204,7 @@ fn apply_completed_rebuild(
     state: &mut CadDemoPaneState,
     completed: CadRebuildCompleted,
 ) -> Result<CadRebuildReceiptState, String> {
+    let before_snapshot = history_snapshot_from_state(state);
     let before_stats = state.eval_cache.stats();
     let node_by_id = completed
         .graph
@@ -235,6 +264,16 @@ fn apply_completed_rebuild(
     state.pending_rebuild_request_id = None;
     state.last_good_mesh_id = Some(format!("mesh.{}", receipt.rebuild_hash));
     refresh_warning_state(state, completed.document_revision, &receipt.variant_id);
+    refresh_timeline_state(state, &completed.graph, provenance_from_trigger(&completed.trigger));
+    let after_snapshot = history_snapshot_from_state(state);
+    state.history_stack.push_transition(
+        CadHistoryCommand::ApplyIntent {
+            intent_key: completed.trigger.clone(),
+            summary: format!("cad rebuild {}", completed.trigger),
+        },
+        before_snapshot,
+        after_snapshot,
+    );
     state.load_state = PaneLoadState::Ready;
     state.last_error = None;
     state.last_action = Some(format!(
@@ -362,6 +401,180 @@ fn refresh_warning_state(state: &mut CadDemoPaneState, document_revision: u64, v
     state.warning_hover_index = None;
     state.focused_warning_index = None;
     state.focused_geometry_ref = None;
+}
+
+fn refresh_timeline_state(
+    state: &mut CadDemoPaneState,
+    graph: &FeatureGraph,
+    provenance: String,
+) {
+    let prior_selected_feature_id = state
+        .timeline_selected_index
+        .and_then(|index| state.timeline_rows.get(index).map(|row| row.feature_id.clone()));
+
+    let ordered_ids = graph
+        .deterministic_topo_order()
+        .unwrap_or_else(|_| graph.nodes.iter().map(|node| node.id.clone()).collect());
+    let node_by_id = graph
+        .nodes
+        .iter()
+        .map(|node| (node.id.as_str(), node))
+        .collect::<BTreeMap<_, _>>();
+    let warnings_by_feature = state
+        .warnings
+        .iter()
+        .fold(BTreeMap::<String, Vec<&CadDemoWarningState>>::new(), |mut map, warning| {
+            map.entry(warning.feature_id.clone()).or_default().push(warning);
+            map
+        });
+
+    state.timeline_rows = ordered_ids
+        .iter()
+        .filter_map(|feature_id| node_by_id.get(feature_id.as_str()))
+        .map(|node| CadTimelineRowState {
+            feature_id: node.id.clone(),
+            feature_name: node.name.clone(),
+            op_type: node.operation_key.clone(),
+            status_badge: timeline_status_badge(node.id.as_str(), &warnings_by_feature),
+            provenance: provenance.clone(),
+            params: node
+                .params
+                .iter()
+                .map(|(name, value)| (name.clone(), value.clone()))
+                .collect(),
+        })
+        .collect();
+
+    let selected_index = prior_selected_feature_id
+        .as_ref()
+        .and_then(|feature_id| {
+            state
+                .timeline_rows
+                .iter()
+                .position(|row| &row.feature_id == feature_id)
+        })
+        .or_else(|| (!state.timeline_rows.is_empty()).then_some(0));
+    state.timeline_selected_index = selected_index;
+    if let Some(index) = selected_index {
+        state.timeline_scroll_offset = auto_scroll_offset(index, state.timeline_scroll_offset, 10);
+        state.selected_feature_params = state.timeline_rows[index].params.clone();
+        state.focused_geometry_ref = Some(format!("cad://feature/{}", state.timeline_rows[index].feature_id));
+    } else {
+        state.timeline_scroll_offset = 0;
+        state.selected_feature_params.clear();
+    }
+}
+
+fn timeline_status_badge(
+    feature_id: &str,
+    warnings_by_feature: &BTreeMap<String, Vec<&CadDemoWarningState>>,
+) -> String {
+    let Some(warnings) = warnings_by_feature.get(feature_id) else {
+        return "ok".to_string();
+    };
+    if warnings
+        .iter()
+        .any(|warning| warning.severity.eq_ignore_ascii_case("critical"))
+    {
+        return "fail".to_string();
+    }
+    if warnings
+        .iter()
+        .any(|warning| warning.severity.eq_ignore_ascii_case("warning"))
+    {
+        return "warn".to_string();
+    }
+    "ok".to_string()
+}
+
+fn auto_scroll_offset(selected_index: usize, current_offset: usize, visible_rows: usize) -> usize {
+    if selected_index < current_offset {
+        return selected_index;
+    }
+    let max_visible_index = current_offset.saturating_add(visible_rows.saturating_sub(1));
+    if selected_index > max_visible_index {
+        return selected_index.saturating_sub(visible_rows.saturating_sub(1));
+    }
+    current_offset
+}
+
+fn provenance_from_trigger(trigger: &str) -> String {
+    if trigger.contains("ai") {
+        "ai".to_string()
+    } else {
+        "manual".to_string()
+    }
+}
+
+fn history_snapshot_from_state(state: &CadDemoPaneState) -> CadHistorySnapshot {
+    let warnings = state
+        .warnings
+        .iter()
+        .map(cad_warning_from_pane_warning)
+        .collect::<Vec<_>>();
+    let stable_ids = state
+        .timeline_rows
+        .iter()
+        .map(|row| (row.feature_id.clone(), row.feature_id.clone()))
+        .collect::<BTreeMap<_, _>>();
+    CadHistorySnapshot {
+        document_revision: state.document_revision,
+        geometry_hash: state
+            .last_rebuild_receipt
+            .as_ref()
+            .map(|receipt| receipt.rebuild_hash.clone())
+            .unwrap_or_else(|| "mesh.none".to_string()),
+        stable_ids,
+        warnings,
+        analysis: openagents_cad::contracts::CadAnalysis {
+            document_revision: state.document_revision,
+            variant_id: state.active_variant_id.clone(),
+            material_id: None,
+            volume_mm3: None,
+            mass_kg: None,
+            center_of_gravity_mm: None,
+            estimated_cost_usd: None,
+            max_deflection_mm: None,
+            objective_scores: BTreeMap::new(),
+        },
+    }
+}
+
+fn cad_warning_from_pane_warning(warning: &CadDemoWarningState) -> CadWarning {
+    let code = match warning.code.as_str() {
+        "CAD-WARN-NON-MANIFOLD" => CadWarningCode::NonManifoldBody,
+        "CAD-WARN-SELF-INTERSECTION" => CadWarningCode::SelfIntersection,
+        "CAD-WARN-ZERO-THICKNESS" => CadWarningCode::ZeroThicknessFace,
+        "CAD-WARN-SLIVER-FACE" => CadWarningCode::SliverFace,
+        "CAD-WARN-FILLET-FAILED" => CadWarningCode::FilletFailed,
+        "CAD-WARN-SEMANTIC-REF-EXPIRED" => CadWarningCode::SemanticRefExpired,
+        other => CadWarningCode::Unknown(other.to_string()),
+    };
+    let severity = if warning.severity.eq_ignore_ascii_case("critical") {
+        CadWarningSeverity::Critical
+    } else if warning.severity.eq_ignore_ascii_case("warning") {
+        CadWarningSeverity::Warning
+    } else {
+        CadWarningSeverity::Info
+    };
+    CadWarning {
+        code,
+        severity,
+        message: warning.message.clone(),
+        remediation_hint: warning.remediation_hint.clone(),
+        semantic_refs: warning.semantic_refs.clone(),
+        metadata: BTreeMap::from([
+            ("feature_id".to_string(), warning.feature_id.clone()),
+            ("entity_id".to_string(), warning.entity_id.clone()),
+            (
+                "deep_link".to_string(),
+                warning
+                    .deep_link
+                    .clone()
+                    .unwrap_or_else(|| format!("cad://feature/{}", warning.feature_id)),
+            ),
+        ]),
+    }
 }
 
 fn warning_to_pane_state(index: usize, warning: &CadWarning) -> CadDemoWarningState {
@@ -521,12 +734,26 @@ fn focus_warning(state: &mut CadDemoPaneState, warning_index: usize) {
     ));
 }
 
+fn select_timeline_row(state: &mut CadDemoPaneState, index: usize) {
+    if index >= state.timeline_rows.len() {
+        return;
+    }
+    state.timeline_selected_index = Some(index);
+    state.timeline_scroll_offset = auto_scroll_offset(index, state.timeline_scroll_offset, 10);
+    state.selected_feature_params = state.timeline_rows[index].params.clone();
+    state.focused_geometry_ref = Some(format!("cad://feature/{}", state.timeline_rows[index].feature_id));
+    state.last_action = Some(format!(
+        "CAD timeline selected -> {}",
+        state.timeline_rows[index].feature_name
+    ));
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
 
     use super::{apply_cad_demo_action, drain_worker_responses_from_pane};
-    use crate::app_state::CadDemoPaneState;
+    use crate::app_state::{CadDemoPaneState, CadTimelineRowState};
     use crate::pane_system::CadDemoPaneAction;
 
     fn wait_for_receipt(state: &mut CadDemoPaneState) {
@@ -638,6 +865,53 @@ mod tests {
         wait_for_receipt(&mut state);
         assert!(state.warning_hover_index.is_none());
         assert!(state.focused_warning_index.is_none());
-        assert!(state.focused_geometry_ref.is_none());
+        assert!(
+            state.focused_geometry_ref.is_some(),
+            "timeline selection may keep feature focus after rebuild"
+        );
+    }
+
+    #[test]
+    fn selecting_timeline_row_highlights_corresponding_feature() {
+        let mut state = CadDemoPaneState::default();
+        let _ = apply_cad_demo_action(&mut state, CadDemoPaneAction::CycleVariant);
+        wait_for_receipt(&mut state);
+        assert!(!state.timeline_rows.is_empty());
+
+        let changed = apply_cad_demo_action(&mut state, CadDemoPaneAction::SelectTimelineRow(0));
+        assert!(changed);
+        assert_eq!(state.timeline_selected_index, Some(0));
+        let selected = state.timeline_rows[0].feature_id.clone();
+        assert_eq!(
+            state.focused_geometry_ref.as_deref(),
+            Some(format!("cad://feature/{selected}").as_str())
+        );
+        assert_eq!(state.selected_feature_params, state.timeline_rows[0].params);
+    }
+
+    #[test]
+    fn timeline_keyboard_navigation_auto_scrolls_for_long_lists() {
+        let mut state = CadDemoPaneState::default();
+        state.timeline_rows = (0..24)
+            .map(|index| CadTimelineRowState {
+                feature_id: format!("feature.{index:03}"),
+                feature_name: format!("Feature {index:03}"),
+                op_type: "primitive.box.v1".to_string(),
+                status_badge: "ok".to_string(),
+                provenance: "manual".to_string(),
+                params: vec![("width".to_string(), index.to_string())],
+            })
+            .collect();
+        state.timeline_selected_index = Some(0);
+        for _ in 0..14 {
+            let changed = apply_cad_demo_action(&mut state, CadDemoPaneAction::TimelineSelectNext);
+            assert!(changed);
+        }
+        assert_eq!(state.timeline_selected_index, Some(14));
+        assert!(state.timeline_scroll_offset > 0);
+
+        let changed = apply_cad_demo_action(&mut state, CadDemoPaneAction::TimelineSelectPrev);
+        assert!(changed);
+        assert_eq!(state.timeline_selected_index, Some(13));
     }
 }

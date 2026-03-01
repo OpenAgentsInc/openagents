@@ -40,7 +40,7 @@ use crate::pane_system::{
     ActivityFeedPaneAction, AgentNetworkSimulationPaneAction, AlertsRecoveryPaneAction,
     CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction,
     CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction,
-    CredentialsPaneAction, EarningsScoreboardPaneAction, NetworkRequestsPaneAction,
+    CredentialsPaneAction, EarningsScoreboardPaneAction, CadDemoPaneAction, NetworkRequestsPaneAction,
     PaneController, PaneHitAction, PaneInput, RelayConnectionsPaneAction,
     RelaySecuritySimulationPaneAction,
     SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StableSatsSimulationPaneAction,
@@ -694,6 +694,7 @@ fn dispatch_keyboard_submit_actions(
         || handle_settings_keyboard_input(state, logical_key)
         || handle_credentials_keyboard_input(state, logical_key)
         || handle_job_history_keyboard_input(state, logical_key)
+        || handle_cad_timeline_keyboard_input(state, logical_key)
 }
 
 fn run_pane_hit_action(state: &mut crate::app_state::RenderState, action: PaneHitAction) -> bool {
@@ -1085,6 +1086,38 @@ fn handle_job_history_keyboard_input(
             false
         },
     )
+}
+
+fn handle_cad_timeline_keyboard_input(
+    state: &mut crate::app_state::RenderState,
+    logical_key: &WinitLogicalKey,
+) -> bool {
+    let Some(key) = map_winit_key(logical_key) else {
+        return false;
+    };
+    let Some(active_pane_id) = PaneController::active(state) else {
+        return false;
+    };
+    let is_cad_active = state
+        .panes
+        .iter()
+        .find(|pane| pane.id == active_pane_id)
+        .is_some_and(|pane| pane.kind == crate::app_state::PaneKind::CadDemo);
+    if !is_cad_active {
+        return false;
+    }
+
+    match key {
+        Key::Named(NamedKey::ArrowUp) => reducers::run_cad_demo_action(
+            state,
+            CadDemoPaneAction::TimelineSelectPrev,
+        ),
+        Key::Named(NamedKey::ArrowDown) => reducers::run_cad_demo_action(
+            state,
+            CadDemoPaneAction::TimelineSelectNext,
+        ),
+        _ => false,
+    }
 }
 
 fn handle_focused_keyboard_submit<FHasFocus, FDispatch, FEnter>(

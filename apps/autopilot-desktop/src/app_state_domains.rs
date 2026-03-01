@@ -465,6 +465,11 @@ pub struct CadDemoPaneState {
     pub warning_hover_index: Option<usize>,
     pub focused_warning_index: Option<usize>,
     pub focused_geometry_ref: Option<String>,
+    pub history_stack: openagents_cad::history::CadHistoryStack,
+    pub timeline_rows: Vec<CadTimelineRowState>,
+    pub timeline_selected_index: Option<usize>,
+    pub timeline_scroll_offset: usize,
+    pub selected_feature_params: Vec<(String, String)>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -491,6 +496,16 @@ pub struct CadDemoWarningState {
     pub deep_link: Option<String>,
     pub feature_id: String,
     pub entity_id: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CadTimelineRowState {
+    pub feature_id: String,
+    pub feature_name: String,
+    pub op_type: String,
+    pub status_badge: String,
+    pub provenance: String,
+    pub params: Vec<(String, String)>,
 }
 
 impl Default for CadDemoPaneState {
@@ -523,6 +538,12 @@ impl Default for CadDemoPaneState {
             warning_hover_index: None,
             focused_warning_index: None,
             focused_geometry_ref: None,
+            history_stack: openagents_cad::history::CadHistoryStack::new("cad.session.local", 128)
+                .expect("cad history max_steps should be valid"),
+            timeline_rows: Vec::new(),
+            timeline_selected_index: None,
+            timeline_scroll_offset: 0,
+            selected_feature_params: Vec::new(),
         }
     }
 }
