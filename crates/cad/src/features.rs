@@ -1,6 +1,6 @@
 use crate::kernel::CadKernelAdapter;
 use crate::params::{ParameterStore, ScalarUnit};
-use crate::primitives::{BoxPrimitive, PrimitiveSpec, build_primitive};
+use crate::primitives::{BoxPrimitive, CylinderPrimitive, PrimitiveSpec, build_primitive};
 use crate::{CadError, CadResult};
 
 /// Deterministic feature operation result.
@@ -79,6 +79,65 @@ pub fn evaluate_box_feature<K: CadKernelAdapter>(
     })
 }
 
+/// Feature op: parameter-bound primitive cylinder.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CylinderFeatureOp {
+    pub feature_id: String,
+    pub radius_param: String,
+    pub height_param: String,
+}
+
+impl CylinderFeatureOp {
+    pub fn validate(&self) -> CadResult<()> {
+        if self.feature_id.trim().is_empty() {
+            return Err(CadError::InvalidPrimitive {
+                reason: "cylinder feature id must not be empty".to_string(),
+            });
+        }
+        if self.radius_param.trim().is_empty() || self.height_param.trim().is_empty() {
+            return Err(CadError::InvalidPrimitive {
+                reason: "cylinder feature parameter bindings must not be empty".to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    pub fn resolve_primitive(&self, params: &ParameterStore) -> CadResult<CylinderPrimitive> {
+        self.validate()?;
+        let radius_mm = params.get_required_with_unit(&self.radius_param, ScalarUnit::Millimeter)?;
+        let height_mm = params.get_required_with_unit(&self.height_param, ScalarUnit::Millimeter)?;
+        let primitive = CylinderPrimitive {
+            radius_mm,
+            height_mm,
+        };
+        primitive.validate()?;
+        Ok(primitive)
+    }
+
+    pub fn geometry_hash(&self, primitive: &CylinderPrimitive) -> String {
+        let payload = format!(
+            "cylinder|feature={}|r={:.6}|h={:.6}|unit=mm",
+            self.feature_id, primitive.radius_mm, primitive.height_mm
+        );
+        format!("{:016x}", fnv1a64(payload.as_bytes()))
+    }
+}
+
+pub fn evaluate_cylinder_feature<K: CadKernelAdapter>(
+    kernel: &mut K,
+    op: &CylinderFeatureOp,
+    params: &ParameterStore,
+) -> CadResult<FeatureOpResult<K::Solid>> {
+    let primitive = op.resolve_primitive(params)?;
+    let hash = op.geometry_hash(&primitive);
+    let solid = build_primitive(kernel, PrimitiveSpec::Cylinder(primitive))?;
+    Ok(FeatureOpResult {
+        feature_id: op.feature_id.clone(),
+        geometry_hash: hash,
+        solid,
+    })
+}
+
 fn fnv1a64(bytes: &[u8]) -> u64 {
     const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
     const FNV_PRIME: u64 = 0x100000001b3;
@@ -93,7 +152,7 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{BoxFeatureOp, evaluate_box_feature};
+    use super::{BoxFeatureOp, CylinderFeatureOp, evaluate_box_feature, evaluate_cylinder_feature};
     use crate::kernel::CadKernelAdapter;
     use crate::params::{ParameterStore, ScalarUnit, ScalarValue};
     use crate::CadResult;
@@ -102,6 +161,7 @@ mod tests {
     #[derive(Default)]
     struct MockKernel {
         box_calls: usize,
+        cylinder_calls: usize,
     }
 
     impl CadKernelAdapter for MockKernel {
@@ -119,7 +179,8 @@ mod tests {
             &mut self,
             _primitive: &crate::primitives::CylinderPrimitive,
         ) -> CadResult<Self::Solid> {
-            Ok("unused")
+            self.cylinder_calls = self.cylinder_calls.saturating_add(1);
+            Ok("solid-cylinder")
         }
     }
 
@@ -162,6 +223,15 @@ mod tests {
             std::fs::read_to_string(&path).expect("feature hash fixture should be readable");
         serde_json::from_str::<BTreeMap<String, String>>(&payload)
             .expect("feature hash fixture should parse")
+    }
+
+    fn cylinder_golden_hashes() -> BTreeMap<String, String> {
+        let root = env!("CARGO_MANIFEST_DIR");
+        let path = format!("{root}/tests/goldens/feature_cylinder_geometry_hashes.json");
+        let payload = std::fs::read_to_string(&path)
+            .expect("cylinder feature hash fixture should be readable");
+        serde_json::from_str::<BTreeMap<String, String>>(&payload)
+            .expect("cylinder feature hash fixture should parse")
     }
 
     #[test]
@@ -210,6 +280,7 @@ mod tests {
         let result = evaluate_box_feature(&mut kernel, &op, &params);
         assert!(result.is_err(), "unit mismatch must be rejected");
         assert_eq!(kernel.box_calls, 0);
+        assert_eq!(kernel.cylinder_calls, 0);
     }
 
     #[test]
@@ -255,6 +326,115 @@ mod tests {
         assert_eq!(
             hash,
             golden["feature.rack|180.000000|210.000000|95.000000"]
+        );
+    }
+
+    #[test]
+    fn cylinder_feature_op_resolves_and_calls_kernel() {
+        let mut params = ParameterStore::default();
+        params
+            .set(
+                "radius_mm",
+                ScalarValue {
+                    value: 6.0,
+                    unit: ScalarUnit::Millimeter,
+                },
+            )
+            .expect("radius should set");
+        params
+            .set(
+                "height_mm",
+                ScalarValue {
+                    value: 40.0,
+                    unit: ScalarUnit::Millimeter,
+                },
+            )
+            .expect("height should set");
+
+        let op = CylinderFeatureOp {
+            feature_id: "feature.mount_post".to_string(),
+            radius_param: "radius_mm".to_string(),
+            height_param: "height_mm".to_string(),
+        };
+        let mut kernel = MockKernel::default();
+        let result = evaluate_cylinder_feature(&mut kernel, &op, &params)
+            .expect("cylinder feature eval should succeed");
+        assert_eq!(kernel.cylinder_calls, 1);
+        assert_eq!(result.feature_id, "feature.mount_post");
+        assert_eq!(result.solid, "solid-cylinder");
+        let golden = cylinder_golden_hashes();
+        assert_eq!(
+            result.geometry_hash,
+            golden["feature.mount_post|6.000000|40.000000"]
+        );
+    }
+
+    #[test]
+    fn cylinder_feature_rejects_tolerance_edge_case_radius() {
+        let mut params = ParameterStore::default();
+        params
+            .set(
+                "radius_mm",
+                ScalarValue {
+                    value: crate::policy::BASE_TOLERANCE_MM,
+                    unit: ScalarUnit::Millimeter,
+                },
+            )
+            .expect("radius should set");
+        params
+            .set(
+                "height_mm",
+                ScalarValue {
+                    value: 10.0,
+                    unit: ScalarUnit::Millimeter,
+                },
+            )
+            .expect("height should set");
+
+        let op = CylinderFeatureOp {
+            feature_id: "feature.edge_case".to_string(),
+            radius_param: "radius_mm".to_string(),
+            height_param: "height_mm".to_string(),
+        };
+        let mut kernel = MockKernel::default();
+        let result = evaluate_cylinder_feature(&mut kernel, &op, &params);
+        assert!(result.is_err(), "radius at tolerance must be rejected");
+        assert_eq!(kernel.cylinder_calls, 0);
+    }
+
+    #[test]
+    fn cylinder_geometry_hash_matches_second_representative_fixture() {
+        let mut params = ParameterStore::default();
+        params
+            .set(
+                "r",
+                ScalarValue {
+                    value: 3.2,
+                    unit: ScalarUnit::Millimeter,
+                },
+            )
+            .expect("r should set");
+        params
+            .set(
+                "h",
+                ScalarValue {
+                    value: 18.5,
+                    unit: ScalarUnit::Millimeter,
+                },
+            )
+            .expect("h should set");
+
+        let op = CylinderFeatureOp {
+            feature_id: "feature.vent_tube".to_string(),
+            radius_param: "r".to_string(),
+            height_param: "h".to_string(),
+        };
+        let primitive = op.resolve_primitive(&params).expect("primitive should resolve");
+        let hash = op.geometry_hash(&primitive);
+        let golden = cylinder_golden_hashes();
+        assert_eq!(
+            hash,
+            golden["feature.vent_tube|3.200000|18.500000"]
         );
     }
 }
