@@ -187,6 +187,7 @@ Decision criteria to keep objective:
 - params store document: `docs/cad/CAD_PARAMS.md`
 - feature ops document: `docs/cad/CAD_FEATURE_OPS.md`
 - rack template generator document: `docs/cad/CAD_RACK_TEMPLATE.md`
+- CAD intent schema document: `docs/cad/CAD_INTENTS.md`
 
 ### Eval, Caching, and Concurrency
 
