@@ -287,7 +287,7 @@ pub fn paint_cad_demo_placeholder_pane(
 
     if layout.header_origin.y + 10.0 <= content_bounds.max_y() {
         paint.scene.draw_text(paint.text.layout(
-            "CAD demo placeholder",
+            "CAD Demo",
             layout.header_origin,
             12.0,
             theme::text::PRIMARY,
@@ -298,8 +298,11 @@ pub fn paint_cad_demo_placeholder_pane(
         let variant_count = pane_state.variant_ids.len();
         paint.scene.draw_text(paint.text.layout(
             &format!(
-                "doc={} rev={} variants={variant_count}",
-                pane_state.document_id, pane_state.document_revision
+                "doc {} | rev {} | active {} | variants {}",
+                pane_state.document_id,
+                pane_state.document_revision,
+                pane_state.active_variant_id,
+                variant_count
             ),
             layout.subheader_origin,
             10.0,
@@ -359,12 +362,6 @@ pub fn paint_cad_demo_placeholder_pane(
                 .unwrap_or("variant.unset");
             let selection = variant_view.and_then(|view| view.selected_ref.as_deref());
             let hover = variant_view.and_then(|view| view.hovered_ref.as_deref());
-            let selection_suffix = selection
-                .map(|value| format!(" sel={value}"))
-                .unwrap_or_default();
-            let hover_suffix = hover
-                .map(|value| format!(" hov={value}"))
-                .unwrap_or_default();
 
             let mut tile_quad = Quad::new(tile_bounds)
                 .with_background(theme::bg::SURFACE)
@@ -378,13 +375,7 @@ pub fn paint_cad_demo_placeholder_pane(
             let tile_label_origin =
                 Point::new(tile_bounds.origin.x + 6.0, tile_bounds.origin.y + 10.0);
             paint.scene.draw_text(paint.text.layout(
-                &format!(
-                    "{}{}{}{}",
-                    tile_index + 1,
-                    if is_active { "*" } else { "" },
-                    selection_suffix,
-                    hover_suffix
-                ),
+                &tile_caption(tile_index, is_active, selection, hover),
                 tile_label_origin,
                 8.0,
                 theme::text::MUTED,
@@ -418,14 +409,14 @@ pub fn paint_cad_demo_placeholder_pane(
                     Ok(mesh) => {
                         paint.scene.push_clip(tile_bounds);
                         if let Err(error) = paint.scene.draw_mesh(mesh) {
-                            viewport_status =
-                                format!("tile {} mesh draw skipped: {error}", tile_index + 1);
+                            let _ = error;
+                            viewport_status = format!("tile {} mesh draw skipped", tile_index + 1);
                         }
                         paint.scene.pop_clip();
                     }
                     Err(error) => {
-                        viewport_status =
-                            format!("tile {} mesh conversion failed: {error}", tile_index + 1);
+                        let _ = error;
+                        viewport_status = format!("tile {} mesh conversion failed", tile_index + 1);
                     }
                 }
             }
@@ -516,6 +507,12 @@ pub fn paint_cad_demo_placeholder_pane(
                 .with_corner_radius(4.0)
                 .with_border(theme::border::SUBTLE, 1.0),
         );
+        paint.scene.draw_text(paint.text.layout(
+            "Warnings",
+            Point::new(warning_panel.origin.x + 6.0, warning_panel.origin.y + 10.0),
+            9.0,
+            theme::text::SECONDARY,
+        ));
         let visible_warning_indices = visible_warning_indices(pane_state);
         for (row_index, warning_index) in visible_warning_indices.iter().take(8).enumerate() {
             let row_bounds = cad_demo_warning_row_bounds(content_bounds, row_index);
@@ -630,7 +627,7 @@ pub fn paint_cad_demo_placeholder_pane(
                 .with_border(theme::border::SUBTLE, 1.0),
         );
         paint.scene.draw_text(paint.text.layout(
-            "Feature Timeline",
+            "Timeline",
             Point::new(
                 timeline_panel.origin.x + 6.0,
                 timeline_panel.origin.y + 10.0,
@@ -762,52 +759,9 @@ pub fn paint_cad_demo_placeholder_pane(
     }
 
     if layout.footer_origin.y + 8.0 <= content_bounds.max_y() {
-        let focus_suffix = pane_state
-            .focused_geometry_ref
-            .as_ref()
-            .map(|value| format!(" focus={value}"))
-            .unwrap_or_default();
-        let three_d_mouse_status = pane_state.three_d_mouse_status();
-        let material_id = pane_state
-            .analysis_snapshot
-            .material_id
-            .as_deref()
-            .unwrap_or(openagents_cad::materials::DEFAULT_CAD_MATERIAL_ID);
-        let mass_label = pane_state
-            .analysis_snapshot
-            .mass_kg
-            .map(|value| format!("{value:.3}"))
-            .unwrap_or_else(|| "--".to_string());
-        let cost_label = pane_state
-            .analysis_snapshot
-            .estimated_cost_usd
-            .map(|value| format!("{value:.2}"))
-            .unwrap_or_else(|| "--".to_string());
+        let summary = footer_summary_line(pane_state);
         paint.scene.draw_text(paint.text.layout(
-            &format!(
-                "session={} active={} warnings={}{} cam({}; z={:.2} pan={:.0},{:.0} orbit={:.0}/{:.0}) section[{}] material[{}] mass={}kg cost=${} snaps[{}] hotkeys[{}] 3dmouse[{}]",
-                pane_state.session_id,
-                format!(
-                    "{}@tile{}",
-                    pane_state.active_variant_id,
-                    pane_state.active_variant_tile_index + 1
-                ),
-                pane_state.warnings.len(),
-                focus_suffix,
-                pane_state.projection_mode.label(),
-                pane_state.camera_zoom,
-                pane_state.camera_pan_x,
-                pane_state.camera_pan_y,
-                pane_state.camera_orbit_yaw_deg,
-                pane_state.camera_orbit_pitch_deg,
-                pane_state.section_summary(),
-                material_id,
-                mass_label,
-                cost_label,
-                pane_state.snap_summary(),
-                pane_state.hotkey_profile,
-                three_d_mouse_status,
-            ),
+            &summary,
             layout.footer_origin,
             9.0,
             theme::text::MUTED,
@@ -858,6 +812,55 @@ fn engineering_overlay_lines(
     ]
 }
 
+fn tile_caption(
+    tile_index: usize,
+    is_active: bool,
+    selection: Option<&str>,
+    hover: Option<&str>,
+) -> String {
+    let mut caption = format!("{}{}", tile_index + 1, if is_active { "*" } else { "" });
+    if selection.is_some() {
+        caption.push_str(" sel");
+    }
+    if hover.is_some() {
+        caption.push_str(" hov");
+    }
+    caption
+}
+
+fn footer_summary_line(pane_state: &CadDemoPaneState) -> String {
+    let material_id = pane_state
+        .analysis_snapshot
+        .material_id
+        .as_deref()
+        .unwrap_or(openagents_cad::materials::DEFAULT_CAD_MATERIAL_ID);
+    let mass_label = pane_state
+        .analysis_snapshot
+        .mass_kg
+        .map(|value| format!("{value:.3}kg"))
+        .unwrap_or_else(|| "--kg".to_string());
+    let cost_label = pane_state
+        .analysis_snapshot
+        .estimated_cost_usd
+        .map(|value| format!("${value:.2}"))
+        .unwrap_or_else(|| "$--".to_string());
+    format!(
+        "{} @ tile{} | rev {} | warn {} | {} z{:.2} | section {} | material {} | {} {} | snaps {} | hotkeys {}",
+        pane_state.active_variant_id,
+        pane_state.active_variant_tile_index + 1,
+        pane_state.document_revision,
+        pane_state.warnings.len(),
+        pane_state.projection_mode.label(),
+        pane_state.camera_zoom,
+        pane_state.section_summary(),
+        material_id,
+        mass_label,
+        cost_label,
+        pane_state.snap_summary(),
+        pane_state.hotkey_profile,
+    )
+}
+
 fn engineering_overlay_bounds(viewport_bounds: Bounds) -> Bounds {
     let width = ENGINEERING_OVERLAY_WIDTH
         .min((viewport_bounds.size.width - 8.0).max(40.0))
@@ -893,7 +896,7 @@ fn paint_engineering_overlay(
     );
     if title_origin.y + 8.0 <= overlay_bounds.max_y() {
         paint.scene.draw_text(paint.text.layout(
-            "Engineering Overlay",
+            "Engineering",
             title_origin,
             8.0,
             theme::text::SECONDARY,
@@ -1332,8 +1335,8 @@ fn styled_fill_color(base: [f32; 4], mode: CadHiddenLineMode) -> [f32; 4] {
 mod tests {
     use super::{
         CadCameraPose, cad_mesh_to_viewport_primitive, engineering_overlay_bounds,
-        engineering_overlay_lines, placeholder_layout, selection_inspect_lines,
-        variant_tile_bounds, variant_tile_index_at_point,
+        engineering_overlay_lines, footer_summary_line, placeholder_layout,
+        selection_inspect_lines, tile_caption, variant_tile_bounds, variant_tile_index_at_point,
     };
     use openagents_cad::analysis::{DENSITY_ALUMINUM_6061_KG_M3, estimate_body_properties};
     use openagents_cad::contracts::CadSelectionKind;
@@ -1420,6 +1423,32 @@ mod tests {
         state.analysis_snapshot.mass_kg = Some(2.10);
         let second = engineering_overlay_lines(&state);
         assert_ne!(first[2], second[2]);
+    }
+
+    #[test]
+    fn tile_caption_is_compact_and_readable() {
+        assert_eq!(
+            tile_caption(0, true, Some("face.1"), Some("edge.2")),
+            "1* sel hov"
+        );
+        assert_eq!(tile_caption(1, false, None, None), "2");
+    }
+
+    #[test]
+    fn footer_summary_line_avoids_session_noise() {
+        let mut state = CadDemoPaneState::default();
+        state.document_revision = 42;
+        state.analysis_snapshot.material_id = Some("al-6061-t6".to_string());
+        state.analysis_snapshot.mass_kg = Some(2.731);
+        state.analysis_snapshot.estimated_cost_usd = Some(128.44);
+        let summary = footer_summary_line(&state);
+        assert!(summary.contains("variant.baseline"));
+        assert!(summary.contains("rev 42"));
+        assert!(summary.contains("material al-6061-t6"));
+        assert!(summary.contains("2.731kg"));
+        assert!(summary.contains("$128.44"));
+        assert!(!summary.contains("session="));
+        assert!(!summary.contains("orbit="));
     }
 
     #[test]
