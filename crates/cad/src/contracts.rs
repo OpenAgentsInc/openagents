@@ -92,6 +92,7 @@ pub struct CadAnalysis {
     pub center_of_gravity_mm: Option<[f64; 3]>,
     pub estimated_cost_usd: Option<f64>,
     pub max_deflection_mm: Option<f64>,
+    pub estimator_metadata: BTreeMap<String, String>,
     pub objective_scores: BTreeMap<String, f64>,
 }
 
@@ -100,8 +101,8 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::{
-        CadAnalysis, CadSelection, CadSelectionKind, CadSelectionState, CadWarning,
-        CadWarningCode, CadWarningSeverity,
+        CadAnalysis, CadSelection, CadSelectionKind, CadSelectionState, CadWarning, CadWarningCode,
+        CadWarningSeverity,
     };
 
     #[test]
@@ -157,6 +158,10 @@ mod tests {
             center_of_gravity_mm: Some([40.0, 18.0, 72.0]),
             estimated_cost_usd: Some(128.0),
             max_deflection_mm: Some(0.6),
+            estimator_metadata: BTreeMap::from([(
+                "cost.model_id".to_string(),
+                "cad.cost.wave1.v1".to_string(),
+            )]),
             objective_scores: BTreeMap::from([
                 ("weight".to_string(), 0.92),
                 ("cost".to_string(), 0.87),

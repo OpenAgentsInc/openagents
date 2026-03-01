@@ -1069,6 +1069,7 @@ impl Default for CadDemoPaneState {
                 center_of_gravity_mm: None,
                 estimated_cost_usd: None,
                 max_deflection_mm: None,
+                estimator_metadata: std::collections::BTreeMap::new(),
                 objective_scores: std::collections::BTreeMap::new(),
             },
             measurement_tile_index: None,
