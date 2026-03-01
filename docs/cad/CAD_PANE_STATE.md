@@ -18,6 +18,10 @@ This document defines the MVP `CadDemoPaneState` container in desktop app state.
 - `last_error`
 - `last_action`
 - `session_id`
+- `active_chat_session_id`
+- `chat_thread_session_bindings` (thread -> CAD session mapping)
+- `dispatch_sessions` (typed CAD dispatch state per session)
+- `last_chat_intent_name`
 - `document_id`
 - `document_revision`
 - `active_variant_id`

@@ -190,6 +190,7 @@ Decision criteria to keep objective:
 - CAD intent schema document: `docs/cad/CAD_INTENTS.md`
 - CAD intent dispatch document: `docs/cad/CAD_INTENT_DISPATCH.md`
 - CAD chat adapter document: `docs/cad/CAD_CHAT_ADAPTER.md`
+- CAD chat session lifecycle document: `docs/cad/CAD_CHAT_SESSION_LIFECYCLE.md`
 
 ### Eval, Caching, and Concurrency
 

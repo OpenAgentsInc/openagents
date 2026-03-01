@@ -16,6 +16,7 @@ pub(super) fn run_chat_submit_action(state: &mut crate::app_state::RenderState) 
 
     state.chat_inputs.composer.set_value(String::new());
     state.autopilot_chat.submit_prompt(prompt.clone());
+    let _ = super::reducers::apply_chat_prompt_to_cad_session(state, &thread_id, &prompt);
 
     let selected_skill = state
         .skill_registry

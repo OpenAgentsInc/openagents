@@ -5,6 +5,7 @@ use openagents_cad::analysis::{
     CadBodyAnalysisError, CadDeflectionHeuristicError, CadDeflectionHeuristicInput,
     analyze_body_properties, estimate_beam_deflection_heuristic,
 };
+use openagents_cad::chat_adapter::{CadIntentTranslationOutcome, translate_chat_to_cad_intent};
 use openagents_cad::contracts::{CadWarning, CadWarningCode, CadWarningSeverity};
 use openagents_cad::eval::{EvalCacheEntry, EvalCacheKey, EvalCacheStats};
 use openagents_cad::feature_graph::{FeatureGraph, FeatureNode};
@@ -26,6 +27,63 @@ use crate::cad_rebuild_worker::{
     CadBackgroundRebuildWorker, CadRebuildCompleted, CadRebuildRequest, CadRebuildResponse,
 };
 use crate::pane_system::CadDemoPaneAction;
+
+pub(super) fn apply_chat_prompt_to_cad_session(
+    state: &mut RenderState,
+    thread_id: &str,
+    prompt: &str,
+) -> bool {
+    match translate_chat_to_cad_intent(prompt) {
+        CadIntentTranslationOutcome::Intent(intent) => {
+            let intent_name = intent.intent_name().to_string();
+            match state.cad_demo.apply_chat_intent_for_thread(thread_id, &intent) {
+                Ok(receipt) => {
+                    let occurred_at_epoch_seconds = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .map(|duration| duration.as_secs())
+                        .unwrap_or(0);
+                    state.activity_feed.upsert_event(ActivityEventRow {
+                        event_id: format!(
+                            "cad.chat.intent:{}:{}:{}",
+                            thread_id, intent_name, receipt.state_revision
+                        ),
+                        domain: ActivityEventDomain::Sync,
+                        source_tag: "cad.chat".to_string(),
+                        occurred_at_epoch_seconds,
+                        summary: format!("CAD chat intent -> {}", intent_name),
+                        detail: format!(
+                            "thread={} session={} revision={}",
+                            thread_id, state.cad_demo.session_id, receipt.state_revision
+                        ),
+                    });
+                    state.activity_feed.load_state = PaneLoadState::Ready;
+                    state.activity_feed.last_action = Some(format!(
+                        "CAD session {} intent {} applied",
+                        state.cad_demo.session_id, intent_name
+                    ));
+                }
+                Err(error) => {
+                    state.cad_demo.last_error = Some(format!(
+                        "CAD intent dispatch failed for thread {}: {}",
+                        thread_id, error
+                    ));
+                }
+            }
+            true
+        }
+        CadIntentTranslationOutcome::ParseFailure(error) => {
+            if looks_like_cad_prompt(prompt) {
+                state.cad_demo.last_error = Some(format!(
+                    "CAD chat parse failure ({}) {}",
+                    error.code, error.message
+                ));
+                state.cad_demo.last_action = Some(error.recovery_prompt);
+                return true;
+            }
+            false
+        }
+    }
+}
 
 pub(super) fn run_cad_demo_action(state: &mut RenderState, action: CadDemoPaneAction) -> bool {
     let action_changed = apply_cad_demo_action(&mut state.cad_demo, action);
@@ -1280,6 +1338,24 @@ fn select_timeline_row(state: &mut CadDemoPaneState, index: usize) {
     ));
 }
 
+fn looks_like_cad_prompt(prompt: &str) -> bool {
+    let lower = prompt.to_ascii_lowercase();
+    [
+        "cad",
+        "rack",
+        "variant",
+        "material",
+        "objective",
+        "vent",
+        "export",
+        "select",
+        "wall",
+        "thickness",
+    ]
+    .iter()
+    .any(|token| lower.contains(token))
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
@@ -1800,4 +1876,5 @@ mod tests {
         assert!(changed);
         assert_eq!(state.timeline_selected_index, Some(13));
     }
+
 }

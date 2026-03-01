@@ -143,6 +143,14 @@ pub(super) fn run_cad_demo_action(state: &mut RenderState, action: CadDemoPaneAc
     cad::run_cad_demo_action(state, action)
 }
 
+pub(super) fn apply_chat_prompt_to_cad_session(
+    state: &mut RenderState,
+    thread_id: &str,
+    prompt: &str,
+) -> bool {
+    cad::apply_chat_prompt_to_cad_session(state, thread_id, prompt)
+}
+
 fn apply_runtime_command_response(state: &mut RenderState, response: RuntimeCommandResponse) {
     let summary = command_response_summary(&response);
     match response.lane {
