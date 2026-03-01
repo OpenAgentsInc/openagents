@@ -31,6 +31,7 @@ pub mod section;
 pub mod selection;
 pub mod semantic_refs;
 pub mod sketch;
+pub mod sketch_feature_ops;
 pub mod step_checker;
 pub mod step_roundtrip;
 pub mod tessellation;
