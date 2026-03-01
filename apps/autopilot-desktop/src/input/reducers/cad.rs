@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use openagents_cad::analysis::{DENSITY_ALUMINUM_6061_KG_M3, estimate_body_properties};
 use openagents_cad::contracts::{CadWarning, CadWarningCode, CadWarningSeverity};
 use openagents_cad::eval::{EvalCacheEntry, EvalCacheKey, EvalCacheStats};
 use openagents_cad::feature_graph::{FeatureGraph, FeatureNode};
@@ -441,6 +442,11 @@ fn apply_completed_rebuild(
     state.pending_rebuild_request_id = None;
     state.last_good_mesh_payload = Some(completed.mesh_payload.clone());
     state.last_good_mesh_id = Some(completed.mesh_payload.mesh_id.clone());
+    state.analysis_snapshot = analysis_snapshot_from_mesh(
+        completed.document_revision,
+        &receipt.variant_id,
+        &completed.mesh_payload,
+    );
     refresh_warning_state(state, completed.document_revision, &receipt.variant_id);
     refresh_timeline_state(
         state,
@@ -701,6 +707,25 @@ fn provenance_from_trigger(trigger: &str) -> String {
     }
 }
 
+fn analysis_snapshot_from_mesh(
+    document_revision: u64,
+    variant_id: &str,
+    mesh_payload: &openagents_cad::mesh::CadMeshPayload,
+) -> openagents_cad::contracts::CadAnalysis {
+    let estimate = estimate_body_properties(mesh_payload, DENSITY_ALUMINUM_6061_KG_M3);
+    openagents_cad::contracts::CadAnalysis {
+        document_revision,
+        variant_id: variant_id.to_string(),
+        material_id: Some("al-6061-t6".to_string()),
+        volume_mm3: estimate.map(|value| value.volume_mm3),
+        mass_kg: estimate.map(|value| value.mass_kg),
+        center_of_gravity_mm: estimate.map(|value| value.center_of_gravity_mm),
+        estimated_cost_usd: None,
+        max_deflection_mm: None,
+        objective_scores: BTreeMap::new(),
+    }
+}
+
 fn history_snapshot_from_state(state: &CadDemoPaneState) -> CadHistorySnapshot {
     let warnings = state
         .warnings
@@ -721,17 +746,7 @@ fn history_snapshot_from_state(state: &CadDemoPaneState) -> CadHistorySnapshot {
             .unwrap_or_else(|| "mesh.none".to_string()),
         stable_ids,
         warnings,
-        analysis: openagents_cad::contracts::CadAnalysis {
-            document_revision: state.document_revision,
-            variant_id: state.active_variant_id.clone(),
-            material_id: None,
-            volume_mm3: None,
-            mass_kg: None,
-            center_of_gravity_mm: None,
-            estimated_cost_usd: None,
-            max_deflection_mm: None,
-            objective_scores: BTreeMap::new(),
-        },
+        analysis: state.analysis_snapshot.clone(),
     }
 }
 
