@@ -186,6 +186,12 @@ pub(super) fn dispatch_command_palette_actions(state: &mut crate::app_state::Ren
 
     let mut changed = false;
     for action in action_ids {
+        if let Some(cad_action) = crate::pane_system::cad_palette_action_for_command_id(&action) {
+            let _ = PaneController::create_for_kind(state, PaneKind::CadDemo);
+            changed |= reducers::run_cad_demo_action(state, cad_action);
+            continue;
+        }
+
         let Some(spec) = pane_spec_by_command_id(&action) else {
             continue;
         };

@@ -1322,78 +1322,54 @@ fn handle_cad_timeline_keyboard_input(
         Key::Character(value) if value == "0" => {
             reducers::run_cad_demo_action(state, CadDemoPaneAction::ResetCamera)
         }
-        Key::Character(value)
-            if state
-                .cad_demo
-                .hotkey_matches(CadHotkeyAction::SnapTop, value.as_str()) =>
-        {
-            reducers::run_cad_demo_action(state, CadDemoPaneAction::SnapViewTop)
-        }
-        Key::Character(value)
-            if state
-                .cad_demo
-                .hotkey_matches(CadHotkeyAction::SnapFront, value.as_str()) =>
-        {
-            reducers::run_cad_demo_action(state, CadDemoPaneAction::SnapViewFront)
-        }
-        Key::Character(value)
-            if state
-                .cad_demo
-                .hotkey_matches(CadHotkeyAction::SnapRight, value.as_str()) =>
-        {
-            reducers::run_cad_demo_action(state, CadDemoPaneAction::SnapViewRight)
-        }
-        Key::Character(value)
-            if state
-                .cad_demo
-                .hotkey_matches(CadHotkeyAction::SnapIsometric, value.as_str()) =>
-        {
-            reducers::run_cad_demo_action(state, CadDemoPaneAction::SnapViewIsometric)
-        }
-        Key::Character(value)
-            if state
-                .cad_demo
-                .hotkey_matches(CadHotkeyAction::ToggleProjection, value.as_str()) =>
-        {
-            reducers::run_cad_demo_action(state, CadDemoPaneAction::ToggleProjectionMode)
-        }
-        Key::Character(value)
-            if state
-                .cad_demo
-                .hotkey_matches(CadHotkeyAction::CycleRenderMode, value.as_str()) =>
-        {
-            reducers::run_cad_demo_action(state, CadDemoPaneAction::CycleHiddenLineMode)
-        }
-        Key::Character(value)
-            if state
-                .cad_demo
-                .hotkey_matches(CadHotkeyAction::ToggleSnapGrid, value.as_str()) =>
-        {
-            reducers::run_cad_demo_action(state, CadDemoPaneAction::ToggleSnapGrid)
-        }
-        Key::Character(value)
-            if state
-                .cad_demo
-                .hotkey_matches(CadHotkeyAction::ToggleSnapOrigin, value.as_str()) =>
-        {
-            reducers::run_cad_demo_action(state, CadDemoPaneAction::ToggleSnapOrigin)
-        }
-        Key::Character(value)
-            if state
-                .cad_demo
-                .hotkey_matches(CadHotkeyAction::ToggleSnapEndpoint, value.as_str()) =>
-        {
-            reducers::run_cad_demo_action(state, CadDemoPaneAction::ToggleSnapEndpoint)
-        }
-        Key::Character(value)
-            if state
-                .cad_demo
-                .hotkey_matches(CadHotkeyAction::ToggleSnapMidpoint, value.as_str()) =>
-        {
-            reducers::run_cad_demo_action(state, CadDemoPaneAction::ToggleSnapMidpoint)
-        }
+        Key::Character(value) => cad_hotkey_action_matrix()
+            .iter()
+            .find_map(|(hotkey, action)| {
+                state
+                    .cad_demo
+                    .hotkey_matches(*hotkey, value.as_str())
+                    .then_some(*action)
+            })
+            .is_some_and(|action| reducers::run_cad_demo_action(state, action)),
         _ => false,
     }
+}
+
+fn cad_hotkey_action_matrix() -> &'static [(CadHotkeyAction, CadDemoPaneAction)] {
+    const MATRIX: [(CadHotkeyAction, CadDemoPaneAction); 10] = [
+        (CadHotkeyAction::SnapTop, CadDemoPaneAction::SnapViewTop),
+        (CadHotkeyAction::SnapFront, CadDemoPaneAction::SnapViewFront),
+        (CadHotkeyAction::SnapRight, CadDemoPaneAction::SnapViewRight),
+        (
+            CadHotkeyAction::SnapIsometric,
+            CadDemoPaneAction::SnapViewIsometric,
+        ),
+        (
+            CadHotkeyAction::ToggleProjection,
+            CadDemoPaneAction::ToggleProjectionMode,
+        ),
+        (
+            CadHotkeyAction::CycleRenderMode,
+            CadDemoPaneAction::CycleHiddenLineMode,
+        ),
+        (
+            CadHotkeyAction::ToggleSnapGrid,
+            CadDemoPaneAction::ToggleSnapGrid,
+        ),
+        (
+            CadHotkeyAction::ToggleSnapOrigin,
+            CadDemoPaneAction::ToggleSnapOrigin,
+        ),
+        (
+            CadHotkeyAction::ToggleSnapEndpoint,
+            CadDemoPaneAction::ToggleSnapEndpoint,
+        ),
+        (
+            CadHotkeyAction::ToggleSnapMidpoint,
+            CadDemoPaneAction::ToggleSnapMidpoint,
+        ),
+    ];
+    &MATRIX
 }
 
 fn handle_focused_keyboard_submit<FHasFocus, FDispatch, FEnter>(
@@ -1436,9 +1412,11 @@ where
 mod tests {
     use super::{
         assemble_chat_turn_input, build_create_invoice_command, build_pay_invoice_command,
-        build_spark_command_for_action, is_command_palette_shortcut, is_toggle_fullscreen_shortcut,
-        parse_positive_amount_str, validate_lightning_payment_request,
+        build_spark_command_for_action, cad_hotkey_action_matrix, is_command_palette_shortcut,
+        is_toggle_fullscreen_shortcut, parse_positive_amount_str,
+        validate_lightning_payment_request,
     };
+    use crate::pane_system::cad_palette_command_specs;
     use crate::spark_pane::{
         CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction, hit_action, layout,
     };
@@ -1714,5 +1692,22 @@ mod tests {
         .collect();
 
         assert_eq!(enter_actions, mouse_actions);
+    }
+
+    #[test]
+    fn cad_hotkey_and_command_palette_actions_stay_in_parity() {
+        let hotkey_actions: BTreeSet<String> = cad_hotkey_action_matrix()
+            .iter()
+            .map(|(_, action)| format!("{action:?}"))
+            .collect();
+        let palette_actions: BTreeSet<String> = cad_palette_command_specs()
+            .iter()
+            .map(|spec| format!("{:?}", spec.action))
+            .collect();
+
+        assert_eq!(
+            hotkey_actions, palette_actions,
+            "every CAD hotkey action must have a command palette equivalent"
+        );
     }
 }
