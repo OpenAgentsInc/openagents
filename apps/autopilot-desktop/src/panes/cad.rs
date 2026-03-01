@@ -5,13 +5,14 @@ use wgpui::{
 };
 
 use crate::app_state::{
-    CadCameraViewSnap, CadDemoPaneState, CadDemoWarningState, CadHiddenLineMode,
+    CadCameraViewSnap, CadDemoPaneState, CadDemoWarningState, CadHiddenLineMode, CadProjectionMode,
 };
 use crate::pane_renderer::paint_action_button;
 use crate::pane_system::{
     cad_demo_cycle_variant_button_bounds, cad_demo_hidden_line_mode_button_bounds,
-    cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
-    cad_demo_timeline_panel_bounds, cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
+    cad_demo_projection_mode_button_bounds, cad_demo_reset_button_bounds,
+    cad_demo_reset_camera_button_bounds, cad_demo_timeline_panel_bounds,
+    cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
     cad_demo_view_snap_front_button_bounds, cad_demo_view_snap_iso_button_bounds,
     cad_demo_view_snap_right_button_bounds, cad_demo_view_snap_top_button_bounds,
     cad_demo_warning_filter_code_button_bounds, cad_demo_warning_filter_severity_button_bounds,
@@ -28,6 +29,7 @@ const VIEWPORT_MESH_PAD: f32 = 12.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CadCameraPose {
+    pub projection_mode: CadProjectionMode,
     pub zoom: f32,
     pub pan_x: f32,
     pub pan_y: f32,
@@ -38,6 +40,7 @@ pub struct CadCameraPose {
 impl CadCameraPose {
     fn from_state(state: &CadDemoPaneState) -> Self {
         Self {
+            projection_mode: state.projection_mode,
             zoom: state.camera_zoom,
             pan_x: state.camera_pan_x,
             pan_y: state.camera_pan_y,
@@ -87,11 +90,13 @@ fn cad_demo_body_bounds(content_bounds: Bounds) -> Bounds {
     let reset_bounds = cad_demo_reset_button_bounds(content_bounds);
     let hidden_line_bounds = cad_demo_hidden_line_mode_button_bounds(content_bounds);
     let reset_camera_bounds = cad_demo_reset_camera_button_bounds(content_bounds);
+    let projection_bounds = cad_demo_projection_mode_button_bounds(content_bounds);
     let body_top = (cycle_bounds
         .max_y()
         .max(reset_bounds.max_y())
         .max(hidden_line_bounds.max_y())
         .max(reset_camera_bounds.max_y())
+        .max(projection_bounds.max_y())
         + 8.0)
         .min(content_bounds.max_y());
     Bounds::new(
@@ -115,6 +120,7 @@ pub fn paint_cad_demo_placeholder_pane(
     let reset_bounds = cad_demo_reset_button_bounds(content_bounds);
     let hidden_line_bounds = cad_demo_hidden_line_mode_button_bounds(content_bounds);
     let reset_camera_bounds = cad_demo_reset_camera_button_bounds(content_bounds);
+    let projection_bounds = cad_demo_projection_mode_button_bounds(content_bounds);
     let warning_panel = cad_demo_warning_panel_bounds(content_bounds);
     let timeline_panel = cad_demo_timeline_panel_bounds(content_bounds);
     let severity_filter_bounds = cad_demo_warning_filter_severity_button_bounds(content_bounds);
@@ -127,6 +133,11 @@ pub fn paint_cad_demo_placeholder_pane(
         paint,
     );
     paint_action_button(reset_camera_bounds, "Reset Camera", paint);
+    paint_action_button(
+        projection_bounds,
+        &format!("Projection: {}", pane_state.projection_mode.label()),
+        paint,
+    );
     paint_action_button(
         severity_filter_bounds,
         &format!("Severity: {}", pane_state.warning_filter_severity),
@@ -424,11 +435,12 @@ pub fn paint_cad_demo_placeholder_pane(
             .unwrap_or_default();
         paint.scene.draw_text(paint.text.layout(
             &format!(
-                "session={} active={} warnings={}{} cam(z={:.2} pan={:.0},{:.0} orbit={:.0}/{:.0})",
+                "session={} active={} warnings={}{} cam({}; z={:.2} pan={:.0},{:.0} orbit={:.0}/{:.0})",
                 pane_state.session_id,
                 pane_state.active_variant_id,
                 pane_state.warnings.len(),
                 focus_suffix,
+                pane_state.projection_mode.label(),
                 pane_state.camera_zoom,
                 pane_state.camera_pan_x,
                 pane_state.camera_pan_y,
@@ -598,23 +610,44 @@ fn cad_mesh_to_viewport_primitive(
         .map(|vertex| rotate_vector_yaw_pitch(vertex.normal, yaw_rad, pitch_rad))
         .collect::<Vec<_>>();
 
-    let min_x = transformed_positions
+    let transformed_min_z = transformed_positions
+        .iter()
+        .map(|position| position[2])
+        .fold(f32::INFINITY, f32::min);
+    let transformed_max_z = transformed_positions
+        .iter()
+        .map(|position| position[2])
+        .fold(f32::NEG_INFINITY, f32::max);
+    let projected_positions = transformed_positions
+        .iter()
+        .map(|position| {
+            project_xy_for_mode(
+                *position,
+                model_center,
+                camera_pose.projection_mode,
+                transformed_min_z,
+                transformed_max_z,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let min_x = projected_positions
         .iter()
         .map(|position| position[0])
         .fold(f32::INFINITY, f32::min);
-    let max_x = transformed_positions
+    let max_x = projected_positions
         .iter()
         .map(|position| position[0])
         .fold(f32::NEG_INFINITY, f32::max);
-    let min_y = transformed_positions
+    let min_y = projected_positions
         .iter()
         .map(|position| position[1])
         .fold(f32::INFINITY, f32::min);
-    let max_y = transformed_positions
+    let max_y = projected_positions
         .iter()
         .map(|position| position[1])
         .fold(f32::NEG_INFINITY, f32::max);
-    let min_z = transformed_positions
+    let min_z = projected_positions
         .iter()
         .map(|position| position[2])
         .fold(f32::INFINITY, f32::min);
@@ -654,7 +687,7 @@ fn cad_mesh_to_viewport_primitive(
                 hidden_line_mode,
             );
             project_vertex(
-                transformed_positions[index],
+                projected_positions[index],
                 transformed_normals[index],
                 min_x,
                 max_y,
@@ -686,6 +719,26 @@ fn cad_mesh_to_viewport_primitive(
         .validate()
         .map_err(|error| error.to_string())
         .map(|_| primitive)
+}
+
+fn project_xy_for_mode(
+    position: [f32; 3],
+    center: [f32; 3],
+    mode: CadProjectionMode,
+    min_z: f32,
+    max_z: f32,
+) -> [f32; 3] {
+    if mode == CadProjectionMode::Orthographic {
+        return position;
+    }
+    let depth_span = (max_z - min_z).abs().max(1.0);
+    let depth_ratio = ((position[2] - min_z) / depth_span).clamp(0.0, 1.0);
+    let perspective = 0.78 + depth_ratio * 0.44;
+    [
+        center[0] + (position[0] - center[0]) * perspective,
+        center[1] + (position[1] - center[1]) * perspective,
+        position[2],
+    ]
 }
 
 fn project_vertex(
@@ -762,10 +815,11 @@ mod tests {
     };
     use wgpui::{Bounds, MESH_EDGE_FLAG_SELECTED, MESH_EDGE_FLAG_SILHOUETTE};
 
-    use crate::app_state::CadHiddenLineMode;
+    use crate::app_state::{CadHiddenLineMode, CadProjectionMode};
 
     fn default_camera_pose() -> CadCameraPose {
         CadCameraPose {
+            projection_mode: CadProjectionMode::Orthographic,
             zoom: 1.0,
             pan_x: 0.0,
             pan_y: 0.0,
@@ -1062,6 +1116,7 @@ mod tests {
             false,
             CadHiddenLineMode::Off,
             CadCameraPose {
+                projection_mode: CadProjectionMode::Orthographic,
                 zoom: 1.3,
                 pan_x: 16.0,
                 pan_y: -12.0,
@@ -1076,6 +1131,7 @@ mod tests {
             false,
             CadHiddenLineMode::Off,
             CadCameraPose {
+                projection_mode: CadProjectionMode::Orthographic,
                 zoom: 1.3,
                 pan_x: 16.0,
                 pan_y: -12.0,
@@ -1087,5 +1143,89 @@ mod tests {
 
         assert_eq!(moved, moved_again);
         assert_ne!(baseline.vertices[0].position, moved.vertices[0].position);
+    }
+
+    #[test]
+    fn perspective_projection_mode_changes_vertex_projection_deterministically() {
+        let viewport = Bounds::new(0.0, 0.0, 220.0, 140.0);
+        let payload = CadMeshPayload {
+            mesh_id: "mesh.perspective.compare".to_string(),
+            document_revision: 1,
+            variant_id: "variant.baseline".to_string(),
+            topology: CadMeshTopology::Triangles,
+            vertices: vec![
+                CadMeshVertex {
+                    position_mm: [-30.0, -20.0, -10.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [0.0, 0.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [30.0, -20.0, 10.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [1.0, 0.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [0.0, 30.0, 25.0],
+                    normal: [0.0, 1.0, 0.0],
+                    uv: [0.5, 1.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+            ],
+            triangle_indices: vec![0, 1, 2],
+            edges: vec![CadMeshEdgeSegment {
+                start_vertex: 0,
+                end_vertex: 1,
+                flags: 0,
+            }],
+            material_slots: vec![CadMeshMaterialSlot::default()],
+            bounds: CadMeshBounds {
+                min_mm: [-30.0, -20.0, -10.0],
+                max_mm: [30.0, 30.0, 25.0],
+            },
+        };
+
+        let ortho = cad_mesh_to_viewport_primitive(
+            &payload,
+            viewport,
+            false,
+            CadHiddenLineMode::Off,
+            CadCameraPose {
+                projection_mode: CadProjectionMode::Orthographic,
+                ..default_camera_pose()
+            },
+        )
+        .expect("orthographic projection should succeed");
+
+        let perspective = cad_mesh_to_viewport_primitive(
+            &payload,
+            viewport,
+            false,
+            CadHiddenLineMode::Off,
+            CadCameraPose {
+                projection_mode: CadProjectionMode::Perspective,
+                ..default_camera_pose()
+            },
+        )
+        .expect("perspective projection should succeed");
+
+        let perspective_again = cad_mesh_to_viewport_primitive(
+            &payload,
+            viewport,
+            false,
+            CadHiddenLineMode::Off,
+            CadCameraPose {
+                projection_mode: CadProjectionMode::Perspective,
+                ..default_camera_pose()
+            },
+        )
+        .expect("perspective projection should be deterministic");
+
+        assert_eq!(perspective, perspective_again);
+        assert_ne!(ortho.vertices[0].position, perspective.vertices[0].position);
     }
 }

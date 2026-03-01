@@ -46,17 +46,18 @@ use crate::pane_system::{
     SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StableSatsSimulationPaneAction,
     StarterJobsPaneAction, SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction,
     cad_demo_cycle_variant_button_bounds, cad_demo_hidden_line_mode_button_bounds,
-    cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
-    cad_demo_timeline_panel_bounds, cad_demo_view_snap_front_button_bounds,
-    cad_demo_view_snap_iso_button_bounds, cad_demo_view_snap_right_button_bounds,
-    cad_demo_view_snap_top_button_bounds, cad_demo_warning_filter_code_button_bounds,
-    cad_demo_warning_filter_severity_button_bounds, cad_demo_warning_panel_bounds,
-    clamp_all_panes_to_window, dispatch_chat_input_event, dispatch_chat_scroll_event,
-    dispatch_create_invoice_input_event, dispatch_credentials_input_event,
-    dispatch_job_history_input_event, dispatch_network_requests_input_event,
-    dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
-    dispatch_settings_input_event, dispatch_spark_input_event, pane_content_bounds,
-    pane_indices_by_z_desc, pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
+    cad_demo_projection_mode_button_bounds, cad_demo_reset_button_bounds,
+    cad_demo_reset_camera_button_bounds, cad_demo_timeline_panel_bounds,
+    cad_demo_view_snap_front_button_bounds, cad_demo_view_snap_iso_button_bounds,
+    cad_demo_view_snap_right_button_bounds, cad_demo_view_snap_top_button_bounds,
+    cad_demo_warning_filter_code_button_bounds, cad_demo_warning_filter_severity_button_bounds,
+    cad_demo_warning_panel_bounds, clamp_all_panes_to_window, dispatch_chat_input_event,
+    dispatch_chat_scroll_event, dispatch_create_invoice_input_event,
+    dispatch_credentials_input_event, dispatch_job_history_input_event,
+    dispatch_network_requests_input_event, dispatch_pay_invoice_input_event,
+    dispatch_relay_connections_input_event, dispatch_settings_input_event,
+    dispatch_spark_input_event, pane_content_bounds, pane_indices_by_z_desc,
+    pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
 };
 use crate::panes::{cad as cad_pane, chat as chat_pane};
 use crate::render::{
@@ -518,6 +519,7 @@ fn cad_camera_target_pane_id(state: &crate::app_state::RenderState, point: Point
             || cad_demo_reset_button_bounds(content_bounds).contains(point)
             || cad_demo_hidden_line_mode_button_bounds(content_bounds).contains(point)
             || cad_demo_reset_camera_button_bounds(content_bounds).contains(point)
+            || cad_demo_projection_mode_button_bounds(content_bounds).contains(point)
             || cad_demo_view_snap_top_button_bounds(content_bounds).contains(point)
             || cad_demo_view_snap_front_button_bounds(content_bounds).contains(point)
             || cad_demo_view_snap_right_button_bounds(content_bounds).contains(point)
@@ -1281,6 +1283,9 @@ fn handle_cad_timeline_keyboard_input(
         }
         Key::Character(value) if value.eq_ignore_ascii_case("i") => {
             reducers::run_cad_demo_action(state, CadDemoPaneAction::SnapViewIsometric)
+        }
+        Key::Character(value) if value.eq_ignore_ascii_case("p") => {
+            reducers::run_cad_demo_action(state, CadDemoPaneAction::ToggleProjectionMode)
         }
         _ => false,
     }

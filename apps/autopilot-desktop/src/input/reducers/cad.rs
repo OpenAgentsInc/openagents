@@ -68,6 +68,14 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
             state.last_action = Some("CAD camera reset to defaults".to_string());
             true
         }
+        CadDemoPaneAction::ToggleProjectionMode => {
+            state.cycle_projection_mode();
+            state.last_action = Some(format!(
+                "CAD projection mode -> {}",
+                state.projection_mode.label()
+            ));
+            true
+        }
         CadDemoPaneAction::SnapViewTop => {
             state.snap_camera_to_view(CadCameraViewSnap::Top);
             state.last_action = Some("CAD camera snap -> top".to_string());
@@ -938,6 +946,33 @@ mod tests {
         assert_eq!(
             state.active_view_snap(),
             Some(crate::app_state::CadCameraViewSnap::Isometric)
+        );
+    }
+
+    #[test]
+    fn toggle_projection_mode_cycles_between_ortho_and_perspective() {
+        let mut state = CadDemoPaneState::default();
+        assert_eq!(
+            state.projection_mode,
+            crate::app_state::CadProjectionMode::Orthographic
+        );
+
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::ToggleProjectionMode
+        ));
+        assert_eq!(
+            state.projection_mode,
+            crate::app_state::CadProjectionMode::Perspective
+        );
+
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::ToggleProjectionMode
+        ));
+        assert_eq!(
+            state.projection_mode,
+            crate::app_state::CadProjectionMode::Orthographic
         );
     }
 
