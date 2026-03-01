@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::feature_graph::{FeatureGraph, FeatureNode};
-use crate::{CadError, CadResult};
 use crate::kernel::CadKernelAdapter;
 use crate::policy;
 use crate::primitives::{PrimitiveSpec, build_primitives};
+use crate::{CadError, CadResult};
 
 /// Minimal eval plan for early adapter-boundary validation.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -180,7 +180,7 @@ pub fn compute_parameter_invalidation_plan(
         }
     }
     for children in downstream.values_mut() {
-        children.sort();
+        children.sort_unstable();
     }
 
     let mut directly_affected = BTreeSet::<String>::new();
@@ -355,7 +355,9 @@ fn node_uses_changed_params(node: &FeatureNode, changed_params: &BTreeSet<String
             value == param
                 || value == &format!("${param}")
                 || value
-                    .split(|ch: char| !(ch.is_ascii_alphanumeric() || matches!(ch, '_' | '.' | '-')))
+                    .split(|ch: char| {
+                        !(ch.is_ascii_alphanumeric() || matches!(ch, '_' | '.' | '-'))
+                    })
                     .any(|token| token == param)
         })
     })
@@ -376,7 +378,7 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        EvalCacheEntry, EvalCacheKey, EvalCacheStore, EvalCacheStats, EvalPlan,
+        EvalCacheEntry, EvalCacheKey, EvalCacheStats, EvalCacheStore, EvalPlan,
         compute_parameter_invalidation_plan, eval_tolerance_mm,
         evaluate_feature_graph_deterministic, evaluate_plan,
     };
@@ -457,7 +459,10 @@ mod tests {
             id: id.to_string(),
             name: id.to_string(),
             operation_key: op.to_string(),
-            depends_on: depends_on.iter().map(|value| (*value).to_string()).collect(),
+            depends_on: depends_on
+                .iter()
+                .map(|value| (*value).to_string())
+                .collect(),
             params: params
                 .iter()
                 .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
@@ -469,12 +474,21 @@ mod tests {
     fn deterministic_rebuild_is_stable_across_runs_and_insertion_order() {
         let graph_a = FeatureGraph {
             nodes: vec![
-                node("feature.vent_pattern", "linear.pattern.v1", &["feature.hole"], &[]),
+                node(
+                    "feature.vent_pattern",
+                    "linear.pattern.v1",
+                    &["feature.hole"],
+                    &[],
+                ),
                 node(
                     "feature.base",
                     "primitive.box.v1",
                     &[],
-                    &[("depth_mm", "200"), ("height_mm", "80"), ("width_mm", "120")],
+                    &[
+                        ("depth_mm", "200"),
+                        ("height_mm", "80"),
+                        ("width_mm", "120"),
+                    ],
                 ),
                 node(
                     "feature.hole",
@@ -491,7 +505,11 @@ mod tests {
                     "feature.base",
                     "primitive.box.v1",
                     &[],
-                    &[("height_mm", "80"), ("width_mm", "120"), ("depth_mm", "200")],
+                    &[
+                        ("height_mm", "80"),
+                        ("width_mm", "120"),
+                        ("depth_mm", "200"),
+                    ],
                 ),
                 node(
                     "feature.hole",
@@ -499,7 +517,12 @@ mod tests {
                     &["feature.base"],
                     &[("radius_mm", "4"), ("depth_mm", "12")],
                 ),
-                node("feature.vent_pattern", "linear.pattern.v1", &["feature.hole"], &[]),
+                node(
+                    "feature.vent_pattern",
+                    "linear.pattern.v1",
+                    &["feature.hole"],
+                    &[],
+                ),
             ],
         };
 
@@ -559,13 +582,19 @@ mod tests {
                     "feature.hole",
                     "cut.hole.v1",
                     &["feature.base"],
-                    &[("radius_param", "hole_radius_mm"), ("depth_param", "hole_depth_mm")],
+                    &[
+                        ("radius_param", "hole_radius_mm"),
+                        ("depth_param", "hole_depth_mm"),
+                    ],
                 ),
                 node(
                     "feature.vent_pattern",
                     "linear.pattern.v1",
                     &["feature.hole"],
-                    &[("count_param", "vent_count"), ("spacing_param", "vent_spacing_mm")],
+                    &[
+                        ("count_param", "vent_count"),
+                        ("spacing_param", "vent_spacing_mm"),
+                    ],
                 ),
                 node(
                     "feature.fillet_marker",
@@ -577,9 +606,8 @@ mod tests {
         };
         let baseline = evaluate_feature_graph_deterministic(&graph).expect("baseline rebuild");
         let changed = BTreeSet::from(["hole_radius_mm".to_string()]);
-        let plan =
-            compute_parameter_invalidation_plan(&graph, &changed, &baseline.feature_hashes)
-                .expect("invalidation should compute");
+        let plan = compute_parameter_invalidation_plan(&graph, &changed, &baseline.feature_hashes)
+            .expect("invalidation should compute");
         assert_eq!(plan.changed_params, vec!["hole_radius_mm".to_string()]);
         assert_eq!(
             plan.directly_affected_features,
@@ -616,7 +644,10 @@ mod tests {
                     "feature.mount_hole",
                     "cut.hole.v1",
                     &["feature.base"],
-                    &[("radius_param", "hole_radius_mm"), ("depth_param", "hole_depth_mm")],
+                    &[
+                        ("radius_param", "hole_radius_mm"),
+                        ("depth_param", "hole_depth_mm"),
+                    ],
                 ),
             ],
         };
@@ -631,10 +662,7 @@ mod tests {
         assert_eq!(first, second);
         assert_eq!(
             first.invalidated_feature_ids,
-            vec![
-                "feature.base".to_string(),
-                "feature.mount_hole".to_string()
-            ]
+            vec!["feature.base".to_string(), "feature.mount_hole".to_string()]
         );
         assert!(
             first.retained_feature_hashes.is_empty(),
@@ -725,8 +753,14 @@ mod tests {
         );
 
         assert_eq!(cache.len(), 2);
-        assert!(cache.get(&key_b).is_none(), "least-recently-used key should be evicted");
-        assert!(cache.get(&key_a).is_some(), "recently touched key must be retained");
+        assert!(
+            cache.get(&key_b).is_none(),
+            "least-recently-used key should be evicted"
+        );
+        assert!(
+            cache.get(&key_a).is_some(),
+            "recently touched key must be retained"
+        );
         assert!(cache.get(&key_c).is_some(), "new key must be retained");
         let stats = cache.stats();
         assert_eq!(stats.evictions, 1);

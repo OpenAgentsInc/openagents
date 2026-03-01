@@ -8,7 +8,7 @@ use openagents_cad::analysis::{
 use openagents_cad::chat_adapter::{CadIntentTranslationOutcome, translate_chat_to_cad_intent};
 use openagents_cad::contracts::{CadWarning, CadWarningCode, CadWarningSeverity};
 use openagents_cad::eval::{EvalCacheEntry, EvalCacheKey, EvalCacheStats};
-use openagents_cad::events::{CadEvent, CadEventKind};
+use openagents_cad::events::{CadEvent, CadEventKind, CadEventMessage};
 use openagents_cad::feature_graph::{FeatureGraph, FeatureNode};
 use openagents_cad::history::{CadHistoryCommand, CadHistorySnapshot};
 use openagents_cad::intent::CadIntent;
@@ -1036,9 +1036,7 @@ fn emit_cad_event(
         state.cad_demo.document_id.clone(),
         document_revision,
         variant_id,
-        summary,
-        detail,
-        key,
+        CadEventMessage::new(summary, detail).with_optional_key(key),
     );
     state.cad_demo.upsert_cad_event(event.clone());
     state
@@ -1762,7 +1760,7 @@ mod tests {
     use crate::cad_rebuild_worker::{CadRebuildFailed, CadRebuildResponse};
     use crate::pane_system::CadDemoPaneAction;
     use openagents_cad::chat_adapter::{CadIntentTranslationOutcome, translate_chat_to_cad_intent};
-    use openagents_cad::events::{CadEvent, CadEventKind};
+    use openagents_cad::events::{CadEvent, CadEventKind, CadEventMessage};
     use openagents_cad::intent::parse_cad_intent_json;
     use openagents_cad::mesh::{
         CadMeshBounds, CadMeshEdgeSegment, CadMeshMaterialSlot, CadMeshPayload, CadMeshTopology,
@@ -2206,7 +2204,9 @@ mod tests {
             .and_then(Value::as_str)
             .unwrap_or("thread.cad-script")
             .to_string();
-        let timing_cfg = root.get("timing").map(|value| required_object(value, "script.timing"));
+        let timing_cfg = root
+            .get("timing")
+            .map(|value| required_object(value, "script.timing"));
         let steps = root
             .get("steps")
             .map(|value| required_array(value, "script.steps"))
@@ -2231,7 +2231,8 @@ mod tests {
                 "intent_json" => {
                     let payload = required_str(step, "payload", &step_path);
                     match parse_cad_intent_json(&payload) {
-                        Ok(intent) => match state.apply_chat_intent_for_thread(&thread_id, &intent) {
+                        Ok(intent) => match state.apply_chat_intent_for_thread(&thread_id, &intent)
+                        {
                             Ok(receipt) => json!({
                                 "status": "applied",
                                 "intent": intent.intent_name(),
@@ -2253,9 +2254,12 @@ mod tests {
                 "cycle_variant" => {
                     let mut count = optional_u64(step, "count").unwrap_or(1);
                     if let Some(randomized) = step.get("randomized") {
-                        let randomized = required_object(randomized, &format!("{step_path}.randomized"));
-                        let min = required_u64(randomized, "min", &format!("{step_path}.randomized"));
-                        let max = required_u64(randomized, "max", &format!("{step_path}.randomized"));
+                        let randomized =
+                            required_object(randomized, &format!("{step_path}.randomized"));
+                        let min =
+                            required_u64(randomized, "min", &format!("{step_path}.randomized"));
+                        let max =
+                            required_u64(randomized, "max", &format!("{step_path}.randomized"));
                         count = deterministic_seeded_count(seed, index, min, max);
                     }
                     for _ in 0..count {
@@ -2305,7 +2309,10 @@ mod tests {
                     }
                     for ch in value.chars() {
                         assert!(
-                            apply_cad_demo_action(&mut state, CadDemoPaneAction::DimensionInputChar(ch)),
+                            apply_cad_demo_action(
+                                &mut state,
+                                CadDemoPaneAction::DimensionInputChar(ch)
+                            ),
                             "dimension_edit should accept character '{}'",
                             ch
                         );
@@ -2335,7 +2342,10 @@ mod tests {
                 "select_timeline_row" => {
                     let row_index = required_u64(step, "index", &step_path) as usize;
                     assert!(
-                        apply_cad_demo_action(&mut state, CadDemoPaneAction::SelectTimelineRow(row_index)),
+                        apply_cad_demo_action(
+                            &mut state,
+                            CadDemoPaneAction::SelectTimelineRow(row_index)
+                        ),
                         "select_timeline_row should succeed for index {row_index}"
                     );
                     json!({
@@ -2361,8 +2371,8 @@ mod tests {
                         .and_then(Value::as_str)
                         .unwrap_or(state.active_variant_id.as_str())
                         .to_string();
-                    let document_revision = optional_u64(step, "document_revision")
-                        .unwrap_or(state.document_revision);
+                    let document_revision =
+                        optional_u64(step, "document_revision").unwrap_or(state.document_revision);
                     state.pending_rebuild_request_id = Some(request_id);
                     let failed = CadRebuildFailed {
                         request_id,
@@ -2479,8 +2489,7 @@ mod tests {
         let triangle_term = (receipt.triangle_count as u64).saturating_add(39) / 40;
         let vertex_term = (receipt.vertex_count as u64).saturating_add(79) / 80;
         let edge_term = (receipt.edge_count as u64).saturating_add(79) / 80;
-        4u64
-            .saturating_add(triangle_term)
+        4u64.saturating_add(triangle_term)
             .saturating_add(vertex_term)
             .saturating_add(edge_term)
     }
@@ -2489,12 +2498,16 @@ mod tests {
         let triangle_count = (payload.triangle_indices.len() / 3) as f64;
         let edge_count = payload.edges.len() as f64;
         let vertex_count = payload.vertices.len() as f64;
-        let estimate = 0.45 + (triangle_count / 220.0) + (edge_count / 360.0) + (vertex_count / 900.0);
+        let estimate =
+            0.45 + (triangle_count / 220.0) + (edge_count / 360.0) + (vertex_count / 900.0);
         (estimate * 1000.0).round() / 1000.0
     }
 
     fn estimate_memory_usage_mb(payload: &CadMeshPayload) -> u64 {
-        let vertex_bytes = payload.vertices.len().saturating_mul(CadMeshVertex::BINARY_SIZE);
+        let vertex_bytes = payload
+            .vertices
+            .len()
+            .saturating_mul(CadMeshVertex::BINARY_SIZE);
         let index_bytes = payload
             .triangle_indices
             .len()
@@ -2508,16 +2521,13 @@ mod tests {
             .len()
             .saturating_mul(CadMeshMaterialSlot::BINARY_SIZE);
         // Inflate by deterministic overhead factor to approximate renderer/runtime staging cost.
-        let inflated_bytes = (vertex_bytes + index_bytes + edge_bytes + material_bytes)
-            .saturating_mul(16);
+        let inflated_bytes =
+            (vertex_bytes + index_bytes + edge_bytes + material_bytes).saturating_mul(16);
         let mb = ((inflated_bytes as f64) / (1024.0 * 1024.0)).ceil() as u64;
         mb.max(1)
     }
 
-    fn cad_performance_snapshot_from_state(
-        state: &CadDemoPaneState,
-        source_script: &str,
-    ) -> Value {
+    fn cad_performance_snapshot_from_state(state: &CadDemoPaneState, source_script: &str) -> Value {
         let receipt = state
             .last_rebuild_receipt
             .as_ref()
@@ -2582,8 +2592,8 @@ mod tests {
 
     fn assert_or_write_perf_fixture(snapshot: &Value) {
         let fixture_path = cad_perf_fixture_path();
-        let actual = serde_json::to_string_pretty(snapshot)
-            .expect("performance snapshot should serialize");
+        let actual =
+            serde_json::to_string_pretty(snapshot).expect("performance snapshot should serialize");
         if std::env::var("CAD_UPDATE_GOLDENS").as_deref() == Ok("1") {
             if let Some(parent) = std::path::Path::new(&fixture_path).parent() {
                 fs::create_dir_all(parent).expect("performance fixture parent should exist");
@@ -3206,9 +3216,8 @@ mod tests {
             state.document_id.clone(),
             4,
             Some("variant.baseline".to_string()),
-            "CAD parameter updated",
-            "width_base_mm -> 192".to_string(),
-            Some("param:width_base_mm:4".to_string()),
+            CadEventMessage::new("CAD parameter updated", "width_base_mm -> 192".to_string())
+                .with_key("param:width_base_mm:4"),
         );
         assert!(state.upsert_cad_event(event.clone()));
         let baseline = state.cad_events.len();
@@ -3228,9 +3237,11 @@ mod tests {
             "cad.doc.demo-rack",
             9,
             Some("variant.stiffness".to_string()),
-            "CAD selection changed",
-            "focused=cad://feature/feature.base".to_string(),
-            Some("selection:9".to_string()),
+            CadEventMessage::new(
+                "CAD selection changed",
+                "focused=cad://feature/feature.base".to_string(),
+            )
+            .with_key("selection:9"),
         );
         let row = activity_row_from_cad_event(&event);
         assert_eq!(row.domain, ActivityEventDomain::Cad);
@@ -3288,7 +3299,10 @@ mod tests {
         wait_for_receipt(&mut state);
 
         assert_eq!(state.dimension_value_mm("width_mm"), Some(421.0));
-        assert_eq!(state.analysis_snapshot.document_revision, state.document_revision);
+        assert_eq!(
+            state.analysis_snapshot.document_revision,
+            state.document_revision
+        );
         assert_eq!(state.analysis_snapshot.variant_id, state.active_variant_id);
         assert!(
             !state.warnings.is_empty(),
@@ -3371,7 +3385,8 @@ mod tests {
     #[test]
     fn cad_performance_benchmark_suite_maps_gate_a_b_e_thresholds() {
         let (state, _) = execute_headless_cad_script_fixture("cad_demo_canonical_script.json");
-        let snapshot = cad_performance_snapshot_from_state(&state, "cad_demo_canonical_script.json");
+        let snapshot =
+            cad_performance_snapshot_from_state(&state, "cad_demo_canonical_script.json");
         let all_gates_pass = snapshot
             .get("all_gates_pass")
             .and_then(Value::as_bool)
@@ -3386,7 +3401,8 @@ mod tests {
     #[test]
     fn cad_performance_benchmark_suite_outputs_non_empty_metrics() {
         let (state, _) = execute_headless_cad_script_fixture("cad_demo_canonical_script.json");
-        let snapshot = cad_performance_snapshot_from_state(&state, "cad_demo_canonical_script.json");
+        let snapshot =
+            cad_performance_snapshot_from_state(&state, "cad_demo_canonical_script.json");
         let metrics = snapshot
             .get("metrics")
             .expect("performance snapshot should include metrics");
@@ -3478,10 +3494,7 @@ mod tests {
             );
             previous_revision = revision;
 
-            let kind = step
-                .get("kind")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
+            let kind = step.get("kind").and_then(Value::as_str).unwrap_or_default();
             if kind == "cycle_variant" || kind == "dimension_edit" {
                 assert_eq!(
                     result.get("has_mesh_payload").and_then(Value::as_bool),

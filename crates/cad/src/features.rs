@@ -1,7 +1,7 @@
+use crate::feature_graph::FeatureNode;
 use crate::kernel::CadKernelAdapter;
 use crate::params::{ParameterStore, ScalarUnit};
 use crate::primitives::{BoxPrimitive, CylinderPrimitive, PrimitiveSpec, build_primitive};
-use crate::feature_graph::FeatureNode;
 use crate::{CadError, CadResult};
 use std::collections::BTreeMap;
 
@@ -106,8 +106,10 @@ impl CylinderFeatureOp {
 
     pub fn resolve_primitive(&self, params: &ParameterStore) -> CadResult<CylinderPrimitive> {
         self.validate()?;
-        let radius_mm = params.get_required_with_unit(&self.radius_param, ScalarUnit::Millimeter)?;
-        let height_mm = params.get_required_with_unit(&self.height_param, ScalarUnit::Millimeter)?;
+        let radius_mm =
+            params.get_required_with_unit(&self.radius_param, ScalarUnit::Millimeter)?;
+        let height_mm =
+            params.get_required_with_unit(&self.height_param, ScalarUnit::Millimeter)?;
         let primitive = CylinderPrimitive {
             radius_mm,
             height_mm,
@@ -235,8 +237,10 @@ impl TransformFeatureOp {
             1.0,
         ];
 
-        let composed = mat_mul(&translate, &mat_mul(&rot_z, &mat_mul(&rot_y, &mat_mul(&rot_x, &scale))));
-        composed
+        mat_mul(
+            &translate,
+            &mat_mul(&rot_z, &mat_mul(&rot_y, &mat_mul(&rot_x, &scale))),
+        )
     }
 
     pub fn geometry_hash(&self, source_geometry_hash: &str) -> String {
@@ -261,7 +265,10 @@ impl TransformFeatureOp {
             .map(|value| format!("{value:.8}"))
             .collect::<Vec<_>>()
             .join(",");
-        format!("{:016x}", fnv1a64(format!("{payload}|m={matrix_payload}").as_bytes()))
+        format!(
+            "{:016x}",
+            fnv1a64(format!("{payload}|m={matrix_payload}").as_bytes())
+        )
     }
 }
 
@@ -316,7 +323,8 @@ impl CutHoleFeatureOp {
 
     pub fn resolve_cutter(&self, params: &ParameterStore) -> CadResult<CylinderPrimitive> {
         self.validate()?;
-        let radius_mm = params.get_required_with_unit(&self.radius_param, ScalarUnit::Millimeter)?;
+        let radius_mm =
+            params.get_required_with_unit(&self.radius_param, ScalarUnit::Millimeter)?;
         let height_mm = params.get_required_with_unit(&self.depth_param, ScalarUnit::Millimeter)?;
         let primitive = CylinderPrimitive {
             radius_mm,
@@ -334,7 +342,8 @@ impl CutHoleFeatureOp {
             source_geometry_hash,
             cutter.radius_mm,
             cutter.height_mm,
-            self.tolerance_mm.unwrap_or(crate::policy::BASE_TOLERANCE_MM)
+            self.tolerance_mm
+                .unwrap_or(crate::policy::BASE_TOLERANCE_MM)
         );
         format!("{:016x}", fnv1a64(payload.as_bytes()))
     }
@@ -510,7 +519,11 @@ impl LinearPatternFeatureOp {
         format!("{:016x}", fnv1a64(payload.as_bytes()))
     }
 
-    fn pattern_hash(&self, source_geometry_hash: &str, instances: &[LinearPatternInstance]) -> String {
+    fn pattern_hash(
+        &self,
+        source_geometry_hash: &str,
+        instances: &[LinearPatternInstance],
+    ) -> String {
         let instance_payload = instances
             .iter()
             .map(|entry| format!("{}:{}", entry.pattern_index, entry.geometry_hash))
@@ -535,15 +548,15 @@ pub fn evaluate_linear_pattern_feature(
     let direction = op.normalized_direction();
     let mut instances = Vec::with_capacity(count as usize);
     for offset in 0..count {
-        let pattern_index = op
-            .start_index
-            .checked_add(offset)
-            .ok_or_else(|| CadError::EvalFailed {
-                reason: format!(
-                    "linear pattern index overflow for feature {} at offset {}",
-                    op.feature_id, offset
-                ),
-            })?;
+        let pattern_index =
+            op.start_index
+                .checked_add(offset)
+                .ok_or_else(|| CadError::EvalFailed {
+                    reason: format!(
+                        "linear pattern index overflow for feature {} at offset {}",
+                        op.feature_id, offset
+                    ),
+                })?;
         let distance = f64::from(offset) * spacing_mm;
         let translation_mm = [
             direction[0] * distance,
@@ -645,20 +658,19 @@ impl FilletPlaceholderFeatureOp {
     pub fn from_feature_node(node: &FeatureNode) -> CadResult<Self> {
         if node.operation_key != FILLET_PLACEHOLDER_OPERATION_KEY {
             return Err(CadError::InvalidPrimitive {
-                reason: format!(
-                    "feature {} is not a fillet placeholder operation",
-                    node.id
-                ),
+                reason: format!("feature {} is not a fillet placeholder operation", node.id),
             });
         }
-        let source_feature_id = node.depends_on.first().cloned().ok_or_else(|| {
-            CadError::InvalidPrimitive {
-                reason: format!(
-                    "fillet placeholder node {} must depend on exactly one source feature",
-                    node.id
-                ),
-            }
-        })?;
+        let source_feature_id =
+            node.depends_on
+                .first()
+                .cloned()
+                .ok_or_else(|| CadError::InvalidPrimitive {
+                    reason: format!(
+                        "fillet placeholder node {} must depend on exactly one source feature",
+                        node.id
+                    ),
+                })?;
         if node.depends_on.len() != 1 {
             return Err(CadError::InvalidPrimitive {
                 reason: format!(
@@ -679,10 +691,7 @@ impl FilletPlaceholderFeatureOp {
                 .get("radius_param")
                 .cloned()
                 .ok_or_else(|| CadError::InvalidPrimitive {
-                    reason: format!(
-                        "fillet placeholder node {} missing radius_param",
-                        node.id
-                    ),
+                    reason: format!("fillet placeholder node {} missing radius_param", node.id),
                 })?;
         let op = Self {
             feature_id: node.id.clone(),
@@ -767,11 +776,12 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        BoxFeatureOp, CutHoleFeatureOp, CylinderFeatureOp, LinearPatternFeatureOp,
-        TransformFeatureOp, compose_transform_sequence, evaluate_box_feature, evaluate_cut_hole_feature,
+        BoxFeatureOp, CutHoleFeatureOp, CylinderFeatureOp, FilletPlaceholderFeatureOp,
+        FilletPlaceholderKind, LinearPatternFeatureOp, TransformFeatureOp,
+        compose_transform_sequence, evaluate_box_feature, evaluate_cut_hole_feature,
         evaluate_cut_hole_feature_with_boolean, evaluate_cylinder_feature,
-        evaluate_fillet_placeholder_feature, evaluate_linear_pattern_feature, evaluate_transform_feature,
-        FilletPlaceholderFeatureOp, FilletPlaceholderKind,
+        evaluate_fillet_placeholder_feature, evaluate_linear_pattern_feature,
+        evaluate_transform_feature,
     };
     use crate::feature_graph::{FeatureGraph, FeatureNode};
     use crate::kernel::CadKernelAdapter;
@@ -941,13 +951,12 @@ mod tests {
             depth_param: "d".to_string(),
             height_param: "h".to_string(),
         };
-        let primitive = op.resolve_primitive(&params).expect("primitive should resolve");
+        let primitive = op
+            .resolve_primitive(&params)
+            .expect("primitive should resolve");
         let hash = op.geometry_hash(&primitive);
         let golden = golden_hashes();
-        assert_eq!(
-            hash,
-            golden["feature.rack|180.000000|210.000000|95.000000"]
-        );
+        assert_eq!(hash, golden["feature.rack|180.000000|210.000000|95.000000"]);
     }
 
     #[test]
@@ -1050,13 +1059,12 @@ mod tests {
             radius_param: "r".to_string(),
             height_param: "h".to_string(),
         };
-        let primitive = op.resolve_primitive(&params).expect("primitive should resolve");
+        let primitive = op
+            .resolve_primitive(&params)
+            .expect("primitive should resolve");
         let hash = op.geometry_hash(&primitive);
         let golden = cylinder_golden_hashes();
-        assert_eq!(
-            hash,
-            golden["feature.vent_tube|3.200000|18.500000"]
-        );
+        assert_eq!(hash, golden["feature.vent_tube|3.200000|18.500000"]);
     }
 
     #[test]
@@ -1148,14 +1156,12 @@ mod tests {
             tolerance_mm: None,
         };
         let mut kernel = MockKernel::default();
-        let result = evaluate_cut_hole_feature(
-            &mut kernel,
-            &"solid-base",
-            "hash-base",
-            &op,
-            &params,
+        let result =
+            evaluate_cut_hole_feature(&mut kernel, &"solid-base", "hash-base", &op, &params);
+        assert!(
+            result.is_err(),
+            "missing boolean backend must return structured failure"
         );
-        assert!(result.is_err(), "missing boolean backend must return structured failure");
         let error = result.expect_err("error should be present");
         assert!(
             matches!(error, CadError::EvalFailed { .. }),
@@ -1242,8 +1248,16 @@ mod tests {
         let second =
             evaluate_linear_pattern_feature(&op, &params, "hash-hole").expect("eval should pass");
 
-        let first_indexes: Vec<u32> = first.instances.iter().map(|entry| entry.pattern_index).collect();
-        let second_indexes: Vec<u32> = second.instances.iter().map(|entry| entry.pattern_index).collect();
+        let first_indexes: Vec<u32> = first
+            .instances
+            .iter()
+            .map(|entry| entry.pattern_index)
+            .collect();
+        let second_indexes: Vec<u32> = second
+            .instances
+            .iter()
+            .map(|entry| entry.pattern_index)
+            .collect();
         assert_eq!(first_indexes, vec![100, 101, 102, 103]);
         assert_eq!(first_indexes, second_indexes);
         assert_eq!(first.instances, second.instances);
@@ -1360,7 +1374,10 @@ mod tests {
             .expect("count update should set");
         let expanded =
             evaluate_linear_pattern_feature(&op, &params, "hash-hole").expect("expanded eval");
-        assert_eq!(&expanded.instances[..baseline.instances.len()], baseline.instances.as_slice());
+        assert_eq!(
+            &expanded.instances[..baseline.instances.len()],
+            baseline.instances.as_slice()
+        );
     }
 
     #[test]
@@ -1371,15 +1388,20 @@ mod tests {
             radius_param: "fillet_radius_mm".to_string(),
             kind: FilletPlaceholderKind::Fillet,
         };
-        let node = op.to_feature_node().expect("feature node conversion should succeed");
+        let node = op
+            .to_feature_node()
+            .expect("feature node conversion should succeed");
         let graph = FeatureGraph {
-            nodes: vec![FeatureNode {
-                id: "feature.base".to_string(),
-                name: "base".to_string(),
-                operation_key: "primitive.box.v1".to_string(),
-                depends_on: vec![],
-                params: BTreeMap::new(),
-            }, node],
+            nodes: vec![
+                FeatureNode {
+                    id: "feature.base".to_string(),
+                    name: "base".to_string(),
+                    operation_key: "primitive.box.v1".to_string(),
+                    depends_on: vec![],
+                    params: BTreeMap::new(),
+                },
+                node,
+            ],
         };
         let payload = serde_json::to_string(&graph).expect("graph should serialize");
         let parsed: FeatureGraph = serde_json::from_str(&payload).expect("graph should parse");

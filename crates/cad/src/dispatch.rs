@@ -51,7 +51,10 @@ pub fn dispatch_cad_payload_json(
     dispatch_cad_intent(&intent, state)
 }
 
-pub fn dispatch_cad_intent(intent: &CadIntent, state: &mut CadDispatchState) -> CadResult<CadDispatchReceipt> {
+pub fn dispatch_cad_intent(
+    intent: &CadIntent,
+    state: &mut CadDispatchState,
+) -> CadResult<CadDispatchReceipt> {
     let command = match intent {
         CadIntent::CreateRackSpec(payload) => {
             state.document_created = true;
@@ -91,7 +94,7 @@ pub fn dispatch_cad_intent(intent: &CadIntent, state: &mut CadDispatchState) -> 
             CadTypedCommand::Select(payload.clone())
         }
         CadIntent::CompareVariants(payload) => {
-            state.compared_variants = payload.variant_ids.clone();
+            state.compared_variants.clone_from(&payload.variant_ids);
             CadTypedCommand::CompareVariants(payload.clone())
         }
         CadIntent::Export(payload) => {
@@ -201,7 +204,10 @@ mod tests {
                 selector: "semantic:vent_face_set".to_string(),
             }),
             CadIntent::CompareVariants(CompareVariantsIntent {
-                variant_ids: vec!["variant.lightweight".to_string(), "variant.stiffness".to_string()],
+                variant_ids: vec![
+                    "variant.lightweight".to_string(),
+                    "variant.stiffness".to_string(),
+                ],
             }),
             CadIntent::Export(ExportIntent {
                 format: "step".to_string(),
@@ -210,7 +216,8 @@ mod tests {
         ];
 
         for intent in intents {
-            let receipt = dispatch_cad_intent(&intent, &mut state).expect("dispatch should succeed");
+            let receipt =
+                dispatch_cad_intent(&intent, &mut state).expect("dispatch should succeed");
             assert!(receipt.state_revision >= 1);
         }
         assert_eq!(state.revision, 9);
@@ -261,7 +268,8 @@ mod tests {
     fn json_dispatch_enforces_intent_schema() {
         let mut state = CadDispatchState::default();
         let payload = r#"{"intent":"SetMaterial","material_id":"al-5052-h32"}"#;
-        let receipt = dispatch_cad_payload_json(payload, &mut state).expect("json dispatch should succeed");
+        let receipt =
+            dispatch_cad_payload_json(payload, &mut state).expect("json dispatch should succeed");
         match receipt.command {
             CadTypedCommand::SetMaterial(payload) => {
                 assert_eq!(payload.material_id, "al-5052-h32");
@@ -270,15 +278,20 @@ mod tests {
         }
 
         let invalid = dispatch_cad_payload_json("not-json", &mut state);
-        assert!(invalid.is_err(), "invalid json should be rejected before dispatch");
+        assert!(
+            invalid.is_err(),
+            "invalid json should be rejected before dispatch"
+        );
     }
 
     #[test]
     fn free_text_mutation_is_explicitly_rejected() {
         let error = reject_free_text_mutation("set wall thickness to 4mm")
             .expect_err("free-text mutation should fail");
-        assert!(error
-            .to_string()
-            .contains("free-text state mutation is not allowed"));
+        assert!(
+            error
+                .to_string()
+                .contains("free-text state mutation is not allowed")
+        );
     }
 }

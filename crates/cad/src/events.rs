@@ -43,6 +43,33 @@ pub struct CadEvent {
     pub detail: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CadEventMessage {
+    pub summary: String,
+    pub detail: String,
+    pub key: Option<String>,
+}
+
+impl CadEventMessage {
+    pub fn new(summary: impl Into<String>, detail: impl Into<String>) -> Self {
+        Self {
+            summary: summary.into(),
+            detail: detail.into(),
+            key: None,
+        }
+    }
+
+    pub fn with_key(mut self, key: impl Into<String>) -> Self {
+        self.key = Some(key.into());
+        self
+    }
+
+    pub fn with_optional_key(mut self, key: Option<String>) -> Self {
+        self.key = key;
+        self
+    }
+}
+
 impl CadEvent {
     pub fn new(
         kind: CadEventKind,
@@ -59,9 +86,7 @@ impl CadEvent {
             document_id,
             document_revision,
             variant_id,
-            summary,
-            detail,
-            None,
+            CadEventMessage::new(summary, detail),
         )
     }
 
@@ -71,21 +96,17 @@ impl CadEvent {
         document_id: impl Into<String>,
         document_revision: u64,
         variant_id: Option<String>,
-        summary: impl Into<String>,
-        detail: impl Into<String>,
-        key: Option<String>,
+        message: CadEventMessage,
     ) -> Self {
         let session_id = session_id.into();
         let document_id = document_id.into();
-        let summary = summary.into();
-        let detail = detail.into();
         let event_id = build_cad_event_id(
             &kind,
             &session_id,
             &document_id,
             document_revision,
             variant_id.as_deref(),
-            key.as_deref().or(Some(summary.as_str())),
+            message.key.as_deref().or(Some(message.summary.as_str())),
         );
         Self {
             event_id,
@@ -94,8 +115,8 @@ impl CadEvent {
             document_id,
             document_revision,
             variant_id,
-            summary,
-            detail,
+            summary: message.summary,
+            detail: message.detail,
         }
     }
 }

@@ -1,3 +1,4 @@
+use std::io::{self, Write};
 use std::path::PathBuf;
 
 use openagents_cad::step_checker::{
@@ -6,7 +7,7 @@ use openagents_cad::step_checker::{
 
 fn main() {
     if let Err(error) = run() {
-        eprintln!("{error}");
+        let _ = writeln!(io::stderr(), "{error}");
         std::process::exit(1);
     }
 }
@@ -97,12 +98,13 @@ fn emit_report(report: &CadStepCheckerReport, output: Option<&PathBuf>) -> Resul
         std::fs::write(path, &json)
             .map_err(|error| format!("failed to write report {}: {error}", path.display()))?;
     }
-    println!("{json}");
+    writeln!(io::stdout(), "{json}").map_err(|error| format!("failed to write stdout: {error}"))?;
     Ok(())
 }
 
 fn print_help() {
-    println!(
+    let _ = writeln!(
+        io::stdout(),
         "Usage: step_checker --input <path> [--output <path>] [--backend structural|opencascade] [--opencascade-program <cmd>] [--opencascade-script <path>]"
     );
 }
