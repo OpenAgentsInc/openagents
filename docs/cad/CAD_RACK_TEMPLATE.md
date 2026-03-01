@@ -13,6 +13,8 @@ Module: `openagents_cad::rack`
 
 - `MacStudioRackTemplateParams`
 - `generate_mac_studio_rack_template(&MacStudioRackTemplateParams) -> CadResult<MacStudioRackTemplate>`
+- `RackObjectivePreset`
+- `generate_objective_variants(&MacStudioRackTemplateParams, seed) -> CadResult<Vec<RackObjectiveVariant>>`
 
 Returned payload:
 
@@ -86,3 +88,19 @@ Deterministic nodes:
 - `rack_corner_break`
 
 These references are created through `CadSemanticRefRegistry` and can be persisted through `.apcad` stable IDs.
+
+## Objective Variants
+
+The objective engine emits four deterministic presets (seeded):
+
+- `variant.lightweight`
+- `variant.low-cost`
+- `variant.stiffness`
+- `variant.airflow`
+
+Each variant includes objective score values for:
+
+- `weight`
+- `cost`
+- `stiffness`
+- `airflow`
