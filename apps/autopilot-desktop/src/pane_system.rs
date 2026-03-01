@@ -330,6 +330,13 @@ pub enum StableSatsSimulationPaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CadDemoPaneAction {
+    Noop,
+    CycleVariant,
+    ResetSession,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PaneHitAction {
     NostrRegenerate,
     NostrReveal,
@@ -389,6 +396,7 @@ pub enum PaneHitAction {
     TreasuryExchangeSimulation(TreasuryExchangeSimulationPaneAction),
     RelaySecuritySimulation(RelaySecuritySimulationPaneAction),
     StableSatsSimulation(StableSatsSimulationPaneAction),
+    CadDemo(CadDemoPaneAction),
     Spark(SparkPaneAction),
     SparkCreateInvoice(CreateInvoicePaneAction),
     SparkPayInvoice(PayInvoicePaneAction),
@@ -2025,6 +2033,25 @@ pub fn stable_sats_simulation_reset_button_bounds(content_bounds: Bounds) -> Bou
     )
 }
 
+pub fn cad_demo_cycle_variant_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.24).clamp(150.0, 220.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn cad_demo_reset_button_bounds(content_bounds: Bounds) -> Bounds {
+    let cycle = cad_demo_cycle_variant_button_bounds(content_bounds);
+    Bounds::new(
+        cycle.max_x() + JOB_INBOX_BUTTON_GAP,
+        cycle.origin.y,
+        (content_bounds.size.width * 0.18).clamp(120.0, 190.0),
+        cycle.size.height,
+    )
+}
+
 pub fn nostr_regenerate_button_bounds(content_bounds: Bounds) -> Bounds {
     let (regenerate_bounds, _, _) = nostr_button_bounds(content_bounds);
     regenerate_bounds
@@ -2700,6 +2727,15 @@ fn pane_hit_action_for_pane(
             }
             None
         }
+        PaneKind::CadDemo => {
+            if cad_demo_cycle_variant_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CadDemo(CadDemoPaneAction::CycleVariant));
+            }
+            if cad_demo_reset_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CadDemo(CadDemoPaneAction::ResetSession));
+            }
+            None
+        }
         PaneKind::SparkWallet => {
             let layout = spark_pane::layout(content_bounds);
             spark_pane::hit_action(layout, point).map(PaneHitAction::Spark)
@@ -2713,7 +2749,7 @@ fn pane_hit_action_for_pane(
             let layout = spark_pane::pay_invoice_layout(content_bounds);
             spark_pane::hit_pay_invoice_action(layout, point).map(PaneHitAction::SparkPayInvoice)
         }
-        PaneKind::Empty | PaneKind::ProviderStatus | PaneKind::CadDemo => None,
+        PaneKind::Empty | PaneKind::ProviderStatus => None,
     }
 }
 
@@ -2990,7 +3026,8 @@ mod tests {
         codex_mcp_reload_button_bounds, codex_models_refresh_button_bounds,
         codex_models_toggle_hidden_button_bounds, credit_desk_envelope_button_bounds,
         credit_desk_intent_button_bounds, credit_desk_offer_button_bounds,
-        credit_desk_spend_button_bounds, credit_settlement_default_button_bounds,
+        credit_desk_spend_button_bounds, cad_demo_cycle_variant_button_bounds,
+        cad_demo_reset_button_bounds, credit_settlement_default_button_bounds,
         credit_settlement_reputation_button_bounds, credit_settlement_verify_button_bounds,
         earnings_scoreboard_refresh_button_bounds, go_online_toggle_button_bounds,
         job_history_next_page_button_bounds, job_history_prev_page_button_bounds,
@@ -3320,6 +3357,18 @@ mod tests {
         let reputation = credit_settlement_reputation_button_bounds(content);
         assert!(settle.max_x() < default_notice.min_x());
         assert!(default_notice.max_x() < reputation.min_x());
+    }
+
+    #[test]
+    fn cad_demo_controls_are_ordered_and_inside_content() {
+        let content = Bounds::new(0.0, 0.0, 820.0, 360.0);
+        let cycle = cad_demo_cycle_variant_button_bounds(content);
+        let reset = cad_demo_reset_button_bounds(content);
+        assert!(content.contains(cycle.origin));
+        assert!(content.contains(reset.origin));
+        assert!(cycle.max_y() <= content.max_y());
+        assert!(reset.max_y() <= content.max_y());
+        assert!(cycle.max_x() < reset.min_x());
     }
 
     #[test]

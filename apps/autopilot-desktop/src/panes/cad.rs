@@ -1,6 +1,8 @@
 use wgpui::{Bounds, PaintContext, Point, Quad, theme};
 
 use crate::app_state::CadDemoPaneState;
+use crate::pane_renderer::paint_action_button;
+use crate::pane_system::{cad_demo_cycle_variant_button_bounds, cad_demo_reset_button_bounds};
 
 const PAD: f32 = 12.0;
 const HEADER_LINE_HEIGHT: f32 = 14.0;
@@ -48,7 +50,19 @@ pub fn paint_cad_demo_placeholder_pane(
     pane_state: &CadDemoPaneState,
     paint: &mut PaintContext,
 ) {
-    let layout = placeholder_layout(content_bounds);
+    let cycle_bounds = cad_demo_cycle_variant_button_bounds(content_bounds);
+    let reset_bounds = cad_demo_reset_button_bounds(content_bounds);
+    paint_action_button(cycle_bounds, "Cycle Variant", paint);
+    paint_action_button(reset_bounds, "Reset Session", paint);
+
+    let body_top = (cycle_bounds.max_y().max(reset_bounds.max_y()) + 8.0).min(content_bounds.max_y());
+    let body_bounds = Bounds::new(
+        content_bounds.origin.x,
+        body_top,
+        content_bounds.size.width,
+        (content_bounds.max_y() - body_top).max(0.0),
+    );
+    let layout = placeholder_layout(body_bounds);
 
     if layout.header_origin.y + 10.0 <= content_bounds.max_y() {
         paint.scene.draw_text(paint.text.layout(
