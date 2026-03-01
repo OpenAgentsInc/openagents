@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::feature_graph::{FeatureGraph, FeatureNode};
 use crate::{CadError, CadResult};
@@ -145,6 +145,113 @@ pub fn evaluate_feature_graph_deterministic(
     })
 }
 
+/// Deterministic plan describing which feature nodes are invalidated by parameter edits.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ParameterInvalidationPlan {
+    pub changed_params: Vec<String>,
+    pub directly_affected_features: Vec<String>,
+    pub invalidated_feature_ids: Vec<String>,
+    pub retained_feature_hashes: BTreeMap<String, String>,
+}
+
+/// Compute downstream invalidation from changed parameter names.
+pub fn compute_parameter_invalidation_plan(
+    graph: &FeatureGraph,
+    changed_params: &BTreeSet<String>,
+    previous_hashes: &BTreeMap<String, String>,
+) -> CadResult<ParameterInvalidationPlan> {
+    graph.validate()?;
+    let ordered_feature_ids = graph.deterministic_topo_order()?;
+    let node_by_id: BTreeMap<&str, &FeatureNode> = graph
+        .nodes
+        .iter()
+        .map(|node| (node.id.as_str(), node))
+        .collect();
+    let mut downstream: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    for node in &graph.nodes {
+        downstream.entry(node.id.as_str()).or_default();
+    }
+    for node in &graph.nodes {
+        for dep in &node.depends_on {
+            downstream
+                .entry(dep.as_str())
+                .or_default()
+                .push(node.id.as_str());
+        }
+    }
+    for children in downstream.values_mut() {
+        children.sort();
+    }
+
+    let mut directly_affected = BTreeSet::<String>::new();
+    for feature_id in &ordered_feature_ids {
+        let node = node_by_id
+            .get(feature_id.as_str())
+            .copied()
+            .ok_or_else(|| CadError::EvalFailed {
+                reason: format!("missing feature node {}", feature_id),
+            })?;
+        if node_uses_changed_params(node, changed_params) {
+            directly_affected.insert(node.id.clone());
+        }
+    }
+
+    let mut invalidated = BTreeSet::<String>::new();
+    let mut queue = VecDeque::<String>::new();
+    for feature_id in &directly_affected {
+        invalidated.insert(feature_id.clone());
+        queue.push_back(feature_id.clone());
+    }
+
+    while let Some(current) = queue.pop_front() {
+        if let Some(children) = downstream.get(current.as_str()) {
+            for child in children {
+                if invalidated.insert((*child).to_string()) {
+                    queue.push_back((*child).to_string());
+                }
+            }
+        }
+    }
+
+    let invalidated_feature_ids = ordered_feature_ids
+        .iter()
+        .filter(|feature_id| invalidated.contains(*feature_id))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    let retained_feature_hashes = ordered_feature_ids
+        .iter()
+        .filter(|feature_id| !invalidated.contains(*feature_id))
+        .filter_map(|feature_id| {
+            previous_hashes
+                .get(feature_id)
+                .map(|hash| (feature_id.clone(), hash.clone()))
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    Ok(ParameterInvalidationPlan {
+        changed_params: changed_params.iter().cloned().collect(),
+        directly_affected_features: directly_affected.into_iter().collect(),
+        invalidated_feature_ids,
+        retained_feature_hashes,
+    })
+}
+
+fn node_uses_changed_params(node: &FeatureNode, changed_params: &BTreeSet<String>) -> bool {
+    if changed_params.is_empty() {
+        return false;
+    }
+    node.params.values().any(|value| {
+        changed_params.iter().any(|param| {
+            value == param
+                || value == &format!("${param}")
+                || value
+                    .split(|ch: char| !(ch.is_ascii_alphanumeric() || matches!(ch, '_' | '.' | '-')))
+                    .any(|token| token == param)
+        })
+    })
+}
+
 fn fnv1a64(bytes: &[u8]) -> u64 {
     const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
     const FNV_PRIME: u64 = 0x100000001b3;
@@ -160,13 +267,15 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        EvalPlan, eval_tolerance_mm, evaluate_feature_graph_deterministic, evaluate_plan,
+        EvalPlan, compute_parameter_invalidation_plan, eval_tolerance_mm,
+        evaluate_feature_graph_deterministic, evaluate_plan,
     };
     use crate::CadResult;
     use crate::feature_graph::{FeatureGraph, FeatureNode};
     use crate::kernel::CadKernelAdapter;
     use crate::primitives::{BoxPrimitive, CylinderPrimitive, PrimitiveSpec};
     use std::collections::BTreeMap;
+    use std::collections::BTreeSet;
 
     #[derive(Default)]
     struct MockKernel {
@@ -320,5 +429,106 @@ mod tests {
         );
         assert_eq!(receipt.feature_count, 2);
         assert_eq!(receipt.rebuild_hash, result.rebuild_hash);
+    }
+
+    #[test]
+    fn parameter_invalidation_prunes_to_affected_downstream_features() {
+        let graph = FeatureGraph {
+            nodes: vec![
+                node(
+                    "feature.base",
+                    "primitive.box.v1",
+                    &[],
+                    &[
+                        ("width_param", "width_mm"),
+                        ("depth_param", "depth_mm"),
+                        ("height_param", "height_mm"),
+                    ],
+                ),
+                node(
+                    "feature.hole",
+                    "cut.hole.v1",
+                    &["feature.base"],
+                    &[("radius_param", "hole_radius_mm"), ("depth_param", "hole_depth_mm")],
+                ),
+                node(
+                    "feature.vent_pattern",
+                    "linear.pattern.v1",
+                    &["feature.hole"],
+                    &[("count_param", "vent_count"), ("spacing_param", "vent_spacing_mm")],
+                ),
+                node(
+                    "feature.fillet_marker",
+                    "fillet.placeholder.v1",
+                    &["feature.base"],
+                    &[("radius_param", "fillet_radius_mm"), ("kind", "fillet")],
+                ),
+            ],
+        };
+        let baseline = evaluate_feature_graph_deterministic(&graph).expect("baseline rebuild");
+        let changed = BTreeSet::from(["hole_radius_mm".to_string()]);
+        let plan =
+            compute_parameter_invalidation_plan(&graph, &changed, &baseline.feature_hashes)
+                .expect("invalidation should compute");
+        assert_eq!(plan.changed_params, vec!["hole_radius_mm".to_string()]);
+        assert_eq!(
+            plan.directly_affected_features,
+            vec!["feature.hole".to_string()]
+        );
+        assert_eq!(
+            plan.invalidated_feature_ids,
+            vec![
+                "feature.hole".to_string(),
+                "feature.vent_pattern".to_string()
+            ]
+        );
+        assert_eq!(
+            plan.retained_feature_hashes.get("feature.base"),
+            baseline.feature_hashes.get("feature.base")
+        );
+        assert_eq!(
+            plan.retained_feature_hashes.get("feature.fillet_marker"),
+            baseline.feature_hashes.get("feature.fillet_marker")
+        );
+    }
+
+    #[test]
+    fn parameter_invalidation_is_deterministic_and_keeps_upstream_hashes() {
+        let graph = FeatureGraph {
+            nodes: vec![
+                node(
+                    "feature.base",
+                    "primitive.box.v1",
+                    &[],
+                    &[("width_param", "width_mm"), ("height_param", "height_mm")],
+                ),
+                node(
+                    "feature.mount_hole",
+                    "cut.hole.v1",
+                    &["feature.base"],
+                    &[("radius_param", "hole_radius_mm"), ("depth_param", "hole_depth_mm")],
+                ),
+            ],
+        };
+        let baseline = evaluate_feature_graph_deterministic(&graph).expect("baseline rebuild");
+        let changed = BTreeSet::from(["width_mm".to_string()]);
+
+        let first = compute_parameter_invalidation_plan(&graph, &changed, &baseline.feature_hashes)
+            .expect("first plan");
+        let second =
+            compute_parameter_invalidation_plan(&graph, &changed, &baseline.feature_hashes)
+                .expect("second plan");
+        assert_eq!(first, second);
+        assert_eq!(
+            first.invalidated_feature_ids,
+            vec![
+                "feature.base".to_string(),
+                "feature.mount_hole".to_string()
+            ]
+        );
+        assert!(
+            first.retained_feature_hashes.is_empty(),
+            "all features are downstream of changed root"
+        );
     }
 }
