@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::semantic_refs::CadSemanticRefRegistry;
 use crate::{CadError, CadResult};
 
 /// Canonical `.apcad` format tag.
@@ -64,11 +65,22 @@ impl ApcadDocumentEnvelope {
             reason: format!("failed to parse .apcad json: {error}"),
         })
     }
+
+    /// Persist semantic reference registry entries into deterministic stable ids.
+    pub fn set_semantic_ref_registry(&mut self, registry: &CadSemanticRefRegistry) {
+        self.stable_ids = registry.to_stable_ids();
+    }
+
+    /// Recover semantic reference registry from persisted `.apcad` stable ids.
+    pub fn semantic_ref_registry(&self) -> CadResult<CadSemanticRefRegistry> {
+        CadSemanticRefRegistry::from_stable_ids(self.stable_ids.clone())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{APCAD_FORMAT_TAG, APCAD_SCHEMA_VERSION, ApcadDocumentEnvelope};
+    use crate::semantic_refs::CadSemanticRefRegistry;
 
     #[test]
     fn deterministic_serialization_is_stable_across_runs() {
@@ -141,5 +153,23 @@ mod tests {
         if let Ok(parsed) = parsed_result {
             assert_eq!(parsed, envelope);
         }
+    }
+
+    #[test]
+    fn semantic_ref_registry_round_trips_through_apcad_stable_ids() {
+        let mut registry = CadSemanticRefRegistry::default();
+        registry
+            .register("rack_outer_face", "face.1", "feature.base")
+            .expect("register should succeed");
+        registry
+            .register("mount_hole_pattern", "pattern.1", "feature.mount_holes")
+            .expect("register should succeed");
+
+        let mut envelope = ApcadDocumentEnvelope::new("doc-semantic");
+        envelope.set_semantic_ref_registry(&registry);
+        let recovered = envelope
+            .semantic_ref_registry()
+            .expect("registry should recover from stable ids");
+        assert_eq!(recovered.to_stable_ids(), registry.to_stable_ids());
     }
 }

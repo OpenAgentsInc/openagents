@@ -23,6 +23,7 @@ pub mod primitives;
 pub mod query;
 pub mod section;
 pub mod selection;
+pub mod semantic_refs;
 pub mod tessellation;
 pub mod validity;
 pub use error::{CadError, CadErrorCode, CadErrorEvent, CadResult};
