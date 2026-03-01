@@ -2133,8 +2133,7 @@ mod tests {
             },
         ];
 
-        let (skills, errors) = cad_policy_skill_candidates_for_turn(true, &discovered);
-        assert!(errors.is_empty());
+        let skills = cad_policy_skill_candidates_for_turn(true, &discovered);
         assert_eq!(skills.len(), 2);
         assert!(
             skills
@@ -2154,7 +2153,7 @@ mod tests {
     }
 
     #[test]
-    fn cad_policy_skill_candidates_report_missing_required_skills() {
+    fn cad_policy_skill_candidates_include_only_discovered_required_skills() {
         let discovered = vec![SkillRegistryDiscoveredSkill {
             name: "autopilot-pane-control".to_string(),
             path: "/repo/skills/autopilot-pane-control/SKILL.md".to_string(),
@@ -2164,11 +2163,9 @@ mod tests {
             dependency_count: 0,
         }];
 
-        let (skills, errors) = cad_policy_skill_candidates_for_turn(true, &discovered);
+        let skills = cad_policy_skill_candidates_for_turn(true, &discovered);
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "autopilot-pane-control");
-        assert_eq!(errors.len(), 1);
-        assert!(errors[0].contains("autopilot-cad-builder"));
     }
 
     #[test]
@@ -2182,9 +2179,30 @@ mod tests {
             dependency_count: 0,
         }];
 
-        let (skills, errors) = cad_policy_skill_candidates_for_turn(false, &discovered);
+        let skills = cad_policy_skill_candidates_for_turn(false, &discovered);
         assert!(skills.is_empty());
-        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn assemble_chat_turn_input_keeps_policy_skill_even_if_disabled() {
+        let (input, last_error) = assemble_chat_turn_input(
+            "draft cad design".to_string(),
+            vec![TurnSkillAttachment {
+                name: "autopilot-cad-builder".to_string(),
+                path: "/managed/skills/autopilot-cad-builder/SKILL.md".to_string(),
+                enabled: false,
+                source: TurnSkillSource::PolicyRequired,
+            }],
+        );
+
+        assert!(last_error.is_none());
+        assert_eq!(input.len(), 2);
+        assert!(matches!(
+            &input[1],
+            UserInput::Skill { name, path }
+                if name == "autopilot-cad-builder"
+                    && path == &PathBuf::from("/managed/skills/autopilot-cad-builder/SKILL.md")
+        ));
     }
 
     #[test]

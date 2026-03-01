@@ -30,29 +30,48 @@ pub(super) fn run_chat_submit_action(state: &mut crate::app_state::RenderState) 
     let _ = super::reducers::apply_chat_prompt_to_cad_session(state, &thread_id, &prompt);
 
     let mut turn_skill_attachments = selected_skill_candidates_for_turn(state);
-    let (policy_skills, mut required_skill_errors) = cad_policy_skill_candidates_for_turn(
+    let mut required_skill_errors = Vec::new();
+    let mut policy_skills = cad_policy_skill_candidates_for_turn(
         classification.is_cad_turn,
         &state.skill_registry.discovered_skills,
     );
+    let mut policy_skill_names = policy_skills
+        .iter()
+        .map(|skill| skill.name.to_ascii_lowercase())
+        .collect::<std::collections::BTreeSet<_>>();
+    if classification.is_cad_turn {
+        match crate::skill_autoload::ensure_required_cad_skills() {
+            Ok(managed_skills) => {
+                for managed_skill in managed_skills {
+                    if policy_skill_names.insert(managed_skill.name.to_ascii_lowercase()) {
+                        policy_skills.push(TurnSkillAttachment {
+                            name: managed_skill.name,
+                            path: managed_skill.path,
+                            enabled: true,
+                            source: TurnSkillSource::PolicyRequired,
+                        });
+                    }
+                }
+            }
+            Err(error) => required_skill_errors
+                .push(format!("Failed to auto-load required CAD skills: {error}")),
+        }
+    }
     if classification.is_cad_turn && !policy_skills.is_empty() {
         let names = policy_skills
             .iter()
-            .map(|skill| skill.name.as_str())
+            .map(|skill| skill.name.clone())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
             .collect::<Vec<_>>()
             .join(",");
         state
             .autopilot_chat
             .record_turn_timeline_event(format!("cad required skills attached: {names}"));
     }
-    for policy_skill in policy_skills {
-        if policy_skill.enabled {
-            turn_skill_attachments.push(policy_skill);
-        } else {
-            required_skill_errors.push(format!(
-                "Required skill '{}' is disabled; enable it in the Skills pane.",
-                policy_skill.name
-            ));
-        }
+    for mut policy_skill in policy_skills {
+        policy_skill.enabled = true;
+        turn_skill_attachments.push(policy_skill);
     }
 
     let (input, skill_error) = assemble_chat_turn_input(prompt, turn_skill_attachments);
@@ -196,28 +215,24 @@ pub(super) fn selected_skill_candidates_for_turn(
 pub(super) fn cad_policy_skill_candidates_for_turn(
     is_cad_turn: bool,
     discovered_skills: &[crate::app_state::SkillRegistryDiscoveredSkill],
-) -> (Vec<TurnSkillAttachment>, Vec<String>) {
+) -> Vec<TurnSkillAttachment> {
     if !is_cad_turn {
-        return (Vec::new(), Vec::new());
+        return Vec::new();
     }
 
     let mut resolved = Vec::new();
-    let mut errors = Vec::new();
-    for skill_name in REQUIRED_CAD_POLICY_SKILLS {
+    for skill_name in crate::skill_autoload::REQUIRED_CAD_POLICY_SKILLS {
         match resolve_turn_skill_by_name(
             discovered_skills,
             skill_name,
             TurnSkillSource::PolicyRequired,
         ) {
             Ok(skill) => resolved.push(skill),
-            Err(_) => errors.push(format!(
-                "CAD turn requires skill '{}'. Add it under skills/ and refresh the Skills pane.",
-                skill_name
-            )),
+            Err(_) => {}
         }
     }
 
-    (resolved, errors)
+    resolved
 }
 
 pub(super) fn assemble_chat_turn_input(
@@ -251,7 +266,7 @@ pub(super) fn assemble_chat_turn_input(
         if !attached.insert(dedupe_key) {
             continue;
         }
-        if !attachment.enabled {
+        if !attachment.enabled && attachment.source == TurnSkillSource::UserSelected {
             let label = match attachment.source {
                 TurnSkillSource::UserSelected => "Selected",
                 TurnSkillSource::PolicyRequired => "Required",
@@ -271,8 +286,6 @@ pub(super) fn assemble_chat_turn_input(
     let joined_errors = (!last_errors.is_empty()).then(|| last_errors.join(" | "));
     (input, joined_errors)
 }
-
-const REQUIRED_CAD_POLICY_SKILLS: &[&str] = &["autopilot-cad-builder", "autopilot-pane-control"];
 
 pub(super) fn run_chat_refresh_threads_action(state: &mut crate::app_state::RenderState) -> bool {
     let cwd = std::env::current_dir()
