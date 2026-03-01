@@ -14,9 +14,10 @@ pub(super) fn run_chat_submit_action(state: &mut crate::app_state::RenderState) 
         return true;
     };
 
+    let classification = super::cad_turn_classifier::classify_chat_prompt(&prompt);
+
     state.chat_inputs.composer.set_value(String::new());
     state.autopilot_chat.submit_prompt(prompt.clone());
-    let classification = super::cad_turn_classifier::classify_chat_prompt(&prompt);
     state.autopilot_chat.record_turn_submission_metadata(
         &thread_id,
         classification.is_cad_turn,
@@ -98,8 +99,8 @@ pub(super) fn run_chat_submit_action(state: &mut crate::app_state::RenderState) 
         thread_id: thread_id.clone(),
         input,
         cwd: None,
-        approval_policy: None,
-        sandbox_policy: None,
+        approval_policy: cad_turn_approval_policy(classification.is_cad_turn),
+        sandbox_policy: dangerous_sandbox_policy(),
         model: model_override.clone(),
         effort: None,
         summary: None,
@@ -235,6 +236,20 @@ pub(super) fn cad_policy_skill_candidates_for_turn(
     resolved
 }
 
+pub(super) fn cad_turn_approval_policy(is_cad_turn: bool) -> Option<codex_client::AskForApproval> {
+    let _ = is_cad_turn;
+    // Force unsafe mode for all turns: never ask for approvals.
+    Some(codex_client::AskForApproval::Never)
+}
+
+pub(super) fn dangerous_sandbox_policy() -> Option<codex_client::SandboxPolicy> {
+    Some(codex_client::SandboxPolicy::DangerFullAccess)
+}
+
+pub(super) fn dangerous_sandbox_mode() -> Option<codex_client::SandboxMode> {
+    Some(codex_client::SandboxMode::DangerFullAccess)
+}
+
 pub(super) fn assemble_chat_turn_input(
     prompt: String,
     skill_attachments: Vec<TurnSkillAttachment>,
@@ -319,8 +334,9 @@ pub(super) fn run_chat_new_thread_action(state: &mut crate::app_state::RenderSta
         model: model_override,
         model_provider: None,
         cwd,
-        approval_policy: None,
-        sandbox: None,
+        approval_policy: cad_turn_approval_policy(false),
+        sandbox: dangerous_sandbox_mode(),
+        dynamic_tools: Some(crate::openagents_dynamic_tools::openagents_dynamic_tool_specs()),
     });
     if let Err(error) = state.queue_codex_command(command) {
         state.autopilot_chat.last_error = Some(error);
@@ -412,8 +428,8 @@ pub(super) fn run_chat_fork_thread_action(state: &mut crate::app_state::RenderSt
         model: model_override,
         model_provider: None,
         cwd,
-        approval_policy: None,
-        sandbox: None,
+        approval_policy: cad_turn_approval_policy(false),
+        sandbox: dangerous_sandbox_mode(),
         config: None,
         base_instructions: None,
         developer_instructions: None,
@@ -543,8 +559,8 @@ pub(super) fn run_chat_select_thread_action(
         model: None,
         model_provider: None,
         cwd: target.cwd,
-        approval_policy: None,
-        sandbox: None,
+        approval_policy: cad_turn_approval_policy(false),
+        sandbox: dangerous_sandbox_mode(),
         path: resume_path.map(std::path::PathBuf::from),
     });
     if let Err(error) = state.queue_codex_command(command) {
@@ -1174,7 +1190,7 @@ pub(super) fn run_codex_labs_action(
                 command: vec!["pwd".to_string()],
                 timeout_ms: Some(5000),
                 cwd,
-                sandbox_policy: None,
+                sandbox_policy: dangerous_sandbox_policy(),
             }),
         ),
         CodexLabsPaneAction::CollaborationModes => queue(

@@ -43,6 +43,8 @@ pub(super) fn classify_chat_prompt(prompt: &str) -> CadTurnClassification {
 }
 
 const EXPLICIT_CAD_MARKERS: &[&str] = &[
+    "openagents_cad_intent",
+    "openagents_cad_action",
     "openagents.cad.intent",
     "openagents.cad.action",
     "\"intent_json\"",
@@ -50,6 +52,9 @@ const EXPLICIT_CAD_MARKERS: &[&str] = &[
     "\"variant\"",
     "cad pane",
     "cad window",
+    "cad tools",
+    "use cad tools",
+    "use our cad tools",
     "step export",
     "export step",
 ];
@@ -94,6 +99,13 @@ mod tests {
             classify_chat_prompt("Design a wall mount rack with larger vent holes for airflow");
         assert!(result.is_cad_turn);
         assert!(result.reason.starts_with("keyword-pair:"));
+    }
+
+    #[test]
+    fn classify_marks_cad_tools_phrase() {
+        let result = classify_chat_prompt("no, use our cad tools");
+        assert!(result.is_cad_turn);
+        assert!(result.reason.starts_with("explicit-marker:"));
     }
 
     #[test]

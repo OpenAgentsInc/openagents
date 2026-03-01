@@ -2432,9 +2432,7 @@ mod tests {
         let expected =
             serde_json::from_str::<Value>(&expected_json).expect("fixture should parse as JSON");
         if expected != *report {
-            panic!(
-                "{label} snapshot mismatch against {path}\nactual snapshot:\n{actual_json}"
-            );
+            panic!("{label} snapshot mismatch against {path}\nactual snapshot:\n{actual_json}");
         }
     }
 
@@ -2865,9 +2863,18 @@ mod tests {
         let parsed = match parse_cad_intent_json(payload) {
             Ok(intent) => intent,
             Err(error) => {
-                state.record_agent_build_tool_result("OA-CAD-INTENT-PARSE-FAILED", false, &error.message);
-                state.record_agent_build_failure_metric(CadBuildFailureClass::IntentParseValidation);
-                state.set_agent_build_failure_context(CadBuildFailureClass::IntentParseValidation, 0, 1);
+                state.record_agent_build_tool_result(
+                    "OA-CAD-INTENT-PARSE-FAILED",
+                    false,
+                    &error.message,
+                );
+                state
+                    .record_agent_build_failure_metric(CadBuildFailureClass::IntentParseValidation);
+                state.set_agent_build_failure_context(
+                    CadBuildFailureClass::IntentParseValidation,
+                    0,
+                    1,
+                );
                 let _ = state.fail_agent_build_session(
                     "cad.build.intent.parse_failed",
                     format!("intent parse failed {}: {}", error.code, error.message),
@@ -2892,11 +2899,20 @@ mod tests {
                 {
                     trigger = Some(rebuild_trigger.clone());
                     if let Err(error) = enqueue_rebuild_cycle(state, rebuild_trigger.as_str()) {
-                        state.record_agent_build_failure_metric(CadBuildFailureClass::DispatchRebuild);
-                        state.set_agent_build_failure_context(CadBuildFailureClass::DispatchRebuild, 1, 1);
+                        state.record_agent_build_failure_metric(
+                            CadBuildFailureClass::DispatchRebuild,
+                        );
+                        state.set_agent_build_failure_context(
+                            CadBuildFailureClass::DispatchRebuild,
+                            1,
+                            1,
+                        );
                         let _ = state.fail_agent_build_session(
                             "cad.build.rebuild.enqueue_failed",
-                            format!("failed to enqueue rebuild trigger {}: {}", rebuild_trigger, error),
+                            format!(
+                                "failed to enqueue rebuild trigger {}: {}",
+                                rebuild_trigger, error
+                            ),
                             Some("retry CAD turn once rebuild worker is healthy".to_string()),
                         );
                         rebuild_status = "enqueue_failed".to_string();
@@ -2948,7 +2964,11 @@ mod tests {
                 })
             }
             Err(error) => {
-                state.record_agent_build_tool_result("OA-CAD-INTENT-DISPATCH-FAILED", false, &error.to_string());
+                state.record_agent_build_tool_result(
+                    "OA-CAD-INTENT-DISPATCH-FAILED",
+                    false,
+                    &error.to_string(),
+                );
                 state.record_agent_build_failure_metric(CadBuildFailureClass::DispatchRebuild);
                 state.set_agent_build_failure_context(CadBuildFailureClass::DispatchRebuild, 0, 1);
                 let _ = state.fail_agent_build_session(
