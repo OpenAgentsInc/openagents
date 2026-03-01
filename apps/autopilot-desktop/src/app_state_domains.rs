@@ -1265,6 +1265,8 @@ pub struct StableSatsSimulationPaneState {
     pub total_converted_usd_cents: u64,
     pub last_settlement_ref: Option<String>,
     pub agents: Vec<StableSatsAgentWalletState>,
+    pub price_history_usd_cents_per_btc: Vec<u64>,
+    pub converted_sats_history: Vec<u64>,
     pub auto_run_enabled: bool,
     pub auto_run_interval: Duration,
     pub events: Vec<AgentNetworkSimulationEvent>,
@@ -1286,6 +1288,8 @@ impl Default for StableSatsSimulationPaneState {
             total_converted_usd_cents: 0,
             last_settlement_ref: None,
             agents: Self::default_agents(),
+            price_history_usd_cents_per_btc: Vec::new(),
+            converted_sats_history: Vec::new(),
             auto_run_enabled: false,
             auto_run_interval: Duration::from_millis(120),
             events: Vec::new(),
@@ -1451,6 +1455,19 @@ impl StableSatsSimulationPaneState {
             .saturating_add(converted_usd_round);
         self.rounds_run = round;
         self.last_settlement_ref = Some(format!("sim:blink:settlement:{round:04}"));
+        self.price_history_usd_cents_per_btc.push(price);
+        if self.price_history_usd_cents_per_btc.len() > 18 {
+            let overflow = self
+                .price_history_usd_cents_per_btc
+                .len()
+                .saturating_sub(18);
+            self.price_history_usd_cents_per_btc.drain(0..overflow);
+        }
+        self.converted_sats_history.push(converted_sats_round);
+        if self.converted_sats_history.len() > 18 {
+            let overflow = self.converted_sats_history.len().saturating_sub(18);
+            self.converted_sats_history.drain(0..overflow);
+        }
         if let Some(settlement_ref) = self.last_settlement_ref.clone() {
             self.push_event(
                 "BLINK-LEDGER",
@@ -1484,6 +1501,8 @@ impl StableSatsSimulationPaneState {
         self.total_converted_usd_cents = 0;
         self.last_settlement_ref = None;
         self.agents = Self::default_agents();
+        self.price_history_usd_cents_per_btc.clear();
+        self.converted_sats_history.clear();
         self.auto_run_enabled = false;
         self.events.clear();
         self.next_seq = 1;
