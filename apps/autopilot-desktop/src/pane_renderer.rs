@@ -3,9 +3,9 @@ use crate::app_state::{
     AgentNetworkSimulationPaneState, AgentProfileStatePaneState, AgentScheduleTickPaneState,
     AlertSeverity, AlertsRecoveryState, AutopilotChatState, ChatPaneInputs, CodexAccountPaneState,
     CodexAppsPaneState, CodexConfigPaneState, CodexDiagnosticsPaneState, CodexLabsPaneState,
-    CodexMcpPaneState, CodexModelsPaneState, CodexRemoteSkillsPaneState, CreateInvoicePaneInputs,
-    CredentialsPaneInputs, CredentialsState, CreditDeskPaneState, CreditSettlementLedgerPaneState,
-    DesktopPane, EarningsScoreboardState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
+    CodexMcpPaneState, CodexModelsPaneState, CreateInvoicePaneInputs, CredentialsPaneInputs,
+    CredentialsState, CreditDeskPaneState, CreditSettlementLedgerPaneState, DesktopPane,
+    EarningsScoreboardState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
     JobLifecycleStage, NetworkRequestStatus, NetworkRequestsPaneInputs, NetworkRequestsState,
     NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs, ProviderBlocker,
     ProviderRuntimeState, RelayConnectionsPaneInputs, RelayConnectionsState,
@@ -68,7 +68,6 @@ impl PaneRenderer {
         codex_config: &CodexConfigPaneState,
         codex_mcp: &CodexMcpPaneState,
         codex_apps: &CodexAppsPaneState,
-        codex_remote_skills: &CodexRemoteSkillsPaneState,
         codex_labs: &CodexLabsPaneState,
         codex_diagnostics: &CodexDiagnosticsPaneState,
         sa_lane: &crate::runtime_lanes::SaLaneSnapshot,
@@ -156,13 +155,6 @@ impl PaneRenderer {
                 }
                 PaneKind::CodexApps => {
                     codex_pane::paint_apps_pane(content_bounds, codex_apps, paint);
-                }
-                PaneKind::CodexRemoteSkills => {
-                    codex_pane::paint_remote_skills_pane(
-                        content_bounds,
-                        codex_remote_skills,
-                        paint,
-                    );
                 }
                 PaneKind::CodexLabs => {
                     codex_pane::paint_labs_pane(content_bounds, codex_labs, paint);

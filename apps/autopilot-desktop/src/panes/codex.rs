@@ -2,7 +2,7 @@ use wgpui::PaintContext;
 
 use crate::app_state::{
     CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState, CodexDiagnosticsPaneState,
-    CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState, CodexRemoteSkillsPaneState,
+    CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState,
 };
 use crate::pane_renderer::{
     paint_action_button, paint_label_line, paint_multiline_phrase, paint_source_badge,
@@ -26,9 +26,7 @@ use crate::pane_system::{
     codex_labs_toggle_experimental_button_bounds, codex_labs_windows_sandbox_setup_button_bounds,
     codex_mcp_login_button_bounds, codex_mcp_refresh_button_bounds, codex_mcp_reload_button_bounds,
     codex_mcp_row_bounds, codex_mcp_visible_row_count, codex_models_refresh_button_bounds,
-    codex_models_toggle_hidden_button_bounds, codex_remote_skills_export_button_bounds,
-    codex_remote_skills_refresh_button_bounds, codex_remote_skills_row_bounds,
-    codex_remote_skills_visible_row_count,
+    codex_models_toggle_hidden_button_bounds,
 };
 
 pub fn paint_account_pane(
@@ -412,86 +410,6 @@ pub fn paint_apps_pane(
     if visible_rows == 0 {
         paint.scene.draw_text(paint.text.layout(
             "No apps returned yet.",
-            wgpui::Point::new(content_bounds.origin.x + 12.0, y),
-            11.0,
-            wgpui::theme::text::MUTED,
-        ));
-    }
-}
-
-pub fn paint_remote_skills_pane(
-    content_bounds: wgpui::Bounds,
-    pane_state: &CodexRemoteSkillsPaneState,
-    paint: &mut PaintContext,
-) {
-    paint_source_badge(content_bounds, "codex", paint);
-
-    let refresh = codex_remote_skills_refresh_button_bounds(content_bounds);
-    let export = codex_remote_skills_export_button_bounds(content_bounds);
-    paint_action_button(refresh, "Refresh Remote Skills", paint);
-    paint_action_button(export, "Export Selected Skill", paint);
-
-    let mut y = paint_state_summary(
-        paint,
-        content_bounds.origin.x + 12.0,
-        refresh.max_y() + 12.0,
-        pane_state.load_state,
-        &format!("State: {}", pane_state.load_state.label()),
-        pane_state.last_action.as_deref(),
-        pane_state.last_error.as_deref(),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Remote skills",
-        &pane_state.skills.len().to_string(),
-    );
-    y = paint_multiline_phrase(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Last exported path",
-        pane_state.last_exported_path.as_deref().unwrap_or("n/a"),
-    );
-    y = paint_multiline_phrase(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Local repo skills",
-        "Primary skills registry remains `skills/` in this repo; exported remote skills are additive.",
-    );
-
-    let visible_rows = codex_remote_skills_visible_row_count(pane_state.skills.len());
-    for row_index in 0..visible_rows {
-        let skill = &pane_state.skills[row_index];
-        let row_bounds = codex_remote_skills_row_bounds(content_bounds, row_index);
-        let selected = pane_state.selected_skill_index == Some(row_index);
-        paint.scene.draw_quad(
-            wgpui::Quad::new(row_bounds)
-                .with_background(if selected {
-                    wgpui::theme::bg::APP.with_alpha(0.88)
-                } else {
-                    wgpui::theme::bg::APP.with_alpha(0.72)
-                })
-                .with_border(wgpui::theme::border::DEFAULT, 1.0)
-                .with_corner_radius(4.0),
-        );
-        paint.scene.draw_text(paint.text.layout_mono(
-            &format!("{} ({}) {}", skill.name, skill.id, skill.description),
-            wgpui::Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 9.0),
-            10.0,
-            if selected {
-                wgpui::theme::text::PRIMARY
-            } else {
-                wgpui::theme::text::MUTED
-            },
-        ));
-    }
-
-    if visible_rows == 0 {
-        paint.scene.draw_text(paint.text.layout(
-            "No remote skills returned yet.",
             wgpui::Point::new(content_bounds.origin.x + 12.0, y),
             11.0,
             wgpui::theme::text::MUTED,

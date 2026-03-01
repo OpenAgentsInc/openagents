@@ -148,34 +148,6 @@ impl Default for CodexAppsPaneState {
     }
 }
 
-pub struct CodexRemoteSkillEntryState {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-}
-
-pub struct CodexRemoteSkillsPaneState {
-    pub load_state: PaneLoadState,
-    pub last_error: Option<String>,
-    pub last_action: Option<String>,
-    pub skills: Vec<CodexRemoteSkillEntryState>,
-    pub selected_skill_index: Option<usize>,
-    pub last_exported_path: Option<String>,
-}
-
-impl Default for CodexRemoteSkillsPaneState {
-    fn default() -> Self {
-        Self {
-            load_state: PaneLoadState::Loading,
-            last_error: None,
-            last_action: Some("Waiting for skills/remote/list".to_string()),
-            skills: Vec::new(),
-            selected_skill_index: None,
-            last_exported_path: None,
-        }
-    }
-}
-
 pub struct CodexLabsPaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,

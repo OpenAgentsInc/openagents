@@ -45,9 +45,6 @@ const CODEX_MCP_MAX_ROWS: usize = 8;
 const CODEX_APPS_ROW_HEIGHT: f32 = 30.0;
 const CODEX_APPS_ROW_GAP: f32 = 6.0;
 const CODEX_APPS_MAX_ROWS: usize = 8;
-const CODEX_REMOTE_SKILLS_ROW_HEIGHT: f32 = 30.0;
-const CODEX_REMOTE_SKILLS_ROW_GAP: f32 = 6.0;
-const CODEX_REMOTE_SKILLS_MAX_ROWS: usize = 8;
 const JOB_INBOX_BUTTON_HEIGHT: f32 = 30.0;
 const JOB_INBOX_BUTTON_GAP: f32 = 10.0;
 const JOB_INBOX_ROW_GAP: f32 = 6.0;
@@ -136,13 +133,6 @@ pub enum CodexMcpPaneAction {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CodexAppsPaneAction {
     Refresh,
-    SelectRow(usize),
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CodexRemoteSkillsPaneAction {
-    Refresh,
-    ExportSelected,
     SelectRow(usize),
 }
 
@@ -346,7 +336,6 @@ pub enum PaneHitAction {
     CodexConfig(CodexConfigPaneAction),
     CodexMcp(CodexMcpPaneAction),
     CodexApps(CodexAppsPaneAction),
-    CodexRemoteSkills(CodexRemoteSkillsPaneAction),
     CodexLabs(CodexLabsPaneAction),
     CodexDiagnostics(CodexDiagnosticsPaneAction),
     EarningsScoreboard(EarningsScoreboardPaneAction),
@@ -769,7 +758,6 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::CodexConfig
             | PaneKind::CodexMcp
             | PaneKind::CodexApps
-            | PaneKind::CodexRemoteSkills
             | PaneKind::CodexLabs
             | PaneKind::CodexDiagnostics
             | PaneKind::GoOnline
@@ -1137,29 +1125,6 @@ pub fn codex_apps_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds
 
 pub fn codex_apps_visible_row_count(row_count: usize) -> usize {
     row_count.min(CODEX_APPS_MAX_ROWS)
-}
-
-pub fn codex_remote_skills_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
-    codex_action_button_bounds(content_bounds, 0, 0, 2)
-}
-
-pub fn codex_remote_skills_export_button_bounds(content_bounds: Bounds) -> Bounds {
-    codex_action_button_bounds(content_bounds, 0, 1, 2)
-}
-
-pub fn codex_remote_skills_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
-    let safe_index = row_index.min(CODEX_REMOTE_SKILLS_MAX_ROWS.saturating_sub(1));
-    let top = codex_remote_skills_refresh_button_bounds(content_bounds).max_y() + 12.0;
-    Bounds::new(
-        content_bounds.origin.x + CHAT_PAD,
-        top + safe_index as f32 * (CODEX_REMOTE_SKILLS_ROW_HEIGHT + CODEX_REMOTE_SKILLS_ROW_GAP),
-        (content_bounds.size.width - CHAT_PAD * 2.0).max(220.0),
-        CODEX_REMOTE_SKILLS_ROW_HEIGHT,
-    )
-}
-
-pub fn codex_remote_skills_visible_row_count(row_count: usize) -> usize {
-    row_count.min(CODEX_REMOTE_SKILLS_MAX_ROWS)
 }
 
 pub fn codex_labs_review_inline_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -2262,28 +2227,6 @@ fn pane_hit_action_for_pane(
             }
             None
         }
-        PaneKind::CodexRemoteSkills => {
-            if codex_remote_skills_refresh_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::CodexRemoteSkills(
-                    CodexRemoteSkillsPaneAction::Refresh,
-                ));
-            }
-            if codex_remote_skills_export_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::CodexRemoteSkills(
-                    CodexRemoteSkillsPaneAction::ExportSelected,
-                ));
-            }
-            let visible_rows =
-                codex_remote_skills_visible_row_count(state.codex_remote_skills.skills.len());
-            for row_index in 0..visible_rows {
-                if codex_remote_skills_row_bounds(content_bounds, row_index).contains(point) {
-                    return Some(PaneHitAction::CodexRemoteSkills(
-                        CodexRemoteSkillsPaneAction::SelectRow(row_index),
-                    ));
-                }
-            }
-            None
-        }
         PaneKind::CodexLabs => {
             if codex_labs_review_inline_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::CodexLabs(CodexLabsPaneAction::ReviewInline));
@@ -3080,8 +3023,7 @@ mod tests {
         codex_labs_review_inline_button_bounds, codex_labs_toggle_experimental_button_bounds,
         codex_mcp_login_button_bounds, codex_mcp_refresh_button_bounds,
         codex_mcp_reload_button_bounds, codex_models_refresh_button_bounds,
-        codex_models_toggle_hidden_button_bounds, codex_remote_skills_export_button_bounds,
-        codex_remote_skills_refresh_button_bounds, credit_desk_envelope_button_bounds,
+        codex_models_toggle_hidden_button_bounds, credit_desk_envelope_button_bounds,
         credit_desk_intent_button_bounds, credit_desk_offer_button_bounds,
         credit_desk_spend_button_bounds, credit_settlement_default_button_bounds,
         credit_settlement_reputation_button_bounds, credit_settlement_verify_button_bounds,
@@ -3206,10 +3148,6 @@ mod tests {
 
         let apps_refresh = codex_apps_refresh_button_bounds(content);
         assert!(apps_refresh.size.width > 0.0);
-
-        let remote_refresh = codex_remote_skills_refresh_button_bounds(content);
-        let remote_export = codex_remote_skills_export_button_bounds(content);
-        assert!(remote_refresh.max_x() < remote_export.min_x());
 
         let review_inline = codex_labs_review_inline_button_bounds(content);
         let review_detached = codex_labs_review_detached_button_bounds(content);
