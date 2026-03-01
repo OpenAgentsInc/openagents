@@ -67,6 +67,9 @@ def base_report(source: str) -> Dict[str, object]:
         "face_count": 0,
         "poly_loop_count": 0,
         "non_manifold_edge_count": 0,
+        "bbox_min_mm": None,
+        "bbox_max_mm": None,
+        "volume_mm3": None,
         "diagnostics": [],
     }
 

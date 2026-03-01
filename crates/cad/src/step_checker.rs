@@ -26,7 +26,7 @@ pub struct CadStepCheckerDiagnostic {
 }
 
 /// Deterministic STEP checker report contract.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CadStepCheckerReport {
     pub checker_version: u32,
     pub backend: String,
@@ -37,6 +37,9 @@ pub struct CadStepCheckerReport {
     pub face_count: usize,
     pub poly_loop_count: usize,
     pub non_manifold_edge_count: usize,
+    pub bbox_min_mm: Option<[f64; 3]>,
+    pub bbox_max_mm: Option<[f64; 3]>,
+    pub volume_mm3: Option<f64>,
     pub diagnostics: Vec<CadStepCheckerDiagnostic>,
 }
 
@@ -58,11 +61,15 @@ pub enum CadStepCheckerBackend {
 /// Run structural checker directly on STEP text.
 pub fn check_step_text_structural(step_text: &str, source: &str) -> CadStepCheckerReport {
     let entities = parse_step_entities(step_text);
-    let point_key_by_ref = entities
+    let point_by_ref = entities
         .iter()
         .filter_map(|(id, payload)| parse_cartesian_point(payload).map(|point| (*id, point)))
-        .map(|(id, point)| (id, vertex_key_from_point(point)))
         .collect::<BTreeMap<_, _>>();
+    let point_key_by_ref = point_by_ref
+        .iter()
+        .map(|(id, point)| (*id, vertex_key_from_point(*point)))
+        .collect::<BTreeMap<_, _>>();
+    let (bbox_min_mm, bbox_max_mm) = compute_bounds(point_by_ref.values().copied());
 
     let mut solid_count = 0usize;
     let mut shell_count = 0usize;
@@ -70,6 +77,7 @@ pub fn check_step_text_structural(step_text: &str, source: &str) -> CadStepCheck
     let mut poly_loop_count = 0usize;
     let mut diagnostics = Vec::<CadStepCheckerDiagnostic>::new();
     let mut edge_use_count = BTreeMap::<(String, String), u64>::new();
+    let mut signed_volume_mm3 = 0.0f64;
 
     for (_id, payload) in entities {
         if payload.starts_with("FACETED_BREP(") || payload.starts_with("MANIFOLD_SOLID_BREP(") {
@@ -85,6 +93,15 @@ pub fn check_step_text_structural(step_text: &str, source: &str) -> CadStepCheck
             poly_loop_count = poly_loop_count.saturating_add(1);
             if let Some(loop_refs) = parse_poly_loop_refs(&payload) {
                 if loop_refs.len() >= 3 {
+                    if let Some(p0) = point_by_ref.get(&loop_refs[0]).copied() {
+                        for idx in 1..(loop_refs.len() - 1) {
+                            let p1 = point_by_ref.get(&loop_refs[idx]).copied();
+                            let p2 = point_by_ref.get(&loop_refs[idx + 1]).copied();
+                            if let (Some(p1), Some(p2)) = (p1, p2) {
+                                signed_volume_mm3 += tetra_signed_volume(p0, p1, p2);
+                            }
+                        }
+                    }
                     for idx in 0..loop_refs.len() {
                         let a = loop_refs[idx];
                         let b = loop_refs[(idx + 1) % loop_refs.len()];
@@ -132,6 +149,11 @@ pub fn check_step_text_structural(step_text: &str, source: &str) -> CadStepCheck
     }
 
     let non_manifold_edge_count = edge_use_count.values().filter(|count| **count != 2).count();
+    let volume_mm3 = if poly_loop_count > 0 {
+        Some(signed_volume_mm3.abs())
+    } else {
+        None
+    };
 
     if solid_count == 0 {
         diagnostics.push(CadStepCheckerDiagnostic {
@@ -184,6 +206,9 @@ pub fn check_step_text_structural(step_text: &str, source: &str) -> CadStepCheck
         face_count,
         poly_loop_count,
         non_manifold_edge_count,
+        bbox_min_mm,
+        bbox_max_mm,
+        volume_mm3,
         diagnostics,
     }
 }
@@ -331,6 +356,33 @@ fn normalize_signed_zero(value: f64) -> f64 {
     } else {
         value
     }
+}
+
+fn compute_bounds(points: impl Iterator<Item = [f64; 3]>) -> (Option<[f64; 3]>, Option<[f64; 3]>) {
+    let mut min = [f64::INFINITY; 3];
+    let mut max = [f64::NEG_INFINITY; 3];
+    let mut found = false;
+    for point in points {
+        found = true;
+        for axis in 0..3 {
+            min[axis] = min[axis].min(point[axis]);
+            max[axis] = max[axis].max(point[axis]);
+        }
+    }
+    if found {
+        (Some(min), Some(max))
+    } else {
+        (None, None)
+    }
+}
+
+fn tetra_signed_volume(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f64 {
+    let cross = [
+        b[1] * c[2] - b[2] * c[1],
+        b[2] * c[0] - b[0] * c[2],
+        b[0] * c[1] - b[1] * c[0],
+    ];
+    (a[0] * cross[0] + a[1] * cross[1] + a[2] * cross[2]) / 6.0
 }
 
 #[cfg(test)]

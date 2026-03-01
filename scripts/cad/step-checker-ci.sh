@@ -7,6 +7,7 @@ BACKEND="${CAD_STEP_CHECKER_BACKEND:-structural}"
 
 mkdir -p "$ARTIFACT_DIR"
 LOG_FILE="$ARTIFACT_DIR/step-checker.log"
+ROUNDTRIP_LOG_FILE="$ARTIFACT_DIR/step-roundtrip.log"
 
 printf 'Running CAD STEP checker fixtures (backend=%s)\n' "$BACKEND"
 
@@ -18,6 +19,16 @@ if ! (
 ); then
     cat "$LOG_FILE" >&2
     printf 'CAD STEP checker failed. Artifacts directory: %s\n' "$ARTIFACT_DIR" >&2
+    exit 1
+fi
+
+if ! (
+    cd "$ROOT_DIR" && \
+    CAD_STEP_CHECKER_ARTIFACT_DIR="$ARTIFACT_DIR" \
+    cargo test -p openagents-cad step_roundtrip_tolerance_baseline_and_boundary_fixtures -- --nocapture >"$ROUNDTRIP_LOG_FILE" 2>&1
+); then
+    cat "$ROUNDTRIP_LOG_FILE" >&2
+    printf 'CAD STEP round-trip tolerance lane failed. Artifacts directory: %s\n' "$ARTIFACT_DIR" >&2
     exit 1
 fi
 

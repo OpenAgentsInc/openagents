@@ -8,6 +8,7 @@ Validate exported STEP files with machine-readable diagnostics and fail fast on:
 - invalid solids
 - missing shells
 - non-manifold/open edges
+- round-trip bbox/volume tolerance regressions
 
 ## Checker Outputs
 
@@ -21,6 +22,9 @@ Checker reports follow `CadStepCheckerReport` (JSON):
 - `face_count`
 - `poly_loop_count`
 - `non_manifold_edge_count`
+- `bbox_min_mm`
+- `bbox_max_mm`
+- `volume_mm3`
 - `diagnostics[]` with:
   - `code`
   - `severity`
@@ -43,6 +47,10 @@ Run fixture export + checker lane:
 ```bash
 scripts/cad/step-checker-ci.sh
 ```
+
+This script runs:
+- STEP checker fixture assertions (`baseline`, `lightweight`)
+- STEP round-trip tolerance fixture assertions (including near-threshold pass/fail fixtures)
 
 Run OpenCascade backend explicitly (requires OCP/pythonocc in environment):
 
@@ -76,6 +84,8 @@ Artifacts are written to:
 
 If checker fails, upload that artifact directory from CI to inspect:
 - `step-checker.log`
+- `step-roundtrip.log`
 - `summary.json`
 - per-variant `*-report.json`
+- per-variant `*-roundtrip-*.json`
 - generated fixture `.step` files
