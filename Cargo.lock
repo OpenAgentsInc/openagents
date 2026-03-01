@@ -341,6 +341,7 @@ dependencies = [
  "openagents-cad",
  "openagents-spark",
  "pollster",
+ "serde",
  "serde_json",
  "tokio",
  "tracing",
