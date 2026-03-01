@@ -2865,16 +2865,16 @@ mod tests {
         ActivityFeedState, AgentNetworkSimulationPaneState, AlertDomain, AlertLifecycle,
         AlertsRecoveryState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole,
         CadCameraViewSnap, CadContextMenuTargetKind, CadDemoPaneState, CadDemoWarningState,
-        CadHiddenLineMode, CadHotkeyAction, CadProjectionMode, CadSectionAxis, CadSnapMode,
-        CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile, EarningsScoreboardState,
-        JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange,
-        JobInboxDecision, JobInboxNetworkRequest, JobInboxState, JobInboxValidation,
-        JobLifecycleStage, NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState,
-        NostrSecretState, ProviderRuntimeState, RecoveryAlertRow, RelayConnectionRow,
-        RelayConnectionStatus, RelayConnectionsState, RelaySecuritySimulationPaneState,
-        SettingsState, SparkPaneState, StableSatsSimulationPaneState, StarterJobRow,
-        StarterJobStatus, StarterJobsState, SyncHealthState, SyncRecoveryPhase,
-        TreasuryExchangeSimulationPaneState,
+        CadHiddenLineMode, CadHotkeyAction, CadProjectionMode, CadSectionAxis,
+        CadBuildSessionPhase, CadSnapMode, CadThreeDMouseAxis, CadThreeDMouseMode,
+        CadThreeDMouseProfile, EarningsScoreboardState, JobHistoryState, JobHistoryStatus,
+        JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest,
+        JobInboxState, JobInboxValidation, JobLifecycleStage, NetworkRequestStatus,
+        NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderRuntimeState,
+        RecoveryAlertRow, RelayConnectionRow, RelayConnectionStatus, RelayConnectionsState,
+        RelaySecuritySimulationPaneState, SettingsState, SparkPaneState,
+        StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
+        SyncHealthState, SyncRecoveryPhase, TreasuryExchangeSimulationPaneState,
     };
 
     fn fixture_inbox_request(
@@ -3911,6 +3911,9 @@ mod tests {
         assert!(state.chat_thread_session_bindings.is_empty());
         assert!(state.dispatch_sessions.is_empty());
         assert!(state.last_chat_intent_name.is_none());
+        assert_eq!(state.build_session.phase, CadBuildSessionPhase::Idle);
+        assert!(state.build_session.events.is_empty());
+        assert!(state.last_build_session.is_none());
         assert_eq!(state.document_id, "cad.doc.demo-rack");
         assert_eq!(state.document_revision, 0);
         assert_eq!(state.active_variant_id, "variant.baseline");
@@ -3967,6 +3970,115 @@ mod tests {
         assert!(state.selected_feature_params.is_empty());
         assert!(!state.context_menu.is_open);
         assert!(state.context_menu.items.is_empty());
+    }
+
+    #[test]
+    fn cad_build_session_valid_transitions_archive_terminal_state() {
+        let mut state = CadDemoPaneState::default();
+        state
+            .begin_agent_build_session("thread-1", "turn-1")
+            .expect("build session should start");
+        assert_eq!(state.build_session.phase, CadBuildSessionPhase::Planning);
+        state
+            .transition_agent_build_phase(
+                CadBuildSessionPhase::Applying,
+                "cad.build.applying.start",
+                "tool executing".to_string(),
+            )
+            .expect("planning -> applying should be valid");
+        state.record_agent_build_tool_result("OA-CAD-INTENT-OK", true, "intent applied");
+        state
+            .transition_agent_build_phase(
+                CadBuildSessionPhase::Rebuilding,
+                "cad.build.rebuilding.wait",
+                "waiting for background rebuild".to_string(),
+            )
+            .expect("applying -> rebuilding should be valid");
+        state.record_agent_build_rebuild_result("ai-intent:setmaterial", "ok");
+        state
+            .transition_agent_build_phase(
+                CadBuildSessionPhase::Summarizing,
+                "cad.build.summarizing.start",
+                "rebuild committed".to_string(),
+            )
+            .expect("rebuilding -> summarizing should be valid");
+        state
+            .complete_agent_build_session("build complete".to_string())
+            .expect("summarizing -> done should be valid");
+
+        assert_eq!(state.build_session.phase, CadBuildSessionPhase::Idle);
+        let archived = state
+            .last_build_session
+            .as_ref()
+            .expect("completed session should be archived");
+        assert_eq!(archived.thread_id, "thread-1");
+        assert_eq!(archived.turn_id, "turn-1");
+        assert_eq!(archived.terminal_phase, CadBuildSessionPhase::Done);
+        assert!(
+            archived
+                .latest_tool_result
+                .as_deref()
+                .is_some_and(|value| value.contains("OA-CAD-INTENT-OK"))
+        );
+        assert!(
+            archived
+                .latest_rebuild_result
+                .as_deref()
+                .is_some_and(|value| value.contains("ai-intent:setmaterial"))
+        );
+        assert!(!archived.events.is_empty());
+    }
+
+    #[test]
+    fn cad_build_session_rejects_invalid_phase_transition() {
+        let mut state = CadDemoPaneState::default();
+        let error = state
+            .transition_agent_build_phase(
+                CadBuildSessionPhase::Applying,
+                "cad.build.applying.invalid",
+                "invalid jump".to_string(),
+            )
+            .expect_err("idle -> applying must be rejected");
+        assert!(error.contains("invalid CAD build phase transition"));
+        assert_eq!(state.build_session.phase, CadBuildSessionPhase::Idle);
+        assert!(state.build_session.events.is_empty());
+    }
+
+    #[test]
+    fn cad_build_session_failure_archives_reason_and_remediation() {
+        let mut state = CadDemoPaneState::default();
+        state
+            .begin_agent_build_session("thread-2", "turn-2")
+            .expect("build session should start");
+        state
+            .transition_agent_build_phase(
+                CadBuildSessionPhase::Applying,
+                "cad.build.applying.start",
+                "tool executing".to_string(),
+            )
+            .expect("planning -> applying should be valid");
+        state
+            .fail_agent_build_session(
+                "cad.build.tool.failed",
+                "tool returned parse error".to_string(),
+                Some("retry with explicit rack dimensions".to_string()),
+            )
+            .expect("applying -> failed should be valid");
+
+        assert_eq!(state.build_session.phase, CadBuildSessionPhase::Idle);
+        let archived = state
+            .last_build_session
+            .as_ref()
+            .expect("failed session should be archived");
+        assert_eq!(archived.terminal_phase, CadBuildSessionPhase::Failed);
+        assert_eq!(
+            archived.failure_reason.as_deref(),
+            Some("tool returned parse error")
+        );
+        assert_eq!(
+            archived.remediation_hint.as_deref(),
+            Some("retry with explicit rack dimensions")
+        );
     }
 
     #[test]

@@ -62,6 +62,16 @@ pub(super) fn apply_chat_prompt_to_cad_session_with_trigger(
                                 "CAD rebuild enqueue failed for trigger '{}': {}",
                                 rebuild_trigger, error
                             ));
+                            if rebuild_trigger.starts_with("ai-intent:") {
+                                let _ = state.cad_demo.fail_agent_build_session(
+                                    "cad.build.rebuild.enqueue_failed",
+                                    format!(
+                                        "failed to enqueue rebuild trigger {}: {}",
+                                        rebuild_trigger, error
+                                    ),
+                                    Some("retry CAD intent after inspecting reducer error".to_string()),
+                                );
+                            }
                         }
                     }
 
@@ -696,6 +706,23 @@ fn apply_rebuild_response(
                 "CAD rebuild {} failed for request #{}",
                 failed.trigger, failed.request_id
             ));
+            if failed.trigger.starts_with("ai-intent:") {
+                state.record_agent_build_rebuild_result(
+                    &failed.trigger,
+                    &format!("error={}", failed.error),
+                );
+                let _ = state.fail_agent_build_session(
+                    "cad.build.rebuild.failed",
+                    format!(
+                        "background rebuild failed for trigger {}: {}",
+                        failed.trigger, failed.error
+                    ),
+                    Some(
+                        "inspect model warnings and retry CAD intent with simpler parameters"
+                            .to_string(),
+                    ),
+                );
+            }
             None
         }
     }
@@ -814,6 +841,30 @@ fn apply_completed_rebuild(
         "CAD rebuild {} committed: {}ms hash={} mesh={}",
         completed.trigger, duration_ms, receipt.rebuild_hash, receipt.mesh_hash
     ));
+    if completed.trigger.starts_with("ai-intent:") {
+        state.record_agent_build_rebuild_result(
+            &completed.trigger,
+            &format!(
+                "ok hash={} mesh={} duration_ms={}",
+                receipt.rebuild_hash, receipt.mesh_hash, duration_ms
+            ),
+        );
+        if let Err(error) = state.transition_agent_build_phase(
+            crate::app_state::CadBuildSessionPhase::Summarizing,
+            "cad.build.summarizing.after_rebuild",
+            format!(
+                "rebuild committed variant={} rev={}",
+                receipt.variant_id, receipt.document_revision
+            ),
+        ) {
+            state.last_error = Some(format!("CAD build phase transition failed: {error}"));
+        } else if let Err(error) = state.complete_agent_build_session(format!(
+            "CAD rebuild committed for {} at revision {}",
+            receipt.variant_id, receipt.document_revision
+        )) {
+            state.last_error = Some(format!("CAD build finalize failed: {error}"));
+        }
+    }
 
     Ok(receipt)
 }
@@ -1808,7 +1859,9 @@ mod tests {
         apply_rebuild_response, drain_worker_responses_from_pane, enqueue_rebuild_cycle,
         rebuild_trigger_for_chat_intent, run_step_export_from_active_mesh,
     };
-    use crate::app_state::{ActivityEventDomain, CadDemoPaneState, CadTimelineRowState};
+    use crate::app_state::{
+        ActivityEventDomain, CadBuildSessionPhase, CadDemoPaneState, CadTimelineRowState,
+    };
     use crate::cad_rebuild_worker::{CadRebuildFailed, CadRebuildResponse};
     use crate::pane_system::CadDemoPaneAction;
     use openagents_cad::chat_adapter::{CadIntentTranslationOutcome, translate_chat_to_cad_intent};
@@ -1922,6 +1975,89 @@ mod tests {
                 .timeline_rows
                 .iter()
                 .all(|row| row.provenance.eq_ignore_ascii_case("ai"))
+        );
+    }
+
+    #[test]
+    fn ai_intent_rebuild_success_archives_build_session_done() {
+        let mut state = CadDemoPaneState::default();
+        state
+            .begin_agent_build_session("thread-ai", "turn-ai")
+            .expect("build session should start");
+        state
+            .transition_agent_build_phase(
+                CadBuildSessionPhase::Applying,
+                "cad.build.applying.start",
+                "tool executing".to_string(),
+            )
+            .expect("planning -> applying should be valid");
+        state
+            .transition_agent_build_phase(
+                CadBuildSessionPhase::Rebuilding,
+                "cad.build.rebuilding.wait",
+                "waiting for rebuild".to_string(),
+            )
+            .expect("applying -> rebuilding should be valid");
+        enqueue_rebuild_cycle(&mut state, "ai-intent:setmaterial").expect("rebuild should enqueue");
+        wait_for_receipt(&mut state);
+
+        assert_eq!(state.build_session.phase, CadBuildSessionPhase::Idle);
+        let archived = state
+            .last_build_session
+            .as_ref()
+            .expect("completed build session should be archived");
+        assert_eq!(archived.terminal_phase, CadBuildSessionPhase::Done);
+        assert!(
+            archived
+                .latest_rebuild_result
+                .as_deref()
+                .is_some_and(|value| value.contains("ai-intent:setmaterial"))
+        );
+    }
+
+    #[test]
+    fn ai_intent_rebuild_failure_archives_build_session_failed() {
+        let mut state = CadDemoPaneState::default();
+        state
+            .begin_agent_build_session("thread-ai", "turn-ai")
+            .expect("build session should start");
+        state
+            .transition_agent_build_phase(
+                CadBuildSessionPhase::Applying,
+                "cad.build.applying.start",
+                "tool executing".to_string(),
+            )
+            .expect("planning -> applying should be valid");
+        state
+            .transition_agent_build_phase(
+                CadBuildSessionPhase::Rebuilding,
+                "cad.build.rebuilding.wait",
+                "waiting for rebuild".to_string(),
+            )
+            .expect("applying -> rebuilding should be valid");
+        state.pending_rebuild_request_id = Some(77);
+
+        let failed = CadRebuildFailed {
+            request_id: 77,
+            trigger: "ai-intent:setmaterial".to_string(),
+            session_id: state.session_id.clone(),
+            document_revision: state.document_revision,
+            variant_id: state.active_variant_id.clone(),
+            error: "synthetic worker failure".to_string(),
+        };
+        let receipt = apply_rebuild_response(&mut state, CadRebuildResponse::Failed(failed));
+        assert!(receipt.is_none(), "failed rebuild should not yield receipt");
+        assert_eq!(state.build_session.phase, CadBuildSessionPhase::Idle);
+        let archived = state
+            .last_build_session
+            .as_ref()
+            .expect("failed build session should be archived");
+        assert_eq!(archived.terminal_phase, CadBuildSessionPhase::Failed);
+        assert!(
+            archived
+                .failure_reason
+                .as_deref()
+                .is_some_and(|value| value.contains("synthetic worker failure"))
         );
     }
 
