@@ -51,6 +51,28 @@ impl Default for RackVentPatternConfig {
     }
 }
 
+/// Structure optimization hooks consumed by variant objective presets.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RackStructureOptimizationConfig {
+    pub ribs_enabled: bool,
+    pub rib_count: u8,
+    pub rib_spacing_mm: f64,
+    pub rib_thickness_mm: f64,
+    pub wall_thickness_scale: f64,
+}
+
+impl Default for RackStructureOptimizationConfig {
+    fn default() -> Self {
+        Self {
+            ribs_enabled: true,
+            rib_count: 3,
+            rib_spacing_mm: 42.0,
+            rib_thickness_mm: 3.0,
+            wall_thickness_scale: 1.0,
+        }
+    }
+}
+
 /// Deterministic two-bay Mac Studio rack template parameters.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MacStudioRackTemplateParams {
@@ -64,6 +86,7 @@ pub struct MacStudioRackTemplateParams {
     pub corner_radius_mm: f64,
     pub wall_mount: RackWallMountConfig,
     pub vent: RackVentPatternConfig,
+    pub optimization: RackStructureOptimizationConfig,
 }
 
 impl Default for MacStudioRackTemplateParams {
@@ -80,6 +103,7 @@ impl Default for MacStudioRackTemplateParams {
             corner_radius_mm: 2.0,
             wall_mount: RackWallMountConfig::default(),
             vent: RackVentPatternConfig::default(),
+            optimization: RackStructureOptimizationConfig::default(),
         }
     }
 }
@@ -112,6 +136,18 @@ impl MacStudioRackTemplateParams {
             ("vent.spacing_mm", self.vent.spacing_mm),
             ("vent.hole_radius_mm", self.vent.hole_radius_mm),
             ("vent.density_scale", self.vent.density_scale),
+            (
+                "optimization.rib_spacing_mm",
+                self.optimization.rib_spacing_mm,
+            ),
+            (
+                "optimization.rib_thickness_mm",
+                self.optimization.rib_thickness_mm,
+            ),
+            (
+                "optimization.wall_thickness_scale",
+                self.optimization.wall_thickness_scale,
+            ),
         ] {
             if !value.is_finite() || value <= 0.0 {
                 return Err(CadError::InvalidParameter {
@@ -136,6 +172,12 @@ impl MacStudioRackTemplateParams {
             return Err(CadError::InvalidParameter {
                 name: "vent.cols".to_string(),
                 reason: "vent cols must be >= 1".to_string(),
+            });
+        }
+        if self.optimization.rib_count < 1 {
+            return Err(CadError::InvalidParameter {
+                name: "optimization.rib_count".to_string(),
+                reason: "rib count must be >= 1".to_string(),
             });
         }
         Ok(())
@@ -183,6 +225,13 @@ impl MacStudioRackTemplateParams {
             "wall_thickness_mm",
             ScalarValue {
                 value: self.wall_thickness_mm,
+                unit: ScalarUnit::Millimeter,
+            },
+        )?;
+        params.set(
+            "effective_wall_thickness_mm",
+            ScalarValue {
+                value: self.wall_thickness_mm * self.optimization.wall_thickness_scale,
                 unit: ScalarUnit::Millimeter,
             },
         )?;
@@ -277,6 +326,41 @@ impl MacStudioRackTemplateParams {
                 unit: ScalarUnit::Unitless,
             },
         )?;
+        params.set(
+            "opt_ribs_enabled",
+            ScalarValue {
+                value: if self.optimization.ribs_enabled { 1.0 } else { 0.0 },
+                unit: ScalarUnit::Unitless,
+            },
+        )?;
+        params.set(
+            "opt_rib_count",
+            ScalarValue {
+                value: f64::from(self.optimization.rib_count),
+                unit: ScalarUnit::Unitless,
+            },
+        )?;
+        params.set(
+            "opt_rib_spacing_mm",
+            ScalarValue {
+                value: self.optimization.rib_spacing_mm,
+                unit: ScalarUnit::Millimeter,
+            },
+        )?;
+        params.set(
+            "opt_rib_thickness_mm",
+            ScalarValue {
+                value: self.optimization.rib_thickness_mm,
+                unit: ScalarUnit::Millimeter,
+            },
+        )?;
+        params.set(
+            "opt_wall_thickness_scale",
+            ScalarValue {
+                value: self.optimization.wall_thickness_scale,
+                unit: ScalarUnit::Unitless,
+            },
+        )?;
         Ok(params)
     }
 }
@@ -309,7 +393,7 @@ pub fn generate_mac_studio_rack_template(
                     ("height_param".to_string(), "frame_height_mm".to_string()),
                     (
                         "thickness_param".to_string(),
-                        "wall_thickness_mm".to_string(),
+                        "effective_wall_thickness_mm".to_string(),
                     ),
                 ]),
             },
@@ -366,6 +450,27 @@ pub fn generate_mac_studio_rack_template(
                     ("spacing_param".to_string(), "vent_spacing_mm".to_string()),
                     ("enabled_param".to_string(), "vent_enabled".to_string()),
                     ("density_param".to_string(), "vent_density_scale".to_string()),
+                ]),
+            },
+            FeatureNode {
+                id: "feature.rack.rib_seed".to_string(),
+                name: "rib_seed".to_string(),
+                operation_key: "transform.v1".to_string(),
+                depends_on: vec!["feature.rack.base".to_string()],
+                params: BTreeMap::from([
+                    ("thickness_param".to_string(), "opt_rib_thickness_mm".to_string()),
+                    ("enabled_param".to_string(), "opt_ribs_enabled".to_string()),
+                ]),
+            },
+            FeatureNode {
+                id: "feature.rack.rib_pattern".to_string(),
+                name: "rib_pattern".to_string(),
+                operation_key: "linear.pattern.v1".to_string(),
+                depends_on: vec!["feature.rack.rib_seed".to_string()],
+                params: BTreeMap::from([
+                    ("count_param".to_string(), "opt_rib_count".to_string()),
+                    ("spacing_param".to_string(), "opt_rib_spacing_mm".to_string()),
+                    ("enabled_param".to_string(), "opt_ribs_enabled".to_string()),
                 ]),
             },
             FeatureNode {
@@ -440,6 +545,11 @@ pub fn generate_mac_studio_rack_template(
         "vent_face_set",
         "feature.rack.vent_face_set",
         "feature.rack.vent_face_set",
+    )?;
+    semantic_refs.register(
+        "rack_rib_set",
+        "feature.rack.rib_pattern",
+        "feature.rack.rib_pattern",
     )?;
     semantic_refs.register(
         "wall_mount_bracket",
@@ -537,6 +647,7 @@ mod tests {
         assert!(rack.semantic_refs.resolve("rack_outer_face").is_some());
         assert!(rack.semantic_refs.resolve("rack_bay_pattern").is_some());
         assert!(rack.semantic_refs.resolve("vent_face_set").is_some());
+        assert!(rack.semantic_refs.resolve("rack_rib_set").is_some());
         assert!(rack.semantic_refs.resolve("mount_hole_pattern").is_some());
         assert!(rack.semantic_refs.resolve("wall_mount_bracket").is_some());
         assert!(rack.semantic_refs.resolve("rack_corner_break").is_some());
@@ -601,6 +712,54 @@ mod tests {
                 .get_required_with_unit("vent_hole_radius_mm", openagents_unit_mm())
                 .unwrap_or_default(),
             1.9
+        );
+    }
+
+    #[test]
+    fn optimization_hooks_are_projected_to_store() {
+        let mut params = MacStudioRackTemplateParams::default();
+        params.optimization.rib_count = 5;
+        params.optimization.rib_spacing_mm = 31.0;
+        params.optimization.rib_thickness_mm = 2.4;
+        params.optimization.wall_thickness_scale = 0.85;
+        params.optimization.ribs_enabled = false;
+
+        let rack = generate_mac_studio_rack_template(&params).expect("template should generate");
+        assert_eq!(
+            rack.params
+                .get_required_with_unit("opt_rib_count", crate::params::ScalarUnit::Unitless)
+                .unwrap_or_default(),
+            5.0
+        );
+        assert_eq!(
+            rack.params
+                .get_required_with_unit("opt_rib_spacing_mm", openagents_unit_mm())
+                .unwrap_or_default(),
+            31.0
+        );
+        assert_eq!(
+            rack.params
+                .get_required_with_unit("opt_rib_thickness_mm", openagents_unit_mm())
+                .unwrap_or_default(),
+            2.4
+        );
+        assert_eq!(
+            rack.params
+                .get_required_with_unit("opt_ribs_enabled", crate::params::ScalarUnit::Unitless)
+                .unwrap_or_default(),
+            0.0
+        );
+        assert_eq!(
+            rack.params
+                .get_required_with_unit("opt_wall_thickness_scale", crate::params::ScalarUnit::Unitless)
+                .unwrap_or_default(),
+            0.85
+        );
+        assert_eq!(
+            rack.params
+                .get_required_with_unit("effective_wall_thickness_mm", openagents_unit_mm())
+                .unwrap_or_default(),
+            5.1
         );
     }
 

@@ -49,6 +49,15 @@ Vent parameters:
 - `vent_hole_radius_mm` (`mm`) = `2.0`
 - `vent_density_scale` (`unitless`) = `1.0`
 
+Optimization hooks:
+
+- `opt_ribs_enabled` (`unitless`) = `1`
+- `opt_rib_count` (`unitless`) = `3`
+- `opt_rib_spacing_mm` (`mm`) = `42.0`
+- `opt_rib_thickness_mm` (`mm`) = `3.0`
+- `opt_wall_thickness_scale` (`unitless`) = `1.0`
+- `effective_wall_thickness_mm` (`mm`) = `wall_thickness_mm * opt_wall_thickness_scale`
+
 ## Baseline Feature Graph
 
 Deterministic nodes:
@@ -63,6 +72,8 @@ Deterministic nodes:
 8. `feature.rack.vent_hole` (`cut.hole.v1`)
 9. `feature.rack.vent_pattern_x` (`linear.pattern.v1`)
 10. `feature.rack.vent_face_set` (`linear.pattern.v1`)
+11. `feature.rack.rib_seed` (`transform.v1`)
+12. `feature.rack.rib_pattern` (`linear.pattern.v1`)
 
 ## Semantic References
 
@@ -71,6 +82,7 @@ Deterministic nodes:
 - `wall_mount_bracket`
 - `mount_hole_pattern`
 - `vent_face_set`
+- `rack_rib_set`
 - `rack_corner_break`
 
 These references are created through `CadSemanticRefRegistry` and can be persisted through `.apcad` stable IDs.
