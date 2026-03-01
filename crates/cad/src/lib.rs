@@ -8,6 +8,7 @@ pub mod contracts;
 pub mod document;
 pub mod error;
 pub mod eval;
+pub mod features;
 pub mod feature_graph;
 pub mod format;
 pub mod kernel;
