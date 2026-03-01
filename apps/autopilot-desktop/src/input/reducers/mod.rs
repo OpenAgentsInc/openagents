@@ -165,6 +165,10 @@ pub(super) fn apply_chat_prompt_to_cad_session_with_trigger(
     )
 }
 
+pub(super) fn sync_cad_build_progress_to_chat(state: &mut RenderState) {
+    cad::sync_cad_build_progress_to_chat(state)
+}
+
 fn apply_runtime_command_response(state: &mut RenderState, response: RuntimeCommandResponse) {
     let summary = command_response_summary(&response);
     match response.lane {
