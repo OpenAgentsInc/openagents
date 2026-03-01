@@ -6,6 +6,7 @@
 pub mod analysis;
 pub mod boolean;
 pub mod contracts;
+pub mod dispatch;
 pub mod document;
 pub mod error;
 pub mod eval;

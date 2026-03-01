@@ -188,6 +188,7 @@ Decision criteria to keep objective:
 - feature ops document: `docs/cad/CAD_FEATURE_OPS.md`
 - rack template generator document: `docs/cad/CAD_RACK_TEMPLATE.md`
 - CAD intent schema document: `docs/cad/CAD_INTENTS.md`
+- CAD intent dispatch document: `docs/cad/CAD_INTENT_DISPATCH.md`
 
 ### Eval, Caching, and Concurrency
 
