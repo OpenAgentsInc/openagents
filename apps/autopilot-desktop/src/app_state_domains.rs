@@ -463,6 +463,7 @@ pub struct CadDemoPaneState {
     pub last_good_mesh_id: Option<String>,
     pub last_good_mesh_payload: Option<openagents_cad::mesh::CadMeshPayload>,
     pub warnings: Vec<CadDemoWarningState>,
+    pub variant_warning_sets: std::collections::BTreeMap<String, Vec<CadDemoWarningState>>,
     pub warning_filter_severity: String,
     pub warning_filter_code: String,
     pub warning_hover_index: Option<usize>,
@@ -471,6 +472,8 @@ pub struct CadDemoPaneState {
     pub hovered_geometry_ref: Option<String>,
     pub selection_store: openagents_cad::selection::CadSelectionStore,
     pub analysis_snapshot: openagents_cad::contracts::CadAnalysis,
+    pub variant_analysis_snapshots:
+        std::collections::BTreeMap<String, openagents_cad::contracts::CadAnalysis>,
     pub measurement_tile_index: Option<usize>,
     pub measurement_points: Vec<Point>,
     pub measurement_distance_px: Option<f64>,
@@ -1032,6 +1035,30 @@ impl Default for CadDemoPaneState {
             .iter()
             .map(|variant_id| CadVariantViewportState::for_variant(variant_id))
             .collect::<Vec<_>>();
+        let default_analysis = openagents_cad::contracts::CadAnalysis {
+            document_revision: 0,
+            variant_id: initial_variant_id.clone(),
+            material_id: Some(openagents_cad::materials::DEFAULT_CAD_MATERIAL_ID.to_string()),
+            volume_mm3: None,
+            mass_kg: None,
+            center_of_gravity_mm: None,
+            estimated_cost_usd: None,
+            max_deflection_mm: None,
+            estimator_metadata: std::collections::BTreeMap::new(),
+            objective_scores: std::collections::BTreeMap::new(),
+        };
+        let variant_analysis_snapshots = variant_ids
+            .iter()
+            .map(|variant_id| {
+                let mut analysis = default_analysis.clone();
+                analysis.variant_id = variant_id.clone();
+                (variant_id.clone(), analysis)
+            })
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let variant_warning_sets = variant_ids
+            .iter()
+            .map(|variant_id| (variant_id.clone(), Vec::new()))
+            .collect::<std::collections::BTreeMap<_, _>>();
         Self {
             load_state: PaneLoadState::Ready,
             last_error: None,
@@ -1053,6 +1080,7 @@ impl Default for CadDemoPaneState {
             last_good_mesh_id: None,
             last_good_mesh_payload: None,
             warnings: Vec::new(),
+            variant_warning_sets,
             warning_filter_severity: "all".to_string(),
             warning_filter_code: "all".to_string(),
             warning_hover_index: None,
@@ -1060,18 +1088,8 @@ impl Default for CadDemoPaneState {
             focused_geometry_ref: None,
             hovered_geometry_ref: None,
             selection_store: openagents_cad::selection::CadSelectionStore::default(),
-            analysis_snapshot: openagents_cad::contracts::CadAnalysis {
-                document_revision: 0,
-                variant_id: initial_variant_id,
-                material_id: Some(openagents_cad::materials::DEFAULT_CAD_MATERIAL_ID.to_string()),
-                volume_mm3: None,
-                mass_kg: None,
-                center_of_gravity_mm: None,
-                estimated_cost_usd: None,
-                max_deflection_mm: None,
-                estimator_metadata: std::collections::BTreeMap::new(),
-                objective_scores: std::collections::BTreeMap::new(),
-            },
+            analysis_snapshot: default_analysis,
+            variant_analysis_snapshots,
             measurement_tile_index: None,
             measurement_points: Vec::new(),
             measurement_distance_px: None,
@@ -1138,6 +1156,21 @@ impl CadDemoPaneState {
         self.hovered_geometry_ref = active.hovered_ref.clone();
     }
 
+    fn sync_active_variant_payloads_from_maps(&mut self) {
+        if let Some(analysis) = self
+            .variant_analysis_snapshots
+            .get(&self.active_variant_id)
+            .cloned()
+        {
+            self.analysis_snapshot = analysis;
+        }
+        if let Some(warnings) = self.variant_warning_sets.get(&self.active_variant_id).cloned() {
+            self.warnings = warnings;
+        }
+        self.warning_hover_index = None;
+        self.focused_warning_index = None;
+    }
+
     pub fn set_active_variant_tile(&mut self, tile_index: usize) -> bool {
         if tile_index >= self.variant_viewports.len() {
             return false;
@@ -1145,6 +1178,7 @@ impl CadDemoPaneState {
         self.active_variant_tile_index = tile_index;
         self.active_variant_id = self.variant_viewports[tile_index].variant_id.clone();
         self.sync_global_from_variant_viewport();
+        self.sync_active_variant_payloads_from_maps();
         true
     }
 
@@ -1160,6 +1194,28 @@ impl CadDemoPaneState {
     pub fn set_hovered_geometry_for_active_variant(&mut self, value: Option<String>) {
         self.hovered_geometry_ref = value;
         self.sync_active_variant_viewport_from_global();
+    }
+
+    pub fn set_variant_analysis_snapshot(
+        &mut self,
+        variant_id: &str,
+        analysis: openagents_cad::contracts::CadAnalysis,
+    ) {
+        self.variant_analysis_snapshots
+            .insert(variant_id.to_string(), analysis.clone());
+        if self.active_variant_id == variant_id {
+            self.analysis_snapshot = analysis;
+        }
+    }
+
+    pub fn set_variant_warning_set(&mut self, variant_id: &str, warnings: Vec<CadDemoWarningState>) {
+        self.variant_warning_sets
+            .insert(variant_id.to_string(), warnings.clone());
+        if self.active_variant_id == variant_id {
+            self.warnings = warnings;
+            self.warning_hover_index = None;
+            self.focused_warning_index = None;
+        }
     }
 
     pub fn set_hovered_geometry_for_tile_focus(
