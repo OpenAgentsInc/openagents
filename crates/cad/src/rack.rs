@@ -27,6 +27,30 @@ impl Default for RackWallMountConfig {
     }
 }
 
+/// Vent-pattern controls for airflow-oriented rack variants.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RackVentPatternConfig {
+    pub enabled: bool,
+    pub rows: u8,
+    pub cols: u8,
+    pub spacing_mm: f64,
+    pub hole_radius_mm: f64,
+    pub density_scale: f64,
+}
+
+impl Default for RackVentPatternConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            rows: 3,
+            cols: 8,
+            spacing_mm: 12.0,
+            hole_radius_mm: 2.0,
+            density_scale: 1.0,
+        }
+    }
+}
+
 /// Deterministic two-bay Mac Studio rack template parameters.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MacStudioRackTemplateParams {
@@ -39,6 +63,7 @@ pub struct MacStudioRackTemplateParams {
     pub wall_thickness_mm: f64,
     pub corner_radius_mm: f64,
     pub wall_mount: RackWallMountConfig,
+    pub vent: RackVentPatternConfig,
 }
 
 impl Default for MacStudioRackTemplateParams {
@@ -54,6 +79,7 @@ impl Default for MacStudioRackTemplateParams {
             wall_thickness_mm: 6.0,
             corner_radius_mm: 2.0,
             wall_mount: RackWallMountConfig::default(),
+            vent: RackVentPatternConfig::default(),
         }
     }
 }
@@ -83,6 +109,9 @@ impl MacStudioRackTemplateParams {
                 "wall_mount.bracket_thickness_mm",
                 self.wall_mount.bracket_thickness_mm,
             ),
+            ("vent.spacing_mm", self.vent.spacing_mm),
+            ("vent.hole_radius_mm", self.vent.hole_radius_mm),
+            ("vent.density_scale", self.vent.density_scale),
         ] {
             if !value.is_finite() || value <= 0.0 {
                 return Err(CadError::InvalidParameter {
@@ -95,6 +124,18 @@ impl MacStudioRackTemplateParams {
             return Err(CadError::InvalidParameter {
                 name: "wall_mount.hole_count".to_string(),
                 reason: "wall mount hole count must be >= 2".to_string(),
+            });
+        }
+        if self.vent.rows < 1 {
+            return Err(CadError::InvalidParameter {
+                name: "vent.rows".to_string(),
+                reason: "vent rows must be >= 1".to_string(),
+            });
+        }
+        if self.vent.cols < 1 {
+            return Err(CadError::InvalidParameter {
+                name: "vent.cols".to_string(),
+                reason: "vent cols must be >= 1".to_string(),
             });
         }
         Ok(())
@@ -194,6 +235,48 @@ impl MacStudioRackTemplateParams {
                 unit: ScalarUnit::Millimeter,
             },
         )?;
+        params.set(
+            "vent_enabled",
+            ScalarValue {
+                value: if self.vent.enabled { 1.0 } else { 0.0 },
+                unit: ScalarUnit::Unitless,
+            },
+        )?;
+        params.set(
+            "vent_rows",
+            ScalarValue {
+                value: f64::from(self.vent.rows),
+                unit: ScalarUnit::Unitless,
+            },
+        )?;
+        params.set(
+            "vent_cols",
+            ScalarValue {
+                value: f64::from(self.vent.cols),
+                unit: ScalarUnit::Unitless,
+            },
+        )?;
+        params.set(
+            "vent_spacing_mm",
+            ScalarValue {
+                value: self.vent.spacing_mm,
+                unit: ScalarUnit::Millimeter,
+            },
+        )?;
+        params.set(
+            "vent_hole_radius_mm",
+            ScalarValue {
+                value: self.vent.hole_radius_mm,
+                unit: ScalarUnit::Millimeter,
+            },
+        )?;
+        params.set(
+            "vent_density_scale",
+            ScalarValue {
+                value: self.vent.density_scale,
+                unit: ScalarUnit::Unitless,
+            },
+        )?;
         Ok(params)
     }
 }
@@ -248,6 +331,41 @@ pub fn generate_mac_studio_rack_template(
                 params: BTreeMap::from([
                     ("count_param".to_string(), "bay_count".to_string()),
                     ("spacing_param".to_string(), "bay_pitch_mm".to_string()),
+                ]),
+            },
+            FeatureNode {
+                id: "feature.rack.vent_hole".to_string(),
+                name: "vent_hole".to_string(),
+                operation_key: "cut.hole.v1".to_string(),
+                depends_on: vec!["feature.rack.base".to_string()],
+                params: BTreeMap::from([
+                    ("radius_param".to_string(), "vent_hole_radius_mm".to_string()),
+                    ("depth_param".to_string(), "wall_thickness_mm".to_string()),
+                    ("enabled_param".to_string(), "vent_enabled".to_string()),
+                ]),
+            },
+            FeatureNode {
+                id: "feature.rack.vent_pattern_x".to_string(),
+                name: "vent_pattern_x".to_string(),
+                operation_key: "linear.pattern.v1".to_string(),
+                depends_on: vec!["feature.rack.vent_hole".to_string()],
+                params: BTreeMap::from([
+                    ("count_param".to_string(), "vent_cols".to_string()),
+                    ("spacing_param".to_string(), "vent_spacing_mm".to_string()),
+                    ("enabled_param".to_string(), "vent_enabled".to_string()),
+                    ("density_param".to_string(), "vent_density_scale".to_string()),
+                ]),
+            },
+            FeatureNode {
+                id: "feature.rack.vent_face_set".to_string(),
+                name: "vent_face_set".to_string(),
+                operation_key: "linear.pattern.v1".to_string(),
+                depends_on: vec!["feature.rack.vent_pattern_x".to_string()],
+                params: BTreeMap::from([
+                    ("count_param".to_string(), "vent_rows".to_string()),
+                    ("spacing_param".to_string(), "vent_spacing_mm".to_string()),
+                    ("enabled_param".to_string(), "vent_enabled".to_string()),
+                    ("density_param".to_string(), "vent_density_scale".to_string()),
                 ]),
             },
             FeatureNode {
@@ -317,6 +435,11 @@ pub fn generate_mac_studio_rack_template(
         "rack_bay_pattern",
         "feature.rack.bay_pattern",
         "feature.rack.bay_pattern",
+    )?;
+    semantic_refs.register(
+        "vent_face_set",
+        "feature.rack.vent_face_set",
+        "feature.rack.vent_face_set",
     )?;
     semantic_refs.register(
         "wall_mount_bracket",
@@ -413,6 +536,7 @@ mod tests {
         let rack = generate_mac_studio_rack_template(&params).expect("template should generate");
         assert!(rack.semantic_refs.resolve("rack_outer_face").is_some());
         assert!(rack.semantic_refs.resolve("rack_bay_pattern").is_some());
+        assert!(rack.semantic_refs.resolve("vent_face_set").is_some());
         assert!(rack.semantic_refs.resolve("mount_hole_pattern").is_some());
         assert!(rack.semantic_refs.resolve("wall_mount_bracket").is_some());
         assert!(rack.semantic_refs.resolve("rack_corner_break").is_some());
@@ -443,6 +567,41 @@ mod tests {
         assert_eq!(enabled_ids, disabled_ids);
         assert!(enabled.semantic_refs.resolve("mount_hole_pattern").is_some());
         assert!(disabled.semantic_refs.resolve("mount_hole_pattern").is_some());
+    }
+
+    #[test]
+    fn vent_pattern_parameters_are_projected_to_store() {
+        let mut params = MacStudioRackTemplateParams::default();
+        params.vent.rows = 4;
+        params.vent.cols = 10;
+        params.vent.spacing_mm = 10.5;
+        params.vent.hole_radius_mm = 1.9;
+        params.vent.density_scale = 1.2;
+        let rack = generate_mac_studio_rack_template(&params).expect("template should generate");
+        assert_eq!(
+            rack.params
+                .get_required_with_unit("vent_rows", crate::params::ScalarUnit::Unitless)
+                .unwrap_or_default(),
+            4.0
+        );
+        assert_eq!(
+            rack.params
+                .get_required_with_unit("vent_cols", crate::params::ScalarUnit::Unitless)
+                .unwrap_or_default(),
+            10.0
+        );
+        assert_eq!(
+            rack.params
+                .get_required_with_unit("vent_spacing_mm", openagents_unit_mm())
+                .unwrap_or_default(),
+            10.5
+        );
+        assert_eq!(
+            rack.params
+                .get_required_with_unit("vent_hole_radius_mm", openagents_unit_mm())
+                .unwrap_or_default(),
+            1.9
+        );
     }
 
     fn openagents_unit_mm() -> crate::params::ScalarUnit {
