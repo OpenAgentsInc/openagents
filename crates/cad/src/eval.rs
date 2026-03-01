@@ -1,5 +1,6 @@
 use crate::CadResult;
 use crate::kernel::CadKernelAdapter;
+use crate::policy;
 use crate::primitives::{PrimitiveSpec, build_primitives};
 
 /// Minimal eval plan for early adapter-boundary validation.
@@ -8,17 +9,23 @@ pub struct EvalPlan {
     pub primitives: Vec<PrimitiveSpec>,
 }
 
+/// Resolve the default evaluation tolerance in canonical units.
+pub fn eval_tolerance_mm() -> f64 {
+    policy::resolve_tolerance_mm(None)
+}
+
 /// Evaluate the plan by routing all primitive creation through the kernel adapter.
 pub fn evaluate_plan<K: CadKernelAdapter>(
     kernel: &mut K,
     plan: &EvalPlan,
 ) -> CadResult<Vec<K::Solid>> {
+    let _effective_tolerance_mm = eval_tolerance_mm();
     build_primitives(kernel, &plan.primitives)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{EvalPlan, evaluate_plan};
+    use super::{EvalPlan, eval_tolerance_mm, evaluate_plan};
     use crate::CadResult;
     use crate::kernel::CadKernelAdapter;
     use crate::primitives::{BoxPrimitive, CylinderPrimitive, PrimitiveSpec};
@@ -81,5 +88,10 @@ mod tests {
                 ]
             );
         }
+    }
+
+    #[test]
+    fn eval_uses_policy_default_tolerance() {
+        assert_eq!(eval_tolerance_mm(), crate::policy::BASE_TOLERANCE_MM);
     }
 }
