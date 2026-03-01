@@ -5,21 +5,44 @@ use serde::{Deserialize, Serialize};
 /// Severity levels for CAD warnings.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum CadWarningSeverity {
+    #[serde(rename = "info")]
     Info,
+    #[serde(rename = "warning")]
     Warning,
-    Error,
+    #[serde(rename = "critical")]
+    Critical,
 }
 
 /// Stable warning codes for CAD validity and analysis workflows.
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub enum CadWarningCode {
+    #[serde(rename = "CAD-WARN-NON-MANIFOLD")]
     NonManifoldBody,
+    #[serde(rename = "CAD-WARN-SELF-INTERSECTION")]
     SelfIntersection,
+    #[serde(rename = "CAD-WARN-ZERO-THICKNESS")]
     ZeroThicknessFace,
+    #[serde(rename = "CAD-WARN-SLIVER-FACE")]
     SliverFace,
+    #[serde(rename = "CAD-WARN-FILLET-FAILED")]
     FilletFailed,
+    #[serde(rename = "CAD-WARN-SEMANTIC-REF-EXPIRED")]
     SemanticRefExpired,
     Unknown(String),
+}
+
+impl CadWarningCode {
+    pub fn stable_code(&self) -> &str {
+        match self {
+            Self::NonManifoldBody => "CAD-WARN-NON-MANIFOLD",
+            Self::SelfIntersection => "CAD-WARN-SELF-INTERSECTION",
+            Self::ZeroThicknessFace => "CAD-WARN-ZERO-THICKNESS",
+            Self::SliverFace => "CAD-WARN-SLIVER-FACE",
+            Self::FilletFailed => "CAD-WARN-FILLET-FAILED",
+            Self::SemanticRefExpired => "CAD-WARN-SEMANTIC-REF-EXPIRED",
+            Self::Unknown(code) => code.as_str(),
+        }
+    }
 }
 
 /// Structured CAD warning receipt consumed by pane/UI/activity feed layers.
@@ -94,7 +117,7 @@ mod tests {
         let encoded = serde_json::to_string(&warning);
         assert!(encoded.is_ok(), "warning serialization should succeed");
         let payload = encoded.unwrap_or_default();
-        assert!(payload.contains("SliverFace"));
+        assert!(payload.contains("CAD-WARN-SLIVER-FACE"));
         assert!(payload.contains("vent_face_set"));
     }
 
