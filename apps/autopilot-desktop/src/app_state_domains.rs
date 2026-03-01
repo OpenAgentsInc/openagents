@@ -470,6 +470,7 @@ pub struct CadDemoPaneState {
     pub focused_geometry_ref: Option<String>,
     pub hovered_geometry_ref: Option<String>,
     pub selection_store: openagents_cad::selection::CadSelectionStore,
+    pub analysis_snapshot: openagents_cad::contracts::CadAnalysis,
     pub hidden_line_mode: CadHiddenLineMode,
     pub snap_toggles: CadSnapToggles,
     pub projection_mode: CadProjectionMode,
@@ -987,6 +988,7 @@ impl Default for CadDemoPaneState {
             "variant.low-cost".to_string(),
             "variant.stiffness".to_string(),
         ];
+        let initial_variant_id = variant_ids[0].clone();
         let variant_viewports = variant_ids
             .iter()
             .map(|variant_id| CadVariantViewportState::for_variant(variant_id))
@@ -998,7 +1000,7 @@ impl Default for CadDemoPaneState {
             session_id: "cad.session.local".to_string(),
             document_id: "cad.doc.demo-rack".to_string(),
             document_revision: 0,
-            active_variant_id: variant_ids[0].clone(),
+            active_variant_id: initial_variant_id.clone(),
             variant_ids,
             active_variant_tile_index: 0,
             variant_viewports,
@@ -1019,6 +1021,17 @@ impl Default for CadDemoPaneState {
             focused_geometry_ref: None,
             hovered_geometry_ref: None,
             selection_store: openagents_cad::selection::CadSelectionStore::default(),
+            analysis_snapshot: openagents_cad::contracts::CadAnalysis {
+                document_revision: 0,
+                variant_id: initial_variant_id,
+                material_id: Some("al-6061-t6".to_string()),
+                volume_mm3: None,
+                mass_kg: None,
+                center_of_gravity_mm: None,
+                estimated_cost_usd: None,
+                max_deflection_mm: None,
+                objective_scores: std::collections::BTreeMap::new(),
+            },
             hidden_line_mode: CadHiddenLineMode::Shaded,
             snap_toggles: CadSnapToggles::default(),
             projection_mode: CadProjectionMode::Orthographic,

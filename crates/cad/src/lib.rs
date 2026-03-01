@@ -3,6 +3,7 @@
 //! This crate intentionally starts with a minimal, product-agnostic API surface.
 //! Higher-level CAD workflows are introduced incrementally via the CAD backlog.
 
+pub mod analysis;
 pub mod boolean;
 pub mod contracts;
 pub mod document;
