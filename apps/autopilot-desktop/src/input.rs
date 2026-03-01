@@ -550,21 +550,22 @@ fn handle_cad_context_menu_click(
         if !content_bounds.contains(point) {
             return false;
         }
-        let viewport = cad_pane::camera_interaction_bounds(content_bounds);
-        if !viewport.contains(point) {
+        let Some(tile_index) = cad_pane::variant_tile_index_at_point(content_bounds, point) else {
             state.cad_demo.close_context_menu();
             state.cad_demo.last_action = Some("CAD context menu closed".to_string());
             return true;
-        }
+        };
+        let _ = state.cad_demo.set_active_variant_tile(tile_index);
+        let viewport = cad_pane::variant_tile_bounds(content_bounds, tile_index);
         let (target_kind, target_ref) = state
             .cad_demo
             .infer_context_menu_target_for_viewport_point(point, viewport);
         state
             .cad_demo
             .open_context_menu(point, target_kind, target_ref.clone());
-        state.cad_demo.focused_geometry_ref = Some(target_ref.clone());
         state.cad_demo.last_action = Some(format!(
-            "CAD context menu open {} ({})",
+            "CAD context menu open tile={} {} ({})",
+            tile_index + 1,
             target_ref,
             target_kind.label()
         ));
@@ -701,7 +702,7 @@ fn cad_camera_target_pane_id(state: &crate::app_state::RenderState, point: Point
         {
             return None;
         }
-        if cad_pane::camera_interaction_bounds(content_bounds).contains(point) {
+        if cad_pane::variant_tile_index_at_point(content_bounds, point).is_some() {
             return Some(pane.id);
         }
         return None;
@@ -725,9 +726,18 @@ fn begin_cad_camera_drag(
     let Some(pane_id) = cad_camera_target_pane_id(state, point) else {
         return false;
     };
+    let tile_index = state
+        .panes
+        .iter()
+        .find(|pane| pane.id == pane_id)
+        .map(|pane| pane_content_bounds(pane.bounds))
+        .and_then(|content| cad_pane::variant_tile_index_at_point(content, point))
+        .unwrap_or(0);
+    let _ = state.cad_demo.set_active_variant_tile(tile_index);
     PaneController::bring_to_front(state, pane_id);
     state.cad_camera_drag_state = Some(CadCameraDragState {
         pane_id,
+        tile_index,
         mode,
         last_mouse: point,
         moved: false,
@@ -758,6 +768,7 @@ fn update_cad_camera_drag(state: &mut crate::app_state::RenderState, point: Poin
     if delta_x.abs() + delta_y.abs() >= 0.75 {
         drag.moved = true;
     }
+    let _ = state.cad_demo.set_active_variant_tile(drag.tile_index);
 
     match drag.mode {
         CadCameraDragMode::Orbit => state.cad_demo.orbit_camera_by_drag(delta_x, delta_y),
@@ -779,7 +790,8 @@ fn finish_cad_camera_drag(state: &mut crate::app_state::RenderState) -> bool {
         CadCameraDragMode::Pan => "pan",
     };
     state.cad_demo.last_action = Some(format!(
-        "CAD camera {mode_label} -> zoom={:.2} pan=({:.0},{:.0}) orbit=({:.0},{:.0})",
+        "CAD camera {mode_label} tile={} -> zoom={:.2} pan=({:.0},{:.0}) orbit=({:.0},{:.0})",
+        drag.tile_index + 1,
         state.cad_demo.camera_zoom,
         state.cad_demo.camera_pan_x,
         state.cad_demo.camera_pan_y,
@@ -794,9 +806,17 @@ fn apply_cad_camera_zoom(
     point: Point,
     scroll_dy: f32,
 ) -> bool {
-    if cad_camera_target_pane_id(state, point).is_none() {
+    let Some(pane_id) = cad_camera_target_pane_id(state, point) else {
         return false;
-    }
+    };
+    let tile_index = state
+        .panes
+        .iter()
+        .find(|pane| pane.id == pane_id)
+        .map(|pane| pane_content_bounds(pane.bounds))
+        .and_then(|content| cad_pane::variant_tile_index_at_point(content, point))
+        .unwrap_or(0);
+    let _ = state.cad_demo.set_active_variant_tile(tile_index);
     let previous = state.cad_demo.camera_zoom;
     state.cad_demo.zoom_camera_by_scroll(scroll_dy);
     if (previous - state.cad_demo.camera_zoom).abs() <= f32::EPSILON {

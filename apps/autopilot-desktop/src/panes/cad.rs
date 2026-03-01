@@ -6,6 +6,7 @@ use wgpui::{
 
 use crate::app_state::{
     CadCameraViewSnap, CadDemoPaneState, CadDemoWarningState, CadHiddenLineMode, CadProjectionMode,
+    CadVariantViewportState,
 };
 use crate::pane_renderer::paint_action_button;
 use crate::pane_system::{
@@ -27,8 +28,8 @@ const HEADER_LINE_HEIGHT: f32 = 14.0;
 const SUBHEADER_GAP: f32 = 4.0;
 const VIEWPORT_TOP_GAP: f32 = 10.0;
 const FOOTER_RESERVED: f32 = 18.0;
-const RECEIPT_LINE_HEIGHT: f32 = 10.0;
 const VIEWPORT_MESH_PAD: f32 = 12.0;
+const VARIANT_TILE_GAP: f32 = 8.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CadCameraPose {
@@ -41,9 +42,9 @@ pub struct CadCameraPose {
 }
 
 impl CadCameraPose {
-    fn from_state(state: &CadDemoPaneState) -> Self {
+    fn from_variant(state: &CadVariantViewportState, projection_mode: CadProjectionMode) -> Self {
         Self {
-            projection_mode: state.projection_mode,
+            projection_mode,
             zoom: state.camera_zoom,
             pan_x: state.camera_pan_x,
             pan_y: state.camera_pan_y,
@@ -122,6 +123,29 @@ fn cad_demo_body_bounds(content_bounds: Bounds) -> Bounds {
 
 pub fn camera_interaction_bounds(content_bounds: Bounds) -> Bounds {
     placeholder_layout(cad_demo_body_bounds(content_bounds)).viewport_bounds
+}
+
+pub fn variant_tile_bounds(content_bounds: Bounds, tile_index: usize) -> Bounds {
+    let viewport = camera_interaction_bounds(content_bounds);
+    let gap = VARIANT_TILE_GAP;
+    let tile_width = ((viewport.size.width - gap) * 0.5).max(2.0);
+    let tile_height = ((viewport.size.height - gap) * 0.5).max(2.0);
+    let col = (tile_index % 2) as f32;
+    let row = ((tile_index / 2) % 2) as f32;
+    Bounds::new(
+        viewport.origin.x + col * (tile_width + gap),
+        viewport.origin.y + row * (tile_height + gap),
+        tile_width,
+        tile_height,
+    )
+}
+
+pub fn variant_tile_index_at_point(content_bounds: Bounds, point: Point) -> Option<usize> {
+    let viewport = camera_interaction_bounds(content_bounds);
+    if !viewport.contains(point) {
+        return None;
+    }
+    (0..4).find(|index| variant_tile_bounds(content_bounds, *index).contains(point))
 }
 
 pub fn paint_cad_demo_placeholder_pane(
@@ -241,37 +265,93 @@ pub fn paint_cad_demo_placeholder_pane(
                 .with_corner_radius(4.0),
         );
 
+        let mesh_payload = pane_state.last_good_mesh_payload.as_ref();
+        let mut viewport_status = "4-up variant viewport ready".to_string();
+
+        for tile_index in 0..4 {
+            let tile_bounds = variant_tile_bounds(content_bounds, tile_index);
+            if tile_bounds.size.width < 2.0 || tile_bounds.size.height < 2.0 {
+                continue;
+            }
+            let is_active = pane_state.active_variant_tile_index == tile_index;
+            let variant_view = pane_state.variant_viewport(tile_index);
+            let tile_label = variant_view
+                .map(|view| view.variant_id.as_str())
+                .or_else(|| pane_state.variant_ids.get(tile_index).map(String::as_str))
+                .unwrap_or("variant.unset");
+            let selection = variant_view.and_then(|view| view.selected_ref.as_deref());
+            let selection_suffix = selection
+                .map(|value| format!(" sel={value}"))
+                .unwrap_or_default();
+
+            let mut tile_quad = Quad::new(tile_bounds)
+                .with_background(theme::bg::SURFACE)
+                .with_corner_radius(4.0)
+                .with_border(theme::border::SUBTLE, 1.0);
+            if is_active {
+                tile_quad = tile_quad.with_border(theme::text::PRIMARY, 1.0);
+            }
+            paint.scene.draw_quad(tile_quad);
+
+            let tile_label_origin =
+                Point::new(tile_bounds.origin.x + 6.0, tile_bounds.origin.y + 10.0);
+            paint.scene.draw_text(paint.text.layout(
+                &format!(
+                    "{}{}{}",
+                    tile_index + 1,
+                    if is_active { "*" } else { "" },
+                    selection_suffix
+                ),
+                tile_label_origin,
+                8.0,
+                theme::text::MUTED,
+            ));
+            let tile_variant_origin =
+                Point::new(tile_bounds.origin.x + 6.0, tile_bounds.origin.y + 20.0);
+            if tile_variant_origin.y + 8.0 <= tile_bounds.max_y() {
+                paint.scene.draw_text(paint.text.layout(
+                    tile_label,
+                    tile_variant_origin,
+                    8.0,
+                    theme::text::SECONDARY,
+                ));
+            }
+
+            if let Some(payload) = mesh_payload {
+                let selected_outline_active = selection.is_some();
+                let camera_pose = if let Some(viewport_state) = variant_view {
+                    CadCameraPose::from_variant(viewport_state, pane_state.projection_mode)
+                } else {
+                    let fallback = CadVariantViewportState::for_variant(tile_label);
+                    CadCameraPose::from_variant(&fallback, pane_state.projection_mode)
+                };
+                match cad_mesh_to_viewport_primitive(
+                    payload,
+                    tile_bounds,
+                    selected_outline_active,
+                    pane_state.hidden_line_mode,
+                    camera_pose,
+                ) {
+                    Ok(mesh) => {
+                        paint.scene.push_clip(tile_bounds);
+                        if let Err(error) = paint.scene.draw_mesh(mesh) {
+                            viewport_status =
+                                format!("tile {} mesh draw skipped: {error}", tile_index + 1);
+                        }
+                        paint.scene.pop_clip();
+                    }
+                    Err(error) => {
+                        viewport_status =
+                            format!("tile {} mesh conversion failed: {error}", tile_index + 1);
+                    }
+                }
+            }
+        }
+
         let viewport_label = Point::new(
             layout.viewport_bounds.origin.x + 8.0,
             (layout.viewport_bounds.origin.y + 10.0).min(layout.viewport_bounds.max_y()),
         );
-        let mut viewport_status = "Viewport reserved for CAD geometry".to_string();
-        if let Some(mesh_payload) = pane_state.last_good_mesh_payload.as_ref() {
-            let selected_outline_active = pane_state.timeline_selected_index.is_some()
-                || pane_state.focused_warning_index.is_some()
-                || pane_state.focused_geometry_ref.is_some();
-            match cad_mesh_to_viewport_primitive(
-                mesh_payload,
-                layout.viewport_bounds,
-                selected_outline_active,
-                pane_state.hidden_line_mode,
-                CadCameraPose::from_state(pane_state),
-            ) {
-                Ok(mesh) => {
-                    paint.scene.push_clip(layout.viewport_bounds);
-                    if let Err(error) = paint.scene.draw_mesh(mesh) {
-                        viewport_status = format!("mesh draw skipped: {error}");
-                    } else {
-                        let tris = mesh_payload.triangle_indices.len() / 3;
-                        viewport_status = format!("mesh={} tris={tris}", mesh_payload.mesh_id);
-                    }
-                    paint.scene.pop_clip();
-                }
-                Err(error) => {
-                    viewport_status = format!("mesh conversion failed: {error}");
-                }
-            }
-        }
         if viewport_label.y + 9.0 <= content_bounds.max_y() {
             paint.scene.draw_text(paint.text.layout(
                 &viewport_status,
@@ -279,80 +359,6 @@ pub fn paint_cad_demo_placeholder_pane(
                 10.0,
                 theme::text::MUTED,
             ));
-        }
-
-        if let Some(receipt) = pane_state.last_rebuild_receipt.as_ref() {
-            let latest_label = Point::new(
-                viewport_label.x,
-                viewport_label.y + RECEIPT_LINE_HEIGHT + 2.0,
-            );
-            if latest_label.y + 9.0 <= layout.viewport_bounds.max_y() {
-                paint.scene.draw_text(paint.text.layout(
-                    &format!(
-                        "latest rebuild {}ms hash={} mesh={} tris={} cache(h={},m={},e={})",
-                        receipt.duration_ms,
-                        receipt.rebuild_hash,
-                        receipt.mesh_hash,
-                        receipt.triangle_count,
-                        receipt.cache_hits,
-                        receipt.cache_misses,
-                        receipt.cache_evictions
-                    ),
-                    latest_label,
-                    9.0,
-                    theme::text::SECONDARY,
-                ));
-            }
-        }
-
-        let mut timeline_y = viewport_label.y + (RECEIPT_LINE_HEIGHT * 2.0) + 4.0;
-        for receipt in pane_state.rebuild_receipts.iter().rev().take(3) {
-            if timeline_y + 8.0 > layout.viewport_bounds.max_y() {
-                break;
-            }
-            paint.scene.draw_text(paint.text.layout(
-                &format!(
-                    "#{} rev={} {}ms {}",
-                    receipt.event_id,
-                    receipt.document_revision,
-                    receipt.duration_ms,
-                    receipt.variant_id
-                ),
-                Point::new(viewport_label.x, timeline_y),
-                9.0,
-                theme::text::MUTED,
-            ));
-            timeline_y += RECEIPT_LINE_HEIGHT;
-        }
-
-        if let Some(mesh_id) = pane_state.last_good_mesh_id.as_ref() {
-            let mesh_line = Point::new(
-                viewport_label.x,
-                viewport_label.y + (RECEIPT_LINE_HEIGHT * 5.0),
-            );
-            if mesh_line.y + 8.0 <= layout.viewport_bounds.max_y() {
-                paint.scene.draw_text(paint.text.layout(
-                    &format!("last-good mesh: {mesh_id}"),
-                    mesh_line,
-                    9.0,
-                    theme::text::MUTED,
-                ));
-            }
-        }
-
-        if let Some(request_id) = pane_state.pending_rebuild_request_id {
-            let pending_line = Point::new(
-                viewport_label.x,
-                viewport_label.y + (RECEIPT_LINE_HEIGHT * 6.0),
-            );
-            if pending_line.y + 8.0 <= layout.viewport_bounds.max_y() {
-                paint.scene.draw_text(paint.text.layout(
-                    &format!("pending rebuild request: #{request_id}"),
-                    pending_line,
-                    9.0,
-                    theme::text::SECONDARY,
-                ));
-            }
         }
 
         let visible_warning_indices = visible_warning_indices(pane_state);
@@ -537,7 +543,11 @@ pub fn paint_cad_demo_placeholder_pane(
             &format!(
                 "session={} active={} warnings={}{} cam({}; z={:.2} pan={:.0},{:.0} orbit={:.0}/{:.0}) snaps[{}] hotkeys[{}] 3dmouse[{}]",
                 pane_state.session_id,
-                pane_state.active_variant_id,
+                format!(
+                    "{}@tile{}",
+                    pane_state.active_variant_id,
+                    pane_state.active_variant_tile_index + 1
+                ),
                 pane_state.warnings.len(),
                 focus_suffix,
                 pane_state.projection_mode.label(),
@@ -913,12 +923,15 @@ fn styled_fill_color(base: [f32; 4], mode: CadHiddenLineMode) -> [f32; 4] {
 
 #[cfg(test)]
 mod tests {
-    use super::{CadCameraPose, cad_mesh_to_viewport_primitive, placeholder_layout};
+    use super::{
+        CadCameraPose, cad_mesh_to_viewport_primitive, placeholder_layout, variant_tile_bounds,
+        variant_tile_index_at_point,
+    };
     use openagents_cad::mesh::{
         CadMeshBounds, CadMeshEdgeSegment, CadMeshMaterialSlot, CadMeshPayload, CadMeshTopology,
         CadMeshVertex,
     };
-    use wgpui::{Bounds, MESH_EDGE_FLAG_SELECTED, MESH_EDGE_FLAG_SILHOUETTE};
+    use wgpui::{Bounds, MESH_EDGE_FLAG_SELECTED, MESH_EDGE_FLAG_SILHOUETTE, Point};
 
     use crate::app_state::{CadHiddenLineMode, CadProjectionMode};
 
@@ -957,6 +970,29 @@ mod tests {
         assert!(layout.viewport_bounds.max_y() <= content.max_y() + 0.001);
         assert!(layout.footer_origin.y >= content.origin.y);
         assert!(layout.footer_origin.y <= content.max_y() + 0.001);
+    }
+
+    #[test]
+    fn variant_tiles_are_deterministic_and_pickable() {
+        let content = Bounds::new(20.0, 20.0, 820.0, 520.0);
+        let first = variant_tile_bounds(content, 0);
+        let second = variant_tile_bounds(content, 1);
+        let third = variant_tile_bounds(content, 2);
+        let fourth = variant_tile_bounds(content, 3);
+        assert!(first.max_x() <= second.min_x() + 0.001);
+        assert!(first.max_y() <= third.min_y() + 0.001);
+        assert!(third.max_x() <= fourth.min_x() + 0.001);
+
+        let hit_first = variant_tile_index_at_point(
+            content,
+            Point::new(first.origin.x + 4.0, first.origin.y + 4.0),
+        );
+        let hit_fourth = variant_tile_index_at_point(
+            content,
+            Point::new(fourth.origin.x + 4.0, fourth.origin.y + 4.0),
+        );
+        assert_eq!(hit_first, Some(0));
+        assert_eq!(hit_fourth, Some(3));
     }
 
     #[test]

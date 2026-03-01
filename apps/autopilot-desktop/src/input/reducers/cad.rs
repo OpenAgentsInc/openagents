@@ -32,7 +32,7 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
     match action {
         CadDemoPaneAction::Noop => false,
         CadDemoPaneAction::CycleVariant => {
-            if state.variant_ids.is_empty() {
+            if state.variant_viewports.is_empty() {
                 state.load_state = PaneLoadState::Error;
                 state.last_error = Some("CAD demo has no registered variants".to_string());
                 state.last_action =
@@ -40,18 +40,18 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
                 return true;
             }
 
-            let current_index = state
-                .variant_ids
-                .iter()
-                .position(|variant| variant == &state.active_variant_id)
-                .unwrap_or(0);
-            let next_index = (current_index + 1) % state.variant_ids.len();
-            state.active_variant_id = state.variant_ids[next_index].clone();
+            let next_index = (state.active_variant_tile_index + 1) % state.variant_viewports.len();
+            let _ = state.set_active_variant_tile(next_index);
             state.document_revision = state.document_revision.saturating_add(1);
             if let Err(error) = enqueue_rebuild_cycle(state, "cycle-variant") {
                 state.load_state = PaneLoadState::Error;
                 state.last_error = Some(error);
             }
+            state.last_action = Some(format!(
+                "CAD active tile -> {} ({})",
+                state.active_variant_tile_index + 1,
+                state.active_variant_id
+            ));
             true
         }
         CadDemoPaneAction::ResetSession => {
@@ -591,7 +591,7 @@ fn refresh_warning_state(state: &mut CadDemoPaneState, document_revision: u64, v
         .collect();
     state.warning_hover_index = None;
     state.focused_warning_index = None;
-    state.focused_geometry_ref = None;
+    state.set_focused_geometry_for_active_variant(None);
 }
 
 fn refresh_timeline_state(state: &mut CadDemoPaneState, graph: &FeatureGraph, provenance: String) {
@@ -650,10 +650,10 @@ fn refresh_timeline_state(state: &mut CadDemoPaneState, graph: &FeatureGraph, pr
     if let Some(index) = selected_index {
         state.timeline_scroll_offset = auto_scroll_offset(index, state.timeline_scroll_offset, 10);
         state.selected_feature_params = state.timeline_rows[index].params.clone();
-        state.focused_geometry_ref = Some(format!(
+        state.set_focused_geometry_for_active_variant(Some(format!(
             "cad://feature/{}",
             state.timeline_rows[index].feature_id
-        ));
+        )));
     } else {
         state.timeline_scroll_offset = 0;
         state.selected_feature_params.clear();
@@ -921,13 +921,16 @@ fn visible_warning_indices(state: &CadDemoPaneState) -> Vec<usize> {
 
 fn focus_warning(state: &mut CadDemoPaneState, warning_index: usize) {
     let warning = &state.warnings[warning_index];
+    let warning_code = warning.code.clone();
+    let warning_entity_id = warning.entity_id.clone();
+    let deep_link = warning.deep_link.clone();
+    let fallback = format!("cad://feature/{}", warning.feature_id);
     state.warning_hover_index = Some(warning_index);
     state.focused_warning_index = Some(warning_index);
-    let fallback = format!("cad://feature/{}", warning.feature_id);
-    state.focused_geometry_ref = warning.deep_link.clone().or(Some(fallback));
+    state.set_focused_geometry_for_active_variant(deep_link.or(Some(fallback)));
     state.last_action = Some(format!(
         "CAD warning focus -> {} ({})",
-        warning.code, warning.entity_id
+        warning_code, warning_entity_id
     ));
 }
 
@@ -938,10 +941,10 @@ fn select_timeline_row(state: &mut CadDemoPaneState, index: usize) {
     state.timeline_selected_index = Some(index);
     state.timeline_scroll_offset = auto_scroll_offset(index, state.timeline_scroll_offset, 10);
     state.selected_feature_params = state.timeline_rows[index].params.clone();
-    state.focused_geometry_ref = Some(format!(
+    state.set_focused_geometry_for_active_variant(Some(format!(
         "cad://feature/{}",
         state.timeline_rows[index].feature_id
-    ));
+    )));
     state.last_action = Some(format!(
         "CAD timeline selected -> {}",
         state.timeline_rows[index].feature_name

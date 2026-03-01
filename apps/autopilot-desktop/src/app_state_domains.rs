@@ -452,6 +452,8 @@ pub struct CadDemoPaneState {
     pub document_revision: u64,
     pub active_variant_id: String,
     pub variant_ids: Vec<String>,
+    pub active_variant_tile_index: usize,
+    pub variant_viewports: Vec<CadVariantViewportState>,
     pub last_rebuild_receipt: Option<CadRebuildReceiptState>,
     pub rebuild_receipts: Vec<CadRebuildReceiptState>,
     pub eval_cache: openagents_cad::eval::EvalCacheStore,
@@ -948,8 +950,43 @@ impl Default for CadContextMenuState {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct CadVariantViewportState {
+    pub variant_id: String,
+    pub camera_zoom: f32,
+    pub camera_pan_x: f32,
+    pub camera_pan_y: f32,
+    pub camera_orbit_yaw_deg: f32,
+    pub camera_orbit_pitch_deg: f32,
+    pub selected_ref: Option<String>,
+}
+
+impl CadVariantViewportState {
+    pub fn for_variant(variant_id: &str) -> Self {
+        Self {
+            variant_id: variant_id.to_string(),
+            camera_zoom: 1.0,
+            camera_pan_x: 0.0,
+            camera_pan_y: 0.0,
+            camera_orbit_yaw_deg: 26.0,
+            camera_orbit_pitch_deg: 18.0,
+            selected_ref: None,
+        }
+    }
+}
+
 impl Default for CadDemoPaneState {
     fn default() -> Self {
+        let variant_ids = vec![
+            "variant.baseline".to_string(),
+            "variant.lightweight".to_string(),
+            "variant.low-cost".to_string(),
+            "variant.stiffness".to_string(),
+        ];
+        let variant_viewports = variant_ids
+            .iter()
+            .map(|variant_id| CadVariantViewportState::for_variant(variant_id))
+            .collect::<Vec<_>>();
         Self {
             load_state: PaneLoadState::Ready,
             last_error: None,
@@ -957,13 +994,10 @@ impl Default for CadDemoPaneState {
             session_id: "cad.session.local".to_string(),
             document_id: "cad.doc.demo-rack".to_string(),
             document_revision: 0,
-            active_variant_id: "variant.baseline".to_string(),
-            variant_ids: vec![
-                "variant.baseline".to_string(),
-                "variant.lightweight".to_string(),
-                "variant.low-cost".to_string(),
-                "variant.stiffness".to_string(),
-            ],
+            active_variant_id: variant_ids[0].clone(),
+            variant_ids,
+            active_variant_tile_index: 0,
+            variant_viewports,
             last_rebuild_receipt: None,
             rebuild_receipts: Vec::new(),
             eval_cache: openagents_cad::eval::EvalCacheStore::new(128)
@@ -1005,12 +1039,64 @@ impl Default for CadDemoPaneState {
 }
 
 impl CadDemoPaneState {
+    fn sync_active_variant_viewport_from_global(&mut self) {
+        let Some(active) = self
+            .variant_viewports
+            .iter_mut()
+            .find(|viewport| viewport.variant_id == self.active_variant_id)
+        else {
+            return;
+        };
+        active.camera_zoom = self.camera_zoom;
+        active.camera_pan_x = self.camera_pan_x;
+        active.camera_pan_y = self.camera_pan_y;
+        active.camera_orbit_yaw_deg = self.camera_orbit_yaw_deg;
+        active.camera_orbit_pitch_deg = self.camera_orbit_pitch_deg;
+        active.selected_ref = self.focused_geometry_ref.clone();
+    }
+
+    fn sync_global_from_variant_viewport(&mut self) {
+        let Some(active) = self
+            .variant_viewports
+            .iter()
+            .find(|viewport| viewport.variant_id == self.active_variant_id)
+        else {
+            return;
+        };
+        self.camera_zoom = active.camera_zoom;
+        self.camera_pan_x = active.camera_pan_x;
+        self.camera_pan_y = active.camera_pan_y;
+        self.camera_orbit_yaw_deg = active.camera_orbit_yaw_deg;
+        self.camera_orbit_pitch_deg = active.camera_orbit_pitch_deg;
+        self.focused_geometry_ref = active.selected_ref.clone();
+    }
+
+    pub fn set_active_variant_tile(&mut self, tile_index: usize) -> bool {
+        if tile_index >= self.variant_viewports.len() {
+            return false;
+        }
+        self.active_variant_tile_index = tile_index;
+        self.active_variant_id = self.variant_viewports[tile_index].variant_id.clone();
+        self.sync_global_from_variant_viewport();
+        true
+    }
+
+    pub fn variant_viewport(&self, tile_index: usize) -> Option<&CadVariantViewportState> {
+        self.variant_viewports.get(tile_index)
+    }
+
+    pub fn set_focused_geometry_for_active_variant(&mut self, value: Option<String>) {
+        self.focused_geometry_ref = value;
+        self.sync_active_variant_viewport_from_global();
+    }
+
     pub fn reset_camera(&mut self) {
         self.camera_zoom = 1.0;
         self.camera_pan_x = 0.0;
         self.camera_pan_y = 0.0;
         self.camera_orbit_yaw_deg = 26.0;
         self.camera_orbit_pitch_deg = 18.0;
+        self.sync_active_variant_viewport_from_global();
     }
 
     pub fn orbit_camera_by_drag(&mut self, drag_dx: f32, drag_dy: f32) {
@@ -1019,18 +1105,21 @@ impl CadDemoPaneState {
         self.camera_orbit_pitch_deg = (self.camera_orbit_pitch_deg
             - drag_dy * ORBIT_SENSITIVITY_DEG_PER_PX)
             .clamp(-89.0, 89.0);
+        self.sync_active_variant_viewport_from_global();
     }
 
     pub fn pan_camera_by_drag(&mut self, drag_dx: f32, drag_dy: f32) {
         const PAN_SENSITIVITY: f32 = 1.0;
         self.camera_pan_x = (self.camera_pan_x + drag_dx * PAN_SENSITIVITY).clamp(-800.0, 800.0);
         self.camera_pan_y = (self.camera_pan_y + drag_dy * PAN_SENSITIVITY).clamp(-800.0, 800.0);
+        self.sync_active_variant_viewport_from_global();
     }
 
     pub fn zoom_camera_by_scroll(&mut self, scroll_dy: f32) {
         // Negative wheel deltas (scroll up on most devices) zoom in.
         let scale = (1.0 + (-scroll_dy * 0.0018)).clamp(0.75, 1.35);
         self.camera_zoom = (self.camera_zoom * scale).clamp(0.35, 4.0);
+        self.sync_active_variant_viewport_from_global();
     }
 
     pub fn snap_camera_to_view(&mut self, snap: CadCameraViewSnap) {
@@ -1039,6 +1128,7 @@ impl CadDemoPaneState {
         self.camera_orbit_pitch_deg = pitch_deg;
         self.camera_pan_x = 0.0;
         self.camera_pan_y = 0.0;
+        self.sync_active_variant_viewport_from_global();
     }
 
     pub fn active_view_snap(&self) -> Option<CadCameraViewSnap> {
@@ -1244,6 +1334,7 @@ impl CadDemoPaneState {
         target_kind: CadContextMenuTargetKind,
         target_ref: String,
     ) {
+        self.set_focused_geometry_for_active_variant(Some(target_ref.clone()));
         self.context_menu = CadContextMenuState {
             is_open: true,
             anchor,
