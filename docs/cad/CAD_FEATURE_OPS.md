@@ -15,6 +15,11 @@ This document tracks feature-op contracts built on the CAD kernel adapter path.
   - explicit primitive validation through `CylinderPrimitive::validate`
   - deterministic geometry hash via FNV-1a64 payload hashing
   - tolerance edge-case rejection (`radius <= base_tolerance`)
+- `TransformFeatureOp` (`crates/cad/src/features.rs`)
+  - translation / rotation / scale payload with robust finite-value validation
+  - rejects invalid scale components (`<= 0`)
+  - deterministic matrix composition (`compose_transform_sequence`)
+  - deterministic output ordering based on input op order
 
 ## Golden Hash Fixtures
 
