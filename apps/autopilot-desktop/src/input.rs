@@ -1777,8 +1777,9 @@ mod tests {
         TurnSkillAttachment, TurnSkillSource, assemble_chat_turn_input,
         build_create_invoice_command, build_pay_invoice_command, build_spark_command_for_action,
         cad_hotkey_action_matrix, cad_pick_kind_label, cad_pick_kind_to_selection_kind,
-        is_command_palette_shortcut, is_toggle_fullscreen_shortcut, parse_positive_amount_str,
-        resolve_turn_skill_by_name, resolve_turn_skill_by_path, validate_lightning_payment_request,
+        cad_policy_skill_candidates_for_turn, is_command_palette_shortcut,
+        is_toggle_fullscreen_shortcut, parse_positive_amount_str, resolve_turn_skill_by_name,
+        resolve_turn_skill_by_path, validate_lightning_payment_request,
     };
     use crate::app_state::SkillRegistryDiscoveredSkill;
     use crate::pane_system::cad_palette_command_specs;
@@ -2109,6 +2110,81 @@ mod tests {
         assert_eq!(pane.name, "pane-control");
         assert!(!pane.enabled);
         assert_eq!(pane.source, TurnSkillSource::PolicyRequired);
+    }
+
+    #[test]
+    fn cad_policy_skill_candidates_resolve_for_cad_turn() {
+        let discovered = vec![
+            SkillRegistryDiscoveredSkill {
+                name: "autopilot-cad-builder".to_string(),
+                path: "/repo/skills/autopilot-cad-builder/SKILL.md".to_string(),
+                scope: "global".to_string(),
+                enabled: true,
+                interface_display_name: None,
+                dependency_count: 0,
+            },
+            SkillRegistryDiscoveredSkill {
+                name: "autopilot-pane-control".to_string(),
+                path: "/repo/skills/autopilot-pane-control/SKILL.md".to_string(),
+                scope: "global".to_string(),
+                enabled: true,
+                interface_display_name: None,
+                dependency_count: 0,
+            },
+        ];
+
+        let (skills, errors) = cad_policy_skill_candidates_for_turn(true, &discovered);
+        assert!(errors.is_empty());
+        assert_eq!(skills.len(), 2);
+        assert!(
+            skills
+                .iter()
+                .any(|skill| skill.name == "autopilot-cad-builder")
+        );
+        assert!(
+            skills
+                .iter()
+                .any(|skill| skill.name == "autopilot-pane-control")
+        );
+        assert!(
+            skills
+                .iter()
+                .all(|skill| skill.source == TurnSkillSource::PolicyRequired)
+        );
+    }
+
+    #[test]
+    fn cad_policy_skill_candidates_report_missing_required_skills() {
+        let discovered = vec![SkillRegistryDiscoveredSkill {
+            name: "autopilot-pane-control".to_string(),
+            path: "/repo/skills/autopilot-pane-control/SKILL.md".to_string(),
+            scope: "global".to_string(),
+            enabled: true,
+            interface_display_name: None,
+            dependency_count: 0,
+        }];
+
+        let (skills, errors) = cad_policy_skill_candidates_for_turn(true, &discovered);
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "autopilot-pane-control");
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("autopilot-cad-builder"));
+    }
+
+    #[test]
+    fn cad_policy_skill_candidates_do_not_attach_for_non_cad_turns() {
+        let discovered = vec![SkillRegistryDiscoveredSkill {
+            name: "autopilot-cad-builder".to_string(),
+            path: "/repo/skills/autopilot-cad-builder/SKILL.md".to_string(),
+            scope: "global".to_string(),
+            enabled: true,
+            interface_display_name: None,
+            dependency_count: 0,
+        }];
+
+        let (skills, errors) = cad_policy_skill_candidates_for_turn(false, &discovered);
+        assert!(skills.is_empty());
+        assert!(errors.is_empty());
     }
 
     #[test]

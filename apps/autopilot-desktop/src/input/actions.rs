@@ -29,10 +29,48 @@ pub(super) fn run_chat_submit_action(state: &mut crate::app_state::RenderState) 
     ));
     let _ = super::reducers::apply_chat_prompt_to_cad_session(state, &thread_id, &prompt);
 
-    let selected_skills = selected_skill_candidates_for_turn(state);
-    let (input, skill_error) = assemble_chat_turn_input(prompt, selected_skills);
+    let mut turn_skill_attachments = selected_skill_candidates_for_turn(state);
+    let (policy_skills, mut required_skill_errors) = cad_policy_skill_candidates_for_turn(
+        classification.is_cad_turn,
+        &state.skill_registry.discovered_skills,
+    );
+    if classification.is_cad_turn && !policy_skills.is_empty() {
+        let names = policy_skills
+            .iter()
+            .map(|skill| skill.name.as_str())
+            .collect::<Vec<_>>()
+            .join(",");
+        state
+            .autopilot_chat
+            .record_turn_timeline_event(format!("cad required skills attached: {names}"));
+    }
+    for policy_skill in policy_skills {
+        if policy_skill.enabled {
+            turn_skill_attachments.push(policy_skill);
+        } else {
+            required_skill_errors.push(format!(
+                "Required skill '{}' is disabled; enable it in the Skills pane.",
+                policy_skill.name
+            ));
+        }
+    }
+
+    let (input, skill_error) = assemble_chat_turn_input(prompt, turn_skill_attachments);
     if let Some(skill_error) = skill_error {
         state.autopilot_chat.last_error = Some(skill_error);
+    }
+    if !required_skill_errors.is_empty() {
+        required_skill_errors.sort();
+        required_skill_errors.dedup();
+        let error = required_skill_errors.join(" | ");
+        state.autopilot_chat.last_error = Some(error.clone());
+        state
+            .autopilot_chat
+            .record_turn_timeline_event(format!("cad skill policy blocked turn: {error}"));
+        state
+            .autopilot_chat
+            .mark_pending_turn_dispatch_failed(error);
+        return true;
     }
     let model_override = state.autopilot_chat.selected_model_override();
     let model_label = model_override.as_deref().unwrap_or("server-default");
@@ -155,6 +193,33 @@ pub(super) fn selected_skill_candidates_for_turn(
         .collect()
 }
 
+pub(super) fn cad_policy_skill_candidates_for_turn(
+    is_cad_turn: bool,
+    discovered_skills: &[crate::app_state::SkillRegistryDiscoveredSkill],
+) -> (Vec<TurnSkillAttachment>, Vec<String>) {
+    if !is_cad_turn {
+        return (Vec::new(), Vec::new());
+    }
+
+    let mut resolved = Vec::new();
+    let mut errors = Vec::new();
+    for skill_name in REQUIRED_CAD_POLICY_SKILLS {
+        match resolve_turn_skill_by_name(
+            discovered_skills,
+            skill_name,
+            TurnSkillSource::PolicyRequired,
+        ) {
+            Ok(skill) => resolved.push(skill),
+            Err(_) => errors.push(format!(
+                "CAD turn requires skill '{}'. Add it under skills/ and refresh the Skills pane.",
+                skill_name
+            )),
+        }
+    }
+
+    (resolved, errors)
+}
+
 pub(super) fn assemble_chat_turn_input(
     prompt: String,
     skill_attachments: Vec<TurnSkillAttachment>,
@@ -206,6 +271,8 @@ pub(super) fn assemble_chat_turn_input(
     let joined_errors = (!last_errors.is_empty()).then(|| last_errors.join(" | "));
     (input, joined_errors)
 }
+
+const REQUIRED_CAD_POLICY_SKILLS: &[&str] = &["autopilot-cad-builder", "autopilot-pane-control"];
 
 pub(super) fn run_chat_refresh_threads_action(state: &mut crate::app_state::RenderState) -> bool {
     let cwd = std::env::current_dir()
