@@ -15,6 +15,7 @@ pub mod events;
 pub mod export;
 pub mod feature_graph;
 pub mod features;
+pub mod finishing_ops;
 pub mod format;
 pub mod history;
 pub mod intent;
