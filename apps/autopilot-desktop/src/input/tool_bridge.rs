@@ -3,7 +3,9 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::app_state::AutopilotToolCallRequest;
+use crate::app_state::{AutopilotToolCallRequest, PaneKind, RenderState};
+use crate::pane_registry::{pane_spec, pane_spec_by_command_id, pane_specs};
+use crate::pane_system::PaneController;
 
 pub(super) const OPENAGENTS_TOOL_PREFIX: &str = "openagents.";
 pub(super) const OPENAGENTS_TOOL_NAMES: &[&str] = &[
@@ -131,14 +133,323 @@ pub(super) fn decode_tool_call_request(
     })
 }
 
+#[derive(Clone, Debug, Deserialize)]
+struct PaneRefArgs {
+    pane: String,
+}
+
+pub(super) fn execute_openagents_tool_request(
+    state: &mut RenderState,
+    request: &AutopilotToolCallRequest,
+) -> ToolBridgeResultEnvelope {
+    let decoded = match decode_tool_call_request(request) {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+
+    match decoded.tool.as_str() {
+        "openagents.pane.list" => execute_pane_list(state),
+        "openagents.pane.open" => {
+            let args = match decoded.decode_arguments::<PaneRefArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_pane_open(state, args.pane.trim())
+        }
+        "openagents.pane.focus" => {
+            let args = match decoded.decode_arguments::<PaneRefArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_pane_focus(state, args.pane.trim())
+        }
+        "openagents.pane.close" => {
+            let args = match decoded.decode_arguments::<PaneRefArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_pane_close(state, args.pane.trim())
+        }
+        _ => ToolBridgeResultEnvelope::error(
+            "OA-TOOL-NOT-IMPLEMENTED",
+            format!("Tool '{}' is parsed but not yet implemented", decoded.tool),
+            json!({
+                "tool": decoded.tool,
+            }),
+        ),
+    }
+}
+
 fn is_supported_tool(tool: &str) -> bool {
     OPENAGENTS_TOOL_NAMES.iter().any(|entry| *entry == tool)
 }
 
+fn execute_pane_list(state: &RenderState) -> ToolBridgeResultEnvelope {
+    let registered = pane_specs()
+        .iter()
+        .filter(|spec| spec.kind != PaneKind::Empty)
+        .map(|spec| {
+            json!({
+                "kind": pane_kind_key(spec.kind),
+                "title": spec.title,
+                "command_id": spec.command.map(|command| command.id),
+                "singleton": spec.singleton,
+                "startup": spec.startup,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let open = state
+        .panes
+        .iter()
+        .map(|pane| {
+            json!({
+                "pane_id": pane.id,
+                "kind": pane_kind_key(pane.kind),
+                "title": pane.title,
+                "z_index": pane.z_index,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let active = PaneController::active(state).and_then(|pane_id| {
+        state
+            .panes
+            .iter()
+            .find(|pane| pane.id == pane_id)
+            .map(|pane| {
+                json!({
+                    "pane_id": pane.id,
+                    "kind": pane_kind_key(pane.kind),
+                    "title": pane.title,
+                    "z_index": pane.z_index,
+                })
+            })
+    });
+
+    ToolBridgeResultEnvelope::ok(
+        "OA-PANE-LIST-OK",
+        "Listed registered and open panes",
+        json!({
+            "registered": registered,
+            "open": open,
+            "active": active,
+        }),
+    )
+}
+
+fn execute_pane_open(state: &mut RenderState, pane_ref: &str) -> ToolBridgeResultEnvelope {
+    let Some(kind) = resolve_pane_kind(pane_ref) else {
+        return pane_resolution_error("OA-PANE-OPEN-NOT-FOUND", pane_ref);
+    };
+    let pane_id = PaneController::create_for_kind(state, kind);
+    ToolBridgeResultEnvelope::ok(
+        "OA-PANE-OPEN-OK",
+        format!("Opened pane '{}'", pane_kind_key(kind)),
+        json!({
+            "pane_id": pane_id,
+            "kind": pane_kind_key(kind),
+            "title": pane_spec(kind).title,
+        }),
+    )
+}
+
+fn execute_pane_focus(state: &mut RenderState, pane_ref: &str) -> ToolBridgeResultEnvelope {
+    let Some(kind) = resolve_pane_kind(pane_ref) else {
+        return pane_resolution_error("OA-PANE-FOCUS-NOT-FOUND", pane_ref);
+    };
+    let pane = state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == kind)
+        .max_by_key(|pane| pane.z_index)
+        .map(|pane| (pane.id, pane.title.clone()));
+    let Some((pane_id, pane_title)) = pane else {
+        return ToolBridgeResultEnvelope::error(
+            "OA-PANE-FOCUS-NOT-OPEN",
+            format!("Pane '{}' is not currently open", pane_kind_key(kind)),
+            json!({
+                "pane": pane_ref,
+                "kind": pane_kind_key(kind),
+            }),
+        );
+    };
+    PaneController::bring_to_front(state, pane_id);
+    ToolBridgeResultEnvelope::ok(
+        "OA-PANE-FOCUS-OK",
+        format!("Focused pane '{}'", pane_kind_key(kind)),
+        json!({
+            "pane_id": pane_id,
+            "kind": pane_kind_key(kind),
+            "title": pane_title,
+        }),
+    )
+}
+
+fn execute_pane_close(state: &mut RenderState, pane_ref: &str) -> ToolBridgeResultEnvelope {
+    let Some(kind) = resolve_pane_kind(pane_ref) else {
+        return pane_resolution_error("OA-PANE-CLOSE-NOT-FOUND", pane_ref);
+    };
+    let pane = state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == kind)
+        .max_by_key(|pane| pane.z_index)
+        .map(|pane| (pane.id, pane.title.clone()));
+    let Some((pane_id, pane_title)) = pane else {
+        return ToolBridgeResultEnvelope::error(
+            "OA-PANE-CLOSE-NOT-OPEN",
+            format!("Pane '{}' is not currently open", pane_kind_key(kind)),
+            json!({
+                "pane": pane_ref,
+                "kind": pane_kind_key(kind),
+            }),
+        );
+    };
+    PaneController::close(state, pane_id);
+    ToolBridgeResultEnvelope::ok(
+        "OA-PANE-CLOSE-OK",
+        format!("Closed pane '{}'", pane_kind_key(kind)),
+        json!({
+            "pane_id": pane_id,
+            "kind": pane_kind_key(kind),
+            "title": pane_title,
+        }),
+    )
+}
+
+fn pane_resolution_error(code: &str, pane_ref: &str) -> ToolBridgeResultEnvelope {
+    ToolBridgeResultEnvelope::error(
+        code,
+        format!("Could not resolve pane reference '{}'", pane_ref),
+        json!({
+            "pane": pane_ref,
+            "supported_panes": pane_specs()
+                .iter()
+                .filter(|spec| spec.kind != PaneKind::Empty)
+                .map(|spec| {
+                    json!({
+                        "kind": pane_kind_key(spec.kind),
+                        "title": spec.title,
+                        "command_id": spec.command.map(|command| command.id),
+                    })
+                })
+                .collect::<Vec<_>>(),
+        }),
+    )
+}
+
+fn resolve_pane_kind(raw: &str) -> Option<PaneKind> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Some(spec) = pane_spec_by_command_id(trimmed) {
+        return Some(spec.kind);
+    }
+
+    let normalized = normalize_key(trimmed);
+    if normalized.is_empty() {
+        return None;
+    }
+
+    pane_specs()
+        .iter()
+        .filter(|spec| spec.kind != PaneKind::Empty)
+        .find_map(|spec| {
+            let title_key = normalize_key(spec.title);
+            let kind_key = normalize_key(pane_kind_key(spec.kind));
+            let command_key = spec.command.map(|command| normalize_key(command.id));
+            if normalized == title_key
+                || normalized == kind_key
+                || command_key.as_ref().is_some_and(|value| *value == normalized)
+                || pane_aliases(spec.kind).iter().any(|alias| *alias == normalized)
+            {
+                Some(spec.kind)
+            } else {
+                None
+            }
+        })
+}
+
+fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
+    match kind {
+        PaneKind::AutopilotChat => &["chat", "autopilot_chat", "autopilot", "codex"],
+        PaneKind::SparkWallet => &["wallet", "spark_wallet"],
+        PaneKind::SparkCreateInvoice => &["create_invoice", "invoice_create"],
+        PaneKind::SparkPayInvoice => &["pay_invoice", "invoice_pay"],
+        PaneKind::NostrIdentity => &["identity", "identity_keys", "nostr"],
+        PaneKind::CadDemo => &["cad", "cad_demo"],
+        _ => &[],
+    }
+}
+
+fn pane_kind_key(kind: PaneKind) -> &'static str {
+    match kind {
+        PaneKind::Empty => "pane",
+        PaneKind::AutopilotChat => "autopilot_chat",
+        PaneKind::CodexAccount => "codex_account",
+        PaneKind::CodexModels => "codex_models",
+        PaneKind::CodexConfig => "codex_config",
+        PaneKind::CodexMcp => "codex_mcp",
+        PaneKind::CodexApps => "codex_apps",
+        PaneKind::CodexLabs => "codex_labs",
+        PaneKind::CodexDiagnostics => "codex_diagnostics",
+        PaneKind::GoOnline => "go_online",
+        PaneKind::ProviderStatus => "provider_status",
+        PaneKind::EarningsScoreboard => "earnings_scoreboard",
+        PaneKind::RelayConnections => "relay_connections",
+        PaneKind::SyncHealth => "sync_health",
+        PaneKind::NetworkRequests => "network_requests",
+        PaneKind::StarterJobs => "starter_jobs",
+        PaneKind::ActivityFeed => "activity_feed",
+        PaneKind::AlertsRecovery => "alerts_recovery",
+        PaneKind::Settings => "settings",
+        PaneKind::Credentials => "credentials",
+        PaneKind::JobInbox => "job_inbox",
+        PaneKind::ActiveJob => "active_job",
+        PaneKind::JobHistory => "job_history",
+        PaneKind::NostrIdentity => "nostr_identity",
+        PaneKind::SparkWallet => "spark_wallet",
+        PaneKind::SparkCreateInvoice => "spark_create_invoice",
+        PaneKind::SparkPayInvoice => "spark_pay_invoice",
+        PaneKind::AgentProfileState => "agent_profile_state",
+        PaneKind::AgentScheduleTick => "agent_schedule_tick",
+        PaneKind::TrajectoryAudit => "trajectory_audit",
+        PaneKind::SkillRegistry => "skill_registry",
+        PaneKind::SkillTrustRevocation => "skill_trust_revocation",
+        PaneKind::CreditDesk => "credit_desk",
+        PaneKind::CreditSettlementLedger => "credit_settlement_ledger",
+        PaneKind::AgentNetworkSimulation => "agent_network_simulation",
+        PaneKind::TreasuryExchangeSimulation => "treasury_exchange_simulation",
+        PaneKind::RelaySecuritySimulation => "relay_security_simulation",
+        PaneKind::StableSatsSimulation => "stable_sats_simulation",
+        PaneKind::CadDemo => "cad_demo",
+    }
+}
+
+fn normalize_key(value: &str) -> String {
+    value
+        .trim()
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{ToolBridgeResultEnvelope, decode_tool_call_request};
+    use super::{
+        ToolBridgeResultEnvelope, decode_tool_call_request, normalize_key, pane_kind_key,
+        resolve_pane_kind,
+    };
     use crate::app_state::AutopilotToolCallRequest;
+    use crate::app_state::PaneKind;
     use codex_client::AppServerRequestId;
     use serde::Deserialize;
 
@@ -203,5 +514,30 @@ mod tests {
             .decode_arguments::<PaneArgs>()
             .expect_err("missing required field should fail");
         assert_eq!(error.code, "OA-TOOL-ARGS-INVALID-SHAPE");
+    }
+
+    #[test]
+    fn resolve_pane_kind_accepts_command_id_title_and_alias() {
+        assert_eq!(
+            resolve_pane_kind("pane.wallet"),
+            Some(PaneKind::SparkWallet)
+        );
+        assert_eq!(
+            resolve_pane_kind("Spark Lightning Wallet"),
+            Some(PaneKind::SparkWallet)
+        );
+        assert_eq!(resolve_pane_kind("wallet"), Some(PaneKind::SparkWallet));
+    }
+
+    #[test]
+    fn resolve_pane_kind_rejects_unknown_reference() {
+        assert_eq!(resolve_pane_kind("not-a-real-pane"), None);
+    }
+
+    #[test]
+    fn pane_key_normalization_is_stable() {
+        assert_eq!(pane_kind_key(PaneKind::AutopilotChat), "autopilot_chat");
+        assert_eq!(normalize_key("Spark Lightning Wallet"), "spark_lightning_wallet");
+        assert_eq!(normalize_key("pane.wallet"), "pane_wallet");
     }
 }
