@@ -5,8 +5,10 @@
 
 use thiserror::Error;
 
+pub mod boolean;
 pub mod eval;
 pub mod kernel;
+pub mod policy;
 pub mod primitives;
 
 /// Result type for CAD domain operations.
@@ -21,6 +23,9 @@ pub enum CadError {
     /// Primitive values failed CAD domain validation.
     #[error("invalid primitive: {reason}")]
     InvalidPrimitive { reason: String },
+    /// Invalid CAD policy or tolerance configuration.
+    #[error("invalid policy: {reason}")]
+    InvalidPolicy { reason: String },
 }
 
 #[cfg(test)]
@@ -42,6 +47,19 @@ mod tests {
             result,
             Err(CadError::InvalidPrimitive {
                 reason: "width must be positive".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn invalid_policy_error_contract_is_stable() {
+        let result: CadResult<()> = Err(CadError::InvalidPolicy {
+            reason: "tolerance must be positive".to_string(),
+        });
+        assert_eq!(
+            result,
+            Err(CadError::InvalidPolicy {
+                reason: "tolerance must be positive".to_string(),
             })
         );
     }

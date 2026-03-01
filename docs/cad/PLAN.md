@@ -174,6 +174,7 @@ Decision criteria to keep objective:
 - Modeling policy: tolerant modeling with explicit tolerance-aware operations.
 - Boolean rule: every boolean returns either valid solid or structured failure; silent corruption is disallowed.
 - Failure receipt payload must include: operation type, operand semantic refs, tolerance used, and classification.
+- policy document: `docs/cad/UNITS_TOLERANCE_POLICY.md`
 
 ### Eval, Caching, and Concurrency
 

@@ -1,4 +1,5 @@
 use crate::kernel::CadKernelAdapter;
+use crate::policy;
 use crate::{CadError, CadResult};
 
 /// Box primitive dimensions in millimeters.
@@ -12,19 +13,31 @@ pub struct BoxPrimitive {
 impl BoxPrimitive {
     /// Validate this primitive before sending to a kernel implementation.
     pub fn validate(&self) -> CadResult<()> {
-        if self.width_mm <= 0.0 {
+        if !policy::is_dimension_positive(self.width_mm) {
             return Err(CadError::InvalidPrimitive {
-                reason: "box width must be positive".to_string(),
+                reason: format!(
+                    "box width must be greater than tolerance {} {}",
+                    policy::BASE_TOLERANCE_MM,
+                    policy::CANONICAL_UNIT
+                ),
             });
         }
-        if self.depth_mm <= 0.0 {
+        if !policy::is_dimension_positive(self.depth_mm) {
             return Err(CadError::InvalidPrimitive {
-                reason: "box depth must be positive".to_string(),
+                reason: format!(
+                    "box depth must be greater than tolerance {} {}",
+                    policy::BASE_TOLERANCE_MM,
+                    policy::CANONICAL_UNIT
+                ),
             });
         }
-        if self.height_mm <= 0.0 {
+        if !policy::is_dimension_positive(self.height_mm) {
             return Err(CadError::InvalidPrimitive {
-                reason: "box height must be positive".to_string(),
+                reason: format!(
+                    "box height must be greater than tolerance {} {}",
+                    policy::BASE_TOLERANCE_MM,
+                    policy::CANONICAL_UNIT
+                ),
             });
         }
         Ok(())
@@ -41,14 +54,22 @@ pub struct CylinderPrimitive {
 impl CylinderPrimitive {
     /// Validate this primitive before sending to a kernel implementation.
     pub fn validate(&self) -> CadResult<()> {
-        if self.radius_mm <= 0.0 {
+        if !policy::is_dimension_positive(self.radius_mm) {
             return Err(CadError::InvalidPrimitive {
-                reason: "cylinder radius must be positive".to_string(),
+                reason: format!(
+                    "cylinder radius must be greater than tolerance {} {}",
+                    policy::BASE_TOLERANCE_MM,
+                    policy::CANONICAL_UNIT
+                ),
             });
         }
-        if self.height_mm <= 0.0 {
+        if !policy::is_dimension_positive(self.height_mm) {
             return Err(CadError::InvalidPrimitive {
-                reason: "cylinder height must be positive".to_string(),
+                reason: format!(
+                    "cylinder height must be greater than tolerance {} {}",
+                    policy::BASE_TOLERANCE_MM,
+                    policy::CANONICAL_UNIT
+                ),
             });
         }
         Ok(())
