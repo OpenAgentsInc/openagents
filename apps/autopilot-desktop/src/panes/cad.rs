@@ -1,8 +1,12 @@
 use wgpui::{Bounds, PaintContext, Point, Quad, theme};
 
-use crate::app_state::CadDemoPaneState;
+use crate::app_state::{CadDemoPaneState, CadDemoWarningState};
 use crate::pane_renderer::paint_action_button;
-use crate::pane_system::{cad_demo_cycle_variant_button_bounds, cad_demo_reset_button_bounds};
+use crate::pane_system::{
+    cad_demo_cycle_variant_button_bounds, cad_demo_reset_button_bounds,
+    cad_demo_warning_filter_code_button_bounds, cad_demo_warning_filter_severity_button_bounds,
+    cad_demo_warning_marker_bounds, cad_demo_warning_panel_bounds, cad_demo_warning_row_bounds,
+};
 
 const PAD: f32 = 12.0;
 const HEADER_LINE_HEIGHT: f32 = 14.0;
@@ -53,8 +57,21 @@ pub fn paint_cad_demo_placeholder_pane(
 ) {
     let cycle_bounds = cad_demo_cycle_variant_button_bounds(content_bounds);
     let reset_bounds = cad_demo_reset_button_bounds(content_bounds);
+    let warning_panel = cad_demo_warning_panel_bounds(content_bounds);
+    let severity_filter_bounds = cad_demo_warning_filter_severity_button_bounds(content_bounds);
+    let code_filter_bounds = cad_demo_warning_filter_code_button_bounds(content_bounds);
     paint_action_button(cycle_bounds, "Cycle Variant", paint);
     paint_action_button(reset_bounds, "Reset Session", paint);
+    paint_action_button(
+        severity_filter_bounds,
+        &format!("Severity: {}", pane_state.warning_filter_severity),
+        paint,
+    );
+    paint_action_button(
+        code_filter_bounds,
+        &format!("Code: {}", pane_state.warning_filter_code),
+        paint,
+    );
 
     let body_top = (cycle_bounds.max_y().max(reset_bounds.max_y()) + 8.0).min(content_bounds.max_y());
     let body_bounds = Bounds::new(
@@ -169,19 +186,111 @@ pub fn paint_cad_demo_placeholder_pane(
                 ));
             }
         }
+
+        let visible_warning_indices = visible_warning_indices(pane_state);
+        for (marker_index, warning_index) in visible_warning_indices.iter().take(8).enumerate() {
+            let marker_bounds = cad_demo_warning_marker_bounds(content_bounds, marker_index);
+            let warning = &pane_state.warnings[*warning_index];
+            let mut marker = Quad::new(marker_bounds).with_corner_radius(2.0);
+            marker = marker.with_background(warning_color(warning));
+            if pane_state.focused_warning_index == Some(*warning_index)
+                || pane_state.warning_hover_index == Some(*warning_index)
+            {
+                marker = marker.with_border(theme::text::PRIMARY, 1.0);
+            }
+            paint.scene.draw_quad(marker);
+        }
+    }
+
+    if warning_panel.size.width > 2.0 && warning_panel.size.height > 2.0 {
+        paint.scene.draw_quad(
+            Quad::new(warning_panel)
+                .with_background(theme::bg::SURFACE)
+                .with_corner_radius(4.0)
+                .with_border(theme::border::SUBTLE, 1.0),
+        );
+        let visible_warning_indices = visible_warning_indices(pane_state);
+        for (row_index, warning_index) in visible_warning_indices.iter().take(8).enumerate() {
+            let row_bounds = cad_demo_warning_row_bounds(content_bounds, row_index);
+            if row_bounds.max_y() > warning_panel.max_y() {
+                break;
+            }
+            let warning = &pane_state.warnings[*warning_index];
+            if pane_state.focused_warning_index == Some(*warning_index) {
+                paint.scene.draw_quad(
+                    Quad::new(row_bounds)
+                        .with_background(theme::bg::ELEVATED)
+                        .with_corner_radius(3.0),
+                );
+            }
+            let row_text = format!("[{}] {}", warning.severity, warning.code);
+            paint.scene.draw_text(paint.text.layout(
+                &row_text,
+                Point::new(row_bounds.origin.x + 4.0, row_bounds.origin.y + 9.0),
+                9.0,
+                warning_color(warning),
+            ));
+            let detail_y = row_bounds.origin.y + 18.0;
+            if detail_y + 8.0 <= warning_panel.max_y() {
+                paint.scene.draw_text(paint.text.layout(
+                    &warning.message,
+                    Point::new(row_bounds.origin.x + 4.0, detail_y),
+                    8.0,
+                    theme::text::MUTED,
+                ));
+            }
+        }
     }
 
     if layout.footer_origin.y + 8.0 <= content_bounds.max_y() {
+        let focus_suffix = pane_state
+            .focused_geometry_ref
+            .as_ref()
+            .map(|value| format!(" focus={value}"))
+            .unwrap_or_default();
         paint.scene.draw_text(paint.text.layout(
             &format!(
-                "session={} active={}",
-                pane_state.session_id, pane_state.active_variant_id
+                "session={} active={} warnings={}{}",
+                pane_state.session_id,
+                pane_state.active_variant_id,
+                pane_state.warnings.len(),
+                focus_suffix
             ),
             layout.footer_origin,
             9.0,
             theme::text::MUTED,
         ));
     }
+}
+
+fn visible_warning_indices(state: &CadDemoPaneState) -> Vec<usize> {
+    state
+        .warnings
+        .iter()
+        .enumerate()
+        .filter(|(_, warning)| warning_passes_filter(state, warning))
+        .map(|(index, _)| index)
+        .collect()
+}
+
+fn warning_passes_filter(state: &CadDemoPaneState, warning: &CadDemoWarningState) -> bool {
+    let severity_ok = state.warning_filter_severity == "all"
+        || warning
+            .severity
+            .eq_ignore_ascii_case(&state.warning_filter_severity);
+    let code_ok = state.warning_filter_code == "all"
+        || warning.code.eq_ignore_ascii_case(&state.warning_filter_code);
+    severity_ok && code_ok
+}
+
+fn warning_color(warning: &CadDemoWarningState) -> wgpui::Hsla {
+    if warning.severity.eq_ignore_ascii_case("critical") {
+        return theme::status::ERROR;
+    }
+    if warning.severity.eq_ignore_ascii_case("warning") {
+        return theme::status::WARNING;
+    }
+    theme::text::MUTED
 }
 
 #[cfg(test)]

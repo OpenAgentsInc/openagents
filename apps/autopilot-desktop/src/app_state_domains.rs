@@ -459,6 +459,12 @@ pub struct CadDemoPaneState {
     pub next_rebuild_request_id: u64,
     pub pending_rebuild_request_id: Option<u64>,
     pub last_good_mesh_id: Option<String>,
+    pub warnings: Vec<CadDemoWarningState>,
+    pub warning_filter_severity: String,
+    pub warning_filter_code: String,
+    pub warning_hover_index: Option<usize>,
+    pub focused_warning_index: Option<usize>,
+    pub focused_geometry_ref: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -472,6 +478,19 @@ pub struct CadRebuildReceiptState {
     pub cache_misses: u64,
     pub cache_evictions: u64,
     pub feature_count: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CadDemoWarningState {
+    pub warning_id: String,
+    pub code: String,
+    pub severity: String,
+    pub message: String,
+    pub remediation_hint: String,
+    pub semantic_refs: Vec<String>,
+    pub deep_link: Option<String>,
+    pub feature_id: String,
+    pub entity_id: String,
 }
 
 impl Default for CadDemoPaneState {
@@ -498,6 +517,12 @@ impl Default for CadDemoPaneState {
             next_rebuild_request_id: 1,
             pending_rebuild_request_id: None,
             last_good_mesh_id: None,
+            warnings: Vec::new(),
+            warning_filter_severity: "all".to_string(),
+            warning_filter_code: "all".to_string(),
+            warning_hover_index: None,
+            focused_warning_index: None,
+            focused_geometry_ref: None,
         }
     }
 }
