@@ -23,6 +23,7 @@ use openagents_cad::query::{
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::sync::{Mutex, OnceLock};
 use wgpui::clipboard::copy_to_clipboard;
 use wgpui::{Bounds, Component, InputEvent, Key, Modifiers, MouseButton, NamedKey, Point};
 use winit::event::{DeviceEvent, ElementState, MouseScrollDelta, WindowEvent};
@@ -422,7 +423,115 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     }
     refresh_earnings_scoreboard(state, now);
     refresh_sync_health(state);
+    mirror_ui_errors_to_console(state);
     changed
+}
+
+fn mirror_ui_error(channel: &'static str, value: Option<&str>) {
+    static UI_ERROR_MIRROR_STATE: OnceLock<Mutex<HashMap<&'static str, String>>> = OnceLock::new();
+    let state = UI_ERROR_MIRROR_STATE.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut guard = match state.lock() {
+        Ok(value) => value,
+        Err(error) => {
+            tracing::error!("ui error mirror lock poisoned: {}", error);
+            return;
+        }
+    };
+    let next = value.map(str::trim).filter(|entry| !entry.is_empty());
+    match next {
+        Some(current) => {
+            let should_log = guard
+                .get(channel)
+                .is_none_or(|previous| previous != current);
+            if should_log {
+                tracing::error!("ui error [{}]: {}", channel, current);
+                guard.insert(channel, current.to_string());
+            }
+        }
+        None => {
+            if guard.remove(channel).is_some() {
+                tracing::info!("ui error [{}] cleared", channel);
+            }
+        }
+    }
+}
+
+fn mirror_ui_errors_to_console(state: &crate::app_state::RenderState) {
+    mirror_ui_error("autopilot.chat", state.autopilot_chat.last_error.as_deref());
+    mirror_ui_error("cad.demo", state.cad_demo.last_error.as_deref());
+    mirror_ui_error("spark.wallet", state.spark_wallet.last_error.as_deref());
+    mirror_ui_error("codex.account", state.codex_account.last_error.as_deref());
+    mirror_ui_error("codex.models", state.codex_models.last_error.as_deref());
+    mirror_ui_error("codex.config", state.codex_config.last_error.as_deref());
+    mirror_ui_error("codex.mcp", state.codex_mcp.last_error.as_deref());
+    mirror_ui_error("codex.apps", state.codex_apps.last_error.as_deref());
+    mirror_ui_error("codex.labs", state.codex_labs.last_error.as_deref());
+    mirror_ui_error(
+        "codex.diagnostics",
+        state.codex_diagnostics.last_error.as_deref(),
+    );
+    mirror_ui_error(
+        "relay.connections",
+        state.relay_connections.last_error.as_deref(),
+    );
+    mirror_ui_error("sync.health", state.sync_health.last_error.as_deref());
+    mirror_ui_error(
+        "network.requests",
+        state.network_requests.last_error.as_deref(),
+    );
+    mirror_ui_error("starter.jobs", state.starter_jobs.last_error.as_deref());
+    mirror_ui_error("activity.feed", state.activity_feed.last_error.as_deref());
+    mirror_ui_error(
+        "alerts.recovery",
+        state.alerts_recovery.last_error.as_deref(),
+    );
+    mirror_ui_error("settings", state.settings.last_error.as_deref());
+    mirror_ui_error("credentials", state.credentials.last_error.as_deref());
+    mirror_ui_error("job.inbox", state.job_inbox.last_error.as_deref());
+    mirror_ui_error("active.job", state.active_job.last_error.as_deref());
+    mirror_ui_error("job.history", state.job_history.last_error.as_deref());
+    mirror_ui_error(
+        "earnings.scoreboard",
+        state.earnings_scoreboard.last_error.as_deref(),
+    );
+    mirror_ui_error(
+        "agent.profile.state",
+        state.agent_profile_state.last_error.as_deref(),
+    );
+    mirror_ui_error(
+        "agent.schedule.tick",
+        state.agent_schedule_tick.last_error.as_deref(),
+    );
+    mirror_ui_error(
+        "trajectory.audit",
+        state.trajectory_audit.last_error.as_deref(),
+    );
+    mirror_ui_error("skill.registry", state.skill_registry.last_error.as_deref());
+    mirror_ui_error(
+        "skill.trust.revocation",
+        state.skill_trust_revocation.last_error.as_deref(),
+    );
+    mirror_ui_error("credit.desk", state.credit_desk.last_error.as_deref());
+    mirror_ui_error(
+        "credit.settlement.ledger",
+        state.credit_settlement_ledger.last_error.as_deref(),
+    );
+    mirror_ui_error(
+        "agent.network.sim",
+        state.agent_network_simulation.last_error.as_deref(),
+    );
+    mirror_ui_error(
+        "treasury.exchange.sim",
+        state.treasury_exchange_simulation.last_error.as_deref(),
+    );
+    mirror_ui_error(
+        "relay.security.sim",
+        state.relay_security_simulation.last_error.as_deref(),
+    );
+    mirror_ui_error(
+        "stable.sats.sim",
+        state.stable_sats_simulation.last_error.as_deref(),
+    );
 }
 
 fn dispatch_mouse_move(state: &mut crate::app_state::RenderState, point: Point) -> bool {
