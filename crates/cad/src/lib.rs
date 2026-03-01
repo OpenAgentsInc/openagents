@@ -5,6 +5,10 @@
 
 use thiserror::Error;
 
+pub mod eval;
+pub mod kernel;
+pub mod primitives;
+
 /// Result type for CAD domain operations.
 pub type CadResult<T> = Result<T, CadError>;
 
@@ -14,6 +18,9 @@ pub enum CadError {
     /// Placeholder error returned for unimplemented CAD operations.
     #[error("cad operation is not implemented")]
     NotImplemented,
+    /// Primitive values failed CAD domain validation.
+    #[error("invalid primitive: {reason}")]
+    InvalidPrimitive { reason: String },
 }
 
 #[cfg(test)]
@@ -24,5 +31,18 @@ mod tests {
     fn placeholder_error_contract_is_stable() {
         let result: CadResult<()> = Err(CadError::NotImplemented);
         assert_eq!(result, Err(CadError::NotImplemented));
+    }
+
+    #[test]
+    fn invalid_primitive_error_contract_is_stable() {
+        let result: CadResult<()> = Err(CadError::InvalidPrimitive {
+            reason: "width must be positive".to_string(),
+        });
+        assert_eq!(
+            result,
+            Err(CadError::InvalidPrimitive {
+                reason: "width must be positive".to_string(),
+            })
+        );
     }
 }
