@@ -203,6 +203,11 @@ pub struct MeshEdge {
     pub flags: u32,
 }
 
+/// Optional edge flag hint for silhouette emphasis.
+pub const MESH_EDGE_FLAG_SILHOUETTE: u32 = 1 << 3;
+/// Optional edge flag hint for selected-entity outline emphasis.
+pub const MESH_EDGE_FLAG_SELECTED: u32 = 1 << 4;
+
 impl MeshEdge {
     pub fn new(start: u32, end: u32) -> Self {
         Self {
@@ -772,10 +777,8 @@ mod tests {
             MeshVertex::new([10.0, 10.0, 0.0], [0.0, 0.0, 1.0], [0.4, 0.7, 0.9, 1.0]),
             MeshVertex::new([0.0, 10.0, 0.0], [0.0, 0.0, 1.0], [0.4, 0.7, 0.9, 1.0]),
         ];
-        MeshPrimitive::new(vertices, vec![0, 1, 2, 0, 2, 3]).with_edges(vec![
-            MeshEdge::new(0, 1),
-            MeshEdge::new(1, 2),
-        ])
+        MeshPrimitive::new(vertices, vec![0, 1, 2, 0, 2, 3])
+            .with_edges(vec![MeshEdge::new(0, 1), MeshEdge::new(1, 2)])
     }
 
     #[test]

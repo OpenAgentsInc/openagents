@@ -1,5 +1,8 @@
 use openagents_cad::mesh::{CadMeshPayload, CadMeshVertex};
-use wgpui::{Bounds, MeshEdge, MeshPrimitive, MeshVertex, PaintContext, Point, Quad, theme};
+use wgpui::{
+    Bounds, MESH_EDGE_FLAG_SELECTED, MeshEdge, MeshPrimitive, MeshVertex, PaintContext, Point,
+    Quad, theme,
+};
 
 use crate::app_state::{CadDemoPaneState, CadDemoWarningState};
 use crate::pane_renderer::paint_action_button;
@@ -122,7 +125,14 @@ pub fn paint_cad_demo_placeholder_pane(
         );
         let mut viewport_status = "Viewport reserved for CAD geometry".to_string();
         if let Some(mesh_payload) = pane_state.last_good_mesh_payload.as_ref() {
-            match cad_mesh_to_viewport_primitive(mesh_payload, layout.viewport_bounds) {
+            let selected_outline_active = pane_state.timeline_selected_index.is_some()
+                || pane_state.focused_warning_index.is_some()
+                || pane_state.focused_geometry_ref.is_some();
+            match cad_mesh_to_viewport_primitive(
+                mesh_payload,
+                layout.viewport_bounds,
+                selected_outline_active,
+            ) {
                 Ok(mesh) => {
                     paint.scene.push_clip(layout.viewport_bounds);
                     if let Err(error) = paint.scene.draw_mesh(mesh) {
@@ -416,6 +426,7 @@ fn timeline_row_color(row: &crate::app_state::CadTimelineRowState) -> wgpui::Hsl
 fn cad_mesh_to_viewport_primitive(
     payload: &CadMeshPayload,
     viewport_bounds: Bounds,
+    selected_outline_active: bool,
 ) -> Result<MeshPrimitive, String> {
     if payload.vertices.is_empty() {
         return Err("mesh payload has no vertices".to_string());
@@ -439,8 +450,7 @@ fn cad_mesh_to_viewport_primitive(
     let scaled_width = model_width * scale;
     let scaled_height = model_height * scale;
     let origin_x = viewport_bounds.origin.x + ((viewport_bounds.size.width - scaled_width) * 0.5);
-    let origin_y =
-        viewport_bounds.origin.y + ((viewport_bounds.size.height - scaled_height) * 0.5);
+    let origin_y = viewport_bounds.origin.y + ((viewport_bounds.size.height - scaled_height) * 0.5);
 
     let slot_to_color = payload
         .material_slots
@@ -451,14 +461,32 @@ fn cad_mesh_to_viewport_primitive(
     let vertices = payload
         .vertices
         .iter()
-        .map(|vertex| project_vertex(vertex, min_x, max_y, min_z, origin_x, origin_y, scale, &slot_to_color))
+        .map(|vertex| {
+            project_vertex(
+                vertex,
+                min_x,
+                max_y,
+                min_z,
+                origin_x,
+                origin_y,
+                scale,
+                &slot_to_color,
+            )
+        })
         .collect::<Vec<_>>();
     let edges = payload
         .edges
         .iter()
-        .map(|edge| MeshEdge::new(edge.start_vertex, edge.end_vertex).with_flags(edge.flags))
+        .map(|edge| {
+            let mut flags = edge.flags;
+            if selected_outline_active {
+                flags |= MESH_EDGE_FLAG_SELECTED;
+            }
+            MeshEdge::new(edge.start_vertex, edge.end_vertex).with_flags(flags)
+        })
         .collect::<Vec<_>>();
-    let primitive = MeshPrimitive::new(vertices, payload.triangle_indices.clone()).with_edges(edges);
+    let primitive =
+        MeshPrimitive::new(vertices, payload.triangle_indices.clone()).with_edges(edges);
     primitive
         .validate()
         .map_err(|error| error.to_string())
@@ -496,7 +524,7 @@ mod tests {
         CadMeshBounds, CadMeshEdgeSegment, CadMeshMaterialSlot, CadMeshPayload, CadMeshTopology,
         CadMeshVertex,
     };
-    use wgpui::Bounds;
+    use wgpui::{Bounds, MESH_EDGE_FLAG_SELECTED};
 
     #[test]
     fn placeholder_layout_stays_within_large_bounds() {
@@ -575,9 +603,9 @@ mod tests {
             },
         };
 
-        let first = cad_mesh_to_viewport_primitive(&payload, viewport)
+        let first = cad_mesh_to_viewport_primitive(&payload, viewport, false)
             .expect("mesh projection should succeed");
-        let second = cad_mesh_to_viewport_primitive(&payload, viewport)
+        let second = cad_mesh_to_viewport_primitive(&payload, viewport, false)
             .expect("mesh projection should remain deterministic");
         assert_eq!(first, second);
         for vertex in &first.vertices {
@@ -592,8 +620,57 @@ mod tests {
     fn mesh_projection_rejects_empty_payload() {
         let payload = CadMeshPayload::default();
         let viewport = Bounds::new(0.0, 0.0, 120.0, 80.0);
-        let error = cad_mesh_to_viewport_primitive(&payload, viewport)
+        let error = cad_mesh_to_viewport_primitive(&payload, viewport, false)
             .expect_err("empty payload should fail");
         assert_eq!(error, "mesh payload has no vertices");
+    }
+
+    #[test]
+    fn mesh_projection_sets_selected_outline_edge_flags() {
+        let viewport = Bounds::new(20.0, 20.0, 200.0, 120.0);
+        let payload = CadMeshPayload {
+            mesh_id: "mesh.variant.baseline".to_string(),
+            document_revision: 2,
+            variant_id: "variant.baseline".to_string(),
+            topology: CadMeshTopology::Triangles,
+            vertices: vec![
+                CadMeshVertex {
+                    position_mm: [0.0, 0.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [0.0, 0.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [10.0, 0.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [1.0, 0.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [10.0, 10.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [1.0, 1.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+            ],
+            triangle_indices: vec![0, 1, 2],
+            edges: vec![CadMeshEdgeSegment {
+                start_vertex: 0,
+                end_vertex: 1,
+                flags: 0,
+            }],
+            material_slots: vec![CadMeshMaterialSlot::default()],
+            bounds: CadMeshBounds {
+                min_mm: [0.0, 0.0, 0.0],
+                max_mm: [10.0, 10.0, 0.0],
+            },
+        };
+        let mesh = cad_mesh_to_viewport_primitive(&payload, viewport, true)
+            .expect("selected projection should succeed");
+        assert_eq!(mesh.edges.len(), 1);
+        assert_ne!(mesh.edges[0].flags & MESH_EDGE_FLAG_SELECTED, 0);
     }
 }

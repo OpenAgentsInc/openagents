@@ -77,7 +77,10 @@ pub mod prelude {
         pub use crate::input::{InputEvent, Key, Modifiers, MouseButton, NamedKey};
         pub use crate::layout_helpers::{layout_header_nav_content, stack_bounds};
         pub use crate::markdown::{MarkdownRenderer, StreamingMarkdown};
-        pub use crate::scene::{MeshEdge, MeshPrimitive, MeshTopology, MeshVertex, Quad, Scene, SvgQuad};
+        pub use crate::scene::{
+            MESH_EDGE_FLAG_SELECTED, MESH_EDGE_FLAG_SILHOUETTE, MeshEdge, MeshPrimitive,
+            MeshTopology, MeshVertex, Quad, Scene, SvgQuad,
+        };
         pub use crate::text::{FontStyle, TextSystem};
         pub use crate::text_system::{
             Boundary, FontRun, LineFragment, LineLayout, LineLayoutCache, LineWrapper, ShapedGlyph,
@@ -109,7 +112,10 @@ pub use input::{Cursor, InputEvent, Key, Modifiers, MouseButton, NamedKey};
 pub use layout_helpers::{layout_header_nav_content, stack_bounds};
 pub use markdown::{MarkdownRenderer, StreamingMarkdown};
 pub use platform::Platform;
-pub use scene::{MeshEdge, MeshPrimitive, MeshTopology, MeshVertex, Quad, Scene, SvgQuad};
+pub use scene::{
+    MESH_EDGE_FLAG_SELECTED, MESH_EDGE_FLAG_SILHOUETTE, MeshEdge, MeshPrimitive, MeshTopology,
+    MeshVertex, Quad, Scene, SvgQuad,
+};
 pub use text::{FontStyle, TextSystem};
 pub use text_system::{
     Boundary, FontRun, LineFragment, LineLayout, LineLayoutCache, LineWrapper, ShapedGlyph,

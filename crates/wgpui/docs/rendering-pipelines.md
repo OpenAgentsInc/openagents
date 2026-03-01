@@ -19,17 +19,19 @@ The renderer processes scene primitives through specialized GPU pipelines:
 `wgpui-core::scene::MeshPrimitive` is available for any surface (not CAD-specific) to submit indexed triangle meshes into the scene graph.
 
 - Includes vertex positions, normals, colors, triangle indices, and optional typed edges (`MeshEdge` with flags).
+- Edge flags include `MESH_EDGE_FLAG_SILHOUETTE` and `MESH_EDGE_FLAG_SELECTED` hints for deterministic overlay emphasis.
 - Validation is explicit (`MeshPrimitive::validate`) and returns `MeshPrimitiveError` with remediation hints.
 - Scene integration is generic through `Scene::draw_mesh`, `Scene::meshes`, and `Scene::mesh_primitives_for_layer`.
 - `wgpui-render` prepares GPU vertex/index buffers per layer and renders triangle lists through `mesh.wgsl`.
 - Edge overlays are generated from mesh edges and rendered through the line pipeline after mesh fill for CAD readability.
+- Shading normals are normalized + quantized before GPU upload to avoid frame-to-frame lighting flicker from unstable source normals.
 
 ### Fallback Behavior
 
 - Mesh primitives that fail scene validation are rejected at `Scene::draw_mesh` (explicit error path).
 - During GPU prepare, empty vertex/index payloads are skipped and counted in `RenderMetrics.mesh_skipped`.
 - During draw, zero-index mesh batches are skipped and counted in `RenderMetrics.mesh_skipped`.
-- Edge overlay generation uses deterministic edge metadata + normal heuristics for silhouette emphasis.
+- Edge overlay generation uses deterministic edge metadata + normal heuristics for silhouette emphasis and selected-outline emphasis.
 - These fallback paths are non-fatal and keep other scene primitives rendering.
 
 ## Render Order
@@ -37,11 +39,12 @@ The renderer processes scene primitives through specialized GPU pipelines:
 Within each layer, primitives render in this order:
 
 1. **Quads** - Background rectangles, nodes, panels
-2. **Lines** - Connections, curves, edges (render ON TOP of quads)
-3. **Text** - Labels, content (render ON TOP of lines)
-4. **Images/SVGs** - After all layers complete
+2. **Mesh Fill** - Indexed mesh triangles (surface shading)
+3. **Lines + Mesh Edge Overlays** - Connections, curves, silhouettes, selection outlines
+4. **Text** - Labels, content (render ON TOP of lines/edges)
+5. **Images/SVGs** - After all layers complete
 
-This order ensures lines connecting nodes are visible over the node backgrounds, and text is always readable.
+This order ensures mesh edges remain readable above fill shading while text remains on top.
 
 ## Quad Pipeline
 
