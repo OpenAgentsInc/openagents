@@ -296,6 +296,9 @@ log "Running ownership boundary check"
 log "Running Codex protocol parity gate"
 ./scripts/lint/codex-protocol-parity-gate.sh
 
+log "Running CAD demo release gates"
+./scripts/cad/release-gate-checklist.sh
+
 log "Running workspace tests"
 cargo test --workspace
 
