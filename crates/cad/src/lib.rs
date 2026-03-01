@@ -13,6 +13,7 @@ pub mod feature_graph;
 pub mod format;
 pub mod history;
 pub mod kernel;
+pub mod mesh;
 pub mod params;
 pub mod policy;
 pub mod primitives;
