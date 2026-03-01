@@ -12,7 +12,7 @@ use codex_client::{
     ThreadRealtimeAppendTextParams, ThreadRealtimeStartParams, ThreadRealtimeStopParams,
     ThreadResumeParams, ThreadRollbackParams, ThreadSetNameParams, ThreadStartParams,
     ThreadUnarchiveParams, ThreadUnsubscribeParams, ToolRequestUserInputAnswer,
-    ToolRequestUserInputResponse, TurnStartParams, UserInput, WindowsSandboxSetupStartParams,
+    ToolRequestUserInputResponse, UserInput, WindowsSandboxSetupStartParams,
 };
 use nostr::regenerate_identity;
 use std::collections::HashMap;

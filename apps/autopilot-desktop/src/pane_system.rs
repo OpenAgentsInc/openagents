@@ -998,23 +998,23 @@ pub fn chat_server_auth_refresh_button_bounds(content_bounds: Bounds) -> Bounds 
 }
 
 pub fn chat_composer_input_bounds(content_bounds: Bounds) -> Bounds {
-    let rail_bounds = chat_thread_rail_bounds(content_bounds);
     let send_bounds = chat_send_button_bounds(content_bounds);
+    let left = content_bounds.origin.x + CHAT_PAD;
     Bounds::new(
-        rail_bounds.max_x() + CHAT_PAD,
+        left,
         send_bounds.origin.y,
-        (send_bounds.origin.x - (rail_bounds.max_x() + CHAT_PAD) - CHAT_PAD).max(120.0),
+        (send_bounds.origin.x - left - CHAT_PAD).max(120.0),
         CHAT_COMPOSER_HEIGHT,
     )
 }
 
 pub fn chat_transcript_bounds(content_bounds: Bounds) -> Bounds {
-    let rail_bounds = chat_thread_rail_bounds(content_bounds);
     let composer_bounds = chat_composer_input_bounds(content_bounds);
+    let left = content_bounds.origin.x + CHAT_PAD;
     Bounds::new(
-        rail_bounds.max_x() + CHAT_PAD,
+        left,
         content_bounds.origin.y + CHAT_PAD,
-        (content_bounds.max_x() - (rail_bounds.max_x() + CHAT_PAD) - CHAT_PAD).max(220.0),
+        (content_bounds.max_x() - left - CHAT_PAD).max(220.0),
         (composer_bounds.origin.y - (content_bounds.origin.y + CHAT_PAD) - CHAT_PAD).max(120.0),
     )
 }
@@ -2045,79 +2045,6 @@ fn pane_hit_action_for_pane(
             if chat_send_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::ChatSend);
             }
-            if chat_refresh_threads_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::ChatRefreshThreads);
-            }
-            if chat_new_thread_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::ChatNewThread);
-            }
-            if chat_cycle_model_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::ChatCycleModel);
-            }
-            if chat_interrupt_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::ChatInterruptTurn);
-            }
-            if chat_thread_filter_archived_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::ChatToggleArchivedFilter);
-            }
-            if chat_thread_filter_sort_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::ChatCycleSortFilter);
-            }
-            if chat_thread_filter_source_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::ChatCycleSourceFilter);
-            }
-            if chat_thread_filter_provider_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::ChatCycleProviderFilter);
-            }
-            if chat_thread_action_fork_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::ChatForkThread);
-            }
-            if chat_thread_action_archive_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::ChatArchiveThread);
-            }
-            if chat_thread_action_unarchive_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::ChatUnarchiveThread);
-            }
-            if chat_thread_action_rename_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::ChatRenameThread);
-            }
-            if chat_thread_action_rollback_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::ChatRollbackThread);
-            }
-            if chat_thread_action_compact_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::ChatCompactThread);
-            }
-            if chat_thread_action_unsubscribe_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::ChatUnsubscribeThread);
-            }
-            if chat_server_request_accept_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::ChatRespondApprovalAccept);
-            }
-            if chat_server_request_session_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::ChatRespondApprovalAcceptSession);
-            }
-            if chat_server_request_decline_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::ChatRespondApprovalDecline);
-            }
-            if chat_server_request_cancel_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::ChatRespondApprovalCancel);
-            }
-            if chat_server_tool_call_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::ChatRespondToolCall);
-            }
-            if chat_server_user_input_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::ChatRespondToolUserInput);
-            }
-            if chat_server_auth_refresh_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::ChatRespondAuthRefresh);
-            }
-            let visible_threads =
-                chat_visible_thread_row_count(content_bounds, state.autopilot_chat.threads.len());
-            for row_index in 0..visible_threads {
-                if chat_thread_row_bounds(content_bounds, row_index).contains(point) {
-                    return Some(PaneHitAction::ChatSelectThread(row_index));
-                }
-            }
             None
         }
         PaneKind::GoOnline => {
@@ -3009,7 +2936,7 @@ mod tests {
         agent_schedule_manual_tick_button_bounds, alerts_recovery_ack_button_bounds,
         alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
         alerts_recovery_row_bounds, chat_composer_input_bounds, chat_send_button_bounds,
-        chat_thread_rail_bounds, chat_transcript_bounds, codex_account_cancel_login_button_bounds,
+        chat_transcript_bounds, codex_account_cancel_login_button_bounds,
         codex_account_login_button_bounds, codex_account_logout_button_bounds,
         codex_account_rate_limits_button_bounds, codex_account_refresh_button_bounds,
         codex_apps_refresh_button_bounds, codex_config_batch_write_button_bounds,
@@ -3092,12 +3019,13 @@ mod tests {
     #[test]
     fn chat_layout_has_non_overlapping_regions() {
         let content = Bounds::new(0.0, 0.0, 900.0, 500.0);
-        let rail = chat_thread_rail_bounds(content);
         let transcript = chat_transcript_bounds(content);
         let composer = chat_composer_input_bounds(content);
         let send = chat_send_button_bounds(content);
 
-        assert!(rail.max_x() < transcript.min_x());
+        assert!(content.contains(transcript.origin));
+        assert!(transcript.max_x() <= content.max_x());
+        assert!(transcript.max_y() <= content.max_y());
         assert!(transcript.max_y() < composer.min_y());
         assert!(composer.max_x() < send.min_x());
     }
