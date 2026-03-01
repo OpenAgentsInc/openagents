@@ -111,6 +111,76 @@ fn apcad_envelope_with_sketch_entities_matches_snapshot_fixture() {
 }
 
 #[test]
+fn apcad_envelope_with_constraints_matches_snapshot_fixture() {
+    let mut envelope = ApcadDocumentEnvelope::new("doc-sketch-constraints");
+    envelope
+        .metadata
+        .insert("title".to_string(), "Sketch Constraints".to_string());
+    envelope
+        .sketch
+        .insert_plane(openagents_cad::sketch::CadSketchPlane {
+            id: "plane.front".to_string(),
+            name: "Front".to_string(),
+            origin_mm: [0.0, 0.0, 0.0],
+            normal: [0.0, 0.0, 1.0],
+            x_axis: [1.0, 0.0, 0.0],
+            y_axis: [0.0, 1.0, 0.0],
+        })
+        .expect("sketch plane should insert");
+    envelope
+        .sketch
+        .insert_entity(openagents_cad::sketch::CadSketchEntity::Line {
+            id: "entity.line.001".to_string(),
+            plane_id: "plane.front".to_string(),
+            start_mm: [0.0, 0.0],
+            end_mm: [30.0, 4.0],
+            anchor_ids: ["anchor.l.start".to_string(), "anchor.l.end".to_string()],
+            construction: false,
+        })
+        .expect("line entity should insert");
+    envelope
+        .sketch
+        .insert_entity(openagents_cad::sketch::CadSketchEntity::Arc {
+            id: "entity.arc.001".to_string(),
+            plane_id: "plane.front".to_string(),
+            center_mm: [15.0, 10.0],
+            radius_mm: 5.0,
+            start_deg: 0.0,
+            end_deg: 180.0,
+            anchor_ids: [
+                "anchor.a.center".to_string(),
+                "anchor.a.start".to_string(),
+                "anchor.a.end".to_string(),
+            ],
+            construction: false,
+        })
+        .expect("arc entity should insert");
+    envelope
+        .sketch
+        .insert_constraint(openagents_cad::sketch::CadSketchConstraint::Horizontal {
+            id: "constraint.horizontal.001".to_string(),
+            line_entity_id: "entity.line.001".to_string(),
+        })
+        .expect("horizontal constraint should insert");
+    envelope
+        .sketch
+        .insert_constraint(openagents_cad::sketch::CadSketchConstraint::Dimension {
+            id: "constraint.dimension.radius.001".to_string(),
+            entity_id: "entity.arc.001".to_string(),
+            dimension_kind: openagents_cad::sketch::CadDimensionConstraintKind::Radius,
+            target_mm: 8.0,
+            tolerance_mm: Some(0.001),
+        })
+        .expect("radius dimension constraint should insert");
+
+    let actual = envelope
+        .to_pretty_json()
+        .expect("constraint envelope serialization should succeed");
+    let expected = golden("apcad_envelope_with_constraints.json");
+    assert_eq!(actual.trim_end(), expected.trim_end());
+}
+
+#[test]
 fn cad_document_minimal_snapshot_round_trip_is_stable() {
     let fixture = golden("cad_document_minimal.json");
     let parsed = CadDocument::from_json(&fixture).expect("fixture should parse as CadDocument");
