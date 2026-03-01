@@ -4,7 +4,8 @@ use crate::app_state::{
     AlertSeverity, AlertsRecoveryState, AutopilotChatState, ChatPaneInputs, CodexAccountPaneState,
     CodexAppsPaneState, CodexConfigPaneState, CodexDiagnosticsPaneState, CodexLabsPaneState,
     CodexMcpPaneState, CodexModelsPaneState, CreateInvoicePaneInputs, CredentialsPaneInputs,
-    CredentialsState, CreditDeskPaneState, CreditSettlementLedgerPaneState, DesktopPane,
+    CredentialsState, CreditDeskPaneState, CreditSettlementLedgerPaneState, CadDemoPaneState,
+    DesktopPane,
     EarningsScoreboardState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
     JobLifecycleStage, NetworkRequestStatus, NetworkRequestsPaneInputs, NetworkRequestsState,
     NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs, ProviderBlocker,
@@ -95,6 +96,7 @@ impl PaneRenderer {
         skill_trust_revocation: &SkillTrustRevocationPaneState,
         credit_desk: &CreditDeskPaneState,
         credit_settlement_ledger: &CreditSettlementLedgerPaneState,
+        cad_demo: &CadDemoPaneState,
         agent_network_simulation: &AgentNetworkSimulationPaneState,
         treasury_exchange_simulation: &TreasuryExchangeSimulationPaneState,
         relay_security_simulation: &RelaySecuritySimulationPaneState,
@@ -303,7 +305,7 @@ impl PaneRenderer {
                     );
                 }
                 PaneKind::CadDemo => {
-                    cad_pane::paint_cad_demo_placeholder_pane(content_bounds, paint);
+                    cad_pane::paint_cad_demo_placeholder_pane(content_bounds, cad_demo, paint);
                 }
                 PaneKind::NostrIdentity => {
                     paint_nostr_identity_pane(

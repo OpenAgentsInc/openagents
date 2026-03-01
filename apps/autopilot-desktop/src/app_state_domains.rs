@@ -443,6 +443,37 @@ impl Default for CreditSettlementLedgerPaneState {
     }
 }
 
+pub struct CadDemoPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub session_id: String,
+    pub document_id: String,
+    pub document_revision: u64,
+    pub active_variant_id: String,
+    pub variant_ids: Vec<String>,
+}
+
+impl Default for CadDemoPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Ready,
+            last_error: None,
+            last_action: Some("CAD demo initialized; waiting for feature graph state".to_string()),
+            session_id: "cad.session.local".to_string(),
+            document_id: "cad.doc.demo-rack".to_string(),
+            document_revision: 0,
+            active_variant_id: "variant.baseline".to_string(),
+            variant_ids: vec![
+                "variant.baseline".to_string(),
+                "variant.lightweight".to_string(),
+                "variant.low-cost".to_string(),
+                "variant.stiffness".to_string(),
+            ],
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AgentNetworkSimulationEvent {
     pub seq: u64,

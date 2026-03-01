@@ -1,5 +1,7 @@
 use wgpui::{Bounds, PaintContext, Point, Quad, theme};
 
+use crate::app_state::CadDemoPaneState;
+
 const PAD: f32 = 12.0;
 const HEADER_LINE_HEIGHT: f32 = 14.0;
 const SUBHEADER_GAP: f32 = 4.0;
@@ -41,7 +43,11 @@ pub fn placeholder_layout(content_bounds: Bounds) -> CadDemoPlaceholderLayout {
     }
 }
 
-pub fn paint_cad_demo_placeholder_pane(content_bounds: Bounds, paint: &mut PaintContext) {
+pub fn paint_cad_demo_placeholder_pane(
+    content_bounds: Bounds,
+    pane_state: &CadDemoPaneState,
+    paint: &mut PaintContext,
+) {
     let layout = placeholder_layout(content_bounds);
 
     if layout.header_origin.y + 10.0 <= content_bounds.max_y() {
@@ -54,8 +60,12 @@ pub fn paint_cad_demo_placeholder_pane(content_bounds: Bounds, paint: &mut Paint
     }
 
     if layout.subheader_origin.y + 10.0 <= content_bounds.max_y() {
+        let variant_count = pane_state.variant_ids.len();
         paint.scene.draw_text(paint.text.layout(
-            "Feature graph + eval wiring coming next.",
+            &format!(
+                "doc={} rev={} variants={variant_count}",
+                pane_state.document_id, pane_state.document_revision
+            ),
             layout.subheader_origin,
             10.0,
             theme::text::MUTED,
@@ -85,7 +95,10 @@ pub fn paint_cad_demo_placeholder_pane(content_bounds: Bounds, paint: &mut Paint
 
     if layout.footer_origin.y + 8.0 <= content_bounds.max_y() {
         paint.scene.draw_text(paint.text.layout(
-            "No overflow: all placeholder elements are clipped to pane bounds.",
+            &format!(
+                "session={} active={}",
+                pane_state.session_id, pane_state.active_variant_id
+            ),
             layout.footer_origin,
             9.0,
             theme::text::MUTED,

@@ -248,6 +248,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             skill_trust_revocation: crate::app_state::SkillTrustRevocationPaneState::default(),
             credit_desk: crate::app_state::CreditDeskPaneState::default(),
             credit_settlement_ledger: crate::app_state::CreditSettlementLedgerPaneState::default(),
+            cad_demo: crate::app_state::CadDemoPaneState::default(),
             agent_network_simulation: crate::app_state::AgentNetworkSimulationPaneState::default(),
             treasury_exchange_simulation:
                 crate::app_state::TreasuryExchangeSimulationPaneState::default(),
@@ -545,6 +546,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &state.skill_trust_revocation,
             &state.credit_desk,
             &state.credit_settlement_ledger,
+            &state.cad_demo,
             &state.agent_network_simulation,
             &state.treasury_exchange_simulation,
             &state.relay_security_simulation,
