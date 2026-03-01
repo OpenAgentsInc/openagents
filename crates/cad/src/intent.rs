@@ -201,12 +201,14 @@ pub fn parse_cad_intent_json(payload: &str) -> Result<CadIntent, CadIntentValida
             .map(CadIntent::CreateRackSpec),
         "GenerateVariants" => parse_payload::<GenerateVariantsIntent>(intent_name, content)
             .map(CadIntent::GenerateVariants),
-        "SetObjective" => parse_payload::<SetObjectiveIntent>(intent_name, content)
-            .map(CadIntent::SetObjective),
+        "SetObjective" => {
+            parse_payload::<SetObjectiveIntent>(intent_name, content).map(CadIntent::SetObjective)
+        }
         "AdjustParameter" => parse_payload::<AdjustParameterIntent>(intent_name, content)
             .map(CadIntent::AdjustParameter),
-        "SetMaterial" => parse_payload::<SetMaterialIntent>(intent_name, content)
-            .map(CadIntent::SetMaterial),
+        "SetMaterial" => {
+            parse_payload::<SetMaterialIntent>(intent_name, content).map(CadIntent::SetMaterial)
+        }
         "AddVentPattern" => parse_payload::<AddVentPatternIntent>(intent_name, content)
             .map(CadIntent::AddVentPattern),
         "Select" => parse_payload::<SelectIntent>(intent_name, content).map(CadIntent::Select),
@@ -384,15 +386,14 @@ mod tests {
     #[test]
     fn parse_rejects_unknown_fields_via_strict_schema() {
         let payload = r#"{"intent":"SetMaterial","material_id":"al-6061-t6","x":1}"#;
-        let error = parse_cad_intent_json(payload)
-            .expect_err("unknown field in strict schema should fail");
+        let error =
+            parse_cad_intent_json(payload).expect_err("unknown field in strict schema should fail");
         assert_eq!(error.code, "CAD-INTENT-INVALID-PAYLOAD");
     }
 
     #[test]
     fn parse_and_validate_happy_path() {
-        let payload =
-            r#"{"intent":"AdjustParameter","parameter":"vent_spacing_mm","operation":"set","value":14.5}"#;
+        let payload = r#"{"intent":"AdjustParameter","parameter":"vent_spacing_mm","operation":"set","value":14.5}"#;
         let intent = parse_cad_intent_json(payload).expect("payload should parse");
         match intent {
             CadIntent::AdjustParameter(value) => {

@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
 
+use openagents_cad::CadError;
 use openagents_cad::eval::evaluate_feature_graph_deterministic;
 use openagents_cad::feature_graph::{FeatureGraph, FeatureNode};
 use openagents_cad::mesh::CadMeshPayload;
 use openagents_cad::tessellation::tessellate_rebuild_result;
-use openagents_cad::CadError;
 
 fn encode_for_golden(payload: &CadMeshPayload, hash: &str) -> String {
     format!(

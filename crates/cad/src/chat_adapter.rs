@@ -31,7 +31,10 @@ pub fn translate_chat_to_cad_intent(message: &str) -> CadIntentTranslationOutcom
         match parse_cad_intent_json(json_candidate) {
             Ok(intent) => return CadIntentTranslationOutcome::Intent(intent),
             Err(error) => {
-                return parse_failure_with_intent_error(error, "JSON was detected but did not match CadIntent schema. Send valid intent JSON or a supported command phrase.");
+                return parse_failure_with_intent_error(
+                    error,
+                    "JSON was detected but did not match CadIntent schema. Send valid intent JSON or a supported command phrase.",
+                );
             }
         }
     }
@@ -140,11 +143,7 @@ fn extract_percent_value(input: &str) -> Option<f64> {
     None
 }
 
-fn parse_failure(
-    code: &str,
-    message: &str,
-    recovery_prompt: &str,
-) -> CadIntentTranslationOutcome {
+fn parse_failure(code: &str, message: &str, recovery_prompt: &str) -> CadIntentTranslationOutcome {
     CadIntentTranslationOutcome::ParseFailure(CadIntentTranslationError {
         code: code.to_string(),
         message: message.to_string(),
@@ -221,7 +220,7 @@ mod tests {
     #[test]
     fn adapter_returns_recovery_prompt_for_malformed_json() {
         let outcome = translate_chat_to_cad_intent(
-            "{" /* intentionally malformed payload to trigger JSON parse path */,
+            "{", /* intentionally malformed payload to trigger JSON parse path */
         );
         match outcome {
             CadIntentTranslationOutcome::ParseFailure(error) => {

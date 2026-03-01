@@ -1,11 +1,12 @@
+use openagents_cad::CadResult;
 use openagents_cad::eval::{
+    EvalCacheEntry, EvalCacheKey, EvalCacheStats, EvalCacheStore, EvalPlan,
     compute_parameter_invalidation_plan, eval_tolerance_mm, evaluate_feature_graph_deterministic,
-    evaluate_plan, EvalCacheEntry, EvalCacheKey, EvalCacheStats, EvalCacheStore, EvalPlan,
+    evaluate_plan,
 };
 use openagents_cad::feature_graph::{FeatureGraph, FeatureNode};
 use openagents_cad::kernel::CadKernelAdapter;
 use openagents_cad::primitives::{BoxPrimitive, CylinderPrimitive, PrimitiveSpec};
-use openagents_cad::CadResult;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 

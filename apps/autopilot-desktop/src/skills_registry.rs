@@ -226,9 +226,9 @@ fn resolve_skill_md_path(skill_dir: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::{derive_local_skill_manifest_in, discover_local_skills_in, resolve_local_skill_in};
-    use std::sync::atomic::{AtomicU64, Ordering};
     use std::fs;
     use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     static TEMP_SKILLS_ROOT_COUNTER: AtomicU64 = AtomicU64::new(0);

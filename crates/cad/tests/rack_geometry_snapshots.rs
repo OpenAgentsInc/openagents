@@ -4,8 +4,8 @@ use openagents_cad::eval::evaluate_feature_graph_deterministic;
 use openagents_cad::feature_graph::{FeatureGraph, FeatureNode};
 use openagents_cad::params::{ParameterStore, ScalarUnit, ScalarValue};
 use openagents_cad::rack::{
-    generate_mac_studio_rack_template, generate_objective_variants, MacStudioRackTemplate,
-    MacStudioRackTemplateParams, RackObjectivePreset,
+    MacStudioRackTemplate, MacStudioRackTemplateParams, RackObjectivePreset,
+    generate_mac_studio_rack_template, generate_objective_variants,
 };
 use openagents_cad::tessellation::tessellate_rebuild_result;
 use serde::{Deserialize, Serialize};

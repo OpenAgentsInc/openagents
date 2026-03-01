@@ -306,24 +306,20 @@ impl CadSketchModel {
         tolerance_mm: f64,
     ) -> CadResult<ConstraintSolveOutcome> {
         let bindings = self.collect_anchor_bindings()?;
-        let first =
-            bindings
-                .get(first_anchor_id)
-                .cloned()
-                .ok_or_else(|| CadError::ParseFailed {
-                    reason: format!(
+        let first = bindings.get(first_anchor_id).cloned().ok_or_else(|| {
+            CadError::ParseFailed {
+                reason: format!(
                     "constraint {constraint_id} references missing first anchor {first_anchor_id}"
                 ),
-                })?;
-        let second =
-            bindings
-                .get(second_anchor_id)
-                .cloned()
-                .ok_or_else(|| CadError::ParseFailed {
-                    reason: format!(
+            }
+        })?;
+        let second = bindings.get(second_anchor_id).cloned().ok_or_else(|| {
+            CadError::ParseFailed {
+                reason: format!(
                     "constraint {constraint_id} references missing second anchor {second_anchor_id}"
                 ),
-                })?;
+            }
+        })?;
 
         let mut residual = distance_mm(first.position_mm, second.position_mm);
         if residual > tolerance_mm {

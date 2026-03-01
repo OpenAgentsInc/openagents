@@ -7,18 +7,18 @@ mod transform;
 mod tests;
 
 pub use pattern::{
-    evaluate_linear_pattern_feature, LinearPatternFeatureOp, LinearPatternFeatureResult,
-    LinearPatternInstance,
+    LinearPatternFeatureOp, LinearPatternFeatureResult, LinearPatternInstance,
+    evaluate_linear_pattern_feature,
 };
 pub use placeholder::{
-    evaluate_fillet_placeholder_feature, FilletPlaceholderFeatureOp,
-    FilletPlaceholderFeatureResult, FilletPlaceholderKind, FILLET_PLACEHOLDER_OPERATION_KEY,
+    FILLET_PLACEHOLDER_OPERATION_KEY, FilletPlaceholderFeatureOp, FilletPlaceholderFeatureResult,
+    FilletPlaceholderKind, evaluate_fillet_placeholder_feature,
 };
 pub use primitives::{
-    evaluate_box_feature, evaluate_cut_hole_feature, evaluate_cylinder_feature, BoxFeatureOp,
-    CutHoleFeatureOp, CylinderFeatureOp, FeatureOpResult,
+    BoxFeatureOp, CutHoleFeatureOp, CylinderFeatureOp, FeatureOpResult, evaluate_box_feature,
+    evaluate_cut_hole_feature, evaluate_cylinder_feature,
 };
 pub use transform::{
-    compose_transform_sequence, evaluate_transform_feature, TransformFeatureOp,
-    TransformFeatureResult,
+    TransformFeatureOp, TransformFeatureResult, compose_transform_sequence,
+    evaluate_transform_feature,
 };

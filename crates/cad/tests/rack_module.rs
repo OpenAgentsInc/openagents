@@ -1,6 +1,6 @@
 use openagents_cad::rack::{
-    generate_mac_studio_rack_template, generate_objective_variants, MacStudioRackTemplateParams,
-    RackObjectivePreset,
+    MacStudioRackTemplateParams, RackObjectivePreset, generate_mac_studio_rack_template,
+    generate_objective_variants,
 };
 
 #[test]
@@ -89,14 +89,18 @@ fn wall_mount_toggle_keeps_feature_ids_stable() {
         .collect::<Vec<_>>();
 
     assert_eq!(enabled_ids, disabled_ids);
-    assert!(enabled
-        .semantic_refs
-        .resolve("mount_hole_pattern")
-        .is_some());
-    assert!(disabled
-        .semantic_refs
-        .resolve("mount_hole_pattern")
-        .is_some());
+    assert!(
+        enabled
+            .semantic_refs
+            .resolve("mount_hole_pattern")
+            .is_some()
+    );
+    assert!(
+        disabled
+            .semantic_refs
+            .resolve("mount_hole_pattern")
+            .is_some()
+    );
 }
 
 #[test]
