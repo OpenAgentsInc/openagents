@@ -5,6 +5,7 @@ pub struct CadMaterialPreset {
     pub id: &'static str,
     pub label: &'static str,
     pub density_kg_m3: f64,
+    pub youngs_modulus_gpa: f64,
     pub cnc_cost_usd_per_kg: f64,
     pub cnc_setup_usd: f64,
 }
@@ -17,6 +18,7 @@ const MATERIAL_PRESETS: [CadMaterialPreset; 4] = [
         id: "al-6061-t6",
         label: "Aluminum 6061-T6",
         density_kg_m3: 2_700.0,
+        youngs_modulus_gpa: 69.0,
         cnc_cost_usd_per_kg: 18.0,
         cnc_setup_usd: 42.0,
     },
@@ -24,6 +26,7 @@ const MATERIAL_PRESETS: [CadMaterialPreset; 4] = [
         id: "al-5052-h32",
         label: "Aluminum 5052-H32",
         density_kg_m3: 2_680.0,
+        youngs_modulus_gpa: 70.0,
         cnc_cost_usd_per_kg: 16.0,
         cnc_setup_usd: 38.0,
     },
@@ -31,6 +34,7 @@ const MATERIAL_PRESETS: [CadMaterialPreset; 4] = [
         id: "steel-1018",
         label: "Steel 1018",
         density_kg_m3: 7_870.0,
+        youngs_modulus_gpa: 200.0,
         cnc_cost_usd_per_kg: 9.0,
         cnc_setup_usd: 56.0,
     },
@@ -38,6 +42,7 @@ const MATERIAL_PRESETS: [CadMaterialPreset; 4] = [
         id: "ti-6al-4v",
         label: "Titanium Ti-6Al-4V",
         density_kg_m3: 4_430.0,
+        youngs_modulus_gpa: 114.0,
         cnc_cost_usd_per_kg: 95.0,
         cnc_setup_usd: 84.0,
     },
@@ -72,6 +77,7 @@ pub fn estimate_material_cost_usd(mass_kg: f64, preset: CadMaterialPreset) -> Op
         return None;
     }
     if !preset.density_kg_m3.is_finite()
+        || !preset.youngs_modulus_gpa.is_finite()
         || !preset.cnc_cost_usd_per_kg.is_finite()
         || !preset.cnc_setup_usd.is_finite()
     {
@@ -328,6 +334,7 @@ mod tests {
                 .any(|preset| preset.id == DEFAULT_CAD_MATERIAL_ID)
         );
         assert!(presets.iter().all(|preset| preset.density_kg_m3 > 0.0));
+        assert!(presets.iter().all(|preset| preset.youngs_modulus_gpa > 0.0));
     }
 
     #[test]

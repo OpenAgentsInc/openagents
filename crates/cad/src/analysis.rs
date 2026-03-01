@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use crate::mesh::CadMeshPayload;
 
 pub const DENSITY_ALUMINUM_6061_KG_M3: f64 = 2_700.0;
@@ -90,6 +92,95 @@ pub struct CadBodyProperties {
     pub bounds_min_mm: [f64; 3],
     pub bounds_max_mm: [f64; 3],
     pub bounds_size_mm: [f64; 3],
+}
+
+pub const CAD_DEFLECTION_HEURISTIC_MODEL_ID: &str = "cad.deflection.wave1.v1";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CadDeflectionConfidence {
+    Low,
+    Medium,
+}
+
+impl CadDeflectionConfidence {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CadDeflectionHeuristicInput {
+    pub span_mm: f64,
+    pub width_mm: f64,
+    pub thickness_mm: f64,
+    pub load_kg: f64,
+    pub youngs_modulus_gpa: f64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CadDeflectionHeuristicErrorCode {
+    InvalidSpan,
+    InvalidWidth,
+    InvalidThickness,
+    InvalidLoad,
+    InvalidElasticModulus,
+}
+
+impl CadDeflectionHeuristicErrorCode {
+    pub fn stable_code(self) -> &'static str {
+        match self {
+            Self::InvalidSpan => "CAD-DEFLECTION-INVALID-SPAN",
+            Self::InvalidWidth => "CAD-DEFLECTION-INVALID-WIDTH",
+            Self::InvalidThickness => "CAD-DEFLECTION-INVALID-THICKNESS",
+            Self::InvalidLoad => "CAD-DEFLECTION-INVALID-LOAD",
+            Self::InvalidElasticModulus => "CAD-DEFLECTION-INVALID-MODULUS",
+        }
+    }
+
+    pub fn remediation_hint(self) -> &'static str {
+        match self {
+            Self::InvalidSpan => "Provide a finite positive span for beam deflection estimation.",
+            Self::InvalidWidth => {
+                "Provide a finite positive beam width for area moment calculation."
+            }
+            Self::InvalidThickness => {
+                "Provide a finite positive thickness; near-zero thickness invalidates stiffness estimate."
+            }
+            Self::InvalidLoad => "Provide a finite non-negative load in kilograms.",
+            Self::InvalidElasticModulus => {
+                "Provide a finite positive Young's modulus for the selected material."
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CadDeflectionHeuristicError {
+    pub code: CadDeflectionHeuristicErrorCode,
+    pub message: String,
+}
+
+impl CadDeflectionHeuristicError {
+    fn new(code: CadDeflectionHeuristicErrorCode, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+        }
+    }
+
+    pub fn remediation_hint(&self) -> &'static str {
+        self.code.remediation_hint()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct CadDeflectionHeuristicEstimate {
+    pub max_deflection_mm: f64,
+    pub confidence: CadDeflectionConfidence,
+    pub metadata: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -247,6 +338,122 @@ pub fn analyze_body_properties(
     })
 }
 
+/// Beam-style deflection approximation for rack-like parts.
+///
+/// This is a heuristic for quick engineering feedback, not a certified FEA result.
+pub fn estimate_beam_deflection_heuristic(
+    input: CadDeflectionHeuristicInput,
+) -> Result<CadDeflectionHeuristicEstimate, CadDeflectionHeuristicError> {
+    if !input.span_mm.is_finite() || input.span_mm <= 0.0 {
+        return Err(CadDeflectionHeuristicError::new(
+            CadDeflectionHeuristicErrorCode::InvalidSpan,
+            format!("span_mm must be finite and > 0, got {}", input.span_mm),
+        ));
+    }
+    if !input.width_mm.is_finite() || input.width_mm <= 0.0 {
+        return Err(CadDeflectionHeuristicError::new(
+            CadDeflectionHeuristicErrorCode::InvalidWidth,
+            format!("width_mm must be finite and > 0, got {}", input.width_mm),
+        ));
+    }
+    if !input.thickness_mm.is_finite() || input.thickness_mm <= 0.0 {
+        return Err(CadDeflectionHeuristicError::new(
+            CadDeflectionHeuristicErrorCode::InvalidThickness,
+            format!(
+                "thickness_mm must be finite and > 0, got {}",
+                input.thickness_mm
+            ),
+        ));
+    }
+    if !input.load_kg.is_finite() || input.load_kg < 0.0 {
+        return Err(CadDeflectionHeuristicError::new(
+            CadDeflectionHeuristicErrorCode::InvalidLoad,
+            format!("load_kg must be finite and >= 0, got {}", input.load_kg),
+        ));
+    }
+    if !input.youngs_modulus_gpa.is_finite() || input.youngs_modulus_gpa <= 0.0 {
+        return Err(CadDeflectionHeuristicError::new(
+            CadDeflectionHeuristicErrorCode::InvalidElasticModulus,
+            format!(
+                "youngs_modulus_gpa must be finite and > 0, got {}",
+                input.youngs_modulus_gpa
+            ),
+        ));
+    }
+
+    const GRAVITY_M_S2: f64 = 9.80665;
+    // Simply-supported beam with center point load.
+    const NUMERATOR_FACTOR: f64 = 1.0;
+    const DENOMINATOR_FACTOR: f64 = 48.0;
+
+    let force_n = input.load_kg * GRAVITY_M_S2;
+    let span_m = input.span_mm * 1e-3;
+    let width_m = input.width_mm * 1e-3;
+    let thickness_m = input.thickness_mm * 1e-3;
+    let youngs_modulus_pa = input.youngs_modulus_gpa * 1e9;
+    let second_moment_m4 = width_m * thickness_m.powi(3) / 12.0;
+
+    let max_deflection_m = (NUMERATOR_FACTOR * force_n * span_m.powi(3))
+        / (DENOMINATOR_FACTOR * youngs_modulus_pa * second_moment_m4);
+    let max_deflection_mm = max_deflection_m * 1e3;
+
+    let slenderness_ratio = input.span_mm / input.thickness_mm;
+    let confidence = if (10.0..=60.0).contains(&slenderness_ratio) && input.load_kg <= 20.0 {
+        CadDeflectionConfidence::Medium
+    } else {
+        CadDeflectionConfidence::Low
+    };
+
+    let metadata = BTreeMap::from([
+        (
+            "model_id".to_string(),
+            CAD_DEFLECTION_HEURISTIC_MODEL_ID.to_string(),
+        ),
+        ("confidence".to_string(), confidence.label().to_string()),
+        (
+            "limit.1".to_string(),
+            "assumes simply-supported beam with center point load".to_string(),
+        ),
+        (
+            "limit.2".to_string(),
+            "ignores local cutouts/vents and bracket fastener compliance".to_string(),
+        ),
+        (
+            "limit.3".to_string(),
+            "uses axis-aligned rectangular section approximation from bounds".to_string(),
+        ),
+        ("input.span_mm".to_string(), format6(input.span_mm)),
+        ("input.width_mm".to_string(), format6(input.width_mm)),
+        (
+            "input.thickness_mm".to_string(),
+            format6(input.thickness_mm),
+        ),
+        ("input.load_kg".to_string(), format6(input.load_kg)),
+        (
+            "input.youngs_modulus_gpa".to_string(),
+            format6(input.youngs_modulus_gpa),
+        ),
+        (
+            "derived.slenderness_ratio".to_string(),
+            format6(slenderness_ratio),
+        ),
+        (
+            "derived.second_moment_m4".to_string(),
+            format!("{second_moment_m4:.12e}"),
+        ),
+        (
+            "result.max_deflection_mm".to_string(),
+            format6(max_deflection_mm),
+        ),
+    ]);
+
+    Ok(CadDeflectionHeuristicEstimate {
+        max_deflection_mm,
+        confidence,
+        metadata,
+    })
+}
+
 pub fn face_properties(payload: &CadMeshPayload, face_index: usize) -> Option<CadFaceProperties> {
     let triangle_offset = face_index.checked_mul(3)?;
     let i0 = *payload.triangle_indices.get(triangle_offset)? as usize;
@@ -328,6 +535,10 @@ fn checked_vertex3(
     Ok(coordinates)
 }
 
+fn format6(value: f64) -> String {
+    format!("{value:.6}")
+}
+
 fn cross3(lhs: [f64; 3], rhs: [f64; 3]) -> [f64; 3] {
     [
         lhs[1] * rhs[2] - lhs[2] * rhs[1],
@@ -347,8 +558,10 @@ fn length3(vector: [f64; 3]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        CadBodyAnalysisErrorCode, CadCenterOfGravitySource, DENSITY_ALUMINUM_6061_KG_M3,
-        analyze_body_properties, edge_properties, estimate_body_properties, face_properties,
+        CAD_DEFLECTION_HEURISTIC_MODEL_ID, CadBodyAnalysisErrorCode, CadCenterOfGravitySource,
+        CadDeflectionConfidence, CadDeflectionHeuristicErrorCode, CadDeflectionHeuristicInput,
+        DENSITY_ALUMINUM_6061_KG_M3, analyze_body_properties, edge_properties,
+        estimate_beam_deflection_heuristic, estimate_body_properties, face_properties,
     };
     use crate::mesh::{
         CadMeshBounds, CadMeshEdgeSegment, CadMeshMaterialSlot, CadMeshPayload, CadMeshTopology,
@@ -541,5 +754,50 @@ mod tests {
         let second = edge_properties(&payload, 1).expect("edge 1 should resolve");
         assert!((second.length_mm - (2.0f64).sqrt()).abs() < 1e-9);
         assert_eq!(second.edge_type.label(), "tagged");
+    }
+
+    #[test]
+    fn deflection_heuristic_is_deterministic_with_confidence_and_limits() {
+        let input = CadDeflectionHeuristicInput {
+            span_mm: 320.0,
+            width_mm: 160.0,
+            thickness_mm: 6.0,
+            load_kg: 10.0,
+            youngs_modulus_gpa: 69.0,
+        };
+        let first =
+            estimate_beam_deflection_heuristic(input).expect("deflection estimate should succeed");
+        let second = estimate_beam_deflection_heuristic(input)
+            .expect("deflection estimate should remain deterministic");
+        assert_eq!(first, second);
+        assert!(first.max_deflection_mm > 0.0);
+        assert_eq!(first.confidence, CadDeflectionConfidence::Medium);
+        assert_eq!(
+            first.metadata.get("model_id").map(String::as_str),
+            Some(CAD_DEFLECTION_HEURISTIC_MODEL_ID)
+        );
+        assert_eq!(
+            first.metadata.get("confidence").map(String::as_str),
+            Some("medium")
+        );
+        assert!(first.metadata.contains_key("limit.1"));
+    }
+
+    #[test]
+    fn deflection_heuristic_classifies_invalid_inputs() {
+        let error = estimate_beam_deflection_heuristic(CadDeflectionHeuristicInput {
+            span_mm: 200.0,
+            width_mm: 120.0,
+            thickness_mm: 0.0,
+            load_kg: 10.0,
+            youngs_modulus_gpa: 69.0,
+        })
+        .expect_err("zero thickness should fail");
+        assert_eq!(
+            error.code,
+            CadDeflectionHeuristicErrorCode::InvalidThickness
+        );
+        assert_eq!(error.code.stable_code(), "CAD-DEFLECTION-INVALID-THICKNESS");
+        assert!(!error.remediation_hint().is_empty());
     }
 }

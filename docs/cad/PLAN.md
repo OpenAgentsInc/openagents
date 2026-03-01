@@ -179,6 +179,7 @@ Decision criteria to keep objective:
 - payload contracts document: `docs/cad/CAD_CONTRACTS.md`
 - core analysis behavior document: `docs/cad/CAD_ANALYSIS.md`
 - cost heuristic model document: `docs/cad/CAD_COST_HEURISTIC.md`
+- deflection heuristic model document: `docs/cad/CAD_DEFLECTION_HEURISTIC.md`
 - app pane-state document: `docs/cad/CAD_PANE_STATE.md`
 - input reducer scaffold document: `docs/cad/CAD_INPUT_SCAFFOLD.md`
 - params store document: `docs/cad/CAD_PARAMS.md`
