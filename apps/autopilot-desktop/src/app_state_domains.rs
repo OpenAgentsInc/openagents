@@ -1229,3 +1229,321 @@ impl RelaySecuritySimulationPaneState {
         }
     }
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StableSatsWalletMode {
+    Btc,
+    Usd,
+}
+
+impl StableSatsWalletMode {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Btc => "BTC",
+            Self::Usd => "USD",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StableSatsAgentWalletState {
+    pub agent_name: String,
+    pub btc_balance_sats: u64,
+    pub usd_balance_cents: u64,
+    pub active_wallet: StableSatsWalletMode,
+    pub switch_count: u32,
+    pub last_switch_summary: String,
+}
+
+pub struct StableSatsSimulationPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub rounds_run: u32,
+    pub price_usd_cents_per_btc: u64,
+    pub total_converted_sats: u64,
+    pub total_converted_usd_cents: u64,
+    pub last_settlement_ref: Option<String>,
+    pub agents: Vec<StableSatsAgentWalletState>,
+    pub auto_run_enabled: bool,
+    pub auto_run_interval: Duration,
+    pub events: Vec<AgentNetworkSimulationEvent>,
+    next_seq: u64,
+    auto_run_last_tick: Option<Instant>,
+}
+
+impl Default for StableSatsSimulationPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some(
+                "Run simulation to model StableSats wallet switches (BTC <-> USD)".to_string(),
+            ),
+            rounds_run: 0,
+            price_usd_cents_per_btc: Self::BASE_PRICE_USD_CENTS_PER_BTC,
+            total_converted_sats: 0,
+            total_converted_usd_cents: 0,
+            last_settlement_ref: None,
+            agents: Self::default_agents(),
+            auto_run_enabled: false,
+            auto_run_interval: Duration::from_millis(120),
+            events: Vec::new(),
+            next_seq: 1,
+            auto_run_last_tick: None,
+        }
+    }
+}
+
+impl StableSatsSimulationPaneState {
+    const SATS_PER_BTC: u128 = 100_000_000;
+    const BASE_PRICE_USD_CENTS_PER_BTC: u64 = 8_400_000;
+    const PRICE_STEP_USD_CENTS_PER_BTC: u64 = 12_500;
+
+    fn default_agents() -> Vec<StableSatsAgentWalletState> {
+        vec![
+            StableSatsAgentWalletState {
+                agent_name: "agent-alpha".to_string(),
+                btc_balance_sats: 260_000,
+                usd_balance_cents: 42_000,
+                active_wallet: StableSatsWalletMode::Btc,
+                switch_count: 0,
+                last_switch_summary: "none".to_string(),
+            },
+            StableSatsAgentWalletState {
+                agent_name: "agent-beta".to_string(),
+                btc_balance_sats: 180_000,
+                usd_balance_cents: 64_000,
+                active_wallet: StableSatsWalletMode::Usd,
+                switch_count: 0,
+                last_switch_summary: "none".to_string(),
+            },
+            StableSatsAgentWalletState {
+                agent_name: "agent-gamma".to_string(),
+                btc_balance_sats: 120_000,
+                usd_balance_cents: 36_000,
+                active_wallet: StableSatsWalletMode::Btc,
+                switch_count: 0,
+                last_switch_summary: "none".to_string(),
+            },
+        ]
+    }
+
+    pub fn total_btc_balance_sats(&self) -> u64 {
+        self.agents.iter().map(|agent| agent.btc_balance_sats).sum()
+    }
+
+    pub fn total_usd_balance_cents(&self) -> u64 {
+        self.agents
+            .iter()
+            .map(|agent| agent.usd_balance_cents)
+            .sum()
+    }
+
+    pub fn run_round(&mut self, now_epoch_seconds: u64) -> Result<(), String> {
+        if self.agents.is_empty() {
+            self.load_state = PaneLoadState::Error;
+            let error = "No agents configured for StableSats simulation".to_string();
+            self.last_error = Some(error.clone());
+            return Err(error);
+        }
+
+        let round = self.rounds_run.saturating_add(1);
+        let price = Self::BASE_PRICE_USD_CENTS_PER_BTC
+            .saturating_add(u64::from(round) * Self::PRICE_STEP_USD_CENTS_PER_BTC);
+        self.price_usd_cents_per_btc = price;
+
+        let quote_ref = format!("sim:blink:price:{round:04}:{now_epoch_seconds}");
+        self.push_event(
+            "BLINK-PRICE",
+            &quote_ref,
+            format!("quoted BTC/USD at {}", Self::format_usd_cents(price)),
+        );
+
+        let mut converted_sats_round = 0_u64;
+        let mut converted_usd_round = 0_u64;
+        let mut agents_switched = 0_u32;
+
+        for index in 0..self.agents.len() {
+            let index_u64 = index as u64;
+            let event_ref = format!("sim:blink:swap:{round:04}:{index:02}");
+            let event_summary = {
+                let agent = &mut self.agents[index];
+                match agent.active_wallet {
+                    StableSatsWalletMode::Btc => {
+                        let target_sats = 6_000_u64
+                            .saturating_add(u64::from(round) * 500)
+                            .saturating_add(index_u64 * 400);
+                        let switch_sats = target_sats.min(agent.btc_balance_sats);
+                        if switch_sats == 0 {
+                            None
+                        } else {
+                            let credited_usd = Self::sats_to_usd_cents(switch_sats, price);
+                            agent.btc_balance_sats =
+                                agent.btc_balance_sats.saturating_sub(switch_sats);
+                            agent.usd_balance_cents =
+                                agent.usd_balance_cents.saturating_add(credited_usd);
+                            agent.active_wallet = StableSatsWalletMode::Usd;
+                            agent.switch_count = agent.switch_count.saturating_add(1);
+                            agent.last_switch_summary = format!(
+                                "BTC->USD {} sats -> {}",
+                                switch_sats,
+                                Self::format_usd_cents(credited_usd)
+                            );
+
+                            converted_sats_round = converted_sats_round.saturating_add(switch_sats);
+                            converted_usd_round = converted_usd_round.saturating_add(credited_usd);
+                            agents_switched = agents_switched.saturating_add(1);
+                            Some(format!(
+                                "{} switched {} sats to {}",
+                                agent.agent_name,
+                                switch_sats,
+                                Self::format_usd_cents(credited_usd)
+                            ))
+                        }
+                    }
+                    StableSatsWalletMode::Usd => {
+                        let target_usd = 280_u64
+                            .saturating_add(u64::from(round) * 25)
+                            .saturating_add(index_u64 * 20);
+                        let switch_usd = target_usd.min(agent.usd_balance_cents);
+                        if switch_usd == 0 {
+                            None
+                        } else {
+                            let credited_sats = Self::usd_cents_to_sats(switch_usd, price);
+                            agent.usd_balance_cents =
+                                agent.usd_balance_cents.saturating_sub(switch_usd);
+                            agent.btc_balance_sats =
+                                agent.btc_balance_sats.saturating_add(credited_sats);
+                            agent.active_wallet = StableSatsWalletMode::Btc;
+                            agent.switch_count = agent.switch_count.saturating_add(1);
+                            agent.last_switch_summary = format!(
+                                "USD->BTC {} -> {} sats",
+                                Self::format_usd_cents(switch_usd),
+                                credited_sats
+                            );
+
+                            converted_sats_round =
+                                converted_sats_round.saturating_add(credited_sats);
+                            converted_usd_round = converted_usd_round.saturating_add(switch_usd);
+                            agents_switched = agents_switched.saturating_add(1);
+                            Some(format!(
+                                "{} switched {} to {} sats",
+                                agent.agent_name,
+                                Self::format_usd_cents(switch_usd),
+                                credited_sats
+                            ))
+                        }
+                    }
+                }
+            };
+
+            if let Some(summary) = event_summary {
+                self.push_event("BLINK-SWAP", &event_ref, summary);
+            }
+        }
+
+        self.total_converted_sats = self
+            .total_converted_sats
+            .saturating_add(converted_sats_round);
+        self.total_converted_usd_cents = self
+            .total_converted_usd_cents
+            .saturating_add(converted_usd_round);
+        self.rounds_run = round;
+        self.last_settlement_ref = Some(format!("sim:blink:settlement:{round:04}"));
+        if let Some(settlement_ref) = self.last_settlement_ref.clone() {
+            self.push_event(
+                "BLINK-LEDGER",
+                &settlement_ref,
+                format!(
+                    "settled {} wallet switches ({} total, {} total)",
+                    agents_switched,
+                    self.total_converted_sats,
+                    Self::format_usd_cents(self.total_converted_usd_cents)
+                ),
+            );
+        }
+
+        self.load_state = PaneLoadState::Ready;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Round {round}: {} agents switched wallets at {} per BTC",
+            agents_switched,
+            Self::format_usd_cents(price)
+        ));
+        Ok(())
+    }
+
+    pub fn reset(&mut self) {
+        self.load_state = PaneLoadState::Ready;
+        self.last_error = None;
+        self.last_action = Some("StableSats simulation reset".to_string());
+        self.rounds_run = 0;
+        self.price_usd_cents_per_btc = Self::BASE_PRICE_USD_CENTS_PER_BTC;
+        self.total_converted_sats = 0;
+        self.total_converted_usd_cents = 0;
+        self.last_settlement_ref = None;
+        self.agents = Self::default_agents();
+        self.auto_run_enabled = false;
+        self.events.clear();
+        self.next_seq = 1;
+        self.auto_run_last_tick = None;
+    }
+
+    pub fn start_auto_run(&mut self, now: Instant) {
+        self.auto_run_enabled = true;
+        self.auto_run_last_tick = Some(now);
+        self.last_error = None;
+        self.last_action = Some("Auto StableSats simulation running".to_string());
+    }
+
+    pub fn stop_auto_run(&mut self) {
+        self.auto_run_enabled = false;
+        self.auto_run_last_tick = None;
+        self.last_action = Some("Auto StableSats simulation paused".to_string());
+    }
+
+    pub fn should_run_auto_round(&self, now: Instant) -> bool {
+        if !self.auto_run_enabled {
+            return false;
+        }
+        self.auto_run_last_tick
+            .is_none_or(|last| now.duration_since(last) >= self.auto_run_interval)
+    }
+
+    pub fn mark_auto_round(&mut self, now: Instant) {
+        self.auto_run_last_tick = Some(now);
+    }
+
+    fn sats_to_usd_cents(sats: u64, price_usd_cents_per_btc: u64) -> u64 {
+        let numerator = u128::from(sats).saturating_mul(u128::from(price_usd_cents_per_btc));
+        ((numerator + (Self::SATS_PER_BTC / 2)) / Self::SATS_PER_BTC) as u64
+    }
+
+    fn usd_cents_to_sats(usd_cents: u64, price_usd_cents_per_btc: u64) -> u64 {
+        if price_usd_cents_per_btc == 0 {
+            return 0;
+        }
+        let numerator = u128::from(usd_cents).saturating_mul(Self::SATS_PER_BTC);
+        ((numerator + (u128::from(price_usd_cents_per_btc) / 2))
+            / u128::from(price_usd_cents_per_btc)) as u64
+    }
+
+    fn format_usd_cents(usd_cents: u64) -> String {
+        format!("${}.{:02}", usd_cents / 100, usd_cents % 100)
+    }
+
+    fn push_event(&mut self, protocol: &str, event_ref: &str, summary: String) {
+        self.events.push(AgentNetworkSimulationEvent {
+            seq: self.next_seq,
+            protocol: protocol.to_string(),
+            event_ref: event_ref.to_string(),
+            summary,
+        });
+        self.next_seq = self.next_seq.saturating_add(1);
+        if self.events.len() > 24 {
+            let overflow = self.events.len().saturating_sub(24);
+            self.events.drain(0..overflow);
+        }
+    }
+}

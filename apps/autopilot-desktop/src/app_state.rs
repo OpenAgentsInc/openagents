@@ -89,6 +89,7 @@ pub enum PaneKind {
     AgentNetworkSimulation,
     TreasuryExchangeSimulation,
     RelaySecuritySimulation,
+    StableSatsSimulation,
 }
 
 #[derive(Clone, Copy)]
@@ -2540,6 +2541,7 @@ impl_pane_status_access!(
     AgentNetworkSimulationPaneState,
     TreasuryExchangeSimulationPaneState,
     RelaySecuritySimulationPaneState,
+    StableSatsSimulationPaneState,
 );
 
 pub struct RenderState {
@@ -2617,6 +2619,7 @@ pub struct RenderState {
     pub agent_network_simulation: AgentNetworkSimulationPaneState,
     pub treasury_exchange_simulation: TreasuryExchangeSimulationPaneState,
     pub relay_security_simulation: RelaySecuritySimulationPaneState,
+    pub stable_sats_simulation: StableSatsSimulationPaneState,
     pub sidebar: SidebarState,
     pub next_pane_id: u64,
     pub next_z_index: i32,
@@ -2765,9 +2768,9 @@ mod tests {
         JobInboxValidation, JobLifecycleStage, NetworkRequestStatus, NetworkRequestSubmission,
         NetworkRequestsState, NostrSecretState, ProviderRuntimeState, RecoveryAlertRow,
         RelayConnectionRow, RelayConnectionStatus, RelayConnectionsState,
-        RelaySecuritySimulationPaneState, SettingsState, SparkPaneState, StarterJobRow,
-        StarterJobStatus, StarterJobsState, SyncHealthState, SyncRecoveryPhase,
-        TreasuryExchangeSimulationPaneState,
+        RelaySecuritySimulationPaneState, SettingsState, SparkPaneState,
+        StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
+        SyncHealthState, SyncRecoveryPhase, TreasuryExchangeSimulationPaneState,
     };
 
     fn fixture_inbox_request(
@@ -3512,6 +3515,57 @@ mod tests {
         state.reset();
         assert_eq!(state.rounds_run, 0);
         assert!(state.events.is_empty());
+    }
+
+    #[test]
+    fn stablesats_simulation_rounds_switch_agent_wallet_modes() {
+        let mut state = StableSatsSimulationPaneState::default();
+        let initial_modes: Vec<_> = state
+            .agents
+            .iter()
+            .map(|agent| agent.active_wallet)
+            .collect();
+        let initial_total_usd = state.total_usd_balance_cents();
+
+        state
+            .run_round(1_761_921_100)
+            .expect("stablesats simulation round should succeed");
+
+        assert_eq!(state.rounds_run, 1);
+        assert!(state.last_settlement_ref.is_some());
+        assert!(state.total_converted_sats > 0);
+        assert!(state.total_converted_usd_cents > 0);
+        assert!(
+            state
+                .events
+                .iter()
+                .any(|event| event.protocol == "BLINK-PRICE")
+        );
+        assert!(
+            state
+                .events
+                .iter()
+                .any(|event| event.protocol == "BLINK-SWAP")
+        );
+        assert!(
+            state
+                .events
+                .iter()
+                .any(|event| event.protocol == "BLINK-LEDGER")
+        );
+
+        let next_modes: Vec<_> = state
+            .agents
+            .iter()
+            .map(|agent| agent.active_wallet)
+            .collect();
+        assert_ne!(initial_modes, next_modes);
+        assert_ne!(state.total_usd_balance_cents(), initial_total_usd);
+
+        state.reset();
+        assert_eq!(state.rounds_run, 0);
+        assert!(state.events.is_empty());
+        assert!(state.last_settlement_ref.is_none());
     }
 
     #[test]

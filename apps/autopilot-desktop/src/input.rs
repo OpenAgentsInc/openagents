@@ -43,14 +43,14 @@ use crate::pane_system::{
     CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction, CodexRemoteSkillsPaneAction,
     CredentialsPaneAction, EarningsScoreboardPaneAction, NetworkRequestsPaneAction, PaneController,
     PaneHitAction, PaneInput, RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction,
-    SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StarterJobsPaneAction, SyncHealthPaneAction,
-    TreasuryExchangeSimulationPaneAction, clamp_all_panes_to_window, dispatch_chat_input_event,
-    dispatch_chat_scroll_event, dispatch_create_invoice_input_event,
-    dispatch_credentials_input_event, dispatch_job_history_input_event,
-    dispatch_network_requests_input_event, dispatch_pay_invoice_input_event,
-    dispatch_relay_connections_input_event, dispatch_settings_input_event,
-    dispatch_spark_input_event, pane_indices_by_z_desc, pane_z_sort_invocation_count,
-    topmost_pane_hit_action_in_order,
+    SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StableSatsSimulationPaneAction,
+    StarterJobsPaneAction, SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction,
+    clamp_all_panes_to_window, dispatch_chat_input_event, dispatch_chat_scroll_event,
+    dispatch_create_invoice_input_event, dispatch_credentials_input_event,
+    dispatch_job_history_input_event, dispatch_network_requests_input_event,
+    dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
+    dispatch_settings_input_event, dispatch_spark_input_event, pane_indices_by_z_desc,
+    pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
 };
 use crate::panes::chat as chat_pane;
 use crate::render::{
@@ -367,6 +367,9 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
         changed = true;
     }
     if run_auto_relay_security_simulation(state, now) {
+        changed = true;
+    }
+    if run_auto_stable_sats_simulation(state, now) {
         changed = true;
     }
     refresh_earnings_scoreboard(state, now);
@@ -833,6 +836,9 @@ fn run_pane_hit_action(state: &mut crate::app_state::RenderState, action: PaneHi
         }
         PaneHitAction::RelaySecuritySimulation(action) => {
             run_relay_security_simulation_action(state, action)
+        }
+        PaneHitAction::StableSatsSimulation(action) => {
+            run_stable_sats_simulation_action(state, action)
         }
         PaneHitAction::Spark(action) => run_spark_action(state, action),
         PaneHitAction::SparkCreateInvoice(action) => run_create_invoice_action(state, action),

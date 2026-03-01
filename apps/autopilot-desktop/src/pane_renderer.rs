@@ -10,8 +10,9 @@ use crate::app_state::{
     NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs, ProviderBlocker,
     ProviderRuntimeState, RelayConnectionsPaneInputs, RelayConnectionsState,
     RelaySecuritySimulationPaneState, SettingsPaneInputs, SettingsState, SkillRegistryPaneState,
-    SkillTrustRevocationPaneState, SparkPaneInputs, StarterJobStatus, StarterJobsState,
-    SyncHealthState, TrajectoryAuditPaneState, TreasuryExchangeSimulationPaneState,
+    SkillTrustRevocationPaneState, SparkPaneInputs, StableSatsSimulationPaneState,
+    StarterJobStatus, StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
+    TreasuryExchangeSimulationPaneState,
 };
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
@@ -97,6 +98,7 @@ impl PaneRenderer {
         agent_network_simulation: &AgentNetworkSimulationPaneState,
         treasury_exchange_simulation: &TreasuryExchangeSimulationPaneState,
         relay_security_simulation: &RelaySecuritySimulationPaneState,
+        stable_sats_simulation: &StableSatsSimulationPaneState,
         spark_wallet: &SparkPaneState,
         spark_inputs: &mut SparkPaneInputs,
         pay_invoice_inputs: &mut PayInvoicePaneInputs,
@@ -297,6 +299,13 @@ impl PaneRenderer {
                     simulation_pane::paint_relay_security_simulation_pane(
                         content_bounds,
                         relay_security_simulation,
+                        paint,
+                    );
+                }
+                PaneKind::StableSatsSimulation => {
+                    simulation_pane::paint_stable_sats_simulation_pane(
+                        content_bounds,
+                        stable_sats_simulation,
                         paint,
                     );
                 }

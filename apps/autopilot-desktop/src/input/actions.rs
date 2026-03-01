@@ -1529,6 +1529,87 @@ pub(super) fn run_auto_relay_security_simulation(
     changed
 }
 
+pub(super) fn run_stable_sats_simulation_action(
+    state: &mut crate::app_state::RenderState,
+    action: StableSatsSimulationPaneAction,
+) -> bool {
+    match action {
+        StableSatsSimulationPaneAction::RunRound => {
+            if state.stable_sats_simulation.auto_run_enabled {
+                state.stable_sats_simulation.stop_auto_run();
+                state.provider_runtime.last_result =
+                    state.stable_sats_simulation.last_action.clone();
+                return true;
+            }
+            let now = std::time::Instant::now();
+            state.stable_sats_simulation.start_auto_run(now);
+            let now_epoch_seconds = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |duration| duration.as_secs());
+            let ran_round = run_stable_sats_simulation_round(state, now_epoch_seconds);
+            state.stable_sats_simulation.mark_auto_round(now);
+            ran_round
+        }
+        StableSatsSimulationPaneAction::Reset => {
+            state.stable_sats_simulation.reset();
+            state.provider_runtime.last_result = state.stable_sats_simulation.last_action.clone();
+            true
+        }
+    }
+}
+
+pub(super) fn run_stable_sats_simulation_round(
+    state: &mut crate::app_state::RenderState,
+    now_epoch_seconds: u64,
+) -> bool {
+    match state.stable_sats_simulation.run_round(now_epoch_seconds) {
+        Ok(()) => {
+            state.provider_runtime.last_result = state.stable_sats_simulation.last_action.clone();
+            let event_id = format!(
+                "sim:stablesats:round:{}",
+                state.stable_sats_simulation.rounds_run
+            );
+            state
+                .activity_feed
+                .upsert_event(crate::app_state::ActivityEventRow {
+                    event_id,
+                    domain: crate::app_state::ActivityEventDomain::Wallet,
+                    source_tag: "simulation.blink".to_string(),
+                    summary: "StableSats BTC/USD switching round executed".to_string(),
+                    detail: format!(
+                        "round={} quote={} converted_sats={} converted_usd_cents={}",
+                        state.stable_sats_simulation.rounds_run,
+                        state.stable_sats_simulation.price_usd_cents_per_btc,
+                        state.stable_sats_simulation.total_converted_sats,
+                        state.stable_sats_simulation.total_converted_usd_cents
+                    ),
+                    occurred_at_epoch_seconds: now_epoch_seconds,
+                });
+            state.activity_feed.load_state = crate::app_state::PaneLoadState::Ready;
+        }
+        Err(error) => {
+            state.stable_sats_simulation.last_error = Some(error);
+            state.stable_sats_simulation.load_state = crate::app_state::PaneLoadState::Error;
+        }
+    }
+    true
+}
+
+pub(super) fn run_auto_stable_sats_simulation(
+    state: &mut crate::app_state::RenderState,
+    now: std::time::Instant,
+) -> bool {
+    if !state.stable_sats_simulation.should_run_auto_round(now) {
+        return false;
+    }
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs());
+    let changed = run_stable_sats_simulation_round(state, now_epoch_seconds);
+    state.stable_sats_simulation.mark_auto_round(now);
+    changed
+}
+
 pub(super) fn run_relay_connections_action(
     state: &mut crate::app_state::RenderState,
     action: RelayConnectionsPaneAction,
