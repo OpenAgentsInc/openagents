@@ -9,7 +9,7 @@
   - explicit validation for index/material/bounds failures
   - deterministic little-endian binary sections for render backends
 - Out of scope:
-  - tessellation from solids (tracked by backlog item 34 / issue #2485)
+  - tessellation from solids (implemented in `crates/cad::tessellation`; render integration remains separate)
   - WGPUI mesh primitive/render-pass integration (tracked by issues #2486 and #2487)
 
 ## Contract Notes

@@ -34,7 +34,8 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
             if state.variant_ids.is_empty() {
                 state.load_state = PaneLoadState::Error;
                 state.last_error = Some("CAD demo has no registered variants".to_string());
-                state.last_action = Some("Variant cycle rejected: no variants available".to_string());
+                state.last_action =
+                    Some("Variant cycle rejected: no variants available".to_string());
                 return true;
             }
 
@@ -63,7 +64,8 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
             true
         }
         CadDemoPaneAction::CycleWarningSeverityFilter => {
-            state.warning_filter_severity = next_warning_severity_filter(&state.warning_filter_severity);
+            state.warning_filter_severity =
+                next_warning_severity_filter(&state.warning_filter_severity);
             state.warning_filter_code = "all".to_string();
             state.warning_hover_index = None;
             state.focused_warning_index = None;
@@ -77,7 +79,10 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
             state.warning_filter_code = next_warning_code_filter(state);
             state.warning_hover_index = None;
             state.focused_warning_index = None;
-            state.last_action = Some(format!("CAD warning code filter -> {}", state.warning_filter_code));
+            state.last_action = Some(format!(
+                "CAD warning code filter -> {}",
+                state.warning_filter_code
+            ));
             true
         }
         CadDemoPaneAction::SelectWarning(visible_index) => {
@@ -228,9 +233,12 @@ fn apply_completed_rebuild(
                     feature_id
                 ));
             };
-            state
-                .eval_cache
-                .insert(key, EvalCacheEntry { geometry_hash: hash });
+            state.eval_cache.insert(
+                key,
+                EvalCacheEntry {
+                    geometry_hash: hash,
+                },
+            );
         }
     }
 
@@ -248,11 +256,15 @@ fn apply_completed_rebuild(
         document_revision: completed.document_revision,
         variant_id: completed.variant_id,
         rebuild_hash: completed.result.rebuild_hash.clone(),
+        mesh_hash: completed.tessellation_receipt.mesh_hash.clone(),
         duration_ms,
         cache_hits: stats_delta.hits,
         cache_misses: stats_delta.misses,
         cache_evictions: stats_delta.evictions,
         feature_count: completed.result.records.len(),
+        vertex_count: completed.tessellation_receipt.vertex_count,
+        triangle_count: completed.tessellation_receipt.triangle_count,
+        edge_count: completed.tessellation_receipt.edge_count,
     };
 
     state.last_rebuild_receipt = Some(receipt.clone());
@@ -262,9 +274,13 @@ fn apply_completed_rebuild(
         state.rebuild_receipts.drain(0..overflow);
     }
     state.pending_rebuild_request_id = None;
-    state.last_good_mesh_id = Some(format!("mesh.{}", receipt.rebuild_hash));
+    state.last_good_mesh_id = Some(completed.mesh_payload.mesh_id.clone());
     refresh_warning_state(state, completed.document_revision, &receipt.variant_id);
-    refresh_timeline_state(state, &completed.graph, provenance_from_trigger(&completed.trigger));
+    refresh_timeline_state(
+        state,
+        &completed.graph,
+        provenance_from_trigger(&completed.trigger),
+    );
     let after_snapshot = history_snapshot_from_state(state);
     state.history_stack.push_transition(
         CadHistoryCommand::ApplyIntent {
@@ -277,8 +293,8 @@ fn apply_completed_rebuild(
     state.load_state = PaneLoadState::Ready;
     state.last_error = None;
     state.last_action = Some(format!(
-        "CAD rebuild {} committed: {}ms hash={}",
-        completed.trigger, duration_ms, receipt.rebuild_hash
+        "CAD rebuild {} committed: {}ms hash={} mesh={}",
+        completed.trigger, duration_ms, receipt.rebuild_hash, receipt.mesh_hash
     ));
 
     Ok(receipt)
@@ -299,10 +315,13 @@ fn upsert_cad_rebuild_activity_event(state: &mut RenderState, receipt: &CadRebui
             receipt.document_revision, receipt.duration_ms
         ),
         detail: format!(
-            "variant={} hash={} features={} cache(h={},m={},e={})",
+            "variant={} hash={} mesh={} features={} tris={} verts={} cache(h={},m={},e={})",
             receipt.variant_id,
             receipt.rebuild_hash,
+            receipt.mesh_hash,
             receipt.feature_count,
+            receipt.triangle_count,
+            receipt.vertex_count,
             receipt.cache_hits,
             receipt.cache_misses,
             receipt.cache_evictions
@@ -311,7 +330,7 @@ fn upsert_cad_rebuild_activity_event(state: &mut RenderState, receipt: &CadRebui
     state.activity_feed.load_state = PaneLoadState::Ready;
     state.activity_feed.last_action = Some(format!(
         "CAD rebuild receipt captured ({})",
-        receipt.rebuild_hash
+        receipt.mesh_hash
     ));
 }
 
@@ -334,7 +353,8 @@ fn stats_delta(before: EvalCacheStats, after: EvalCacheStats) -> EvalCacheStats 
 }
 
 fn build_demo_feature_graph(state: &CadDemoPaneState) -> FeatureGraph {
-    let (width_param, vent_spacing_param, vent_count_param) = match state.active_variant_id.as_str() {
+    let (width_param, vent_spacing_param, vent_count_param) = match state.active_variant_id.as_str()
+    {
         "variant.lightweight" => ("width_light_mm", "vent_spacing_wide_mm", "vent_count_low"),
         "variant.low-cost" => ("width_cost_mm", "vent_spacing_cost_mm", "vent_count_mid"),
         "variant.stiffness" => ("width_stiff_mm", "vent_spacing_tight_mm", "vent_count_high"),
@@ -360,7 +380,10 @@ fn build_demo_feature_graph(state: &CadDemoPaneState) -> FeatureGraph {
             operation_key: "cut.hole.v1".to_string(),
             depends_on: vec!["feature.base".to_string()],
             params: BTreeMap::from([
-                ("radius_param".to_string(), "mount_hole_radius_mm".to_string()),
+                (
+                    "radius_param".to_string(),
+                    "mount_hole_radius_mm".to_string(),
+                ),
                 ("depth_param".to_string(), "mount_hole_depth_mm".to_string()),
             ]),
         },
@@ -386,7 +409,9 @@ fn build_demo_feature_graph(state: &CadDemoPaneState) -> FeatureGraph {
         },
     ];
 
-    FeatureGraph { nodes: feature_nodes }
+    FeatureGraph {
+        nodes: feature_nodes,
+    }
 }
 
 fn refresh_warning_state(state: &mut CadDemoPaneState, document_revision: u64, variant_id: &str) {
@@ -403,14 +428,13 @@ fn refresh_warning_state(state: &mut CadDemoPaneState, document_revision: u64, v
     state.focused_geometry_ref = None;
 }
 
-fn refresh_timeline_state(
-    state: &mut CadDemoPaneState,
-    graph: &FeatureGraph,
-    provenance: String,
-) {
-    let prior_selected_feature_id = state
-        .timeline_selected_index
-        .and_then(|index| state.timeline_rows.get(index).map(|row| row.feature_id.clone()));
+fn refresh_timeline_state(state: &mut CadDemoPaneState, graph: &FeatureGraph, provenance: String) {
+    let prior_selected_feature_id = state.timeline_selected_index.and_then(|index| {
+        state
+            .timeline_rows
+            .get(index)
+            .map(|row| row.feature_id.clone())
+    });
 
     let ordered_ids = graph
         .deterministic_topo_order()
@@ -420,13 +444,15 @@ fn refresh_timeline_state(
         .iter()
         .map(|node| (node.id.as_str(), node))
         .collect::<BTreeMap<_, _>>();
-    let warnings_by_feature = state
-        .warnings
-        .iter()
-        .fold(BTreeMap::<String, Vec<&CadDemoWarningState>>::new(), |mut map, warning| {
-            map.entry(warning.feature_id.clone()).or_default().push(warning);
+    let warnings_by_feature = state.warnings.iter().fold(
+        BTreeMap::<String, Vec<&CadDemoWarningState>>::new(),
+        |mut map, warning| {
+            map.entry(warning.feature_id.clone())
+                .or_default()
+                .push(warning);
             map
-        });
+        },
+    );
 
     state.timeline_rows = ordered_ids
         .iter()
@@ -458,7 +484,10 @@ fn refresh_timeline_state(
     if let Some(index) = selected_index {
         state.timeline_scroll_offset = auto_scroll_offset(index, state.timeline_scroll_offset, 10);
         state.selected_feature_params = state.timeline_rows[index].params.clone();
-        state.focused_geometry_ref = Some(format!("cad://feature/{}", state.timeline_rows[index].feature_id));
+        state.focused_geometry_ref = Some(format!(
+            "cad://feature/{}",
+            state.timeline_rows[index].feature_id
+        ));
     } else {
         state.timeline_scroll_offset = 0;
         state.selected_feature_params.clear();
@@ -708,7 +737,9 @@ fn warning_visible(state: &CadDemoPaneState, warning: &CadDemoWarningState) -> b
             .severity
             .eq_ignore_ascii_case(&state.warning_filter_severity);
     let code_ok = state.warning_filter_code == "all"
-        || warning.code.eq_ignore_ascii_case(&state.warning_filter_code);
+        || warning
+            .code
+            .eq_ignore_ascii_case(&state.warning_filter_code);
     severity_ok && code_ok
 }
 
@@ -741,7 +772,10 @@ fn select_timeline_row(state: &mut CadDemoPaneState, index: usize) {
     state.timeline_selected_index = Some(index);
     state.timeline_scroll_offset = auto_scroll_offset(index, state.timeline_scroll_offset, 10);
     state.selected_feature_params = state.timeline_rows[index].params.clone();
-    state.focused_geometry_ref = Some(format!("cad://feature/{}", state.timeline_rows[index].feature_id));
+    state.focused_geometry_ref = Some(format!(
+        "cad://feature/{}",
+        state.timeline_rows[index].feature_id
+    ));
     state.last_action = Some(format!(
         "CAD timeline selected -> {}",
         state.timeline_rows[index].feature_name
@@ -806,7 +840,10 @@ mod tests {
         );
         assert!(state.pending_rebuild_request_id.is_none());
         assert!(state.last_good_mesh_id.is_some());
-        assert!(!state.warnings.is_empty(), "warnings should refresh on rebuild commit");
+        assert!(
+            !state.warnings.is_empty(),
+            "warnings should refresh on rebuild commit"
+        );
     }
 
     #[test]
@@ -821,7 +858,10 @@ mod tests {
 
         let _ = apply_cad_demo_action(&mut state, CadDemoPaneAction::CycleVariant);
         assert_eq!(state.load_state, crate::app_state::PaneLoadState::Loading);
-        assert_eq!(state.last_good_mesh_id.as_deref(), Some(baseline_mesh.as_str()));
+        assert_eq!(
+            state.last_good_mesh_id.as_deref(),
+            Some(baseline_mesh.as_str())
+        );
     }
 
     #[test]
@@ -836,8 +876,7 @@ mod tests {
         assert!(changed);
         assert_eq!(state.warning_filter_severity, "critical");
 
-        let changed =
-            apply_cad_demo_action(&mut state, CadDemoPaneAction::CycleWarningCodeFilter);
+        let changed = apply_cad_demo_action(&mut state, CadDemoPaneAction::CycleWarningCodeFilter);
         assert!(changed);
         assert_ne!(state.warning_filter_code, "");
 

@@ -2,6 +2,8 @@ use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 
 use openagents_cad::eval::{DeterministicRebuildResult, evaluate_feature_graph_deterministic};
 use openagents_cad::feature_graph::FeatureGraph;
+use openagents_cad::mesh::CadMeshPayload;
+use openagents_cad::tessellation::{CadTessellationReceipt, tessellate_rebuild_result};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CadRebuildRequest {
@@ -13,7 +15,7 @@ pub struct CadRebuildRequest {
     pub graph: FeatureGraph,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CadRebuildCompleted {
     pub request_id: u64,
     pub trigger: String,
@@ -22,6 +24,8 @@ pub struct CadRebuildCompleted {
     pub variant_id: String,
     pub graph: FeatureGraph,
     pub result: DeterministicRebuildResult,
+    pub mesh_payload: CadMeshPayload,
+    pub tessellation_receipt: CadTessellationReceipt,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -34,7 +38,7 @@ pub struct CadRebuildFailed {
     pub error: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum CadRebuildResponse {
     Completed(CadRebuildCompleted),
     Failed(CadRebuildFailed),
@@ -54,15 +58,36 @@ impl CadBackgroundRebuildWorker {
             .spawn(move || {
                 while let Ok(request) = request_rx.recv() {
                     let response = match evaluate_feature_graph_deterministic(&request.graph) {
-                        Ok(result) => CadRebuildResponse::Completed(CadRebuildCompleted {
-                            request_id: request.request_id,
-                            trigger: request.trigger,
-                            session_id: request.session_id,
-                            document_revision: request.document_revision,
-                            variant_id: request.variant_id,
-                            graph: request.graph,
-                            result,
-                        }),
+                        Ok(result) => {
+                            match tessellate_rebuild_result(
+                                &request.graph,
+                                &result,
+                                request.document_revision,
+                                &request.variant_id,
+                            ) {
+                                Ok((mesh_payload, tessellation_receipt)) => {
+                                    CadRebuildResponse::Completed(CadRebuildCompleted {
+                                        request_id: request.request_id,
+                                        trigger: request.trigger,
+                                        session_id: request.session_id,
+                                        document_revision: request.document_revision,
+                                        variant_id: request.variant_id,
+                                        graph: request.graph,
+                                        result,
+                                        mesh_payload,
+                                        tessellation_receipt,
+                                    })
+                                }
+                                Err(error) => CadRebuildResponse::Failed(CadRebuildFailed {
+                                    request_id: request.request_id,
+                                    trigger: request.trigger,
+                                    session_id: request.session_id,
+                                    document_revision: request.document_revision,
+                                    variant_id: request.variant_id,
+                                    error: format!("tessellation failed: {error}"),
+                                }),
+                            }
+                        }
                         Err(error) => CadRebuildResponse::Failed(CadRebuildFailed {
                             request_id: request.request_id,
                             trigger: request.trigger,
@@ -138,7 +163,10 @@ mod tests {
             }
             std::thread::sleep(std::time::Duration::from_millis(2));
         }
-        assert!(!response.is_empty(), "worker should eventually produce a response");
+        assert!(
+            !response.is_empty(),
+            "worker should eventually produce a response"
+        );
         assert!(
             matches!(&response[0], CadRebuildResponse::Completed(_)),
             "valid feature graph should complete successfully"

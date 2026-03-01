@@ -49,17 +49,22 @@ This document defines the MVP `CadDemoPaneState` container in desktop app state.
 - `document_revision`
 - `variant_id`
 - `rebuild_hash`
+- `mesh_hash`
 - `duration_ms` (deterministic synthetic timing)
 - `cache_hits`
 - `cache_misses`
 - `cache_evictions`
 - `feature_count`
+- `vertex_count`
+- `triangle_count`
+- `edge_count`
 
 Receipts are:
 
 - retained in-pane (`rebuild_receipts`, bounded history)
 - surfaced as lane events through activity feed upserts with source tag `cad.eval`
 - committed from background worker responses while preserving `last_good_mesh_id` during pending rebuilds
+- sourced from async rebuild+tessellation worker completion (`cad_rebuild_worker`)
 
 Warning panel state is session-persistent and filterable by severity/code.
 

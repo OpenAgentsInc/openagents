@@ -1,0 +1,6 @@
+{
+  "variant.baseline": "variant.baseline|mesh.variant-baseline.4d87ace07431d037|196|332|224|2|-195|-113|195|113|62c061e10e125391",
+  "variant.lightweight": "variant.lightweight|mesh.variant-lightweight.8433410209e90b01|212|356|248|2|-191|-114|191|114|4be114a86c0f51e9",
+  "variant.low-cost": "variant.low-cost|mesh.variant-low-cost.39da42f0fb0e703c|188|320|212|2|-196|-110|196|110|de5658ad3b819045",
+  "variant.stiffness": "variant.stiffness|mesh.variant-stiffness.1d46b3e7752c02d2|228|380|272|2|-199|-116|199|116|6f8de4923858aeae"
+}
