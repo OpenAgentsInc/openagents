@@ -485,6 +485,7 @@ pub struct CadDemoPaneState {
     pub timeline_selected_index: Option<usize>,
     pub timeline_scroll_offset: usize,
     pub selected_feature_params: Vec<(String, String)>,
+    pub context_menu: CadContextMenuState,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -903,6 +904,50 @@ pub struct CadTimelineRowState {
     pub params: Vec<(String, String)>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CadContextMenuTargetKind {
+    Body,
+    Face,
+    Edge,
+}
+
+impl CadContextMenuTargetKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Body => "body",
+            Self::Face => "face",
+            Self::Edge => "edge",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CadContextMenuItemState {
+    pub id: String,
+    pub label: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct CadContextMenuState {
+    pub is_open: bool,
+    pub anchor: Point,
+    pub target_kind: CadContextMenuTargetKind,
+    pub target_ref: String,
+    pub items: Vec<CadContextMenuItemState>,
+}
+
+impl Default for CadContextMenuState {
+    fn default() -> Self {
+        Self {
+            is_open: false,
+            anchor: Point::ZERO,
+            target_kind: CadContextMenuTargetKind::Body,
+            target_ref: "body.default".to_string(),
+            items: Vec::new(),
+        }
+    }
+}
+
 impl Default for CadDemoPaneState {
     fn default() -> Self {
         Self {
@@ -954,6 +999,7 @@ impl Default for CadDemoPaneState {
             timeline_selected_index: None,
             timeline_scroll_offset: 0,
             selected_feature_params: Vec::new(),
+            context_menu: CadContextMenuState::default(),
         }
     }
 }
@@ -1173,6 +1219,54 @@ impl CadDemoPaneState {
         let max_y = viewport.origin.y.max(viewport.max_y());
         Point::new(snapped.x.clamp(min_x, max_x), snapped.y.clamp(min_y, max_y))
     }
+
+    pub fn infer_context_menu_target_for_viewport_point(
+        &self,
+        point: Point,
+        viewport: Bounds,
+    ) -> (CadContextMenuTargetKind, String) {
+        if viewport.size.width <= f32::EPSILON {
+            return (CadContextMenuTargetKind::Body, "body.main".to_string());
+        }
+        let normalized_x = ((point.x - viewport.origin.x) / viewport.size.width).clamp(0.0, 1.0);
+        if normalized_x < 0.33 {
+            (CadContextMenuTargetKind::Body, "body.main".to_string())
+        } else if normalized_x < 0.66 {
+            (CadContextMenuTargetKind::Face, "face.front".to_string())
+        } else {
+            (CadContextMenuTargetKind::Edge, "edge.rim".to_string())
+        }
+    }
+
+    pub fn open_context_menu(
+        &mut self,
+        anchor: Point,
+        target_kind: CadContextMenuTargetKind,
+        target_ref: String,
+    ) {
+        self.context_menu = CadContextMenuState {
+            is_open: true,
+            anchor,
+            target_kind,
+            target_ref,
+            items: context_menu_items_for_target(target_kind),
+        };
+    }
+
+    pub fn close_context_menu(&mut self) {
+        self.context_menu.is_open = false;
+        self.context_menu.items.clear();
+    }
+
+    pub fn run_context_menu_item(&mut self, index: usize) -> Option<String> {
+        let item = self.context_menu.items.get(index)?;
+        Some(format!(
+            "CAD context action {} on {} ({})",
+            item.id,
+            self.context_menu.target_ref,
+            self.context_menu.target_kind.label()
+        ))
+    }
 }
 
 fn snap_to_anchor_if_near(point: Point, anchor: Point, threshold_px: f32) -> Point {
@@ -1182,6 +1276,55 @@ fn snap_to_anchor_if_near(point: Point, anchor: Point, threshold_px: f32) -> Poi
         anchor
     } else {
         point
+    }
+}
+
+fn context_menu_items_for_target(
+    target_kind: CadContextMenuTargetKind,
+) -> Vec<CadContextMenuItemState> {
+    match target_kind {
+        CadContextMenuTargetKind::Body => vec![
+            CadContextMenuItemState {
+                id: "body.isolate".to_string(),
+                label: "Isolate Body".to_string(),
+            },
+            CadContextMenuItemState {
+                id: "body.material".to_string(),
+                label: "Assign Material".to_string(),
+            },
+            CadContextMenuItemState {
+                id: "body.measure".to_string(),
+                label: "Measure Mass".to_string(),
+            },
+        ],
+        CadContextMenuTargetKind::Face => vec![
+            CadContextMenuItemState {
+                id: "face.inspect".to_string(),
+                label: "Inspect Face".to_string(),
+            },
+            CadContextMenuItemState {
+                id: "face.offset".to_string(),
+                label: "Offset Face".to_string(),
+            },
+            CadContextMenuItemState {
+                id: "face.fillet".to_string(),
+                label: "Add Fillet".to_string(),
+            },
+        ],
+        CadContextMenuTargetKind::Edge => vec![
+            CadContextMenuItemState {
+                id: "edge.inspect".to_string(),
+                label: "Inspect Edge".to_string(),
+            },
+            CadContextMenuItemState {
+                id: "edge.chamfer".to_string(),
+                label: "Chamfer Edge".to_string(),
+            },
+            CadContextMenuItemState {
+                id: "edge.fillet".to_string(),
+                label: "Fillet Edge".to_string(),
+            },
+        ],
     }
 }
 

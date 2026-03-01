@@ -2766,13 +2766,13 @@ mod tests {
         ActiveJobState, ActivityEventDomain, ActivityEventRow, ActivityFeedFilter,
         ActivityFeedState, AgentNetworkSimulationPaneState, AlertDomain, AlertLifecycle,
         AlertsRecoveryState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole,
-        CadCameraViewSnap, CadDemoPaneState, CadHiddenLineMode, CadHotkeyAction, CadProjectionMode,
-        CadSnapMode, CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile,
-        EarningsScoreboardState, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
-        JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest, JobInboxState,
-        JobInboxValidation, JobLifecycleStage, NetworkRequestStatus, NetworkRequestSubmission,
-        NetworkRequestsState, NostrSecretState, ProviderRuntimeState, RecoveryAlertRow,
-        RelayConnectionRow, RelayConnectionStatus, RelayConnectionsState,
+        CadCameraViewSnap, CadContextMenuTargetKind, CadDemoPaneState, CadHiddenLineMode,
+        CadHotkeyAction, CadProjectionMode, CadSnapMode, CadThreeDMouseAxis, CadThreeDMouseMode,
+        CadThreeDMouseProfile, EarningsScoreboardState, JobHistoryState, JobHistoryStatus,
+        JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest,
+        JobInboxState, JobInboxValidation, JobLifecycleStage, NetworkRequestStatus,
+        NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderRuntimeState,
+        RecoveryAlertRow, RelayConnectionRow, RelayConnectionStatus, RelayConnectionsState,
         RelaySecuritySimulationPaneState, SettingsState, SparkPaneState,
         StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
         SyncHealthState, SyncRecoveryPhase, TreasuryExchangeSimulationPaneState,
@@ -3778,6 +3778,8 @@ mod tests {
         assert!(state.timeline_selected_index.is_none());
         assert_eq!(state.timeline_scroll_offset, 0);
         assert!(state.selected_feature_params.is_empty());
+        assert!(!state.context_menu.is_open);
+        assert!(state.context_menu.items.is_empty());
     }
 
     #[test]
@@ -3897,5 +3899,40 @@ mod tests {
         let yaw_locked = state.camera_orbit_yaw_deg;
         assert!(!state.apply_three_d_mouse_motion(3, 0.4));
         assert_eq!(state.camera_orbit_yaw_deg, yaw_locked);
+    }
+
+    #[test]
+    fn cad_context_menu_targeting_and_actions_are_deterministic() {
+        let mut state = CadDemoPaneState::default();
+        let viewport = wgpui::Bounds::new(40.0, 40.0, 360.0, 220.0);
+        let left = wgpui::Point::new(80.0, 120.0);
+        let middle = wgpui::Point::new(210.0, 120.0);
+        let right = wgpui::Point::new(360.0, 120.0);
+
+        let (kind_left, _) = state.infer_context_menu_target_for_viewport_point(left, viewport);
+        let (kind_mid, _) = state.infer_context_menu_target_for_viewport_point(middle, viewport);
+        let (kind_right, edge_ref) =
+            state.infer_context_menu_target_for_viewport_point(right, viewport);
+        assert_eq!(kind_left, CadContextMenuTargetKind::Body);
+        assert_eq!(kind_mid, CadContextMenuTargetKind::Face);
+        assert_eq!(kind_right, CadContextMenuTargetKind::Edge);
+
+        state.open_context_menu(right, kind_right, edge_ref.clone());
+        assert!(state.context_menu.is_open);
+        assert_eq!(
+            state.context_menu.target_kind,
+            CadContextMenuTargetKind::Edge
+        );
+        assert_eq!(state.context_menu.items.len(), 3);
+
+        let action = state
+            .run_context_menu_item(0)
+            .expect("edge context menu should include at least one action");
+        assert!(action.contains("edge.inspect"));
+        assert!(action.contains(edge_ref.as_str()));
+
+        state.close_context_menu();
+        assert!(!state.context_menu.is_open);
+        assert!(state.context_menu.items.is_empty());
     }
 }

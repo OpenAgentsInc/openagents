@@ -1,6 +1,6 @@
 use openagents_cad::mesh::CadMeshPayload;
 use wgpui::{
-    Bounds, MESH_EDGE_FLAG_SELECTED, MESH_EDGE_FLAG_SILHOUETTE, MeshEdge, MeshPrimitive,
+    Bounds, Hsla, MESH_EDGE_FLAG_SELECTED, MESH_EDGE_FLAG_SILHOUETTE, MeshEdge, MeshPrimitive,
     MeshVertex, PaintContext, Point, Quad, theme,
 };
 
@@ -9,6 +9,7 @@ use crate::app_state::{
 };
 use crate::pane_renderer::paint_action_button;
 use crate::pane_system::{
+    cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
     cad_demo_cycle_variant_button_bounds, cad_demo_hidden_line_mode_button_bounds,
     cad_demo_hotkey_profile_button_bounds, cad_demo_projection_mode_button_bounds,
     cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
@@ -482,6 +483,46 @@ pub fn paint_cad_demo_placeholder_pane(
                     theme::text::MUTED,
                 ));
             }
+        }
+    }
+
+    if pane_state.context_menu.is_open && !pane_state.context_menu.items.is_empty() {
+        let menu_bounds = cad_demo_context_menu_bounds(
+            content_bounds,
+            pane_state.context_menu.anchor,
+            pane_state.context_menu.items.len(),
+        );
+        paint.scene.draw_quad(
+            Quad::new(menu_bounds)
+                .with_background(theme::bg::SURFACE)
+                .with_corner_radius(6.0)
+                .with_border(theme::border::SUBTLE, 1.0),
+        );
+        paint.scene.draw_text(paint.text.layout(
+            &format!(
+                "Context {}",
+                pane_state.context_menu.target_kind.label().to_ascii_uppercase()
+            ),
+            Point::new(menu_bounds.origin.x + 6.0, menu_bounds.origin.y + 10.0),
+            8.0,
+            theme::text::MUTED,
+        ));
+        for (index, item) in pane_state.context_menu.items.iter().enumerate() {
+            let row_bounds = cad_demo_context_menu_row_bounds(menu_bounds, index);
+            if row_bounds.max_y() > menu_bounds.max_y() - 2.0 {
+                break;
+            }
+            paint.scene.draw_quad(
+                Quad::new(row_bounds)
+                    .with_background(Hsla::new(0.0, 0.0, 0.14, 0.55))
+                    .with_corner_radius(3.0),
+            );
+            paint.scene.draw_text(paint.text.layout(
+                item.label.as_str(),
+                Point::new(row_bounds.origin.x + 5.0, row_bounds.origin.y + 10.0),
+                8.5,
+                theme::text::PRIMARY,
+            ));
         }
     }
 

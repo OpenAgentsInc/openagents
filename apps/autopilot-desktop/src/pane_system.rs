@@ -70,6 +70,7 @@ const CREDENTIALS_BUTTON_GAP: f32 = 8.0;
 const CREDENTIALS_ROW_HEIGHT: f32 = 28.0;
 const CREDENTIALS_ROW_GAP: f32 = 6.0;
 const CREDENTIALS_MAX_ROWS: usize = 10;
+const CAD_CONTEXT_MENU_ROW_HEIGHT: f32 = 24.0;
 static PANE_Z_SORT_INVOCATIONS: AtomicU64 = AtomicU64::new(0);
 
 mod helpers;
@@ -2382,6 +2383,32 @@ fn cad_demo_view_cube_cell_bounds(content_bounds: Bounds, col: usize, row: usize
     )
 }
 
+pub fn cad_demo_context_menu_bounds(
+    content_bounds: Bounds,
+    anchor: Point,
+    item_count: usize,
+) -> Bounds {
+    let width = (content_bounds.size.width * 0.24).clamp(150.0, 220.0);
+    let row_count = item_count.max(1);
+    let height = row_count as f32 * CAD_CONTEXT_MENU_ROW_HEIGHT + 22.0;
+    let min_x = content_bounds.origin.x + CHAT_PAD;
+    let min_y = content_bounds.origin.y + CHAT_PAD;
+    let max_x = (content_bounds.max_x() - CHAT_PAD - width).max(min_x);
+    let max_y = (content_bounds.max_y() - CHAT_PAD - height).max(min_y);
+    let x = anchor.x.clamp(min_x, max_x);
+    let y = anchor.y.clamp(min_y, max_y);
+    Bounds::new(x, y, width, height)
+}
+
+pub fn cad_demo_context_menu_row_bounds(menu_bounds: Bounds, index: usize) -> Bounds {
+    Bounds::new(
+        menu_bounds.origin.x + 6.0,
+        menu_bounds.origin.y + 18.0 + index as f32 * CAD_CONTEXT_MENU_ROW_HEIGHT,
+        menu_bounds.size.width - 12.0,
+        (CAD_CONTEXT_MENU_ROW_HEIGHT - 2.0).max(12.0),
+    )
+}
+
 pub fn cad_demo_warning_panel_bounds(content_bounds: Bounds) -> Bounds {
     let width = (content_bounds.size.width * 0.42).clamp(200.0, 300.0);
     let height = (content_bounds.size.height * 0.36).clamp(120.0, 220.0);
@@ -3499,13 +3526,13 @@ mod tests {
         agent_schedule_apply_button_bounds, agent_schedule_inspect_button_bounds,
         agent_schedule_manual_tick_button_bounds, alerts_recovery_ack_button_bounds,
         alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
-        alerts_recovery_row_bounds, cad_demo_cycle_variant_button_bounds,
-        cad_demo_hidden_line_mode_button_bounds, cad_demo_hotkey_profile_button_bounds,
-        cad_demo_projection_mode_button_bounds, cad_demo_reset_button_bounds,
-        cad_demo_reset_camera_button_bounds, cad_demo_snap_endpoint_button_bounds,
-        cad_demo_snap_grid_button_bounds, cad_demo_snap_midpoint_button_bounds,
-        cad_demo_snap_origin_button_bounds, cad_demo_timeline_panel_bounds,
-        cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
+        alerts_recovery_row_bounds, cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
+        cad_demo_cycle_variant_button_bounds, cad_demo_hidden_line_mode_button_bounds,
+        cad_demo_hotkey_profile_button_bounds, cad_demo_projection_mode_button_bounds,
+        cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
+        cad_demo_snap_endpoint_button_bounds, cad_demo_snap_grid_button_bounds,
+        cad_demo_snap_midpoint_button_bounds, cad_demo_snap_origin_button_bounds,
+        cad_demo_timeline_panel_bounds, cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
         cad_demo_view_snap_front_button_bounds, cad_demo_view_snap_iso_button_bounds,
         cad_demo_view_snap_right_button_bounds, cad_demo_view_snap_top_button_bounds,
         cad_demo_warning_filter_code_button_bounds, cad_demo_warning_filter_severity_button_bounds,
@@ -3552,7 +3579,7 @@ mod tests {
         trajectory_open_session_button_bounds, trajectory_verify_button_bounds,
     };
     use crate::pane_registry::pane_specs;
-    use wgpui::Bounds;
+    use wgpui::{Bounds, Point};
 
     #[test]
     fn pane_descriptor_singleton_matches_registry_specs() {
@@ -3951,6 +3978,23 @@ mod tests {
         assert!(top.max_y() <= right.min_y() + 0.001);
         assert!(right.max_x() <= iso.min_x() + 0.001);
         assert!(front.max_y() <= iso.min_y() + 0.001);
+    }
+
+    #[test]
+    fn cad_context_menu_bounds_and_rows_stay_within_content() {
+        let content = Bounds::new(0.0, 0.0, 860.0, 420.0);
+        let menu = cad_demo_context_menu_bounds(content, Point::new(850.0, 410.0), 3);
+        assert!(content.contains(menu.origin));
+        assert!(menu.max_x() <= content.max_x() + 0.001);
+        assert!(menu.max_y() <= content.max_y() + 0.001);
+
+        for index in 0..3 {
+            let row = cad_demo_context_menu_row_bounds(menu, index);
+            assert!(row.origin.x >= menu.origin.x);
+            assert!(row.max_x() <= menu.max_x() + 0.001);
+            assert!(row.origin.y >= menu.origin.y);
+            assert!(row.max_y() <= menu.max_y() + 0.001);
+        }
     }
 
     #[test]
