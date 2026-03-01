@@ -145,6 +145,30 @@ pub fn paint_cad_demo_placeholder_pane(
             ));
             timeline_y += RECEIPT_LINE_HEIGHT;
         }
+
+        if let Some(mesh_id) = pane_state.last_good_mesh_id.as_ref() {
+            let mesh_line = Point::new(viewport_label.x, viewport_label.y + (RECEIPT_LINE_HEIGHT * 5.0));
+            if mesh_line.y + 8.0 <= layout.viewport_bounds.max_y() {
+                paint.scene.draw_text(paint.text.layout(
+                    &format!("last-good mesh: {mesh_id}"),
+                    mesh_line,
+                    9.0,
+                    theme::text::MUTED,
+                ));
+            }
+        }
+
+        if let Some(request_id) = pane_state.pending_rebuild_request_id {
+            let pending_line = Point::new(viewport_label.x, viewport_label.y + (RECEIPT_LINE_HEIGHT * 6.0));
+            if pending_line.y + 8.0 <= layout.viewport_bounds.max_y() {
+                paint.scene.draw_text(paint.text.layout(
+                    &format!("pending rebuild request: #{request_id}"),
+                    pending_line,
+                    9.0,
+                    theme::text::SECONDARY,
+                ));
+            }
+        }
     }
 
     if layout.footer_origin.y + 8.0 <= content_bounds.max_y() {

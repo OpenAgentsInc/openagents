@@ -27,6 +27,7 @@ This receipt is intended for CAD pane telemetry and activity logging.
 
 Desktop integration currently stores a per-cycle receipt summary in `CadDemoPaneState` and mirrors
 it into the activity feed event stream (`source_tag = "cad.eval"`).
+Rebuild compute is dispatched via a background worker and committed asynchronously.
 
 ## Parameter Invalidation
 

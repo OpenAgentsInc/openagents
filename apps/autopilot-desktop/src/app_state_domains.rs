@@ -455,6 +455,10 @@ pub struct CadDemoPaneState {
     pub last_rebuild_receipt: Option<CadRebuildReceiptState>,
     pub rebuild_receipts: Vec<CadRebuildReceiptState>,
     pub eval_cache: openagents_cad::eval::EvalCacheStore,
+    pub rebuild_worker: Option<crate::cad_rebuild_worker::CadBackgroundRebuildWorker>,
+    pub next_rebuild_request_id: u64,
+    pub pending_rebuild_request_id: Option<u64>,
+    pub last_good_mesh_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -490,6 +494,10 @@ impl Default for CadDemoPaneState {
             rebuild_receipts: Vec::new(),
             eval_cache: openagents_cad::eval::EvalCacheStore::new(128)
                 .expect("cad eval cache capacity should be valid"),
+            rebuild_worker: None,
+            next_rebuild_request_id: 1,
+            pending_rebuild_request_id: None,
+            last_good_mesh_id: None,
         }
     }
 }
