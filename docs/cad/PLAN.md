@@ -186,6 +186,7 @@ Decision criteria to keep objective:
 - input reducer scaffold document: `docs/cad/CAD_INPUT_SCAFFOLD.md`
 - params store document: `docs/cad/CAD_PARAMS.md`
 - feature ops document: `docs/cad/CAD_FEATURE_OPS.md`
+- finishing operations document: `docs/cad/CAD_FINISHING_OPS.md`
 - sketch constraint solver document: `docs/cad/CAD_SKETCH_CONSTRAINTS.md`
 - sketch-to-feature operations document: `docs/cad/CAD_SKETCH_FEATURE_OPS.md`
 - rack template generator document: `docs/cad/CAD_RACK_TEMPLATE.md`
