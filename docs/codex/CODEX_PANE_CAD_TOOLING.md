@@ -4,6 +4,11 @@
 
 This document defines how Codex can control OpenAgents desktop panes and CAD state through structured tool calls.
 
+See also:
+
+- [`README.md`](/Users/christopherdavid/code/openagents/docs/codex/README.md)
+- [`CAD_CHAT_BUILD_RELEASE_RUNBOOK.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_RELEASE_RUNBOOK.md)
+
 The runtime bridge lives in:
 
 - `apps/autopilot-desktop/src/input/tool_bridge.rs`
@@ -41,6 +46,7 @@ Common failure codes:
 - `OA-CAD-ACTION-UNSUPPORTED`
 - `OA-CAD-ACTION-MISSING-INDEX`
 - `OA-CAD-INTENT-MISSING-PAYLOAD`
+- `OA-CAD-INTENT-DISABLED`
 - `OA-CAD-INTENT-PARSE-FAILED`
 - `OA-CAD-INTENT-DISPATCH-FAILED`
 - `OA-CAD-INTENT-REBUILD-ENQUEUE-FAILED`
@@ -258,6 +264,10 @@ Failure response `details` include:
 - `retries`: bounded retry counters (`parse_retry_*` or `dispatch_retry_*`)
 - `fallback`: deterministic next action (`request_clarification` or `safe_abort`) with `remediation_hint`
 - `checkpoint`: current CAD state snapshot for orchestration
+
+Operator rollback flag:
+
+- `OPENAGENTS_CAD_INTENT_TOOL_ENABLED=0` disables `openagents.cad.intent` execution with explicit `OA-CAD-INTENT-DISABLED` responses.
 
 ## Deterministic CAD Chat E2E Harness
 

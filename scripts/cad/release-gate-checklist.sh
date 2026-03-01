@@ -20,6 +20,7 @@ run_check() {
     fi
 
     rm -f "$tmp"
+    printf 'CAD release gate pass (%s): %s\n' "$gate" "$check" >&2
 }
 
 # Gate A: kernel + validity + history determinism.
@@ -77,6 +78,8 @@ run_check D "chat->cad interaction deterministic path" \
     cargo test -p autopilot-desktop follow_up_parameter_edit_interaction_matches_golden_receipts --quiet
 
 # Gate E: engineering overlays, scripted reliability, and budget compliance.
+run_check E "chat-build e2e harness (success + failure)" \
+    cargo test -p autopilot-desktop cad_chat_build_e2e_harness --quiet
 run_check E "step checker + roundtrip fixtures" \
     "$ROOT_DIR/scripts/cad/step-checker-ci.sh"
 run_check E "headless script harness" \
@@ -85,5 +88,7 @@ run_check E "performance budget suite" \
     "$ROOT_DIR/scripts/cad/perf-benchmark-ci.sh"
 run_check E "20 second reliability script" \
     "$ROOT_DIR/scripts/cad/reliability-20s-ci.sh"
+run_check E "chat-build runbook present" \
+    test -f "$ROOT_DIR/docs/codex/CAD_CHAT_BUILD_RELEASE_RUNBOOK.md"
 
 printf 'CAD demo release gates passed (A-E).\n'
