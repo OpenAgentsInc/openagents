@@ -13,6 +13,7 @@ pub enum CadErrorCode {
     QueryFailed,
     ExportFailed,
     InvalidPrimitive,
+    InvalidParameter,
     InvalidPolicy,
     Serialization,
     InvalidFeatureGraph,
@@ -49,6 +50,9 @@ pub enum CadError {
     /// Primitive values failed CAD domain validation.
     #[error("invalid primitive: {reason}")]
     InvalidPrimitive { reason: String },
+    /// Parameter value/name/unit failed validation.
+    #[error("invalid parameter {name}: {reason}")]
+    InvalidParameter { name: String, reason: String },
     /// Invalid CAD policy or tolerance configuration.
     #[error("invalid policy: {reason}")]
     InvalidPolicy { reason: String },
@@ -70,6 +74,7 @@ impl CadError {
             Self::QueryFailed { .. } => CadErrorCode::QueryFailed,
             Self::ExportFailed { .. } => CadErrorCode::ExportFailed,
             Self::InvalidPrimitive { .. } => CadErrorCode::InvalidPrimitive,
+            Self::InvalidParameter { .. } => CadErrorCode::InvalidParameter,
             Self::InvalidPolicy { .. } => CadErrorCode::InvalidPolicy,
             Self::Serialization { .. } => CadErrorCode::Serialization,
             Self::InvalidFeatureGraph { .. } => CadErrorCode::InvalidFeatureGraph,
@@ -87,6 +92,9 @@ impl CadError {
             Self::QueryFailed { .. } => "Verify the selected entity exists in the current model.",
             Self::ExportFailed { .. } => "Retry export or change export format settings.",
             Self::InvalidPrimitive { .. } => "Use positive dimensions above CAD tolerance.",
+            Self::InvalidParameter { .. } => {
+                "Use a valid parameter name, finite value, and compatible unit."
+            }
             Self::InvalidPolicy { .. } => "Provide a positive modeling tolerance.",
             Self::Serialization { .. } => "Inspect document format/version compatibility.",
             Self::InvalidFeatureGraph { .. } => {
@@ -169,6 +177,21 @@ mod tests {
             result,
             Err(CadError::InvalidPolicy {
                 reason: "tolerance must be positive".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn invalid_parameter_error_contract_is_stable() {
+        let result: CadResult<()> = Err(CadError::InvalidParameter {
+            name: "thickness_mm".to_string(),
+            reason: "must be finite".to_string(),
+        });
+        assert_eq!(
+            result,
+            Err(CadError::InvalidParameter {
+                name: "thickness_mm".to_string(),
+                reason: "must be finite".to_string(),
             })
         );
     }
