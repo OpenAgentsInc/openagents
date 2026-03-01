@@ -22,7 +22,7 @@ mod state;
 use anyhow::{Context, Result};
 use app_state::App;
 use winit::application::ApplicationHandler;
-use winit::event::WindowEvent;
+use winit::event::{DeviceEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::WindowId;
 
@@ -55,6 +55,15 @@ impl ApplicationHandler for App {
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         input::handle_window_event(self, event_loop, event);
+    }
+
+    fn device_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _device_id: winit::event::DeviceId,
+        event: DeviceEvent,
+    ) {
+        input::handle_device_event(self, event_loop, event);
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {

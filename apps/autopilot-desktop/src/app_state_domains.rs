@@ -471,6 +471,10 @@ pub struct CadDemoPaneState {
     pub projection_mode: CadProjectionMode,
     pub hotkey_profile: String,
     pub hotkeys: CadHotkeyBindings,
+    pub three_d_mouse_mode: CadThreeDMouseMode,
+    pub three_d_mouse_profile: CadThreeDMouseProfile,
+    pub three_d_mouse_axis_locks: CadThreeDMouseAxisLocks,
+    pub three_d_mouse_event_count: u64,
     pub camera_zoom: f32,
     pub camera_pan_x: f32,
     pub camera_pan_y: f32,
@@ -508,6 +512,152 @@ pub enum CadSnapMode {
     Origin,
     Endpoint,
     Midpoint,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum CadThreeDMouseAxis {
+    X,
+    Y,
+    Z,
+    Rx,
+    Ry,
+    Rz,
+}
+
+impl CadThreeDMouseAxis {
+    pub fn from_motion_axis_id(axis_id: u32) -> Option<Self> {
+        match axis_id {
+            0 => Some(Self::X),
+            1 => Some(Self::Y),
+            2 => Some(Self::Z),
+            3 => Some(Self::Rx),
+            4 => Some(Self::Ry),
+            5 => Some(Self::Rz),
+            _ => None,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::X => "x",
+            Self::Y => "y",
+            Self::Z => "z",
+            Self::Rx => "rx",
+            Self::Ry => "ry",
+            Self::Rz => "rz",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CadThreeDMouseMode {
+    Translate,
+    Rotate,
+}
+
+impl CadThreeDMouseMode {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Translate => Self::Rotate,
+            Self::Rotate => Self::Translate,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Translate => "translate",
+            Self::Rotate => "rotate",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CadThreeDMouseProfile {
+    Precision,
+    Balanced,
+    Fast,
+}
+
+impl CadThreeDMouseProfile {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Precision => Self::Balanced,
+            Self::Balanced => Self::Fast,
+            Self::Fast => Self::Precision,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Precision => "precision",
+            Self::Balanced => "balanced",
+            Self::Fast => "fast",
+        }
+    }
+
+    pub fn scalar(self) -> f32 {
+        match self {
+            Self::Precision => 0.6,
+            Self::Balanced => 1.0,
+            Self::Fast => 1.7,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CadThreeDMouseAxisLocks {
+    pub x: bool,
+    pub y: bool,
+    pub z: bool,
+    pub rx: bool,
+    pub ry: bool,
+    pub rz: bool,
+}
+
+impl Default for CadThreeDMouseAxisLocks {
+    fn default() -> Self {
+        Self {
+            x: false,
+            y: false,
+            z: false,
+            rx: false,
+            ry: false,
+            rz: false,
+        }
+    }
+}
+
+impl CadThreeDMouseAxisLocks {
+    pub fn is_locked(&self, axis: CadThreeDMouseAxis) -> bool {
+        match axis {
+            CadThreeDMouseAxis::X => self.x,
+            CadThreeDMouseAxis::Y => self.y,
+            CadThreeDMouseAxis::Z => self.z,
+            CadThreeDMouseAxis::Rx => self.rx,
+            CadThreeDMouseAxis::Ry => self.ry,
+            CadThreeDMouseAxis::Rz => self.rz,
+        }
+    }
+
+    pub fn toggle(&mut self, axis: CadThreeDMouseAxis) -> bool {
+        let target = match axis {
+            CadThreeDMouseAxis::X => &mut self.x,
+            CadThreeDMouseAxis::Y => &mut self.y,
+            CadThreeDMouseAxis::Z => &mut self.z,
+            CadThreeDMouseAxis::Rx => &mut self.rx,
+            CadThreeDMouseAxis::Ry => &mut self.ry,
+            CadThreeDMouseAxis::Rz => &mut self.rz,
+        };
+        *target = !*target;
+        *target
+    }
+
+    pub fn summary(&self) -> String {
+        format!(
+            "x={} y={} z={} rx={} ry={} rz={}",
+            self.x as u8, self.y as u8, self.z as u8, self.rx as u8, self.ry as u8, self.rz as u8
+        )
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -789,6 +939,10 @@ impl Default for CadDemoPaneState {
             projection_mode: CadProjectionMode::Orthographic,
             hotkey_profile: "default".to_string(),
             hotkeys: CadHotkeyBindings::default(),
+            three_d_mouse_mode: CadThreeDMouseMode::Translate,
+            three_d_mouse_profile: CadThreeDMouseProfile::Balanced,
+            three_d_mouse_axis_locks: CadThreeDMouseAxisLocks::default(),
+            three_d_mouse_event_count: 0,
             camera_zoom: 1.0,
             camera_pan_x: 0.0,
             camera_pan_y: 0.0,
@@ -883,6 +1037,76 @@ impl CadDemoPaneState {
 
     pub fn hotkey_matches(&self, action: CadHotkeyAction, value: &str) -> bool {
         self.hotkeys.key_for(action).eq_ignore_ascii_case(value)
+    }
+
+    pub fn cycle_three_d_mouse_profile(&mut self) {
+        self.three_d_mouse_profile = self.three_d_mouse_profile.next();
+    }
+
+    pub fn toggle_three_d_mouse_mode(&mut self) {
+        self.three_d_mouse_mode = self.three_d_mouse_mode.next();
+    }
+
+    pub fn toggle_three_d_mouse_axis_lock(&mut self, axis: CadThreeDMouseAxis) -> bool {
+        self.three_d_mouse_axis_locks.toggle(axis)
+    }
+
+    pub fn three_d_mouse_status(&self) -> String {
+        if self.three_d_mouse_event_count == 0 {
+            return "absent".to_string();
+        }
+        format!(
+            "events={} mode={} profile={} locks[{}]",
+            self.three_d_mouse_event_count,
+            self.three_d_mouse_mode.label(),
+            self.three_d_mouse_profile.label(),
+            self.three_d_mouse_axis_locks.summary()
+        )
+    }
+
+    pub fn apply_three_d_mouse_motion(&mut self, axis_id: u32, value: f64) -> bool {
+        const DEADZONE: f32 = 0.02;
+        let Some(axis) = CadThreeDMouseAxis::from_motion_axis_id(axis_id) else {
+            return false;
+        };
+        self.three_d_mouse_event_count = self.three_d_mouse_event_count.saturating_add(1);
+        let value = value as f32;
+        if value.abs() < DEADZONE || self.three_d_mouse_axis_locks.is_locked(axis) {
+            return false;
+        }
+        let speed = self.three_d_mouse_profile.scalar();
+        let before = (
+            self.camera_zoom,
+            self.camera_pan_x,
+            self.camera_pan_y,
+            self.camera_orbit_yaw_deg,
+            self.camera_orbit_pitch_deg,
+        );
+
+        match self.three_d_mouse_mode {
+            CadThreeDMouseMode::Translate => match axis {
+                CadThreeDMouseAxis::X => self.pan_camera_by_drag(value * 18.0 * speed, 0.0),
+                CadThreeDMouseAxis::Y => self.pan_camera_by_drag(0.0, value * 18.0 * speed),
+                CadThreeDMouseAxis::Z => self.zoom_camera_by_scroll(value * 26.0 * speed),
+                CadThreeDMouseAxis::Rx | CadThreeDMouseAxis::Ry | CadThreeDMouseAxis::Rz => {}
+            },
+            CadThreeDMouseMode::Rotate => match axis {
+                CadThreeDMouseAxis::Rx => self.orbit_camera_by_drag(value * 20.0 * speed, 0.0),
+                CadThreeDMouseAxis::Ry => self.orbit_camera_by_drag(0.0, value * 20.0 * speed),
+                CadThreeDMouseAxis::Rz => self.orbit_camera_by_drag(value * 10.0 * speed, 0.0),
+                CadThreeDMouseAxis::Z => self.zoom_camera_by_scroll(value * 26.0 * speed),
+                CadThreeDMouseAxis::X | CadThreeDMouseAxis::Y => {}
+            },
+        }
+
+        let after = (
+            self.camera_zoom,
+            self.camera_pan_x,
+            self.camera_pan_y,
+            self.camera_orbit_yaw_deg,
+            self.camera_orbit_pitch_deg,
+        );
+        before != after
     }
 
     pub fn toggle_snap_mode(&mut self, mode: CadSnapMode) -> bool {

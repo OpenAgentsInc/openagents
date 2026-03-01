@@ -11,8 +11,8 @@ use openagents_cad::validity::{
 
 use crate::app_state::{
     ActivityEventDomain, ActivityEventRow, CadCameraViewSnap, CadDemoPaneState,
-    CadDemoWarningState, CadRebuildReceiptState, CadSnapMode, CadTimelineRowState, PaneLoadState,
-    RenderState,
+    CadDemoWarningState, CadRebuildReceiptState, CadSnapMode, CadThreeDMouseAxis,
+    CadTimelineRowState, PaneLoadState, RenderState,
 };
 use crate::cad_rebuild_worker::{
     CadBackgroundRebuildWorker, CadRebuildCompleted, CadRebuildRequest, CadRebuildResponse,
@@ -128,6 +128,78 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
                 true
             }
         },
+        CadDemoPaneAction::ToggleThreeDMouseMode => {
+            state.toggle_three_d_mouse_mode();
+            state.last_action = Some(format!(
+                "CAD 3D mouse mode -> {} ({})",
+                state.three_d_mouse_mode.label(),
+                state.three_d_mouse_status()
+            ));
+            true
+        }
+        CadDemoPaneAction::CycleThreeDMouseProfile => {
+            state.cycle_three_d_mouse_profile();
+            state.last_action = Some(format!(
+                "CAD 3D mouse profile -> {} ({})",
+                state.three_d_mouse_profile.label(),
+                state.three_d_mouse_status()
+            ));
+            true
+        }
+        CadDemoPaneAction::ToggleThreeDMouseLockX => {
+            let enabled = state.toggle_three_d_mouse_axis_lock(CadThreeDMouseAxis::X);
+            state.last_action = Some(format!(
+                "CAD 3D mouse lock x -> {} ({})",
+                if enabled { "on" } else { "off" },
+                state.three_d_mouse_status()
+            ));
+            true
+        }
+        CadDemoPaneAction::ToggleThreeDMouseLockY => {
+            let enabled = state.toggle_three_d_mouse_axis_lock(CadThreeDMouseAxis::Y);
+            state.last_action = Some(format!(
+                "CAD 3D mouse lock y -> {} ({})",
+                if enabled { "on" } else { "off" },
+                state.three_d_mouse_status()
+            ));
+            true
+        }
+        CadDemoPaneAction::ToggleThreeDMouseLockZ => {
+            let enabled = state.toggle_three_d_mouse_axis_lock(CadThreeDMouseAxis::Z);
+            state.last_action = Some(format!(
+                "CAD 3D mouse lock z -> {} ({})",
+                if enabled { "on" } else { "off" },
+                state.three_d_mouse_status()
+            ));
+            true
+        }
+        CadDemoPaneAction::ToggleThreeDMouseLockRx => {
+            let enabled = state.toggle_three_d_mouse_axis_lock(CadThreeDMouseAxis::Rx);
+            state.last_action = Some(format!(
+                "CAD 3D mouse lock rx -> {} ({})",
+                if enabled { "on" } else { "off" },
+                state.three_d_mouse_status()
+            ));
+            true
+        }
+        CadDemoPaneAction::ToggleThreeDMouseLockRy => {
+            let enabled = state.toggle_three_d_mouse_axis_lock(CadThreeDMouseAxis::Ry);
+            state.last_action = Some(format!(
+                "CAD 3D mouse lock ry -> {} ({})",
+                if enabled { "on" } else { "off" },
+                state.three_d_mouse_status()
+            ));
+            true
+        }
+        CadDemoPaneAction::ToggleThreeDMouseLockRz => {
+            let enabled = state.toggle_three_d_mouse_axis_lock(CadThreeDMouseAxis::Rz);
+            state.last_action = Some(format!(
+                "CAD 3D mouse lock rz -> {} ({})",
+                if enabled { "on" } else { "off" },
+                state.three_d_mouse_status()
+            ));
+            true
+        }
         CadDemoPaneAction::SnapViewTop => {
             state.snap_camera_to_view(CadCameraViewSnap::Top);
             state.last_action = Some("CAD camera snap -> top".to_string());
@@ -1069,6 +1141,34 @@ mod tests {
         ));
         assert_eq!(state.hotkey_profile, "default");
         assert_eq!(state.hotkeys.snap_top, "t");
+    }
+
+    #[test]
+    fn three_d_mouse_profile_mode_and_axis_locks_toggle_deterministically() {
+        let mut state = CadDemoPaneState::default();
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::ToggleThreeDMouseMode
+        ));
+        assert_eq!(state.three_d_mouse_mode.label(), "rotate");
+
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::CycleThreeDMouseProfile
+        ));
+        assert_eq!(state.three_d_mouse_profile.label(), "fast");
+
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::ToggleThreeDMouseLockRx
+        ));
+        assert!(state.three_d_mouse_axis_locks.rx);
+
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::ToggleThreeDMouseLockRx
+        ));
+        assert!(!state.three_d_mouse_axis_locks.rx);
     }
 
     #[test]

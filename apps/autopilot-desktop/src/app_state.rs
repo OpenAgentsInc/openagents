@@ -2767,11 +2767,12 @@ mod tests {
         ActivityFeedState, AgentNetworkSimulationPaneState, AlertDomain, AlertLifecycle,
         AlertsRecoveryState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole,
         CadCameraViewSnap, CadDemoPaneState, CadHiddenLineMode, CadHotkeyAction, CadProjectionMode,
-        CadSnapMode, EarningsScoreboardState, JobHistoryState, JobHistoryStatus,
-        JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest,
-        JobInboxState, JobInboxValidation, JobLifecycleStage, NetworkRequestStatus,
-        NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderRuntimeState,
-        RecoveryAlertRow, RelayConnectionRow, RelayConnectionStatus, RelayConnectionsState,
+        CadSnapMode, CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile,
+        EarningsScoreboardState, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
+        JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest, JobInboxState,
+        JobInboxValidation, JobLifecycleStage, NetworkRequestStatus, NetworkRequestSubmission,
+        NetworkRequestsState, NostrSecretState, ProviderRuntimeState, RecoveryAlertRow,
+        RelayConnectionRow, RelayConnectionStatus, RelayConnectionsState,
         RelaySecuritySimulationPaneState, SettingsState, SparkPaneState,
         StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
         SyncHealthState, SyncRecoveryPhase, TreasuryExchangeSimulationPaneState,
@@ -3763,6 +3764,9 @@ mod tests {
         assert_eq!(state.hotkey_profile, "default");
         assert_eq!(state.hotkeys.snap_top, "t");
         assert_eq!(state.hotkeys.toggle_projection, "p");
+        assert_eq!(state.three_d_mouse_mode, CadThreeDMouseMode::Translate);
+        assert_eq!(state.three_d_mouse_profile, CadThreeDMouseProfile::Balanced);
+        assert_eq!(state.three_d_mouse_status(), "absent");
         assert_eq!(state.camera_zoom, 1.0);
         assert_eq!(state.camera_pan_x, 0.0);
         assert_eq!(state.camera_pan_y, 0.0);
@@ -3868,5 +3872,30 @@ mod tests {
 
         assert!(state.remap_hotkey(CadHotkeyAction::SnapFront, "2").is_ok());
         assert!(state.hotkey_matches(CadHotkeyAction::SnapFront, "2"));
+    }
+
+    #[test]
+    fn cad_three_d_mouse_mapping_modes_profiles_and_locks_are_deterministic() {
+        let mut state = CadDemoPaneState::default();
+        assert_eq!(state.three_d_mouse_status(), "absent");
+        assert!(state.apply_three_d_mouse_motion(0, 0.25));
+        assert!(state.camera_pan_x > 0.0);
+
+        state.toggle_three_d_mouse_mode();
+        assert_eq!(state.three_d_mouse_mode, CadThreeDMouseMode::Rotate);
+        let yaw_before = state.camera_orbit_yaw_deg;
+        assert!(state.apply_three_d_mouse_motion(3, 0.2));
+        assert!(state.camera_orbit_yaw_deg > yaw_before);
+
+        state.cycle_three_d_mouse_profile();
+        assert_eq!(state.three_d_mouse_profile, CadThreeDMouseProfile::Fast);
+        let zoom_before = state.camera_zoom;
+        assert!(state.apply_three_d_mouse_motion(2, -0.35));
+        assert!(state.camera_zoom > zoom_before);
+
+        assert!(state.toggle_three_d_mouse_axis_lock(CadThreeDMouseAxis::Rx));
+        let yaw_locked = state.camera_orbit_yaw_deg;
+        assert!(!state.apply_three_d_mouse_motion(3, 0.4));
+        assert_eq!(state.camera_orbit_yaw_deg, yaw_locked);
     }
 }

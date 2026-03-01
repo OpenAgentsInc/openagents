@@ -20,7 +20,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use wgpui::clipboard::copy_to_clipboard;
 use wgpui::{Bounds, Component, InputEvent, Key, Modifiers, MouseButton, NamedKey, Point};
-use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
+use winit::event::{DeviceEvent, ElementState, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow};
 use winit::keyboard::{
     Key as WinitLogicalKey, KeyCode, ModifiersState, NamedKey as WinitNamedKey, PhysicalKey,
@@ -323,6 +323,34 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
         }
         _ => {}
     }
+}
+
+pub fn handle_device_event(app: &mut App, _event_loop: &ActiveEventLoop, event: DeviceEvent) {
+    let Some(state) = &mut app.state else {
+        return;
+    };
+    let DeviceEvent::Motion { axis, value } = event else {
+        return;
+    };
+    if !state
+        .panes
+        .iter()
+        .any(|pane| pane.kind == PaneKind::CadDemo)
+    {
+        return;
+    }
+    let previous_events = state.cad_demo.three_d_mouse_event_count;
+    let changed = state.cad_demo.apply_three_d_mouse_motion(axis, value);
+    if !changed && state.cad_demo.three_d_mouse_event_count == previous_events {
+        return;
+    }
+    state.cad_demo.last_action = Some(format!(
+        "CAD 3D mouse axis={} value={:.3} -> {}",
+        axis,
+        value,
+        state.cad_demo.three_d_mouse_status()
+    ));
+    state.window.request_redraw();
 }
 
 pub fn handle_about_to_wait(app: &mut App, event_loop: &ActiveEventLoop) {
@@ -1705,8 +1733,8 @@ mod tests {
             .map(|spec| format!("{:?}", spec.action))
             .collect();
 
-        assert_eq!(
-            hotkey_actions, palette_actions,
+        assert!(
+            hotkey_actions.is_subset(&palette_actions),
             "every CAD hotkey action must have a command palette equivalent"
         );
     }
