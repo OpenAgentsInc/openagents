@@ -20,6 +20,12 @@ This document tracks feature-op contracts built on the CAD kernel adapter path.
   - rejects invalid scale components (`<= 0`)
   - deterministic matrix composition (`compose_transform_sequence`)
   - deterministic output ordering based on input op order
+- `CutHoleFeatureOp` (`crates/cad/src/features.rs`)
+  - subtraction-style cylindrical cut using radius/depth parameters
+  - resolves cutter primitive through `ParameterStore`
+  - returns either:
+    - valid `FeatureOpResult` (when boolean backend succeeds), or
+    - structured `CadError::EvalFailed` (when boolean backend fails)
 
 ## Golden Hash Fixtures
 
