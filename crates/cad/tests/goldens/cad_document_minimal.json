@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "document_id": "doc-minimal",
+  "revision": 1,
+  "units": "mm",
+  "metadata": {
+    "material": "6061-T6",
+    "title": "Mac Studio Rack"
+  },
+  "feature_ids": [
+    "feature.base"
+  ]
+}
