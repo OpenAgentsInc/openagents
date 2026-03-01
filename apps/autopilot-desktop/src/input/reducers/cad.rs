@@ -1043,18 +1043,18 @@ fn apply_rebuild_response(
                         0,
                         0,
                     );
+                    let _ = state.fail_agent_build_session(
+                        "cad.build.rebuild.failed",
+                        format!(
+                            "background rebuild failed for trigger {}: {}",
+                            failed.trigger, failed.error
+                        ),
+                        Some(
+                            "inspect model warnings and retry CAD intent with simpler parameters"
+                                .to_string(),
+                        ),
+                    );
                 }
-                let _ = state.fail_agent_build_session(
-                    "cad.build.rebuild.failed",
-                    format!(
-                        "background rebuild failed for trigger {}: {}",
-                        failed.trigger, failed.error
-                    ),
-                    Some(
-                        "inspect model warnings and retry CAD intent with simpler parameters"
-                            .to_string(),
-                    ),
-                );
             }
             None
         }
@@ -2404,6 +2404,57 @@ mod tests {
         format!("{root}/tests/goldens/cad_followup_parameter_edit_interaction.json")
     }
 
+    fn cad_chat_build_success_fixture_path() -> String {
+        let root = env!("CARGO_MANIFEST_DIR");
+        format!("{root}/tests/goldens/cad_chat_build_e2e_success_snapshot.json")
+    }
+
+    fn cad_chat_build_failure_fixture_path() -> String {
+        let root = env!("CARGO_MANIFEST_DIR");
+        format!("{root}/tests/goldens/cad_chat_build_e2e_failure_snapshot.json")
+    }
+
+    fn assert_or_write_report_fixture(path: &str, report: &Value, label: &str) {
+        let actual_json =
+            serde_json::to_string_pretty(report).expect("fixture report should serialize");
+        if std::env::var("CAD_UPDATE_GOLDENS").as_deref() == Ok("1") {
+            if let Some(parent) = std::path::Path::new(path).parent() {
+                fs::create_dir_all(parent).expect("fixture parent directory should exist");
+            }
+            fs::write(path, actual_json).expect("fixture should write");
+            return;
+        }
+        let expected_json = fs::read_to_string(path).unwrap_or_else(|error| {
+            panic!(
+                "missing {label} fixture {path}: {error}\nset CAD_UPDATE_GOLDENS=1 to regenerate.\nactual snapshot:\n{actual_json}"
+            )
+        });
+        let expected =
+            serde_json::from_str::<Value>(&expected_json).expect("fixture should parse as JSON");
+        if expected != *report {
+            panic!(
+                "{label} snapshot mismatch against {path}\nactual snapshot:\n{actual_json}"
+            );
+        }
+    }
+
+    fn normalize_report_timing_for_golden(report: Value) -> Value {
+        let mut report = report;
+        if let Some(steps) = report.get_mut("steps").and_then(Value::as_array_mut) {
+            for step in steps {
+                if let Value::Object(step_map) = step {
+                    step_map.insert("duration_ms".to_string(), json!(0));
+                }
+            }
+        }
+        if let Some(final_obj) = report.get_mut("final").and_then(Value::as_object_mut) {
+            if let Some(timing_obj) = final_obj.get_mut("timing").and_then(Value::as_object_mut) {
+                timing_obj.insert("total_duration_ms".to_string(), json!(0));
+            }
+        }
+        report
+    }
+
     fn interaction_snapshot(
         state: &CadDemoPaneState,
         prompt: &str,
@@ -2772,6 +2823,148 @@ mod tests {
         })
     }
 
+    fn progress_block_snapshot(state: &CadDemoPaneState) -> Value {
+        match super::cad_progress_block_from_state(state) {
+            Some((turn_id, block)) => json!({
+                "turn_id": turn_id,
+                "status": block.status,
+                "rows": block.rows.iter().map(|row| {
+                    json!({
+                        "label": row.label,
+                        "value": row.value,
+                        "tone": row.tone,
+                    })
+                }).collect::<Vec<_>>(),
+            }),
+            None => json!({
+                "turn_id": null,
+                "status": null,
+                "rows": [],
+            }),
+        }
+    }
+
+    fn run_headless_cad_tool_call_step(
+        state: &mut CadDemoPaneState,
+        thread_id: &str,
+        turn_id: &str,
+        payload: &str,
+        wait_for_rebuild: bool,
+    ) -> Value {
+        state
+            .begin_agent_build_session(thread_id, turn_id)
+            .expect("tool-call harness should start CAD build session");
+        state
+            .transition_agent_build_phase(
+                CadBuildSessionPhase::Applying,
+                "cad.build.applying.start",
+                format!("tool=openagents.cad.intent turn_id={turn_id}"),
+            )
+            .expect("planning -> applying should be valid");
+
+        let parsed = match parse_cad_intent_json(payload) {
+            Ok(intent) => intent,
+            Err(error) => {
+                state.record_agent_build_tool_result("OA-CAD-INTENT-PARSE-FAILED", false, &error.message);
+                state.record_agent_build_failure_metric(CadBuildFailureClass::IntentParseValidation);
+                state.set_agent_build_failure_context(CadBuildFailureClass::IntentParseValidation, 0, 1);
+                let _ = state.fail_agent_build_session(
+                    "cad.build.intent.parse_failed",
+                    format!("intent parse failed {}: {}", error.code, error.message),
+                    Some("retry with explicit intent_json matching CadIntent schema".to_string()),
+                );
+                return json!({
+                    "status": "rejected_parse",
+                    "error_code": error.code,
+                    "error_message": error.message,
+                    "progress": progress_block_snapshot(state),
+                });
+            }
+        };
+
+        match state.apply_chat_intent_for_thread(thread_id, &parsed) {
+            Ok(receipt) => {
+                state.record_agent_build_tool_result("OA-CAD-INTENT-OK", true, "intent applied");
+                let mut rebuild_status = "not_required".to_string();
+                let mut trigger = None::<String>;
+                if let Some(rebuild_trigger) =
+                    super::rebuild_trigger_for_chat_intent(&parsed, Some("ai-intent"))
+                {
+                    trigger = Some(rebuild_trigger.clone());
+                    if let Err(error) = enqueue_rebuild_cycle(state, rebuild_trigger.as_str()) {
+                        state.record_agent_build_failure_metric(CadBuildFailureClass::DispatchRebuild);
+                        state.set_agent_build_failure_context(CadBuildFailureClass::DispatchRebuild, 1, 1);
+                        let _ = state.fail_agent_build_session(
+                            "cad.build.rebuild.enqueue_failed",
+                            format!("failed to enqueue rebuild trigger {}: {}", rebuild_trigger, error),
+                            Some("retry CAD turn once rebuild worker is healthy".to_string()),
+                        );
+                        rebuild_status = "enqueue_failed".to_string();
+                    } else {
+                        state
+                            .transition_agent_build_phase(
+                                CadBuildSessionPhase::Rebuilding,
+                                "cad.build.rebuilding.wait",
+                                format!(
+                                    "waiting for request_id={}",
+                                    state.pending_rebuild_request_id.unwrap_or(0)
+                                ),
+                            )
+                            .expect("applying -> rebuilding should be valid");
+                        rebuild_status = if wait_for_rebuild {
+                            wait_for_receipt(state);
+                            "committed".to_string()
+                        } else {
+                            "pending".to_string()
+                        };
+                    }
+                } else {
+                    state
+                        .transition_agent_build_phase(
+                            CadBuildSessionPhase::Summarizing,
+                            "cad.build.summarizing.start",
+                            "tool applied without queued rebuild".to_string(),
+                        )
+                        .expect("applying -> summarizing should be valid");
+                    state
+                        .complete_agent_build_session(format!(
+                            "cad intent applied without rebuild rev={}",
+                            receipt.state_revision
+                        ))
+                        .expect("summarizing -> done should be valid");
+                }
+
+                json!({
+                    "status": "completed",
+                    "tool": "openagents.cad.intent",
+                    "turn_id": turn_id,
+                    "intent": parsed.intent_name(),
+                    "state_revision": receipt.state_revision,
+                    "rebuild_trigger": trigger,
+                    "rebuild_status": rebuild_status,
+                    "has_mesh_payload": state.last_good_mesh_payload.is_some(),
+                    "pending_rebuild_request_id": state.pending_rebuild_request_id,
+                    "progress": progress_block_snapshot(state),
+                })
+            }
+            Err(error) => {
+                state.record_agent_build_tool_result("OA-CAD-INTENT-DISPATCH-FAILED", false, &error.to_string());
+                state.record_agent_build_failure_metric(CadBuildFailureClass::DispatchRebuild);
+                state.set_agent_build_failure_context(CadBuildFailureClass::DispatchRebuild, 0, 1);
+                let _ = state.fail_agent_build_session(
+                    "cad.build.dispatch.failed",
+                    format!("dispatch failed: {}", error),
+                    Some("retry with a narrower CAD intent payload".to_string()),
+                );
+                json!({
+                    "status": "rejected_dispatch",
+                    "error": error.to_string(),
+                    "progress": progress_block_snapshot(state),
+                })
+            }
+        }
+    }
+
     fn execute_headless_cad_script_fixture(name: &str) -> (CadDemoPaneState, Value) {
         let script = load_script_fixture(name);
         let root = required_object(&script, "script");
@@ -2806,6 +2999,24 @@ mod tests {
             let step_started = Instant::now();
 
             let result = match kind.as_str() {
+                "cad_tool_call_intent" => {
+                    let payload = required_str(step, "payload", &step_path);
+                    let turn_id = step
+                        .get("turn_id")
+                        .and_then(Value::as_str)
+                        .unwrap_or("turn.cad-script");
+                    let wait_for_rebuild = step
+                        .get("wait_for_rebuild")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(true);
+                    run_headless_cad_tool_call_step(
+                        &mut state,
+                        &thread_id,
+                        turn_id,
+                        payload.as_str(),
+                        wait_for_rebuild,
+                    )
+                }
                 "intent_json" => {
                     let payload = required_str(step, "payload", &step_path);
                     match parse_cad_intent_json(&payload) {
@@ -3042,12 +3253,18 @@ mod tests {
         if let Some(expected) = root.get("expect") {
             assert_json_subset(expected, &final_snapshot, "script.expect");
         }
+        let tool_calls = step_reports
+            .iter()
+            .filter(|step| step.get("kind").and_then(Value::as_str) == Some("cad_tool_call_intent"))
+            .map(|step| step.get("result").cloned().unwrap_or_else(|| json!({})))
+            .collect::<Vec<_>>();
 
         let report = json!({
             "script_id": script_id,
             "seed": seed,
             "thread_id": thread_id,
             "steps": step_reports,
+            "tool_calls": tool_calls,
             "final": final_snapshot,
         });
         (state, report)
@@ -3943,6 +4160,46 @@ mod tests {
                 .unwrap_or_default()
                 >= 1,
             "failure-path script should preserve critical warning coverage"
+        );
+    }
+
+    #[test]
+    fn cad_chat_build_e2e_harness_success_matches_golden() {
+        let report = normalize_report_timing_for_golden(run_headless_cad_script_fixture(
+            "cad_chat_build_e2e_success_script.json",
+        ));
+        assert_eq!(
+            report
+                .get("tool_calls")
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(2),
+            "success fixture should execute two deterministic CAD tool calls"
+        );
+        assert_or_write_report_fixture(
+            &cad_chat_build_success_fixture_path(),
+            &report,
+            "cad_chat_build_e2e_success",
+        );
+    }
+
+    #[test]
+    fn cad_chat_build_e2e_harness_failure_matches_golden() {
+        let report = normalize_report_timing_for_golden(run_headless_cad_script_fixture(
+            "cad_chat_build_e2e_failure_script.json",
+        ));
+        assert_eq!(
+            report
+                .get("tool_calls")
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(1),
+            "failure fixture should execute one deterministic CAD tool call"
+        );
+        assert_or_write_report_fixture(
+            &cad_chat_build_failure_fixture_path(),
+            &report,
+            "cad_chat_build_e2e_failure",
         );
     }
 

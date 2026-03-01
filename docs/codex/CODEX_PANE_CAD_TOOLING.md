@@ -259,6 +259,32 @@ Failure response `details` include:
 - `fallback`: deterministic next action (`request_clarification` or `safe_abort`) with `remediation_hint`
 - `checkpoint`: current CAD state snapshot for orchestration
 
+## Deterministic CAD Chat E2E Harness
+
+Harness inputs:
+
+- `apps/autopilot-desktop/tests/scripts/cad_chat_build_e2e_success_script.json`
+- `apps/autopilot-desktop/tests/scripts/cad_chat_build_e2e_failure_script.json`
+
+Golden snapshots:
+
+- `apps/autopilot-desktop/tests/goldens/cad_chat_build_e2e_success_snapshot.json`
+- `apps/autopilot-desktop/tests/goldens/cad_chat_build_e2e_failure_snapshot.json`
+
+Local run commands:
+
+```bash
+cargo test -p autopilot-desktop cad_chat_build_e2e_harness -- --nocapture
+```
+
+Golden refresh (only when intentional contract changes occur):
+
+```bash
+CAD_UPDATE_GOLDENS=1 cargo test -p autopilot-desktop cad_chat_build_e2e_harness -- --nocapture
+```
+
+The existing `autopilot-desktop` reliability test lane executes these tests through normal test discovery (same crate/unit test path as the CAD release gate checks).
+
 ## `openagents.cad.action`
 
 Args:
