@@ -1,0 +1,18 @@
+{
+  "header": {
+    "format": "apcad",
+    "version": 1,
+    "canonical_unit": "mm"
+  },
+  "document_id": "doc-minimal",
+  "stable_ids": {
+    "feature.base": "sid-001"
+  },
+  "metadata": {
+    "material": "6061-T6",
+    "title": "Mac Studio Rack"
+  },
+  "analysis_cache": {
+    "weight_kg": "2.71"
+  }
+}

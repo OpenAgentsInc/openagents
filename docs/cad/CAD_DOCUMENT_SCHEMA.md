@@ -27,6 +27,8 @@ Fields:
 
 - `crates/cad/tests/goldens/cad_document_empty.json`
 - `crates/cad/tests/goldens/cad_document_minimal.json`
+- `crates/cad/tests/goldens/apcad_envelope_empty.json`
+- `crates/cad/tests/goldens/apcad_envelope_single_feature.json`
 
 ## Code References
 

@@ -1,0 +1,11 @@
+{
+  "header": {
+    "format": "apcad",
+    "version": 1,
+    "canonical_unit": "mm"
+  },
+  "document_id": "doc-empty",
+  "stable_ids": {},
+  "metadata": {},
+  "analysis_cache": null
+}
