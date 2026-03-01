@@ -3946,11 +3946,13 @@ mod tests {
         assert!(state.set_active_variant_tile(0));
         state.orbit_camera_by_drag(12.0, -4.0);
         state.set_focused_geometry_for_active_variant(Some("face.front".to_string()));
+        state.set_hovered_geometry_for_active_variant(Some("face.front.hover".to_string()));
 
         assert!(state.set_active_variant_tile(1));
         let tile1_before = state.camera_orbit_yaw_deg;
         state.orbit_camera_by_drag(-18.0, 6.0);
         state.set_focused_geometry_for_active_variant(Some("edge.rim".to_string()));
+        state.set_hovered_geometry_for_active_variant(Some("edge.rim.hover".to_string()));
         assert_ne!(state.camera_orbit_yaw_deg, tile1_before);
 
         assert!(state.set_active_variant_tile(0));
@@ -3959,6 +3961,11 @@ mod tests {
             Some("face.front"),
             "tile 0 selection should persist"
         );
+        assert_eq!(
+            state.hovered_geometry_ref.as_deref(),
+            Some("face.front.hover"),
+            "tile 0 hover should persist"
+        );
         let yaw_tile0 = state.camera_orbit_yaw_deg;
 
         assert!(state.set_active_variant_tile(1));
@@ -3966,6 +3973,11 @@ mod tests {
             state.focused_geometry_ref.as_deref(),
             Some("edge.rim"),
             "tile 1 selection should persist"
+        );
+        assert_eq!(
+            state.hovered_geometry_ref.as_deref(),
+            Some("edge.rim.hover"),
+            "tile 1 hover should persist"
         );
         assert_ne!(state.camera_orbit_yaw_deg, yaw_tile0);
     }

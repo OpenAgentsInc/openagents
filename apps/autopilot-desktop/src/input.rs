@@ -15,6 +15,7 @@ use codex_client::{
     ToolRequestUserInputResponse, TurnStartParams, UserInput, WindowsSandboxSetupStartParams,
 };
 use nostr::regenerate_identity;
+use openagents_cad::contracts::CadSelectionKind;
 use openagents_cad::query::{
     CadPickCameraPose, CadPickEntityKind, CadPickProjectionMode, CadPickQuery, CadPickViewport,
     pick_mesh_hit,
@@ -428,6 +429,9 @@ fn dispatch_mouse_move(state: &mut crate::app_state::RenderState, point: Point) 
 
     handled = PaneController::update_drag(state, point);
     handled |= update_cad_camera_drag(state, point);
+    if state.cad_camera_drag_state.is_none() {
+        handled |= update_cad_hover_target(state, point);
+    }
     let event = InputEvent::MouseMove {
         x: point.x,
         y: point.y,
@@ -517,10 +521,14 @@ fn dispatch_mouse_up(
     };
     handled |= context_menu_handled;
     if !camera_drag_consumed_click && !context_menu_handled {
-        let snap_preview_handled = handle_cad_snap_preview_click(state, point, event);
-        handled |= snap_preview_handled;
-        if !snap_preview_handled {
-            handled |= dispatch_pane_actions(state, point);
+        let cad_selection_handled = handle_cad_selection_click(state, point, event);
+        handled |= cad_selection_handled;
+        if !cad_selection_handled {
+            let snap_preview_handled = handle_cad_snap_preview_click(state, point, event);
+            handled |= snap_preview_handled;
+            if !snap_preview_handled {
+                handled |= dispatch_pane_actions(state, point);
+            }
         }
     }
     handled |= state
@@ -529,6 +537,156 @@ fn dispatch_mouse_up(
         .is_handled();
     handled |= process_hotbar_clicks(state);
     handled
+}
+
+#[derive(Clone, Debug)]
+struct CadTilePick {
+    tile_index: usize,
+    kind: CadPickEntityKind,
+    entity_id: String,
+}
+
+fn topmost_cad_content_bounds(state: &crate::app_state::RenderState) -> Option<Bounds> {
+    state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == PaneKind::CadDemo)
+        .max_by_key(|pane| pane.z_index)
+        .map(|pane| pane_content_bounds(pane.bounds))
+}
+
+fn cad_variant_tile_at_point(
+    state: &crate::app_state::RenderState,
+    point: Point,
+) -> Option<(usize, Bounds)> {
+    let content_bounds = topmost_cad_content_bounds(state)?;
+    if !content_bounds.contains(point) {
+        return None;
+    }
+    let tile_index = cad_pane::variant_tile_index_at_point(content_bounds, point)?;
+    let viewport = cad_pane::variant_tile_bounds(content_bounds, tile_index);
+    Some((tile_index, viewport))
+}
+
+fn cad_pick_at_point(state: &crate::app_state::RenderState, point: Point) -> Option<CadTilePick> {
+    let (tile_index, viewport_bounds) = cad_variant_tile_at_point(state, point)?;
+    let tile_view = state.cad_demo.variant_viewport(tile_index)?;
+    let payload = state.cad_demo.last_good_mesh_payload.as_ref()?;
+    let pick_query = CadPickQuery {
+        viewport: CadPickViewport {
+            origin_px: [viewport_bounds.origin.x, viewport_bounds.origin.y],
+            size_px: [viewport_bounds.size.width, viewport_bounds.size.height],
+        },
+        camera: CadPickCameraPose {
+            projection_mode: match state.cad_demo.projection_mode {
+                crate::app_state::CadProjectionMode::Orthographic => {
+                    CadPickProjectionMode::Orthographic
+                }
+                crate::app_state::CadProjectionMode::Perspective => {
+                    CadPickProjectionMode::Perspective
+                }
+            },
+            zoom: tile_view.camera_zoom,
+            pan_x: tile_view.camera_pan_x,
+            pan_y: tile_view.camera_pan_y,
+            orbit_yaw_deg: tile_view.camera_orbit_yaw_deg,
+            orbit_pitch_deg: tile_view.camera_orbit_pitch_deg,
+        },
+        point_px: [point.x, point.y],
+        tolerance_px: 0.0,
+    };
+    let hit = pick_mesh_hit(payload, pick_query)?;
+    Some(CadTilePick {
+        tile_index,
+        kind: hit.kind,
+        entity_id: hit.entity_id,
+    })
+}
+
+fn update_cad_hover_target(state: &mut crate::app_state::RenderState, point: Point) -> bool {
+    if state.cad_demo.context_menu.is_open {
+        return state
+            .cad_demo
+            .set_hovered_geometry_for_tile_focus(None, None);
+    }
+
+    let Some((tile_index, _)) = cad_variant_tile_at_point(state, point) else {
+        return state
+            .cad_demo
+            .set_hovered_geometry_for_tile_focus(None, None);
+    };
+    let hovered = cad_pick_at_point(state, point).map(|pick| format!("cad://{}", pick.entity_id));
+    state
+        .cad_demo
+        .set_hovered_geometry_for_tile_focus(Some(tile_index), hovered)
+}
+
+fn cad_pick_kind_to_selection_kind(kind: CadPickEntityKind) -> CadSelectionKind {
+    match kind {
+        CadPickEntityKind::Body => CadSelectionKind::Body,
+        CadPickEntityKind::Face => CadSelectionKind::Face,
+        CadPickEntityKind::Edge => CadSelectionKind::Edge,
+    }
+}
+
+fn cad_pick_kind_label(kind: CadPickEntityKind) -> &'static str {
+    match kind {
+        CadPickEntityKind::Body => "body",
+        CadPickEntityKind::Face => "face",
+        CadPickEntityKind::Edge => "edge",
+    }
+}
+
+fn handle_cad_selection_click(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+    event: &InputEvent,
+) -> bool {
+    let InputEvent::MouseUp { button, .. } = event else {
+        return false;
+    };
+    if *button != MouseButton::Left || state.cad_demo.context_menu.is_open {
+        return false;
+    }
+    if state.cad_demo.snap_toggles.grid
+        || state.cad_demo.snap_toggles.origin
+        || state.cad_demo.snap_toggles.endpoint
+        || state.cad_demo.snap_toggles.midpoint
+    {
+        return false;
+    }
+
+    let Some((tile_index, _)) = cad_variant_tile_at_point(state, point) else {
+        return false;
+    };
+    let _ = state.cad_demo.set_active_variant_tile(tile_index);
+
+    let Some(pick) = cad_pick_at_point(state, point) else {
+        return state
+            .cad_demo
+            .set_hovered_geometry_for_tile_focus(Some(tile_index), None);
+    };
+
+    let selection_kind = cad_pick_kind_to_selection_kind(pick.kind);
+    let _ = state.cad_demo.selection_store.set_primary(
+        selection_kind,
+        pick.entity_id.clone(),
+        Some(pick.entity_id.clone()),
+    );
+    let selected_ref = format!("cad://{}", pick.entity_id);
+    state
+        .cad_demo
+        .set_focused_geometry_for_active_variant(Some(selected_ref.clone()));
+    state
+        .cad_demo
+        .set_hovered_geometry_for_tile_focus(Some(pick.tile_index), Some(selected_ref.clone()));
+    state.cad_demo.last_action = Some(format!(
+        "CAD select tile={} {} ({})",
+        pick.tile_index + 1,
+        selected_ref,
+        cad_pick_kind_label(pick.kind)
+    ));
+    true
 }
 
 fn handle_cad_context_menu_click(
@@ -540,12 +698,7 @@ fn handle_cad_context_menu_click(
         return false;
     };
 
-    let top_cad_content = state
-        .panes
-        .iter()
-        .filter(|pane| pane.kind == PaneKind::CadDemo)
-        .max_by_key(|pane| pane.z_index)
-        .map(|pane| pane_content_bounds(pane.bounds));
+    let top_cad_content = topmost_cad_content_bounds(state);
 
     if *button == MouseButton::Right {
         let Some(content_bounds) = top_cad_content else {
@@ -554,58 +707,21 @@ fn handle_cad_context_menu_click(
         if !content_bounds.contains(point) {
             return false;
         }
-        let Some(tile_index) = cad_pane::variant_tile_index_at_point(content_bounds, point) else {
+        let Some((tile_index, viewport)) = cad_variant_tile_at_point(state, point) else {
             state.cad_demo.close_context_menu();
             state.cad_demo.last_action = Some("CAD context menu closed".to_string());
             return true;
         };
         let _ = state.cad_demo.set_active_variant_tile(tile_index);
-        let viewport = cad_pane::variant_tile_bounds(content_bounds, tile_index);
-        let picked_from_mesh = state
-            .cad_demo
-            .variant_viewport(tile_index)
-            .cloned()
-            .and_then(|tile_view| {
-                state
-                    .cad_demo
-                    .last_good_mesh_payload
-                    .as_ref()
-                    .and_then(|payload| {
-                        let pick_query = CadPickQuery {
-                            viewport: CadPickViewport {
-                                origin_px: [viewport.origin.x, viewport.origin.y],
-                                size_px: [viewport.size.width, viewport.size.height],
-                            },
-                            camera: CadPickCameraPose {
-                                projection_mode: match state.cad_demo.projection_mode {
-                                    crate::app_state::CadProjectionMode::Orthographic => {
-                                        CadPickProjectionMode::Orthographic
-                                    }
-                                    crate::app_state::CadProjectionMode::Perspective => {
-                                        CadPickProjectionMode::Perspective
-                                    }
-                                },
-                                zoom: tile_view.camera_zoom,
-                                pan_x: tile_view.camera_pan_x,
-                                pan_y: tile_view.camera_pan_y,
-                                orbit_yaw_deg: tile_view.camera_orbit_yaw_deg,
-                                orbit_pitch_deg: tile_view.camera_orbit_pitch_deg,
-                            },
-                            point_px: [point.x, point.y],
-                            tolerance_px: 0.0,
-                        };
-                        pick_mesh_hit(payload, pick_query)
-                    })
-            })
-            .map(|hit| {
-                let target_kind = match hit.kind {
-                    CadPickEntityKind::Body => crate::app_state::CadContextMenuTargetKind::Body,
-                    CadPickEntityKind::Face => crate::app_state::CadContextMenuTargetKind::Face,
-                    CadPickEntityKind::Edge => crate::app_state::CadContextMenuTargetKind::Edge,
-                };
-                let target_ref = format!("cad://{}", hit.entity_id);
-                (target_kind, target_ref)
-            });
+        let picked_from_mesh = cad_pick_at_point(state, point).map(|pick| {
+            let target_kind = match pick.kind {
+                CadPickEntityKind::Body => crate::app_state::CadContextMenuTargetKind::Body,
+                CadPickEntityKind::Face => crate::app_state::CadContextMenuTargetKind::Face,
+                CadPickEntityKind::Edge => crate::app_state::CadContextMenuTargetKind::Edge,
+            };
+            let target_ref = format!("cad://{}", pick.entity_id);
+            (target_kind, target_ref)
+        });
         let (target_kind, target_ref) = picked_from_mesh.unwrap_or_else(|| {
             state
                 .cad_demo
@@ -1603,7 +1719,8 @@ where
 mod tests {
     use super::{
         assemble_chat_turn_input, build_create_invoice_command, build_pay_invoice_command,
-        build_spark_command_for_action, cad_hotkey_action_matrix, is_command_palette_shortcut,
+        build_spark_command_for_action, cad_hotkey_action_matrix, cad_pick_kind_label,
+        cad_pick_kind_to_selection_kind, is_command_palette_shortcut,
         is_toggle_fullscreen_shortcut, parse_positive_amount_str,
         validate_lightning_payment_request,
     };
@@ -1613,6 +1730,8 @@ mod tests {
     };
     use crate::spark_wallet::SparkWalletCommand;
     use codex_client::UserInput;
+    use openagents_cad::contracts::CadSelectionKind;
+    use openagents_cad::query::CadPickEntityKind;
     use std::collections::BTreeSet;
     use std::path::PathBuf;
     use wgpui::{Bounds, Modifiers, Point};
@@ -1900,5 +2019,24 @@ mod tests {
             hotkey_actions.is_subset(&palette_actions),
             "every CAD hotkey action must have a command palette equivalent"
         );
+    }
+
+    #[test]
+    fn cad_pick_kind_mapping_is_stable() {
+        assert_eq!(
+            cad_pick_kind_to_selection_kind(CadPickEntityKind::Body),
+            CadSelectionKind::Body
+        );
+        assert_eq!(
+            cad_pick_kind_to_selection_kind(CadPickEntityKind::Face),
+            CadSelectionKind::Face
+        );
+        assert_eq!(
+            cad_pick_kind_to_selection_kind(CadPickEntityKind::Edge),
+            CadSelectionKind::Edge
+        );
+        assert_eq!(cad_pick_kind_label(CadPickEntityKind::Body), "body");
+        assert_eq!(cad_pick_kind_label(CadPickEntityKind::Face), "face");
+        assert_eq!(cad_pick_kind_label(CadPickEntityKind::Edge), "edge");
     }
 }

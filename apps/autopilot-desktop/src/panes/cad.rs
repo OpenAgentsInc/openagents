@@ -280,8 +280,12 @@ pub fn paint_cad_demo_placeholder_pane(
                 .or_else(|| pane_state.variant_ids.get(tile_index).map(String::as_str))
                 .unwrap_or("variant.unset");
             let selection = variant_view.and_then(|view| view.selected_ref.as_deref());
+            let hover = variant_view.and_then(|view| view.hovered_ref.as_deref());
             let selection_suffix = selection
                 .map(|value| format!(" sel={value}"))
+                .unwrap_or_default();
+            let hover_suffix = hover
+                .map(|value| format!(" hov={value}"))
                 .unwrap_or_default();
 
             let mut tile_quad = Quad::new(tile_bounds)
@@ -297,10 +301,11 @@ pub fn paint_cad_demo_placeholder_pane(
                 Point::new(tile_bounds.origin.x + 6.0, tile_bounds.origin.y + 10.0);
             paint.scene.draw_text(paint.text.layout(
                 &format!(
-                    "{}{}{}",
+                    "{}{}{}{}",
                     tile_index + 1,
                     if is_active { "*" } else { "" },
-                    selection_suffix
+                    selection_suffix,
+                    hover_suffix
                 ),
                 tile_label_origin,
                 8.0,
@@ -318,7 +323,7 @@ pub fn paint_cad_demo_placeholder_pane(
             }
 
             if let Some(payload) = mesh_payload {
-                let selected_outline_active = selection.is_some();
+                let selected_outline_active = selection.is_some() || hover.is_some();
                 let camera_pose = if let Some(viewport_state) = variant_view {
                     CadCameraPose::from_variant(viewport_state, pane_state.projection_mode)
                 } else {
