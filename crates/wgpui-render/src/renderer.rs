@@ -4,7 +4,10 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use web_time::Instant;
 use wgpu::util::DeviceExt;
-use wgpui_core::scene::{GpuImageQuad, GpuLine, GpuQuad, GpuTextQuad, MeshPrimitive, Scene};
+use wgpui_core::scene::{
+    GpuImageQuad, GpuLine, GpuQuad, GpuTextQuad, MESH_EDGE_FLAG_SELECTED,
+    MESH_EDGE_FLAG_SILHOUETTE, MeshPrimitive, Scene,
+};
 use wgpui_core::{Hsla, Point, Size};
 
 #[repr(C)]
@@ -791,11 +794,13 @@ impl Renderer {
                 let edge_overlay_buffer = if edge_overlays.is_empty() {
                     None
                 } else {
-                    Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some(&format!("Mesh Edge Overlay Buffer Layer {}", layer)),
-                        contents: bytemuck::cast_slice(&edge_overlays),
-                        usage: wgpu::BufferUsages::VERTEX,
-                    }))
+                    Some(
+                        device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some(&format!("Mesh Edge Overlay Buffer Layer {}", layer)),
+                            contents: bytemuck::cast_slice(&edge_overlays),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        }),
+                    )
                 };
                 mesh_batches.push(PreparedMeshBatch {
                     vertex_buffer,
@@ -1108,10 +1113,31 @@ fn mesh_to_gpu_vertices(mesh: &MeshPrimitive, scale_factor: f32) -> Vec<GpuMeshV
                 vertex.position[1] * scale_factor,
                 vertex.position[2] * scale_factor,
             ],
-            normal: vertex.normal,
+            normal: stable_shading_normal(vertex.normal),
             color: vertex.color,
         })
         .collect()
+}
+
+fn stable_shading_normal(normal: [f32; 3]) -> [f32; 3] {
+    if !normal.iter().all(|component| component.is_finite()) {
+        return [0.0, 0.0, 1.0];
+    }
+    let length_sq = normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2];
+    if length_sq <= f32::EPSILON {
+        return [0.0, 0.0, 1.0];
+    }
+    let inv = length_sq.sqrt().recip();
+    quantized_unit_normal([normal[0] * inv, normal[1] * inv, normal[2] * inv])
+}
+
+fn quantized_unit_normal(normal: [f32; 3]) -> [f32; 3] {
+    const SCALE: f32 = 1_000_000.0;
+    [
+        (normal[0] * SCALE).round() / SCALE,
+        (normal[1] * SCALE).round() / SCALE,
+        (normal[2] * SCALE).round() / SCALE,
+    ]
 }
 
 fn mesh_edge_overlay_lines(
@@ -1127,11 +1153,20 @@ fn mesh_edge_overlay_lines(
             let start_point = Point::new(start.position[0], start.position[1]);
             let end_point = Point::new(end.position[0], end.position[1]);
             let avg_nz = ((start.normal[2] + end.normal[2]) * 0.5).abs();
-            let flagged_silhouette = edge.flags & 0b1000 != 0;
+            let flagged_silhouette = edge.flags & MESH_EDGE_FLAG_SILHOUETTE != 0;
+            let selected = edge.flags & MESH_EDGE_FLAG_SELECTED != 0;
             let inferred_silhouette = avg_nz < 0.45;
             let is_silhouette = flagged_silhouette || inferred_silhouette;
-            let width = if is_silhouette { 1.35 } else { 0.95 };
-            let color = if is_silhouette {
+            let width = if selected {
+                2.05
+            } else if is_silhouette {
+                1.35
+            } else {
+                0.95
+            };
+            let color = if selected {
+                Hsla::new(0.14, 0.82, 0.66, 0.96)
+            } else if is_silhouette {
                 Hsla::new(0.58, 0.30, 0.90, 0.92)
             } else {
                 Hsla::new(0.60, 0.12, 0.72, 0.88)
@@ -1153,8 +1188,10 @@ fn should_skip_mesh(mesh: &MeshPrimitive) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{mesh_to_gpu_vertices, should_skip_mesh};
-    use wgpui_core::scene::{MeshPrimitive, MeshVertex};
+    use super::{mesh_edge_overlay_lines, mesh_to_gpu_vertices, should_skip_mesh};
+    use wgpui_core::scene::{
+        MESH_EDGE_FLAG_SELECTED, MESH_EDGE_FLAG_SILHOUETTE, MeshEdge, MeshPrimitive, MeshVertex,
+    };
 
     #[test]
     fn mesh_vertex_conversion_scales_positions_deterministically() {
@@ -1173,6 +1210,51 @@ mod tests {
         assert_eq!(first[0].position, [2.0, 4.0, 6.0]);
         assert_eq!(first[1].position, [8.0, 10.0, 12.0]);
         assert_eq!(first[2].position, [14.0, 16.0, 18.0]);
+    }
+
+    #[test]
+    fn mesh_vertex_conversion_stabilizes_shading_normals() {
+        let mesh = MeshPrimitive::new(
+            vec![
+                MeshVertex::new([0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [0.2, 0.3, 0.4, 1.0]),
+                MeshVertex::new([1.0, 1.0, 1.0], [0.0, 0.0, 0.0], [0.2, 0.3, 0.4, 1.0]),
+                MeshVertex::new([2.0, 2.0, 2.0], [f32::NAN, 1.0, 0.0], [0.2, 0.3, 0.4, 1.0]),
+            ],
+            vec![0, 1, 2],
+        );
+        let first = mesh_to_gpu_vertices(&mesh, 1.0);
+        let second = mesh_to_gpu_vertices(&mesh, 1.0);
+        assert_eq!(first, second);
+        assert_eq!(first[0].normal, [1.0, 0.0, 0.0]);
+        assert_eq!(first[1].normal, [0.0, 0.0, 1.0]);
+        assert_eq!(first[2].normal, [0.0, 0.0, 1.0]);
+        assert!(
+            first
+                .iter()
+                .all(|vertex| vertex.normal.iter().all(|component| component.is_finite()))
+        );
+    }
+
+    #[test]
+    fn edge_overlay_emphasizes_selected_edges() {
+        let mesh = MeshPrimitive::new(
+            vec![
+                MeshVertex::new([0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.8, 0.8, 0.8, 1.0]),
+                MeshVertex::new([10.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.8, 0.8, 0.8, 1.0]),
+                MeshVertex::new([10.0, 10.0, 0.0], [0.0, 0.0, 0.0], [0.8, 0.8, 0.8, 1.0]),
+            ],
+            vec![0, 1, 2],
+        )
+        .with_edges(vec![
+            MeshEdge::new(0, 1).with_flags(MESH_EDGE_FLAG_SELECTED),
+            MeshEdge::new(1, 2).with_flags(MESH_EDGE_FLAG_SILHOUETTE),
+            MeshEdge::new(2, 0),
+        ]);
+        let gpu_vertices = mesh_to_gpu_vertices(&mesh, 1.0);
+        let overlays = mesh_edge_overlay_lines(&mesh, &gpu_vertices, 1.0);
+        assert_eq!(overlays.len(), 3);
+        assert!(overlays[0].width > overlays[1].width);
+        assert!(overlays[1].width >= overlays[2].width);
     }
 
     #[test]
