@@ -3725,5 +3725,8 @@ mod tests {
         assert_eq!(state.active_variant_id, "variant.baseline");
         assert_eq!(state.variant_ids.len(), 4);
         assert_eq!(state.variant_ids[0], "variant.baseline");
+        assert!(state.last_rebuild_receipt.is_none());
+        assert!(state.rebuild_receipts.is_empty());
+        assert_eq!(state.eval_cache.len(), 0);
     }
 }

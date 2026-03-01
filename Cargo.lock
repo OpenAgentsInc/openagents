@@ -338,6 +338,7 @@ dependencies = [
  "codex-client",
  "keyring",
  "nostr 0.1.0",
+ "openagents-cad",
  "openagents-spark",
  "pollster",
  "serde_json",

@@ -452,6 +452,22 @@ pub struct CadDemoPaneState {
     pub document_revision: u64,
     pub active_variant_id: String,
     pub variant_ids: Vec<String>,
+    pub last_rebuild_receipt: Option<CadRebuildReceiptState>,
+    pub rebuild_receipts: Vec<CadRebuildReceiptState>,
+    pub eval_cache: openagents_cad::eval::EvalCacheStore,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CadRebuildReceiptState {
+    pub event_id: String,
+    pub document_revision: u64,
+    pub variant_id: String,
+    pub rebuild_hash: String,
+    pub duration_ms: u64,
+    pub cache_hits: u64,
+    pub cache_misses: u64,
+    pub cache_evictions: u64,
+    pub feature_count: usize,
 }
 
 impl Default for CadDemoPaneState {
@@ -470,6 +486,10 @@ impl Default for CadDemoPaneState {
                 "variant.low-cost".to_string(),
                 "variant.stiffness".to_string(),
             ],
+            last_rebuild_receipt: None,
+            rebuild_receipts: Vec::new(),
+            eval_cache: openagents_cad::eval::EvalCacheStore::new(128)
+                .expect("cad eval cache capacity should be valid"),
         }
     }
 }

@@ -9,6 +9,7 @@ const HEADER_LINE_HEIGHT: f32 = 14.0;
 const SUBHEADER_GAP: f32 = 4.0;
 const VIEWPORT_TOP_GAP: f32 = 10.0;
 const FOOTER_RESERVED: f32 = 18.0;
+const RECEIPT_LINE_HEIGHT: f32 = 10.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CadDemoPlaceholderLayout {
@@ -104,6 +105,45 @@ pub fn paint_cad_demo_placeholder_pane(
                 10.0,
                 theme::text::MUTED,
             ));
+        }
+
+        if let Some(receipt) = pane_state.last_rebuild_receipt.as_ref() {
+            let latest_label = Point::new(viewport_label.x, viewport_label.y + RECEIPT_LINE_HEIGHT + 2.0);
+            if latest_label.y + 9.0 <= layout.viewport_bounds.max_y() {
+                paint.scene.draw_text(paint.text.layout(
+                    &format!(
+                        "latest rebuild {}ms hash={} cache(h={},m={},e={})",
+                        receipt.duration_ms,
+                        receipt.rebuild_hash,
+                        receipt.cache_hits,
+                        receipt.cache_misses,
+                        receipt.cache_evictions
+                    ),
+                    latest_label,
+                    9.0,
+                    theme::text::SECONDARY,
+                ));
+            }
+        }
+
+        let mut timeline_y = viewport_label.y + (RECEIPT_LINE_HEIGHT * 2.0) + 4.0;
+        for receipt in pane_state.rebuild_receipts.iter().rev().take(3) {
+            if timeline_y + 8.0 > layout.viewport_bounds.max_y() {
+                break;
+            }
+            paint.scene.draw_text(paint.text.layout(
+                &format!(
+                    "#{} rev={} {}ms {}",
+                    receipt.event_id,
+                    receipt.document_revision,
+                    receipt.duration_ms,
+                    receipt.variant_id
+                ),
+                Point::new(viewport_label.x, timeline_y),
+                9.0,
+                theme::text::MUTED,
+            ));
+            timeline_y += RECEIPT_LINE_HEIGHT;
         }
     }
 
