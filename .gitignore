@@ -136,6 +136,10 @@ crates/gpui/examples/**/*.gif
 # Python
 __pycache__/
 *.pyc
+.venv311/
+
+# Local harness artifacts
+artifacts/
 
 # Test artifacts
 regex.txt
