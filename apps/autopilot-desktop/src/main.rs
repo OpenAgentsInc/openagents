@@ -1,6 +1,7 @@
 #![cfg_attr(test, allow(clippy::expect_used))]
 
 mod app_state;
+mod cad_rebuild_worker;
 mod codex_lane;
 mod credentials;
 mod hotbar;

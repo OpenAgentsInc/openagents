@@ -3728,5 +3728,9 @@ mod tests {
         assert!(state.last_rebuild_receipt.is_none());
         assert!(state.rebuild_receipts.is_empty());
         assert_eq!(state.eval_cache.len(), 0);
+        assert!(state.rebuild_worker.is_none());
+        assert_eq!(state.next_rebuild_request_id, 1);
+        assert!(state.pending_rebuild_request_id.is_none());
+        assert!(state.last_good_mesh_id.is_none());
     }
 }

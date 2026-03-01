@@ -25,6 +25,10 @@ This document defines the MVP `CadDemoPaneState` container in desktop app state.
 - `last_rebuild_receipt`
 - `rebuild_receipts`
 - `eval_cache` (capacity-bounded per-session cache store)
+- `rebuild_worker` (lazy background worker handle)
+- `next_rebuild_request_id`
+- `pending_rebuild_request_id`
+- `last_good_mesh_id`
 
 ## Rebuild Receipt Stream
 
@@ -44,6 +48,7 @@ Receipts are:
 
 - retained in-pane (`rebuild_receipts`, bounded history)
 - surfaced as lane events through activity feed upserts with source tag `cad.eval`
+- committed from background worker responses while preserving `last_good_mesh_id` during pending rebuilds
 
 ## Deterministic Defaults
 
