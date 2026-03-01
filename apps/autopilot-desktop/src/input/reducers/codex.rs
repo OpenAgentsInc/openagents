@@ -1,4 +1,4 @@
-use crate::app_state::{PaneLoadState, RenderState};
+use crate::app_state::{CadBuildSessionPhase, PaneLoadState, RenderState};
 use crate::codex_lane::CodexLaneCommand;
 use crate::codex_lane::{
     CodexLaneCommandKind, CodexLaneCommandResponse, CodexLaneCommandStatus, CodexLaneLifecycle,
@@ -1340,8 +1340,42 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             };
 
             if super::super::tool_bridge::is_openagents_tool_namespace(&pending.tool) {
+                let is_cad_intent_tool = pending
+                    .tool
+                    .trim()
+                    .eq_ignore_ascii_case("openagents.cad.intent");
+                if is_cad_intent_tool {
+                    if let Err(error) = state
+                        .cad_demo
+                        .begin_agent_build_session(&pending.thread_id, &pending.turn_id)
+                    {
+                        state.cad_demo.last_error = Some(format!(
+                            "CAD build session start failed: {error}"
+                        ));
+                    } else if let Err(error) = state.cad_demo.transition_agent_build_phase(
+                        CadBuildSessionPhase::Applying,
+                        "cad.build.applying.start",
+                        format!(
+                            "tool={} call_id={}",
+                            pending.tool.trim(),
+                            pending.call_id.trim()
+                        ),
+                    ) {
+                        state.cad_demo.last_error = Some(format!(
+                            "CAD build phase transition failed: {error}"
+                        ));
+                    }
+                }
+
                 let envelope =
                     super::super::tool_bridge::execute_openagents_tool_request(state, &pending);
+                if is_cad_intent_tool {
+                    state.cad_demo.record_agent_build_tool_result(
+                        &envelope.code,
+                        envelope.success,
+                        &envelope.message,
+                    );
+                }
                 let code = envelope.code.clone();
                 let success = envelope.success;
                 let command = crate::codex_lane::CodexLaneCommand::ServerRequestToolCallRespond {
@@ -1354,10 +1388,72 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                         "Failed to auto-respond to tool call: {}",
                         error
                     ));
+                    if is_cad_intent_tool {
+                        let _ = state.cad_demo.fail_agent_build_session(
+                            "cad.build.response.submit_failed",
+                            format!("failed to submit CAD tool response: {error}"),
+                            Some("verify Codex lane connectivity and retry CAD turn".to_string()),
+                        );
+                    }
                 } else {
                     if !success {
                         state.autopilot_chat.last_error =
                             Some(format!("Tool call failed with code {}", code));
+                    }
+                    if is_cad_intent_tool {
+                        if success {
+                            if state.cad_demo.pending_rebuild_request_id.is_some() {
+                                if let Err(error) = state.cad_demo.transition_agent_build_phase(
+                                    CadBuildSessionPhase::Rebuilding,
+                                    "cad.build.rebuilding.wait",
+                                    format!(
+                                        "waiting for request_id={}",
+                                        state.cad_demo.pending_rebuild_request_id.unwrap_or(0)
+                                    ),
+                                ) {
+                                    state.cad_demo.last_error = Some(format!(
+                                        "CAD build phase transition failed: {error}"
+                                    ));
+                                }
+                            } else if let Err(error) = state.cad_demo.transition_agent_build_phase(
+                                CadBuildSessionPhase::Summarizing,
+                                "cad.build.summarizing.start",
+                                "tool applied without queued rebuild".to_string(),
+                            ) {
+                                state.cad_demo.last_error = Some(format!(
+                                    "CAD build phase transition failed: {error}"
+                                ));
+                            } else if let Err(error) = state.cad_demo.complete_agent_build_session(
+                                format!(
+                                    "cad intent tool call {} completed without background rebuild",
+                                    pending.call_id
+                                ),
+                            ) {
+                                state.cad_demo.last_error = Some(format!(
+                                    "CAD build session finalize failed: {error}"
+                                ));
+                            }
+                        } else {
+                            let remediation_hint = envelope
+                                .details
+                                .get("last_error")
+                                .and_then(|value| value.as_str())
+                                .map(|value| format!("inspect CAD error: {value}"))
+                                .or_else(|| {
+                                    Some(
+                                        "inspect tool response details and retry CAD turn"
+                                            .to_string(),
+                                    )
+                                });
+                            let _ = state.cad_demo.fail_agent_build_session(
+                                "cad.build.tool.failed",
+                                format!(
+                                    "CAD intent tool failed code={} message={}",
+                                    code, envelope.message
+                                ),
+                                remediation_hint,
+                            );
+                        }
                     }
                     state.autopilot_chat.record_turn_timeline_event(format!(
                         "tool call auto-response submitted code={} success={}",

@@ -453,6 +453,8 @@ pub struct CadDemoPaneState {
     pub dispatch_sessions:
         std::collections::BTreeMap<String, openagents_cad::dispatch::CadDispatchState>,
     pub last_chat_intent_name: Option<String>,
+    pub build_session: CadBuildSessionState,
+    pub last_build_session: Option<CadBuildSessionArchiveState>,
     pub document_id: String,
     pub document_revision: u64,
     pub active_variant_id: String,
@@ -919,6 +921,94 @@ impl CadHiddenLineMode {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CadBuildSessionPhase {
+    Idle,
+    Planning,
+    Applying,
+    Rebuilding,
+    Summarizing,
+    Done,
+    Failed,
+}
+
+impl CadBuildSessionPhase {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Idle => "idle",
+            Self::Planning => "planning",
+            Self::Applying => "applying",
+            Self::Rebuilding => "rebuilding",
+            Self::Summarizing => "summarizing",
+            Self::Done => "done",
+            Self::Failed => "failed",
+        }
+    }
+
+    fn transition_allowed(self, next: CadBuildSessionPhase) -> bool {
+        use CadBuildSessionPhase::{
+            Applying, Done, Failed, Idle, Planning, Rebuilding, Summarizing,
+        };
+        match (self, next) {
+            (Idle, Planning) => true,
+            (Planning, Applying | Failed) => true,
+            (Applying, Rebuilding | Summarizing | Failed) => true,
+            (Rebuilding, Summarizing | Failed) => true,
+            (Summarizing, Done | Failed) => true,
+            (Done, Idle) => true,
+            (Failed, Idle) => true,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CadBuildSessionEventState {
+    pub event_code: String,
+    pub phase: CadBuildSessionPhase,
+    pub detail: String,
+    pub at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CadBuildSessionState {
+    pub thread_id: Option<String>,
+    pub turn_id: Option<String>,
+    pub phase: CadBuildSessionPhase,
+    pub latest_tool_result: Option<String>,
+    pub latest_rebuild_result: Option<String>,
+    pub failure_reason: Option<String>,
+    pub remediation_hint: Option<String>,
+    pub events: Vec<CadBuildSessionEventState>,
+}
+
+impl Default for CadBuildSessionState {
+    fn default() -> Self {
+        Self {
+            thread_id: None,
+            turn_id: None,
+            phase: CadBuildSessionPhase::Idle,
+            latest_tool_result: None,
+            latest_rebuild_result: None,
+            failure_reason: None,
+            remediation_hint: None,
+            events: Vec::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CadBuildSessionArchiveState {
+    pub thread_id: String,
+    pub turn_id: String,
+    pub terminal_phase: CadBuildSessionPhase,
+    pub latest_tool_result: Option<String>,
+    pub latest_rebuild_result: Option<String>,
+    pub failure_reason: Option<String>,
+    pub remediation_hint: Option<String>,
+    pub events: Vec<CadBuildSessionEventState>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CadRebuildReceiptState {
     pub event_id: String,
@@ -1136,6 +1226,8 @@ impl Default for CadDemoPaneState {
             chat_thread_session_bindings: std::collections::BTreeMap::new(),
             dispatch_sessions: std::collections::BTreeMap::new(),
             last_chat_intent_name: None,
+            build_session: CadBuildSessionState::default(),
+            last_build_session: None,
             document_id,
             document_revision: 0,
             active_variant_id: initial_variant_id.clone(),
@@ -1194,6 +1286,13 @@ impl Default for CadDemoPaneState {
             cad_events: vec![document_created_event],
         }
     }
+}
+
+fn current_epoch_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 impl CadDemoPaneState {
@@ -1387,6 +1486,144 @@ impl CadDemoPaneState {
             self.warning_hover_index = None;
             self.focused_warning_index = None;
         }
+    }
+
+    pub fn begin_agent_build_session(
+        &mut self,
+        thread_id: &str,
+        turn_id: &str,
+    ) -> Result<(), String> {
+        if self.build_session.phase != CadBuildSessionPhase::Idle {
+            self.fail_agent_build_session(
+                "cad.build.interrupted",
+                format!(
+                    "superseded by thread={} turn={}",
+                    thread_id.trim(),
+                    turn_id.trim()
+                ),
+                Some("retry previous CAD turn if it is still needed".to_string()),
+            )?;
+        }
+        self.build_session = CadBuildSessionState {
+            thread_id: Some(thread_id.trim().to_string()),
+            turn_id: Some(turn_id.trim().to_string()),
+            ..CadBuildSessionState::default()
+        };
+        self.transition_agent_build_phase(
+            CadBuildSessionPhase::Planning,
+            "cad.build.planning.start",
+            format!("thread={} turn={}", thread_id.trim(), turn_id.trim()),
+        )?;
+        Ok(())
+    }
+
+    pub fn transition_agent_build_phase(
+        &mut self,
+        next: CadBuildSessionPhase,
+        event_code: &str,
+        detail: String,
+    ) -> Result<(), String> {
+        let current = self.build_session.phase;
+        if !current.transition_allowed(next) {
+            return Err(format!(
+                "invalid CAD build phase transition {} -> {}",
+                current.label(),
+                next.label()
+            ));
+        }
+        self.build_session.phase = next;
+        self.push_agent_build_event(event_code, detail);
+        Ok(())
+    }
+
+    pub fn record_agent_build_tool_result(&mut self, code: &str, success: bool, message: &str) {
+        let status = if success { "ok" } else { "failed" };
+        self.build_session.latest_tool_result = Some(format!("{status}:{code}"));
+        self.push_agent_build_event(
+            "cad.build.tool.result",
+            format!("status={status} code={code} message={}", message.trim()),
+        );
+    }
+
+    pub fn record_agent_build_rebuild_result(&mut self, trigger: &str, result: &str) {
+        self.build_session.latest_rebuild_result = Some(format!(
+            "trigger={} result={}",
+            trigger.trim(),
+            result.trim()
+        ));
+        self.push_agent_build_event(
+            "cad.build.rebuild.result",
+            format!("trigger={} result={}", trigger.trim(), result.trim()),
+        );
+    }
+
+    pub fn complete_agent_build_session(&mut self, summary: String) -> Result<(), String> {
+        self.transition_agent_build_phase(CadBuildSessionPhase::Done, "cad.build.done", summary)?;
+        self.archive_and_reset_agent_build_session();
+        Ok(())
+    }
+
+    pub fn fail_agent_build_session(
+        &mut self,
+        event_code: &str,
+        reason: String,
+        remediation_hint: Option<String>,
+    ) -> Result<(), String> {
+        let reason_trimmed = reason.trim().to_string();
+        self.build_session.failure_reason = Some(reason_trimmed.clone());
+        self.build_session.remediation_hint = remediation_hint;
+        self.transition_agent_build_phase(
+            CadBuildSessionPhase::Failed,
+            event_code,
+            reason_trimmed,
+        )?;
+        self.archive_and_reset_agent_build_session();
+        Ok(())
+    }
+
+    fn push_agent_build_event(&mut self, event_code: &str, detail: String) {
+        let phase = self.build_session.phase;
+        self.build_session.events.push(CadBuildSessionEventState {
+            event_code: event_code.trim().to_string(),
+            phase,
+            detail,
+            at_epoch_ms: current_epoch_millis(),
+        });
+        if self.build_session.events.len() > 64 {
+            let overflow = self.build_session.events.len().saturating_sub(64);
+            self.build_session.events.drain(0..overflow);
+        }
+    }
+
+    fn archive_and_reset_agent_build_session(&mut self) {
+        let terminal_phase = self.build_session.phase;
+        if !matches!(
+            terminal_phase,
+            CadBuildSessionPhase::Done | CadBuildSessionPhase::Failed
+        ) {
+            return;
+        }
+        let thread_id = self
+            .build_session
+            .thread_id
+            .clone()
+            .unwrap_or_else(|| "unknown-thread".to_string());
+        let turn_id = self
+            .build_session
+            .turn_id
+            .clone()
+            .unwrap_or_else(|| "unknown-turn".to_string());
+        self.last_build_session = Some(CadBuildSessionArchiveState {
+            thread_id,
+            turn_id,
+            terminal_phase,
+            latest_tool_result: self.build_session.latest_tool_result.clone(),
+            latest_rebuild_result: self.build_session.latest_rebuild_result.clone(),
+            failure_reason: self.build_session.failure_reason.clone(),
+            remediation_hint: self.build_session.remediation_hint.clone(),
+            events: self.build_session.events.clone(),
+        });
+        self.build_session = CadBuildSessionState::default();
     }
 
     pub fn ensure_chat_session_for_thread(&mut self, thread_id: &str) -> String {
