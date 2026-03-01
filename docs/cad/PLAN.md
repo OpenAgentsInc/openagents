@@ -157,6 +157,7 @@ Wave 1 chosen direction:
 - Choose A as the default implementation path for demo velocity and STEP credibility.
 - Keep B as fallback if A fails predefined spike criteria.
 - C and D are not selected for Wave 1 due to higher tolerance/robustness risk.
+- Decision record: `docs/cad/decisions/0001-kernel-strategy.md`
 
 Decision criteria to keep objective:
 
