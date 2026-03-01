@@ -505,6 +505,7 @@ pub struct CadDemoPaneState {
     pub timeline_scroll_offset: usize,
     pub selected_feature_params: Vec<(String, String)>,
     pub context_menu: CadContextMenuState,
+    pub cad_events: Vec<openagents_cad::events::CadEvent>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1064,16 +1065,28 @@ impl Default for CadDemoPaneState {
             .iter()
             .map(|variant_id| (variant_id.clone(), Vec::new()))
             .collect::<std::collections::BTreeMap<_, _>>();
+        let session_id = "cad.session.local".to_string();
+        let document_id = "cad.doc.demo-rack".to_string();
+        let document_created_event = openagents_cad::events::CadEvent::new_with_key(
+            openagents_cad::events::CadEventKind::DocumentCreated,
+            session_id.clone(),
+            document_id.clone(),
+            0,
+            Some(initial_variant_id.clone()),
+            "CAD document created",
+            format!("session={} document={document_id}", session_id),
+            Some("document-created".to_string()),
+        );
         Self {
             load_state: PaneLoadState::Ready,
             last_error: None,
             last_action: Some("CAD demo initialized; waiting for feature graph state".to_string()),
-            session_id: "cad.session.local".to_string(),
+            session_id,
             active_chat_session_id: None,
             chat_thread_session_bindings: std::collections::BTreeMap::new(),
             dispatch_sessions: std::collections::BTreeMap::new(),
             last_chat_intent_name: None,
-            document_id: "cad.doc.demo-rack".to_string(),
+            document_id,
             document_revision: 0,
             active_variant_id: initial_variant_id.clone(),
             variant_ids,
@@ -1126,6 +1139,7 @@ impl Default for CadDemoPaneState {
             timeline_scroll_offset: 0,
             selected_feature_params: Vec::new(),
             context_menu: CadContextMenuState::default(),
+            cad_events: vec![document_created_event],
         }
     }
 }
@@ -1173,7 +1187,11 @@ impl CadDemoPaneState {
         {
             self.analysis_snapshot = analysis;
         }
-        if let Some(warnings) = self.variant_warning_sets.get(&self.active_variant_id).cloned() {
+        if let Some(warnings) = self
+            .variant_warning_sets
+            .get(&self.active_variant_id)
+            .cloned()
+        {
             self.warnings = warnings;
         }
         self.warning_hover_index = None;
@@ -1217,7 +1235,11 @@ impl CadDemoPaneState {
         }
     }
 
-    pub fn set_variant_warning_set(&mut self, variant_id: &str, warnings: Vec<CadDemoWarningState>) {
+    pub fn set_variant_warning_set(
+        &mut self,
+        variant_id: &str,
+        warnings: Vec<CadDemoWarningState>,
+    ) {
         self.variant_warning_sets
             .insert(variant_id.to_string(), warnings.clone());
         if self.active_variant_id == variant_id {
@@ -1245,7 +1267,14 @@ impl CadDemoPaneState {
             .collect::<String>()
             .trim_matches('-')
             .to_string();
-        let session_id = format!("cad.session.chat.{}", if normalized.is_empty() { "thread" } else { normalized.as_str() });
+        let session_id = format!(
+            "cad.session.chat.{}",
+            if normalized.is_empty() {
+                "thread"
+            } else {
+                normalized.as_str()
+            }
+        );
         self.chat_thread_session_bindings
             .insert(thread_id.to_string(), session_id.clone());
         self.dispatch_sessions
@@ -1277,6 +1306,28 @@ impl CadDemoPaneState {
         ));
         self.last_error = None;
         Ok(receipt)
+    }
+
+    pub fn upsert_cad_event(&mut self, event: openagents_cad::events::CadEvent) -> bool {
+        if let Some(existing) = self
+            .cad_events
+            .iter_mut()
+            .find(|existing| existing.event_id == event.event_id)
+        {
+            *existing = event;
+            return false;
+        }
+        self.cad_events.push(event);
+        self.cad_events.sort_by(|lhs, rhs| {
+            lhs.document_revision
+                .cmp(&rhs.document_revision)
+                .then_with(|| lhs.event_id.cmp(&rhs.event_id))
+        });
+        if self.cad_events.len() > 128 {
+            let overflow = self.cad_events.len().saturating_sub(128);
+            self.cad_events.drain(0..overflow);
+        }
+        true
     }
 
     pub fn set_hovered_geometry_for_tile_focus(
