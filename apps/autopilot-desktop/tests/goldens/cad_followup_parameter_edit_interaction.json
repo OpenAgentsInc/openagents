@@ -1,0 +1,77 @@
+{
+  "active_variant_id": "variant.lightweight",
+  "analysis": {
+    "center_of_gravity_mm": [
+      2.8134568338453427e-17,
+      -1.8779824365917664e-15,
+      43.60857617224839
+    ],
+    "document_revision": 3,
+    "estimated_cost_usd": 778.8883515752759,
+    "mass_kg": 22.3441401447144,
+    "material_id": "al-6061-t6",
+    "max_deflection_mm": 0.00017086197991169407,
+    "variant_id": "variant.lightweight",
+    "volume_mm3": 8275607.461005334
+  },
+  "intent": "Select",
+  "last_action": "CAD rebuild edit-dimension:width_mm committed: 18ms hash=0f03a689d233ec66 mesh=d4e5611d8043346b",
+  "last_error": null,
+  "prompt": "Select rack_outer_face",
+  "prompt_state_revision": 1,
+  "rebuild_receipts": [
+    {
+      "cache_evictions": 0,
+      "cache_hits": 0,
+      "cache_misses": 4,
+      "document_revision": 2,
+      "duration_ms": 18,
+      "edge_count": 188,
+      "event_id": "cad.session.chat.thread-followup:2:1",
+      "feature_count": 4,
+      "mesh_hash": "4e3f802476522f67",
+      "rebuild_hash": "f0e53915957af649",
+      "triangle_count": 296,
+      "variant_id": "variant.lightweight",
+      "vertex_count": 172
+    },
+    {
+      "cache_evictions": 0,
+      "cache_hits": 0,
+      "cache_misses": 4,
+      "document_revision": 3,
+      "duration_ms": 18,
+      "edge_count": 188,
+      "event_id": "cad.session.chat.thread-followup:3:2",
+      "feature_count": 4,
+      "mesh_hash": "d4e5611d8043346b",
+      "rebuild_hash": "0f03a689d233ec66",
+      "triangle_count": 296,
+      "variant_id": "variant.lightweight",
+      "vertex_count": 172
+    }
+  ],
+  "selected_feature": "cad://feature/feature.base",
+  "timeline_selected_index": 0,
+  "warnings": [
+    {
+      "code": "CAD-WARN-FILLET-FAILED",
+      "entity_id": "edge.fillet_fail",
+      "feature_id": "feature.edge_marker",
+      "semantic_refs": [
+        "edge_blend_set"
+      ],
+      "severity": "warning"
+    },
+    {
+      "code": "CAD-WARN-ZERO-THICKNESS",
+      "entity_id": "face.zero_thickness",
+      "feature_id": "feature.base",
+      "semantic_refs": [
+        "rack_outer_face"
+      ],
+      "severity": "critical"
+    }
+  ],
+  "width_mm": 421.0
+}

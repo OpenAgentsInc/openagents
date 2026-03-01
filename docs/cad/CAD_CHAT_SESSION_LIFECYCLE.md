@@ -27,3 +27,29 @@ This document defines CAD session binding behavior for Autopilot chat threads.
 
 - Ambiguous CAD-like prompts set CAD recovery guidance (`last_error` + recovery text).
 - Non-CAD prompts do not force CAD session creation.
+
+## Follow-Up Interaction Golden
+
+Golden fixture:
+
+- `apps/autopilot-desktop/tests/goldens/cad_followup_parameter_edit_interaction.json`
+
+Covered scripted path:
+
+1. chat prompt translation (`Select rack_outer_face`)
+2. selection action (`SelectTimelineRow`)
+3. typed dimension edit (`StartDimensionEdit` + char input + commit)
+4. rebuild receipt commit
+5. warnings/analysis refresh
+
+Run:
+
+```bash
+cargo test -p autopilot-desktop follow_up_parameter_edit_interaction_matches_golden_receipts --quiet
+```
+
+Regenerate fixture intentionally:
+
+```bash
+CAD_UPDATE_GOLDENS=1 cargo test -p autopilot-desktop follow_up_parameter_edit_interaction_matches_golden_receipts --quiet
+```
