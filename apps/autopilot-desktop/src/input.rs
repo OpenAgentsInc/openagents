@@ -54,6 +54,7 @@ use crate::pane_system::{
     cad_demo_cycle_variant_button_bounds, cad_demo_hidden_line_mode_button_bounds,
     cad_demo_hotkey_profile_button_bounds, cad_demo_projection_mode_button_bounds,
     cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
+    cad_demo_section_offset_button_bounds, cad_demo_section_plane_button_bounds,
     cad_demo_snap_endpoint_button_bounds, cad_demo_snap_grid_button_bounds,
     cad_demo_snap_midpoint_button_bounds, cad_demo_snap_origin_button_bounds,
     cad_demo_timeline_panel_bounds, cad_demo_view_snap_front_button_bounds,
@@ -571,7 +572,16 @@ fn cad_variant_tile_at_point(
 fn cad_pick_at_point(state: &crate::app_state::RenderState, point: Point) -> Option<CadTilePick> {
     let (tile_index, viewport_bounds) = cad_variant_tile_at_point(state, point)?;
     let tile_view = state.cad_demo.variant_viewport(tile_index)?;
-    let payload = state.cad_demo.last_good_mesh_payload.as_ref()?;
+    let base_payload = state.cad_demo.last_good_mesh_payload.as_ref()?;
+    let clipped_payload = state.cad_demo.section_plane().and_then(|plane| {
+        openagents_cad::section::clip_mesh_payload(
+            base_payload,
+            plane,
+            openagents_cad::policy::resolve_tolerance_mm(None) as f32,
+        )
+        .ok()
+    });
+    let payload = clipped_payload.as_ref().unwrap_or(base_payload);
     let pick_query = CadPickQuery {
         viewport: CadPickViewport {
             origin_px: [viewport_bounds.origin.x, viewport_bounds.origin.y],
@@ -862,6 +872,8 @@ fn cad_camera_target_pane_id(state: &crate::app_state::RenderState, point: Point
             || cad_demo_hidden_line_mode_button_bounds(content_bounds).contains(point)
             || cad_demo_reset_camera_button_bounds(content_bounds).contains(point)
             || cad_demo_projection_mode_button_bounds(content_bounds).contains(point)
+            || cad_demo_section_plane_button_bounds(content_bounds).contains(point)
+            || cad_demo_section_offset_button_bounds(content_bounds).contains(point)
             || cad_demo_snap_grid_button_bounds(content_bounds).contains(point)
             || cad_demo_snap_origin_button_bounds(content_bounds).contains(point)
             || cad_demo_snap_endpoint_button_bounds(content_bounds).contains(point)

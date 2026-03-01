@@ -78,6 +78,22 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
             ));
             true
         }
+        CadDemoPaneAction::CycleSectionPlane => {
+            let axis = state.cycle_section_axis();
+            state.last_action = Some(match axis {
+                Some(axis) => format!("CAD section plane -> {}", axis.label()),
+                None => "CAD section plane -> off".to_string(),
+            });
+            true
+        }
+        CadDemoPaneAction::StepSectionPlaneOffset => {
+            let offset = state.step_section_offset();
+            state.last_action = Some(format!(
+                "CAD section offset -> {offset:+.1} ({})",
+                state.section_summary()
+            ));
+            true
+        }
         CadDemoPaneAction::ToggleSnapGrid => {
             let enabled = state.toggle_snap_mode(CadSnapMode::Grid);
             state.last_action = Some(format!(
@@ -1116,6 +1132,37 @@ mod tests {
             state.projection_mode,
             crate::app_state::CadProjectionMode::Orthographic
         );
+    }
+
+    #[test]
+    fn section_plane_and_offset_controls_cycle_deterministically() {
+        let mut state = CadDemoPaneState::default();
+        assert!(state.section_axis.is_none());
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::CycleSectionPlane
+        ));
+        assert_eq!(state.section_summary(), "x/0");
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::StepSectionPlaneOffset
+        ));
+        assert_eq!(state.section_offset_normalized, 0.2);
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::CycleSectionPlane
+        ));
+        assert_eq!(state.section_summary(), "y/0.2");
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::CycleSectionPlane
+        ));
+        assert_eq!(state.section_summary(), "z/0.2");
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::CycleSectionPlane
+        ));
+        assert_eq!(state.section_summary(), "off");
     }
 
     #[test]

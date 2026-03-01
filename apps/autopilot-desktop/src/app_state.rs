@@ -2768,13 +2768,13 @@ mod tests {
         ActivityFeedState, AgentNetworkSimulationPaneState, AlertDomain, AlertLifecycle,
         AlertsRecoveryState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole,
         CadCameraViewSnap, CadContextMenuTargetKind, CadDemoPaneState, CadHiddenLineMode,
-        CadHotkeyAction, CadProjectionMode, CadSnapMode, CadThreeDMouseAxis, CadThreeDMouseMode,
-        CadThreeDMouseProfile, EarningsScoreboardState, JobHistoryState, JobHistoryStatus,
-        JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest,
-        JobInboxState, JobInboxValidation, JobLifecycleStage, NetworkRequestStatus,
-        NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderRuntimeState,
-        RecoveryAlertRow, RelayConnectionRow, RelayConnectionStatus, RelayConnectionsState,
-        RelaySecuritySimulationPaneState, SettingsState, SparkPaneState,
+        CadHotkeyAction, CadProjectionMode, CadSectionAxis, CadSnapMode, CadThreeDMouseAxis,
+        CadThreeDMouseMode, CadThreeDMouseProfile, EarningsScoreboardState, JobHistoryState,
+        JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision,
+        JobInboxNetworkRequest, JobInboxState, JobInboxValidation, JobLifecycleStage,
+        NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState, NostrSecretState,
+        ProviderRuntimeState, RecoveryAlertRow, RelayConnectionRow, RelayConnectionStatus,
+        RelayConnectionsState, RelaySecuritySimulationPaneState, SettingsState, SparkPaneState,
         StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
         SyncHealthState, SyncRecoveryPhase, TreasuryExchangeSimulationPaneState,
     };
@@ -3760,6 +3760,9 @@ mod tests {
         assert!(state.focused_warning_index.is_none());
         assert!(state.focused_geometry_ref.is_none());
         assert_eq!(state.hidden_line_mode, CadHiddenLineMode::Shaded);
+        assert!(state.section_axis.is_none());
+        assert_eq!(state.section_offset_normalized, 0.0);
+        assert_eq!(state.section_summary(), "off");
         assert!(state.snap_toggles.grid);
         assert!(state.snap_toggles.origin);
         assert!(!state.snap_toggles.endpoint);
@@ -3844,6 +3847,24 @@ mod tests {
         assert_eq!(first.projection_mode, CadProjectionMode::Orthographic);
         second.cycle_projection_mode();
         assert_eq!(second.projection_mode, CadProjectionMode::Perspective);
+    }
+
+    #[test]
+    fn cad_section_mode_and_offset_cycle_deterministically() {
+        let mut state = CadDemoPaneState::default();
+        assert!(state.section_axis.is_none());
+
+        assert_eq!(state.cycle_section_axis(), Some(CadSectionAxis::X));
+        assert_eq!(state.section_summary(), "x/0");
+        assert_eq!(state.step_section_offset(), 0.2);
+        assert_eq!(state.step_section_offset(), 0.4);
+        assert_eq!(state.step_section_offset(), -0.4);
+
+        assert_eq!(state.cycle_section_axis(), Some(CadSectionAxis::Y));
+        assert_eq!(state.cycle_section_axis(), Some(CadSectionAxis::Z));
+        assert_eq!(state.cycle_section_axis(), None);
+        assert_eq!(state.section_offset_normalized, 0.0);
+        assert!(state.section_plane().is_none());
     }
 
     #[test]

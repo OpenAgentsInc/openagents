@@ -475,6 +475,8 @@ pub struct CadDemoPaneState {
     pub measurement_points: Vec<Point>,
     pub measurement_distance_px: Option<f64>,
     pub measurement_angle_deg: Option<f64>,
+    pub section_axis: Option<CadSectionAxis>,
+    pub section_offset_normalized: f32,
     pub hidden_line_mode: CadHiddenLineMode,
     pub snap_toggles: CadSnapToggles,
     pub projection_mode: CadProjectionMode,
@@ -849,6 +851,39 @@ impl CadProjectionMode {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CadSectionAxis {
+    X,
+    Y,
+    Z,
+}
+
+impl CadSectionAxis {
+    pub fn next(self) -> Self {
+        match self {
+            Self::X => Self::Y,
+            Self::Y => Self::Z,
+            Self::Z => Self::X,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::X => "x",
+            Self::Y => "y",
+            Self::Z => "z",
+        }
+    }
+
+    pub fn to_cad_section_axis(self) -> openagents_cad::section::CadSectionAxis {
+        match self {
+            Self::X => openagents_cad::section::CadSectionAxis::X,
+            Self::Y => openagents_cad::section::CadSectionAxis::Y,
+            Self::Z => openagents_cad::section::CadSectionAxis::Z,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CadHiddenLineMode {
     Shaded,
     ShadedEdges,
@@ -1040,6 +1075,8 @@ impl Default for CadDemoPaneState {
             measurement_points: Vec::new(),
             measurement_distance_px: None,
             measurement_angle_deg: None,
+            section_axis: None,
+            section_offset_normalized: 0.0,
             hidden_line_mode: CadHiddenLineMode::Shaded,
             snap_toggles: CadSnapToggles::default(),
             projection_mode: CadProjectionMode::Orthographic,
@@ -1245,6 +1282,56 @@ impl CadDemoPaneState {
 
     pub fn cycle_projection_mode(&mut self) {
         self.projection_mode = self.projection_mode.next();
+    }
+
+    pub fn cycle_section_axis(&mut self) -> Option<CadSectionAxis> {
+        self.section_axis = match self.section_axis {
+            None => Some(CadSectionAxis::X),
+            Some(axis) if axis == CadSectionAxis::Z => None,
+            Some(axis) => Some(axis.next()),
+        };
+        if self.section_axis.is_none() {
+            self.section_offset_normalized = 0.0;
+        }
+        self.section_axis
+    }
+
+    pub fn step_section_offset(&mut self) -> f32 {
+        const OFFSETS: [f32; 5] = [-0.4, -0.2, 0.0, 0.2, 0.4];
+        if self.section_axis.is_none() {
+            self.section_axis = Some(CadSectionAxis::X);
+        }
+        let current = self.section_offset_normalized;
+        let current_index = OFFSETS
+            .iter()
+            .enumerate()
+            .min_by(|(_, lhs), (_, rhs)| {
+                (current - *lhs)
+                    .abs()
+                    .partial_cmp(&(current - *rhs).abs())
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .map(|(index, _)| index)
+            .unwrap_or(2);
+        let next_index = (current_index + 1) % OFFSETS.len();
+        self.section_offset_normalized = OFFSETS[next_index];
+        self.section_offset_normalized
+    }
+
+    pub fn section_summary(&self) -> String {
+        match self.section_axis {
+            Some(axis) => format!("{}/{}", axis.label(), self.section_offset_normalized),
+            None => "off".to_string(),
+        }
+    }
+
+    pub fn section_plane(&self) -> Option<openagents_cad::section::CadSectionPlane> {
+        self.section_axis.map(|axis| {
+            openagents_cad::section::CadSectionPlane::new(
+                axis.to_cad_section_axis(),
+                self.section_offset_normalized,
+            )
+        })
     }
 
     pub fn cycle_hotkey_profile(&mut self) -> Result<(), String> {
