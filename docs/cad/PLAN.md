@@ -576,276 +576,368 @@ This ordered issue list implements the plan end-to-end. Each issue should includ
 
 1. Title: Create `crates/cad` crate and workspace wiring
    Description: Add new `crates/cad` crate, register in workspace `Cargo.toml`, and ensure clean build. DoD: workspace builds without introducing app-layer dependencies into crate internals.
+   Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 2. Title: Kernel strategy decision (A/B/C/D) with spike plan
    Description: Open decision issue with options A-D, decision criteria (robustness, STEP quality, perf, integration, license), and run a short spike. DoD: signed decision record with fallback trigger conditions.
+   Details: Include a weighted scorecard across robustness, STEP fidelity, integration cost, runtime performance, and maintenance risk. The spike must run the same rack test corpus across candidate kernels and attach artifacts: boolean failure log, STEP outputs, import/checker results, and peak memory. Issue must conclude with explicit chosen path, fallback path, and kill criteria for switching.
 
 3. Title: Implement kernel adapter boundary in `crates/cad`
    Description: Create `cad::kernel` adapter traits so Wave 1 engine choice is isolated from higher layers. DoD: primitives/eval call engine through adapter only.
+   Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 4. Title: Document external dependency license and security posture
    Description: Record chosen engine license, attribution, update cadence, fork-vs-vendor policy, and security scanning requirements. DoD: doc committed and linked from CAD plan.
+   Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 5. Title: Lock units/tolerances/robustness policy in code and docs
    Description: Implement mm canonical units, tolerance constants, and tolerant-modeling defaults. DoD: policy constants referenced by eval/boolean paths and documented.
+   Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 6. Title: Define `.apcad` file format and deterministic ordering rules
    Description: Specify versioned schema, stable ordering, stable IDs, and optional analysis cache. DoD: format spec + deterministic serialization tests.
+   Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 7. Title: Define `CadDocument` core schema and serialization
    Description: Implement versioned document schema with units, revision, metadata, and deterministic serde round-trip tests. DoD: goldens for empty/minimal docs.
+   Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 8. Title: Define `FeatureNode`/`FeatureGraph` contracts with stable IDs
    Description: Add typed feature graph structs with explicit dependency edges and stable node IDs for reproducible rebuilds. DoD: deterministic topo-order tests.
+   Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 9. Title: Add CAD domain error model (`CadError`) and result conventions
    Description: Define crate-wide error taxonomy for parse/eval/query/export failures with actionable, non-panicking messages. DoD: errors map to structured UI events.
+   Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 10. Title: Add `CadAnalysis`, `CadSelection`, and `CadWarning` contracts
     Description: Introduce typed analysis snapshots, selection state, and warning receipts used by pane/UI/event system. DoD: schema tests for each payload.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 11. Title: Add `CadDemo` pane kind and command palette registration
     Description: Register pane in `app_state`, `pane_registry`, and command palette as singleton. DoD: pane opens/focuses predictably via palette command.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 12. Title: Add bounded `CadDemo` placeholder renderer
     Description: Implement initial CAD pane rendering with strict clipping and no overflow regressions. DoD: pane system tests pass for bounds/clipping.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 13. Title: Add CAD pane state container in `app_state`
     Description: Add `CadDemoPaneState` with document/session/variant placeholders and deterministic defaults. DoD: state bootstraps and survives app refresh.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 14. Title: Add CAD reducer/action scaffolding in input layer
     Description: Add lane-neutral action handlers for CAD pane commands and state transitions. DoD: no-op command loop and state transitions tested.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 15. Title: Add serialization snapshot tests for empty/minimal CAD docs
     Description: Commit stable snapshot fixtures for empty docs and single-feature docs to lock schema determinism. DoD: CI snapshot tests green.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 16. Title: Implement parameter store (`params`) with typed scalar units
     Description: Add named parameter map, validation, and unit-aware scalar handling for mm-centric workflows. DoD: invalid unit/value cases rejected.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 17. Title: Implement expression evaluation for parameter dependencies
     Description: Support deterministic expressions (arithmetic + parameter refs) with cycle detection. DoD: expression graph tests include cycle and divide-by-zero failure cases.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 18. Title: Implement feature op: primitive box
     Description: Add box feature op with parameter binding and deterministic IDs. DoD: golden geometry hash for representative boxes.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 19. Title: Implement feature op: primitive cylinder
     Description: Add cylinder feature op with radius/height parameterization. DoD: deterministic geometry and tolerance edge-case tests.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 20. Title: Implement feature op: transform
     Description: Add translation/rotation/scale feature with robust validation. DoD: transform composition tests and deterministic output ordering.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 21. Title: Implement feature op: cut/hole
     Description: Add subtraction-style cutout feature for rack holes/vents. DoD: valid-result-or-structured-failure behavior tested.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 22. Title: Implement feature op: linear pattern
     Description: Add deterministic repeated-feature generation for vents/holes. DoD: pattern index stability across rebuilds.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 23. Title: Implement feature marker: fillet placeholder
     Description: Add fillet/chamfer marker contract (visual/no-op acceptable) to preserve graph compatibility. DoD: placeholder survives save/load/rebuild.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 24. Title: Implement deterministic rebuild scheduler in `eval`
     Description: Evaluate feature graph in stable topological order and return reproducible geometry outputs. DoD: repeated rebuild hash equality tests.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 25. Title: Implement parameter-change invalidation logic
     Description: Recompute only affected downstream features after parameter edits. DoD: dependency pruning tests with unchanged upstream hashes.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 26. Title: Implement eval cache keys and cache store
     Description: Add cache keyed by `(document_revision, feature_node_id, params_hash)` with hit/miss accounting. DoD: cache correctness + eviction tests.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 27. Title: Add rebuild receipts (`duration_ms`, cache stats)
     Description: Emit structured rebuild receipts on each eval cycle for UI telemetry and debugging. DoD: receipts flow to pane/event stream.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 28. Title: Add background rebuild worker with last-good mesh strategy
     Description: Run rebuilds off UI thread; render last-good mesh until commit. DoD: stress test confirms no UI freeze or transient null mesh.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 29. Title: Implement model validity checks core
-    Description: Add manifold/self-intersection/zero-thickness/sliver checks and fillet failure classification. DoD: check suite returns deterministic warnings.
+   Description: Add manifold/self-intersection/zero-thickness/sliver checks and fillet failure classification. DoD: check suite returns deterministic warnings.
+   Details: Define stable warning codes (`CAD-WARN-*`) with severity (`info`, `warning`, `critical`) and semantic references to implicated entities/features. Require deterministic warning ordering and include fixtures that intentionally trigger each warning class. Add structured receipts so warning rows can deep-link to geometry in the pane.
 
 30. Title: Add warnings panel and viewport warning markers
-    Description: Surface validity warnings in CAD pane and overlay problem locations. DoD: clicking warning focuses implicated geometry.
+   Description: Surface validity warnings in CAD pane and overlay problem locations. DoD: clicking warning focuses implicated geometry.
+   Details: Add warning filters by severity/code and persist panel state per session. Marker rendering must support hover state, click-to-focus, and fallback when exact geometry reference is unavailable (feature-level focus). Include UX tests proving no overlay overflow and no stale markers after rebuild.
 
 31. Title: Implement undo/redo command stack in `crates/cad::history`
-    Description: Capture typed CAD commands with deterministic reversible state transitions. DoD: multi-step undo/redo preserves IDs/semantic refs.
+   Description: Capture typed CAD commands with deterministic reversible state transitions. DoD: multi-step undo/redo preserves IDs/semantic refs.
+   Details: Define command granularity rules (single param edit = single history step, grouped gestures = coalesced step) and max stack policy. Include replay tests that run command sequences forward/backward and assert identical geometry hashes, warnings, and analysis snapshots. History must be session-scoped and reset-safe.
 
 32. Title: Add minimal feature timeline UI bound to command history
-    Description: Render ordered feature timeline and parameter inspector for selected node. DoD: selecting a timeline row highlights corresponding feature.
+   Description: Render ordered feature timeline and parameter inspector for selected node. DoD: selecting a timeline row highlights corresponding feature.
+   Details: Timeline rows must show feature name, op type, status badge (ok/warn/fail), and last edit provenance (manual vs AI). Include keyboard navigation and auto-scroll to active feature on selection. Add regression tests for clipping and extremely long timelines in small pane sizes.
 
 33. Title: Add mesh representation contract in `crates/cad::mesh`
     Description: Define renderer-facing mesh payload (vertices/indices/normals/material slots/edges). DoD: binary-compatible payload tests.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 34. Title: Add tessellation path from eval geometry to mesh output
     Description: Convert deterministic eval outputs into pane-renderable mesh payload. DoD: tessellation goldens for rack primitives.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 35. Title: Add generic mesh draw primitive contract in WGPUI core/render
     Description: Extend WGPUI with product-agnostic mesh scene primitive. DoD: primitive can be used by non-CAD demo surface.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 36. Title: Add mesh render pass and shader pipeline in WGPUI render
     Description: Implement minimal lit CAD mesh rendering pipeline compatible with existing renderer layers. DoD: render pass tests and fallback behavior documented.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 37. Title: Integrate CAD mesh rendering into `CadDemo` pane
     Description: Hook pane mesh output to WGPUI mesh primitive with bounded viewport. DoD: pane render remains clipped and layer-stable.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 38. Title: Add crisp edge/silhouette overlay pipeline
     Description: Render feature edges and silhouettes for CAD readability. DoD: edge visibility stable across zoom and projection modes.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 39. Title: Add selection outline and stable shading normal handling
     Description: Ensure selected entities get clear outline and shading remains stable frame-to-frame. DoD: no flicker in rotating/selected scenes.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 40. Title: Add hidden-line style mode for wireframe and section contexts
     Description: Provide hidden-line rendering style to improve CAD legibility. DoD: mode toggle behaves consistently with section tool.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 41. Title: Add orbit/pan/zoom camera controls in CAD pane
     Description: Implement mouse navigation controls with predictable sensitivity and reset behavior. DoD: camera state is deterministic and persisted per session.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 42. Title: Add view cube and standard view snaps
     Description: Add orientation widget and top/front/right/isometric snaps. DoD: snaps align with orthographic expectations.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 43. Title: Add orthographic/perspective toggle
     Description: Support per-pane projection mode switching. DoD: projection state persists in pane session state.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 44. Title: Add render modes (shaded, shaded+edges, wireframe)
     Description: Implement render mode toggles and visual parity checks. DoD: each mode has snapshot baselines.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 45. Title: Add snapping toggles (grid/origin/endpoint/midpoint)
     Description: Implement snap-mode state model and interaction hooks for selection/measure. DoD: snap indicator state visible in UI.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 46. Title: Add CAD hotkey map and minimal customization
     Description: Define default hotkeys and allow remap for baseline action set. DoD: remapped keys persist and conflict checks prevent invalid binds.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 47. Title: Add command palette parity for CAD hotkey actions
     Description: Ensure all major CAD actions are discoverable via command palette entries. DoD: parity matrix test covers hotkey/palette command equivalence.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 48. Title: Add minimal 3D mouse input mapping
     Description: Add translate/rotate modes, speed scalar, and axis locks with fallback when device absent. DoD: device mapping profile is configurable.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 49. Title: Add CAD contextual menu framework
     Description: Implement pane-local context menu shell for selection and edit actions. DoD: context menu works for body/face/edge selections.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 50. Title: Add 4-up variant viewport layout
     Description: Support side-by-side variant presentation and per-viewport focus/select interactions. DoD: each tile retains independent camera and selection state.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 51. Title: Implement query module ray hit tests
     Description: Add body/face/edge hit testing utilities with stable hit payloads and tolerance-aware picking. DoD: hit precision tests across zoom levels.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 52. Title: Implement selection module with persistent selection sets
     Description: Add primary/secondary selection model, filters, and resilient selection IDs. DoD: selections survive rebuild where semantic refs remain valid.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 53. Title: Add hover highlight and click selection interactions
     Description: Wire query + selection into input loop for immediate feedback. DoD: hover/click latency meets frame budget target.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 54. Title: Add inspect panel for body properties
     Description: Show volume, area, mass, CoG, and bounding box for selected body. DoD: values match analysis engine outputs.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 55. Title: Add inspect panel for face/edge properties
     Description: Show face area + normal and edge length + type for sub-entities. DoD: inspect outputs are stable across camera moves.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 56. Title: Add measure tool MVP
     Description: Implement distance/angle measurements with on-screen labels and snapping support. DoD: measurement values deterministic under tolerance policy.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 57. Title: Add section analysis tool MVP
     Description: Add clipping-plane section view with controls and hidden-line compatibility. DoD: section mode interoperates with selection and inspect.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 58. Title: Implement material density table and material assignment
     Description: Add material presets and deterministic density mapping for analysis calculations. DoD: changing material updates mass/cost paths.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 59. Title: Implement analysis engine: volume/mass/CoG
     Description: Compute and cache core physical properties. DoD: analysis outputs reproducible and tolerance-bounded.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 60. Title: Implement analysis engine: cost heuristic
     Description: Add first-pass CNC/material cost estimator driven by geometry/material complexity. DoD: estimator exposes assumptions in metadata.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 61. Title: Implement analysis engine: deflection heuristic
     Description: Add beam-style deflection approximation for rack use case. DoD: heuristic includes documented limits and confidence label.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 62. Title: Add live engineering overlay panel
     Description: Render material/weight/cost/deflection metadata and update with geometry changes. DoD: update appears in same cycle as rebuild commit.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 63. Title: Implement stable semantic reference registry
     Description: Generate semantic refs like `rack_outer_face`/`mount_hole_pattern` for downstream ops and AI edits. DoD: refs persisted in `.apcad` and survive routine rebuild.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 64. Title: Implement deterministic Mac Studio rack template generator
     Description: Build base two-bay rack model generator with explicit parameter schema and semantic refs. DoD: baseline model matches scripted demo dimensions.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 65. Title: Add wall-mount feature set to rack generator
     Description: Add mount hole pattern and mounting geometry using semantic refs. DoD: mount features can be toggled/edited without ID churn.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 66. Title: Add vent pattern generator features
     Description: Add configurable vent arrays, sizing, and density controls. DoD: vent parameters drive predictable airflow-oriented variants.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 67. Title: Add rib/thickness optimization hooks to generator
     Description: Add tunable structure parameters required by weight/stiffness tradeoffs. DoD: variant objectives can manipulate these hooks directly.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 68. Title: Implement variant objective engine (4 objective presets)
     Description: Generate four deterministic variants: lowest weight, lowest cost, highest stiffness, airflow-biased. DoD: variant generation is reproducible with seeded objective solver.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 69. Title: Add per-variant selection and inspect synchronization
     Description: Ensure each variant supports independent selection, camera, warnings, and analysis display. DoD: switching selected variant does not leak prior state.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 70. Title: Define strict `CadIntent` JSON schema and validators
     Description: Add typed intent schema and validator rules; reject unknown/invented operations. DoD: schema validation errors are machine-readable.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 71. Title: Implement `CadIntent` execution dispatcher
     Description: Route validated intents to typed CAD commands only; block free-text state mutation. DoD: dispatcher coverage tests for all intent types.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 72. Title: Implement chat-to-`CadIntent` translation adapter
     Description: Convert Autopilot chat outputs into schema-validated intents with explicit parse failures and recovery prompts. DoD: adapter tests include malformed/ambiguous chat outputs.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 73. Title: Add CAD session lifecycle integration with Autopilot chat
     Description: Create new CAD sessions and bind follow-up intents to active session deterministically. DoD: no thread/session flicker or accidental session switching.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 74. Title: Add `CadEvent` emission into activity feed
     Description: Emit document/variant/selection/warning/rebuild/analysis/export events into existing activity lane. DoD: replay-safe dedupe behavior validated.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 75. Title: Add dimension labels and direct numeric editing
     Description: Allow click-to-edit dimensions (typed input only) with immediate rebuild. DoD: typed edits create undoable history entries and update overlays.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 76. Title: Implement STEP export writer (demo scope)
     Description: Export deterministic solid-only STEP (no assembly/PMI/colors). DoD: repeated exports of same doc are byte-stable except timestamp fields if any.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 77. Title: Add STEP checker utility using OpenCascade in CI
-    Description: Build test utility that re-imports exported STEP and validates topology sanity. DoD: checker integrated into automated tests for CAD export path.
+   Description: Build test utility that re-imports exported STEP and validates topology sanity. DoD: checker integrated into automated tests for CAD export path.
+   Details: Checker output must include machine-readable diagnostics for invalid solids, missing shells, and non-manifold entities. CI should run checker on baseline and variant fixtures and upload checker logs as artifacts on failure. Document local command usage so developers can reproduce failures before pushing.
 
 78. Title: Add STEP round-trip tolerance assertions (bbox/volume)
-    Description: Compare exported-then-checked geometry properties against source with tolerance thresholds. DoD: tolerance failures produce actionable diff output.
+   Description: Compare exported-then-checked geometry properties against source with tolerance thresholds. DoD: tolerance failures produce actionable diff output.
+   Details: Define per-metric thresholds (bbox axis deltas, volume delta) and a consistent report format showing expected vs actual values. Failures must include source doc revision, export settings, and checker metadata for triage. Include deterministic fixtures that sit near tolerance boundaries.
 
 79. Title: Add CAD pane UX polish pass (noise reduction + readability)
     Description: Refine visual hierarchy, labels, and overlays while preserving engineering density. DoD: review checklist for CAD quality bar completed.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 80. Title: Harden pane clipping/scroll/overflow invariants for CAD
     Description: Ensure no CAD subview, overlay, timeline, or warning panel can overflow pane bounds. DoD: regression tests cover prior overflow classes.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 81. Title: Add CAD demo reset/bootstrap action
     Description: Provide one-click deterministic reset to baseline demo state for repeatable recordings. DoD: reset command idempotent across repeated use.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 82. Title: Add golden geometry snapshots for rack baseline and variants
     Description: Record and assert snapshot outputs for baseline and each objective variant. DoD: snapshot diff tooling highlights semantic geometry differences.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 83. Title: Add golden interaction test for follow-up parameter edit
     Description: Test prompt -> select -> typed edit -> rebuild -> warnings/analysis update path. DoD: scripted interaction produces deterministic receipts.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 84. Title: Add headless CAD script test harness (`CadIntent` sequences)
-    Description: Add script runner that applies intent sequences and asserts geometry hash, analysis, and warnings. DoD: harness used by CI and demo reliability suite.
+   Description: Add script runner that applies intent sequences and asserts geometry hash, analysis, and warnings. DoD: harness used by CI and demo reliability suite.
+   Details: Define script file format with seeded randomness, explicit expected receipts, and optional timing assertions. Harness must support success and failure-path scripts (intent rejection, boolean failure, warning escalation). Add at least one canonical demo script consumed by both CI and release-gate reliability tests.
 
 85. Title: Add performance benchmark suite for rebuild/mesh/hit-test/memory
     Description: Track rebuild latency, mesh generation time, hit-test time, FPS, and memory budget compliance. DoD: benchmark thresholds mapped to Gate A/B/E.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 86. Title: Add reliability test for full 20-second scripted demo
     Description: Automate scripted demo interactions and assert no stalls, flicker, state loss, or budget regressions. DoD: deterministic pass/fail criteria encoded.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 87. Title: Add release gate checklist for CAD demo milestone
     Description: Encode Gate A-E checks and block milestone release until all criteria are green. DoD: checklist linked from release process docs.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 88. Title: Wave 2 kickoff: sketch plane and sketch entity model
     Description: Start Wave 2 with sketch data model (lines/arcs/constraints anchors) and deterministic serialization. DoD: `.apcad` supports sketch entities with stable IDs.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 89. Title: Wave 2 kickoff: constraint solver MVP integration
     Description: Integrate basic constraints (coincident, horizontal/vertical, tangent, dimension) with solver diagnostics. DoD: common sketch scenarios solve deterministically.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 90. Title: Wave 2 kickoff: extrude/cut/revolve from sketch profiles
     Description: Convert constrained profiles into feature graph operations. DoD: sketch-derived features participate in history, warnings, and undo/redo.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 91. Title: Wave 2 kickoff: fillet/chamfer/shell production implementation
     Description: Replace placeholder operations with production-capable operations for part-modeling MVP. DoD: operations include failure classification and fallback messaging.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
 
 92. Title: Wave 2 kickoff: STEP import pipeline
     Description: Add deterministic STEP import into `CadDocument` for replacement-credibility workflows. DoD: imported solids map to stable IDs and survive save/reload.
+    Details: Include explicit in-scope/out-of-scope boundaries, dependency links to prior issue numbers, test plan updates (unit/integration/snapshot/benchmark as applicable), and required observability/docs updates for reviewer verification.
