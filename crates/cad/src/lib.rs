@@ -6,6 +6,7 @@
 use thiserror::Error;
 
 pub mod boolean;
+pub mod document;
 pub mod eval;
 pub mod format;
 pub mod kernel;
