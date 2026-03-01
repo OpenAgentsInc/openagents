@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::document::CadDocument;
 use crate::format::ApcadDocumentEnvelope;
+use crate::hash::stable_hex_digest;
 use crate::semantic_refs::CadSemanticRefRegistry;
 use crate::step_checker::{CadStepCheckerReport, check_step_text_structural};
 use crate::{CadError, CadResult};
@@ -54,7 +55,7 @@ pub fn import_step_text_to_document(
         });
     }
 
-    let import_hash = format!("{:016x}", fnv1a64(step_text.as_bytes()));
+    let import_hash = stable_hex_digest(step_text.as_bytes());
     let mut document = CadDocument::new_empty(document_id);
     document.revision = 1;
     document
@@ -101,17 +102,6 @@ pub fn import_step_text_to_document(
         imported_feature_ids,
         stable_ids,
     })
-}
-
-fn fnv1a64(bytes: &[u8]) -> u64 {
-    const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
-    const FNV_PRIME: u64 = 0x100000001b3;
-    let mut hash = FNV_OFFSET_BASIS;
-    for byte in bytes {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-    hash
 }
 
 #[cfg(test)]

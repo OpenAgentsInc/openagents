@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::hash::stable_fnv1a64;
+
 /// Typed CAD event kinds for pane and activity feed integration.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum CadEventKind {
@@ -132,7 +134,7 @@ pub fn build_cad_event_id(
 ) -> String {
     let variant = variant_id.unwrap_or("none");
     let key = key.unwrap_or("none");
-    let digest = fnv1a64(
+    let digest = stable_fnv1a64(
         format!(
             "kind={}|session={}|doc={}|rev={}|variant={}|key={}",
             kind.as_str(),
@@ -151,18 +153,6 @@ pub fn build_cad_event_id(
         variant,
         digest
     )
-}
-
-fn fnv1a64(bytes: &[u8]) -> u64 {
-    const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
-    const FNV_PRIME: u64 = 0x100000001b3;
-
-    let mut hash = FNV_OFFSET_BASIS;
-    for byte in bytes {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-    hash
 }
 
 #[cfg(test)]

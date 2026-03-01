@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::contracts::{CadWarning, CadWarningCode, CadWarningSeverity};
 use crate::feature_graph::FeatureNode;
+use crate::hash::stable_hex_digest;
 use crate::params::{ParameterStore, ScalarUnit};
 use crate::{CadError, CadResult};
 
@@ -480,7 +481,7 @@ fn evaluate_finishing_value(
         request.value_mm,
         request.risk_threshold_mm
     );
-    let geometry_hash = format!("{:016x}", fnv1a64(payload.as_bytes()));
+    let geometry_hash = stable_hex_digest(payload.as_bytes());
     Ok(FinishingFeatureResult {
         feature_id: request.feature_id.to_string(),
         source_feature_id: request.source_feature_id.to_string(),
@@ -566,17 +567,6 @@ fn validate_stable_id(value: &str, label: &str) -> CadResult<()> {
         });
     }
     Ok(())
-}
-
-fn fnv1a64(bytes: &[u8]) -> u64 {
-    const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
-    const FNV_PRIME: u64 = 0x100000001b3;
-    let mut hash = FNV_OFFSET_BASIS;
-    for byte in bytes {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-    hash
 }
 
 #[cfg(test)]
