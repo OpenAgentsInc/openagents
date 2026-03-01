@@ -1,7 +1,7 @@
 use crate::hash::stable_hex_digest;
 use crate::kernel::CadKernelAdapter;
 use crate::params::{ParameterStore, ScalarUnit};
-use crate::primitives::{build_primitive, BoxPrimitive, CylinderPrimitive, PrimitiveSpec};
+use crate::primitives::{BoxPrimitive, CylinderPrimitive, PrimitiveSpec, build_primitive};
 use crate::{CadError, CadResult};
 
 /// Deterministic feature operation result.

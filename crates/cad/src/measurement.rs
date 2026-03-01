@@ -15,7 +15,11 @@ pub fn vector_between_points(start: CadMeasurePoint3, end: CadMeasurePoint3) -> 
     CadMeasurePoint3::new(end.x - start.x, end.y - start.y, end.z - start.z)
 }
 
-pub fn distance_between_points(start: CadMeasurePoint3, end: CadMeasurePoint3, tolerance: f64) -> f64 {
+pub fn distance_between_points(
+    start: CadMeasurePoint3,
+    end: CadMeasurePoint3,
+    tolerance: f64,
+) -> f64 {
     let delta = vector_between_points(start, end);
     let distance = vector_length(delta);
     if !distance.is_finite() {
@@ -64,7 +68,8 @@ mod tests {
         let second = distance_between_points(a, b, 1e-9);
         assert_eq!(first, second);
         assert!((first - 5.0).abs() < 1e-12);
-        let collapsed = distance_between_points(a, CadMeasurePoint3::new(1.0 + 1e-7, 2.0, 3.0), 1e-6);
+        let collapsed =
+            distance_between_points(a, CadMeasurePoint3::new(1.0 + 1e-7, 2.0, 3.0), 1e-6);
         assert_eq!(collapsed, 0.0);
     }
 

@@ -4,7 +4,7 @@ use crate::feature_graph::{FeatureGraph, FeatureNode};
 use crate::hash::stable_hex_digest;
 use crate::kernel::CadKernelAdapter;
 use crate::policy;
-use crate::primitives::{build_primitives, PrimitiveSpec};
+use crate::primitives::{PrimitiveSpec, build_primitives};
 use crate::{CadError, CadResult};
 
 /// Minimal eval plan for early adapter-boundary validation.

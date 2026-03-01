@@ -49,10 +49,7 @@ impl FeatureGraph {
                 }
                 if !ids.contains(dep) {
                     return Err(CadError::InvalidFeatureGraph {
-                        reason: format!(
-                            "feature {} depends on missing node {}",
-                            node.id, dep
-                        ),
+                        reason: format!("feature {} depends on missing node {}", node.id, dep),
                     });
                 }
             }
@@ -126,7 +123,10 @@ mod tests {
             id: id.to_string(),
             name: id.to_string(),
             operation_key: "noop".to_string(),
-            depends_on: depends_on.iter().map(|value| (*value).to_string()).collect(),
+            depends_on: depends_on
+                .iter()
+                .map(|value| (*value).to_string())
+                .collect(),
             params: BTreeMap::new(),
         }
     }

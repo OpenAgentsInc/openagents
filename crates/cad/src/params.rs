@@ -145,9 +145,8 @@ impl ParameterExpressionStore {
         if let Some(expression) = self.expressions.get(name) {
             visiting.push(name.to_string());
             let ast = parse_expression(expression)?;
-            let mut resolver = |ref_name: &str| {
-                self.evaluate_inner(ref_name, params, target_unit, visiting)
-            };
+            let mut resolver =
+                |ref_name: &str| self.evaluate_inner(ref_name, params, target_unit, visiting);
             let value = eval_ast(&ast, &mut resolver)?;
             let _ = visiting.pop();
             return Ok(value);
@@ -280,9 +279,11 @@ fn tokenize(input: &str) -> CadResult<Vec<Token>> {
                     idx += 1;
                 }
                 let slice: String = chars[start..idx].iter().collect();
-                let value = slice.parse::<f64>().map_err(|error| CadError::ParseFailed {
-                    reason: format!("invalid numeric literal '{slice}': {error}"),
-                })?;
+                let value = slice
+                    .parse::<f64>()
+                    .map_err(|error| CadError::ParseFailed {
+                        reason: format!("invalid numeric literal '{slice}': {error}"),
+                    })?;
                 if !value.is_finite() {
                     return Err(CadError::ParseFailed {
                         reason: format!("non-finite numeric literal '{slice}'"),
@@ -294,8 +295,7 @@ fn tokenize(input: &str) -> CadResult<Vec<Token>> {
                 let start = idx;
                 idx += 1;
                 while idx < chars.len()
-                    && (chars[idx].is_ascii_alphanumeric()
-                        || matches!(chars[idx], '_' | '.' | '-'))
+                    && (chars[idx].is_ascii_alphanumeric() || matches!(chars[idx], '_' | '.' | '-'))
                 {
                     idx += 1;
                 }
@@ -410,9 +410,15 @@ fn eval_ast(
         ExprNode::Literal(value) => Ok(*value),
         ExprNode::Reference(name) => resolve_ref(name),
         ExprNode::UnaryMinus(inner) => Ok(-eval_ast(inner, resolve_ref)?),
-        ExprNode::Add(left, right) => Ok(eval_ast(left, resolve_ref)? + eval_ast(right, resolve_ref)?),
-        ExprNode::Sub(left, right) => Ok(eval_ast(left, resolve_ref)? - eval_ast(right, resolve_ref)?),
-        ExprNode::Mul(left, right) => Ok(eval_ast(left, resolve_ref)? * eval_ast(right, resolve_ref)?),
+        ExprNode::Add(left, right) => {
+            Ok(eval_ast(left, resolve_ref)? + eval_ast(right, resolve_ref)?)
+        }
+        ExprNode::Sub(left, right) => {
+            Ok(eval_ast(left, resolve_ref)? - eval_ast(right, resolve_ref)?)
+        }
+        ExprNode::Mul(left, right) => {
+            Ok(eval_ast(left, resolve_ref)? * eval_ast(right, resolve_ref)?)
+        }
         ExprNode::Div(left, right) => {
             let divisor = eval_ast(right, resolve_ref)?;
             if divisor.abs() <= f64::EPSILON {
@@ -543,7 +549,10 @@ mod tests {
             .expect("expression should set");
 
         let value = expressions.evaluate("a_mm", &params, ScalarUnit::Millimeter);
-        assert!(value.is_err(), "cyclic expression dependencies must be rejected");
+        assert!(
+            value.is_err(),
+            "cyclic expression dependencies must be rejected"
+        );
     }
 
     #[test]

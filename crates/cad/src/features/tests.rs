@@ -1,10 +1,10 @@
 use super::primitives::evaluate_cut_hole_feature_with_boolean;
 use super::{
-    compose_transform_sequence, evaluate_box_feature, evaluate_cut_hole_feature,
-    evaluate_cylinder_feature, evaluate_fillet_placeholder_feature,
-    evaluate_linear_pattern_feature, evaluate_transform_feature, BoxFeatureOp, CutHoleFeatureOp,
-    CylinderFeatureOp, FilletPlaceholderFeatureOp, FilletPlaceholderKind, LinearPatternFeatureOp,
-    TransformFeatureOp,
+    BoxFeatureOp, CutHoleFeatureOp, CylinderFeatureOp, FilletPlaceholderFeatureOp,
+    FilletPlaceholderKind, LinearPatternFeatureOp, TransformFeatureOp, compose_transform_sequence,
+    evaluate_box_feature, evaluate_cut_hole_feature, evaluate_cylinder_feature,
+    evaluate_fillet_placeholder_feature, evaluate_linear_pattern_feature,
+    evaluate_transform_feature,
 };
 use crate::feature_graph::{FeatureGraph, FeatureNode};
 use crate::kernel::CadKernelAdapter;
