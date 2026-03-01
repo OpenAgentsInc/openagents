@@ -29,6 +29,7 @@ This document defines the MVP `CadDemoPaneState` container in desktop app state.
 - `next_rebuild_request_id`
 - `pending_rebuild_request_id`
 - `last_good_mesh_id`
+- `last_good_mesh_payload`
 - `warnings`
 - `warning_filter_severity`
 - `warning_filter_code`
@@ -64,6 +65,7 @@ Receipts are:
 - retained in-pane (`rebuild_receipts`, bounded history)
 - surfaced as lane events through activity feed upserts with source tag `cad.eval`
 - committed from background worker responses while preserving `last_good_mesh_id` during pending rebuilds
+- mesh payload retained in state for viewport projection (`last_good_mesh_payload`)
 - sourced from async rebuild+tessellation worker completion (`cad_rebuild_worker`)
 
 Warning panel state is session-persistent and filterable by severity/code.

@@ -1,4 +1,5 @@
-use wgpui::{Bounds, PaintContext, Point, Quad, theme};
+use openagents_cad::mesh::{CadMeshPayload, CadMeshVertex};
+use wgpui::{Bounds, MeshPrimitive, MeshVertex, PaintContext, Point, Quad, theme};
 
 use crate::app_state::{CadDemoPaneState, CadDemoWarningState};
 use crate::pane_renderer::paint_action_button;
@@ -15,6 +16,7 @@ const SUBHEADER_GAP: f32 = 4.0;
 const VIEWPORT_TOP_GAP: f32 = 10.0;
 const FOOTER_RESERVED: f32 = 18.0;
 const RECEIPT_LINE_HEIGHT: f32 = 10.0;
+const VIEWPORT_MESH_PAD: f32 = 12.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CadDemoPlaceholderLayout {
@@ -118,9 +120,27 @@ pub fn paint_cad_demo_placeholder_pane(
             layout.viewport_bounds.origin.x + 8.0,
             (layout.viewport_bounds.origin.y + 10.0).min(layout.viewport_bounds.max_y()),
         );
+        let mut viewport_status = "Viewport reserved for CAD geometry".to_string();
+        if let Some(mesh_payload) = pane_state.last_good_mesh_payload.as_ref() {
+            match cad_mesh_to_viewport_primitive(mesh_payload, layout.viewport_bounds) {
+                Ok(mesh) => {
+                    paint.scene.push_clip(layout.viewport_bounds);
+                    if let Err(error) = paint.scene.draw_mesh(mesh) {
+                        viewport_status = format!("mesh draw skipped: {error}");
+                    } else {
+                        let tris = mesh_payload.triangle_indices.len() / 3;
+                        viewport_status = format!("mesh={} tris={tris}", mesh_payload.mesh_id);
+                    }
+                    paint.scene.pop_clip();
+                }
+                Err(error) => {
+                    viewport_status = format!("mesh conversion failed: {error}");
+                }
+            }
+        }
         if viewport_label.y + 9.0 <= content_bounds.max_y() {
             paint.scene.draw_text(paint.text.layout(
-                "Viewport reserved for CAD geometry",
+                &viewport_status,
                 viewport_label,
                 10.0,
                 theme::text::MUTED,
@@ -393,9 +413,90 @@ fn timeline_row_color(row: &crate::app_state::CadTimelineRowState) -> wgpui::Hsl
     }
 }
 
+fn cad_mesh_to_viewport_primitive(
+    payload: &CadMeshPayload,
+    viewport_bounds: Bounds,
+) -> Result<MeshPrimitive, String> {
+    if payload.vertices.is_empty() {
+        return Err("mesh payload has no vertices".to_string());
+    }
+    if payload.triangle_indices.is_empty() {
+        return Err("mesh payload has no triangle indices".to_string());
+    }
+
+    let min_x = payload.bounds.min_mm[0];
+    let max_x = payload.bounds.max_mm[0];
+    let min_y = payload.bounds.min_mm[1];
+    let max_y = payload.bounds.max_mm[1];
+    let min_z = payload.bounds.min_mm[2];
+    let model_width = (max_x - min_x).abs().max(1.0);
+    let model_height = (max_y - min_y).abs().max(1.0);
+    let available_width = (viewport_bounds.size.width - VIEWPORT_MESH_PAD * 2.0).max(1.0);
+    let available_height = (viewport_bounds.size.height - VIEWPORT_MESH_PAD * 2.0).max(1.0);
+    let scale = (available_width / model_width)
+        .min(available_height / model_height)
+        .max(0.0001);
+    let scaled_width = model_width * scale;
+    let scaled_height = model_height * scale;
+    let origin_x = viewport_bounds.origin.x + ((viewport_bounds.size.width - scaled_width) * 0.5);
+    let origin_y =
+        viewport_bounds.origin.y + ((viewport_bounds.size.height - scaled_height) * 0.5);
+
+    let slot_to_color = payload
+        .material_slots
+        .iter()
+        .map(|slot| (slot.slot, slot.base_color_rgba))
+        .collect::<std::collections::BTreeMap<_, _>>();
+
+    let vertices = payload
+        .vertices
+        .iter()
+        .map(|vertex| project_vertex(vertex, min_x, max_y, min_z, origin_x, origin_y, scale, &slot_to_color))
+        .collect::<Vec<_>>();
+    let edge_indices = payload
+        .edges
+        .iter()
+        .map(|edge| [edge.start_vertex, edge.end_vertex])
+        .collect::<Vec<_>>();
+    let primitive =
+        MeshPrimitive::new(vertices, payload.triangle_indices.clone()).with_edges(edge_indices);
+    primitive
+        .validate()
+        .map_err(|error| error.to_string())
+        .map(|_| primitive)
+}
+
+fn project_vertex(
+    vertex: &CadMeshVertex,
+    min_x: f32,
+    max_y: f32,
+    min_z: f32,
+    origin_x: f32,
+    origin_y: f32,
+    scale: f32,
+    slot_to_color: &std::collections::BTreeMap<u16, [f32; 4]>,
+) -> MeshVertex {
+    let color = slot_to_color
+        .get(&vertex.material_slot)
+        .copied()
+        .unwrap_or([0.78, 0.80, 0.83, 1.0]);
+    let projected_x = origin_x + ((vertex.position_mm[0] - min_x) * scale);
+    let projected_y = origin_y + ((max_y - vertex.position_mm[1]) * scale);
+    let projected_z = (vertex.position_mm[2] - min_z) * scale * 0.25;
+    MeshVertex::new(
+        [projected_x, projected_y, projected_z],
+        vertex.normal,
+        color,
+    )
+}
+
 #[cfg(test)]
 mod tests {
-    use super::placeholder_layout;
+    use super::{cad_mesh_to_viewport_primitive, placeholder_layout};
+    use openagents_cad::mesh::{
+        CadMeshBounds, CadMeshEdgeSegment, CadMeshMaterialSlot, CadMeshPayload, CadMeshTopology,
+        CadMeshVertex,
+    };
     use wgpui::Bounds;
 
     #[test]
@@ -422,5 +523,78 @@ mod tests {
         assert!(layout.viewport_bounds.max_y() <= content.max_y() + 0.001);
         assert!(layout.footer_origin.y >= content.origin.y);
         assert!(layout.footer_origin.y <= content.max_y() + 0.001);
+    }
+
+    #[test]
+    fn mesh_projection_stays_within_viewport_and_is_deterministic() {
+        let viewport = Bounds::new(120.0, 80.0, 320.0, 180.0);
+        let payload = CadMeshPayload {
+            mesh_id: "mesh.variant.baseline".to_string(),
+            document_revision: 2,
+            variant_id: "variant.baseline".to_string(),
+            topology: CadMeshTopology::Triangles,
+            vertices: vec![
+                CadMeshVertex {
+                    position_mm: [-20.0, -10.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [0.0, 0.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [40.0, -10.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [1.0, 0.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [40.0, 30.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [1.0, 1.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [-20.0, 30.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [0.0, 1.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+            ],
+            triangle_indices: vec![0, 1, 2, 0, 2, 3],
+            edges: vec![CadMeshEdgeSegment {
+                start_vertex: 0,
+                end_vertex: 1,
+                flags: 1,
+            }],
+            material_slots: vec![CadMeshMaterialSlot::default()],
+            bounds: CadMeshBounds {
+                min_mm: [-20.0, -10.0, 0.0],
+                max_mm: [40.0, 30.0, 0.0],
+            },
+        };
+
+        let first = cad_mesh_to_viewport_primitive(&payload, viewport)
+            .expect("mesh projection should succeed");
+        let second = cad_mesh_to_viewport_primitive(&payload, viewport)
+            .expect("mesh projection should remain deterministic");
+        assert_eq!(first, second);
+        for vertex in &first.vertices {
+            assert!(vertex.position[0] >= viewport.origin.x - 0.001);
+            assert!(vertex.position[0] <= viewport.max_x() + 0.001);
+            assert!(vertex.position[1] >= viewport.origin.y - 0.001);
+            assert!(vertex.position[1] <= viewport.max_y() + 0.001);
+        }
+    }
+
+    #[test]
+    fn mesh_projection_rejects_empty_payload() {
+        let payload = CadMeshPayload::default();
+        let viewport = Bounds::new(0.0, 0.0, 120.0, 80.0);
+        let error = cad_mesh_to_viewport_primitive(&payload, viewport)
+            .expect_err("empty payload should fail");
+        assert_eq!(error, "mesh payload has no vertices");
     }
 }
