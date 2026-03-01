@@ -17,12 +17,12 @@ use crate::pane_system::{
     cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
     cad_demo_cycle_variant_button_bounds, cad_demo_hidden_line_mode_button_bounds,
     cad_demo_hotkey_profile_button_bounds, cad_demo_material_button_bounds,
-    cad_demo_projection_mode_button_bounds,
-    cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
-    cad_demo_section_offset_button_bounds, cad_demo_section_plane_button_bounds,
-    cad_demo_snap_endpoint_button_bounds, cad_demo_snap_grid_button_bounds,
-    cad_demo_snap_midpoint_button_bounds, cad_demo_snap_origin_button_bounds,
-    cad_demo_timeline_panel_bounds, cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
+    cad_demo_projection_mode_button_bounds, cad_demo_reset_button_bounds,
+    cad_demo_reset_camera_button_bounds, cad_demo_section_offset_button_bounds,
+    cad_demo_section_plane_button_bounds, cad_demo_snap_endpoint_button_bounds,
+    cad_demo_snap_grid_button_bounds, cad_demo_snap_midpoint_button_bounds,
+    cad_demo_snap_origin_button_bounds, cad_demo_timeline_panel_bounds,
+    cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
     cad_demo_view_snap_front_button_bounds, cad_demo_view_snap_iso_button_bounds,
     cad_demo_view_snap_right_button_bounds, cad_demo_view_snap_top_button_bounds,
     cad_demo_warning_filter_code_button_bounds, cad_demo_warning_filter_severity_button_bounds,
@@ -36,6 +36,9 @@ const VIEWPORT_TOP_GAP: f32 = 10.0;
 const FOOTER_RESERVED: f32 = 18.0;
 const VIEWPORT_MESH_PAD: f32 = 12.0;
 const VARIANT_TILE_GAP: f32 = 8.0;
+const ENGINEERING_OVERLAY_WIDTH: f32 = 220.0;
+const ENGINEERING_OVERLAY_LINE_HEIGHT: f32 = 9.0;
+const ENGINEERING_OVERLAY_LINE_COUNT: usize = 6;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CadCameraPose {
@@ -439,6 +442,8 @@ pub fn paint_cad_demo_placeholder_pane(
             ));
         }
 
+        paint_engineering_overlay(layout.viewport_bounds, pane_state, paint);
+
         if let Some(tile_index) = pane_state.measurement_tile_index
             && tile_index < 4
         {
@@ -731,6 +736,104 @@ pub fn paint_cad_demo_placeholder_pane(
             layout.footer_origin,
             9.0,
             theme::text::MUTED,
+        ));
+    }
+}
+
+fn engineering_overlay_lines(
+    pane_state: &CadDemoPaneState,
+) -> [String; ENGINEERING_OVERLAY_LINE_COUNT] {
+    let analysis = &pane_state.analysis_snapshot;
+    let material_id = analysis
+        .material_id
+        .as_deref()
+        .unwrap_or(openagents_cad::materials::DEFAULT_CAD_MATERIAL_ID);
+    let volume = analysis
+        .volume_mm3
+        .map(|value| format!("{value:.1} mm^3"))
+        .unwrap_or_else(|| "--".to_string());
+    let mass = analysis
+        .mass_kg
+        .map(|value| format!("{value:.3} kg"))
+        .unwrap_or_else(|| "--".to_string());
+    let cost = analysis
+        .estimated_cost_usd
+        .map(|value| format!("${value:.2}"))
+        .unwrap_or_else(|| "--".to_string());
+    let deflection = analysis
+        .max_deflection_mm
+        .map(|value| format!("{value:.3} mm"))
+        .unwrap_or_else(|| "--".to_string());
+    let deflection_confidence = analysis
+        .estimator_metadata
+        .get("deflection.confidence")
+        .cloned()
+        .unwrap_or_else(|| "n/a".to_string());
+    let cog = analysis
+        .center_of_gravity_mm
+        .map(|value| format!("{:.1}, {:.1}, {:.1}", value[0], value[1], value[2]))
+        .unwrap_or_else(|| "--".to_string());
+    [
+        format!("Material: {material_id}"),
+        format!("Volume: {volume}"),
+        format!("Mass: {mass}"),
+        format!("Cost: {cost}"),
+        format!("Deflection: {deflection} ({deflection_confidence})"),
+        format!("CoG: {cog}"),
+    ]
+}
+
+fn engineering_overlay_bounds(viewport_bounds: Bounds) -> Bounds {
+    let width = ENGINEERING_OVERLAY_WIDTH
+        .min((viewport_bounds.size.width - 8.0).max(40.0))
+        .max(80.0);
+    let height = (22.0 + ENGINEERING_OVERLAY_LINE_COUNT as f32 * ENGINEERING_OVERLAY_LINE_HEIGHT)
+        .min((viewport_bounds.size.height - 8.0).max(20.0))
+        .max(20.0);
+    let origin_x = (viewport_bounds.max_x() - width - 4.0).max(viewport_bounds.origin.x + 2.0);
+    let origin_y = (viewport_bounds.origin.y + 14.0)
+        .min((viewport_bounds.max_y() - height - 2.0).max(viewport_bounds.origin.y + 2.0));
+    Bounds::new(origin_x, origin_y, width, height)
+}
+
+fn paint_engineering_overlay(
+    viewport_bounds: Bounds,
+    pane_state: &CadDemoPaneState,
+    paint: &mut PaintContext,
+) {
+    let overlay_bounds = engineering_overlay_bounds(viewport_bounds);
+    if overlay_bounds.size.width <= 2.0 || overlay_bounds.size.height <= 2.0 {
+        return;
+    }
+    let lines = engineering_overlay_lines(pane_state);
+    paint.scene.draw_quad(
+        Quad::new(overlay_bounds)
+            .with_background(Hsla::new(0.0, 0.0, 0.10, 0.92))
+            .with_corner_radius(4.0)
+            .with_border(theme::border::SUBTLE, 1.0),
+    );
+    let title_origin = Point::new(
+        overlay_bounds.origin.x + 6.0,
+        overlay_bounds.origin.y + 10.0,
+    );
+    if title_origin.y + 8.0 <= overlay_bounds.max_y() {
+        paint.scene.draw_text(paint.text.layout(
+            "Engineering Overlay",
+            title_origin,
+            8.0,
+            theme::text::SECONDARY,
+        ));
+    }
+    for (index, line) in lines.iter().enumerate() {
+        let y = title_origin.y + 10.0 + index as f32 * ENGINEERING_OVERLAY_LINE_HEIGHT;
+        if y + 8.0 > overlay_bounds.max_y() {
+            break;
+        }
+        paint.scene.draw_text(paint.text.layout(
+            line,
+            Point::new(overlay_bounds.origin.x + 6.0, y),
+            8.0,
+            theme::text::PRIMARY,
         ));
     }
 }
@@ -1153,7 +1256,8 @@ fn styled_fill_color(base: [f32; 4], mode: CadHiddenLineMode) -> [f32; 4] {
 #[cfg(test)]
 mod tests {
     use super::{
-        CadCameraPose, cad_mesh_to_viewport_primitive, placeholder_layout, selection_inspect_lines,
+        CadCameraPose, cad_mesh_to_viewport_primitive, engineering_overlay_bounds,
+        engineering_overlay_lines, placeholder_layout, selection_inspect_lines,
         variant_tile_bounds, variant_tile_index_at_point,
     };
     use openagents_cad::analysis::{DENSITY_ALUMINUM_6061_KG_M3, estimate_body_properties};
@@ -1203,6 +1307,44 @@ mod tests {
         assert!(layout.viewport_bounds.max_y() <= content.max_y() + 0.001);
         assert!(layout.footer_origin.y >= content.origin.y);
         assert!(layout.footer_origin.y <= content.max_y() + 0.001);
+    }
+
+    #[test]
+    fn engineering_overlay_bounds_stay_within_viewport() {
+        let viewport = Bounds::new(30.0, 50.0, 360.0, 220.0);
+        let overlay = engineering_overlay_bounds(viewport);
+        assert!(overlay.origin.x >= viewport.origin.x);
+        assert!(overlay.origin.y >= viewport.origin.y);
+        assert!(overlay.max_x() <= viewport.max_x() + 0.001);
+        assert!(overlay.max_y() <= viewport.max_y() + 0.001);
+    }
+
+    #[test]
+    fn engineering_overlay_lines_reflect_live_analysis_values() {
+        let mut state = CadDemoPaneState::default();
+        state.analysis_snapshot.material_id = Some("al-6061-t6".to_string());
+        state.analysis_snapshot.volume_mm3 = Some(1_240_000.0);
+        state.analysis_snapshot.mass_kg = Some(2.73);
+        state.analysis_snapshot.estimated_cost_usd = Some(128.45);
+        state.analysis_snapshot.max_deflection_mm = Some(0.58);
+        state.analysis_snapshot.center_of_gravity_mm = Some([40.0, 18.0, 72.0]);
+        state.analysis_snapshot.estimator_metadata = std::collections::BTreeMap::from([(
+            "deflection.confidence".to_string(),
+            "medium".to_string(),
+        )]);
+
+        let first = engineering_overlay_lines(&state);
+        assert!(first[0].contains("Material: al-6061-t6"));
+        assert!(first[1].contains("Volume:"));
+        assert!(first[2].contains("Mass:"));
+        assert!(first[3].contains("Cost:"));
+        assert!(first[4].contains("Deflection:"));
+        assert!(first[4].contains("(medium)"));
+        assert!(first[5].contains("CoG:"));
+
+        state.analysis_snapshot.mass_kg = Some(2.10);
+        let second = engineering_overlay_lines(&state);
+        assert_ne!(first[2], second[2]);
     }
 
     #[test]
