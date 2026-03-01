@@ -35,4 +35,8 @@ run_strict_lane \
         -D clippy::expect_used \
         -D clippy::panic
 
+run_strict_lane \
+    cad-step-checker \
+    "$ROOT_DIR/scripts/cad/step-checker-ci.sh"
+
 printf 'Strict production hardening check passed.\n'

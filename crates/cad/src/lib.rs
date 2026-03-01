@@ -30,6 +30,7 @@ pub mod rack;
 pub mod section;
 pub mod selection;
 pub mod semantic_refs;
+pub mod step_checker;
 pub mod tessellation;
 pub mod validity;
 pub use error::{CadError, CadErrorCode, CadErrorEvent, CadResult};
