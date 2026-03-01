@@ -32,6 +32,11 @@ pub enum CadHistoryCommand {
         intent_key: String,
         summary: String,
     },
+    ApplySketchFeature {
+        operation_key: String,
+        profile_id: String,
+        feature_id: String,
+    },
 }
 
 impl CadHistoryCommand {
@@ -351,5 +356,124 @@ mod tests {
         assert_eq!(history.session_id, "cad.session.4");
         assert_eq!(history.len_undo(), 0);
         assert_eq!(history.len_redo(), 0);
+    }
+
+    #[test]
+    fn sketch_feature_history_entries_participate_in_undo_redo_with_warnings() {
+        let mut history = CadHistoryStack::new("cad.session.sketch", 8).expect("history init");
+
+        let before = CadHistorySnapshot {
+            document_revision: 10,
+            geometry_hash: "hash-sketch-before".to_string(),
+            stable_ids: BTreeMap::from([
+                ("sketch_profile".to_string(), "profile.rack".to_string()),
+                (
+                    "sketch_feature".to_string(),
+                    "feature.sketch.extrude".to_string(),
+                ),
+            ]),
+            warnings: vec![CadWarning {
+                code: CadWarningCode::NonManifoldBody,
+                severity: CadWarningSeverity::Warning,
+                message: "profile is open".to_string(),
+                remediation_hint: "close profile loop".to_string(),
+                semantic_refs: vec!["cad://sketch/profile/profile.rack".to_string()],
+                metadata: BTreeMap::from([(
+                    "feature_id".to_string(),
+                    "feature.sketch.extrude".to_string(),
+                )]),
+            }],
+            analysis: crate::contracts::CadAnalysis {
+                document_revision: 10,
+                variant_id: "variant.baseline".to_string(),
+                material_id: Some("al-6061-t6".to_string()),
+                volume_mm3: Some(900_000.0),
+                mass_kg: Some(2.1),
+                center_of_gravity_mm: Some([20.0, 10.0, 5.0]),
+                estimated_cost_usd: Some(88.0),
+                max_deflection_mm: Some(0.5),
+                estimator_metadata: BTreeMap::new(),
+                objective_scores: BTreeMap::new(),
+            },
+        };
+        let after = CadHistorySnapshot {
+            document_revision: 11,
+            geometry_hash: "hash-sketch-after".to_string(),
+            stable_ids: BTreeMap::from([
+                ("sketch_profile".to_string(), "profile.rack".to_string()),
+                (
+                    "sketch_feature".to_string(),
+                    "feature.sketch.extrude".to_string(),
+                ),
+            ]),
+            warnings: vec![CadWarning {
+                code: CadWarningCode::SliverFace,
+                severity: CadWarningSeverity::Info,
+                message: "partial revolve seam".to_string(),
+                remediation_hint: "add blend cleanup".to_string(),
+                semantic_refs: vec!["cad://feature/feature.sketch.extrude".to_string()],
+                metadata: BTreeMap::from([(
+                    "operation".to_string(),
+                    "sketch.extrude.v1".to_string(),
+                )]),
+            }],
+            analysis: crate::contracts::CadAnalysis {
+                document_revision: 11,
+                variant_id: "variant.baseline".to_string(),
+                material_id: Some("al-6061-t6".to_string()),
+                volume_mm3: Some(1_100_000.0),
+                mass_kg: Some(2.4),
+                center_of_gravity_mm: Some([22.0, 12.0, 6.0]),
+                estimated_cost_usd: Some(93.0),
+                max_deflection_mm: Some(0.55),
+                estimator_metadata: BTreeMap::new(),
+                objective_scores: BTreeMap::new(),
+            },
+        };
+
+        history.push_transition(
+            CadHistoryCommand::ApplySketchFeature {
+                operation_key: "sketch.extrude.v1".to_string(),
+                profile_id: "profile.rack".to_string(),
+                feature_id: "feature.sketch.extrude".to_string(),
+            },
+            before.clone(),
+            after.clone(),
+        );
+
+        let undo = history.undo().expect("undo should exist");
+        match undo.command {
+            CadHistoryCommand::ApplySketchFeature {
+                operation_key,
+                profile_id,
+                feature_id,
+            } => {
+                assert_eq!(operation_key, "sketch.extrude.v1");
+                assert_eq!(profile_id, "profile.rack");
+                assert_eq!(feature_id, "feature.sketch.extrude");
+            }
+            _ => panic!("undo command should remain ApplySketchFeature"),
+        }
+        assert_eq!(undo.snapshot, before);
+        assert_eq!(
+            undo.snapshot.warnings[0].code,
+            CadWarningCode::NonManifoldBody
+        );
+
+        let redo = history.redo().expect("redo should exist");
+        match redo.command {
+            CadHistoryCommand::ApplySketchFeature {
+                operation_key,
+                profile_id,
+                feature_id,
+            } => {
+                assert_eq!(operation_key, "sketch.extrude.v1");
+                assert_eq!(profile_id, "profile.rack");
+                assert_eq!(feature_id, "feature.sketch.extrude");
+            }
+            _ => panic!("redo command should remain ApplySketchFeature"),
+        }
+        assert_eq!(redo.snapshot, after);
+        assert_eq!(redo.snapshot.warnings[0].code, CadWarningCode::SliverFace);
     }
 }
