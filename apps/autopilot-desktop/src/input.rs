@@ -47,7 +47,9 @@ use crate::pane_system::{
     StarterJobsPaneAction, SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction,
     cad_demo_cycle_variant_button_bounds, cad_demo_hidden_line_mode_button_bounds,
     cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
-    cad_demo_timeline_panel_bounds, cad_demo_warning_filter_code_button_bounds,
+    cad_demo_timeline_panel_bounds, cad_demo_view_snap_front_button_bounds,
+    cad_demo_view_snap_iso_button_bounds, cad_demo_view_snap_right_button_bounds,
+    cad_demo_view_snap_top_button_bounds, cad_demo_warning_filter_code_button_bounds,
     cad_demo_warning_filter_severity_button_bounds, cad_demo_warning_panel_bounds,
     clamp_all_panes_to_window, dispatch_chat_input_event, dispatch_chat_scroll_event,
     dispatch_create_invoice_input_event, dispatch_credentials_input_event,
@@ -516,6 +518,10 @@ fn cad_camera_target_pane_id(state: &crate::app_state::RenderState, point: Point
             || cad_demo_reset_button_bounds(content_bounds).contains(point)
             || cad_demo_hidden_line_mode_button_bounds(content_bounds).contains(point)
             || cad_demo_reset_camera_button_bounds(content_bounds).contains(point)
+            || cad_demo_view_snap_top_button_bounds(content_bounds).contains(point)
+            || cad_demo_view_snap_front_button_bounds(content_bounds).contains(point)
+            || cad_demo_view_snap_right_button_bounds(content_bounds).contains(point)
+            || cad_demo_view_snap_iso_button_bounds(content_bounds).contains(point)
             || cad_demo_warning_filter_severity_button_bounds(content_bounds).contains(point)
             || cad_demo_warning_filter_code_button_bounds(content_bounds).contains(point)
             || cad_demo_warning_panel_bounds(content_bounds).contains(point)
@@ -1263,6 +1269,18 @@ fn handle_cad_timeline_keyboard_input(
         }
         Key::Character(value) if value == "0" => {
             reducers::run_cad_demo_action(state, CadDemoPaneAction::ResetCamera)
+        }
+        Key::Character(value) if value.eq_ignore_ascii_case("t") => {
+            reducers::run_cad_demo_action(state, CadDemoPaneAction::SnapViewTop)
+        }
+        Key::Character(value) if value.eq_ignore_ascii_case("f") => {
+            reducers::run_cad_demo_action(state, CadDemoPaneAction::SnapViewFront)
+        }
+        Key::Character(value) if value.eq_ignore_ascii_case("r") => {
+            reducers::run_cad_demo_action(state, CadDemoPaneAction::SnapViewRight)
+        }
+        Key::Character(value) if value.eq_ignore_ascii_case("i") => {
+            reducers::run_cad_demo_action(state, CadDemoPaneAction::SnapViewIsometric)
         }
         _ => false,
     }

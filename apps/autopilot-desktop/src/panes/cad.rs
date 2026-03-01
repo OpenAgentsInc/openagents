@@ -4,12 +4,16 @@ use wgpui::{
     MeshVertex, PaintContext, Point, Quad, theme,
 };
 
-use crate::app_state::{CadDemoPaneState, CadDemoWarningState, CadHiddenLineMode};
+use crate::app_state::{
+    CadCameraViewSnap, CadDemoPaneState, CadDemoWarningState, CadHiddenLineMode,
+};
 use crate::pane_renderer::paint_action_button;
 use crate::pane_system::{
     cad_demo_cycle_variant_button_bounds, cad_demo_hidden_line_mode_button_bounds,
     cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
-    cad_demo_timeline_panel_bounds, cad_demo_timeline_row_bounds,
+    cad_demo_timeline_panel_bounds, cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
+    cad_demo_view_snap_front_button_bounds, cad_demo_view_snap_iso_button_bounds,
+    cad_demo_view_snap_right_button_bounds, cad_demo_view_snap_top_button_bounds,
     cad_demo_warning_filter_code_button_bounds, cad_demo_warning_filter_severity_button_bounds,
     cad_demo_warning_marker_bounds, cad_demo_warning_panel_bounds, cad_demo_warning_row_bounds,
 };
@@ -133,6 +137,7 @@ pub fn paint_cad_demo_placeholder_pane(
         &format!("Code: {}", pane_state.warning_filter_code),
         paint,
     );
+    paint_view_cube_overlay(content_bounds, pane_state, paint);
 
     let body_bounds = cad_demo_body_bounds(content_bounds);
     let layout = placeholder_layout(body_bounds);
@@ -435,6 +440,89 @@ pub fn paint_cad_demo_placeholder_pane(
             theme::text::MUTED,
         ));
     }
+}
+
+fn paint_view_cube_overlay(
+    content_bounds: Bounds,
+    pane_state: &CadDemoPaneState,
+    paint: &mut PaintContext,
+) {
+    let cube_bounds = cad_demo_view_cube_bounds(content_bounds);
+    if cube_bounds.size.width <= 2.0 || cube_bounds.size.height <= 2.0 {
+        return;
+    }
+    paint.scene.draw_quad(
+        Quad::new(cube_bounds)
+            .with_background(theme::bg::SURFACE)
+            .with_corner_radius(4.0)
+            .with_border(theme::border::SUBTLE, 1.0),
+    );
+    let label_origin = Point::new(cube_bounds.origin.x + 6.0, cube_bounds.origin.y + 10.0);
+    if label_origin.y + 8.0 <= cube_bounds.max_y() {
+        paint.scene.draw_text(paint.text.layout(
+            "View Cube",
+            label_origin,
+            8.0,
+            theme::text::MUTED,
+        ));
+    }
+
+    let active = pane_state.active_view_snap();
+    paint_view_snap_button(
+        cad_demo_view_snap_top_button_bounds(content_bounds),
+        "Top",
+        active == Some(CadCameraViewSnap::Top),
+        paint,
+    );
+    paint_view_snap_button(
+        cad_demo_view_snap_front_button_bounds(content_bounds),
+        "Front",
+        active == Some(CadCameraViewSnap::Front),
+        paint,
+    );
+    paint_view_snap_button(
+        cad_demo_view_snap_right_button_bounds(content_bounds),
+        "Right",
+        active == Some(CadCameraViewSnap::Right),
+        paint,
+    );
+    paint_view_snap_button(
+        cad_demo_view_snap_iso_button_bounds(content_bounds),
+        "Iso",
+        active == Some(CadCameraViewSnap::Isometric),
+        paint,
+    );
+}
+
+fn paint_view_snap_button(bounds: Bounds, label: &str, active: bool, paint: &mut PaintContext) {
+    if bounds.size.width <= 2.0 || bounds.size.height <= 2.0 {
+        return;
+    }
+    let mut quad = Quad::new(bounds).with_corner_radius(2.0);
+    if active {
+        quad = quad
+            .with_background(theme::bg::ELEVATED)
+            .with_border(theme::text::PRIMARY, 1.0);
+    } else {
+        quad = quad
+            .with_background(theme::bg::APP)
+            .with_border(theme::border::SUBTLE, 1.0);
+    }
+    paint.scene.draw_quad(quad);
+    let text_origin = Point::new(
+        bounds.origin.x + 4.0,
+        bounds.origin.y + bounds.size.height * 0.5,
+    );
+    paint.scene.draw_text(paint.text.layout(
+        label,
+        text_origin,
+        8.0,
+        if active {
+            theme::text::PRIMARY
+        } else {
+            theme::text::SECONDARY
+        },
+    ));
 }
 
 fn visible_warning_indices(state: &CadDemoPaneState) -> Vec<usize> {

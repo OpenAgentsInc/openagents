@@ -480,6 +480,25 @@ pub struct CadDemoPaneState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CadCameraViewSnap {
+    Isometric,
+    Top,
+    Front,
+    Right,
+}
+
+impl CadCameraViewSnap {
+    pub fn orbit_degrees(self) -> (f32, f32) {
+        match self {
+            Self::Isometric => (45.0, 35.264),
+            Self::Top => (0.0, 89.0),
+            Self::Front => (0.0, 0.0),
+            Self::Right => (90.0, 0.0),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CadHiddenLineMode {
     Off,
     Wireframe,
@@ -605,7 +624,7 @@ impl CadDemoPaneState {
         self.camera_orbit_yaw_deg += drag_dx * ORBIT_SENSITIVITY_DEG_PER_PX;
         self.camera_orbit_pitch_deg = (self.camera_orbit_pitch_deg
             - drag_dy * ORBIT_SENSITIVITY_DEG_PER_PX)
-            .clamp(-80.0, 80.0);
+            .clamp(-89.0, 89.0);
     }
 
     pub fn pan_camera_by_drag(&mut self, drag_dx: f32, drag_dy: f32) {
@@ -618,6 +637,30 @@ impl CadDemoPaneState {
         // Negative wheel deltas (scroll up on most devices) zoom in.
         let scale = (1.0 + (-scroll_dy * 0.0018)).clamp(0.75, 1.35);
         self.camera_zoom = (self.camera_zoom * scale).clamp(0.35, 4.0);
+    }
+
+    pub fn snap_camera_to_view(&mut self, snap: CadCameraViewSnap) {
+        let (yaw_deg, pitch_deg) = snap.orbit_degrees();
+        self.camera_orbit_yaw_deg = yaw_deg;
+        self.camera_orbit_pitch_deg = pitch_deg;
+        self.camera_pan_x = 0.0;
+        self.camera_pan_y = 0.0;
+    }
+
+    pub fn active_view_snap(&self) -> Option<CadCameraViewSnap> {
+        const SNAP_TOLERANCE_DEG: f32 = 0.15;
+        [
+            CadCameraViewSnap::Isometric,
+            CadCameraViewSnap::Top,
+            CadCameraViewSnap::Front,
+            CadCameraViewSnap::Right,
+        ]
+        .into_iter()
+        .find(|snap| {
+            let (yaw, pitch) = snap.orbit_degrees();
+            (self.camera_orbit_yaw_deg - yaw).abs() <= SNAP_TOLERANCE_DEG
+                && (self.camera_orbit_pitch_deg - pitch).abs() <= SNAP_TOLERANCE_DEG
+        })
     }
 }
 
