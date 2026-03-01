@@ -63,6 +63,11 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
             *state = reset;
             true
         }
+        CadDemoPaneAction::ResetCamera => {
+            state.reset_camera();
+            state.last_action = Some("CAD camera reset to defaults".to_string());
+            true
+        }
         CadDemoPaneAction::CycleHiddenLineMode => {
             state.hidden_line_mode = state.hidden_line_mode.next();
             state.last_action = Some(format!(
@@ -854,6 +859,25 @@ mod tests {
             CadDemoPaneAction::CycleHiddenLineMode
         ));
         assert_eq!(state.hidden_line_mode.label(), "off");
+    }
+
+    #[test]
+    fn reset_camera_restores_default_pose() {
+        let mut state = CadDemoPaneState::default();
+        state.camera_zoom = 2.4;
+        state.camera_pan_x = 220.0;
+        state.camera_pan_y = -180.0;
+        state.camera_orbit_yaw_deg = 71.0;
+        state.camera_orbit_pitch_deg = -32.0;
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::ResetCamera
+        ));
+        assert_eq!(state.camera_zoom, 1.0);
+        assert_eq!(state.camera_pan_x, 0.0);
+        assert_eq!(state.camera_pan_y, 0.0);
+        assert_eq!(state.camera_orbit_yaw_deg, 26.0);
+        assert_eq!(state.camera_orbit_pitch_deg, 18.0);
     }
 
     #[test]

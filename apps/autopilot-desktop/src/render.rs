@@ -259,6 +259,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             next_pane_id: 1,
             next_z_index: 1,
             pane_drag_mode: None,
+            cad_camera_drag_state: None,
             pane_resizer: wgpui::components::hud::ResizablePane::new()
                 .min_size(PANE_MIN_WIDTH, PANE_MIN_HEIGHT),
             hotbar_flash_was_active: false,

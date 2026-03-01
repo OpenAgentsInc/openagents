@@ -467,6 +467,11 @@ pub struct CadDemoPaneState {
     pub focused_warning_index: Option<usize>,
     pub focused_geometry_ref: Option<String>,
     pub hidden_line_mode: CadHiddenLineMode,
+    pub camera_zoom: f32,
+    pub camera_pan_x: f32,
+    pub camera_pan_y: f32,
+    pub camera_orbit_yaw_deg: f32,
+    pub camera_orbit_pitch_deg: f32,
     pub history_stack: openagents_cad::history::CadHistoryStack,
     pub timeline_rows: Vec<CadTimelineRowState>,
     pub timeline_selected_index: Option<usize>,
@@ -571,6 +576,11 @@ impl Default for CadDemoPaneState {
             focused_warning_index: None,
             focused_geometry_ref: None,
             hidden_line_mode: CadHiddenLineMode::Off,
+            camera_zoom: 1.0,
+            camera_pan_x: 0.0,
+            camera_pan_y: 0.0,
+            camera_orbit_yaw_deg: 26.0,
+            camera_orbit_pitch_deg: 18.0,
             history_stack: openagents_cad::history::CadHistoryStack::new("cad.session.local", 128)
                 .expect("cad history max_steps should be valid"),
             timeline_rows: Vec::new(),
@@ -578,6 +588,36 @@ impl Default for CadDemoPaneState {
             timeline_scroll_offset: 0,
             selected_feature_params: Vec::new(),
         }
+    }
+}
+
+impl CadDemoPaneState {
+    pub fn reset_camera(&mut self) {
+        self.camera_zoom = 1.0;
+        self.camera_pan_x = 0.0;
+        self.camera_pan_y = 0.0;
+        self.camera_orbit_yaw_deg = 26.0;
+        self.camera_orbit_pitch_deg = 18.0;
+    }
+
+    pub fn orbit_camera_by_drag(&mut self, drag_dx: f32, drag_dy: f32) {
+        const ORBIT_SENSITIVITY_DEG_PER_PX: f32 = 0.28;
+        self.camera_orbit_yaw_deg += drag_dx * ORBIT_SENSITIVITY_DEG_PER_PX;
+        self.camera_orbit_pitch_deg = (self.camera_orbit_pitch_deg
+            - drag_dy * ORBIT_SENSITIVITY_DEG_PER_PX)
+            .clamp(-80.0, 80.0);
+    }
+
+    pub fn pan_camera_by_drag(&mut self, drag_dx: f32, drag_dy: f32) {
+        const PAN_SENSITIVITY: f32 = 1.0;
+        self.camera_pan_x = (self.camera_pan_x + drag_dx * PAN_SENSITIVITY).clamp(-800.0, 800.0);
+        self.camera_pan_y = (self.camera_pan_y + drag_dy * PAN_SENSITIVITY).clamp(-800.0, 800.0);
+    }
+
+    pub fn zoom_camera_by_scroll(&mut self, scroll_dy: f32) {
+        // Negative wheel deltas (scroll up on most devices) zoom in.
+        let scale = (1.0 + (-scroll_dy * 0.0018)).clamp(0.75, 1.35);
+        self.camera_zoom = (self.camera_zoom * scale).clamp(0.35, 4.0);
     }
 }
 
