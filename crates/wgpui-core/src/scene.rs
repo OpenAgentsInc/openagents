@@ -196,11 +196,33 @@ impl MeshVertex {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MeshEdge {
+    pub start: u32,
+    pub end: u32,
+    pub flags: u32,
+}
+
+impl MeshEdge {
+    pub fn new(start: u32, end: u32) -> Self {
+        Self {
+            start,
+            end,
+            flags: 0,
+        }
+    }
+
+    pub fn with_flags(mut self, flags: u32) -> Self {
+        self.flags = flags;
+        self
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct MeshPrimitive {
     pub vertices: Vec<MeshVertex>,
     pub indices: Vec<u32>,
-    pub edge_indices: Vec<[u32; 2]>,
+    pub edges: Vec<MeshEdge>,
     pub topology: MeshTopology,
 }
 
@@ -209,13 +231,13 @@ impl MeshPrimitive {
         Self {
             vertices,
             indices,
-            edge_indices: Vec::new(),
+            edges: Vec::new(),
             topology: MeshTopology::TriangleList,
         }
     }
 
-    pub fn with_edges(mut self, edge_indices: Vec<[u32; 2]>) -> Self {
-        self.edge_indices = edge_indices;
+    pub fn with_edges(mut self, edges: Vec<MeshEdge>) -> Self {
+        self.edges = edges;
         self
     }
 
@@ -247,16 +269,16 @@ impl MeshPrimitive {
                 });
             }
         }
-        for (idx, edge) in self.edge_indices.iter().enumerate() {
-            if edge[0] >= vertex_count || edge[1] >= vertex_count {
+        for (idx, edge) in self.edges.iter().enumerate() {
+            if edge.start >= vertex_count || edge.end >= vertex_count {
                 return Err(MeshPrimitiveError::EdgeIndexOutOfRange {
                     edge_position: idx,
-                    start: edge[0],
-                    end: edge[1],
+                    start: edge.start,
+                    end: edge.end,
                     vertex_count,
                 });
             }
-            if edge[0] == edge[1] {
+            if edge.start == edge.end {
                 return Err(MeshPrimitiveError::DegenerateEdge { edge_position: idx });
             }
         }
@@ -750,7 +772,10 @@ mod tests {
             MeshVertex::new([10.0, 10.0, 0.0], [0.0, 0.0, 1.0], [0.4, 0.7, 0.9, 1.0]),
             MeshVertex::new([0.0, 10.0, 0.0], [0.0, 0.0, 1.0], [0.4, 0.7, 0.9, 1.0]),
         ];
-        MeshPrimitive::new(vertices, vec![0, 1, 2, 0, 2, 3]).with_edges(vec![[0, 1], [1, 2]])
+        MeshPrimitive::new(vertices, vec![0, 1, 2, 0, 2, 3]).with_edges(vec![
+            MeshEdge::new(0, 1),
+            MeshEdge::new(1, 2),
+        ])
     }
 
     #[test]

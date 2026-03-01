@@ -1,5 +1,5 @@
 use openagents_cad::mesh::{CadMeshPayload, CadMeshVertex};
-use wgpui::{Bounds, MeshPrimitive, MeshVertex, PaintContext, Point, Quad, theme};
+use wgpui::{Bounds, MeshEdge, MeshPrimitive, MeshVertex, PaintContext, Point, Quad, theme};
 
 use crate::app_state::{CadDemoPaneState, CadDemoWarningState};
 use crate::pane_renderer::paint_action_button;
@@ -453,13 +453,12 @@ fn cad_mesh_to_viewport_primitive(
         .iter()
         .map(|vertex| project_vertex(vertex, min_x, max_y, min_z, origin_x, origin_y, scale, &slot_to_color))
         .collect::<Vec<_>>();
-    let edge_indices = payload
+    let edges = payload
         .edges
         .iter()
-        .map(|edge| [edge.start_vertex, edge.end_vertex])
+        .map(|edge| MeshEdge::new(edge.start_vertex, edge.end_vertex).with_flags(edge.flags))
         .collect::<Vec<_>>();
-    let primitive =
-        MeshPrimitive::new(vertices, payload.triangle_indices.clone()).with_edges(edge_indices);
+    let primitive = MeshPrimitive::new(vertices, payload.triangle_indices.clone()).with_edges(edges);
     primitive
         .validate()
         .map_err(|error| error.to_string())
