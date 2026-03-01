@@ -969,7 +969,12 @@ fn execute_cad_intent(state: &mut RenderState, args: &CadIntentArgs) -> ToolBrid
     }
 
     let _ = PaneController::create_for_kind(state, PaneKind::CadDemo);
-    let changed = super::reducers::apply_chat_prompt_to_cad_session(state, &thread_id, &prompt);
+    let changed = super::reducers::apply_chat_prompt_to_cad_session_with_trigger(
+        state,
+        &thread_id,
+        &prompt,
+        Some("ai-intent"),
+    );
     if !changed {
         return ToolBridgeResultEnvelope::error(
             "OA-CAD-INTENT-NO-CHANGE",
@@ -987,9 +992,20 @@ fn execute_cad_intent(state: &mut RenderState, args: &CadIntentArgs) -> ToolBrid
         "Applied CAD intent prompt through CAD chat adapter",
         json!({
             "thread_id": thread_id,
+            "rebuild_trigger_prefix": "ai-intent",
             "session_id": state.cad_demo.session_id,
             "document_revision": state.cad_demo.document_revision,
             "active_variant_id": state.cad_demo.active_variant_id,
+            "pending_rebuild_request_id": state.cad_demo.pending_rebuild_request_id,
+            "last_rebuild_receipt": state.cad_demo.last_rebuild_receipt.as_ref().map(|receipt| {
+                json!({
+                    "event_id": receipt.event_id,
+                    "document_revision": receipt.document_revision,
+                    "variant_id": receipt.variant_id,
+                    "rebuild_hash": receipt.rebuild_hash,
+                    "mesh_hash": receipt.mesh_hash,
+                })
+            }),
             "last_action": state.cad_demo.last_action,
             "last_error": state.cad_demo.last_error,
         }),
