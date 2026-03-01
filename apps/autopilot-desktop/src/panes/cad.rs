@@ -169,6 +169,7 @@ pub fn paint_cad_demo_placeholder_pane(
     pane_state: &CadDemoPaneState,
     paint: &mut PaintContext,
 ) {
+    paint.scene.push_clip(content_bounds);
     let cycle_bounds = cad_demo_cycle_variant_button_bounds(content_bounds);
     let reset_bounds = cad_demo_reset_button_bounds(content_bounds);
     let hidden_line_bounds = cad_demo_hidden_line_mode_button_bounds(content_bounds);
@@ -435,7 +436,9 @@ pub fn paint_cad_demo_placeholder_pane(
             ));
         }
 
+        paint.scene.push_clip(layout.viewport_bounds);
         paint_engineering_overlay(layout.viewport_bounds, pane_state, paint);
+        paint.scene.pop_clip();
 
         if let Some(tile_index) = pane_state.measurement_tile_index
             && tile_index < 4
@@ -501,6 +504,7 @@ pub fn paint_cad_demo_placeholder_pane(
     }
 
     if warning_panel.size.width > 2.0 && warning_panel.size.height > 2.0 {
+        paint.scene.push_clip(warning_panel);
         paint.scene.draw_quad(
             Quad::new(warning_panel)
                 .with_background(theme::bg::SURFACE)
@@ -544,9 +548,11 @@ pub fn paint_cad_demo_placeholder_pane(
                 ));
             }
         }
+        paint.scene.pop_clip();
     }
 
     if dimension_panel.size.width > 2.0 && dimension_panel.size.height > 2.0 {
+        paint.scene.push_clip(dimension_panel);
         paint.scene.draw_quad(
             Quad::new(dimension_panel)
                 .with_background(theme::bg::SURFACE)
@@ -617,9 +623,11 @@ pub fn paint_cad_demo_placeholder_pane(
                 ));
             }
         }
+        paint.scene.pop_clip();
     }
 
     if timeline_panel.size.width > 2.0 && timeline_panel.size.height > 2.0 {
+        paint.scene.push_clip(timeline_panel);
         paint.scene.draw_quad(
             Quad::new(timeline_panel)
                 .with_background(theme::bg::SURFACE)
@@ -716,6 +724,7 @@ pub fn paint_cad_demo_placeholder_pane(
                 ));
             }
         }
+        paint.scene.pop_clip();
     }
 
     if pane_state.context_menu.is_open && !pane_state.context_menu.items.is_empty() {
@@ -724,6 +733,7 @@ pub fn paint_cad_demo_placeholder_pane(
             pane_state.context_menu.anchor,
             pane_state.context_menu.items.len(),
         );
+        paint.scene.push_clip(menu_bounds);
         paint.scene.draw_quad(
             Quad::new(menu_bounds)
                 .with_background(theme::bg::SURFACE)
@@ -756,6 +766,7 @@ pub fn paint_cad_demo_placeholder_pane(
                 theme::text::PRIMARY,
             ));
         }
+        paint.scene.pop_clip();
     }
 
     if layout.footer_origin.y + 8.0 <= content_bounds.max_y() {
@@ -767,6 +778,7 @@ pub fn paint_cad_demo_placeholder_pane(
             theme::text::MUTED,
         ));
     }
+    paint.scene.pop_clip();
 }
 
 fn engineering_overlay_lines(
@@ -844,7 +856,7 @@ fn footer_summary_line(pane_state: &CadDemoPaneState) -> String {
         .estimated_cost_usd
         .map(|value| format!("${value:.2}"))
         .unwrap_or_else(|| "$--".to_string());
-    format!(
+    let summary = format!(
         "{} @ tile{} | rev {} | warn {} | {} z{:.2} | section {} | material {} | {} {} | snaps {} | hotkeys {}",
         pane_state.active_variant_id,
         pane_state.active_variant_tile_index + 1,
@@ -858,7 +870,23 @@ fn footer_summary_line(pane_state: &CadDemoPaneState) -> String {
         cost_label,
         pane_state.snap_summary(),
         pane_state.hotkey_profile,
-    )
+    );
+    truncate_with_ellipsis(summary, 220)
+}
+
+fn truncate_with_ellipsis(value: String, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        return value;
+    }
+    if max_chars <= 3 {
+        return "...".to_string();
+    }
+    let mut truncated = String::new();
+    for ch in value.chars().take(max_chars - 3) {
+        truncated.push(ch);
+    }
+    truncated.push_str("...");
+    truncated
 }
 
 fn engineering_overlay_bounds(viewport_bounds: Bounds) -> Bounds {
@@ -1336,7 +1364,8 @@ mod tests {
     use super::{
         CadCameraPose, cad_mesh_to_viewport_primitive, engineering_overlay_bounds,
         engineering_overlay_lines, footer_summary_line, placeholder_layout,
-        selection_inspect_lines, tile_caption, variant_tile_bounds, variant_tile_index_at_point,
+        selection_inspect_lines, tile_caption, truncate_with_ellipsis, variant_tile_bounds,
+        variant_tile_index_at_point,
     };
     use openagents_cad::analysis::{DENSITY_ALUMINUM_6061_KG_M3, estimate_body_properties};
     use openagents_cad::contracts::CadSelectionKind;
@@ -1449,6 +1478,24 @@ mod tests {
         assert!(summary.contains("$128.44"));
         assert!(!summary.contains("session="));
         assert!(!summary.contains("orbit="));
+    }
+
+    #[test]
+    fn footer_summary_line_truncates_for_long_tokens() {
+        let mut state = CadDemoPaneState::default();
+        state.active_variant_id =
+            "variant.extremely-long-identifier-with-many-segments-and-extra-context".to_string();
+        state.hotkey_profile =
+            "profile.with.a.very.long.name.for.testing.clip.behavior".to_string();
+        let summary = footer_summary_line(&state);
+        assert!(summary.chars().count() <= 220);
+    }
+
+    #[test]
+    fn truncate_with_ellipsis_respects_limit() {
+        let value = "abcdefghijklmnopqrstuvwxyz".to_string();
+        let truncated = truncate_with_ellipsis(value, 10);
+        assert_eq!(truncated, "abcdefg...");
     }
 
     #[test]
