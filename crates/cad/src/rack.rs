@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::feature_graph::{FeatureGraph, FeatureNode};
+use crate::keys::feature_params as feature_keys;
 use crate::params::{ParameterStore, ScalarUnit, ScalarValue};
 use crate::semantic_refs::CadSemanticRefRegistry;
 use crate::{CadError, CadResult};
@@ -556,7 +557,7 @@ pub fn generate_mac_studio_rack_template(
                 operation_key: "cut.hole.v1".to_string(),
                 depends_on: vec!["feature.rack.base".to_string()],
                 params: BTreeMap::from([
-                    ("radius_param".to_string(), "bay_cut_radius_mm".to_string()),
+                    (feature_keys::RADIUS_PARAM.owned(), "bay_cut_radius_mm".to_string()),
                     ("depth_param".to_string(), "frame_depth_mm".to_string()),
                 ]),
             },
@@ -576,7 +577,10 @@ pub fn generate_mac_studio_rack_template(
                 operation_key: "cut.hole.v1".to_string(),
                 depends_on: vec!["feature.rack.base".to_string()],
                 params: BTreeMap::from([
-                    ("radius_param".to_string(), "vent_hole_radius_mm".to_string()),
+                    (
+                        feature_keys::RADIUS_PARAM.owned(),
+                        "vent_hole_radius_mm".to_string(),
+                    ),
                     ("depth_param".to_string(), "wall_thickness_mm".to_string()),
                     ("enabled_param".to_string(), "vent_enabled".to_string()),
                 ]),
@@ -646,7 +650,7 @@ pub fn generate_mac_studio_rack_template(
                 depends_on: vec!["feature.rack.wall_mount_bracket".to_string()],
                 params: BTreeMap::from([
                     (
-                        "radius_param".to_string(),
+                        feature_keys::RADIUS_PARAM.owned(),
                         "wall_mount_hole_radius_mm".to_string(),
                     ),
                     (
@@ -679,8 +683,8 @@ pub fn generate_mac_studio_rack_template(
                 operation_key: "fillet.placeholder.v1".to_string(),
                 depends_on: vec!["feature.rack.base".to_string()],
                 params: BTreeMap::from([
-                    ("radius_param".to_string(), "corner_radius_mm".to_string()),
-                    ("kind".to_string(), "fillet".to_string()),
+                    (feature_keys::RADIUS_PARAM.owned(), "corner_radius_mm".to_string()),
+                    (feature_keys::KIND.owned(), "fillet".to_string()),
                 ]),
             },
         ],

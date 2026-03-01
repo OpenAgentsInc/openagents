@@ -4,6 +4,7 @@ use crate::contracts::{CadWarning, CadWarningCode, CadWarningSeverity};
 use crate::feature_graph::FeatureNode;
 use crate::hash::stable_hex_digest;
 use crate::history::CadHistoryCommand;
+use crate::keys::warning_metadata as warning_keys;
 use crate::sketch::{CadSketchEntity, CadSketchModel};
 use crate::{CadError, CadResult};
 
@@ -204,8 +205,11 @@ pub fn convert_sketch_profile_to_feature_node(
             remediation_hint: "close the profile loop or constrain dangling endpoints".to_string(),
             semantic_refs: vec![format!("cad://sketch/profile/{}", spec.profile_id)],
             metadata: BTreeMap::from([
-                ("feature_id".to_string(), spec.feature_id.clone()),
-                ("warning_domain".to_string(), "sketch-profile".to_string()),
+                (warning_keys::FEATURE_ID.owned(), spec.feature_id.clone()),
+                (
+                    warning_keys::WARNING_DOMAIN.owned(),
+                    "sketch-profile".to_string(),
+                ),
             ]),
         });
     }
@@ -222,7 +226,7 @@ pub fn convert_sketch_profile_to_feature_node(
             remediation_hint: "increase revolve angle or add blend cleanup features".to_string(),
             semantic_refs: vec![format!("cad://sketch/profile/{}", spec.profile_id)],
             metadata: BTreeMap::from([
-                ("feature_id".to_string(), spec.feature_id.clone()),
+                (warning_keys::FEATURE_ID.owned(), spec.feature_id.clone()),
                 (
                     "revolve_angle_deg".to_string(),
                     format!("{:.6}", spec.revolve_angle_deg.unwrap_or(360.0)),
