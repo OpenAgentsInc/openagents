@@ -1240,7 +1240,10 @@ fn dispatch_keyboard_submit_actions(
         || handle_cad_timeline_keyboard_input(state, logical_key)
 }
 
-fn run_pane_hit_action(state: &mut crate::app_state::RenderState, action: PaneHitAction) -> bool {
+pub(super) fn run_pane_hit_action(
+    state: &mut crate::app_state::RenderState,
+    action: PaneHitAction,
+) -> bool {
     match action {
         PaneHitAction::NostrRegenerate => {
             match regenerate_identity() {
