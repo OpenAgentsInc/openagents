@@ -789,22 +789,31 @@ fn handle_cad_snap_preview_click(
         return false;
     }
 
-    let Some(pane_id) = cad_camera_target_pane_id(state, point) else {
+    let Some((tile_index, viewport)) = cad_variant_tile_at_point(state, point) else {
         return false;
     };
-    let Some(pane) = state.panes.iter().find(|pane| pane.id == pane_id) else {
-        return false;
-    };
-    let content_bounds = pane_content_bounds(pane.bounds);
-    let viewport = cad_pane::camera_interaction_bounds(content_bounds);
+    let _ = state.cad_demo.set_active_variant_tile(tile_index);
     let snapped = state.cad_demo.apply_snap_to_viewport_point(point, viewport);
+    let _ = state
+        .cad_demo
+        .record_measurement_snap_point(tile_index, snapped);
+    let measurement_suffix = state
+        .cad_demo
+        .measurement_distance_px
+        .map(|distance| {
+            let angle = state.cad_demo.measurement_angle_deg.unwrap_or(0.0);
+            format!(" measure(d={distance:.2}px a={angle:.2}deg)")
+        })
+        .unwrap_or_default();
     state.cad_demo.last_action = Some(format!(
-        "CAD snap preview raw=({:.1},{:.1}) snapped=({:.1},{:.1}) {}",
+        "CAD snap preview tile={} raw=({:.1},{:.1}) snapped=({:.1},{:.1}) {}{}",
+        tile_index + 1,
         point.x,
         point.y,
         snapped.x,
         snapped.y,
         state.cad_demo.snap_summary(),
+        measurement_suffix,
     ));
     true
 }

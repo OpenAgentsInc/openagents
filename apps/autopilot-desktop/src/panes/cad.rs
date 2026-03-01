@@ -370,6 +370,50 @@ pub fn paint_cad_demo_placeholder_pane(
             ));
         }
 
+        if let Some(tile_index) = pane_state.measurement_tile_index
+            && tile_index < 4
+        {
+            let tile_bounds = variant_tile_bounds(content_bounds, tile_index);
+            for point in &pane_state.measurement_points {
+                if tile_bounds.contains(*point) {
+                    let marker = Bounds::new(point.x - 2.0, point.y - 2.0, 4.0, 4.0);
+                    paint.scene.draw_quad(
+                        Quad::new(marker)
+                            .with_background(theme::status::SUCCESS)
+                            .with_corner_radius(1.0),
+                    );
+                }
+            }
+
+            if let Some(distance_px) = pane_state.measurement_distance_px {
+                let anchor = if pane_state.measurement_points.len() >= 2 {
+                    let first = pane_state.measurement_points[0];
+                    let second = pane_state.measurement_points[1];
+                    Point::new((first.x + second.x) * 0.5, (first.y + second.y) * 0.5)
+                } else {
+                    pane_state.measurement_points.first().copied().unwrap_or(Point::new(
+                        tile_bounds.origin.x + 8.0,
+                        tile_bounds.origin.y + 16.0,
+                    ))
+                };
+                let label_origin = Point::new(
+                    anchor
+                        .x
+                        .clamp(tile_bounds.origin.x + 6.0, tile_bounds.max_x() - 120.0),
+                    anchor
+                        .y
+                        .clamp(tile_bounds.origin.y + 10.0, tile_bounds.max_y() - 8.0),
+                );
+                let angle_deg = pane_state.measurement_angle_deg.unwrap_or(0.0);
+                paint.scene.draw_text(paint.text.layout(
+                    &format!("Measure d={distance_px:.2}px a={angle_deg:.2}deg"),
+                    label_origin,
+                    8.0,
+                    theme::status::SUCCESS,
+                ));
+            }
+        }
+
         let visible_warning_indices = visible_warning_indices(pane_state);
         for (marker_index, warning_index) in visible_warning_indices.iter().take(8).enumerate() {
             let marker_bounds = cad_demo_warning_marker_bounds(content_bounds, marker_index);
