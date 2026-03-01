@@ -1,4 +1,6 @@
-use openagents_cad::analysis::{DENSITY_ALUMINUM_6061_KG_M3, estimate_body_properties};
+use openagents_cad::analysis::{
+    DENSITY_ALUMINUM_6061_KG_M3, edge_properties, estimate_body_properties, face_properties,
+};
 use openagents_cad::contracts::CadSelectionKind;
 use openagents_cad::mesh::CadMeshPayload;
 use wgpui::{
@@ -468,13 +470,13 @@ pub fn paint_cad_demo_placeholder_pane(
             ));
         }
 
-        if let Some(inspect_lines) = body_inspect_lines(pane_state) {
+        if let Some((inspect_title, inspect_lines)) = selection_inspect_lines(pane_state) {
             let inspector_origin = Point::new(
                 timeline_panel.origin.x + 6.0,
                 (timeline_panel.max_y() - 52.0).max(timeline_panel.origin.y + 14.0),
             );
             paint.scene.draw_text(paint.text.layout(
-                "Body Inspect:",
+                &format!("{inspect_title}:"),
                 inspector_origin,
                 9.0,
                 theme::text::SECONDARY,
@@ -720,29 +722,65 @@ fn timeline_row_color(row: &crate::app_state::CadTimelineRowState) -> wgpui::Hsl
     }
 }
 
-fn body_inspect_lines(pane_state: &CadDemoPaneState) -> Option<Vec<String>> {
+fn selection_inspect_lines(pane_state: &CadDemoPaneState) -> Option<(String, Vec<String>)> {
     let primary = pane_state.selection_store.state().primary.as_ref()?;
-    if primary.kind != CadSelectionKind::Body {
-        return None;
-    }
-
     let payload = pane_state.last_good_mesh_payload.as_ref()?;
-    let analysis = &pane_state.analysis_snapshot;
-    let estimate = estimate_body_properties(payload, DENSITY_ALUMINUM_6061_KG_M3)?;
-    let volume_mm3 = analysis.volume_mm3?;
-    let mass_kg = analysis.mass_kg?;
-    let cog = analysis.center_of_gravity_mm?;
+    match primary.kind {
+        CadSelectionKind::Body => {
+            let analysis = &pane_state.analysis_snapshot;
+            let estimate = estimate_body_properties(payload, DENSITY_ALUMINUM_6061_KG_M3)?;
+            let volume_mm3 = analysis.volume_mm3?;
+            let mass_kg = analysis.mass_kg?;
+            let cog = analysis.center_of_gravity_mm?;
+            Some((
+                "Body Inspect".to_string(),
+                vec![
+                    format!("Volume: {:.1} mm^3", volume_mm3),
+                    format!("Area: {:.1} mm^2", estimate.surface_area_mm2),
+                    format!("Mass: {:.4} kg", mass_kg),
+                    format!("CoG: ({:.1}, {:.1}, {:.1}) mm", cog[0], cog[1], cog[2]),
+                    format!(
+                        "BBox: {:.1} x {:.1} x {:.1} mm",
+                        estimate.bounds_size_mm[0],
+                        estimate.bounds_size_mm[1],
+                        estimate.bounds_size_mm[2]
+                    ),
+                ],
+            ))
+        }
+        CadSelectionKind::Face => {
+            let face_index = parse_entity_index(primary.entity_id.as_str(), "face")?;
+            let face = face_properties(payload, face_index)?;
+            Some((
+                "Face Inspect".to_string(),
+                vec![
+                    format!("Face: {}", face.face_index),
+                    format!("Area: {:.1} mm^2", face.area_mm2),
+                    format!(
+                        "Normal: ({:.2}, {:.2}, {:.2})",
+                        face.normal[0], face.normal[1], face.normal[2]
+                    ),
+                ],
+            ))
+        }
+        CadSelectionKind::Edge => {
+            let edge_index = parse_entity_index(primary.entity_id.as_str(), "edge")?;
+            let edge = edge_properties(payload, edge_index)?;
+            Some((
+                "Edge Inspect".to_string(),
+                vec![
+                    format!("Edge: {}", edge.edge_index),
+                    format!("Length: {:.2} mm", edge.length_mm),
+                    format!("Type: {}", edge.edge_type.label()),
+                ],
+            ))
+        }
+    }
+}
 
-    Some(vec![
-        format!("Volume: {:.1} mm^3", volume_mm3),
-        format!("Area: {:.1} mm^2", estimate.surface_area_mm2),
-        format!("Mass: {:.4} kg", mass_kg),
-        format!("CoG: ({:.1}, {:.1}, {:.1}) mm", cog[0], cog[1], cog[2]),
-        format!(
-            "BBox: {:.1} x {:.1} x {:.1} mm",
-            estimate.bounds_size_mm[0], estimate.bounds_size_mm[1], estimate.bounds_size_mm[2]
-        ),
-    ])
+fn parse_entity_index(entity_id: &str, prefix: &str) -> Option<usize> {
+    let value = entity_id.strip_prefix(prefix)?.strip_prefix('.')?;
+    value.parse::<usize>().ok()
 }
 
 fn cad_mesh_to_viewport_primitive(
@@ -979,7 +1017,7 @@ fn styled_fill_color(base: [f32; 4], mode: CadHiddenLineMode) -> [f32; 4] {
 #[cfg(test)]
 mod tests {
     use super::{
-        CadCameraPose, body_inspect_lines, cad_mesh_to_viewport_primitive, placeholder_layout,
+        CadCameraPose, cad_mesh_to_viewport_primitive, placeholder_layout, selection_inspect_lines,
         variant_tile_bounds, variant_tile_index_at_point,
     };
     use openagents_cad::analysis::{DENSITY_ALUMINUM_6061_KG_M3, estimate_body_properties};
@@ -1199,7 +1237,7 @@ mod tests {
     }
 
     #[test]
-    fn body_inspect_lines_surface_volume_mass_and_bounds_for_body_selection() {
+    fn selection_inspect_lines_surface_volume_mass_and_bounds_for_body_selection() {
         let payload = CadMeshPayload {
             mesh_id: "mesh.inspect".to_string(),
             document_revision: 3,
@@ -1256,13 +1294,96 @@ mod tests {
             Some("body.0".to_string()),
         );
 
-        let lines = body_inspect_lines(&state).expect("body inspect lines should be visible");
+        let (title, lines) =
+            selection_inspect_lines(&state).expect("body inspect lines should be visible");
+        assert_eq!(title, "Body Inspect");
         assert_eq!(lines.len(), 5);
         assert!(lines[0].contains("Volume"));
         assert!(lines[1].contains("Area"));
         assert!(lines[2].contains("Mass"));
         assert!(lines[3].contains("CoG"));
         assert!(lines[4].contains("BBox"));
+    }
+
+    #[test]
+    fn selection_inspect_lines_return_face_area_normal_and_edge_length_type() {
+        let payload = CadMeshPayload {
+            mesh_id: "mesh.inspect.subentities".to_string(),
+            document_revision: 5,
+            variant_id: "variant.baseline".to_string(),
+            topology: CadMeshTopology::Triangles,
+            vertices: vec![
+                CadMeshVertex {
+                    position_mm: [0.0, 0.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [0.0, 0.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [10.0, 0.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [1.0, 0.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [0.0, 10.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [0.0, 1.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+            ],
+            triangle_indices: vec![0, 1, 2],
+            edges: vec![
+                CadMeshEdgeSegment {
+                    start_vertex: 0,
+                    end_vertex: 1,
+                    flags: 0,
+                },
+                CadMeshEdgeSegment {
+                    start_vertex: 1,
+                    end_vertex: 2,
+                    flags: 7,
+                },
+            ],
+            material_slots: vec![CadMeshMaterialSlot::default()],
+            bounds: CadMeshBounds {
+                min_mm: [0.0, 0.0, 0.0],
+                max_mm: [10.0, 10.0, 0.0],
+            },
+        };
+
+        let mut face_state = CadDemoPaneState::default();
+        face_state.last_good_mesh_payload = Some(payload.clone());
+        let _ = face_state.selection_store.set_primary(
+            CadSelectionKind::Face,
+            "face.0",
+            Some("face.0".to_string()),
+        );
+        let face_before =
+            selection_inspect_lines(&face_state).expect("face lines should be available");
+        face_state.orbit_camera_by_drag(19.0, -8.0);
+        let face_after = selection_inspect_lines(&face_state)
+            .expect("face lines should remain stable across camera motion");
+        assert_eq!(face_before, face_after);
+        assert_eq!(face_before.0, "Face Inspect");
+        assert!(face_before.1.iter().any(|line| line.contains("Area")));
+        assert!(face_before.1.iter().any(|line| line.contains("Normal")));
+
+        let mut edge_state = CadDemoPaneState::default();
+        edge_state.last_good_mesh_payload = Some(payload);
+        let _ = edge_state.selection_store.set_primary(
+            CadSelectionKind::Edge,
+            "edge.1",
+            Some("edge.1".to_string()),
+        );
+        let edge_lines =
+            selection_inspect_lines(&edge_state).expect("edge lines should be available");
+        assert_eq!(edge_lines.0, "Edge Inspect");
+        assert!(edge_lines.1.iter().any(|line| line.contains("Length")));
+        assert!(edge_lines.1.iter().any(|line| line.contains("Type")));
     }
 
     #[test]
