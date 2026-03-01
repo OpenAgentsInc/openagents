@@ -82,6 +82,7 @@ use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPane
 use crate::spark_wallet::SparkWalletCommand;
 
 mod actions;
+mod cad_turn_classifier;
 mod reducers;
 mod shortcuts;
 mod tool_bridge;
