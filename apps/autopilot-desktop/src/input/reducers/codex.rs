@@ -218,19 +218,6 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
                     .or_else(|| Some("app/list failed".to_string()));
             }
         }
-        CodexLaneCommandKind::SkillsRemoteList | CodexLaneCommandKind::SkillsRemoteExport => {
-            if response.status == CodexLaneCommandStatus::Accepted {
-                state.codex_remote_skills.load_state = PaneLoadState::Ready;
-                state.codex_remote_skills.last_error = None;
-                state.codex_remote_skills.last_action =
-                    Some(format!("{} accepted", response.command.label()));
-            } else {
-                state.codex_remote_skills.load_state = PaneLoadState::Error;
-                state.codex_remote_skills.last_error = response_error
-                    .clone()
-                    .or_else(|| Some(format!("{} failed", response.command.label())));
-            }
-        }
         CodexLaneCommandKind::ReviewStart
         | CodexLaneCommandKind::CommandExec
         | CodexLaneCommandKind::CollaborationModeList
@@ -730,41 +717,13 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 Some("fuzzyFileSearch/sessionStop completed".to_string());
             state.codex_labs.last_error = None;
         }
-        CodexLaneNotification::SkillsRemoteListLoaded { entries } => {
-            state.codex_remote_skills.load_state = PaneLoadState::Ready;
-            state.codex_remote_skills.skills = entries
-                .into_iter()
-                .map(|entry| crate::app_state::CodexRemoteSkillEntryState {
-                    id: entry.id,
-                    name: entry.name,
-                    description: entry.description,
-                })
-                .collect();
-            state.codex_remote_skills.selected_skill_index =
-                if state.codex_remote_skills.skills.is_empty() {
-                    None
-                } else {
-                    Some(
-                        state
-                            .codex_remote_skills
-                            .selected_skill_index
-                            .unwrap_or(0)
-                            .min(state.codex_remote_skills.skills.len().saturating_sub(1)),
-                    )
-                };
-            state.codex_remote_skills.last_action = Some(format!(
-                "Loaded {} remote skills",
-                state.codex_remote_skills.skills.len()
-            ));
-            state.codex_remote_skills.last_error = None;
+        CodexLaneNotification::SkillsRemoteListLoaded { .. } => {
+            state.codex_diagnostics.last_action =
+                Some("Ignored skills/remote/list notification (pane removed)".to_string());
         }
-        CodexLaneNotification::SkillsRemoteExported { id, path } => {
-            state.codex_remote_skills.load_state = PaneLoadState::Ready;
-            state.codex_remote_skills.last_exported_path = Some(path.clone());
-            state.codex_remote_skills.last_action =
-                Some(format!("Exported remote skill {} to {}", id, path));
-            state.codex_remote_skills.last_error = None;
-            queue_skills_list_refresh(state);
+        CodexLaneNotification::SkillsRemoteExported { .. } => {
+            state.codex_diagnostics.last_action =
+                Some("Ignored skills/remote/export notification (pane removed)".to_string());
         }
         CodexLaneNotification::SkillsListLoaded { entries } => {
             state.skill_registry.source = "codex".to_string();

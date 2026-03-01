@@ -946,64 +946,6 @@ pub(super) fn run_codex_apps_action(
     }
 }
 
-pub(super) fn run_codex_remote_skills_action(
-    state: &mut crate::app_state::RenderState,
-    action: CodexRemoteSkillsPaneAction,
-) -> bool {
-    match action {
-        CodexRemoteSkillsPaneAction::Refresh => {
-            state.codex_remote_skills.load_state = crate::app_state::PaneLoadState::Loading;
-            state.codex_remote_skills.last_error = None;
-            state.codex_remote_skills.last_action = Some("Queued skills/remote/list".to_string());
-            if let Err(error) = state.queue_codex_command(
-                crate::codex_lane::CodexLaneCommand::SkillsRemoteList(SkillsRemoteReadParams {
-                    hazelnut_scope: HazelnutScope::AllShared,
-                    product_surface: ProductSurface::Codex,
-                    enabled: true,
-                }),
-            ) {
-                state.codex_remote_skills.load_state = crate::app_state::PaneLoadState::Error;
-                state.codex_remote_skills.last_error = Some(error);
-            }
-            true
-        }
-        CodexRemoteSkillsPaneAction::ExportSelected => {
-            let selected_id = state
-                .codex_remote_skills
-                .selected_skill_index
-                .and_then(|idx| state.codex_remote_skills.skills.get(idx))
-                .map(|entry| entry.id.clone());
-            let Some(hazelnut_id) = selected_id else {
-                state.codex_remote_skills.last_error =
-                    Some("Select a remote skill before export".to_string());
-                return true;
-            };
-            state.codex_remote_skills.load_state = crate::app_state::PaneLoadState::Loading;
-            state.codex_remote_skills.last_error = None;
-            state.codex_remote_skills.last_action =
-                Some(format!("Queued skills/remote/export for {}", hazelnut_id));
-            if let Err(error) =
-                state.queue_codex_command(crate::codex_lane::CodexLaneCommand::SkillsRemoteExport(
-                    SkillsRemoteWriteParams { hazelnut_id },
-                ))
-            {
-                state.codex_remote_skills.load_state = crate::app_state::PaneLoadState::Error;
-                state.codex_remote_skills.last_error = Some(error);
-            }
-            true
-        }
-        CodexRemoteSkillsPaneAction::SelectRow(index) => {
-            if index < state.codex_remote_skills.skills.len() {
-                state.codex_remote_skills.selected_skill_index = Some(index);
-                state.codex_remote_skills.last_action =
-                    Some(format!("Selected remote skill row {}", index + 1));
-                state.codex_remote_skills.last_error = None;
-            }
-            true
-        }
-    }
-}
-
 pub(super) fn run_codex_labs_action(
     state: &mut crate::app_state::RenderState,
     action: CodexLabsPaneAction,
