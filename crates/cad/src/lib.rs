@@ -12,6 +12,7 @@ pub mod document;
 pub mod error;
 pub mod eval;
 pub mod events;
+pub mod export;
 pub mod feature_graph;
 pub mod features;
 pub mod format;

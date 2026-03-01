@@ -11,6 +11,7 @@ use openagents_cad::eval::{EvalCacheEntry, EvalCacheKey, EvalCacheStats};
 use openagents_cad::events::{CadEvent, CadEventKind};
 use openagents_cad::feature_graph::{FeatureGraph, FeatureNode};
 use openagents_cad::history::{CadHistoryCommand, CadHistorySnapshot};
+use openagents_cad::intent::CadIntent;
 use openagents_cad::materials::{
     CadCostHeuristicError, CadCostHeuristicInput, DEFAULT_CAD_MATERIAL_ID,
     estimate_cnc_cost_heuristic_usd, material_preset_by_id,
@@ -41,23 +42,89 @@ pub(super) fn apply_chat_prompt_to_cad_session(
                 .cad_demo
                 .apply_chat_intent_for_thread(thread_id, &intent)
             {
-                Ok(receipt) => {
-                    emit_cad_event(
-                        state,
-                        CadEventKind::ParameterUpdated,
-                        receipt.state_revision,
-                        Some(state.cad_demo.active_variant_id.clone()),
-                        Some(format!(
-                            "chat-intent:{}:{}:{}",
-                            thread_id, intent_name, receipt.state_revision
-                        )),
-                        format!("CAD chat intent -> {}", intent_name),
-                        format!(
-                            "thread={} session={} revision={}",
-                            thread_id, state.cad_demo.session_id, receipt.state_revision
-                        ),
-                    );
-                }
+                Ok(receipt) => match &intent {
+                    CadIntent::Export(export_intent) => {
+                        match run_step_export_from_active_mesh(
+                            &state.cad_demo,
+                            &export_intent.variant_id,
+                        ) {
+                            Ok(artifact) => {
+                                state.cad_demo.last_error = None;
+                                state.cad_demo.last_action = Some(format!(
+                                    "CAD STEP export ready -> {} ({} bytes, hash {})",
+                                    artifact.receipt.file_name,
+                                    artifact.receipt.byte_count,
+                                    artifact.receipt.deterministic_hash
+                                ));
+                                emit_cad_event(
+                                    state,
+                                    CadEventKind::ExportCompleted,
+                                    receipt.state_revision,
+                                    Some(export_intent.variant_id.clone()),
+                                    Some(format!(
+                                        "chat-export:{}:{}:{}",
+                                        thread_id,
+                                        artifact.receipt.file_name,
+                                        artifact.receipt.deterministic_hash
+                                    )),
+                                    "CAD STEP export completed".to_string(),
+                                    format!(
+                                        "thread={} session={} variant={} file={} bytes={} hash={}",
+                                        thread_id,
+                                        state.cad_demo.session_id,
+                                        export_intent.variant_id,
+                                        artifact.receipt.file_name,
+                                        artifact.receipt.byte_count,
+                                        artifact.receipt.deterministic_hash
+                                    ),
+                                );
+                            }
+                            Err(error) => {
+                                state.cad_demo.last_error =
+                                    Some(format!("CAD STEP export failed: {error}"));
+                                state.cad_demo.last_action = Some(
+                                    "CAD STEP export rejected: inspect error and retry".to_string(),
+                                );
+                                emit_cad_event(
+                                    state,
+                                    CadEventKind::ExportFailed,
+                                    receipt.state_revision,
+                                    Some(export_intent.variant_id.clone()),
+                                    Some(format!(
+                                        "chat-export-failed:{}:{}:{}",
+                                        thread_id, export_intent.variant_id, receipt.state_revision
+                                    )),
+                                    "CAD STEP export failed".to_string(),
+                                    format!(
+                                        "thread={} session={} variant={} error={} remediation={}",
+                                        thread_id,
+                                        state.cad_demo.session_id,
+                                        export_intent.variant_id,
+                                        error,
+                                        error.remediation_hint()
+                                    ),
+                                );
+                            }
+                        }
+                    }
+                    _ => {
+                        emit_cad_event(
+                            state,
+                            CadEventKind::ParameterUpdated,
+                            receipt.state_revision,
+                            Some(state.cad_demo.active_variant_id.clone()),
+                            Some(format!(
+                                "chat-intent:{}:{}:{}",
+                                thread_id, intent_name, receipt.state_revision
+                            )),
+                            format!("CAD chat intent -> {}", intent_name),
+                            format!(
+                                "thread={} session={} revision={}",
+                                thread_id, state.cad_demo.session_id, receipt.state_revision
+                            ),
+                        );
+                    }
+                },
                 Err(error) => {
                     state.cad_demo.last_error = Some(format!(
                         "CAD intent dispatch failed for thread {}: {}",
@@ -79,6 +146,24 @@ pub(super) fn apply_chat_prompt_to_cad_session(
             false
         }
     }
+}
+
+fn run_step_export_from_active_mesh(
+    state: &CadDemoPaneState,
+    variant_id: &str,
+) -> openagents_cad::CadResult<openagents_cad::export::CadStepExportArtifact> {
+    let mesh = state.last_good_mesh_payload.as_ref().ok_or_else(|| {
+        openagents_cad::CadError::ExportFailed {
+            format: "step".to_string(),
+            reason: "no mesh payload available; rebuild before export".to_string(),
+        }
+    })?;
+    openagents_cad::export::export_step_from_mesh(
+        &state.document_id,
+        state.document_revision,
+        variant_id,
+        mesh,
+    )
 }
 
 pub(super) fn run_cad_demo_action(state: &mut RenderState, action: CadDemoPaneAction) -> bool {
@@ -1655,7 +1740,7 @@ mod tests {
 
     use super::{
         activity_row_from_cad_event, analysis_snapshot_from_mesh, apply_cad_demo_action,
-        drain_worker_responses_from_pane,
+        drain_worker_responses_from_pane, run_step_export_from_active_mesh,
     };
     use crate::app_state::{ActivityEventDomain, CadDemoPaneState, CadTimelineRowState};
     use crate::pane_system::CadDemoPaneAction;
@@ -1695,6 +1780,28 @@ mod tests {
         assert_eq!(state.load_state, crate::app_state::PaneLoadState::Loading);
         assert!(state.pending_rebuild_request_id.is_some());
         assert!(state.last_rebuild_receipt.is_none());
+    }
+
+    #[test]
+    fn step_export_rejects_when_mesh_is_missing() {
+        let state = CadDemoPaneState::default();
+        let error = run_step_export_from_active_mesh(&state, "variant.baseline")
+            .expect_err("export without mesh should fail");
+        assert!(error.to_string().contains("no mesh payload available"));
+    }
+
+    #[test]
+    fn step_export_succeeds_after_rebuild_receipt() {
+        let mut state = CadDemoPaneState::default();
+        let _ = apply_cad_demo_action(&mut state, CadDemoPaneAction::CycleVariant);
+        wait_for_receipt(&mut state);
+        let variant = state.active_variant_id.clone();
+        let artifact = run_step_export_from_active_mesh(&state, &variant)
+            .expect("export should succeed after rebuild receipt");
+        assert_eq!(artifact.receipt.variant_id, variant);
+        assert_eq!(artifact.receipt.document_id, state.document_id);
+        assert!(artifact.receipt.byte_count > 0);
+        assert!(!artifact.receipt.deterministic_hash.is_empty());
     }
 
     #[test]
