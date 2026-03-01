@@ -3732,5 +3732,11 @@ mod tests {
         assert_eq!(state.next_rebuild_request_id, 1);
         assert!(state.pending_rebuild_request_id.is_none());
         assert!(state.last_good_mesh_id.is_none());
+        assert!(state.warnings.is_empty());
+        assert_eq!(state.warning_filter_severity, "all");
+        assert_eq!(state.warning_filter_code, "all");
+        assert!(state.warning_hover_index.is_none());
+        assert!(state.focused_warning_index.is_none());
+        assert!(state.focused_geometry_ref.is_none());
     }
 }

@@ -334,6 +334,10 @@ pub enum CadDemoPaneAction {
     Noop,
     CycleVariant,
     ResetSession,
+    CycleWarningSeverityFilter,
+    CycleWarningCodeFilter,
+    SelectWarning(usize),
+    SelectWarningMarker(usize),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2052,6 +2056,66 @@ pub fn cad_demo_reset_button_bounds(content_bounds: Bounds) -> Bounds {
     )
 }
 
+pub fn cad_demo_warning_panel_bounds(content_bounds: Bounds) -> Bounds {
+    let width = (content_bounds.size.width * 0.42).clamp(200.0, 300.0);
+    let height = (content_bounds.size.height * 0.36).clamp(120.0, 220.0);
+    let origin_x = (content_bounds.max_x() - width - CHAT_PAD).max(content_bounds.origin.x + CHAT_PAD);
+    let origin_y = (content_bounds.max_y() - height - CHAT_PAD).max(content_bounds.origin.y + CHAT_PAD);
+    Bounds::new(origin_x, origin_y, width, height)
+}
+
+pub fn cad_demo_warning_filter_severity_button_bounds(content_bounds: Bounds) -> Bounds {
+    let panel = cad_demo_warning_panel_bounds(content_bounds);
+    let inner_width = (panel.size.width - CHAT_PAD * 1.5).max(40.0);
+    Bounds::new(
+        panel.origin.x + CHAT_PAD * 0.5,
+        panel.origin.y + CHAT_PAD * 0.5,
+        inner_width * 0.5 - CHAT_PAD * 0.25,
+        20.0,
+    )
+}
+
+pub fn cad_demo_warning_filter_code_button_bounds(content_bounds: Bounds) -> Bounds {
+    let severity = cad_demo_warning_filter_severity_button_bounds(content_bounds);
+    Bounds::new(
+        severity.max_x() + CHAT_PAD * 0.5,
+        severity.origin.y,
+        severity.size.width,
+        severity.size.height,
+    )
+}
+
+pub fn cad_demo_warning_row_bounds(content_bounds: Bounds, index: usize) -> Bounds {
+    let panel = cad_demo_warning_panel_bounds(content_bounds);
+    let top = cad_demo_warning_filter_code_button_bounds(content_bounds).max_y() + 8.0;
+    let max_origin_y = (panel.max_y() - 16.0).max(top);
+    let origin_y = (top + index as f32 * 18.0).min(max_origin_y);
+    Bounds::new(
+        panel.origin.x + CHAT_PAD * 0.5,
+        origin_y,
+        (panel.size.width - CHAT_PAD).max(30.0),
+        16.0,
+    )
+}
+
+pub fn cad_demo_warning_marker_bounds(content_bounds: Bounds, index: usize) -> Bounds {
+    let panel = cad_demo_warning_panel_bounds(content_bounds);
+    let buttons_bottom = cad_demo_cycle_variant_button_bounds(content_bounds)
+        .max_y()
+        .max(cad_demo_reset_button_bounds(content_bounds).max_y());
+    let viewport_top = (buttons_bottom + 12.0).min(content_bounds.max_y());
+    let viewport_bottom = (panel.origin.y - 8.0).max(viewport_top);
+    let viewport_height = (viewport_bottom - viewport_top).max(1.0);
+    let row = index / 6;
+    let col = index % 6;
+    let marker_size = 8.0;
+    let marker_x = (content_bounds.origin.x + CHAT_PAD + 14.0 + col as f32 * 20.0)
+        .min(content_bounds.max_x() - marker_size - CHAT_PAD);
+    let marker_y =
+        (viewport_top + 14.0 + row as f32 * 20.0).min(viewport_top + viewport_height - marker_size);
+    Bounds::new(marker_x, marker_y, marker_size, marker_size)
+}
+
 pub fn nostr_regenerate_button_bounds(content_bounds: Bounds) -> Bounds {
     let (regenerate_bounds, _, _) = nostr_button_bounds(content_bounds);
     regenerate_bounds
@@ -2734,6 +2798,26 @@ fn pane_hit_action_for_pane(
             if cad_demo_reset_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::CadDemo(CadDemoPaneAction::ResetSession));
             }
+            if cad_demo_warning_filter_severity_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CadDemo(
+                    CadDemoPaneAction::CycleWarningSeverityFilter,
+                ));
+            }
+            if cad_demo_warning_filter_code_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CadDemo(
+                    CadDemoPaneAction::CycleWarningCodeFilter,
+                ));
+            }
+            for index in 0..8 {
+                if cad_demo_warning_row_bounds(content_bounds, index).contains(point) {
+                    return Some(PaneHitAction::CadDemo(CadDemoPaneAction::SelectWarning(index)));
+                }
+                if cad_demo_warning_marker_bounds(content_bounds, index).contains(point) {
+                    return Some(PaneHitAction::CadDemo(
+                        CadDemoPaneAction::SelectWarningMarker(index),
+                    ));
+                }
+            }
             None
         }
         PaneKind::SparkWallet => {
@@ -3026,8 +3110,10 @@ mod tests {
         codex_mcp_reload_button_bounds, codex_models_refresh_button_bounds,
         codex_models_toggle_hidden_button_bounds, credit_desk_envelope_button_bounds,
         credit_desk_intent_button_bounds, credit_desk_offer_button_bounds,
-        credit_desk_spend_button_bounds, cad_demo_cycle_variant_button_bounds,
-        cad_demo_reset_button_bounds, credit_settlement_default_button_bounds,
+        credit_desk_spend_button_bounds, cad_demo_cycle_variant_button_bounds, cad_demo_warning_panel_bounds,
+        cad_demo_reset_button_bounds, cad_demo_warning_filter_code_button_bounds,
+        cad_demo_warning_filter_severity_button_bounds, cad_demo_warning_marker_bounds,
+        cad_demo_warning_row_bounds, credit_settlement_default_button_bounds,
         credit_settlement_reputation_button_bounds, credit_settlement_verify_button_bounds,
         earnings_scoreboard_refresh_button_bounds, go_online_toggle_button_bounds,
         job_history_next_page_button_bounds, job_history_prev_page_button_bounds,
@@ -3369,6 +3455,33 @@ mod tests {
         assert!(cycle.max_y() <= content.max_y());
         assert!(reset.max_y() <= content.max_y());
         assert!(cycle.max_x() < reset.min_x());
+    }
+
+    #[test]
+    fn cad_warning_panel_and_markers_stay_within_content_no_overflow() {
+        let content = Bounds::new(0.0, 0.0, 840.0, 420.0);
+        let panel = cad_demo_warning_panel_bounds(content);
+        let severity = cad_demo_warning_filter_severity_button_bounds(content);
+        let code = cad_demo_warning_filter_code_button_bounds(content);
+        assert!(content.contains(panel.origin));
+        assert!(panel.max_x() <= content.max_x());
+        assert!(panel.max_y() <= content.max_y());
+        assert!(panel.contains(severity.origin));
+        assert!(panel.contains(code.origin));
+        assert!(severity.max_x() <= panel.max_x());
+        assert!(code.max_x() <= panel.max_x());
+
+        for index in 0..8 {
+            let row = cad_demo_warning_row_bounds(content, index);
+            let marker = cad_demo_warning_marker_bounds(content, index);
+            assert!(row.origin.x >= panel.origin.x);
+            assert!(row.max_x() <= panel.max_x() + 0.001);
+            assert!(row.max_y() <= panel.max_y() + 0.001);
+            assert!(marker.origin.x >= content.origin.x);
+            assert!(marker.max_x() <= content.max_x() + 0.001);
+            assert!(marker.origin.y >= content.origin.y);
+            assert!(marker.max_y() <= content.max_y() + 0.001);
+        }
     }
 
     #[test]

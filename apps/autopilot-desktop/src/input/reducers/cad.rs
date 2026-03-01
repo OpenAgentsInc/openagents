@@ -1,12 +1,16 @@
 use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use openagents_cad::contracts::{CadWarning, CadWarningSeverity};
 use openagents_cad::eval::{EvalCacheEntry, EvalCacheKey, EvalCacheStats};
 use openagents_cad::feature_graph::{FeatureGraph, FeatureNode};
+use openagents_cad::validity::{
+    ModelValidityEntity, ModelValiditySnapshot, run_model_validity_checks,
+};
 
 use crate::app_state::{
-    ActivityEventDomain, ActivityEventRow, CadDemoPaneState, CadRebuildReceiptState,
-    PaneLoadState, RenderState,
+    ActivityEventDomain, ActivityEventRow, CadDemoPaneState, CadDemoWarningState,
+    CadRebuildReceiptState, PaneLoadState, RenderState,
 };
 use crate::cad_rebuild_worker::{
     CadBackgroundRebuildWorker, CadRebuildCompleted, CadRebuildRequest, CadRebuildResponse,
@@ -56,6 +60,40 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
             }
             *state = reset;
             true
+        }
+        CadDemoPaneAction::CycleWarningSeverityFilter => {
+            state.warning_filter_severity = next_warning_severity_filter(&state.warning_filter_severity);
+            state.warning_filter_code = "all".to_string();
+            state.warning_hover_index = None;
+            state.focused_warning_index = None;
+            state.last_action = Some(format!(
+                "CAD warning severity filter -> {}",
+                state.warning_filter_severity
+            ));
+            true
+        }
+        CadDemoPaneAction::CycleWarningCodeFilter => {
+            state.warning_filter_code = next_warning_code_filter(state);
+            state.warning_hover_index = None;
+            state.focused_warning_index = None;
+            state.last_action = Some(format!("CAD warning code filter -> {}", state.warning_filter_code));
+            true
+        }
+        CadDemoPaneAction::SelectWarning(visible_index) => {
+            if let Some(actual_index) = visible_warning_indices(state).get(visible_index).copied() {
+                focus_warning(state, actual_index);
+                true
+            } else {
+                false
+            }
+        }
+        CadDemoPaneAction::SelectWarningMarker(marker_index) => {
+            if let Some(actual_index) = visible_warning_indices(state).get(marker_index).copied() {
+                focus_warning(state, actual_index);
+                true
+            } else {
+                false
+            }
         }
     }
 }
@@ -196,6 +234,7 @@ fn apply_completed_rebuild(
     }
     state.pending_rebuild_request_id = None;
     state.last_good_mesh_id = Some(format!("mesh.{}", receipt.rebuild_hash));
+    refresh_warning_state(state, completed.document_revision, &receipt.variant_id);
     state.load_state = PaneLoadState::Ready;
     state.last_error = None;
     state.last_action = Some(format!(
@@ -311,6 +350,177 @@ fn build_demo_feature_graph(state: &CadDemoPaneState) -> FeatureGraph {
     FeatureGraph { nodes: feature_nodes }
 }
 
+fn refresh_warning_state(state: &mut CadDemoPaneState, document_revision: u64, variant_id: &str) {
+    let snapshot = build_demo_validity_snapshot(document_revision, variant_id);
+    let receipt = run_model_validity_checks(&snapshot);
+    state.warnings = receipt
+        .warnings
+        .iter()
+        .enumerate()
+        .map(|(index, warning)| warning_to_pane_state(index, warning))
+        .collect();
+    state.warning_hover_index = None;
+    state.focused_warning_index = None;
+    state.focused_geometry_ref = None;
+}
+
+fn warning_to_pane_state(index: usize, warning: &CadWarning) -> CadDemoWarningState {
+    let feature_id = warning
+        .metadata
+        .get("feature_id")
+        .cloned()
+        .unwrap_or_else(|| "feature.unknown".to_string());
+    let entity_id = warning
+        .metadata
+        .get("entity_id")
+        .cloned()
+        .unwrap_or_else(|| "entity.unknown".to_string());
+    let deep_link = warning.metadata.get("deep_link").cloned();
+    CadDemoWarningState {
+        warning_id: format!("warning.{index:03}"),
+        code: warning.code.stable_code().to_string(),
+        severity: match warning.severity {
+            CadWarningSeverity::Info => "info".to_string(),
+            CadWarningSeverity::Warning => "warning".to_string(),
+            CadWarningSeverity::Critical => "critical".to_string(),
+        },
+        message: warning.message.clone(),
+        remediation_hint: warning.remediation_hint.clone(),
+        semantic_refs: warning.semantic_refs.clone(),
+        deep_link,
+        feature_id,
+        entity_id,
+    }
+}
+
+fn build_demo_validity_snapshot(document_revision: u64, variant_id: &str) -> ModelValiditySnapshot {
+    let entities = match variant_id {
+        "variant.lightweight" => vec![
+            ModelValidityEntity {
+                entity_id: "face.zero_thickness".to_string(),
+                feature_id: "feature.base".to_string(),
+                semantic_ref: Some("rack_outer_face".to_string()),
+                is_manifold: true,
+                self_intersection_count: 0,
+                min_thickness_mm: 0.005,
+                min_face_area_mm2: 22.0,
+                sliver_face_count: 0,
+                fillet_failure_reason: None,
+            },
+            ModelValidityEntity {
+                entity_id: "edge.fillet_fail".to_string(),
+                feature_id: "feature.edge_marker".to_string(),
+                semantic_ref: Some("edge_blend_set".to_string()),
+                is_manifold: true,
+                self_intersection_count: 0,
+                min_thickness_mm: 1.4,
+                min_face_area_mm2: 12.0,
+                sliver_face_count: 0,
+                fillet_failure_reason: Some("radius too large".to_string()),
+            },
+        ],
+        "variant.low-cost" => vec![ModelValidityEntity {
+            entity_id: "face.sliver".to_string(),
+            feature_id: "feature.vent_pattern".to_string(),
+            semantic_ref: Some("vent_sliver_face".to_string()),
+            is_manifold: true,
+            self_intersection_count: 0,
+            min_thickness_mm: 1.6,
+            min_face_area_mm2: 0.00005,
+            sliver_face_count: 2,
+            fillet_failure_reason: None,
+        }],
+        "variant.stiffness" => vec![ModelValidityEntity {
+            entity_id: "body.self_intersect".to_string(),
+            feature_id: "feature.vent_pattern".to_string(),
+            semantic_ref: Some("vent_face_set".to_string()),
+            is_manifold: true,
+            self_intersection_count: 1,
+            min_thickness_mm: 1.8,
+            min_face_area_mm2: 20.0,
+            sliver_face_count: 0,
+            fillet_failure_reason: None,
+        }],
+        _ => vec![ModelValidityEntity {
+            entity_id: "body.non_manifold".to_string(),
+            feature_id: "feature.base".to_string(),
+            semantic_ref: Some("rack_outer_face".to_string()),
+            is_manifold: false,
+            self_intersection_count: 0,
+            min_thickness_mm: 2.0,
+            min_face_area_mm2: 40.0,
+            sliver_face_count: 0,
+            fillet_failure_reason: None,
+        }],
+    };
+
+    ModelValiditySnapshot {
+        document_revision,
+        variant_id: variant_id.to_string(),
+        tolerance_mm: 0.01,
+        entities,
+    }
+}
+
+fn next_warning_severity_filter(current: &str) -> String {
+    match current {
+        "all" => "critical".to_string(),
+        "critical" => "warning".to_string(),
+        "warning" => "info".to_string(),
+        _ => "all".to_string(),
+    }
+}
+
+fn next_warning_code_filter(state: &CadDemoPaneState) -> String {
+    let mut codes = state
+        .warnings
+        .iter()
+        .map(|warning| warning.code.clone())
+        .collect::<Vec<_>>();
+    codes.sort();
+    codes.dedup();
+    let mut options = vec!["all".to_string()];
+    options.extend(codes);
+    let position = options
+        .iter()
+        .position(|value| value.eq_ignore_ascii_case(&state.warning_filter_code))
+        .unwrap_or(0);
+    let next = (position + 1) % options.len();
+    options[next].clone()
+}
+
+fn warning_visible(state: &CadDemoPaneState, warning: &CadDemoWarningState) -> bool {
+    let severity_ok = state.warning_filter_severity == "all"
+        || warning
+            .severity
+            .eq_ignore_ascii_case(&state.warning_filter_severity);
+    let code_ok = state.warning_filter_code == "all"
+        || warning.code.eq_ignore_ascii_case(&state.warning_filter_code);
+    severity_ok && code_ok
+}
+
+fn visible_warning_indices(state: &CadDemoPaneState) -> Vec<usize> {
+    state
+        .warnings
+        .iter()
+        .enumerate()
+        .filter(|(_, warning)| warning_visible(state, warning))
+        .map(|(index, _)| index)
+        .collect()
+}
+
+fn focus_warning(state: &mut CadDemoPaneState, warning_index: usize) {
+    let warning = &state.warnings[warning_index];
+    state.warning_hover_index = Some(warning_index);
+    state.focused_warning_index = Some(warning_index);
+    let fallback = format!("cad://feature/{}", warning.feature_id);
+    state.focused_geometry_ref = warning.deep_link.clone().or(Some(fallback));
+    state.last_action = Some(format!(
+        "CAD warning focus -> {} ({})",
+        warning.code, warning.entity_id
+    ));
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
@@ -369,6 +579,7 @@ mod tests {
         );
         assert!(state.pending_rebuild_request_id.is_none());
         assert!(state.last_good_mesh_id.is_some());
+        assert!(!state.warnings.is_empty(), "warnings should refresh on rebuild commit");
     }
 
     #[test]
@@ -384,5 +595,49 @@ mod tests {
         let _ = apply_cad_demo_action(&mut state, CadDemoPaneAction::CycleVariant);
         assert_eq!(state.load_state, crate::app_state::PaneLoadState::Loading);
         assert_eq!(state.last_good_mesh_id.as_deref(), Some(baseline_mesh.as_str()));
+    }
+
+    #[test]
+    fn warning_filters_and_focus_actions_work_with_fallback_geometry_focus() {
+        let mut state = CadDemoPaneState::default();
+        let _ = apply_cad_demo_action(&mut state, CadDemoPaneAction::CycleVariant);
+        wait_for_receipt(&mut state);
+        assert!(!state.warnings.is_empty());
+
+        let changed =
+            apply_cad_demo_action(&mut state, CadDemoPaneAction::CycleWarningSeverityFilter);
+        assert!(changed);
+        assert_eq!(state.warning_filter_severity, "critical");
+
+        let changed =
+            apply_cad_demo_action(&mut state, CadDemoPaneAction::CycleWarningCodeFilter);
+        assert!(changed);
+        assert_ne!(state.warning_filter_code, "");
+
+        // Return to all-severity view before selecting a warning row.
+        let _ = apply_cad_demo_action(&mut state, CadDemoPaneAction::CycleWarningSeverityFilter);
+        let _ = apply_cad_demo_action(&mut state, CadDemoPaneAction::CycleWarningSeverityFilter);
+        let _ = apply_cad_demo_action(&mut state, CadDemoPaneAction::CycleWarningSeverityFilter);
+
+        let changed = apply_cad_demo_action(&mut state, CadDemoPaneAction::SelectWarning(0));
+        assert!(changed);
+        assert!(state.focused_warning_index.is_some());
+        assert!(state.focused_geometry_ref.is_some());
+    }
+
+    #[test]
+    fn stale_warning_markers_are_cleared_after_new_rebuild_commit() {
+        let mut state = CadDemoPaneState::default();
+        let _ = apply_cad_demo_action(&mut state, CadDemoPaneAction::CycleVariant);
+        wait_for_receipt(&mut state);
+        let _ = apply_cad_demo_action(&mut state, CadDemoPaneAction::SelectWarning(0));
+        assert!(state.focused_warning_index.is_some());
+        assert!(state.warning_hover_index.is_some());
+
+        let _ = apply_cad_demo_action(&mut state, CadDemoPaneAction::CycleVariant);
+        wait_for_receipt(&mut state);
+        assert!(state.warning_hover_index.is_none());
+        assert!(state.focused_warning_index.is_none());
+        assert!(state.focused_geometry_ref.is_none());
     }
 }
