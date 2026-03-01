@@ -2907,9 +2907,9 @@ mod tests {
         ActiveJobState, ActivityEventDomain, ActivityEventRow, ActivityFeedFilter,
         ActivityFeedState, AgentNetworkSimulationPaneState, AlertDomain, AlertLifecycle,
         AlertsRecoveryState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole,
-        CadCameraViewSnap, CadContextMenuTargetKind, CadDemoPaneState, CadDemoWarningState,
-        CadHiddenLineMode, CadHotkeyAction, CadProjectionMode, CadSectionAxis,
-        CadBuildSessionPhase, CadSnapMode, CadThreeDMouseAxis, CadThreeDMouseMode,
+        CadBuildFailureClass, CadBuildSessionPhase, CadCameraViewSnap, CadContextMenuTargetKind,
+        CadDemoPaneState, CadDemoWarningState, CadHiddenLineMode, CadHotkeyAction,
+        CadProjectionMode, CadSectionAxis, CadSnapMode, CadThreeDMouseAxis, CadThreeDMouseMode,
         CadThreeDMouseProfile, EarningsScoreboardState, JobHistoryState, JobHistoryStatus,
         JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest,
         JobInboxState, JobInboxValidation, JobLifecycleStage, NetworkRequestStatus,
@@ -3955,8 +3955,18 @@ mod tests {
         assert!(state.dispatch_sessions.is_empty());
         assert!(state.last_chat_intent_name.is_none());
         assert_eq!(state.build_session.phase, CadBuildSessionPhase::Idle);
+        assert!(state.build_session.failure_class.is_none());
+        assert_eq!(state.build_session.retry_attempts, 0);
+        assert_eq!(state.build_session.retry_limit, 0);
         assert!(state.build_session.events.is_empty());
         assert!(state.last_build_session.is_none());
+        assert_eq!(state.build_failure_metrics.tool_transport_failures, 0);
+        assert_eq!(state.build_failure_metrics.intent_parse_failures, 0);
+        assert_eq!(state.build_failure_metrics.dispatch_rebuild_failures, 0);
+        assert_eq!(state.build_failure_metrics.tool_transport_retries, 0);
+        assert_eq!(state.build_failure_metrics.intent_parse_retries, 0);
+        assert_eq!(state.build_failure_metrics.dispatch_rebuild_retries, 0);
+        assert_eq!(state.build_failure_metrics.terminal_failures, 0);
         assert_eq!(state.document_id, "cad.doc.demo-rack");
         assert_eq!(state.document_revision, 0);
         assert_eq!(state.active_variant_id, "variant.baseline");
@@ -4100,6 +4110,7 @@ mod tests {
                 "tool executing".to_string(),
             )
             .expect("planning -> applying should be valid");
+        state.set_agent_build_failure_context(CadBuildFailureClass::IntentParseValidation, 1, 1);
         state
             .fail_agent_build_session(
                 "cad.build.tool.failed",
@@ -4115,6 +4126,12 @@ mod tests {
             .expect("failed session should be archived");
         assert_eq!(archived.terminal_phase, CadBuildSessionPhase::Failed);
         assert_eq!(
+            archived.failure_class,
+            Some(CadBuildFailureClass::IntentParseValidation)
+        );
+        assert_eq!(archived.retry_attempts, 1);
+        assert_eq!(archived.retry_limit, 1);
+        assert_eq!(
             archived.failure_reason.as_deref(),
             Some("tool returned parse error")
         );
@@ -4122,6 +4139,7 @@ mod tests {
             archived.remediation_hint.as_deref(),
             Some("retry with explicit rack dimensions")
         );
+        assert_eq!(state.build_failure_metrics.terminal_failures, 1);
     }
 
     #[test]

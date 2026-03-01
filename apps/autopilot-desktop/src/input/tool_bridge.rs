@@ -3,7 +3,9 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::app_state::{ActivityFeedFilter, AutopilotToolCallRequest, PaneKind, RenderState};
+use crate::app_state::{
+    ActivityFeedFilter, AutopilotToolCallRequest, CadBuildFailureClass, PaneKind, RenderState,
+};
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 use crate::pane_registry::{pane_spec, pane_spec_by_command_id, pane_specs};
 use crate::pane_system::{
@@ -11,7 +13,7 @@ use crate::pane_system::{
     AgentProfileStatePaneAction, AgentScheduleTickPaneAction, AlertsRecoveryPaneAction,
     CadDemoPaneAction, CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction,
     CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction,
-    CreditDeskPaneAction, CreditSettlementLedgerPaneAction, CredentialsPaneAction,
+    CredentialsPaneAction, CreditDeskPaneAction, CreditSettlementLedgerPaneAction,
     EarningsScoreboardPaneAction, JobHistoryPaneAction, JobInboxPaneAction,
     NetworkRequestsPaneAction, PaneController, PaneHitAction, RelayConnectionsPaneAction,
     RelaySecuritySimulationPaneAction, SettingsPaneAction, SkillRegistryPaneAction,
@@ -33,6 +35,7 @@ pub(super) const OPENAGENTS_TOOL_NAMES: &[&str] = &[
 ];
 const CAD_TOOL_RESPONSE_SCHEMA_VERSION: &str = "oa.cad.tool_response.v1";
 const CAD_CHECKPOINT_SCHEMA_VERSION: &str = "oa.cad.checkpoint.v1";
+const CAD_INTENT_PARSE_RETRY_LIMIT: u8 = 1;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ToolBridgeRequest {
@@ -397,7 +400,10 @@ fn execute_pane_close(state: &mut RenderState, pane_ref: &str) -> ToolBridgeResu
     )
 }
 
-fn execute_pane_set_input(state: &mut RenderState, args: &PaneInputArgs) -> ToolBridgeResultEnvelope {
+fn execute_pane_set_input(
+    state: &mut RenderState,
+    args: &PaneInputArgs,
+) -> ToolBridgeResultEnvelope {
     let Some(kind) = resolve_pane_kind(args.pane.trim()) else {
         return pane_resolution_error("OA-PANE-SET-INPUT-NOT-FOUND", args.pane.trim());
     };
@@ -594,7 +600,9 @@ fn pane_action_to_hit_action(
             "new_thread" => Ok(PaneHitAction::ChatNewThread),
             "cycle_model" => Ok(PaneHitAction::ChatCycleModel),
             "interrupt" => Ok(PaneHitAction::ChatInterruptTurn),
-            "select_thread" | "select_row" => Ok(PaneHitAction::ChatSelectThread(require_index(action)?)),
+            "select_thread" | "select_row" => {
+                Ok(PaneHitAction::ChatSelectThread(require_index(action)?))
+            }
             _ => unsupported(),
         },
         PaneKind::GoOnline => match action {
@@ -603,69 +611,121 @@ fn pane_action_to_hit_action(
         },
         PaneKind::CodexAccount => match action {
             "refresh" => Ok(PaneHitAction::CodexAccount(CodexAccountPaneAction::Refresh)),
-            "login_chatgpt" | "login" => Ok(PaneHitAction::CodexAccount(CodexAccountPaneAction::LoginChatgpt)),
-            "cancel_login" => Ok(PaneHitAction::CodexAccount(CodexAccountPaneAction::CancelLogin)),
+            "login_chatgpt" | "login" => Ok(PaneHitAction::CodexAccount(
+                CodexAccountPaneAction::LoginChatgpt,
+            )),
+            "cancel_login" => Ok(PaneHitAction::CodexAccount(
+                CodexAccountPaneAction::CancelLogin,
+            )),
             "logout" => Ok(PaneHitAction::CodexAccount(CodexAccountPaneAction::Logout)),
-            "rate_limits" => Ok(PaneHitAction::CodexAccount(CodexAccountPaneAction::RateLimits)),
+            "rate_limits" => Ok(PaneHitAction::CodexAccount(
+                CodexAccountPaneAction::RateLimits,
+            )),
             _ => unsupported(),
         },
         PaneKind::CodexModels => match action {
             "refresh" => Ok(PaneHitAction::CodexModels(CodexModelsPaneAction::Refresh)),
-            "toggle_hidden" => Ok(PaneHitAction::CodexModels(CodexModelsPaneAction::ToggleHidden)),
+            "toggle_hidden" => Ok(PaneHitAction::CodexModels(
+                CodexModelsPaneAction::ToggleHidden,
+            )),
             _ => unsupported(),
         },
         PaneKind::CodexConfig => match action {
             "read" => Ok(PaneHitAction::CodexConfig(CodexConfigPaneAction::Read)),
-            "requirements" => Ok(PaneHitAction::CodexConfig(CodexConfigPaneAction::Requirements)),
-            "write_sample" => Ok(PaneHitAction::CodexConfig(CodexConfigPaneAction::WriteSample)),
-            "batch_write_sample" => Ok(PaneHitAction::CodexConfig(CodexConfigPaneAction::BatchWriteSample)),
-            "detect_external" => Ok(PaneHitAction::CodexConfig(CodexConfigPaneAction::DetectExternal)),
-            "import_external" => Ok(PaneHitAction::CodexConfig(CodexConfigPaneAction::ImportExternal)),
+            "requirements" => Ok(PaneHitAction::CodexConfig(
+                CodexConfigPaneAction::Requirements,
+            )),
+            "write_sample" => Ok(PaneHitAction::CodexConfig(
+                CodexConfigPaneAction::WriteSample,
+            )),
+            "batch_write_sample" => Ok(PaneHitAction::CodexConfig(
+                CodexConfigPaneAction::BatchWriteSample,
+            )),
+            "detect_external" => Ok(PaneHitAction::CodexConfig(
+                CodexConfigPaneAction::DetectExternal,
+            )),
+            "import_external" => Ok(PaneHitAction::CodexConfig(
+                CodexConfigPaneAction::ImportExternal,
+            )),
             _ => unsupported(),
         },
         PaneKind::CodexMcp => match action {
             "refresh" => Ok(PaneHitAction::CodexMcp(CodexMcpPaneAction::Refresh)),
-            "login_selected" | "login" => Ok(PaneHitAction::CodexMcp(CodexMcpPaneAction::LoginSelected)),
+            "login_selected" | "login" => {
+                Ok(PaneHitAction::CodexMcp(CodexMcpPaneAction::LoginSelected))
+            }
             "reload" => Ok(PaneHitAction::CodexMcp(CodexMcpPaneAction::Reload)),
-            "select_row" | "select_server" => Ok(PaneHitAction::CodexMcp(CodexMcpPaneAction::SelectRow(require_index(action)?))),
+            "select_row" | "select_server" => Ok(PaneHitAction::CodexMcp(
+                CodexMcpPaneAction::SelectRow(require_index(action)?),
+            )),
             _ => unsupported(),
         },
         PaneKind::CodexApps => match action {
             "refresh" => Ok(PaneHitAction::CodexApps(CodexAppsPaneAction::Refresh)),
-            "select_row" | "select_app" => Ok(PaneHitAction::CodexApps(CodexAppsPaneAction::SelectRow(require_index(action)?))),
+            "select_row" | "select_app" => Ok(PaneHitAction::CodexApps(
+                CodexAppsPaneAction::SelectRow(require_index(action)?),
+            )),
             _ => unsupported(),
         },
         PaneKind::CodexLabs => match action {
             "review_inline" => Ok(PaneHitAction::CodexLabs(CodexLabsPaneAction::ReviewInline)),
-            "review_detached" => Ok(PaneHitAction::CodexLabs(CodexLabsPaneAction::ReviewDetached)),
+            "review_detached" => Ok(PaneHitAction::CodexLabs(
+                CodexLabsPaneAction::ReviewDetached,
+            )),
             "command_exec" => Ok(PaneHitAction::CodexLabs(CodexLabsPaneAction::CommandExec)),
-            "collaboration_modes" => Ok(PaneHitAction::CodexLabs(CodexLabsPaneAction::CollaborationModes)),
-            "experimental_features" => Ok(PaneHitAction::CodexLabs(CodexLabsPaneAction::ExperimentalFeatures)),
-            "toggle_experimental" => Ok(PaneHitAction::CodexLabs(CodexLabsPaneAction::ToggleExperimental)),
+            "collaboration_modes" => Ok(PaneHitAction::CodexLabs(
+                CodexLabsPaneAction::CollaborationModes,
+            )),
+            "experimental_features" => Ok(PaneHitAction::CodexLabs(
+                CodexLabsPaneAction::ExperimentalFeatures,
+            )),
+            "toggle_experimental" => Ok(PaneHitAction::CodexLabs(
+                CodexLabsPaneAction::ToggleExperimental,
+            )),
             "realtime_start" => Ok(PaneHitAction::CodexLabs(CodexLabsPaneAction::RealtimeStart)),
-            "realtime_append_text" => Ok(PaneHitAction::CodexLabs(CodexLabsPaneAction::RealtimeAppendText)),
+            "realtime_append_text" => Ok(PaneHitAction::CodexLabs(
+                CodexLabsPaneAction::RealtimeAppendText,
+            )),
             "realtime_stop" => Ok(PaneHitAction::CodexLabs(CodexLabsPaneAction::RealtimeStop)),
-            "windows_sandbox_setup" => Ok(PaneHitAction::CodexLabs(CodexLabsPaneAction::WindowsSandboxSetup)),
+            "windows_sandbox_setup" => Ok(PaneHitAction::CodexLabs(
+                CodexLabsPaneAction::WindowsSandboxSetup,
+            )),
             "fuzzy_start" => Ok(PaneHitAction::CodexLabs(CodexLabsPaneAction::FuzzyStart)),
             "fuzzy_update" => Ok(PaneHitAction::CodexLabs(CodexLabsPaneAction::FuzzyUpdate)),
             "fuzzy_stop" => Ok(PaneHitAction::CodexLabs(CodexLabsPaneAction::FuzzyStop)),
             _ => unsupported(),
         },
         PaneKind::CodexDiagnostics => match action {
-            "enable_wire_log" => Ok(PaneHitAction::CodexDiagnostics(CodexDiagnosticsPaneAction::EnableWireLog)),
-            "disable_wire_log" => Ok(PaneHitAction::CodexDiagnostics(CodexDiagnosticsPaneAction::DisableWireLog)),
-            "clear_events" => Ok(PaneHitAction::CodexDiagnostics(CodexDiagnosticsPaneAction::ClearEvents)),
+            "enable_wire_log" => Ok(PaneHitAction::CodexDiagnostics(
+                CodexDiagnosticsPaneAction::EnableWireLog,
+            )),
+            "disable_wire_log" => Ok(PaneHitAction::CodexDiagnostics(
+                CodexDiagnosticsPaneAction::DisableWireLog,
+            )),
+            "clear_events" => Ok(PaneHitAction::CodexDiagnostics(
+                CodexDiagnosticsPaneAction::ClearEvents,
+            )),
             _ => unsupported(),
         },
         PaneKind::EarningsScoreboard => match action {
-            "refresh" => Ok(PaneHitAction::EarningsScoreboard(EarningsScoreboardPaneAction::Refresh)),
+            "refresh" => Ok(PaneHitAction::EarningsScoreboard(
+                EarningsScoreboardPaneAction::Refresh,
+            )),
             _ => unsupported(),
         },
         PaneKind::RelayConnections => match action {
-            "add_relay" => Ok(PaneHitAction::RelayConnections(RelayConnectionsPaneAction::AddRelay)),
-            "remove_selected" => Ok(PaneHitAction::RelayConnections(RelayConnectionsPaneAction::RemoveSelected)),
-            "retry_selected" => Ok(PaneHitAction::RelayConnections(RelayConnectionsPaneAction::RetrySelected)),
-            "select_row" => Ok(PaneHitAction::RelayConnections(RelayConnectionsPaneAction::SelectRow(require_index(action)?))),
+            "add_relay" => Ok(PaneHitAction::RelayConnections(
+                RelayConnectionsPaneAction::AddRelay,
+            )),
+            "remove_selected" => Ok(PaneHitAction::RelayConnections(
+                RelayConnectionsPaneAction::RemoveSelected,
+            )),
+            "retry_selected" => Ok(PaneHitAction::RelayConnections(
+                RelayConnectionsPaneAction::RetrySelected,
+            )),
+            "select_row" => Ok(PaneHitAction::RelayConnections(
+                RelayConnectionsPaneAction::SelectRow(require_index(action)?),
+            )),
             _ => unsupported(),
         },
         PaneKind::SyncHealth => match action {
@@ -673,30 +733,58 @@ fn pane_action_to_hit_action(
             _ => unsupported(),
         },
         PaneKind::NetworkRequests => match action {
-            "submit" | "submit_request" => Ok(PaneHitAction::NetworkRequests(NetworkRequestsPaneAction::SubmitRequest)),
+            "submit" | "submit_request" => Ok(PaneHitAction::NetworkRequests(
+                NetworkRequestsPaneAction::SubmitRequest,
+            )),
             _ => unsupported(),
         },
         PaneKind::StarterJobs => match action {
-            "complete_selected" => Ok(PaneHitAction::StarterJobs(StarterJobsPaneAction::CompleteSelected)),
-            "select_row" => Ok(PaneHitAction::StarterJobs(StarterJobsPaneAction::SelectRow(require_index(action)?))),
+            "complete_selected" => Ok(PaneHitAction::StarterJobs(
+                StarterJobsPaneAction::CompleteSelected,
+            )),
+            "select_row" => Ok(PaneHitAction::StarterJobs(
+                StarterJobsPaneAction::SelectRow(require_index(action)?),
+            )),
             _ => unsupported(),
         },
         PaneKind::ActivityFeed => match action {
             "refresh" => Ok(PaneHitAction::ActivityFeed(ActivityFeedPaneAction::Refresh)),
-            "select_row" => Ok(PaneHitAction::ActivityFeed(ActivityFeedPaneAction::SelectRow(require_index(action)?))),
-            "filter_all" => Ok(PaneHitAction::ActivityFeed(ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::All))),
-            "filter_chat" => Ok(PaneHitAction::ActivityFeed(ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Chat))),
-            "filter_job" => Ok(PaneHitAction::ActivityFeed(ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Job))),
-            "filter_wallet" => Ok(PaneHitAction::ActivityFeed(ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Wallet))),
-            "filter_network" => Ok(PaneHitAction::ActivityFeed(ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Network))),
-            "filter_sync" => Ok(PaneHitAction::ActivityFeed(ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Sync))),
+            "select_row" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::SelectRow(require_index(action)?),
+            )),
+            "filter_all" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::All),
+            )),
+            "filter_chat" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Chat),
+            )),
+            "filter_job" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Job),
+            )),
+            "filter_wallet" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Wallet),
+            )),
+            "filter_network" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Network),
+            )),
+            "filter_sync" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Sync),
+            )),
             _ => unsupported(),
         },
         PaneKind::AlertsRecovery => match action {
-            "recover_selected" => Ok(PaneHitAction::AlertsRecovery(AlertsRecoveryPaneAction::RecoverSelected)),
-            "acknowledge_selected" => Ok(PaneHitAction::AlertsRecovery(AlertsRecoveryPaneAction::AcknowledgeSelected)),
-            "resolve_selected" => Ok(PaneHitAction::AlertsRecovery(AlertsRecoveryPaneAction::ResolveSelected)),
-            "select_row" => Ok(PaneHitAction::AlertsRecovery(AlertsRecoveryPaneAction::SelectRow(require_index(action)?))),
+            "recover_selected" => Ok(PaneHitAction::AlertsRecovery(
+                AlertsRecoveryPaneAction::RecoverSelected,
+            )),
+            "acknowledge_selected" => Ok(PaneHitAction::AlertsRecovery(
+                AlertsRecoveryPaneAction::AcknowledgeSelected,
+            )),
+            "resolve_selected" => Ok(PaneHitAction::AlertsRecovery(
+                AlertsRecoveryPaneAction::ResolveSelected,
+            )),
+            "select_row" => Ok(PaneHitAction::AlertsRecovery(
+                AlertsRecoveryPaneAction::SelectRow(require_index(action)?),
+            )),
             _ => unsupported(),
         },
         PaneKind::Settings => match action {
@@ -707,21 +795,39 @@ fn pane_action_to_hit_action(
         PaneKind::Credentials => match action {
             "add_custom" => Ok(PaneHitAction::Credentials(CredentialsPaneAction::AddCustom)),
             "save_value" => Ok(PaneHitAction::Credentials(CredentialsPaneAction::SaveValue)),
-            "delete_or_clear" => Ok(PaneHitAction::Credentials(CredentialsPaneAction::DeleteOrClear)),
-            "toggle_enabled" => Ok(PaneHitAction::Credentials(CredentialsPaneAction::ToggleEnabled)),
-            "toggle_scope_codex" => Ok(PaneHitAction::Credentials(CredentialsPaneAction::ToggleScopeCodex)),
-            "toggle_scope_spark" => Ok(PaneHitAction::Credentials(CredentialsPaneAction::ToggleScopeSpark)),
-            "toggle_scope_skills" => Ok(PaneHitAction::Credentials(CredentialsPaneAction::ToggleScopeSkills)),
-            "toggle_scope_global" => Ok(PaneHitAction::Credentials(CredentialsPaneAction::ToggleScopeGlobal)),
-            "import_from_env" => Ok(PaneHitAction::Credentials(CredentialsPaneAction::ImportFromEnv)),
+            "delete_or_clear" => Ok(PaneHitAction::Credentials(
+                CredentialsPaneAction::DeleteOrClear,
+            )),
+            "toggle_enabled" => Ok(PaneHitAction::Credentials(
+                CredentialsPaneAction::ToggleEnabled,
+            )),
+            "toggle_scope_codex" => Ok(PaneHitAction::Credentials(
+                CredentialsPaneAction::ToggleScopeCodex,
+            )),
+            "toggle_scope_spark" => Ok(PaneHitAction::Credentials(
+                CredentialsPaneAction::ToggleScopeSpark,
+            )),
+            "toggle_scope_skills" => Ok(PaneHitAction::Credentials(
+                CredentialsPaneAction::ToggleScopeSkills,
+            )),
+            "toggle_scope_global" => Ok(PaneHitAction::Credentials(
+                CredentialsPaneAction::ToggleScopeGlobal,
+            )),
+            "import_from_env" => Ok(PaneHitAction::Credentials(
+                CredentialsPaneAction::ImportFromEnv,
+            )),
             "reload" => Ok(PaneHitAction::Credentials(CredentialsPaneAction::Reload)),
-            "select_row" => Ok(PaneHitAction::Credentials(CredentialsPaneAction::SelectRow(require_index(action)?))),
+            "select_row" => Ok(PaneHitAction::Credentials(
+                CredentialsPaneAction::SelectRow(require_index(action)?),
+            )),
             _ => unsupported(),
         },
         PaneKind::JobInbox => match action {
             "accept_selected" => Ok(PaneHitAction::JobInbox(JobInboxPaneAction::AcceptSelected)),
             "reject_selected" => Ok(PaneHitAction::JobInbox(JobInboxPaneAction::RejectSelected)),
-            "select_row" => Ok(PaneHitAction::JobInbox(JobInboxPaneAction::SelectRow(require_index(action)?))),
+            "select_row" => Ok(PaneHitAction::JobInbox(JobInboxPaneAction::SelectRow(
+                require_index(action)?,
+            ))),
             _ => unsupported(),
         },
         PaneKind::ActiveJob => match action {
@@ -730,9 +836,15 @@ fn pane_action_to_hit_action(
             _ => unsupported(),
         },
         PaneKind::JobHistory => match action {
-            "cycle_status_filter" => Ok(PaneHitAction::JobHistory(JobHistoryPaneAction::CycleStatusFilter)),
-            "cycle_time_range" => Ok(PaneHitAction::JobHistory(JobHistoryPaneAction::CycleTimeRange)),
-            "previous_page" => Ok(PaneHitAction::JobHistory(JobHistoryPaneAction::PreviousPage)),
+            "cycle_status_filter" => Ok(PaneHitAction::JobHistory(
+                JobHistoryPaneAction::CycleStatusFilter,
+            )),
+            "cycle_time_range" => Ok(PaneHitAction::JobHistory(
+                JobHistoryPaneAction::CycleTimeRange,
+            )),
+            "previous_page" => Ok(PaneHitAction::JobHistory(
+                JobHistoryPaneAction::PreviousPage,
+            )),
             "next_page" => Ok(PaneHitAction::JobHistory(JobHistoryPaneAction::NextPage)),
             _ => unsupported(),
         },
@@ -744,104 +856,200 @@ fn pane_action_to_hit_action(
         },
         PaneKind::SparkWallet => match action {
             "refresh" => Ok(PaneHitAction::Spark(SparkPaneAction::Refresh)),
-            "generate_spark_address" => Ok(PaneHitAction::Spark(SparkPaneAction::GenerateSparkAddress)),
-            "generate_bitcoin_address" => Ok(PaneHitAction::Spark(SparkPaneAction::GenerateBitcoinAddress)),
+            "generate_spark_address" => {
+                Ok(PaneHitAction::Spark(SparkPaneAction::GenerateSparkAddress))
+            }
+            "generate_bitcoin_address" => Ok(PaneHitAction::Spark(
+                SparkPaneAction::GenerateBitcoinAddress,
+            )),
             "copy_spark_address" => Ok(PaneHitAction::Spark(SparkPaneAction::CopySparkAddress)),
             "create_invoice" => Ok(PaneHitAction::Spark(SparkPaneAction::CreateInvoice)),
             "send_payment" => Ok(PaneHitAction::Spark(SparkPaneAction::SendPayment)),
             _ => unsupported(),
         },
         PaneKind::SparkCreateInvoice => match action {
-            "create_invoice" => Ok(PaneHitAction::SparkCreateInvoice(CreateInvoicePaneAction::CreateInvoice)),
-            "copy_invoice" => Ok(PaneHitAction::SparkCreateInvoice(CreateInvoicePaneAction::CopyInvoice)),
+            "create_invoice" => Ok(PaneHitAction::SparkCreateInvoice(
+                CreateInvoicePaneAction::CreateInvoice,
+            )),
+            "copy_invoice" => Ok(PaneHitAction::SparkCreateInvoice(
+                CreateInvoicePaneAction::CopyInvoice,
+            )),
             _ => unsupported(),
         },
         PaneKind::SparkPayInvoice => match action {
-            "send_payment" => Ok(PaneHitAction::SparkPayInvoice(PayInvoicePaneAction::SendPayment)),
+            "send_payment" => Ok(PaneHitAction::SparkPayInvoice(
+                PayInvoicePaneAction::SendPayment,
+            )),
             _ => unsupported(),
         },
         PaneKind::AgentProfileState => match action {
-            "publish_profile" => Ok(PaneHitAction::AgentProfileState(AgentProfileStatePaneAction::PublishProfile)),
-            "publish_state" => Ok(PaneHitAction::AgentProfileState(AgentProfileStatePaneAction::PublishState)),
-            "update_goals" => Ok(PaneHitAction::AgentProfileState(AgentProfileStatePaneAction::UpdateGoals)),
+            "publish_profile" => Ok(PaneHitAction::AgentProfileState(
+                AgentProfileStatePaneAction::PublishProfile,
+            )),
+            "publish_state" => Ok(PaneHitAction::AgentProfileState(
+                AgentProfileStatePaneAction::PublishState,
+            )),
+            "update_goals" => Ok(PaneHitAction::AgentProfileState(
+                AgentProfileStatePaneAction::UpdateGoals,
+            )),
             _ => unsupported(),
         },
         PaneKind::AgentScheduleTick => match action {
-            "apply_schedule" => Ok(PaneHitAction::AgentScheduleTick(AgentScheduleTickPaneAction::ApplySchedule)),
-            "publish_manual_tick" => Ok(PaneHitAction::AgentScheduleTick(AgentScheduleTickPaneAction::PublishManualTick)),
-            "inspect_last_result" => Ok(PaneHitAction::AgentScheduleTick(AgentScheduleTickPaneAction::InspectLastResult)),
+            "apply_schedule" => Ok(PaneHitAction::AgentScheduleTick(
+                AgentScheduleTickPaneAction::ApplySchedule,
+            )),
+            "publish_manual_tick" => Ok(PaneHitAction::AgentScheduleTick(
+                AgentScheduleTickPaneAction::PublishManualTick,
+            )),
+            "inspect_last_result" => Ok(PaneHitAction::AgentScheduleTick(
+                AgentScheduleTickPaneAction::InspectLastResult,
+            )),
             _ => unsupported(),
         },
         PaneKind::TrajectoryAudit => match action {
-            "open_session" => Ok(PaneHitAction::TrajectoryAudit(TrajectoryAuditPaneAction::OpenSession)),
-            "cycle_step_filter" => Ok(PaneHitAction::TrajectoryAudit(TrajectoryAuditPaneAction::CycleStepFilter)),
-            "verify_trajectory_hash" => Ok(PaneHitAction::TrajectoryAudit(TrajectoryAuditPaneAction::VerifyTrajectoryHash)),
+            "open_session" => Ok(PaneHitAction::TrajectoryAudit(
+                TrajectoryAuditPaneAction::OpenSession,
+            )),
+            "cycle_step_filter" => Ok(PaneHitAction::TrajectoryAudit(
+                TrajectoryAuditPaneAction::CycleStepFilter,
+            )),
+            "verify_trajectory_hash" => Ok(PaneHitAction::TrajectoryAudit(
+                TrajectoryAuditPaneAction::VerifyTrajectoryHash,
+            )),
             _ => unsupported(),
         },
         PaneKind::SkillRegistry => match action {
-            "discover_skills" => Ok(PaneHitAction::SkillRegistry(SkillRegistryPaneAction::DiscoverSkills)),
-            "inspect_manifest" => Ok(PaneHitAction::SkillRegistry(SkillRegistryPaneAction::InspectManifest)),
-            "install_selected_skill" => Ok(PaneHitAction::SkillRegistry(SkillRegistryPaneAction::InstallSelectedSkill)),
-            "select_row" => Ok(PaneHitAction::SkillRegistry(SkillRegistryPaneAction::SelectRow(require_index(action)?))),
+            "discover_skills" => Ok(PaneHitAction::SkillRegistry(
+                SkillRegistryPaneAction::DiscoverSkills,
+            )),
+            "inspect_manifest" => Ok(PaneHitAction::SkillRegistry(
+                SkillRegistryPaneAction::InspectManifest,
+            )),
+            "install_selected_skill" => Ok(PaneHitAction::SkillRegistry(
+                SkillRegistryPaneAction::InstallSelectedSkill,
+            )),
+            "select_row" => Ok(PaneHitAction::SkillRegistry(
+                SkillRegistryPaneAction::SelectRow(require_index(action)?),
+            )),
             _ => unsupported(),
         },
         PaneKind::SkillTrustRevocation => match action {
-            "refresh_trust" => Ok(PaneHitAction::SkillTrustRevocation(SkillTrustRevocationPaneAction::RefreshTrust)),
-            "inspect_attestations" => Ok(PaneHitAction::SkillTrustRevocation(SkillTrustRevocationPaneAction::InspectAttestations)),
-            "toggle_kill_switch" => Ok(PaneHitAction::SkillTrustRevocation(SkillTrustRevocationPaneAction::ToggleKillSwitch)),
-            "revoke_skill" => Ok(PaneHitAction::SkillTrustRevocation(SkillTrustRevocationPaneAction::RevokeSkill)),
+            "refresh_trust" => Ok(PaneHitAction::SkillTrustRevocation(
+                SkillTrustRevocationPaneAction::RefreshTrust,
+            )),
+            "inspect_attestations" => Ok(PaneHitAction::SkillTrustRevocation(
+                SkillTrustRevocationPaneAction::InspectAttestations,
+            )),
+            "toggle_kill_switch" => Ok(PaneHitAction::SkillTrustRevocation(
+                SkillTrustRevocationPaneAction::ToggleKillSwitch,
+            )),
+            "revoke_skill" => Ok(PaneHitAction::SkillTrustRevocation(
+                SkillTrustRevocationPaneAction::RevokeSkill,
+            )),
             _ => unsupported(),
         },
         PaneKind::CreditDesk => match action {
-            "publish_intent" => Ok(PaneHitAction::CreditDesk(CreditDeskPaneAction::PublishIntent)),
-            "publish_offer" => Ok(PaneHitAction::CreditDesk(CreditDeskPaneAction::PublishOffer)),
-            "publish_envelope" => Ok(PaneHitAction::CreditDesk(CreditDeskPaneAction::PublishEnvelope)),
-            "authorize_spend" => Ok(PaneHitAction::CreditDesk(CreditDeskPaneAction::AuthorizeSpend)),
+            "publish_intent" => Ok(PaneHitAction::CreditDesk(
+                CreditDeskPaneAction::PublishIntent,
+            )),
+            "publish_offer" => Ok(PaneHitAction::CreditDesk(
+                CreditDeskPaneAction::PublishOffer,
+            )),
+            "publish_envelope" => Ok(PaneHitAction::CreditDesk(
+                CreditDeskPaneAction::PublishEnvelope,
+            )),
+            "authorize_spend" => Ok(PaneHitAction::CreditDesk(
+                CreditDeskPaneAction::AuthorizeSpend,
+            )),
             _ => unsupported(),
         },
         PaneKind::CreditSettlementLedger => match action {
-            "verify_settlement" => Ok(PaneHitAction::CreditSettlementLedger(CreditSettlementLedgerPaneAction::VerifySettlement)),
-            "emit_default_notice" => Ok(PaneHitAction::CreditSettlementLedger(CreditSettlementLedgerPaneAction::EmitDefaultNotice)),
-            "emit_reputation_label" => Ok(PaneHitAction::CreditSettlementLedger(CreditSettlementLedgerPaneAction::EmitReputationLabel)),
+            "verify_settlement" => Ok(PaneHitAction::CreditSettlementLedger(
+                CreditSettlementLedgerPaneAction::VerifySettlement,
+            )),
+            "emit_default_notice" => Ok(PaneHitAction::CreditSettlementLedger(
+                CreditSettlementLedgerPaneAction::EmitDefaultNotice,
+            )),
+            "emit_reputation_label" => Ok(PaneHitAction::CreditSettlementLedger(
+                CreditSettlementLedgerPaneAction::EmitReputationLabel,
+            )),
             _ => unsupported(),
         },
         PaneKind::AgentNetworkSimulation => match action {
-            "run_round" => Ok(PaneHitAction::AgentNetworkSimulation(AgentNetworkSimulationPaneAction::RunRound)),
-            "reset" => Ok(PaneHitAction::AgentNetworkSimulation(AgentNetworkSimulationPaneAction::Reset)),
+            "run_round" => Ok(PaneHitAction::AgentNetworkSimulation(
+                AgentNetworkSimulationPaneAction::RunRound,
+            )),
+            "reset" => Ok(PaneHitAction::AgentNetworkSimulation(
+                AgentNetworkSimulationPaneAction::Reset,
+            )),
             _ => unsupported(),
         },
         PaneKind::TreasuryExchangeSimulation => match action {
-            "run_round" => Ok(PaneHitAction::TreasuryExchangeSimulation(TreasuryExchangeSimulationPaneAction::RunRound)),
-            "reset" => Ok(PaneHitAction::TreasuryExchangeSimulation(TreasuryExchangeSimulationPaneAction::Reset)),
+            "run_round" => Ok(PaneHitAction::TreasuryExchangeSimulation(
+                TreasuryExchangeSimulationPaneAction::RunRound,
+            )),
+            "reset" => Ok(PaneHitAction::TreasuryExchangeSimulation(
+                TreasuryExchangeSimulationPaneAction::Reset,
+            )),
             _ => unsupported(),
         },
         PaneKind::RelaySecuritySimulation => match action {
-            "run_round" => Ok(PaneHitAction::RelaySecuritySimulation(RelaySecuritySimulationPaneAction::RunRound)),
-            "reset" => Ok(PaneHitAction::RelaySecuritySimulation(RelaySecuritySimulationPaneAction::Reset)),
+            "run_round" => Ok(PaneHitAction::RelaySecuritySimulation(
+                RelaySecuritySimulationPaneAction::RunRound,
+            )),
+            "reset" => Ok(PaneHitAction::RelaySecuritySimulation(
+                RelaySecuritySimulationPaneAction::Reset,
+            )),
             _ => unsupported(),
         },
         PaneKind::StableSatsSimulation => match action {
-            "run_round" => Ok(PaneHitAction::StableSatsSimulation(StableSatsSimulationPaneAction::RunRound)),
-            "reset" => Ok(PaneHitAction::StableSatsSimulation(StableSatsSimulationPaneAction::Reset)),
+            "run_round" => Ok(PaneHitAction::StableSatsSimulation(
+                StableSatsSimulationPaneAction::RunRound,
+            )),
+            "reset" => Ok(PaneHitAction::StableSatsSimulation(
+                StableSatsSimulationPaneAction::Reset,
+            )),
             _ => unsupported(),
         },
         PaneKind::CadDemo => match action {
             "bootstrap" => Ok(PaneHitAction::CadDemo(CadDemoPaneAction::BootstrapDemo)),
             "cycle_variant" => Ok(PaneHitAction::CadDemo(CadDemoPaneAction::CycleVariant)),
             "reset_camera" => Ok(PaneHitAction::CadDemo(CadDemoPaneAction::ResetCamera)),
-            "toggle_projection" => Ok(PaneHitAction::CadDemo(CadDemoPaneAction::ToggleProjectionMode)),
-            "cycle_hidden_line_mode" => Ok(PaneHitAction::CadDemo(CadDemoPaneAction::CycleHiddenLineMode)),
-            "cycle_section_plane" => Ok(PaneHitAction::CadDemo(CadDemoPaneAction::CycleSectionPlane)),
-            "step_section_offset" => Ok(PaneHitAction::CadDemo(CadDemoPaneAction::StepSectionPlaneOffset)),
-            "cycle_material" => Ok(PaneHitAction::CadDemo(CadDemoPaneAction::CycleMaterialPreset)),
+            "toggle_projection" => Ok(PaneHitAction::CadDemo(
+                CadDemoPaneAction::ToggleProjectionMode,
+            )),
+            "cycle_hidden_line_mode" => Ok(PaneHitAction::CadDemo(
+                CadDemoPaneAction::CycleHiddenLineMode,
+            )),
+            "cycle_section_plane" => {
+                Ok(PaneHitAction::CadDemo(CadDemoPaneAction::CycleSectionPlane))
+            }
+            "step_section_offset" => Ok(PaneHitAction::CadDemo(
+                CadDemoPaneAction::StepSectionPlaneOffset,
+            )),
+            "cycle_material" => Ok(PaneHitAction::CadDemo(
+                CadDemoPaneAction::CycleMaterialPreset,
+            )),
             "toggle_snap_grid" => Ok(PaneHitAction::CadDemo(CadDemoPaneAction::ToggleSnapGrid)),
             "toggle_snap_origin" => Ok(PaneHitAction::CadDemo(CadDemoPaneAction::ToggleSnapOrigin)),
-            "toggle_snap_endpoint" => Ok(PaneHitAction::CadDemo(CadDemoPaneAction::ToggleSnapEndpoint)),
-            "toggle_snap_midpoint" => Ok(PaneHitAction::CadDemo(CadDemoPaneAction::ToggleSnapMidpoint)),
-            "timeline_select_prev" => Ok(PaneHitAction::CadDemo(CadDemoPaneAction::TimelineSelectPrev)),
-            "timeline_select_next" => Ok(PaneHitAction::CadDemo(CadDemoPaneAction::TimelineSelectNext)),
-            "select_timeline_row" => Ok(PaneHitAction::CadDemo(CadDemoPaneAction::SelectTimelineRow(require_index(action)?))),
-            "select_warning" => Ok(PaneHitAction::CadDemo(CadDemoPaneAction::SelectWarning(require_index(action)?))),
+            "toggle_snap_endpoint" => Ok(PaneHitAction::CadDemo(
+                CadDemoPaneAction::ToggleSnapEndpoint,
+            )),
+            "toggle_snap_midpoint" => Ok(PaneHitAction::CadDemo(
+                CadDemoPaneAction::ToggleSnapMidpoint,
+            )),
+            "timeline_select_prev" => Ok(PaneHitAction::CadDemo(
+                CadDemoPaneAction::TimelineSelectPrev,
+            )),
+            "timeline_select_next" => Ok(PaneHitAction::CadDemo(
+                CadDemoPaneAction::TimelineSelectNext,
+            )),
+            "select_timeline_row" => Ok(PaneHitAction::CadDemo(
+                CadDemoPaneAction::SelectTimelineRow(require_index(action)?),
+            )),
+            "select_warning" => Ok(PaneHitAction::CadDemo(CadDemoPaneAction::SelectWarning(
+                require_index(action)?,
+            ))),
             _ => unsupported(),
         },
         PaneKind::ProviderStatus | PaneKind::Empty => unsupported(),
@@ -858,7 +1066,10 @@ fn apply_chat_input(state: &mut RenderState, field: &str, value: &str) -> bool {
 
 fn apply_relay_connections_input(state: &mut RenderState, field: &str, value: &str) -> bool {
     if field == "relay_url" {
-        state.relay_connections_inputs.relay_url.set_value(value.to_string());
+        state
+            .relay_connections_inputs
+            .relay_url
+            .set_value(value.to_string());
         return true;
     }
     false
@@ -866,12 +1077,30 @@ fn apply_relay_connections_input(state: &mut RenderState, field: &str, value: &s
 
 fn apply_network_requests_input(state: &mut RenderState, field: &str, value: &str) -> bool {
     match field {
-        "request_type" => state.network_requests_inputs.request_type.set_value(value.to_string()),
-        "payload" => state.network_requests_inputs.payload.set_value(value.to_string()),
-        "skill_scope_id" => state.network_requests_inputs.skill_scope_id.set_value(value.to_string()),
-        "credit_envelope_ref" => state.network_requests_inputs.credit_envelope_ref.set_value(value.to_string()),
-        "budget_sats" => state.network_requests_inputs.budget_sats.set_value(value.to_string()),
-        "timeout_seconds" => state.network_requests_inputs.timeout_seconds.set_value(value.to_string()),
+        "request_type" => state
+            .network_requests_inputs
+            .request_type
+            .set_value(value.to_string()),
+        "payload" => state
+            .network_requests_inputs
+            .payload
+            .set_value(value.to_string()),
+        "skill_scope_id" => state
+            .network_requests_inputs
+            .skill_scope_id
+            .set_value(value.to_string()),
+        "credit_envelope_ref" => state
+            .network_requests_inputs
+            .credit_envelope_ref
+            .set_value(value.to_string()),
+        "budget_sats" => state
+            .network_requests_inputs
+            .budget_sats
+            .set_value(value.to_string()),
+        "timeout_seconds" => state
+            .network_requests_inputs
+            .timeout_seconds
+            .set_value(value.to_string()),
         _ => return false,
     }
     true
@@ -880,8 +1109,14 @@ fn apply_network_requests_input(state: &mut RenderState, field: &str, value: &st
 fn apply_settings_input(state: &mut RenderState, field: &str, value: &str) -> bool {
     match field {
         "relay_url" => state.settings_inputs.relay_url.set_value(value.to_string()),
-        "wallet_default_send_sats" => state.settings_inputs.wallet_default_send_sats.set_value(value.to_string()),
-        "provider_max_queue_depth" => state.settings_inputs.provider_max_queue_depth.set_value(value.to_string()),
+        "wallet_default_send_sats" => state
+            .settings_inputs
+            .wallet_default_send_sats
+            .set_value(value.to_string()),
+        "provider_max_queue_depth" => state
+            .settings_inputs
+            .provider_max_queue_depth
+            .set_value(value.to_string()),
         _ => return false,
     }
     true
@@ -889,8 +1124,14 @@ fn apply_settings_input(state: &mut RenderState, field: &str, value: &str) -> bo
 
 fn apply_credentials_input(state: &mut RenderState, field: &str, value: &str) -> bool {
     match field {
-        "variable_name" => state.credentials_inputs.variable_name.set_value(value.to_string()),
-        "variable_value" => state.credentials_inputs.variable_value.set_value(value.to_string()),
+        "variable_name" => state
+            .credentials_inputs
+            .variable_name
+            .set_value(value.to_string()),
+        "variable_value" => state
+            .credentials_inputs
+            .variable_value
+            .set_value(value.to_string()),
         _ => return false,
     }
     true
@@ -898,7 +1139,10 @@ fn apply_credentials_input(state: &mut RenderState, field: &str, value: &str) ->
 
 fn apply_job_history_input(state: &mut RenderState, field: &str, value: &str) -> bool {
     if field == "search_job_id" {
-        state.job_history_inputs.search_job_id.set_value(value.to_string());
+        state
+            .job_history_inputs
+            .search_job_id
+            .set_value(value.to_string());
         return true;
     }
     false
@@ -906,7 +1150,10 @@ fn apply_job_history_input(state: &mut RenderState, field: &str, value: &str) ->
 
 fn apply_spark_wallet_input(state: &mut RenderState, field: &str, value: &str) -> bool {
     match field {
-        "invoice_amount" => state.spark_inputs.invoice_amount.set_value(value.to_string()),
+        "invoice_amount" => state
+            .spark_inputs
+            .invoice_amount
+            .set_value(value.to_string()),
         "send_request" => state.spark_inputs.send_request.set_value(value.to_string()),
         "send_amount" => state.spark_inputs.send_amount.set_value(value.to_string()),
         _ => return false,
@@ -916,9 +1163,18 @@ fn apply_spark_wallet_input(state: &mut RenderState, field: &str, value: &str) -
 
 fn apply_create_invoice_input(state: &mut RenderState, field: &str, value: &str) -> bool {
     match field {
-        "amount_sats" => state.create_invoice_inputs.amount_sats.set_value(value.to_string()),
-        "description" => state.create_invoice_inputs.description.set_value(value.to_string()),
-        "expiry_seconds" => state.create_invoice_inputs.expiry_seconds.set_value(value.to_string()),
+        "amount_sats" => state
+            .create_invoice_inputs
+            .amount_sats
+            .set_value(value.to_string()),
+        "description" => state
+            .create_invoice_inputs
+            .description
+            .set_value(value.to_string()),
+        "expiry_seconds" => state
+            .create_invoice_inputs
+            .expiry_seconds
+            .set_value(value.to_string()),
         _ => return false,
     }
     true
@@ -926,8 +1182,14 @@ fn apply_create_invoice_input(state: &mut RenderState, field: &str, value: &str)
 
 fn apply_pay_invoice_input(state: &mut RenderState, field: &str, value: &str) -> bool {
     match field {
-        "payment_request" => state.pay_invoice_inputs.payment_request.set_value(value.to_string()),
-        "amount_sats" => state.pay_invoice_inputs.amount_sats.set_value(value.to_string()),
+        "payment_request" => state
+            .pay_invoice_inputs
+            .payment_request
+            .set_value(value.to_string()),
+        "amount_sats" => state
+            .pay_invoice_inputs
+            .amount_sats
+            .set_value(value.to_string()),
         _ => return false,
     }
     true
@@ -947,6 +1209,9 @@ fn cad_build_session_checkpoint(cad_demo: &crate::app_state::CadDemoPaneState) -
     if cad_demo.build_session.phase != crate::app_state::CadBuildSessionPhase::Idle {
         return json!({
             "phase": cad_demo.build_session.phase.label(),
+            "failure_class": cad_demo.build_session.failure_class.map(|class| class.label().to_string()),
+            "retry_attempts": cad_demo.build_session.retry_attempts,
+            "retry_limit": cad_demo.build_session.retry_limit,
             "thread_id": cad_demo.build_session.thread_id,
             "turn_id": cad_demo.build_session.turn_id,
             "latest_tool_result": cad_demo.build_session.latest_tool_result,
@@ -958,6 +1223,9 @@ fn cad_build_session_checkpoint(cad_demo: &crate::app_state::CadDemoPaneState) -
     if let Some(last) = cad_demo.last_build_session.as_ref() {
         return json!({
             "phase": last.terminal_phase.label(),
+            "failure_class": last.failure_class.map(|class| class.label().to_string()),
+            "retry_attempts": last.retry_attempts,
+            "retry_limit": last.retry_limit,
             "thread_id": last.thread_id,
             "turn_id": last.turn_id,
             "latest_tool_result": last.latest_tool_result,
@@ -968,6 +1236,9 @@ fn cad_build_session_checkpoint(cad_demo: &crate::app_state::CadDemoPaneState) -
     }
     json!({
         "phase": crate::app_state::CadBuildSessionPhase::Idle.label(),
+        "failure_class": null,
+        "retry_attempts": 0,
+        "retry_limit": 0,
         "thread_id": null,
         "turn_id": null,
         "latest_tool_result": null,
@@ -1034,6 +1305,15 @@ fn cad_checkpoint_payload(
             "by_severity": warnings_by_severity,
             "by_code": warnings_by_code,
         },
+        "failure_metrics": {
+            "tool_transport_failures": cad_demo.build_failure_metrics.tool_transport_failures,
+            "intent_parse_failures": cad_demo.build_failure_metrics.intent_parse_failures,
+            "dispatch_rebuild_failures": cad_demo.build_failure_metrics.dispatch_rebuild_failures,
+            "tool_transport_retries": cad_demo.build_failure_metrics.tool_transport_retries,
+            "intent_parse_retries": cad_demo.build_failure_metrics.intent_parse_retries,
+            "dispatch_rebuild_retries": cad_demo.build_failure_metrics.dispatch_rebuild_retries,
+            "terminal_failures": cad_demo.build_failure_metrics.terminal_failures,
+        },
         "analysis": {
             "variant_id": analysis.variant_id,
             "material_id": analysis.material_id,
@@ -1050,6 +1330,28 @@ fn cad_checkpoint_payload(
     })
 }
 
+fn cad_failure_class_label(class: CadBuildFailureClass) -> &'static str {
+    class.label()
+}
+
+fn cad_parse_retry_prompt(prompt: &str) -> Option<String> {
+    let trimmed = prompt.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let first = trimmed.find('{')?;
+    let last = trimmed.rfind('}')?;
+    if first >= last {
+        return None;
+    }
+    let candidate = &trimmed[first..=last];
+    let value = serde_json::from_str::<Value>(candidate).ok()?;
+    if !value.is_object() {
+        return None;
+    }
+    serde_json::to_string(&value).ok()
+}
+
 fn execute_cad_intent(state: &mut RenderState, args: &CadIntentArgs) -> ToolBridgeResultEnvelope {
     let thread_id = args
         .thread_id
@@ -1060,14 +1362,23 @@ fn execute_cad_intent(state: &mut RenderState, args: &CadIntentArgs) -> ToolBrid
         .or_else(|| state.autopilot_chat.active_thread_id.clone())
         .unwrap_or_else(|| "autopilot.tool.local".to_string());
 
-    let prompt = if let Some(intent_json) = args.intent_json.as_ref() {
+    let mut prompt = if let Some(intent_json) = args.intent_json.as_ref() {
         match serde_json::to_string(intent_json) {
             Ok(value) => value,
             Err(error) => {
                 return ToolBridgeResultEnvelope::error(
                     "OA-CAD-INTENT-JSON-SERIALIZE-FAILED",
                     format!("Failed to serialize intent_json: {error}"),
-                    json!({ "thread_id": thread_id }),
+                    json!({
+                        "schema_version": CAD_TOOL_RESPONSE_SCHEMA_VERSION,
+                        "failure_class": cad_failure_class_label(CadBuildFailureClass::IntentParseValidation),
+                        "thread_id": thread_id,
+                        "checkpoint": cad_checkpoint_payload(
+                            &state.cad_demo,
+                            Some(thread_id.as_str()),
+                            "openagents.cad.intent",
+                        ),
+                    }),
                 );
             }
         }
@@ -1082,27 +1393,14 @@ fn execute_cad_intent(state: &mut RenderState, args: &CadIntentArgs) -> ToolBrid
             "OA-CAD-INTENT-MISSING-PAYLOAD",
             "Provide either non-empty `prompt` or `intent_json` for openagents.cad.intent",
             json!({
-                "thread_id": thread_id,
-            }),
-        );
-    }
-
-    let _ = PaneController::create_for_kind(state, PaneKind::CadDemo);
-    let changed = super::reducers::apply_chat_prompt_to_cad_session_with_trigger(
-        state,
-        &thread_id,
-        &prompt,
-        Some("ai-intent"),
-    );
-    if !changed {
-        return ToolBridgeResultEnvelope::error(
-            "OA-CAD-INTENT-NO-CHANGE",
-            "CAD intent prompt did not produce a CAD mutation",
-            json!({
                 "schema_version": CAD_TOOL_RESPONSE_SCHEMA_VERSION,
+                "failure_class": cad_failure_class_label(CadBuildFailureClass::IntentParseValidation),
                 "thread_id": thread_id,
-                "prompt": prompt,
-                "last_error": state.cad_demo.last_error,
+                "fallback": {
+                    "strategy": "request_clarification",
+                    "strict_intent_json_required": true,
+                    "remediation_hint": "retry openagents.cad.intent with explicit intent_json payload",
+                },
                 "checkpoint": cad_checkpoint_payload(
                     &state.cad_demo,
                     Some(thread_id.as_str()),
@@ -1112,20 +1410,163 @@ fn execute_cad_intent(state: &mut RenderState, args: &CadIntentArgs) -> ToolBrid
         );
     }
 
-    ToolBridgeResultEnvelope::ok(
-        "OA-CAD-INTENT-OK",
-        "Applied CAD intent prompt through CAD chat adapter",
-        json!({
-            "schema_version": CAD_TOOL_RESPONSE_SCHEMA_VERSION,
-            "thread_id": thread_id,
-            "rebuild_trigger_prefix": "ai-intent",
-            "checkpoint": cad_checkpoint_payload(
-                &state.cad_demo,
-                Some(thread_id.as_str()),
-                "openagents.cad.intent",
-            ),
-        }),
-    )
+    let _ = PaneController::create_for_kind(state, PaneKind::CadDemo);
+    let mut parse_retry_count = 0u8;
+    loop {
+        let outcome = super::reducers::apply_chat_prompt_to_cad_session_with_trigger_outcome(
+            state,
+            &thread_id,
+            &prompt,
+            Some("ai-intent"),
+        );
+        match outcome {
+            super::reducers::CadChatPromptApplyOutcome::Applied {
+                intent_name,
+                rebuild_trigger,
+            } => {
+                return ToolBridgeResultEnvelope::ok(
+                    "OA-CAD-INTENT-OK",
+                    "Applied CAD intent prompt through CAD chat adapter",
+                    json!({
+                        "schema_version": CAD_TOOL_RESPONSE_SCHEMA_VERSION,
+                        "thread_id": thread_id,
+                        "intent_name": intent_name,
+                        "rebuild_trigger": rebuild_trigger,
+                        "rebuild_trigger_prefix": "ai-intent",
+                        "retries": {
+                            "parse_retry_count": parse_retry_count,
+                            "parse_retry_limit": CAD_INTENT_PARSE_RETRY_LIMIT,
+                        },
+                        "checkpoint": cad_checkpoint_payload(
+                            &state.cad_demo,
+                            Some(thread_id.as_str()),
+                            "openagents.cad.intent",
+                        ),
+                    }),
+                );
+            }
+            super::reducers::CadChatPromptApplyOutcome::ParseFailure {
+                error_code,
+                error_message,
+                recovery_prompt,
+            } => {
+                if parse_retry_count < CAD_INTENT_PARSE_RETRY_LIMIT
+                    && let Some(retry_prompt) = cad_parse_retry_prompt(&prompt)
+                {
+                    parse_retry_count = parse_retry_count.saturating_add(1);
+                    state.cad_demo.record_agent_build_retry_metric(
+                        CadBuildFailureClass::IntentParseValidation,
+                    );
+                    prompt = retry_prompt;
+                    continue;
+                }
+                return ToolBridgeResultEnvelope::error(
+                    "OA-CAD-INTENT-PARSE-FAILED",
+                    format!("CAD intent parse failed: {error_message}"),
+                    json!({
+                        "schema_version": CAD_TOOL_RESPONSE_SCHEMA_VERSION,
+                        "failure_class": cad_failure_class_label(CadBuildFailureClass::IntentParseValidation),
+                        "thread_id": thread_id,
+                        "prompt": prompt,
+                        "error_code": error_code,
+                        "error_message": error_message,
+                        "retries": {
+                            "parse_retry_count": parse_retry_count,
+                            "parse_retry_limit": CAD_INTENT_PARSE_RETRY_LIMIT,
+                        },
+                        "fallback": {
+                            "strategy": "request_clarification",
+                            "strict_intent_json_required": true,
+                            "clarification_prompt": recovery_prompt,
+                            "remediation_hint": "retry openagents.cad.intent with explicit intent_json payload matching CadIntent schema",
+                        },
+                        "checkpoint": cad_checkpoint_payload(
+                            &state.cad_demo,
+                            Some(thread_id.as_str()),
+                            "openagents.cad.intent",
+                        ),
+                    }),
+                );
+            }
+            super::reducers::CadChatPromptApplyOutcome::DispatchFailure { intent_name, error } => {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-CAD-INTENT-DISPATCH-FAILED",
+                    "CAD dispatch failed; aborting this CAD turn safely",
+                    json!({
+                        "schema_version": CAD_TOOL_RESPONSE_SCHEMA_VERSION,
+                        "failure_class": cad_failure_class_label(CadBuildFailureClass::DispatchRebuild),
+                        "thread_id": thread_id,
+                        "intent_name": intent_name,
+                        "error": error,
+                        "fallback": {
+                            "strategy": "safe_abort",
+                            "remediation_hint": "retry with stricter intent_json or narrower parameter changes",
+                        },
+                        "checkpoint": cad_checkpoint_payload(
+                            &state.cad_demo,
+                            Some(thread_id.as_str()),
+                            "openagents.cad.intent",
+                        ),
+                    }),
+                );
+            }
+            super::reducers::CadChatPromptApplyOutcome::RebuildEnqueueFailure {
+                intent_name,
+                trigger,
+                error,
+                retry_attempts,
+                retry_limit,
+            } => {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-CAD-INTENT-REBUILD-ENQUEUE-FAILED",
+                    "CAD rebuild enqueue failed after bounded retries",
+                    json!({
+                        "schema_version": CAD_TOOL_RESPONSE_SCHEMA_VERSION,
+                        "failure_class": cad_failure_class_label(CadBuildFailureClass::DispatchRebuild),
+                        "thread_id": thread_id,
+                        "intent_name": intent_name,
+                        "rebuild_trigger": trigger,
+                        "error": error,
+                        "retries": {
+                            "dispatch_retry_count": retry_attempts,
+                            "dispatch_retry_limit": retry_limit,
+                        },
+                        "fallback": {
+                            "strategy": "safe_abort",
+                            "remediation_hint": "retry when CAD rebuild worker is healthy or simplify the model mutation",
+                        },
+                        "checkpoint": cad_checkpoint_payload(
+                            &state.cad_demo,
+                            Some(thread_id.as_str()),
+                            "openagents.cad.intent",
+                        ),
+                    }),
+                );
+            }
+            super::reducers::CadChatPromptApplyOutcome::IgnoredNonCadPrompt => {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-CAD-INTENT-NO-CHANGE",
+                    "CAD intent prompt did not produce a CAD mutation",
+                    json!({
+                        "schema_version": CAD_TOOL_RESPONSE_SCHEMA_VERSION,
+                        "failure_class": cad_failure_class_label(CadBuildFailureClass::IntentParseValidation),
+                        "thread_id": thread_id,
+                        "prompt": prompt,
+                        "fallback": {
+                            "strategy": "request_clarification",
+                            "strict_intent_json_required": true,
+                            "remediation_hint": "use an explicit CAD instruction or pass intent_json",
+                        },
+                        "checkpoint": cad_checkpoint_payload(
+                            &state.cad_demo,
+                            Some(thread_id.as_str()),
+                            "openagents.cad.intent",
+                        ),
+                    }),
+                );
+            }
+        }
+    }
 }
 
 fn execute_cad_action(state: &mut RenderState, args: &CadActionArgs) -> ToolBridgeResultEnvelope {
@@ -1260,8 +1701,12 @@ fn resolve_pane_kind(raw: &str) -> Option<PaneKind> {
             let command_key = spec.command.map(|command| normalize_key(command.id));
             if normalized == title_key
                 || normalized == kind_key
-                || command_key.as_ref().is_some_and(|value| *value == normalized)
-                || pane_aliases(spec.kind).iter().any(|alias| *alias == normalized)
+                || command_key
+                    .as_ref()
+                    .is_some_and(|value| *value == normalized)
+                || pane_aliases(spec.kind)
+                    .iter()
+                    .any(|alias| *alias == normalized)
             {
                 Some(spec.kind)
             } else {
@@ -1344,10 +1789,13 @@ fn normalize_key(value: &str) -> String {
 mod tests {
     use super::{
         CAD_CHECKPOINT_SCHEMA_VERSION, CAD_TOOL_RESPONSE_SCHEMA_VERSION, ToolBridgeResultEnvelope,
-        cad_action_from_key, cad_checkpoint_payload, decode_tool_call_request, normalize_key,
-        pane_action_to_hit_action, pane_kind_key, resolve_pane_kind,
+        cad_action_from_key, cad_checkpoint_payload, cad_parse_retry_prompt,
+        decode_tool_call_request, normalize_key, pane_action_to_hit_action, pane_kind_key,
+        resolve_pane_kind,
     };
-    use crate::app_state::{AutopilotToolCallRequest, CadDemoPaneState, CadDemoWarningState, PaneKind};
+    use crate::app_state::{
+        AutopilotToolCallRequest, CadDemoPaneState, CadDemoWarningState, PaneKind,
+    };
     use crate::pane_system::{
         CadDemoPaneAction, PaneHitAction, RelayConnectionsPaneAction, SettingsPaneAction,
     };
@@ -1391,19 +1839,28 @@ mod tests {
 
     #[test]
     fn decode_rejects_unsupported_tool_name() {
-        let code = assert_error(decode_tool_call_request(&request("openagents.not_real", "{}")));
+        let code = assert_error(decode_tool_call_request(&request(
+            "openagents.not_real",
+            "{}",
+        )));
         assert_eq!(code, "OA-TOOL-UNSUPPORTED");
     }
 
     #[test]
     fn decode_rejects_malformed_json_arguments() {
-        let code = assert_error(decode_tool_call_request(&request("openagents.pane.open", "{")));
+        let code = assert_error(decode_tool_call_request(&request(
+            "openagents.pane.open",
+            "{",
+        )));
         assert_eq!(code, "OA-TOOL-ARGS-INVALID-JSON");
     }
 
     #[test]
     fn decode_rejects_non_object_arguments() {
-        let code = assert_error(decode_tool_call_request(&request("openagents.pane.open", "[]")));
+        let code = assert_error(decode_tool_call_request(&request(
+            "openagents.pane.open",
+            "[]",
+        )));
         assert_eq!(code, "OA-TOOL-ARGS-NOT-OBJECT");
     }
 
@@ -1439,7 +1896,10 @@ mod tests {
     #[test]
     fn pane_key_normalization_is_stable() {
         assert_eq!(pane_kind_key(PaneKind::AutopilotChat), "autopilot_chat");
-        assert_eq!(normalize_key("Spark Lightning Wallet"), "spark_lightning_wallet");
+        assert_eq!(
+            normalize_key("Spark Lightning Wallet"),
+            "spark_lightning_wallet"
+        );
         assert_eq!(normalize_key("pane.wallet"), "pane_wallet");
     }
 
@@ -1494,8 +1954,8 @@ mod tests {
 
     #[test]
     fn cad_action_mapping_requires_index_when_needed() {
-        let err = cad_action_from_key("select_warning", None)
-            .expect_err("missing index should fail");
+        let err =
+            cad_action_from_key("select_warning", None).expect_err("missing index should fail");
         assert_eq!(err.code, "OA-CAD-ACTION-MISSING-INDEX");
     }
 
@@ -1536,9 +1996,18 @@ mod tests {
                 CAD_CHECKPOINT_SCHEMA_VERSION.to_string()
             ))
         );
-        assert_eq!(payload.pointer("/source"), Some(&serde_json::json!("test-source")));
-        assert_eq!(payload.pointer("/thread_id"), Some(&serde_json::json!("thread-1")));
-        assert_eq!(payload.pointer("/document/revision"), Some(&serde_json::json!(9)));
+        assert_eq!(
+            payload.pointer("/source"),
+            Some(&serde_json::json!("test-source"))
+        );
+        assert_eq!(
+            payload.pointer("/thread_id"),
+            Some(&serde_json::json!("thread-1"))
+        );
+        assert_eq!(
+            payload.pointer("/document/revision"),
+            Some(&serde_json::json!(9))
+        );
         assert_eq!(
             payload.pointer("/pending_rebuild/is_pending"),
             Some(&serde_json::json!(true))
@@ -1547,7 +2016,10 @@ mod tests {
             payload.pointer("/pending_rebuild/request_id"),
             Some(&serde_json::json!(41))
         );
-        assert_eq!(payload.pointer("/warnings/total"), Some(&serde_json::json!(2)));
+        assert_eq!(
+            payload.pointer("/warnings/total"),
+            Some(&serde_json::json!(2))
+        );
         assert_eq!(
             payload.pointer("/warnings/by_severity/error"),
             Some(&serde_json::json!(1))
@@ -1561,6 +2033,16 @@ mod tests {
                 .pointer("/analysis/material_id")
                 .is_some_and(|value| !value.is_null())
         );
+        assert!(
+            payload
+                .pointer("/failure_metrics/intent_parse_failures")
+                .is_some()
+        );
+        assert!(
+            payload
+                .pointer("/failure_metrics/dispatch_rebuild_failures")
+                .is_some()
+        );
         assert!(payload.get("build_session").is_some());
         assert!(payload.get("last_rebuild_receipt").is_some());
 
@@ -1572,6 +2054,27 @@ mod tests {
             tool_response.pointer("/schema_version"),
             Some(&serde_json::json!(CAD_TOOL_RESPONSE_SCHEMA_VERSION))
         );
-        assert!(tool_response.pointer("/checkpoint/schema_version").is_some());
+        assert!(
+            tool_response
+                .pointer("/checkpoint/schema_version")
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn cad_parse_retry_prompt_extracts_embedded_json_object() {
+        let prompt = "Please apply this intent:\n```json\n{\"intent\":\"SetMaterial\",\"material_id\":\"al-6061-t6\"}\n```";
+        let retry_prompt =
+            cad_parse_retry_prompt(prompt).expect("retry helper should extract object payload");
+        assert_eq!(
+            retry_prompt,
+            "{\"intent\":\"SetMaterial\",\"material_id\":\"al-6061-t6\"}"
+        );
+    }
+
+    #[test]
+    fn cad_parse_retry_prompt_rejects_non_object_payloads() {
+        assert!(cad_parse_retry_prompt("[1,2,3]").is_none());
+        assert!(cad_parse_retry_prompt("no json here").is_none());
     }
 }

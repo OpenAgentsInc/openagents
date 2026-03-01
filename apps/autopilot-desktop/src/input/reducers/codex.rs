@@ -1,10 +1,104 @@
-use crate::app_state::{CadBuildSessionPhase, PaneLoadState, RenderState};
+use crate::app_state::{CadBuildFailureClass, CadBuildSessionPhase, PaneLoadState, RenderState};
 use crate::codex_lane::CodexLaneCommand;
 use crate::codex_lane::{
     CodexLaneCommandKind, CodexLaneCommandResponse, CodexLaneCommandStatus, CodexLaneLifecycle,
     CodexLaneNotification, CodexLaneSnapshot, CodexThreadTranscriptRole,
 };
 use codex_client::{SkillsListExtraRootsForCwd, SkillsListParams, ThreadStartParams};
+
+const CAD_TOOL_RESPONSE_SUBMIT_RETRY_LIMIT: u8 = 2;
+
+fn cad_failure_class_from_tool_response(
+    envelope: &super::super::tool_bridge::ToolBridgeResultEnvelope,
+) -> CadBuildFailureClass {
+    let class_label = envelope
+        .details
+        .get("failure_class")
+        .and_then(serde_json::Value::as_str)
+        .map(|value| value.trim().to_ascii_lowercase());
+    match class_label.as_deref() {
+        Some("tool_transport") => CadBuildFailureClass::ToolTransport,
+        Some("intent_parse_validation") => CadBuildFailureClass::IntentParseValidation,
+        Some("dispatch_rebuild") => CadBuildFailureClass::DispatchRebuild,
+        _ => {
+            if envelope.code.contains("PARSE")
+                || envelope.code.contains("MISSING-PAYLOAD")
+                || envelope.code.contains("NO-CHANGE")
+            {
+                CadBuildFailureClass::IntentParseValidation
+            } else {
+                CadBuildFailureClass::DispatchRebuild
+            }
+        }
+    }
+}
+
+fn cad_failure_hint_from_tool_response(
+    envelope: &super::super::tool_bridge::ToolBridgeResultEnvelope,
+) -> String {
+    envelope
+        .details
+        .pointer("/fallback/remediation_hint")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| "inspect tool response details and retry CAD turn".to_string())
+}
+
+fn queue_cad_tool_response_with_retry(
+    state: &mut RenderState,
+    pending: &crate::app_state::AutopilotToolCallRequest,
+    envelope: &super::super::tool_bridge::ToolBridgeResultEnvelope,
+    retry_limit: u8,
+) -> Result<u8, String> {
+    let mut retries_used = 0u8;
+    loop {
+        let command = crate::codex_lane::CodexLaneCommand::ServerRequestToolCallRespond {
+            request_id: pending.request_id.clone(),
+            response: envelope.to_response(),
+        };
+        match state.queue_codex_command(command) {
+            Ok(_) => return Ok(retries_used),
+            Err(error) => {
+                if retries_used >= retry_limit {
+                    return Err(error);
+                }
+                retries_used = retries_used.saturating_add(1);
+                state
+                    .cad_demo
+                    .record_agent_build_retry_metric(CadBuildFailureClass::ToolTransport);
+                state.cad_demo.last_action = Some(format!(
+                    "Retrying CAD tool response submit {}/{} for call {}",
+                    retries_used, retry_limit, pending.call_id
+                ));
+            }
+        }
+    }
+}
+
+fn fail_active_cad_build_session(
+    state: &mut RenderState,
+    class: CadBuildFailureClass,
+    event_code: &str,
+    reason: String,
+    remediation_hint: String,
+    retry_attempts: u8,
+    retry_limit: u8,
+) {
+    if state.cad_demo.build_session.phase == CadBuildSessionPhase::Idle {
+        state.cad_demo.last_error = Some(reason);
+        super::sync_cad_build_progress_to_chat(state);
+        return;
+    }
+    state
+        .cad_demo
+        .set_agent_build_failure_context(class, retry_attempts, retry_limit);
+    let _ = state
+        .cad_demo
+        .fail_agent_build_session(event_code, reason, Some(remediation_hint));
+    super::sync_cad_build_progress_to_chat(state);
+}
 
 pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: CodexLaneSnapshot) {
     state
@@ -1349,9 +1443,8 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                         .cad_demo
                         .begin_agent_build_session(&pending.thread_id, &pending.turn_id)
                     {
-                        state.cad_demo.last_error = Some(format!(
-                            "CAD build session start failed: {error}"
-                        ));
+                        state.cad_demo.last_error =
+                            Some(format!("CAD build session start failed: {error}"));
                     } else if let Err(error) = state.cad_demo.transition_agent_build_phase(
                         CadBuildSessionPhase::Applying,
                         "cad.build.applying.start",
@@ -1361,9 +1454,8 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                             pending.call_id.trim()
                         ),
                     ) {
-                        state.cad_demo.last_error = Some(format!(
-                            "CAD build phase transition failed: {error}"
-                        ));
+                        state.cad_demo.last_error =
+                            Some(format!("CAD build phase transition failed: {error}"));
                     }
                     super::sync_cad_build_progress_to_chat(state);
                 }
@@ -1379,21 +1471,37 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 }
                 let code = envelope.code.clone();
                 let success = envelope.success;
-                let command = crate::codex_lane::CodexLaneCommand::ServerRequestToolCallRespond {
-                    request_id: pending.request_id.clone(),
-                    response: envelope.to_response(),
+                let submit_result = if is_cad_intent_tool {
+                    queue_cad_tool_response_with_retry(
+                        state,
+                        &pending,
+                        &envelope,
+                        CAD_TOOL_RESPONSE_SUBMIT_RETRY_LIMIT,
+                    )
+                } else {
+                    let command =
+                        crate::codex_lane::CodexLaneCommand::ServerRequestToolCallRespond {
+                            request_id: pending.request_id.clone(),
+                            response: envelope.to_response(),
+                        };
+                    state.queue_codex_command(command).map(|_| 0u8)
                 };
-                if let Err(error) = state.queue_codex_command(command) {
+                if let Err(error) = submit_result {
                     state.autopilot_chat.enqueue_tool_call(pending);
-                    state.autopilot_chat.last_error = Some(format!(
-                        "Failed to auto-respond to tool call: {}",
-                        error
-                    ));
+                    state.autopilot_chat.last_error =
+                        Some(format!("Failed to auto-respond to tool call: {}", error));
                     if is_cad_intent_tool {
-                        let _ = state.cad_demo.fail_agent_build_session(
+                        state
+                            .cad_demo
+                            .record_agent_build_failure_metric(CadBuildFailureClass::ToolTransport);
+                        fail_active_cad_build_session(
+                            state,
+                            CadBuildFailureClass::ToolTransport,
                             "cad.build.response.submit_failed",
                             format!("failed to submit CAD tool response: {error}"),
-                            Some("verify Codex lane connectivity and retry CAD turn".to_string()),
+                            "verify Codex lane connectivity and retry CAD turn".to_string(),
+                            CAD_TOOL_RESPONSE_SUBMIT_RETRY_LIMIT,
+                            CAD_TOOL_RESPONSE_SUBMIT_RETRY_LIMIT,
                         );
                     }
                 } else {
@@ -1412,47 +1520,76 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                                         state.cad_demo.pending_rebuild_request_id.unwrap_or(0)
                                     ),
                                 ) {
-                                    state.cad_demo.last_error = Some(format!(
-                                        "CAD build phase transition failed: {error}"
-                                    ));
+                                    state.cad_demo.last_error =
+                                        Some(format!("CAD build phase transition failed: {error}"));
                                 }
                             } else if let Err(error) = state.cad_demo.transition_agent_build_phase(
                                 CadBuildSessionPhase::Summarizing,
                                 "cad.build.summarizing.start",
                                 "tool applied without queued rebuild".to_string(),
                             ) {
-                                state.cad_demo.last_error = Some(format!(
-                                    "CAD build phase transition failed: {error}"
-                                ));
-                            } else if let Err(error) = state.cad_demo.complete_agent_build_session(
-                                format!(
+                                state.cad_demo.last_error =
+                                    Some(format!("CAD build phase transition failed: {error}"));
+                            } else if let Err(error) =
+                                state.cad_demo.complete_agent_build_session(format!(
                                     "cad intent tool call {} completed without background rebuild",
                                     pending.call_id
-                                ),
-                            ) {
-                                state.cad_demo.last_error = Some(format!(
-                                    "CAD build session finalize failed: {error}"
-                                ));
+                                ))
+                            {
+                                state.cad_demo.last_error =
+                                    Some(format!("CAD build session finalize failed: {error}"));
                             }
                         } else {
-                            let remediation_hint = envelope
+                            let class = cad_failure_class_from_tool_response(&envelope);
+                            let retry_attempts = envelope
                                 .details
-                                .get("last_error")
-                                .and_then(|value| value.as_str())
-                                .map(|value| format!("inspect CAD error: {value}"))
+                                .pointer("/retries/parse_retry_count")
+                                .and_then(serde_json::Value::as_u64)
                                 .or_else(|| {
-                                    Some(
-                                        "inspect tool response details and retry CAD turn"
-                                            .to_string(),
-                                    )
-                                });
-                            let _ = state.cad_demo.fail_agent_build_session(
-                                "cad.build.tool.failed",
+                                    envelope
+                                        .details
+                                        .pointer("/retries/dispatch_retry_count")
+                                        .and_then(serde_json::Value::as_u64)
+                                })
+                                .unwrap_or(0)
+                                as u8;
+                            let retry_limit = envelope
+                                .details
+                                .pointer("/retries/parse_retry_limit")
+                                .and_then(serde_json::Value::as_u64)
+                                .or_else(|| {
+                                    envelope
+                                        .details
+                                        .pointer("/retries/dispatch_retry_limit")
+                                        .and_then(serde_json::Value::as_u64)
+                                })
+                                .unwrap_or(0) as u8;
+                            let event_code = match class {
+                                CadBuildFailureClass::IntentParseValidation => {
+                                    "cad.build.intent.parse_failed"
+                                }
+                                CadBuildFailureClass::DispatchRebuild => {
+                                    "cad.build.dispatch.failed"
+                                }
+                                CadBuildFailureClass::ToolTransport => {
+                                    "cad.build.response.submit_failed"
+                                }
+                            };
+                            state.cad_demo.record_agent_build_failure_metric(class);
+                            let remediation_hint = cad_failure_hint_from_tool_response(&envelope);
+                            fail_active_cad_build_session(
+                                state,
+                                class,
+                                event_code,
                                 format!(
-                                    "CAD intent tool failed code={} message={}",
-                                    code, envelope.message
+                                    "CAD intent tool failed class={} code={} message={}",
+                                    class.label(),
+                                    code,
+                                    envelope.message
                                 ),
                                 remediation_hint,
+                                retry_attempts,
+                                retry_limit,
                             );
                         }
                     }
@@ -1712,5 +1849,47 @@ fn notification_method_label(notification: &CodexLaneNotification) -> String {
         CodexLaneNotification::ServerRequest { method } | CodexLaneNotification::Raw { method } => {
             method.clone()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{cad_failure_class_from_tool_response, cad_failure_hint_from_tool_response};
+    use crate::app_state::CadBuildFailureClass;
+    use crate::input::tool_bridge::ToolBridgeResultEnvelope;
+    use serde_json::json;
+
+    #[test]
+    fn cad_failure_class_resolution_prefers_explicit_detail_and_has_code_fallback() {
+        let explicit = ToolBridgeResultEnvelope {
+            success: false,
+            code: "OA-CAD-INTENT-REBUILD-ENQUEUE-FAILED".to_string(),
+            message: "dispatch failed".to_string(),
+            details: json!({
+                "failure_class": "dispatch_rebuild",
+                "fallback": {
+                    "remediation_hint": "retry with narrower intent_json"
+                }
+            }),
+        };
+        assert_eq!(
+            cad_failure_class_from_tool_response(&explicit),
+            CadBuildFailureClass::DispatchRebuild
+        );
+        assert_eq!(
+            cad_failure_hint_from_tool_response(&explicit),
+            "retry with narrower intent_json".to_string()
+        );
+
+        let fallback = ToolBridgeResultEnvelope {
+            success: false,
+            code: "OA-CAD-INTENT-PARSE-FAILED".to_string(),
+            message: "parse failed".to_string(),
+            details: json!({}),
+        };
+        assert_eq!(
+            cad_failure_class_from_tool_response(&fallback),
+            CadBuildFailureClass::IntentParseValidation
+        );
     }
 }

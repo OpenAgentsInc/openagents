@@ -41,6 +41,9 @@ Common failure codes:
 - `OA-CAD-ACTION-UNSUPPORTED`
 - `OA-CAD-ACTION-MISSING-INDEX`
 - `OA-CAD-INTENT-MISSING-PAYLOAD`
+- `OA-CAD-INTENT-PARSE-FAILED`
+- `OA-CAD-INTENT-DISPATCH-FAILED`
+- `OA-CAD-INTENT-REBUILD-ENQUEUE-FAILED`
 
 ## Tool Surface
 
@@ -166,9 +169,12 @@ Behavior:
 
 - Ensures CAD pane is open.
 - Routes through existing CAD chat-intent adapter path.
+- Applies bounded deterministic retries:
+  - parse/validation retry (`max=1`) only when embedded JSON can be canonicalized
+  - rebuild enqueue retry (`max=1`) with deterministic safe abort after budget exhaustion
 - Returns versioned CAD checkpoint data (`schema_version: "oa.cad.tool_response.v1"`).
 
-Response `details` shape (success and no-change errors):
+Response `details` shape (success + failure):
 
 ```json
 {
@@ -202,6 +208,15 @@ Response `details` shape (success and no-change errors):
       "by_severity": {"warning": 1, "error": 1},
       "by_code": {"W001": 1, "E007": 1}
     },
+    "failure_metrics": {
+      "tool_transport_failures": 1,
+      "intent_parse_failures": 2,
+      "dispatch_rebuild_failures": 1,
+      "tool_transport_retries": 2,
+      "intent_parse_retries": 1,
+      "dispatch_rebuild_retries": 1,
+      "terminal_failures": 2
+    },
     "analysis": {
       "variant_id": "variant.baseline",
       "material_id": "al-6061-t6",
@@ -213,6 +228,9 @@ Response `details` shape (success and no-change errors):
     },
     "build_session": {
       "phase": "rebuilding",
+      "failure_class": null,
+      "retry_attempts": 0,
+      "retry_limit": 0,
       "thread_id": "thread-id",
       "turn_id": "turn-id",
       "latest_tool_result": "ok:OA-CAD-INTENT-OK",
@@ -233,6 +251,13 @@ Response `details` shape (success and no-change errors):
   }
 }
 ```
+
+Failure response `details` include:
+
+- `failure_class`: `tool_transport` | `intent_parse_validation` | `dispatch_rebuild`
+- `retries`: bounded retry counters (`parse_retry_*` or `dispatch_retry_*`)
+- `fallback`: deterministic next action (`request_clarification` or `safe_abort`) with `remediation_hint`
+- `checkpoint`: current CAD state snapshot for orchestration
 
 ## `openagents.cad.action`
 

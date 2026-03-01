@@ -7,6 +7,7 @@ mod jobs;
 mod sa;
 mod skl;
 pub(super) mod wallet;
+pub(super) use cad::CadChatPromptApplyOutcome;
 
 use crate::app_state::RenderState;
 use crate::pane_system::{
@@ -158,6 +159,20 @@ pub(super) fn apply_chat_prompt_to_cad_session_with_trigger(
     rebuild_trigger_prefix: Option<&str>,
 ) -> bool {
     cad::apply_chat_prompt_to_cad_session_with_trigger(
+        state,
+        thread_id,
+        prompt,
+        rebuild_trigger_prefix,
+    )
+}
+
+pub(super) fn apply_chat_prompt_to_cad_session_with_trigger_outcome(
+    state: &mut RenderState,
+    thread_id: &str,
+    prompt: &str,
+    rebuild_trigger_prefix: Option<&str>,
+) -> CadChatPromptApplyOutcome {
+    cad::apply_chat_prompt_to_cad_session_with_trigger_outcome(
         state,
         thread_id,
         prompt,

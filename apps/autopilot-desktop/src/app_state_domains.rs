@@ -455,6 +455,7 @@ pub struct CadDemoPaneState {
     pub last_chat_intent_name: Option<String>,
     pub build_session: CadBuildSessionState,
     pub last_build_session: Option<CadBuildSessionArchiveState>,
+    pub build_failure_metrics: CadBuildFailureMetricsState,
     pub document_id: String,
     pub document_revision: u64,
     pub active_variant_id: String,
@@ -962,6 +963,78 @@ impl CadBuildSessionPhase {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CadBuildFailureClass {
+    ToolTransport,
+    IntentParseValidation,
+    DispatchRebuild,
+}
+
+impl CadBuildFailureClass {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::ToolTransport => "tool_transport",
+            Self::IntentParseValidation => "intent_parse_validation",
+            Self::DispatchRebuild => "dispatch_rebuild",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CadBuildFailureMetricsState {
+    pub tool_transport_failures: u64,
+    pub intent_parse_failures: u64,
+    pub dispatch_rebuild_failures: u64,
+    pub tool_transport_retries: u64,
+    pub intent_parse_retries: u64,
+    pub dispatch_rebuild_retries: u64,
+    pub terminal_failures: u64,
+}
+
+impl CadBuildFailureMetricsState {
+    pub fn record_failure(&mut self, class: CadBuildFailureClass) {
+        match class {
+            CadBuildFailureClass::ToolTransport => {
+                self.tool_transport_failures = self.tool_transport_failures.saturating_add(1);
+            }
+            CadBuildFailureClass::IntentParseValidation => {
+                self.intent_parse_failures = self.intent_parse_failures.saturating_add(1);
+            }
+            CadBuildFailureClass::DispatchRebuild => {
+                self.dispatch_rebuild_failures = self.dispatch_rebuild_failures.saturating_add(1);
+            }
+        }
+    }
+
+    pub fn record_retry(&mut self, class: CadBuildFailureClass) {
+        match class {
+            CadBuildFailureClass::ToolTransport => {
+                self.tool_transport_retries = self.tool_transport_retries.saturating_add(1);
+            }
+            CadBuildFailureClass::IntentParseValidation => {
+                self.intent_parse_retries = self.intent_parse_retries.saturating_add(1);
+            }
+            CadBuildFailureClass::DispatchRebuild => {
+                self.dispatch_rebuild_retries = self.dispatch_rebuild_retries.saturating_add(1);
+            }
+        }
+    }
+}
+
+impl Default for CadBuildFailureMetricsState {
+    fn default() -> Self {
+        Self {
+            tool_transport_failures: 0,
+            intent_parse_failures: 0,
+            dispatch_rebuild_failures: 0,
+            tool_transport_retries: 0,
+            intent_parse_retries: 0,
+            dispatch_rebuild_retries: 0,
+            terminal_failures: 0,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CadBuildSessionEventState {
     pub event_code: String,
@@ -975,6 +1048,9 @@ pub struct CadBuildSessionState {
     pub thread_id: Option<String>,
     pub turn_id: Option<String>,
     pub phase: CadBuildSessionPhase,
+    pub failure_class: Option<CadBuildFailureClass>,
+    pub retry_attempts: u8,
+    pub retry_limit: u8,
     pub latest_tool_result: Option<String>,
     pub latest_rebuild_result: Option<String>,
     pub failure_reason: Option<String>,
@@ -988,6 +1064,9 @@ impl Default for CadBuildSessionState {
             thread_id: None,
             turn_id: None,
             phase: CadBuildSessionPhase::Idle,
+            failure_class: None,
+            retry_attempts: 0,
+            retry_limit: 0,
             latest_tool_result: None,
             latest_rebuild_result: None,
             failure_reason: None,
@@ -1002,6 +1081,9 @@ pub struct CadBuildSessionArchiveState {
     pub thread_id: String,
     pub turn_id: String,
     pub terminal_phase: CadBuildSessionPhase,
+    pub failure_class: Option<CadBuildFailureClass>,
+    pub retry_attempts: u8,
+    pub retry_limit: u8,
     pub latest_tool_result: Option<String>,
     pub latest_rebuild_result: Option<String>,
     pub failure_reason: Option<String>,
@@ -1228,6 +1310,7 @@ impl Default for CadDemoPaneState {
             last_chat_intent_name: None,
             build_session: CadBuildSessionState::default(),
             last_build_session: None,
+            build_failure_metrics: CadBuildFailureMetricsState::default(),
             document_id,
             document_revision: 0,
             active_variant_id: initial_variant_id.clone(),
@@ -1545,6 +1628,70 @@ impl CadDemoPaneState {
         );
     }
 
+    pub fn set_agent_build_failure_context(
+        &mut self,
+        class: CadBuildFailureClass,
+        retry_attempts: u8,
+        retry_limit: u8,
+    ) {
+        self.build_session.failure_class = Some(class);
+        self.build_session.retry_attempts = retry_attempts;
+        self.build_session.retry_limit = retry_limit;
+        self.push_agent_build_event(
+            "cad.build.failure.context",
+            format!(
+                "class={} retries={}/{}",
+                class.label(),
+                retry_attempts,
+                retry_limit
+            ),
+        );
+    }
+
+    pub fn record_agent_build_failure_metric(&mut self, class: CadBuildFailureClass) {
+        self.build_failure_metrics.record_failure(class);
+        self.push_agent_build_event(
+            "cad.build.failure.metric",
+            format!(
+                "class={} count={}",
+                class.label(),
+                match class {
+                    CadBuildFailureClass::ToolTransport => {
+                        self.build_failure_metrics.tool_transport_failures
+                    }
+                    CadBuildFailureClass::IntentParseValidation => {
+                        self.build_failure_metrics.intent_parse_failures
+                    }
+                    CadBuildFailureClass::DispatchRebuild => {
+                        self.build_failure_metrics.dispatch_rebuild_failures
+                    }
+                }
+            ),
+        );
+    }
+
+    pub fn record_agent_build_retry_metric(&mut self, class: CadBuildFailureClass) {
+        self.build_failure_metrics.record_retry(class);
+        self.push_agent_build_event(
+            "cad.build.retry.metric",
+            format!(
+                "class={} count={}",
+                class.label(),
+                match class {
+                    CadBuildFailureClass::ToolTransport => {
+                        self.build_failure_metrics.tool_transport_retries
+                    }
+                    CadBuildFailureClass::IntentParseValidation => {
+                        self.build_failure_metrics.intent_parse_retries
+                    }
+                    CadBuildFailureClass::DispatchRebuild => {
+                        self.build_failure_metrics.dispatch_rebuild_retries
+                    }
+                }
+            ),
+        );
+    }
+
     pub fn record_agent_build_rebuild_result(&mut self, trigger: &str, result: &str) {
         self.build_session.latest_rebuild_result = Some(format!(
             "trigger={} result={}",
@@ -1572,6 +1719,10 @@ impl CadDemoPaneState {
         let reason_trimmed = reason.trim().to_string();
         self.build_session.failure_reason = Some(reason_trimmed.clone());
         self.build_session.remediation_hint = remediation_hint;
+        self.build_failure_metrics.terminal_failures = self
+            .build_failure_metrics
+            .terminal_failures
+            .saturating_add(1);
         self.transition_agent_build_phase(
             CadBuildSessionPhase::Failed,
             event_code,
@@ -1617,6 +1768,9 @@ impl CadDemoPaneState {
             thread_id,
             turn_id,
             terminal_phase,
+            failure_class: self.build_session.failure_class,
+            retry_attempts: self.build_session.retry_attempts,
+            retry_limit: self.build_session.retry_limit,
             latest_tool_result: self.build_session.latest_tool_result.clone(),
             latest_rebuild_result: self.build_session.latest_rebuild_result.clone(),
             failure_reason: self.build_session.failure_reason.clone(),

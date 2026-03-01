@@ -22,14 +22,51 @@ use openagents_cad::validity::{
 
 use crate::app_state::{
     ActivityEventDomain, ActivityEventRow, AutopilotProgressBlock, AutopilotProgressRow,
-    CadBuildSessionArchiveState, CadBuildSessionPhase, CadBuildSessionState, CadCameraViewSnap,
-    CadDemoPaneState, CadDemoWarningState, CadRebuildReceiptState, CadSnapMode,
+    CadBuildFailureClass, CadBuildSessionArchiveState, CadBuildSessionPhase, CadBuildSessionState,
+    CadCameraViewSnap, CadDemoPaneState, CadDemoWarningState, CadRebuildReceiptState, CadSnapMode,
     CadThreeDMouseAxis, CadTimelineRowState, PaneLoadState, RenderState,
 };
 use crate::cad_rebuild_worker::{
     CadBackgroundRebuildWorker, CadRebuildCompleted, CadRebuildRequest, CadRebuildResponse,
 };
 use crate::pane_system::CadDemoPaneAction;
+
+const CAD_REBUILD_ENQUEUE_RETRY_LIMIT: u8 = 1;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum CadChatPromptApplyOutcome {
+    Applied {
+        intent_name: String,
+        rebuild_trigger: Option<String>,
+    },
+    ParseFailure {
+        error_code: String,
+        error_message: String,
+        recovery_prompt: String,
+    },
+    DispatchFailure {
+        intent_name: String,
+        error: String,
+    },
+    RebuildEnqueueFailure {
+        intent_name: String,
+        trigger: String,
+        error: String,
+        retry_attempts: u8,
+        retry_limit: u8,
+    },
+    IgnoredNonCadPrompt,
+}
+
+impl CadChatPromptApplyOutcome {
+    fn should_sync_progress(&self) -> bool {
+        !matches!(self, Self::IgnoredNonCadPrompt)
+    }
+
+    fn changed_for_bool_api(&self) -> bool {
+        !matches!(self, Self::IgnoredNonCadPrompt)
+    }
+}
 
 pub(super) fn apply_chat_prompt_to_cad_session(
     state: &mut RenderState,
@@ -45,7 +82,22 @@ pub(super) fn apply_chat_prompt_to_cad_session_with_trigger(
     prompt: &str,
     rebuild_trigger_prefix: Option<&str>,
 ) -> bool {
-    let changed = match translate_chat_to_cad_intent(prompt) {
+    apply_chat_prompt_to_cad_session_with_trigger_outcome(
+        state,
+        thread_id,
+        prompt,
+        rebuild_trigger_prefix,
+    )
+    .changed_for_bool_api()
+}
+
+pub(super) fn apply_chat_prompt_to_cad_session_with_trigger_outcome(
+    state: &mut RenderState,
+    thread_id: &str,
+    prompt: &str,
+    rebuild_trigger_prefix: Option<&str>,
+) -> CadChatPromptApplyOutcome {
+    let outcome = match translate_chat_to_cad_intent(prompt) {
         CadIntentTranslationOutcome::Intent(intent) => {
             let intent_name = intent.intent_name().to_string();
             match state
@@ -53,142 +105,136 @@ pub(super) fn apply_chat_prompt_to_cad_session_with_trigger(
                 .apply_chat_intent_for_thread(thread_id, &intent)
             {
                 Ok(receipt) => {
-                    if let Some(rebuild_trigger) =
-                        rebuild_trigger_for_chat_intent(&intent, rebuild_trigger_prefix)
-                    {
-                        if let Err(error) =
-                            enqueue_rebuild_cycle(&mut state.cad_demo, rebuild_trigger.as_str())
-                        {
+                    let rebuild_trigger =
+                        rebuild_trigger_for_chat_intent(&intent, rebuild_trigger_prefix);
+                    if let Some(rebuild_trigger) = rebuild_trigger.as_ref() {
+                        if let Err(error) = enqueue_rebuild_cycle_with_retry(
+                            &mut state.cad_demo,
+                            rebuild_trigger.as_str(),
+                            CAD_REBUILD_ENQUEUE_RETRY_LIMIT,
+                        ) {
                             state.cad_demo.last_error = Some(format!(
                                 "CAD rebuild enqueue failed for trigger '{}': {}",
                                 rebuild_trigger, error
                             ));
-                            if rebuild_trigger.starts_with("ai-intent:") {
+                            state.cad_demo.record_agent_build_failure_metric(
+                                CadBuildFailureClass::DispatchRebuild,
+                            );
+                            if rebuild_trigger.starts_with("ai-intent:")
+                                && state.cad_demo.build_session.phase != CadBuildSessionPhase::Idle
+                            {
+                                state.cad_demo.set_agent_build_failure_context(
+                                    CadBuildFailureClass::DispatchRebuild,
+                                    CAD_REBUILD_ENQUEUE_RETRY_LIMIT,
+                                    CAD_REBUILD_ENQUEUE_RETRY_LIMIT,
+                                );
                                 let _ = state.cad_demo.fail_agent_build_session(
                                     "cad.build.rebuild.enqueue_failed",
                                     format!(
                                         "failed to enqueue rebuild trigger {}: {}",
                                         rebuild_trigger, error
                                     ),
-                                    Some("retry CAD intent after inspecting reducer error".to_string()),
+                                    Some(
+                                        "retry CAD intent after inspecting reducer error"
+                                            .to_string(),
+                                    ),
                                 );
                             }
-                        }
-                    }
-
-                    match &intent {
-                        CadIntent::Export(export_intent) => {
-                            match run_step_export_from_active_mesh(
-                                &state.cad_demo,
-                                &export_intent.variant_id,
-                            ) {
-                                Ok(artifact) => {
-                                    state.cad_demo.last_error = None;
-                                    state.cad_demo.last_action = Some(format!(
-                                        "CAD STEP export ready -> {} ({} bytes, hash {})",
-                                        artifact.receipt.file_name,
-                                        artifact.receipt.byte_count,
-                                        artifact.receipt.deterministic_hash
-                                    ));
-                                    emit_cad_event(
-                                        state,
-                                        CadEventKind::ExportCompleted,
-                                        receipt.state_revision,
-                                        Some(export_intent.variant_id.clone()),
-                                        Some(format!(
-                                            "chat-export:{}:{}:{}",
-                                            thread_id,
-                                            artifact.receipt.file_name,
-                                            artifact.receipt.deterministic_hash
-                                        )),
-                                        "CAD STEP export completed".to_string(),
-                                        format!(
-                                            "thread={} session={} variant={} file={} bytes={} hash={}",
-                                            thread_id,
-                                            state.cad_demo.session_id,
-                                            export_intent.variant_id,
-                                            artifact.receipt.file_name,
-                                            artifact.receipt.byte_count,
-                                            artifact.receipt.deterministic_hash
-                                        ),
-                                    );
-                                }
-                                Err(error) => {
-                                    state.cad_demo.last_error =
-                                        Some(format!("CAD STEP export failed: {error}"));
-                                    state.cad_demo.last_action = Some(
-                                        "CAD STEP export rejected: inspect error and retry"
-                                            .to_string(),
-                                    );
-                                    emit_cad_event(
-                                        state,
-                                        CadEventKind::ExportFailed,
-                                        receipt.state_revision,
-                                        Some(export_intent.variant_id.clone()),
-                                        Some(format!(
-                                            "chat-export-failed:{}:{}:{}",
-                                            thread_id,
-                                            export_intent.variant_id,
-                                            receipt.state_revision
-                                        )),
-                                        "CAD STEP export failed".to_string(),
-                                        format!(
-                                            "thread={} session={} variant={} error={} remediation={}",
-                                            thread_id,
-                                            state.cad_demo.session_id,
-                                            export_intent.variant_id,
-                                            error,
-                                            error.remediation_hint()
-                                        ),
-                                    );
-                                }
+                            CadChatPromptApplyOutcome::RebuildEnqueueFailure {
+                                intent_name,
+                                trigger: rebuild_trigger.to_string(),
+                                error,
+                                retry_attempts: CAD_REBUILD_ENQUEUE_RETRY_LIMIT,
+                                retry_limit: CAD_REBUILD_ENQUEUE_RETRY_LIMIT,
+                            }
+                        } else {
+                            apply_post_dispatch_side_effects(
+                                state,
+                                thread_id,
+                                &intent_name,
+                                &intent,
+                                receipt.state_revision,
+                            );
+                            CadChatPromptApplyOutcome::Applied {
+                                intent_name,
+                                rebuild_trigger: Some(rebuild_trigger.to_string()),
                             }
                         }
-                        _ => {
-                            emit_cad_event(
-                                state,
-                                CadEventKind::ParameterUpdated,
-                                receipt.state_revision,
-                                Some(state.cad_demo.active_variant_id.clone()),
-                                Some(format!(
-                                    "chat-intent:{}:{}:{}",
-                                    thread_id, intent_name, receipt.state_revision
-                                )),
-                                format!("CAD chat intent -> {}", intent_name),
-                                format!(
-                                    "thread={} session={} revision={}",
-                                    thread_id, state.cad_demo.session_id, receipt.state_revision
-                                ),
-                            );
+                    } else {
+                        apply_post_dispatch_side_effects(
+                            state,
+                            thread_id,
+                            &intent_name,
+                            &intent,
+                            receipt.state_revision,
+                        );
+                        CadChatPromptApplyOutcome::Applied {
+                            intent_name,
+                            rebuild_trigger,
                         }
                     }
                 }
                 Err(error) => {
-                    state.cad_demo.last_error = Some(format!(
+                    let error_text = format!(
                         "CAD intent dispatch failed for thread {}: {}",
                         thread_id, error
-                    ));
+                    );
+                    state.cad_demo.last_error = Some(error_text.clone());
+                    state
+                        .cad_demo
+                        .record_agent_build_failure_metric(CadBuildFailureClass::DispatchRebuild);
+                    if rebuild_trigger_prefix.is_some_and(|prefix| prefix.starts_with("ai-intent"))
+                        && state.cad_demo.build_session.phase != CadBuildSessionPhase::Idle
+                    {
+                        state.cad_demo.set_agent_build_failure_context(
+                            CadBuildFailureClass::DispatchRebuild,
+                            0,
+                            0,
+                        );
+                        let _ = state.cad_demo.fail_agent_build_session(
+                            "cad.build.dispatch.failed",
+                            format!(
+                                "CAD dispatch failed for intent {}: {}",
+                                intent_name,
+                                error
+                            ),
+                            Some(
+                                "retry with a narrower parameter change or a valid intent_json payload"
+                                    .to_string(),
+                            ),
+                        );
+                    }
+                    CadChatPromptApplyOutcome::DispatchFailure {
+                        intent_name,
+                        error: error_text,
+                    }
                 }
             }
-            true
         }
         CadIntentTranslationOutcome::ParseFailure(error) => {
             if looks_like_cad_prompt(prompt) {
+                state
+                    .cad_demo
+                    .record_agent_build_failure_metric(CadBuildFailureClass::IntentParseValidation);
                 state.cad_demo.last_error = Some(format!(
                     "CAD chat parse failure ({}) {}",
                     error.code, error.message
                 ));
-                state.cad_demo.last_action = Some(error.recovery_prompt);
-                true
+                state.cad_demo.last_action = Some(error.recovery_prompt.clone());
+                CadChatPromptApplyOutcome::ParseFailure {
+                    error_code: error.code,
+                    error_message: error.message,
+                    recovery_prompt: error.recovery_prompt,
+                }
             } else {
-                false
+                CadChatPromptApplyOutcome::IgnoredNonCadPrompt
             }
         }
     };
-    if changed {
+    if outcome.should_sync_progress() {
         sync_cad_build_progress_to_chat(state);
     }
-    changed
+    outcome
 }
 
 fn rebuild_trigger_for_chat_intent(
@@ -215,6 +261,117 @@ fn should_enqueue_rebuild_for_chat_intent(intent: &CadIntent) -> bool {
     )
 }
 
+fn enqueue_rebuild_cycle_with_retry(
+    state: &mut CadDemoPaneState,
+    trigger: &str,
+    retry_limit: u8,
+) -> Result<(), String> {
+    let mut attempts = 0u8;
+    loop {
+        match enqueue_rebuild_cycle(state, trigger) {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                if attempts >= retry_limit {
+                    return Err(error);
+                }
+                attempts = attempts.saturating_add(1);
+                state.record_agent_build_retry_metric(CadBuildFailureClass::DispatchRebuild);
+                state.last_action = Some(format!(
+                    "CAD rebuild enqueue retry {}/{} for {} after error: {}",
+                    attempts, retry_limit, trigger, error
+                ));
+            }
+        }
+    }
+}
+
+fn apply_post_dispatch_side_effects(
+    state: &mut RenderState,
+    thread_id: &str,
+    intent_name: &str,
+    intent: &CadIntent,
+    state_revision: u64,
+) {
+    match intent {
+        CadIntent::Export(export_intent) => {
+            match run_step_export_from_active_mesh(&state.cad_demo, &export_intent.variant_id) {
+                Ok(artifact) => {
+                    state.cad_demo.last_error = None;
+                    state.cad_demo.last_action = Some(format!(
+                        "CAD STEP export ready -> {} ({} bytes, hash {})",
+                        artifact.receipt.file_name,
+                        artifact.receipt.byte_count,
+                        artifact.receipt.deterministic_hash
+                    ));
+                    emit_cad_event(
+                        state,
+                        CadEventKind::ExportCompleted,
+                        state_revision,
+                        Some(export_intent.variant_id.clone()),
+                        Some(format!(
+                            "chat-export:{}:{}:{}",
+                            thread_id,
+                            artifact.receipt.file_name,
+                            artifact.receipt.deterministic_hash
+                        )),
+                        "CAD STEP export completed".to_string(),
+                        format!(
+                            "thread={} session={} variant={} file={} bytes={} hash={}",
+                            thread_id,
+                            state.cad_demo.session_id,
+                            export_intent.variant_id,
+                            artifact.receipt.file_name,
+                            artifact.receipt.byte_count,
+                            artifact.receipt.deterministic_hash
+                        ),
+                    );
+                }
+                Err(error) => {
+                    state.cad_demo.last_error = Some(format!("CAD STEP export failed: {error}"));
+                    state.cad_demo.last_action =
+                        Some("CAD STEP export rejected: inspect error and retry".to_string());
+                    emit_cad_event(
+                        state,
+                        CadEventKind::ExportFailed,
+                        state_revision,
+                        Some(export_intent.variant_id.clone()),
+                        Some(format!(
+                            "chat-export-failed:{}:{}:{}",
+                            thread_id, export_intent.variant_id, state_revision
+                        )),
+                        "CAD STEP export failed".to_string(),
+                        format!(
+                            "thread={} session={} variant={} error={} remediation={}",
+                            thread_id,
+                            state.cad_demo.session_id,
+                            export_intent.variant_id,
+                            error,
+                            error.remediation_hint()
+                        ),
+                    );
+                }
+            }
+        }
+        _ => {
+            emit_cad_event(
+                state,
+                CadEventKind::ParameterUpdated,
+                state_revision,
+                Some(state.cad_demo.active_variant_id.clone()),
+                Some(format!(
+                    "chat-intent:{}:{}:{}",
+                    thread_id, intent_name, state_revision
+                )),
+                format!("CAD chat intent -> {}", intent_name),
+                format!(
+                    "thread={} session={} revision={}",
+                    thread_id, state.cad_demo.session_id, state_revision
+                ),
+            );
+        }
+    }
+}
+
 pub(super) fn sync_cad_build_progress_to_chat(state: &mut RenderState) {
     let Some((turn_id, progress_block)) = cad_progress_block_from_state(&state.cad_demo) else {
         return;
@@ -224,13 +381,21 @@ pub(super) fn sync_cad_build_progress_to_chat(state: &mut RenderState) {
         .set_turn_progress_blocks_for_turn(&turn_id, vec![progress_block]);
 }
 
-fn cad_progress_block_from_state(cad_demo: &CadDemoPaneState) -> Option<(String, AutopilotProgressBlock)> {
+fn cad_progress_block_from_state(
+    cad_demo: &CadDemoPaneState,
+) -> Option<(String, AutopilotProgressBlock)> {
     if cad_demo.build_session.phase != CadBuildSessionPhase::Idle {
         let turn_id = cad_demo.build_session.turn_id.clone()?;
-        return Some((turn_id, progress_block_from_active_session(&cad_demo.build_session)));
+        return Some((
+            turn_id,
+            progress_block_from_active_session(&cad_demo.build_session),
+        ));
     }
     let archived = cad_demo.last_build_session.as_ref()?;
-    Some((archived.turn_id.clone(), progress_block_from_archive_session(archived)))
+    Some((
+        archived.turn_id.clone(),
+        progress_block_from_archive_session(archived),
+    ))
 }
 
 fn progress_block_from_active_session(session: &CadBuildSessionState) -> AutopilotProgressBlock {
@@ -244,6 +409,22 @@ fn progress_block_from_active_session(session: &CadBuildSessionState) -> Autopil
     }
     if let Some(rebuild_result) = session.latest_rebuild_result.as_deref() {
         rows.push(progress_row("rebuild", rebuild_result.to_string(), "info"));
+    }
+    if let Some(class) = session.failure_class {
+        rows.push(progress_row(
+            "failure_class",
+            class.label().to_string(),
+            "error",
+        ));
+        rows.push(progress_row(
+            "retries",
+            format!("{}/{}", session.retry_attempts, session.retry_limit),
+            if session.retry_attempts >= session.retry_limit {
+                "error"
+            } else {
+                "muted"
+            },
+        ));
     }
     push_recent_event_rows(&mut rows, &session.events);
     if let Some(reason) = session.failure_reason.as_deref() {
@@ -273,6 +454,22 @@ fn progress_block_from_archive_session(
     }
     if let Some(rebuild_result) = archived.latest_rebuild_result.as_deref() {
         rows.push(progress_row("rebuild", rebuild_result.to_string(), "info"));
+    }
+    if let Some(class) = archived.failure_class {
+        rows.push(progress_row(
+            "failure_class",
+            class.label().to_string(),
+            "error",
+        ));
+        rows.push(progress_row(
+            "retries",
+            format!("{}/{}", archived.retry_attempts, archived.retry_limit),
+            if archived.retry_attempts >= archived.retry_limit {
+                "error"
+            } else {
+                "muted"
+            },
+        ));
     }
     push_recent_event_rows(&mut rows, &archived.events);
     if let Some(reason) = archived.failure_reason.as_deref() {
@@ -835,10 +1032,18 @@ fn apply_rebuild_response(
                 failed.trigger, failed.request_id
             ));
             if failed.trigger.starts_with("ai-intent:") {
+                state.record_agent_build_failure_metric(CadBuildFailureClass::DispatchRebuild);
                 state.record_agent_build_rebuild_result(
                     &failed.trigger,
                     &format!("error={}", failed.error),
                 );
+                if state.build_session.phase != CadBuildSessionPhase::Idle {
+                    state.set_agent_build_failure_context(
+                        CadBuildFailureClass::DispatchRebuild,
+                        0,
+                        0,
+                    );
+                }
                 let _ = state.fail_agent_build_session(
                     "cad.build.rebuild.failed",
                     format!(
@@ -1988,7 +2193,8 @@ mod tests {
         rebuild_trigger_for_chat_intent, run_step_export_from_active_mesh,
     };
     use crate::app_state::{
-        ActivityEventDomain, CadBuildSessionPhase, CadDemoPaneState, CadTimelineRowState,
+        ActivityEventDomain, CadBuildFailureClass, CadBuildSessionPhase, CadDemoPaneState,
+        CadTimelineRowState,
     };
     use crate::cad_rebuild_worker::{CadRebuildFailed, CadRebuildResponse};
     use crate::pane_system::CadDemoPaneAction;
@@ -2181,6 +2387,10 @@ mod tests {
             .as_ref()
             .expect("failed build session should be archived");
         assert_eq!(archived.terminal_phase, CadBuildSessionPhase::Failed);
+        assert_eq!(
+            archived.failure_class,
+            Some(CadBuildFailureClass::DispatchRebuild)
+        );
         assert!(
             archived
                 .failure_reason
