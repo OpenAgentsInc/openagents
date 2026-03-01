@@ -180,6 +180,7 @@ Decision criteria to keep objective:
 - app pane-state document: `docs/cad/CAD_PANE_STATE.md`
 - input reducer scaffold document: `docs/cad/CAD_INPUT_SCAFFOLD.md`
 - params store document: `docs/cad/CAD_PARAMS.md`
+- feature ops document: `docs/cad/CAD_FEATURE_OPS.md`
 
 ### Eval, Caching, and Concurrency
 
