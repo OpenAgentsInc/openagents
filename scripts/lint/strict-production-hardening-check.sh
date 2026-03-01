@@ -39,4 +39,8 @@ run_strict_lane \
     cad-step-checker \
     "$ROOT_DIR/scripts/cad/step-checker-ci.sh"
 
+run_strict_lane \
+    cad-headless-script-harness \
+    "$ROOT_DIR/scripts/cad/headless-script-ci.sh"
+
 printf 'Strict production hardening check passed.\n'

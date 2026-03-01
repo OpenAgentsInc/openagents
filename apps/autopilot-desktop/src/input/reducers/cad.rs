@@ -608,35 +608,46 @@ fn drain_worker_responses_from_pane(
 
     let mut emitted = Vec::new();
     for response in responses {
-        match response {
-            CadRebuildResponse::Completed(completed) => {
-                if completed.document_revision < state.document_revision {
-                    // Keep last-good mesh steady; skip stale rebuild result.
-                    continue;
-                }
-                match apply_completed_rebuild(state, completed) {
-                    Ok(receipt) => emitted.push(receipt),
-                    Err(error) => {
-                        state.load_state = PaneLoadState::Error;
-                        state.last_error = Some(error.clone());
-                        state.last_action = Some(format!("CAD rebuild commit failed: {error}"));
-                    }
-                }
-            }
-            CadRebuildResponse::Failed(failed) => {
-                if state.pending_rebuild_request_id == Some(failed.request_id) {
-                    state.pending_rebuild_request_id = None;
-                }
-                state.load_state = PaneLoadState::Error;
-                state.last_error = Some(failed.error.clone());
-                state.last_action = Some(format!(
-                    "CAD rebuild {} failed for request #{}",
-                    failed.trigger, failed.request_id
-                ));
-            }
+        if let Some(receipt) = apply_rebuild_response(state, response) {
+            emitted.push(receipt);
         }
     }
     emitted
+}
+
+fn apply_rebuild_response(
+    state: &mut CadDemoPaneState,
+    response: CadRebuildResponse,
+) -> Option<CadRebuildReceiptState> {
+    match response {
+        CadRebuildResponse::Completed(completed) => {
+            if completed.document_revision < state.document_revision {
+                // Keep last-good mesh steady; skip stale rebuild result.
+                return None;
+            }
+            match apply_completed_rebuild(state, completed) {
+                Ok(receipt) => Some(receipt),
+                Err(error) => {
+                    state.load_state = PaneLoadState::Error;
+                    state.last_error = Some(error.clone());
+                    state.last_action = Some(format!("CAD rebuild commit failed: {error}"));
+                    None
+                }
+            }
+        }
+        CadRebuildResponse::Failed(failed) => {
+            if state.pending_rebuild_request_id == Some(failed.request_id) {
+                state.pending_rebuild_request_id = None;
+            }
+            state.load_state = PaneLoadState::Error;
+            state.last_error = Some(failed.error.clone());
+            state.last_action = Some(format!(
+                "CAD rebuild {} failed for request #{}",
+                failed.trigger, failed.request_id
+            ));
+            None
+        }
+    }
 }
 
 fn apply_completed_rebuild(
@@ -1741,16 +1752,18 @@ fn looks_like_cad_prompt(prompt: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     use super::{
         activity_row_from_cad_event, analysis_snapshot_from_mesh, apply_cad_demo_action,
-        drain_worker_responses_from_pane, run_step_export_from_active_mesh,
+        apply_rebuild_response, drain_worker_responses_from_pane, run_step_export_from_active_mesh,
     };
     use crate::app_state::{ActivityEventDomain, CadDemoPaneState, CadTimelineRowState};
+    use crate::cad_rebuild_worker::{CadRebuildFailed, CadRebuildResponse};
     use crate::pane_system::CadDemoPaneAction;
     use openagents_cad::chat_adapter::{CadIntentTranslationOutcome, translate_chat_to_cad_intent};
     use openagents_cad::events::{CadEvent, CadEventKind};
+    use openagents_cad::intent::parse_cad_intent_json;
     use openagents_cad::mesh::{
         CadMeshBounds, CadMeshMaterialSlot, CadMeshPayload, CadMeshTopology, CadMeshVertex,
     };
@@ -2034,6 +2047,353 @@ mod tests {
         } else {
             lines.join("\n")
         }
+    }
+
+    fn script_fixture_path(name: &str) -> String {
+        let root = env!("CARGO_MANIFEST_DIR");
+        format!("{root}/tests/scripts/{name}")
+    }
+
+    fn load_script_fixture(name: &str) -> Value {
+        let path = script_fixture_path(name);
+        let payload = fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read script fixture {path}: {error}"));
+        serde_json::from_str(&payload)
+            .unwrap_or_else(|error| panic!("failed to parse script fixture {path}: {error}"))
+    }
+
+    fn required_object<'a>(value: &'a Value, path: &str) -> &'a serde_json::Map<String, Value> {
+        value
+            .as_object()
+            .unwrap_or_else(|| panic!("expected object at {path}, found {value}"))
+    }
+
+    fn required_array<'a>(value: &'a Value, path: &str) -> &'a Vec<Value> {
+        value
+            .as_array()
+            .unwrap_or_else(|| panic!("expected array at {path}, found {value}"))
+    }
+
+    fn required_str(map: &serde_json::Map<String, Value>, key: &str, path: &str) -> String {
+        map.get(key)
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .unwrap_or_else(|| panic!("expected string at {path}.{key}"))
+    }
+
+    fn optional_u64(map: &serde_json::Map<String, Value>, key: &str) -> Option<u64> {
+        map.get(key).and_then(Value::as_u64)
+    }
+
+    fn required_u64(map: &serde_json::Map<String, Value>, key: &str, path: &str) -> u64 {
+        optional_u64(map, key).unwrap_or_else(|| panic!("expected u64 at {path}.{key}"))
+    }
+
+    fn deterministic_seeded_count(seed: u64, step_index: usize, min: u64, max: u64) -> u64 {
+        if min > max {
+            panic!("invalid randomized cycle bounds: min {min} > max {max}");
+        }
+        if min == max {
+            return min;
+        }
+        let span = max.saturating_sub(min).saturating_add(1);
+        let mixed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1)
+            .wrapping_add((step_index as u64).wrapping_mul(1442695040888963407));
+        min.saturating_add(mixed % span)
+    }
+
+    fn receipt_json(receipt: &crate::app_state::CadRebuildReceiptState) -> Value {
+        json!({
+            "event_id": receipt.event_id,
+            "document_revision": receipt.document_revision,
+            "variant_id": receipt.variant_id,
+            "rebuild_hash": receipt.rebuild_hash,
+            "mesh_hash": receipt.mesh_hash,
+            "duration_ms": receipt.duration_ms,
+            "feature_count": receipt.feature_count,
+            "vertex_count": receipt.vertex_count,
+            "triangle_count": receipt.triangle_count,
+            "edge_count": receipt.edge_count,
+            "cache_hits": receipt.cache_hits,
+            "cache_misses": receipt.cache_misses,
+            "cache_evictions": receipt.cache_evictions,
+        })
+    }
+
+    fn assert_json_subset(expected: &Value, actual: &Value, path: &str) {
+        match expected {
+            Value::Object(expected_map) => {
+                let actual_map = actual.as_object().unwrap_or_else(|| {
+                    panic!("expected object at {path}, found actual value {actual}")
+                });
+                for (key, expected_value) in expected_map {
+                    let child_path = format!("{path}.{key}");
+                    let actual_value = actual_map.get(key).unwrap_or_else(|| {
+                        panic!("missing key {key} at {path}; actual object: {actual}")
+                    });
+                    assert_json_subset(expected_value, actual_value, &child_path);
+                }
+            }
+            Value::Array(expected_items) => {
+                let actual_items = actual
+                    .as_array()
+                    .unwrap_or_else(|| panic!("expected array at {path}, found {actual}"));
+                assert_eq!(
+                    expected_items.len(),
+                    actual_items.len(),
+                    "array length mismatch at {path}"
+                );
+                for (index, expected_value) in expected_items.iter().enumerate() {
+                    assert_json_subset(
+                        expected_value,
+                        &actual_items[index],
+                        &format!("{path}[{index}]"),
+                    );
+                }
+            }
+            _ => {
+                assert_eq!(expected, actual, "value mismatch at {path}");
+            }
+        }
+    }
+
+    fn script_final_snapshot(state: &CadDemoPaneState, total_duration_ms: u64) -> Value {
+        let warning_codes = state
+            .warnings
+            .iter()
+            .map(|warning| warning.code.clone())
+            .collect::<Vec<_>>();
+        let critical_count = state
+            .warnings
+            .iter()
+            .filter(|warning| warning.severity.eq_ignore_ascii_case("critical"))
+            .count() as u64;
+        json!({
+            "final_state_revision": state.document_revision,
+            "active_variant_id": state.active_variant_id,
+            "last_error": state.last_error,
+            "receipts": state.rebuild_receipts.iter().map(receipt_json).collect::<Vec<_>>(),
+            "warnings": {
+                "count": state.warnings.len(),
+                "critical_count": critical_count,
+                "codes": warning_codes,
+            },
+            "analysis": {
+                "document_revision": state.analysis_snapshot.document_revision,
+                "variant_id": state.analysis_snapshot.variant_id,
+                "material_id": state.analysis_snapshot.material_id,
+                "volume_mm3": state.analysis_snapshot.volume_mm3,
+                "mass_kg": state.analysis_snapshot.mass_kg,
+                "estimated_cost_usd": state.analysis_snapshot.estimated_cost_usd,
+                "max_deflection_mm": state.analysis_snapshot.max_deflection_mm,
+            },
+            "timing": {
+                "total_duration_ms": total_duration_ms,
+            }
+        })
+    }
+
+    fn run_headless_cad_script_fixture(name: &str) -> Value {
+        let script = load_script_fixture(name);
+        let root = required_object(&script, "script");
+        let script_id = required_str(root, "script_id", "script");
+        let seed = optional_u64(root, "seed").unwrap_or(0);
+        let thread_id = root
+            .get("thread_id")
+            .and_then(Value::as_str)
+            .unwrap_or("thread.cad-script")
+            .to_string();
+        let timing_cfg = root.get("timing").map(|value| required_object(value, "script.timing"));
+        let steps = root
+            .get("steps")
+            .map(|value| required_array(value, "script.steps"))
+            .unwrap_or_else(|| panic!("script {script_id} must include steps"));
+
+        let mut state = CadDemoPaneState::default();
+        let mut step_reports = Vec::<Value>::new();
+        let started = Instant::now();
+
+        for (index, step_value) in steps.iter().enumerate() {
+            let step_path = format!("script.steps[{index}]");
+            let step = required_object(step_value, &step_path);
+            let kind = required_str(step, "kind", &step_path);
+            let name = step
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or(kind.as_str())
+                .to_string();
+            let step_started = Instant::now();
+
+            let result = match kind.as_str() {
+                "intent_json" => {
+                    let payload = required_str(step, "payload", &step_path);
+                    match parse_cad_intent_json(&payload) {
+                        Ok(intent) => match state.apply_chat_intent_for_thread(&thread_id, &intent) {
+                            Ok(receipt) => json!({
+                                "status": "applied",
+                                "intent": intent.intent_name(),
+                                "state_revision": receipt.state_revision,
+                                "session_id": state.session_id,
+                            }),
+                            Err(error) => json!({
+                                "status": "rejected_dispatch",
+                                "error": error.to_string(),
+                            }),
+                        },
+                        Err(error) => json!({
+                            "status": "rejected_parse",
+                            "error_code": error.code,
+                            "error_message": error.message,
+                        }),
+                    }
+                }
+                "cycle_variant" => {
+                    let mut count = optional_u64(step, "count").unwrap_or(1);
+                    if let Some(randomized) = step.get("randomized") {
+                        let randomized = required_object(randomized, &format!("{step_path}.randomized"));
+                        let min = required_u64(randomized, "min", &format!("{step_path}.randomized"));
+                        let max = required_u64(randomized, "max", &format!("{step_path}.randomized"));
+                        count = deterministic_seeded_count(seed, index, min, max);
+                    }
+                    for _ in 0..count {
+                        assert!(
+                            apply_cad_demo_action(&mut state, CadDemoPaneAction::CycleVariant),
+                            "cycle variant step should mutate state"
+                        );
+                        wait_for_receipt(&mut state);
+                    }
+                    let warning_codes = state
+                        .warnings
+                        .iter()
+                        .map(|warning| warning.code.clone())
+                        .collect::<Vec<_>>();
+                    json!({
+                        "status": "cycled",
+                        "count": count,
+                        "state_revision": state.document_revision,
+                        "active_variant_id": state.active_variant_id,
+                        "last_receipt": state.last_rebuild_receipt.as_ref().map(receipt_json),
+                        "warning_codes": warning_codes,
+                    })
+                }
+                "inject_rebuild_failure" => {
+                    let request_id = optional_u64(step, "request_id")
+                        .or(state.pending_rebuild_request_id)
+                        .unwrap_or_else(|| 9000 + index as u64);
+                    let trigger = step
+                        .get("trigger")
+                        .and_then(Value::as_str)
+                        .unwrap_or("script-injected-failure")
+                        .to_string();
+                    let error = required_str(step, "error", &step_path);
+                    let variant_id = step
+                        .get("variant_id")
+                        .and_then(Value::as_str)
+                        .unwrap_or(state.active_variant_id.as_str())
+                        .to_string();
+                    let document_revision = optional_u64(step, "document_revision")
+                        .unwrap_or(state.document_revision);
+                    state.pending_rebuild_request_id = Some(request_id);
+                    let failed = CadRebuildFailed {
+                        request_id,
+                        trigger,
+                        session_id: state.session_id.clone(),
+                        document_revision,
+                        variant_id,
+                        error: error.clone(),
+                    };
+                    let _ = apply_rebuild_response(&mut state, CadRebuildResponse::Failed(failed));
+                    json!({
+                        "status": "failure_injected",
+                        "request_id": request_id,
+                        "state_revision": state.document_revision,
+                        "last_error": state.last_error,
+                        "load_state": format!("{:?}", state.load_state),
+                    })
+                }
+                "assert_warning_escalation" => {
+                    let min_warning_count = required_u64(step, "min_warning_count", &step_path);
+                    let min_critical_count = required_u64(step, "min_critical_count", &step_path);
+                    let warning_count = state.warnings.len() as u64;
+                    let critical_count = state
+                        .warnings
+                        .iter()
+                        .filter(|warning| warning.severity.eq_ignore_ascii_case("critical"))
+                        .count() as u64;
+                    assert!(
+                        warning_count >= min_warning_count,
+                        "warning escalation failed: warning_count {} < min_warning_count {}",
+                        warning_count,
+                        min_warning_count
+                    );
+                    assert!(
+                        critical_count >= min_critical_count,
+                        "warning escalation failed: critical_count {} < min_critical_count {}",
+                        critical_count,
+                        min_critical_count
+                    );
+                    json!({
+                        "status": "asserted",
+                        "warning_count": warning_count,
+                        "critical_count": critical_count,
+                    })
+                }
+                other => panic!("unsupported script step kind '{other}' at {step_path}"),
+            };
+
+            let step_duration_ms = step_started.elapsed().as_millis() as u64;
+            if let Some(max_step_duration_ms) = optional_u64(step, "max_duration_ms") {
+                assert!(
+                    step_duration_ms <= max_step_duration_ms,
+                    "step '{}' exceeded max_duration_ms {} with {}",
+                    name,
+                    max_step_duration_ms,
+                    step_duration_ms
+                );
+            }
+            if let Some(expected) = step.get("expect") {
+                assert_json_subset(
+                    expected,
+                    &result,
+                    &format!("script.step_result[{}:{}]", index, name),
+                );
+            }
+            step_reports.push(json!({
+                "index": index,
+                "name": name,
+                "kind": kind,
+                "duration_ms": step_duration_ms,
+                "result": result,
+            }));
+        }
+
+        let total_duration_ms = started.elapsed().as_millis() as u64;
+        if let Some(timing_cfg) = timing_cfg {
+            if let Some(max_total_duration_ms) = optional_u64(timing_cfg, "max_total_duration_ms") {
+                assert!(
+                    total_duration_ms <= max_total_duration_ms,
+                    "script '{}' exceeded total timing budget {} with {}",
+                    script_id,
+                    max_total_duration_ms,
+                    total_duration_ms
+                );
+            }
+        }
+
+        let final_snapshot = script_final_snapshot(&state, total_duration_ms);
+        if let Some(expected) = root.get("expect") {
+            assert_json_subset(expected, &final_snapshot, "script.expect");
+        }
+
+        json!({
+            "script_id": script_id,
+            "seed": seed,
+            "thread_id": thread_id,
+            "steps": step_reports,
+            "final": final_snapshot,
+        })
     }
 
     #[test]
@@ -2751,5 +3111,51 @@ mod tests {
                 "follow-up interaction snapshot mismatch against {fixture_path}\nsemantic diff:\n{diff}\n\nactual snapshot:\n{actual_json}"
             );
         }
+    }
+
+    #[test]
+    fn cad_headless_script_harness_runs_canonical_demo_script() {
+        let report = run_headless_cad_script_fixture("cad_demo_canonical_script.json");
+        let final_state = report
+            .get("final")
+            .expect("canonical script report should include final snapshot");
+        assert_eq!(
+            final_state
+                .get("final_state_revision")
+                .and_then(Value::as_u64),
+            Some(3),
+            "canonical script should end at deterministic revision"
+        );
+    }
+
+    #[test]
+    fn cad_headless_script_harness_supports_failure_path_scripts() {
+        let report = run_headless_cad_script_fixture("cad_demo_failure_paths_script.json");
+        let final_state = report
+            .get("final")
+            .expect("failure script report should include final snapshot");
+        assert!(
+            final_state
+                .get("warnings")
+                .and_then(|warnings| warnings.get("critical_count"))
+                .and_then(Value::as_u64)
+                .unwrap_or_default()
+                >= 1,
+            "failure-path script should preserve critical warning coverage"
+        );
+    }
+
+    #[test]
+    fn cad_release_gate_reliability_reuses_canonical_script_fixture() {
+        let report = run_headless_cad_script_fixture("cad_demo_canonical_script.json");
+        let step_count = report
+            .get("steps")
+            .and_then(Value::as_array)
+            .map(Vec::len)
+            .unwrap_or_default();
+        assert!(
+            step_count >= 3,
+            "canonical script fixture should remain non-trivial for reliability checks"
+        );
     }
 }

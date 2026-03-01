@@ -1,0 +1,86 @@
+{
+  "script_id": "cad.demo.failure-paths.v1",
+  "seed": 2535,
+  "thread_id": "thread.cad-script.failure",
+  "timing": {
+    "max_total_duration_ms": 4000
+  },
+  "steps": [
+    {
+      "name": "intent-rejection-unknown-op",
+      "kind": "intent_json",
+      "payload": "{\"intent\":\"InventGeometry\",\"foo\":1}",
+      "expect": {
+        "status": "rejected_parse",
+        "error_code": "CAD-INTENT-UNKNOWN-OP"
+      }
+    },
+    {
+      "name": "cycle-variant-lightweight",
+      "kind": "cycle_variant",
+      "count": 1,
+      "expect": {
+        "status": "cycled",
+        "count": 1,
+        "state_revision": 1,
+        "active_variant_id": "variant.lightweight"
+      }
+    },
+    {
+      "name": "inject-boolean-failure",
+      "kind": "inject_rebuild_failure",
+      "request_id": 9988,
+      "trigger": "script-boolean-failure",
+      "error": "boolean operation failed: vent cutout self-intersection",
+      "expect": {
+        "status": "failure_injected",
+        "request_id": 9988,
+        "load_state": "Error",
+        "last_error": "boolean operation failed: vent cutout self-intersection"
+      }
+    },
+    {
+      "name": "assert-warning-escalation",
+      "kind": "assert_warning_escalation",
+      "min_warning_count": 2,
+      "min_critical_count": 1,
+      "expect": {
+        "status": "asserted",
+        "warning_count": 2,
+        "critical_count": 1
+      }
+    }
+  ],
+  "expect": {
+    "final_state_revision": 1,
+    "active_variant_id": "variant.lightweight",
+    "last_error": "boolean operation failed: vent cutout self-intersection",
+    "receipts": [
+      {
+        "document_revision": 1,
+        "variant_id": "variant.lightweight",
+        "rebuild_hash": "f0e53915957af649",
+        "mesh_hash": "0ccef620cbb5f202",
+        "feature_count": 4,
+        "vertex_count": 172,
+        "triangle_count": 296,
+        "edge_count": 188,
+        "cache_hits": 0,
+        "cache_misses": 4,
+        "cache_evictions": 0
+      }
+    ],
+    "warnings": {
+      "count": 2,
+      "critical_count": 1,
+      "codes": [
+        "CAD-WARN-FILLET-FAILED",
+        "CAD-WARN-ZERO-THICKNESS"
+      ]
+    },
+    "analysis": {
+      "document_revision": 1,
+      "variant_id": "variant.lightweight"
+    }
+  }
+}
