@@ -291,6 +291,7 @@ If vendoring/adopting external kernel crates:
 - define upstream sync/update cadence
 - declare fork-vs-vendor posture explicitly
 - run dependency security checks on imported code path
+- policy document: `docs/cad/DEPENDENCY_POSTURE.md`
 
 ## 8) Build Order
 
