@@ -40,6 +40,15 @@ Wall-mount parameters:
 - `wall_mount_hole_radius_mm` (`mm`) = `2.8`
 - `wall_mount_bracket_thickness_mm` (`mm`) = `6.0`
 
+Vent parameters:
+
+- `vent_enabled` (`unitless`) = `1`
+- `vent_rows` (`unitless`) = `3`
+- `vent_cols` (`unitless`) = `8`
+- `vent_spacing_mm` (`mm`) = `12.0`
+- `vent_hole_radius_mm` (`mm`) = `2.0`
+- `vent_density_scale` (`unitless`) = `1.0`
+
 ## Baseline Feature Graph
 
 Deterministic nodes:
@@ -51,6 +60,9 @@ Deterministic nodes:
 5. `feature.rack.wall_mount_bracket` (`transform.v1`)
 6. `feature.rack.wall_mount_hole` (`cut.hole.v1`)
 7. `feature.rack.mount_hole_pattern` (`linear.pattern.v1`)
+8. `feature.rack.vent_hole` (`cut.hole.v1`)
+9. `feature.rack.vent_pattern_x` (`linear.pattern.v1`)
+10. `feature.rack.vent_face_set` (`linear.pattern.v1`)
 
 ## Semantic References
 
@@ -58,6 +70,7 @@ Deterministic nodes:
 - `rack_bay_pattern`
 - `wall_mount_bracket`
 - `mount_hole_pattern`
+- `vent_face_set`
 - `rack_corner_break`
 
 These references are created through `CadSemanticRefRegistry` and can be persisted through `.apcad` stable IDs.
