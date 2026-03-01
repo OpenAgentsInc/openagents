@@ -287,6 +287,109 @@ pub fn compose_transform_sequence(ops: &[TransformFeatureOp]) -> CadResult<[f64;
     Ok(composed)
 }
 
+/// Feature op: subtraction-style cylindrical cut/hole.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CutHoleFeatureOp {
+    pub feature_id: String,
+    pub source_feature_id: String,
+    pub radius_param: String,
+    pub depth_param: String,
+    pub tolerance_mm: Option<f64>,
+}
+
+impl CutHoleFeatureOp {
+    pub fn validate(&self) -> CadResult<()> {
+        if self.feature_id.trim().is_empty() || self.source_feature_id.trim().is_empty() {
+            return Err(CadError::InvalidPrimitive {
+                reason: "cut/hole feature ids must not be empty".to_string(),
+            });
+        }
+        if self.radius_param.trim().is_empty() || self.depth_param.trim().is_empty() {
+            return Err(CadError::InvalidPrimitive {
+                reason: "cut/hole parameter bindings must not be empty".to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    pub fn resolve_cutter(&self, params: &ParameterStore) -> CadResult<CylinderPrimitive> {
+        self.validate()?;
+        let radius_mm = params.get_required_with_unit(&self.radius_param, ScalarUnit::Millimeter)?;
+        let height_mm = params.get_required_with_unit(&self.depth_param, ScalarUnit::Millimeter)?;
+        let primitive = CylinderPrimitive {
+            radius_mm,
+            height_mm,
+        };
+        primitive.validate()?;
+        Ok(primitive)
+    }
+
+    pub fn geometry_hash(&self, source_geometry_hash: &str, cutter: &CylinderPrimitive) -> String {
+        let payload = format!(
+            "cut_hole|feature={}|source={}|src_hash={}|r={:.6}|d={:.6}|tol={}",
+            self.feature_id,
+            self.source_feature_id,
+            source_geometry_hash,
+            cutter.radius_mm,
+            cutter.height_mm,
+            self.tolerance_mm.unwrap_or(crate::policy::BASE_TOLERANCE_MM)
+        );
+        format!("{:016x}", fnv1a64(payload.as_bytes()))
+    }
+}
+
+pub fn evaluate_cut_hole_feature<K: CadKernelAdapter>(
+    kernel: &mut K,
+    target_solid: &K::Solid,
+    source_geometry_hash: &str,
+    op: &CutHoleFeatureOp,
+    params: &ParameterStore,
+) -> CadResult<FeatureOpResult<K::Solid>> {
+    evaluate_cut_hole_feature_with_boolean(
+        kernel,
+        target_solid,
+        source_geometry_hash,
+        op,
+        params,
+        |kernel, left, right, tolerance| {
+            crate::boolean::boolean_op(
+                kernel,
+                crate::boolean::BooleanOp::Difference,
+                left,
+                right,
+                tolerance,
+            )
+        },
+    )
+}
+
+fn evaluate_cut_hole_feature_with_boolean<K: CadKernelAdapter, F>(
+    kernel: &mut K,
+    target_solid: &K::Solid,
+    source_geometry_hash: &str,
+    op: &CutHoleFeatureOp,
+    params: &ParameterStore,
+    boolean_apply: F,
+) -> CadResult<FeatureOpResult<K::Solid>>
+where
+    F: FnOnce(&mut K, &K::Solid, &K::Solid, Option<f64>) -> CadResult<K::Solid>,
+{
+    let cutter = op.resolve_cutter(params)?;
+    let cutter_solid = build_primitive(kernel, PrimitiveSpec::Cylinder(cutter))?;
+    let result_solid = boolean_apply(kernel, target_solid, &cutter_solid, op.tolerance_mm)
+        .map_err(|error| CadError::EvalFailed {
+            reason: format!(
+                "cut/hole feature {} failed with structured error: {error}",
+                op.feature_id
+            ),
+        })?;
+    Ok(FeatureOpResult {
+        feature_id: op.feature_id.clone(),
+        geometry_hash: op.geometry_hash(source_geometry_hash, &cutter),
+        solid: result_solid,
+    })
+}
+
 fn identity_matrix() -> [f64; 16] {
     [
         1.0, 0.0, 0.0, 0.0, //
@@ -324,12 +427,14 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        BoxFeatureOp, CylinderFeatureOp, TransformFeatureOp, compose_transform_sequence,
-        evaluate_box_feature, evaluate_cylinder_feature, evaluate_transform_feature,
+        BoxFeatureOp, CutHoleFeatureOp, CylinderFeatureOp, TransformFeatureOp,
+        compose_transform_sequence, evaluate_box_feature, evaluate_cut_hole_feature,
+        evaluate_cut_hole_feature_with_boolean, evaluate_cylinder_feature,
+        evaluate_transform_feature,
     };
     use crate::kernel::CadKernelAdapter;
     use crate::params::{ParameterStore, ScalarUnit, ScalarValue};
-    use crate::CadResult;
+    use crate::{CadError, CadResult};
     use std::collections::BTreeMap;
 
     #[derive(Default)]
@@ -669,5 +774,93 @@ mod tests {
         let ab = compose_transform_sequence(&[a.clone(), b.clone()]).expect("ab compose");
         let ba = compose_transform_sequence(&[b, a]).expect("ba compose");
         assert_ne!(ab, ba, "transform composition must preserve input order");
+    }
+
+    #[test]
+    fn cut_hole_returns_structured_failure_when_boolean_unavailable() {
+        let mut params = ParameterStore::default();
+        params
+            .set(
+                "hole_radius_mm",
+                ScalarValue {
+                    value: 3.0,
+                    unit: ScalarUnit::Millimeter,
+                },
+            )
+            .expect("radius should set");
+        params
+            .set(
+                "hole_depth_mm",
+                ScalarValue {
+                    value: 12.0,
+                    unit: ScalarUnit::Millimeter,
+                },
+            )
+            .expect("depth should set");
+
+        let op = CutHoleFeatureOp {
+            feature_id: "feature.hole_001".to_string(),
+            source_feature_id: "feature.base".to_string(),
+            radius_param: "hole_radius_mm".to_string(),
+            depth_param: "hole_depth_mm".to_string(),
+            tolerance_mm: None,
+        };
+        let mut kernel = MockKernel::default();
+        let result = evaluate_cut_hole_feature(
+            &mut kernel,
+            &"solid-base",
+            "hash-base",
+            &op,
+            &params,
+        );
+        assert!(result.is_err(), "missing boolean backend must return structured failure");
+        let error = result.expect_err("error should be present");
+        assert!(
+            matches!(error, CadError::EvalFailed { .. }),
+            "cut/hole failures must map to EvalFailed"
+        );
+    }
+
+    #[test]
+    fn cut_hole_returns_valid_result_when_boolean_succeeds() {
+        let mut params = ParameterStore::default();
+        params
+            .set(
+                "hole_radius_mm",
+                ScalarValue {
+                    value: 4.0,
+                    unit: ScalarUnit::Millimeter,
+                },
+            )
+            .expect("radius should set");
+        params
+            .set(
+                "hole_depth_mm",
+                ScalarValue {
+                    value: 10.0,
+                    unit: ScalarUnit::Millimeter,
+                },
+            )
+            .expect("depth should set");
+        let op = CutHoleFeatureOp {
+            feature_id: "feature.hole_002".to_string(),
+            source_feature_id: "feature.base".to_string(),
+            radius_param: "hole_radius_mm".to_string(),
+            depth_param: "hole_depth_mm".to_string(),
+            tolerance_mm: Some(0.001),
+        };
+        let mut kernel = MockKernel::default();
+        let result = evaluate_cut_hole_feature_with_boolean(
+            &mut kernel,
+            &"solid-base",
+            "hash-base",
+            &op,
+            &params,
+            |_kernel, _left, _right, _tol| Ok("solid-with-hole"),
+        )
+        .expect("cut/hole should succeed");
+        assert_eq!(result.feature_id, "feature.hole_002");
+        assert_eq!(result.solid, "solid-with-hole");
+        assert!(!result.geometry_hash.is_empty());
     }
 }
