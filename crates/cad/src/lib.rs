@@ -11,6 +11,7 @@ pub mod eval;
 pub mod feature_graph;
 pub mod format;
 pub mod kernel;
+pub mod params;
 pub mod policy;
 pub mod primitives;
 pub use error::{CadError, CadErrorCode, CadErrorEvent, CadResult};
