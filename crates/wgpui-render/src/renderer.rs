@@ -4,8 +4,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use web_time::Instant;
 use wgpu::util::DeviceExt;
+use wgpui_core::scene::{GpuImageQuad, GpuLine, GpuQuad, GpuTextQuad, MeshPrimitive, Scene};
 use wgpui_core::Size;
-use wgpui_core::scene::{GpuImageQuad, GpuLine, GpuQuad, GpuTextQuad, Scene};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
@@ -50,6 +50,7 @@ struct PreparedLayer {
     text_count: u32,
     line_buffer: Option<wgpu::Buffer>,
     line_count: u32,
+    mesh_primitives: Vec<MeshPrimitive>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -59,6 +60,9 @@ pub struct RenderMetrics {
     pub line_instances: u32,
     pub text_instances: u32,
     pub svg_instances: u32,
+    pub mesh_primitives: u32,
+    pub mesh_vertices: u32,
+    pub mesh_triangles: u32,
     pub draw_calls: u32,
     pub prepare_cpu_ms: f64,
     pub render_cpu_ms: f64,
@@ -613,6 +617,9 @@ impl Renderer {
         let mut quad_instances: u32 = 0;
         let mut text_instances: u32 = 0;
         let mut line_instances: u32 = 0;
+        let mut mesh_primitives: u32 = 0;
+        let mut mesh_vertices: u32 = 0;
+        let mut mesh_triangles: u32 = 0;
 
         // Prepare layers in order
         self.prepared_layers.clear();
@@ -623,6 +630,11 @@ impl Renderer {
             let quads = scene.gpu_quads_for_layer(layer, scale_factor);
             let text_quads = scene.gpu_text_quads_for_layer(layer, scale_factor);
             let lines = scene.curve_lines_for_layer(layer, scale_factor);
+            let meshes = scene
+                .mesh_primitives_for_layer(layer)
+                .into_iter()
+                .cloned()
+                .collect::<Vec<_>>();
 
             let quad_buffer = if quads.is_empty() {
                 None
@@ -663,6 +675,15 @@ impl Renderer {
             quad_instances += quads.len() as u32;
             text_instances += text_quads.len() as u32;
             line_instances += lines.len() as u32;
+            mesh_primitives += meshes.len() as u32;
+            mesh_vertices += meshes
+                .iter()
+                .map(|mesh| mesh.vertices.len() as u32)
+                .sum::<u32>();
+            mesh_triangles += meshes
+                .iter()
+                .map(|mesh| (mesh.indices.len() / 3) as u32)
+                .sum::<u32>();
 
             self.prepared_layers.push(PreparedLayer {
                 quad_buffer,
@@ -671,6 +692,7 @@ impl Renderer {
                 text_count: text_quads.len() as u32,
                 line_buffer,
                 line_count: lines.len() as u32,
+                mesh_primitives: meshes,
             });
         }
 
@@ -816,6 +838,9 @@ impl Renderer {
         metrics.text_instances = text_instances;
         metrics.line_instances = line_instances;
         metrics.svg_instances = self.prepared_svgs.len() as u32;
+        metrics.mesh_primitives = mesh_primitives;
+        metrics.mesh_vertices = mesh_vertices;
+        metrics.mesh_triangles = mesh_triangles;
         metrics.prepare_cpu_ms = prepare_start.elapsed().as_secs_f64() * 1_000.0;
     }
 
@@ -876,6 +901,10 @@ impl Renderer {
                 render_pass.draw(0..4, 0..layer.text_count);
                 draw_calls += 1;
             }
+
+            // Mesh primitives are prepared and tracked in metrics, but mesh raster pass
+            // is implemented in follow-up issue #2487.
+            let _mesh_count = layer.mesh_primitives.len();
         }
 
         // Render SVGs (each SVG has its own texture, so we draw them one at a time)

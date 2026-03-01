@@ -14,7 +14,7 @@
 //!
 //! ## Architecture
 //!
-//! - `scene` - Accumulated draw primitives (Quad, TextRun)
+//! - `scene` - Accumulated draw primitives (Quad, TextRun, MeshPrimitive)
 //! - `renderer` - GPU rendering pipeline
 //! - `text` - Text shaping and glyph atlas
 //! - `layout` - Taffy-based flexbox layout
@@ -77,7 +77,7 @@ pub mod prelude {
         pub use crate::input::{InputEvent, Key, Modifiers, MouseButton, NamedKey};
         pub use crate::layout_helpers::{layout_header_nav_content, stack_bounds};
         pub use crate::markdown::{MarkdownRenderer, StreamingMarkdown};
-        pub use crate::scene::{Quad, Scene, SvgQuad};
+        pub use crate::scene::{MeshPrimitive, MeshTopology, MeshVertex, Quad, Scene, SvgQuad};
         pub use crate::text::{FontStyle, TextSystem};
         pub use crate::text_system::{
             Boundary, FontRun, LineFragment, LineLayout, LineLayoutCache, LineWrapper, ShapedGlyph,
@@ -109,7 +109,7 @@ pub use input::{Cursor, InputEvent, Key, Modifiers, MouseButton, NamedKey};
 pub use layout_helpers::{layout_header_nav_content, stack_bounds};
 pub use markdown::{MarkdownRenderer, StreamingMarkdown};
 pub use platform::Platform;
-pub use scene::{Quad, Scene, SvgQuad};
+pub use scene::{MeshPrimitive, MeshTopology, MeshVertex, Quad, Scene, SvgQuad};
 pub use text::{FontStyle, TextSystem};
 pub use text_system::{
     Boundary, FontRun, LineFragment, LineLayout, LineLayoutCache, LineWrapper, ShapedGlyph,
