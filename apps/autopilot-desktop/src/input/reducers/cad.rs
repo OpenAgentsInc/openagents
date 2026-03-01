@@ -99,7 +99,7 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
         CadDemoPaneAction::CycleHiddenLineMode => {
             state.hidden_line_mode = state.hidden_line_mode.next();
             state.last_action = Some(format!(
-                "CAD hidden-line mode -> {}",
+                "CAD render mode -> {}",
                 state.hidden_line_mode.label()
             ));
             true
@@ -868,7 +868,13 @@ mod tests {
     #[test]
     fn hidden_line_mode_cycles_deterministically() {
         let mut state = CadDemoPaneState::default();
-        assert_eq!(state.hidden_line_mode.label(), "off");
+        assert_eq!(state.hidden_line_mode.label(), "shaded");
+
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::CycleHiddenLineMode
+        ));
+        assert_eq!(state.hidden_line_mode.label(), "shaded+edges");
 
         assert!(apply_cad_demo_action(
             &mut state,
@@ -880,13 +886,7 @@ mod tests {
             &mut state,
             CadDemoPaneAction::CycleHiddenLineMode
         ));
-        assert_eq!(state.hidden_line_mode.label(), "section");
-
-        assert!(apply_cad_demo_action(
-            &mut state,
-            CadDemoPaneAction::CycleHiddenLineMode
-        ));
-        assert_eq!(state.hidden_line_mode.label(), "off");
+        assert_eq!(state.hidden_line_mode.label(), "shaded");
     }
 
     #[test]

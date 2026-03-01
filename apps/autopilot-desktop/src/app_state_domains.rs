@@ -523,25 +523,25 @@ impl CadProjectionMode {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CadHiddenLineMode {
-    Off,
+    Shaded,
+    ShadedEdges,
     Wireframe,
-    Section,
 }
 
 impl CadHiddenLineMode {
     pub fn next(self) -> Self {
         match self {
-            Self::Off => Self::Wireframe,
-            Self::Wireframe => Self::Section,
-            Self::Section => Self::Off,
+            Self::Shaded => Self::ShadedEdges,
+            Self::ShadedEdges => Self::Wireframe,
+            Self::Wireframe => Self::Shaded,
         }
     }
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Off => "off",
+            Self::Shaded => "shaded",
+            Self::ShadedEdges => "shaded+edges",
             Self::Wireframe => "wireframe",
-            Self::Section => "section",
         }
     }
 }
@@ -617,7 +617,7 @@ impl Default for CadDemoPaneState {
             warning_hover_index: None,
             focused_warning_index: None,
             focused_geometry_ref: None,
-            hidden_line_mode: CadHiddenLineMode::Off,
+            hidden_line_mode: CadHiddenLineMode::Shaded,
             projection_mode: CadProjectionMode::Orthographic,
             camera_zoom: 1.0,
             camera_pan_x: 0.0,

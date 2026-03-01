@@ -129,7 +129,7 @@ pub fn paint_cad_demo_placeholder_pane(
     paint_action_button(reset_bounds, "Reset Session", paint);
     paint_action_button(
         hidden_line_bounds,
-        &format!("Hidden Line: {}", pane_state.hidden_line_mode.label()),
+        &format!("Render: {}", pane_state.hidden_line_mode.label()),
         paint,
     );
     paint_action_button(reset_camera_bounds, "Reset Camera", paint);
@@ -699,20 +699,22 @@ fn cad_mesh_to_viewport_primitive(
             )
         })
         .collect::<Vec<_>>();
-    let edges = payload
-        .edges
-        .iter()
-        .map(|edge| {
-            let mut flags = edge.flags;
-            if hidden_line_mode != CadHiddenLineMode::Off {
-                flags |= MESH_EDGE_FLAG_SILHOUETTE;
-            }
-            if selected_outline_active {
-                flags |= MESH_EDGE_FLAG_SELECTED;
-            }
-            MeshEdge::new(edge.start_vertex, edge.end_vertex).with_flags(flags)
-        })
-        .collect::<Vec<_>>();
+    let show_edges = hidden_line_mode != CadHiddenLineMode::Shaded || selected_outline_active;
+    let edges = if show_edges {
+        payload
+            .edges
+            .iter()
+            .map(|edge| {
+                let mut flags = edge.flags | MESH_EDGE_FLAG_SILHOUETTE;
+                if selected_outline_active {
+                    flags |= MESH_EDGE_FLAG_SELECTED;
+                }
+                MeshEdge::new(edge.start_vertex, edge.end_vertex).with_flags(flags)
+            })
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
     let primitive =
         MeshPrimitive::new(vertices, payload.triangle_indices.clone()).with_edges(edges);
     primitive
@@ -795,14 +797,14 @@ fn rotate_vector_yaw_pitch(vector: [f32; 3], yaw_rad: f32, pitch_rad: f32) -> [f
 
 fn styled_fill_color(base: [f32; 4], mode: CadHiddenLineMode) -> [f32; 4] {
     match mode {
-        CadHiddenLineMode::Off => base,
-        CadHiddenLineMode::Wireframe => [0.28, 0.32, 0.36, 0.10],
-        CadHiddenLineMode::Section => [
-            (base[0] * 0.45) + 0.20,
-            (base[1] * 0.45) + 0.18,
-            (base[2] * 0.45) + 0.16,
-            0.22,
+        CadHiddenLineMode::Shaded => base,
+        CadHiddenLineMode::ShadedEdges => [
+            (base[0] * 0.72) + 0.10,
+            (base[1] * 0.72) + 0.10,
+            (base[2] * 0.72) + 0.10,
+            0.86,
         ],
+        CadHiddenLineMode::Wireframe => [0.28, 0.32, 0.36, 0.06],
     }
 }
 
@@ -909,7 +911,7 @@ mod tests {
             &payload,
             viewport,
             false,
-            CadHiddenLineMode::Off,
+            CadHiddenLineMode::Shaded,
             default_camera_pose(),
         )
         .expect("mesh projection should succeed");
@@ -917,7 +919,7 @@ mod tests {
             &payload,
             viewport,
             false,
-            CadHiddenLineMode::Off,
+            CadHiddenLineMode::Shaded,
             default_camera_pose(),
         )
         .expect("mesh projection should remain deterministic");
@@ -938,7 +940,7 @@ mod tests {
             &payload,
             viewport,
             false,
-            CadHiddenLineMode::Off,
+            CadHiddenLineMode::Shaded,
             default_camera_pose(),
         )
         .expect_err("empty payload should fail");
@@ -992,7 +994,7 @@ mod tests {
             &payload,
             viewport,
             true,
-            CadHiddenLineMode::Off,
+            CadHiddenLineMode::Shaded,
             default_camera_pose(),
         )
         .expect("selected projection should succeed");
@@ -1001,7 +1003,7 @@ mod tests {
     }
 
     #[test]
-    fn hidden_line_wireframe_mode_styles_fill_and_edges() {
+    fn render_modes_style_fill_and_edge_baselines() {
         let viewport = Bounds::new(10.0, 10.0, 180.0, 120.0);
         let payload = CadMeshPayload {
             mesh_id: "mesh.variant.baseline".to_string(),
@@ -1044,18 +1046,58 @@ mod tests {
             },
         };
 
-        let mesh = cad_mesh_to_viewport_primitive(
+        let shaded = cad_mesh_to_viewport_primitive(
+            &payload,
+            viewport,
+            false,
+            CadHiddenLineMode::Shaded,
+            default_camera_pose(),
+        )
+        .expect("shaded projection should succeed");
+        let shaded_edges = cad_mesh_to_viewport_primitive(
+            &payload,
+            viewport,
+            false,
+            CadHiddenLineMode::ShadedEdges,
+            default_camera_pose(),
+        )
+        .expect("shaded+edges projection should succeed");
+        let wireframe = cad_mesh_to_viewport_primitive(
             &payload,
             viewport,
             false,
             CadHiddenLineMode::Wireframe,
             default_camera_pose(),
         )
-        .expect("hidden-line wireframe projection should succeed");
+        .expect("wireframe projection should succeed");
+        let wireframe_again = cad_mesh_to_viewport_primitive(
+            &payload,
+            viewport,
+            false,
+            CadHiddenLineMode::Wireframe,
+            default_camera_pose(),
+        )
+        .expect("wireframe projection should remain deterministic");
 
-        assert_eq!(mesh.edges.len(), 1);
-        assert_ne!(mesh.edges[0].flags & MESH_EDGE_FLAG_SILHOUETTE, 0);
-        assert!(mesh.vertices.iter().all(|vertex| vertex.color[3] <= 0.12));
+        assert_eq!(shaded.edges.len(), 0);
+        assert_eq!(shaded_edges.edges.len(), 1);
+        assert_eq!(wireframe.edges.len(), 1);
+        assert_ne!(shaded_edges.edges[0].flags & MESH_EDGE_FLAG_SILHOUETTE, 0);
+        assert_ne!(wireframe.edges[0].flags & MESH_EDGE_FLAG_SILHOUETTE, 0);
+        assert!(shaded.vertices.iter().all(|vertex| vertex.color[3] >= 0.99));
+        assert!(
+            shaded_edges
+                .vertices
+                .iter()
+                .all(|vertex| vertex.color[3] < 0.95)
+        );
+        assert!(
+            wireframe
+                .vertices
+                .iter()
+                .all(|vertex| vertex.color[3] <= 0.10)
+        );
+        assert_eq!(wireframe, wireframe_again);
     }
 
     #[test]
@@ -1106,7 +1148,7 @@ mod tests {
             &payload,
             viewport,
             false,
-            CadHiddenLineMode::Off,
+            CadHiddenLineMode::Shaded,
             default_camera_pose(),
         )
         .expect("baseline projection should succeed");
@@ -1114,7 +1156,7 @@ mod tests {
             &payload,
             viewport,
             false,
-            CadHiddenLineMode::Off,
+            CadHiddenLineMode::Shaded,
             CadCameraPose {
                 projection_mode: CadProjectionMode::Orthographic,
                 zoom: 1.3,
@@ -1129,7 +1171,7 @@ mod tests {
             &payload,
             viewport,
             false,
-            CadHiddenLineMode::Off,
+            CadHiddenLineMode::Shaded,
             CadCameraPose {
                 projection_mode: CadProjectionMode::Orthographic,
                 zoom: 1.3,
@@ -1193,7 +1235,7 @@ mod tests {
             &payload,
             viewport,
             false,
-            CadHiddenLineMode::Off,
+            CadHiddenLineMode::Shaded,
             CadCameraPose {
                 projection_mode: CadProjectionMode::Orthographic,
                 ..default_camera_pose()
@@ -1205,7 +1247,7 @@ mod tests {
             &payload,
             viewport,
             false,
-            CadHiddenLineMode::Off,
+            CadHiddenLineMode::Shaded,
             CadCameraPose {
                 projection_mode: CadProjectionMode::Perspective,
                 ..default_camera_pose()
@@ -1217,7 +1259,7 @@ mod tests {
             &payload,
             viewport,
             false,
-            CadHiddenLineMode::Off,
+            CadHiddenLineMode::Shaded,
             CadCameraPose {
                 projection_mode: CadProjectionMode::Perspective,
                 ..default_camera_pose()
