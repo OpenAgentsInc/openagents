@@ -3754,7 +3754,7 @@ mod tests {
         assert!(state.warning_hover_index.is_none());
         assert!(state.focused_warning_index.is_none());
         assert!(state.focused_geometry_ref.is_none());
-        assert_eq!(state.hidden_line_mode, CadHiddenLineMode::Off);
+        assert_eq!(state.hidden_line_mode, CadHiddenLineMode::Shaded);
         assert_eq!(state.projection_mode, CadProjectionMode::Orthographic);
         assert_eq!(state.camera_zoom, 1.0);
         assert_eq!(state.camera_pan_x, 0.0);
