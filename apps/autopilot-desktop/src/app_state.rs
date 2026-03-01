@@ -2523,6 +2523,7 @@ impl_pane_status_access!(
     TrajectoryAuditPaneState,
     SkillRegistryPaneState,
     SkillTrustRevocationPaneState,
+    CadDemoPaneState,
     CreditDeskPaneState,
     CreditSettlementLedgerPaneState,
     AgentNetworkSimulationPaneState,
@@ -2602,6 +2603,7 @@ pub struct RenderState {
     pub skill_trust_revocation: SkillTrustRevocationPaneState,
     pub credit_desk: CreditDeskPaneState,
     pub credit_settlement_ledger: CreditSettlementLedgerPaneState,
+    pub cad_demo: CadDemoPaneState,
     pub agent_network_simulation: AgentNetworkSimulationPaneState,
     pub treasury_exchange_simulation: TreasuryExchangeSimulationPaneState,
     pub relay_security_simulation: RelaySecuritySimulationPaneState,
@@ -2749,7 +2751,8 @@ mod tests {
         ActiveJobState, ActivityEventDomain, ActivityEventRow, ActivityFeedFilter,
         ActivityFeedState, AgentNetworkSimulationPaneState, AlertDomain, AlertLifecycle,
         AlertsRecoveryState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole,
-        EarningsScoreboardState, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
+        CadDemoPaneState, EarningsScoreboardState, JobHistoryState, JobHistoryStatus,
+        JobHistoryStatusFilter,
         JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest, JobInboxState,
         JobInboxValidation, JobLifecycleStage, NetworkRequestStatus, NetworkRequestSubmission,
         NetworkRequestsState, NostrSecretState, ProviderRuntimeState, RecoveryAlertRow,
@@ -3710,5 +3713,17 @@ mod tests {
                 .as_deref()
                 .is_some_and(|error| error.contains("wallet backend unavailable"))
         );
+    }
+
+    #[test]
+    fn cad_demo_state_defaults_are_deterministic() {
+        let state = CadDemoPaneState::default();
+        assert_eq!(state.load_state, super::PaneLoadState::Ready);
+        assert_eq!(state.session_id, "cad.session.local");
+        assert_eq!(state.document_id, "cad.doc.demo-rack");
+        assert_eq!(state.document_revision, 0);
+        assert_eq!(state.active_variant_id, "variant.baseline");
+        assert_eq!(state.variant_ids.len(), 4);
+        assert_eq!(state.variant_ids[0], "variant.baseline");
     }
 }
