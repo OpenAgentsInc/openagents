@@ -237,6 +237,115 @@ pub fn compute_parameter_invalidation_plan(
     })
 }
 
+/// Deterministic key for per-feature eval cache entries.
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub struct EvalCacheKey {
+    pub document_revision: u64,
+    pub feature_node_id: String,
+    pub params_hash: String,
+}
+
+impl EvalCacheKey {
+    pub fn from_feature_node(document_revision: u64, node: &FeatureNode) -> Self {
+        Self {
+            document_revision,
+            feature_node_id: node.id.clone(),
+            params_hash: feature_params_hash(node),
+        }
+    }
+}
+
+/// Cache entry for deterministic feature eval output.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EvalCacheEntry {
+    pub geometry_hash: String,
+}
+
+/// Cache observability counters.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct EvalCacheStats {
+    pub hits: u64,
+    pub misses: u64,
+    pub evictions: u64,
+}
+
+/// Deterministic in-memory eval cache with LRU eviction.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EvalCacheStore {
+    capacity: usize,
+    entries: BTreeMap<EvalCacheKey, EvalCacheEntry>,
+    lru_order: VecDeque<EvalCacheKey>,
+    stats: EvalCacheStats,
+}
+
+impl EvalCacheStore {
+    pub fn new(capacity: usize) -> CadResult<Self> {
+        if capacity == 0 {
+            return Err(CadError::InvalidPolicy {
+                reason: "eval cache capacity must be > 0".to_string(),
+            });
+        }
+        Ok(Self {
+            capacity,
+            entries: BTreeMap::new(),
+            lru_order: VecDeque::new(),
+            stats: EvalCacheStats::default(),
+        })
+    }
+
+    pub fn get(&mut self, key: &EvalCacheKey) -> Option<&EvalCacheEntry> {
+        if self.entries.contains_key(key) {
+            self.stats.hits = self.stats.hits.saturating_add(1);
+            self.touch_lru(key);
+            return self.entries.get(key);
+        }
+        self.stats.misses = self.stats.misses.saturating_add(1);
+        None
+    }
+
+    pub fn insert(&mut self, key: EvalCacheKey, entry: EvalCacheEntry) {
+        let existed = self.entries.insert(key.clone(), entry).is_some();
+        self.touch_lru(&key);
+        if !existed && self.entries.len() > self.capacity {
+            self.evict_one();
+        }
+    }
+
+    pub fn stats(&self) -> EvalCacheStats {
+        self.stats
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    fn touch_lru(&mut self, key: &EvalCacheKey) {
+        if let Some(position) = self.lru_order.iter().position(|existing| existing == key) {
+            let _ = self.lru_order.remove(position);
+        }
+        self.lru_order.push_back(key.clone());
+    }
+
+    fn evict_one(&mut self) {
+        while let Some(candidate) = self.lru_order.pop_front() {
+            if self.entries.remove(&candidate).is_some() {
+                self.stats.evictions = self.stats.evictions.saturating_add(1);
+                break;
+            }
+        }
+    }
+}
+
+fn feature_params_hash(node: &FeatureNode) -> String {
+    let payload = node
+        .params
+        .iter()
+        .map(|(key, value)| format!("{key}={value}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    format!("{:016x}", fnv1a64(payload.as_bytes()))
+}
+
 fn node_uses_changed_params(node: &FeatureNode, changed_params: &BTreeSet<String>) -> bool {
     if changed_params.is_empty() {
         return false;
@@ -267,7 +376,8 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        EvalPlan, compute_parameter_invalidation_plan, eval_tolerance_mm,
+        EvalCacheEntry, EvalCacheKey, EvalCacheStore, EvalCacheStats, EvalPlan,
+        compute_parameter_invalidation_plan, eval_tolerance_mm,
         evaluate_feature_graph_deterministic, evaluate_plan,
     };
     use crate::CadResult;
@@ -529,6 +639,100 @@ mod tests {
         assert!(
             first.retained_feature_hashes.is_empty(),
             "all features are downstream of changed root"
+        );
+    }
+
+    #[test]
+    fn eval_cache_key_is_deterministic_for_same_params_regardless_of_insertion_order() {
+        let node_a = node(
+            "feature.base",
+            "primitive.box.v1",
+            &[],
+            &[("height_param", "height_mm"), ("width_param", "width_mm")],
+        );
+        let node_b = node(
+            "feature.base",
+            "primitive.box.v1",
+            &[],
+            &[("width_param", "width_mm"), ("height_param", "height_mm")],
+        );
+        let key_a = EvalCacheKey::from_feature_node(7, &node_a);
+        let key_b = EvalCacheKey::from_feature_node(7, &node_b);
+        assert_eq!(key_a, key_b);
+    }
+
+    #[test]
+    fn eval_cache_tracks_hits_misses_and_returns_entries() {
+        let node = node(
+            "feature.base",
+            "primitive.box.v1",
+            &[],
+            &[("width_param", "width_mm")],
+        );
+        let key = EvalCacheKey::from_feature_node(10, &node);
+        let mut cache = EvalCacheStore::new(2).expect("cache should initialize");
+
+        assert!(
+            cache.get(&key).is_none(),
+            "first lookup should be a miss for empty cache"
+        );
+        cache.insert(
+            key.clone(),
+            EvalCacheEntry {
+                geometry_hash: "hash-base".to_string(),
+            },
+        );
+        let entry = cache.get(&key).expect("entry should be present on hit");
+        assert_eq!(entry.geometry_hash, "hash-base");
+        assert_eq!(
+            cache.stats(),
+            EvalCacheStats {
+                hits: 1,
+                misses: 1,
+                evictions: 0
+            }
+        );
+    }
+
+    #[test]
+    fn eval_cache_evicts_least_recently_used_entry_when_capacity_exceeded() {
+        let node_a = node("feature.a", "primitive.box.v1", &[], &[("w", "wa")]);
+        let node_b = node("feature.b", "primitive.box.v1", &[], &[("w", "wb")]);
+        let node_c = node("feature.c", "primitive.box.v1", &[], &[("w", "wc")]);
+        let key_a = EvalCacheKey::from_feature_node(1, &node_a);
+        let key_b = EvalCacheKey::from_feature_node(1, &node_b);
+        let key_c = EvalCacheKey::from_feature_node(1, &node_c);
+
+        let mut cache = EvalCacheStore::new(2).expect("cache should initialize");
+        cache.insert(
+            key_a.clone(),
+            EvalCacheEntry {
+                geometry_hash: "hash-a".to_string(),
+            },
+        );
+        cache.insert(
+            key_b.clone(),
+            EvalCacheEntry {
+                geometry_hash: "hash-b".to_string(),
+            },
+        );
+        let _ = cache.get(&key_a);
+        cache.insert(
+            key_c.clone(),
+            EvalCacheEntry {
+                geometry_hash: "hash-c".to_string(),
+            },
+        );
+
+        assert_eq!(cache.len(), 2);
+        assert!(cache.get(&key_b).is_none(), "least-recently-used key should be evicted");
+        assert!(cache.get(&key_a).is_some(), "recently touched key must be retained");
+        assert!(cache.get(&key_c).is_some(), "new key must be retained");
+        let stats = cache.stats();
+        assert_eq!(stats.evictions, 1);
+        assert!(
+            stats.hits >= 3 && stats.misses >= 1,
+            "hit/miss counters should include the probe and validations"
         );
     }
 }
