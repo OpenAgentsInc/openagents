@@ -1774,12 +1774,13 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        assemble_chat_turn_input, build_create_invoice_command, build_pay_invoice_command,
-        build_spark_command_for_action, cad_hotkey_action_matrix, cad_pick_kind_label,
-        cad_pick_kind_to_selection_kind, is_command_palette_shortcut,
-        is_toggle_fullscreen_shortcut, parse_positive_amount_str,
-        validate_lightning_payment_request,
+        TurnSkillAttachment, TurnSkillSource, assemble_chat_turn_input,
+        build_create_invoice_command, build_pay_invoice_command, build_spark_command_for_action,
+        cad_hotkey_action_matrix, cad_pick_kind_label, cad_pick_kind_to_selection_kind,
+        is_command_palette_shortcut, is_toggle_fullscreen_shortcut, parse_positive_amount_str,
+        resolve_turn_skill_by_name, resolve_turn_skill_by_path, validate_lightning_payment_request,
     };
+    use crate::app_state::SkillRegistryDiscoveredSkill;
     use crate::pane_system::cad_palette_command_specs;
     use crate::spark_pane::{
         CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction, hit_action, layout,
@@ -1991,7 +1992,12 @@ mod tests {
     fn assemble_chat_turn_input_attaches_enabled_skill() {
         let (input, last_error) = assemble_chat_turn_input(
             "build mezo integration".to_string(),
-            Some(("mezo", "/repo/skills/mezo/SKILL.md", true)),
+            vec![TurnSkillAttachment {
+                name: "mezo".to_string(),
+                path: "/repo/skills/mezo/SKILL.md".to_string(),
+                enabled: true,
+                source: TurnSkillSource::UserSelected,
+            }],
         );
 
         assert!(last_error.is_none());
@@ -2011,7 +2017,12 @@ mod tests {
     fn assemble_chat_turn_input_rejects_disabled_skill_attachment() {
         let (input, last_error) = assemble_chat_turn_input(
             "build mezo integration".to_string(),
-            Some(("mezo", "/repo/skills/mezo/SKILL.md", false)),
+            vec![TurnSkillAttachment {
+                name: "mezo".to_string(),
+                path: "/repo/skills/mezo/SKILL.md".to_string(),
+                enabled: false,
+                source: TurnSkillSource::UserSelected,
+            }],
         );
 
         assert_eq!(input.len(), 1);
@@ -2023,6 +2034,81 @@ mod tests {
             last_error.as_deref(),
             Some("Selected skill 'mezo' is disabled; enable it first.")
         );
+    }
+
+    #[test]
+    fn assemble_chat_turn_input_orders_and_dedupes_skills_deterministically() {
+        let (input, last_error) = assemble_chat_turn_input(
+            "run automation".to_string(),
+            vec![
+                TurnSkillAttachment {
+                    name: "pane-control".to_string(),
+                    path: "/repo/skills/pane-control/SKILL.md".to_string(),
+                    enabled: true,
+                    source: TurnSkillSource::PolicyRequired,
+                },
+                TurnSkillAttachment {
+                    name: "mezo".to_string(),
+                    path: "/repo/skills/mezo/SKILL.md".to_string(),
+                    enabled: true,
+                    source: TurnSkillSource::UserSelected,
+                },
+                TurnSkillAttachment {
+                    name: "pane-control".to_string(),
+                    path: "/repo/skills/pane-control/SKILL.md".to_string(),
+                    enabled: true,
+                    source: TurnSkillSource::PolicyRequired,
+                },
+            ],
+        );
+
+        assert!(last_error.is_none());
+        assert_eq!(input.len(), 3);
+        assert!(matches!(
+            &input[1],
+            UserInput::Skill { name, .. } if name == "mezo"
+        ));
+        assert!(matches!(
+            &input[2],
+            UserInput::Skill { name, .. } if name == "pane-control"
+        ));
+    }
+
+    #[test]
+    fn resolve_turn_skill_helpers_match_name_and_path() {
+        let discovered = vec![
+            SkillRegistryDiscoveredSkill {
+                name: "mezo".to_string(),
+                path: "/repo/skills/mezo/SKILL.md".to_string(),
+                scope: "global".to_string(),
+                enabled: true,
+                interface_display_name: None,
+                dependency_count: 0,
+            },
+            SkillRegistryDiscoveredSkill {
+                name: "pane-control".to_string(),
+                path: "/repo/skills/pane-control/SKILL.md".to_string(),
+                scope: "global".to_string(),
+                enabled: false,
+                interface_display_name: None,
+                dependency_count: 0,
+            },
+        ];
+
+        let mezo = resolve_turn_skill_by_name(&discovered, "MEZO", TurnSkillSource::UserSelected)
+            .expect("skill should resolve by name");
+        assert_eq!(mezo.path, "/repo/skills/mezo/SKILL.md");
+        assert!(mezo.enabled);
+
+        let pane = resolve_turn_skill_by_path(
+            &discovered,
+            "/repo/skills/pane-control/SKILL.md",
+            TurnSkillSource::PolicyRequired,
+        )
+        .expect("skill should resolve by path");
+        assert_eq!(pane.name, "pane-control");
+        assert!(!pane.enabled);
+        assert_eq!(pane.source, TurnSkillSource::PolicyRequired);
     }
 
     #[test]
