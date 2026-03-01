@@ -26,6 +26,12 @@ This document tracks feature-op contracts built on the CAD kernel adapter path.
   - returns either:
     - valid `FeatureOpResult` (when boolean backend succeeds), or
     - structured `CadError::EvalFailed` (when boolean backend fails)
+- `LinearPatternFeatureOp` (`crates/cad/src/features.rs`)
+  - deterministic repeated-instance generation for feature copies
+  - parameter bindings (`count` as `unitless`, `spacing` as `mm`)
+  - stable `pattern_index` assignment (`start_index + offset`)
+  - deterministic per-instance geometry hashes and aggregate pattern hash
+  - structured validation failures for zero direction, non-integer count, and invalid spacing
 
 ## Golden Hash Fixtures
 
