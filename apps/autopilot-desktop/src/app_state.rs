@@ -309,12 +309,28 @@ pub struct AutopilotMessage {
     pub structured: Option<AutopilotStructuredMessage>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AutopilotProgressRow {
+    pub label: String,
+    pub value: String,
+    pub tone: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AutopilotProgressBlock {
+    pub kind: String,
+    pub title: String,
+    pub status: String,
+    pub rows: Vec<AutopilotProgressRow>,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct AutopilotStructuredMessage {
     pub reasoning: String,
     pub answer: String,
     pub events: Vec<String>,
     pub status: Option<String>,
+    pub progress_blocks: Vec<AutopilotProgressBlock>,
 }
 
 impl AutopilotStructuredMessage {
@@ -1046,6 +1062,33 @@ impl AutopilotChatState {
             if message.content != content {
                 message.content = content.to_string();
             }
+        }
+    }
+
+    pub fn set_turn_progress_blocks_for_turn(
+        &mut self,
+        turn_id: &str,
+        progress_blocks: Vec<AutopilotProgressBlock>,
+    ) {
+        let assistant_message_id = self
+            .turn_assistant_message_ids
+            .get(turn_id)
+            .copied()
+            .or_else(|| self.bind_turn_to_assistant_message(turn_id));
+        if let Some(assistant_message_id) = assistant_message_id
+            && let Some(message) = self
+                .messages
+                .iter_mut()
+                .find(|message| message.id == assistant_message_id)
+        {
+            let structured = message
+                .structured
+                .get_or_insert_with(AutopilotStructuredMessage::default);
+            if structured.progress_blocks == progress_blocks {
+                return;
+            }
+            structured.progress_blocks = progress_blocks;
+            message.content = structured.rendered_content();
         }
     }
 

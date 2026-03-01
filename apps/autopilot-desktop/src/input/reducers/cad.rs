@@ -21,9 +21,10 @@ use openagents_cad::validity::{
 };
 
 use crate::app_state::{
-    ActivityEventDomain, ActivityEventRow, CadCameraViewSnap, CadDemoPaneState,
-    CadDemoWarningState, CadRebuildReceiptState, CadSnapMode, CadThreeDMouseAxis,
-    CadTimelineRowState, PaneLoadState, RenderState,
+    ActivityEventDomain, ActivityEventRow, AutopilotProgressBlock, AutopilotProgressRow,
+    CadBuildSessionArchiveState, CadBuildSessionPhase, CadBuildSessionState, CadCameraViewSnap,
+    CadDemoPaneState, CadDemoWarningState, CadRebuildReceiptState, CadSnapMode,
+    CadThreeDMouseAxis, CadTimelineRowState, PaneLoadState, RenderState,
 };
 use crate::cad_rebuild_worker::{
     CadBackgroundRebuildWorker, CadRebuildCompleted, CadRebuildRequest, CadRebuildResponse,
@@ -44,7 +45,7 @@ pub(super) fn apply_chat_prompt_to_cad_session_with_trigger(
     prompt: &str,
     rebuild_trigger_prefix: Option<&str>,
 ) -> bool {
-    match translate_chat_to_cad_intent(prompt) {
+    let changed = match translate_chat_to_cad_intent(prompt) {
         CadIntentTranslationOutcome::Intent(intent) => {
             let intent_name = intent.intent_name().to_string();
             match state
@@ -178,11 +179,16 @@ pub(super) fn apply_chat_prompt_to_cad_session_with_trigger(
                     error.code, error.message
                 ));
                 state.cad_demo.last_action = Some(error.recovery_prompt);
-                return true;
+                true
+            } else {
+                false
             }
-            false
         }
+    };
+    if changed {
+        sync_cad_build_progress_to_chat(state);
     }
+    changed
 }
 
 fn rebuild_trigger_for_chat_intent(
@@ -207,6 +213,124 @@ fn should_enqueue_rebuild_for_chat_intent(intent: &CadIntent) -> bool {
             | CadIntent::SetMaterial(_)
             | CadIntent::AddVentPattern(_)
     )
+}
+
+pub(super) fn sync_cad_build_progress_to_chat(state: &mut RenderState) {
+    let Some((turn_id, progress_block)) = cad_progress_block_from_state(&state.cad_demo) else {
+        return;
+    };
+    state
+        .autopilot_chat
+        .set_turn_progress_blocks_for_turn(&turn_id, vec![progress_block]);
+}
+
+fn cad_progress_block_from_state(cad_demo: &CadDemoPaneState) -> Option<(String, AutopilotProgressBlock)> {
+    if cad_demo.build_session.phase != CadBuildSessionPhase::Idle {
+        let turn_id = cad_demo.build_session.turn_id.clone()?;
+        return Some((turn_id, progress_block_from_active_session(&cad_demo.build_session)));
+    }
+    let archived = cad_demo.last_build_session.as_ref()?;
+    Some((archived.turn_id.clone(), progress_block_from_archive_session(archived)))
+}
+
+fn progress_block_from_active_session(session: &CadBuildSessionState) -> AutopilotProgressBlock {
+    let mut rows = vec![progress_row(
+        "phase",
+        session.phase.label().to_string(),
+        phase_tone(session.phase),
+    )];
+    if let Some(tool_result) = session.latest_tool_result.as_deref() {
+        rows.push(progress_row("tool", tool_result.to_string(), "info"));
+    }
+    if let Some(rebuild_result) = session.latest_rebuild_result.as_deref() {
+        rows.push(progress_row("rebuild", rebuild_result.to_string(), "info"));
+    }
+    push_recent_event_rows(&mut rows, &session.events);
+    if let Some(reason) = session.failure_reason.as_deref() {
+        rows.push(progress_row("failure", reason.to_string(), "error"));
+    }
+    if let Some(hint) = session.remediation_hint.as_deref() {
+        rows.push(progress_row("hint", hint.to_string(), "muted"));
+    }
+    AutopilotProgressBlock {
+        kind: "cad-build".to_string(),
+        title: "CAD Build".to_string(),
+        status: session.phase.label().to_string(),
+        rows,
+    }
+}
+
+fn progress_block_from_archive_session(
+    archived: &CadBuildSessionArchiveState,
+) -> AutopilotProgressBlock {
+    let mut rows = vec![progress_row(
+        "phase",
+        archived.terminal_phase.label().to_string(),
+        phase_tone(archived.terminal_phase),
+    )];
+    if let Some(tool_result) = archived.latest_tool_result.as_deref() {
+        rows.push(progress_row("tool", tool_result.to_string(), "info"));
+    }
+    if let Some(rebuild_result) = archived.latest_rebuild_result.as_deref() {
+        rows.push(progress_row("rebuild", rebuild_result.to_string(), "info"));
+    }
+    push_recent_event_rows(&mut rows, &archived.events);
+    if let Some(reason) = archived.failure_reason.as_deref() {
+        rows.push(progress_row("failure", reason.to_string(), "error"));
+    }
+    if let Some(hint) = archived.remediation_hint.as_deref() {
+        rows.push(progress_row("hint", hint.to_string(), "muted"));
+    }
+    AutopilotProgressBlock {
+        kind: "cad-build".to_string(),
+        title: "CAD Build".to_string(),
+        status: archived.terminal_phase.label().to_string(),
+        rows,
+    }
+}
+
+fn push_recent_event_rows(
+    rows: &mut Vec<AutopilotProgressRow>,
+    events: &[crate::app_state::CadBuildSessionEventState],
+) {
+    for event in events.iter().rev().take(3).rev() {
+        let detail = compact_progress_detail(event.detail.as_str(), 72);
+        rows.push(progress_row(
+            "event",
+            format!("{} {}", event.event_code, detail),
+            "muted",
+        ));
+    }
+}
+
+fn progress_row(label: &str, value: String, tone: &str) -> AutopilotProgressRow {
+    AutopilotProgressRow {
+        label: label.to_string(),
+        value,
+        tone: tone.to_string(),
+    }
+}
+
+fn phase_tone(phase: CadBuildSessionPhase) -> &'static str {
+    match phase {
+        CadBuildSessionPhase::Done => "success",
+        CadBuildSessionPhase::Failed => "error",
+        CadBuildSessionPhase::Rebuilding | CadBuildSessionPhase::Applying => "accent",
+        _ => "info",
+    }
+}
+
+fn compact_progress_detail(detail: &str, max_chars: usize) -> String {
+    let compact = detail.split_whitespace().collect::<Vec<_>>().join(" ");
+    if compact.chars().count() <= max_chars {
+        return compact;
+    }
+    let mut output = String::new();
+    for ch in compact.chars().take(max_chars.saturating_sub(3)) {
+        output.push(ch);
+    }
+    output.push_str("...");
+    output
 }
 
 fn run_step_export_from_active_mesh(
@@ -239,7 +363,11 @@ pub(super) fn run_cad_demo_action(state: &mut RenderState, action: CadDemoPaneAc
     for receipt in &receipts {
         upsert_cad_rebuild_activity_event(state, receipt);
     }
-    action_changed || !receipts.is_empty()
+    let changed = action_changed || !receipts.is_empty();
+    if changed {
+        sync_cad_build_progress_to_chat(state);
+    }
+    changed
 }
 
 fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction) -> bool {

@@ -1365,6 +1365,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                             "CAD build phase transition failed: {error}"
                         ));
                     }
+                    super::sync_cad_build_progress_to_chat(state);
                 }
 
                 let envelope =
@@ -1459,6 +1460,9 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                         "tool call auto-response submitted code={} success={}",
                         code, success
                     ));
+                }
+                if is_cad_intent_tool {
+                    super::sync_cad_build_progress_to_chat(state);
                 }
             } else {
                 state.autopilot_chat.enqueue_tool_call(pending);

@@ -2,8 +2,8 @@ use wgpui::markdown::{MarkdownConfig, MarkdownParser, MarkdownRenderer};
 use wgpui::{Bounds, Component, InputEvent, PaintContext, Point, Quad, theme};
 
 use crate::app_state::{
-    AutopilotChatState, AutopilotMessage, AutopilotMessageStatus, AutopilotRole, ChatPaneInputs,
-    PaneKind, RenderState,
+    AutopilotChatState, AutopilotMessage, AutopilotMessageStatus, AutopilotProgressBlock,
+    AutopilotProgressRow, AutopilotRole, ChatPaneInputs, PaneKind, RenderState,
 };
 use crate::pane_renderer::paint_action_button;
 use crate::pane_system::{
@@ -14,6 +14,9 @@ use crate::pane_system::{
 const CHAT_TRANSCRIPT_LINE_HEIGHT: f32 = 14.0;
 const CHAT_MARKDOWN_FONT_SIZE: f32 = 11.0;
 const CHAT_MARKDOWN_MIN_WIDTH: f32 = 84.0;
+const CHAT_PROGRESS_HEADER_LINE_HEIGHT: f32 = 12.0;
+const CHAT_PROGRESS_ROW_LINE_HEIGHT: f32 = 12.0;
+const CHAT_PROGRESS_BLOCK_GAP: f32 = 4.0;
 
 fn transcript_scroll_clip_bounds(content_bounds: Bounds) -> Bounds {
     let transcript_bounds = chat_transcript_bounds(content_bounds);
@@ -42,6 +45,87 @@ fn message_markdown_source(message: &AutopilotMessage) -> String {
     sanitize_chat_text(&message_display_content(message))
 }
 
+fn message_progress_blocks(message: &AutopilotMessage) -> &[AutopilotProgressBlock] {
+    message
+        .structured
+        .as_ref()
+        .map(|structured| structured.progress_blocks.as_slice())
+        .unwrap_or(&[])
+}
+
+fn progress_block_header(block: &AutopilotProgressBlock) -> String {
+    format!("{} [{}]", block.title.trim(), block.status.trim())
+}
+
+fn progress_row_text(row: &AutopilotProgressRow) -> String {
+    format!("{}: {}", row.label.trim(), row.value.trim())
+}
+
+fn progress_status_color(status: &str) -> wgpui::Hsla {
+    match status.trim().to_ascii_lowercase().as_str() {
+        "done" => theme::status::SUCCESS,
+        "failed" => theme::status::ERROR,
+        "rebuilding" | "applying" => theme::accent::PRIMARY,
+        _ => theme::text::MUTED,
+    }
+}
+
+fn progress_row_color(tone: &str) -> wgpui::Hsla {
+    match tone.trim().to_ascii_lowercase().as_str() {
+        "success" => theme::status::SUCCESS,
+        "error" => theme::status::ERROR,
+        "accent" => theme::accent::PRIMARY,
+        "info" => theme::text::PRIMARY,
+        _ => theme::text::MUTED,
+    }
+}
+
+fn progress_block_height(block: &AutopilotProgressBlock) -> f32 {
+    CHAT_PROGRESS_HEADER_LINE_HEIGHT
+        + (block.rows.len() as f32 * CHAT_PROGRESS_ROW_LINE_HEIGHT)
+        + CHAT_PROGRESS_BLOCK_GAP
+}
+
+fn message_progress_height(message: &AutopilotMessage) -> f32 {
+    message_progress_blocks(message)
+        .iter()
+        .map(progress_block_height)
+        .sum()
+}
+
+fn paint_message_progress_blocks(
+    message: &AutopilotMessage,
+    x: f32,
+    mut y: f32,
+    paint: &mut PaintContext,
+) -> f32 {
+    let start_y = y;
+    for block in message_progress_blocks(message) {
+        let header = sanitize_chat_text(&progress_block_header(block));
+        paint.scene.draw_text(paint.text.layout_mono(
+            &header,
+            Point::new(x, y),
+            10.0,
+            progress_status_color(&block.status),
+        ));
+        y += CHAT_PROGRESS_HEADER_LINE_HEIGHT;
+
+        for row in &block.rows {
+            let text = sanitize_chat_text(&progress_row_text(row));
+            paint.scene.draw_text(paint.text.layout(
+                &text,
+                Point::new(x + 6.0, y),
+                10.0,
+                progress_row_color(&row.tone),
+            ));
+            y += CHAT_PROGRESS_ROW_LINE_HEIGHT;
+        }
+
+        y += CHAT_PROGRESS_BLOCK_GAP;
+    }
+    y - start_y
+}
+
 fn transcript_content_height(
     content_bounds: Bounds,
     autopilot_chat: &AutopilotChatState,
@@ -61,6 +145,7 @@ fn transcript_content_height(
         let markdown_size =
             markdown_renderer.measure(&markdown_document, markdown_width, text_system);
         height += markdown_size.height.max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+        height += message_progress_height(message);
         height += 8.0;
     }
 
@@ -106,6 +191,7 @@ fn transcript_message_layouts(
             .height
             .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
         y += markdown_height;
+        y += message_progress_height(message);
         y += 8.0;
 
         layouts.push((
@@ -236,6 +322,7 @@ pub fn paint(
             .height
             .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
         y += markdown_height;
+        y += paint_message_progress_blocks(message, transcript_scroll_clip.origin.x, y, paint);
         y += 8.0;
     }
     paint.scene.pop_clip();
@@ -370,12 +457,63 @@ fn sanitize_chat_text(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::sanitize_chat_text;
+    use super::{message_progress_height, progress_status_color, sanitize_chat_text};
+    use crate::app_state::{
+        AutopilotMessage, AutopilotMessageStatus, AutopilotProgressBlock, AutopilotProgressRow,
+        AutopilotRole, AutopilotStructuredMessage,
+    };
+    use wgpui::theme;
+
+    fn fixture_progress_message(status: &str) -> AutopilotMessage {
+        AutopilotMessage {
+            id: 1,
+            role: AutopilotRole::Codex,
+            status: AutopilotMessageStatus::Running,
+            content: "building".to_string(),
+            structured: Some(AutopilotStructuredMessage {
+                reasoning: String::new(),
+                answer: "building".to_string(),
+                events: Vec::new(),
+                status: Some("answer".to_string()),
+                progress_blocks: vec![AutopilotProgressBlock {
+                    kind: "cad-build".to_string(),
+                    title: "CAD Build".to_string(),
+                    status: status.to_string(),
+                    rows: vec![AutopilotProgressRow {
+                        label: "phase".to_string(),
+                        value: status.to_string(),
+                        tone: "info".to_string(),
+                    }],
+                }],
+            }),
+        }
+    }
 
     #[test]
     fn sanitize_chat_text_strips_ansi_and_control_chars() {
         let raw = "ok\u{1b}[31m red\u{1b}[0m\tline\r\nnext\u{7}";
         let sanitized = sanitize_chat_text(raw);
         assert_eq!(sanitized, "ok red\tline\nnext");
+    }
+
+    #[test]
+    fn progress_blocks_contribute_to_message_height() {
+        let baseline = AutopilotMessage {
+            id: 2,
+            role: AutopilotRole::Codex,
+            status: AutopilotMessageStatus::Running,
+            content: "plain".to_string(),
+            structured: None,
+        };
+        let with_progress = fixture_progress_message("rebuilding");
+        assert_eq!(message_progress_height(&baseline), 0.0);
+        assert!(message_progress_height(&with_progress) > 0.0);
+    }
+
+    #[test]
+    fn progress_status_colors_map_terminal_states() {
+        assert_eq!(progress_status_color("done"), theme::status::SUCCESS);
+        assert_eq!(progress_status_color("failed"), theme::status::ERROR);
+        assert_eq!(progress_status_color("rebuilding"), theme::accent::PRIMARY);
     }
 }
