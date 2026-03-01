@@ -186,6 +186,7 @@ Decision criteria to keep objective:
 - input reducer scaffold document: `docs/cad/CAD_INPUT_SCAFFOLD.md`
 - params store document: `docs/cad/CAD_PARAMS.md`
 - feature ops document: `docs/cad/CAD_FEATURE_OPS.md`
+- rack template generator document: `docs/cad/CAD_RACK_TEMPLATE.md`
 
 ### Eval, Caching, and Concurrency
 
