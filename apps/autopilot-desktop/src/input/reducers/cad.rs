@@ -1740,6 +1740,7 @@ fn looks_like_cad_prompt(prompt: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
     use std::time::Duration;
 
     use super::{
@@ -1748,10 +1749,12 @@ mod tests {
     };
     use crate::app_state::{ActivityEventDomain, CadDemoPaneState, CadTimelineRowState};
     use crate::pane_system::CadDemoPaneAction;
+    use openagents_cad::chat_adapter::{CadIntentTranslationOutcome, translate_chat_to_cad_intent};
     use openagents_cad::events::{CadEvent, CadEventKind};
     use openagents_cad::mesh::{
         CadMeshBounds, CadMeshMaterialSlot, CadMeshPayload, CadMeshTopology, CadMeshVertex,
     };
+    use serde_json::{Value, json};
 
     fn wait_for_receipt(state: &mut CadDemoPaneState) {
         for _ in 0..64 {
@@ -1804,6 +1807,233 @@ mod tests {
             state.projection_mode.label(),
             viewport_signature,
         )
+    }
+
+    fn interaction_fixture_path() -> String {
+        let root = env!("CARGO_MANIFEST_DIR");
+        format!("{root}/tests/goldens/cad_followup_parameter_edit_interaction.json")
+    }
+
+    fn interaction_snapshot(
+        state: &CadDemoPaneState,
+        prompt: &str,
+        intent_name: &str,
+        prompt_state_revision: u64,
+    ) -> Value {
+        let receipts = state
+            .rebuild_receipts
+            .iter()
+            .map(|receipt| {
+                json!({
+                    "event_id": receipt.event_id,
+                    "document_revision": receipt.document_revision,
+                    "variant_id": receipt.variant_id,
+                    "rebuild_hash": receipt.rebuild_hash,
+                    "mesh_hash": receipt.mesh_hash,
+                    "duration_ms": receipt.duration_ms,
+                    "feature_count": receipt.feature_count,
+                    "vertex_count": receipt.vertex_count,
+                    "triangle_count": receipt.triangle_count,
+                    "edge_count": receipt.edge_count,
+                    "cache_hits": receipt.cache_hits,
+                    "cache_misses": receipt.cache_misses,
+                    "cache_evictions": receipt.cache_evictions,
+                })
+            })
+            .collect::<Vec<_>>();
+        let warnings = state
+            .warnings
+            .iter()
+            .map(|warning| {
+                json!({
+                    "code": warning.code,
+                    "severity": warning.severity,
+                    "feature_id": warning.feature_id,
+                    "entity_id": warning.entity_id,
+                    "semantic_refs": warning.semantic_refs,
+                })
+            })
+            .collect::<Vec<_>>();
+        json!({
+            "prompt": prompt,
+            "intent": intent_name,
+            "prompt_state_revision": prompt_state_revision,
+            "active_variant_id": state.active_variant_id,
+            "selected_feature": state.focused_geometry_ref,
+            "timeline_selected_index": state.timeline_selected_index,
+            "width_mm": state.dimension_value_mm("width_mm"),
+            "rebuild_receipts": receipts,
+            "analysis": {
+                "document_revision": state.analysis_snapshot.document_revision,
+                "variant_id": state.analysis_snapshot.variant_id,
+                "material_id": state.analysis_snapshot.material_id,
+                "volume_mm3": state.analysis_snapshot.volume_mm3,
+                "mass_kg": state.analysis_snapshot.mass_kg,
+                "estimated_cost_usd": state.analysis_snapshot.estimated_cost_usd,
+                "max_deflection_mm": state.analysis_snapshot.max_deflection_mm,
+                "center_of_gravity_mm": state.analysis_snapshot.center_of_gravity_mm,
+            },
+            "warnings": warnings,
+            "last_action": state.last_action,
+            "last_error": state.last_error,
+        })
+    }
+
+    fn interaction_semantic_diff(expected: &Value, actual: &Value) -> String {
+        let mut lines = Vec::<String>::new();
+        for field in [
+            "prompt",
+            "intent",
+            "prompt_state_revision",
+            "active_variant_id",
+            "selected_feature",
+            "timeline_selected_index",
+            "width_mm",
+            "last_error",
+        ] {
+            if expected.get(field) != actual.get(field) {
+                lines.push(format!(
+                    "{field} expected={} actual={}",
+                    expected
+                        .get(field)
+                        .map(Value::to_string)
+                        .unwrap_or_else(|| "null".to_string()),
+                    actual
+                        .get(field)
+                        .map(Value::to_string)
+                        .unwrap_or_else(|| "null".to_string())
+                ));
+            }
+        }
+        for field in [
+            "document_revision",
+            "variant_id",
+            "material_id",
+            "volume_mm3",
+            "mass_kg",
+            "estimated_cost_usd",
+            "max_deflection_mm",
+            "center_of_gravity_mm",
+        ] {
+            if expected.get("analysis").and_then(|value| value.get(field))
+                != actual.get("analysis").and_then(|value| value.get(field))
+            {
+                lines.push(format!(
+                    "analysis.{field} expected={} actual={}",
+                    expected
+                        .get("analysis")
+                        .and_then(|value| value.get(field))
+                        .map(Value::to_string)
+                        .unwrap_or_else(|| "null".to_string()),
+                    actual
+                        .get("analysis")
+                        .and_then(|value| value.get(field))
+                        .map(Value::to_string)
+                        .unwrap_or_else(|| "null".to_string())
+                ));
+            }
+        }
+
+        let expected_receipts = expected
+            .get("rebuild_receipts")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let actual_receipts = actual
+            .get("rebuild_receipts")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        if expected_receipts.len() != actual_receipts.len() {
+            lines.push(format!(
+                "rebuild_receipts length expected={} actual={}",
+                expected_receipts.len(),
+                actual_receipts.len()
+            ));
+        }
+        for (index, (expected_receipt, actual_receipt)) in expected_receipts
+            .iter()
+            .zip(actual_receipts.iter())
+            .enumerate()
+        {
+            for field in [
+                "document_revision",
+                "variant_id",
+                "rebuild_hash",
+                "mesh_hash",
+                "duration_ms",
+                "feature_count",
+                "vertex_count",
+                "triangle_count",
+                "edge_count",
+                "cache_hits",
+                "cache_misses",
+                "cache_evictions",
+            ] {
+                if expected_receipt.get(field) != actual_receipt.get(field) {
+                    lines.push(format!(
+                        "rebuild_receipts[{index}].{field} expected={} actual={}",
+                        expected_receipt
+                            .get(field)
+                            .map(Value::to_string)
+                            .unwrap_or_else(|| "null".to_string()),
+                        actual_receipt
+                            .get(field)
+                            .map(Value::to_string)
+                            .unwrap_or_else(|| "null".to_string())
+                    ));
+                }
+            }
+        }
+
+        let warning_signature = |warning: &Value| {
+            format!(
+                "{}|{}|{}|{}|{}",
+                warning
+                    .get("code")
+                    .map(Value::to_string)
+                    .unwrap_or_else(|| "null".to_string()),
+                warning
+                    .get("severity")
+                    .map(Value::to_string)
+                    .unwrap_or_else(|| "null".to_string()),
+                warning
+                    .get("feature_id")
+                    .map(Value::to_string)
+                    .unwrap_or_else(|| "null".to_string()),
+                warning
+                    .get("entity_id")
+                    .map(Value::to_string)
+                    .unwrap_or_else(|| "null".to_string()),
+                warning
+                    .get("semantic_refs")
+                    .map(Value::to_string)
+                    .unwrap_or_else(|| "null".to_string()),
+            )
+        };
+        let expected_warning_signatures = expected
+            .get("warnings")
+            .and_then(Value::as_array)
+            .map(|warnings| warnings.iter().map(warning_signature).collect::<Vec<_>>())
+            .unwrap_or_default();
+        let actual_warning_signatures = actual
+            .get("warnings")
+            .and_then(Value::as_array)
+            .map(|warnings| warnings.iter().map(warning_signature).collect::<Vec<_>>())
+            .unwrap_or_default();
+        if expected_warning_signatures != actual_warning_signatures {
+            lines.push(format!(
+                "warning signatures expected={} actual={}",
+                expected_warning_signatures.join(";"),
+                actual_warning_signatures.join(";")
+            ));
+        }
+
+        if lines.is_empty() {
+            "no semantic interaction diff".to_string()
+        } else {
+            lines.join("\n")
+        }
     }
 
     #[test]
@@ -2437,5 +2667,89 @@ mod tests {
         assert_eq!(row.domain, ActivityEventDomain::Cad);
         assert!(row.source_tag.starts_with("cad.selection.changed"));
         assert!(row.detail.contains("variant.stiffness"));
+    }
+
+    #[test]
+    fn follow_up_parameter_edit_interaction_matches_golden_receipts() {
+        let mut state = CadDemoPaneState::default();
+        let prompt = "Select rack_outer_face";
+        let intent = match translate_chat_to_cad_intent(prompt) {
+            CadIntentTranslationOutcome::Intent(intent) => intent,
+            CadIntentTranslationOutcome::ParseFailure(error) => {
+                panic!("prompt translation should succeed: {error:?}")
+            }
+        };
+        let prompt_state_revision = state
+            .apply_chat_intent_for_thread("thread.followup", &intent)
+            .expect("prompt intent should apply")
+            .state_revision;
+        assert_eq!(prompt_state_revision, 1);
+        assert_eq!(state.last_chat_intent_name.as_deref(), Some("Select"));
+        assert_eq!(state.session_id, "cad.session.chat.thread-followup");
+
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::CycleVariant
+        ));
+        wait_for_receipt(&mut state);
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::SelectTimelineRow(0)
+        ));
+        assert_eq!(state.timeline_selected_index, Some(0));
+        assert!(state.focused_geometry_ref.is_some());
+
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::StartDimensionEdit(0)
+        ));
+        for _ in 0..16 {
+            let _ = apply_cad_demo_action(&mut state, CadDemoPaneAction::DimensionInputBackspace);
+        }
+        for ch in ['4', '2', '1', '.', '0'] {
+            assert!(apply_cad_demo_action(
+                &mut state,
+                CadDemoPaneAction::DimensionInputChar(ch)
+            ));
+        }
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::DimensionInputCommit
+        ));
+        wait_for_receipt(&mut state);
+
+        assert_eq!(state.dimension_value_mm("width_mm"), Some(421.0));
+        assert_eq!(state.analysis_snapshot.document_revision, state.document_revision);
+        assert_eq!(state.analysis_snapshot.variant_id, state.active_variant_id);
+        assert!(
+            !state.warnings.is_empty(),
+            "interaction should keep deterministic warning output"
+        );
+
+        let actual = interaction_snapshot(&state, prompt, "Select", prompt_state_revision);
+        let actual_json = serde_json::to_string_pretty(&actual)
+            .expect("interaction snapshot should serialize deterministically");
+        let fixture_path = interaction_fixture_path();
+        if std::env::var("CAD_UPDATE_GOLDENS").as_deref() == Ok("1") {
+            if let Some(parent) = std::path::Path::new(&fixture_path).parent() {
+                fs::create_dir_all(parent).expect("fixture parent directory should exist");
+            }
+            fs::write(&fixture_path, actual_json).expect("fixture should write");
+            return;
+        }
+
+        let expected_json = fs::read_to_string(&fixture_path).unwrap_or_else(|error| {
+            panic!(
+                "missing interaction fixture {fixture_path}: {error}\nset CAD_UPDATE_GOLDENS=1 to regenerate.\nactual snapshot:\n{actual_json}"
+            )
+        });
+        let expected =
+            serde_json::from_str::<Value>(&expected_json).expect("fixture should parse as JSON");
+        if expected != actual {
+            let diff = interaction_semantic_diff(&expected, &actual);
+            panic!(
+                "follow-up interaction snapshot mismatch against {fixture_path}\nsemantic diff:\n{diff}\n\nactual snapshot:\n{actual_json}"
+            );
+        }
     }
 }
