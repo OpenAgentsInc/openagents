@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::semantic_refs::CadSemanticRefRegistry;
+use crate::sketch::CadSketchModel;
 use crate::{CadError, CadResult};
 
 /// Canonical `.apcad` format tag.
@@ -20,13 +21,15 @@ pub struct ApcadHeader {
 }
 
 /// Minimal `.apcad` envelope with deterministic map fields.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ApcadDocumentEnvelope {
     pub header: ApcadHeader,
     pub document_id: String,
     pub stable_ids: BTreeMap<String, String>,
     pub metadata: BTreeMap<String, String>,
     pub analysis_cache: Option<BTreeMap<String, String>>,
+    #[serde(default, skip_serializing_if = "CadSketchModel::is_empty")]
+    pub sketch: CadSketchModel,
 }
 
 impl ApcadDocumentEnvelope {
@@ -42,6 +45,7 @@ impl ApcadDocumentEnvelope {
             stable_ids: BTreeMap::new(),
             metadata: BTreeMap::new(),
             analysis_cache: None,
+            sketch: CadSketchModel::default(),
         }
     }
 
@@ -61,9 +65,12 @@ impl ApcadDocumentEnvelope {
 
     /// Deserialize from JSON.
     pub fn from_json(payload: &str) -> CadResult<Self> {
-        serde_json::from_str(payload).map_err(|error| CadError::Serialization {
-            reason: format!("failed to parse .apcad json: {error}"),
-        })
+        let envelope: Self =
+            serde_json::from_str(payload).map_err(|error| CadError::Serialization {
+                reason: format!("failed to parse .apcad json: {error}"),
+            })?;
+        envelope.validate()?;
+        Ok(envelope)
     }
 
     /// Persist semantic reference registry entries into deterministic stable ids.
@@ -75,12 +82,18 @@ impl ApcadDocumentEnvelope {
     pub fn semantic_ref_registry(&self) -> CadResult<CadSemanticRefRegistry> {
         CadSemanticRefRegistry::from_stable_ids(self.stable_ids.clone())
     }
+
+    /// Validate envelope-local consistency.
+    pub fn validate(&self) -> CadResult<()> {
+        self.sketch.validate()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{APCAD_FORMAT_TAG, APCAD_SCHEMA_VERSION, ApcadDocumentEnvelope};
     use crate::semantic_refs::CadSemanticRefRegistry;
+    use crate::sketch::{CadSketchEntity, CadSketchPlane};
 
     #[test]
     fn deterministic_serialization_is_stable_across_runs() {
@@ -171,5 +184,81 @@ mod tests {
             .semantic_ref_registry()
             .expect("registry should recover from stable ids");
         assert_eq!(recovered.to_stable_ids(), registry.to_stable_ids());
+    }
+
+    #[test]
+    fn sketch_entities_round_trip_with_stable_ids_in_apcad_envelope() {
+        let mut envelope = ApcadDocumentEnvelope::new("doc-sketch");
+        envelope
+            .sketch
+            .insert_plane(CadSketchPlane {
+                id: "plane.front".to_string(),
+                name: "Front".to_string(),
+                origin_mm: [0.0, 0.0, 0.0],
+                normal: [0.0, 0.0, 1.0],
+                x_axis: [1.0, 0.0, 0.0],
+                y_axis: [0.0, 1.0, 0.0],
+            })
+            .expect("sketch plane should insert");
+        envelope
+            .sketch
+            .insert_entity(CadSketchEntity::Line {
+                id: "entity.line.001".to_string(),
+                plane_id: "plane.front".to_string(),
+                start_mm: [0.0, 0.0],
+                end_mm: [120.0, 0.0],
+                anchor_ids: ["anchor.l.start".to_string(), "anchor.l.end".to_string()],
+                construction: false,
+            })
+            .expect("line entity should insert");
+
+        let payload = envelope
+            .to_pretty_json()
+            .expect("envelope with sketch should serialize");
+        let parsed =
+            ApcadDocumentEnvelope::from_json(&payload).expect("envelope with sketch should parse");
+
+        assert_eq!(parsed.sketch.planes.len(), 1);
+        assert_eq!(parsed.sketch.entities.len(), 1);
+        assert!(parsed.sketch.entities.contains_key("entity.line.001"));
+    }
+
+    #[test]
+    fn from_json_rejects_invalid_sketch_references() {
+        let invalid_payload = r#"{
+  "header": { "format": "apcad", "version": 1, "canonical_unit": "mm" },
+  "document_id": "doc-invalid-sketch",
+  "stable_ids": {},
+  "metadata": {},
+  "analysis_cache": null,
+  "sketch": {
+    "planes": {
+      "plane.front": {
+        "id": "plane.front",
+        "name": "Front",
+        "origin_mm": [0.0, 0.0, 0.0],
+        "normal": [0.0, 0.0, 1.0],
+        "x_axis": [1.0, 0.0, 0.0],
+        "y_axis": [0.0, 1.0, 0.0]
+      }
+    },
+    "entities": {
+      "entity.line.001": {
+        "kind": "line",
+        "id": "entity.line.001",
+        "plane_id": "plane.missing",
+        "start_mm": [0.0, 0.0],
+        "end_mm": [20.0, 0.0],
+        "anchor_ids": ["anchor.l.start", "anchor.l.end"],
+        "construction": false
+      }
+    }
+  }
+}"#;
+        let result = ApcadDocumentEnvelope::from_json(invalid_payload);
+        assert!(
+            result.is_err(),
+            "invalid sketch references must be rejected"
+        );
     }
 }
