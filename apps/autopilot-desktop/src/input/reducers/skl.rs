@@ -84,33 +84,27 @@ pub(super) fn run_skill_registry_action(
                     return true;
                 }
             };
-            let repo_skills_root = cwd.join("skills");
-            state.skill_registry.repo_skills_root = Some(repo_skills_root.display().to_string());
-            state.skill_registry.source = "codex".to_string();
-
-            if !repo_skills_root.is_absolute() {
-                state.skill_registry.last_error = Some(
-                    "Invalid skills root for codex skills/list: expected absolute path".to_string(),
+            if let Err(error) = crate::skill_autoload::ensure_required_cad_skills() {
+                tracing::warn!(
+                    "failed to auto-provision managed CAD skills before discover: {}",
+                    error
                 );
-                state.skill_registry.load_state = PaneLoadState::Error;
-                return true;
             }
-            if !repo_skills_root.exists() {
-                state.skill_registry.last_error = Some(format!(
-                    "Codex skills/list root missing: {}",
-                    repo_skills_root.display()
-                ));
-                state.skill_registry.load_state = PaneLoadState::Error;
-                return true;
-            }
+            let extra_user_roots = crate::skill_autoload::codex_extra_skill_roots(&cwd);
+            state.skill_registry.repo_skills_root = extra_user_roots
+                .first()
+                .map(|path| path.display().to_string());
+            state.skill_registry.source = "codex".to_string();
 
             let params = SkillsListParams {
                 cwds: vec![cwd.clone()],
                 force_reload: true,
-                per_cwd_extra_user_roots: Some(vec![SkillsListExtraRootsForCwd {
-                    cwd,
-                    extra_user_roots: vec![repo_skills_root],
-                }]),
+                per_cwd_extra_user_roots: (!extra_user_roots.is_empty()).then_some(vec![
+                    SkillsListExtraRootsForCwd {
+                        cwd,
+                        extra_user_roots,
+                    },
+                ]),
             };
 
             match state.queue_codex_command(CodexLaneCommand::SkillsList(params)) {

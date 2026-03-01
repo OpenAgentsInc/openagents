@@ -34,6 +34,8 @@ pollster = { workspace = true }
 keyring = { version = "3.6.2", default-features = false, features = ["apple-native", "windows-native", "linux-native"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+dirs = "6.0"
+reqwest = { workspace = true, features = ["blocking"] }
 
 [package.metadata.bundle]
 name = "Autopilot"
