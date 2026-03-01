@@ -4,9 +4,22 @@ use crate::codex_lane::{
     CodexLaneCommandKind, CodexLaneCommandResponse, CodexLaneCommandStatus, CodexLaneLifecycle,
     CodexLaneNotification, CodexLaneSnapshot, CodexThreadTranscriptRole,
 };
-use codex_client::{SkillsListExtraRootsForCwd, SkillsListParams, ThreadStartParams};
+use codex_client::{
+    SkillsListExtraRootsForCwd, SkillsListParams, ThreadStartParams, TurnInterruptParams,
+};
 
 const CAD_TOOL_RESPONSE_SUBMIT_RETRY_LIMIT: u8 = 2;
+
+fn is_cad_turn_for(state: &RenderState, turn_id: &str) -> bool {
+    state
+        .autopilot_chat
+        .turn_metadata_for(turn_id)
+        .is_some_and(|metadata| metadata.is_cad_turn)
+        || state
+            .autopilot_chat
+            .active_turn_metadata()
+            .is_some_and(|metadata| metadata.is_cad_turn)
+}
 
 fn cad_failure_class_from_tool_response(
     envelope: &super::super::tool_bridge::ToolBridgeResultEnvelope,
@@ -422,8 +435,9 @@ fn queue_new_thread(state: &mut RenderState, error_prefix: &str) -> bool {
         model: state.autopilot_chat.selected_model_override(),
         model_provider: None,
         cwd: cwd.and_then(|value| value.into_os_string().into_string().ok()),
-        approval_policy: None,
-        sandbox: None,
+        approval_policy: Some(codex_client::AskForApproval::Never),
+        sandbox: Some(codex_client::SandboxMode::DangerFullAccess),
+        dynamic_tools: Some(crate::openagents_dynamic_tools::openagents_dynamic_tool_specs()),
     });
     if let Err(error) = state.queue_codex_command(command) {
         state.autopilot_chat.last_error = Some(format!("{error_prefix}: {error}"));
@@ -956,8 +970,8 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                         model: None,
                         model_provider: None,
                         cwd: metadata.as_ref().and_then(|value| value.cwd.clone()),
-                        approval_policy: None,
-                        sandbox: None,
+                        approval_policy: Some(codex_client::AskForApproval::Never),
+                        sandbox: Some(codex_client::SandboxMode::DangerFullAccess),
                         path: resume_path.map(std::path::PathBuf::from),
                     },
                 )) {
@@ -1084,13 +1098,34 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
         } => {
             let thread_id = resolve_thread_id(state, thread_id);
             let turn_id = resolve_turn_id(state, turn_id);
+            let item_type_label = item_type.as_deref().unwrap_or("n/a").to_string();
+            let is_command_execution_item =
+                item_type_label.eq_ignore_ascii_case("commandExecution");
+            let is_cad_turn = is_cad_turn_for(state, &turn_id);
             state.autopilot_chat.remember_thread(thread_id.clone());
             if state.autopilot_chat.is_active_thread(&thread_id) {
                 state.autopilot_chat.record_turn_timeline_event(format!(
                     "item started: turn={turn_id} id={} type={}",
                     item_id.as_deref().unwrap_or("n/a"),
-                    item_type.as_deref().unwrap_or("n/a")
+                    item_type_label
                 ));
+                if is_cad_turn && is_command_execution_item {
+                    let policy_message = "CAD turn policy blocked command execution. Start a new thread to load OpenAgents CAD tools, then retry.";
+                    state.autopilot_chat.last_error = Some(policy_message.to_string());
+                    state.autopilot_chat.record_turn_timeline_event(
+                        "cad policy violation: commandExecution item started; interrupt requested",
+                    );
+                    if let Err(error) = state.queue_codex_command(CodexLaneCommand::TurnInterrupt(
+                        TurnInterruptParams {
+                            thread_id: thread_id.clone(),
+                            turn_id: turn_id.clone(),
+                        },
+                    )) {
+                        state.autopilot_chat.last_error = Some(format!(
+                            "{policy_message} Failed to interrupt turn: {error}"
+                        ));
+                    }
+                }
             }
         }
         CodexLaneNotification::ItemCompleted {
@@ -1388,20 +1423,44 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             request_id,
             request,
         } => {
-            state.autopilot_chat.enqueue_command_approval(
-                crate::app_state::AutopilotApprovalRequest {
-                    request_id,
-                    thread_id: request.thread_id,
-                    turn_id: request.turn_id,
-                    item_id: request.item_id,
-                    reason: request.reason,
-                    command: request.command,
-                    cwd: request.cwd,
-                },
-            );
-            state
-                .autopilot_chat
-                .record_turn_timeline_event("command approval requested");
+            let resolved_turn_id = resolve_turn_id(state, request.turn_id.clone());
+            if is_cad_turn_for(state, &resolved_turn_id) {
+                let command =
+                    crate::codex_lane::CodexLaneCommand::ServerRequestCommandApprovalRespond {
+                        request_id,
+                        response: codex_client::CommandExecutionRequestApprovalResponse {
+                            decision: codex_client::ApprovalDecision::Decline,
+                        },
+                    };
+                if let Err(error) = state.queue_codex_command(command) {
+                    state.autopilot_chat.last_error = Some(format!(
+                        "CAD turn policy failed to decline command execution request: {error}"
+                    ));
+                } else {
+                    state.autopilot_chat.last_error = Some(
+                        "CAD turn policy declined command execution request. Start a new thread to load OpenAgents CAD tools."
+                            .to_string(),
+                    );
+                    state
+                        .autopilot_chat
+                        .record_turn_timeline_event("cad policy: command approval auto-declined");
+                }
+            } else {
+                state.autopilot_chat.enqueue_command_approval(
+                    crate::app_state::AutopilotApprovalRequest {
+                        request_id,
+                        thread_id: request.thread_id,
+                        turn_id: request.turn_id,
+                        item_id: request.item_id,
+                        reason: request.reason,
+                        command: request.command,
+                        cwd: request.cwd,
+                    },
+                );
+                state
+                    .autopilot_chat
+                    .record_turn_timeline_event("command approval requested");
+            }
         }
         CodexLaneNotification::FileChangeApprovalRequested {
             request_id,
@@ -1435,10 +1494,8 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             };
 
             if super::super::tool_bridge::is_openagents_tool_namespace(&pending.tool) {
-                let is_cad_intent_tool = pending
-                    .tool
-                    .trim()
-                    .eq_ignore_ascii_case("openagents.cad.intent");
+                let is_cad_intent_tool =
+                    super::super::tool_bridge::is_openagents_cad_intent_tool(pending.tool.trim());
                 if is_cad_intent_tool {
                     if let Err(error) = state
                         .cad_demo

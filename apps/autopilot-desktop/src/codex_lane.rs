@@ -17,7 +17,7 @@ use codex_client::{
     FileChangeRequestApprovalResponse, FuzzyFileSearchSessionStartParams,
     FuzzyFileSearchSessionStopParams, FuzzyFileSearchSessionUpdateParams, GetAccountParams,
     InitializeCapabilities, InitializeParams, ListMcpServerStatusParams, LoginAccountParams,
-    McpServerOauthLoginParams, ModelListParams, ReviewStartParams, SkillScope,
+    McpServerOauthLoginParams, ModelListParams, ReviewStartParams, SandboxMode, SkillScope,
     SkillsConfigWriteParams, SkillsListParams, SkillsListResponse, SkillsRemoteReadParams,
     SkillsRemoteWriteParams, ThreadArchiveParams, ThreadCompactStartParams, ThreadForkParams,
     ThreadListParams, ThreadLoadedListParams, ThreadReadParams, ThreadRealtimeAppendTextParams,
@@ -82,7 +82,7 @@ impl Default for CodexLaneConfig {
                 title: Some("OpenAgents Autopilot Desktop".to_string()),
                 version: env!("CARGO_PKG_VERSION").to_string(),
             },
-            approval_policy: Some(AskForApproval::OnRequest),
+            approval_policy: Some(AskForApproval::Never),
             experimental_api: true,
             opt_out_notification_methods: default_opt_out_notification_methods(),
         }
@@ -912,7 +912,10 @@ impl CodexLaneState {
                 model_provider: None,
                 cwd: config.cwd.as_ref().map(|path| path.display().to_string()),
                 approval_policy: config.approval_policy,
-                sandbox: None,
+                sandbox: Some(SandboxMode::DangerFullAccess),
+                dynamic_tools: Some(
+                    crate::openagents_dynamic_tools::openagents_dynamic_tool_specs(),
+                ),
             };
             let started = {
                 let Some(client) = self.client.as_ref() else {

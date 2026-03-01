@@ -7,6 +7,11 @@ use crate::app_state::{
     ActivityFeedFilter, AutopilotToolCallRequest, CadBuildFailureClass, PaneKind, RenderState,
 };
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
+use crate::openagents_dynamic_tools::{
+    OPENAGENTS_DYNAMIC_TOOL_NAMES, OPENAGENTS_TOOL_CAD_ACTION, OPENAGENTS_TOOL_CAD_INTENT,
+    OPENAGENTS_TOOL_PANE_ACTION, OPENAGENTS_TOOL_PANE_CLOSE, OPENAGENTS_TOOL_PANE_FOCUS,
+    OPENAGENTS_TOOL_PANE_LIST, OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_PANE_SET_INPUT,
+};
 use crate::pane_registry::{pane_spec, pane_spec_by_command_id, pane_specs};
 use crate::pane_system::{
     ActiveJobPaneAction, ActivityFeedPaneAction, AgentNetworkSimulationPaneAction,
@@ -22,17 +27,26 @@ use crate::pane_system::{
 };
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
 
-pub(super) const OPENAGENTS_TOOL_PREFIX: &str = "openagents.";
-pub(super) const OPENAGENTS_TOOL_NAMES: &[&str] = &[
-    "openagents.pane.list",
-    "openagents.pane.open",
-    "openagents.pane.focus",
-    "openagents.pane.close",
-    "openagents.pane.set_input",
-    "openagents.pane.action",
-    "openagents.cad.intent",
-    "openagents.cad.action",
+const LEGACY_OPENAGENTS_TOOL_PANE_LIST: &str = "openagents.pane.list";
+const LEGACY_OPENAGENTS_TOOL_PANE_OPEN: &str = "openagents.pane.open";
+const LEGACY_OPENAGENTS_TOOL_PANE_FOCUS: &str = "openagents.pane.focus";
+const LEGACY_OPENAGENTS_TOOL_PANE_CLOSE: &str = "openagents.pane.close";
+const LEGACY_OPENAGENTS_TOOL_PANE_SET_INPUT: &str = "openagents.pane.set_input";
+const LEGACY_OPENAGENTS_TOOL_PANE_ACTION: &str = "openagents.pane.action";
+const LEGACY_OPENAGENTS_TOOL_CAD_INTENT: &str = "openagents.cad.intent";
+const LEGACY_OPENAGENTS_TOOL_CAD_ACTION: &str = "openagents.cad.action";
+const LEGACY_OPENAGENTS_TOOL_NAMES: &[&str] = &[
+    LEGACY_OPENAGENTS_TOOL_PANE_LIST,
+    LEGACY_OPENAGENTS_TOOL_PANE_OPEN,
+    LEGACY_OPENAGENTS_TOOL_PANE_FOCUS,
+    LEGACY_OPENAGENTS_TOOL_PANE_CLOSE,
+    LEGACY_OPENAGENTS_TOOL_PANE_SET_INPUT,
+    LEGACY_OPENAGENTS_TOOL_PANE_ACTION,
+    LEGACY_OPENAGENTS_TOOL_CAD_INTENT,
+    LEGACY_OPENAGENTS_TOOL_CAD_ACTION,
 ];
+pub(super) const OPENAGENTS_TOOL_PREFIXES: &[&str] = &["openagents_", "openagents."];
+pub(super) const OPENAGENTS_TOOL_NAMES: &[&str] = OPENAGENTS_DYNAMIC_TOOL_NAMES;
 const CAD_TOOL_RESPONSE_SCHEMA_VERSION: &str = "oa.cad.tool_response.v1";
 const CAD_CHECKPOINT_SCHEMA_VERSION: &str = "oa.cad.checkpoint.v1";
 const CAD_INTENT_PARSE_RETRY_LIMIT: u8 = 1;
@@ -122,16 +136,17 @@ pub(super) fn decode_tool_call_request(
     request: &AutopilotToolCallRequest,
 ) -> Result<ToolBridgeRequest, ToolBridgeResultEnvelope> {
     let tool = request.tool.trim();
-    if !tool.starts_with(OPENAGENTS_TOOL_PREFIX) || !is_supported_tool(tool) {
+    if !is_openagents_tool_namespace(tool) || !is_supported_tool(tool) {
         return Err(ToolBridgeResultEnvelope::error(
             "OA-TOOL-UNSUPPORTED",
             format!(
-                "Unsupported tool '{}'. Supported tools must be in '{}' namespace and allowlisted.",
-                request.tool, OPENAGENTS_TOOL_PREFIX
+                "Unsupported tool '{}'. Supported tools must be in OpenAgents namespace and allowlisted.",
+                request.tool
             ),
             json!({
                 "tool": request.tool,
                 "supported_tools": OPENAGENTS_TOOL_NAMES,
+                "legacy_supported_tools": LEGACY_OPENAGENTS_TOOL_NAMES,
             }),
         ));
     }
@@ -215,50 +230,50 @@ pub(super) fn execute_openagents_tool_request(
     };
 
     match decoded.tool.as_str() {
-        "openagents.pane.list" => execute_pane_list(state),
-        "openagents.pane.open" => {
+        OPENAGENTS_TOOL_PANE_LIST | LEGACY_OPENAGENTS_TOOL_PANE_LIST => execute_pane_list(state),
+        OPENAGENTS_TOOL_PANE_OPEN | LEGACY_OPENAGENTS_TOOL_PANE_OPEN => {
             let args = match decoded.decode_arguments::<PaneRefArgs>() {
                 Ok(value) => value,
                 Err(error) => return error,
             };
             execute_pane_open(state, args.pane.trim())
         }
-        "openagents.pane.focus" => {
+        OPENAGENTS_TOOL_PANE_FOCUS | LEGACY_OPENAGENTS_TOOL_PANE_FOCUS => {
             let args = match decoded.decode_arguments::<PaneRefArgs>() {
                 Ok(value) => value,
                 Err(error) => return error,
             };
             execute_pane_focus(state, args.pane.trim())
         }
-        "openagents.pane.close" => {
+        OPENAGENTS_TOOL_PANE_CLOSE | LEGACY_OPENAGENTS_TOOL_PANE_CLOSE => {
             let args = match decoded.decode_arguments::<PaneRefArgs>() {
                 Ok(value) => value,
                 Err(error) => return error,
             };
             execute_pane_close(state, args.pane.trim())
         }
-        "openagents.pane.set_input" => {
+        OPENAGENTS_TOOL_PANE_SET_INPUT | LEGACY_OPENAGENTS_TOOL_PANE_SET_INPUT => {
             let args = match decoded.decode_arguments::<PaneInputArgs>() {
                 Ok(value) => value,
                 Err(error) => return error,
             };
             execute_pane_set_input(state, &args)
         }
-        "openagents.pane.action" => {
+        OPENAGENTS_TOOL_PANE_ACTION | LEGACY_OPENAGENTS_TOOL_PANE_ACTION => {
             let args = match decoded.decode_arguments::<PaneActionArgs>() {
                 Ok(value) => value,
                 Err(error) => return error,
             };
             execute_pane_action(state, &args)
         }
-        "openagents.cad.intent" => {
+        OPENAGENTS_TOOL_CAD_INTENT | LEGACY_OPENAGENTS_TOOL_CAD_INTENT => {
             let args = match decoded.decode_arguments::<CadIntentArgs>() {
                 Ok(value) => value,
                 Err(error) => return error,
             };
             execute_cad_intent(state, &args)
         }
-        "openagents.cad.action" => {
+        OPENAGENTS_TOOL_CAD_ACTION | LEGACY_OPENAGENTS_TOOL_CAD_ACTION => {
             let args = match decoded.decode_arguments::<CadActionArgs>() {
                 Ok(value) => value,
                 Err(error) => return error,
@@ -276,11 +291,23 @@ pub(super) fn execute_openagents_tool_request(
 }
 
 fn is_supported_tool(tool: &str) -> bool {
-    OPENAGENTS_TOOL_NAMES.iter().any(|entry| *entry == tool)
+    OPENAGENTS_TOOL_NAMES
+        .iter()
+        .chain(LEGACY_OPENAGENTS_TOOL_NAMES.iter())
+        .any(|entry| *entry == tool)
 }
 
 pub(super) fn is_openagents_tool_namespace(tool: &str) -> bool {
-    tool.trim().starts_with(OPENAGENTS_TOOL_PREFIX)
+    let tool = tool.trim();
+    OPENAGENTS_TOOL_PREFIXES
+        .iter()
+        .any(|prefix| tool.starts_with(prefix))
+}
+
+pub(super) fn is_openagents_cad_intent_tool(tool: &str) -> bool {
+    let trimmed = tool.trim();
+    trimmed.eq_ignore_ascii_case(OPENAGENTS_TOOL_CAD_INTENT)
+        || trimmed.eq_ignore_ascii_case(LEGACY_OPENAGENTS_TOOL_CAD_INTENT)
 }
 
 fn execute_pane_list(state: &RenderState) -> ToolBridgeResultEnvelope {
@@ -1398,7 +1425,7 @@ fn execute_cad_intent(state: &mut RenderState, args: &CadIntentArgs) -> ToolBrid
                 "checkpoint": cad_checkpoint_payload(
                     &state.cad_demo,
                     Some(thread_id.as_str()),
-                    "openagents.cad.intent",
+                    OPENAGENTS_TOOL_CAD_INTENT,
                 ),
             }),
         );
@@ -1418,7 +1445,7 @@ fn execute_cad_intent(state: &mut RenderState, args: &CadIntentArgs) -> ToolBrid
                         "checkpoint": cad_checkpoint_payload(
                             &state.cad_demo,
                             Some(thread_id.as_str()),
-                            "openagents.cad.intent",
+                            OPENAGENTS_TOOL_CAD_INTENT,
                         ),
                     }),
                 );
@@ -1433,7 +1460,10 @@ fn execute_cad_intent(state: &mut RenderState, args: &CadIntentArgs) -> ToolBrid
     if prompt.is_empty() {
         return ToolBridgeResultEnvelope::error(
             "OA-CAD-INTENT-MISSING-PAYLOAD",
-            "Provide either non-empty `prompt` or `intent_json` for openagents.cad.intent",
+            format!(
+                "Provide either non-empty `prompt` or `intent_json` for {}",
+                OPENAGENTS_TOOL_CAD_INTENT
+            ),
             json!({
                 "schema_version": CAD_TOOL_RESPONSE_SCHEMA_VERSION,
                 "failure_class": cad_failure_class_label(CadBuildFailureClass::IntentParseValidation),
@@ -1441,12 +1471,15 @@ fn execute_cad_intent(state: &mut RenderState, args: &CadIntentArgs) -> ToolBrid
                 "fallback": {
                     "strategy": "request_clarification",
                     "strict_intent_json_required": true,
-                    "remediation_hint": "retry openagents.cad.intent with explicit intent_json payload",
+                    "remediation_hint": format!(
+                        "retry {} with explicit intent_json payload",
+                        OPENAGENTS_TOOL_CAD_INTENT
+                    ),
                 },
                 "checkpoint": cad_checkpoint_payload(
                     &state.cad_demo,
                     Some(thread_id.as_str()),
-                    "openagents.cad.intent",
+                    OPENAGENTS_TOOL_CAD_INTENT,
                 ),
             }),
         );
@@ -1482,7 +1515,7 @@ fn execute_cad_intent(state: &mut RenderState, args: &CadIntentArgs) -> ToolBrid
                         "checkpoint": cad_checkpoint_payload(
                             &state.cad_demo,
                             Some(thread_id.as_str()),
-                            "openagents.cad.intent",
+                            OPENAGENTS_TOOL_CAD_INTENT,
                         ),
                     }),
                 );
@@ -1520,12 +1553,15 @@ fn execute_cad_intent(state: &mut RenderState, args: &CadIntentArgs) -> ToolBrid
                             "strategy": "request_clarification",
                             "strict_intent_json_required": true,
                             "clarification_prompt": recovery_prompt,
-                            "remediation_hint": "retry openagents.cad.intent with explicit intent_json payload matching CadIntent schema",
+                            "remediation_hint": format!(
+                                "retry {} with explicit intent_json payload matching CadIntent schema",
+                                OPENAGENTS_TOOL_CAD_INTENT
+                            ),
                         },
                         "checkpoint": cad_checkpoint_payload(
                             &state.cad_demo,
                             Some(thread_id.as_str()),
-                            "openagents.cad.intent",
+                            OPENAGENTS_TOOL_CAD_INTENT,
                         ),
                     }),
                 );
@@ -1547,7 +1583,7 @@ fn execute_cad_intent(state: &mut RenderState, args: &CadIntentArgs) -> ToolBrid
                         "checkpoint": cad_checkpoint_payload(
                             &state.cad_demo,
                             Some(thread_id.as_str()),
-                            "openagents.cad.intent",
+                            OPENAGENTS_TOOL_CAD_INTENT,
                         ),
                     }),
                 );
@@ -1580,7 +1616,7 @@ fn execute_cad_intent(state: &mut RenderState, args: &CadIntentArgs) -> ToolBrid
                         "checkpoint": cad_checkpoint_payload(
                             &state.cad_demo,
                             Some(thread_id.as_str()),
-                            "openagents.cad.intent",
+                            OPENAGENTS_TOOL_CAD_INTENT,
                         ),
                     }),
                 );
@@ -1602,7 +1638,7 @@ fn execute_cad_intent(state: &mut RenderState, args: &CadIntentArgs) -> ToolBrid
                         "checkpoint": cad_checkpoint_payload(
                             &state.cad_demo,
                             Some(thread_id.as_str()),
-                            "openagents.cad.intent",
+                            OPENAGENTS_TOOL_CAD_INTENT,
                         ),
                     }),
                 );
@@ -1637,7 +1673,7 @@ fn execute_cad_action(state: &mut RenderState, args: &CadActionArgs) -> ToolBrid
             "checkpoint": cad_checkpoint_payload(
                 &state.cad_demo,
                 state.autopilot_chat.active_thread_id.as_deref(),
-                "openagents.cad.action",
+                OPENAGENTS_TOOL_CAD_ACTION,
             ),
         }),
     )
@@ -1830,7 +1866,8 @@ fn normalize_key(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        CAD_CHECKPOINT_SCHEMA_VERSION, CAD_TOOL_RESPONSE_SCHEMA_VERSION, ToolBridgeResultEnvelope,
+        CAD_CHECKPOINT_SCHEMA_VERSION, CAD_TOOL_RESPONSE_SCHEMA_VERSION,
+        LEGACY_OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_PANE_OPEN, ToolBridgeResultEnvelope,
         cad_action_from_key, cad_checkpoint_payload, cad_parse_retry_prompt,
         decode_tool_call_request, normalize_key, pane_action_to_hit_action, pane_kind_key,
         parse_bool_env_override, resolve_pane_kind,
@@ -1869,14 +1906,24 @@ mod tests {
     #[test]
     fn decode_accepts_supported_tool_and_object_arguments() {
         let decoded = decode_tool_call_request(&request(
-            "openagents.pane.open",
+            OPENAGENTS_TOOL_PANE_OPEN,
             r#"{"pane":"Spark Wallet"}"#,
         ))
         .expect("decode should succeed");
-        assert_eq!(decoded.tool, "openagents.pane.open");
+        assert_eq!(decoded.tool, OPENAGENTS_TOOL_PANE_OPEN);
 
         let pane_args: PaneArgs = decoded.decode_arguments().expect("pane args decode");
         assert_eq!(pane_args.pane, "Spark Wallet");
+    }
+
+    #[test]
+    fn decode_accepts_legacy_supported_tool_name() {
+        let decoded = decode_tool_call_request(&request(
+            LEGACY_OPENAGENTS_TOOL_PANE_OPEN,
+            r#"{"pane":"Spark Wallet"}"#,
+        ))
+        .expect("legacy decode should succeed");
+        assert_eq!(decoded.tool, LEGACY_OPENAGENTS_TOOL_PANE_OPEN);
     }
 
     #[test]
@@ -1891,7 +1938,7 @@ mod tests {
     #[test]
     fn decode_rejects_malformed_json_arguments() {
         let code = assert_error(decode_tool_call_request(&request(
-            "openagents.pane.open",
+            OPENAGENTS_TOOL_PANE_OPEN,
             "{",
         )));
         assert_eq!(code, "OA-TOOL-ARGS-INVALID-JSON");
@@ -1900,7 +1947,7 @@ mod tests {
     #[test]
     fn decode_rejects_non_object_arguments() {
         let code = assert_error(decode_tool_call_request(&request(
-            "openagents.pane.open",
+            OPENAGENTS_TOOL_PANE_OPEN,
             "[]",
         )));
         assert_eq!(code, "OA-TOOL-ARGS-NOT-OBJECT");
@@ -1909,7 +1956,7 @@ mod tests {
     #[test]
     fn decode_arguments_reports_missing_required_field() {
         let decoded =
-            decode_tool_call_request(&request("openagents.pane.open", r#"{"wrong":"field"}"#))
+            decode_tool_call_request(&request(OPENAGENTS_TOOL_PANE_OPEN, r#"{"wrong":"field"}"#))
                 .expect("decode should succeed");
         let error = decoded
             .decode_arguments::<PaneArgs>()

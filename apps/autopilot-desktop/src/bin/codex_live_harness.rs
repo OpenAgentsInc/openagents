@@ -7,6 +7,9 @@
     reason = "This binary is a CLI diagnostic harness and may emit explicit error lines."
 )]
 
+#[path = "../openagents_dynamic_tools.rs"]
+mod openagents_dynamic_tools;
+
 use std::future::Future;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -14,13 +17,14 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result, anyhow, bail};
 use codex_client::{
     AppServerChannels, AppServerClient, AppServerConfig, AppServerNotification, AppServerRequest,
-    AppServerRequestId, AppsListParams, ClientInfo, CollaborationModeListParams, CommandExecParams,
-    ConfigReadParams, ExperimentalFeatureListParams, ExternalAgentConfigDetectParams,
-    ExternalAgentConfigImportParams, FuzzyFileSearchSessionStartParams,
-    FuzzyFileSearchSessionStopParams, FuzzyFileSearchSessionUpdateParams, GetAccountParams,
-    HazelnutScope, InitializeCapabilities, InitializeParams, ListMcpServerStatusParams,
-    ModelListParams, ProductSurface, RemoteSkillSummary, ReviewDelivery, ReviewStartParams,
-    ReviewTarget, SkillMetadata, SkillsConfigWriteParams, SkillsListExtraRootsForCwd,
+    AppServerRequestId, AppsListParams, AskForApproval, ClientInfo, CollaborationModeListParams,
+    CommandExecParams, ConfigReadParams, ExperimentalFeatureListParams,
+    ExternalAgentConfigDetectParams, ExternalAgentConfigImportParams,
+    FuzzyFileSearchSessionStartParams, FuzzyFileSearchSessionStopParams,
+    FuzzyFileSearchSessionUpdateParams, GetAccountParams, HazelnutScope, InitializeCapabilities,
+    InitializeParams, ListMcpServerStatusParams, ModelListParams, ProductSurface,
+    RemoteSkillSummary, ReviewDelivery, ReviewStartParams, ReviewTarget, SandboxMode,
+    SandboxPolicy, SkillMetadata, SkillsConfigWriteParams, SkillsListExtraRootsForCwd,
     SkillsListParams, SkillsListResponse, SkillsRemoteReadParams, SkillsRemoteReadResponse,
     SkillsRemoteWriteParams, ThreadArchiveParams, ThreadBackgroundTerminalsCleanParams,
     ThreadCompactStartParams, ThreadForkParams, ThreadListParams, ThreadLoadedListParams,
@@ -55,6 +59,8 @@ const LEGACY_NOTIFICATION_OPT_OUT_METHODS: &[&str] = &[
     "codex/event/token_count",
     "codex/event/user_message",
 ];
+const LEGACY_OPENAGENTS_TOOL_CAD_INTENT: &str = "openagents.cad.intent";
+const LEGACY_OPENAGENTS_TOOL_CAD_ACTION: &str = "openagents.cad.action";
 
 #[derive(Debug)]
 struct HarnessArgs {
@@ -69,6 +75,8 @@ struct HarnessArgs {
     include_writes: bool,
     include_experimental: bool,
     include_thread_mutations: bool,
+    include_openagents_dynamic_tools: bool,
+    require_cad_tool_call: bool,
     fail_on_echo: bool,
 }
 
@@ -86,6 +94,8 @@ impl Default for HarnessArgs {
             include_writes: false,
             include_experimental: true,
             include_thread_mutations: true,
+            include_openagents_dynamic_tools: true,
+            require_cad_tool_call: false,
             fail_on_echo: true,
         }
     }
@@ -174,6 +184,10 @@ impl HarnessArgs {
                 "--include-writes" => args.include_writes = true,
                 "--skip-experimental" => args.include_experimental = false,
                 "--skip-thread-mutations" => args.include_thread_mutations = false,
+                "--disable-openagents-dynamic-tools" => {
+                    args.include_openagents_dynamic_tools = false
+                }
+                "--require-cad-tool-call" => args.require_cad_tool_call = true,
                 "--allow-echo-replies" => args.fail_on_echo = false,
                 "--help" | "-h" => {
                     print_usage();
@@ -183,6 +197,12 @@ impl HarnessArgs {
                     bail!("unknown argument '{}'\n\n{}", flag, usage_text());
                 }
             }
+        }
+
+        if args.require_cad_tool_call && !args.include_openagents_dynamic_tools {
+            bail!(
+                "--require-cad-tool-call requires OpenAgents dynamic tools (omit --disable-openagents-dynamic-tools)"
+            );
         }
 
         Ok(args)
@@ -195,6 +215,8 @@ struct ChannelEventBatch {
     notification_methods: Vec<String>,
     notification_params: Vec<Value>,
     requests: Vec<String>,
+    request_methods: Vec<String>,
+    request_params: Vec<Value>,
 }
 
 fn main() -> Result<()> {
@@ -229,12 +251,20 @@ async fn run(args: HarnessArgs) -> Result<()> {
             .unwrap_or("<none>")
     );
     println!(
-        "include_writes={} include_experimental={} include_thread_mutations={} fail_on_echo={}",
+        "include_writes={} include_experimental={} include_thread_mutations={} include_openagents_dynamic_tools={} require_cad_tool_call={} fail_on_echo={}",
         args.include_writes,
         args.include_experimental,
         args.include_thread_mutations,
+        args.include_openagents_dynamic_tools,
+        args.require_cad_tool_call,
         args.fail_on_echo
     );
+    if args.include_openagents_dynamic_tools {
+        println!(
+            "openagents_dynamic_tools_count={}",
+            openagents_dynamic_tools::OPENAGENTS_DYNAMIC_TOOL_NAMES.len()
+        );
+    }
     println!();
 
     let (client, mut channels) = AppServerClient::spawn(AppServerConfig {
@@ -739,13 +769,39 @@ async fn run(args: HarnessArgs) -> Result<()> {
             model: resolved_model.clone(),
             model_provider: None,
             cwd: Some(args.cwd.display().to_string()),
-            approval_policy: None,
-            sandbox: None,
+            approval_policy: Some(AskForApproval::Never),
+            sandbox: Some(SandboxMode::DangerFullAccess),
+            dynamic_tools: args
+                .include_openagents_dynamic_tools
+                .then(openagents_dynamic_tools::openagents_dynamic_tool_specs),
         })
         .await
         .context("thread/start failed")?;
     let new_thread_id = started.thread.id;
     println!("thread/start new_thread_id={new_thread_id}");
+
+    let _thread_apps = run_probe(
+        "app/list(thread)",
+        &mut channels,
+        &args,
+        client.app_list(AppsListParams {
+            cursor: None,
+            limit: Some(100),
+            thread_id: Some(new_thread_id.clone()),
+            force_refetch: true,
+        }),
+        |response| {
+            let sample = response
+                .data
+                .iter()
+                .take(3)
+                .map(|entry| entry.id.clone())
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("apps={} sample=[{}]", response.data.len(), sample)
+        },
+    )
+    .await;
 
     match client
         .thread_read(ThreadReadParams {
@@ -818,8 +874,8 @@ async fn run(args: HarnessArgs) -> Result<()> {
                 thread_id: new_thread_id.clone(),
                 input: turn_input,
                 cwd: None,
-                approval_policy: None,
-                sandbox_policy: None,
+                approval_policy: Some(AskForApproval::Never),
+                sandbox_policy: Some(SandboxPolicy::DangerFullAccess),
                 model: resolved_model.clone(),
                 effort: None,
                 summary: None,
@@ -830,7 +886,7 @@ async fn run(args: HarnessArgs) -> Result<()> {
             .await
             .context("turn/start failed")?;
         println!("turn/start turn_id={}", turn.turn.id);
-        let post_send_events = collect_until_signal(
+        let mut post_send_events = collect_until_signal(
             &mut channels,
             Duration::from_millis(args.timeout_ms.saturating_mul(6).max(30_000)),
             Duration::from_millis(args.drain_ms.clamp(400, 2_000)),
@@ -839,6 +895,29 @@ async fn run(args: HarnessArgs) -> Result<()> {
         )
         .await;
         print_events("post-send", &post_send_events, args.max_events);
+        if let Some(error) = find_invalid_tool_name_validation_error(&post_send_events) {
+            bail!(
+                "post-send events included invalid dynamic tool name validation error: {}",
+                error
+            );
+        }
+        if args.require_cad_tool_call && !events_include_openagents_cad_tool_call(&post_send_events)
+        {
+            let cad_followup = collect_channel_events(
+                &mut channels,
+                Duration::from_millis(args.drain_ms.clamp(600, 2_500)),
+                Duration::from_millis(args.timeout_ms.saturating_mul(3).max(12_000)),
+            )
+            .await;
+            print_events("post-send-cad-followup", &cad_followup, args.max_events);
+            if let Some(error) = find_invalid_tool_name_validation_error(&cad_followup) {
+                bail!(
+                    "post-send CAD followup events included invalid dynamic tool name validation error: {}",
+                    error
+                );
+            }
+            merge_event_batches(&mut post_send_events, cad_followup);
+        }
         let post_send_has_signal = post_send_events
             .notification_methods
             .iter()
@@ -853,6 +932,13 @@ async fn run(args: HarnessArgs) -> Result<()> {
                 "post-send notifications for thread {} did not include any agent response signal; methods_seen=[{}]",
                 new_thread_id,
                 methods
+            );
+        }
+        if args.require_cad_tool_call && !events_include_openagents_cad_tool_call(&post_send_events)
+        {
+            bail!(
+                "post-send events for thread {} never included item/tool/call for CAD tools; rerun with --max-events and inspect request payloads",
+                new_thread_id
             );
         }
 
@@ -958,8 +1044,8 @@ async fn run(args: HarnessArgs) -> Result<()> {
                 model: resolved_model.clone(),
                 model_provider: None,
                 cwd: Some(args.cwd.display().to_string()),
-                approval_policy: None,
-                sandbox: None,
+                approval_policy: Some(AskForApproval::Never),
+                sandbox: Some(SandboxMode::DangerFullAccess),
                 config: None,
                 base_instructions: None,
                 developer_instructions: None,
@@ -1015,7 +1101,7 @@ async fn run(args: HarnessArgs) -> Result<()> {
             command: vec!["/bin/zsh".to_string(), "-lc".to_string(), "pwd".to_string()],
             timeout_ms: Some(5_000),
             cwd: Some(args.cwd.display().to_string()),
-            sandbox_policy: None,
+            sandbox_policy: Some(SandboxPolicy::DangerFullAccess),
         }),
         |response| {
             format!(
@@ -1392,6 +1478,49 @@ fn summarize_text_for_log(value: &str, max_chars: usize) -> String {
     result
 }
 
+fn is_openagents_cad_tool_name(tool: &str) -> bool {
+    let normalized = tool.trim();
+    normalized.eq_ignore_ascii_case(openagents_dynamic_tools::OPENAGENTS_TOOL_CAD_INTENT)
+        || normalized.eq_ignore_ascii_case(openagents_dynamic_tools::OPENAGENTS_TOOL_CAD_ACTION)
+        || normalized.eq_ignore_ascii_case(LEGACY_OPENAGENTS_TOOL_CAD_INTENT)
+        || normalized.eq_ignore_ascii_case(LEGACY_OPENAGENTS_TOOL_CAD_ACTION)
+}
+
+fn events_include_openagents_cad_tool_call(events: &ChannelEventBatch) -> bool {
+    events
+        .request_methods
+        .iter()
+        .zip(events.request_params.iter())
+        .any(|(method, params)| {
+            method.eq_ignore_ascii_case("item/tool/call")
+                && params
+                    .get("tool")
+                    .and_then(Value::as_str)
+                    .is_some_and(is_openagents_cad_tool_name)
+        })
+}
+
+fn find_invalid_tool_name_validation_error(events: &ChannelEventBatch) -> Option<String> {
+    events
+        .notification_methods
+        .iter()
+        .zip(events.notification_params.iter())
+        .find_map(|(method, params)| {
+            let serialized =
+                serde_json::to_string(params).unwrap_or_else(|_| "<invalid-json>".to_string());
+            let has_tool_name_pattern_error = serialized.contains("invalid_request_error")
+                && serialized.contains("Invalid 'tools[")
+                && serialized.contains("^[a-zA-Z0-9_-]+$");
+            has_tool_name_pattern_error.then(|| {
+                format!(
+                    "method={} payload={}",
+                    method,
+                    summarize_text_for_log(&serialized, 220)
+                )
+            })
+        })
+}
+
 fn is_agent_response_signal(method: &str) -> bool {
     matches!(
         method,
@@ -1539,6 +1668,10 @@ async fn collect_channel_events(
                 let Some(request) = maybe else {
                     break;
                 };
+                batch.request_methods.push(request.method.clone());
+                batch
+                    .request_params
+                    .push(request.params.clone().unwrap_or(Value::Null));
                 batch.requests.push(request_summary(&request));
                 last_event = Instant::now();
             }
@@ -1575,11 +1708,26 @@ where
             .notification_params
             .extend(batch.notification_params);
         combined.requests.extend(batch.requests);
+        combined.request_methods.extend(batch.request_methods);
+        combined.request_params.extend(batch.request_params);
         if saw_signal {
             break;
         }
     }
     combined
+}
+
+fn merge_event_batches(target: &mut ChannelEventBatch, source: ChannelEventBatch) {
+    target.notifications.extend(source.notifications);
+    target
+        .notification_methods
+        .extend(source.notification_methods);
+    target
+        .notification_params
+        .extend(source.notification_params);
+    target.requests.extend(source.requests);
+    target.request_methods.extend(source.request_methods);
+    target.request_params.extend(source.request_params);
 }
 
 fn notification_summary(notification: &AppServerNotification) -> String {
@@ -1770,6 +1918,8 @@ fn usage_text() -> String {
         "  --include-writes          Include write/mutation probes (imports, exports, reloads)",
         "  --skip-experimental       Skip experimental method probes",
         "  --skip-thread-mutations   Skip thread mutation probes",
+        "  --disable-openagents-dynamic-tools  Do not attach OpenAgents dynamic tools on thread/start",
+        "  --require-cad-tool-call   Fail unless post-send captures CAD item/tool/call request",
         "  --allow-echo-replies      Do not fail when assistant reply exactly matches prompt",
         "  --help                    Show this help",
     ]

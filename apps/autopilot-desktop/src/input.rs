@@ -1777,9 +1777,9 @@ mod tests {
         TurnSkillAttachment, TurnSkillSource, assemble_chat_turn_input,
         build_create_invoice_command, build_pay_invoice_command, build_spark_command_for_action,
         cad_hotkey_action_matrix, cad_pick_kind_label, cad_pick_kind_to_selection_kind,
-        cad_policy_skill_candidates_for_turn, is_command_palette_shortcut,
-        is_toggle_fullscreen_shortcut, parse_positive_amount_str, resolve_turn_skill_by_name,
-        resolve_turn_skill_by_path, validate_lightning_payment_request,
+        cad_policy_skill_candidates_for_turn, cad_turn_approval_policy,
+        is_command_palette_shortcut, is_toggle_fullscreen_shortcut, parse_positive_amount_str,
+        resolve_turn_skill_by_name, resolve_turn_skill_by_path, validate_lightning_payment_request,
     };
     use crate::app_state::SkillRegistryDiscoveredSkill;
     use crate::pane_system::cad_palette_command_specs;
@@ -2181,6 +2181,18 @@ mod tests {
 
         let skills = cad_policy_skill_candidates_for_turn(false, &discovered);
         assert!(skills.is_empty());
+    }
+
+    #[test]
+    fn cad_turn_approval_policy_is_never_for_non_cad_turn() {
+        let policy = cad_turn_approval_policy(false);
+        assert!(matches!(policy, Some(codex_client::AskForApproval::Never)));
+    }
+
+    #[test]
+    fn cad_turn_approval_policy_is_never_for_cad_turn() {
+        let policy = cad_turn_approval_policy(true);
+        assert!(matches!(policy, Some(codex_client::AskForApproval::Never)));
     }
 
     #[test]
