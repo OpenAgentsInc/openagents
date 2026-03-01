@@ -25,6 +25,9 @@
 
 This receipt is intended for CAD pane telemetry and activity logging.
 
+Desktop integration currently stores a per-cycle receipt summary in `CadDemoPaneState` and mirrors
+it into the activity feed event stream (`source_tag = "cad.eval"`).
+
 ## Parameter Invalidation
 
 `compute_parameter_invalidation_plan(...)` computes deterministic pruning after parameter edits:

@@ -22,6 +22,28 @@ This document defines the MVP `CadDemoPaneState` container in desktop app state.
 - `document_revision`
 - `active_variant_id`
 - `variant_ids`
+- `last_rebuild_receipt`
+- `rebuild_receipts`
+- `eval_cache` (capacity-bounded per-session cache store)
+
+## Rebuild Receipt Stream
+
+`CadRebuildReceiptState` tracks deterministic eval-cycle telemetry:
+
+- `event_id`
+- `document_revision`
+- `variant_id`
+- `rebuild_hash`
+- `duration_ms` (deterministic synthetic timing)
+- `cache_hits`
+- `cache_misses`
+- `cache_evictions`
+- `feature_count`
+
+Receipts are:
+
+- retained in-pane (`rebuild_receipts`, bounded history)
+- surfaced as lane events through activity feed upserts with source tag `cad.eval`
 
 ## Deterministic Defaults
 
