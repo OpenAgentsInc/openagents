@@ -175,6 +175,7 @@ Decision criteria to keep objective:
 - Boolean rule: every boolean returns either valid solid or structured failure; silent corruption is disallowed.
 - Failure receipt payload must include: operation type, operand semantic refs, tolerance used, and classification.
 - policy document: `docs/cad/UNITS_TOLERANCE_POLICY.md`
+- error model document: `docs/cad/CAD_ERROR_MODEL.md`
 
 ### Eval, Caching, and Concurrency
 
