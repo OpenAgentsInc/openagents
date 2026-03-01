@@ -1469,6 +1469,7 @@ pub use crate::state::operations::{
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ActivityEventDomain {
     Chat,
+    Cad,
     Job,
     Wallet,
     Network,
@@ -1482,6 +1483,7 @@ impl ActivityEventDomain {
     pub const fn label(self) -> &'static str {
         match self {
             Self::Chat => "chat",
+            Self::Cad => "cad",
             Self::Job => "job",
             Self::Wallet => "wallet",
             Self::Network => "network",
@@ -1495,6 +1497,7 @@ impl ActivityEventDomain {
     pub const fn source_tag(self) -> &'static str {
         match self {
             Self::Chat => "chat.lane",
+            Self::Cad => "cad.events",
             Self::Job => "provider.runtime",
             Self::Wallet => "spark.wallet",
             Self::Network => "nip90.network",
@@ -1510,6 +1513,7 @@ impl ActivityEventDomain {
 pub enum ActivityFeedFilter {
     All,
     Chat,
+    Cad,
     Job,
     Wallet,
     Network,
@@ -1520,10 +1524,11 @@ pub enum ActivityFeedFilter {
 }
 
 impl ActivityFeedFilter {
-    pub const fn all() -> [Self; 9] {
+    pub const fn all() -> [Self; 10] {
         [
             Self::All,
             Self::Chat,
+            Self::Cad,
             Self::Job,
             Self::Wallet,
             Self::Network,
@@ -1538,6 +1543,7 @@ impl ActivityFeedFilter {
         match self {
             Self::All => "all",
             Self::Chat => "chat",
+            Self::Cad => "cad",
             Self::Job => "job",
             Self::Wallet => "wallet",
             Self::Network => "network",
@@ -1552,6 +1558,7 @@ impl ActivityFeedFilter {
         match self {
             Self::All => true,
             Self::Chat => domain == ActivityEventDomain::Chat,
+            Self::Cad => domain == ActivityEventDomain::Cad,
             Self::Job => domain == ActivityEventDomain::Job,
             Self::Wallet => domain == ActivityEventDomain::Wallet,
             Self::Network => domain == ActivityEventDomain::Network,
@@ -2768,16 +2775,16 @@ mod tests {
         ActivityFeedState, AgentNetworkSimulationPaneState, AlertDomain, AlertLifecycle,
         AlertsRecoveryState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole,
         CadCameraViewSnap, CadContextMenuTargetKind, CadDemoPaneState, CadDemoWarningState,
-        CadHiddenLineMode,
-        CadHotkeyAction, CadProjectionMode, CadSectionAxis, CadSnapMode, CadThreeDMouseAxis,
-        CadThreeDMouseMode, CadThreeDMouseProfile, EarningsScoreboardState, JobHistoryState,
-        JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision,
-        JobInboxNetworkRequest, JobInboxState, JobInboxValidation, JobLifecycleStage,
-        NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState, NostrSecretState,
-        ProviderRuntimeState, RecoveryAlertRow, RelayConnectionRow, RelayConnectionStatus,
-        RelayConnectionsState, RelaySecuritySimulationPaneState, SettingsState, SparkPaneState,
-        StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
-        SyncHealthState, SyncRecoveryPhase, TreasuryExchangeSimulationPaneState,
+        CadHiddenLineMode, CadHotkeyAction, CadProjectionMode, CadSectionAxis, CadSnapMode,
+        CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile, EarningsScoreboardState,
+        JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange,
+        JobInboxDecision, JobInboxNetworkRequest, JobInboxState, JobInboxValidation,
+        JobLifecycleStage, NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState,
+        NostrSecretState, ProviderRuntimeState, RecoveryAlertRow, RelayConnectionRow,
+        RelayConnectionStatus, RelayConnectionsState, RelaySecuritySimulationPaneState,
+        SettingsState, SparkPaneState, StableSatsSimulationPaneState, StarterJobRow,
+        StarterJobStatus, StarterJobsState, SyncHealthState, SyncRecoveryPhase,
+        TreasuryExchangeSimulationPaneState,
     };
 
     fn fixture_inbox_request(
@@ -3623,6 +3630,18 @@ mod tests {
                 .into_iter()
                 .all(|row| row.domain == ActivityEventDomain::Wallet)
         );
+
+        feed.upsert_event(fixture_activity_event(
+            "cad:event:1",
+            ActivityEventDomain::Cad,
+            1_761_920_260,
+        ));
+        feed.set_filter(ActivityFeedFilter::Cad);
+        assert!(
+            feed.visible_rows()
+                .into_iter()
+                .all(|row| row.domain == ActivityEventDomain::Cad)
+        );
     }
 
     #[test]
@@ -4100,7 +4119,10 @@ mod tests {
 
         assert_eq!(first, second);
         assert_ne!(first, third);
-        assert_eq!(state.active_chat_session_id.as_deref(), Some(third.as_str()));
+        assert_eq!(
+            state.active_chat_session_id.as_deref(),
+            Some(third.as_str())
+        );
         assert_eq!(
             state
                 .chat_thread_session_bindings

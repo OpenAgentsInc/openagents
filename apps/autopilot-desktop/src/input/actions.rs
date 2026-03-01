@@ -2181,6 +2181,23 @@ pub(super) fn build_activity_feed_snapshot_events(
         });
     }
 
+    for (index, event) in state.cad_demo.cad_events.iter().rev().take(16).enumerate() {
+        rows.push(ActivityEventRow {
+            event_id: event.event_id.clone(),
+            domain: ActivityEventDomain::Cad,
+            source_tag: format!("cad.{}", event.kind.as_str()),
+            occurred_at_epoch_seconds: now_epoch.saturating_sub(8 + index as u64),
+            summary: event.summary.clone(),
+            detail: format!(
+                "doc={} rev={} variant={} {}",
+                event.document_id,
+                event.document_revision,
+                event.variant_id.as_deref().unwrap_or("none"),
+                event.detail
+            ),
+        });
+    }
+
     for receipt in state.job_history.rows.iter().take(6) {
         rows.push(ActivityEventRow {
             event_id: format!("job:receipt:{}", receipt.job_id),

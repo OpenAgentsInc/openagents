@@ -8,6 +8,7 @@ use openagents_cad::analysis::{
 use openagents_cad::chat_adapter::{CadIntentTranslationOutcome, translate_chat_to_cad_intent};
 use openagents_cad::contracts::{CadWarning, CadWarningCode, CadWarningSeverity};
 use openagents_cad::eval::{EvalCacheEntry, EvalCacheKey, EvalCacheStats};
+use openagents_cad::events::{CadEvent, CadEventKind};
 use openagents_cad::feature_graph::{FeatureGraph, FeatureNode};
 use openagents_cad::history::{CadHistoryCommand, CadHistorySnapshot};
 use openagents_cad::materials::{
@@ -36,31 +37,26 @@ pub(super) fn apply_chat_prompt_to_cad_session(
     match translate_chat_to_cad_intent(prompt) {
         CadIntentTranslationOutcome::Intent(intent) => {
             let intent_name = intent.intent_name().to_string();
-            match state.cad_demo.apply_chat_intent_for_thread(thread_id, &intent) {
+            match state
+                .cad_demo
+                .apply_chat_intent_for_thread(thread_id, &intent)
+            {
                 Ok(receipt) => {
-                    let occurred_at_epoch_seconds = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .map(|duration| duration.as_secs())
-                        .unwrap_or(0);
-                    state.activity_feed.upsert_event(ActivityEventRow {
-                        event_id: format!(
-                            "cad.chat.intent:{}:{}:{}",
+                    emit_cad_event(
+                        state,
+                        CadEventKind::ParameterUpdated,
+                        receipt.state_revision,
+                        Some(state.cad_demo.active_variant_id.clone()),
+                        Some(format!(
+                            "chat-intent:{}:{}:{}",
                             thread_id, intent_name, receipt.state_revision
-                        ),
-                        domain: ActivityEventDomain::Sync,
-                        source_tag: "cad.chat".to_string(),
-                        occurred_at_epoch_seconds,
-                        summary: format!("CAD chat intent -> {}", intent_name),
-                        detail: format!(
+                        )),
+                        format!("CAD chat intent -> {}", intent_name),
+                        format!(
                             "thread={} session={} revision={}",
                             thread_id, state.cad_demo.session_id, receipt.state_revision
                         ),
-                    });
-                    state.activity_feed.load_state = PaneLoadState::Ready;
-                    state.activity_feed.last_action = Some(format!(
-                        "CAD session {} intent {} applied",
-                        state.cad_demo.session_id, intent_name
-                    ));
+                    );
                 }
                 Err(error) => {
                     state.cad_demo.last_error = Some(format!(
@@ -87,6 +83,9 @@ pub(super) fn apply_chat_prompt_to_cad_session(
 
 pub(super) fn run_cad_demo_action(state: &mut RenderState, action: CadDemoPaneAction) -> bool {
     let action_changed = apply_cad_demo_action(&mut state.cad_demo, action);
+    if action_changed {
+        emit_cad_event_for_action(state, action);
+    }
     if action_changed && matches!(action, CadDemoPaneAction::CycleMaterialPreset) {
         upsert_cad_material_activity_event(state);
     }
@@ -603,10 +602,6 @@ fn apply_completed_rebuild(
 }
 
 fn upsert_cad_rebuild_activity_event(state: &mut RenderState, receipt: &CadRebuildReceiptState) {
-    let occurred_at_epoch_seconds = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or(0);
     let analysis = &state.cad_demo.analysis_snapshot;
     let analysis_detail = if analysis.document_revision == receipt.document_revision
         && analysis.variant_id == receipt.variant_id
@@ -647,17 +642,21 @@ fn upsert_cad_rebuild_activity_event(state: &mut RenderState, receipt: &CadRebui
     } else {
         "analysis(pending)".to_string()
     };
-    state.activity_feed.upsert_event(ActivityEventRow {
-        event_id: format!("cad.rebuild.{}", receipt.event_id),
-        domain: ActivityEventDomain::Sync,
-        source_tag: "cad.eval".to_string(),
-        occurred_at_epoch_seconds,
-        summary: format!(
+    emit_cad_event(
+        state,
+        CadEventKind::RebuildCompleted,
+        receipt.document_revision,
+        Some(receipt.variant_id.clone()),
+        Some(format!(
+            "rebuild:{}:{}:{}",
+            receipt.document_revision, receipt.variant_id, receipt.rebuild_hash
+        )),
+        format!(
             "CAD rebuild rev={} {}ms",
             receipt.document_revision, receipt.duration_ms
         ),
-        detail: format!(
-            "variant={} hash={} mesh={} features={} tris={} verts={} cache(h={},m={},e={}) {}",
+        format!(
+            "variant={} hash={} mesh={} features={} tris={} verts={} cache(h={},m={},e={})",
             receipt.variant_id,
             receipt.rebuild_hash,
             receipt.mesh_hash,
@@ -666,15 +665,42 @@ fn upsert_cad_rebuild_activity_event(state: &mut RenderState, receipt: &CadRebui
             receipt.vertex_count,
             receipt.cache_hits,
             receipt.cache_misses,
-            receipt.cache_evictions,
-            analysis_detail
+            receipt.cache_evictions
         ),
-    });
-    state.activity_feed.load_state = PaneLoadState::Ready;
-    state.activity_feed.last_action = Some(format!(
-        "CAD rebuild receipt captured ({})",
-        receipt.mesh_hash
-    ));
+    );
+    emit_cad_event(
+        state,
+        CadEventKind::AnalysisUpdated,
+        receipt.document_revision,
+        Some(receipt.variant_id.clone()),
+        Some(format!(
+            "analysis:{}:{}:{}",
+            receipt.document_revision, receipt.variant_id, receipt.mesh_hash
+        )),
+        "CAD analysis updated".to_string(),
+        analysis_detail,
+    );
+    if let Some(warnings) = state.cad_demo.variant_warning_sets.get(&receipt.variant_id)
+        && !warnings.is_empty()
+    {
+        let warning_codes = warnings
+            .iter()
+            .map(|warning| warning.code.clone())
+            .collect::<Vec<_>>()
+            .join(",");
+        emit_cad_event(
+            state,
+            CadEventKind::WarningRaised,
+            receipt.document_revision,
+            Some(receipt.variant_id.clone()),
+            Some(format!(
+                "warnings:{}:{}:{}",
+                receipt.document_revision, receipt.variant_id, warning_codes
+            )),
+            format!("CAD warnings ({})", warnings.len()),
+            format!("variant={} codes={warning_codes}", receipt.variant_id),
+        );
+    }
 }
 
 fn upsert_cad_material_activity_event(state: &mut RenderState) {
@@ -699,20 +725,17 @@ fn upsert_cad_material_activity_event(state: &mut RenderState) {
         .get("deflection.confidence")
         .cloned()
         .unwrap_or_else(|| "none".to_string());
-    let occurred_at_epoch_seconds = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or(0);
-    state.activity_feed.upsert_event(ActivityEventRow {
-        event_id: format!(
-            "cad.material.{}:{}",
+    emit_cad_event(
+        state,
+        CadEventKind::ParameterUpdated,
+        analysis.document_revision,
+        Some(state.cad_demo.active_variant_id.clone()),
+        Some(format!(
+            "material:{}:{}",
             analysis.document_revision, state.cad_demo.active_variant_id
-        ),
-        domain: ActivityEventDomain::Sync,
-        source_tag: "cad.material".to_string(),
-        occurred_at_epoch_seconds,
-        summary: format!("CAD material -> {material_id}"),
-        detail: format!(
+        )),
+        format!("CAD material -> {material_id}"),
+        format!(
             "variant={} mass_kg={} cost_usd={} deflection_mm={} deflection_confidence={} model={} complexity={}",
             analysis.variant_id,
             analysis
@@ -731,10 +754,152 @@ fn upsert_cad_material_activity_event(state: &mut RenderState) {
             cost_model,
             complexity_factor,
         ),
-    });
+    );
+}
+
+fn emit_cad_event_for_action(state: &mut RenderState, action: CadDemoPaneAction) {
+    match action {
+        CadDemoPaneAction::CycleVariant => {
+            let variant_id = state.cad_demo.active_variant_id.clone();
+            emit_cad_event(
+                state,
+                CadEventKind::VariantGenerated,
+                state.cad_demo.document_revision,
+                Some(variant_id.clone()),
+                Some(format!(
+                    "variant:{}:{}",
+                    state.cad_demo.document_revision, variant_id
+                )),
+                format!("CAD variant active -> {variant_id}"),
+                format!(
+                    "tile={} session={}",
+                    state.cad_demo.active_variant_tile_index, state.cad_demo.session_id
+                ),
+            );
+        }
+        CadDemoPaneAction::ResetSession => {
+            emit_cad_event(
+                state,
+                CadEventKind::DocumentCreated,
+                state.cad_demo.document_revision,
+                Some(state.cad_demo.active_variant_id.clone()),
+                Some("document-created".to_string()),
+                "CAD document created".to_string(),
+                format!(
+                    "session={} document={}",
+                    state.cad_demo.session_id, state.cad_demo.document_id
+                ),
+            );
+        }
+        CadDemoPaneAction::SelectWarning(_)
+        | CadDemoPaneAction::SelectWarningMarker(_)
+        | CadDemoPaneAction::SelectTimelineRow(_)
+        | CadDemoPaneAction::TimelineSelectPrev
+        | CadDemoPaneAction::TimelineSelectNext => {
+            emit_cad_event(
+                state,
+                CadEventKind::SelectionChanged,
+                state.cad_demo.document_revision,
+                Some(state.cad_demo.active_variant_id.clone()),
+                Some(format!(
+                    "selection:{}:{}:{}",
+                    state.cad_demo.document_revision,
+                    state.cad_demo.active_variant_id,
+                    state
+                        .cad_demo
+                        .focused_geometry_ref
+                        .as_deref()
+                        .unwrap_or("none")
+                )),
+                "CAD selection changed".to_string(),
+                format!(
+                    "focused={} hovered={}",
+                    state
+                        .cad_demo
+                        .focused_geometry_ref
+                        .as_deref()
+                        .unwrap_or("none"),
+                    state
+                        .cad_demo
+                        .hovered_geometry_ref
+                        .as_deref()
+                        .unwrap_or("none")
+                ),
+            );
+        }
+        CadDemoPaneAction::CycleMaterialPreset
+        | CadDemoPaneAction::CycleSectionPlane
+        | CadDemoPaneAction::StepSectionPlaneOffset => {
+            emit_cad_event(
+                state,
+                CadEventKind::ParameterUpdated,
+                state.cad_demo.document_revision,
+                Some(state.cad_demo.active_variant_id.clone()),
+                Some(format!(
+                    "parameter:{}:{}:{:?}:{:.2}",
+                    state.cad_demo.document_revision,
+                    state.cad_demo.active_variant_id,
+                    state.cad_demo.section_axis,
+                    state.cad_demo.section_offset_normalized
+                )),
+                "CAD parameter updated".to_string(),
+                state
+                    .cad_demo
+                    .last_action
+                    .clone()
+                    .unwrap_or_else(|| "parameter mutation".to_string()),
+            );
+        }
+        _ => {}
+    }
+}
+
+fn emit_cad_event(
+    state: &mut RenderState,
+    kind: CadEventKind,
+    document_revision: u64,
+    variant_id: Option<String>,
+    key: Option<String>,
+    summary: String,
+    detail: String,
+) {
+    let event = CadEvent::new_with_key(
+        kind,
+        state.cad_demo.session_id.clone(),
+        state.cad_demo.document_id.clone(),
+        document_revision,
+        variant_id,
+        summary,
+        detail,
+        key,
+    );
+    state.cad_demo.upsert_cad_event(event.clone());
+    state
+        .activity_feed
+        .upsert_event(activity_row_from_cad_event(&event));
     state.activity_feed.load_state = PaneLoadState::Ready;
-    state.activity_feed.last_action =
-        Some(format!("CAD material assignment captured ({material_id})"));
+    state.activity_feed.last_action = Some(format!("CAD activity -> {}", event.kind.as_str()));
+}
+
+fn activity_row_from_cad_event(event: &CadEvent) -> ActivityEventRow {
+    let occurred_at_epoch_seconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    ActivityEventRow {
+        event_id: event.event_id.clone(),
+        domain: ActivityEventDomain::Cad,
+        source_tag: format!("cad.{}", event.kind.as_str()),
+        occurred_at_epoch_seconds,
+        summary: event.summary.clone(),
+        detail: format!(
+            "doc={} rev={} variant={} {}",
+            event.document_id,
+            event.document_revision,
+            event.variant_id.as_deref().unwrap_or("none"),
+            event.detail
+        ),
+    }
 }
 
 fn synthetic_duration_ms(feature_count: usize, stats_delta: EvalCacheStats) -> u64 {
@@ -1361,10 +1526,12 @@ mod tests {
     use std::time::Duration;
 
     use super::{
-        analysis_snapshot_from_mesh, apply_cad_demo_action, drain_worker_responses_from_pane,
+        activity_row_from_cad_event, analysis_snapshot_from_mesh, apply_cad_demo_action,
+        drain_worker_responses_from_pane,
     };
-    use crate::app_state::{CadDemoPaneState, CadTimelineRowState};
+    use crate::app_state::{ActivityEventDomain, CadDemoPaneState, CadTimelineRowState};
     use crate::pane_system::CadDemoPaneAction;
+    use openagents_cad::events::{CadEvent, CadEventKind};
     use openagents_cad::mesh::{
         CadMeshBounds, CadMeshMaterialSlot, CadMeshPayload, CadMeshTopology, CadMeshVertex,
     };
@@ -1877,4 +2044,44 @@ mod tests {
         assert_eq!(state.timeline_selected_index, Some(13));
     }
 
+    #[test]
+    fn cad_event_upsert_is_dedupe_safe() {
+        let mut state = CadDemoPaneState::default();
+        let event = CadEvent::new_with_key(
+            CadEventKind::ParameterUpdated,
+            state.session_id.clone(),
+            state.document_id.clone(),
+            4,
+            Some("variant.baseline".to_string()),
+            "CAD parameter updated",
+            "width_base_mm -> 192".to_string(),
+            Some("param:width_base_mm:4".to_string()),
+        );
+        assert!(state.upsert_cad_event(event.clone()));
+        let baseline = state.cad_events.len();
+        assert!(!state.upsert_cad_event(event));
+        assert_eq!(
+            state.cad_events.len(),
+            baseline,
+            "same logical event id should dedupe"
+        );
+    }
+
+    #[test]
+    fn cad_event_maps_to_cad_activity_row() {
+        let event = CadEvent::new_with_key(
+            CadEventKind::SelectionChanged,
+            "cad.session.local",
+            "cad.doc.demo-rack",
+            9,
+            Some("variant.stiffness".to_string()),
+            "CAD selection changed",
+            "focused=cad://feature/feature.base".to_string(),
+            Some("selection:9".to_string()),
+        );
+        let row = activity_row_from_cad_event(&event);
+        assert_eq!(row.domain, ActivityEventDomain::Cad);
+        assert!(row.source_tag.starts_with("cad.selection.changed"));
+        assert!(row.detail.contains("variant.stiffness"));
+    }
 }

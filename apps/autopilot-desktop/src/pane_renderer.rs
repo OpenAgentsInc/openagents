@@ -1,12 +1,11 @@
 use crate::app_state::{
     ActiveJobState, ActivityEventDomain, ActivityFeedFilter, ActivityFeedState,
     AgentNetworkSimulationPaneState, AgentProfileStatePaneState, AgentScheduleTickPaneState,
-    AlertSeverity, AlertsRecoveryState, AutopilotChatState, ChatPaneInputs, CodexAccountPaneState,
-    CodexAppsPaneState, CodexConfigPaneState, CodexDiagnosticsPaneState, CodexLabsPaneState,
-    CodexMcpPaneState, CodexModelsPaneState, CreateInvoicePaneInputs, CredentialsPaneInputs,
-    CredentialsState, CreditDeskPaneState, CreditSettlementLedgerPaneState, CadDemoPaneState,
-    DesktopPane,
-    EarningsScoreboardState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
+    AlertSeverity, AlertsRecoveryState, AutopilotChatState, CadDemoPaneState, ChatPaneInputs,
+    CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState, CodexDiagnosticsPaneState,
+    CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState, CreateInvoicePaneInputs,
+    CredentialsPaneInputs, CredentialsState, CreditDeskPaneState, CreditSettlementLedgerPaneState,
+    DesktopPane, EarningsScoreboardState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
     JobLifecycleStage, NetworkRequestStatus, NetworkRequestsPaneInputs, NetworkRequestsState,
     NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs, ProviderBlocker,
     ProviderRuntimeState, RelayConnectionsPaneInputs, RelayConnectionsState,
@@ -44,9 +43,8 @@ use crate::pane_system::{
 };
 use crate::panes::{
     agent as agent_pane, cad as cad_pane, chat as chat_pane, codex as codex_pane,
-    credit as credit_pane,
-    relay_connections as relay_connections_pane, simulation as simulation_pane,
-    skill as skill_pane, wallet as wallet_pane,
+    credit as credit_pane, relay_connections as relay_connections_pane,
+    simulation as simulation_pane, skill as skill_pane, wallet as wallet_pane,
 };
 use crate::spark_wallet::SparkPaneState;
 use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
@@ -1175,6 +1173,7 @@ fn paint_activity_feed_pane(
 
         let domain_color = match row.domain {
             ActivityEventDomain::Chat => theme::accent::PRIMARY,
+            ActivityEventDomain::Cad => theme::accent::PRIMARY,
             ActivityEventDomain::Job => theme::status::SUCCESS,
             ActivityEventDomain::Wallet => theme::status::SUCCESS,
             ActivityEventDomain::Network => theme::text::PRIMARY,
