@@ -15,6 +15,10 @@ use codex_client::{
     ToolRequestUserInputResponse, TurnStartParams, UserInput, WindowsSandboxSetupStartParams,
 };
 use nostr::regenerate_identity;
+use openagents_cad::query::{
+    CadPickCameraPose, CadPickEntityKind, CadPickProjectionMode, CadPickQuery, CadPickViewport,
+    pick_mesh_hit,
+};
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -557,9 +561,56 @@ fn handle_cad_context_menu_click(
         };
         let _ = state.cad_demo.set_active_variant_tile(tile_index);
         let viewport = cad_pane::variant_tile_bounds(content_bounds, tile_index);
-        let (target_kind, target_ref) = state
+        let picked_from_mesh = state
             .cad_demo
-            .infer_context_menu_target_for_viewport_point(point, viewport);
+            .variant_viewport(tile_index)
+            .cloned()
+            .and_then(|tile_view| {
+                state
+                    .cad_demo
+                    .last_good_mesh_payload
+                    .as_ref()
+                    .and_then(|payload| {
+                        let pick_query = CadPickQuery {
+                            viewport: CadPickViewport {
+                                origin_px: [viewport.origin.x, viewport.origin.y],
+                                size_px: [viewport.size.width, viewport.size.height],
+                            },
+                            camera: CadPickCameraPose {
+                                projection_mode: match state.cad_demo.projection_mode {
+                                    crate::app_state::CadProjectionMode::Orthographic => {
+                                        CadPickProjectionMode::Orthographic
+                                    }
+                                    crate::app_state::CadProjectionMode::Perspective => {
+                                        CadPickProjectionMode::Perspective
+                                    }
+                                },
+                                zoom: tile_view.camera_zoom,
+                                pan_x: tile_view.camera_pan_x,
+                                pan_y: tile_view.camera_pan_y,
+                                orbit_yaw_deg: tile_view.camera_orbit_yaw_deg,
+                                orbit_pitch_deg: tile_view.camera_orbit_pitch_deg,
+                            },
+                            point_px: [point.x, point.y],
+                            tolerance_px: 0.0,
+                        };
+                        pick_mesh_hit(payload, pick_query)
+                    })
+            })
+            .map(|hit| {
+                let target_kind = match hit.kind {
+                    CadPickEntityKind::Body => crate::app_state::CadContextMenuTargetKind::Body,
+                    CadPickEntityKind::Face => crate::app_state::CadContextMenuTargetKind::Face,
+                    CadPickEntityKind::Edge => crate::app_state::CadContextMenuTargetKind::Edge,
+                };
+                let target_ref = format!("cad://{}", hit.entity_id);
+                (target_kind, target_ref)
+            });
+        let (target_kind, target_ref) = picked_from_mesh.unwrap_or_else(|| {
+            state
+                .cad_demo
+                .infer_context_menu_target_for_viewport_point(point, viewport)
+        });
         state
             .cad_demo
             .open_context_menu(point, target_kind, target_ref.clone());
