@@ -491,9 +491,10 @@ pub fn paint_cad_demo_placeholder_pane(
             .as_ref()
             .map(|value| format!(" focus={value}"))
             .unwrap_or_default();
+        let three_d_mouse_status = pane_state.three_d_mouse_status();
         paint.scene.draw_text(paint.text.layout(
             &format!(
-                "session={} active={} warnings={}{} cam({}; z={:.2} pan={:.0},{:.0} orbit={:.0}/{:.0}) snaps[{}] hotkeys[{}]",
+                "session={} active={} warnings={}{} cam({}; z={:.2} pan={:.0},{:.0} orbit={:.0}/{:.0}) snaps[{}] hotkeys[{}] 3dmouse[{}]",
                 pane_state.session_id,
                 pane_state.active_variant_id,
                 pane_state.warnings.len(),
@@ -506,6 +507,7 @@ pub fn paint_cad_demo_placeholder_pane(
                 pane_state.camera_orbit_pitch_deg,
                 pane_state.snap_summary(),
                 pane_state.hotkey_profile,
+                three_d_mouse_status,
             ),
             layout.footer_origin,
             9.0,

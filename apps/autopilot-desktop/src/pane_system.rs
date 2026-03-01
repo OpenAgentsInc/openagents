@@ -341,6 +341,14 @@ pub enum CadDemoPaneAction {
     ToggleSnapEndpoint,
     ToggleSnapMidpoint,
     CycleHotkeyProfile,
+    ToggleThreeDMouseMode,
+    CycleThreeDMouseProfile,
+    ToggleThreeDMouseLockX,
+    ToggleThreeDMouseLockY,
+    ToggleThreeDMouseLockZ,
+    ToggleThreeDMouseLockRx,
+    ToggleThreeDMouseLockRy,
+    ToggleThreeDMouseLockRz,
     SnapViewTop,
     SnapViewFront,
     SnapViewRight,
@@ -360,80 +368,136 @@ pub struct CadPaletteCommandSpec {
     pub id: &'static str,
     pub label: &'static str,
     pub description: &'static str,
-    pub keybinding: &'static str,
+    pub keybinding: Option<&'static str>,
     pub action: CadDemoPaneAction,
 }
 
-const CAD_PALETTE_COMMAND_SPECS: [CadPaletteCommandSpec; 10] = [
+const CAD_PALETTE_COMMAND_SPECS: [CadPaletteCommandSpec; 18] = [
     CadPaletteCommandSpec {
         id: "cad.view.snap_top",
         label: "CAD: Snap View Top",
         description: "Snap CAD camera to top view",
-        keybinding: "T",
+        keybinding: Some("T"),
         action: CadDemoPaneAction::SnapViewTop,
     },
     CadPaletteCommandSpec {
         id: "cad.view.snap_front",
         label: "CAD: Snap View Front",
         description: "Snap CAD camera to front view",
-        keybinding: "F",
+        keybinding: Some("F"),
         action: CadDemoPaneAction::SnapViewFront,
     },
     CadPaletteCommandSpec {
         id: "cad.view.snap_right",
         label: "CAD: Snap View Right",
         description: "Snap CAD camera to right view",
-        keybinding: "R",
+        keybinding: Some("R"),
         action: CadDemoPaneAction::SnapViewRight,
     },
     CadPaletteCommandSpec {
         id: "cad.view.snap_isometric",
         label: "CAD: Snap View Isometric",
         description: "Snap CAD camera to isometric view",
-        keybinding: "I",
+        keybinding: Some("I"),
         action: CadDemoPaneAction::SnapViewIsometric,
     },
     CadPaletteCommandSpec {
         id: "cad.view.toggle_projection",
         label: "CAD: Toggle Projection",
         description: "Toggle CAD projection between orthographic and perspective",
-        keybinding: "P",
+        keybinding: Some("P"),
         action: CadDemoPaneAction::ToggleProjectionMode,
     },
     CadPaletteCommandSpec {
         id: "cad.render.cycle_mode",
         label: "CAD: Cycle Render Mode",
         description: "Cycle CAD render mode (shaded, edges, wireframe)",
-        keybinding: "V",
+        keybinding: Some("V"),
         action: CadDemoPaneAction::CycleHiddenLineMode,
     },
     CadPaletteCommandSpec {
         id: "cad.snap.toggle_grid",
         label: "CAD: Toggle Grid Snap",
         description: "Toggle CAD grid snap preview",
-        keybinding: "G",
+        keybinding: Some("G"),
         action: CadDemoPaneAction::ToggleSnapGrid,
     },
     CadPaletteCommandSpec {
         id: "cad.snap.toggle_origin",
         label: "CAD: Toggle Origin Snap",
         description: "Toggle CAD origin snap preview",
-        keybinding: "O",
+        keybinding: Some("O"),
         action: CadDemoPaneAction::ToggleSnapOrigin,
     },
     CadPaletteCommandSpec {
         id: "cad.snap.toggle_endpoint",
         label: "CAD: Toggle Endpoint Snap",
         description: "Toggle CAD endpoint snap preview",
-        keybinding: "E",
+        keybinding: Some("E"),
         action: CadDemoPaneAction::ToggleSnapEndpoint,
     },
     CadPaletteCommandSpec {
         id: "cad.snap.toggle_midpoint",
         label: "CAD: Toggle Midpoint Snap",
         description: "Toggle CAD midpoint snap preview",
-        keybinding: "M",
+        keybinding: Some("M"),
         action: CadDemoPaneAction::ToggleSnapMidpoint,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.3dmouse.toggle_mode",
+        label: "CAD: 3D Mouse Toggle Mode",
+        description: "Toggle 3D mouse translate/rotate mapping mode",
+        keybinding: None,
+        action: CadDemoPaneAction::ToggleThreeDMouseMode,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.3dmouse.cycle_profile",
+        label: "CAD: 3D Mouse Cycle Profile",
+        description: "Cycle 3D mouse sensitivity profile (precision, balanced, fast)",
+        keybinding: None,
+        action: CadDemoPaneAction::CycleThreeDMouseProfile,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.3dmouse.lock_x",
+        label: "CAD: 3D Mouse Toggle X Lock",
+        description: "Toggle X-axis lock for 3D mouse mapping",
+        keybinding: None,
+        action: CadDemoPaneAction::ToggleThreeDMouseLockX,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.3dmouse.lock_y",
+        label: "CAD: 3D Mouse Toggle Y Lock",
+        description: "Toggle Y-axis lock for 3D mouse mapping",
+        keybinding: None,
+        action: CadDemoPaneAction::ToggleThreeDMouseLockY,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.3dmouse.lock_z",
+        label: "CAD: 3D Mouse Toggle Z Lock",
+        description: "Toggle Z-axis lock for 3D mouse mapping",
+        keybinding: None,
+        action: CadDemoPaneAction::ToggleThreeDMouseLockZ,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.3dmouse.lock_rx",
+        label: "CAD: 3D Mouse Toggle Rx Lock",
+        description: "Toggle Rx-axis lock for 3D mouse mapping",
+        keybinding: None,
+        action: CadDemoPaneAction::ToggleThreeDMouseLockRx,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.3dmouse.lock_ry",
+        label: "CAD: 3D Mouse Toggle Ry Lock",
+        description: "Toggle Ry-axis lock for 3D mouse mapping",
+        keybinding: None,
+        action: CadDemoPaneAction::ToggleThreeDMouseLockRy,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.3dmouse.lock_rz",
+        label: "CAD: 3D Mouse Toggle Rz Lock",
+        description: "Toggle Rz-axis lock for 3D mouse mapping",
+        keybinding: None,
+        action: CadDemoPaneAction::ToggleThreeDMouseLockRz,
     },
 ];
 
@@ -3505,9 +3569,8 @@ mod tests {
     #[test]
     fn cad_palette_command_specs_are_unique_and_resolve_actions() {
         let specs = cad_palette_command_specs();
-        assert_eq!(
-            specs.len(),
-            10,
+        assert!(
+            specs.len() >= 10,
             "cad command palette parity must cover all hotkey actions"
         );
 

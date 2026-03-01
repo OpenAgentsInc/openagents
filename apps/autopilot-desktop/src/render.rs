@@ -823,10 +823,13 @@ fn command_registry() -> Vec<Command> {
         .collect();
 
     commands.extend(cad_palette_command_specs().iter().map(|spec| {
-        Command::new(spec.id, spec.label)
+        let mut command = Command::new(spec.id, spec.label)
             .description(spec.description)
-            .category("CAD")
-            .keybinding(spec.keybinding)
+            .category("CAD");
+        if let Some(keys) = spec.keybinding {
+            command = command.keybinding(keys);
+        }
+        command
     }));
 
     commands
