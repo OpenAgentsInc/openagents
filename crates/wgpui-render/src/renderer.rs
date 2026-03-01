@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use web_time::Instant;
 use wgpu::util::DeviceExt;
 use wgpui_core::scene::{GpuImageQuad, GpuLine, GpuQuad, GpuTextQuad, MeshPrimitive, Scene};
-use wgpui_core::Size;
+use wgpui_core::{Hsla, Point, Size};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
@@ -55,6 +55,8 @@ struct PreparedMeshBatch {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     index_count: u32,
+    edge_overlay_buffer: Option<wgpu::Buffer>,
+    edge_overlay_count: u32,
 }
 
 /// Prepared layer data for rendering.
@@ -81,6 +83,7 @@ pub struct RenderMetrics {
     pub mesh_triangles: u32,
     pub mesh_draw_calls: u32,
     pub mesh_skipped: u32,
+    pub mesh_edge_overlays: u32,
     pub draw_calls: u32,
     pub prepare_cpu_ms: f64,
     pub render_cpu_ms: f64,
@@ -706,6 +709,7 @@ impl Renderer {
         let mut mesh_vertices: u32 = 0;
         let mut mesh_triangles: u32 = 0;
         let mut mesh_skipped: u32 = 0;
+        let mut mesh_edge_overlays: u32 = 0;
 
         // Prepare layers in order
         self.prepared_layers.clear();
@@ -782,10 +786,23 @@ impl Renderer {
                     contents: bytemuck::cast_slice(&mesh.indices),
                     usage: wgpu::BufferUsages::INDEX,
                 });
+                let edge_overlays = mesh_edge_overlay_lines(mesh, &gpu_vertices, scale_factor);
+                mesh_edge_overlays = mesh_edge_overlays.saturating_add(edge_overlays.len() as u32);
+                let edge_overlay_buffer = if edge_overlays.is_empty() {
+                    None
+                } else {
+                    Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some(&format!("Mesh Edge Overlay Buffer Layer {}", layer)),
+                        contents: bytemuck::cast_slice(&edge_overlays),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    }))
+                };
                 mesh_batches.push(PreparedMeshBatch {
                     vertex_buffer,
                     index_buffer,
                     index_count: mesh.indices.len() as u32,
+                    edge_overlay_count: edge_overlays.len() as u32,
+                    edge_overlay_buffer,
                 });
             }
 
@@ -947,6 +964,7 @@ impl Renderer {
         metrics.mesh_vertices = mesh_vertices;
         metrics.mesh_triangles = mesh_triangles;
         metrics.mesh_skipped = mesh_skipped;
+        metrics.mesh_edge_overlays = mesh_edge_overlays;
         metrics.mesh_draw_calls = 0;
         metrics.prepare_cpu_ms = prepare_start.elapsed().as_secs_f64() * 1_000.0;
     }
@@ -981,7 +999,7 @@ impl Renderer {
             occlusion_query_set: None,
         });
 
-        // Render layers in order - quads first, then lines (on top), then text
+        // Render layers in order: quads -> meshes -> edge overlays/lines -> text.
         for layer in &self.prepared_layers {
             // Render quads first (background)
             if let Some(buffer) = &layer.quad_buffer {
@@ -989,25 +1007,6 @@ impl Renderer {
                 render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
                 render_pass.set_vertex_buffer(0, buffer.slice(..));
                 render_pass.draw(0..4, 0..layer.quad_count);
-                draw_calls += 1;
-            }
-
-            // Render lines on top of quads (connections between nodes)
-            if let Some(buffer) = &layer.line_buffer {
-                render_pass.set_pipeline(&self.line_pipeline);
-                render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
-                render_pass.set_vertex_buffer(0, buffer.slice(..));
-                render_pass.draw(0..4, 0..layer.line_count);
-                draw_calls += 1;
-            }
-
-            // Render text on top
-            if let Some(buffer) = &layer.text_buffer {
-                render_pass.set_pipeline(&self.text_pipeline);
-                render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
-                render_pass.set_bind_group(1, &self.atlas_bind_group, &[]);
-                render_pass.set_vertex_buffer(0, buffer.slice(..));
-                render_pass.draw(0..4, 0..layer.text_count);
                 draw_calls += 1;
             }
 
@@ -1027,6 +1026,35 @@ impl Renderer {
                     draw_calls = draw_calls.saturating_add(1);
                     mesh_draw_calls = mesh_draw_calls.saturating_add(1);
                 }
+            }
+
+            // Render mesh edge overlays and regular lines on top of mesh fill.
+            render_pass.set_pipeline(&self.line_pipeline);
+            render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+            for batch in &layer.mesh_batches {
+                if let Some(buffer) = &batch.edge_overlay_buffer {
+                    if batch.edge_overlay_count == 0 {
+                        continue;
+                    }
+                    render_pass.set_vertex_buffer(0, buffer.slice(..));
+                    render_pass.draw(0..4, 0..batch.edge_overlay_count);
+                    draw_calls = draw_calls.saturating_add(1);
+                }
+            }
+            if let Some(buffer) = &layer.line_buffer {
+                render_pass.set_vertex_buffer(0, buffer.slice(..));
+                render_pass.draw(0..4, 0..layer.line_count);
+                draw_calls = draw_calls.saturating_add(1);
+            }
+
+            // Render text on top.
+            if let Some(buffer) = &layer.text_buffer {
+                render_pass.set_pipeline(&self.text_pipeline);
+                render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                render_pass.set_bind_group(1, &self.atlas_bind_group, &[]);
+                render_pass.set_vertex_buffer(0, buffer.slice(..));
+                render_pass.draw(0..4, 0..layer.text_count);
+                draw_calls = draw_calls.saturating_add(1);
             }
         }
 
@@ -1082,6 +1110,39 @@ fn mesh_to_gpu_vertices(mesh: &MeshPrimitive, scale_factor: f32) -> Vec<GpuMeshV
             ],
             normal: vertex.normal,
             color: vertex.color,
+        })
+        .collect()
+}
+
+fn mesh_edge_overlay_lines(
+    mesh: &MeshPrimitive,
+    gpu_vertices: &[GpuMeshVertex],
+    scale_factor: f32,
+) -> Vec<GpuLine> {
+    mesh.edges
+        .iter()
+        .filter_map(|edge| {
+            let start = gpu_vertices.get(edge.start as usize)?;
+            let end = gpu_vertices.get(edge.end as usize)?;
+            let start_point = Point::new(start.position[0], start.position[1]);
+            let end_point = Point::new(end.position[0], end.position[1]);
+            let avg_nz = ((start.normal[2] + end.normal[2]) * 0.5).abs();
+            let flagged_silhouette = edge.flags & 0b1000 != 0;
+            let inferred_silhouette = avg_nz < 0.45;
+            let is_silhouette = flagged_silhouette || inferred_silhouette;
+            let width = if is_silhouette { 1.35 } else { 0.95 };
+            let color = if is_silhouette {
+                Hsla::new(0.58, 0.30, 0.90, 0.92)
+            } else {
+                Hsla::new(0.60, 0.12, 0.72, 0.88)
+            };
+            Some(GpuLine::new(
+                start_point,
+                end_point,
+                width,
+                color,
+                scale_factor,
+            ))
         })
         .collect()
 }

@@ -18,16 +18,18 @@ The renderer processes scene primitives through specialized GPU pipelines:
 
 `wgpui-core::scene::MeshPrimitive` is available for any surface (not CAD-specific) to submit indexed triangle meshes into the scene graph.
 
-- Includes vertex positions, normals, colors, triangle indices, and optional edge indices.
+- Includes vertex positions, normals, colors, triangle indices, and optional typed edges (`MeshEdge` with flags).
 - Validation is explicit (`MeshPrimitive::validate`) and returns `MeshPrimitiveError` with remediation hints.
 - Scene integration is generic through `Scene::draw_mesh`, `Scene::meshes`, and `Scene::mesh_primitives_for_layer`.
 - `wgpui-render` prepares GPU vertex/index buffers per layer and renders triangle lists through `mesh.wgsl`.
+- Edge overlays are generated from mesh edges and rendered through the line pipeline after mesh fill for CAD readability.
 
 ### Fallback Behavior
 
 - Mesh primitives that fail scene validation are rejected at `Scene::draw_mesh` (explicit error path).
 - During GPU prepare, empty vertex/index payloads are skipped and counted in `RenderMetrics.mesh_skipped`.
 - During draw, zero-index mesh batches are skipped and counted in `RenderMetrics.mesh_skipped`.
+- Edge overlay generation uses deterministic edge metadata + normal heuristics for silhouette emphasis.
 - These fallback paths are non-fatal and keep other scene primitives rendering.
 
 ## Render Order
