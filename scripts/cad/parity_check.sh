@@ -82,6 +82,7 @@ LANE_LABELS=(
     "cad-cli-commands"
     "cad-mcp-tools"
     "compact-ir"
+    "intent-modeling"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -381,6 +382,9 @@ run_lane "cad-mcp-tools" \
 
 run_lane "compact-ir" \
     "$ROOT_DIR/scripts/cad/parity-compact-ir-ci.sh"
+
+run_lane "intent-modeling" \
+    "$ROOT_DIR/scripts/cad/parity-intent-modeling-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

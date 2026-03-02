@@ -1,0 +1,33 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-087",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/intent_modeling_vcad_reference.json",
+  "reference_fixture_sha256": "1c24801ebd7d14b6a23e3f2d6829ccf3f38dc390514949dba489d266be0481bf",
+  "reference_source": "~/code/vcad/docs/features/intent-based-modeling.md",
+  "reference_commit_match": true,
+  "execution_path_match": true,
+  "confirmation_contract_match": true,
+  "clarification_contract_match": true,
+  "deterministic_replay_match": true,
+  "snapshot": {
+    "json_intent_name": "SetMaterial",
+    "json_state_revision": 1,
+    "natural_language_intent_name": "CreateRackSpec",
+    "natural_language_confirmation_required": true,
+    "natural_language_preview_hash": "389fbd8a04e2ef40",
+    "natural_language_confirmed_revision": 2,
+    "clarification_code": "CAD-CHAT-AMBIGUOUS",
+    "clarification_recovery_prompt": "Try one of: `Set material <id>`, `Set objective <name>`, `Select <selector>`, `Compare <variantA,variantB>`, `Export <format> <variant>`, or provide CadIntent JSON.",
+    "clarification_recovery_hash": "7140fe67fe2222d6"
+  },
+  "deterministic_signature": "5394489b369607b9",
+  "parity_contracts": [
+    "intent_json inputs dispatch deterministically through typed CadIntent execution",
+    "natural-language intent path requires explicit confirmation before mutation",
+    "ambiguous prompts produce deterministic clarification payloads and recovery hints",
+    "intent execution snapshots are byte-stable across replay"
+  ]
+}
