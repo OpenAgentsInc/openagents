@@ -1871,7 +1871,7 @@ pub(super) fn run_auto_relay_security_simulation(
 }
 
 const STABLE_SATS_REAL_ROUND_MIN_INTERVAL_SECONDS: u64 = 5;
-const STABLE_SATS_REAL_ROUND_MAX_STEPS: usize = 2;
+const STABLE_SATS_REAL_ROUND_MAX_STEPS: usize = 1;
 const STABLE_SATS_REAL_ROUND_MAX_TRANSFER_SATS: u64 = 25_000;
 const STABLE_SATS_REAL_ROUND_MAX_TRANSFER_CENTS: u64 = 8_000;
 const STABLE_SATS_REAL_ROUND_MAX_CONVERT_SATS: u64 = 18_000;
@@ -1974,7 +1974,8 @@ pub(super) fn run_stable_sats_simulation_round(
             state.stable_sats_simulation.run_round(now_epoch_seconds)
         }
         crate::app_state::StableSatsSimulationMode::RealBlink => Err(
-            "Real mode refresh runs off-thread; use Refresh Live to queue a worker run".to_string(),
+            "Real mode rounds run off-thread; use the StableSats run control in real mode"
+                .to_string(),
         ),
     };
 
@@ -2041,6 +2042,14 @@ fn queue_stable_sats_real_mode_round(state: &mut crate::app_state::RenderState) 
     let now_epoch_seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs());
+    if !state.stable_sats_simulation.has_settled_live_refresh() {
+        state.stable_sats_simulation.record_runtime_event(
+            "NIP-SA",
+            format!("sa:round:block:needs-refresh:{now_epoch_seconds}"),
+            "Real mode round requires initial live refresh".to_string(),
+        );
+        return queue_stable_sats_live_refresh(state);
+    }
     if let Some(last_orchestration) = state
         .stable_sats_simulation
         .treasury_operations
@@ -2073,48 +2082,75 @@ fn queue_stable_sats_real_mode_round(state: &mut crate::app_state::RenderState) 
         }
     }
 
-    let (operator_index, sovereign_a_index, sovereign_b_index) =
-        match stable_sats_real_round_topology(state) {
-            Ok(value) => value,
-            Err(reason) => {
-                state.stable_sats_simulation.last_error = Some(reason.clone());
-                state.stable_sats_simulation.last_action = Some(reason);
-                state.provider_runtime.last_result =
-                    state.stable_sats_simulation.last_action.clone();
-                return true;
-            }
-        };
+    let operator_index = match stable_sats_real_round_topology(state) {
+        Ok(value) => value,
+        Err(reason) => {
+            state.stable_sats_simulation.last_error = Some(reason.clone());
+            state.stable_sats_simulation.last_action = Some(reason);
+            state.provider_runtime.last_result = state.stable_sats_simulation.last_action.clone();
+            return true;
+        }
+    };
     let phase = stable_sats_real_round_phase(state);
     let round_id = state.stable_sats_simulation.rounds_run.saturating_add(1);
     let sa_evidence = stable_sats_sa_tick_evidence(state);
-    let steps = match phase {
-        0 => vec![
-            StableSatsRealRoundStep::TransferBtc {
-                from_index: operator_index,
-                to_index: sovereign_a_index,
-            },
-            StableSatsRealRoundStep::ConvertBtcToUsd {
-                owner_index: operator_index,
-            },
-        ],
-        1 => vec![
-            StableSatsRealRoundStep::TransferUsd {
-                from_index: sovereign_a_index,
-                to_index: sovereign_b_index,
-            },
-            StableSatsRealRoundStep::ConvertUsdToBtc {
-                owner_index: sovereign_a_index,
-            },
-        ],
-        _ => vec![
-            StableSatsRealRoundStep::TransferBtc {
-                from_index: sovereign_b_index,
-                to_index: operator_index,
-            },
-            StableSatsRealRoundStep::ConvertBtcToUsd {
-                owner_index: sovereign_b_index,
-            },
-        ],
+    let (operator_name, operator_btc_sats, operator_usd_cents) = {
+        let operator = state
+            .stable_sats_simulation
+            .agents
+            .get(operator_index)
+            .expect("operator index should be valid after topology check");
+        (
+            operator.agent_name.clone(),
+            operator.btc_balance_sats,
+            operator.usd_balance_cents,
+        )
+    };
+    let can_convert_btc = operator_btc_sats.saturating_sub(320) >= 300 && operator_btc_sats >= 300;
+    let can_convert_usd = operator_usd_cents.saturating_sub(90) >= 80 && operator_usd_cents >= 80;
+    let preferred_step = if phase == 0 {
+        StableSatsRealRoundStep::ConvertBtcToUsd {
+            owner_index: operator_index,
+        }
+    } else {
+        StableSatsRealRoundStep::ConvertUsdToBtc {
+            owner_index: operator_index,
+        }
+    };
+    let fallback_step = if phase == 0 {
+        StableSatsRealRoundStep::ConvertUsdToBtc {
+            owner_index: operator_index,
+        }
+    } else {
+        StableSatsRealRoundStep::ConvertBtcToUsd {
+            owner_index: operator_index,
+        }
+    };
+    let step_is_available = |step: StableSatsRealRoundStep| match step {
+        StableSatsRealRoundStep::ConvertBtcToUsd { .. } => can_convert_btc,
+        StableSatsRealRoundStep::ConvertUsdToBtc { .. } => can_convert_usd,
+        StableSatsRealRoundStep::TransferBtc { .. }
+        | StableSatsRealRoundStep::TransferUsd { .. } => false,
+    };
+    let steps = if step_is_available(preferred_step) {
+        vec![preferred_step]
+    } else if step_is_available(fallback_step) {
+        vec![fallback_step]
+    } else {
+        let reason = format!(
+            "policy guard convert blocked: {operator_name} available {} sats / {} below minimums (>=300 sats or >=$0.80)",
+            operator_btc_sats,
+            format_usd_cents(operator_usd_cents)
+        );
+        state.stable_sats_simulation.last_error = Some(reason.clone());
+        state.stable_sats_simulation.last_action = Some(reason.clone());
+        state.stable_sats_simulation.record_runtime_event(
+            "NIP-SA",
+            format!("sa:round:{round_id:04}:blocked"),
+            reason,
+        );
+        state.provider_runtime.last_result = state.stable_sats_simulation.last_action.clone();
+        return true;
     };
     state.stable_sats_simulation.record_runtime_event(
         "NIP-SA",
@@ -2208,9 +2244,7 @@ fn queue_stable_sats_real_mode_round(state: &mut crate::app_state::RenderState) 
     true
 }
 
-fn stable_sats_real_round_topology(
-    state: &crate::app_state::RenderState,
-) -> Result<(usize, usize, usize), String> {
+fn stable_sats_real_round_topology(state: &crate::app_state::RenderState) -> Result<usize, String> {
     let Some(operator_index) = state
         .stable_sats_simulation
         .agents
@@ -2221,27 +2255,7 @@ fn stable_sats_real_round_topology(
     else {
         return Err("Real mode round blocked: operator wallet is not configured".to_string());
     };
-    let mut sovereign_indices = state
-        .stable_sats_simulation
-        .agents
-        .iter()
-        .enumerate()
-        .filter(|(_, wallet)| {
-            wallet.owner_kind == crate::app_state::StableSatsWalletOwnerKind::SovereignAgent
-        })
-        .map(|(index, wallet)| (wallet.owner_id.clone(), index))
-        .collect::<Vec<_>>();
-    sovereign_indices.sort_by(|left, right| left.0.cmp(&right.0));
-    if sovereign_indices.len() < 2 {
-        return Err(
-            "Real mode round blocked: expected two sovereign wallets in topology".to_string(),
-        );
-    }
-    Ok((
-        operator_index,
-        sovereign_indices[0].1,
-        sovereign_indices[1].1,
-    ))
+    Ok(operator_index)
 }
 
 fn stable_sats_real_round_phase(state: &crate::app_state::RenderState) -> usize {
@@ -2249,20 +2263,13 @@ fn stable_sats_real_round_phase(state: &crate::app_state::RenderState) -> usize 
         .stable_sats_simulation
         .treasury_operations
         .iter()
-        .filter(|entry| {
-            matches!(
-                entry.kind,
-                crate::app_state::StableSatsTreasuryOperationKind::TransferBtc
-                    | crate::app_state::StableSatsTreasuryOperationKind::TransferUsd
-                    | crate::app_state::StableSatsTreasuryOperationKind::Convert
-            )
-        })
+        .filter(|entry| entry.kind == crate::app_state::StableSatsTreasuryOperationKind::Convert)
         .count();
     stable_sats_real_round_phase_from_operation_count(operation_count)
 }
 
 fn stable_sats_real_round_phase_from_operation_count(operation_count: usize) -> usize {
-    (operation_count / STABLE_SATS_REAL_ROUND_MAX_STEPS).wrapping_rem(3)
+    (operation_count / STABLE_SATS_REAL_ROUND_MAX_STEPS).wrapping_rem(2)
 }
 
 fn stable_sats_sa_tick_evidence(state: &crate::app_state::RenderState) -> String {
@@ -4390,7 +4397,7 @@ mod tests {
         let phases = (0..8)
             .map(stable_sats_real_round_phase_from_operation_count)
             .collect::<Vec<_>>();
-        assert_eq!(phases, vec![0, 0, 1, 1, 2, 2, 0, 0]);
+        assert_eq!(phases, vec![0, 1, 0, 1, 0, 1, 0, 1]);
     }
 
     #[test]

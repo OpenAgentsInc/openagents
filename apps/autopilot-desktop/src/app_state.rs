@@ -3955,10 +3955,10 @@ mod tests {
     }
 
     #[test]
-    fn stablesats_real_mode_initializes_three_wallet_topology() {
+    fn stablesats_real_mode_initializes_single_wallet_topology() {
         let mut state = StableSatsSimulationPaneState::default();
         state.set_mode(crate::app_state::StableSatsSimulationMode::RealBlink);
-        assert_eq!(state.agents.len(), 3);
+        assert_eq!(state.agents.len(), 1);
         assert_eq!(
             state.agents[0].owner_kind,
             crate::app_state::StableSatsWalletOwnerKind::Operator
@@ -3968,14 +3968,6 @@ mod tests {
                 .credential_key_name
                 .starts_with("BLINK_API_KEY")
         );
-        assert_eq!(
-            state.agents[1].owner_kind,
-            crate::app_state::StableSatsWalletOwnerKind::SovereignAgent
-        );
-        assert_eq!(
-            state.agents[2].owner_kind,
-            crate::app_state::StableSatsWalletOwnerKind::SovereignAgent
-        );
     }
 
     #[test]
@@ -3983,12 +3975,10 @@ mod tests {
         let mut state = StableSatsSimulationPaneState::default();
         state.set_mode(crate::app_state::StableSatsSimulationMode::RealBlink);
         state.apply_live_snapshot(1_761_921_200, 2_000, 250, 8_500_000, "btc:op usd:op");
-        assert_eq!(state.agents.len(), 3);
+        assert_eq!(state.agents.len(), 1);
         assert_eq!(state.agents[0].agent_name, "autopilot-user");
         assert_eq!(state.agents[0].btc_balance_sats, 2_000);
         assert_eq!(state.agents[0].usd_balance_cents, 250);
-        assert_eq!(state.agents[1].btc_balance_sats, 0);
-        assert_eq!(state.agents[2].usd_balance_cents, 0);
         assert!(!state.transfer_ledger.is_empty());
         assert!(
             state
@@ -4005,22 +3995,14 @@ mod tests {
         state.apply_live_wallet_snapshots(
             1_761_921_260,
             8_600_000,
-            &[
-                (
-                    "operator:autopilot".to_string(),
-                    1_500,
-                    80,
-                    "btc:op usd:op".to_string(),
-                ),
-                (
-                    "sa:wallet-1".to_string(),
-                    2_200,
-                    0,
-                    "btc:sa1 usd:sa1".to_string(),
-                ),
-            ],
             &[(
-                "sa:wallet-2".to_string(),
+                "operator:autopilot".to_string(),
+                1_500,
+                80,
+                "btc:op usd:op".to_string(),
+            )],
+            &[(
+                "operator:autopilot".to_string(),
                 "missing secure credential".to_string(),
             )],
         );
@@ -4028,9 +4010,8 @@ mod tests {
         assert_eq!(state.load_state, crate::app_state::PaneLoadState::Ready);
         assert_eq!(state.agents[0].btc_balance_sats, 1_500);
         assert_eq!(state.agents[0].usd_balance_cents, 80);
-        assert_eq!(state.agents[1].btc_balance_sats, 2_200);
         assert_eq!(
-            state.agents[2].last_switch_summary,
+            state.agents[0].last_switch_summary,
             "refresh failed: missing secure credential"
         );
         assert!(
@@ -4039,7 +4020,7 @@ mod tests {
                 .as_deref()
                 .is_some_and(|value| value.contains("1 wallet error"))
         );
-        assert!(state.transfer_ledger.len() >= 2);
+        assert!(!state.transfer_ledger.is_empty());
     }
 
     #[test]
