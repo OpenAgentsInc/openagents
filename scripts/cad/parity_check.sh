@@ -76,6 +76,7 @@ LANE_LABELS=(
     "drafting-checkpoint"
     "step-import-entity"
     "step-export-post-boolean"
+    "stl-import-export"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -357,6 +358,9 @@ run_lane "step-import-entity" \
 
 run_lane "step-export-post-boolean" \
     "$ROOT_DIR/scripts/cad/parity-step-export-post-boolean-ci.sh"
+
+run_lane "stl-import-export" \
+    "$ROOT_DIR/scripts/cad/parity-stl-import-export-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
