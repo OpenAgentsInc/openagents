@@ -243,8 +243,8 @@ Notes:
 The live 3-wallet scenario uses:
 
 - `operator`: `BLINK_API_KEY` (and optional `BLINK_API_URL`)
-- `sa-alpha`: `BLINK_API_KEY_SA_ALPHA` (optional `BLINK_API_URL_SA_ALPHA`)
-- `sa-beta`: `BLINK_API_KEY_SA_BETA` (optional `BLINK_API_URL_SA_BETA`)
+- `sa-alpha`: `BLINK_API_KEY_SA_ALPHA` or `BLINK_API_KEY_SA_1` (optional `BLINK_API_URL_SA_ALPHA` or `BLINK_API_URL_SA_1`)
+- `sa-beta`: `BLINK_API_KEY_SA_BETA` or `BLINK_API_KEY_SA_2` (optional `BLINK_API_URL_SA_BETA` or `BLINK_API_URL_SA_2`)
 
 Credential resolution order per variable:
 
@@ -275,9 +275,12 @@ Typical live behavior (as of March 2, 2026):
 ## StableSats+SA Troubleshooting
 
 - Missing wallet credentials:
-  - Verify `BLINK_API_KEY`, `BLINK_API_KEY_SA_ALPHA`, and `BLINK_API_KEY_SA_BETA`.
+  - Verify `BLINK_API_KEY`, and either:
+    - `BLINK_API_KEY_SA_ALPHA` + `BLINK_API_KEY_SA_BETA`, or
+    - `BLINK_API_KEY_SA_1` + `BLINK_API_KEY_SA_2`.
 - Insufficient balances:
-  - Fund each participating wallet before running the scenario.
+  - Harness preflight now emits a `funding_required` report with per-wallet shortfall and generated invoices.
+  - Fund each emitted invoice, then rerun the scenario.
 - Contract mismatch failures:
   - If `--blink-stablesats-sa-require-success` is on, the harness fails when script-reported deltas do not match observed post-balance deltas.
 - Node/runtime issues:

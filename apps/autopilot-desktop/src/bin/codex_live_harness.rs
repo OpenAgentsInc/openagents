@@ -69,6 +69,10 @@ const BLINK_KEYCHAIN_ACCOUNT_API_KEY_SA_ALPHA: &str = "BLINK_API_KEY_SA_ALPHA";
 const BLINK_KEYCHAIN_ACCOUNT_API_URL_SA_ALPHA: &str = "BLINK_API_URL_SA_ALPHA";
 const BLINK_KEYCHAIN_ACCOUNT_API_KEY_SA_BETA: &str = "BLINK_API_KEY_SA_BETA";
 const BLINK_KEYCHAIN_ACCOUNT_API_URL_SA_BETA: &str = "BLINK_API_URL_SA_BETA";
+const BLINK_KEYCHAIN_ACCOUNT_API_KEY_SA_1: &str = "BLINK_API_KEY_SA_1";
+const BLINK_KEYCHAIN_ACCOUNT_API_URL_SA_1: &str = "BLINK_API_URL_SA_1";
+const BLINK_KEYCHAIN_ACCOUNT_API_KEY_SA_2: &str = "BLINK_API_KEY_SA_2";
+const BLINK_KEYCHAIN_ACCOUNT_API_URL_SA_2: &str = "BLINK_API_URL_SA_2";
 
 #[derive(Clone, Debug)]
 struct BlinkSwapProbeArgs {
@@ -2243,22 +2247,21 @@ fn read_env_or_keychain(account: &str) -> Option<String> {
 }
 
 fn resolve_blink_env() -> Result<Vec<(String, String)>> {
-    resolve_blink_env_for_accounts(
-        BLINK_KEYCHAIN_ACCOUNT_API_KEY,
-        &[BLINK_KEYCHAIN_ACCOUNT_API_URL],
-    )
+    resolve_blink_env_for_accounts(&[BLINK_KEYCHAIN_ACCOUNT_API_KEY], &[BLINK_KEYCHAIN_ACCOUNT_API_URL])
 }
 
 fn resolve_blink_env_for_accounts(
-    api_key_account: &str,
+    api_key_accounts: &[&str],
     api_url_accounts: &[&str],
 ) -> Result<Vec<(String, String)>> {
-    let api_key = read_env_or_keychain(api_key_account).ok_or_else(|| {
+    let api_key = api_key_accounts
+        .iter()
+        .find_map(|account| read_env_or_keychain(account))
+        .ok_or_else(|| {
         anyhow!(
-            "{} missing from environment and keychain service '{}' account '{}'",
-            api_key_account,
+            "Blink API key missing from environment and keychain service '{}' for accounts [{}]",
             BLINK_KEYCHAIN_SERVICE,
-            api_key_account
+            api_key_accounts.join(", ")
         )
     })?;
 
@@ -2399,7 +2402,7 @@ struct BlinkSwapExecutionResult {
     transaction_id: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum BlinkTransferAsset {
     BtcSats,
     UsdCents,
@@ -2419,6 +2422,25 @@ impl BlinkTransferAsset {
             Self::UsdCents => "cents",
         }
     }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct StableSatsFundingDeficit {
+    owner: &'static str,
+    asset: BlinkTransferAsset,
+    required: u64,
+    available: u64,
+    shortfall: u64,
+}
+
+#[derive(Clone, Debug)]
+struct BlinkFundingInvoice {
+    owner: String,
+    asset: BlinkTransferAsset,
+    amount_requested: u64,
+    payment_request: String,
+    payment_hash: String,
+    invoice_sats: u64,
 }
 
 fn parse_u64_like(value: &Value) -> Option<u64> {
@@ -2476,6 +2498,56 @@ fn parse_wallet_balance_payload(
         btc_balance_sats: value_u64_at(payload, "/btcBalanceSats", "btc_balance_sats")?,
         usd_balance_cents: value_u64_at(payload, "/usdBalanceCents", "usd_balance_cents")?,
     })
+}
+
+fn stable_sats_funding_requirements(probe: &BlinkStableSatsSaProbeArgs) -> (u64, u64) {
+    let rounds = u64::from(probe.rounds);
+    let operator_btc_required = rounds
+        .saturating_mul(
+            probe
+                .transfer_btc_sats
+                .saturating_add(probe.convert_btc_sats),
+        )
+        .saturating_add(rounds.saturating_mul(120));
+    let sa_alpha_usd_required = rounds
+        .saturating_mul(
+            probe
+                .transfer_usd_cents
+                .saturating_add(probe.convert_usd_cents),
+        )
+        .saturating_add(rounds.saturating_mul(20));
+    (operator_btc_required, sa_alpha_usd_required)
+}
+
+fn stable_sats_funding_deficits(
+    probe: &BlinkStableSatsSaProbeArgs,
+    balances: &std::collections::BTreeMap<String, BlinkWalletBalances>,
+) -> Result<Vec<StableSatsFundingDeficit>> {
+    let operator = lookup_balances(balances, "operator")?;
+    let sa_alpha = lookup_balances(balances, "sa-alpha")?;
+    let (operator_btc_required, sa_alpha_usd_required) = stable_sats_funding_requirements(probe);
+
+    let mut deficits = Vec::new();
+    if operator.btc_balance_sats < operator_btc_required {
+        deficits.push(StableSatsFundingDeficit {
+            owner: "operator",
+            asset: BlinkTransferAsset::BtcSats,
+            required: operator_btc_required,
+            available: operator.btc_balance_sats,
+            shortfall: operator_btc_required.saturating_sub(operator.btc_balance_sats),
+        });
+    }
+    if sa_alpha.usd_balance_cents < sa_alpha_usd_required {
+        deficits.push(StableSatsFundingDeficit {
+            owner: "sa-alpha",
+            asset: BlinkTransferAsset::UsdCents,
+            required: sa_alpha_usd_required,
+            available: sa_alpha.usd_balance_cents,
+            shortfall: sa_alpha_usd_required.saturating_sub(sa_alpha.usd_balance_cents),
+        });
+    }
+
+    Ok(deficits)
 }
 
 fn load_wallet_balances(
@@ -2660,6 +2732,46 @@ fn run_cross_wallet_transfer(
     })
 }
 
+fn create_wallet_funding_invoice(
+    script_paths: &BlinkScriptPaths,
+    wallet_env: &[(String, String)],
+    owner: &str,
+    asset: BlinkTransferAsset,
+    amount: u64,
+    memo: Option<&str>,
+) -> Result<BlinkFundingInvoice> {
+    let invoice_script = match asset {
+        BlinkTransferAsset::BtcSats => script_paths.create_invoice.as_path(),
+        BlinkTransferAsset::UsdCents => script_paths.create_invoice_usd.as_path(),
+    };
+    let mut create_args = vec![amount.to_string(), "--no-subscribe".to_string()];
+    if let Some(memo) = memo.filter(|raw| !raw.trim().is_empty()) {
+        create_args.push(memo.to_string());
+    }
+    let create_output = run_node_script(invoice_script, create_args.as_slice(), wallet_env)?;
+    let create_json = parse_script_json(&create_output, "blink funding invoice")?;
+    let create_event = create_json
+        .get("event")
+        .and_then(Value::as_str)
+        .unwrap_or("<missing>");
+    if !create_event.eq_ignore_ascii_case("invoice_created") {
+        bail!(
+            "blink funding invoice returned unexpected event '{}' for owner={}",
+            create_event,
+            owner
+        );
+    }
+
+    Ok(BlinkFundingInvoice {
+        owner: owner.to_string(),
+        asset,
+        amount_requested: amount,
+        payment_request: value_string_at(&create_json, "/paymentRequest", "payment_request")?,
+        payment_hash: value_string_at(&create_json, "/paymentHash", "payment_hash")?,
+        invoice_sats: value_u64_at(&create_json, "/satoshis", "invoice_sats")?,
+    })
+}
+
 fn run_wallet_swap_execute(
     script_paths: &BlinkScriptPaths,
     wallet_env: &[(String, String)],
@@ -2727,16 +2839,20 @@ fn run_blink_stablesats_sa_live_probe(
         BlinkWalletRuntime {
             owner: "operator",
             env: resolve_blink_env_for_accounts(
-                BLINK_KEYCHAIN_ACCOUNT_API_KEY,
+                &[BLINK_KEYCHAIN_ACCOUNT_API_KEY],
                 &[BLINK_KEYCHAIN_ACCOUNT_API_URL],
             )?,
         },
         BlinkWalletRuntime {
             owner: "sa-alpha",
             env: resolve_blink_env_for_accounts(
-                BLINK_KEYCHAIN_ACCOUNT_API_KEY_SA_ALPHA,
+                &[
+                    BLINK_KEYCHAIN_ACCOUNT_API_KEY_SA_ALPHA,
+                    BLINK_KEYCHAIN_ACCOUNT_API_KEY_SA_1,
+                ],
                 &[
                     BLINK_KEYCHAIN_ACCOUNT_API_URL_SA_ALPHA,
+                    BLINK_KEYCHAIN_ACCOUNT_API_URL_SA_1,
                     BLINK_KEYCHAIN_ACCOUNT_API_URL,
                 ],
             )?,
@@ -2744,9 +2860,13 @@ fn run_blink_stablesats_sa_live_probe(
         BlinkWalletRuntime {
             owner: "sa-beta",
             env: resolve_blink_env_for_accounts(
-                BLINK_KEYCHAIN_ACCOUNT_API_KEY_SA_BETA,
+                &[
+                    BLINK_KEYCHAIN_ACCOUNT_API_KEY_SA_BETA,
+                    BLINK_KEYCHAIN_ACCOUNT_API_KEY_SA_2,
+                ],
                 &[
                     BLINK_KEYCHAIN_ACCOUNT_API_URL_SA_BETA,
+                    BLINK_KEYCHAIN_ACCOUNT_API_URL_SA_2,
                     BLINK_KEYCHAIN_ACCOUNT_API_URL,
                 ],
             )?,
@@ -2760,6 +2880,84 @@ fn run_blink_stablesats_sa_live_probe(
 
     let mut balances = load_all_wallet_balances(wallets.as_slice(), &script_paths)?;
     let initial_balances = balances.clone();
+    let funding_deficits = stable_sats_funding_deficits(probe, &balances)?;
+    if !funding_deficits.is_empty() {
+        let (operator_btc_required, sa_alpha_usd_required) = stable_sats_funding_requirements(probe);
+        let mut funding_invoices = Vec::new();
+        let mut funding_invoice_errors = Vec::new();
+        for deficit in funding_deficits.as_slice() {
+            let Some(wallet) = wallets.iter().find(|wallet| wallet.owner == deficit.owner) else {
+                funding_invoice_errors.push(serde_json::json!({
+                    "owner": deficit.owner,
+                    "asset": deficit.asset.label(),
+                    "error": "wallet runtime entry not found",
+                }));
+                continue;
+            };
+            match create_wallet_funding_invoice(
+                &script_paths,
+                wallet.env.as_slice(),
+                deficit.owner,
+                deficit.asset,
+                deficit.shortfall,
+                Some(&format!(
+                    "{memo_prefix}:funding:{}:{}",
+                    deficit.owner,
+                    deficit.asset.label()
+                )),
+            ) {
+                Ok(invoice) => {
+                    funding_invoices.push(serde_json::json!({
+                        "owner": invoice.owner,
+                        "asset": invoice.asset.label(),
+                        "amount_requested": invoice.amount_requested,
+                        "invoice_sats": invoice.invoice_sats,
+                        "payment_hash": invoice.payment_hash,
+                        "payment_request": invoice.payment_request,
+                    }));
+                }
+                Err(error) => {
+                    funding_invoice_errors.push(serde_json::json!({
+                        "owner": deficit.owner,
+                        "asset": deficit.asset.label(),
+                        "amount_requested": deficit.shortfall,
+                        "error": error.to_string(),
+                    }));
+                }
+            }
+        }
+        let report = serde_json::json!({
+            "event": "blink_stablesats_sa_demo",
+            "status": "funding_required",
+            "rounds": probe.rounds,
+            "required_minimums": {
+                "operator_btc_sats": operator_btc_required,
+                "sa_alpha_usd_cents": sa_alpha_usd_required,
+            },
+            "deficits": funding_deficits
+                .iter()
+                .map(|deficit| serde_json::json!({
+                    "owner": deficit.owner,
+                    "asset": deficit.asset.label(),
+                    "unit": deficit.asset.unit_label(),
+                    "required": deficit.required,
+                    "available": deficit.available,
+                    "shortfall": deficit.shortfall,
+                }))
+                .collect::<Vec<_>>(),
+            "funding_invoices": funding_invoices,
+            "funding_invoice_errors": funding_invoice_errors,
+        });
+        println!(
+            "blink_stablesats_sa_probe funding_required={}",
+            serde_json::to_string_pretty(&report)
+                .context("failed to serialize stablesats sa funding report")?
+        );
+        bail!(
+            "insufficient balances for stablesats sa probe: {} wallet deficit(s)",
+            funding_deficits.len()
+        );
+    }
 
     let mut transfer_events = Vec::new();
     let mut swap_events = Vec::new();
@@ -3328,6 +3526,88 @@ mod tests {
         assert_eq!(parsed.usd_wallet_id, "usd-wallet-abc");
         assert_eq!(parsed.btc_balance_sats, 4200);
         assert_eq!(parsed.usd_balance_cents, 875);
+    }
+
+    fn sample_balances(
+        operator_btc_sats: u64,
+        sa_alpha_usd_cents: u64,
+    ) -> std::collections::BTreeMap<String, BlinkWalletBalances> {
+        let mut balances = std::collections::BTreeMap::new();
+        balances.insert(
+            "operator".to_string(),
+            BlinkWalletBalances {
+                owner: "operator",
+                btc_wallet_id: "operator-btc".to_string(),
+                usd_wallet_id: "operator-usd".to_string(),
+                btc_balance_sats: operator_btc_sats,
+                usd_balance_cents: 0,
+            },
+        );
+        balances.insert(
+            "sa-alpha".to_string(),
+            BlinkWalletBalances {
+                owner: "sa-alpha",
+                btc_wallet_id: "alpha-btc".to_string(),
+                usd_wallet_id: "alpha-usd".to_string(),
+                btc_balance_sats: 0,
+                usd_balance_cents: sa_alpha_usd_cents,
+            },
+        );
+        balances.insert(
+            "sa-beta".to_string(),
+            BlinkWalletBalances {
+                owner: "sa-beta",
+                btc_wallet_id: "beta-btc".to_string(),
+                usd_wallet_id: "beta-usd".to_string(),
+                btc_balance_sats: 0,
+                usd_balance_cents: 0,
+            },
+        );
+        balances
+    }
+
+    #[test]
+    fn stablesats_funding_deficits_report_shortfalls_for_operator_and_alpha() {
+        let probe = BlinkStableSatsSaProbeArgs {
+            rounds: 2,
+            transfer_btc_sats: 600,
+            transfer_usd_cents: 75,
+            convert_btc_sats: 450,
+            convert_usd_cents: 90,
+            require_success: true,
+            memo_prefix: None,
+        };
+        let balances = sample_balances(1_000, 300);
+        let deficits =
+            stable_sats_funding_deficits(&probe, &balances).expect("deficits should compute");
+        assert_eq!(deficits.len(), 2);
+        assert_eq!(deficits[0].owner, "operator");
+        assert_eq!(deficits[0].asset, BlinkTransferAsset::BtcSats);
+        assert_eq!(deficits[0].required, 2_340);
+        assert_eq!(deficits[0].available, 1_000);
+        assert_eq!(deficits[0].shortfall, 1_340);
+        assert_eq!(deficits[1].owner, "sa-alpha");
+        assert_eq!(deficits[1].asset, BlinkTransferAsset::UsdCents);
+        assert_eq!(deficits[1].required, 370);
+        assert_eq!(deficits[1].available, 300);
+        assert_eq!(deficits[1].shortfall, 70);
+    }
+
+    #[test]
+    fn stablesats_funding_deficits_empty_when_balances_cover_plan() {
+        let probe = BlinkStableSatsSaProbeArgs {
+            rounds: 1,
+            transfer_btc_sats: 600,
+            transfer_usd_cents: 75,
+            convert_btc_sats: 450,
+            convert_usd_cents: 90,
+            require_success: true,
+            memo_prefix: None,
+        };
+        let balances = sample_balances(1_170, 185);
+        let deficits =
+            stable_sats_funding_deficits(&probe, &balances).expect("deficits should compute");
+        assert!(deficits.is_empty());
     }
 
     #[test]
