@@ -8,6 +8,7 @@ pub mod kernel_boolean_diagnostics_parity;
 pub mod kernel_booleans_parity;
 pub mod kernel_geom_parity;
 pub mod kernel_math_parity;
+pub mod kernel_nurbs_parity;
 pub mod kernel_precision_parity;
 pub mod kernel_primitives_parity;
 pub mod kernel_tessellate_parity;

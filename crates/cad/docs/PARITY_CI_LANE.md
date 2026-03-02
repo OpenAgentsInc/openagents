@@ -43,7 +43,7 @@ Default output directory: `target/parity-ci`
 Generated outputs:
 
 - `payload/` copied parity source artifacts and generated `parity_ci_artifact_manifest.json`
-- payload includes baseline manifests, inventories, gap matrix, scorecard, fixture corpus, risk register, dashboard snapshot, kernel adapter v2 manifest, kernel math parity manifest, kernel topology parity manifest, kernel geom parity manifest, kernel primitives parity manifest, kernel tessellate parity manifest, kernel precision parity manifest, kernel booleans parity manifest, kernel boolean diagnostics parity manifest, and kernel boolean brep parity manifest
+- payload includes baseline manifests, inventories, gap matrix, scorecard, fixture corpus, risk register, dashboard snapshot, kernel adapter v2 manifest, kernel math parity manifest, kernel topology parity manifest, kernel geom parity manifest, kernel primitives parity manifest, kernel tessellate parity manifest, kernel precision parity manifest, kernel booleans parity manifest, kernel boolean diagnostics parity manifest, kernel boolean brep parity manifest, and kernel nurbs parity manifest
 - `parity_ci_artifacts.tar.gz` bundle for CI upload
 - `parity_ci_artifacts.sha256` deterministic bundle checksum
 - `parity_ci_upload.env` env-style metadata (paths + checksum) for CI upload step wiring

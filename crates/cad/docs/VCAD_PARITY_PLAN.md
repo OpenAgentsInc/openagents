@@ -97,7 +97,7 @@ Major gaps to close:
 18. [x] VCAD-PARITY-018: Integrate `vcad-kernel-booleans` staged boolean pipeline.
 19. [x] VCAD-PARITY-019: Map vcad boolean diagnostics into OpenAgents error model.
 20. [x] VCAD-PARITY-020: Preserve BRep after booleans (remove mesh-only fallback in parity lane).
-21. [ ] VCAD-PARITY-021: Integrate `vcad-kernel-nurbs` parity support.
+21. [x] VCAD-PARITY-021: Integrate `vcad-kernel-nurbs` parity support.
 22. [ ] VCAD-PARITY-022: Integrate `vcad-kernel-text` parity text geometry support.
 23. [ ] VCAD-PARITY-023: Integrate `vcad-kernel-fillet` parity path.
 24. [ ] VCAD-PARITY-024: Integrate `vcad-kernel-shell` parity path.
