@@ -39,7 +39,7 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 32,
+    "source_artifact_count": 33,
     "artifact_ids": [
       "chamfer_feature_graph_parity_manifest",
       "expanded_finishing_parity_manifest",
@@ -60,6 +60,7 @@
       "kernel_tessellate_parity_manifest",
       "kernel_text_parity_manifest",
       "kernel_topology_parity_manifest",
+      "loft_parity_manifest",
       "openagents_capabilities_inventory",
       "openagents_start_manifest",
       "parity_dashboard",

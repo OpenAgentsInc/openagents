@@ -1,0 +1,54 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-034",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "open_loft_snapshot": {
+    "profile_count": 3,
+    "vertices_per_profile": 4,
+    "transition_count": 2,
+    "lateral_patch_count": 8,
+    "cap_count": 2,
+    "first_profile_centroid_mm": [
+      10.0,
+      10.0,
+      0.0
+    ],
+    "last_profile_centroid_mm": [
+      4.0,
+      4.0,
+      50.0
+    ],
+    "geometry_hash": "b5d33dc86901cd28"
+  },
+  "closed_loft_snapshot": {
+    "profile_count": 3,
+    "vertices_per_profile": 4,
+    "transition_count": 3,
+    "lateral_patch_count": 12,
+    "cap_count": 0,
+    "first_profile_centroid_mm": [
+      10.0,
+      10.0,
+      0.0
+    ],
+    "last_profile_centroid_mm": [
+      4.0,
+      4.0,
+      50.0
+    ],
+    "geometry_hash": "468b9f5c7ba3ce69"
+  },
+  "deterministic_replay_match": true,
+  "invalid_too_few_profiles_error": "invalid primitive: loft requires at least 2 profiles, got 1",
+  "invalid_mismatched_segments_error": "invalid primitive: loft profile profile.b vertex count mismatch: expected 4, got 3",
+  "deterministic_signature": "8bbe9aff616c468c",
+  "parity_contracts": [
+    "loft requires at least 2 profiles with deterministic profile ordering",
+    "loft profiles must provide uniform vertex counts for deterministic pairing",
+    "open loft emits cap faces while closed loft removes cap faces deterministically",
+    "lateral patch count follows deterministic topology contract: transitions * vertices",
+    "loft replay is deterministic for identical profiles and closed option"
+  ]
+}

@@ -1,3 +1,4 @@
+mod loft;
 mod pattern;
 mod placeholder;
 mod primitives;
@@ -7,6 +8,7 @@ mod transform;
 #[cfg(test)]
 mod tests;
 
+pub use loft::{LoftFeatureOp, LoftFeatureProfile, LoftFeatureResult, evaluate_loft_feature};
 pub use pattern::{
     CircularPatternFeatureOp, CircularPatternFeatureResult, CircularPatternInstance,
     LinearPatternFeatureOp, LinearPatternFeatureResult, LinearPatternInstance,
