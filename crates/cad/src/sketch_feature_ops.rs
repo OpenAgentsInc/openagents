@@ -12,6 +12,7 @@ pub const SKETCH_EXTRUDE_OPERATION_KEY: &str = "sketch.extrude.v1";
 pub const SKETCH_CUT_OPERATION_KEY: &str = "sketch.cut.v1";
 pub const SKETCH_REVOLVE_OPERATION_KEY: &str = "sketch.revolve.v1";
 pub const SKETCH_SWEEP_OPERATION_KEY: &str = "sketch.sweep.v1";
+pub const SKETCH_LOFT_OPERATION_KEY: &str = "sketch.loft.v1";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SketchProfileFeatureKind {
@@ -19,6 +20,7 @@ pub enum SketchProfileFeatureKind {
     Cut,
     Revolve,
     Sweep,
+    Loft,
 }
 
 impl SketchProfileFeatureKind {
@@ -28,6 +30,7 @@ impl SketchProfileFeatureKind {
             Self::Cut => "cut",
             Self::Revolve => "revolve",
             Self::Sweep => "sweep",
+            Self::Loft => "loft",
         }
     }
 
@@ -37,6 +40,7 @@ impl SketchProfileFeatureKind {
             Self::Cut => SKETCH_CUT_OPERATION_KEY,
             Self::Revolve => SKETCH_REVOLVE_OPERATION_KEY,
             Self::Sweep => SKETCH_SWEEP_OPERATION_KEY,
+            Self::Loft => SKETCH_LOFT_OPERATION_KEY,
         }
     }
 }
@@ -56,6 +60,8 @@ pub struct SketchProfileFeatureSpec {
     pub sweep_twist_deg: Option<f64>,
     pub sweep_scale_start: Option<f64>,
     pub sweep_scale_end: Option<f64>,
+    pub loft_profile_ids: Option<Vec<String>>,
+    pub loft_closed: Option<bool>,
     pub tolerance_mm: Option<f64>,
 }
 
@@ -206,6 +212,64 @@ impl SketchProfileFeatureSpec {
                     });
                 }
             }
+            SketchProfileFeatureKind::Loft => {
+                if self.source_feature_id.is_some() {
+                    return Err(CadError::ParseFailed {
+                        reason: "loft operations must not specify source_feature_id".to_string(),
+                    });
+                }
+                if self.depth_mm.is_some() {
+                    return Err(CadError::ParseFailed {
+                        reason: "loft operations must not specify depth_mm".to_string(),
+                    });
+                }
+                if self.revolve_angle_deg.is_some() {
+                    return Err(CadError::ParseFailed {
+                        reason: "loft operations must not specify revolve_angle_deg".to_string(),
+                    });
+                }
+                if self.axis_anchor_ids.is_some() {
+                    return Err(CadError::ParseFailed {
+                        reason: "loft operations must not specify axis_anchor_ids".to_string(),
+                    });
+                }
+                if self.sweep_path_entity_ids.is_some()
+                    || self.sweep_twist_deg.is_some()
+                    || self.sweep_scale_start.is_some()
+                    || self.sweep_scale_end.is_some()
+                {
+                    return Err(CadError::ParseFailed {
+                        reason: "loft operations must not specify sweep controls".to_string(),
+                    });
+                }
+                let loft_profile_ids =
+                    self.loft_profile_ids
+                        .as_ref()
+                        .ok_or_else(|| CadError::ParseFailed {
+                            reason: "loft operations require loft_profile_ids".to_string(),
+                        })?;
+                if loft_profile_ids.is_empty() {
+                    return Err(CadError::ParseFailed {
+                        reason: "loft_profile_ids must include at least one secondary profile"
+                            .to_string(),
+                    });
+                }
+                let mut seen = BTreeSet::<String>::new();
+                for profile_id in loft_profile_ids {
+                    validate_stable_id(profile_id, "loft_profile_id")?;
+                    if profile_id == &self.profile_id {
+                        return Err(CadError::ParseFailed {
+                            reason: "loft_profile_ids must not include the primary profile_id"
+                                .to_string(),
+                        });
+                    }
+                    if !seen.insert(profile_id.clone()) {
+                        return Err(CadError::ParseFailed {
+                            reason: format!("duplicate loft_profile_id: {profile_id}"),
+                        });
+                    }
+                }
+            }
         }
         if let Some(source) = self.source_feature_id.as_deref() {
             validate_stable_id(source, "source_feature_id")?;
@@ -308,6 +372,12 @@ pub fn convert_sketch_profile_to_feature_node(
     if let Some(scale_end) = spec.sweep_scale_end {
         params.insert("sweep_scale_end".to_string(), format!("{scale_end:.6}"));
     }
+    if let Some(loft_profile_ids) = spec.loft_profile_ids.as_ref() {
+        params.insert("loft_profile_ids".to_string(), loft_profile_ids.join(","));
+    }
+    if let Some(loft_closed) = spec.loft_closed {
+        params.insert("loft_closed".to_string(), loft_closed.to_string());
+    }
     if let Some(tolerance) = spec.tolerance_mm {
         params.insert("tolerance_mm".to_string(), format!("{tolerance:.6}"));
     }
@@ -319,6 +389,7 @@ pub fn convert_sketch_profile_to_feature_node(
             SketchProfileFeatureKind::Extrude
                 | SketchProfileFeatureKind::Cut
                 | SketchProfileFeatureKind::Sweep
+                | SketchProfileFeatureKind::Loft
         )
     {
         warnings.push(CadWarning {
@@ -652,8 +723,9 @@ fn sketch_profile_hash(spec: &SketchProfileFeatureSpec, bounds: [f64; 4]) -> Str
         .as_ref()
         .map(|ids| sorted_ids(ids).join(","))
         .unwrap_or_default();
+    let loft_profile_ids = spec.loft_profile_ids.as_ref().map(|ids| ids.join(","));
     let payload = format!(
-        "{}|{}|{}|{}|{:.6}|{:.6}|{:.6}|{:.6}|{}|{:?}|{:?}|{:?}|{}|{:?}|{:?}|{:?}",
+        "{}|{}|{}|{}|{:.6}|{:.6}|{:.6}|{:.6}|{}|{:?}|{:?}|{:?}|{}|{:?}|{:?}|{:?}|{:?}|{:?}",
         spec.kind.as_str(),
         spec.feature_id,
         spec.profile_id,
@@ -670,6 +742,8 @@ fn sketch_profile_hash(spec: &SketchProfileFeatureSpec, bounds: [f64; 4]) -> Str
         spec.sweep_twist_deg,
         spec.sweep_scale_start,
         spec.sweep_scale_end,
+        loft_profile_ids,
+        spec.loft_closed,
     );
     stable_hex_digest(payload.as_bytes())
 }
@@ -719,9 +793,10 @@ fn arc_point(center: [f64; 2], radius_mm: f64, angle_deg: f64) -> CadResult<[f64
 #[cfg(test)]
 mod tests {
     use super::{
-        SKETCH_CUT_OPERATION_KEY, SKETCH_EXTRUDE_OPERATION_KEY, SKETCH_REVOLVE_OPERATION_KEY,
-        SKETCH_SWEEP_OPERATION_KEY, SketchProfileFeatureKind, SketchProfileFeatureSpec,
-        convert_sketch_profile_to_feature_node, history_command_for_sketch_feature,
+        SKETCH_CUT_OPERATION_KEY, SKETCH_EXTRUDE_OPERATION_KEY, SKETCH_LOFT_OPERATION_KEY,
+        SKETCH_REVOLVE_OPERATION_KEY, SKETCH_SWEEP_OPERATION_KEY, SketchProfileFeatureKind,
+        SketchProfileFeatureSpec, convert_sketch_profile_to_feature_node,
+        history_command_for_sketch_feature,
     };
     use crate::contracts::CadWarningCode;
     use crate::history::CadHistoryCommand;
@@ -880,6 +955,8 @@ mod tests {
             sweep_twist_deg: None,
             sweep_scale_start: None,
             sweep_scale_end: None,
+            loft_profile_ids: None,
+            loft_closed: None,
             tolerance_mm: Some(0.001),
         };
         let cut = SketchProfileFeatureSpec {
@@ -896,6 +973,8 @@ mod tests {
             sweep_twist_deg: None,
             sweep_scale_start: None,
             sweep_scale_end: None,
+            loft_profile_ids: None,
+            loft_closed: None,
             tolerance_mm: Some(0.001),
         };
         let revolve = SketchProfileFeatureSpec {
@@ -912,6 +991,8 @@ mod tests {
             sweep_twist_deg: None,
             sweep_scale_start: None,
             sweep_scale_end: None,
+            loft_profile_ids: None,
+            loft_closed: None,
             tolerance_mm: Some(0.001),
         };
         let sweep = SketchProfileFeatureSpec {
@@ -928,6 +1009,26 @@ mod tests {
             sweep_twist_deg: Some(30.0),
             sweep_scale_start: Some(1.0),
             sweep_scale_end: Some(0.5),
+            loft_profile_ids: None,
+            loft_closed: None,
+            tolerance_mm: Some(0.001),
+        };
+        let loft = SketchProfileFeatureSpec {
+            feature_id: "feature.loft".to_string(),
+            profile_id: "profile.loft".to_string(),
+            plane_id: "plane.front".to_string(),
+            profile_entity_ids: vec!["entity.a".to_string()],
+            kind: SketchProfileFeatureKind::Loft,
+            source_feature_id: None,
+            depth_mm: None,
+            revolve_angle_deg: None,
+            axis_anchor_ids: None,
+            sweep_path_entity_ids: None,
+            sweep_twist_deg: None,
+            sweep_scale_start: None,
+            sweep_scale_end: None,
+            loft_profile_ids: Some(vec!["profile.loft.secondary".to_string()]),
+            loft_closed: Some(true),
             tolerance_mm: Some(0.001),
         };
 
@@ -1050,6 +1151,54 @@ mod tests {
                 .to_string()
                 .contains("sweep_scale_end")
         );
+
+        let loft_with_source = SketchProfileFeatureSpec {
+            source_feature_id: Some("feature.source".to_string()),
+            ..loft.clone()
+        };
+        assert!(
+            loft_with_source
+                .validate()
+                .expect_err("loft must reject source_feature_id")
+                .to_string()
+                .contains("source_feature_id")
+        );
+
+        let loft_with_empty_profiles = SketchProfileFeatureSpec {
+            loft_profile_ids: Some(Vec::new()),
+            ..loft.clone()
+        };
+        assert!(
+            loft_with_empty_profiles
+                .validate()
+                .expect_err("loft must reject empty loft_profile_ids")
+                .to_string()
+                .contains("loft_profile_ids")
+        );
+
+        let loft_with_primary_profile = SketchProfileFeatureSpec {
+            loft_profile_ids: Some(vec!["profile.loft".to_string()]),
+            ..loft.clone()
+        };
+        assert!(
+            loft_with_primary_profile
+                .validate()
+                .expect_err("loft must reject primary profile in loft_profile_ids")
+                .to_string()
+                .contains("primary profile_id")
+        );
+
+        let loft_with_sweep_control = SketchProfileFeatureSpec {
+            sweep_twist_deg: Some(15.0),
+            ..loft
+        };
+        assert!(
+            loft_with_sweep_control
+                .validate()
+                .expect_err("loft must reject sweep controls")
+                .to_string()
+                .contains("sweep controls")
+        );
     }
 
     #[test]
@@ -1075,6 +1224,8 @@ mod tests {
             sweep_twist_deg: None,
             sweep_scale_start: None,
             sweep_scale_end: None,
+            loft_profile_ids: None,
+            loft_closed: None,
             tolerance_mm: Some(0.001),
         };
         let extrude_rev = SketchProfileFeatureSpec {
@@ -1123,6 +1274,8 @@ mod tests {
             sweep_twist_deg: None,
             sweep_scale_start: None,
             sweep_scale_end: None,
+            loft_profile_ids: None,
+            loft_closed: None,
             tolerance_mm: Some(0.001),
         };
         let cut_conversion =
@@ -1152,6 +1305,8 @@ mod tests {
             sweep_twist_deg: None,
             sweep_scale_start: None,
             sweep_scale_end: None,
+            loft_profile_ids: None,
+            loft_closed: None,
             tolerance_mm: Some(0.001),
         };
         let revolve_conversion =
@@ -1222,6 +1377,8 @@ mod tests {
             sweep_twist_deg: Some(45.0),
             sweep_scale_start: Some(1.0),
             sweep_scale_end: Some(0.7),
+            loft_profile_ids: None,
+            loft_closed: None,
             tolerance_mm: Some(0.001),
         };
         let closed_conversion = convert_sketch_profile_to_feature_node(&model, &closed_spec)
@@ -1316,10 +1473,144 @@ mod tests {
             sweep_twist_deg: Some(0.0),
             sweep_scale_start: Some(1.0),
             sweep_scale_end: Some(1.0),
+            loft_profile_ids: None,
+            loft_closed: None,
             tolerance_mm: Some(0.001),
         };
         let open_conversion = convert_sketch_profile_to_feature_node(&open_model, &open_spec)
             .expect("open sweep profile should convert with warning");
+        assert!(
+            open_conversion
+                .warnings
+                .iter()
+                .any(|warning| warning.code == CadWarningCode::NonManifoldBody)
+        );
+    }
+
+    #[test]
+    fn loft_conversion_maps_profile_ids_closed_mode_and_open_profile_warning() {
+        let mut model = CadSketchModel::default();
+        model
+            .insert_plane(CadSketchPlane {
+                id: "plane.front".to_string(),
+                name: "Front".to_string(),
+                origin_mm: [0.0, 0.0, 0.0],
+                normal: [0.0, 0.0, 1.0],
+                x_axis: [1.0, 0.0, 0.0],
+                y_axis: [0.0, 1.0, 0.0],
+            })
+            .expect("plane should insert");
+        model
+            .insert_entity(CadSketchEntity::Rectangle {
+                id: "entity.rect".to_string(),
+                plane_id: "plane.front".to_string(),
+                min_mm: [0.0, 0.0],
+                max_mm: [30.0, 15.0],
+                anchor_ids: [
+                    "anchor.rect.00".to_string(),
+                    "anchor.rect.10".to_string(),
+                    "anchor.rect.11".to_string(),
+                    "anchor.rect.01".to_string(),
+                ],
+                construction: false,
+            })
+            .expect("rectangle should insert");
+
+        let closed_spec = SketchProfileFeatureSpec {
+            feature_id: "feature.sketch.loft.closed".to_string(),
+            profile_id: "profile.loft.closed".to_string(),
+            plane_id: "plane.front".to_string(),
+            profile_entity_ids: vec!["entity.rect".to_string()],
+            kind: SketchProfileFeatureKind::Loft,
+            source_feature_id: None,
+            depth_mm: None,
+            revolve_angle_deg: None,
+            axis_anchor_ids: None,
+            sweep_path_entity_ids: None,
+            sweep_twist_deg: None,
+            sweep_scale_start: None,
+            sweep_scale_end: None,
+            loft_profile_ids: Some(vec![
+                "profile.section.2".to_string(),
+                "profile.section.3".to_string(),
+            ]),
+            loft_closed: Some(true),
+            tolerance_mm: Some(0.001),
+        };
+        let closed_conversion = convert_sketch_profile_to_feature_node(&model, &closed_spec)
+            .expect("closed loft conversion should succeed");
+        assert_eq!(
+            closed_conversion.node.operation_key,
+            SKETCH_LOFT_OPERATION_KEY
+        );
+        assert_eq!(
+            closed_conversion
+                .node
+                .params
+                .get("loft_profile_ids")
+                .map(String::as_str),
+            Some("profile.section.2,profile.section.3")
+        );
+        assert_eq!(
+            closed_conversion
+                .node
+                .params
+                .get("loft_closed")
+                .map(String::as_str),
+            Some("true")
+        );
+        assert!(
+            closed_conversion
+                .warnings
+                .iter()
+                .all(|warning| warning.code != CadWarningCode::NonManifoldBody)
+        );
+
+        let mut open_model = CadSketchModel::default();
+        open_model
+            .insert_plane(CadSketchPlane {
+                id: "plane.front".to_string(),
+                name: "Front".to_string(),
+                origin_mm: [0.0, 0.0, 0.0],
+                normal: [0.0, 0.0, 1.0],
+                x_axis: [1.0, 0.0, 0.0],
+                y_axis: [0.0, 1.0, 0.0],
+            })
+            .expect("open plane should insert");
+        open_model
+            .insert_entity(CadSketchEntity::Line {
+                id: "entity.open".to_string(),
+                plane_id: "plane.front".to_string(),
+                start_mm: [0.0, 0.0],
+                end_mm: [20.0, 0.0],
+                anchor_ids: [
+                    "anchor.open.start".to_string(),
+                    "anchor.open.end".to_string(),
+                ],
+                construction: false,
+            })
+            .expect("open line should insert");
+
+        let open_spec = SketchProfileFeatureSpec {
+            feature_id: "feature.sketch.loft.open".to_string(),
+            profile_id: "profile.loft.open".to_string(),
+            plane_id: "plane.front".to_string(),
+            profile_entity_ids: vec!["entity.open".to_string()],
+            kind: SketchProfileFeatureKind::Loft,
+            source_feature_id: None,
+            depth_mm: None,
+            revolve_angle_deg: None,
+            axis_anchor_ids: None,
+            sweep_path_entity_ids: None,
+            sweep_twist_deg: None,
+            sweep_scale_start: None,
+            sweep_scale_end: None,
+            loft_profile_ids: Some(vec!["profile.section.2".to_string()]),
+            loft_closed: Some(false),
+            tolerance_mm: Some(0.001),
+        };
+        let open_conversion = convert_sketch_profile_to_feature_node(&open_model, &open_spec)
+            .expect("open loft profile should convert with warning");
         assert!(
             open_conversion
                 .warnings
@@ -1368,6 +1659,8 @@ mod tests {
             sweep_twist_deg: None,
             sweep_scale_start: None,
             sweep_scale_end: None,
+            loft_profile_ids: None,
+            loft_closed: None,
             tolerance_mm: Some(0.001),
         };
         let conversion = convert_sketch_profile_to_feature_node(&model, &spec)
@@ -1474,6 +1767,8 @@ mod tests {
                 sweep_twist_deg: None,
                 sweep_scale_start: None,
                 sweep_scale_end: None,
+                loft_profile_ids: None,
+                loft_closed: None,
                 tolerance_mm: Some(0.001),
             };
             let conversion = convert_sketch_profile_to_feature_node(&model, &spec)

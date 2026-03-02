@@ -47,6 +47,7 @@ Provide one deterministic orchestration entrypoint for the parity baseline lanes
 - sketch extrude parity fixture check
 - sketch revolve parity fixture check
 - sketch sweep parity fixture check
+- sketch loft parity fixture check
 - parity CI artifact manifest fixture check
 - parity risk register + blocker workflow check
 - baseline dashboard publication check

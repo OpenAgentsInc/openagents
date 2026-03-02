@@ -70,6 +70,8 @@ pub fn build_sketch_sweep_parity_manifest(
         sweep_twist_deg: Some(45.0),
         sweep_scale_start: Some(1.0),
         sweep_scale_end: Some(0.7),
+        loft_profile_ids: None,
+        loft_closed: None,
         tolerance_mm: Some(0.001),
     };
     let closed_conversion = convert_sketch_profile_to_feature_node(&closed_model, &closed_spec)?;
@@ -104,6 +106,8 @@ pub fn build_sketch_sweep_parity_manifest(
         sweep_twist_deg: Some(0.0),
         sweep_scale_start: Some(1.0),
         sweep_scale_end: Some(1.0),
+        loft_profile_ids: None,
+        loft_closed: None,
         tolerance_mm: Some(0.001),
     };
     let open_conversion = convert_sketch_profile_to_feature_node(&open_model, &open_spec)?;
@@ -155,6 +159,8 @@ pub fn build_sketch_sweep_parity_manifest(
             sweep_twist_deg: Some(0.0),
             sweep_scale_start: Some(1.0),
             sweep_scale_end: Some(1.0),
+            loft_profile_ids: None,
+            loft_closed: None,
             tolerance_mm: Some(0.001),
         },
     )

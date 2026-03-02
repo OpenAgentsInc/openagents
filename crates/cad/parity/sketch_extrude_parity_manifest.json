@@ -17,8 +17,8 @@
       0.0,
       20.0
     ],
-    "profile_hash": "f5bbbb5b127b8711",
-    "node_hash": "8d02be5bacdc289d"
+    "profile_hash": "d90a537fb6f55b51",
+    "node_hash": "7bcc821f6ad13459"
   },
   "open_case": {
     "profile_closed_loop": false,
@@ -31,15 +31,15 @@
       0.0,
       0.0
     ],
-    "profile_hash": "f123b0b185121b1a",
-    "node_hash": "7d0705de60857ec8"
+    "profile_hash": "af4d923f143514be",
+    "node_hash": "4a29b1eb37b1b4d5"
   },
   "profile_hash_order_stable": true,
   "zero_depth_error": "parse failed: extrude depth_mm must be finite and > 0",
   "empty_profile_error": "parse failed: profile_entity_ids must not be empty",
   "unsolved_constraint_error": "evaluation failed: sketch profile profile.unsolved has unsolved constraints; conversion blocked",
   "deterministic_replay_match": true,
-  "deterministic_signature": "24f6c0639c6ff183",
+  "deterministic_signature": "08db1a91348369c2",
   "parity_contracts": [
     "closed sketch profiles convert into deterministic sketch.extrude.v1 feature nodes",
     "open sketch profiles emit deterministic CAD-WARN-NON-MANIFOLD warnings",

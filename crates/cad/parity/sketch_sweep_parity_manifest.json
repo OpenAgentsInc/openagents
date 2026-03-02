@@ -24,8 +24,8 @@
       0.0,
       20.0
     ],
-    "profile_hash": "6fe35e0da83efd37",
-    "node_hash": "38f8965c3b651cdc"
+    "profile_hash": "f95ae63fa54f48d7",
+    "node_hash": "23a7f6dc2cda6be9"
   },
   "open_case": {
     "profile_closed_loop": false,
@@ -44,8 +44,8 @@
       0.0,
       0.0
     ],
-    "profile_hash": "613ccfa9215134b0",
-    "node_hash": "b7f851f93cfd8eea"
+    "profile_hash": "3dbc6dc36c754c34",
+    "node_hash": "7efa2fecfe5a396d"
   },
   "profile_hash_order_stable": true,
   "empty_path_error": "parse failed: sweep_path_entity_ids must not be empty",
@@ -53,7 +53,7 @@
   "unknown_path_entity_error": "parse failed: sweep path references unknown sketch entity entity.path.missing",
   "unsolved_constraint_error": "evaluation failed: sketch profile profile.sweep.unsolved has unsolved constraints; conversion blocked",
   "deterministic_replay_match": true,
-  "deterministic_signature": "1d45c0197e7b1e8c",
+  "deterministic_signature": "c0dd546c487f1e1b",
   "parity_contracts": [
     "closed sketch profiles map deterministically into sketch.sweep.v1 feature nodes with path/twist/scale controls",
     "open sweep profiles emit deterministic CAD-WARN-NON-MANIFOLD warnings",

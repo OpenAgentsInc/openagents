@@ -54,6 +54,7 @@ Current artifacts:
 - `sketch_extrude_parity_manifest.json` (`VCAD-PARITY-047`)
 - `sketch_revolve_parity_manifest.json` (`VCAD-PARITY-048`)
 - `sketch_sweep_parity_manifest.json` (`VCAD-PARITY-049`)
+- `sketch_loft_parity_manifest.json` (`VCAD-PARITY-050`)
 
 Regeneration/check command:
 
@@ -107,6 +108,7 @@ scripts/cad/parity-sketch-constraint-status-ci.sh
 scripts/cad/parity-sketch-extrude-ci.sh
 scripts/cad/parity-sketch-revolve-ci.sh
 scripts/cad/parity-sketch-sweep-ci.sh
+scripts/cad/parity-sketch-loft-ci.sh
 scripts/cad/parity-blocker-workflow.sh
 scripts/cad/parity_check.sh
 scripts/cad/parity-ci-lane.sh

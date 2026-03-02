@@ -18,8 +18,8 @@
       0.0,
       10.0
     ],
-    "profile_hash": "8b34aa5bdb97b554",
-    "node_hash": "55905cb9e1e6cc24"
+    "profile_hash": "415e2df00a0a1c08",
+    "node_hash": "88fa9a1107b4d8c7"
   },
   "partial_case": {
     "revolve_angle_deg": 90.0,
@@ -33,8 +33,8 @@
       0.0,
       10.0
     ],
-    "profile_hash": "769a1842f81b3dc2",
-    "node_hash": "f1671326c649adbe"
+    "profile_hash": "bfa70d56b60b3d06",
+    "node_hash": "4d55c42135b581ae"
   },
   "profile_hash_order_stable": true,
   "invalid_zero_angle_error": "parse failed: revolve_angle_deg must be finite and in (0, 360], got 0",
@@ -42,7 +42,7 @@
   "missing_axis_error": "parse failed: revolve operations require axis_anchor_ids",
   "unsolved_constraint_error": "evaluation failed: sketch profile profile.unsolved has unsolved constraints; conversion blocked",
   "deterministic_replay_match": true,
-  "deterministic_signature": "1bfaa11413b82d34",
+  "deterministic_signature": "a35092f945b5e318",
   "parity_contracts": [
     "360-degree revolve emits deterministic sketch.revolve.v1 nodes without partial-angle seam warnings",
     "partial-angle revolve emits deterministic CAD-WARN-SLIVER-FACE advisories",
