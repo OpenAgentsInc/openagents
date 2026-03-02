@@ -1,0 +1,1420 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-004",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from": {
+    "vcad_inventory_path": "/home/christopherdavid/code/openagents/crates/cad/parity/vcad_capabilities_inventory.json",
+    "openagents_inventory_path": "/home/christopherdavid/code/openagents/crates/cad/parity/openagents_capabilities_inventory.json"
+  },
+  "docs": {
+    "reference_count": 77,
+    "matched_count": 3,
+    "missing_count": 74,
+    "match_rate": 0.03896103896103896,
+    "rows": [
+      {
+        "reference_key": "10-second-robot",
+        "reference_label": "docs/features/index.md :: 10-Second Robot",
+        "reference_status": "proposed",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "2d-drafting",
+        "reference_label": "docs/features/ROADMAP.md :: 2D Drafting",
+        "reference_status": "✅",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "2d-drafting",
+        "reference_label": "docs/features/index.md :: 2D Drafting",
+        "reference_status": "shipped",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "ai-co-designer",
+        "reference_label": "docs/features/index.md :: AI Co-Designer",
+        "reference_status": "proposed",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "assembly-joints",
+        "reference_label": "docs/features/ROADMAP.md :: Assembly + Joints",
+        "reference_status": "✅",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "assembly-joints",
+        "reference_label": "docs/features/index.md :: Assembly & Joints",
+        "reference_status": "shipped",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "boolean-operations",
+        "reference_label": "docs/features/ROADMAP.md :: Boolean Operations",
+        "reference_status": "✅",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "boolean-operations",
+        "reference_label": "docs/features/index.md :: Boolean Operations",
+        "reference_status": "shipped",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "bottom-toolbar",
+        "reference_label": "docs/features/index.md :: Bottom Toolbar",
+        "reference_status": "shipped",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "browser-native-cad",
+        "reference_label": "docs/features/index.md :: Browser-Native CAD",
+        "reference_status": "shipped",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "cad-native-world-model",
+        "reference_label": "docs/features/index.md :: CAD-Native World Model",
+        "reference_status": "proposed",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "cad-physics-round-trip",
+        "reference_label": "docs/features/index.md :: CAD ↔ Physics Round-Trip",
+        "reference_status": "planned",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "command-palette",
+        "reference_label": "docs/features/index.md :: Command Palette",
+        "reference_status": "shipped",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "compact-ir-format",
+        "reference_label": "docs/features/index.md :: Compact IR Format",
+        "reference_status": "proposed",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "constraint-solver",
+        "reference_label": "docs/features/ROADMAP.md :: Constraint Solver",
+        "reference_status": "⚠️",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "dependency-visualization",
+        "reference_label": "docs/features/index.md :: Dependency Visualization",
+        "reference_status": "proposed",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "direct-brep-ray-tracing",
+        "reference_label": "docs/features/ROADMAP.md :: Direct BRep Ray Tracing",
+        "reference_status": "✅",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "document-persistence",
+        "reference_label": "docs/features/index.md :: Document Persistence",
+        "reference_status": "shipped",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "drag-drop-reordering",
+        "reference_label": "docs/features/index.md :: Drag-Drop Reordering",
+        "reference_status": "proposed",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "exact-predicates-shewchuk",
+        "reference_label": "docs/features/ROADMAP.md :: Exact Predicates (Shewchuk)",
+        "reference_status": "✅",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "feature-grouping",
+        "reference_label": "docs/features/index.md :: Feature Grouping",
+        "reference_status": "proposed",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "fillets-chamfers",
+        "reference_label": "docs/features/ROADMAP.md :: Fillets & Chamfers",
+        "reference_status": "⚠️",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "fillets-chamfers",
+        "reference_label": "docs/features/index.md :: Fillets & Chamfers",
+        "reference_status": "partial",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "fork-reality",
+        "reference_label": "docs/features/index.md :: Fork Reality",
+        "reference_status": "proposed",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "gpu-acceleration-wgpu",
+        "reference_label": "docs/features/ROADMAP.md :: GPU Acceleration (wgpu)",
+        "reference_status": "⚠️",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "headless-api",
+        "reference_label": "docs/features/index.md :: Headless API",
+        "reference_status": "shipped",
+        "openagents_key": "api",
+        "openagents_label": "crates/cad/docs/CAD_STEP_EXPORT.md :: API",
+        "openagents_status": "documented",
+        "score": 0.6666666666666666,
+        "state": "matched"
+      },
+      {
+        "reference_key": "headless-mode-api",
+        "reference_label": "docs/features/ROADMAP.md :: Headless Mode + API",
+        "reference_status": "✅",
+        "openagents_key": "api",
+        "openagents_label": "crates/cad/docs/CAD_STEP_EXPORT.md :: API",
+        "openagents_status": "documented",
+        "score": 0.6666666666666666,
+        "state": "matched"
+      },
+      {
+        "reference_key": "health-intelligence",
+        "reference_label": "docs/features/index.md :: Health & Intelligence",
+        "reference_status": "proposed",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "hover-preview",
+        "reference_label": "docs/features/index.md :: Hover Preview",
+        "reference_status": "proposed",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "import-export",
+        "reference_label": "docs/features/index.md :: Import/Export",
+        "reference_status": "shipped",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "inline-parameter-editing",
+        "reference_label": "docs/features/index.md :: Inline Parameter Editing",
+        "reference_status": "proposed",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "instant-physicality",
+        "reference_label": "docs/features/index.md :: Instant Physicality",
+        "reference_status": "proposed",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "intent-based-modeling",
+        "reference_label": "docs/features/index.md :: Intent-Based Modeling",
+        "reference_status": "proposed",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "isomorphic-kernel",
+        "reference_label": "docs/features/index.md :: Isomorphic Kernel",
+        "reference_status": "partial",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "keyboard-navigation",
+        "reference_label": "docs/features/index.md :: Keyboard Navigation",
+        "reference_status": "proposed",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "living-spec",
+        "reference_label": "docs/features/index.md :: Living Spec",
+        "reference_status": "proposed",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "materials",
+        "reference_label": "docs/features/index.md :: Materials",
+        "reference_status": "shipped",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "multiplayer-physics",
+        "reference_label": "docs/features/index.md :: Multiplayer Physics",
+        "reference_status": "proposed",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "nurbs",
+        "reference_label": "docs/features/ROADMAP.md :: NURBS",
+        "reference_status": "✅",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "offline-first-privacy",
+        "reference_label": "docs/features/index.md :: Offline-First Privacy",
+        "reference_status": "shipped",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "one-click-rl-training",
+        "reference_label": "docs/features/index.md :: One-Click RL Training",
+        "reference_status": "proposed",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "parallel-wasm-workers",
+        "reference_label": "docs/features/index.md :: Parallel WASM Workers",
+        "reference_status": "planned",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "parametric-time-machine",
+        "reference_label": "docs/features/index.md :: Parametric Time Machine",
+        "reference_status": "proposed",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "patterns",
+        "reference_label": "docs/features/index.md :: Patterns",
+        "reference_status": "shipped",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "physics-always-on",
+        "reference_label": "docs/features/index.md :: Physics Always On",
+        "reference_status": "planned",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "physics-simulation-gym",
+        "reference_label": "docs/features/index.md :: Physics Simulation & Gym",
+        "reference_status": "planned",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "physics-simulation-rapier3d",
+        "reference_label": "docs/features/ROADMAP.md :: Physics Simulation (Rapier3D)",
+        "reference_status": "✅",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "primitives",
+        "reference_label": "docs/features/index.md :: Primitives",
+        "reference_status": "shipped",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "ray-tracing",
+        "reference_label": "docs/features/index.md :: Ray Tracing",
+        "reference_status": "shipped",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "search-filter",
+        "reference_label": "docs/features/index.md :: Search & Filter",
+        "reference_status": "proposed",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "selection",
+        "reference_label": "docs/features/index.md :: Selection",
+        "reference_status": "shipped",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "shell-operation",
+        "reference_label": "docs/features/index.md :: Shell Operation",
+        "reference_status": "shipped",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "shell-pattern-operations",
+        "reference_label": "docs/features/ROADMAP.md :: Shell + Pattern Operations",
+        "reference_status": "⚠️",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "sketch-based-operations-extrude-revolve",
+        "reference_label": "docs/features/ROADMAP.md :: Sketch-Based Operations (extrude/revolve)",
+        "reference_status": "✅",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "sketch-ir-ui-integration",
+        "reference_label": "docs/features/ROADMAP.md :: Sketch IR + UI Integration",
+        "reference_status": "✅",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "sketch-mode",
+        "reference_label": "docs/features/index.md :: Sketch Mode",
+        "reference_status": "shipped",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "sketch-operations",
+        "reference_label": "docs/features/index.md :: Sketch Operations",
+        "reference_status": "shipped",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "smart-auto-names",
+        "reference_label": "docs/features/index.md :: Smart Auto-Names",
+        "reference_status": "proposed",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "step-import-export",
+        "reference_label": "docs/features/ROADMAP.md :: STEP Import/Export",
+        "reference_status": "⚠️",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "surface-transforms",
+        "reference_label": "docs/features/ROADMAP.md :: Surface Transforms",
+        "reference_status": "✅",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "sweep-loft-kernel",
+        "reference_label": "docs/features/ROADMAP.md :: Sweep + Loft (Kernel)",
+        "reference_status": "✅",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "sweep-loft-ui-integration",
+        "reference_label": "docs/features/ROADMAP.md :: Sweep + Loft UI Integration",
+        "reference_status": "✅",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "technical-debt-cleanup",
+        "reference_label": "docs/features/index.md :: Technical Debt Cleanup",
+        "reference_status": "shipped",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "text-to-cad-cad0",
+        "reference_label": "docs/features/index.md :: Text-to-CAD (cad0)",
+        "reference_status": "proposed",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "text-to-cad-training-pipeline",
+        "reference_label": "docs/features/ROADMAP.md :: Text-to-CAD Training Pipeline",
+        "reference_status": "✅",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "time-as-dimension",
+        "reference_label": "docs/features/index.md :: Time as Dimension",
+        "reference_status": "planned",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "timeline-scrubber",
+        "reference_label": "docs/features/index.md :: Timeline Scrubber",
+        "reference_status": "proposed",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "topology-geometry-primitives-tessellation",
+        "reference_label": "docs/features/ROADMAP.md :: Topology + Geometry + Primitives + Tessellation",
+        "reference_status": "✅",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "transforms",
+        "reference_label": "docs/features/index.md :: Transforms",
+        "reference_status": "shipped",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "undo-redo",
+        "reference_label": "docs/features/index.md :: Undo/Redo",
+        "reference_status": "shipped",
+        "openagents_key": "undo-redo-and-feature-timeline",
+        "openagents_label": "crates/cad/docs/PLAN.md :: Undo/Redo and Feature Timeline",
+        "openagents_status": "documented",
+        "score": 0.8,
+        "state": "matched"
+      },
+      {
+        "reference_key": "unified-canvas",
+        "reference_label": "docs/features/index.md :: Unified Canvas",
+        "reference_status": "planned",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "urdf-import",
+        "reference_label": "docs/features/ROADMAP.md :: URDF Import",
+        "reference_status": "⚠️",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "urdf-import-export",
+        "reference_label": "docs/features/index.md :: URDF Import/Export",
+        "reference_status": "proposed",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "viewport-camera",
+        "reference_label": "docs/features/index.md :: Viewport & Camera",
+        "reference_status": "shipped",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "wasm-physics-integration",
+        "reference_label": "docs/features/index.md :: WASM Physics Integration",
+        "reference_status": "planned",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "why-did-it-fail-button",
+        "reference_label": "docs/features/index.md :: \"Why Did It Fail?\" Button",
+        "reference_status": "proposed",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "zero-latency-parametric-editing",
+        "reference_label": "docs/features/index.md :: Zero-Latency Parametric Editing",
+        "reference_status": "planned",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      }
+    ]
+  },
+  "crates": {
+    "reference_count": 49,
+    "matched_count": 6,
+    "missing_count": 43,
+    "match_rate": 0.12244897959183673,
+    "rows": [
+      {
+        "reference_key": "stepperoni",
+        "reference_label": "stepperoni (crates/stepperoni)",
+        "reference_status": "support",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "termview",
+        "reference_label": "termview (crates/termview)",
+        "reference_status": "app",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad",
+        "reference_label": "vcad (crates/vcad)",
+        "reference_status": "cad-core",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-app",
+        "reference_label": "vcad-app (crates/vcad-app)",
+        "reference_status": "app",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-cli",
+        "reference_label": "vcad-cli (crates/vcad-cli)",
+        "reference_status": "app",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-crdt",
+        "reference_label": "vcad-crdt (crates/vcad-crdt)",
+        "reference_status": "collaboration",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-desktop",
+        "reference_label": "vcad-desktop (crates/vcad-desktop)",
+        "reference_status": "app",
+        "openagents_key": "autopilot-desktop",
+        "openagents_label": "autopilot-desktop (apps/autopilot-desktop)",
+        "openagents_status": "cad-app",
+        "score": 0.6666666666666666,
+        "state": "matched"
+      },
+      {
+        "reference_key": "vcad-ecad-export",
+        "reference_label": "vcad-ecad-export (crates/vcad-ecad-export)",
+        "reference_status": "ecad",
+        "openagents_key": "openagents-cad-export",
+        "openagents_label": "openagents-cad::export (crates/cad/src/export.rs)",
+        "openagents_status": "cad-module",
+        "score": 0.6666666666666666,
+        "state": "matched"
+      },
+      {
+        "reference_key": "vcad-ecad-pcb",
+        "reference_label": "vcad-ecad-pcb (crates/vcad-ecad-pcb)",
+        "reference_status": "ecad",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-ecad-schematic",
+        "reference_label": "vcad-ecad-schematic (crates/vcad-ecad-schematic)",
+        "reference_status": "ecad",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-ecad-sim",
+        "reference_label": "vcad-ecad-sim (crates/vcad-ecad-sim)",
+        "reference_status": "ecad",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-ecad-symbols",
+        "reference_label": "vcad-ecad-symbols (crates/vcad-ecad-symbols)",
+        "reference_status": "ecad",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-embroidery",
+        "reference_label": "vcad-embroidery (crates/vcad-embroidery)",
+        "reference_status": "embroidery",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-embroidery-dst",
+        "reference_label": "vcad-embroidery-dst (crates/vcad-embroidery-dst)",
+        "reference_status": "embroidery",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-embroidery-pes",
+        "reference_label": "vcad-embroidery-pes (crates/vcad-embroidery-pes)",
+        "reference_status": "embroidery",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-embroidery-wasm",
+        "reference_label": "vcad-embroidery-wasm (crates/vcad-embroidery-wasm)",
+        "reference_status": "embroidery",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-eval",
+        "reference_label": "vcad-eval (crates/vcad-eval)",
+        "reference_status": "cad-core",
+        "openagents_key": "openagents-cad-eval",
+        "openagents_label": "openagents-cad::eval (crates/cad/src/eval.rs)",
+        "openagents_status": "cad-module",
+        "score": 1.0,
+        "state": "matched"
+      },
+      {
+        "reference_key": "vcad-ir",
+        "reference_label": "vcad-ir (crates/vcad-ir)",
+        "reference_status": "cad-core",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-kernel",
+        "reference_label": "vcad-kernel (crates/vcad-kernel)",
+        "reference_status": "kernel",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-kernel-booleans",
+        "reference_label": "vcad-kernel-booleans (crates/vcad-kernel-booleans)",
+        "reference_status": "kernel",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-kernel-cam",
+        "reference_label": "vcad-kernel-cam (crates/vcad-kernel-cam)",
+        "reference_status": "kernel",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-kernel-constraints",
+        "reference_label": "vcad-kernel-constraints (crates/vcad-kernel-constraints)",
+        "reference_status": "kernel",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-kernel-drafting",
+        "reference_label": "vcad-kernel-drafting (crates/vcad-kernel-drafting)",
+        "reference_status": "kernel",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-kernel-fillet",
+        "reference_label": "vcad-kernel-fillet (crates/vcad-kernel-fillet)",
+        "reference_status": "kernel",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-kernel-geom",
+        "reference_label": "vcad-kernel-geom (crates/vcad-kernel-geom)",
+        "reference_status": "kernel",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-kernel-gpu",
+        "reference_label": "vcad-kernel-gpu (crates/vcad-kernel-gpu)",
+        "reference_status": "kernel",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-kernel-math",
+        "reference_label": "vcad-kernel-math (crates/vcad-kernel-math)",
+        "reference_status": "kernel",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-kernel-nurbs",
+        "reference_label": "vcad-kernel-nurbs (crates/vcad-kernel-nurbs)",
+        "reference_status": "kernel",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-kernel-physics",
+        "reference_label": "vcad-kernel-physics (crates/vcad-kernel-physics)",
+        "reference_status": "kernel",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-kernel-primitives",
+        "reference_label": "vcad-kernel-primitives (crates/vcad-kernel-primitives)",
+        "reference_status": "kernel",
+        "openagents_key": "openagents-cad-primitives",
+        "openagents_label": "openagents-cad::primitives (crates/cad/src/primitives.rs)",
+        "openagents_status": "cad-module",
+        "score": 1.0,
+        "state": "matched"
+      },
+      {
+        "reference_key": "vcad-kernel-raytrace",
+        "reference_label": "vcad-kernel-raytrace (crates/vcad-kernel-raytrace)",
+        "reference_status": "kernel",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-kernel-shell",
+        "reference_label": "vcad-kernel-shell (crates/vcad-kernel-shell)",
+        "reference_status": "kernel",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-kernel-sketch",
+        "reference_label": "vcad-kernel-sketch (crates/vcad-kernel-sketch)",
+        "reference_status": "kernel",
+        "openagents_key": "openagents-cad-sketch",
+        "openagents_label": "openagents-cad::sketch (crates/cad/src/sketch.rs)",
+        "openagents_status": "cad-module",
+        "score": 1.0,
+        "state": "matched"
+      },
+      {
+        "reference_key": "vcad-kernel-step",
+        "reference_label": "vcad-kernel-step (crates/vcad-kernel-step)",
+        "reference_status": "kernel",
+        "openagents_key": "openagents-cad-step-checker",
+        "openagents_label": "openagents-cad::step_checker (crates/cad/src/step_checker.rs)",
+        "openagents_status": "cad-module",
+        "score": 0.6666666666666666,
+        "state": "matched"
+      },
+      {
+        "reference_key": "vcad-kernel-stocksim",
+        "reference_label": "vcad-kernel-stocksim (crates/vcad-kernel-stocksim)",
+        "reference_status": "kernel",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-kernel-sweep",
+        "reference_label": "vcad-kernel-sweep (crates/vcad-kernel-sweep)",
+        "reference_status": "kernel",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-kernel-tessellate",
+        "reference_label": "vcad-kernel-tessellate (crates/vcad-kernel-tessellate)",
+        "reference_status": "kernel",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-kernel-text",
+        "reference_label": "vcad-kernel-text (crates/vcad-kernel-text)",
+        "reference_status": "kernel",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-kernel-topo",
+        "reference_label": "vcad-kernel-topo (crates/vcad-kernel-topo)",
+        "reference_status": "kernel",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-kernel-urdf",
+        "reference_label": "vcad-kernel-urdf (crates/vcad-kernel-urdf)",
+        "reference_status": "kernel",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-kernel-wasm",
+        "reference_label": "vcad-kernel-wasm (crates/vcad-kernel-wasm)",
+        "reference_status": "kernel",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-loon",
+        "reference_label": "vcad-loon (crates/vcad-loon)",
+        "reference_status": "cad-core",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-sim",
+        "reference_label": "vcad-sim (crates/vcad-sim)",
+        "reference_status": "simulation",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-slicer",
+        "reference_label": "vcad-slicer (crates/vcad-slicer)",
+        "reference_status": "slicer",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-slicer-bambu",
+        "reference_label": "vcad-slicer-bambu (crates/vcad-slicer-bambu)",
+        "reference_status": "slicer",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-slicer-gcode",
+        "reference_label": "vcad-slicer-gcode (crates/vcad-slicer-gcode)",
+        "reference_status": "slicer",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "vcad-slicer-wasm",
+        "reference_label": "vcad-slicer-wasm (crates/vcad-slicer-wasm)",
+        "reference_status": "slicer",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "wasmosis",
+        "reference_label": "wasmosis (crates/wasmosis)",
+        "reference_status": "support",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "wasmosis-macro",
+        "reference_label": "wasmosis-macro (crates/wasmosis/wasmosis-macro)",
+        "reference_status": "support",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      }
+    ]
+  },
+  "commands": {
+    "reference_count": 12,
+    "matched_count": 1,
+    "missing_count": 11,
+    "match_rate": 0.08333333333333333,
+    "rows": [
+      {
+        "reference_key": "boolean",
+        "reference_label": "boolean (Boolean)",
+        "reference_status": "Apply boolean operation",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "export",
+        "reference_label": "export (Export)",
+        "reference_status": "Export a .vcad file to another format",
+        "openagents_key": "export",
+        "openagents_label": "Export (crates/cad/src/intent.rs)",
+        "openagents_status": "cad_intent",
+        "score": 1.0,
+        "state": "matched"
+      },
+      {
+        "reference_key": "import",
+        "reference_label": "import (Import)",
+        "reference_status": "Import a STEP file to .vcad format",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "import-urdf",
+        "reference_label": "import-urdf (ImportUrdf)",
+        "reference_status": "Import a URDF robot description file to .vcad format",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "info",
+        "reference_label": "info (Info)",
+        "reference_status": "Display information about a .vcad file",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "new",
+        "reference_label": "new (New)",
+        "reference_status": "Create a new vcad document",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "print-server",
+        "reference_label": "print-server (PrintServer)",
+        "reference_status": "Start the print relay server for web app → printer communication",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "render",
+        "reference_label": "render (Render)",
+        "reference_status": "Render document to image",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "repl",
+        "reference_label": "repl (Repl)",
+        "reference_status": "Interactive REPL for building geometry",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "slice",
+        "reference_label": "slice (Slice)",
+        "reference_status": "Slice a .vcad file for 3D printing",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "transform",
+        "reference_label": "transform (Transform)",
+        "reference_status": "Apply transform to part",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      },
+      {
+        "reference_key": "tui",
+        "reference_label": "tui (Tui)",
+        "reference_status": "Open the interactive TUI editor",
+        "openagents_key": null,
+        "openagents_label": null,
+        "openagents_status": null,
+        "score": 0.0,
+        "state": "missing"
+      }
+    ]
+  },
+  "summary": {
+    "total_reference_count": 138,
+    "total_matched_count": 10,
+    "total_missing_count": 128,
+    "total_match_rate": 0.07246376811594203
+  }
+}
