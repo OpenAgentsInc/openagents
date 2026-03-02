@@ -57,6 +57,7 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/sketch_jacobian_residual_parity_manifest.json"
     "crates/cad/parity/sketch_constraint_status_parity_manifest.json"
     "crates/cad/parity/sketch_extrude_parity_manifest.json"
+    "crates/cad/parity/sketch_revolve_parity_manifest.json"
     "crates/cad/parity/fixtures/feature_op_hash_vcad_reference_corpus.json"
     "crates/cad/parity/fixtures/parity_fixture_corpus.json"
 )
