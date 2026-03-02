@@ -3157,6 +3157,21 @@ impl StableSatsWalletMode {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StableSatsWalletOwnerKind {
+    Operator,
+    SovereignAgent,
+}
+
+impl StableSatsWalletOwnerKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Operator => "operator",
+            Self::SovereignAgent => "sovereign_agent",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StableSatsSimulationMode {
     Demo,
     RealBlink,
@@ -3174,11 +3189,59 @@ impl StableSatsSimulationMode {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StableSatsAgentWalletState {
     pub agent_name: String,
+    pub owner_kind: StableSatsWalletOwnerKind,
+    pub owner_id: String,
+    pub credential_key_name: String,
+    pub credential_url_name: Option<String>,
     pub btc_balance_sats: u64,
     pub usd_balance_cents: u64,
     pub active_wallet: StableSatsWalletMode,
     pub switch_count: u32,
     pub last_switch_summary: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StableSatsTransferAsset {
+    BtcSats,
+    UsdCents,
+}
+
+impl StableSatsTransferAsset {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::BtcSats => "BTC",
+            Self::UsdCents => "USD",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StableSatsTransferStatus {
+    Settled,
+    Failed,
+}
+
+impl StableSatsTransferStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Settled => "settled",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StableSatsTransferLedgerEntry {
+    pub seq: u64,
+    pub transfer_ref: String,
+    pub from_wallet: String,
+    pub to_wallet: String,
+    pub asset: StableSatsTransferAsset,
+    pub amount: u64,
+    pub effective_fee: u64,
+    pub status: StableSatsTransferStatus,
+    pub summary: String,
+    pub occurred_at_epoch_seconds: u64,
 }
 
 pub struct StableSatsSimulationPaneState {
@@ -3198,8 +3261,10 @@ pub struct StableSatsSimulationPaneState {
     pub auto_run_interval: Duration,
     pub live_refresh_pending: bool,
     pub active_live_refresh_request_id: Option<u64>,
+    pub transfer_ledger: Vec<StableSatsTransferLedgerEntry>,
     pub events: Vec<AgentNetworkSimulationEvent>,
     next_seq: u64,
+    next_transfer_seq: u64,
     auto_run_last_tick: Option<Instant>,
     next_live_refresh_request_id: u64,
 }
@@ -3225,8 +3290,10 @@ impl Default for StableSatsSimulationPaneState {
             auto_run_interval: Duration::from_millis(120),
             live_refresh_pending: false,
             active_live_refresh_request_id: None,
+            transfer_ledger: Vec::new(),
             events: Vec::new(),
             next_seq: 1,
+            next_transfer_seq: 1,
             auto_run_last_tick: None,
             next_live_refresh_request_id: 1,
         }
@@ -3242,6 +3309,10 @@ impl StableSatsSimulationPaneState {
         vec![
             StableSatsAgentWalletState {
                 agent_name: "agent-alpha".to_string(),
+                owner_kind: StableSatsWalletOwnerKind::SovereignAgent,
+                owner_id: "sa:agent-alpha".to_string(),
+                credential_key_name: "BLINK_API_KEY_SA_ALPHA".to_string(),
+                credential_url_name: Some("BLINK_API_URL_SA_ALPHA".to_string()),
                 btc_balance_sats: 260_000,
                 usd_balance_cents: 42_000,
                 active_wallet: StableSatsWalletMode::Btc,
@@ -3250,6 +3321,10 @@ impl StableSatsSimulationPaneState {
             },
             StableSatsAgentWalletState {
                 agent_name: "agent-beta".to_string(),
+                owner_kind: StableSatsWalletOwnerKind::SovereignAgent,
+                owner_id: "sa:agent-beta".to_string(),
+                credential_key_name: "BLINK_API_KEY_SA_BETA".to_string(),
+                credential_url_name: Some("BLINK_API_URL_SA_BETA".to_string()),
                 btc_balance_sats: 180_000,
                 usd_balance_cents: 64_000,
                 active_wallet: StableSatsWalletMode::Usd,
@@ -3258,6 +3333,10 @@ impl StableSatsSimulationPaneState {
             },
             StableSatsAgentWalletState {
                 agent_name: "agent-gamma".to_string(),
+                owner_kind: StableSatsWalletOwnerKind::SovereignAgent,
+                owner_id: "sa:agent-gamma".to_string(),
+                credential_key_name: "BLINK_API_KEY_SA_GAMMA".to_string(),
+                credential_url_name: Some("BLINK_API_URL_SA_GAMMA".to_string()),
                 btc_balance_sats: 120_000,
                 usd_balance_cents: 36_000,
                 active_wallet: StableSatsWalletMode::Btc,
@@ -3296,8 +3375,10 @@ impl StableSatsSimulationPaneState {
         self.converted_sats_history.clear();
         self.live_refresh_pending = false;
         self.active_live_refresh_request_id = None;
+        self.transfer_ledger.clear();
         self.events.clear();
         self.next_seq = 1;
+        self.next_transfer_seq = 1;
         self.next_live_refresh_request_id = 1;
         match mode {
             StableSatsSimulationMode::Demo => {
@@ -3305,14 +3386,7 @@ impl StableSatsSimulationPaneState {
                 self.last_action = Some("StableSats mode switched to demo simulation".to_string());
             }
             StableSatsSimulationMode::RealBlink => {
-                self.agents = vec![StableSatsAgentWalletState {
-                    agent_name: "blink-live".to_string(),
-                    btc_balance_sats: 0,
-                    usd_balance_cents: 0,
-                    active_wallet: StableSatsWalletMode::Btc,
-                    switch_count: 0,
-                    last_switch_summary: "awaiting live refresh".to_string(),
-                }];
+                self.agents = Self::default_real_wallets();
                 self.last_action =
                     Some("StableSats mode switched to real Blink integration".to_string());
             }
@@ -3384,6 +3458,13 @@ impl StableSatsSimulationPaneState {
         for index in 0..self.agents.len() {
             let index_u64 = index as u64;
             let event_ref = format!("sim:blink:swap:{round:04}:{index:02}");
+            let mut transfer_record: Option<(
+                String,
+                String,
+                StableSatsTransferAsset,
+                u64,
+                String,
+            )> = None;
             let event_summary = {
                 let agent = &mut self.agents[index];
                 match agent.active_wallet {
@@ -3411,6 +3492,21 @@ impl StableSatsSimulationPaneState {
                             converted_sats_round = converted_sats_round.saturating_add(switch_sats);
                             converted_usd_round = converted_usd_round.saturating_add(credited_usd);
                             agents_switched = agents_switched.saturating_add(1);
+                            let from_wallet = format!("{}:BTC", agent.agent_name);
+                            let to_wallet = format!("{}:USD", agent.agent_name);
+                            let summary = format!(
+                                "{} switched {} sats to {}",
+                                agent.agent_name,
+                                switch_sats,
+                                Self::format_usd_cents(credited_usd)
+                            );
+                            transfer_record = Some((
+                                from_wallet,
+                                to_wallet,
+                                StableSatsTransferAsset::BtcSats,
+                                switch_sats,
+                                summary.clone(),
+                            ));
                             Some(format!(
                                 "{} switched {} sats to {}",
                                 agent.agent_name,
@@ -3444,6 +3540,21 @@ impl StableSatsSimulationPaneState {
                                 converted_sats_round.saturating_add(credited_sats);
                             converted_usd_round = converted_usd_round.saturating_add(switch_usd);
                             agents_switched = agents_switched.saturating_add(1);
+                            let from_wallet = format!("{}:USD", agent.agent_name);
+                            let to_wallet = format!("{}:BTC", agent.agent_name);
+                            let summary = format!(
+                                "{} switched {} to {} sats",
+                                agent.agent_name,
+                                Self::format_usd_cents(switch_usd),
+                                credited_sats
+                            );
+                            transfer_record = Some((
+                                from_wallet,
+                                to_wallet,
+                                StableSatsTransferAsset::UsdCents,
+                                switch_usd,
+                                summary.clone(),
+                            ));
                             Some(format!(
                                 "{} switched {} to {} sats",
                                 agent.agent_name,
@@ -3454,6 +3565,19 @@ impl StableSatsSimulationPaneState {
                     }
                 }
             };
+            if let Some((from_wallet, to_wallet, asset, amount, summary)) = transfer_record {
+                self.push_transfer_ledger_entry(
+                    now_epoch_seconds,
+                    format!("sim:blink:transfer:{round:04}:{index:02}"),
+                    from_wallet,
+                    to_wallet,
+                    asset,
+                    amount,
+                    0,
+                    StableSatsTransferStatus::Settled,
+                    summary,
+                );
+            }
 
             if let Some(summary) = event_summary {
                 self.push_event("BLINK-SWAP", &event_ref, summary);
@@ -3518,10 +3642,14 @@ impl StableSatsSimulationPaneState {
         let btc_delta = prev_btc.abs_diff(btc_balance_sats);
         let usd_delta = prev_usd.abs_diff(usd_balance_cents);
         let switched = btc_delta > 0 || usd_delta > 0;
-
+        let operator_index = self
+            .agents
+            .iter()
+            .position(|wallet| wallet.owner_kind == StableSatsWalletOwnerKind::Operator)
+            .unwrap_or(0);
         let prior_switches = self
             .agents
-            .first()
+            .get(operator_index)
             .map(|agent| agent.switch_count)
             .unwrap_or(0);
         let next_switches = if switched {
@@ -3547,18 +3675,53 @@ impl StableSatsSimulationPaneState {
         self.total_converted_sats = self.total_converted_sats.saturating_add(btc_delta);
         self.total_converted_usd_cents = self.total_converted_usd_cents.saturating_add(usd_delta);
         self.last_settlement_ref = Some(format!("blink:live:settlement:{round:04}"));
-        self.agents = vec![StableSatsAgentWalletState {
-            agent_name: "blink-live".to_string(),
-            btc_balance_sats,
-            usd_balance_cents,
-            active_wallet: if usd_balance_cents > 0 {
+        if self.agents.len() < 3 {
+            self.agents = Self::default_real_wallets();
+        }
+        if let Some(operator_wallet) = self.agents.get_mut(operator_index) {
+            operator_wallet.btc_balance_sats = btc_balance_sats;
+            operator_wallet.usd_balance_cents = usd_balance_cents;
+            operator_wallet.active_wallet = if usd_balance_cents > 0 {
                 StableSatsWalletMode::Usd
             } else {
                 StableSatsWalletMode::Btc
-            },
-            switch_count: next_switches,
-            last_switch_summary,
-        }];
+            };
+            operator_wallet.switch_count = next_switches;
+            operator_wallet.last_switch_summary = last_switch_summary;
+        }
+
+        if switched {
+            let (from_wallet, to_wallet, asset, amount) = if btc_balance_sats < prev_btc {
+                (
+                    "autopilot-user:BTC".to_string(),
+                    "autopilot-user:USD".to_string(),
+                    StableSatsTransferAsset::BtcSats,
+                    btc_delta,
+                )
+            } else {
+                (
+                    "autopilot-user:USD".to_string(),
+                    "autopilot-user:BTC".to_string(),
+                    StableSatsTransferAsset::UsdCents,
+                    usd_delta,
+                )
+            };
+            self.push_transfer_ledger_entry(
+                now_epoch_seconds,
+                format!("blink:live:transfer:{round:04}:{now_epoch_seconds}"),
+                from_wallet,
+                to_wallet,
+                asset,
+                amount,
+                0,
+                StableSatsTransferStatus::Settled,
+                format!(
+                    "live delta btc={} sats usd={}",
+                    btc_delta,
+                    Self::format_usd_cents(usd_delta)
+                ),
+            );
+        }
 
         self.price_history_usd_cents_per_btc
             .push(self.price_usd_cents_per_btc);
@@ -3615,7 +3778,7 @@ impl StableSatsSimulationPaneState {
         self.load_state = PaneLoadState::Ready;
         self.last_error = None;
         self.last_action = Some(format!(
-            "Round {round}: loaded live Blink balances (btc={} sats, usd={})",
+            "Round {round}: loaded live Blink operator wallet balances (btc={} sats, usd={})",
             btc_balance_sats,
             Self::format_usd_cents(usd_balance_cents)
         ));
@@ -3632,22 +3795,17 @@ impl StableSatsSimulationPaneState {
         self.last_settlement_ref = None;
         self.agents = match self.mode {
             StableSatsSimulationMode::Demo => Self::default_agents(),
-            StableSatsSimulationMode::RealBlink => vec![StableSatsAgentWalletState {
-                agent_name: "blink-live".to_string(),
-                btc_balance_sats: 0,
-                usd_balance_cents: 0,
-                active_wallet: StableSatsWalletMode::Btc,
-                switch_count: 0,
-                last_switch_summary: "none".to_string(),
-            }],
+            StableSatsSimulationMode::RealBlink => Self::default_real_wallets(),
         };
         self.price_history_usd_cents_per_btc.clear();
         self.converted_sats_history.clear();
         self.auto_run_enabled = false;
         self.live_refresh_pending = false;
         self.active_live_refresh_request_id = None;
+        self.transfer_ledger.clear();
         self.events.clear();
         self.next_seq = 1;
+        self.next_transfer_seq = 1;
         self.auto_run_last_tick = None;
         self.next_live_refresh_request_id = 1;
     }
@@ -3710,5 +3868,79 @@ impl StableSatsSimulationPaneState {
             let overflow = self.events.len().saturating_sub(24);
             self.events.drain(0..overflow);
         }
+    }
+
+    fn default_real_wallets() -> Vec<StableSatsAgentWalletState> {
+        vec![
+            StableSatsAgentWalletState {
+                agent_name: "autopilot-user".to_string(),
+                owner_kind: StableSatsWalletOwnerKind::Operator,
+                owner_id: "operator:autopilot".to_string(),
+                credential_key_name: "BLINK_API_KEY".to_string(),
+                credential_url_name: Some("BLINK_API_URL".to_string()),
+                btc_balance_sats: 0,
+                usd_balance_cents: 0,
+                active_wallet: StableSatsWalletMode::Btc,
+                switch_count: 0,
+                last_switch_summary: "awaiting live refresh".to_string(),
+            },
+            StableSatsAgentWalletState {
+                agent_name: "sa-wallet-1".to_string(),
+                owner_kind: StableSatsWalletOwnerKind::SovereignAgent,
+                owner_id: "sa:wallet-1".to_string(),
+                credential_key_name: "BLINK_API_KEY_SA_1".to_string(),
+                credential_url_name: Some("BLINK_API_URL_SA_1".to_string()),
+                btc_balance_sats: 0,
+                usd_balance_cents: 0,
+                active_wallet: StableSatsWalletMode::Btc,
+                switch_count: 0,
+                last_switch_summary: "awaiting sovereign wallet sync".to_string(),
+            },
+            StableSatsAgentWalletState {
+                agent_name: "sa-wallet-2".to_string(),
+                owner_kind: StableSatsWalletOwnerKind::SovereignAgent,
+                owner_id: "sa:wallet-2".to_string(),
+                credential_key_name: "BLINK_API_KEY_SA_2".to_string(),
+                credential_url_name: Some("BLINK_API_URL_SA_2".to_string()),
+                btc_balance_sats: 0,
+                usd_balance_cents: 0,
+                active_wallet: StableSatsWalletMode::Usd,
+                switch_count: 0,
+                last_switch_summary: "awaiting sovereign wallet sync".to_string(),
+            },
+        ]
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn push_transfer_ledger_entry(
+        &mut self,
+        now_epoch_seconds: u64,
+        transfer_ref: String,
+        from_wallet: String,
+        to_wallet: String,
+        asset: StableSatsTransferAsset,
+        amount: u64,
+        effective_fee: u64,
+        status: StableSatsTransferStatus,
+        summary: String,
+    ) {
+        self.transfer_ledger.push(StableSatsTransferLedgerEntry {
+            seq: self.next_transfer_seq,
+            transfer_ref: transfer_ref.clone(),
+            from_wallet,
+            to_wallet,
+            asset,
+            amount,
+            effective_fee,
+            status,
+            summary: summary.clone(),
+            occurred_at_epoch_seconds: now_epoch_seconds,
+        });
+        self.next_transfer_seq = self.next_transfer_seq.saturating_add(1);
+        if self.transfer_ledger.len() > 48 {
+            let overflow = self.transfer_ledger.len().saturating_sub(48);
+            self.transfer_ledger.drain(0..overflow);
+        }
+        self.push_event("BLINK-XFER", transfer_ref.as_str(), summary);
     }
 }
