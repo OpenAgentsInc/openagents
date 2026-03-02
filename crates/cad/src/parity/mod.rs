@@ -35,6 +35,7 @@ pub mod fillet_feature_graph_parity;
 pub mod fixture_corpus;
 pub mod gap_matrix;
 pub mod glb_export_parity;
+pub mod headless_script_harness_parity;
 pub mod intent_modeling_parity;
 pub mod kernel_adapter_v2;
 pub mod kernel_boolean_brep_parity;
