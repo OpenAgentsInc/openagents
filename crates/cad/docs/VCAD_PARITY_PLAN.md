@@ -147,7 +147,7 @@ Major gaps to close:
 59. [x] VCAD-PARITY-059: Joint parity (Cylindrical/Ball).
 60. [x] VCAD-PARITY-060: Joint limits/state parity semantics.
 61. [x] VCAD-PARITY-061: Forward kinematics solver parity.
-62. [ ] VCAD-PARITY-062: Ground instance + deletion cleanup invariants.
+62. [x] VCAD-PARITY-062: Ground instance + deletion cleanup invariants.
 63. [ ] VCAD-PARITY-063: Assembly UI pane parity for selection/editing.
 64. [ ] VCAD-PARITY-064: Assembly serialization and replay parity.
 65. [ ] VCAD-PARITY-065: Assembly acceptance scenes parity fixtures.
