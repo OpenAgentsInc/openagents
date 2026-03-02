@@ -99,7 +99,7 @@ Major gaps to close:
 20. [x] VCAD-PARITY-020: Preserve BRep after booleans (remove mesh-only fallback in parity lane).
 21. [x] VCAD-PARITY-021: Integrate `vcad-kernel-nurbs` parity support.
 22. [x] VCAD-PARITY-022: Integrate `vcad-kernel-text` parity text geometry support.
-23. [ ] VCAD-PARITY-023: Integrate `vcad-kernel-fillet` parity path.
+23. [x] VCAD-PARITY-023: Integrate `vcad-kernel-fillet` parity path.
 24. [ ] VCAD-PARITY-024: Integrate `vcad-kernel-shell` parity path.
 25. [ ] VCAD-PARITY-025: Integrate `vcad-kernel-step` parity adapter path.
 
