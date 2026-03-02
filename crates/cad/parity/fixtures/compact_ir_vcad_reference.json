@@ -1,0 +1,25 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-086",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/crates/vcad-ir/src/compact.rs + ~/code/vcad/docs/features/compact-ir.md",
+  "expected_opcodes": [
+    "C",
+    "D",
+    "I",
+    "K",
+    "M",
+    "R",
+    "ROOT",
+    "S",
+    "T",
+    "U",
+    "X",
+    "Y"
+  ],
+  "expected_min_non_comment_lines": 13,
+  "expected_node_count": 10,
+  "expected_root_count": 1,
+  "expected_root_material": "aluminum",
+  "expected_parse_error_marker": "nodes defined"
+}

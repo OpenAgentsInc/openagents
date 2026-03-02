@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::analysis::analyze_body_properties;
+use crate::compact_ir::{
+    from_compact as compact_ir_from_text, looks_like_compact_ir, to_compact as compact_ir_to_text,
+};
 use crate::export::export_step_from_mesh;
 use crate::glb::export_glb_from_mesh;
 use crate::hash::stable_hex_digest;
@@ -345,8 +348,16 @@ pub fn export_cad_schema() -> Value {
         "type": "object",
         "properties": {
             "ir": {
-                "type": "object",
-                "description": "IR document from create_cad_document"
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "description": "IR document object from create_cad_document"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Compact IR text (vcad-style line format)"
+                    }
+                ]
             },
             "filename": {
                 "type": "string",
@@ -362,8 +373,16 @@ pub fn inspect_cad_schema() -> Value {
         "type": "object",
         "properties": {
             "ir": {
-                "type": "object",
-                "description": "IR document from create_cad_document"
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "description": "IR document object from create_cad_document"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Compact IR text (vcad-style line format)"
+                    }
+                ]
             }
         },
         "required": ["ir"]
@@ -456,11 +475,7 @@ pub fn create_cad_document(input: CadMcpCreateInput) -> CadResult<CadMcpToolResp
                 reason: format!("failed to serialize create_cad_document payload: {error}"),
             })?
         }
-        CadMcpCreateFormat::Compact => {
-            serde_json::to_string(&document).map_err(|error| CadError::Serialization {
-                reason: format!("failed to serialize create_cad_document payload: {error}"),
-            })?
-        }
+        CadMcpCreateFormat::Compact => compact_ir_to_text(&document)?,
     };
 
     Ok(tool_response(text))
@@ -656,20 +671,111 @@ pub fn create_cad_document_from_value(input: Value) -> CadResult<CadMcpToolRespo
     create_cad_document(parsed)
 }
 
+pub fn cad_document_from_compact(payload: &str) -> CadResult<CadMcpDocument> {
+    compact_ir_from_text(payload)
+}
+
+pub fn cad_document_to_compact(document: &CadMcpDocument) -> CadResult<String> {
+    compact_ir_to_text(document)
+}
+
+pub fn cad_document_from_text(payload: &str) -> CadResult<CadMcpDocument> {
+    let trimmed = payload.trim();
+    if trimmed.is_empty() {
+        return Err(CadError::ParseFailed {
+            reason: "CAD document text payload is empty".to_string(),
+        });
+    }
+
+    let json_result = serde_json::from_str::<CadMcpDocument>(trimmed);
+    if let Ok(document) = json_result {
+        return Ok(document);
+    }
+
+    let compact_result = compact_ir_from_text(trimmed);
+    if let Ok(document) = compact_result {
+        return Ok(document);
+    }
+
+    let json_error = json_result
+        .err()
+        .map(|error| error.to_string())
+        .unwrap_or_else(|| "unknown json parse error".to_string());
+    let compact_error = compact_result
+        .err()
+        .map(|error| error.to_string())
+        .unwrap_or_else(|| "unknown compact parse error".to_string());
+
+    Err(CadError::ParseFailed {
+        reason: format!(
+            "failed to parse CAD document text as JSON or compact IR: json={json_error}; compact={compact_error}"
+        ),
+    })
+}
+
 pub fn export_cad_from_value(input: Value) -> CadResult<CadMcpToolResponse> {
-    let parsed: CadMcpExportInput =
+    let parsed: CadMcpExportInputValue =
         serde_json::from_value(input).map_err(|error| CadError::ParseFailed {
             reason: format!("invalid export_cad payload: {error}"),
         })?;
-    export_cad(parsed)
+    let ir = parse_ir_value(parsed.ir, "export_cad")?;
+    export_cad(CadMcpExportInput {
+        ir,
+        filename: parsed.filename,
+    })
 }
 
 pub fn inspect_cad_from_value(input: Value) -> CadResult<CadMcpToolResponse> {
-    let parsed: CadMcpInspectInput =
+    let parsed: CadMcpInspectInputValue =
         serde_json::from_value(input).map_err(|error| CadError::ParseFailed {
             reason: format!("invalid inspect_cad payload: {error}"),
         })?;
-    inspect_cad(parsed)
+    let ir = parse_ir_value(parsed.ir, "inspect_cad")?;
+    inspect_cad(CadMcpInspectInput { ir })
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+struct CadMcpExportInputValue {
+    ir: Value,
+    filename: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+struct CadMcpInspectInputValue {
+    ir: Value,
+}
+
+fn parse_ir_value(ir: Value, operation: &str) -> CadResult<CadMcpDocument> {
+    match ir {
+        Value::Object(_) => {
+            serde_json::from_value::<CadMcpDocument>(ir).map_err(|error| CadError::ParseFailed {
+                reason: format!("invalid {operation} ir object payload: {error}"),
+            })
+        }
+        Value::String(text) => {
+            if !looks_like_compact_ir(&text) {
+                return cad_document_from_text(&text);
+            }
+            cad_document_from_compact(&text)
+        }
+        other => Err(CadError::ParseFailed {
+            reason: format!(
+                "invalid {operation} ir payload: expected object or string, got {}",
+                type_name(&other)
+            ),
+        }),
+    }
+}
+
+fn type_name(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "bool",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    }
 }
 
 fn tool_response(text: String) -> CadMcpToolResponse {
@@ -1544,7 +1650,8 @@ pub fn mcp_export_step_preview(document: &CadMcpDocument) -> CadResult<String> {
 mod tests {
     use super::{
         CadMcpCreateFormat, CadMcpCreateInput, CadMcpOperation, CadMcpPartInput, CadMcpPrimitive,
-        CadMcpPrimitiveType, CadMcpVec3, create_cad_document, mcp_document_hash,
+        CadMcpPrimitiveType, CadMcpVec3, cad_document_from_text, create_cad_document,
+        mcp_document_hash,
     };
 
     fn cube_part() -> CadMcpPartInput {
@@ -1583,7 +1690,10 @@ mod tests {
         .expect("create document");
         assert_eq!(result.content.len(), 1);
         assert_eq!(result.content[0].r#type, "text");
-        assert!(!result.content[0].text.contains('\n'));
+        assert!(result.content[0].text.contains("# vcad"));
+        let parsed = cad_document_from_text(&result.content[0].text).expect("parse compact text");
+        assert_eq!(parsed.roots.len(), 1);
+        assert!(!parsed.nodes.is_empty());
     }
 
     #[test]
@@ -1619,10 +1729,8 @@ mod tests {
         .text
         .clone();
 
-        let first_doc: super::CadMcpDocument =
-            serde_json::from_str(&first).expect("parse first document");
-        let second_doc: super::CadMcpDocument =
-            serde_json::from_str(&second).expect("parse second document");
+        let first_doc = cad_document_from_text(&first).expect("parse first document");
+        let second_doc = cad_document_from_text(&second).expect("parse second document");
 
         let first_hash = mcp_document_hash(&first_doc).expect("first hash");
         let second_hash = mcp_document_hash(&second_doc).expect("second hash");

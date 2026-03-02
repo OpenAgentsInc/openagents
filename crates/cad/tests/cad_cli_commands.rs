@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use openagents_cad::cli::{CAD_CLI_APP_NAME, run_cli_tokens};
 use openagents_cad::document::CadDocument;
 use openagents_cad::export::export_step_from_mesh;
+use openagents_cad::mcp_tools::CadMcpDocument;
 use openagents_cad::mesh::{
     CadMeshBounds, CadMeshMaterialSlot, CadMeshPayload, CadMeshTopology, CadMeshVertex,
 };
@@ -195,4 +196,42 @@ fn import_step_and_info_step_succeed() {
     assert_eq!(info.exit_code, 0);
     assert!(info.stdout.contains("openagents cad step:"));
     assert!(info.stdout.contains("solids:"));
+}
+
+#[test]
+fn import_and_info_compact_ir_succeed() {
+    let workspace = reset_workspace("import_compact_ir");
+    let compact_input = workspace.join("input.cad0");
+    let imported = workspace.join("imported_compact.json");
+    fs::write(
+        &compact_input,
+        "# vcad 0.2\nM default 0.8 0.8 0.8 0 0.5\nC 10 10 10 \"Cube\"\nROOT 0 default\n",
+    )
+    .unwrap_or_else(|error| panic!("failed writing {}: {error}", compact_input.display()));
+
+    let import = run_cli(&[
+        CAD_CLI_APP_NAME.to_string(),
+        "import".to_string(),
+        compact_input.to_string_lossy().to_string(),
+        imported.to_string_lossy().to_string(),
+    ]);
+    assert_eq!(import.exit_code, 0);
+    assert!(import.stdout.contains("Imported compact IR"));
+
+    let document: CadMcpDocument = serde_json::from_str(
+        &fs::read_to_string(&imported)
+            .unwrap_or_else(|error| panic!("failed reading {}: {error}", imported.display())),
+    )
+    .expect("parse imported compact document");
+    assert_eq!(document.nodes.len(), 1);
+    assert_eq!(document.roots.len(), 1);
+
+    let info = run_cli(&[
+        CAD_CLI_APP_NAME.to_string(),
+        "info".to_string(),
+        compact_input.to_string_lossy().to_string(),
+    ]);
+    assert_eq!(info.exit_code, 0);
+    assert!(info.stdout.contains("openagents cad compact-ir:"));
+    assert!(info.stdout.contains("nodes: 1"));
 }

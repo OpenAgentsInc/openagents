@@ -36,7 +36,7 @@ Behavior:
 ### `import`
 
 Usage:
-- `openagents-cad-cli import <input.stl|input.step|input.stp> <output_json> [--name <id>]`
+- `openagents-cad-cli import <input.stl|input.step|input.stp|input.cad0|input.vcadc> <output_json> [--name <id>]`
 
 Behavior:
 - `.stl` input:
@@ -45,9 +45,13 @@ Behavior:
 - `.step` / `.stp` input:
   - parses via `import_step_text_to_document`
   - writes `CadDocument` JSON
+- `.cad0` / `.vcadc` input:
+  - parses via compact IR parser
+  - writes `CadMcpDocument` JSON
 - Success message format:
   - `Imported STL to <path>`
   - `Imported STEP to <path>`
+  - `Imported compact IR to <path>`
 
 ### `info`
 
@@ -57,6 +61,7 @@ Usage:
 Behavior:
 - If JSON parses as `CadMeshPayload`: prints mesh summary.
 - Else if JSON parses as `CadDocument`: prints document summary.
+- Else if payload parses as compact IR text: prints compact IR summary.
 - Else if STEP text: prints STEP checker/entity summary.
 
 ### Scaffold Compatibility

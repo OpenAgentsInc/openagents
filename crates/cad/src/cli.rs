@@ -3,6 +3,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::compact_ir::{from_compact as compact_ir_from_text, looks_like_compact_ir};
 use crate::document::CadDocument;
 use crate::export::export_step_from_mesh;
 use crate::glb::export_glb_from_mesh;
@@ -330,6 +331,36 @@ fn handle_import(args: &[String]) -> CadCliRunOutcome {
 
             CadCliRunOutcome::success(format!("Imported STEP to {}", output_path.display()))
         }
+        "cad0" | "vcadc" => {
+            let payload = match fs::read_to_string(input_path) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return CadCliRunOutcome::failure(
+                        1,
+                        format!("failed reading {}: {error}", input_path.display()),
+                    );
+                }
+            };
+
+            let document = match compact_ir_from_text(&payload) {
+                Ok(document) => document,
+                Err(error) => {
+                    return CadCliRunOutcome::failure(
+                        1,
+                        format!(
+                            "failed to import compact IR {}: {error}",
+                            input_path.display()
+                        ),
+                    );
+                }
+            };
+
+            if let Err(reason) = write_pretty_json(output_path, &document) {
+                return CadCliRunOutcome::failure(1, reason);
+            }
+
+            CadCliRunOutcome::success(format!("Imported compact IR to {}", output_path.display()))
+        }
         _ => CadCliRunOutcome::failure(
             2,
             format!(
@@ -363,6 +394,12 @@ fn handle_info(args: &[String]) -> CadCliRunOutcome {
 
     if let Ok(document) = CadDocument::from_json(&payload) {
         return CadCliRunOutcome::success(format_document_info(input_path, &document));
+    }
+
+    if looks_like_compact_ir(&payload) {
+        if let Ok(document) = compact_ir_from_text(&payload) {
+            return CadCliRunOutcome::success(format_compact_ir_info(input_path, &document));
+        }
     }
 
     let extension = output_extension(input_path);
@@ -452,6 +489,17 @@ fn format_document_info(path: &Path, document: &CadDocument) -> String {
     )
 }
 
+fn format_compact_ir_info(path: &Path, document: &crate::mcp_tools::CadMcpDocument) -> String {
+    format!(
+        "openagents cad compact-ir: {}\n  version: {}\n  nodes: {}\n  roots: {}\n  materials: {}",
+        path.display(),
+        document.version,
+        document.nodes.len(),
+        document.roots.len(),
+        document.materials.len(),
+    )
+}
+
 fn format_step_info(
     path: &Path,
     solid_count: usize,
@@ -517,7 +565,7 @@ fn export_usage() -> String {
 
 fn import_usage() -> String {
     format!(
-        "USAGE:\n  {CAD_CLI_APP_NAME} import <input.stl|input.step|input.stp> <output_json> [--name <id>]"
+        "USAGE:\n  {CAD_CLI_APP_NAME} import <input.stl|input.step|input.stp|input.cad0|input.vcadc> <output_json> [--name <id>]"
     )
 }
 

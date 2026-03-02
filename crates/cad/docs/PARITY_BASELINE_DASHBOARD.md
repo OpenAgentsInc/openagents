@@ -8,14 +8,14 @@ Issue coverage: `VCAD-PARITY-010`
 | --- | --- |
 | vcad commit | `1b59e7948efcdb848d8dba6848785d57aa310e81` |
 | openagents commit (plan baseline) | `04faa5227f077c419f1c5c52ddebbb7552838fd4` |
-| phase status | `phase_g_cad_mcp_tools_complete` |
+| phase status | `phase_g_compact_ir_complete` |
 | overall match rate | `0.072464` |
 | docs match rate | `0.038961` |
 | crates match rate | `0.122449` |
 | commands match rate | `0.083333` |
 | open risks | `24` |
 | open hard blockers (p0) | `16` |
-| CI source artifact count | `114` |
+| CI source artifact count | `116` |
 
 ## Profile Gates
 
@@ -43,6 +43,7 @@ Issue coverage: `VCAD-PARITY-010`
 - `cad_cli_scaffold_parity_manifest`
 - `cad_mcp_tools_parity_manifest`
 - `chamfer_feature_graph_parity_manifest`
+- `compact_ir_parity_manifest`
 - `core_modeling_checkpoint_parity_manifest`
 - `drafting_checkpoint_parity_manifest`
 - `drafting_detail_parity_manifest`
@@ -72,6 +73,7 @@ Issue coverage: `VCAD-PARITY-010`
 - `fixtures_cad_cli_commands_vcad_reference`
 - `fixtures_cad_cli_scaffold_vcad_reference`
 - `fixtures_cad_mcp_tools_vcad_reference`
+- `fixtures_compact_ir_vcad_reference`
 - `fixtures_drafting_detail_vcad_reference`
 - `fixtures_drafting_dimension_vcad_reference`
 - `fixtures_drafting_drawing_mode_ui_vcad_reference`
@@ -145,6 +147,6 @@ Issue coverage: `VCAD-PARITY-010`
 
 ## Next Actions
 
-- Execute VCAD-PARITY-086 through VCAD-PARITY-092 sequentially
+- Execute VCAD-PARITY-087 through VCAD-PARITY-092 sequentially
 - Keep phase_a_baseline_v1 profile passing in scorecard and risk register lanes
 - Refresh parity dashboard after each closed parity issue

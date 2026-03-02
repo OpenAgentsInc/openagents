@@ -3,9 +3,10 @@ use std::path::{Path, PathBuf};
 
 use openagents_cad::mcp_tools::{
     CadMcpCreateInput, CadMcpDocument, CadMcpExportInput, CadMcpInspectInput, CadMcpOperation,
-    CadMcpPartInput, CadMcpPrimitive, CadMcpPrimitiveType, CadMcpVec3, create_cad_document,
-    export_cad, inspect_cad,
+    CadMcpPartInput, CadMcpPrimitive, CadMcpPrimitiveType, CadMcpVec3, cad_document_from_text,
+    create_cad_document, export_cad, export_cad_from_value, inspect_cad, inspect_cad_from_value,
 };
+use serde_json::json;
 
 fn workspace_dir() -> PathBuf {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -59,7 +60,7 @@ fn sample_create_input() -> CadMcpCreateInput {
 
 fn create_document() -> CadMcpDocument {
     let created = create_cad_document(sample_create_input()).expect("create document");
-    serde_json::from_str(&created.content[0].text).expect("parse mcp document")
+    cad_document_from_text(&created.content[0].text).expect("parse mcp document")
 }
 
 #[test]
@@ -168,4 +169,39 @@ fn export_cad_rejects_unknown_format() {
 
     assert!(matches!(err, openagents_cad::CadError::ExportFailed { .. }));
     assert!(err.to_string().contains("Unsupported format"));
+}
+
+#[test]
+fn export_and_inspect_from_value_accept_compact_ir_string() {
+    let workspace = reset_workspace("export_from_value_compact_ir");
+    let created = create_cad_document(sample_create_input()).expect("create compact");
+    let compact = created.content[0].text.clone();
+    let output = workspace.join("mcp_export_compact.stl");
+
+    let export = export_cad_from_value(json!({
+        "ir": compact,
+        "filename": output.to_string_lossy().to_string()
+    }))
+    .expect("export from compact ir string");
+    let export_json: serde_json::Value =
+        serde_json::from_str(&export.content[0].text).expect("parse export response");
+    assert_eq!(
+        export_json
+            .get("format")
+            .and_then(serde_json::Value::as_str),
+        Some("stl")
+    );
+    assert!(output.exists());
+
+    let created = create_cad_document(sample_create_input()).expect("create compact for inspect");
+    let compact = created.content[0].text.clone();
+    let inspect = inspect_cad_from_value(json!({ "ir": compact })).expect("inspect from compact");
+    let inspect_json: serde_json::Value =
+        serde_json::from_str(&inspect.content[0].text).expect("parse inspect response");
+    assert_eq!(
+        inspect_json
+            .get("parts")
+            .and_then(serde_json::Value::as_u64),
+        Some(1)
+    );
 }

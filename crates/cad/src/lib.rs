@@ -8,6 +8,7 @@ pub mod assembly;
 pub mod boolean;
 pub mod chat_adapter;
 pub mod cli;
+pub mod compact_ir;
 pub mod contracts;
 pub mod dispatch;
 pub mod document;

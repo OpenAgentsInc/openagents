@@ -5,7 +5,7 @@
   "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
   "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
   "parity_check_entrypoint": "scripts/cad/parity_check.sh",
-  "source_artifact_count": 114,
+  "source_artifact_count": 116,
   "artifacts": [
     {
       "artifact_id": "assembly_acceptance_scenes_parity_manifest",
@@ -88,7 +88,7 @@
     {
       "artifact_id": "cad_mcp_tools_parity_manifest",
       "source_path": "crates/cad/parity/cad_mcp_tools_parity_manifest.json",
-      "sha256": "cb60710b6d068b5c054d0c0bc5fad93550b577374a5407774335444be0f52754",
+      "sha256": "59d30bc6c0cc4e7007fb97e615cc4a7da3dd7695b01e471482ea829146241c85",
       "bytes": 1841
     },
     {
@@ -96,6 +96,12 @@
       "source_path": "crates/cad/parity/chamfer_feature_graph_parity_manifest.json",
       "sha256": "9f71a23725de08ba6dbffa74631dedddedf56b1c2d0d765f7d838aa9bf68ec9f",
       "bytes": 1676
+    },
+    {
+      "artifact_id": "compact_ir_parity_manifest",
+      "source_path": "crates/cad/parity/compact_ir_parity_manifest.json",
+      "sha256": "4d023ac4a6e2b68c21c05242efcbe9d96daac5e7bc0618c9a13ea2825c5a40a6",
+      "bytes": 1653
     },
     {
       "artifact_id": "core_modeling_checkpoint_parity_manifest",
@@ -270,6 +276,12 @@
       "source_path": "crates/cad/parity/fixtures/cad_mcp_tools_vcad_reference.json",
       "sha256": "f016fb85e25bb83d3129f537c506ab29425dc22d405e9dd745de064418e5d34f",
       "bytes": 757
+    },
+    {
+      "artifact_id": "fixtures_compact_ir_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/compact_ir_vcad_reference.json",
+      "sha256": "e2e2127fd27049a4962ea304ba24030f79b978a0965cb2c2242c789161d3ed64",
+      "bytes": 547
     },
     {
       "artifact_id": "fixtures_drafting_detail_vcad_reference",
@@ -508,8 +520,8 @@
     {
       "artifact_id": "parity_dashboard",
       "source_path": "crates/cad/parity/parity_dashboard.json",
-      "sha256": "a4d84fd9d2bad6230e36545084079b4f1cf6d6cdc6806955384a24c9f4b24771",
-      "bytes": 6770
+      "sha256": "7c46d85c0d8a0b963b5443cb4b3f9008295f58b947eee9b5325116c6b402f164",
+      "bytes": 6847
     },
     {
       "artifact_id": "parity_risk_register",

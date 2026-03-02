@@ -63,6 +63,7 @@ Provide one deterministic orchestration entrypoint for the parity baseline lanes
 - CAD CLI scaffold parity fixture check
 - CAD CLI commands parity fixture check
 - CAD MCP tools parity fixture check
+- compact IR parser/serializer parity fixture check
 - parity CI artifact manifest fixture check
 - parity risk register + blocker workflow check
 - baseline dashboard publication check
