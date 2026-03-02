@@ -115,7 +115,7 @@ Major gaps to close:
 33. [x] VCAD-PARITY-033: Sweep op parity (path + twist + scale controls).
 34. [x] VCAD-PARITY-034: Loft op parity (multi-profile + closed options).
 35. [x] VCAD-PARITY-035: Topology repair parity after boolean/finishing ops.
-36. [ ] VCAD-PARITY-036: Material assignment parity at part/feature level.
+36. [x] VCAD-PARITY-036: Material assignment parity at part/feature level.
 37. [ ] VCAD-PARITY-037: `vcad-eval` parity behaviors in OpenAgents eval receipts.
 38. [ ] VCAD-PARITY-038: Feature-op hash parity fixtures vs vcad reference corpus.
 39. [ ] VCAD-PARITY-039: Modeling edge-case parity fixtures (coincident/tangent/seam).

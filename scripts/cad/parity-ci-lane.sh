@@ -45,6 +45,7 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/sweep_parity_manifest.json"
     "crates/cad/parity/loft_parity_manifest.json"
     "crates/cad/parity/topology_repair_parity_manifest.json"
+    "crates/cad/parity/material_assignment_parity_manifest.json"
     "crates/cad/parity/fixtures/parity_fixture_corpus.json"
 )
 
