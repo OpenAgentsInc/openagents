@@ -90,7 +90,7 @@ Major gaps to close:
 11. [x] VCAD-PARITY-011: Finalize `cad::kernel` adapter v2 for engine pluggability.
 12. [x] VCAD-PARITY-012: Integrate `vcad-kernel-math` parity types/adapters.
 13. [x] VCAD-PARITY-013: Integrate `vcad-kernel-topo` parity topology model.
-14. [ ] VCAD-PARITY-014: Integrate `vcad-kernel-geom` parity surface types.
+14. [x] VCAD-PARITY-014: Integrate `vcad-kernel-geom` parity surface types.
 15. [ ] VCAD-PARITY-015: Integrate `vcad-kernel-primitives` parity constructors.
 16. [ ] VCAD-PARITY-016: Integrate `vcad-kernel-tessellate` parity pipeline.
 17. [ ] VCAD-PARITY-017: Align tolerance/exact-predicate strategy to vcad behavior.

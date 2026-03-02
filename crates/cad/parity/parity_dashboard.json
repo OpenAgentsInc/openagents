@@ -39,10 +39,11 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 12,
+    "source_artifact_count": 13,
     "artifact_ids": [
       "fixtures_parity_fixture_corpus",
       "kernel_adapter_v2_manifest",
+      "kernel_geom_parity_manifest",
       "kernel_math_parity_manifest",
       "kernel_topology_parity_manifest",
       "openagents_capabilities_inventory",
