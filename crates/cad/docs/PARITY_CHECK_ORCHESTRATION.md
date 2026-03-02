@@ -18,6 +18,7 @@ Provide one deterministic orchestration entrypoint for the parity baseline lanes
 - kernel boolean diagnostics parity fixture check
 - kernel boolean BRep parity fixture check
 - kernel NURBS parity fixture check
+- kernel text parity fixture check
 - kernel precision parity fixture check
 - parity CI artifact manifest fixture check
 - parity risk register + blocker workflow check

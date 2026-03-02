@@ -12,6 +12,7 @@ pub mod kernel_nurbs_parity;
 pub mod kernel_precision_parity;
 pub mod kernel_primitives_parity;
 pub mod kernel_tessellate_parity;
+pub mod kernel_text_parity;
 pub mod kernel_topology_parity;
 pub mod openagents_crawler;
 pub mod risk_register;

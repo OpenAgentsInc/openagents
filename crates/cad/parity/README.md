@@ -25,6 +25,7 @@ Current artifacts:
 - `kernel_boolean_diagnostics_parity_manifest.json` (`VCAD-PARITY-019`)
 - `kernel_boolean_brep_parity_manifest.json` (`VCAD-PARITY-020`)
 - `kernel_nurbs_parity_manifest.json` (`VCAD-PARITY-021`)
+- `kernel_text_parity_manifest.json` (`VCAD-PARITY-022`)
 
 Regeneration/check command:
 
@@ -49,6 +50,7 @@ scripts/cad/parity-kernel-booleans-ci.sh
 scripts/cad/parity-kernel-boolean-diagnostics-ci.sh
 scripts/cad/parity-kernel-boolean-brep-ci.sh
 scripts/cad/parity-kernel-nurbs-ci.sh
+scripts/cad/parity-kernel-text-ci.sh
 scripts/cad/parity-kernel-precision-ci.sh
 scripts/cad/parity-blocker-workflow.sh
 scripts/cad/parity_check.sh
