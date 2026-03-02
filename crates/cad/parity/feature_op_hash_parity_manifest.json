@@ -1,0 +1,94 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-038",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_corpus_path": "crates/cad/parity/fixtures/feature_op_hash_vcad_reference_corpus.json",
+  "reference_corpus_sha256": "8430d20c58751a9d70af921fdb8734a44f892bdaca926727041ac97379ace6a3",
+  "reference_source": "Derived from vcad materializer feature parameter semantics (crates/vcad-app/src/materializer.rs) at pinned commit.",
+  "reference_commit_match": true,
+  "case_count": 10,
+  "matched_case_count": 10,
+  "deterministic_replay_match": true,
+  "mismatches": [],
+  "case_snapshots": [
+    {
+      "case_id": "box.bracket",
+      "operation": "box",
+      "expected_hash": "60db0257660fee47",
+      "openagents_hash": "60db0257660fee47",
+      "matches_reference": true
+    },
+    {
+      "case_id": "cylinder.mount_post",
+      "operation": "cylinder",
+      "expected_hash": "39d0655bf522f461",
+      "openagents_hash": "39d0655bf522f461",
+      "matches_reference": true
+    },
+    {
+      "case_id": "transform.rotate_scale",
+      "operation": "transform",
+      "expected_hash": "1751c53810b73125",
+      "openagents_hash": "1751c53810b73125",
+      "matches_reference": true
+    },
+    {
+      "case_id": "cut_hole.clearance",
+      "operation": "cut_hole",
+      "expected_hash": "36479518272129c1",
+      "openagents_hash": "36479518272129c1",
+      "matches_reference": true
+    },
+    {
+      "case_id": "linear_pattern.slots",
+      "operation": "linear_pattern",
+      "expected_hash": "f1133e939311afd5",
+      "openagents_hash": "f1133e939311afd5",
+      "matches_reference": true
+    },
+    {
+      "case_id": "circular_pattern.bolts",
+      "operation": "circular_pattern",
+      "expected_hash": "1315aa5644988f6b",
+      "openagents_hash": "1315aa5644988f6b",
+      "matches_reference": true
+    },
+    {
+      "case_id": "fillet_placeholder.edge",
+      "operation": "fillet_placeholder",
+      "expected_hash": "8217c3b4ff15409f",
+      "openagents_hash": "8217c3b4ff15409f",
+      "matches_reference": true
+    },
+    {
+      "case_id": "sweep.handle",
+      "operation": "sweep",
+      "expected_hash": "5c1a545e1d735ba5",
+      "openagents_hash": "5c1a545e1d735ba5",
+      "matches_reference": true
+    },
+    {
+      "case_id": "loft.duct_open",
+      "operation": "loft",
+      "expected_hash": "3ebd62e37d20654d",
+      "openagents_hash": "3ebd62e37d20654d",
+      "matches_reference": true
+    },
+    {
+      "case_id": "loft.duct_closed",
+      "operation": "loft",
+      "expected_hash": "e63d67275b847393",
+      "openagents_hash": "e63d67275b847393",
+      "matches_reference": true
+    }
+  ],
+  "deterministic_signature": "1c071864151199fb",
+  "parity_contracts": [
+    "feature-op hash fixtures compare OpenAgents hashes against a pinned vcad reference corpus",
+    "reference corpus is anchored to vcad materializer feature semantics and pinned vcad commit",
+    "box/cylinder/transform/cut_hole/pattern/fillet_placeholder/sweep/loft hash contracts are covered",
+    "hash replay is deterministic for identical feature-op payloads"
+  ]
+}
