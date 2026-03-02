@@ -42,6 +42,8 @@ pub fn build_kernel_adapter_v2_manifest(
     let mut required_capabilities = vec![
         KernelCapability::PrimitiveBox,
         KernelCapability::PrimitiveCylinder,
+        KernelCapability::PrimitiveSphere,
+        KernelCapability::PrimitiveCone,
     ];
     required_capabilities.sort();
 
@@ -72,6 +74,8 @@ fn fallback_descriptor() -> KernelAdapterV2Descriptor {
         capabilities: vec![
             KernelCapability::PrimitiveBox,
             KernelCapability::PrimitiveCylinder,
+            KernelCapability::PrimitiveSphere,
+            KernelCapability::PrimitiveCone,
         ],
         diagnostics_contract: "cad.error.v1 + kernel.receipt.v2".to_string(),
     }

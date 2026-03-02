@@ -105,7 +105,7 @@ Major gaps to close:
 
 ### Phase C - Core modeling ops parity (`VCAD-PARITY-026` to `VCAD-PARITY-040`)
 
-26. [ ] VCAD-PARITY-026: Primitive parity (cube/cylinder/sphere/cone contracts).
+26. [x] VCAD-PARITY-026: Primitive parity (cube/cylinder/sphere/cone contracts).
 27. [ ] VCAD-PARITY-027: Transform parity (translate/rotate/scale deterministic compose).
 28. [ ] VCAD-PARITY-028: Pattern parity (linear and circular pattern ops).
 29. [ ] VCAD-PARITY-029: Production shell op parity in feature graph.

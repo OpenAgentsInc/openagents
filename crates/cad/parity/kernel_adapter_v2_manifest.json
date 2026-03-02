@@ -13,7 +13,9 @@
     "supports_hot_swap": true,
     "capabilities": [
       "PrimitiveBox",
-      "PrimitiveCylinder"
+      "PrimitiveCylinder",
+      "PrimitiveSphere",
+      "PrimitiveCone"
     ],
     "diagnostics_contract": "cad.error.v1 + kernel.receipt.v2"
   },
@@ -26,7 +28,9 @@
     ],
     "required_capabilities": [
       "PrimitiveBox",
-      "PrimitiveCylinder"
+      "PrimitiveCylinder",
+      "PrimitiveSphere",
+      "PrimitiveCone"
     ]
   }
 }
