@@ -11,6 +11,7 @@ Current artifacts:
 - `vcad_openagents_gap_matrix.json` (`VCAD-PARITY-004`)
 - `parity_scorecard.json` (`VCAD-PARITY-005`)
 - `fixtures/parity_fixture_corpus.json` (`VCAD-PARITY-006`)
+- `parity_ci_artifact_manifest.json` (`VCAD-PARITY-008`)
 
 Regeneration/check command:
 
@@ -22,5 +23,7 @@ scripts/cad/openagents-capability-crawler-ci.sh
 scripts/cad/parity-gap-matrix-ci.sh
 scripts/cad/parity-scorecard-ci.sh
 scripts/cad/parity-fixture-corpus-ci.sh
+scripts/cad/parity-ci-artifacts-ci.sh
 scripts/cad/parity_check.sh
+scripts/cad/parity-ci-lane.sh
 ```
