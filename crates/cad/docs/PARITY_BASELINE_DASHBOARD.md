@@ -8,14 +8,14 @@ Issue coverage: `VCAD-PARITY-010`
 | --- | --- |
 | vcad commit | `1b59e7948efcdb848d8dba6848785d57aa310e81` |
 | openagents commit (plan baseline) | `04faa5227f077c419f1c5c52ddebbb7552838fd4` |
-| phase status | `phase_g_text_to_cad_dataset_complete` |
+| phase status | `phase_g_training_eval_hooks_complete` |
 | overall match rate | `0.072464` |
 | docs match rate | `0.038961` |
 | crates match rate | `0.122449` |
 | commands match rate | `0.083333` |
 | open risks | `24` |
 | open hard blockers (p0) | `16` |
-| CI source artifact count | `122` |
+| CI source artifact count | `124` |
 
 ## Profile Gates
 
@@ -94,6 +94,7 @@ Issue coverage: `VCAD-PARITY-010`
 - `fixtures_step_import_entity_vcad_reference`
 - `fixtures_stl_import_export_vcad_reference`
 - `fixtures_text_to_cad_dataset_vcad_reference`
+- `fixtures_text_to_cad_training_eval_vcad_reference`
 - `fixtures_text_to_cad_vcad_reference`
 - `glb_export_parity_manifest`
 - `intent_modeling_parity_manifest`
@@ -144,6 +145,7 @@ Issue coverage: `VCAD-PARITY-010`
 - `sweep_parity_manifest`
 - `text_to_cad_dataset_parity_manifest`
 - `text_to_cad_parity_manifest`
+- `text_to_cad_training_eval_parity_manifest`
 - `topology_repair_parity_manifest`
 - `transform_parity_manifest`
 - `vcad_capabilities_inventory`
@@ -153,6 +155,6 @@ Issue coverage: `VCAD-PARITY-010`
 
 ## Next Actions
 
-- Execute VCAD-PARITY-090 through VCAD-PARITY-092 sequentially
+- Execute VCAD-PARITY-091 through VCAD-PARITY-092 sequentially
 - Keep phase_a_baseline_v1 profile passing in scorecard and risk register lanes
 - Refresh parity dashboard after each closed parity issue

@@ -81,6 +81,7 @@ pub mod stl_import_export_parity;
 pub mod sweep_parity;
 pub mod text_to_cad_dataset_parity;
 pub mod text_to_cad_parity;
+pub mod text_to_cad_training_eval_parity;
 pub mod topology_repair_parity;
 pub mod transform_parity;
 pub mod vcad_crawler;
