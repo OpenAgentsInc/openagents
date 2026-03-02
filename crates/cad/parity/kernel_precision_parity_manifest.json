@@ -1,0 +1,36 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-017",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "tolerance_policy": {
+    "linear_tolerance_mm": 1e-6,
+    "angular_tolerance_rad": 1e-9,
+    "min_positive_dimension_mm": 1e-6,
+    "predicate_strategy": "AdaptiveExact"
+  },
+  "predicate_samples": {
+    "orient2d_ccw": "Positive",
+    "orient2d_near_collinear": "Positive",
+    "orient3d_above_plane": "Negative",
+    "orient3d_near_coplanar": "Negative",
+    "incircle_inside": "Positive",
+    "insphere_inside": "Positive",
+    "point_on_segment": true,
+    "point_on_plane": true,
+    "are_collinear_2d": true,
+    "are_coplanar": true
+  },
+  "exact_predicate_contracts": [
+    "orient2d uses adaptive-precision exact predicates (robust crate)",
+    "orient3d uses adaptive-precision exact predicates (robust crate)",
+    "incircle and insphere follow exact-sign classification semantics",
+    "near-collinear and near-coplanar inputs retain non-zero sign when geometrically non-zero"
+  ],
+  "diagnostic_contracts": [
+    "policy defaults align to vcad tolerance baseline (1e-6 mm, 1e-9 rad)",
+    "default predicate strategy is AdaptiveExact for geometry classification",
+    "derived predicates (point_on_segment, point_on_plane) are built from exact orientation checks"
+  ]
+}

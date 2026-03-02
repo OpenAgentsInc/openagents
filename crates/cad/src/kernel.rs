@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::policy;
 use crate::primitives::{BoxPrimitive, CylinderPrimitive};
 use crate::{CadError, CadResult};
 
@@ -107,7 +108,7 @@ impl Default for KernelOperationContext {
         Self {
             request_id: "kernel-op-default".to_string(),
             operation: "primitive.create".to_string(),
-            tolerance_mm: 0.001,
+            tolerance_mm: policy::BASE_TOLERANCE_MM,
         }
     }
 }
@@ -339,7 +340,8 @@ mod tests {
 
     #[test]
     fn bridge_emits_receipts_and_routes_to_legacy_adapter() {
-        let context = KernelOperationContext::new("req-1", "primitive.box", 0.001);
+        let context =
+            KernelOperationContext::new("req-1", "primitive.box", crate::policy::BASE_TOLERANCE_MM);
         let mut bridge = KernelAdapterV2Bridge::new(
             MockKernel::default(),
             openagents_kernel_adapter_v2_descriptor(),
