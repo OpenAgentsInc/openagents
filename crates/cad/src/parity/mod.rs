@@ -59,6 +59,7 @@ pub mod modeling_edge_case_parity;
 pub mod openagents_crawler;
 pub mod pattern_parity;
 pub mod primitive_contracts_parity;
+pub mod render_mode_parity;
 pub mod risk_register;
 pub mod scorecard;
 pub mod shell_feature_graph_parity;
