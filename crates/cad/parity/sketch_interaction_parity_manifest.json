@@ -1,0 +1,235 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-052",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "vcad_reference_sources": [
+    "docs/features/sketch-mode.md (Interaction Flow + Keyboard Shortcuts)",
+    "packages/app/src/hooks/useKeyboardShortcuts.ts (sketch shortcut dispatch)",
+    "packages/core/src/stores/sketch-store.ts (editing flow + exit confirmation)"
+  ],
+  "shortcut_bindings": [
+    {
+      "key": "S",
+      "shortcut_id": "sketch.enter",
+      "action": "enter sketch mode"
+    },
+    {
+      "key": "L",
+      "shortcut_id": "sketch.tool.line",
+      "action": "set line tool"
+    },
+    {
+      "key": "R",
+      "shortcut_id": "sketch.tool.rectangle",
+      "action": "set rectangle tool"
+    },
+    {
+      "key": "C",
+      "shortcut_id": "sketch.tool.circle",
+      "action": "set circle tool"
+    },
+    {
+      "key": "H",
+      "shortcut_id": "sketch.constraint.horizontal",
+      "action": "apply horizontal constraint"
+    },
+    {
+      "key": "V",
+      "shortcut_id": "sketch.constraint.vertical",
+      "action": "apply vertical constraint"
+    },
+    {
+      "key": "Enter",
+      "shortcut_id": "sketch.shape.finish",
+      "action": "finish current shape"
+    },
+    {
+      "key": "Escape",
+      "shortcut_id": "sketch.escape",
+      "action": "cancel or exit sketch flow"
+    }
+  ],
+  "shortcut_catalog_hash": "104d9bb3a02d4da3",
+  "enter_without_parts_case": {
+    "command_codes": [
+      "SKETCH-CMD-ENTER-SKETCH-XY"
+    ],
+    "sketch_active": true,
+    "face_selection_mode": false,
+    "pending_exit_confirmation": false,
+    "active_tool": "rectangle",
+    "pending_points": 0,
+    "segment_count": 0,
+    "selected_line_count": 0,
+    "state_hash": "c0d200554b266801"
+  },
+  "enter_with_parts_case": {
+    "command_codes": [
+      "SKETCH-CMD-ENTER-FACE-SELECTION"
+    ],
+    "sketch_active": false,
+    "face_selection_mode": true,
+    "pending_exit_confirmation": false,
+    "active_tool": "rectangle",
+    "pending_points": 0,
+    "segment_count": 0,
+    "selected_line_count": 0,
+    "state_hash": "14dcebb40b92be7e"
+  },
+  "face_selection_confirm_case": {
+    "command_codes": [
+      "SKETCH-CMD-ENTER-SKETCH-FACE"
+    ],
+    "sketch_active": true,
+    "face_selection_mode": false,
+    "pending_exit_confirmation": false,
+    "active_tool": "rectangle",
+    "pending_points": 0,
+    "segment_count": 0,
+    "selected_line_count": 0,
+    "state_hash": "c957edbacb27ec28"
+  },
+  "line_tool_case": {
+    "command_codes": [
+      "SKETCH-CMD-SET-TOOL-line"
+    ],
+    "sketch_active": true,
+    "face_selection_mode": false,
+    "pending_exit_confirmation": false,
+    "active_tool": "line",
+    "pending_points": 0,
+    "segment_count": 3,
+    "selected_line_count": 0,
+    "state_hash": "5dafa66cef6303d8"
+  },
+  "rectangle_tool_case": {
+    "command_codes": [
+      "SKETCH-CMD-SET-TOOL-rectangle"
+    ],
+    "sketch_active": true,
+    "face_selection_mode": false,
+    "pending_exit_confirmation": false,
+    "active_tool": "rectangle",
+    "pending_points": 0,
+    "segment_count": 3,
+    "selected_line_count": 0,
+    "state_hash": "be5999d6f7c43d61"
+  },
+  "circle_tool_case": {
+    "command_codes": [
+      "SKETCH-CMD-SET-TOOL-circle"
+    ],
+    "sketch_active": true,
+    "face_selection_mode": false,
+    "pending_exit_confirmation": false,
+    "active_tool": "circle",
+    "pending_points": 0,
+    "segment_count": 3,
+    "selected_line_count": 0,
+    "state_hash": "c47b8c77ea96d46f"
+  },
+  "horizontal_constraint_case": {
+    "command_codes": [
+      "SKETCH-CMD-APPLY-horizontal",
+      "SKETCH-CMD-RUN-SOLVER"
+    ],
+    "sketch_active": true,
+    "face_selection_mode": false,
+    "pending_exit_confirmation": false,
+    "active_tool": "circle",
+    "pending_points": 0,
+    "segment_count": 3,
+    "selected_line_count": 0,
+    "state_hash": "c47b8c77ea96d46f"
+  },
+  "vertical_constraint_case": {
+    "command_codes": [
+      "SKETCH-CMD-APPLY-vertical",
+      "SKETCH-CMD-RUN-SOLVER"
+    ],
+    "sketch_active": true,
+    "face_selection_mode": false,
+    "pending_exit_confirmation": false,
+    "active_tool": "circle",
+    "pending_points": 0,
+    "segment_count": 3,
+    "selected_line_count": 0,
+    "state_hash": "c47b8c77ea96d46f"
+  },
+  "finish_shape_case": {
+    "command_codes": [
+      "SKETCH-CMD-FINISH-SHAPE"
+    ],
+    "sketch_active": true,
+    "face_selection_mode": false,
+    "pending_exit_confirmation": false,
+    "active_tool": "circle",
+    "pending_points": 0,
+    "segment_count": 3,
+    "selected_line_count": 0,
+    "state_hash": "c47b8c77ea96d46f"
+  },
+  "escape_cancel_shape_case": {
+    "command_codes": [
+      "SKETCH-CMD-CANCEL-SHAPE"
+    ],
+    "sketch_active": true,
+    "face_selection_mode": false,
+    "pending_exit_confirmation": false,
+    "active_tool": "circle",
+    "pending_points": 0,
+    "segment_count": 3,
+    "selected_line_count": 0,
+    "state_hash": "c47b8c77ea96d46f"
+  },
+  "escape_request_exit_case": {
+    "command_codes": [
+      "SKETCH-CMD-REQUEST-EXIT"
+    ],
+    "sketch_active": true,
+    "face_selection_mode": false,
+    "pending_exit_confirmation": true,
+    "active_tool": "circle",
+    "pending_points": 0,
+    "segment_count": 3,
+    "selected_line_count": 0,
+    "state_hash": "824a89940132c6e3"
+  },
+  "escape_keep_editing_case": {
+    "command_codes": [
+      "SKETCH-CMD-CANCEL-EXIT"
+    ],
+    "sketch_active": true,
+    "face_selection_mode": false,
+    "pending_exit_confirmation": false,
+    "active_tool": "circle",
+    "pending_points": 0,
+    "segment_count": 3,
+    "selected_line_count": 0,
+    "state_hash": "c47b8c77ea96d46f"
+  },
+  "escape_confirm_exit_case": {
+    "command_codes": [
+      "SKETCH-CMD-EXIT"
+    ],
+    "sketch_active": false,
+    "face_selection_mode": false,
+    "pending_exit_confirmation": false,
+    "active_tool": "circle",
+    "pending_points": 0,
+    "segment_count": 0,
+    "selected_line_count": 0,
+    "state_hash": "a203db6065dab7bf"
+  },
+  "constraint_shortcut_requires_single_selection": true,
+  "deterministic_replay_match": true,
+  "deterministic_signature": "0d9e3abb1746f5f3",
+  "parity_contracts": [
+    "sketch shortcut catalog maps S/L/R/C/H/V/Enter/Escape to deterministic editing actions",
+    "enter-sketch behavior follows vcad flow: face selection when parts exist, direct XY sketch otherwise",
+    "Escape follows deterministic cancel/request-exit/confirm-exit progression with pending geometry awareness",
+    "constraint shortcuts only apply with valid selection cardinality and emit solver run command deterministically"
+  ]
+}

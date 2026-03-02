@@ -48,6 +48,7 @@ pub mod selection;
 pub mod semantic_refs;
 pub mod sketch;
 pub mod sketch_feature_ops;
+pub mod sketch_interaction;
 pub mod step_checker;
 pub mod step_import;
 pub mod step_import_metadata;
