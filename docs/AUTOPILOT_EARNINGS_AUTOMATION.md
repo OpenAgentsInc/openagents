@@ -70,13 +70,13 @@ Two controlled tools are exposed:
 Quote behavior:
 
 - Supports `btc_to_usd` and `usd_to_btc`.
-- Uses Stablesats quote path first.
-- Falls back to Blink quote shape when quote path fails.
-- Emits structured quote fields (`amount_in`, `amount_out`, expiration, provider, fallback reason).
+- Uses Blink infrastructure (`skills/blink/scripts/swap_quote.js`) for authoritative quote terms.
+- Persists quote audits keyed by goal and request id.
+- Emits structured quote fields (`amount_in`, `amount_out`, expiration, provider).
 
 Execution behavior:
 
-- Records settlement status (`SUCCESS`, `FAILURE`, `PENDING`, `ALREADY_PAID`).
+- Executes through Blink infrastructure (`skills/blink/scripts/swap_execute.js`) and derives status from the real response.
 - Persists execution receipts linked to quote audits and goal ID.
 - Emits timeline events for settled/failed swaps.
 
@@ -119,7 +119,7 @@ Important:
 
 ### Swap quote or execution fails
 
-- Check quote tool response code and fallback reason.
+- Check quote/execute tool response code and `command_provenance` fields.
 - Validate request amount/unit against policy limits.
 - Confirm quote is not expired before execute is recorded.
 

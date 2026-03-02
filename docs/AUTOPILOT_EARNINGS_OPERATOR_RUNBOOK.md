@@ -8,7 +8,7 @@ Internal operators responsible for keeping autonomous earnings runs healthy, pay
 
 - Preserve authoritative payout correctness.
 - Keep scheduler and recovery paths deterministic.
-- Keep swap exposure and fallback behavior within policy.
+- Keep swap exposure and Blink execution behavior within policy.
 - Maintain clear incident response with fast containment.
 
 ## Daily Checks
@@ -23,7 +23,7 @@ Internal operators responsible for keeping autonomous earnings runs healthy, pay
 
 3. Swap risk posture
 - Check recent swap quote audits and execution receipts.
-- Track fallback rate (`stablesats_quote_service` vs `blink_fallback`).
+- Track provider/source consistency (`blink_infrastructure` expected for production).
 - Flag repeated failures, high fee/low output anomalies, or stale quote execution attempts.
 
 4. Recovery posture
@@ -69,7 +69,7 @@ When verifying a run:
 
 Monitor these indicators:
 
-- Fallback ratio increase over baseline.
+- Blink execution failure ratio increase over baseline.
 - Execution failure ratio (`FAILURE` or persistent `PENDING`).
 - Quotes expiring before execution.
 - Average fee sats/slippage moving outside expected envelope.
@@ -102,7 +102,7 @@ Immediate actions:
 
 Symptoms:
 
-- Elevated swap fallback/failure, stale quote churn, abnormal fee/slippage.
+- Elevated swap failure, stale quote churn, abnormal fee/slippage.
 
 Immediate actions:
 

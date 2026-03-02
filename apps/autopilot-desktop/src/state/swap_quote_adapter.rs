@@ -6,6 +6,7 @@ use crate::state::swap_contract::{SwapAmount, SwapAmountUnit, SwapDirection, Swa
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum SwapQuoteProvider {
+    BlinkInfrastructure,
     StablesatsQuoteService,
     BlinkFallback,
 }

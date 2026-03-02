@@ -38,6 +38,16 @@ run_test \
     state::autopilot_goals::tests::request_swap_quote_with_adapter_records_audit_and_fallback \
     -- --nocapture
 run_test \
+    "Blink quote payload parsing contract" \
+    cargo test -p autopilot-desktop \
+    input::tool_bridge::tests::blink_quote_payload_parsing_maps_swap_terms \
+    -- --nocapture
+run_test \
+    "Swap tool schema blocks injected quote/status fields" \
+    cargo test -p autopilot-desktop \
+    openagents_dynamic_tools::tests::swap_tool_schemas_do_not_allow_injected_quote_or_status_fields \
+    -- --nocapture
+run_test \
     "Interval scheduler trigger path" \
     cargo test -p autopilot-desktop \
     state::autopilot_goals::tests::interval_schedule_persists_and_triggers_queue_transition \
