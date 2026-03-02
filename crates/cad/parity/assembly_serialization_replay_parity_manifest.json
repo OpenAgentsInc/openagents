@@ -1,0 +1,119 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-064",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_corpus_path": "crates/cad/parity/fixtures/assembly_serialization_replay_vcad_reference.json",
+  "reference_corpus_sha256": "673d8509ea321c776eb5f4f4482e6f200ad5c669d06f90fff990c76347c11852",
+  "reference_source": "~/code/vcad/packages/core/src/stores/document-store.ts + ~/code/vcad/packages/core/src/utils/save-load.ts",
+  "reference_commit_match": true,
+  "case_snapshots": [
+    {
+      "case_id": "replay_select_unknown_joint_error",
+      "schema_json_sha256": "c117529c9f5b6d1a77305716aea620b99b6df4440da31c5f52b7347165898635",
+      "ui_json_sha256": "66afee786cfe64f45a4cb136745910bdb6b2936c52506f4d8d83a90d554aaa97",
+      "selected_instance_id": null,
+      "selected_joint_id": null,
+      "ground_instance_id": "base-1",
+      "instance_ids": [
+        "arm-1",
+        "base-1"
+      ],
+      "joint_ids": [
+        "joint.hinge"
+      ],
+      "arm_instance_name": "Arm",
+      "hinge_state_deg": "0.000000",
+      "replay_step_count": 1,
+      "was_clamped": false,
+      "error": "invalid parameter joint.id: unknown joint: joint.missing"
+    },
+    {
+      "case_id": "replay_set_joint_without_selection_error",
+      "schema_json_sha256": "c117529c9f5b6d1a77305716aea620b99b6df4440da31c5f52b7347165898635",
+      "ui_json_sha256": "66afee786cfe64f45a4cb136745910bdb6b2936c52506f4d8d83a90d554aaa97",
+      "selected_instance_id": null,
+      "selected_joint_id": null,
+      "ground_instance_id": "base-1",
+      "instance_ids": [
+        "arm-1",
+        "base-1"
+      ],
+      "joint_ids": [
+        "joint.hinge"
+      ],
+      "arm_instance_name": "Arm",
+      "hinge_state_deg": "0.000000",
+      "replay_step_count": 1,
+      "was_clamped": false,
+      "error": "invalid parameter ui.selected_joint_id: no selected assembly joint"
+    },
+    {
+      "case_id": "schema_roundtrip_canonical_fields",
+      "schema_json_sha256": "c117529c9f5b6d1a77305716aea620b99b6df4440da31c5f52b7347165898635",
+      "ui_json_sha256": "66afee786cfe64f45a4cb136745910bdb6b2936c52506f4d8d83a90d554aaa97",
+      "selected_instance_id": null,
+      "selected_joint_id": null,
+      "ground_instance_id": "base-1",
+      "instance_ids": [
+        "arm-1",
+        "base-1"
+      ],
+      "joint_ids": [
+        "joint.hinge"
+      ],
+      "arm_instance_name": "Arm",
+      "hinge_state_deg": "0.000000",
+      "replay_step_count": 0,
+      "was_clamped": false,
+      "error": null
+    },
+    {
+      "case_id": "serialized_replay_edit_delete_sequence",
+      "schema_json_sha256": "6aa7400bb83f04363e7f3cc266ba7a3d17fd4af1a231cae70f801c39a355bef8",
+      "ui_json_sha256": "66afee786cfe64f45a4cb136745910bdb6b2936c52506f4d8d83a90d554aaa97",
+      "selected_instance_id": null,
+      "selected_joint_id": null,
+      "ground_instance_id": "base-1",
+      "instance_ids": [
+        "base-1"
+      ],
+      "joint_ids": [],
+      "arm_instance_name": null,
+      "hinge_state_deg": null,
+      "replay_step_count": 6,
+      "was_clamped": true,
+      "error": null
+    },
+    {
+      "case_id": "ui_state_roundtrip_selected_entities",
+      "schema_json_sha256": "c117529c9f5b6d1a77305716aea620b99b6df4440da31c5f52b7347165898635",
+      "ui_json_sha256": "c13d42ff42cdffbbf421bda4d09ccc9cacca3f0fb33b61a7944b8112fbcff0d5",
+      "selected_instance_id": "arm-1",
+      "selected_joint_id": "joint.hinge",
+      "ground_instance_id": "base-1",
+      "instance_ids": [
+        "arm-1",
+        "base-1"
+      ],
+      "joint_ids": [
+        "joint.hinge"
+      ],
+      "arm_instance_name": "Arm",
+      "hinge_state_deg": "0.000000",
+      "replay_step_count": 2,
+      "was_clamped": false,
+      "error": null
+    }
+  ],
+  "behavior_match": true,
+  "deterministic_replay_match": true,
+  "deterministic_signature": "4f6dcda472a4ccd8",
+  "parity_contracts": [
+    "assembly schema serializes/deserializes with deterministic camelCase payload keys",
+    "assembly UI selection state serializes/deserializes without mutating selected ids",
+    "replaying the same serialized assembly mutation sequence yields byte-stable schema/ui snapshots",
+    "replay error contracts are deterministic for missing selected/unknown joint ids"
+  ]
+}

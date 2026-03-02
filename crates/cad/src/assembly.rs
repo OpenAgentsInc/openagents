@@ -334,6 +334,24 @@ pub struct CadAssemblyUiState {
 }
 
 impl CadAssemblySchema {
+    pub fn to_json(&self) -> CadResult<String> {
+        serde_json::to_string(self).map_err(|error| CadError::Serialization {
+            reason: format!("failed to serialize CadAssemblySchema json: {error}"),
+        })
+    }
+
+    pub fn to_pretty_json(&self) -> CadResult<String> {
+        serde_json::to_string_pretty(self).map_err(|error| CadError::Serialization {
+            reason: format!("failed to serialize CadAssemblySchema pretty json: {error}"),
+        })
+    }
+
+    pub fn from_json(payload: &str) -> CadResult<Self> {
+        serde_json::from_str(payload).map_err(|error| CadError::Serialization {
+            reason: format!("failed to parse CadAssemblySchema json: {error}"),
+        })
+    }
+
     pub fn create_part_def(
         &mut self,
         id: impl Into<String>,
@@ -669,6 +687,24 @@ impl CadAssemblySchema {
 }
 
 impl CadAssemblyUiState {
+    pub fn to_json(&self) -> CadResult<String> {
+        serde_json::to_string(self).map_err(|error| CadError::Serialization {
+            reason: format!("failed to serialize CadAssemblyUiState json: {error}"),
+        })
+    }
+
+    pub fn to_pretty_json(&self) -> CadResult<String> {
+        serde_json::to_string_pretty(self).map_err(|error| CadError::Serialization {
+            reason: format!("failed to serialize CadAssemblyUiState pretty json: {error}"),
+        })
+    }
+
+    pub fn from_json(payload: &str) -> CadResult<Self> {
+        serde_json::from_str(payload).map_err(|error| CadError::Serialization {
+            reason: format!("failed to parse CadAssemblyUiState json: {error}"),
+        })
+    }
+
     pub fn select_instance(
         &mut self,
         schema: &CadAssemblySchema,
@@ -977,7 +1013,7 @@ fn clean_transform(transform: CadTransform3D) -> CadTransform3D {
 mod tests {
     use super::{
         CadAssemblyJoint, CadAssemblySchema, CadAssemblyUiState, CadJointKind, CadJointMotion,
-        CadPartDef, CadPartInstance, CadTransform3D,
+        CadJointStateSemantics, CadPartDef, CadPartInstance, CadTransform3D,
     };
     use crate::kernel_math::Vec3;
     use std::collections::BTreeMap;
@@ -1083,6 +1119,98 @@ mod tests {
         assert!(json.contains("\"childAnchor\""));
         assert!(json.contains("\"groundInstanceId\""));
         assert!(json.contains("\"defaultMaterial\""));
+    }
+
+    #[test]
+    fn assembly_schema_json_helpers_round_trip_is_deterministic() {
+        let schema = CadAssemblySchema {
+            part_defs: BTreeMap::from([
+                (
+                    "base".to_string(),
+                    CadPartDef {
+                        id: "base".to_string(),
+                        name: Some("Base".to_string()),
+                        root: 1,
+                        default_material: Some("aluminum".to_string()),
+                    },
+                ),
+                (
+                    "arm".to_string(),
+                    CadPartDef {
+                        id: "arm".to_string(),
+                        name: Some("Arm".to_string()),
+                        root: 2,
+                        default_material: None,
+                    },
+                ),
+            ]),
+            instances: vec![
+                CadPartInstance {
+                    id: "base-1".to_string(),
+                    part_def_id: "base".to_string(),
+                    name: Some("Base".to_string()),
+                    transform: Some(CadTransform3D::identity()),
+                    material: None,
+                },
+                CadPartInstance {
+                    id: "arm-1".to_string(),
+                    part_def_id: "arm".to_string(),
+                    name: Some("Arm".to_string()),
+                    transform: Some(CadTransform3D {
+                        translation: Vec3::new(10.0, 0.0, 0.0),
+                        rotation: Vec3::new(0.0, 0.0, 0.0),
+                        scale: Vec3::new(1.0, 1.0, 1.0),
+                    }),
+                    material: Some("steel".to_string()),
+                },
+            ],
+            joints: vec![CadAssemblyJoint {
+                id: "joint.hinge".to_string(),
+                name: Some("Hinge".to_string()),
+                parent_instance_id: Some("base-1".to_string()),
+                child_instance_id: "arm-1".to_string(),
+                parent_anchor: Vec3::new(0.0, 0.0, 0.0),
+                child_anchor: Vec3::new(0.0, 0.0, 0.0),
+                kind: CadJointKind::Revolute {
+                    axis: Vec3::new(0.0, 0.0, 1.0),
+                    limits: Some((-90.0, 90.0)),
+                },
+                state: 0.0,
+            }],
+            ground_instance_id: Some("base-1".to_string()),
+        };
+
+        let compact = schema.to_json().expect("serialize compact schema");
+        let pretty = schema.to_pretty_json().expect("serialize pretty schema");
+        let compact_restored =
+            CadAssemblySchema::from_json(&compact).expect("parse compact schema");
+        let pretty_restored = CadAssemblySchema::from_json(&pretty).expect("parse pretty schema");
+
+        assert_eq!(compact_restored, schema);
+        assert_eq!(pretty_restored, schema);
+        assert!(compact.contains("\"partDefs\""));
+        assert!(compact.contains("\"groundInstanceId\""));
+    }
+
+    #[test]
+    fn assembly_ui_state_json_helpers_round_trip_is_deterministic() {
+        let ui = CadAssemblyUiState {
+            selected_instance_id: Some("arm-1".to_string()),
+            selected_joint_id: Some("joint.hinge".to_string()),
+            last_error: Some(
+                "invalid parameter instance.id: unknown instance: missing".to_string(),
+            ),
+        };
+
+        let compact = ui.to_json().expect("serialize compact ui state");
+        let pretty = ui.to_pretty_json().expect("serialize pretty ui state");
+        let compact_restored = CadAssemblyUiState::from_json(&compact).expect("parse compact ui");
+        let pretty_restored = CadAssemblyUiState::from_json(&pretty).expect("parse pretty ui");
+
+        assert_eq!(compact_restored, ui);
+        assert_eq!(pretty_restored, ui);
+        assert!(compact.contains("\"selected_instance_id\""));
+        assert!(compact.contains("\"selected_joint_id\""));
     }
 
     #[test]
@@ -1748,6 +1876,115 @@ mod tests {
         ui.sync_with_schema(&schema);
         assert_eq!(ui.selected_instance_id, None);
         assert_eq!(ui.selected_joint_id, None);
+    }
+
+    #[test]
+    fn assembly_serialization_replay_sequence_is_deterministic() {
+        fn replay_once() -> (
+            CadAssemblySchema,
+            CadAssemblyUiState,
+            CadJointStateSemantics,
+        ) {
+            let initial_schema = CadAssemblySchema {
+                part_defs: BTreeMap::from([
+                    (
+                        "base".to_string(),
+                        CadPartDef {
+                            id: "base".to_string(),
+                            name: Some("Base".to_string()),
+                            root: 1,
+                            default_material: Some("aluminum".to_string()),
+                        },
+                    ),
+                    (
+                        "arm".to_string(),
+                        CadPartDef {
+                            id: "arm".to_string(),
+                            name: Some("Arm".to_string()),
+                            root: 2,
+                            default_material: None,
+                        },
+                    ),
+                ]),
+                instances: vec![
+                    CadPartInstance {
+                        id: "base-1".to_string(),
+                        part_def_id: "base".to_string(),
+                        name: Some("Base".to_string()),
+                        transform: Some(CadTransform3D::identity()),
+                        material: None,
+                    },
+                    CadPartInstance {
+                        id: "arm-1".to_string(),
+                        part_def_id: "arm".to_string(),
+                        name: Some("Arm".to_string()),
+                        transform: Some(CadTransform3D {
+                            translation: Vec3::new(10.0, 0.0, 0.0),
+                            rotation: Vec3::new(0.0, 0.0, 0.0),
+                            scale: Vec3::new(1.0, 1.0, 1.0),
+                        }),
+                        material: None,
+                    },
+                ],
+                joints: vec![CadAssemblyJoint {
+                    id: "joint.hinge".to_string(),
+                    name: Some("Hinge".to_string()),
+                    parent_instance_id: Some("base-1".to_string()),
+                    child_instance_id: "arm-1".to_string(),
+                    parent_anchor: Vec3::new(0.0, 0.0, 0.0),
+                    child_anchor: Vec3::new(0.0, 0.0, 0.0),
+                    kind: CadJointKind::Revolute {
+                        axis: Vec3::new(0.0, 0.0, 1.0),
+                        limits: Some((-90.0, 90.0)),
+                    },
+                    state: 0.0,
+                }],
+                ground_instance_id: Some("base-1".to_string()),
+            };
+            let initial_ui = CadAssemblyUiState::default();
+
+            let mut schema = CadAssemblySchema::from_json(
+                &initial_schema.to_json().expect("serialize initial schema"),
+            )
+            .expect("parse initial schema");
+            let mut ui =
+                CadAssemblyUiState::from_json(&initial_ui.to_json().expect("serialize initial ui"))
+                    .expect("parse initial ui");
+
+            ui.select_instance(&schema, "arm-1")
+                .expect("select known instance");
+            ui.rename_selected_instance(&mut schema, "Arm Segment".to_string())
+                .expect("rename selected instance");
+            ui.select_joint(&schema, "joint.hinge")
+                .expect("select known joint");
+            let semantics = ui
+                .set_selected_joint_state(&mut schema, 120.0)
+                .expect("set selected joint state");
+            schema
+                .delete_instance("arm-1")
+                .expect("delete selected instance");
+            ui.sync_with_schema(&schema);
+
+            (schema, ui, semantics)
+        }
+
+        let first = replay_once();
+        let second = replay_once();
+        assert_eq!(first.0, second.0);
+        assert_eq!(first.1, second.1);
+        assert_eq!(first.2, second.2);
+        assert!(first.2.was_clamped);
+        assert_eq!(first.2.effective_state, 90.0);
+        assert!(
+            first
+                .0
+                .instances
+                .iter()
+                .all(|instance| instance.id != "arm-1")
+        );
+        assert!(first.0.joints.is_empty());
+        assert_eq!(first.1.selected_instance_id, None);
+        assert_eq!(first.1.selected_joint_id, None);
     }
 
     #[test]
