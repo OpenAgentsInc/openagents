@@ -1,4 +1,5 @@
 pub mod ci_artifacts;
+pub mod dashboard;
 pub mod fixture_corpus;
 pub mod gap_matrix;
 pub mod openagents_crawler;
