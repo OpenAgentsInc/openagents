@@ -3,8 +3,8 @@ use sha2::{Digest, Sha256};
 
 use crate::feature_graph::{FeatureGraph, FeatureNode};
 use crate::finishing_ops::{
-    FILLET_OPERATION_KEY, FilletFeatureOp, FinishingContext, FinishingFailureClass,
-    FinishingStatus, evaluate_fillet_feature,
+    FILLET_OPERATION_KEY, FilletFeatureOp, FinishingConstraintMode, FinishingContext,
+    FinishingFailureClass, FinishingStatus, evaluate_fillet_feature,
 };
 use crate::params::{ParameterStore, ScalarUnit, ScalarValue};
 use crate::parity::scorecard::ParityScorecard;
@@ -64,6 +64,7 @@ pub fn build_fillet_feature_graph_parity_manifest(
             "edge.001".to_string(),
             "edge.001".to_string(),
         ],
+        constraint_mode: FinishingConstraintMode::PlanarSafe,
         allow_fallback: false,
     };
     let node = op.to_feature_node().expect("fillet node should build");
@@ -113,6 +114,7 @@ pub fn build_fillet_feature_graph_parity_manifest(
         source_feature_id: "feature.base".to_string(),
         radius_param: "fillet_radius_mm".to_string(),
         edge_refs: vec!["edge.010".to_string()],
+        constraint_mode: FinishingConstraintMode::PlanarSafe,
         allow_fallback: true,
     };
     let fallback = evaluate_fillet_feature(&fallback_op, &fillet_params(12.0), &source_context)
@@ -130,6 +132,7 @@ pub fn build_fillet_feature_graph_parity_manifest(
             source_feature_id: "feature.base".to_string(),
             radius_param: "fillet_radius_mm".to_string(),
             edge_refs: vec!["edge.001".to_string()],
+            constraint_mode: FinishingConstraintMode::PlanarSafe,
             allow_fallback: false,
         },
         &fillet_params(2.0),
@@ -143,6 +146,7 @@ pub fn build_fillet_feature_graph_parity_manifest(
             source_feature_id: "feature.base".to_string(),
             radius_param: "fillet_radius_mm".to_string(),
             edge_refs: vec!["edge.002".to_string()],
+            constraint_mode: FinishingConstraintMode::PlanarSafe,
             allow_fallback: false,
         },
         &fillet_params(2.0),

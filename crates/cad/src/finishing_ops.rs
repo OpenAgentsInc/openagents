@@ -51,6 +51,13 @@ pub enum FinishingStatus {
     FallbackKeptSource,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FinishingConstraintMode {
+    PlanarSafe,
+    Expanded,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct FinishingContext {
     pub source_geometry_hash: String,
@@ -102,6 +109,7 @@ pub struct FilletFeatureOp {
     pub source_feature_id: String,
     pub radius_param: String,
     pub edge_refs: Vec<String>,
+    pub constraint_mode: FinishingConstraintMode,
     pub allow_fallback: bool,
 }
 
@@ -111,6 +119,7 @@ pub struct ChamferFeatureOp {
     pub source_feature_id: String,
     pub distance_param: String,
     pub edge_refs: Vec<String>,
+    pub constraint_mode: FinishingConstraintMode,
     pub allow_fallback: bool,
 }
 
@@ -152,6 +161,10 @@ impl FilletFeatureOp {
                     canonical_refs(&self.edge_refs).join(","),
                 ),
                 (
+                    "constraint_mode".to_string(),
+                    constraint_mode_label(self.constraint_mode).to_string(),
+                ),
+                (
                     "allow_fallback".to_string(),
                     self.allow_fallback.to_string(),
                 ),
@@ -179,12 +192,19 @@ impl FilletFeatureOp {
         }
         let radius_param = required_param(node, feature_keys::RADIUS_PARAM.as_str())?;
         let edge_refs = parse_csv_refs(required_param(node, "edge_refs")?);
+        let constraint_mode = node
+            .params
+            .get("constraint_mode")
+            .map(|value| parse_constraint_mode(value.as_str()))
+            .transpose()?
+            .unwrap_or(FinishingConstraintMode::PlanarSafe);
         let allow_fallback = parse_bool(required_param(node, "allow_fallback")?)?;
         let op = Self {
             feature_id: node.id.clone(),
             source_feature_id,
             radius_param,
             edge_refs,
+            constraint_mode,
             allow_fallback,
         };
         op.validate()?;
@@ -218,6 +238,10 @@ impl ChamferFeatureOp {
                     canonical_refs(&self.edge_refs).join(","),
                 ),
                 (
+                    "constraint_mode".to_string(),
+                    constraint_mode_label(self.constraint_mode).to_string(),
+                ),
+                (
                     "allow_fallback".to_string(),
                     self.allow_fallback.to_string(),
                 ),
@@ -245,12 +269,19 @@ impl ChamferFeatureOp {
         }
         let distance_param = required_param(node, "distance_param")?;
         let edge_refs = parse_csv_refs(required_param(node, "edge_refs")?);
+        let constraint_mode = node
+            .params
+            .get("constraint_mode")
+            .map(|value| parse_constraint_mode(value.as_str()))
+            .transpose()?
+            .unwrap_or(FinishingConstraintMode::PlanarSafe);
         let allow_fallback = parse_bool(required_param(node, "allow_fallback")?)?;
         let op = Self {
             feature_id: node.id.clone(),
             source_feature_id,
             distance_param,
             edge_refs,
+            constraint_mode,
             allow_fallback,
         };
         op.validate()?;
@@ -332,10 +363,11 @@ pub fn evaluate_fillet_feature(
     op.validate()?;
     context.validate()?;
     let radius_mm = params.get_required_with_unit(&op.radius_param, ScalarUnit::Millimeter)?;
-    let risk_threshold_mm = context
+    let base_threshold_mm = context
         .source_min_thickness_mm
         .map(|value| (value * 0.45).max(1.0))
         .unwrap_or(12.0);
+    let risk_threshold_mm = threshold_for_mode(base_threshold_mm, op.constraint_mode);
     evaluate_finishing_value(FinishingEvalRequest {
         feature_id: &op.feature_id,
         source_feature_id: &op.source_feature_id,
@@ -344,7 +376,11 @@ pub fn evaluate_fillet_feature(
         value_mm: radius_mm,
         risk_threshold_mm,
         allow_fallback: op.allow_fallback,
-        selection_signature: canonical_refs(&op.edge_refs).join(","),
+        selection_signature: format!(
+            "mode={}|refs={}",
+            constraint_mode_label(op.constraint_mode),
+            canonical_refs(&op.edge_refs).join(",")
+        ),
         context,
     })
 }
@@ -357,10 +393,11 @@ pub fn evaluate_chamfer_feature(
     op.validate()?;
     context.validate()?;
     let distance_mm = params.get_required_with_unit(&op.distance_param, ScalarUnit::Millimeter)?;
-    let risk_threshold_mm = context
+    let base_threshold_mm = context
         .source_min_thickness_mm
         .map(|value| (value * 0.40).max(0.8))
         .unwrap_or(10.0);
+    let risk_threshold_mm = threshold_for_mode(base_threshold_mm, op.constraint_mode);
     evaluate_finishing_value(FinishingEvalRequest {
         feature_id: &op.feature_id,
         source_feature_id: &op.source_feature_id,
@@ -369,7 +406,11 @@ pub fn evaluate_chamfer_feature(
         value_mm: distance_mm,
         risk_threshold_mm,
         allow_fallback: op.allow_fallback,
-        selection_signature: canonical_refs(&op.edge_refs).join(","),
+        selection_signature: format!(
+            "mode={}|refs={}",
+            constraint_mode_label(op.constraint_mode),
+            canonical_refs(&op.edge_refs).join(",")
+        ),
         context,
     })
 }
@@ -516,6 +557,20 @@ fn warning_code_for_operation(operation_key: &str) -> CadWarningCode {
     }
 }
 
+fn threshold_for_mode(base_threshold_mm: f64, mode: FinishingConstraintMode) -> f64 {
+    match mode {
+        FinishingConstraintMode::PlanarSafe => base_threshold_mm,
+        FinishingConstraintMode::Expanded => base_threshold_mm * 1.5,
+    }
+}
+
+fn constraint_mode_label(mode: FinishingConstraintMode) -> &'static str {
+    match mode {
+        FinishingConstraintMode::PlanarSafe => "planar_safe",
+        FinishingConstraintMode::Expanded => "expanded",
+    }
+}
+
 fn validate_finishing_refs(
     feature_id: &str,
     source_feature_id: &str,
@@ -566,6 +621,16 @@ fn parse_bool(value: String) -> CadResult<bool> {
     }
 }
 
+fn parse_constraint_mode(value: &str) -> CadResult<FinishingConstraintMode> {
+    match value {
+        "planar_safe" => Ok(FinishingConstraintMode::PlanarSafe),
+        "expanded" => Ok(FinishingConstraintMode::Expanded),
+        _ => Err(CadError::InvalidPrimitive {
+            reason: format!("invalid constraint_mode value: {}", value),
+        }),
+    }
+}
+
 fn canonical_refs(values: &[String]) -> Vec<String> {
     let mut refs = BTreeSet::<String>::new();
     for value in values {
@@ -595,8 +660,9 @@ fn validate_stable_id(value: &str, label: &str) -> CadResult<()> {
 mod tests {
     use super::{
         CHAMFER_OPERATION_KEY, ChamferFeatureOp, FILLET_OPERATION_KEY, FilletFeatureOp,
-        FinishingContext, FinishingFailureClass, FinishingStatus, SHELL_OPERATION_KEY,
-        ShellFeatureOp, evaluate_chamfer_feature, evaluate_fillet_feature, evaluate_shell_feature,
+        FinishingConstraintMode, FinishingContext, FinishingFailureClass, FinishingStatus,
+        SHELL_OPERATION_KEY, ShellFeatureOp, evaluate_chamfer_feature, evaluate_fillet_feature,
+        evaluate_shell_feature,
     };
     use crate::CadError;
     use crate::contracts::CadWarningCode;
@@ -649,6 +715,7 @@ mod tests {
             source_feature_id: "feature.base".to_string(),
             radius_param: "fillet_radius_mm".to_string(),
             edge_refs: vec!["edge.1".to_string(), "edge.2".to_string()],
+            constraint_mode: FinishingConstraintMode::PlanarSafe,
             allow_fallback: true,
         };
         let result =
@@ -671,6 +738,7 @@ mod tests {
                 "edge.1".to_string(),
                 "edge.1".to_string(),
             ],
+            constraint_mode: FinishingConstraintMode::PlanarSafe,
             allow_fallback: false,
         };
         let node = op.to_feature_node().expect("fillet node should build");
@@ -689,6 +757,7 @@ mod tests {
             source_feature_id: "feature.base".to_string(),
             radius_param: "fillet_radius_mm".to_string(),
             edge_refs: vec!["edge.1".to_string()],
+            constraint_mode: FinishingConstraintMode::PlanarSafe,
             allow_fallback: false,
         };
         let op_b = FilletFeatureOp {
@@ -696,6 +765,7 @@ mod tests {
             source_feature_id: "feature.base".to_string(),
             radius_param: "fillet_radius_mm".to_string(),
             edge_refs: vec!["edge.2".to_string()],
+            constraint_mode: FinishingConstraintMode::PlanarSafe,
             allow_fallback: false,
         };
         let result_a =
@@ -727,6 +797,7 @@ mod tests {
             source_feature_id: "feature.base".to_string(),
             radius_param: "fillet_radius_mm".to_string(),
             edge_refs: vec!["edge.1".to_string()],
+            constraint_mode: FinishingConstraintMode::PlanarSafe,
             allow_fallback: true,
         };
         let result = evaluate_fillet_feature(&op, &params, &context())
@@ -765,6 +836,7 @@ mod tests {
             source_feature_id: "feature.base".to_string(),
             radius_param: "fillet_radius_mm".to_string(),
             edge_refs: vec!["edge.1".to_string()],
+            constraint_mode: FinishingConstraintMode::PlanarSafe,
             allow_fallback: false,
         };
         let error = evaluate_fillet_feature(&op, &params, &context()).expect_err("must fail");
@@ -778,6 +850,43 @@ mod tests {
     }
 
     #[test]
+    fn fillet_expanded_mode_allows_beyond_planar_safe_threshold() {
+        let mut params = params();
+        params
+            .set(
+                "fillet_radius_mm",
+                ScalarValue {
+                    value: 10.0,
+                    unit: ScalarUnit::Millimeter,
+                },
+            )
+            .expect("fillet radius override");
+        let planar = FilletFeatureOp {
+            feature_id: "feature.fillet.planar".to_string(),
+            source_feature_id: "feature.base".to_string(),
+            radius_param: "fillet_radius_mm".to_string(),
+            edge_refs: vec!["edge.1".to_string()],
+            constraint_mode: FinishingConstraintMode::PlanarSafe,
+            allow_fallback: false,
+        };
+        let expanded = FilletFeatureOp {
+            feature_id: "feature.fillet.expanded".to_string(),
+            source_feature_id: "feature.base".to_string(),
+            radius_param: "fillet_radius_mm".to_string(),
+            edge_refs: vec!["edge.1".to_string()],
+            constraint_mode: FinishingConstraintMode::Expanded,
+            allow_fallback: false,
+        };
+
+        let planar_error = evaluate_fillet_feature(&planar, &params, &context())
+            .expect_err("planar-safe mode should reject this radius");
+        assert!(matches!(planar_error, CadError::EvalFailed { .. }));
+        let expanded_result = evaluate_fillet_feature(&expanded, &params, &context())
+            .expect("expanded mode should accept this radius");
+        assert_eq!(expanded_result.status, FinishingStatus::Applied);
+    }
+
+    #[test]
     fn chamfer_node_round_trip_and_eval_is_deterministic() {
         let op = ChamferFeatureOp {
             feature_id: "feature.chamfer".to_string(),
@@ -788,6 +897,7 @@ mod tests {
                 "edge.1".to_string(),
                 "edge.1".to_string(),
             ],
+            constraint_mode: FinishingConstraintMode::PlanarSafe,
             allow_fallback: false,
         };
         let node = op.to_feature_node().expect("node should build");
@@ -819,6 +929,7 @@ mod tests {
             source_feature_id: "feature.base".to_string(),
             distance_param: "chamfer_distance_mm".to_string(),
             edge_refs: vec!["edge.1".to_string()],
+            constraint_mode: FinishingConstraintMode::PlanarSafe,
             allow_fallback: true,
         };
         let result = evaluate_chamfer_feature(&op, &params, &context())
@@ -830,6 +941,43 @@ mod tests {
             result.failure_classification,
             Some(FinishingFailureClass::TopologyRisk)
         );
+    }
+
+    #[test]
+    fn chamfer_expanded_mode_allows_beyond_planar_safe_threshold() {
+        let mut params = params();
+        params
+            .set(
+                "chamfer_distance_mm",
+                ScalarValue {
+                    value: 9.0,
+                    unit: ScalarUnit::Millimeter,
+                },
+            )
+            .expect("chamfer distance override");
+        let planar = ChamferFeatureOp {
+            feature_id: "feature.chamfer.planar".to_string(),
+            source_feature_id: "feature.base".to_string(),
+            distance_param: "chamfer_distance_mm".to_string(),
+            edge_refs: vec!["edge.1".to_string()],
+            constraint_mode: FinishingConstraintMode::PlanarSafe,
+            allow_fallback: false,
+        };
+        let expanded = ChamferFeatureOp {
+            feature_id: "feature.chamfer.expanded".to_string(),
+            source_feature_id: "feature.base".to_string(),
+            distance_param: "chamfer_distance_mm".to_string(),
+            edge_refs: vec!["edge.1".to_string()],
+            constraint_mode: FinishingConstraintMode::Expanded,
+            allow_fallback: false,
+        };
+
+        let planar_error = evaluate_chamfer_feature(&planar, &params, &context())
+            .expect_err("planar-safe mode should reject this chamfer distance");
+        assert!(matches!(planar_error, CadError::EvalFailed { .. }));
+        let expanded_result = evaluate_chamfer_feature(&expanded, &params, &context())
+            .expect("expanded mode should accept this chamfer distance");
+        assert_eq!(expanded_result.status, FinishingStatus::Applied);
     }
 
     #[test]

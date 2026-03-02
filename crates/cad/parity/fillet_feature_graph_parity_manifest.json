@@ -22,7 +22,7 @@
   ],
   "applied_snapshot": {
     "status": "applied",
-    "geometry_hash": "52c942e27177aaf0",
+    "geometry_hash": "94ad67a49b8dd1c9",
     "failure_classification": null,
     "warning_count": 0
   },
@@ -34,7 +34,7 @@
   },
   "edge_selection_affects_hash": true,
   "invalid_radius_error": "evaluation failed: fillet.v2: fillet value must be finite and > 0 (class=FINISHING_INVALID_INPUT)",
-  "deterministic_signature": "0b618f7ec2b79699",
+  "deterministic_signature": "f31872c660888cea",
   "parity_contracts": [
     "fillet.v2 feature nodes round-trip deterministically in feature graph serialization",
     "fillet edge refs are canonicalized (sorted + deduplicated) on node conversion",

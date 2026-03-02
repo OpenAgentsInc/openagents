@@ -22,7 +22,7 @@
   ],
   "applied_snapshot": {
     "status": "applied",
-    "geometry_hash": "cb59c09ac2ea6699",
+    "geometry_hash": "df555c2e27732e68",
     "failure_classification": null,
     "warning_count": 0
   },
@@ -35,7 +35,7 @@
   "fallback_warning_code": "CAD-WARN-CHAMFER-FAILED",
   "edge_selection_affects_hash": true,
   "invalid_distance_error": "evaluation failed: chamfer.v2: chamfer value must be finite and > 0 (class=FINISHING_INVALID_INPUT)",
-  "deterministic_signature": "46d6d843acc476b5",
+  "deterministic_signature": "86c8485ec8b06de4",
   "parity_contracts": [
     "chamfer.v2 feature nodes round-trip deterministically in feature graph serialization",
     "chamfer edge refs are canonicalized (sorted + deduplicated) on node conversion",

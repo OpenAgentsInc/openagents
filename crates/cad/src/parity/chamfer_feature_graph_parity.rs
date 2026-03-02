@@ -3,8 +3,8 @@ use sha2::{Digest, Sha256};
 
 use crate::feature_graph::{FeatureGraph, FeatureNode};
 use crate::finishing_ops::{
-    CHAMFER_OPERATION_KEY, ChamferFeatureOp, FinishingContext, FinishingFailureClass,
-    FinishingStatus, evaluate_chamfer_feature,
+    CHAMFER_OPERATION_KEY, ChamferFeatureOp, FinishingConstraintMode, FinishingContext,
+    FinishingFailureClass, FinishingStatus, evaluate_chamfer_feature,
 };
 use crate::params::{ParameterStore, ScalarUnit, ScalarValue};
 use crate::parity::scorecard::ParityScorecard;
@@ -65,6 +65,7 @@ pub fn build_chamfer_feature_graph_parity_manifest(
             "edge.001".to_string(),
             "edge.001".to_string(),
         ],
+        constraint_mode: FinishingConstraintMode::PlanarSafe,
         allow_fallback: false,
     };
     let node = op.to_feature_node().expect("chamfer node should build");
@@ -114,6 +115,7 @@ pub fn build_chamfer_feature_graph_parity_manifest(
         source_feature_id: "feature.base".to_string(),
         distance_param: "chamfer_distance_mm".to_string(),
         edge_refs: vec!["edge.010".to_string()],
+        constraint_mode: FinishingConstraintMode::PlanarSafe,
         allow_fallback: true,
     };
     let fallback = evaluate_chamfer_feature(&fallback_op, &chamfer_params(12.0), &source_context)
@@ -136,6 +138,7 @@ pub fn build_chamfer_feature_graph_parity_manifest(
             source_feature_id: "feature.base".to_string(),
             distance_param: "chamfer_distance_mm".to_string(),
             edge_refs: vec!["edge.001".to_string()],
+            constraint_mode: FinishingConstraintMode::PlanarSafe,
             allow_fallback: false,
         },
         &chamfer_params(1.5),
@@ -149,6 +152,7 @@ pub fn build_chamfer_feature_graph_parity_manifest(
             source_feature_id: "feature.base".to_string(),
             distance_param: "chamfer_distance_mm".to_string(),
             edge_refs: vec!["edge.002".to_string()],
+            constraint_mode: FinishingConstraintMode::PlanarSafe,
             allow_fallback: false,
         },
         &chamfer_params(1.5),
