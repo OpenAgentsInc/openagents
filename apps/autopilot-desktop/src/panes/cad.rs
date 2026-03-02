@@ -41,6 +41,10 @@ const ENGINEERING_OVERLAY_WIDTH: f32 = 220.0;
 const ENGINEERING_OVERLAY_LINE_HEIGHT: f32 = 9.0;
 const ENGINEERING_OVERLAY_LINE_COUNT: usize = 6;
 
+fn legacy_cad_pane_enabled() -> bool {
+    std::env::var_os("OPENAGENTS_CAD_USE_LEGACY_PANE").is_some()
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CadCameraPose {
     pub projection_mode: CadProjectionMode,
@@ -137,8 +141,35 @@ fn cad_demo_body_bounds(content_bounds: Bounds) -> Bounds {
     )
 }
 
+fn cad_demo_basic_toolbar_bottom(content_bounds: Bounds) -> f32 {
+    cad_demo_cycle_variant_button_bounds(content_bounds)
+        .max_y()
+        .max(cad_demo_reset_button_bounds(content_bounds).max_y())
+        .max(cad_demo_reset_camera_button_bounds(content_bounds).max_y())
+        .max(cad_demo_projection_mode_button_bounds(content_bounds).max_y())
+}
+
+fn cad_demo_basic_viewport_bounds(content_bounds: Bounds) -> Bounds {
+    let viewport_top =
+        (cad_demo_basic_toolbar_bottom(content_bounds) + 8.0).min(content_bounds.max_y());
+    let viewport_origin_x = (content_bounds.origin.x + 8.0).min(content_bounds.max_x());
+    let viewport_origin_y = viewport_top.min(content_bounds.max_y());
+    let viewport_width = (content_bounds.size.width - 16.0).max(1.0);
+    let viewport_height = (content_bounds.max_y() - viewport_top - 18.0).max(1.0);
+    Bounds::new(
+        viewport_origin_x,
+        viewport_origin_y,
+        viewport_width,
+        viewport_height,
+    )
+}
+
 pub fn camera_interaction_bounds(content_bounds: Bounds) -> Bounds {
-    placeholder_layout(cad_demo_body_bounds(content_bounds)).viewport_bounds
+    if legacy_cad_pane_enabled() {
+        placeholder_layout(cad_demo_body_bounds(content_bounds)).viewport_bounds
+    } else {
+        cad_demo_basic_viewport_bounds(content_bounds)
+    }
 }
 
 pub fn variant_tile_bounds(content_bounds: Bounds, tile_index: usize) -> Bounds {
@@ -169,6 +200,10 @@ pub fn paint_cad_demo_placeholder_pane(
     pane_state: &CadDemoPaneState,
     paint: &mut PaintContext,
 ) {
+    if !legacy_cad_pane_enabled() {
+        paint_cad_demo_basic_pane(content_bounds, pane_state, paint);
+        return;
+    }
     paint.scene.push_clip(content_bounds);
     let cycle_bounds = cad_demo_cycle_variant_button_bounds(content_bounds);
     let reset_bounds = cad_demo_reset_button_bounds(content_bounds);
@@ -781,6 +816,103 @@ pub fn paint_cad_demo_placeholder_pane(
     paint.scene.pop_clip();
 }
 
+fn paint_cad_demo_basic_pane(
+    content_bounds: Bounds,
+    pane_state: &CadDemoPaneState,
+    paint: &mut PaintContext,
+) {
+    paint.scene.push_clip(content_bounds);
+
+    let cycle_bounds = cad_demo_cycle_variant_button_bounds(content_bounds);
+    let reset_bounds = cad_demo_reset_button_bounds(content_bounds);
+    let reset_camera_bounds = cad_demo_reset_camera_button_bounds(content_bounds);
+    let projection_bounds = cad_demo_projection_mode_button_bounds(content_bounds);
+
+    paint_action_button(cycle_bounds, "Variant", paint);
+    paint_action_button(reset_bounds, "Open CAD", paint);
+    paint_action_button(reset_camera_bounds, "Reset Camera", paint);
+    paint_action_button(
+        projection_bounds,
+        &format!("Projection: {}", pane_state.projection_mode.label()),
+        paint,
+    );
+
+    let viewport_bounds = cad_demo_basic_viewport_bounds(content_bounds);
+    paint.scene.draw_quad(
+        Quad::new(viewport_bounds)
+            .with_background(theme::bg::ELEVATED)
+            .with_corner_radius(4.0)
+            .with_border(theme::border::SUBTLE, 1.0),
+    );
+
+    let active_variant_view = pane_state.variant_viewport(pane_state.active_variant_tile_index);
+    let selected_outline_active = active_variant_view
+        .is_some_and(|view| view.selected_ref.is_some() || view.hovered_ref.is_some());
+    let camera_pose = if let Some(viewport_state) = active_variant_view {
+        CadCameraPose::from_variant(viewport_state, pane_state.projection_mode)
+    } else {
+        let fallback = CadVariantViewportState::for_variant(&pane_state.active_variant_id);
+        CadCameraPose::from_variant(&fallback, pane_state.projection_mode)
+    };
+
+    let mut status = format!(
+        "{} | rev {}",
+        pane_state.active_variant_id, pane_state.document_revision
+    );
+    if let Some(mesh_payload) = pane_state.last_good_mesh_payload.as_ref() {
+        match cad_mesh_to_viewport_primitive(
+            mesh_payload,
+            viewport_bounds,
+            selected_outline_active,
+            pane_state.hidden_line_mode,
+            camera_pose,
+        ) {
+            Ok(mesh) => {
+                paint.scene.push_clip(viewport_bounds);
+                if let Err(error) = paint.scene.draw_mesh(mesh) {
+                    let _ = error;
+                    status = "mesh draw skipped".to_string();
+                }
+                paint.scene.pop_clip();
+            }
+            Err(error) => {
+                status = format!("mesh conversion failed: {}", error);
+            }
+        }
+    } else {
+        status = "waiting for CAD mesh payload".to_string();
+    }
+
+    paint.scene.draw_text(paint.text.layout(
+        "CAD",
+        Point::new(
+            viewport_bounds.origin.x + 8.0,
+            viewport_bounds.origin.y + 12.0,
+        ),
+        10.0,
+        theme::text::SECONDARY,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        &status,
+        Point::new(
+            viewport_bounds.origin.x + 8.0,
+            viewport_bounds.origin.y + 24.0,
+        ),
+        9.0,
+        theme::text::MUTED,
+    ));
+
+    let footer_y = (content_bounds.max_y() - 10.0).max(content_bounds.origin.y + 8.0);
+    paint.scene.draw_text(paint.text.layout(
+        &footer_summary_line(pane_state),
+        Point::new(content_bounds.origin.x + 10.0, footer_y),
+        9.0,
+        theme::text::MUTED,
+    ));
+
+    paint.scene.pop_clip();
+}
+
 fn engineering_overlay_lines(
     pane_state: &CadDemoPaneState,
 ) -> [String; ENGINEERING_OVERLAY_LINE_COUNT] {
@@ -1209,15 +1341,37 @@ fn cad_mesh_to_viewport_primitive(
     let fit_scale = (available_width / model_width)
         .min(available_height / model_height)
         .max(0.0001);
-    let scale = (fit_scale * camera_pose.zoom).max(0.0001);
+    let zoom = if camera_pose.zoom.is_finite() {
+        camera_pose.zoom
+    } else {
+        1.0
+    }
+    .clamp(0.15, 6.0);
+    let pan_x = if camera_pose.pan_x.is_finite() {
+        camera_pose.pan_x
+    } else {
+        0.0
+    }
+    .clamp(
+        -viewport_bounds.size.width * 0.45,
+        viewport_bounds.size.width * 0.45,
+    );
+    let pan_y = if camera_pose.pan_y.is_finite() {
+        camera_pose.pan_y
+    } else {
+        0.0
+    }
+    .clamp(
+        -viewport_bounds.size.height * 0.45,
+        viewport_bounds.size.height * 0.45,
+    );
+    let scale = (fit_scale * zoom).max(0.0001);
     let scaled_width = model_width * scale;
     let scaled_height = model_height * scale;
-    let origin_x = viewport_bounds.origin.x
-        + ((viewport_bounds.size.width - scaled_width) * 0.5)
-        + camera_pose.pan_x;
-    let origin_y = viewport_bounds.origin.y
-        + ((viewport_bounds.size.height - scaled_height) * 0.5)
-        + camera_pose.pan_y;
+    let origin_x =
+        viewport_bounds.origin.x + ((viewport_bounds.size.width - scaled_width) * 0.5) + pan_x;
+    let origin_y =
+        viewport_bounds.origin.y + ((viewport_bounds.size.height - scaled_height) * 0.5) + pan_y;
 
     let slot_to_color = payload
         .material_slots
