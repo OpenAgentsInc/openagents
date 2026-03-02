@@ -5,7 +5,7 @@
   "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
   "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
   "parity_check_entrypoint": "scripts/cad/parity_check.sh",
-  "source_artifact_count": 99,
+  "source_artifact_count": 100,
   "artifacts": [
     {
       "artifact_id": "assembly_acceptance_scenes_parity_manifest",
@@ -84,6 +84,12 @@
       "source_path": "crates/cad/parity/core_modeling_checkpoint_parity_manifest.json",
       "sha256": "7065721e67e9fd332aa0e8d40bc094d066ac25a71339237834988034e6e31b30",
       "bytes": 2469
+    },
+    {
+      "artifact_id": "drafting_checkpoint_parity_manifest",
+      "source_path": "crates/cad/parity/drafting_checkpoint_parity_manifest.json",
+      "sha256": "e8916b1b115ab2263903b4e642e6a16b86da255c07b01f925e4cb53d35978ecc",
+      "bytes": 2203
     },
     {
       "artifact_id": "drafting_detail_parity_manifest",
@@ -436,8 +442,8 @@
     {
       "artifact_id": "parity_dashboard",
       "source_path": "crates/cad/parity/parity_dashboard.json",
-      "sha256": "aaf0041fc8530f7dff6a808725bb3d48e3f2b92b8ac68cbcfa92c90587176269",
-      "bytes": 6049
+      "sha256": "eec451f97b2fb09c32eac48572168830293cd3bb8912fb3fc858b35e4aa05815",
+      "bytes": 6119
     },
     {
       "artifact_id": "parity_risk_register",
