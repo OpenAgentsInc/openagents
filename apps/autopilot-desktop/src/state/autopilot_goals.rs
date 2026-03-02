@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::app_state::{JobHistoryState, SkillRegistryDiscoveredSkill};
 use crate::spark_wallet::SparkPaneState;
+use crate::state::cron_schedule::{next_cron_run_epoch_seconds, parse_cron_expression};
 use crate::state::earnings_gate::{EarningsVerificationReport, verify_authoritative_earnings};
 use crate::state::goal_conditions::{
     ConditionEvaluation, GoalProgressSnapshot, evaluate_conditions,
@@ -676,6 +677,51 @@ impl AutopilotGoalsState {
         Ok(())
     }
 
+    pub fn set_goal_cron_schedule(
+        &mut self,
+        goal_id: &str,
+        expression: &str,
+        timezone: &str,
+        now_epoch_seconds: u64,
+    ) -> Result<(), String> {
+        let normalized_expression = expression.trim();
+        if normalized_expression.is_empty() {
+            return Err("Cron expression cannot be empty".to_string());
+        }
+        let normalized_timezone = if timezone.trim().is_empty() {
+            "UTC".to_string()
+        } else {
+            timezone.trim().to_string()
+        };
+
+        let spec = parse_cron_expression(normalized_expression)?;
+        let next_run = next_cron_run_epoch_seconds(&spec, &normalized_timezone, now_epoch_seconds)?;
+
+        let Some(goal) = self
+            .document
+            .active_goals
+            .iter_mut()
+            .find(|goal| goal.goal_id == goal_id)
+        else {
+            return Err(format!("Active goal {goal_id} not found"));
+        };
+
+        goal.schedule.enabled = true;
+        goal.schedule.kind = GoalScheduleKind::Cron {
+            expression: normalized_expression.to_string(),
+            timezone: Some(normalized_timezone.clone()),
+        };
+        goal.schedule.next_run_epoch_seconds = Some(next_run);
+        goal.updated_at_epoch_seconds = now_epoch_seconds;
+        self.persist_to_disk()?;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Set cron schedule for goal {} to '{}' tz={}",
+            goal_id, normalized_expression, normalized_timezone
+        ));
+        Ok(())
+    }
+
     pub fn schedule_goal_run_now(
         &mut self,
         goal_id: &str,
@@ -697,7 +743,19 @@ impl AutopilotGoalsState {
                     goal.schedule.next_run_epoch_seconds =
                         Some(now_epoch_seconds.saturating_add(seconds.max(1)));
                 }
-                GoalScheduleKind::Manual | GoalScheduleKind::Cron { .. } => {
+                GoalScheduleKind::Cron {
+                    ref expression,
+                    ref timezone,
+                } => {
+                    let timezone = timezone.as_deref().unwrap_or("UTC");
+                    let spec = parse_cron_expression(expression)?;
+                    goal.schedule.next_run_epoch_seconds = Some(next_cron_run_epoch_seconds(
+                        &spec,
+                        timezone,
+                        now_epoch_seconds,
+                    )?);
+                }
+                GoalScheduleKind::Manual => {
                     goal.schedule.next_run_epoch_seconds = None;
                 }
             }
@@ -724,10 +782,8 @@ impl AutopilotGoalsState {
         Ok(())
     }
 
-    pub fn run_interval_scheduler_tick(
-        &mut self,
-        now_epoch_seconds: u64,
-    ) -> Result<Vec<String>, String> {
+    pub fn run_scheduler_tick(&mut self, now_epoch_seconds: u64) -> Result<Vec<String>, String> {
+        let mut scheduler_errors = Vec::new();
         let mut triggered_goal_ids = Vec::new();
         let mut queue_goal_ids = Vec::new();
         let mut touched = false;
@@ -736,31 +792,76 @@ impl AutopilotGoalsState {
             if !goal.schedule.enabled {
                 continue;
             }
-            let GoalScheduleKind::IntervalSeconds { seconds } = goal.schedule.kind else {
-                continue;
-            };
-            let interval_seconds = seconds.max(1);
 
-            let next_run = match goal.schedule.next_run_epoch_seconds {
-                Some(value) => value,
-                None => {
-                    let next = now_epoch_seconds.saturating_add(interval_seconds);
-                    goal.schedule.next_run_epoch_seconds = Some(next);
+            match goal.schedule.kind {
+                GoalScheduleKind::IntervalSeconds { seconds } => {
+                    let interval_seconds = seconds.max(1);
+                    let next_run = match goal.schedule.next_run_epoch_seconds {
+                        Some(value) => value,
+                        None => {
+                            let next = now_epoch_seconds.saturating_add(interval_seconds);
+                            goal.schedule.next_run_epoch_seconds = Some(next);
+                            goal.updated_at_epoch_seconds = now_epoch_seconds;
+                            touched = true;
+                            continue;
+                        }
+                    };
+                    if now_epoch_seconds < next_run {
+                        continue;
+                    }
+
+                    goal.schedule.last_run_epoch_seconds = Some(now_epoch_seconds);
+                    goal.schedule.next_run_epoch_seconds =
+                        Some(now_epoch_seconds.saturating_add(interval_seconds));
                     goal.updated_at_epoch_seconds = now_epoch_seconds;
                     touched = true;
-                    continue;
+                    triggered_goal_ids.push(goal.goal_id.clone());
                 }
-            };
-            if now_epoch_seconds < next_run {
-                continue;
+                GoalScheduleKind::Cron {
+                    ref expression,
+                    ref timezone,
+                } => {
+                    let timezone = timezone.as_deref().unwrap_or("UTC");
+                    let spec = match parse_cron_expression(expression) {
+                        Ok(value) => value,
+                        Err(error) => {
+                            scheduler_errors
+                                .push(format!("goal {} cron parse error: {}", goal.goal_id, error));
+                            continue;
+                        }
+                    };
+                    let next_preview =
+                        match next_cron_run_epoch_seconds(&spec, timezone, now_epoch_seconds) {
+                            Ok(value) => value,
+                            Err(error) => {
+                                scheduler_errors.push(format!(
+                                    "goal {} cron preview error: {}",
+                                    goal.goal_id, error
+                                ));
+                                continue;
+                            }
+                        };
+
+                    let next_run = goal.schedule.next_run_epoch_seconds.unwrap_or(next_preview);
+                    if goal.schedule.next_run_epoch_seconds.is_none() {
+                        goal.schedule.next_run_epoch_seconds = Some(next_run);
+                        goal.updated_at_epoch_seconds = now_epoch_seconds;
+                        touched = true;
+                    }
+
+                    if now_epoch_seconds < next_run {
+                        continue;
+                    }
+
+                    goal.schedule.last_run_epoch_seconds = Some(now_epoch_seconds);
+                    goal.schedule.next_run_epoch_seconds = Some(next_preview.max(next_run + 60));
+                    goal.updated_at_epoch_seconds = now_epoch_seconds;
+                    touched = true;
+                    triggered_goal_ids.push(goal.goal_id.clone());
+                }
+                GoalScheduleKind::Manual => continue,
             }
 
-            goal.schedule.last_run_epoch_seconds = Some(now_epoch_seconds);
-            goal.schedule.next_run_epoch_seconds =
-                Some(now_epoch_seconds.saturating_add(interval_seconds));
-            goal.updated_at_epoch_seconds = now_epoch_seconds;
-            touched = true;
-            triggered_goal_ids.push(goal.goal_id.clone());
             if matches!(
                 goal.lifecycle_status,
                 GoalLifecycleStatus::Draft | GoalLifecycleStatus::Paused
@@ -793,12 +894,22 @@ impl AutopilotGoalsState {
 
         if !triggered_goal_ids.is_empty() {
             self.last_action = Some(format!(
-                "Interval scheduler triggered goals: {}",
+                "Scheduler triggered goals: {}",
                 triggered_goal_ids.join(",")
             ));
             self.last_error = None;
         }
+        if !scheduler_errors.is_empty() {
+            self.last_error = Some(scheduler_errors.join(" | "));
+        }
         Ok(triggered_goal_ids)
+    }
+
+    pub fn run_interval_scheduler_tick(
+        &mut self,
+        now_epoch_seconds: u64,
+    ) -> Result<Vec<String>, String> {
+        self.run_scheduler_tick(now_epoch_seconds)
     }
 
     pub fn file_path(&self) -> &PathBuf {
@@ -918,7 +1029,7 @@ mod tests {
     use super::{
         AutopilotGoalsState, GoalConstraints, GoalExecutionReceipt, GoalLifecycleEvent,
         GoalLifecycleStatus, GoalObjective, GoalRecord, GoalRetryPolicy, GoalScheduleConfig,
-        GoalStopCondition,
+        GoalScheduleKind, GoalStopCondition,
     };
     use crate::app_state::{
         JobHistoryReceiptRow, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
@@ -1587,6 +1698,95 @@ mod tests {
         assert_eq!(
             queued_goal.schedule.last_run_epoch_seconds,
             Some(1_700_000_100)
+        );
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn set_goal_cron_schedule_persists_preview_and_timezone() {
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch time available")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("autopilot-goals-cron-set-{now_nanos}.json"));
+        let mut state = AutopilotGoalsState::load_from_path(path.clone());
+        state
+            .upsert_active_goal(sample_goal("goal-cron-set"))
+            .expect("upsert active goal should succeed");
+
+        state
+            .set_goal_cron_schedule("goal-cron-set", "*/5 * * * *", "UTC", 1_700_000_000)
+            .expect("cron schedule should be accepted");
+        let goal = state
+            .document
+            .active_goals
+            .iter()
+            .find(|goal| goal.goal_id == "goal-cron-set")
+            .expect("goal should exist");
+        assert!(goal.schedule.enabled);
+        assert!(matches!(
+            goal.schedule.kind,
+            GoalScheduleKind::Cron { ref expression, .. } if expression == "*/5 * * * *"
+        ));
+        assert!(
+            goal.schedule
+                .next_run_epoch_seconds
+                .is_some_and(|next| next > 1_700_000_000),
+            "next cron run should be computed in the future"
+        );
+
+        let cron_error = state
+            .set_goal_cron_schedule("goal-cron-set", "invalid cron", "UTC", 1_700_000_000)
+            .expect_err("invalid cron must fail");
+        assert!(cron_error.contains("must have 5 fields"));
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn scheduler_tick_triggers_due_cron_goal_and_sets_next_preview() {
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch time available")
+            .as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("autopilot-goals-cron-trigger-{now_nanos}.json"));
+        let mut state = AutopilotGoalsState::load_from_path(path.clone());
+        state
+            .upsert_active_goal(sample_goal("goal-cron-trigger"))
+            .expect("upsert active goal should succeed");
+        state
+            .set_goal_cron_schedule("goal-cron-trigger", "* * * * *", "UTC", 1_700_000_000)
+            .expect("cron schedule should be accepted");
+
+        {
+            let goal = state
+                .document
+                .active_goals
+                .iter_mut()
+                .find(|goal| goal.goal_id == "goal-cron-trigger")
+                .expect("goal should exist");
+            goal.schedule.next_run_epoch_seconds = Some(1_700_000_060);
+        }
+
+        let triggered = state
+            .run_scheduler_tick(1_700_000_060)
+            .expect("scheduler tick should succeed");
+        assert_eq!(triggered, vec!["goal-cron-trigger".to_string()]);
+
+        let goal = state
+            .document
+            .active_goals
+            .iter()
+            .find(|goal| goal.goal_id == "goal-cron-trigger")
+            .expect("goal should remain active");
+        assert_eq!(goal.lifecycle_status, GoalLifecycleStatus::Queued);
+        assert_eq!(goal.schedule.last_run_epoch_seconds, Some(1_700_000_060));
+        assert!(
+            goal.schedule
+                .next_run_epoch_seconds
+                .is_some_and(|next| next > 1_700_000_060)
         );
 
         let _ = std::fs::remove_file(path);

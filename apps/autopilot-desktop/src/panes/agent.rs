@@ -192,6 +192,37 @@ pub fn paint_agent_schedule_tick_pane(
         paint,
         content_bounds.origin.x + 12.0,
         y,
+        "Cron expression",
+        &pane_state.cron_expression,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Cron timezone",
+        &pane_state.cron_timezone,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Cron next preview (epoch)",
+        &pane_state
+            .cron_next_run_preview_epoch_seconds
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "n/a".to_string()),
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Cron parse status",
+        pane_state.cron_parse_error.as_deref().unwrap_or("ok"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
         "Heartbeat (s)",
         &pane_state.heartbeat_seconds.to_string(),
     );

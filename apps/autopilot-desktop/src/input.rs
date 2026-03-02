@@ -466,10 +466,7 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
 
 fn run_goal_interval_scheduler(state: &mut crate::app_state::RenderState) -> bool {
     let now_epoch_seconds = current_epoch_seconds();
-    match state
-        .autopilot_goals
-        .run_interval_scheduler_tick(now_epoch_seconds)
-    {
+    match state.autopilot_goals.run_scheduler_tick(now_epoch_seconds) {
         Ok(triggered_goal_ids) => {
             if triggered_goal_ids.is_empty() {
                 return false;

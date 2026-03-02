@@ -9,6 +9,7 @@ use crate::state::autopilot_goals::{
     GoalConstraints, GoalLifecycleEvent, GoalLifecycleStatus, GoalObjective, GoalRecord,
     GoalRetryPolicy, GoalScheduleConfig, GoalStopCondition,
 };
+use crate::state::cron_schedule::{next_cron_run_epoch_seconds, parse_cron_expression};
 use crate::state::goal_loop_executor::{GoalLoopStopReason, select_runnable_goal};
 
 pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: SaLaneSnapshot) {
@@ -548,6 +549,12 @@ pub(super) fn refresh_goal_schedule_state(state: &mut RenderState) -> bool {
         state.agent_schedule_tick.next_goal_run_epoch_seconds,
         state.agent_schedule_tick.last_goal_run_epoch_seconds,
         state.agent_schedule_tick.heartbeat_seconds,
+        state.agent_schedule_tick.cron_expression.clone(),
+        state.agent_schedule_tick.cron_timezone.clone(),
+        state
+            .agent_schedule_tick
+            .cron_next_run_preview_epoch_seconds,
+        state.agent_schedule_tick.cron_parse_error.clone(),
         state.agent_schedule_tick.next_tick_reason.clone(),
     );
 
@@ -568,21 +575,72 @@ pub(super) fn refresh_goal_schedule_state(state: &mut RenderState) -> bool {
                 state.agent_schedule_tick.heartbeat_seconds = seconds.max(1);
                 format!("interval:{}s", seconds)
             }
-            crate::state::autopilot_goals::GoalScheduleKind::Cron { .. } => "cron".to_string(),
+            crate::state::autopilot_goals::GoalScheduleKind::Cron {
+                ref expression,
+                ref timezone,
+            } => {
+                let timezone = timezone.as_deref().unwrap_or("UTC");
+                state.agent_schedule_tick.cron_expression = expression.trim().to_string();
+                state.agent_schedule_tick.cron_timezone = timezone.to_string();
+                let now_epoch_seconds = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|duration| duration.as_secs())
+                    .unwrap_or(0);
+                match parse_cron_expression(expression).and_then(|spec| {
+                    next_cron_run_epoch_seconds(&spec, timezone, now_epoch_seconds)
+                }) {
+                    Ok(next_preview) => {
+                        state
+                            .agent_schedule_tick
+                            .cron_next_run_preview_epoch_seconds = Some(next_preview);
+                        state.agent_schedule_tick.cron_parse_error = None;
+                    }
+                    Err(error) => {
+                        state
+                            .agent_schedule_tick
+                            .cron_next_run_preview_epoch_seconds = None;
+                        state.agent_schedule_tick.cron_parse_error = Some(error);
+                    }
+                }
+                "cron".to_string()
+            }
         };
         state.agent_schedule_tick.next_goal_run_epoch_seconds =
             goal.schedule.next_run_epoch_seconds;
         state.agent_schedule_tick.last_goal_run_epoch_seconds =
             goal.schedule.last_run_epoch_seconds;
         state.agent_schedule_tick.next_tick_reason = if goal.schedule.enabled {
-            "goal.scheduler.interval".to_string()
+            match goal.schedule.kind {
+                crate::state::autopilot_goals::GoalScheduleKind::Manual => {
+                    "goal.scheduler.manual".to_string()
+                }
+                crate::state::autopilot_goals::GoalScheduleKind::IntervalSeconds { .. } => {
+                    "goal.scheduler.interval".to_string()
+                }
+                crate::state::autopilot_goals::GoalScheduleKind::Cron { .. } => {
+                    "goal.scheduler.cron".to_string()
+                }
+            }
         } else {
             "goal.scheduler.manual".to_string()
         };
+        if !matches!(
+            goal.schedule.kind,
+            crate::state::autopilot_goals::GoalScheduleKind::Cron { .. }
+        ) {
+            state
+                .agent_schedule_tick
+                .cron_next_run_preview_epoch_seconds = None;
+            state.agent_schedule_tick.cron_parse_error = None;
+        }
     } else {
         state.agent_schedule_tick.scheduler_mode = "manual".to_string();
         state.agent_schedule_tick.next_goal_run_epoch_seconds = None;
         state.agent_schedule_tick.last_goal_run_epoch_seconds = None;
+        state
+            .agent_schedule_tick
+            .cron_next_run_preview_epoch_seconds = None;
+        state.agent_schedule_tick.cron_parse_error = None;
         state.agent_schedule_tick.next_tick_reason = "manual.operator".to_string();
     }
 
@@ -593,6 +651,12 @@ pub(super) fn refresh_goal_schedule_state(state: &mut RenderState) -> bool {
             state.agent_schedule_tick.next_goal_run_epoch_seconds,
             state.agent_schedule_tick.last_goal_run_epoch_seconds,
             state.agent_schedule_tick.heartbeat_seconds,
+            state.agent_schedule_tick.cron_expression.clone(),
+            state.agent_schedule_tick.cron_timezone.clone(),
+            state
+                .agent_schedule_tick
+                .cron_next_run_preview_epoch_seconds,
+            state.agent_schedule_tick.cron_parse_error.clone(),
             state.agent_schedule_tick.next_tick_reason.clone(),
         )
 }
@@ -611,22 +675,48 @@ pub(super) fn run_agent_schedule_tick_action(
                 let _ = refresh_goal_schedule_state(state);
                 return true;
             };
-            let interval_seconds = state.agent_schedule_tick.heartbeat_seconds.max(1);
             let now_epoch_seconds = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|duration| duration.as_secs())
                 .unwrap_or(0);
-            match state.autopilot_goals.set_goal_interval_schedule(
-                &goal_id,
-                interval_seconds,
-                now_epoch_seconds,
-            ) {
+            let schedule_mode = state
+                .agent_schedule_tick
+                .scheduler_mode
+                .to_ascii_lowercase();
+            let cron_override = state.agent_schedule_tick.next_tick_reason.trim();
+            let is_cron_mode =
+                schedule_mode.starts_with("cron") || cron_override.starts_with("cron:");
+
+            let result = if is_cron_mode {
+                let expression = if let Some((_, value)) = cron_override.split_once("cron:") {
+                    value.trim()
+                } else {
+                    state.agent_schedule_tick.cron_expression.trim()
+                };
+                let timezone = state.agent_schedule_tick.cron_timezone.trim();
+                state.autopilot_goals.set_goal_cron_schedule(
+                    &goal_id,
+                    expression,
+                    timezone,
+                    now_epoch_seconds,
+                )
+            } else {
+                let interval_seconds = state.agent_schedule_tick.heartbeat_seconds.max(1);
+                state.autopilot_goals.set_goal_interval_schedule(
+                    &goal_id,
+                    interval_seconds,
+                    now_epoch_seconds,
+                )
+            };
+
+            match result {
                 Ok(()) => {
                     state.agent_schedule_tick.last_error = None;
                     state.agent_schedule_tick.load_state = PaneLoadState::Ready;
                     state.agent_schedule_tick.last_action = Some(format!(
-                        "Set {}s interval schedule for {}",
-                        interval_seconds, goal_id
+                        "Applied {} schedule for {}",
+                        if is_cron_mode { "cron" } else { "interval" },
+                        goal_id
                     ));
                 }
                 Err(error) => {
