@@ -2313,6 +2313,14 @@ fn execute_goal_scheduler_tool(
                             &state.autopilot_goals.document.swap_execution_receipts,
                         )
                     });
+                let latest_run_audit = state
+                    .autopilot_goals
+                    .document
+                    .run_audit_receipts
+                    .iter()
+                    .rev()
+                    .find(|audit| audit.goal_id == goal.goal_id)
+                    .cloned();
                 return ToolBridgeResultEnvelope::ok(
                     "OA-GOAL-SCHEDULER-STATUS-OK",
                     "Goal scheduler status read",
@@ -2358,6 +2366,7 @@ fn execute_goal_scheduler_tool(
                             "total_swap_cents": report.total_swap_cents,
                             "events": report.events,
                         })),
+                        "latest_run_audit": latest_run_audit,
                     }),
                 );
             }

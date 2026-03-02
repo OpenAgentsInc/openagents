@@ -291,6 +291,74 @@ pub struct GoalExecutionReceipt {
     pub policy_snapshot: GoalPolicySnapshot,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct GoalToolInvocationAudit {
+    pub request_id: String,
+    pub call_id: String,
+    pub tool_name: String,
+    pub response_code: String,
+    pub success: bool,
+    pub response_message: String,
+    pub recorded_at_epoch_seconds: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct GoalAttemptAuditReceipt {
+    pub attempt_index: u32,
+    pub submitted_at_epoch_seconds: u64,
+    pub finished_at_epoch_seconds: Option<u64>,
+    pub thread_id: Option<String>,
+    pub turn_id: Option<String>,
+    pub selected_skills: Vec<String>,
+    pub turn_status: Option<String>,
+    pub error: Option<String>,
+    #[serde(default)]
+    pub condition_goal_complete: Option<bool>,
+    #[serde(default)]
+    pub condition_should_continue: Option<bool>,
+    #[serde(default)]
+    pub condition_completion_reasons: Vec<String>,
+    #[serde(default)]
+    pub condition_stop_reasons: Vec<String>,
+    #[serde(default)]
+    pub tool_invocations: Vec<GoalToolInvocationAudit>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct GoalPayoutEvidence {
+    pub event_id: String,
+    pub occurred_at_epoch_seconds: u64,
+    pub job_id: String,
+    pub payment_pointer: String,
+    pub payout_sats: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct GoalRunAuditReceipt {
+    pub audit_id: String,
+    pub receipt_id: String,
+    pub goal_id: String,
+    pub run_id: String,
+    pub started_at_epoch_seconds: u64,
+    pub finished_at_epoch_seconds: u64,
+    pub lifecycle_status: GoalLifecycleStatus,
+    pub terminal_status_reason: String,
+    pub selected_skills: Vec<String>,
+    pub attempts: Vec<GoalAttemptAuditReceipt>,
+    pub condition_goal_complete: Option<bool>,
+    pub condition_should_continue: Option<bool>,
+    #[serde(default)]
+    pub condition_completion_reasons: Vec<String>,
+    #[serde(default)]
+    pub condition_stop_reasons: Vec<String>,
+    #[serde(default)]
+    pub payout_evidence: Vec<GoalPayoutEvidence>,
+    #[serde(default)]
+    pub swap_quote_evidence: Vec<SwapQuoteAuditReceipt>,
+    #[serde(default)]
+    pub swap_execution_evidence: Vec<GoalSwapExecutionReceipt>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GoalRestartRecoveryReport {
     pub recovered_running_goals: Vec<String>,
@@ -331,6 +399,8 @@ pub struct AutopilotGoalsDocumentV1 {
     pub swap_quote_audits: Vec<SwapQuoteAuditReceipt>,
     #[serde(default)]
     pub swap_execution_receipts: Vec<GoalSwapExecutionReceipt>,
+    #[serde(default)]
+    pub run_audit_receipts: Vec<GoalRunAuditReceipt>,
 }
 
 impl Default for AutopilotGoalsDocumentV1 {
@@ -342,6 +412,7 @@ impl Default for AutopilotGoalsDocumentV1 {
             receipts: Vec::new(),
             swap_quote_audits: Vec::new(),
             swap_execution_receipts: Vec::new(),
+            run_audit_receipts: Vec::new(),
         }
     }
 }
@@ -704,6 +775,63 @@ impl AutopilotGoalsState {
         self.last_action = Some(format!(
             "Recorded swap execution receipt {} for goal {}",
             receipt.receipt_id, receipt.goal_id
+        ));
+        self.last_error = None;
+        Ok(())
+    }
+
+    pub fn record_run_audit_receipt(&mut self, audit: GoalRunAuditReceipt) -> Result<(), String> {
+        if audit.audit_id.trim().is_empty() {
+            return Err("Run audit id cannot be empty".to_string());
+        }
+        if audit.goal_id.trim().is_empty() {
+            return Err("Run audit goal id cannot be empty".to_string());
+        }
+        if audit.run_id.trim().is_empty() {
+            return Err("Run audit run id cannot be empty".to_string());
+        }
+        if audit.receipt_id.trim().is_empty() {
+            return Err("Run audit receipt id cannot be empty".to_string());
+        }
+        if audit.finished_at_epoch_seconds < audit.started_at_epoch_seconds {
+            return Err("Run audit finish cannot be before start".to_string());
+        }
+        if !self
+            .document
+            .active_goals
+            .iter()
+            .any(|goal| goal.goal_id == audit.goal_id)
+            && !self
+                .document
+                .historical_goals
+                .iter()
+                .any(|goal| goal.goal_id == audit.goal_id)
+        {
+            return Err(format!(
+                "Run audit goal {} not found in active or historical goals",
+                audit.goal_id
+            ));
+        }
+
+        if let Some(existing) = self
+            .document
+            .run_audit_receipts
+            .iter_mut()
+            .find(|existing| existing.audit_id == audit.audit_id)
+        {
+            *existing = audit.clone();
+        } else {
+            self.document.run_audit_receipts.push(audit.clone());
+        }
+        if self.document.run_audit_receipts.len() > 2_048 {
+            let remove_count = self.document.run_audit_receipts.len().saturating_sub(2_048);
+            self.document.run_audit_receipts.drain(0..remove_count);
+        }
+
+        self.persist_to_disk()?;
+        self.last_action = Some(format!(
+            "Recorded run audit {} for goal {}",
+            audit.audit_id, audit.goal_id
         ));
         self.last_error = None;
         Ok(())
@@ -1586,9 +1714,10 @@ mod tests {
     use openagents_spark::{Balance, PaymentSummary};
 
     use super::{
-        AutopilotGoalsState, GoalConstraints, GoalExecutionReceipt, GoalLifecycleEvent,
-        GoalLifecycleStatus, GoalMissedRunPolicy, GoalObjective, GoalPolicySnapshot, GoalRecord,
-        GoalRetryPolicy, GoalScheduleConfig, GoalScheduleKind, GoalStopCondition,
+        AutopilotGoalsState, GoalAttemptAuditReceipt, GoalConstraints, GoalExecutionReceipt,
+        GoalLifecycleEvent, GoalLifecycleStatus, GoalMissedRunPolicy, GoalObjective,
+        GoalPayoutEvidence, GoalPolicySnapshot, GoalRecord, GoalRetryPolicy, GoalRunAuditReceipt,
+        GoalScheduleConfig, GoalScheduleKind, GoalStopCondition, GoalToolInvocationAudit,
     };
     use crate::app_state::{
         JobHistoryReceiptRow, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
@@ -2068,6 +2197,87 @@ mod tests {
             "quote-exec-1"
         );
         assert_eq!(reloaded.document.swap_execution_receipts[0].fee_sats, 7);
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn record_run_audit_receipt_persists_attempts_and_evidence() {
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch time available")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("autopilot-goals-run-audit-{now_nanos}.json"));
+        let mut state = AutopilotGoalsState::load_from_path(path.clone());
+        state
+            .upsert_active_goal(sample_goal("goal-run-audit"))
+            .expect("upsert active goal should succeed");
+
+        state
+            .record_run_audit_receipt(GoalRunAuditReceipt {
+                audit_id: "run-audit-1".to_string(),
+                receipt_id: "goal-loop-receipt-goal-run-audit-1".to_string(),
+                goal_id: "goal-run-audit".to_string(),
+                run_id: "goal-run-goal-run-audit-1".to_string(),
+                started_at_epoch_seconds: 1_700_000_000,
+                finished_at_epoch_seconds: 1_700_000_120,
+                lifecycle_status: GoalLifecycleStatus::Succeeded,
+                terminal_status_reason: "goal conditions satisfied".to_string(),
+                selected_skills: vec!["blink".to_string(), "l402".to_string()],
+                attempts: vec![GoalAttemptAuditReceipt {
+                    attempt_index: 1,
+                    submitted_at_epoch_seconds: 1_700_000_005,
+                    finished_at_epoch_seconds: Some(1_700_000_040),
+                    thread_id: Some("thread-1".to_string()),
+                    turn_id: Some("turn-1".to_string()),
+                    selected_skills: vec!["blink".to_string()],
+                    turn_status: Some("completed".to_string()),
+                    error: None,
+                    condition_goal_complete: Some(true),
+                    condition_should_continue: Some(false),
+                    condition_completion_reasons: vec![
+                        "wallet delta reached 1000 sats".to_string(),
+                    ],
+                    condition_stop_reasons: Vec::new(),
+                    tool_invocations: vec![GoalToolInvocationAudit {
+                        request_id: "req-1".to_string(),
+                        call_id: "call-1".to_string(),
+                        tool_name: "openagents_wallet_check".to_string(),
+                        response_code: "OA-WALLET-CHECK-OK".to_string(),
+                        success: true,
+                        response_message: "wallet snapshot collected".to_string(),
+                        recorded_at_epoch_seconds: 1_700_000_030,
+                    }],
+                }],
+                condition_goal_complete: Some(true),
+                condition_should_continue: Some(false),
+                condition_completion_reasons: vec!["wallet delta reached 1000 sats".to_string()],
+                condition_stop_reasons: Vec::new(),
+                payout_evidence: vec![GoalPayoutEvidence {
+                    event_id: "earn:job-1:wallet:pay:job-1".to_string(),
+                    occurred_at_epoch_seconds: 1_700_000_090,
+                    job_id: "job-1".to_string(),
+                    payment_pointer: "wallet:pay:job-1".to_string(),
+                    payout_sats: 1_000,
+                }],
+                swap_quote_evidence: Vec::new(),
+                swap_execution_evidence: Vec::new(),
+            })
+            .expect("run audit receipt should persist");
+
+        let reloaded = AutopilotGoalsState::load_from_path(path.clone());
+        assert_eq!(reloaded.document.run_audit_receipts.len(), 1);
+        assert_eq!(reloaded.document.run_audit_receipts[0].attempts.len(), 1);
+        assert_eq!(
+            reloaded.document.run_audit_receipts[0].selected_skills,
+            vec!["blink".to_string(), "l402".to_string()]
+        );
+        assert_eq!(
+            reloaded.document.run_audit_receipts[0]
+                .payout_evidence
+                .len(),
+            1
+        );
 
         let _ = std::fs::remove_file(path);
     }

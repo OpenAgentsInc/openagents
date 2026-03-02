@@ -33,12 +33,39 @@ pub enum GoalLoopStopReason {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct GoalLoopToolInvocationRecord {
+    pub request_id: String,
+    pub call_id: String,
+    pub tool_name: String,
+    pub response_code: String,
+    pub success: bool,
+    pub response_message: String,
+    pub recorded_at_epoch_seconds: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct GoalLoopAttemptRecord {
     pub attempt_index: u32,
     pub submitted_at_epoch_seconds: u64,
     pub finished_at_epoch_seconds: Option<u64>,
     pub turn_status: Option<String>,
     pub error: Option<String>,
+    #[serde(default)]
+    pub thread_id: Option<String>,
+    #[serde(default)]
+    pub turn_id: Option<String>,
+    #[serde(default)]
+    pub selected_skills: Vec<String>,
+    #[serde(default)]
+    pub tool_invocations: Vec<GoalLoopToolInvocationRecord>,
+    #[serde(default)]
+    pub condition_goal_complete: Option<bool>,
+    #[serde(default)]
+    pub condition_should_continue: Option<bool>,
+    #[serde(default)]
+    pub condition_completion_reasons: Vec<String>,
+    #[serde(default)]
+    pub condition_stop_reasons: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -107,7 +134,12 @@ impl GoalLoopExecutorState {
         true
     }
 
-    pub fn mark_attempt_submitted(&mut self, now_epoch_seconds: u64) {
+    pub fn mark_attempt_submitted(
+        &mut self,
+        now_epoch_seconds: u64,
+        thread_id: Option<String>,
+        selected_skills: Vec<String>,
+    ) {
         let Some(run) = self.active_run.as_mut() else {
             return;
         };
@@ -120,6 +152,14 @@ impl GoalLoopExecutorState {
             finished_at_epoch_seconds: None,
             turn_status: None,
             error: None,
+            thread_id,
+            turn_id: None,
+            selected_skills,
+            tool_invocations: Vec::new(),
+            condition_goal_complete: None,
+            condition_should_continue: None,
+            condition_completion_reasons: Vec::new(),
+            condition_stop_reasons: Vec::new(),
         });
     }
 
@@ -155,6 +195,68 @@ impl GoalLoopExecutorState {
         };
         run.phase = GoalLoopPhase::DispatchingTurn;
         run.backoff_until_epoch_seconds = None;
+    }
+
+    pub fn bind_attempt_turn_id(&mut self, turn_id: &str) {
+        let Some(run) = self.active_run.as_mut() else {
+            return;
+        };
+        let Some(last) = run.attempts.last_mut() else {
+            return;
+        };
+        if last.turn_id.is_none() {
+            last.turn_id = Some(turn_id.to_string());
+        }
+    }
+
+    pub fn record_tool_invocation(
+        &mut self,
+        request_id: &str,
+        call_id: &str,
+        tool_name: &str,
+        response_code: &str,
+        success: bool,
+        response_message: &str,
+        recorded_at_epoch_seconds: u64,
+    ) {
+        let Some(run) = self.active_run.as_mut() else {
+            return;
+        };
+        let Some(last) = run.attempts.last_mut() else {
+            return;
+        };
+        last.tool_invocations.push(GoalLoopToolInvocationRecord {
+            request_id: request_id.to_string(),
+            call_id: call_id.to_string(),
+            tool_name: tool_name.to_string(),
+            response_code: response_code.to_string(),
+            success,
+            response_message: response_message.to_string(),
+            recorded_at_epoch_seconds,
+        });
+        if last.tool_invocations.len() > 64 {
+            let overflow = last.tool_invocations.len().saturating_sub(64);
+            last.tool_invocations.drain(0..overflow);
+        }
+    }
+
+    pub fn record_condition_evaluation(
+        &mut self,
+        goal_complete: bool,
+        should_continue: bool,
+        completion_reasons: &[String],
+        stop_reasons: &[String],
+    ) {
+        let Some(run) = self.active_run.as_mut() else {
+            return;
+        };
+        let Some(last) = run.attempts.last_mut() else {
+            return;
+        };
+        last.condition_goal_complete = Some(goal_complete);
+        last.condition_should_continue = Some(should_continue);
+        last.condition_completion_reasons = completion_reasons.to_vec();
+        last.condition_stop_reasons = stop_reasons.to_vec();
     }
 
     pub fn increment_retries(&mut self) -> u32 {
@@ -301,5 +403,51 @@ mod tests {
         let mut executor = GoalLoopExecutorState::default();
         assert!(executor.begin_run("goal-a", 1_700_000_000, 1_000, false));
         assert!(!executor.begin_run("goal-a", 1_700_000_001, 1_100, true));
+    }
+
+    #[test]
+    fn attempt_records_capture_skills_tool_invocations_and_condition_snapshots() {
+        let mut executor = GoalLoopExecutorState::default();
+        assert!(executor.begin_run("goal-a", 1_700_000_000, 1_000, false));
+
+        executor.mark_attempt_submitted(
+            1_700_000_005,
+            Some("thread-1".to_string()),
+            vec!["blink".to_string(), "l402".to_string()],
+        );
+        executor.bind_attempt_turn_id("turn-1");
+        executor.record_tool_invocation(
+            "request-1",
+            "call-1",
+            "openagents_wallet_check",
+            "OA-WALLET-CHECK-OK",
+            true,
+            "wallet snapshot collected",
+            1_700_000_015,
+        );
+        executor.record_condition_evaluation(
+            false,
+            true,
+            &["wallet delta pending".to_string()],
+            &Vec::new(),
+        );
+        executor.mark_attempt_finished(1_700_000_020, "completed", None);
+
+        let run = executor.active_run.as_ref().expect("run should be active");
+        assert_eq!(run.attempts.len(), 1);
+        let attempt = &run.attempts[0];
+        assert_eq!(attempt.thread_id.as_deref(), Some("thread-1"));
+        assert_eq!(attempt.turn_id.as_deref(), Some("turn-1"));
+        assert_eq!(
+            attempt.selected_skills,
+            vec!["blink".to_string(), "l402".to_string()]
+        );
+        assert_eq!(attempt.tool_invocations.len(), 1);
+        assert_eq!(
+            attempt.tool_invocations[0].response_code,
+            "OA-WALLET-CHECK-OK"
+        );
+        assert_eq!(attempt.condition_goal_complete, Some(false));
+        assert_eq!(attempt.condition_should_continue, Some(true));
     }
 }

@@ -372,6 +372,7 @@ pub struct AutopilotTurnMetadata {
     pub is_cad_turn: bool,
     pub classifier_reason: String,
     pub submitted_at_epoch_ms: u64,
+    pub selected_skill_names: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -901,13 +902,22 @@ impl AutopilotChatState {
         is_cad_turn: bool,
         classifier_reason: impl Into<String>,
         submitted_at_epoch_ms: u64,
+        selected_skill_names: Vec<String>,
     ) {
+        let mut selected_skill_names = selected_skill_names
+            .into_iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        selected_skill_names.sort();
+        selected_skill_names.dedup();
         let metadata = AutopilotTurnMetadata {
             submission_seq: self.next_turn_submission_seq,
             thread_id: thread_id.to_string(),
             is_cad_turn,
             classifier_reason: classifier_reason.into(),
             submitted_at_epoch_ms,
+            selected_skill_names,
         };
         self.next_turn_submission_seq = self.next_turn_submission_seq.saturating_add(1);
         self.last_submitted_turn_metadata = Some(metadata.clone());
@@ -915,6 +925,22 @@ impl AutopilotChatState {
         if self.pending_turn_metadata.len() > 64 {
             let overflow = self.pending_turn_metadata.len().saturating_sub(64);
             self.pending_turn_metadata.drain(0..overflow);
+        }
+    }
+
+    pub fn set_last_pending_turn_selected_skills(&mut self, selected_skill_names: Vec<String>) {
+        let mut selected_skill_names = selected_skill_names
+            .into_iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        selected_skill_names.sort();
+        selected_skill_names.dedup();
+        if let Some(last) = self.pending_turn_metadata.back_mut() {
+            last.selected_skill_names = selected_skill_names.clone();
+        }
+        if let Some(last) = self.last_submitted_turn_metadata.as_mut() {
+            last.selected_skill_names = selected_skill_names;
         }
     }
 
@@ -3118,7 +3144,13 @@ mod tests {
         let mut chat = AutopilotChatState::default();
         chat.ensure_thread("thread-1".to_string());
         chat.submit_prompt("design a rack".to_string());
-        chat.record_turn_submission_metadata("thread-1", true, "keyword-pair:design+rack", 1000);
+        chat.record_turn_submission_metadata(
+            "thread-1",
+            true,
+            "keyword-pair:design+rack",
+            1000,
+            Vec::new(),
+        );
 
         let pending = chat
             .active_turn_metadata()
@@ -3136,14 +3168,43 @@ mod tests {
     }
 
     #[test]
+    fn chat_state_updates_pending_turn_selected_skills_for_audit_capture() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-1".to_string());
+        chat.submit_prompt("earn bitcoin".to_string());
+        chat.record_turn_submission_metadata("thread-1", false, "no-cad-signals", 1000, Vec::new());
+
+        chat.set_last_pending_turn_selected_skills(vec![
+            "blink".to_string(),
+            "l402".to_string(),
+            "blink".to_string(),
+        ]);
+
+        let pending = chat
+            .pending_turn_metadata
+            .back()
+            .expect("pending metadata should remain queued");
+        assert_eq!(
+            pending.selected_skill_names,
+            vec!["blink".to_string(), "l402".to_string()]
+        );
+    }
+
+    #[test]
     fn chat_state_binds_turn_metadata_in_submission_order() {
         let mut chat = AutopilotChatState::default();
         chat.ensure_thread("thread-1".to_string());
 
         chat.submit_prompt("summarize commits".to_string());
-        chat.record_turn_submission_metadata("thread-1", false, "no-cad-signals", 1010);
+        chat.record_turn_submission_metadata("thread-1", false, "no-cad-signals", 1010, Vec::new());
         chat.submit_prompt("design wall mount bracket".to_string());
-        chat.record_turn_submission_metadata("thread-1", true, "keyword-pair:design+bracket", 1020);
+        chat.record_turn_submission_metadata(
+            "thread-1",
+            true,
+            "keyword-pair:design+bracket",
+            1020,
+            Vec::new(),
+        );
 
         chat.mark_turn_started("turn-a".to_string());
         chat.mark_turn_started("turn-b".to_string());
@@ -3166,7 +3227,13 @@ mod tests {
         let mut chat = AutopilotChatState::default();
         chat.ensure_thread("thread-1".to_string());
         chat.submit_prompt("design fixture".to_string());
-        chat.record_turn_submission_metadata("thread-1", true, "keyword-pair:design+fixture", 1200);
+        chat.record_turn_submission_metadata(
+            "thread-1",
+            true,
+            "keyword-pair:design+fixture",
+            1200,
+            Vec::new(),
+        );
         assert_eq!(chat.pending_turn_metadata.len(), 1);
 
         chat.mark_pending_turn_dispatch_failed("queue failed");
