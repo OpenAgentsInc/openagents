@@ -1,0 +1,59 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-069",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_corpus_path": "crates/cad/parity/fixtures/drafting_hidden_line_vcad_reference.json",
+  "reference_corpus_sha256": "532a2efb032ed12f3c7a4168306c5bb2265ec419b3ad3726d644fdd50c8fb502",
+  "reference_source": "vcad-kernel-drafting hidden_line.rs cube-view contracts",
+  "reference_commit_match": true,
+  "view_reports": [
+    {
+      "view_direction": "front",
+      "total_edges": 8,
+      "visible_edges": 8,
+      "hidden_edges": 0,
+      "bounds_width": 1.0,
+      "bounds_height": 1.0
+    },
+    {
+      "view_direction": "isometric",
+      "total_edges": 12,
+      "visible_edges": 12,
+      "hidden_edges": 0,
+      "bounds_width": 1.3660254037844388,
+      "bounds_height": 1.5490381056766584
+    },
+    {
+      "view_direction": "occlusion_probe",
+      "total_edges": 8,
+      "visible_edges": 4,
+      "hidden_edges": 4,
+      "bounds_width": 1.0,
+      "bounds_height": 1.0
+    },
+    {
+      "view_direction": "top",
+      "total_edges": 8,
+      "visible_edges": 8,
+      "hidden_edges": 0,
+      "bounds_width": 1.0,
+      "bounds_height": 1.0
+    }
+  ],
+  "front_contract_match": true,
+  "top_contract_match": true,
+  "isometric_contract_match": true,
+  "occlusion_probe_contract_match": true,
+  "visibility_deterministic_match": true,
+  "deterministic_replay_match": true,
+  "deterministic_signature": "e8211e9bce8f683d",
+  "parity_contracts": [
+    "front/top drafting views produce stable edge sets with unit-cube bounds",
+    "isometric drafting view retains all 12 cube edges",
+    "occlusion probe scene retains hidden edges for back-layer geometry",
+    "hidden-line occlusion classification is deterministic across repeated runs",
+    "drafting hidden-line parity fixtures replay deterministically"
+  ]
+}

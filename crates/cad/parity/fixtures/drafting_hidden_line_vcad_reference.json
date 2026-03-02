@@ -1,0 +1,42 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-069",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "vcad-kernel-drafting hidden_line.rs cube-view contracts",
+  "projection_options": {
+    "sharp_angle_degrees": 30.0,
+    "edge_samples": 5
+  },
+  "front_contract": {
+    "min_total_edges": 8,
+    "min_visible_edges": 1,
+    "min_hidden_edges": 0,
+    "bounds_width_min": 0.9,
+    "bounds_width_max": 1.1,
+    "bounds_height_min": 0.9,
+    "bounds_height_max": 1.1
+  },
+  "top_contract": {
+    "min_total_edges": 8,
+    "min_visible_edges": 1,
+    "min_hidden_edges": 0,
+    "bounds_width_min": 0.9,
+    "bounds_width_max": 1.1,
+    "bounds_height_min": 0.9,
+    "bounds_height_max": 1.1
+  },
+  "isometric_contract": {
+    "total_edges": 12,
+    "require_hidden_edges": false,
+    "min_visible_edges": 1
+  },
+  "occlusion_probe_contract": {
+    "min_total_edges": 8,
+    "min_visible_edges": 1,
+    "min_hidden_edges": 1,
+    "bounds_width_min": 0.9,
+    "bounds_width_max": 1.1,
+    "bounds_height_min": 0.9,
+    "bounds_height_max": 1.1
+  }
+}
