@@ -5,7 +5,7 @@
   "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
   "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
   "parity_check_entrypoint": "scripts/cad/parity_check.sh",
-  "source_artifact_count": 131,
+  "source_artifact_count": 133,
   "artifacts": [
     {
       "artifact_id": "assembly_acceptance_scenes_parity_manifest",
@@ -362,6 +362,12 @@
       "bytes": 1152
     },
     {
+      "artifact_id": "fixtures_gpu_acceleration_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/gpu_acceleration_vcad_reference.json",
+      "sha256": "6a1d21c19beaaedc57c57dbe27eca7171a2ba6490ccd60c9ea9ccb8df905b915",
+      "bytes": 1780
+    },
+    {
       "artifact_id": "fixtures_headless_script_harness_vcad_reference",
       "source_path": "crates/cad/parity/fixtures/headless_script_harness_vcad_reference.json",
       "sha256": "551deca83f19ea079486acbbf695903e2e45b1d53248073f5dd6eda103cabd1f",
@@ -438,6 +444,12 @@
       "source_path": "crates/cad/parity/glb_export_parity_manifest.json",
       "sha256": "42b557a05e5edfe0d452bcd5a87844acc23e1bec2b80860384c66d36e308c693",
       "bytes": 2317
+    },
+    {
+      "artifact_id": "gpu_acceleration_parity_manifest",
+      "source_path": "crates/cad/parity/gpu_acceleration_parity_manifest.json",
+      "sha256": "7f991a801a739957a5597aee194d8cae14bae85224bd6feec8757d4b2eb4ecd4",
+      "bytes": 2866
     },
     {
       "artifact_id": "headless_script_harness_parity_manifest",
@@ -580,8 +592,8 @@
     {
       "artifact_id": "parity_dashboard",
       "source_path": "crates/cad/parity/parity_dashboard.json",
-      "sha256": "583a7e85cf1a88a9abbb8901c1e20fa1a3f1b51b4ee1a91a6738872c6ef5aad2",
-      "bytes": 7583
+      "sha256": "cbaab600f6918190349a81156bbe4f93d7a382efdb5ec3019e7cdebca7c871d9",
+      "bytes": 7675
     },
     {
       "artifact_id": "parity_risk_register",

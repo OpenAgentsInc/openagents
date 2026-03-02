@@ -1,0 +1,69 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-095",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/crates/vcad-kernel-gpu/src/lib.rs + ~/code/vcad/crates/vcad-kernel-gpu/src/context.rs + ~/code/vcad/crates/vcad-kernel-gpu/src/normals.rs + ~/code/vcad/crates/vcad-kernel-gpu/src/decimate.rs + ~/code/vcad/crates/vcad-kernel-gpu/Cargo.toml",
+  "expected_backend_profile": {
+    "crate_name": "vcad-kernel-gpu",
+    "wgpu_major_version": 23,
+    "backends": [
+      "webgpu",
+      "webgl"
+    ],
+    "requires_pollster_native": true
+  },
+  "expected_capabilities": [
+    "compute_creased_normals",
+    "decimate_mesh"
+  ],
+  "expected_context_error_codes": [
+    "NoAdapter",
+    "AlreadyInitialized",
+    "DeviceRequest",
+    "BufferMapping",
+    "NotInitialized"
+  ],
+  "expected_normals_samples": [
+    {
+      "case_id": "empty_positions",
+      "positions_len": 0,
+      "indices_len": 6,
+      "output_len": 0
+    },
+    {
+      "case_id": "empty_indices",
+      "positions_len": 9,
+      "indices_len": 0,
+      "output_len": 9
+    },
+    {
+      "case_id": "non_empty_mesh",
+      "positions_len": 18,
+      "indices_len": 12,
+      "output_len": 18
+    }
+  ],
+  "expected_decimation_samples": [
+    {
+      "case_id": "ratio_below_min",
+      "triangle_count": 200,
+      "target_ratio_input": 0.05,
+      "clamped_target_ratio": 0.1,
+      "target_triangles": 20
+    },
+    {
+      "case_id": "ratio_nominal",
+      "triangle_count": 200,
+      "target_ratio_input": 0.5,
+      "clamped_target_ratio": 0.5,
+      "target_triangles": 100
+    },
+    {
+      "case_id": "ratio_above_max",
+      "triangle_count": 200,
+      "target_ratio_input": 1.5,
+      "clamped_target_ratio": 1.0,
+      "target_triangles": 200
+    }
+  ]
+}
