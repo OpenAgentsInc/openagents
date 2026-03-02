@@ -39,7 +39,7 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 97,
+    "source_artifact_count": 99,
     "artifact_ids": [
       "assembly_acceptance_scenes_parity_manifest",
       "assembly_checkpoint_parity_manifest",
@@ -61,6 +61,7 @@
       "drafting_gdt_parity_manifest",
       "drafting_hidden_line_parity_manifest",
       "drafting_kernel_scaffolding_parity_manifest",
+      "drafting_pdf_export_parity_manifest",
       "drafting_persistence_parity_manifest",
       "drafting_projection_parity_manifest",
       "drafting_section_parity_manifest",
@@ -84,6 +85,7 @@
       "fixtures_drafting_gdt_vcad_reference",
       "fixtures_drafting_hidden_line_vcad_reference",
       "fixtures_drafting_kernel_scaffolding_vcad_reference",
+      "fixtures_drafting_pdf_export_vcad_reference",
       "fixtures_drafting_persistence_vcad_reference",
       "fixtures_drafting_projection_vcad_reference",
       "fixtures_drafting_section_vcad_reference",
@@ -140,9 +142,9 @@
       "vcad_reference_manifest"
     ]
   },
-  "phase_status": "phase_f_dxf_export_complete",
+  "phase_status": "phase_f_pdf_export_complete",
   "next_actions": [
-    "Execute VCAD-PARITY-077 through VCAD-PARITY-078 sequentially",
+    "Execute VCAD-PARITY-078 sequentially",
     "Keep phase_a_baseline_v1 profile passing in scorecard and risk register lanes",
     "Refresh parity dashboard after each closed parity issue"
   ]

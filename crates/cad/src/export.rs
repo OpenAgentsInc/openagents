@@ -7,6 +7,9 @@ use crate::{CadError, CadResult};
 
 /// Deterministic STEP schema used for Wave 1 demo exports.
 pub const STEP_FILE_SCHEMA: &str = "AUTOMOTIVE_DESIGN_CC2";
+/// vcad baseline parity contract for drafting PDF export.
+pub const PDF_EXPORT_PARITY_REASON: &str =
+    "vcad baseline has no native drawing PDF exporter; use desktop/browser print pipeline";
 
 /// Stable receipt emitted for deterministic STEP exports.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -249,6 +252,19 @@ pub fn export_projected_view_to_dxf(
 /// Export a projected drafting view to deterministic DXF bytes.
 pub fn export_projected_view_to_dxf_buffer(view: &ProjectedView) -> CadResult<Vec<u8>> {
     Ok(export_projected_view_to_dxf(view)?.bytes)
+}
+
+/// Export a projected drafting view to PDF bytes.
+///
+/// The pinned vcad baseline has no native drawing-PDF exporter in CAD core
+/// (`export/dxf.rs` exists, `export/pdf.rs` is absent). PDF output is currently
+/// handled via UI/system print flow, so the parity contract is a deterministic
+/// unsupported-export error for this API.
+pub fn export_projected_view_to_pdf(_view: &ProjectedView) -> CadResult<Vec<u8>> {
+    Err(CadError::ExportFailed {
+        format: "pdf".to_string(),
+        reason: PDF_EXPORT_PARITY_REASON.to_string(),
+    })
 }
 
 /// Export the active mesh as deterministic STEP text (solid-only, no assembly/PMI/colors).
@@ -521,7 +537,10 @@ fn dxf_export_failed(reason: impl Into<String>) -> CadError {
 
 #[cfg(test)]
 mod tests {
-    use super::{export_projected_view_to_dxf, export_step_from_mesh, sanitize_step_segment};
+    use super::{
+        PDF_EXPORT_PARITY_REASON, export_projected_view_to_dxf, export_projected_view_to_pdf,
+        export_step_from_mesh, sanitize_step_segment,
+    };
     use crate::drafting::{
         EdgeType, Point2D, ProjectedEdge, ProjectedView, ViewDirection, Visibility,
     };
@@ -660,6 +679,25 @@ mod tests {
             error
                 .to_string()
                 .contains("edge 0 contains non-finite coordinate")
+        );
+    }
+
+    #[test]
+    fn pdf_export_matches_vcad_unimplemented_contract() {
+        let view = sample_projected_view();
+        let error = export_projected_view_to_pdf(&view)
+            .expect_err("pdf export should be unsupported in parity baseline");
+        assert!(
+            error
+                .to_string()
+                .contains("export failed (pdf): vcad baseline has no native drawing PDF exporter")
+        );
+        assert_eq!(
+            error,
+            crate::CadError::ExportFailed {
+                format: "pdf".to_string(),
+                reason: PDF_EXPORT_PARITY_REASON.to_string()
+            }
         );
     }
 

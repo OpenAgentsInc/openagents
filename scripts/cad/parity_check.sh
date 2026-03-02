@@ -72,6 +72,7 @@ LANE_LABELS=(
     "drafting-drawing-mode-ui"
     "drafting-persistence"
     "drafting-dxf-export"
+    "drafting-pdf-export"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -341,6 +342,9 @@ run_lane "drafting-persistence" \
 
 run_lane "drafting-dxf-export" \
     "$ROOT_DIR/scripts/cad/parity-drafting-dxf-export-ci.sh"
+
+run_lane "drafting-pdf-export" \
+    "$ROOT_DIR/scripts/cad/parity-drafting-pdf-export-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

@@ -47,6 +47,7 @@ fn parity_check_script_list_mode_includes_required_lanes() {
     assert!(lines.contains(&"drafting-drawing-mode-ui"));
     assert!(lines.contains(&"drafting-persistence"));
     assert!(lines.contains(&"drafting-dxf-export"));
+    assert!(lines.contains(&"drafting-pdf-export"));
     assert!(lines.contains(&"ci-artifact-manifest"));
     assert!(lines.contains(&"risk-register-workflow"));
     assert!(lines.contains(&"baseline-dashboard"));
