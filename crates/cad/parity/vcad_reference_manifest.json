@@ -1,0 +1,25 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-001",
+  "parity_plan_path": "crates/cad/docs/VCAD_PARITY_PLAN.md",
+  "generator": "scripts/cad/freeze-parity-baseline.sh",
+  "frozen_on": "2026-03-02",
+  "baseline_kind": "vcad_reference",
+  "repository": "vcad",
+  "repository_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "reference_repo_hint": "~/code/vcad",
+  "source_documents": [
+    {"path":"README.md","sha256":"c51dea3bd146d0445ccc1fc17e31df2ace9c69ac1e40efb7884685d592e5db7c","bytes":2146},
+    {"path":"docs/features/index.md","sha256":"f5c22a12a0ed1e19624dee1989740671517d37f817f46c795b8cd7ae8fc7bd75","bytes":12969},
+    {"path":"docs/features/ROADMAP.md","sha256":"ea8b295da62013b63394d56efb16c061aa1b96310bc4921893f6fbbd8dd3b9dc","bytes":21972},
+    {"path":"docs/features/sketch-mode.md","sha256":"75dd267b4c5c340f8858c7068590e003ca3e12ac210f4916c3e1558b0188de8d","bytes":8628},
+    {"path":"docs/features/sketch-operations.md","sha256":"4d56cc26eb3e5e9622a425803e90872719cbba9186b973b5a715797f5c82d0eb","bytes":7175},
+    {"path":"docs/features/boolean-operations.md","sha256":"97a680084799cf43cfd88aac17db5ba74f1624b0f30571859095e66084010f82","bytes":5744},
+    {"path":"docs/features/import-export.md","sha256":"71f698ca6b98d4fbecc352d5c89be80ecef05f9463f7a3e8f4510583067347e7","bytes":6472},
+    {"path":"docs/features/assembly-joints.md","sha256":"dcc1566be713cd9b7b80c9031323eba88285c8fd55613f6126372df01253370b","bytes":7755},
+    {"path":"docs/features/drafting-2d.md","sha256":"29d4c17af3b88bd74088f8afecfdbd1810990519e396f78a2f690cb79810eeaa","bytes":12557},
+    {"path":"docs/features/headless-api.md","sha256":"ec12703ae7d8cdeecf5fd880cc19deafe396eca381187600ba0f42e0bb84fc44","bytes":7325},
+    {"path":"docs/features/ray-tracing.md","sha256":"8ecc1c60e7f84850b624f88417479848c29e22f3b2db0554f225910f41346332","bytes":10036},
+    {"path":"docs/features/physics-simulation.md","sha256":"04644bf242ef05f13307afdb2667a1236bb0c2acdb8b5021419cbc9b6140ea23","bytes":10785}
+  ]
+}

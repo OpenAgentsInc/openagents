@@ -1,0 +1,20 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-001",
+  "parity_plan_path": "crates/cad/docs/VCAD_PARITY_PLAN.md",
+  "generator": "scripts/cad/freeze-parity-baseline.sh",
+  "frozen_on": "2026-03-02",
+  "baseline_kind": "openagents_starting_point",
+  "repository": "openagents",
+  "repository_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "reference_repo_hint": ".",
+  "source_documents": [
+    {"path":"crates/cad/docs/PLAN.md","sha256":"ebea047fce8835ac93f8516f3e01362c9d881d1dac926b8622f724f3c28cf6fd","bytes":63141},
+    {"path":"crates/cad/docs/decisions/0001-kernel-strategy.md","sha256":"befd85bd3d814b9899624675f30ed720b5c5250070c35f781bd19a5bebe91236","bytes":3618},
+    {"path":"crates/cad/docs/CAD_FEATURE_OPS.md","sha256":"e41cc937324e7ba1c4e2d822f4c6ebef5bac6890359be2982d2c440ca4a38726","bytes":2400},
+    {"path":"crates/cad/docs/CAD_SKETCH_CONSTRAINTS.md","sha256":"002268537cb2f92b6a0de84758e79830d8ce300b30f7d94230b8eac8698c2177","bytes":1668},
+    {"path":"crates/cad/docs/CAD_SKETCH_FEATURE_OPS.md","sha256":"27dc2d1ff00d6b4656492ade44de918cc60a58dc2de2349e40da5f3872b19d9a","bytes":1548},
+    {"path":"crates/cad/docs/CAD_STEP_IMPORT.md","sha256":"160878109851f6867310f265472baa4404536cbf91a91a5733567e4ee69f6a52","bytes":2539},
+    {"path":"crates/cad/docs/CAD_STEP_EXPORT.md","sha256":"b59954712baf7dd69231a75e147aa007ae1dd72bed93a9ca2140b5353a18298f","bytes":2252}
+  ]
+}
