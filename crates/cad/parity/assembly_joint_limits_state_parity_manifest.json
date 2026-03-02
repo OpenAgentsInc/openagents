@@ -1,0 +1,103 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-060",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_corpus_path": "crates/cad/parity/fixtures/assembly_joint_limits_state_vcad_reference.json",
+  "reference_corpus_sha256": "4e33712eac8c6e654838932f6b81f1da37aef1e0e0f36045c22d52011e220b26",
+  "reference_source": "~/code/vcad/crates/vcad-kernel-physics/src/joints.rs",
+  "reference_commit_match": true,
+  "dof_by_joint_type": {
+    "Ball": 3,
+    "Cylindrical": 1,
+    "Fixed": 0,
+    "Revolute": 1,
+    "Slider": 1
+  },
+  "state_unit_by_joint_type": {
+    "Ball": "deg",
+    "Cylindrical": "deg",
+    "Fixed": "fixed",
+    "Revolute": "deg",
+    "Slider": "mm"
+  },
+  "case_snapshots": [
+    {
+      "case_id": "ball.rad_conversion",
+      "joint_type": "Ball",
+      "requested_state": "-180.000000",
+      "effective_state": "-180.000000",
+      "limits": null,
+      "was_clamped": false,
+      "physics_state": "-3.141593",
+      "roundtrip_state": "-180.000000",
+      "dof": 3,
+      "state_unit": "deg"
+    },
+    {
+      "case_id": "cylindrical.rad_conversion",
+      "joint_type": "Cylindrical",
+      "requested_state": "180.000000",
+      "effective_state": "180.000000",
+      "limits": null,
+      "was_clamped": false,
+      "physics_state": "3.141593",
+      "roundtrip_state": "180.000000",
+      "dof": 1,
+      "state_unit": "deg"
+    },
+    {
+      "case_id": "fixed.force_zero",
+      "joint_type": "Fixed",
+      "requested_state": "42.000000",
+      "effective_state": "0.000000",
+      "limits": null,
+      "was_clamped": false,
+      "physics_state": "0.000000",
+      "roundtrip_state": "0.000000",
+      "dof": 0,
+      "state_unit": "fixed"
+    },
+    {
+      "case_id": "revolute.limit_clamp",
+      "joint_type": "Revolute",
+      "requested_state": "120.000000",
+      "effective_state": "90.000000",
+      "limits": [
+        "-90.000000",
+        "90.000000"
+      ],
+      "was_clamped": true,
+      "physics_state": "1.570796",
+      "roundtrip_state": "90.000000",
+      "dof": 1,
+      "state_unit": "deg"
+    },
+    {
+      "case_id": "slider.limit_clamp",
+      "joint_type": "Slider",
+      "requested_state": "150.000000",
+      "effective_state": "100.000000",
+      "limits": [
+        "-100.000000",
+        "100.000000"
+      ],
+      "was_clamped": true,
+      "physics_state": "0.100000",
+      "roundtrip_state": "100.000000",
+      "dof": 1,
+      "state_unit": "mm"
+    }
+  ],
+  "conversion_roundtrip_match": true,
+  "behavior_match": true,
+  "deterministic_replay_match": true,
+  "deterministic_signature": "ffd182e5888a08ff",
+  "parity_contracts": [
+    "joint dof semantics match vcad physics mapping (fixed=0, rev/slider/cyl=1, ball=3)",
+    "state units and conversions match vcad semantics (deg<->rad, mm<->m, fixed=0)",
+    "revolute/slider limits clamp requested state before conversion",
+    "joint limits/state parity fixtures replay deterministically"
+  ]
+}
