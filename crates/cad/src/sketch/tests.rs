@@ -294,6 +294,7 @@ fn constraint_solver_solves_common_mvp_constraints_deterministically() {
             id: "constraint.tangent.001".to_string(),
             line_entity_id: "entity.line.tangent".to_string(),
             arc_entity_id: "entity.arc.tangent".to_string(),
+            at_anchor_id: None,
             tolerance_mm: Some(0.001),
         })
         .expect("tangent constraint should insert");
@@ -409,6 +410,7 @@ fn tangent_constraint_reports_diagnostic_when_unsolved() {
             id: "constraint.tangent.unsolved".to_string(),
             line_entity_id: "entity.line.diag".to_string(),
             arc_entity_id: "entity.arc.unsolved".to_string(),
+            at_anchor_id: None,
             tolerance_mm: Some(0.001),
         })
         .expect("constraint should insert");
@@ -532,4 +534,356 @@ fn spline_validation_rejects_anchor_point_count_mismatch() {
         result.is_err(),
         "spline must reject mismatched control point and anchor counts"
     );
+}
+
+#[test]
+fn sketch_model_validates_full_constraint_enum_set() {
+    let mut model = CadSketchModel::default();
+    model
+        .insert_plane(primary_plane())
+        .expect("plane should insert");
+
+    model
+        .insert_entity(CadSketchEntity::Line {
+            id: "entity.line.a".to_string(),
+            plane_id: "plane.front".to_string(),
+            start_mm: [0.0, 0.0],
+            end_mm: [20.0, 0.0],
+            anchor_ids: [
+                "anchor.line.a.start".to_string(),
+                "anchor.line.a.end".to_string(),
+            ],
+            construction: false,
+        })
+        .expect("line a should insert");
+    model
+        .insert_entity(CadSketchEntity::Line {
+            id: "entity.line.b".to_string(),
+            plane_id: "plane.front".to_string(),
+            start_mm: [0.0, 10.0],
+            end_mm: [20.0, 10.0],
+            anchor_ids: [
+                "anchor.line.b.start".to_string(),
+                "anchor.line.b.end".to_string(),
+            ],
+            construction: false,
+        })
+        .expect("line b should insert");
+    model
+        .insert_entity(CadSketchEntity::Line {
+            id: "entity.line.c".to_string(),
+            plane_id: "plane.front".to_string(),
+            start_mm: [10.0, -10.0],
+            end_mm: [10.0, 20.0],
+            anchor_ids: [
+                "anchor.line.c.start".to_string(),
+                "anchor.line.c.end".to_string(),
+            ],
+            construction: false,
+        })
+        .expect("line c should insert");
+    model
+        .insert_entity(CadSketchEntity::Arc {
+            id: "entity.arc.a".to_string(),
+            plane_id: "plane.front".to_string(),
+            center_mm: [40.0, 0.0],
+            radius_mm: 5.0,
+            start_deg: 0.0,
+            end_deg: 180.0,
+            anchor_ids: [
+                "anchor.arc.a.center".to_string(),
+                "anchor.arc.a.start".to_string(),
+                "anchor.arc.a.end".to_string(),
+            ],
+            construction: false,
+        })
+        .expect("arc a should insert");
+    model
+        .insert_entity(CadSketchEntity::Circle {
+            id: "entity.circle.a".to_string(),
+            plane_id: "plane.front".to_string(),
+            center_mm: [40.0, 12.0],
+            radius_mm: 5.0,
+            anchor_ids: [
+                "anchor.circle.a.center".to_string(),
+                "anchor.circle.a.radius".to_string(),
+            ],
+            construction: false,
+        })
+        .expect("circle a should insert");
+    model
+        .insert_entity(CadSketchEntity::Point {
+            id: "entity.point.a".to_string(),
+            plane_id: "plane.front".to_string(),
+            position_mm: [5.0, 5.0],
+            anchor_id: "anchor.point.a".to_string(),
+            construction: false,
+        })
+        .expect("point a should insert");
+    model
+        .insert_entity(CadSketchEntity::Point {
+            id: "entity.point.b".to_string(),
+            plane_id: "plane.front".to_string(),
+            position_mm: [15.0, 5.0],
+            anchor_id: "anchor.point.b".to_string(),
+            construction: false,
+        })
+        .expect("point b should insert");
+
+    model
+        .insert_constraint(CadSketchConstraint::Coincident {
+            id: "constraint.enum.coincident".to_string(),
+            first_anchor_id: "anchor.point.a".to_string(),
+            second_anchor_id: "anchor.line.a.start".to_string(),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("coincident should insert");
+    model
+        .insert_constraint(CadSketchConstraint::PointOnLine {
+            id: "constraint.enum.point_on_line".to_string(),
+            point_anchor_id: "anchor.point.b".to_string(),
+            line_entity_id: "entity.line.a".to_string(),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("point_on_line should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Parallel {
+            id: "constraint.enum.parallel".to_string(),
+            first_line_entity_id: "entity.line.a".to_string(),
+            second_line_entity_id: "entity.line.b".to_string(),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("parallel should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Perpendicular {
+            id: "constraint.enum.perpendicular".to_string(),
+            first_line_entity_id: "entity.line.a".to_string(),
+            second_line_entity_id: "entity.line.c".to_string(),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("perpendicular should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Horizontal {
+            id: "constraint.enum.horizontal".to_string(),
+            line_entity_id: "entity.line.a".to_string(),
+        })
+        .expect("horizontal should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Vertical {
+            id: "constraint.enum.vertical".to_string(),
+            line_entity_id: "entity.line.c".to_string(),
+        })
+        .expect("vertical should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Tangent {
+            id: "constraint.enum.tangent".to_string(),
+            line_entity_id: "entity.line.b".to_string(),
+            arc_entity_id: "entity.arc.a".to_string(),
+            at_anchor_id: Some("anchor.arc.a.start".to_string()),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("tangent should insert");
+    model
+        .insert_constraint(CadSketchConstraint::EqualLength {
+            id: "constraint.enum.equal_length".to_string(),
+            first_line_entity_id: "entity.line.a".to_string(),
+            second_line_entity_id: "entity.line.b".to_string(),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("equal_length should insert");
+    model
+        .insert_constraint(CadSketchConstraint::EqualRadius {
+            id: "constraint.enum.equal_radius".to_string(),
+            first_curve_entity_id: "entity.arc.a".to_string(),
+            second_curve_entity_id: "entity.circle.a".to_string(),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("equal_radius should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Concentric {
+            id: "constraint.enum.concentric".to_string(),
+            first_curve_entity_id: "entity.arc.a".to_string(),
+            second_curve_entity_id: "entity.circle.a".to_string(),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("concentric should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Fixed {
+            id: "constraint.enum.fixed".to_string(),
+            point_anchor_id: "anchor.point.a".to_string(),
+            target_mm: [5.0, 5.0],
+            tolerance_mm: Some(0.01),
+        })
+        .expect("fixed should insert");
+    model
+        .insert_constraint(CadSketchConstraint::PointOnCircle {
+            id: "constraint.enum.point_on_circle".to_string(),
+            point_anchor_id: "anchor.point.b".to_string(),
+            circle_entity_id: "entity.circle.a".to_string(),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("point_on_circle should insert");
+    model
+        .insert_constraint(CadSketchConstraint::LineThroughCenter {
+            id: "constraint.enum.line_through_center".to_string(),
+            line_entity_id: "entity.line.c".to_string(),
+            circle_entity_id: "entity.circle.a".to_string(),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("line_through_center should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Midpoint {
+            id: "constraint.enum.midpoint".to_string(),
+            midpoint_anchor_id: "anchor.point.a".to_string(),
+            line_entity_id: "entity.line.b".to_string(),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("midpoint should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Symmetric {
+            id: "constraint.enum.symmetric".to_string(),
+            first_anchor_id: "anchor.point.a".to_string(),
+            second_anchor_id: "anchor.point.b".to_string(),
+            axis_line_entity_id: "entity.line.c".to_string(),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("symmetric should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Distance {
+            id: "constraint.enum.distance".to_string(),
+            first_anchor_id: "anchor.point.a".to_string(),
+            second_anchor_id: "anchor.point.b".to_string(),
+            target_mm: 10.0,
+            tolerance_mm: Some(0.01),
+        })
+        .expect("distance should insert");
+    model
+        .insert_constraint(CadSketchConstraint::PointLineDistance {
+            id: "constraint.enum.point_line_distance".to_string(),
+            point_anchor_id: "anchor.point.b".to_string(),
+            line_entity_id: "entity.line.c".to_string(),
+            target_mm: 5.0,
+            tolerance_mm: Some(0.01),
+        })
+        .expect("point_line_distance should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Angle {
+            id: "constraint.enum.angle".to_string(),
+            first_line_entity_id: "entity.line.a".to_string(),
+            second_line_entity_id: "entity.line.c".to_string(),
+            target_deg: 90.0,
+            tolerance_deg: Some(0.01),
+        })
+        .expect("angle should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Radius {
+            id: "constraint.enum.radius".to_string(),
+            curve_entity_id: "entity.circle.a".to_string(),
+            target_mm: 5.0,
+            tolerance_mm: Some(0.01),
+        })
+        .expect("radius should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Length {
+            id: "constraint.enum.length".to_string(),
+            line_entity_id: "entity.line.a".to_string(),
+            target_mm: 20.0,
+            tolerance_mm: Some(0.01),
+        })
+        .expect("length should insert");
+    model
+        .insert_constraint(CadSketchConstraint::HorizontalDistance {
+            id: "constraint.enum.horizontal_distance".to_string(),
+            point_anchor_id: "anchor.point.a".to_string(),
+            target_mm: 5.0,
+            tolerance_mm: Some(0.01),
+        })
+        .expect("horizontal_distance should insert");
+    model
+        .insert_constraint(CadSketchConstraint::VerticalDistance {
+            id: "constraint.enum.vertical_distance".to_string(),
+            point_anchor_id: "anchor.point.a".to_string(),
+            target_mm: 5.0,
+            tolerance_mm: Some(0.01),
+        })
+        .expect("vertical_distance should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Diameter {
+            id: "constraint.enum.diameter".to_string(),
+            circle_entity_id: "entity.circle.a".to_string(),
+            target_mm: 10.0,
+            tolerance_mm: Some(0.01),
+        })
+        .expect("diameter should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Dimension {
+            id: "constraint.enum.dimension.legacy".to_string(),
+            entity_id: "entity.line.b".to_string(),
+            dimension_kind: CadDimensionConstraintKind::Length,
+            target_mm: 20.0,
+            tolerance_mm: Some(0.01),
+        })
+        .expect("legacy dimension should insert");
+
+    model
+        .validate()
+        .expect("full constraint enum should validate");
+}
+
+#[test]
+fn unsupported_constraint_kinds_emit_deterministic_warning_diagnostic() {
+    let mut model = CadSketchModel::default();
+    model
+        .insert_plane(primary_plane())
+        .expect("plane should insert");
+    model
+        .insert_entity(CadSketchEntity::Line {
+            id: "entity.line.a".to_string(),
+            plane_id: "plane.front".to_string(),
+            start_mm: [0.0, 0.0],
+            end_mm: [20.0, 0.0],
+            anchor_ids: [
+                "anchor.line.a.start".to_string(),
+                "anchor.line.a.end".to_string(),
+            ],
+            construction: false,
+        })
+        .expect("line should insert");
+    model
+        .insert_entity(CadSketchEntity::Point {
+            id: "entity.point.a".to_string(),
+            plane_id: "plane.front".to_string(),
+            position_mm: [5.0, 5.0],
+            anchor_id: "anchor.point.a".to_string(),
+            construction: false,
+        })
+        .expect("point should insert");
+    model
+        .insert_constraint(CadSketchConstraint::PointOnLine {
+            id: "constraint.point_on_line".to_string(),
+            point_anchor_id: "anchor.point.a".to_string(),
+            line_entity_id: "entity.line.a".to_string(),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("point_on_line should insert");
+
+    let report = model
+        .solve_constraints_deterministic()
+        .expect("solver should run");
+    assert!(
+        !report.passed,
+        "unsupported constraints should keep solve incomplete"
+    );
+    assert_eq!(report.solved_constraints, 0);
+    assert_eq!(report.unsolved_constraints, 1);
+    assert_eq!(
+        report.constraint_status.get("constraint.point_on_line"),
+        Some(&"unsolved".to_string())
+    );
+    assert!(report.diagnostics.iter().any(|entry| {
+        entry.code == "SKETCH_CONSTRAINT_KIND_NOT_IMPLEMENTED"
+            && entry.constraint_id == "constraint.point_on_line"
+            && entry.severity == CadSketchSolveSeverity::Warning
+            && entry.message.contains("point_on_line")
+    }));
 }

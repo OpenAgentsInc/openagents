@@ -123,7 +123,19 @@ pub fn build_dashboard(
         .artifact_ids
         .iter()
         .any(|artifact_id| artifact_id == "sketch_plane_parity_manifest");
+    let has_phase_d_constraint_enum = artifacts
+        .artifact_ids
+        .iter()
+        .any(|artifact_id| artifact_id == "sketch_constraint_enum_parity_manifest");
     let phase_status = if baseline_scorecard_pass
+        && baseline_risk_pass
+        && has_phase_c_checkpoint
+        && has_phase_d_entity_set
+        && has_phase_d_sketch_plane
+        && has_phase_d_constraint_enum
+    {
+        "phase_d_constraint_enum_complete".to_string()
+    } else if baseline_scorecard_pass
         && baseline_risk_pass
         && has_phase_c_checkpoint
         && has_phase_d_entity_set
@@ -160,6 +172,13 @@ pub fn build_dashboard(
     } else if phase_status == "phase_d_sketch_plane_complete" {
         vec![
             "Execute VCAD-PARITY-043 through VCAD-PARITY-055 sequentially".to_string(),
+            "Keep phase_a_baseline_v1 profile passing in scorecard and risk register lanes"
+                .to_string(),
+            "Refresh parity dashboard after each closed parity issue".to_string(),
+        ]
+    } else if phase_status == "phase_d_constraint_enum_complete" {
+        vec![
+            "Execute VCAD-PARITY-044 through VCAD-PARITY-055 sequentially".to_string(),
             "Keep phase_a_baseline_v1 profile passing in scorecard and risk register lanes"
                 .to_string(),
             "Refresh parity dashboard after each closed parity issue".to_string(),
@@ -295,11 +314,11 @@ mod tests {
                 source_artifact_count: 1,
                 artifact_ids: vec!["artifact".to_string()],
             },
-            phase_status: "phase_d_sketch_plane_complete".to_string(),
+            phase_status: "phase_d_constraint_enum_complete".to_string(),
             next_actions: vec!["x".to_string()],
         };
         let markdown = render_dashboard_markdown(&dashboard);
         assert!(markdown.contains("# Baseline Parity Dashboard"));
-        assert!(markdown.contains("phase_d_sketch_plane_complete"));
+        assert!(markdown.contains("phase_d_constraint_enum_complete"));
     }
 }

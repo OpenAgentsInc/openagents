@@ -91,97 +91,185 @@ impl CadSketchModel {
                     first_anchor_id,
                     second_anchor_id,
                     ..
-                } => {
-                    if !anchor_bindings.contains_key(first_anchor_id) {
-                        return Err(CadError::ParseFailed {
-                            reason: format!(
-                                "constraint {} references unknown anchor {}",
-                                constraint.id(),
-                                first_anchor_id
-                            ),
-                        });
-                    }
-                    if !anchor_bindings.contains_key(second_anchor_id) {
-                        return Err(CadError::ParseFailed {
-                            reason: format!(
-                                "constraint {} references unknown anchor {}",
-                                constraint.id(),
-                                second_anchor_id
-                            ),
-                        });
-                    }
                 }
-                CadSketchConstraint::Horizontal { line_entity_id, .. }
-                | CadSketchConstraint::Vertical { line_entity_id, .. } => {
-                    match self.entities.get(line_entity_id) {
-                        Some(CadSketchEntity::Line { .. }) => {}
-                        Some(_) => {
-                            return Err(CadError::ParseFailed {
-                                reason: format!(
-                                    "constraint {} requires line entity {}, found non-line entity",
-                                    constraint.id(),
-                                    line_entity_id
-                                ),
-                            });
-                        }
-                        None => {
-                            return Err(CadError::ParseFailed {
-                                reason: format!(
-                                    "constraint {} references unknown line entity {}",
-                                    constraint.id(),
-                                    line_entity_id
-                                ),
-                            });
-                        }
-                    }
+                | CadSketchConstraint::Distance {
+                    first_anchor_id,
+                    second_anchor_id,
+                    ..
+                }
+                | CadSketchConstraint::Symmetric {
+                    first_anchor_id,
+                    second_anchor_id,
+                    ..
+                } => {
+                    ensure_anchor_exists(
+                        anchor_bindings.get(first_anchor_id),
+                        constraint,
+                        first_anchor_id,
+                    )?;
+                    ensure_anchor_exists(
+                        anchor_bindings.get(second_anchor_id),
+                        constraint,
+                        second_anchor_id,
+                    )?;
+                }
+                CadSketchConstraint::PointOnLine {
+                    point_anchor_id,
+                    line_entity_id,
+                    ..
+                }
+                | CadSketchConstraint::PointLineDistance {
+                    point_anchor_id,
+                    line_entity_id,
+                    ..
+                }
+                | CadSketchConstraint::Midpoint {
+                    midpoint_anchor_id: point_anchor_id,
+                    line_entity_id,
+                    ..
+                } => {
+                    ensure_anchor_exists(
+                        anchor_bindings.get(point_anchor_id),
+                        constraint,
+                        point_anchor_id,
+                    )?;
+                    ensure_line_entity(
+                        self.entities.get(line_entity_id),
+                        constraint,
+                        line_entity_id,
+                    )?;
+                }
+                CadSketchConstraint::Parallel {
+                    first_line_entity_id,
+                    second_line_entity_id,
+                    ..
+                }
+                | CadSketchConstraint::Perpendicular {
+                    first_line_entity_id,
+                    second_line_entity_id,
+                    ..
+                }
+                | CadSketchConstraint::EqualLength {
+                    first_line_entity_id,
+                    second_line_entity_id,
+                    ..
+                }
+                | CadSketchConstraint::Angle {
+                    first_line_entity_id,
+                    second_line_entity_id,
+                    ..
+                } => {
+                    ensure_line_entity(
+                        self.entities.get(first_line_entity_id),
+                        constraint,
+                        first_line_entity_id,
+                    )?;
+                    ensure_line_entity(
+                        self.entities.get(second_line_entity_id),
+                        constraint,
+                        second_line_entity_id,
+                    )?;
                 }
                 CadSketchConstraint::Tangent {
                     line_entity_id,
                     arc_entity_id,
+                    at_anchor_id,
                     ..
                 } => {
-                    match self.entities.get(line_entity_id) {
-                        Some(CadSketchEntity::Line { .. }) => {}
-                        Some(_) => {
-                            return Err(CadError::ParseFailed {
-                                reason: format!(
-                                    "constraint {} requires line entity {}, found non-line entity",
-                                    constraint.id(),
-                                    line_entity_id
-                                ),
-                            });
-                        }
-                        None => {
-                            return Err(CadError::ParseFailed {
-                                reason: format!(
-                                    "constraint {} references unknown line entity {}",
-                                    constraint.id(),
-                                    line_entity_id
-                                ),
-                            });
-                        }
+                    ensure_line_entity(
+                        self.entities.get(line_entity_id),
+                        constraint,
+                        line_entity_id,
+                    )?;
+                    ensure_curve_entity(
+                        self.entities.get(arc_entity_id),
+                        constraint,
+                        arc_entity_id,
+                    )?;
+                    if let Some(anchor_id) = at_anchor_id {
+                        ensure_anchor_exists(
+                            anchor_bindings.get(anchor_id),
+                            constraint,
+                            anchor_id,
+                        )?;
                     }
-                    match self.entities.get(arc_entity_id) {
-                        Some(CadSketchEntity::Arc { .. }) => {}
-                        Some(_) => {
-                            return Err(CadError::ParseFailed {
-                                reason: format!(
-                                    "constraint {} requires arc entity {}, found non-arc entity",
-                                    constraint.id(),
-                                    arc_entity_id
-                                ),
-                            });
-                        }
-                        None => {
-                            return Err(CadError::ParseFailed {
-                                reason: format!(
-                                    "constraint {} references unknown arc entity {}",
-                                    constraint.id(),
-                                    arc_entity_id
-                                ),
-                            });
-                        }
-                    }
+                }
+                CadSketchConstraint::Horizontal { line_entity_id, .. }
+                | CadSketchConstraint::Vertical { line_entity_id, .. }
+                | CadSketchConstraint::Length { line_entity_id, .. } => {
+                    ensure_line_entity(
+                        self.entities.get(line_entity_id),
+                        constraint,
+                        line_entity_id,
+                    )?;
+                }
+                CadSketchConstraint::EqualRadius {
+                    first_curve_entity_id,
+                    second_curve_entity_id,
+                    ..
+                }
+                | CadSketchConstraint::Concentric {
+                    first_curve_entity_id,
+                    second_curve_entity_id,
+                    ..
+                } => {
+                    ensure_curve_entity(
+                        self.entities.get(first_curve_entity_id),
+                        constraint,
+                        first_curve_entity_id,
+                    )?;
+                    ensure_curve_entity(
+                        self.entities.get(second_curve_entity_id),
+                        constraint,
+                        second_curve_entity_id,
+                    )?;
+                }
+                CadSketchConstraint::Fixed {
+                    point_anchor_id, ..
+                }
+                | CadSketchConstraint::HorizontalDistance {
+                    point_anchor_id, ..
+                }
+                | CadSketchConstraint::VerticalDistance {
+                    point_anchor_id, ..
+                } => {
+                    ensure_anchor_exists(
+                        anchor_bindings.get(point_anchor_id),
+                        constraint,
+                        point_anchor_id,
+                    )?;
+                }
+                CadSketchConstraint::PointOnCircle {
+                    point_anchor_id,
+                    circle_entity_id,
+                    ..
+                } => {
+                    ensure_anchor_exists(
+                        anchor_bindings.get(point_anchor_id),
+                        constraint,
+                        point_anchor_id,
+                    )?;
+                    ensure_curve_entity(
+                        self.entities.get(circle_entity_id),
+                        constraint,
+                        circle_entity_id,
+                    )?;
+                }
+                CadSketchConstraint::LineThroughCenter {
+                    line_entity_id,
+                    circle_entity_id,
+                    ..
+                } => {
+                    ensure_line_entity(
+                        self.entities.get(line_entity_id),
+                        constraint,
+                        line_entity_id,
+                    )?;
+                    ensure_curve_entity(
+                        self.entities.get(circle_entity_id),
+                        constraint,
+                        circle_entity_id,
+                    )?;
                 }
                 CadSketchConstraint::Dimension {
                     entity_id,
@@ -189,7 +277,9 @@ impl CadSketchModel {
                     ..
                 } => match (dimension_kind, self.entities.get(entity_id)) {
                     (CadDimensionConstraintKind::Length, Some(CadSketchEntity::Line { .. })) => {}
-                    (CadDimensionConstraintKind::Radius, Some(CadSketchEntity::Arc { .. })) => {}
+                    (CadDimensionConstraintKind::Radius, Some(CadSketchEntity::Arc { .. }))
+                    | (CadDimensionConstraintKind::Radius, Some(CadSketchEntity::Circle { .. })) => {
+                    }
                     (_, Some(_)) => {
                         return Err(CadError::ParseFailed {
                             reason: format!(
@@ -209,6 +299,24 @@ impl CadSketchModel {
                         });
                     }
                 },
+                CadSketchConstraint::Radius {
+                    curve_entity_id, ..
+                } => {
+                    ensure_curve_entity(
+                        self.entities.get(curve_entity_id),
+                        constraint,
+                        curve_entity_id,
+                    )?;
+                }
+                CadSketchConstraint::Diameter {
+                    circle_entity_id, ..
+                } => {
+                    ensure_curve_entity(
+                        self.entities.get(circle_entity_id),
+                        constraint,
+                        circle_entity_id,
+                    )?;
+                }
             }
         }
         Ok(())
@@ -247,6 +355,7 @@ impl CadSketchModel {
                 CadSketchConstraint::Tangent {
                     line_entity_id,
                     arc_entity_id,
+                    at_anchor_id: _,
                     tolerance_mm,
                     ..
                 } => self.solve_tangent(
@@ -268,6 +377,31 @@ impl CadSketchModel {
                     target_mm,
                     tolerance_mm.unwrap_or(0.001),
                 ),
+                CadSketchConstraint::Length {
+                    line_entity_id,
+                    target_mm,
+                    tolerance_mm,
+                    ..
+                } => self.solve_dimension(
+                    &constraint_id,
+                    &line_entity_id,
+                    CadDimensionConstraintKind::Length,
+                    target_mm,
+                    tolerance_mm.unwrap_or(0.001),
+                ),
+                CadSketchConstraint::Radius {
+                    curve_entity_id,
+                    target_mm,
+                    tolerance_mm,
+                    ..
+                } => self.solve_dimension(
+                    &constraint_id,
+                    &curve_entity_id,
+                    CadDimensionConstraintKind::Radius,
+                    target_mm,
+                    tolerance_mm.unwrap_or(0.001),
+                ),
+                other => Ok(self.unsupported_constraint_outcome(&constraint_id, other.kind_key())),
             }?;
 
             residuals_mm.insert(constraint_id.clone(), outcome.residual_mm);
@@ -419,7 +553,7 @@ impl CadSketchModel {
         tolerance_mm: f64,
     ) -> CadResult<ConstraintSolveOutcome> {
         let (line_start, line_end) = self.line_endpoints(line_entity_id)?;
-        let (arc_center, arc_radius) = self.arc_center_radius(arc_entity_id)?;
+        let (arc_center, arc_radius) = self.curve_center_radius(arc_entity_id)?;
         let mut residual =
             tangent_residual_mm(line_start, line_end, arc_center, arc_radius, tolerance_mm)?;
 
@@ -526,8 +660,8 @@ impl CadSketchModel {
                 })
             }
             CadDimensionConstraintKind::Radius => {
-                self.set_arc_radius(entity_id, target_mm)?;
-                let (_center, radius_after) = self.arc_center_radius(entity_id)?;
+                self.set_curve_radius(entity_id, target_mm)?;
+                let (_center, radius_after) = self.curve_center_radius(entity_id)?;
                 let residual = (radius_after - target_mm).abs();
                 let solved = residual <= tolerance_mm;
                 let diagnostic = (!solved).then(|| CadSketchSolveDiagnostic {
@@ -545,6 +679,27 @@ impl CadSketchModel {
                     diagnostic,
                 })
             }
+        }
+    }
+
+    fn unsupported_constraint_outcome(
+        &self,
+        constraint_id: &str,
+        constraint_kind: &str,
+    ) -> ConstraintSolveOutcome {
+        ConstraintSolveOutcome {
+            solved: false,
+            residual_mm: 1.0,
+            diagnostic: Some(CadSketchSolveDiagnostic {
+                code: "SKETCH_CONSTRAINT_KIND_NOT_IMPLEMENTED".to_string(),
+                severity: CadSketchSolveSeverity::Warning,
+                constraint_id: constraint_id.to_string(),
+                message: format!(
+                    "constraint kind {constraint_kind} is validated but not yet solved in deterministic pass"
+                ),
+                remediation_hint: "iterative LM solver parity is delivered in VCAD-PARITY-044/045"
+                    .to_string(),
+            }),
         }
     }
 
@@ -1007,26 +1162,31 @@ impl CadSketchModel {
         }
     }
 
-    fn arc_center_radius(&self, entity_id: &str) -> CadResult<([f64; 2], f64)> {
+    fn curve_center_radius(&self, entity_id: &str) -> CadResult<([f64; 2], f64)> {
         match self.entities.get(entity_id) {
             Some(CadSketchEntity::Arc {
                 center_mm,
                 radius_mm,
                 ..
             }) => Ok((*center_mm, *radius_mm)),
+            Some(CadSketchEntity::Circle {
+                center_mm,
+                radius_mm,
+                ..
+            }) => Ok((*center_mm, *radius_mm)),
             Some(_) => Err(CadError::ParseFailed {
-                reason: format!("entity {entity_id} is not an arc"),
+                reason: format!("entity {entity_id} is not a curve"),
             }),
             None => Err(CadError::ParseFailed {
-                reason: format!("missing arc entity {entity_id}"),
+                reason: format!("missing curve entity {entity_id}"),
             }),
         }
     }
 
-    fn set_arc_radius(&mut self, entity_id: &str, radius_mm: f64) -> CadResult<()> {
+    fn set_curve_radius(&mut self, entity_id: &str, radius_mm: f64) -> CadResult<()> {
         if !radius_mm.is_finite() || radius_mm <= 0.0 {
             return Err(CadError::ParseFailed {
-                reason: format!("arc {entity_id} radius must be finite and > 0"),
+                reason: format!("curve {entity_id} radius must be finite and > 0"),
             });
         }
         match self.entities.get_mut(entity_id) {
@@ -1036,13 +1196,84 @@ impl CadSketchModel {
                 *radius = radius_mm;
                 Ok(())
             }
+            Some(CadSketchEntity::Circle {
+                radius_mm: radius, ..
+            }) => {
+                *radius = radius_mm;
+                Ok(())
+            }
             Some(_) => Err(CadError::ParseFailed {
-                reason: format!("entity {entity_id} is not an arc"),
+                reason: format!("entity {entity_id} is not a curve"),
             }),
             None => Err(CadError::ParseFailed {
-                reason: format!("missing arc entity {entity_id}"),
+                reason: format!("missing curve entity {entity_id}"),
             }),
         }
+    }
+}
+
+fn ensure_anchor_exists(
+    binding: Option<&AnchorBinding>,
+    constraint: &CadSketchConstraint,
+    anchor_id: &str,
+) -> CadResult<()> {
+    if binding.is_some() {
+        return Ok(());
+    }
+    Err(CadError::ParseFailed {
+        reason: format!(
+            "constraint {} references unknown anchor {}",
+            constraint.id(),
+            anchor_id
+        ),
+    })
+}
+
+fn ensure_line_entity(
+    entity: Option<&CadSketchEntity>,
+    constraint: &CadSketchConstraint,
+    line_entity_id: &str,
+) -> CadResult<()> {
+    match entity {
+        Some(CadSketchEntity::Line { .. }) => Ok(()),
+        Some(_) => Err(CadError::ParseFailed {
+            reason: format!(
+                "constraint {} requires line entity {}, found non-line entity",
+                constraint.id(),
+                line_entity_id
+            ),
+        }),
+        None => Err(CadError::ParseFailed {
+            reason: format!(
+                "constraint {} references unknown line entity {}",
+                constraint.id(),
+                line_entity_id
+            ),
+        }),
+    }
+}
+
+fn ensure_curve_entity(
+    entity: Option<&CadSketchEntity>,
+    constraint: &CadSketchConstraint,
+    curve_entity_id: &str,
+) -> CadResult<()> {
+    match entity {
+        Some(CadSketchEntity::Arc { .. }) | Some(CadSketchEntity::Circle { .. }) => Ok(()),
+        Some(_) => Err(CadError::ParseFailed {
+            reason: format!(
+                "constraint {} requires curve entity {}, found non-curve entity",
+                constraint.id(),
+                curve_entity_id
+            ),
+        }),
+        None => Err(CadError::ParseFailed {
+            reason: format!(
+                "constraint {} references unknown curve entity {}",
+                constraint.id(),
+                curve_entity_id
+            ),
+        }),
     }
 }
 

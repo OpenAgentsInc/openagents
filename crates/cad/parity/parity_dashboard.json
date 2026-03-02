@@ -39,7 +39,7 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 42,
+    "source_artifact_count": 43,
     "artifact_ids": [
       "chamfer_feature_graph_parity_manifest",
       "core_modeling_checkpoint_parity_manifest",
@@ -74,6 +74,7 @@
       "pattern_parity_manifest",
       "primitive_contracts_parity_manifest",
       "shell_feature_graph_parity_manifest",
+      "sketch_constraint_enum_parity_manifest",
       "sketch_entity_set_parity_manifest",
       "sketch_plane_parity_manifest",
       "sweep_parity_manifest",
@@ -85,9 +86,9 @@
       "vcad_reference_manifest"
     ]
   },
-  "phase_status": "phase_d_sketch_plane_complete",
+  "phase_status": "phase_d_constraint_enum_complete",
   "next_actions": [
-    "Execute VCAD-PARITY-043 through VCAD-PARITY-055 sequentially",
+    "Execute VCAD-PARITY-044 through VCAD-PARITY-055 sequentially",
     "Keep phase_a_baseline_v1 profile passing in scorecard and risk register lanes",
     "Refresh parity dashboard after each closed parity issue"
   ]
