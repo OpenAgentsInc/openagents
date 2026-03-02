@@ -26,6 +26,7 @@ pub mod materials;
 pub mod measurement;
 pub mod mesh;
 pub mod params;
+pub mod parity;
 pub mod policy;
 pub mod primitives;
 pub mod query;

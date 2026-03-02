@@ -1,0 +1,1041 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-002",
+  "crawler": "openagents-cad::parity::vcad_crawler",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source_files": [
+    "docs/features/index.md",
+    "docs/features/ROADMAP.md",
+    "Cargo.toml",
+    "crates/vcad-cli/src/main.rs"
+  ],
+  "docs": [
+    {
+      "source_file": "docs/features/ROADMAP.md",
+      "section": "Current State",
+      "capability": "2D Drafting",
+      "status": "✅",
+      "priority": null,
+      "effort": null,
+      "spec": null
+    },
+    {
+      "source_file": "docs/features/ROADMAP.md",
+      "section": "Current State",
+      "capability": "Assembly + Joints",
+      "status": "✅",
+      "priority": null,
+      "effort": null,
+      "spec": null
+    },
+    {
+      "source_file": "docs/features/ROADMAP.md",
+      "section": "Current State",
+      "capability": "Boolean Operations",
+      "status": "✅",
+      "priority": null,
+      "effort": null,
+      "spec": null
+    },
+    {
+      "source_file": "docs/features/ROADMAP.md",
+      "section": "Current State",
+      "capability": "Constraint Solver",
+      "status": "⚠️",
+      "priority": null,
+      "effort": null,
+      "spec": null
+    },
+    {
+      "source_file": "docs/features/ROADMAP.md",
+      "section": "Current State",
+      "capability": "Direct BRep Ray Tracing",
+      "status": "✅",
+      "priority": null,
+      "effort": null,
+      "spec": null
+    },
+    {
+      "source_file": "docs/features/ROADMAP.md",
+      "section": "Current State",
+      "capability": "Exact Predicates (Shewchuk)",
+      "status": "✅",
+      "priority": null,
+      "effort": null,
+      "spec": null
+    },
+    {
+      "source_file": "docs/features/ROADMAP.md",
+      "section": "Current State",
+      "capability": "Fillets & Chamfers",
+      "status": "⚠️",
+      "priority": null,
+      "effort": null,
+      "spec": null
+    },
+    {
+      "source_file": "docs/features/ROADMAP.md",
+      "section": "Current State",
+      "capability": "GPU Acceleration (wgpu)",
+      "status": "⚠️",
+      "priority": null,
+      "effort": null,
+      "spec": null
+    },
+    {
+      "source_file": "docs/features/ROADMAP.md",
+      "section": "Current State",
+      "capability": "Headless Mode + API",
+      "status": "✅",
+      "priority": null,
+      "effort": null,
+      "spec": null
+    },
+    {
+      "source_file": "docs/features/ROADMAP.md",
+      "section": "Current State",
+      "capability": "NURBS",
+      "status": "✅",
+      "priority": null,
+      "effort": null,
+      "spec": null
+    },
+    {
+      "source_file": "docs/features/ROADMAP.md",
+      "section": "Current State",
+      "capability": "Physics Simulation (Rapier3D)",
+      "status": "✅",
+      "priority": null,
+      "effort": null,
+      "spec": null
+    },
+    {
+      "source_file": "docs/features/ROADMAP.md",
+      "section": "Current State",
+      "capability": "STEP Import/Export",
+      "status": "⚠️",
+      "priority": null,
+      "effort": null,
+      "spec": null
+    },
+    {
+      "source_file": "docs/features/ROADMAP.md",
+      "section": "Current State",
+      "capability": "Shell + Pattern Operations",
+      "status": "⚠️",
+      "priority": null,
+      "effort": null,
+      "spec": null
+    },
+    {
+      "source_file": "docs/features/ROADMAP.md",
+      "section": "Current State",
+      "capability": "Sketch IR + UI Integration",
+      "status": "✅",
+      "priority": null,
+      "effort": null,
+      "spec": null
+    },
+    {
+      "source_file": "docs/features/ROADMAP.md",
+      "section": "Current State",
+      "capability": "Sketch-Based Operations (extrude/revolve)",
+      "status": "✅",
+      "priority": null,
+      "effort": null,
+      "spec": null
+    },
+    {
+      "source_file": "docs/features/ROADMAP.md",
+      "section": "Current State",
+      "capability": "Surface Transforms",
+      "status": "✅",
+      "priority": null,
+      "effort": null,
+      "spec": null
+    },
+    {
+      "source_file": "docs/features/ROADMAP.md",
+      "section": "Current State",
+      "capability": "Sweep + Loft (Kernel)",
+      "status": "✅",
+      "priority": null,
+      "effort": null,
+      "spec": null
+    },
+    {
+      "source_file": "docs/features/ROADMAP.md",
+      "section": "Current State",
+      "capability": "Sweep + Loft UI Integration",
+      "status": "✅",
+      "priority": null,
+      "effort": null,
+      "spec": null
+    },
+    {
+      "source_file": "docs/features/ROADMAP.md",
+      "section": "Current State",
+      "capability": "Text-to-CAD Training Pipeline",
+      "status": "✅",
+      "priority": null,
+      "effort": null,
+      "spec": null
+    },
+    {
+      "source_file": "docs/features/ROADMAP.md",
+      "section": "Current State",
+      "capability": "Topology + Geometry + Primitives + Tessellation",
+      "status": "✅",
+      "priority": null,
+      "effort": null,
+      "spec": null
+    },
+    {
+      "source_file": "docs/features/ROADMAP.md",
+      "section": "Current State",
+      "capability": "URDF Import",
+      "status": "⚠️",
+      "priority": null,
+      "effort": null,
+      "spec": null
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "AI-Native Features (Proposed)",
+      "capability": "Text-to-CAD (cad0)",
+      "status": "proposed",
+      "priority": "p0",
+      "effort": "xl",
+      "spec": "Natural language → parametric CAD"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Index / Assembly (Shipped)",
+      "capability": "Assembly & Joints",
+      "status": "shipped",
+      "priority": "p0",
+      "effort": null,
+      "spec": "Parts, instances, 5 joint types, FK"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Index / Core Modeling (Shipped)",
+      "capability": "Boolean Operations",
+      "status": "shipped",
+      "priority": "p0",
+      "effort": null,
+      "spec": "Union, difference, intersection"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Index / Core Modeling (Shipped)",
+      "capability": "Patterns",
+      "status": "shipped",
+      "priority": "p0",
+      "effort": null,
+      "spec": "Linear and circular arrays"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Index / Core Modeling (Shipped)",
+      "capability": "Primitives",
+      "status": "shipped",
+      "priority": "p0",
+      "effort": null,
+      "spec": "Box, cylinder, sphere, cone"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Index / Core Modeling (Shipped)",
+      "capability": "Shell Operation",
+      "status": "shipped",
+      "priority": "p0",
+      "effort": null,
+      "spec": "Hollow out solids"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Index / Core Modeling (Shipped)",
+      "capability": "Transforms",
+      "status": "shipped",
+      "priority": "p0",
+      "effort": null,
+      "spec": "Translate, rotate, scale"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Index / Data & Storage (Shipped)",
+      "capability": "Document Persistence",
+      "status": "shipped",
+      "priority": "p0",
+      "effort": null,
+      "spec": "Offline-first .vcad files"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Index / Import/Export (Shipped)",
+      "capability": "Headless API",
+      "status": "shipped",
+      "priority": "p1",
+      "effort": null,
+      "spec": "CLI, MCP server"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Index / Import/Export (Shipped)",
+      "capability": "Import/Export",
+      "status": "shipped",
+      "priority": "p0",
+      "effort": null,
+      "spec": "STEP, STL, GLB"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Index / Sketch System (Shipped)",
+      "capability": "Sketch Mode",
+      "status": "shipped",
+      "priority": "p0",
+      "effort": null,
+      "spec": "2D drawing with constraints"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Index / Sketch System (Shipped)",
+      "capability": "Sketch Operations",
+      "status": "shipped",
+      "priority": "p0",
+      "effort": null,
+      "spec": "Extrude, revolve, sweep, loft"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Index / Surface Operations (Partial)",
+      "capability": "Fillets & Chamfers",
+      "status": "partial",
+      "priority": "p1",
+      "effort": null,
+      "spec": "Kernel done, needs UI"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Index / Technical Drawing (Shipped)",
+      "capability": "2D Drafting",
+      "status": "shipped",
+      "priority": "p0",
+      "effort": null,
+      "spec": "Projections, dimensions, GD&T"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Index / UI & Interaction (Shipped)",
+      "capability": "Bottom Toolbar",
+      "status": "shipped",
+      "priority": "p0",
+      "effort": null,
+      "spec": "Tab-based tools with auto-switch"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Index / UI & Interaction (Shipped)",
+      "capability": "Command Palette",
+      "status": "shipped",
+      "priority": "p1",
+      "effort": null,
+      "spec": "Quick command access"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Index / UI & Interaction (Shipped)",
+      "capability": "Selection",
+      "status": "shipped",
+      "priority": "p0",
+      "effort": null,
+      "spec": "Multi-part selection"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Index / UI & Interaction (Shipped)",
+      "capability": "Undo/Redo",
+      "status": "shipped",
+      "priority": "p0",
+      "effort": null,
+      "spec": "50-step history"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Index / Visualization (Shipped)",
+      "capability": "Materials",
+      "status": "shipped",
+      "priority": "p1",
+      "effort": null,
+      "spec": "PBR materials"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Index / Visualization (Shipped)",
+      "capability": "Ray Tracing",
+      "status": "shipped",
+      "priority": "p1",
+      "effort": null,
+      "spec": "Direct BRep rendering"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Index / Visualization (Shipped)",
+      "capability": "Viewport & Camera",
+      "status": "shipped",
+      "priority": "p0",
+      "effort": null,
+      "spec": "3D navigation, gizmo, snaps"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Tree UX Improvements (Proposed) / Tier 1: Highest Impact",
+      "capability": "Hover Preview",
+      "status": "proposed",
+      "priority": "p1",
+      "effort": "s",
+      "spec": "Hover → highlight in viewport"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Tree UX Improvements (Proposed) / Tier 1: Highest Impact",
+      "capability": "Timeline Scrubber",
+      "status": "proposed",
+      "priority": "p1",
+      "effort": "m",
+      "spec": "Scrub through feature history"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Tree UX Improvements (Proposed) / Tier 2: Feels Magical",
+      "capability": "Smart Auto-Names",
+      "status": "proposed",
+      "priority": "p1",
+      "effort": "s",
+      "spec": "\"Ø5 Hole\" not \"Cut-Extrude1\""
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Tree UX Improvements (Proposed) / Tier 3: Dependency Awareness",
+      "capability": "Dependency Visualization",
+      "status": "proposed",
+      "priority": "p2",
+      "effort": "m",
+      "spec": "Show \"↓3\" badges, warnings"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Tree UX Improvements (Proposed) / Tier 4: Removes Friction",
+      "capability": "Inline Parameter Editing",
+      "status": "proposed",
+      "priority": "p2",
+      "effort": "m",
+      "spec": "Edit params in tree"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Tree UX Improvements (Proposed) / Tier 5: Power User Features",
+      "capability": "Drag-Drop Reordering",
+      "status": "proposed",
+      "priority": "p3",
+      "effort": "m",
+      "spec": "Reorder with impact preview"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Tree UX Improvements (Proposed) / Tier 5: Power User Features",
+      "capability": "Feature Grouping",
+      "status": "proposed",
+      "priority": "p3",
+      "effort": "s",
+      "spec": "Organize into folders"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Tree UX Improvements (Proposed) / Tier 5: Power User Features",
+      "capability": "Keyboard Navigation",
+      "status": "proposed",
+      "priority": "p2",
+      "effort": "s",
+      "spec": "j/k vim-style navigation"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Tree UX Improvements (Proposed) / Tier 5: Power User Features",
+      "capability": "Search & Filter",
+      "status": "proposed",
+      "priority": "p2",
+      "effort": "s",
+      "spec": "Type to filter features"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Feature Tree UX Improvements (Proposed) / Tier 6: AI Differentiator",
+      "capability": "Health & Intelligence",
+      "status": "proposed",
+      "priority": "p3",
+      "effort": "l",
+      "spec": "Warnings, dead features, hints"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Foundation (Critical)",
+      "capability": "Compact IR Format",
+      "status": "proposed",
+      "priority": "p0",
+      "effort": "xs",
+      "spec": "Terse text format for AI/compression"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Foundation (Critical)",
+      "capability": "Technical Debt Cleanup",
+      "status": "shipped",
+      "priority": "p0",
+      "effort": "s",
+      "spec": "Safety fixes, module refactoring"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Robotics & Simulation (Planned)",
+      "capability": "Physics Simulation & Gym",
+      "status": "planned",
+      "priority": "p2",
+      "effort": "l",
+      "spec": "Rapier physics, RL training"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Robotics & Simulation (Planned)",
+      "capability": "URDF Import/Export",
+      "status": "proposed",
+      "priority": "p1",
+      "effort": "s",
+      "spec": "Standard robotics format"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Strategic Vision Features / AI-Native Design (The Differentiator)",
+      "capability": "\"Why Did It Fail?\" Button",
+      "status": "proposed",
+      "priority": null,
+      "effort": null,
+      "spec": "One-click failure diagnosis"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Strategic Vision Features / AI-Native Design (The Differentiator)",
+      "capability": "10-Second Robot",
+      "status": "proposed",
+      "priority": null,
+      "effort": null,
+      "spec": "\"3-DOF arm\" → simulating instantly"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Strategic Vision Features / AI-Native Design (The Differentiator)",
+      "capability": "AI Co-Designer",
+      "status": "proposed",
+      "priority": null,
+      "effort": null,
+      "spec": "AI that thinks with you"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Strategic Vision Features / AI-Native Design (The Differentiator)",
+      "capability": "Fork Reality",
+      "status": "proposed",
+      "priority": null,
+      "effort": null,
+      "spec": "Paste image → parametric model"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Strategic Vision Features / AI-Native Design (The Differentiator)",
+      "capability": "Intent-Based Modeling",
+      "status": "proposed",
+      "priority": null,
+      "effort": null,
+      "spec": "\"Hinge here\" → system infers"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Strategic Vision Features / AI-Native Design (The Differentiator)",
+      "capability": "Unified Canvas",
+      "status": "planned",
+      "priority": null,
+      "effort": null,
+      "spec": "Geometry + physics + chat in one"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Strategic Vision Features / Architecture Advantages (The Moat)",
+      "capability": "Browser-Native CAD",
+      "status": "shipped",
+      "priority": null,
+      "effort": null,
+      "spec": "Full CAD in browser, no install"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Strategic Vision Features / Architecture Advantages (The Moat)",
+      "capability": "Isomorphic Kernel",
+      "status": "partial",
+      "priority": null,
+      "effort": null,
+      "spec": "Same Rust → WASM, native, WASI"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Strategic Vision Features / Architecture Advantages (The Moat)",
+      "capability": "Offline-First Privacy",
+      "status": "shipped",
+      "priority": null,
+      "effort": null,
+      "spec": "Geometry never leaves browser"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Strategic Vision Features / Architecture Advantages (The Moat)",
+      "capability": "Parallel WASM Workers",
+      "status": "planned",
+      "priority": null,
+      "effort": null,
+      "spec": "Background compute, responsive UI"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Strategic Vision Features / Architecture Advantages (The Moat)",
+      "capability": "WASM Physics Integration",
+      "status": "planned",
+      "priority": null,
+      "effort": null,
+      "spec": "Rapier3d in browser — P0"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Strategic Vision Features / Architecture Advantages (The Moat)",
+      "capability": "Zero-Latency Parametric Editing",
+      "status": "planned",
+      "priority": null,
+      "effort": null,
+      "spec": "60fps editing, <5ms booleans, no server"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Strategic Vision Features / Physics-First CAD (The Paradigm Shift)",
+      "capability": "CAD ↔ Physics Round-Trip",
+      "status": "planned",
+      "priority": null,
+      "effort": null,
+      "spec": "Change dimension → physics updates"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Strategic Vision Features / Physics-First CAD (The Paradigm Shift)",
+      "capability": "Parametric Time Machine",
+      "status": "proposed",
+      "priority": null,
+      "effort": null,
+      "spec": "Drag sliders → feel the physics"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Strategic Vision Features / Physics-First CAD (The Paradigm Shift)",
+      "capability": "Physics Always On",
+      "status": "planned",
+      "priority": null,
+      "effort": null,
+      "spec": "No \"run simulation\" button"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Strategic Vision Features / Physics-First CAD (The Paradigm Shift)",
+      "capability": "Time as Dimension",
+      "status": "planned",
+      "priority": null,
+      "effort": null,
+      "spec": "Scrub simulation like video"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Strategic Vision Features / Robotics & RL (The Market)",
+      "capability": "Multiplayer Physics",
+      "status": "proposed",
+      "priority": null,
+      "effort": null,
+      "spec": "Real-time collaborative simulation"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Strategic Vision Features / Robotics & RL (The Market)",
+      "capability": "One-Click RL Training",
+      "status": "proposed",
+      "priority": null,
+      "effort": null,
+      "spec": "vcad train — no Isaac setup"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Strategic Vision Features / The End Game",
+      "capability": "CAD-Native World Model",
+      "status": "proposed",
+      "priority": null,
+      "effort": null,
+      "spec": "Train world models on parametric CAD + physics"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Strategic Vision Features / The End Game",
+      "capability": "Instant Physicality",
+      "status": "proposed",
+      "priority": null,
+      "effort": null,
+      "spec": "Click \"Order Parts\" → quote"
+    },
+    {
+      "source_file": "docs/features/index.md",
+      "section": "Strategic Vision Features / The End Game",
+      "capability": "Living Spec",
+      "status": "proposed",
+      "priority": null,
+      "effort": null,
+      "spec": ".vcad = executable specification"
+    }
+  ],
+  "crates": [
+    {
+      "member_path": "crates/stepperoni",
+      "package_name": "stepperoni",
+      "category": "support"
+    },
+    {
+      "member_path": "crates/termview",
+      "package_name": "termview",
+      "category": "app"
+    },
+    {
+      "member_path": "crates/vcad",
+      "package_name": "vcad",
+      "category": "cad-core"
+    },
+    {
+      "member_path": "crates/vcad-app",
+      "package_name": "vcad-app",
+      "category": "app"
+    },
+    {
+      "member_path": "crates/vcad-cli",
+      "package_name": "vcad-cli",
+      "category": "app"
+    },
+    {
+      "member_path": "crates/vcad-crdt",
+      "package_name": "vcad-crdt",
+      "category": "collaboration"
+    },
+    {
+      "member_path": "crates/vcad-desktop",
+      "package_name": "vcad-desktop",
+      "category": "app"
+    },
+    {
+      "member_path": "crates/vcad-ecad-export",
+      "package_name": "vcad-ecad-export",
+      "category": "ecad"
+    },
+    {
+      "member_path": "crates/vcad-ecad-pcb",
+      "package_name": "vcad-ecad-pcb",
+      "category": "ecad"
+    },
+    {
+      "member_path": "crates/vcad-ecad-schematic",
+      "package_name": "vcad-ecad-schematic",
+      "category": "ecad"
+    },
+    {
+      "member_path": "crates/vcad-ecad-sim",
+      "package_name": "vcad-ecad-sim",
+      "category": "ecad"
+    },
+    {
+      "member_path": "crates/vcad-ecad-symbols",
+      "package_name": "vcad-ecad-symbols",
+      "category": "ecad"
+    },
+    {
+      "member_path": "crates/vcad-embroidery",
+      "package_name": "vcad-embroidery",
+      "category": "embroidery"
+    },
+    {
+      "member_path": "crates/vcad-embroidery-dst",
+      "package_name": "vcad-embroidery-dst",
+      "category": "embroidery"
+    },
+    {
+      "member_path": "crates/vcad-embroidery-pes",
+      "package_name": "vcad-embroidery-pes",
+      "category": "embroidery"
+    },
+    {
+      "member_path": "crates/vcad-embroidery-wasm",
+      "package_name": "vcad-embroidery-wasm",
+      "category": "embroidery"
+    },
+    {
+      "member_path": "crates/vcad-eval",
+      "package_name": "vcad-eval",
+      "category": "cad-core"
+    },
+    {
+      "member_path": "crates/vcad-ir",
+      "package_name": "vcad-ir",
+      "category": "cad-core"
+    },
+    {
+      "member_path": "crates/vcad-kernel",
+      "package_name": "vcad-kernel",
+      "category": "kernel"
+    },
+    {
+      "member_path": "crates/vcad-kernel-booleans",
+      "package_name": "vcad-kernel-booleans",
+      "category": "kernel"
+    },
+    {
+      "member_path": "crates/vcad-kernel-cam",
+      "package_name": "vcad-kernel-cam",
+      "category": "kernel"
+    },
+    {
+      "member_path": "crates/vcad-kernel-constraints",
+      "package_name": "vcad-kernel-constraints",
+      "category": "kernel"
+    },
+    {
+      "member_path": "crates/vcad-kernel-drafting",
+      "package_name": "vcad-kernel-drafting",
+      "category": "kernel"
+    },
+    {
+      "member_path": "crates/vcad-kernel-fillet",
+      "package_name": "vcad-kernel-fillet",
+      "category": "kernel"
+    },
+    {
+      "member_path": "crates/vcad-kernel-geom",
+      "package_name": "vcad-kernel-geom",
+      "category": "kernel"
+    },
+    {
+      "member_path": "crates/vcad-kernel-gpu",
+      "package_name": "vcad-kernel-gpu",
+      "category": "kernel"
+    },
+    {
+      "member_path": "crates/vcad-kernel-math",
+      "package_name": "vcad-kernel-math",
+      "category": "kernel"
+    },
+    {
+      "member_path": "crates/vcad-kernel-nurbs",
+      "package_name": "vcad-kernel-nurbs",
+      "category": "kernel"
+    },
+    {
+      "member_path": "crates/vcad-kernel-physics",
+      "package_name": "vcad-kernel-physics",
+      "category": "kernel"
+    },
+    {
+      "member_path": "crates/vcad-kernel-primitives",
+      "package_name": "vcad-kernel-primitives",
+      "category": "kernel"
+    },
+    {
+      "member_path": "crates/vcad-kernel-raytrace",
+      "package_name": "vcad-kernel-raytrace",
+      "category": "kernel"
+    },
+    {
+      "member_path": "crates/vcad-kernel-shell",
+      "package_name": "vcad-kernel-shell",
+      "category": "kernel"
+    },
+    {
+      "member_path": "crates/vcad-kernel-sketch",
+      "package_name": "vcad-kernel-sketch",
+      "category": "kernel"
+    },
+    {
+      "member_path": "crates/vcad-kernel-step",
+      "package_name": "vcad-kernel-step",
+      "category": "kernel"
+    },
+    {
+      "member_path": "crates/vcad-kernel-stocksim",
+      "package_name": "vcad-kernel-stocksim",
+      "category": "kernel"
+    },
+    {
+      "member_path": "crates/vcad-kernel-sweep",
+      "package_name": "vcad-kernel-sweep",
+      "category": "kernel"
+    },
+    {
+      "member_path": "crates/vcad-kernel-tessellate",
+      "package_name": "vcad-kernel-tessellate",
+      "category": "kernel"
+    },
+    {
+      "member_path": "crates/vcad-kernel-text",
+      "package_name": "vcad-kernel-text",
+      "category": "kernel"
+    },
+    {
+      "member_path": "crates/vcad-kernel-topo",
+      "package_name": "vcad-kernel-topo",
+      "category": "kernel"
+    },
+    {
+      "member_path": "crates/vcad-kernel-urdf",
+      "package_name": "vcad-kernel-urdf",
+      "category": "kernel"
+    },
+    {
+      "member_path": "crates/vcad-kernel-wasm",
+      "package_name": "vcad-kernel-wasm",
+      "category": "kernel"
+    },
+    {
+      "member_path": "crates/vcad-loon",
+      "package_name": "vcad-loon",
+      "category": "cad-core"
+    },
+    {
+      "member_path": "crates/vcad-sim",
+      "package_name": "vcad-sim",
+      "category": "simulation"
+    },
+    {
+      "member_path": "crates/vcad-slicer",
+      "package_name": "vcad-slicer",
+      "category": "slicer"
+    },
+    {
+      "member_path": "crates/vcad-slicer-bambu",
+      "package_name": "vcad-slicer-bambu",
+      "category": "slicer"
+    },
+    {
+      "member_path": "crates/vcad-slicer-gcode",
+      "package_name": "vcad-slicer-gcode",
+      "category": "slicer"
+    },
+    {
+      "member_path": "crates/vcad-slicer-wasm",
+      "package_name": "vcad-slicer-wasm",
+      "category": "slicer"
+    },
+    {
+      "member_path": "crates/wasmosis",
+      "package_name": "wasmosis",
+      "category": "support"
+    },
+    {
+      "member_path": "crates/wasmosis/wasmosis-macro",
+      "package_name": "wasmosis-macro",
+      "category": "support"
+    }
+  ],
+  "commands": [
+    {
+      "variant": "Boolean",
+      "cli_command": "boolean",
+      "description": "Apply boolean operation",
+      "cfg": null
+    },
+    {
+      "variant": "Export",
+      "cli_command": "export",
+      "description": "Export a .vcad file to another format",
+      "cfg": null
+    },
+    {
+      "variant": "Import",
+      "cli_command": "import",
+      "description": "Import a STEP file to .vcad format",
+      "cfg": null
+    },
+    {
+      "variant": "ImportUrdf",
+      "cli_command": "import-urdf",
+      "description": "Import a URDF robot description file to .vcad format",
+      "cfg": null
+    },
+    {
+      "variant": "Info",
+      "cli_command": "info",
+      "description": "Display information about a .vcad file",
+      "cfg": null
+    },
+    {
+      "variant": "New",
+      "cli_command": "new",
+      "description": "Create a new vcad document",
+      "cfg": null
+    },
+    {
+      "variant": "PrintServer",
+      "cli_command": "print-server",
+      "description": "Start the print relay server for web app → printer communication",
+      "cfg": "#[cfg(feature = \"print-server\")]"
+    },
+    {
+      "variant": "Render",
+      "cli_command": "render",
+      "description": "Render document to image",
+      "cfg": null
+    },
+    {
+      "variant": "Repl",
+      "cli_command": "repl",
+      "description": "Interactive REPL for building geometry",
+      "cfg": null
+    },
+    {
+      "variant": "Slice",
+      "cli_command": "slice",
+      "description": "Slice a .vcad file for 3D printing",
+      "cfg": null
+    },
+    {
+      "variant": "Transform",
+      "cli_command": "transform",
+      "description": "Apply transform to part",
+      "cfg": null
+    },
+    {
+      "variant": "Tui",
+      "cli_command": "tui",
+      "description": "Open the interactive TUI editor",
+      "cfg": null
+    }
+  ],
+  "summary": {
+    "docs_capability_count": 77,
+    "docs_status_counts": {
+      "partial": 2,
+      "planned": 8,
+      "proposed": 24,
+      "shipped": 22,
+      "⚠️": 6,
+      "✅": 15
+    },
+    "crate_count": 49,
+    "command_count": 12
+  }
+}

@@ -75,7 +75,7 @@ Major gaps to close:
 ### Phase A - Program baseline (`VCAD-PARITY-001` to `VCAD-PARITY-010`)
 
 1. [x] VCAD-PARITY-001: Freeze parity baseline manifests for pinned `vcad` commit.
-2. [ ] VCAD-PARITY-002: Build `vcad` capability crawler (docs + crates + commands).
+2. [x] VCAD-PARITY-002: Build `vcad` capability crawler (docs + crates + commands).
 3. [ ] VCAD-PARITY-003: Build OpenAgents capability crawler for CAD surfaces.
 4. [ ] VCAD-PARITY-004: Generate machine-readable gap matrix (`vcad` vs OpenAgents).
 5. [ ] VCAD-PARITY-005: Define parity scorecard and pass/fail thresholds.
