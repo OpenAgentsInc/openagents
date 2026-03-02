@@ -100,7 +100,7 @@ Major gaps to close:
 21. [x] VCAD-PARITY-021: Integrate `vcad-kernel-nurbs` parity support.
 22. [x] VCAD-PARITY-022: Integrate `vcad-kernel-text` parity text geometry support.
 23. [x] VCAD-PARITY-023: Integrate `vcad-kernel-fillet` parity path.
-24. [ ] VCAD-PARITY-024: Integrate `vcad-kernel-shell` parity path.
+24. [x] VCAD-PARITY-024: Integrate `vcad-kernel-shell` parity path.
 25. [ ] VCAD-PARITY-025: Integrate `vcad-kernel-step` parity adapter path.
 
 ### Phase C - Core modeling ops parity (`VCAD-PARITY-026` to `VCAD-PARITY-040`)
