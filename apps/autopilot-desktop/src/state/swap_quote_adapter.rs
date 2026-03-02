@@ -471,4 +471,76 @@ mod tests {
         assert_eq!(audit.quote_id, "quote-replay-1");
         assert_eq!(audit.expires_at_epoch_seconds, 1_080);
     }
+
+    #[test]
+    fn roundtrip_btc_to_usd_and_usd_to_btc_paths_accept_quotes_deterministically() {
+        let mut client = FakeStablesatsClient {
+            buy_response: Some(Ok(StablesatsQuoteResponse {
+                quote_id: "quote-btc-usd-1".to_string(),
+                amount_to_sell_in_sats: Some(5_000),
+                amount_to_buy_in_cents: Some(330),
+                amount_to_buy_in_sats: None,
+                amount_to_sell_in_cents: None,
+                expires_at_epoch_seconds: 1_120,
+                executed: false,
+            })),
+            sell_response: Some(Ok(StablesatsQuoteResponse {
+                quote_id: "quote-usd-btc-1".to_string(),
+                amount_to_sell_in_sats: None,
+                amount_to_buy_in_cents: None,
+                amount_to_buy_in_sats: Some(7_400),
+                amount_to_sell_in_cents: Some(500),
+                expires_at_epoch_seconds: 1_140,
+                executed: false,
+            })),
+            ..Default::default()
+        };
+
+        let btc_to_usd = request_quote_with_fallback(
+            &mut client,
+            &SwapQuoteAdapterRequest {
+                request_id: "req-roundtrip-1".to_string(),
+                direction: SwapDirection::BtcToUsd,
+                amount: SwapAmount {
+                    amount: 5_000,
+                    unit: SwapAmountUnit::Sats,
+                },
+                immediate_execution: true,
+                now_epoch_seconds: 1_000,
+            },
+            fallback_quote(SwapDirection::BtcToUsd),
+        );
+        assert_eq!(btc_to_usd.provider, SwapQuoteProvider::StablesatsQuoteService);
+        assert_eq!(btc_to_usd.quote.direction, SwapDirection::BtcToUsd);
+        assert_eq!(btc_to_usd.quote.amount_in.unit, SwapAmountUnit::Sats);
+        assert_eq!(btc_to_usd.quote.amount_out.unit, SwapAmountUnit::Cents);
+        assert!(btc_to_usd.accepted_via_adapter);
+
+        let usd_to_btc = request_quote_with_fallback(
+            &mut client,
+            &SwapQuoteAdapterRequest {
+                request_id: "req-roundtrip-2".to_string(),
+                direction: SwapDirection::UsdToBtc,
+                amount: SwapAmount {
+                    amount: 500,
+                    unit: SwapAmountUnit::Cents,
+                },
+                immediate_execution: true,
+                now_epoch_seconds: 1_001,
+            },
+            fallback_quote(SwapDirection::UsdToBtc),
+        );
+        assert_eq!(usd_to_btc.provider, SwapQuoteProvider::StablesatsQuoteService);
+        assert_eq!(usd_to_btc.quote.direction, SwapDirection::UsdToBtc);
+        assert_eq!(usd_to_btc.quote.amount_in.unit, SwapAmountUnit::Cents);
+        assert_eq!(usd_to_btc.quote.amount_out.unit, SwapAmountUnit::Sats);
+        assert!(usd_to_btc.accepted_via_adapter);
+        assert_eq!(
+            client.accepted_quote_ids,
+            vec![
+                "quote-btc-usd-1".to_string(),
+                "quote-usd-btc-1".to_string()
+            ]
+        );
+    }
 }

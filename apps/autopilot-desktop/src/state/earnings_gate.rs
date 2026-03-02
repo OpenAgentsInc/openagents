@@ -168,7 +168,7 @@ mod tests {
         }
     }
 
-    fn sample_history(pointer: &str) -> JobHistoryState {
+    fn sample_history_with_payout(pointer: &str, payout_sats: u64) -> JobHistoryState {
         JobHistoryState {
             load_state: crate::app_state::PaneLoadState::Ready,
             last_error: None,
@@ -185,7 +185,7 @@ mod tests {
                 ac_envelope_event_id: None,
                 ac_settlement_event_id: None,
                 ac_default_event_id: None,
-                payout_sats: 1_000,
+                payout_sats,
                 result_hash: "hash".to_string(),
                 payment_pointer: pointer.to_string(),
                 failure_reason: None,
@@ -199,7 +199,11 @@ mod tests {
         }
     }
 
-    fn sample_wallet(payment_id: &str, status: &str) -> SparkPaneState {
+    fn sample_history(pointer: &str) -> JobHistoryState {
+        sample_history_with_payout(pointer, 1_000)
+    }
+
+    fn sample_wallet_with_receive(payment_id: &str, status: &str, amount_sats: u64) -> SparkPaneState {
         let mut wallet = SparkPaneState::default();
         wallet.balance = Some(Balance {
             spark_sats: 10_000,
@@ -210,10 +214,14 @@ mod tests {
             id: payment_id.to_string(),
             direction: "receive".to_string(),
             status: status.to_string(),
-            amount_sats: 1_000,
+            amount_sats,
             timestamp: 25,
         });
         wallet
+    }
+
+    fn sample_wallet(payment_id: &str, status: &str) -> SparkPaneState {
+        sample_wallet_with_receive(payment_id, status, 1_000)
     }
 
     #[test]
@@ -260,5 +268,46 @@ mod tests {
         );
         assert!(report.authoritative_goal_complete);
         assert!(report.mismatches.is_empty());
+    }
+
+    #[test]
+    fn earn_bitcoin_until_target_sats_requires_wallet_confirmed_threshold() {
+        let goal = sample_goal();
+        let mut progress = sample_progress();
+        progress.wallet_delta_sats = 500;
+        progress.earned_wallet_delta_sats = 500;
+        progress.jobs_completed = 0;
+        progress.successes = 0;
+
+        let pending_report = verify_authoritative_earnings(
+            &goal,
+            &progress,
+            &sample_history_with_payout("wallet-payment-pending", 500),
+            &sample_wallet_with_receive("wallet-payment-pending", "succeeded", 500),
+        );
+        assert!(!pending_report.authoritative_goal_complete);
+        assert_eq!(pending_report.authoritative_wallet_delta_sats, 500);
+        assert_eq!(pending_report.verified_receipt_count, 1);
+
+        let mut complete_progress = progress.clone();
+        complete_progress.wallet_delta_sats = 1_000;
+        complete_progress.earned_wallet_delta_sats = 1_000;
+        complete_progress.jobs_completed = 1;
+        complete_progress.successes = 1;
+        let complete_report = verify_authoritative_earnings(
+            &goal,
+            &complete_progress,
+            &sample_history_with_payout("wallet-payment-complete", 1_000),
+            &sample_wallet_with_receive("wallet-payment-complete", "succeeded", 1_000),
+        );
+        assert!(complete_report.authoritative_goal_complete);
+        assert_eq!(complete_report.authoritative_wallet_delta_sats, 1_000);
+        assert!(
+            complete_report
+                .authoritative_evaluation
+                .completion_reasons
+                .iter()
+                .any(|reason| reason.contains("wallet delta reached 1000 sats"))
+        );
     }
 }
