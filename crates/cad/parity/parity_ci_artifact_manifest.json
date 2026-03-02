@@ -5,8 +5,14 @@
   "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
   "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
   "parity_check_entrypoint": "scripts/cad/parity_check.sh",
-  "source_artifact_count": 60,
+  "source_artifact_count": 62,
   "artifacts": [
+    {
+      "artifact_id": "assembly_joint_frs_parity_manifest",
+      "source_path": "crates/cad/parity/assembly_joint_frs_parity_manifest.json",
+      "sha256": "585838f7c90e1203961a9a95f9194dd39307e465fc561967148f4e4aeba55b39",
+      "bytes": 2496
+    },
     {
       "artifact_id": "assembly_part_instance_parity_manifest",
       "source_path": "crates/cad/parity/assembly_part_instance_parity_manifest.json",
@@ -48,6 +54,12 @@
       "source_path": "crates/cad/parity/fillet_feature_graph_parity_manifest.json",
       "sha256": "b3970c83313251853aff7e7ff9e866afc4bbb44072be3f3b30518b120412788a",
       "bytes": 1618
+    },
+    {
+      "artifact_id": "fixtures_assembly_joint_frs_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/assembly_joint_frs_vcad_reference.json",
+      "sha256": "0dff899a2910fb44a7c96cd42fb29273e68a7814f05adb5d3ede1af93e69c2d7",
+      "bytes": 495
     },
     {
       "artifact_id": "fixtures_assembly_part_instance_vcad_reference",
@@ -202,8 +214,8 @@
     {
       "artifact_id": "parity_dashboard",
       "source_path": "crates/cad/parity/parity_dashboard.json",
-      "sha256": "374555108520cefc836943be05b7327187f1ef7f197b6b56c636229b546be7c0",
-      "bytes": 4121
+      "sha256": "eaf76cf15a6548967e99670f970910f89b2500a35510e628116d7bc45eff5ce0",
+      "bytes": 4213
     },
     {
       "artifact_id": "parity_risk_register",

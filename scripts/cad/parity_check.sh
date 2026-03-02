@@ -53,6 +53,7 @@ LANE_LABELS=(
     "sketch-constraints-checkpoint"
     "assembly-schema"
     "assembly-part-instance"
+    "assembly-joint-frs"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -265,6 +266,9 @@ run_lane "assembly-schema" \
 
 run_lane "assembly-part-instance" \
     "$ROOT_DIR/scripts/cad/parity-assembly-part-instance-ci.sh"
+
+run_lane "assembly-joint-frs" \
+    "$ROOT_DIR/scripts/cad/parity-assembly-joint-frs-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
