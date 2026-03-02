@@ -189,13 +189,14 @@
     "unsolved_constraints": 17,
     "unsupported_kind_warning_count": 17,
     "warning_codes": [
-      "SKETCH_CONSTRAINT_KIND_NOT_IMPLEMENTED"
+      "SKETCH_CONSTRAINT_KIND_NOT_IMPLEMENTED",
+      "SKETCH_LM_JACOBIAN_RANK_DEFICIENT"
     ]
   },
   "sample_model_hash": "ce8cfa777746258f",
-  "solve_report_hash": "59edef3f7cc11255",
+  "solve_report_hash": "060e6df525126f63",
   "deterministic_replay_match": true,
-  "deterministic_signature": "6fef129914775c14",
+  "deterministic_signature": "e5e262316afcbd86",
   "parity_contracts": [
     "sketch constraint schema exposes full geometric + dimensional enum parity surface",
     "model-level validation enforces anchor/entity reference integrity for all constraint kinds",

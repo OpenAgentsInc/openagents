@@ -893,3 +893,138 @@ fn unsupported_constraint_kinds_emit_deterministic_warning_diagnostic() {
             && entry.message.contains("point_on_line")
     }));
 }
+
+#[test]
+fn lm_pipeline_summary_is_deterministic_for_fixed_model_state() {
+    let mut model = CadSketchModel::default();
+    model
+        .insert_plane(primary_plane())
+        .expect("plane should insert");
+    model
+        .insert_entity(CadSketchEntity::Line {
+            id: "entity.line.a".to_string(),
+            plane_id: "plane.front".to_string(),
+            start_mm: [0.0, 0.0],
+            end_mm: [20.0, 5.0],
+            anchor_ids: [
+                "anchor.line.a.start".to_string(),
+                "anchor.line.a.end".to_string(),
+            ],
+            construction: false,
+        })
+        .expect("line should insert");
+    model
+        .insert_entity(CadSketchEntity::Point {
+            id: "entity.point.a".to_string(),
+            plane_id: "plane.front".to_string(),
+            position_mm: [5.0, 8.0],
+            anchor_id: "anchor.point.a".to_string(),
+            construction: false,
+        })
+        .expect("point should insert");
+
+    model
+        .insert_constraint(CadSketchConstraint::Horizontal {
+            id: "constraint.horizontal".to_string(),
+            line_entity_id: "entity.line.a".to_string(),
+        })
+        .expect("horizontal should insert");
+    model
+        .insert_constraint(CadSketchConstraint::PointOnLine {
+            id: "constraint.point_on_line".to_string(),
+            point_anchor_id: "anchor.point.a".to_string(),
+            line_entity_id: "entity.line.a".to_string(),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("point_on_line should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Distance {
+            id: "constraint.distance".to_string(),
+            first_anchor_id: "anchor.line.a.start".to_string(),
+            second_anchor_id: "anchor.point.a".to_string(),
+            target_mm: 6.0,
+            tolerance_mm: Some(0.01),
+        })
+        .expect("distance should insert");
+
+    let first = model
+        .lm_pipeline_summary()
+        .expect("LM pipeline summary should build");
+    let second = model
+        .lm_pipeline_summary()
+        .expect("LM pipeline summary replay should build");
+
+    assert_eq!(first, second, "LM summary must be replay deterministic");
+    assert_eq!(first.residual_component_count, 3);
+    assert_eq!(first.parameter_count, 6);
+    assert_eq!(
+        first
+            .constraint_component_counts
+            .get("constraint.point_on_line"),
+        Some(&1)
+    );
+    assert!(first.jacobian_nonzero_count > 0);
+    assert_eq!(first.residual_hash.len(), 16);
+    assert_eq!(first.jacobian_hash.len(), 16);
+}
+
+#[test]
+fn lm_pipeline_emits_rank_deficient_warning_for_duplicate_unsolved_rows() {
+    let mut model = CadSketchModel::default();
+    model
+        .insert_plane(primary_plane())
+        .expect("plane should insert");
+    model
+        .insert_entity(CadSketchEntity::Line {
+            id: "entity.line.a".to_string(),
+            plane_id: "plane.front".to_string(),
+            start_mm: [0.0, 0.0],
+            end_mm: [5.0, 0.0],
+            anchor_ids: [
+                "anchor.line.a.start".to_string(),
+                "anchor.line.a.end".to_string(),
+            ],
+            construction: false,
+        })
+        .expect("line should insert");
+    model
+        .insert_entity(CadSketchEntity::Point {
+            id: "entity.point.a".to_string(),
+            plane_id: "plane.front".to_string(),
+            position_mm: [5.0, 8.0],
+            anchor_id: "anchor.point.a".to_string(),
+            construction: false,
+        })
+        .expect("point should insert");
+
+    model
+        .insert_constraint(CadSketchConstraint::PointOnLine {
+            id: "constraint.point_on_line.a".to_string(),
+            point_anchor_id: "anchor.point.a".to_string(),
+            line_entity_id: "entity.line.a".to_string(),
+            tolerance_mm: Some(0.001),
+        })
+        .expect("first point_on_line constraint should insert");
+    model
+        .insert_constraint(CadSketchConstraint::PointOnLine {
+            id: "constraint.point_on_line.b".to_string(),
+            point_anchor_id: "anchor.point.a".to_string(),
+            line_entity_id: "entity.line.a".to_string(),
+            tolerance_mm: Some(0.001),
+        })
+        .expect("second point_on_line constraint should insert");
+
+    let report = model
+        .solve_constraints_deterministic()
+        .expect("solver should run");
+    assert!(
+        !report.passed,
+        "unsupported duplicate rows should keep solve incomplete"
+    );
+    assert!(report.unsolved_constraints > 0);
+    assert!(report.diagnostics.iter().any(|entry| {
+        entry.code == "SKETCH_LM_JACOBIAN_RANK_DEFICIENT"
+            && entry.constraint_id == "lm.pipeline"
+            && entry.severity == CadSketchSolveSeverity::Warning
+    }));
+}

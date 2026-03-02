@@ -131,7 +131,21 @@ pub fn build_dashboard(
         .artifact_ids
         .iter()
         .any(|artifact_id| artifact_id == "sketch_iterative_lm_parity_manifest");
+    let has_phase_d_jacobian_residual = artifacts
+        .artifact_ids
+        .iter()
+        .any(|artifact_id| artifact_id == "sketch_jacobian_residual_parity_manifest");
     let phase_status = if baseline_scorecard_pass
+        && baseline_risk_pass
+        && has_phase_c_checkpoint
+        && has_phase_d_entity_set
+        && has_phase_d_sketch_plane
+        && has_phase_d_constraint_enum
+        && has_phase_d_iterative_lm
+        && has_phase_d_jacobian_residual
+    {
+        "phase_d_jacobian_residual_complete".to_string()
+    } else if baseline_scorecard_pass
         && baseline_risk_pass
         && has_phase_c_checkpoint
         && has_phase_d_entity_set
@@ -199,6 +213,13 @@ pub fn build_dashboard(
     } else if phase_status == "phase_d_iterative_lm_complete" {
         vec![
             "Execute VCAD-PARITY-045 through VCAD-PARITY-055 sequentially".to_string(),
+            "Keep phase_a_baseline_v1 profile passing in scorecard and risk register lanes"
+                .to_string(),
+            "Refresh parity dashboard after each closed parity issue".to_string(),
+        ]
+    } else if phase_status == "phase_d_jacobian_residual_complete" {
+        vec![
+            "Execute VCAD-PARITY-046 through VCAD-PARITY-055 sequentially".to_string(),
             "Keep phase_a_baseline_v1 profile passing in scorecard and risk register lanes"
                 .to_string(),
             "Refresh parity dashboard after each closed parity issue".to_string(),
