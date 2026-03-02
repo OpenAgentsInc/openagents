@@ -97,6 +97,7 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/text_to_cad_dataset_parity_manifest.json"
     "crates/cad/parity/text_to_cad_training_eval_parity_manifest.json"
     "crates/cad/parity/headless_script_harness_parity_manifest.json"
+    "crates/cad/parity/io_headless_ai_checkpoint_parity_manifest.json"
     "crates/cad/parity/sketch_loft_parity_manifest.json"
     "crates/cad/parity/sketch_profile_validity_parity_manifest.json"
     "crates/cad/parity/sketch_revolve_parity_manifest.json"

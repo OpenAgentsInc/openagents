@@ -39,7 +39,7 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 126,
+    "source_artifact_count": 127,
     "artifact_ids": [
       "assembly_acceptance_scenes_parity_manifest",
       "assembly_checkpoint_parity_manifest",
@@ -113,6 +113,7 @@
       "glb_export_parity_manifest",
       "headless_script_harness_parity_manifest",
       "intent_modeling_parity_manifest",
+      "io_headless_ai_checkpoint_parity_manifest",
       "kernel_adapter_v2_manifest",
       "kernel_boolean_brep_parity_manifest",
       "kernel_boolean_diagnostics_parity_manifest",
@@ -169,9 +170,9 @@
       "vcad_reference_manifest"
     ]
   },
-  "phase_status": "phase_g_headless_script_harness_complete",
+  "phase_status": "phase_g_io_headless_ai_checkpoint_complete",
   "next_actions": [
-    "Execute VCAD-PARITY-092 sequentially",
+    "Execute VCAD-PARITY-093 through VCAD-PARITY-104 sequentially",
     "Keep phase_a_baseline_v1 profile passing in scorecard and risk register lanes",
     "Refresh parity dashboard after each closed parity issue"
   ]

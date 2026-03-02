@@ -59,6 +59,7 @@ fn parity_check_script_list_mode_includes_required_lanes() {
     assert!(lines.contains(&"text-to-cad-dataset"));
     assert!(lines.contains(&"text-to-cad-training-eval"));
     assert!(lines.contains(&"headless-script-harness"));
+    assert!(lines.contains(&"io-headless-ai-checkpoint"));
     assert!(lines.contains(&"ci-artifact-manifest"));
     assert!(lines.contains(&"risk-register-workflow"));
     assert!(lines.contains(&"baseline-dashboard"));
