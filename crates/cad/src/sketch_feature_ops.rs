@@ -303,6 +303,40 @@ fn collect_profile_points(
                 points.push(arc_point(*center_mm, *radius_mm, *start_deg)?);
                 points.push(arc_point(*center_mm, *radius_mm, *end_deg)?);
             }
+            CadSketchEntity::Rectangle { min_mm, max_mm, .. } => {
+                points.push(*min_mm);
+                points.push([max_mm[0], min_mm[1]]);
+                points.push(*max_mm);
+                points.push([min_mm[0], max_mm[1]]);
+            }
+            CadSketchEntity::Circle {
+                center_mm,
+                radius_mm,
+                ..
+            } => {
+                if !radius_mm.is_finite() || *radius_mm <= 0.0 {
+                    return Err(CadError::ParseFailed {
+                        reason: format!("circle {entity_id} has invalid radius"),
+                    });
+                }
+                points.push(*center_mm);
+                points.push([center_mm[0] + *radius_mm, center_mm[1]]);
+                points.push([center_mm[0] - *radius_mm, center_mm[1]]);
+                points.push([center_mm[0], center_mm[1] + *radius_mm]);
+                points.push([center_mm[0], center_mm[1] - *radius_mm]);
+            }
+            CadSketchEntity::Spline {
+                control_points_mm, ..
+            } => {
+                if control_points_mm.is_empty() {
+                    return Err(CadError::ParseFailed {
+                        reason: format!("spline {entity_id} has no control points"),
+                    });
+                }
+                for point in control_points_mm {
+                    points.push(*point);
+                }
+            }
             CadSketchEntity::Point { position_mm, .. } => {
                 points.push(*position_mm);
             }
@@ -336,7 +370,12 @@ fn profile_bounds(points: &[[f64; 2]]) -> CadResult<[f64; 4]> {
 }
 
 fn profile_is_closed_loop(sketch: &CadSketchModel, entity_ids: &[String]) -> CadResult<bool> {
-    let mut profile_anchor_ids = BTreeSet::<String>::new();
+    if entity_ids.is_empty() {
+        return Ok(false);
+    }
+
+    let mut endpoint_anchor_ids = BTreeSet::<String>::new();
+    let mut all_intrinsically_closed = true;
     for entity_id in entity_ids {
         let entity = sketch
             .entities
@@ -344,13 +383,43 @@ fn profile_is_closed_loop(sketch: &CadSketchModel, entity_ids: &[String]) -> Cad
             .ok_or_else(|| CadError::ParseFailed {
                 reason: format!("profile references unknown sketch entity {entity_id}"),
             })?;
-        for anchor in entity.anchor_ids() {
-            profile_anchor_ids.insert(anchor.to_string());
+        match entity {
+            CadSketchEntity::Line { anchor_ids, .. } => {
+                endpoint_anchor_ids.insert(anchor_ids[0].clone());
+                endpoint_anchor_ids.insert(anchor_ids[1].clone());
+                all_intrinsically_closed = false;
+            }
+            CadSketchEntity::Arc { anchor_ids, .. } => {
+                endpoint_anchor_ids.insert(anchor_ids[1].clone());
+                endpoint_anchor_ids.insert(anchor_ids[2].clone());
+                all_intrinsically_closed = false;
+            }
+            CadSketchEntity::Spline {
+                anchor_ids, closed, ..
+            } => {
+                if *closed {
+                    continue;
+                }
+                if anchor_ids.len() < 2 {
+                    return Ok(false);
+                }
+                endpoint_anchor_ids.insert(anchor_ids[0].clone());
+                endpoint_anchor_ids.insert(anchor_ids[anchor_ids.len() - 1].clone());
+                all_intrinsically_closed = false;
+            }
+            CadSketchEntity::Rectangle { .. } | CadSketchEntity::Circle { .. } => {}
+            CadSketchEntity::Point { .. } => {
+                all_intrinsically_closed = false;
+            }
         }
     }
 
+    if endpoint_anchor_ids.is_empty() {
+        return Ok(all_intrinsically_closed);
+    }
+
     let mut adjacency = BTreeMap::<String, BTreeSet<String>>::new();
-    for anchor in &profile_anchor_ids {
+    for anchor in &endpoint_anchor_ids {
         adjacency.insert(anchor.clone(), BTreeSet::new());
     }
     for constraint in sketch.constraints.values() {
@@ -359,8 +428,8 @@ fn profile_is_closed_loop(sketch: &CadSketchModel, entity_ids: &[String]) -> Cad
             second_anchor_id,
             ..
         } = constraint
-            && profile_anchor_ids.contains(first_anchor_id)
-            && profile_anchor_ids.contains(second_anchor_id)
+            && endpoint_anchor_ids.contains(first_anchor_id)
+            && endpoint_anchor_ids.contains(second_anchor_id)
         {
             adjacency
                 .entry(first_anchor_id.clone())
@@ -381,9 +450,37 @@ fn profile_is_closed_loop(sketch: &CadSketchModel, entity_ids: &[String]) -> Cad
             .ok_or_else(|| CadError::ParseFailed {
                 reason: format!("profile references unknown sketch entity {entity_id}"),
             })?;
-        for anchor in entity.anchor_ids() {
-            let canonical = canonical_anchor(anchor, &adjacency);
-            *counts.entry(canonical).or_insert(0) += 1;
+        match entity {
+            CadSketchEntity::Line { anchor_ids, .. } => {
+                for anchor in anchor_ids {
+                    let canonical = canonical_anchor(anchor, &adjacency);
+                    *counts.entry(canonical).or_insert(0) += 1;
+                }
+            }
+            CadSketchEntity::Arc { anchor_ids, .. } => {
+                for anchor in [&anchor_ids[1], &anchor_ids[2]] {
+                    let canonical = canonical_anchor(anchor, &adjacency);
+                    *counts.entry(canonical).or_insert(0) += 1;
+                }
+            }
+            CadSketchEntity::Spline {
+                anchor_ids, closed, ..
+            } => {
+                if *closed {
+                    continue;
+                }
+                if anchor_ids.len() < 2 {
+                    return Ok(false);
+                }
+                for anchor in [&anchor_ids[0], &anchor_ids[anchor_ids.len() - 1]] {
+                    let canonical = canonical_anchor(anchor, &adjacency);
+                    *counts.entry(canonical).or_insert(0) += 1;
+                }
+            }
+            CadSketchEntity::Rectangle { .. } | CadSketchEntity::Circle { .. } => {}
+            CadSketchEntity::Point { .. } => {
+                return Ok(false);
+            }
         }
     }
     if counts.is_empty() {
@@ -795,6 +892,105 @@ mod tests {
                 assert_eq!(feature_id, "feature.open.extrude");
             }
             _ => panic!("history command should map to ApplySketchFeature"),
+        }
+    }
+
+    #[test]
+    fn rectangle_circle_and_closed_spline_profiles_are_closed_for_extrude() {
+        let mut model = CadSketchModel::default();
+        model
+            .insert_plane(CadSketchPlane {
+                id: "plane.front".to_string(),
+                name: "Front".to_string(),
+                origin_mm: [0.0, 0.0, 0.0],
+                normal: [0.0, 0.0, 1.0],
+                x_axis: [1.0, 0.0, 0.0],
+                y_axis: [0.0, 1.0, 0.0],
+            })
+            .expect("plane should insert");
+        model
+            .insert_entity(CadSketchEntity::Rectangle {
+                id: "entity.rect".to_string(),
+                plane_id: "plane.front".to_string(),
+                min_mm: [0.0, 0.0],
+                max_mm: [20.0, 10.0],
+                anchor_ids: [
+                    "anchor.rect.00".to_string(),
+                    "anchor.rect.10".to_string(),
+                    "anchor.rect.11".to_string(),
+                    "anchor.rect.01".to_string(),
+                ],
+                construction: false,
+            })
+            .expect("rectangle should insert");
+        model
+            .insert_entity(CadSketchEntity::Circle {
+                id: "entity.circle".to_string(),
+                plane_id: "plane.front".to_string(),
+                center_mm: [40.0, 10.0],
+                radius_mm: 5.0,
+                anchor_ids: [
+                    "anchor.circle.center".to_string(),
+                    "anchor.circle.radius".to_string(),
+                ],
+                construction: false,
+            })
+            .expect("circle should insert");
+        model
+            .insert_entity(CadSketchEntity::Spline {
+                id: "entity.spline.closed".to_string(),
+                plane_id: "plane.front".to_string(),
+                control_points_mm: vec![[60.0, 0.0], [65.0, 8.0], [72.0, 5.0], [68.0, -2.0]],
+                anchor_ids: vec![
+                    "anchor.spline.0".to_string(),
+                    "anchor.spline.1".to_string(),
+                    "anchor.spline.2".to_string(),
+                    "anchor.spline.3".to_string(),
+                ],
+                closed: true,
+                construction: false,
+            })
+            .expect("closed spline should insert");
+
+        for (feature_id, profile_id, entity_id) in [
+            ("feature.rect.extrude", "profile.rect", "entity.rect"),
+            ("feature.circle.extrude", "profile.circle", "entity.circle"),
+            (
+                "feature.spline.extrude",
+                "profile.spline.closed",
+                "entity.spline.closed",
+            ),
+        ] {
+            let spec = SketchProfileFeatureSpec {
+                feature_id: feature_id.to_string(),
+                profile_id: profile_id.to_string(),
+                plane_id: "plane.front".to_string(),
+                profile_entity_ids: vec![entity_id.to_string()],
+                kind: SketchProfileFeatureKind::Extrude,
+                source_feature_id: None,
+                depth_mm: Some(5.0),
+                revolve_angle_deg: None,
+                axis_anchor_ids: None,
+                tolerance_mm: Some(0.001),
+            };
+            let conversion = convert_sketch_profile_to_feature_node(&model, &spec)
+                .expect("profile conversion should succeed");
+            assert_eq!(
+                conversion
+                    .node
+                    .params
+                    .get("profile_closed_loop")
+                    .map(String::as_str),
+                Some("true"),
+                "{entity_id} should be treated as closed profile"
+            );
+            assert!(
+                conversion
+                    .warnings
+                    .iter()
+                    .all(|warning| warning.code != CadWarningCode::NonManifoldBody),
+                "{entity_id} should not emit open-profile warning"
+            );
         }
     }
 }

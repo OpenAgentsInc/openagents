@@ -385,3 +385,81 @@ fn constraint_validation_rejects_unknown_entity_references() {
         "constraint must fail when referencing unknown entity"
     );
 }
+
+#[test]
+fn sketch_model_supports_rectangle_circle_and_spline_entities() {
+    let mut model = CadSketchModel::default();
+    model
+        .insert_plane(primary_plane())
+        .expect("plane should insert");
+
+    model
+        .insert_entity(CadSketchEntity::Rectangle {
+            id: "entity.rect.001".to_string(),
+            plane_id: "plane.front".to_string(),
+            min_mm: [0.0, 0.0],
+            max_mm: [40.0, 20.0],
+            anchor_ids: [
+                "anchor.rect.00".to_string(),
+                "anchor.rect.10".to_string(),
+                "anchor.rect.11".to_string(),
+                "anchor.rect.01".to_string(),
+            ],
+            construction: false,
+        })
+        .expect("rectangle should insert");
+    model
+        .insert_entity(CadSketchEntity::Circle {
+            id: "entity.circle.001".to_string(),
+            plane_id: "plane.front".to_string(),
+            center_mm: [60.0, 30.0],
+            radius_mm: 12.0,
+            anchor_ids: [
+                "anchor.circle.center".to_string(),
+                "anchor.circle.radius".to_string(),
+            ],
+            construction: false,
+        })
+        .expect("circle should insert");
+    model
+        .insert_entity(CadSketchEntity::Spline {
+            id: "entity.spline.001".to_string(),
+            plane_id: "plane.front".to_string(),
+            control_points_mm: vec![[80.0, 0.0], [90.0, 10.0], [100.0, 0.0], [110.0, 8.0]],
+            anchor_ids: vec![
+                "anchor.spline.0".to_string(),
+                "anchor.spline.1".to_string(),
+                "anchor.spline.2".to_string(),
+                "anchor.spline.3".to_string(),
+            ],
+            closed: false,
+            construction: false,
+        })
+        .expect("spline should insert");
+
+    let roundtrip_json = serde_json::to_string(&model).expect("model should serialize");
+    let parsed: CadSketchModel =
+        serde_json::from_str(&roundtrip_json).expect("model should deserialize");
+    assert_eq!(model, parsed, "entity roundtrip must stay deterministic");
+}
+
+#[test]
+fn spline_validation_rejects_anchor_point_count_mismatch() {
+    let mut model = CadSketchModel::default();
+    model
+        .insert_plane(primary_plane())
+        .expect("plane should insert");
+
+    let result = model.insert_entity(CadSketchEntity::Spline {
+        id: "entity.spline.bad".to_string(),
+        plane_id: "plane.front".to_string(),
+        control_points_mm: vec![[0.0, 0.0], [10.0, 10.0], [20.0, 0.0]],
+        anchor_ids: vec!["anchor.bad.0".to_string(), "anchor.bad.1".to_string()],
+        closed: false,
+        construction: true,
+    });
+    assert!(
+        result.is_err(),
+        "spline must reject mismatched control point and anchor counts"
+    );
+}

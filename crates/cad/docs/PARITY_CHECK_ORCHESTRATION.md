@@ -38,6 +38,7 @@ Provide one deterministic orchestration entrypoint for the parity baseline lanes
 - feature-op hash parity fixture check
 - modeling edge-case parity fixture check
 - core modeling checkpoint parity fixture check
+- sketch entity set parity fixture check
 - parity CI artifact manifest fixture check
 - parity risk register + blocker workflow check
 - baseline dashboard publication check
