@@ -1,0 +1,11 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-090",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/docs/features/text-to-cad.md",
+  "expected_gate_code": "CAD0-TRAINING-HOOKS-GATED",
+  "expected_gate_env": "OPENAGENTS_CAD_ENABLE_TRAINING_HOOKS",
+  "expected_eval_ratio_percent": 20,
+  "expected_sample_count": 12,
+  "expected_min_eval_samples": 1
+}

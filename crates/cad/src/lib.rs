@@ -64,6 +64,7 @@ pub mod stl;
 pub mod tessellation;
 pub mod text_to_cad;
 pub mod text_to_cad_dataset;
+pub mod text_to_cad_training_eval;
 pub mod topology_repair;
 pub mod validity;
 pub use error::{CadError, CadErrorCode, CadErrorEvent, CadResult};

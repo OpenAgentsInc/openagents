@@ -181,7 +181,7 @@ Major gaps to close:
 87. [x] VCAD-PARITY-087: Intent-based modeling parity execution path.
 88. [x] VCAD-PARITY-088: Text-to-CAD adapter parity lane (prompt->model).
 89. [x] VCAD-PARITY-089: Dataset generation and annotation parity tooling.
-90. [ ] VCAD-PARITY-090: Training/eval pipeline parity hooks (gated).
+90. [x] VCAD-PARITY-090: Training/eval pipeline parity hooks (gated).
 91. [ ] VCAD-PARITY-091: Headless script harness parity with vcad workflows.
 92. [ ] VCAD-PARITY-092: IO/headless/AI parity checkpoint.
 
