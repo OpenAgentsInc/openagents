@@ -1,0 +1,71 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-072",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "vcad-kernel-drafting/src/section.rs intersection/chaining/projection/hatching contracts",
+  "scalar_tolerance": 1e-9,
+  "expected_intersection_cases": [
+    {
+      "case_id": "coplanar_polyline",
+      "segment_count": 1,
+      "first_segment_length": 2.0
+    },
+    {
+      "case_id": "triangle_crossing",
+      "segment_count": 1,
+      "first_segment_length": 1.118033988749895
+    }
+  ],
+  "expected_chain_cases": [
+    {
+      "case_id": "closed_square",
+      "curve_count": 1,
+      "closed_curve_count": 1,
+      "total_points": 4
+    },
+    {
+      "case_id": "open_polyline",
+      "curve_count": 1,
+      "closed_curve_count": 0,
+      "total_points": 3
+    }
+  ],
+  "expected_mesh_cases": [
+    {
+      "case_id": "triangle_with_hatch",
+      "curve_count": 1,
+      "hatch_line_count": 2,
+      "first_curve_point_count": 2
+    },
+    {
+      "case_id": "triangle_without_hatch",
+      "curve_count": 1,
+      "hatch_line_count": 0,
+      "first_curve_point_count": 2
+    }
+  ],
+  "expected_projection_cases": [
+    {
+      "case_id": "tilted_plane_point",
+      "projected_x": 1.0,
+      "projected_y": 1.4142135623730951
+    },
+    {
+      "case_id": "z_plane_point",
+      "projected_x": 2.0,
+      "projected_y": -3.0
+    }
+  ],
+  "expected_hatch_cases": [
+    {
+      "case_id": "bounds_3x3_horizontal_dense",
+      "line_count": 12,
+      "first_line_length": 3.0
+    },
+    {
+      "case_id": "bounds_4x2_pi_over_4",
+      "line_count": 6,
+      "first_line_length": 3.1622776601683795
+    }
+  ]
+}
