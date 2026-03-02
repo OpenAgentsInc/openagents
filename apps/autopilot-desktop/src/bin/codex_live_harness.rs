@@ -2665,6 +2665,51 @@ fn balances_map_to_json(
     serde_json::Value::Object(wallet_map)
 }
 
+fn ensure_distinct_wallet_topology(
+    balances: &std::collections::BTreeMap<String, BlinkWalletBalances>,
+) -> Result<()> {
+    let mut btc_ids: std::collections::BTreeMap<&str, Vec<&str>> = std::collections::BTreeMap::new();
+    let mut usd_ids: std::collections::BTreeMap<&str, Vec<&str>> = std::collections::BTreeMap::new();
+    for entry in balances.values() {
+        btc_ids
+            .entry(entry.btc_wallet_id.as_str())
+            .or_default()
+            .push(entry.owner);
+        usd_ids
+            .entry(entry.usd_wallet_id.as_str())
+            .or_default()
+            .push(entry.owner);
+    }
+
+    let mut collisions = Vec::new();
+    for (wallet_id, owners) in btc_ids {
+        if owners.len() > 1 {
+            collisions.push(format!(
+                "btc_wallet_id={} owners={}",
+                wallet_id,
+                owners.join(",")
+            ));
+        }
+    }
+    for (wallet_id, owners) in usd_ids {
+        if owners.len() > 1 {
+            collisions.push(format!(
+                "usd_wallet_id={} owners={}",
+                wallet_id,
+                owners.join(",")
+            ));
+        }
+    }
+
+    if collisions.is_empty() {
+        return Ok(());
+    }
+    bail!(
+        "stable sats sa probe requires distinct Blink accounts per owner; wallet topology collision detected: {}",
+        collisions.join(" | ")
+    );
+}
+
 fn run_cross_wallet_transfer(
     script_paths: &BlinkScriptPaths,
     source_env: &[(String, String)],
@@ -2879,6 +2924,7 @@ fn run_blink_stablesats_sa_live_probe(
         .unwrap_or("openagents-stablesats-sa-live-harness");
 
     let mut balances = load_all_wallet_balances(wallets.as_slice(), &script_paths)?;
+    ensure_distinct_wallet_topology(&balances)?;
     let initial_balances = balances.clone();
     let funding_deficits = stable_sats_funding_deficits(probe, &balances)?;
     if !funding_deficits.is_empty() {
@@ -3608,6 +3654,24 @@ mod tests {
         let deficits =
             stable_sats_funding_deficits(&probe, &balances).expect("deficits should compute");
         assert!(deficits.is_empty());
+    }
+
+    #[test]
+    fn detects_wallet_topology_collisions() {
+        let mut balances = sample_balances(10_000, 1_000);
+        let operator = balances
+            .get("operator")
+            .expect("operator should exist")
+            .clone();
+        let alpha = balances
+            .get_mut("sa-alpha")
+            .expect("sa-alpha should exist");
+        alpha.btc_wallet_id = operator.btc_wallet_id.clone();
+        let error = ensure_distinct_wallet_topology(&balances)
+            .expect_err("duplicate wallet ids should fail preflight");
+        let message = error.to_string();
+        assert!(message.contains("wallet topology collision"));
+        assert!(message.contains("owner"));
     }
 
     #[test]
