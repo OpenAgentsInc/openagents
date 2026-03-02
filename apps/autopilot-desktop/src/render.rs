@@ -259,6 +259,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             ),
             stable_sats_simulation: crate::app_state::StableSatsSimulationPaneState::default(),
             autopilot_goals,
+            goal_loop_executor: crate::state::goal_loop_executor::GoalLoopExecutorState::default(),
             sidebar: SidebarState::default(),
             next_pane_id: 1,
             next_z_index: 1,

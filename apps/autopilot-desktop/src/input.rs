@@ -42,6 +42,7 @@ use crate::hotbar::{
     HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_SPARK_WALLET, activate_hotbar_slot,
     hotbar_slot_for_key, process_hotbar_clicks,
 };
+use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 use crate::pane_registry::pane_spec_by_command_id;
 use crate::pane_system::{
     ActivityFeedPaneAction, AgentNetworkSimulationPaneAction, AlertsRecoveryPaneAction,
@@ -81,6 +82,14 @@ use crate::runtime_lanes::{
 };
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
 use crate::spark_wallet::SparkWalletCommand;
+use crate::state::autopilot_goals::{
+    GoalExecutionReceipt, GoalLifecycleEvent, GoalLifecycleStatus,
+};
+use crate::state::goal_conditions::GoalProgressSnapshot;
+use crate::state::goal_loop_executor::{
+    ActiveGoalLoopRun, GoalLoopPhase, GoalLoopStopReason, retry_backoff_seconds,
+    select_runnable_goal,
+};
 
 mod actions;
 mod cad_turn_classifier;
@@ -422,6 +431,9 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     if reducers::run_cad_demo_action(state, CadDemoPaneAction::Noop) {
         changed = true;
     }
+    if run_autonomous_goal_loop(state) {
+        changed = true;
+    }
     if state.nostr_secret_state.expire(now) {
         changed = true;
     }
@@ -444,6 +456,457 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     refresh_sync_health(state);
     mirror_ui_errors_to_console(state);
     changed
+}
+
+fn run_autonomous_goal_loop(state: &mut crate::app_state::RenderState) -> bool {
+    let now_epoch_seconds = current_epoch_seconds();
+    let wallet_total_sats = state
+        .spark_wallet
+        .balance
+        .as_ref()
+        .map_or(0, spark_total_balance_sats);
+
+    if state.goal_loop_executor.active_run.is_none()
+        && let Some(goal) = select_runnable_goal(&state.autopilot_goals.document.active_goals)
+    {
+        let goal_id = goal.goal_id.clone();
+        if goal.lifecycle_status == GoalLifecycleStatus::Queued
+            && let Err(error) = state
+                .autopilot_goals
+                .transition_goal(&goal_id, GoalLifecycleEvent::StartRun)
+        {
+            state.autopilot_chat.record_turn_timeline_event(format!(
+                "goal loop start failed goal={goal_id} error={error}"
+            ));
+            state.autopilot_goals.last_error = Some(error);
+            return true;
+        }
+        state
+            .goal_loop_executor
+            .begin_run(&goal_id, now_epoch_seconds, wallet_total_sats);
+        state
+            .autopilot_chat
+            .record_turn_timeline_event(format!("goal loop started goal={goal_id}"));
+        return true;
+    }
+
+    let Some(active_run) = state.goal_loop_executor.active_run.clone() else {
+        return false;
+    };
+
+    let goal_id = active_run.goal_id.clone();
+    let Some(goal) = state
+        .autopilot_goals
+        .document
+        .active_goals
+        .iter()
+        .find(|goal| goal.goal_id == goal_id)
+        .cloned()
+    else {
+        state.goal_loop_executor.complete_run(
+            now_epoch_seconds,
+            GoalLifecycleStatus::Failed,
+            GoalLoopStopReason::GoalMissing,
+        );
+        state
+            .autopilot_chat
+            .record_turn_timeline_event(format!("goal loop stopped goal={goal_id} reason=missing"));
+        return true;
+    };
+
+    let progress =
+        goal_loop_progress_snapshot(state, &active_run, now_epoch_seconds, wallet_total_sats);
+    let evaluation = match state
+        .autopilot_goals
+        .evaluate_active_goal_conditions(&goal_id, &progress)
+    {
+        Ok(value) => value,
+        Err(error) => {
+            let stop_reason = GoalLoopStopReason::ConditionStop {
+                reasons: vec![error.clone()],
+            };
+            finalize_goal_loop_run(
+                state,
+                &active_run,
+                GoalLifecycleStatus::Failed,
+                stop_reason,
+                progress,
+                now_epoch_seconds,
+                Some(error),
+            );
+            return true;
+        }
+    };
+
+    if evaluation.goal_complete {
+        finalize_goal_loop_run(
+            state,
+            &active_run,
+            GoalLifecycleStatus::Succeeded,
+            GoalLoopStopReason::GoalComplete,
+            progress,
+            now_epoch_seconds,
+            Some("goal conditions satisfied".to_string()),
+        );
+        return true;
+    }
+
+    if !evaluation.should_continue {
+        let reason_text = evaluation.stop_reasons.join(" | ");
+        let stop_reason = GoalLoopStopReason::ConditionStop {
+            reasons: evaluation.stop_reasons.clone(),
+        };
+        finalize_goal_loop_run(
+            state,
+            &active_run,
+            GoalLifecycleStatus::Failed,
+            stop_reason,
+            progress,
+            now_epoch_seconds,
+            Some(reason_text),
+        );
+        return true;
+    }
+
+    let turn_in_flight = state.autopilot_chat.active_turn_id.is_some()
+        || !state.autopilot_chat.pending_turn_metadata.is_empty()
+        || matches!(
+            state.autopilot_chat.last_turn_status.as_deref(),
+            Some("inProgress")
+        );
+    if turn_in_flight {
+        if let Some(run) = state.goal_loop_executor.active_run.as_mut() {
+            run.phase = GoalLoopPhase::WaitingForTurnResult;
+        }
+        return false;
+    }
+
+    if active_run.phase == GoalLoopPhase::WaitingForTurnResult {
+        match state.autopilot_chat.last_turn_status.as_deref() {
+            Some("failed") => {
+                let error = state
+                    .autopilot_chat
+                    .last_error
+                    .clone()
+                    .unwrap_or_else(|| "codex turn failed".to_string());
+                state.goal_loop_executor.mark_attempt_finished(
+                    now_epoch_seconds,
+                    "failed",
+                    Some(error.clone()),
+                );
+                state.autopilot_chat.set_turn_status(None);
+                let retries_used = state.goal_loop_executor.increment_retries();
+                if retries_used > goal.retry_policy.max_retries {
+                    let stop_reason = GoalLoopStopReason::RetryLimitExceeded {
+                        retries_used,
+                        max_retries: goal.retry_policy.max_retries,
+                        last_error: error.clone(),
+                    };
+                    finalize_goal_loop_run(
+                        state,
+                        &active_run,
+                        GoalLifecycleStatus::Failed,
+                        stop_reason,
+                        progress,
+                        now_epoch_seconds,
+                        Some(error),
+                    );
+                    return true;
+                }
+                let backoff_seconds = retry_backoff_seconds(&goal.retry_policy, retries_used);
+                let resume_at = now_epoch_seconds.saturating_add(backoff_seconds);
+                state.goal_loop_executor.mark_backoff(resume_at);
+                state.autopilot_chat.record_turn_timeline_event(format!(
+                    "goal loop retry scheduled goal={} retries={}/{} backoff={}s",
+                    goal_id, retries_used, goal.retry_policy.max_retries, backoff_seconds
+                ));
+                return true;
+            }
+            Some("completed") => {
+                state.goal_loop_executor.mark_attempt_finished(
+                    now_epoch_seconds,
+                    "completed",
+                    None,
+                );
+                state.autopilot_chat.set_turn_status(None);
+                state.goal_loop_executor.mark_dispatching();
+            }
+            _ => {}
+        }
+    }
+
+    if let Some(run) = state.goal_loop_executor.active_run.as_ref()
+        && run.phase == GoalLoopPhase::Backoff
+    {
+        let resume_at = run.backoff_until_epoch_seconds.unwrap_or(now_epoch_seconds);
+        if now_epoch_seconds < resume_at {
+            return false;
+        }
+        state.goal_loop_executor.mark_dispatching();
+    }
+
+    if state.autopilot_chat.active_thread_id.is_none() {
+        let _ = run_chat_new_thread_action(state);
+        if let Some(run) = state.goal_loop_executor.active_run.as_mut() {
+            run.phase = GoalLoopPhase::WaitingForThread;
+        }
+        state
+            .autopilot_chat
+            .record_turn_timeline_event(format!("goal loop waiting for thread goal={goal_id}"));
+        return true;
+    }
+
+    let can_dispatch = state
+        .goal_loop_executor
+        .active_run
+        .as_ref()
+        .is_some_and(|run| {
+            matches!(
+                run.phase,
+                GoalLoopPhase::DispatchingTurn | GoalLoopPhase::WaitingForThread
+            )
+        });
+    if !can_dispatch {
+        return false;
+    }
+
+    let prompt = goal_loop_prompt_for_goal(&goal);
+    let pending_before = state.autopilot_chat.pending_turn_metadata.len();
+    state.chat_inputs.composer.set_value(prompt);
+    let _ = run_chat_submit_action(state);
+    let pending_after = state.autopilot_chat.pending_turn_metadata.len();
+
+    if pending_after > pending_before && state.autopilot_chat.last_error.is_none() {
+        state
+            .goal_loop_executor
+            .mark_attempt_submitted(now_epoch_seconds);
+        if let Some(run) = state.goal_loop_executor.active_run.as_ref() {
+            let attempt_index = run.attempts.len();
+            state.autopilot_chat.record_turn_timeline_event(format!(
+                "goal loop dispatched turn goal={} attempt={}",
+                goal_id, attempt_index
+            ));
+        }
+        return true;
+    }
+
+    let error = state
+        .autopilot_chat
+        .last_error
+        .clone()
+        .unwrap_or_else(|| "goal loop turn dispatch failed".to_string());
+    let retries_used = state.goal_loop_executor.increment_retries();
+    if retries_used > goal.retry_policy.max_retries {
+        let stop_reason = GoalLoopStopReason::DispatchFailed {
+            error: error.clone(),
+        };
+        finalize_goal_loop_run(
+            state,
+            &active_run,
+            GoalLifecycleStatus::Failed,
+            stop_reason,
+            progress,
+            now_epoch_seconds,
+            Some(error),
+        );
+        return true;
+    }
+
+    let backoff_seconds = retry_backoff_seconds(&goal.retry_policy, retries_used);
+    let resume_at = now_epoch_seconds.saturating_add(backoff_seconds);
+    state.goal_loop_executor.mark_backoff(resume_at);
+    state.autopilot_chat.record_turn_timeline_event(format!(
+        "goal loop dispatch retry goal={} retries={}/{} backoff={}s",
+        goal_id, retries_used, goal.retry_policy.max_retries, backoff_seconds
+    ));
+    true
+}
+
+fn goal_loop_progress_snapshot(
+    state: &crate::app_state::RenderState,
+    active_run: &ActiveGoalLoopRun,
+    now_epoch_seconds: u64,
+    wallet_total_sats: u64,
+) -> GoalProgressSnapshot {
+    let (jobs_completed, successes, errors) = state
+        .job_history
+        .rows
+        .iter()
+        .filter(|row| row.completed_at_epoch_seconds >= active_run.started_at_epoch_seconds)
+        .fold((0u32, 0u32, 0u32), |(jobs, success, failure), row| {
+            let jobs = jobs.saturating_add(1);
+            match row.status {
+                crate::app_state::JobHistoryStatus::Succeeded => {
+                    (jobs, success.saturating_add(1), failure)
+                }
+                crate::app_state::JobHistoryStatus::Failed => {
+                    (jobs, success, failure.saturating_add(1))
+                }
+            }
+        });
+
+    let total_spend_sats = state
+        .spark_wallet
+        .recent_payments
+        .iter()
+        .filter(|payment| {
+            payment.direction.eq_ignore_ascii_case("send")
+                && payment.status.eq_ignore_ascii_case("succeeded")
+                && payment.timestamp >= active_run.started_at_epoch_seconds
+        })
+        .fold(0u64, |acc, payment| {
+            acc.saturating_add(payment.amount_sats as u64)
+        });
+
+    GoalProgressSnapshot {
+        started_at_epoch_seconds: active_run.started_at_epoch_seconds,
+        now_epoch_seconds,
+        attempt_count: active_run.attempts.len() as u32,
+        wallet_delta_sats: wallet_total_sats as i64 - active_run.initial_wallet_sats as i64,
+        jobs_completed,
+        successes,
+        errors,
+        total_spend_sats,
+        total_swap_cents: 0,
+        external_signals: std::collections::BTreeMap::new(),
+    }
+}
+
+fn goal_loop_prompt_for_goal(goal: &crate::state::autopilot_goals::GoalRecord) -> String {
+    match &goal.objective {
+        crate::state::autopilot_goals::GoalObjective::EarnBitcoin {
+            min_wallet_delta_sats,
+            note,
+        } => {
+            let mut prompt = format!(
+                "Autonomously execute the next highest-confidence paid work action to move wallet delta toward +{} sats. Use available OpenAgents tools and emit progress receipts.",
+                min_wallet_delta_sats
+            );
+            if let Some(note) = note.as_deref()
+                && !note.trim().is_empty()
+            {
+                prompt.push_str(" Goal note: ");
+                prompt.push_str(note.trim());
+            }
+            prompt
+        }
+        crate::state::autopilot_goals::GoalObjective::SwapBtcToUsd { sell_sats, note } => {
+            let mut prompt = format!(
+                "Request and execute a BTC to stablesat USD swap for {} sats with policy-safe limits, then report settlement evidence.",
+                sell_sats
+            );
+            if let Some(note) = note.as_deref()
+                && !note.trim().is_empty()
+            {
+                prompt.push_str(" Goal note: ");
+                prompt.push_str(note.trim());
+            }
+            prompt
+        }
+        crate::state::autopilot_goals::GoalObjective::SwapUsdToBtc { sell_cents, note } => {
+            let mut prompt = format!(
+                "Request and execute a stablesat USD to BTC swap for {} cents with policy-safe limits, then report settlement evidence.",
+                sell_cents
+            );
+            if let Some(note) = note.as_deref()
+                && !note.trim().is_empty()
+            {
+                prompt.push_str(" Goal note: ");
+                prompt.push_str(note.trim());
+            }
+            prompt
+        }
+        crate::state::autopilot_goals::GoalObjective::Custom { instruction } => {
+            instruction.trim().to_string()
+        }
+    }
+}
+
+fn finalize_goal_loop_run(
+    state: &mut crate::app_state::RenderState,
+    active_run: &ActiveGoalLoopRun,
+    lifecycle_status: GoalLifecycleStatus,
+    stop_reason: GoalLoopStopReason,
+    progress: GoalProgressSnapshot,
+    now_epoch_seconds: u64,
+    notes: Option<String>,
+) {
+    let goal_id = active_run.goal_id.clone();
+    let transition_result = match lifecycle_status {
+        GoalLifecycleStatus::Succeeded => state.autopilot_goals.transition_goal(
+            &goal_id,
+            GoalLifecycleEvent::Succeed {
+                reason: notes.clone(),
+            },
+        ),
+        GoalLifecycleStatus::Failed => state.autopilot_goals.transition_goal(
+            &goal_id,
+            GoalLifecycleEvent::Fail {
+                reason: notes
+                    .clone()
+                    .unwrap_or_else(|| "goal loop stopped".to_string()),
+            },
+        ),
+        GoalLifecycleStatus::Aborted => state.autopilot_goals.transition_goal(
+            &goal_id,
+            GoalLifecycleEvent::Abort {
+                reason: notes
+                    .clone()
+                    .unwrap_or_else(|| "goal loop aborted".to_string()),
+            },
+        ),
+        _ => Ok(crate::state::autopilot_goals::GoalStateTransition {
+            goal_id: goal_id.clone(),
+            from: GoalLifecycleStatus::Running,
+            to: lifecycle_status,
+            event: GoalLifecycleEvent::Fail {
+                reason: "unexpected terminal transition".to_string(),
+            },
+            attempt_count: progress.attempt_count,
+            reason: notes.clone(),
+            transitioned_at_epoch_seconds: now_epoch_seconds,
+        }),
+    };
+
+    if let Err(error) = transition_result {
+        state.autopilot_goals.last_error = Some(error.clone());
+        state.autopilot_chat.record_turn_timeline_event(format!(
+            "goal loop transition error goal={} status={:?} error={}",
+            goal_id, lifecycle_status, error
+        ));
+    }
+
+    let receipt = GoalExecutionReceipt {
+        receipt_id: format!("goal-loop-receipt-{}-{}", goal_id, now_epoch_seconds),
+        goal_id: goal_id.clone(),
+        attempt_index: progress.attempt_count,
+        started_at_epoch_seconds: active_run.started_at_epoch_seconds,
+        finished_at_epoch_seconds: now_epoch_seconds,
+        lifecycle_status,
+        wallet_delta_sats: progress.wallet_delta_sats,
+        jobs_completed: progress.jobs_completed,
+        successes: progress.successes,
+        errors: progress.errors,
+        notes: notes.clone(),
+    };
+    if let Err(error) = state.autopilot_goals.record_receipt(receipt) {
+        state.autopilot_goals.last_error = Some(error);
+    }
+
+    state
+        .goal_loop_executor
+        .complete_run(now_epoch_seconds, lifecycle_status, stop_reason.clone());
+    state.autopilot_chat.record_turn_timeline_event(format!(
+        "goal loop terminal goal={} status={:?} reason={:?}",
+        goal_id, lifecycle_status, stop_reason
+    ));
+}
+
+fn current_epoch_seconds() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0)
 }
 
 fn mirror_ui_error(channel: &'static str, value: Option<&str>) {
