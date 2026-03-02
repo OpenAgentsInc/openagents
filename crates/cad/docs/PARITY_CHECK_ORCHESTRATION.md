@@ -50,6 +50,7 @@ Provide one deterministic orchestration entrypoint for the parity baseline lanes
 - sketch loft parity fixture check
 - assembly checkpoint parity fixture check
 - drafting kernel scaffolding parity fixture check
+- drafting projection parity fixture check
 - parity CI artifact manifest fixture check
 - parity risk register + blocker workflow check
 - baseline dashboard publication check

@@ -63,6 +63,7 @@ LANE_LABELS=(
     "assembly-acceptance-scenes"
     "assembly-checkpoint"
     "drafting-kernel-scaffolding"
+    "drafting-projection"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -305,6 +306,9 @@ run_lane "assembly-checkpoint" \
 
 run_lane "drafting-kernel-scaffolding" \
     "$ROOT_DIR/scripts/cad/parity-drafting-kernel-scaffolding-ci.sh"
+
+run_lane "drafting-projection" \
+    "$ROOT_DIR/scripts/cad/parity-drafting-projection-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
