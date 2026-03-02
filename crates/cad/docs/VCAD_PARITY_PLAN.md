@@ -82,7 +82,7 @@ Major gaps to close:
 6. [x] VCAD-PARITY-006: Create shared parity fixture corpus and seed data.
 7. [x] VCAD-PARITY-007: Add `scripts/cad/parity_check.sh` orchestration command.
 8. [x] VCAD-PARITY-008: Add CI lane for parity checks and artifact upload.
-9. [ ] VCAD-PARITY-009: Add parity risk register and blocker workflow.
+9. [x] VCAD-PARITY-009: Add parity risk register and blocker workflow.
 10. [ ] VCAD-PARITY-010: Publish baseline parity dashboard in repo docs.
 
 ### Phase B - Kernel substrate parity (`VCAD-PARITY-011` to `VCAD-PARITY-025`)

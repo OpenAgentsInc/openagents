@@ -9,6 +9,7 @@ Provide one deterministic orchestration entrypoint for the parity baseline lanes
 - baseline manifest freeze check
 - inventory/matrix/scorecard/fixture-corpus pipeline checks
 - parity CI artifact manifest fixture check
+- parity risk register + blocker workflow check
 - parity fixture test lane
 - formatting check
 

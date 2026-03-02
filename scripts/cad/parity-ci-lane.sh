@@ -18,6 +18,7 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/openagents_capabilities_inventory.json"
     "crates/cad/parity/vcad_openagents_gap_matrix.json"
     "crates/cad/parity/parity_scorecard.json"
+    "crates/cad/parity/parity_risk_register.json"
     "crates/cad/parity/fixtures/parity_fixture_corpus.json"
 )
 

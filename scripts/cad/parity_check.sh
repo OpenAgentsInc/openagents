@@ -7,6 +7,7 @@ LANE_LABELS=(
     "baseline-manifests"
     "fixture-corpus-pipeline"
     "ci-artifact-manifest"
+    "risk-register-workflow"
     "parity-fixture-tests"
     "rustfmt-check"
 )
@@ -78,6 +79,9 @@ run_lane "fixture-corpus-pipeline" \
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
+
+run_lane "risk-register-workflow" \
+    "$ROOT_DIR/scripts/cad/parity-risk-register-ci.sh"
 
 if (( SKIP_TESTS == 0 )); then
     run_lane "parity-fixture-tests" \
