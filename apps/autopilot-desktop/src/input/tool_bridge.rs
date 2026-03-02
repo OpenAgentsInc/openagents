@@ -9,9 +9,10 @@ use crate::app_state::{
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 use crate::openagents_dynamic_tools::{
     OPENAGENTS_DYNAMIC_TOOL_NAMES, OPENAGENTS_TOOL_CAD_ACTION, OPENAGENTS_TOOL_CAD_INTENT,
-    OPENAGENTS_TOOL_PANE_ACTION, OPENAGENTS_TOOL_PANE_CLOSE, OPENAGENTS_TOOL_PANE_FOCUS,
-    OPENAGENTS_TOOL_PANE_LIST, OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_PANE_SET_INPUT,
-    OPENAGENTS_TOOL_SWAP_EXECUTE, OPENAGENTS_TOOL_SWAP_QUOTE,
+    OPENAGENTS_TOOL_GOAL_SCHEDULER, OPENAGENTS_TOOL_PANE_ACTION, OPENAGENTS_TOOL_PANE_CLOSE,
+    OPENAGENTS_TOOL_PANE_FOCUS, OPENAGENTS_TOOL_PANE_LIST, OPENAGENTS_TOOL_PANE_OPEN,
+    OPENAGENTS_TOOL_PANE_SET_INPUT, OPENAGENTS_TOOL_PROVIDER_CONTROL, OPENAGENTS_TOOL_SWAP_EXECUTE,
+    OPENAGENTS_TOOL_SWAP_QUOTE, OPENAGENTS_TOOL_WALLET_CHECK,
 };
 use crate::pane_registry::{pane_spec, pane_spec_by_command_id, pane_specs};
 use crate::pane_system::{
@@ -26,7 +27,11 @@ use crate::pane_system::{
     SkillTrustRevocationPaneAction, StableSatsSimulationPaneAction, StarterJobsPaneAction,
     SyncHealthPaneAction, TrajectoryAuditPaneAction, TreasuryExchangeSimulationPaneAction,
 };
+use crate::runtime_lanes::SaLifecycleCommand;
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
+use crate::spark_wallet::SparkWalletCommand;
+use crate::state::autopilot_goals::GoalMissedRunPolicy;
+use crate::state::os_scheduler::{OsSchedulerAdapterKind, preferred_adapter_for_host};
 use crate::state::swap_contract::{SwapAmount, SwapAmountUnit, SwapDirection, SwapQuoteTerms};
 use crate::state::swap_quote_adapter::{
     StablesatsQuoteClient, StablesatsQuoteFor, StablesatsQuoteResponse, SwapQuoteAdapterRequest,
@@ -43,6 +48,9 @@ const LEGACY_OPENAGENTS_TOOL_CAD_INTENT: &str = "openagents.cad.intent";
 const LEGACY_OPENAGENTS_TOOL_CAD_ACTION: &str = "openagents.cad.action";
 const LEGACY_OPENAGENTS_TOOL_SWAP_QUOTE: &str = "openagents.swap.quote";
 const LEGACY_OPENAGENTS_TOOL_SWAP_EXECUTE: &str = "openagents.swap.execute";
+const LEGACY_OPENAGENTS_TOOL_GOAL_SCHEDULER: &str = "openagents.goal.scheduler";
+const LEGACY_OPENAGENTS_TOOL_WALLET_CHECK: &str = "openagents.wallet.check";
+const LEGACY_OPENAGENTS_TOOL_PROVIDER_CONTROL: &str = "openagents.provider.control";
 const LEGACY_OPENAGENTS_TOOL_NAMES: &[&str] = &[
     LEGACY_OPENAGENTS_TOOL_PANE_LIST,
     LEGACY_OPENAGENTS_TOOL_PANE_OPEN,
@@ -54,6 +62,9 @@ const LEGACY_OPENAGENTS_TOOL_NAMES: &[&str] = &[
     LEGACY_OPENAGENTS_TOOL_CAD_ACTION,
     LEGACY_OPENAGENTS_TOOL_SWAP_QUOTE,
     LEGACY_OPENAGENTS_TOOL_SWAP_EXECUTE,
+    LEGACY_OPENAGENTS_TOOL_GOAL_SCHEDULER,
+    LEGACY_OPENAGENTS_TOOL_WALLET_CHECK,
+    LEGACY_OPENAGENTS_TOOL_PROVIDER_CONTROL,
 ];
 pub(super) const OPENAGENTS_TOOL_PREFIXES: &[&str] = &["openagents_", "openagents."];
 pub(super) const OPENAGENTS_TOOL_NAMES: &[&str] = OPENAGENTS_DYNAMIC_TOOL_NAMES;
@@ -277,6 +288,28 @@ struct SwapExecuteArgs {
     failure_reason: Option<String>,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+struct GoalSchedulerToolArgs {
+    action: String,
+    #[serde(default)]
+    goal_id: Option<String>,
+    #[serde(default)]
+    missed_run_policy: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct WalletCheckArgs {
+    #[serde(default)]
+    window_seconds: Option<u64>,
+    #[serde(default)]
+    include_payments: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct ProviderControlArgs {
+    action: String,
+}
+
 struct ToolBridgeStablesatsClient {
     quote: Option<StablesatsQuoteResponse>,
     unavailable_reason: Option<String>,
@@ -416,6 +449,27 @@ pub(super) fn execute_openagents_tool_request(
                 Err(error) => return error,
             };
             execute_swap_execute(state, &args)
+        }
+        OPENAGENTS_TOOL_GOAL_SCHEDULER | LEGACY_OPENAGENTS_TOOL_GOAL_SCHEDULER => {
+            let args = match decoded.decode_arguments::<GoalSchedulerToolArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_goal_scheduler_tool(state, &args)
+        }
+        OPENAGENTS_TOOL_WALLET_CHECK | LEGACY_OPENAGENTS_TOOL_WALLET_CHECK => {
+            let args = match decoded.decode_arguments::<WalletCheckArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_wallet_check_tool(state, &args)
+        }
+        OPENAGENTS_TOOL_PROVIDER_CONTROL | LEGACY_OPENAGENTS_TOOL_PROVIDER_CONTROL => {
+            let args = match decoded.decode_arguments::<ProviderControlArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_provider_control_tool(state, &args)
         }
         _ => ToolBridgeResultEnvelope::error(
             "OA-TOOL-NOT-IMPLEMENTED",
@@ -2088,6 +2142,453 @@ fn execute_swap_execute(
             "events": events,
         }),
     )
+}
+
+fn execute_goal_scheduler_tool(
+    state: &mut RenderState,
+    args: &GoalSchedulerToolArgs,
+) -> ToolBridgeResultEnvelope {
+    let action = normalize_key(&args.action);
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+
+    match action.as_str() {
+        "status" => {
+            if let Some(goal_id) = args.goal_id.as_deref() {
+                let Some(goal) = state
+                    .autopilot_goals
+                    .document
+                    .active_goals
+                    .iter()
+                    .find(|goal| goal.goal_id == goal_id)
+                else {
+                    return ToolBridgeResultEnvelope::error(
+                        "OA-GOAL-SCHEDULER-GOAL-NOT-FOUND",
+                        format!("Goal '{}' not found", goal_id),
+                        json!({ "goal_id": goal_id }),
+                    );
+                };
+                return ToolBridgeResultEnvelope::ok(
+                    "OA-GOAL-SCHEDULER-STATUS-OK",
+                    "Goal scheduler status read",
+                    json!({
+                        "goal_id": goal.goal_id,
+                        "lifecycle_status": format!("{:?}", goal.lifecycle_status),
+                        "schedule": {
+                            "enabled": goal.schedule.enabled,
+                            "kind": format!("{:?}", goal.schedule.kind),
+                            "next_run_epoch_seconds": goal.schedule.next_run_epoch_seconds,
+                            "last_run_epoch_seconds": goal.schedule.last_run_epoch_seconds,
+                            "missed_run_policy": format!("{:?}", goal.schedule.missed_run_policy),
+                            "pending_catchup_runs": goal.schedule.pending_catchup_runs,
+                            "last_recovery_epoch_seconds": goal.schedule.last_recovery_epoch_seconds,
+                            "os_adapter": {
+                                "enabled": goal.schedule.os_adapter.enabled,
+                                "adapter": goal
+                                    .schedule
+                                    .os_adapter
+                                    .adapter
+                                    .map(|kind| kind.as_str().to_string()),
+                                "descriptor_path": goal.schedule.os_adapter.descriptor_path,
+                                "last_reconciled_epoch_seconds": goal
+                                    .schedule
+                                    .os_adapter
+                                    .last_reconciled_epoch_seconds,
+                                "last_reconcile_result": goal
+                                    .schedule
+                                    .os_adapter
+                                    .last_reconcile_result,
+                            },
+                        },
+                    }),
+                );
+            }
+
+            let active = state.autopilot_goals.document.active_goals.len();
+            let running = state
+                .autopilot_goals
+                .document
+                .active_goals
+                .iter()
+                .filter(|goal| {
+                    matches!(
+                        goal.lifecycle_status,
+                        crate::state::autopilot_goals::GoalLifecycleStatus::Running
+                    )
+                })
+                .count();
+            let queued = state
+                .autopilot_goals
+                .document
+                .active_goals
+                .iter()
+                .filter(|goal| {
+                    matches!(
+                        goal.lifecycle_status,
+                        crate::state::autopilot_goals::GoalLifecycleStatus::Queued
+                    )
+                })
+                .count();
+            ToolBridgeResultEnvelope::ok(
+                "OA-GOAL-SCHEDULER-STATUS-OK",
+                "Goal scheduler summary read",
+                json!({
+                    "active_goals": active,
+                    "running_goals": running,
+                    "queued_goals": queued,
+                    "last_action": state.autopilot_goals.last_action,
+                    "last_error": state.autopilot_goals.last_error,
+                }),
+            )
+        }
+        "recover_startup" => match state
+            .autopilot_goals
+            .recover_after_restart(now_epoch_seconds)
+        {
+            Ok(report) => {
+                state.goal_restart_recovery_ran = true;
+                let _ = state
+                    .autopilot_goals
+                    .reconcile_os_scheduler_adapters(now_epoch_seconds);
+                ToolBridgeResultEnvelope::ok(
+                    "OA-GOAL-SCHEDULER-RECOVER-OK",
+                    "Executed startup goal recovery sequence",
+                    json!({
+                        "recovered_running_goals": report.recovered_running_goals,
+                        "replay_queued_goals": report.replay_queued_goals,
+                        "skipped_goals": report.skipped_goals,
+                        "catchup_backlog": report.catchup_backlog,
+                    }),
+                )
+            }
+            Err(error) => ToolBridgeResultEnvelope::error(
+                "OA-GOAL-SCHEDULER-RECOVER-FAILED",
+                format!("Goal restart recovery failed: {}", error),
+                json!({ "error": error }),
+            ),
+        },
+        "run_now" => {
+            let Some(goal_id) = args
+                .goal_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            else {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-GOAL-SCHEDULER-MISSING-GOAL",
+                    "run_now requires a non-empty goal_id",
+                    json!({ "action": args.action }),
+                );
+            };
+            match state
+                .autopilot_goals
+                .schedule_goal_run_now(goal_id, now_epoch_seconds)
+            {
+                Ok(()) => ToolBridgeResultEnvelope::ok(
+                    "OA-GOAL-SCHEDULER-RUN-NOW-OK",
+                    "Scheduled immediate goal run",
+                    json!({ "goal_id": goal_id, "scheduled_at_epoch_seconds": now_epoch_seconds }),
+                ),
+                Err(error) => ToolBridgeResultEnvelope::error(
+                    "OA-GOAL-SCHEDULER-RUN-NOW-FAILED",
+                    format!("Failed to schedule immediate run: {}", error),
+                    json!({ "goal_id": goal_id, "error": error }),
+                ),
+            }
+        }
+        "set_missed_policy" => {
+            let Some(goal_id) = args
+                .goal_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            else {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-GOAL-SCHEDULER-MISSING-GOAL",
+                    "set_missed_policy requires a non-empty goal_id",
+                    json!({ "action": args.action }),
+                );
+            };
+            let Some(policy_raw) = args.missed_run_policy.as_deref() else {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-GOAL-SCHEDULER-MISSING-POLICY",
+                    "set_missed_policy requires missed_run_policy",
+                    json!({ "goal_id": goal_id }),
+                );
+            };
+            let Some(policy) = parse_goal_missed_run_policy(policy_raw) else {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-GOAL-SCHEDULER-INVALID-POLICY",
+                    "missed_run_policy must be catch_up, skip, or single_replay",
+                    json!({ "goal_id": goal_id, "missed_run_policy": policy_raw }),
+                );
+            };
+            match state.autopilot_goals.set_goal_missed_run_policy(
+                goal_id,
+                policy,
+                now_epoch_seconds,
+            ) {
+                Ok(()) => ToolBridgeResultEnvelope::ok(
+                    "OA-GOAL-SCHEDULER-POLICY-OK",
+                    "Updated missed-run policy",
+                    json!({
+                        "goal_id": goal_id,
+                        "missed_run_policy": policy_raw,
+                    }),
+                ),
+                Err(error) => ToolBridgeResultEnvelope::error(
+                    "OA-GOAL-SCHEDULER-POLICY-FAILED",
+                    format!("Failed to set missed-run policy: {}", error),
+                    json!({ "goal_id": goal_id, "error": error }),
+                ),
+            }
+        }
+        "toggle_os_adapter" => {
+            let Some(goal_id) = args
+                .goal_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            else {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-GOAL-SCHEDULER-MISSING-GOAL",
+                    "toggle_os_adapter requires a non-empty goal_id",
+                    json!({ "action": args.action }),
+                );
+            };
+            let goal = state
+                .autopilot_goals
+                .document
+                .active_goals
+                .iter()
+                .find(|goal| goal.goal_id == goal_id);
+            let Some(goal) = goal else {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-GOAL-SCHEDULER-GOAL-NOT-FOUND",
+                    format!("Goal '{}' not found", goal_id),
+                    json!({ "goal_id": goal_id }),
+                );
+            };
+            let enable = !goal.schedule.os_adapter.enabled;
+            let adapter = if enable {
+                goal.schedule
+                    .os_adapter
+                    .adapter
+                    .or_else(preferred_adapter_for_host)
+                    .or(Some(OsSchedulerAdapterKind::Cron))
+            } else {
+                goal.schedule
+                    .os_adapter
+                    .adapter
+                    .or(Some(OsSchedulerAdapterKind::Cron))
+            };
+            match state.autopilot_goals.set_goal_os_scheduler_adapter(
+                goal_id,
+                enable,
+                adapter,
+                now_epoch_seconds,
+            ) {
+                Ok(()) => ToolBridgeResultEnvelope::ok(
+                    "OA-GOAL-SCHEDULER-OS-ADAPTER-OK",
+                    if enable {
+                        "Enabled OS scheduler adapter"
+                    } else {
+                        "Disabled OS scheduler adapter"
+                    },
+                    json!({
+                        "goal_id": goal_id,
+                        "enabled": enable,
+                        "adapter": adapter.map(|kind| kind.as_str().to_string()),
+                    }),
+                ),
+                Err(error) => ToolBridgeResultEnvelope::error(
+                    "OA-GOAL-SCHEDULER-OS-ADAPTER-FAILED",
+                    format!("Failed to toggle OS scheduler adapter: {}", error),
+                    json!({ "goal_id": goal_id, "error": error }),
+                ),
+            }
+        }
+        "reconcile_os_adapters" => match state
+            .autopilot_goals
+            .reconcile_os_scheduler_adapters(now_epoch_seconds)
+        {
+            Ok(reconciled_goal_ids) => ToolBridgeResultEnvelope::ok(
+                "OA-GOAL-SCHEDULER-RECONCILE-OK",
+                "Reconciled enabled OS scheduler adapters",
+                json!({
+                    "reconciled_goal_ids": reconciled_goal_ids,
+                }),
+            ),
+            Err(error) => ToolBridgeResultEnvelope::error(
+                "OA-GOAL-SCHEDULER-RECONCILE-FAILED",
+                format!("OS scheduler reconcile failed: {}", error),
+                json!({ "error": error }),
+            ),
+        },
+        _ => ToolBridgeResultEnvelope::error(
+            "OA-GOAL-SCHEDULER-ACTION-UNSUPPORTED",
+            format!(
+                "Unsupported goal scheduler action '{}'. Allowed: status, recover_startup, run_now, set_missed_policy, toggle_os_adapter, reconcile_os_adapters",
+                args.action
+            ),
+            json!({ "action": args.action }),
+        ),
+    }
+}
+
+fn execute_wallet_check_tool(
+    state: &RenderState,
+    args: &WalletCheckArgs,
+) -> ToolBridgeResultEnvelope {
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    let window_seconds = args.window_seconds.unwrap_or(86_400).clamp(60, 2_592_000);
+    let cutoff = now_epoch_seconds.saturating_sub(window_seconds);
+
+    let payments = state
+        .spark_wallet
+        .recent_payments
+        .iter()
+        .filter(|payment| {
+            payment.timestamp >= cutoff && payment.status.eq_ignore_ascii_case("succeeded")
+        })
+        .collect::<Vec<_>>();
+    let sent_sats = payments
+        .iter()
+        .filter(|payment| payment.direction.eq_ignore_ascii_case("send"))
+        .fold(0u64, |acc, payment| {
+            acc.saturating_add(payment.amount_sats.max(0) as u64)
+        });
+    let received_sats = payments
+        .iter()
+        .filter(|payment| payment.direction.eq_ignore_ascii_case("receive"))
+        .fold(0u64, |acc, payment| {
+            acc.saturating_add(payment.amount_sats.max(0) as u64)
+        });
+
+    let payment_rows = if args.include_payments {
+        payments
+            .iter()
+            .take(50)
+            .map(|payment| {
+                json!({
+                    "id": payment.id,
+                    "direction": payment.direction,
+                    "status": payment.status,
+                    "amount_sats": payment.amount_sats,
+                    "timestamp": payment.timestamp,
+                })
+            })
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+
+    ToolBridgeResultEnvelope::ok(
+        "OA-WALLET-CHECK-OK",
+        "Read wallet status and bounded payment summary",
+        json!({
+            "network": format!("{:?}", state.spark_wallet.network),
+            "network_status_present": state.spark_wallet.network_status.is_some(),
+            "balance_sats": state
+                .spark_wallet
+                .balance
+                .as_ref()
+                .map(spark_total_balance_sats),
+            "window_seconds": window_seconds,
+            "payment_summary": {
+                "count": payments.len(),
+                "sent_sats": sent_sats,
+                "received_sats": received_sats,
+            },
+            "payments": payment_rows,
+            "last_error": state.spark_wallet.last_error,
+            "last_action": state.spark_wallet.last_action,
+        }),
+    )
+}
+
+fn execute_provider_control_tool(
+    state: &mut RenderState,
+    args: &ProviderControlArgs,
+) -> ToolBridgeResultEnvelope {
+    let action = normalize_key(&args.action);
+    match action.as_str() {
+        "status" => ToolBridgeResultEnvelope::ok(
+            "OA-PROVIDER-CONTROL-STATUS-OK",
+            "Read provider runtime status",
+            json!({
+                "mode": state.provider_runtime.mode.label(),
+                "degraded_reason_code": state.provider_runtime.degraded_reason_code,
+                "queue_depth": state.provider_runtime.queue_depth,
+                "runner_online": matches!(state.provider_runtime.mode, crate::app_state::ProviderMode::Online),
+                "heartbeat_seconds": state.sa_lane.heartbeat_seconds,
+                "last_result": state.provider_runtime.last_result,
+                "last_error_detail": state.provider_runtime.last_error_detail,
+            }),
+        ),
+        "set_online" | "set_offline" => {
+            let online = action == "set_online";
+            if online {
+                let _ = state.spark_worker.enqueue(SparkWalletCommand::Refresh);
+            }
+            match state.queue_sa_command(SaLifecycleCommand::SetRunnerOnline { online }) {
+                Ok(command_seq) => ToolBridgeResultEnvelope::ok(
+                    "OA-PROVIDER-CONTROL-SET-ONLINE-QUEUED",
+                    if online {
+                        "Queued provider online transition"
+                    } else {
+                        "Queued provider offline transition"
+                    },
+                    json!({
+                        "online": online,
+                        "command_seq": command_seq,
+                    }),
+                ),
+                Err(error) => ToolBridgeResultEnvelope::error(
+                    "OA-PROVIDER-CONTROL-SET-ONLINE-FAILED",
+                    format!("Failed queuing provider state transition: {}", error),
+                    json!({
+                        "online": online,
+                        "error": error,
+                    }),
+                ),
+            }
+        }
+        "refresh_wallet" => match state.spark_worker.enqueue(SparkWalletCommand::Refresh) {
+            Ok(()) => ToolBridgeResultEnvelope::ok(
+                "OA-PROVIDER-CONTROL-WALLET-REFRESH-QUEUED",
+                "Queued wallet refresh",
+                json!({ "queued": true }),
+            ),
+            Err(error) => ToolBridgeResultEnvelope::error(
+                "OA-PROVIDER-CONTROL-WALLET-REFRESH-FAILED",
+                format!("Failed queuing wallet refresh: {}", error),
+                json!({ "queued": false, "error": error }),
+            ),
+        },
+        _ => ToolBridgeResultEnvelope::error(
+            "OA-PROVIDER-CONTROL-ACTION-UNSUPPORTED",
+            format!(
+                "Unsupported provider control action '{}'. Allowed: status, set_online, set_offline, refresh_wallet",
+                args.action
+            ),
+            json!({ "action": args.action }),
+        ),
+    }
+}
+
+fn parse_goal_missed_run_policy(raw: &str) -> Option<GoalMissedRunPolicy> {
+    match normalize_key(raw).as_str() {
+        "catch_up" | "catchup" => Some(GoalMissedRunPolicy::CatchUp),
+        "skip" => Some(GoalMissedRunPolicy::Skip),
+        "single_replay" | "single" => Some(GoalMissedRunPolicy::SingleReplay),
+        _ => None,
+    }
 }
 
 fn parse_swap_direction(direction: &str) -> Result<SwapDirection, ToolBridgeResultEnvelope> {

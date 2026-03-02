@@ -11,6 +11,9 @@ pub(crate) const OPENAGENTS_TOOL_CAD_INTENT: &str = "openagents_cad_intent";
 pub(crate) const OPENAGENTS_TOOL_CAD_ACTION: &str = "openagents_cad_action";
 pub(crate) const OPENAGENTS_TOOL_SWAP_QUOTE: &str = "openagents_swap_quote";
 pub(crate) const OPENAGENTS_TOOL_SWAP_EXECUTE: &str = "openagents_swap_execute";
+pub(crate) const OPENAGENTS_TOOL_GOAL_SCHEDULER: &str = "openagents_goal_scheduler";
+pub(crate) const OPENAGENTS_TOOL_WALLET_CHECK: &str = "openagents_wallet_check";
+pub(crate) const OPENAGENTS_TOOL_PROVIDER_CONTROL: &str = "openagents_provider_control";
 
 pub(crate) const OPENAGENTS_DYNAMIC_TOOL_NAMES: &[&str] = &[
     OPENAGENTS_TOOL_PANE_LIST,
@@ -23,6 +26,9 @@ pub(crate) const OPENAGENTS_DYNAMIC_TOOL_NAMES: &[&str] = &[
     OPENAGENTS_TOOL_CAD_ACTION,
     OPENAGENTS_TOOL_SWAP_QUOTE,
     OPENAGENTS_TOOL_SWAP_EXECUTE,
+    OPENAGENTS_TOOL_GOAL_SCHEDULER,
+    OPENAGENTS_TOOL_WALLET_CHECK,
+    OPENAGENTS_TOOL_PROVIDER_CONTROL,
 ];
 
 pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
@@ -180,6 +186,66 @@ pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
                     "failure_reason": { "type": "string" }
                 },
                 "required": ["goal_id", "quote_id", "status"],
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_GOAL_SCHEDULER.to_string(),
+            description:
+                "Run allowlisted goal scheduler operations (status, recovery, run-now, policy, OS adapter reconcile)."
+                    .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": [
+                            "status",
+                            "recover_startup",
+                            "run_now",
+                            "set_missed_policy",
+                            "toggle_os_adapter",
+                            "reconcile_os_adapters"
+                        ]
+                    },
+                    "goal_id": { "type": "string" },
+                    "missed_run_policy": {
+                        "type": "string",
+                        "enum": ["catch_up", "skip", "single_replay"]
+                    }
+                },
+                "required": ["action"],
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_WALLET_CHECK.to_string(),
+            description:
+                "Read-only wallet status check with optional bounded recent payment summary."
+                    .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "window_seconds": { "type": "integer", "minimum": 60 },
+                    "include_payments": { "type": "boolean" }
+                },
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_PROVIDER_CONTROL.to_string(),
+            description:
+                "Controlled provider runtime actions (status, set online/offline, queue wallet refresh)."
+                    .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["status", "set_online", "set_offline", "refresh_wallet"]
+                    }
+                },
+                "required": ["action"],
                 "additionalProperties": false
             }),
         },
