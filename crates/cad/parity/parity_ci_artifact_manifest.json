@@ -5,7 +5,7 @@
   "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
   "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
   "parity_check_entrypoint": "scripts/cad/parity_check.sh",
-  "source_artifact_count": 50,
+  "source_artifact_count": 51,
   "artifacts": [
     {
       "artifact_id": "chamfer_feature_graph_parity_manifest",
@@ -172,8 +172,8 @@
     {
       "artifact_id": "parity_dashboard",
       "source_path": "crates/cad/parity/parity_dashboard.json",
-      "sha256": "fe40d886133584219cd0b31e91b13de9a0a0c5b59d252696c338479898e3cd9c",
-      "bytes": 3629
+      "sha256": "a943b0343b143352c45ce0937ba92de2d9e041668d38bc7c8edcc516972c9797",
+      "bytes": 3690
     },
     {
       "artifact_id": "parity_risk_register",
@@ -252,6 +252,12 @@
       "source_path": "crates/cad/parity/sketch_plane_parity_manifest.json",
       "sha256": "89851f1cf19326b365af75c860b883e1e5afb923cf46ce8a98a5b8e1f92f805e",
       "bytes": 3446
+    },
+    {
+      "artifact_id": "sketch_profile_validity_parity_manifest",
+      "source_path": "crates/cad/parity/sketch_profile_validity_parity_manifest.json",
+      "sha256": "1662c8ee784747f3ec46a47bf8a08a1274a22ee32d1db8a3407576ddaf037ac6",
+      "bytes": 1832
     },
     {
       "artifact_id": "sketch_revolve_parity_manifest",

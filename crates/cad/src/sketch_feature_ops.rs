@@ -75,8 +75,14 @@ impl SketchProfileFeatureSpec {
                 reason: "profile_entity_ids must not be empty".to_string(),
             });
         }
+        let mut seen_profile_entity_ids = BTreeSet::<String>::new();
         for entity_id in &self.profile_entity_ids {
             validate_stable_id(entity_id, "profile_entity_id")?;
+            if !seen_profile_entity_ids.insert(entity_id.clone()) {
+                return Err(CadError::ParseFailed {
+                    reason: format!("profile_entity_ids must not contain duplicates: {entity_id}"),
+                });
+            }
         }
         match self.kind {
             SketchProfileFeatureKind::Extrude => {
@@ -482,6 +488,13 @@ fn collect_profile_points(
             CadSketchEntity::Line {
                 start_mm, end_mm, ..
             } => {
+                if (start_mm[0] - end_mm[0]).abs() <= f64::EPSILON
+                    && (start_mm[1] - end_mm[1]).abs() <= f64::EPSILON
+                {
+                    return Err(CadError::ParseFailed {
+                        reason: format!("line {entity_id} is degenerate (zero length)"),
+                    });
+                }
                 points.push(*start_mm);
                 points.push(*end_mm);
             }
@@ -502,6 +515,13 @@ fn collect_profile_points(
                 points.push(arc_point(*center_mm, *radius_mm, *end_deg)?);
             }
             CadSketchEntity::Rectangle { min_mm, max_mm, .. } => {
+                let width = max_mm[0] - min_mm[0];
+                let height = max_mm[1] - min_mm[1];
+                if !width.is_finite() || !height.is_finite() || width <= 0.0 || height <= 0.0 {
+                    return Err(CadError::ParseFailed {
+                        reason: format!("rectangle {entity_id} has non-positive extents"),
+                    });
+                }
                 points.push(*min_mm);
                 points.push([max_mm[0], min_mm[1]]);
                 points.push(*max_mm);
@@ -1199,6 +1219,18 @@ mod tests {
                 .to_string()
                 .contains("sweep controls")
         );
+
+        let extrude_with_duplicate_entities = SketchProfileFeatureSpec {
+            profile_entity_ids: vec!["entity.a".to_string(), "entity.a".to_string()],
+            ..extrude_with_revolve_angle
+        };
+        assert!(
+            extrude_with_duplicate_entities
+                .validate()
+                .expect_err("duplicate profile entities must fail validation")
+                .to_string()
+                .contains("duplicates")
+        );
     }
 
     #[test]
@@ -1617,6 +1649,68 @@ mod tests {
                 .iter()
                 .any(|warning| warning.code == CadWarningCode::NonManifoldBody)
         );
+    }
+
+    #[test]
+    fn degenerate_profile_entities_are_rejected_deterministically() {
+        let mut model = CadSketchModel::default();
+        model
+            .insert_plane(CadSketchPlane {
+                id: "plane.front".to_string(),
+                name: "Front".to_string(),
+                origin_mm: [0.0, 0.0, 0.0],
+                normal: [0.0, 0.0, 1.0],
+                x_axis: [1.0, 0.0, 0.0],
+                y_axis: [0.0, 1.0, 0.0],
+            })
+            .expect("plane should insert");
+        model
+            .insert_entity(CadSketchEntity::Line {
+                id: "entity.line.degenerate".to_string(),
+                plane_id: "plane.front".to_string(),
+                start_mm: [2.0, 3.0],
+                end_mm: [2.5, 3.0],
+                anchor_ids: [
+                    "anchor.degenerate.start".to_string(),
+                    "anchor.degenerate.end".to_string(),
+                ],
+                construction: false,
+            })
+            .expect("degenerate line should insert");
+        if let CadSketchEntity::Line {
+            start_mm, end_mm, ..
+        } = model
+            .entities
+            .get_mut("entity.line.degenerate")
+            .expect("degenerate line should exist")
+        {
+            *end_mm = *start_mm;
+        } else {
+            panic!("entity.line.degenerate must be a line");
+        }
+
+        let spec = SketchProfileFeatureSpec {
+            feature_id: "feature.extrude.degenerate".to_string(),
+            profile_id: "profile.degenerate".to_string(),
+            plane_id: "plane.front".to_string(),
+            profile_entity_ids: vec!["entity.line.degenerate".to_string()],
+            kind: SketchProfileFeatureKind::Extrude,
+            source_feature_id: None,
+            depth_mm: Some(5.0),
+            revolve_angle_deg: None,
+            axis_anchor_ids: None,
+            sweep_path_entity_ids: None,
+            sweep_twist_deg: None,
+            sweep_scale_start: None,
+            sweep_scale_end: None,
+            loft_profile_ids: None,
+            loft_closed: None,
+            tolerance_mm: Some(0.001),
+        };
+        let error = convert_sketch_profile_to_feature_node(&model, &spec)
+            .expect_err("degenerate line profile must fail conversion")
+            .to_string();
+        assert!(error.contains("degenerate"));
     }
 
     #[test]

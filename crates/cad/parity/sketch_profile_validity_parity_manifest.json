@@ -1,0 +1,48 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-051",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "vcad_reference_sources": [
+    "docs/features/sketch-operations.md (profile edge cases + validation)",
+    "crates/vcad-kernel-sketch/src/profile.rs (closed/degenerate profile guards)"
+  ],
+  "closed_case": {
+    "profile_closed_loop": true,
+    "warning_codes": [],
+    "profile_bounds_mm": [
+      0.0,
+      40.0,
+      0.0,
+      20.0
+    ],
+    "profile_hash": "da2d2266ff8e1c25",
+    "node_hash": "88330365c4e67458"
+  },
+  "open_case": {
+    "profile_closed_loop": false,
+    "warning_codes": [
+      "CAD-WARN-NON-MANIFOLD"
+    ],
+    "profile_bounds_mm": [
+      0.0,
+      20.0,
+      0.0,
+      0.0
+    ],
+    "profile_hash": "e5fb07cf396f7368",
+    "node_hash": "51e700cd8d1d72a1"
+  },
+  "duplicate_profile_entity_error": "parse failed: profile_entity_ids must not contain duplicates: entity.line.a",
+  "degenerate_line_error": "parse failed: line entity.line.degenerate start/end points must differ",
+  "unknown_entity_error": "parse failed: profile references unknown sketch entity entity.line.missing",
+  "unsolved_constraint_error": "evaluation failed: sketch profile profile.valid.unsolved has unsolved constraints; conversion blocked",
+  "deterministic_replay_match": true,
+  "deterministic_signature": "b84a2208d5b0a885",
+  "parity_contracts": [
+    "profile conversion rejects duplicate entity ids and degenerate line segments deterministically",
+    "open profiles emit deterministic CAD-WARN-NON-MANIFOLD warnings",
+    "unknown-entity and unsolved-constraint inputs fail conversion deterministically"
+  ]
+}
