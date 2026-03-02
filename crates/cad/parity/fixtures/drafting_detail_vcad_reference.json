@@ -1,0 +1,39 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-073",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "vcad-kernel-drafting/src/detail.rs clipping + transform contracts",
+  "scalar_tolerance": 1e-9,
+  "expected_detail_cases": [
+    {
+      "case_id": "center_zoom_scale3",
+      "edge_count": 1,
+      "hidden_edge_count": 1,
+      "bounds_width": 120.0,
+      "bounds_height": 120.0,
+      "first_edge_length": 169.7056274847714,
+      "scale": 3.0,
+      "label": "C"
+    },
+    {
+      "case_id": "corner_zoom",
+      "edge_count": 3,
+      "hidden_edge_count": 1,
+      "bounds_width": 100.0,
+      "bounds_height": 100.0,
+      "first_edge_length": 100.0,
+      "scale": 2.0,
+      "label": "A"
+    },
+    {
+      "case_id": "outside_region",
+      "edge_count": 0,
+      "hidden_edge_count": 0,
+      "bounds_width": 0.0,
+      "bounds_height": 0.0,
+      "first_edge_length": 0.0,
+      "scale": 2.0,
+      "label": "B"
+    }
+  ]
+}

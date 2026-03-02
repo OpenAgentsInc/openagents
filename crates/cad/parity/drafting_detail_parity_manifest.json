@@ -1,0 +1,52 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-073",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_corpus_path": "crates/cad/parity/fixtures/drafting_detail_vcad_reference.json",
+  "reference_corpus_sha256": "5b8ffda5600d041213efe27ae52e3837cb4581f7e573481b5958134a079a2993",
+  "reference_source": "vcad-kernel-drafting/src/detail.rs clipping + transform contracts",
+  "reference_commit_match": true,
+  "detail_cases": [
+    {
+      "case_id": "center_zoom_scale3",
+      "edge_count": 1,
+      "hidden_edge_count": 1,
+      "bounds_width": 120.0,
+      "bounds_height": 120.0,
+      "first_edge_length": 169.7056274847714,
+      "scale": 3.0,
+      "label": "C"
+    },
+    {
+      "case_id": "corner_zoom",
+      "edge_count": 3,
+      "hidden_edge_count": 1,
+      "bounds_width": 100.0,
+      "bounds_height": 100.0,
+      "first_edge_length": 100.0,
+      "scale": 2.0,
+      "label": "A"
+    },
+    {
+      "case_id": "outside_region",
+      "edge_count": 0,
+      "hidden_edge_count": 0,
+      "bounds_width": 0.0,
+      "bounds_height": 0.0,
+      "first_edge_length": 0.0,
+      "scale": 2.0,
+      "label": "B"
+    }
+  ],
+  "detail_contract_match": true,
+  "deterministic_replay_match": true,
+  "deterministic_signature": "b04b804b90de2c11",
+  "parity_contracts": [
+    "detail views clip parent projected edges to the selected region",
+    "detail view transform recenters to origin and scales geometry deterministically",
+    "detail output preserves visibility classifications for clipped edges",
+    "detail-view parity fixtures replay deterministically"
+  ]
+}
