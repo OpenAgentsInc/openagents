@@ -28,5 +28,6 @@ pub mod risk_register;
 pub mod scorecard;
 pub mod shell_feature_graph_parity;
 pub mod sweep_parity;
+pub mod topology_repair_parity;
 pub mod transform_parity;
 pub mod vcad_crawler;

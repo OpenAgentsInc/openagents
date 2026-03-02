@@ -32,6 +32,7 @@ Provide one deterministic orchestration entrypoint for the parity baseline lanes
 - expanded finishing parity fixture check
 - sweep parity fixture check
 - loft parity fixture check
+- topology repair parity fixture check
 - parity CI artifact manifest fixture check
 - parity risk register + blocker workflow check
 - baseline dashboard publication check
