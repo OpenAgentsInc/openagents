@@ -171,7 +171,7 @@ Major gaps to close:
 ### Phase G - IO + headless + AI parity (`VCAD-PARITY-079` to `VCAD-PARITY-092`)
 
 79. [x] VCAD-PARITY-079: STEP import parity expansion to vcad-supported entities.
-80. [ ] VCAD-PARITY-080: STEP export parity for post-boolean BRep results.
+80. [x] VCAD-PARITY-080: STEP export parity for post-boolean BRep results.
 81. [ ] VCAD-PARITY-081: STL import/export parity.
 82. [ ] VCAD-PARITY-082: GLB export parity.
 83. [ ] VCAD-PARITY-083: Build `openagents-cad-cli` command surface scaffold.

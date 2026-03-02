@@ -2,11 +2,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::drafting::{ProjectedView, Visibility};
 use crate::hash::stable_hex_digest;
+use crate::kernel_booleans::BooleanPipelineOutcome;
+use crate::kernel_primitives::BRepSolid;
+use crate::kernel_step;
 use crate::mesh::CadMeshPayload;
 use crate::{CadError, CadResult};
 
 /// Deterministic STEP schema used for Wave 1 demo exports.
 pub const STEP_FILE_SCHEMA: &str = "AUTOMOTIVE_DESIGN_CC2";
+/// vcad parity contract for mesh-only solids after boolean operations.
+pub const STEP_EXPORT_NOT_BREP_REASON: &str = "cannot export to STEP: solid has been converted to mesh (B-rep data lost after boolean operations)";
+/// vcad parity contract for empty solids.
+pub const STEP_EXPORT_EMPTY_REASON: &str = "cannot export to STEP: solid is empty";
 /// vcad baseline parity contract for drafting PDF export.
 pub const PDF_EXPORT_PARITY_REASON: &str =
     "vcad baseline has no native drawing PDF exporter; use desktop/browser print pipeline";
@@ -32,6 +39,37 @@ pub struct CadStepExportArtifact {
 }
 
 impl CadStepExportArtifact {
+    /// Return the STEP payload as UTF-8 text.
+    pub fn text(&self) -> CadResult<&str> {
+        std::str::from_utf8(&self.bytes).map_err(|error| CadError::ExportFailed {
+            format: "step".to_string(),
+            reason: format!("step payload is not valid utf-8: {error}"),
+        })
+    }
+}
+
+/// Stable receipt emitted for deterministic BRep-backed STEP exports.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct CadStepBrepExportReceipt {
+    pub document_id: String,
+    pub document_revision: u64,
+    pub variant_id: String,
+    pub file_name: String,
+    pub solid_count: usize,
+    pub shell_count: usize,
+    pub face_count: usize,
+    pub byte_count: usize,
+    pub deterministic_hash: String,
+}
+
+/// Deterministic BRep-backed STEP export artifact.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct CadStepBrepExportArtifact {
+    pub receipt: CadStepBrepExportReceipt,
+    pub bytes: Vec<u8>,
+}
+
+impl CadStepBrepExportArtifact {
     /// Return the STEP payload as UTF-8 text.
     pub fn text(&self) -> CadResult<&str> {
         std::str::from_utf8(&self.bytes).map_err(|error| CadError::ExportFailed {
@@ -274,12 +312,7 @@ pub fn export_step_from_mesh(
     variant_id: &str,
     mesh: &CadMeshPayload,
 ) -> CadResult<CadStepExportArtifact> {
-    if document_id.trim().is_empty() {
-        return Err(step_export_failed("document id must not be empty"));
-    }
-    if variant_id.trim().is_empty() {
-        return Err(step_export_failed("variant id must not be empty"));
-    }
+    validate_step_export_identity(document_id, variant_id)?;
     mesh.validate_contract()
         .map_err(|error| step_export_failed(format!("mesh payload is invalid: {error}")))?;
     if mesh.variant_id != variant_id {
@@ -411,6 +444,67 @@ pub fn export_step_from_mesh(
     Ok(CadStepExportArtifact { receipt, bytes })
 }
 
+/// Return whether a post-boolean result can be exported to STEP.
+///
+/// This mirrors vcad's `can_export_step` contract:
+/// - `true` when a BRep result exists
+/// - `false` when the result is mesh-only or empty.
+pub fn can_export_post_boolean_step(brep_result: Option<&BRepSolid>) -> bool {
+    brep_result.is_some()
+}
+
+/// Export a post-boolean result to STEP bytes using the BRep path.
+///
+/// If no BRep result exists:
+/// - `BooleanPipelineOutcome::EmptyResult` maps to `STEP_EXPORT_EMPTY_REASON`
+/// - all other outcomes map to `STEP_EXPORT_NOT_BREP_REASON`.
+pub fn export_step_from_post_boolean_brep(
+    document_id: &str,
+    document_revision: u64,
+    variant_id: &str,
+    brep_result: Option<&BRepSolid>,
+    outcome: BooleanPipelineOutcome,
+) -> CadResult<CadStepBrepExportArtifact> {
+    match brep_result {
+        Some(brep) => export_step_from_brep(document_id, document_revision, variant_id, brep),
+        None if outcome == BooleanPipelineOutcome::EmptyResult => {
+            Err(step_export_failed(STEP_EXPORT_EMPTY_REASON))
+        }
+        None => Err(step_export_failed(STEP_EXPORT_NOT_BREP_REASON)),
+    }
+}
+
+/// Export a BRep solid as deterministic STEP bytes via the kernel STEP adapter path.
+pub fn export_step_from_brep(
+    document_id: &str,
+    document_revision: u64,
+    variant_id: &str,
+    brep: &BRepSolid,
+) -> CadResult<CadStepBrepExportArtifact> {
+    validate_step_export_identity(document_id, variant_id)?;
+    let counts = brep.topology.counts();
+    if counts.solid_count == 0 || counts.shell_count == 0 || counts.face_count == 0 {
+        return Err(step_export_failed(STEP_EXPORT_EMPTY_REASON));
+    }
+
+    let bytes = kernel_step::write_step_to_buffer(brep).map_err(|error| {
+        step_export_failed(format!("kernel step adapter write failed: {error}"))
+    })?;
+    let file_name = build_step_file_name(document_id, variant_id, document_revision);
+    let receipt = CadStepBrepExportReceipt {
+        document_id: document_id.to_string(),
+        document_revision,
+        variant_id: variant_id.to_string(),
+        file_name,
+        solid_count: counts.solid_count,
+        shell_count: counts.shell_count,
+        face_count: counts.face_count,
+        byte_count: bytes.len(),
+        deterministic_hash: stable_hex_digest(&bytes),
+    };
+    Ok(CadStepBrepExportArtifact { receipt, bytes })
+}
+
 #[derive(Default)]
 struct StepEntityWriter {
     next_id: u64,
@@ -512,6 +606,16 @@ fn escape_step_string(value: &str) -> String {
     value.replace('\'', "''")
 }
 
+fn validate_step_export_identity(document_id: &str, variant_id: &str) -> CadResult<()> {
+    if document_id.trim().is_empty() {
+        return Err(step_export_failed("document id must not be empty"));
+    }
+    if variant_id.trim().is_empty() {
+        return Err(step_export_failed("variant id must not be empty"));
+    }
+    Ok(())
+}
+
 fn push_dxf_line(text: &mut String, line: &str) {
     text.push_str(line);
     text.push('\n');
@@ -538,12 +642,17 @@ fn dxf_export_failed(reason: impl Into<String>) -> CadError {
 #[cfg(test)]
 mod tests {
     use super::{
-        PDF_EXPORT_PARITY_REASON, export_projected_view_to_dxf, export_projected_view_to_pdf,
-        export_step_from_mesh, sanitize_step_segment,
+        PDF_EXPORT_PARITY_REASON, STEP_EXPORT_EMPTY_REASON, STEP_EXPORT_NOT_BREP_REASON,
+        can_export_post_boolean_step, export_projected_view_to_dxf, export_projected_view_to_pdf,
+        export_step_from_mesh, export_step_from_post_boolean_brep, sanitize_step_segment,
     };
     use crate::drafting::{
         EdgeType, Point2D, ProjectedEdge, ProjectedView, ViewDirection, Visibility,
     };
+    use crate::kernel_booleans::{
+        BooleanPipelineConfig, BooleanPipelineOutcome, KernelBooleanOp, run_staged_boolean_pipeline,
+    };
+    use crate::kernel_primitives::make_cube;
     use crate::mesh::{
         CadMeshBounds, CadMeshMaterialSlot, CadMeshPayload, CadMeshTopology, CadMeshVertex,
     };
@@ -623,6 +732,16 @@ mod tests {
                 max_mm: [40.0, 40.0, 40.0],
             },
         }
+    }
+
+    fn translated_cube(dx: f64, dy: f64, dz: f64) -> crate::kernel_primitives::BRepSolid {
+        let mut cube = make_cube(10.0, 10.0, 10.0).expect("cube");
+        for vertex in cube.topology.vertices.values_mut() {
+            vertex.point.x += dx;
+            vertex.point.y += dy;
+            vertex.point.z += dz;
+        }
+        cube
     }
 
     #[test]
@@ -749,6 +868,87 @@ mod tests {
             error
                 .to_string()
                 .contains("triangle is degenerate at indices [0, 0, 1]")
+        );
+    }
+
+    #[test]
+    fn step_post_boolean_brep_export_succeeds_for_brep_result() {
+        let left = translated_cube(0.0, 0.0, 0.0);
+        let right = translated_cube(5.0, 0.0, 0.0);
+        let result = run_staged_boolean_pipeline(
+            &left,
+            &right,
+            KernelBooleanOp::Difference,
+            BooleanPipelineConfig::default(),
+        )
+        .expect("boolean pipeline should succeed");
+        assert!(result.brep_result.is_some());
+        assert!(can_export_post_boolean_step(result.brep_result.as_ref()));
+
+        let first = export_step_from_post_boolean_brep(
+            "doc.step.post-boolean",
+            12,
+            "variant.boolean",
+            result.brep_result.as_ref(),
+            result.outcome,
+        )
+        .expect("BRep result should export");
+        let second = export_step_from_post_boolean_brep(
+            "doc.step.post-boolean",
+            12,
+            "variant.boolean",
+            result.brep_result.as_ref(),
+            result.outcome,
+        )
+        .expect("repeated export should succeed");
+        assert_eq!(first.bytes, second.bytes);
+        assert_eq!(
+            first.receipt.deterministic_hash,
+            second.receipt.deterministic_hash
+        );
+        assert!(first.receipt.face_count > 0);
+        let text = first.text().expect("step payload should decode");
+        assert!(text.contains("MANIFOLD_SOLID_BREP"));
+        assert!(text.contains("OPENAGENTS_KERNEL_SUMMARY"));
+    }
+
+    #[test]
+    fn step_post_boolean_brep_export_reports_not_brep_for_mesh_fallback() {
+        assert!(!can_export_post_boolean_step(None));
+        let error = export_step_from_post_boolean_brep(
+            "doc.step.post-boolean",
+            12,
+            "variant.boolean",
+            None,
+            BooleanPipelineOutcome::MeshFallback,
+        )
+        .expect_err("mesh-only post-boolean state should fail");
+        assert_eq!(
+            error,
+            crate::CadError::ExportFailed {
+                format: "step".to_string(),
+                reason: STEP_EXPORT_NOT_BREP_REASON.to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn step_post_boolean_brep_export_reports_empty_for_empty_result() {
+        assert!(!can_export_post_boolean_step(None));
+        let error = export_step_from_post_boolean_brep(
+            "doc.step.post-boolean",
+            12,
+            "variant.boolean",
+            None,
+            BooleanPipelineOutcome::EmptyResult,
+        )
+        .expect_err("empty post-boolean state should fail");
+        assert_eq!(
+            error,
+            crate::CadError::ExportFailed {
+                format: "step".to_string(),
+                reason: STEP_EXPORT_EMPTY_REASON.to_string(),
+            }
         );
     }
 

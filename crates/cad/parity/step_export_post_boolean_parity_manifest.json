@@ -1,0 +1,60 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-080",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_corpus_path": "crates/cad/parity/fixtures/step_export_post_boolean_vcad_reference.json",
+  "reference_corpus_sha256": "dd1fa00e36941e00b87ccba89a933b8f7860bf1840e5eaa4b61ff034674fcb4f",
+  "reference_source": "~/code/vcad/crates/vcad-kernel/src/lib.rs + ~/code/vcad/crates/vcad/src/lib.rs",
+  "reference_commit_match": true,
+  "expected_not_brep_reason_match": true,
+  "expected_empty_reason_match": true,
+  "case_snapshots": [
+    {
+      "case_id": "boolean_difference_brep",
+      "outcome": "BrepReconstruction",
+      "has_brep_result": true,
+      "can_export_step": true,
+      "export_succeeds": true,
+      "export_error": null,
+      "exported_byte_count": 4766,
+      "exported_hash": "8e911af9dfe4cfca",
+      "face_count": 6,
+      "shell_count": 1
+    },
+    {
+      "case_id": "boolean_intersection_empty",
+      "outcome": "EmptyResult",
+      "has_brep_result": false,
+      "can_export_step": false,
+      "export_succeeds": false,
+      "export_error": "cannot export to STEP: solid is empty",
+      "exported_byte_count": 0,
+      "exported_hash": null,
+      "face_count": 0,
+      "shell_count": 0
+    },
+    {
+      "case_id": "mesh_only_boolean_result",
+      "outcome": "MeshFallback",
+      "has_brep_result": false,
+      "can_export_step": false,
+      "export_succeeds": false,
+      "export_error": "cannot export to STEP: solid has been converted to mesh (B-rep data lost after boolean operations)",
+      "exported_byte_count": 0,
+      "exported_hash": null,
+      "face_count": 0,
+      "shell_count": 0
+    }
+  ],
+  "step_export_contract_match": true,
+  "deterministic_replay_match": true,
+  "deterministic_signature": "d362dabf4bf06f1c",
+  "parity_contracts": [
+    "post-boolean BRep results remain STEP-exportable with deterministic bytes",
+    "mesh-only post-boolean states return vcad-aligned NotBRep STEP export error",
+    "empty post-boolean states return vcad-aligned empty-solid STEP export error",
+    "post-boolean STEP export parity fixtures replay deterministically"
+  ]
+}

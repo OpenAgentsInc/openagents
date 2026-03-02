@@ -39,7 +39,7 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 102,
+    "source_artifact_count": 104,
     "artifact_ids": [
       "assembly_acceptance_scenes_parity_manifest",
       "assembly_checkpoint_parity_manifest",
@@ -93,6 +93,7 @@
       "fixtures_feature_op_hash_vcad_reference_corpus",
       "fixtures_parity_fixture_corpus",
       "fixtures_sketch_vcad_reference_corpus",
+      "fixtures_step_export_post_boolean_vcad_reference",
       "fixtures_step_import_entity_vcad_reference",
       "kernel_adapter_v2_manifest",
       "kernel_boolean_brep_parity_manifest",
@@ -135,6 +136,7 @@
       "sketch_revolve_parity_manifest",
       "sketch_sweep_parity_manifest",
       "sketch_undo_redo_parity_manifest",
+      "step_export_post_boolean_parity_manifest",
       "step_import_entity_parity_manifest",
       "sweep_parity_manifest",
       "topology_repair_parity_manifest",
@@ -145,9 +147,9 @@
       "vcad_reference_manifest"
     ]
   },
-  "phase_status": "phase_g_step_import_complete",
+  "phase_status": "phase_g_step_export_post_boolean_complete",
   "next_actions": [
-    "Execute VCAD-PARITY-080 through VCAD-PARITY-092 sequentially",
+    "Execute VCAD-PARITY-081 through VCAD-PARITY-092 sequentially",
     "Keep phase_a_baseline_v1 profile passing in scorecard and risk register lanes",
     "Refresh parity dashboard after each closed parity issue"
   ]
