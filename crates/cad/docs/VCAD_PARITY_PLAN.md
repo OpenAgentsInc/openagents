@@ -174,7 +174,7 @@ Major gaps to close:
 80. [x] VCAD-PARITY-080: STEP export parity for post-boolean BRep results.
 81. [x] VCAD-PARITY-081: STL import/export parity.
 82. [x] VCAD-PARITY-082: GLB export parity.
-83. [ ] VCAD-PARITY-083: Build `openagents-cad-cli` command surface scaffold.
+83. [x] VCAD-PARITY-083: Build `openagents-cad-cli` command surface scaffold.
 84. [ ] VCAD-PARITY-084: CLI command parity (`export`, `import`, `info`).
 85. [ ] VCAD-PARITY-085: MCP CAD tools parity (`create`, `export`, `inspect`).
 86. [ ] VCAD-PARITY-086: Compact IR parser/serializer parity.
