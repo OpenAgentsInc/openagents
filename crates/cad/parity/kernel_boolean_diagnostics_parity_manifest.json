@@ -1,0 +1,58 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-019",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "mapped_error_code": "BooleanDiagnostic",
+  "overlapping_union": {
+    "outcome": "MeshFallback",
+    "stage_sequence": [
+      "AabbFilter",
+      "SurfaceSurfaceIntersection",
+      "Classification",
+      "Reconstruction",
+      "MeshFallback"
+    ],
+    "diagnostic_codes": [
+      "RECONSTRUCTION_UNAVAILABLE",
+      "MESH_FALLBACK_USED"
+    ],
+    "mapped_error_codes": [
+      "BooleanDiagnostic",
+      "BooleanDiagnostic"
+    ],
+    "mapped_retryable_count": 2,
+    "primary_error_code": "RECONSTRUCTION_UNAVAILABLE"
+  },
+  "disjoint_intersection": {
+    "outcome": "EmptyResult",
+    "stage_sequence": [
+      "AabbFilter",
+      "SurfaceSurfaceIntersection",
+      "Classification",
+      "Reconstruction",
+      "MeshFallback"
+    ],
+    "diagnostic_codes": [
+      "AABB_DISJOINT",
+      "RECONSTRUCTION_UNAVAILABLE",
+      "MESH_FALLBACK_USED",
+      "INTERSECTION_EMPTY"
+    ],
+    "mapped_error_codes": [
+      "BooleanDiagnostic",
+      "BooleanDiagnostic",
+      "BooleanDiagnostic",
+      "BooleanDiagnostic"
+    ],
+    "mapped_retryable_count": 2,
+    "primary_error_code": "RECONSTRUCTION_UNAVAILABLE"
+  },
+  "mapping_contracts": [
+    "stage diagnostics map into CadError::BooleanDiagnostic entries",
+    "mapped error code remains CadErrorCode::BooleanDiagnostic",
+    "disjoint intersection emits AABB_DISJOINT + INTERSECTION_EMPTY diagnostics",
+    "primary mapped error is deterministic for identical inputs"
+  ]
+}

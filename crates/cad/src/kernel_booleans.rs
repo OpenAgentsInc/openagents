@@ -24,6 +24,18 @@ pub enum BooleanPipelineStage {
     MeshFallback,
 }
 
+impl BooleanPipelineStage {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::AabbFilter => "AabbFilter",
+            Self::SurfaceSurfaceIntersection => "SurfaceSurfaceIntersection",
+            Self::Classification => "Classification",
+            Self::Reconstruction => "Reconstruction",
+            Self::MeshFallback => "MeshFallback",
+        }
+    }
+}
+
 /// Output status for staged pipeline execution.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum BooleanPipelineOutcome {
@@ -31,6 +43,64 @@ pub enum BooleanPipelineOutcome {
     MeshFallback,
     EmptyResult,
     Failed,
+}
+
+/// Severity level aligned to vcad boolean diagnostic signaling.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum BooleanDiagnosticSeverity {
+    Info,
+    Warning,
+    Error,
+}
+
+impl BooleanDiagnosticSeverity {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Info => "Info",
+            Self::Warning => "Warning",
+            Self::Error => "Error",
+        }
+    }
+
+    const fn is_error(self) -> bool {
+        matches!(self, Self::Error)
+    }
+}
+
+/// Structured boolean diagnostic code aligned to staged vcad pipeline semantics.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum BooleanDiagnosticCode {
+    AabbDisjoint,
+    SsiNoIntersections,
+    ClassificationEmpty,
+    ReconstructionUnavailable,
+    MeshFallbackUsed,
+    MeshFallbackDisabled,
+    IntersectionEmpty,
+}
+
+impl BooleanDiagnosticCode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::AabbDisjoint => "AABB_DISJOINT",
+            Self::SsiNoIntersections => "SSI_NO_INTERSECTIONS",
+            Self::ClassificationEmpty => "CLASSIFICATION_EMPTY",
+            Self::ReconstructionUnavailable => "RECONSTRUCTION_UNAVAILABLE",
+            Self::MeshFallbackUsed => "MESH_FALLBACK_USED",
+            Self::MeshFallbackDisabled => "MESH_FALLBACK_DISABLED",
+            Self::IntersectionEmpty => "INTERSECTION_EMPTY",
+        }
+    }
+}
+
+/// Structured diagnostic emitted by the staged boolean pipeline.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BooleanDiagnostic {
+    pub code: BooleanDiagnosticCode,
+    pub stage: BooleanPipelineStage,
+    pub severity: BooleanDiagnosticSeverity,
+    pub message: String,
+    pub retryable: bool,
 }
 
 /// Pipeline execution settings.
@@ -88,6 +158,7 @@ pub struct BooleanPipelineResult {
     pub operation: KernelBooleanOp,
     pub tolerance_mm: f64,
     pub stages: Vec<BooleanPipelineStageReport>,
+    pub diagnostics: Vec<BooleanDiagnostic>,
     pub reconstruction: BooleanReconstructionSummary,
     pub mesh_fallback: Option<BooleanMeshFallbackSummary>,
     pub outcome: BooleanPipelineOutcome,
@@ -238,6 +309,17 @@ pub fn run_staged_boolean_pipeline(
         };
     }
 
+    let diagnostics = derive_vcad_boolean_diagnostics(
+        operation,
+        bbox_overlap,
+        ssi_pairs,
+        classified_fragments,
+        &reconstruction,
+        config.enable_mesh_fallback,
+        outcome,
+        mesh_fallback.as_ref(),
+    );
+
     let deterministic_signature = pipeline_signature(
         operation,
         config.tolerance_mm,
@@ -251,11 +333,130 @@ pub fn run_staged_boolean_pipeline(
         operation,
         tolerance_mm: config.tolerance_mm,
         stages,
+        diagnostics,
         reconstruction,
         mesh_fallback,
         outcome,
         deterministic_signature,
     })
+}
+
+fn derive_vcad_boolean_diagnostics(
+    operation: KernelBooleanOp,
+    bbox_overlap: bool,
+    ssi_pairs: usize,
+    classified_fragments: usize,
+    reconstruction: &BooleanReconstructionSummary,
+    mesh_fallback_enabled: bool,
+    outcome: BooleanPipelineOutcome,
+    mesh_fallback: Option<&BooleanMeshFallbackSummary>,
+) -> Vec<BooleanDiagnostic> {
+    let mut diagnostics = Vec::new();
+
+    if !bbox_overlap {
+        diagnostics.push(BooleanDiagnostic {
+            code: BooleanDiagnosticCode::AabbDisjoint,
+            stage: BooleanPipelineStage::AabbFilter,
+            severity: BooleanDiagnosticSeverity::Info,
+            message: "operand bounding boxes do not overlap".to_string(),
+            retryable: false,
+        });
+    }
+
+    if bbox_overlap && ssi_pairs == 0 {
+        diagnostics.push(BooleanDiagnostic {
+            code: BooleanDiagnosticCode::SsiNoIntersections,
+            stage: BooleanPipelineStage::SurfaceSurfaceIntersection,
+            severity: BooleanDiagnosticSeverity::Warning,
+            message: "candidate face pairs produced no SSI intersections".to_string(),
+            retryable: true,
+        });
+    }
+
+    if bbox_overlap && classified_fragments == 0 {
+        diagnostics.push(BooleanDiagnostic {
+            code: BooleanDiagnosticCode::ClassificationEmpty,
+            stage: BooleanPipelineStage::Classification,
+            severity: BooleanDiagnosticSeverity::Warning,
+            message: "classification stage produced zero fragments".to_string(),
+            retryable: true,
+        });
+    }
+
+    if !reconstruction.success {
+        diagnostics.push(BooleanDiagnostic {
+            code: BooleanDiagnosticCode::ReconstructionUnavailable,
+            stage: BooleanPipelineStage::Reconstruction,
+            severity: BooleanDiagnosticSeverity::Warning,
+            message: "BRep reconstruction is staged and not yet active in parity lane".to_string(),
+            retryable: true,
+        });
+    }
+
+    if mesh_fallback_enabled {
+        let output_triangles = mesh_fallback
+            .map(|summary| summary.output_triangle_count)
+            .unwrap_or(0);
+        diagnostics.push(BooleanDiagnostic {
+            code: BooleanDiagnosticCode::MeshFallbackUsed,
+            stage: BooleanPipelineStage::MeshFallback,
+            severity: BooleanDiagnosticSeverity::Warning,
+            message: format!(
+                "mesh fallback executed with output_triangle_count={output_triangles}"
+            ),
+            retryable: true,
+        });
+    } else {
+        diagnostics.push(BooleanDiagnostic {
+            code: BooleanDiagnosticCode::MeshFallbackDisabled,
+            stage: BooleanPipelineStage::MeshFallback,
+            severity: BooleanDiagnosticSeverity::Error,
+            message: "mesh fallback disabled while BRep reconstruction is unavailable".to_string(),
+            retryable: false,
+        });
+    }
+
+    if operation == KernelBooleanOp::Intersection && outcome == BooleanPipelineOutcome::EmptyResult
+    {
+        diagnostics.push(BooleanDiagnostic {
+            code: BooleanDiagnosticCode::IntersectionEmpty,
+            stage: BooleanPipelineStage::MeshFallback,
+            severity: BooleanDiagnosticSeverity::Info,
+            message: "intersection operation produced an empty result".to_string(),
+            retryable: false,
+        });
+    }
+
+    diagnostics
+}
+
+/// Map a staged boolean diagnostic into the OpenAgents CAD error model.
+pub fn map_boolean_diagnostic_to_cad_error(diagnostic: &BooleanDiagnostic) -> CadError {
+    CadError::BooleanDiagnostic {
+        diagnostic_code: diagnostic.code.as_str().to_string(),
+        stage: diagnostic.stage.as_str().to_string(),
+        severity: diagnostic.severity.as_str().to_string(),
+        reason: diagnostic.message.clone(),
+        retryable: diagnostic.retryable,
+    }
+}
+
+/// Convert deterministic boolean diagnostics into CAD error entries.
+pub fn boolean_diagnostics_to_cad_errors(diagnostics: &[BooleanDiagnostic]) -> Vec<CadError> {
+    diagnostics
+        .iter()
+        .map(map_boolean_diagnostic_to_cad_error)
+        .collect()
+}
+
+/// Select the highest-severity mapped CAD error from deterministic diagnostics.
+pub fn primary_boolean_cad_error(diagnostics: &[BooleanDiagnostic]) -> Option<CadError> {
+    diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.severity.is_error())
+        .or_else(|| diagnostics.iter().find(|diagnostic| diagnostic.retryable))
+        .or_else(|| diagnostics.first())
+        .map(map_boolean_diagnostic_to_cad_error)
 }
 
 fn solid_bbox(solid: &BRepSolid) -> CadResult<([f64; 3], [f64; 3])> {
@@ -335,9 +536,11 @@ fn pipeline_signature(
 #[cfg(test)]
 mod tests {
     use super::{
-        BooleanPipelineConfig, BooleanPipelineOutcome, BooleanPipelineStage, KernelBooleanOp,
+        BooleanDiagnosticCode, BooleanPipelineConfig, BooleanPipelineOutcome, BooleanPipelineStage,
+        KernelBooleanOp, boolean_diagnostics_to_cad_errors, primary_boolean_cad_error,
         run_staged_boolean_pipeline,
     };
+    use crate::CadError;
     use crate::kernel_primitives::{BRepSolid, make_cube};
 
     fn translated_cube(dx: f64, dy: f64, dz: f64) -> BRepSolid {
@@ -381,6 +584,12 @@ mod tests {
                 .map(|fallback| fallback.output_triangle_count > 0)
                 .unwrap_or(false)
         );
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == BooleanDiagnosticCode::MeshFallbackUsed)
+        );
     }
 
     #[test]
@@ -402,6 +611,18 @@ mod tests {
             .find(|stage| stage.stage == BooleanPipelineStage::SurfaceSurfaceIntersection)
             .expect("ssi stage should exist");
         assert_eq!(ssi.output_count, 0);
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == BooleanDiagnosticCode::AabbDisjoint)
+        );
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == BooleanDiagnosticCode::IntersectionEmpty)
+        );
     }
 
     #[test]
@@ -437,5 +658,40 @@ mod tests {
             first.deterministic_signature,
             second.deterministic_signature
         );
+    }
+
+    #[test]
+    fn staged_pipeline_diagnostics_map_into_cad_error_model() {
+        let left = translated_cube(0.0, 0.0, 0.0);
+        let right = translated_cube(40.0, 0.0, 0.0);
+        let result = run_staged_boolean_pipeline(
+            &left,
+            &right,
+            KernelBooleanOp::Intersection,
+            BooleanPipelineConfig::default(),
+        )
+        .expect("pipeline should run");
+
+        let mapped = boolean_diagnostics_to_cad_errors(&result.diagnostics);
+        assert!(!mapped.is_empty());
+        assert!(
+            mapped
+                .iter()
+                .all(|error| matches!(error, CadError::BooleanDiagnostic { .. }))
+        );
+
+        let primary = primary_boolean_cad_error(&result.diagnostics).expect("primary error");
+        match primary {
+            CadError::BooleanDiagnostic {
+                diagnostic_code, ..
+            } => {
+                assert!(
+                    diagnostic_code == "RECONSTRUCTION_UNAVAILABLE"
+                        || diagnostic_code == "MESH_FALLBACK_USED"
+                        || diagnostic_code == "AABB_DISJOINT"
+                );
+            }
+            other => panic!("expected boolean diagnostic error, got {other:?}"),
+        }
     }
 }

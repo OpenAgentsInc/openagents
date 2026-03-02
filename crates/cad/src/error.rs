@@ -12,6 +12,7 @@ pub enum CadErrorCode {
     EvalFailed,
     QueryFailed,
     ExportFailed,
+    BooleanDiagnostic,
     InvalidPrimitive,
     InvalidParameter,
     InvalidPolicy,
@@ -47,6 +48,15 @@ pub enum CadError {
     /// CAD export operation failed.
     #[error("export failed ({format}): {reason}")]
     ExportFailed { format: String, reason: String },
+    /// Kernel boolean pipeline emitted a structured diagnostic.
+    #[error("boolean diagnostic ({diagnostic_code}) at {stage} severity={severity}: {reason}")]
+    BooleanDiagnostic {
+        diagnostic_code: String,
+        stage: String,
+        severity: String,
+        reason: String,
+        retryable: bool,
+    },
     /// Primitive values failed CAD domain validation.
     #[error("invalid primitive: {reason}")]
     InvalidPrimitive { reason: String },
@@ -73,6 +83,7 @@ impl CadError {
             Self::EvalFailed { .. } => CadErrorCode::EvalFailed,
             Self::QueryFailed { .. } => CadErrorCode::QueryFailed,
             Self::ExportFailed { .. } => CadErrorCode::ExportFailed,
+            Self::BooleanDiagnostic { .. } => CadErrorCode::BooleanDiagnostic,
             Self::InvalidPrimitive { .. } => CadErrorCode::InvalidPrimitive,
             Self::InvalidParameter { .. } => CadErrorCode::InvalidParameter,
             Self::InvalidPolicy { .. } => CadErrorCode::InvalidPolicy,
@@ -91,6 +102,9 @@ impl CadError {
             }
             Self::QueryFailed { .. } => "Verify the selected entity exists in the current model.",
             Self::ExportFailed { .. } => "Retry export or change export format settings.",
+            Self::BooleanDiagnostic { .. } => {
+                "Inspect boolean stage diagnostics and adjust operands/tolerance."
+            }
             Self::InvalidPrimitive { .. } => "Use positive dimensions above CAD tolerance.",
             Self::InvalidParameter { .. } => {
                 "Use a valid parameter name, finite value, and compatible unit."
@@ -107,7 +121,13 @@ impl CadError {
     pub const fn is_retryable(&self) -> bool {
         matches!(
             self,
-            Self::NotImplemented | Self::EvalFailed { .. } | Self::QueryFailed { .. }
+            Self::NotImplemented
+                | Self::EvalFailed { .. }
+                | Self::QueryFailed { .. }
+                | Self::BooleanDiagnostic {
+                    retryable: true,
+                    ..
+                }
         )
     }
 
@@ -147,6 +167,21 @@ mod tests {
         assert_eq!(event.operation, "export.step");
         assert!(event.message.contains("export failed"));
         assert!(!event.retryable);
+    }
+
+    #[test]
+    fn boolean_diagnostic_error_maps_to_code_and_retryable() {
+        let event = CadError::BooleanDiagnostic {
+            diagnostic_code: "SSI_NO_INTERSECTIONS".to_string(),
+            stage: "SurfaceSurfaceIntersection".to_string(),
+            severity: "Warning".to_string(),
+            reason: "candidate pairs produced no intersections".to_string(),
+            retryable: true,
+        }
+        .to_event("kernel.boolean.union");
+        assert_eq!(event.code, CadErrorCode::BooleanDiagnostic);
+        assert!(event.message.contains("SSI_NO_INTERSECTIONS"));
+        assert!(event.retryable);
     }
 
     #[test]
