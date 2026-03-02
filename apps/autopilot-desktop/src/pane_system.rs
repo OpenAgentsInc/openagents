@@ -259,6 +259,10 @@ pub enum AgentProfileStatePaneAction {
     PublishProfile,
     PublishState,
     UpdateGoals,
+    CreateGoal,
+    StartGoal,
+    AbortGoal,
+    InspectGoalReceipt,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1961,6 +1965,46 @@ pub fn agent_profile_update_goals_button_bounds(content_bounds: Bounds) -> Bound
     )
 }
 
+pub fn agent_profile_create_goal_button_bounds(content_bounds: Bounds) -> Bounds {
+    let publish = agent_profile_publish_profile_button_bounds(content_bounds);
+    Bounds::new(
+        publish.origin.x,
+        publish.max_y() + JOB_INBOX_BUTTON_GAP,
+        publish.size.width,
+        publish.size.height,
+    )
+}
+
+pub fn agent_profile_start_goal_button_bounds(content_bounds: Bounds) -> Bounds {
+    let create = agent_profile_create_goal_button_bounds(content_bounds);
+    Bounds::new(
+        create.max_x() + JOB_INBOX_BUTTON_GAP,
+        create.origin.y,
+        create.size.width,
+        create.size.height,
+    )
+}
+
+pub fn agent_profile_abort_goal_button_bounds(content_bounds: Bounds) -> Bounds {
+    let start = agent_profile_start_goal_button_bounds(content_bounds);
+    Bounds::new(
+        start.max_x() + JOB_INBOX_BUTTON_GAP,
+        start.origin.y,
+        start.size.width,
+        start.size.height,
+    )
+}
+
+pub fn agent_profile_receipt_button_bounds(content_bounds: Bounds) -> Bounds {
+    let abort = agent_profile_abort_goal_button_bounds(content_bounds);
+    Bounds::new(
+        abort.max_x() + JOB_INBOX_BUTTON_GAP,
+        abort.origin.y,
+        abort.size.width,
+        abort.size.height,
+    )
+}
+
 pub fn agent_schedule_apply_button_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         content_bounds.origin.x + CHAT_PAD,
@@ -3099,6 +3143,26 @@ fn pane_hit_action_for_pane(
                     AgentProfileStatePaneAction::UpdateGoals,
                 ));
             }
+            if agent_profile_create_goal_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AgentProfileState(
+                    AgentProfileStatePaneAction::CreateGoal,
+                ));
+            }
+            if agent_profile_start_goal_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AgentProfileState(
+                    AgentProfileStatePaneAction::StartGoal,
+                ));
+            }
+            if agent_profile_abort_goal_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AgentProfileState(
+                    AgentProfileStatePaneAction::AbortGoal,
+                ));
+            }
+            if agent_profile_receipt_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AgentProfileState(
+                    AgentProfileStatePaneAction::InspectGoalReceipt,
+                ));
+            }
             None
         }
         PaneKind::AgentScheduleTick => {
@@ -3652,8 +3716,10 @@ mod tests {
     use super::{
         PaneDescriptor, active_job_abort_button_bounds, active_job_advance_button_bounds,
         activity_feed_filter_button_bounds, activity_feed_refresh_button_bounds,
-        activity_feed_row_bounds, agent_profile_publish_profile_button_bounds,
-        agent_profile_publish_state_button_bounds, agent_profile_update_goals_button_bounds,
+        activity_feed_row_bounds, agent_profile_abort_goal_button_bounds,
+        agent_profile_create_goal_button_bounds, agent_profile_publish_profile_button_bounds,
+        agent_profile_publish_state_button_bounds, agent_profile_receipt_button_bounds,
+        agent_profile_start_goal_button_bounds, agent_profile_update_goals_button_bounds,
         agent_schedule_apply_button_bounds, agent_schedule_inspect_button_bounds,
         agent_schedule_manual_tick_button_bounds, alerts_recovery_ack_button_bounds,
         alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
@@ -3998,8 +4064,16 @@ mod tests {
         let profile = agent_profile_publish_profile_button_bounds(content);
         let state = agent_profile_publish_state_button_bounds(content);
         let goals = agent_profile_update_goals_button_bounds(content);
+        let create_goal = agent_profile_create_goal_button_bounds(content);
+        let start_goal = agent_profile_start_goal_button_bounds(content);
+        let abort_goal = agent_profile_abort_goal_button_bounds(content);
+        let inspect_receipt = agent_profile_receipt_button_bounds(content);
         assert!(profile.max_x() < state.min_x());
         assert!(state.max_x() < goals.min_x());
+        assert!(profile.max_y() < create_goal.min_y());
+        assert!(create_goal.max_x() < start_goal.min_x());
+        assert!(start_goal.max_x() < abort_goal.min_x());
+        assert!(abort_goal.max_x() < inspect_receipt.min_x());
 
         let apply = agent_schedule_apply_button_bounds(content);
         let tick = agent_schedule_manual_tick_button_bounds(content);

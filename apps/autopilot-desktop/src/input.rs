@@ -434,6 +434,9 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     if run_autonomous_goal_loop(state) {
         changed = true;
     }
+    if reducers::refresh_goal_profile_state(state) {
+        changed = true;
+    }
     if state.nostr_secret_state.expire(now) {
         changed = true;
     }
