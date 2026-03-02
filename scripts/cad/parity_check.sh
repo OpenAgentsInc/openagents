@@ -86,6 +86,7 @@ LANE_LABELS=(
     "text-to-cad"
     "text-to-cad-dataset"
     "text-to-cad-training-eval"
+    "headless-script-harness"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -397,6 +398,9 @@ run_lane "text-to-cad-dataset" \
 
 run_lane "text-to-cad-training-eval" \
     "$ROOT_DIR/scripts/cad/parity-text-to-cad-training-eval-ci.sh"
+
+run_lane "headless-script-harness" \
+    "$ROOT_DIR/scripts/cad/parity-headless-script-harness-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

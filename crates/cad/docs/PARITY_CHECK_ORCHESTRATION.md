@@ -68,6 +68,7 @@ Provide one deterministic orchestration entrypoint for the parity baseline lanes
 - text-to-cad adapter parity fixture check
 - text-to-cad dataset tooling parity fixture check
 - text-to-cad training/eval hook parity fixture check
+- headless script harness parity fixture check
 - parity CI artifact manifest fixture check
 - parity risk register + blocker workflow check
 - baseline dashboard publication check

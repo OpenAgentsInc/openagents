@@ -23,6 +23,7 @@ pub mod finishing_ops;
 pub mod format;
 pub mod glb;
 pub mod hash;
+pub mod headless_script_harness;
 pub mod history;
 pub mod intent;
 pub mod intent_execution;

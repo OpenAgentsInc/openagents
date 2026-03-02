@@ -182,7 +182,7 @@ Major gaps to close:
 88. [x] VCAD-PARITY-088: Text-to-CAD adapter parity lane (prompt->model).
 89. [x] VCAD-PARITY-089: Dataset generation and annotation parity tooling.
 90. [x] VCAD-PARITY-090: Training/eval pipeline parity hooks (gated).
-91. [ ] VCAD-PARITY-091: Headless script harness parity with vcad workflows.
+91. [x] VCAD-PARITY-091: Headless script harness parity with vcad workflows.
 92. [ ] VCAD-PARITY-092: IO/headless/AI parity checkpoint.
 
 ### Phase H - Rendering + GPU + raytrace parity (`VCAD-PARITY-093` to `VCAD-PARITY-104`)
