@@ -5,7 +5,7 @@
   "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
   "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
   "parity_check_entrypoint": "scripts/cad/parity_check.sh",
-  "source_artifact_count": 38,
+  "source_artifact_count": 39,
   "artifacts": [
     {
       "artifact_id": "chamfer_feature_graph_parity_manifest",
@@ -146,6 +146,12 @@
       "bytes": 1570
     },
     {
+      "artifact_id": "modeling_edge_case_parity_manifest",
+      "source_path": "crates/cad/parity/modeling_edge_case_parity_manifest.json",
+      "sha256": "a8acfdcc753ffe80015cd40bf1247e9144a192787e8e14f605380ff301e52212",
+      "bytes": 1904
+    },
+    {
       "artifact_id": "openagents_capabilities_inventory",
       "source_path": "crates/cad/parity/openagents_capabilities_inventory.json",
       "sha256": "fe1adafb14ba6ba2874302c355f78375ab0c0b9054a0bdde35c1a6446be2e17b",
@@ -160,8 +166,8 @@
     {
       "artifact_id": "parity_dashboard",
       "source_path": "crates/cad/parity/parity_dashboard.json",
-      "sha256": "17ad481632a03ac8e3357ebd289b80dd4400447e66734dbedaef244a917f3ab9",
-      "bytes": 3110
+      "sha256": "1be526739c91333c51f152678d33e85ea537b4a08d8d78a38a672a2b1f6759ce",
+      "bytes": 3154
     },
     {
       "artifact_id": "parity_risk_register",
