@@ -18,6 +18,7 @@ pub mod drafting_gdt_parity;
 pub mod drafting_hidden_line_parity;
 pub mod drafting_kernel_scaffolding_parity;
 pub mod drafting_projection_parity;
+pub mod drafting_section_parity;
 pub mod expanded_finishing_parity;
 pub mod feature_op_hash_parity;
 pub mod fillet_feature_graph_parity;

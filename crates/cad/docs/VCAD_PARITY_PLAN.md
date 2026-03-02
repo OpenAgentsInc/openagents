@@ -160,7 +160,7 @@ Major gaps to close:
 69. [x] VCAD-PARITY-069: Hidden-line removal parity.
 70. [x] VCAD-PARITY-070: Dimension parity (linear/angular/radial/ordinate).
 71. [x] VCAD-PARITY-071: GD&T annotation parity.
-72. [ ] VCAD-PARITY-072: Section view parity.
+72. [x] VCAD-PARITY-072: Section view parity.
 73. [ ] VCAD-PARITY-073: Detail view parity.
 74. [ ] VCAD-PARITY-074: Drawing mode UI parity in desktop app.
 75. [ ] VCAD-PARITY-075: Drawing persistence parity in CAD document schema.
