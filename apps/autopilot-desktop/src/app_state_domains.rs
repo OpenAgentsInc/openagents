@@ -3156,6 +3156,21 @@ impl StableSatsWalletMode {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StableSatsSimulationMode {
+    Demo,
+    RealBlink,
+}
+
+impl StableSatsSimulationMode {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Demo => "demo",
+            Self::RealBlink => "real",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StableSatsAgentWalletState {
     pub agent_name: String,
@@ -3170,6 +3185,7 @@ pub struct StableSatsSimulationPaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
     pub last_action: Option<String>,
+    pub mode: StableSatsSimulationMode,
     pub rounds_run: u32,
     pub price_usd_cents_per_btc: u64,
     pub total_converted_sats: u64,
@@ -3180,9 +3196,12 @@ pub struct StableSatsSimulationPaneState {
     pub converted_sats_history: Vec<u64>,
     pub auto_run_enabled: bool,
     pub auto_run_interval: Duration,
+    pub live_refresh_pending: bool,
+    pub active_live_refresh_request_id: Option<u64>,
     pub events: Vec<AgentNetworkSimulationEvent>,
     next_seq: u64,
     auto_run_last_tick: Option<Instant>,
+    next_live_refresh_request_id: u64,
 }
 
 impl Default for StableSatsSimulationPaneState {
@@ -3193,6 +3212,7 @@ impl Default for StableSatsSimulationPaneState {
             last_action: Some(
                 "Run simulation to model StableSats wallet switches (BTC <-> USD)".to_string(),
             ),
+            mode: StableSatsSimulationMode::Demo,
             rounds_run: 0,
             price_usd_cents_per_btc: Self::BASE_PRICE_USD_CENTS_PER_BTC,
             total_converted_sats: 0,
@@ -3203,9 +3223,12 @@ impl Default for StableSatsSimulationPaneState {
             converted_sats_history: Vec::new(),
             auto_run_enabled: false,
             auto_run_interval: Duration::from_millis(120),
+            live_refresh_pending: false,
+            active_live_refresh_request_id: None,
             events: Vec::new(),
             next_seq: 1,
             auto_run_last_tick: None,
+            next_live_refresh_request_id: 1,
         }
     }
 }
@@ -3253,6 +3276,85 @@ impl StableSatsSimulationPaneState {
             .iter()
             .map(|agent| agent.usd_balance_cents)
             .sum()
+    }
+
+    pub fn set_mode(&mut self, mode: StableSatsSimulationMode) {
+        if self.mode == mode {
+            return;
+        }
+        self.mode = mode;
+        self.load_state = PaneLoadState::Ready;
+        self.auto_run_enabled = false;
+        self.auto_run_last_tick = None;
+        self.last_error = None;
+        self.rounds_run = 0;
+        self.price_usd_cents_per_btc = Self::BASE_PRICE_USD_CENTS_PER_BTC;
+        self.total_converted_sats = 0;
+        self.total_converted_usd_cents = 0;
+        self.last_settlement_ref = None;
+        self.price_history_usd_cents_per_btc.clear();
+        self.converted_sats_history.clear();
+        self.live_refresh_pending = false;
+        self.active_live_refresh_request_id = None;
+        self.events.clear();
+        self.next_seq = 1;
+        self.next_live_refresh_request_id = 1;
+        match mode {
+            StableSatsSimulationMode::Demo => {
+                self.agents = Self::default_agents();
+                self.last_action = Some("StableSats mode switched to demo simulation".to_string());
+            }
+            StableSatsSimulationMode::RealBlink => {
+                self.agents = vec![StableSatsAgentWalletState {
+                    agent_name: "blink-live".to_string(),
+                    btc_balance_sats: 0,
+                    usd_balance_cents: 0,
+                    active_wallet: StableSatsWalletMode::Btc,
+                    switch_count: 0,
+                    last_switch_summary: "awaiting live refresh".to_string(),
+                }];
+                self.last_action =
+                    Some("StableSats mode switched to real Blink integration".to_string());
+            }
+        }
+    }
+
+    pub fn begin_live_refresh(&mut self) -> Result<u64, String> {
+        if self.mode != StableSatsSimulationMode::RealBlink {
+            return Err("Live refresh requires StableSats real mode".to_string());
+        }
+        if self.live_refresh_pending {
+            return Err("Live Blink refresh already in progress".to_string());
+        }
+        let request_id = self.next_live_refresh_request_id;
+        self.next_live_refresh_request_id = self.next_live_refresh_request_id.saturating_add(1);
+        self.live_refresh_pending = true;
+        self.active_live_refresh_request_id = Some(request_id);
+        self.load_state = PaneLoadState::Loading;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Refreshing live Blink balances (request #{request_id})"
+        ));
+        Ok(request_id)
+    }
+
+    pub fn finish_live_refresh(&mut self, request_id: u64) -> bool {
+        if self.active_live_refresh_request_id != Some(request_id) {
+            return false;
+        }
+        self.live_refresh_pending = false;
+        self.active_live_refresh_request_id = None;
+        true
+    }
+
+    pub fn fail_live_refresh(&mut self, request_id: u64, error: String) -> bool {
+        if !self.finish_live_refresh(request_id) {
+            return false;
+        }
+        self.load_state = PaneLoadState::Error;
+        self.last_error = Some(error.clone());
+        self.last_action = Some(format!("Live Blink refresh failed: {error}"));
+        true
     }
 
     pub fn run_round(&mut self, now_epoch_seconds: u64) -> Result<(), String> {
@@ -3402,22 +3504,152 @@ impl StableSatsSimulationPaneState {
         Ok(())
     }
 
+    pub fn apply_live_snapshot(
+        &mut self,
+        now_epoch_seconds: u64,
+        btc_balance_sats: u64,
+        usd_balance_cents: u64,
+        price_usd_cents_per_btc: u64,
+        source_ref: &str,
+    ) {
+        let round = self.rounds_run.saturating_add(1);
+        let prev_btc = self.total_btc_balance_sats();
+        let prev_usd = self.total_usd_balance_cents();
+        let btc_delta = prev_btc.abs_diff(btc_balance_sats);
+        let usd_delta = prev_usd.abs_diff(usd_balance_cents);
+        let switched = btc_delta > 0 || usd_delta > 0;
+
+        let prior_switches = self
+            .agents
+            .first()
+            .map(|agent| agent.switch_count)
+            .unwrap_or(0);
+        let next_switches = if switched {
+            prior_switches.saturating_add(1)
+        } else {
+            prior_switches
+        };
+        let last_switch_summary = if switched {
+            format!(
+                "delta btc={} sats usd={}",
+                btc_delta,
+                Self::format_usd_cents(usd_delta)
+            )
+        } else {
+            "no balance change".to_string()
+        };
+
+        self.mode = StableSatsSimulationMode::RealBlink;
+        self.live_refresh_pending = false;
+        self.active_live_refresh_request_id = None;
+        self.rounds_run = round;
+        self.price_usd_cents_per_btc = price_usd_cents_per_btc.max(1);
+        self.total_converted_sats = self.total_converted_sats.saturating_add(btc_delta);
+        self.total_converted_usd_cents = self.total_converted_usd_cents.saturating_add(usd_delta);
+        self.last_settlement_ref = Some(format!("blink:live:settlement:{round:04}"));
+        self.agents = vec![StableSatsAgentWalletState {
+            agent_name: "blink-live".to_string(),
+            btc_balance_sats,
+            usd_balance_cents,
+            active_wallet: if usd_balance_cents > 0 {
+                StableSatsWalletMode::Usd
+            } else {
+                StableSatsWalletMode::Btc
+            },
+            switch_count: next_switches,
+            last_switch_summary,
+        }];
+
+        self.price_history_usd_cents_per_btc
+            .push(self.price_usd_cents_per_btc);
+        if self.price_history_usd_cents_per_btc.len() > 18 {
+            let overflow = self
+                .price_history_usd_cents_per_btc
+                .len()
+                .saturating_sub(18);
+            self.price_history_usd_cents_per_btc.drain(0..overflow);
+        }
+        self.converted_sats_history.push(btc_delta);
+        if self.converted_sats_history.len() > 18 {
+            let overflow = self.converted_sats_history.len().saturating_sub(18);
+            self.converted_sats_history.drain(0..overflow);
+        }
+
+        let price_ref = format!("blink:live:price:{round:04}:{now_epoch_seconds}");
+        self.push_event(
+            "BLINK-PRICE",
+            &price_ref,
+            format!(
+                "live BTC/USD {} from {}",
+                Self::format_usd_cents(self.price_usd_cents_per_btc),
+                source_ref
+            ),
+        );
+        if switched {
+            let swap_ref = format!("blink:live:delta:{round:04}:{now_epoch_seconds}");
+            self.push_event(
+                "BLINK-SWAP",
+                &swap_ref,
+                format!(
+                    "observed balance delta btc={} sats usd={}",
+                    btc_delta,
+                    Self::format_usd_cents(usd_delta)
+                ),
+            );
+        }
+        let ledger_ref = self
+            .last_settlement_ref
+            .clone()
+            .unwrap_or_else(|| "blink:live:settlement".to_string());
+        self.push_event(
+            "BLINK-LEDGER",
+            &ledger_ref,
+            format!(
+                "live balances btc={} sats usd={} ({})",
+                btc_balance_sats,
+                Self::format_usd_cents(usd_balance_cents),
+                source_ref
+            ),
+        );
+
+        self.load_state = PaneLoadState::Ready;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Round {round}: loaded live Blink balances (btc={} sats, usd={})",
+            btc_balance_sats,
+            Self::format_usd_cents(usd_balance_cents)
+        ));
+    }
+
     pub fn reset(&mut self) {
         self.load_state = PaneLoadState::Ready;
         self.last_error = None;
-        self.last_action = Some("StableSats simulation reset".to_string());
+        self.last_action = Some(format!("StableSats {} mode reset", self.mode.label()));
         self.rounds_run = 0;
         self.price_usd_cents_per_btc = Self::BASE_PRICE_USD_CENTS_PER_BTC;
         self.total_converted_sats = 0;
         self.total_converted_usd_cents = 0;
         self.last_settlement_ref = None;
-        self.agents = Self::default_agents();
+        self.agents = match self.mode {
+            StableSatsSimulationMode::Demo => Self::default_agents(),
+            StableSatsSimulationMode::RealBlink => vec![StableSatsAgentWalletState {
+                agent_name: "blink-live".to_string(),
+                btc_balance_sats: 0,
+                usd_balance_cents: 0,
+                active_wallet: StableSatsWalletMode::Btc,
+                switch_count: 0,
+                last_switch_summary: "none".to_string(),
+            }],
+        };
         self.price_history_usd_cents_per_btc.clear();
         self.converted_sats_history.clear();
         self.auto_run_enabled = false;
+        self.live_refresh_pending = false;
+        self.active_live_refresh_request_id = None;
         self.events.clear();
         self.next_seq = 1;
         self.auto_run_last_tick = None;
+        self.next_live_refresh_request_id = 1;
     }
 
     pub fn start_auto_run(&mut self, now: Instant) {
@@ -3434,6 +3666,9 @@ impl StableSatsSimulationPaneState {
     }
 
     pub fn should_run_auto_round(&self, now: Instant) -> bool {
+        if self.mode == StableSatsSimulationMode::RealBlink {
+            return false;
+        }
         if !self.auto_run_enabled {
             return false;
         }

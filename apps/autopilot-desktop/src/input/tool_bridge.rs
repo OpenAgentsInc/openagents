@@ -1316,6 +1316,12 @@ fn pane_action_to_hit_action(
             "reset" => Ok(PaneHitAction::StableSatsSimulation(
                 StableSatsSimulationPaneAction::Reset,
             )),
+            "set_mode_demo" => Ok(PaneHitAction::StableSatsSimulation(
+                StableSatsSimulationPaneAction::SetModeDemo,
+            )),
+            "set_mode_real" => Ok(PaneHitAction::StableSatsSimulation(
+                StableSatsSimulationPaneAction::SetModeReal,
+            )),
             _ => unsupported(),
         },
         PaneKind::CadDemo => match action {
