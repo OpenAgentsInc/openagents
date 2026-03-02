@@ -91,6 +91,71 @@ pub(super) fn drain_spark_worker_updates(state: &mut RenderState) -> bool {
     wallet::drain_spark_worker_updates(state)
 }
 
+pub(super) fn drain_stable_sats_blink_worker_updates(state: &mut RenderState) -> bool {
+    let updates = state.stable_sats_blink_worker.drain_updates(4);
+    if updates.is_empty() {
+        return false;
+    }
+
+    let mut changed = false;
+    for update in updates {
+        match update {
+            crate::stablesats_blink_worker::StableSatsBlinkUpdate::Completed(snapshot) => {
+                if !state
+                    .stable_sats_simulation
+                    .finish_live_refresh(snapshot.request_id)
+                {
+                    continue;
+                }
+                state.stable_sats_simulation.apply_live_snapshot(
+                    snapshot.now_epoch_seconds,
+                    snapshot.btc_balance_sats,
+                    snapshot.usd_balance_cents,
+                    snapshot.price_usd_cents_per_btc,
+                    snapshot.source_ref.as_str(),
+                );
+                state.provider_runtime.last_result =
+                    state.stable_sats_simulation.last_action.clone();
+                let event_id = format!(
+                    "sim:stablesats:round:{}",
+                    state.stable_sats_simulation.rounds_run
+                );
+                state
+                    .activity_feed
+                    .upsert_event(crate::app_state::ActivityEventRow {
+                        event_id,
+                        domain: crate::app_state::ActivityEventDomain::Wallet,
+                        source_tag: "blink.live".to_string(),
+                        summary: "StableSats live Blink balances refreshed".to_string(),
+                        detail: format!(
+                            "mode={} round={} quote={} converted_sats={} converted_usd_cents={}",
+                            state.stable_sats_simulation.mode.label(),
+                            state.stable_sats_simulation.rounds_run,
+                            state.stable_sats_simulation.price_usd_cents_per_btc,
+                            state.stable_sats_simulation.total_converted_sats,
+                            state.stable_sats_simulation.total_converted_usd_cents
+                        ),
+                        occurred_at_epoch_seconds: snapshot.now_epoch_seconds,
+                    });
+                state.activity_feed.load_state = crate::app_state::PaneLoadState::Ready;
+                changed = true;
+            }
+            crate::stablesats_blink_worker::StableSatsBlinkUpdate::Failed { request_id, error } => {
+                if state
+                    .stable_sats_simulation
+                    .fail_live_refresh(request_id, error)
+                {
+                    state.provider_runtime.last_result =
+                        state.stable_sats_simulation.last_action.clone();
+                    changed = true;
+                }
+            }
+        }
+    }
+
+    changed
+}
+
 pub(super) fn run_agent_profile_state_action(
     state: &mut RenderState,
     action: AgentProfileStatePaneAction,

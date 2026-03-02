@@ -1876,6 +1876,11 @@ pub(super) fn run_stable_sats_simulation_action(
 ) -> bool {
     match action {
         StableSatsSimulationPaneAction::RunRound => {
+            if state.stable_sats_simulation.mode
+                == crate::app_state::StableSatsSimulationMode::RealBlink
+            {
+                return queue_stable_sats_live_refresh(state);
+            }
             if state.stable_sats_simulation.auto_run_enabled {
                 state.stable_sats_simulation.stop_auto_run();
                 state.provider_runtime.last_result =
@@ -1896,6 +1901,20 @@ pub(super) fn run_stable_sats_simulation_action(
             state.provider_runtime.last_result = state.stable_sats_simulation.last_action.clone();
             true
         }
+        StableSatsSimulationPaneAction::SetModeDemo => {
+            state
+                .stable_sats_simulation
+                .set_mode(crate::app_state::StableSatsSimulationMode::Demo);
+            state.provider_runtime.last_result = state.stable_sats_simulation.last_action.clone();
+            true
+        }
+        StableSatsSimulationPaneAction::SetModeReal => {
+            state
+                .stable_sats_simulation
+                .set_mode(crate::app_state::StableSatsSimulationMode::RealBlink);
+            state.provider_runtime.last_result = state.stable_sats_simulation.last_action.clone();
+            true
+        }
     }
 }
 
@@ -1903,7 +1922,17 @@ pub(super) fn run_stable_sats_simulation_round(
     state: &mut crate::app_state::RenderState,
     now_epoch_seconds: u64,
 ) -> bool {
-    match state.stable_sats_simulation.run_round(now_epoch_seconds) {
+    let mode = state.stable_sats_simulation.mode;
+    let run_result = match mode {
+        crate::app_state::StableSatsSimulationMode::Demo => {
+            state.stable_sats_simulation.run_round(now_epoch_seconds)
+        }
+        crate::app_state::StableSatsSimulationMode::RealBlink => Err(
+            "Real mode refresh runs off-thread; use Refresh Live to queue a worker run".to_string(),
+        ),
+    };
+
+    match run_result {
         Ok(()) => {
             state.provider_runtime.last_result = state.stable_sats_simulation.last_action.clone();
             let event_id = format!(
@@ -1915,10 +1944,25 @@ pub(super) fn run_stable_sats_simulation_round(
                 .upsert_event(crate::app_state::ActivityEventRow {
                     event_id,
                     domain: crate::app_state::ActivityEventDomain::Wallet,
-                    source_tag: "simulation.blink".to_string(),
-                    summary: "StableSats BTC/USD switching round executed".to_string(),
+                    source_tag: match mode {
+                        crate::app_state::StableSatsSimulationMode::Demo => {
+                            "simulation.blink".to_string()
+                        }
+                        crate::app_state::StableSatsSimulationMode::RealBlink => {
+                            "blink.live".to_string()
+                        }
+                    },
+                    summary: match mode {
+                        crate::app_state::StableSatsSimulationMode::Demo => {
+                            "StableSats BTC/USD switching round executed".to_string()
+                        }
+                        crate::app_state::StableSatsSimulationMode::RealBlink => {
+                            "StableSats live Blink balances refreshed".to_string()
+                        }
+                    },
                     detail: format!(
-                        "round={} quote={} converted_sats={} converted_usd_cents={}",
+                        "mode={} round={} quote={} converted_sats={} converted_usd_cents={}",
+                        mode.label(),
                         state.stable_sats_simulation.rounds_run,
                         state.stable_sats_simulation.price_usd_cents_per_btc,
                         state.stable_sats_simulation.total_converted_sats,
@@ -1934,6 +1978,138 @@ pub(super) fn run_stable_sats_simulation_round(
         }
     }
     true
+}
+
+fn queue_stable_sats_live_refresh(state: &mut crate::app_state::RenderState) -> bool {
+    if state.stable_sats_simulation.auto_run_enabled {
+        state.stable_sats_simulation.stop_auto_run();
+    }
+
+    let request_id = match state.stable_sats_simulation.begin_live_refresh() {
+        Ok(request_id) => request_id,
+        Err(error) => {
+            state.stable_sats_simulation.last_error = Some(error.clone());
+            state.stable_sats_simulation.last_action = Some(error);
+            state.stable_sats_simulation.load_state = crate::app_state::PaneLoadState::Error;
+            state.provider_runtime.last_result = state.stable_sats_simulation.last_action.clone();
+            return true;
+        }
+    };
+
+    let balance_script = match resolve_blink_simulation_script_path(state, "balance.js") {
+        Ok(path) => path,
+        Err(error) => {
+            let _ = state
+                .stable_sats_simulation
+                .fail_live_refresh(request_id, error);
+            state.provider_runtime.last_result = state.stable_sats_simulation.last_action.clone();
+            return true;
+        }
+    };
+    let price_script = match resolve_blink_simulation_script_path(state, "price.js") {
+        Ok(path) => path,
+        Err(error) => {
+            let _ = state
+                .stable_sats_simulation
+                .fail_live_refresh(request_id, error);
+            state.provider_runtime.last_result = state.stable_sats_simulation.last_action.clone();
+            return true;
+        }
+    };
+    let env_overrides = resolve_blink_simulation_env(state);
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs());
+    let request = crate::stablesats_blink_worker::StableSatsBlinkRefreshRequest {
+        request_id,
+        now_epoch_seconds,
+        balance_script_path: balance_script,
+        price_script_path: price_script,
+        env_overrides,
+    };
+    if let Err(error) = state.stable_sats_blink_worker.enqueue_refresh(request) {
+        let _ = state
+            .stable_sats_simulation
+            .fail_live_refresh(request_id, error);
+    }
+
+    state.provider_runtime.last_result = state.stable_sats_simulation.last_action.clone();
+    true
+}
+
+fn resolve_blink_simulation_env(state: &crate::app_state::RenderState) -> Vec<(String, String)> {
+    let scope = crate::credentials::CREDENTIAL_SCOPE_SKILLS
+        | crate::credentials::CREDENTIAL_SCOPE_CODEX
+        | crate::credentials::CREDENTIAL_SCOPE_GLOBAL;
+    let resolved = state
+        .credentials
+        .resolve_env_for_scope(scope)
+        .unwrap_or_default();
+    resolved
+        .into_iter()
+        .filter(|(name, value)| {
+            !value.trim().is_empty()
+                && (name.eq_ignore_ascii_case("BLINK_API_KEY")
+                    || name.eq_ignore_ascii_case("BLINK_API_URL"))
+        })
+        .collect()
+}
+
+fn resolve_blink_simulation_script_path(
+    state: &crate::app_state::RenderState,
+    script_name: &str,
+) -> Result<std::path::PathBuf, String> {
+    let mut candidates = std::collections::BTreeSet::<std::path::PathBuf>::new();
+    for skill in &state.skill_registry.discovered_skills {
+        if !skill.enabled || !skill.name.eq_ignore_ascii_case("blink") {
+            continue;
+        }
+        if let Some(root) = normalize_skill_root_path(skill.path.as_str()) {
+            candidates.insert(root.join("scripts").join(script_name));
+        }
+    }
+
+    if let Some(repo_root) = state.skill_registry.repo_skills_root.as_deref() {
+        candidates.insert(
+            std::path::PathBuf::from(repo_root)
+                .join("blink")
+                .join("scripts")
+                .join(script_name),
+        );
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.insert(
+            cwd.join("skills")
+                .join("blink")
+                .join("scripts")
+                .join(script_name),
+        );
+    }
+
+    candidates
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+        .ok_or_else(|| {
+            format!(
+                "Blink script '{}' not found in discovered skills",
+                script_name
+            )
+        })
+}
+
+fn normalize_skill_root_path(raw_skill_path: &str) -> Option<std::path::PathBuf> {
+    let path = std::path::PathBuf::from(raw_skill_path.trim());
+    if path
+        .file_name()
+        .map(|name| name.to_string_lossy().eq_ignore_ascii_case("SKILL.md"))
+        .unwrap_or(false)
+    {
+        return path.parent().map(std::path::Path::to_path_buf);
+    }
+    if path.is_dir() {
+        return Some(path);
+    }
+    path.parent().map(std::path::Path::to_path_buf)
 }
 
 pub(super) fn run_auto_stable_sats_simulation(

@@ -23,6 +23,7 @@ use crate::{
         CodexLaneWorker,
     },
     spark_wallet::{SparkPaneState, SparkWalletCommand, SparkWalletWorker},
+    stablesats_blink_worker::StableSatsBlinkWorker,
 };
 
 #[path = "app_state_domains.rs"]
@@ -2754,6 +2755,7 @@ pub struct RenderState {
     pub nostr_secret_state: NostrSecretState,
     pub spark_wallet: SparkPaneState,
     pub spark_worker: SparkWalletWorker,
+    pub stable_sats_blink_worker: StableSatsBlinkWorker,
     pub spark_inputs: SparkPaneInputs,
     pub pay_invoice_inputs: PayInvoicePaneInputs,
     pub create_invoice_inputs: CreateInvoicePaneInputs,

@@ -333,6 +333,8 @@ pub enum RelaySecuritySimulationPaneAction {
 pub enum StableSatsSimulationPaneAction {
     RunRound,
     Reset,
+    SetModeDemo,
+    SetModeReal,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2302,6 +2304,26 @@ pub fn stable_sats_simulation_reset_button_bounds(content_bounds: Bounds) -> Bou
     )
 }
 
+pub fn stable_sats_simulation_mode_demo_button_bounds(content_bounds: Bounds) -> Bounds {
+    let reset = stable_sats_simulation_reset_button_bounds(content_bounds);
+    Bounds::new(
+        reset.max_x() + JOB_INBOX_BUTTON_GAP,
+        reset.origin.y,
+        (content_bounds.size.width * 0.14).clamp(88.0, 132.0),
+        reset.size.height,
+    )
+}
+
+pub fn stable_sats_simulation_mode_real_button_bounds(content_bounds: Bounds) -> Bounds {
+    let demo = stable_sats_simulation_mode_demo_button_bounds(content_bounds);
+    Bounds::new(
+        demo.max_x() + JOB_INBOX_BUTTON_GAP,
+        demo.origin.y,
+        (content_bounds.size.width * 0.14).clamp(88.0, 132.0),
+        demo.size.height,
+    )
+}
+
 pub fn cad_demo_cycle_variant_button_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         content_bounds.origin.x + CHAT_PAD,
@@ -3356,6 +3378,16 @@ fn pane_hit_action_for_pane(
             if stable_sats_simulation_reset_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::StableSatsSimulation(
                     StableSatsSimulationPaneAction::Reset,
+                ));
+            }
+            if stable_sats_simulation_mode_demo_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::StableSatsSimulation(
+                    StableSatsSimulationPaneAction::SetModeDemo,
+                ));
+            }
+            if stable_sats_simulation_mode_real_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::StableSatsSimulation(
+                    StableSatsSimulationPaneAction::SetModeReal,
                 ));
             }
             None

@@ -429,6 +429,9 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     if reducers::drain_spark_worker_updates(state) {
         changed = true;
     }
+    if reducers::drain_stable_sats_blink_worker_updates(state) {
+        changed = true;
+    }
     if reducers::drain_runtime_lane_updates(state) {
         changed = true;
     }
