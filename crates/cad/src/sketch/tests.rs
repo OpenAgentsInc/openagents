@@ -1,7 +1,9 @@
 use super::{
     CadDimensionConstraintKind, CadSketchConstraint, CadSketchEntity, CadSketchModel,
-    CadSketchPlane, CadSketchSolveSeverity,
+    CadSketchPlane, CadSketchPlanePreset, CadSketchSolveSeverity,
 };
+use crate::kernel_primitives::{make_cube, make_cylinder};
+use crate::kernel_topology::{FaceId, Orientation};
 
 fn primary_plane() -> CadSketchPlane {
     CadSketchPlane {
@@ -12,6 +14,74 @@ fn primary_plane() -> CadSketchPlane {
         x_axis: [1.0, 0.0, 0.0],
         y_axis: [0.0, 1.0, 0.0],
     }
+}
+
+#[test]
+fn sketch_plane_presets_match_vcad_axes() {
+    let xy = CadSketchPlane::from_preset(CadSketchPlanePreset::Xy);
+    assert_eq!(xy.id, "plane.xy");
+    assert_eq!(xy.name, "XY");
+    assert_eq!(xy.origin_mm, [0.0, 0.0, 0.0]);
+    assert_eq!(xy.normal, [0.0, 0.0, 1.0]);
+    assert_eq!(xy.x_axis, [1.0, 0.0, 0.0]);
+    assert_eq!(xy.y_axis, [0.0, 1.0, 0.0]);
+
+    let xz = CadSketchPlane::xz();
+    assert_eq!(xz.id, "plane.xz");
+    assert_eq!(xz.name, "XZ");
+    assert_eq!(xz.origin_mm, [0.0, 0.0, 0.0]);
+    assert_eq!(xz.normal, [0.0, -1.0, 0.0]);
+    assert_eq!(xz.x_axis, [1.0, 0.0, 0.0]);
+    assert_eq!(xz.y_axis, [0.0, 0.0, 1.0]);
+
+    let yz = CadSketchPlane::yz();
+    assert_eq!(yz.id, "plane.yz");
+    assert_eq!(yz.name, "YZ");
+    assert_eq!(yz.origin_mm, [0.0, 0.0, 0.0]);
+    assert_eq!(yz.normal, [1.0, 0.0, 0.0]);
+    assert_eq!(yz.x_axis, [0.0, 1.0, 0.0]);
+    assert_eq!(yz.y_axis, [0.0, 0.0, 1.0]);
+}
+
+#[test]
+fn sketch_plane_from_planar_face_extracts_plane_basis() {
+    let cube = make_cube(40.0, 20.0, 10.0).expect("cube should build");
+    let face_plane =
+        CadSketchPlane::from_planar_face(&cube, "face.1").expect("face.1 should be planar");
+    assert_eq!(face_plane.id, "plane.face.1");
+    assert_eq!(face_plane.name, "Face 1");
+    assert_eq!(face_plane.origin_mm, [0.0, 0.0, 0.0]);
+    assert_eq!(face_plane.normal, [0.0, 0.0, -1.0]);
+    assert_eq!(face_plane.x_axis, [0.0, 1.0, 0.0]);
+    assert_eq!(face_plane.y_axis, [1.0, 0.0, 0.0]);
+}
+
+#[test]
+fn sketch_plane_from_planar_face_reversed_orientation_flips_normal() {
+    let mut cube = make_cube(40.0, 20.0, 10.0).expect("cube should build");
+    cube.topology
+        .faces
+        .get_mut(&FaceId(1))
+        .expect("cube should contain face.1")
+        .orientation = Orientation::Reversed;
+
+    let face_plane =
+        CadSketchPlane::from_planar_face(&cube, "face.1").expect("face.1 should be planar");
+    assert_eq!(face_plane.normal, [0.0, 0.0, 1.0]);
+    assert_eq!(face_plane.x_axis, [0.0, 1.0, 0.0]);
+    assert_eq!(face_plane.y_axis, [-1.0, 0.0, 0.0]);
+}
+
+#[test]
+fn sketch_plane_from_planar_face_rejects_non_planar_face() {
+    let cylinder = make_cylinder(8.0, 12.0, 24).expect("cylinder should build");
+    let error = CadSketchPlane::from_planar_face(&cylinder, "face.1")
+        .expect_err("cylinder lateral face should not be planar");
+    let message = error.to_string();
+    assert!(
+        message.contains("must reference a planar face"),
+        "error should identify non-planar face: {message}"
+    );
 }
 
 #[test]

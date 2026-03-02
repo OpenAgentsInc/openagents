@@ -32,6 +32,7 @@ pub mod risk_register;
 pub mod scorecard;
 pub mod shell_feature_graph_parity;
 pub mod sketch_entity_set_parity;
+pub mod sketch_plane_parity;
 pub mod sweep_parity;
 pub mod topology_repair_parity;
 pub mod transform_parity;
