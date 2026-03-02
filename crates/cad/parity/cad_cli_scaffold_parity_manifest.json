@@ -10,14 +10,14 @@
   "reference_commit_match": true,
   "app_name_match": true,
   "reference_command_match": true,
-  "root_help_hash": "2b27829cddc5dcea",
+  "root_help_hash": "ce279163448045da",
   "root_help_contract_match": true,
   "command_snapshots": [
     {
       "command": "export",
       "help_exit_code": 0,
       "help_contains_command": true,
-      "help_hash": "f0071ba696f5a24b",
+      "help_hash": "6fda493356927e39",
       "stub_exit_code": 3,
       "stub_error": "export command scaffold is present; implementation lands in VCAD-PARITY-084"
     },
@@ -25,7 +25,7 @@
       "command": "import",
       "help_exit_code": 0,
       "help_contains_command": true,
-      "help_hash": "84dfc41195d4537f",
+      "help_hash": "0da58956f4ebf373",
       "stub_exit_code": 3,
       "stub_error": "import command scaffold is present; implementation lands in VCAD-PARITY-084"
     },
@@ -33,14 +33,14 @@
       "command": "info",
       "help_exit_code": 0,
       "help_contains_command": true,
-      "help_hash": "e8c5c35179918c2f",
+      "help_hash": "c50a8db02bf8aa25",
       "stub_exit_code": 3,
       "stub_error": "info command scaffold is present; implementation lands in VCAD-PARITY-084"
     }
   ],
   "command_surface_match": true,
   "deterministic_replay_match": true,
-  "deterministic_signature": "0ae6e6bf45c8d820",
+  "deterministic_signature": "8f73dbba282612d7",
   "parity_contracts": [
     "openagents-cad-cli exposes scaffold command surface for export/import/info",
     "CLI help surfaces are deterministic and list scaffolded command contracts",

@@ -1,0 +1,53 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-084",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/crates/vcad-cli/src/main.rs + ~/code/vcad/docs/features/{headless-api.md,import-export.md}",
+  "expected_cases": [
+    {
+      "case_id": "export_glb",
+      "command": "export",
+      "exit_code": 0,
+      "stdout_marker": "Exported GLB to",
+      "stderr_marker": null
+    },
+    {
+      "case_id": "export_step",
+      "command": "export",
+      "exit_code": 0,
+      "stdout_marker": "Exported STEP to",
+      "stderr_marker": null
+    },
+    {
+      "case_id": "export_stl",
+      "command": "export",
+      "exit_code": 0,
+      "stdout_marker": "Exported STL to",
+      "stderr_marker": null
+    },
+    {
+      "case_id": "import_step",
+      "command": "import",
+      "exit_code": 0,
+      "stdout_marker": "Imported STEP to",
+      "stderr_marker": null
+    },
+    {
+      "case_id": "import_stl",
+      "command": "import",
+      "exit_code": 0,
+      "stdout_marker": "Imported STL to",
+      "stderr_marker": null
+    },
+    {
+      "case_id": "info_mesh",
+      "command": "info",
+      "exit_code": 0,
+      "stdout_marker": "openagents cad mesh:",
+      "stderr_marker": null
+    }
+  ],
+  "expected_import_stl_vertex_count": 4,
+  "expected_import_stl_triangle_count": 4,
+  "expected_import_step_min_feature_count": 1
+}

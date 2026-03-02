@@ -1,4 +1,15 @@
+use std::fs;
+use std::path::Path;
+
 use serde::{Deserialize, Serialize};
+
+use crate::document::CadDocument;
+use crate::export::export_step_from_mesh;
+use crate::glb::export_glb_from_mesh;
+use crate::mesh::CadMeshPayload;
+use crate::step_checker::{check_step_text_structural, collect_step_entity_type_counts};
+use crate::step_import::import_step_text_to_document;
+use crate::stl::{export_stl_from_mesh, import_stl_to_mesh};
 
 pub const CAD_CLI_SCAFFOLD_ISSUE_ID: &str = "VCAD-PARITY-083";
 pub const CAD_CLI_IMPLEMENTATION_ISSUE_ID: &str = "VCAD-PARITY-084";
@@ -72,6 +83,11 @@ enum CadCliParseError {
     UnknownCommand(String),
 }
 
+#[derive(Default)]
+struct ImportOptions {
+    name: Option<String>,
+}
+
 pub fn run_cli_env_args(args: Vec<String>) -> CadCliRunOutcome {
     let tokens = args.iter().map(String::as_str).collect::<Vec<_>>();
     run_cli_tokens(&tokens)
@@ -121,10 +137,350 @@ fn execute_invocation(invocation: CadCliInvocation) -> CadCliRunOutcome {
         return CadCliRunOutcome::success(subcommand_help_text(invocation.command));
     }
 
+    if invocation.passthrough.is_empty() {
+        return CadCliRunOutcome::failure(
+            CAD_CLI_STUB_EXIT_CODE,
+            scaffold_stub_error(invocation.command),
+        );
+    }
+
+    match invocation.command {
+        CadCliCommand::Export => handle_export(&invocation.passthrough),
+        CadCliCommand::Import => handle_import(&invocation.passthrough),
+        CadCliCommand::Info => handle_info(&invocation.passthrough),
+        CadCliCommand::Help => CadCliRunOutcome::success(root_help_text(env!("CARGO_PKG_VERSION"))),
+    }
+}
+
+fn handle_export(args: &[String]) -> CadCliRunOutcome {
+    if args.len() != 2 {
+        return CadCliRunOutcome::failure(
+            2,
+            format!("invalid export arguments\n\n{}", export_usage()),
+        );
+    }
+
+    let input_path = Path::new(&args[0]);
+    let output_path = Path::new(&args[1]);
+
+    let mesh = match read_mesh_json(input_path) {
+        Ok(mesh) => mesh,
+        Err(reason) => return CadCliRunOutcome::failure(1, reason),
+    };
+
+    let extension = output_extension(output_path);
+    let bytes = match extension.as_str() {
+        "stl" => match export_stl_from_mesh(
+            "cad-cli.export",
+            mesh.document_revision,
+            &mesh.variant_id,
+            &mesh,
+        ) {
+            Ok(artifact) => artifact.bytes,
+            Err(error) => {
+                return CadCliRunOutcome::failure(
+                    1,
+                    format!(
+                        "failed to export STL from {}: {error}",
+                        input_path.display()
+                    ),
+                );
+            }
+        },
+        "glb" => {
+            match export_glb_from_mesh(
+                "cad-cli.export",
+                mesh.document_revision,
+                &mesh.variant_id,
+                &mesh,
+            ) {
+                Ok(artifact) => artifact.bytes,
+                Err(error) => {
+                    return CadCliRunOutcome::failure(
+                        1,
+                        format!(
+                            "failed to export GLB from {}: {error}",
+                            input_path.display()
+                        ),
+                    );
+                }
+            }
+        }
+        "step" | "stp" => {
+            match export_step_from_mesh(
+                "cad-cli.export",
+                mesh.document_revision,
+                &mesh.variant_id,
+                &mesh,
+            ) {
+                Ok(artifact) => artifact.bytes,
+                Err(error) => {
+                    return CadCliRunOutcome::failure(
+                        1,
+                        format!(
+                            "failed to export STEP from {}: {error}",
+                            input_path.display()
+                        ),
+                    );
+                }
+            }
+        }
+        _ => {
+            return CadCliRunOutcome::failure(
+                2,
+                format!(
+                    "unknown export format for {}\n\n{}",
+                    output_path.display(),
+                    export_usage()
+                ),
+            );
+        }
+    };
+
+    if let Err(error) = fs::write(output_path, &bytes) {
+        return CadCliRunOutcome::failure(
+            1,
+            format!("failed writing {}: {error}", output_path.display()),
+        );
+    }
+
+    CadCliRunOutcome::success(format!(
+        "Exported {} to {}",
+        extension.to_ascii_uppercase(),
+        output_path.display()
+    ))
+}
+
+fn handle_import(args: &[String]) -> CadCliRunOutcome {
+    if args.len() < 2 {
+        return CadCliRunOutcome::failure(
+            2,
+            format!("invalid import arguments\n\n{}", import_usage()),
+        );
+    }
+
+    let input_path = Path::new(&args[0]);
+    let output_path = Path::new(&args[1]);
+    let options = match parse_import_options(&args[2..]) {
+        Ok(options) => options,
+        Err(reason) => {
+            return CadCliRunOutcome::failure(2, format!("{reason}\n\n{}", import_usage()));
+        }
+    };
+
+    let extension = output_extension(input_path);
+    match extension.as_str() {
+        "stl" => {
+            let payload = match fs::read(input_path) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return CadCliRunOutcome::failure(
+                        1,
+                        format!("failed reading {}: {error}", input_path.display()),
+                    );
+                }
+            };
+
+            let variant_id = options.name.unwrap_or_else(|| {
+                format!("variant.import.{}", stem_or_default(input_path, "stl"))
+            });
+            let imported = match import_stl_to_mesh(1, &variant_id, &payload) {
+                Ok(result) => result,
+                Err(error) => {
+                    return CadCliRunOutcome::failure(
+                        1,
+                        format!("failed to import STL {}: {error}", input_path.display()),
+                    );
+                }
+            };
+
+            if let Err(reason) = write_pretty_json(output_path, &imported.mesh) {
+                return CadCliRunOutcome::failure(1, reason);
+            }
+
+            CadCliRunOutcome::success(format!("Imported STL to {}", output_path.display()))
+        }
+        "step" | "stp" => {
+            let payload = match fs::read_to_string(input_path) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return CadCliRunOutcome::failure(
+                        1,
+                        format!("failed reading {}: {error}", input_path.display()),
+                    );
+                }
+            };
+
+            let document_id = options
+                .name
+                .unwrap_or_else(|| format!("doc.import.{}", stem_or_default(input_path, "step")));
+            let imported = match import_step_text_to_document(&payload, &document_id) {
+                Ok(result) => result,
+                Err(error) => {
+                    return CadCliRunOutcome::failure(
+                        1,
+                        format!("failed to import STEP {}: {error}", input_path.display()),
+                    );
+                }
+            };
+
+            if let Err(reason) = write_pretty_json(output_path, &imported.document) {
+                return CadCliRunOutcome::failure(1, reason);
+            }
+
+            CadCliRunOutcome::success(format!("Imported STEP to {}", output_path.display()))
+        }
+        _ => CadCliRunOutcome::failure(
+            2,
+            format!(
+                "unknown import format for {}\n\n{}",
+                input_path.display(),
+                import_usage()
+            ),
+        ),
+    }
+}
+
+fn handle_info(args: &[String]) -> CadCliRunOutcome {
+    if args.len() != 1 {
+        return CadCliRunOutcome::failure(2, format!("invalid info arguments\n\n{}", info_usage()));
+    }
+
+    let input_path = Path::new(&args[0]);
+    let payload = match fs::read_to_string(input_path) {
+        Ok(payload) => payload,
+        Err(error) => {
+            return CadCliRunOutcome::failure(
+                1,
+                format!("failed reading {}: {error}", input_path.display()),
+            );
+        }
+    };
+
+    if let Ok(mesh) = serde_json::from_str::<CadMeshPayload>(&payload) {
+        return CadCliRunOutcome::success(format_mesh_info(input_path, &mesh));
+    }
+
+    if let Ok(document) = CadDocument::from_json(&payload) {
+        return CadCliRunOutcome::success(format_document_info(input_path, &document));
+    }
+
+    let extension = output_extension(input_path);
+    if extension == "step" || extension == "stp" {
+        let report = check_step_text_structural(&payload, "openagents-cad-cli");
+        let entity_counts = collect_step_entity_type_counts(&payload);
+        let total_entities = entity_counts.values().copied().sum::<usize>();
+        return CadCliRunOutcome::success(format_step_info(
+            input_path,
+            report.solid_count,
+            report.shell_count,
+            report.face_count,
+            total_entities,
+            report.passed,
+        ));
+    }
+
     CadCliRunOutcome::failure(
-        CAD_CLI_STUB_EXIT_CODE,
-        scaffold_stub_error(invocation.command),
+        1,
+        format!(
+            "failed to parse {} as CadMeshPayload, CadDocument, or STEP text",
+            input_path.display()
+        ),
     )
+}
+
+fn parse_import_options(args: &[String]) -> Result<ImportOptions, String> {
+    let mut options = ImportOptions::default();
+    let mut index = 0usize;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--name" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err("missing value for --name".to_string());
+                };
+                options.name = Some(value.clone());
+                index += 2;
+            }
+            unknown => {
+                return Err(format!("unknown import option: {unknown}"));
+            }
+        }
+    }
+
+    Ok(options)
+}
+
+fn read_mesh_json(path: &Path) -> Result<CadMeshPayload, String> {
+    let payload = fs::read_to_string(path)
+        .map_err(|error| format!("failed reading {}: {error}", path.display()))?;
+    serde_json::from_str::<CadMeshPayload>(&payload).map_err(|error| {
+        format!(
+            "failed parsing {} as CadMeshPayload JSON: {error}",
+            path.display()
+        )
+    })
+}
+
+fn write_pretty_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
+    let mut payload = serde_json::to_string_pretty(value)
+        .map_err(|error| format!("failed to serialize json for {}: {error}", path.display()))?;
+    payload.push('\n');
+    fs::write(path, payload).map_err(|error| format!("failed writing {}: {error}", path.display()))
+}
+
+fn format_mesh_info(path: &Path, mesh: &CadMeshPayload) -> String {
+    format!(
+        "openagents cad mesh: {}\n  mesh id: {}\n  variant: {}\n  vertices: {}\n  triangles: {}\n  materials: {}",
+        path.display(),
+        mesh.mesh_id,
+        mesh.variant_id,
+        mesh.vertices.len(),
+        mesh.triangle_indices.len() / 3,
+        mesh.material_slots.len(),
+    )
+}
+
+fn format_document_info(path: &Path, document: &CadDocument) -> String {
+    format!(
+        "openagents cad document: {}\n  schema version: {}\n  document id: {}\n  revision: {}\n  feature ids: {}\n  metadata entries: {}",
+        path.display(),
+        document.schema_version,
+        document.document_id,
+        document.revision,
+        document.feature_ids.len(),
+        document.metadata.len(),
+    )
+}
+
+fn format_step_info(
+    path: &Path,
+    solid_count: usize,
+    shell_count: usize,
+    face_count: usize,
+    entity_count: usize,
+    checker_pass: bool,
+) -> String {
+    format!(
+        "openagents cad step: {}\n  solids: {}\n  shells: {}\n  faces: {}\n  entities: {}\n  checker pass: {}",
+        path.display(),
+        solid_count,
+        shell_count,
+        face_count,
+        entity_count,
+        checker_pass,
+    )
+}
+
+fn stem_or_default(path: &Path, default: &str) -> String {
+    path.file_stem()
+        .and_then(|stem| stem.to_str())
+        .map_or_else(|| default.to_string(), |stem| stem.to_string())
+}
+
+fn output_extension(path: &Path) -> String {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .map_or_else(String::new, |extension| extension.to_ascii_lowercase())
 }
 
 fn is_help_request(args: &[String]) -> bool {
@@ -134,13 +490,13 @@ fn is_help_request(args: &[String]) -> bool {
 
 fn root_help_text(version: &str) -> String {
     format!(
-        "{CAD_CLI_APP_NAME} {version}\n\nUSAGE:\n  {CAD_CLI_APP_NAME} <COMMAND> [ARGS]\n  {CAD_CLI_APP_NAME} --help\n\nCOMMANDS:\n  export   Export CAD document to a target format (scaffold)\n  import   Import CAD data into OpenAgents CAD document (scaffold)\n  info     Inspect CAD document metadata and mesh summary (scaffold)\n  help     Print command help\n\nScaffold status: {CAD_CLI_SCAFFOLD_ISSUE_ID} provides command surface only; handlers land in {CAD_CLI_IMPLEMENTATION_ISSUE_ID}."
+        "{CAD_CLI_APP_NAME} {version}\n\nUSAGE:\n  {CAD_CLI_APP_NAME} <COMMAND> [ARGS]\n  {CAD_CLI_APP_NAME} --help\n\nCOMMANDS:\n  export   Export CAD document to a target format\n  import   Import CAD data into OpenAgents CAD document\n  info     Inspect CAD document metadata and mesh summary\n  help     Print command help\n\nScaffold status: {CAD_CLI_SCAFFOLD_ISSUE_ID} established command surface; command handlers land in {CAD_CLI_IMPLEMENTATION_ISSUE_ID}."
     )
 }
 
 fn subcommand_help_text(command: CadCliCommand) -> String {
     format!(
-        "USAGE:\n  {CAD_CLI_APP_NAME} {} [ARGS]\n\nScaffold status: {} command parser is present from {CAD_CLI_SCAFFOLD_ISSUE_ID}; behavior lands in {CAD_CLI_IMPLEMENTATION_ISSUE_ID}.",
+        "USAGE:\n  {CAD_CLI_APP_NAME} {} [ARGS]\n\nCommand parity: {} handler is implemented in {CAD_CLI_IMPLEMENTATION_ISSUE_ID}.",
         command.as_str(),
         command.as_str(),
     )
@@ -151,6 +507,22 @@ fn scaffold_stub_error(command: CadCliCommand) -> String {
         "{} command scaffold is present; implementation lands in {CAD_CLI_IMPLEMENTATION_ISSUE_ID}",
         command.as_str()
     )
+}
+
+fn export_usage() -> String {
+    format!(
+        "USAGE:\n  {CAD_CLI_APP_NAME} export <input_mesh_json> <output.stl|output.glb|output.step|output.stp>"
+    )
+}
+
+fn import_usage() -> String {
+    format!(
+        "USAGE:\n  {CAD_CLI_APP_NAME} import <input.stl|input.step|input.stp> <output_json> [--name <id>]"
+    )
+}
+
+fn info_usage() -> String {
+    format!("USAGE:\n  {CAD_CLI_APP_NAME} info <input_json|input.step|input.stp>")
 }
 
 #[cfg(test)]
@@ -167,7 +539,7 @@ mod tests {
     }
 
     #[test]
-    fn scaffold_commands_return_stub_exit_code() {
+    fn scaffold_commands_return_stub_exit_code_without_args() {
         for command in CAD_CLI_SCAFFOLD_COMMANDS {
             let outcome = run_cli_tokens(&["openagents-cad-cli", command]);
             assert_eq!(outcome.exit_code, CAD_CLI_STUB_EXIT_CODE);
