@@ -13,6 +13,7 @@ LANE_LABELS=(
     "kernel-primitives"
     "kernel-tessellate"
     "kernel-booleans"
+    "kernel-boolean-diagnostics"
     "kernel-precision"
     "ci-artifact-manifest"
     "risk-register-workflow"
@@ -106,6 +107,9 @@ run_lane "kernel-tessellate" \
 
 run_lane "kernel-booleans" \
     "$ROOT_DIR/scripts/cad/parity-kernel-booleans-ci.sh"
+
+run_lane "kernel-boolean-diagnostics" \
+    "$ROOT_DIR/scripts/cad/parity-kernel-boolean-diagnostics-ci.sh"
 
 run_lane "kernel-precision" \
     "$ROOT_DIR/scripts/cad/parity-kernel-precision-ci.sh"
