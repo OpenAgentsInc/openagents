@@ -68,6 +68,7 @@ pub fn verify_authoritative_earnings(
 
     let mut authoritative_progress = progress.clone();
     authoritative_progress.wallet_delta_sats = wallet_receive_sats as i64;
+    authoritative_progress.earned_wallet_delta_sats = wallet_receive_sats as i64;
     authoritative_progress.jobs_completed = verified_receipt_count;
     authoritative_progress.successes = verified_receipt_count;
 
@@ -157,6 +158,7 @@ mod tests {
             now_epoch_seconds: 30,
             attempt_count: 1,
             wallet_delta_sats: 1_000,
+            earned_wallet_delta_sats: 1_000,
             jobs_completed: 1,
             successes: 1,
             errors: 0,

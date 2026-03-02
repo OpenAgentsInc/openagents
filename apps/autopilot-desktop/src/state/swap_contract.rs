@@ -101,6 +101,30 @@ pub struct SwapExecutionReceipt {
     pub failure: Option<SwapFailure>,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub enum SwapExecutionStatus {
+    Success,
+    Failure,
+    Pending,
+    AlreadyPaid,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct GoalSwapExecutionReceipt {
+    pub receipt_id: String,
+    pub goal_id: String,
+    pub quote_id: String,
+    pub direction: SwapDirection,
+    pub amount_in: SwapAmount,
+    pub amount_out: SwapAmount,
+    pub fee_sats: u64,
+    pub status: SwapExecutionStatus,
+    pub transaction_id: Option<String>,
+    pub failure_reason: Option<String>,
+    pub started_at_epoch_seconds: u64,
+    pub finished_at_epoch_seconds: u64,
+}
+
 impl SwapPolicy {
     pub fn validate_request(
         &self,

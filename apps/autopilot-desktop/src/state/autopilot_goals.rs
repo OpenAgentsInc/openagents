@@ -18,7 +18,9 @@ use crate::state::os_scheduler::{
     OsSchedulerScheduleSpec, detect_adapter_capability, preferred_adapter_for_host,
     reconcile_os_scheduler_descriptor,
 };
-use crate::state::swap_contract::{SwapExecutionRequest, SwapPolicy, SwapQuoteTerms};
+use crate::state::swap_contract::{
+    GoalSwapExecutionReceipt, SwapExecutionRequest, SwapPolicy, SwapQuoteTerms,
+};
 use crate::state::swap_quote_adapter::{
     StablesatsQuoteClient, SwapQuoteAdapterOutcome, SwapQuoteAdapterRequest, SwapQuoteAuditReceipt,
     build_swap_quote_audit_receipt, request_quote_with_fallback,
@@ -327,6 +329,8 @@ pub struct AutopilotGoalsDocumentV1 {
     pub receipts: Vec<GoalExecutionReceipt>,
     #[serde(default)]
     pub swap_quote_audits: Vec<SwapQuoteAuditReceipt>,
+    #[serde(default)]
+    pub swap_execution_receipts: Vec<GoalSwapExecutionReceipt>,
 }
 
 impl Default for AutopilotGoalsDocumentV1 {
@@ -337,6 +341,7 @@ impl Default for AutopilotGoalsDocumentV1 {
             historical_goals: Vec::new(),
             receipts: Vec::new(),
             swap_quote_audits: Vec::new(),
+            swap_execution_receipts: Vec::new(),
         }
     }
 }
@@ -638,6 +643,67 @@ impl AutopilotGoalsState {
         self.last_action = Some(format!(
             "Recorded swap quote audit {} for goal {}",
             audit.quote_id, audit.goal_id
+        ));
+        self.last_error = None;
+        Ok(())
+    }
+
+    pub fn record_swap_execution_receipt(
+        &mut self,
+        receipt: GoalSwapExecutionReceipt,
+    ) -> Result<(), String> {
+        if receipt.receipt_id.trim().is_empty() {
+            return Err("Swap execution receipt id cannot be empty".to_string());
+        }
+        if receipt.goal_id.trim().is_empty() {
+            return Err("Swap execution goal id cannot be empty".to_string());
+        }
+        if receipt.quote_id.trim().is_empty() {
+            return Err("Swap execution quote id cannot be empty".to_string());
+        }
+        if receipt.finished_at_epoch_seconds < receipt.started_at_epoch_seconds {
+            return Err("Swap execution receipt finish cannot be before start".to_string());
+        }
+        if !self
+            .document
+            .active_goals
+            .iter()
+            .any(|goal| goal.goal_id == receipt.goal_id)
+            && !self
+                .document
+                .historical_goals
+                .iter()
+                .any(|goal| goal.goal_id == receipt.goal_id)
+        {
+            return Err(format!(
+                "Swap execution goal {} not found in active or historical goals",
+                receipt.goal_id
+            ));
+        }
+
+        if let Some(existing) = self
+            .document
+            .swap_execution_receipts
+            .iter_mut()
+            .find(|existing| existing.receipt_id == receipt.receipt_id)
+        {
+            *existing = receipt.clone();
+        } else {
+            self.document.swap_execution_receipts.push(receipt.clone());
+        }
+        if self.document.swap_execution_receipts.len() > 4_096 {
+            let remove_count = self
+                .document
+                .swap_execution_receipts
+                .len()
+                .saturating_sub(4_096);
+            self.document.swap_execution_receipts.drain(0..remove_count);
+        }
+
+        self.persist_to_disk()?;
+        self.last_action = Some(format!(
+            "Recorded swap execution receipt {} for goal {}",
+            receipt.receipt_id, receipt.goal_id
         ));
         self.last_error = None;
         Ok(())
@@ -1532,7 +1598,8 @@ mod tests {
     use crate::state::goal_conditions::GoalProgressSnapshot;
     use crate::state::os_scheduler::OsSchedulerAdapterKind;
     use crate::state::swap_contract::{
-        SwapAmount, SwapAmountUnit, SwapDirection, SwapExecutionRequest, SwapQuoteTerms,
+        GoalSwapExecutionReceipt, SwapAmount, SwapAmountUnit, SwapDirection, SwapExecutionRequest,
+        SwapQuoteTerms,
     };
     use crate::state::swap_quote_adapter::{
         StablesatsQuoteClient, StablesatsQuoteFor, StablesatsQuoteResponse,
@@ -1717,6 +1784,7 @@ mod tests {
                     now_epoch_seconds: 1_700_000_010,
                     attempt_count: 1,
                     wallet_delta_sats: 1_100,
+                    earned_wallet_delta_sats: 1_100,
                     jobs_completed: 0,
                     successes: 0,
                     errors: 0,
@@ -1749,6 +1817,7 @@ mod tests {
             now_epoch_seconds: 1_700_000_010,
             attempt_count: 1,
             wallet_delta_sats: 1_100,
+            earned_wallet_delta_sats: 1_100,
             jobs_completed: 1,
             successes: 1,
             errors: 0,
@@ -1935,6 +2004,7 @@ mod tests {
                     amount: 330,
                     unit: SwapAmountUnit::Cents,
                 },
+                fee_sats: 25,
                 expires_at_epoch_seconds: 1_700_000_100,
                 immediate_execution: false,
                 executed: false,
@@ -1947,10 +2017,57 @@ mod tests {
         let reloaded = AutopilotGoalsState::load_from_path(path.clone());
         assert_eq!(reloaded.document.swap_quote_audits.len(), 1);
         assert_eq!(reloaded.document.swap_quote_audits[0].quote_id, "quote-1");
+        assert_eq!(reloaded.document.swap_quote_audits[0].fee_sats, 25);
         assert_eq!(
             reloaded.document.swap_quote_audits[0].expires_at_epoch_seconds,
             1_700_000_100
         );
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn record_swap_execution_receipt_persists_goal_scoped_swap_evidence() {
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch time available")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("autopilot-goals-swap-exec-{now_nanos}.json"));
+        let mut state = AutopilotGoalsState::load_from_path(path.clone());
+        state
+            .upsert_active_goal(sample_goal("goal-swap-exec"))
+            .expect("upsert active goal should succeed");
+
+        state
+            .record_swap_execution_receipt(GoalSwapExecutionReceipt {
+                receipt_id: "swap-exec-1".to_string(),
+                goal_id: "goal-swap-exec".to_string(),
+                quote_id: "quote-exec-1".to_string(),
+                direction: SwapDirection::BtcToUsd,
+                amount_in: SwapAmount {
+                    amount: 2_500,
+                    unit: SwapAmountUnit::Sats,
+                },
+                amount_out: SwapAmount {
+                    amount: 180,
+                    unit: SwapAmountUnit::Cents,
+                },
+                fee_sats: 7,
+                status: crate::state::swap_contract::SwapExecutionStatus::Success,
+                transaction_id: Some("swap-tx-1".to_string()),
+                failure_reason: None,
+                started_at_epoch_seconds: 1_700_000_000,
+                finished_at_epoch_seconds: 1_700_000_030,
+            })
+            .expect("swap execution receipt should persist");
+
+        let reloaded = AutopilotGoalsState::load_from_path(path.clone());
+        assert_eq!(reloaded.document.swap_execution_receipts.len(), 1);
+        assert_eq!(
+            reloaded.document.swap_execution_receipts[0].quote_id,
+            "quote-exec-1"
+        );
+        assert_eq!(reloaded.document.swap_execution_receipts[0].fee_sats, 7);
 
         let _ = std::fs::remove_file(path);
     }
