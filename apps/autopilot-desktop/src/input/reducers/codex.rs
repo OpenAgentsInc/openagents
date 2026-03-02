@@ -1124,24 +1124,44 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
         } => {
             let thread_id = resolve_thread_id(state, thread_id);
             let turn_id = resolve_turn_id(state, turn_id);
+            let item_type_label = item_type.as_deref().unwrap_or("n/a");
             tracing::info!(
                 "codex item/completed thread_id={} turn_id={} item_id={} item_type={} message_chars={} active_thread={:?}",
                 thread_id,
                 turn_id,
                 item_id.as_deref().unwrap_or("n/a"),
-                item_type.as_deref().unwrap_or("n/a"),
+                item_type_label,
                 message
                     .as_ref()
                     .map(|value| value.chars().count())
                     .unwrap_or(0),
                 state.autopilot_chat.active_thread_id
             );
+            if let Some(message_text) = message.as_deref() {
+                if item_type_label.eq_ignore_ascii_case("userMessage") {
+                    log_chat_message_to_console(
+                        "user",
+                        &thread_id,
+                        &turn_id,
+                        "item/completed:userMessage",
+                        message_text,
+                    );
+                } else if item_type_label.eq_ignore_ascii_case("agentMessage") {
+                    log_chat_message_to_console(
+                        "assistant",
+                        &thread_id,
+                        &turn_id,
+                        "item/completed:agentMessage",
+                        message_text,
+                    );
+                }
+            }
             state.autopilot_chat.remember_thread(thread_id.clone());
             if state.autopilot_chat.is_active_thread(&thread_id) {
                 state.autopilot_chat.record_turn_timeline_event(format!(
                     "item completed: turn={turn_id} id={} type={}",
                     item_id.as_deref().unwrap_or("n/a"),
-                    item_type.as_deref().unwrap_or("n/a")
+                    item_type_label
                 ));
                 if let Some(message) = message {
                     state
@@ -1208,6 +1228,13 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 item_id.as_deref().unwrap_or("n/a"),
                 message.chars().count(),
                 state.autopilot_chat.active_thread_id
+            );
+            log_chat_message_to_console(
+                "assistant",
+                &thread_id,
+                &turn_id,
+                "item/agentMessage/completed",
+                &message,
             );
             state.autopilot_chat.remember_thread(thread_id.clone());
             if state.autopilot_chat.is_active_thread(&thread_id) {
@@ -1296,6 +1323,13 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 if let Some(message) = final_message
                     && !message.trim().is_empty()
                 {
+                    log_chat_message_to_console(
+                        "assistant",
+                        &thread_id,
+                        &turn_id,
+                        "turn/completed:final_message",
+                        &message,
+                    );
                     state
                         .autopilot_chat
                         .set_turn_message_for_turn(&turn_id, &message);
@@ -1769,6 +1803,65 @@ fn resolve_turn_id(state: &RenderState, turn_id: String) -> String {
         }
     }
     turn_id
+}
+
+fn log_chat_message_to_console(
+    role: &str,
+    thread_id: &str,
+    turn_id: &str,
+    source: &str,
+    message: &str,
+) {
+    const MAX_CHARS: usize = 8_000;
+    let trimmed = message.trim_end();
+    if trimmed.trim().is_empty() {
+        return;
+    }
+    static CHAT_MIRROR_STATE: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, String>>,
+    > = std::sync::OnceLock::new();
+    let state =
+        CHAT_MIRROR_STATE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    let key = format!("{thread_id}:{turn_id}:{role}");
+    let mut guard = match state.lock() {
+        Ok(value) => value,
+        Err(error) => {
+            tracing::error!("chat transcript mirror lock poisoned: {}", error);
+            return;
+        }
+    };
+    if guard.get(&key).is_some_and(|previous| previous == trimmed) {
+        return;
+    }
+    guard.insert(key, trimmed.to_string());
+    let chars = trimmed.chars().count();
+    let (body, truncated) = if chars > MAX_CHARS {
+        (trimmed.chars().take(MAX_CHARS).collect::<String>(), true)
+    } else {
+        (trimmed.to_string(), false)
+    };
+    if truncated {
+        tracing::info!(
+            "autopilot transcript/{} source={} thread_id={} turn_id={} chars={} (truncated to {})\n{}",
+            role,
+            source,
+            thread_id,
+            turn_id,
+            chars,
+            MAX_CHARS,
+            body
+        );
+    } else {
+        tracing::info!(
+            "autopilot transcript/{} source={} thread_id={} turn_id={} chars={}\n{}",
+            role,
+            source,
+            thread_id,
+            turn_id,
+            chars,
+            body
+        );
+    }
 }
 
 fn increment_diagnostics_count(

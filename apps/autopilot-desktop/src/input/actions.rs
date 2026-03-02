@@ -75,6 +75,7 @@ pub(super) fn run_chat_submit_action(state: &mut crate::app_state::RenderState) 
         turn_skill_attachments.push(policy_skill);
     }
 
+    log_chat_prompt_to_console(&thread_id, &prompt);
     let (input, skill_error) = assemble_chat_turn_input(prompt, turn_skill_attachments);
     if let Some(skill_error) = skill_error {
         state.autopilot_chat.last_error = Some(skill_error);
@@ -130,6 +131,37 @@ pub(super) fn run_chat_submit_action(state: &mut crate::app_state::RenderState) 
         }
     }
     true
+}
+
+fn log_chat_prompt_to_console(thread_id: &str, prompt: &str) {
+    const MAX_CHARS: usize = 8_000;
+    let trimmed = prompt.trim_end();
+    if trimmed.is_empty() {
+        return;
+    }
+    let chars = trimmed.chars().count();
+    let (body, truncated) = if chars > MAX_CHARS {
+        let body = trimmed.chars().take(MAX_CHARS).collect::<String>();
+        (body, true)
+    } else {
+        (trimmed.to_string(), false)
+    };
+    if truncated {
+        tracing::info!(
+            "autopilot transcript/user thread_id={} chars={} (truncated to {})\n{}",
+            thread_id,
+            chars,
+            MAX_CHARS,
+            body
+        );
+    } else {
+        tracing::info!(
+            "autopilot transcript/user thread_id={} chars={}\n{}",
+            thread_id,
+            chars,
+            body
+        );
+    }
 }
 
 pub(super) fn current_epoch_millis() -> u64 {

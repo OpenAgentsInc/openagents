@@ -1,4 +1,5 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
+use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use openagents_cad::analysis::{
@@ -376,9 +377,56 @@ pub(super) fn sync_cad_build_progress_to_chat(state: &mut RenderState) {
     let Some((turn_id, progress_block)) = cad_progress_block_from_state(&state.cad_demo) else {
         return;
     };
+    mirror_cad_progress_to_console(&turn_id, &progress_block);
     state
         .autopilot_chat
         .set_turn_progress_blocks_for_turn(&turn_id, vec![progress_block]);
+}
+
+fn mirror_cad_progress_to_console(turn_id: &str, progress_block: &AutopilotProgressBlock) {
+    static CAD_PROGRESS_MIRROR_STATE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+    let state = CAD_PROGRESS_MIRROR_STATE.get_or_init(|| Mutex::new(HashMap::new()));
+    let rows_signature = progress_block
+        .rows
+        .iter()
+        .map(|row| format!("{}={}|{}", row.label, row.value, row.tone))
+        .collect::<Vec<_>>()
+        .join("||");
+    let signature = format!(
+        "kind={};title={};status={};rows={}",
+        progress_block.kind, progress_block.title, progress_block.status, rows_signature
+    );
+
+    let mut guard = match state.lock() {
+        Ok(value) => value,
+        Err(error) => {
+            tracing::error!("cad progress mirror lock poisoned: {}", error);
+            return;
+        }
+    };
+    if guard
+        .get(turn_id)
+        .is_some_and(|previous| previous == &signature)
+    {
+        return;
+    }
+    guard.insert(turn_id.to_string(), signature);
+
+    let rows = progress_block
+        .rows
+        .iter()
+        .map(|row| format!("{}: {} [{}]", row.label, row.value, row.tone))
+        .collect::<Vec<_>>()
+        .join("\n");
+    tracing::info!(
+        "autopilot transcript/cad-progress turn_id={} kind={} title={} status={} rows={}\n{}",
+        turn_id,
+        progress_block.kind,
+        progress_block.title,
+        progress_block.status,
+        progress_block.rows.len(),
+        rows
+    );
 }
 
 fn cad_progress_block_from_state(
