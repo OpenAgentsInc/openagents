@@ -16,6 +16,7 @@ pub mod dashboard;
 pub mod drafting_detail_parity;
 pub mod drafting_dimension_parity;
 pub mod drafting_drawing_mode_ui_parity;
+pub mod drafting_dxf_export_parity;
 pub mod drafting_gdt_parity;
 pub mod drafting_hidden_line_parity;
 pub mod drafting_kernel_scaffolding_parity;
