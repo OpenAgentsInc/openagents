@@ -11,6 +11,7 @@ LANE_LABELS=(
     "kernel-topology"
     "kernel-geom"
     "kernel-primitives"
+    "kernel-tessellate"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -97,6 +98,9 @@ run_lane "kernel-geom" \
 
 run_lane "kernel-primitives" \
     "$ROOT_DIR/scripts/cad/parity-kernel-primitives-ci.sh"
+
+run_lane "kernel-tessellate" \
+    "$ROOT_DIR/scripts/cad/parity-kernel-tessellate-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
