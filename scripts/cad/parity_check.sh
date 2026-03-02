@@ -54,6 +54,7 @@ LANE_LABELS=(
     "assembly-schema"
     "assembly-part-instance"
     "assembly-joint-frs"
+    "assembly-joint-cb"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -269,6 +270,9 @@ run_lane "assembly-part-instance" \
 
 run_lane "assembly-joint-frs" \
     "$ROOT_DIR/scripts/cad/parity-assembly-joint-frs-ci.sh"
+
+run_lane "assembly-joint-cb" \
+    "$ROOT_DIR/scripts/cad/parity-assembly-joint-cb-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

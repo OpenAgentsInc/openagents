@@ -30,9 +30,9 @@
       "case_id": "revolute.axis_normalized",
       "joint_type": "Revolute",
       "translation_mm": [
-        "10.000000",
+        "6.464466",
         "0.000000",
-        "0.000000"
+        "1.464466"
       ],
       "axis": [
         "0.000000",
@@ -46,8 +46,8 @@
       "case_id": "revolute.zero_axis_fallback",
       "joint_type": "Revolute",
       "translation_mm": [
-        "10.000000",
-        "0.000000",
+        "15.000000",
+        "5.000000",
         "0.000000"
       ],
       "axis": [
@@ -79,7 +79,7 @@
   "unsupported_joint_scope_guard": true,
   "behavior_match": true,
   "deterministic_replay_match": true,
-  "deterministic_signature": "0a3c522d8b2c0c5d",
+  "deterministic_signature": "be723ad9de0d9513",
   "parity_contracts": [
     "fixed joints preserve anchor-delta translation semantics",
     "revolute joints normalize axes and fallback to +Z for zero-length axis",

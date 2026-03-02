@@ -281,6 +281,9 @@ fn build_case_snapshot(case_id: &str, motion: CadJointMotion) -> JointFrsCaseSna
             angle_deg: None,
             offset_mm: Some(f(offset_mm)),
         },
+        CadJointMotion::Cylindrical { .. } | CadJointMotion::Ball { .. } => {
+            panic!("unexpected motion variant for FRS parity lane")
+        }
     }
 }
 

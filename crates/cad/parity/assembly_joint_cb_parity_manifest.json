@@ -1,0 +1,72 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-059",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_corpus_path": "crates/cad/parity/fixtures/assembly_joint_cb_vcad_reference.json",
+  "reference_corpus_sha256": "cb2ac9b8385107bdbadbb63708189a3a472d58a9fa250a1c8e3739d4657a19a7",
+  "reference_source": "~/code/vcad/crates/vcad-eval/src/kinematics.rs",
+  "reference_commit_match": true,
+  "supported_joint_types": [
+    "Ball",
+    "Cylindrical"
+  ],
+  "case_snapshots": [
+    {
+      "case_id": "ball.z_axis_rotation",
+      "joint_type": "Ball",
+      "translation_mm": [
+        "3.000000",
+        "3.000000",
+        "0.000000"
+      ],
+      "axis": [
+        "0.000000",
+        "0.000000",
+        "1.000000"
+      ],
+      "angle_deg": "90.000000"
+    },
+    {
+      "case_id": "cylindrical.axis_normalized",
+      "joint_type": "Cylindrical",
+      "translation_mm": [
+        "10.000000",
+        "0.000000",
+        "2.000000"
+      ],
+      "axis": [
+        "0.000000",
+        "1.000000",
+        "0.000000"
+      ],
+      "angle_deg": "90.000000"
+    },
+    {
+      "case_id": "cylindrical.zero_axis_fallback",
+      "joint_type": "Cylindrical",
+      "translation_mm": [
+        "1.000000",
+        "0.000000",
+        "0.000000"
+      ],
+      "axis": [
+        "0.000000",
+        "0.000000",
+        "1.000000"
+      ],
+      "angle_deg": "180.000000"
+    }
+  ],
+  "ball_axis_is_z": true,
+  "behavior_match": true,
+  "deterministic_replay_match": true,
+  "deterministic_signature": "c78308af6b984ea0",
+  "parity_contracts": [
+    "cylindrical joints follow vcad eval behavior: axis-normalized rotation with rotated child-anchor translation",
+    "cylindrical joints fallback to +Z axis for zero-length axis",
+    "ball joints use +Z axis rotation semantics in vcad eval path",
+    "cylindrical/ball parity fixtures replay deterministically"
+  ]
+}
