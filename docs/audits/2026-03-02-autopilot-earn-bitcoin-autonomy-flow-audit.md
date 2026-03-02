@@ -40,6 +40,7 @@ Conclusion: this requested flow is in-scope for MVP and should be treated as cor
 
 - No generic "goal runner" or "loop until condition met" engine is implemented in Autopilot chat path.
 - Skill auto-selection is currently specific to CAD policy, not generalized relevance matching for earning goals.
+- No first-class BTC <-> stablesat USD swap primitive is exposed in the current agent tool/skill surface.
 - No real local cron / persistent scheduler integration is implemented in app runtime.
 - Go Online / SA/AC/network request/job paths are simulated state machines today, not a real end-to-end paid job settlement lane.
 - Non-OpenAgents tool calls are not auto-executed by desktop tool bridge, so general autonomous external workflows can stall.
@@ -168,14 +169,39 @@ Assessment:
 - These are relevant for payment and monetization workflows.
 - Current runtime lacks generic skill relevance/selection/orchestration logic to apply them autonomously from chat intent.
 
+## BTC <-> Stablesat USD Swap Findings (Blink + stablesats-rs)
+
+Confirmed from `/Users/christopherdavid/code/blink/stablesats-rs`:
+
+- `stablesats-rs` has an explicit quote/execute conversion surface via gRPC:
+  - `GetQuoteToBuyUsd`
+  - `GetQuoteToSellUsd`
+  - `AcceptQuote`
+  - plus `immediate_execution` support (`proto/quotes/quote_service.proto`, `quotes-server/src/server/mod.rs`, `quotes-server/src/app/mod.rs`).
+- Accepted quotes are posted into ledger templates for both directions (`ledger/src/templates/buy_usd_quote_accepted.rs`, `ledger/src/templates/sell_usd_quote_accepted.rs`).
+- The design intent is explicit BTC/USD liability and hedging management rather than ad-hoc conversion math (`README.md`).
+
+Confirmed from OpenAgents Blink skill (`skills/blink`):
+
+- Partially covered today:
+  - BTC and USD wallet balances/invoices/payments (`create_invoice.js`, `create_invoice_usd.js`, `pay_invoice.js`, `pay_lnaddress.js`, `pay_lnurl.js`).
+  - Price conversion estimation (`price.js` and `currencyConversionEstimation` docs in `SKILL.md`).
+- Missing today (not first-class):
+  - No dedicated BTC <-> USD wallet swap command/script.
+  - No explicit quote -> accept swap flow.
+  - No direct wrappers for intraledger conversion-style mutations in skill scripts.
+
+Conclusion: BTC <-> stablesat USD is only partially covered in the current Blink skill and needs explicit first-class support in both skill/tooling and goal-runner planning.
+
 ## Critical Findings (Ranked)
 
 1. **Critical:** No authoritative autonomous earn loop yet (state lanes are mostly simulated for SA/AC/network/job lifecycle).
 2. **Critical:** No generic objective/condition loop engine for "until X is true" in chat-driven automation.
-3. **High:** Skill loading exists, but relevance-based multi-skill orchestration is CAD-specific and insufficient for earnings workflows.
-4. **High:** No local cron/persistent scheduler integration for unattended execution.
-5. **High:** Unsafe autonomy defaults (`DangerFullAccess`, approvals never) without explicit autonomous-goal guardrails.
-6. **Medium:** Tool surface is pane/CAD-centric; broader autonomous workflows need clearer controlled execution interfaces.
+3. **High:** No first-class BTC <-> stablesat USD swap operation surface, despite this being a core earning/treasury control needed for autopilot money strategies.
+4. **High:** Skill loading exists, but relevance-based multi-skill orchestration is CAD-specific and insufficient for earnings workflows.
+5. **High:** No local cron/persistent scheduler integration for unattended execution.
+6. **High:** Unsafe autonomy defaults (`DangerFullAccess`, approvals never) without explicit autonomous-goal guardrails.
+7. **Medium:** Tool surface is pane/CAD-centric; broader autonomous workflows need clearer controlled execution interfaces.
 
 ## Recommended MVP Architecture (Scoped To Existing Ownership)
 
@@ -199,7 +225,9 @@ Proposed additions:
    - Next: cron expression + optional OS-backed persistence (platform adapters).
 5. `Authoritative Earnings Gate`:
    - Mark "goal success" only when wallet/payment evidence confirms sats received (not from synthetic state only).
-6. `Safety Policy`:
+6. `Swap Executor`:
+   - First-class BTC <-> stablesat USD quote + execute pipeline with policy limits and receipts.
+7. `Safety Policy`:
    - Goal-level permissions, spend caps, command/file policies, kill switch, and max runtime.
 
 ## Proposed Implementation Phases
@@ -214,11 +242,12 @@ Proposed additions:
 2. Implement skill relevance resolver for payment/earn goals:
    - start with `blink`, `l402`, `moneydevkit`, `neutronpay`,
    - attach top-N enabled skills automatically.
-3. Implement loop executor:
+3. Add first-class BTC <-> stablesat USD swap primitives (quote, execute, verify) to the automation tooling path.
+4. Implement loop executor:
    - submit turn,
    - inspect outcomes,
    - re-run until condition met/timeout/error budget.
-4. Gate completion on wallet-confirmed earning signal.
+5. Gate completion on wallet-confirmed earning signal.
 
 ## Phase 2 (scheduler hardening)
 
@@ -232,6 +261,87 @@ Proposed additions:
 2. Add incident/audit receipts for each autonomous run.
 3. Add deterministic tests for stop conditions and payout verification.
 
+## Sequenced GitHub Issues Needed For Full Implementation
+
+The following is the full recommended GitHub issue sequence to implement this flow end-to-end. The sequence is dependency-ordered, and each issue title is ready to use as a GitHub issue name.
+
+1. **[Epic] Autopilot Goal Automation: Earn Bitcoin Until Condition Met**
+   Create the umbrella issue that tracks scope, dependencies, and acceptance gates for the entire feature set in this audit. This issue should define the MVP bar as: chat-directed goal, autonomous loop, authoritative payout verification, and scheduler support. All issues below should link back to this epic.
+
+2. **Define Goal Spec and Persistence Model in `apps/autopilot-desktop`**
+   Add typed models for objective, constraints, stop conditions, retry policy, schedule config, and execution receipts. Persist active and historical goals so runs survive app restarts. Keep all workflow ownership in app-layer state per `docs/OWNERSHIP.md`.
+
+3. **Add Goal Runner State Machine (Queued/Running/Succeeded/Failed/Aborted)**
+   Implement a first-class runtime state machine for autonomous goals, including attempt counters and terminal state semantics. This issue should provide deterministic transitions and explicit failure reasons so the UI and logs can stay honest. It should not yet execute chat turns until orchestration wiring lands.
+
+4. **Implement Condition Evaluator for Wallet Delta, Job Count, Timeout, and Error Budget**
+   Build a reusable evaluator that can answer "should continue?" and "is goal complete?" after every attempt. Include support for user-defined thresholds such as "wallet increases by N sats." Ensure conditions are evaluated from authoritative sources, not optimistic UI state.
+
+5. **Add Authoritative Earnings Verification Gate (Wallet/Payment Evidence Only)**
+   Implement a strict success gate that marks earnings objectives complete only when Spark/payment evidence confirms funds were received. Disallow synthetic starter-job records from satisfying completion conditions. Emit explicit mismatch errors when local job history and wallet evidence diverge.
+
+6. **Define BTC <-> Stablesat USD Swap Contract + Policy Model**
+   Add app-layer domain types for swap direction, amount units (sats/cents), quote TTL, immediate execution mode, slippage/fee limits, and failure semantics. Include policy fields for max per-swap and max per-day converted value. This establishes a deterministic contract for all swap operations used by autonomous goals.
+
+7. **Implement Blink Skill First-Class Swap Scripts (Quote + Execute, Both Directions)**
+   Extend `skills/blink` with explicit swap scripts that support BTC -> USD and USD -> BTC flows, including dry-run quote and execution modes. Prefer direct wallet-native Blink operations (including intraledger conversion pathways where available) instead of fragile multi-step workarounds. Return structured JSON receipts with pre-balance, post-balance, quote terms, and execution status.
+
+8. **Add Stablesats Quote Adapter Path (`GetQuoteToBuyUsd` / `GetQuoteToSellUsd` / `AcceptQuote`)**
+   Add an adapter for quote-based execution using stablesats quote semantics and `immediate_execution` handling, with explicit fallback behavior when this path is unavailable. This issue ensures parity with how stablesats models conversion and acceptance. Persist quote IDs and expiration metadata for audit and replay.
+
+9. **Wire Swap Operations Into Autopilot Tool Bridge and Goal Runner**
+   Expose swap quote/execute operations as controlled automation primitives, with strict allowlisting and machine-parseable outputs. Ensure goal loops can invoke swaps directly as a first-class action rather than free-form prompting. Emit explicit tool events for quote requested, quote accepted, swap settled, and swap failed.
+
+10. **Implement Skill Relevance Resolver for Earnings Goals**
+   Add app-layer logic that maps goal intent to ranked skill candidates from discovered/enabled skills (starting with `blink`, `l402`, `moneydevkit`, `neutronpay`). Include deterministic tie-breaking and a transparent reason string for each selected skill. This issue should produce an ordered skill set but not yet attach it to turns.
+
+11. **Wire Auto-Attached Skill Sets Into Goal-Driven Chat Turn Submission**
+   Integrate the resolver output into turn assembly for autonomous runs, with dedupe and explicit "selected skills" event logging. Preserve manual skill picks as higher-priority overrides when present. This creates the "load relevant skills into Codex brain" behavior for autonomous goals.
+
+12. **Build Goal Loop Executor (Turn -> Observe -> Replan -> Retry)**
+   Implement the iterative executor that submits a turn, waits for result signals, evaluates conditions, and continues until completion or policy stop. Add bounded retries with backoff and structured stop reasons. This is the core "loop until conditions are met" engine.
+
+13. **Add Goal Controls in UI (Create, Start/Stop, Status, Receipts)**
+   Add product UI for defining goals and viewing live run state, including selected skills, attempt progress, and last receipt. Users should be able to abort safely and see exactly why a run stopped. Keep WGPUI additions generic only when they are product-agnostic; business behavior remains in the app crate.
+
+14. **Implement Manual + Interval Scheduler for Goal Runs**
+   Add scheduler support for immediate/manual and fixed-interval runs tied to persisted goals. Include next-run and last-run visibility in UI and state. This lands MVP scheduler support before cron complexity.
+
+15. **Add Cron Expression Scheduler Runtime Support**
+   Implement cron parsing/validation and runtime triggering using persisted schedule config. Support common cron fields and explicit timezone handling to avoid ambiguous execution. Expose parse errors and next-run preview in UI.
+
+16. **Add Optional OS-Backed Scheduling Adapters (`launchd`/`cron`/`systemd`)**
+   Provide platform adapter layer for local scheduler persistence outside app uptime, guarded by user opt-in and capability checks. Keep this optional so core behavior still works with in-process scheduling. Store adapter state and reconciliation markers for restart integrity.
+
+17. **Implement Restart Recovery + Missed-Run Semantics**
+   On startup, recover goal state, reconcile in-flight runs, and decide how to handle missed schedules (catch-up, skip, or single replay). Prevent duplicate concurrent runs for the same goal ID. Emit receipts that clearly distinguish recovered runs from fresh runs.
+
+18. **Extend Tooling Surface for Safe Automation Primitives**
+   Add only the minimal additional tools needed for autonomous earning workflows (scheduler actions, controlled wallet checks, controlled provider actions) with a strict allowlist. Avoid broad unrestricted command surfaces. Ensure tool-call results are machine-parseable by the goal runner.
+
+19. **Add Autonomous Mode Safety Policy (Permissions, Budgets, Kill Switch, Swap Limits)**
+   Introduce per-goal policy profiles covering spend caps, command/file scope, max runtime, swap size ceilings, and explicit abort controls. Autonomous runs must never default to unconstrained full-access behavior. Persist policy snapshots in receipts for auditability.
+
+20. **Replace Simulated Earn Path With Authoritative Paid Job Pipeline**
+   Implement the real provider earn path for this feature scope: accepted job -> execution -> payment settlement -> wallet confirmation. If seed demand is used, ensure payouts are real and clearly labeled as starter/quest jobs. Remove any path where synthetic local state alone can present successful earnings.
+
+21. **Add Wallet Reconciliation Layer for Earn Events and Swap Events**
+   Reconcile wallet deltas against job receipts and swap receipts so goals can distinguish earned sats from converted value and fees. Expose normalized ledger-like events for condition evaluation and reporting. This prevents false success due to internal conversion noise.
+
+22. **Add End-to-End Telemetry and Audit Receipts for Each Goal Run**
+   Emit structured receipts for each run and attempt: selected skills, tools invoked, condition evaluations, payout evidence, swap quote/execution evidence, and terminal status. Include identifiers required for replay and debugging. This is required for trust and operational support.
+
+23. **Add Deterministic Test Matrix (Unit + Integration + E2E, Including Swap Roundtrips)**
+   Add tests for condition evaluation, skill selection determinism, swap quote/accept execution, scheduler triggers, restart recovery, policy enforcement, and payout-gated success. Include end-to-end tests for both BTC -> USD and USD -> BTC conversion paths and at least one full "earn bitcoin until +N sats" flow. Make this test matrix a merge gate for the epic.
+
+24. **Ship Docs + Operator Runbook for Autopilot Earnings Automation**
+   Document user setup, scheduler modes, swap behavior, safety controls, and troubleshooting in `docs/`. Add internal operator guidance for seed-demand behavior, payout verification checks, swap-risk monitoring, and incident handling. This closes rollout readiness gaps.
+
+25. **Rollout Issue: Feature Flag, Staged Enablement, and Success Metrics**
+   Launch behind a feature flag with staged cohorts, tracking completion rate, false-success rate, payout-confirm latency, and abort/error distribution. Define explicit rollback conditions and a post-launch hardening checklist. Close the epic only after production metrics confirm the full loop works reliably.
+
+Dependency note: issues 2-12 are foundational (including swap primitives), 13-17 provide operability/scheduling, 18-21 close safety/authority/reconciliation gaps, and 22-25 are required to make the implementation trustworthy and shippable.
+
 ## Acceptance Criteria For This Requested Flow
 
 Flow is considered implemented when all are true:
@@ -242,6 +352,7 @@ Flow is considered implemented when all are true:
 4. Condition engine stops loop exactly when wallet-confirmed condition is met (or timeout/error policy triggers).
 5. User can schedule execution (manual/interval at MVP; cron in follow-up) and see next-run + last-run receipts.
 6. Earnings shown in UI are backed by authoritative wallet/payment evidence.
+7. User can request BTC -> stablesat USD and USD -> BTC swaps, receive a quote, execute the swap, and see authoritative balance deltas + receipts.
 
 ## Final Assessment
 
