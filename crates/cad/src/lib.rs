@@ -22,6 +22,7 @@ pub mod history;
 pub mod intent;
 pub mod kernel;
 pub mod kernel_math;
+pub mod kernel_topology;
 pub mod keys;
 pub mod materials;
 pub mod measurement;

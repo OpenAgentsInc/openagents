@@ -1,0 +1,29 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-013",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "sample_counts": {
+    "vertex_count": 4,
+    "half_edge_count": 4,
+    "edge_count": 2,
+    "loop_count": 1,
+    "face_count": 1,
+    "shell_count": 1,
+    "solid_count": 1
+  },
+  "sample_invariants": {
+    "loop_ring_valid": true,
+    "face_orientation": "Forward",
+    "shell_type": "Outer",
+    "solid_has_outer_shell": true
+  },
+  "topology_contracts": [
+    "Vertex/HalfEdge/Edge/Loop/Face/Shell/Solid IDs are stable typed handles",
+    "Loop creation links next/prev pointers in a closed ring",
+    "Face references outer loop and optional inner loops",
+    "Shell references face set and shell type (Outer/Void)",
+    "Solid references outer shell and optional void shells"
+  ]
+}
