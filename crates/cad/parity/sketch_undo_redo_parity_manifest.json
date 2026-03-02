@@ -1,0 +1,211 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-053",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "vcad_reference_sources": [
+    "docs/features/undo-redo.md (snapshot stacks + redo clear-on-new-edit + 50-step history)",
+    "docs/features/sketch-mode.md (undo/redo works within sketch mode)",
+    "packages/app/src/hooks/useKeyboardShortcuts.ts (Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z dispatch)",
+    "packages/core/src/stores/document-store.ts (engine.can_undo/can_redo + undo/redo dispatch)"
+  ],
+  "history_max_steps": 50,
+  "undo_binding": "Cmd/Ctrl+Z",
+  "redo_binding": "Cmd/Ctrl+Shift+Z",
+  "sequence": [
+    {
+      "step_id": "enter_sketch_with_parts",
+      "transition_id": "sketch.enter",
+      "command_codes": [
+        "SKETCH-CMD-ENTER-FACE-SELECTION"
+      ],
+      "before_geometry_hash": "sketch-state-5f499eed2aaef458",
+      "after_geometry_hash": "sketch-state-14dcebb40b92be7e"
+    },
+    {
+      "step_id": "confirm_face_selection",
+      "transition_id": "sketch.face-selection.confirm",
+      "command_codes": [
+        "SKETCH-CMD-ENTER-SKETCH-FACE"
+      ],
+      "before_geometry_hash": "sketch-state-14dcebb40b92be7e",
+      "after_geometry_hash": "sketch-state-c957edbacb27ec28"
+    },
+    {
+      "step_id": "set_line_tool",
+      "transition_id": "sketch.tool.line",
+      "command_codes": [
+        "SKETCH-CMD-SET-TOOL-line"
+      ],
+      "before_geometry_hash": "sketch-state-c957edbacb27ec28",
+      "after_geometry_hash": "sketch-state-9c43e4cb3ad89d69"
+    },
+    {
+      "step_id": "apply_horizontal_constraint",
+      "transition_id": "sketch.constraint.horizontal",
+      "command_codes": [
+        "SKETCH-CMD-APPLY-horizontal",
+        "SKETCH-CMD-RUN-SOLVER"
+      ],
+      "before_geometry_hash": "sketch-state-4f803c30e97342d0",
+      "after_geometry_hash": "sketch-state-8b2fd4694690972d"
+    },
+    {
+      "step_id": "finish_shape",
+      "transition_id": "sketch.shape.finish",
+      "command_codes": [
+        "SKETCH-CMD-FINISH-SHAPE"
+      ],
+      "before_geometry_hash": "sketch-state-28a10f087b462ae3",
+      "after_geometry_hash": "sketch-state-8b2fd4694690972d"
+    },
+    {
+      "step_id": "request_exit",
+      "transition_id": "sketch.escape",
+      "command_codes": [
+        "SKETCH-CMD-REQUEST-EXIT"
+      ],
+      "before_geometry_hash": "sketch-state-8b2fd4694690972d",
+      "after_geometry_hash": "sketch-state-eb8cadf5312d2878"
+    },
+    {
+      "step_id": "confirm_exit",
+      "transition_id": "sketch.exit.confirm",
+      "command_codes": [
+        "SKETCH-CMD-EXIT"
+      ],
+      "before_geometry_hash": "sketch-state-eb8cadf5312d2878",
+      "after_geometry_hash": "sketch-state-9a702036e7d0936e"
+    }
+  ],
+  "undo_trace": [
+    {
+      "transition_id": "sketch.exit.confirm",
+      "command_codes": [
+        "SKETCH-CMD-EXIT"
+      ],
+      "snapshot_revision": 7,
+      "snapshot_geometry_hash": "sketch-state-eb8cadf5312d2878"
+    },
+    {
+      "transition_id": "sketch.escape",
+      "command_codes": [
+        "SKETCH-CMD-REQUEST-EXIT"
+      ],
+      "snapshot_revision": 6,
+      "snapshot_geometry_hash": "sketch-state-8b2fd4694690972d"
+    },
+    {
+      "transition_id": "sketch.shape.finish",
+      "command_codes": [
+        "SKETCH-CMD-FINISH-SHAPE"
+      ],
+      "snapshot_revision": 5,
+      "snapshot_geometry_hash": "sketch-state-28a10f087b462ae3"
+    },
+    {
+      "transition_id": "sketch.constraint.horizontal",
+      "command_codes": [
+        "SKETCH-CMD-APPLY-horizontal",
+        "SKETCH-CMD-RUN-SOLVER"
+      ],
+      "snapshot_revision": 4,
+      "snapshot_geometry_hash": "sketch-state-4f803c30e97342d0"
+    },
+    {
+      "transition_id": "sketch.tool.line",
+      "command_codes": [
+        "SKETCH-CMD-SET-TOOL-line"
+      ],
+      "snapshot_revision": 3,
+      "snapshot_geometry_hash": "sketch-state-c957edbacb27ec28"
+    },
+    {
+      "transition_id": "sketch.face-selection.confirm",
+      "command_codes": [
+        "SKETCH-CMD-ENTER-SKETCH-FACE"
+      ],
+      "snapshot_revision": 2,
+      "snapshot_geometry_hash": "sketch-state-14dcebb40b92be7e"
+    },
+    {
+      "transition_id": "sketch.enter",
+      "command_codes": [
+        "SKETCH-CMD-ENTER-FACE-SELECTION"
+      ],
+      "snapshot_revision": 1,
+      "snapshot_geometry_hash": "sketch-state-5f499eed2aaef458"
+    }
+  ],
+  "redo_trace": [
+    {
+      "transition_id": "sketch.enter",
+      "command_codes": [
+        "SKETCH-CMD-ENTER-FACE-SELECTION"
+      ],
+      "snapshot_revision": 2,
+      "snapshot_geometry_hash": "sketch-state-14dcebb40b92be7e"
+    },
+    {
+      "transition_id": "sketch.face-selection.confirm",
+      "command_codes": [
+        "SKETCH-CMD-ENTER-SKETCH-FACE"
+      ],
+      "snapshot_revision": 3,
+      "snapshot_geometry_hash": "sketch-state-c957edbacb27ec28"
+    },
+    {
+      "transition_id": "sketch.tool.line",
+      "command_codes": [
+        "SKETCH-CMD-SET-TOOL-line"
+      ],
+      "snapshot_revision": 4,
+      "snapshot_geometry_hash": "sketch-state-9c43e4cb3ad89d69"
+    },
+    {
+      "transition_id": "sketch.constraint.horizontal",
+      "command_codes": [
+        "SKETCH-CMD-APPLY-horizontal",
+        "SKETCH-CMD-RUN-SOLVER"
+      ],
+      "snapshot_revision": 5,
+      "snapshot_geometry_hash": "sketch-state-8b2fd4694690972d"
+    },
+    {
+      "transition_id": "sketch.shape.finish",
+      "command_codes": [
+        "SKETCH-CMD-FINISH-SHAPE"
+      ],
+      "snapshot_revision": 6,
+      "snapshot_geometry_hash": "sketch-state-8b2fd4694690972d"
+    },
+    {
+      "transition_id": "sketch.escape",
+      "command_codes": [
+        "SKETCH-CMD-REQUEST-EXIT"
+      ],
+      "snapshot_revision": 7,
+      "snapshot_geometry_hash": "sketch-state-eb8cadf5312d2878"
+    },
+    {
+      "transition_id": "sketch.exit.confirm",
+      "command_codes": [
+        "SKETCH-CMD-EXIT"
+      ],
+      "snapshot_revision": 8,
+      "snapshot_geometry_hash": "sketch-state-9a702036e7d0936e"
+    }
+  ],
+  "undo_trace_matches_reverse_sequence": true,
+  "redo_trace_matches_forward_sequence": true,
+  "redo_cleared_on_new_edit": true,
+  "deterministic_replay_match": true,
+  "deterministic_signature": "8e6b0e53070a8d9e",
+  "parity_contracts": [
+    "sketch undo/redo uses deterministic snapshot transitions represented by ApplySketchInteraction history commands",
+    "undo trace replays in strict reverse order and redo trace replays in strict forward order for recorded sketch steps",
+    "pushing a new sketch edit after undo clears redo history to prevent invalid branch replay",
+    "history stack enforces vcad parity max depth of 50 transitions for sketch editing sessions"
+  ]
+}
