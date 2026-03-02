@@ -44,6 +44,11 @@ enum Command {
     Status,
     SparkAddress,
     BitcoinAddress,
+    Bolt11Invoice {
+        amount_sats: u64,
+        description: Option<String>,
+        expiry_seconds: Option<u32>,
+    },
     CreateInvoice {
         amount_sats: u64,
         description: Option<String>,
@@ -163,6 +168,26 @@ async fn run(cli: Cli) -> Result<()> {
                     "bitcoinAddress": address,
                     "identityPath": cli.identity_path.display().to_string(),
                     "storageDir": cli.storage_dir.display().to_string(),
+                }))?
+            );
+        }
+        Command::Bolt11Invoice {
+            amount_sats,
+            description,
+            expiry_seconds,
+        } => {
+            let invoice = wallet
+                .create_bolt11_invoice(amount_sats, description.clone(), expiry_seconds)
+                .await
+                .context("failed to create Bolt11 invoice")?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "network": network_label(cli.network),
+                    "amountSats": amount_sats,
+                    "description": description,
+                    "expirySeconds": expiry_seconds,
+                    "invoice": invoice,
                 }))?
             );
         }
@@ -327,6 +352,57 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
             }
             Ok(Command::BitcoinAddress)
         }
+        "bolt11-invoice" => {
+            let amount_raw = args
+                .get(start_index + 1)
+                .ok_or_else(|| anyhow!("missing <amount_sats> for bolt11-invoice"))?;
+            let amount_sats = amount_raw
+                .parse::<u64>()
+                .map_err(|error| anyhow!("invalid amount '{}': {error}", amount_raw))?;
+            if amount_sats == 0 {
+                bail!("bolt11-invoice amount must be greater than 0");
+            }
+            let mut description: Option<String> = None;
+            let mut expiry_seconds: Option<u32> = None;
+            let mut index = start_index + 2;
+            while index < args.len() {
+                match args[index].as_str() {
+                    "--description" => {
+                        index += 1;
+                        let value = args
+                            .get(index)
+                            .ok_or_else(|| anyhow!("missing value for --description"))?;
+                        if value.trim().is_empty() {
+                            bail!("--description cannot be empty");
+                        }
+                        description = Some(value.trim().to_string());
+                        index += 1;
+                    }
+                    "--expiry-seconds" => {
+                        index += 1;
+                        let raw = args
+                            .get(index)
+                            .ok_or_else(|| anyhow!("missing value for --expiry-seconds"))?;
+                        let value = raw.parse::<u32>().map_err(|error| {
+                            anyhow!("invalid --expiry-seconds '{}': {error}", raw)
+                        })?;
+                        if value == 0 {
+                            bail!("--expiry-seconds must be greater than 0");
+                        }
+                        expiry_seconds = Some(value);
+                        index += 1;
+                    }
+                    other => {
+                        bail!("unexpected argument for bolt11-invoice: {other}");
+                    }
+                }
+            }
+            Ok(Command::Bolt11Invoice {
+                amount_sats,
+                description,
+                expiry_seconds,
+            })
+        }
         "create-invoice" => {
             let amount_raw = args
                 .get(start_index + 1)
@@ -490,6 +566,7 @@ fn print_usage() {
            cargo run -p autopilot-desktop --bin spark-wallet-cli -- [options] status\n\
            cargo run -p autopilot-desktop --bin spark-wallet-cli -- [options] spark-address\n\
            cargo run -p autopilot-desktop --bin spark-wallet-cli -- [options] bitcoin-address\n\
+           cargo run -p autopilot-desktop --bin spark-wallet-cli -- [options] bolt11-invoice <amount_sats> [--description <text>] [--expiry-seconds <n>]\n\
            cargo run -p autopilot-desktop --bin spark-wallet-cli -- [options] create-invoice <amount_sats> [--description <text>] [--expiry-seconds <n>]\n\
            cargo run -p autopilot-desktop --bin spark-wallet-cli -- [options] pay-invoice <payment_request> [--amount-sats <n>]\n\
          \n\

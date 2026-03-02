@@ -297,6 +297,13 @@ Executes a wallet-native internal conversion between your BTC and USD wallets.
 
 Execution receipts include quote terms, pre/post balances, balance deltas, and final status.
 
+Fee/settlement interpretation:
+- `quote.feeSats`, `quote.feeBps`, and `quote.slippageBps` are currently returned as zero in live runs.
+- You can still see a small quote-to-settlement spread (often 1 sat or 1 cent) due to integer rounding between sats and cents.
+- Always compute effective cost from `quote.amountOut` versus `balanceDelta` instead of relying only on explicit fee fields.
+
+For deeper behavior details and formulas, see [swap-operations](references/swap-operations.md).
+
 ## Realtime Subscriptions
 
 Blink supports GraphQL subscriptions over WebSocket using the `graphql-transport-ws` protocol. Node 20 requires the `--experimental-websocket` flag.
