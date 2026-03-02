@@ -37,6 +37,7 @@ pub mod sketch_entity_set_parity;
 pub mod sketch_extrude_parity;
 pub mod sketch_iterative_lm_parity;
 pub mod sketch_jacobian_residual_parity;
+pub mod sketch_loft_parity;
 pub mod sketch_plane_parity;
 pub mod sketch_revolve_parity;
 pub mod sketch_sweep_parity;

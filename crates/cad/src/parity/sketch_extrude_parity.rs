@@ -62,6 +62,8 @@ pub fn build_sketch_extrude_parity_manifest(
         sweep_twist_deg: None,
         sweep_scale_start: None,
         sweep_scale_end: None,
+        loft_profile_ids: None,
+        loft_closed: None,
         tolerance_mm: Some(0.001),
     };
     let closed_conversion = convert_sketch_profile_to_feature_node(&closed_model, &closed_spec)?;
@@ -96,6 +98,8 @@ pub fn build_sketch_extrude_parity_manifest(
         sweep_twist_deg: None,
         sweep_scale_start: None,
         sweep_scale_end: None,
+        loft_profile_ids: None,
+        loft_closed: None,
         tolerance_mm: Some(0.001),
     };
     let open_conversion = convert_sketch_profile_to_feature_node(&open_model, &open_spec)?;
@@ -137,6 +141,8 @@ pub fn build_sketch_extrude_parity_manifest(
             sweep_twist_deg: None,
             sweep_scale_start: None,
             sweep_scale_end: None,
+            loft_profile_ids: None,
+            loft_closed: None,
             tolerance_mm: Some(0.001),
         },
     )

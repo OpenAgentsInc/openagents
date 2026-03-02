@@ -1,0 +1,73 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-050",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "vcad_reference_sources": [
+    "docs/features/sketch-operations.md (Loft operation + profile requirements)",
+    "crates/vcad-kernel-sweep/src/loft.rs (multi-profile + closed option semantics)"
+  ],
+  "standard_case": {
+    "loft_profile_ids": [
+      "profile.section.2"
+    ],
+    "loft_closed": false,
+    "profile_closed_loop": true,
+    "warning_codes": [],
+    "profile_bounds_mm": [
+      0.0,
+      40.0,
+      0.0,
+      20.0
+    ],
+    "profile_hash": "4983e35dad87d470",
+    "node_hash": "4d592c40a4b88b61"
+  },
+  "closed_ring_case": {
+    "loft_profile_ids": [
+      "profile.section.2",
+      "profile.section.3"
+    ],
+    "loft_closed": true,
+    "profile_closed_loop": true,
+    "warning_codes": [],
+    "profile_bounds_mm": [
+      0.0,
+      40.0,
+      0.0,
+      20.0
+    ],
+    "profile_hash": "b4750a934181141c",
+    "node_hash": "a6002d4a1678ea2d"
+  },
+  "open_case": {
+    "loft_profile_ids": [
+      "profile.section.2"
+    ],
+    "loft_closed": false,
+    "profile_closed_loop": false,
+    "warning_codes": [
+      "CAD-WARN-NON-MANIFOLD"
+    ],
+    "profile_bounds_mm": [
+      0.0,
+      20.0,
+      0.0,
+      0.0
+    ],
+    "profile_hash": "6a2d845aa12fd003",
+    "node_hash": "f3935147a297f058"
+  },
+  "profile_hash_order_stable": true,
+  "empty_loft_profiles_error": "parse failed: loft_profile_ids must include at least one secondary profile",
+  "duplicate_loft_profile_error": "parse failed: loft_profile_ids must not include the primary profile_id",
+  "unsolved_constraint_error": "evaluation failed: sketch profile profile.loft.unsolved has unsolved constraints; conversion blocked",
+  "deterministic_replay_match": true,
+  "deterministic_signature": "df5a248a393171c0",
+  "parity_contracts": [
+    "loft from sketch emits deterministic sketch.loft.v1 feature nodes with explicit secondary profile ids",
+    "closed loft flag is serialized deterministically and replay-stable",
+    "open profiles warn deterministically; invalid/unsolved loft inputs fail deterministically"
+  ]
+}
