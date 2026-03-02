@@ -39,14 +39,16 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 58,
+    "source_artifact_count": 60,
     "artifact_ids": [
+      "assembly_part_instance_parity_manifest",
       "assembly_schema_parity_manifest",
       "chamfer_feature_graph_parity_manifest",
       "core_modeling_checkpoint_parity_manifest",
       "expanded_finishing_parity_manifest",
       "feature_op_hash_parity_manifest",
       "fillet_feature_graph_parity_manifest",
+      "fixtures_assembly_part_instance_vcad_reference",
       "fixtures_assembly_schema_vcad_reference",
       "fixtures_feature_op_hash_vcad_reference_corpus",
       "fixtures_parity_fixture_corpus",
@@ -101,9 +103,9 @@
       "vcad_reference_manifest"
     ]
   },
-  "phase_status": "phase_e_assembly_schema_complete",
+  "phase_status": "phase_e_part_instance_complete",
   "next_actions": [
-    "Execute VCAD-PARITY-057 through VCAD-PARITY-066 sequentially",
+    "Execute VCAD-PARITY-058 through VCAD-PARITY-066 sequentially",
     "Keep phase_a_baseline_v1 profile passing in scorecard and risk register lanes",
     "Refresh parity dashboard after each closed parity issue"
   ]
