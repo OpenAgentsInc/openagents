@@ -69,6 +69,9 @@ The harness currently probes these app-server methods:
 - Additional execution/review probes:
   - `command/exec`
   - `review/start`
+- Optional live Blink swap probe (real network, no mocks):
+  - `skills/blink/scripts/swap_quote.js`
+  - `skills/blink/scripts/swap_execute.js` (when `--blink-swap-execute-live`)
 - Experimental probes (default on, disable with `--skip-experimental`):
   - `fuzzyFileSearch/sessionStart`
   - `fuzzyFileSearch/sessionUpdate`
@@ -137,6 +140,20 @@ cargo run -p autopilot-desktop --bin codex-live-harness -- \
   --prompt "Use the blink skill to summarize available payment operations and first command to check balance."
 ```
 
+Run live Blink swap quote + execute probe:
+
+```bash
+cargo run -p autopilot-desktop --bin codex-live-harness -- \
+  --cwd /Users/christopherdavid/code/openagents \
+  --skip-experimental \
+  --skip-thread-mutations \
+  --blink-swap-live \
+  --blink-swap-direction btc-to-usd \
+  --blink-swap-amount 10 \
+  --blink-swap-unit sats \
+  --blink-swap-execute-live
+```
+
 Override model explicitly:
 
 ```bash
@@ -161,6 +178,13 @@ cargo run -p autopilot-desktop --bin codex-live-harness -- \
 - `--skip-experimental`: skip experimental probe group
 - `--skip-thread-mutations`: skip thread mutation probes
 - `--allow-echo-replies`: disable harness failure when assistant echoes prompt exactly
+- `--blink-swap-live`: run a live Blink quote probe from `skills/blink/scripts/swap_quote.js`
+- `--blink-swap-direction <btc-to-usd|usd-to-btc>`: swap direction for live probe
+- `--blink-swap-amount <n>`: probe amount (`>0`)
+- `--blink-swap-unit <sats|cents>`: probe unit (default derives from direction)
+- `--blink-swap-execute-live`: run real execute attempt from `skills/blink/scripts/swap_execute.js`
+- `--blink-swap-require-success`: fail unless execute returns `SUCCESS`
+- `--blink-swap-memo <text>`: optional memo for execute probe
 
 ## Output Format
 

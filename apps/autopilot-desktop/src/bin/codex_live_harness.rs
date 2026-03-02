@@ -12,6 +12,7 @@ mod openagents_dynamic_tools;
 
 use std::future::Future;
 use std::path::PathBuf;
+use std::process::Command as ProcessCommand;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -61,6 +62,59 @@ const LEGACY_NOTIFICATION_OPT_OUT_METHODS: &[&str] = &[
 ];
 const LEGACY_OPENAGENTS_TOOL_CAD_INTENT: &str = "openagents.cad.intent";
 const LEGACY_OPENAGENTS_TOOL_CAD_ACTION: &str = "openagents.cad.action";
+const BLINK_KEYCHAIN_SERVICE: &str = "com.openagents.autopilot.credentials";
+const BLINK_KEYCHAIN_ACCOUNT_API_KEY: &str = "BLINK_API_KEY";
+const BLINK_KEYCHAIN_ACCOUNT_API_URL: &str = "BLINK_API_URL";
+
+#[derive(Clone, Debug)]
+struct BlinkSwapProbeArgs {
+    direction: String,
+    amount: u64,
+    unit: Option<String>,
+    execute_live: bool,
+    require_execute_success: bool,
+    memo: Option<String>,
+}
+
+impl Default for BlinkSwapProbeArgs {
+    fn default() -> Self {
+        Self {
+            direction: "btc-to-usd".to_string(),
+            amount: 1,
+            unit: None,
+            execute_live: false,
+            require_execute_success: false,
+            memo: Some("openagents-codex-live-harness".to_string()),
+        }
+    }
+}
+
+impl BlinkSwapProbeArgs {
+    fn normalized_direction(&self) -> Result<&'static str> {
+        normalize_blink_direction(self.direction.as_str()).ok_or_else(|| {
+            anyhow!(
+                "invalid --blink-swap-direction '{}'; expected btc-to-usd or usd-to-btc",
+                self.direction
+            )
+        })
+    }
+
+    fn resolved_unit(&self) -> Result<&'static str> {
+        match self.unit.as_deref() {
+            Some(raw) => normalize_blink_unit(raw).ok_or_else(|| {
+                anyhow!(
+                    "invalid --blink-swap-unit '{}'; expected sats or cents",
+                    raw
+                )
+            }),
+            None => match self.normalized_direction()? {
+                "btc-to-usd" => Ok("sats"),
+                "usd-to-btc" => Ok("cents"),
+                _ => unreachable!(),
+            },
+        }
+    }
+}
 
 #[derive(Debug)]
 struct HarnessArgs {
@@ -78,6 +132,7 @@ struct HarnessArgs {
     include_openagents_dynamic_tools: bool,
     require_cad_tool_call: bool,
     fail_on_echo: bool,
+    blink_swap_probe: Option<BlinkSwapProbeArgs>,
 }
 
 impl Default for HarnessArgs {
@@ -97,6 +152,7 @@ impl Default for HarnessArgs {
             include_openagents_dynamic_tools: true,
             require_cad_tool_call: false,
             fail_on_echo: true,
+            blink_swap_probe: None,
         }
     }
 }
@@ -189,6 +245,65 @@ impl HarnessArgs {
                 }
                 "--require-cad-tool-call" => args.require_cad_tool_call = true,
                 "--allow-echo-replies" => args.fail_on_echo = false,
+                "--blink-swap-live" => {
+                    let _ = args
+                        .blink_swap_probe
+                        .get_or_insert_with(BlinkSwapProbeArgs::default);
+                }
+                "--blink-swap-direction" => {
+                    let value = input
+                        .next()
+                        .ok_or_else(|| anyhow!("missing value for --blink-swap-direction"))?;
+                    let probe = args
+                        .blink_swap_probe
+                        .get_or_insert_with(BlinkSwapProbeArgs::default);
+                    probe.direction = value;
+                }
+                "--blink-swap-amount" => {
+                    let value = input
+                        .next()
+                        .ok_or_else(|| anyhow!("missing value for --blink-swap-amount"))?;
+                    let parsed = value.parse::<u64>().map_err(|error| {
+                        anyhow!("invalid --blink-swap-amount '{}': {error}", value)
+                    })?;
+                    if parsed == 0 {
+                        bail!("--blink-swap-amount must be greater than 0");
+                    }
+                    let probe = args
+                        .blink_swap_probe
+                        .get_or_insert_with(BlinkSwapProbeArgs::default);
+                    probe.amount = parsed;
+                }
+                "--blink-swap-unit" => {
+                    let value = input
+                        .next()
+                        .ok_or_else(|| anyhow!("missing value for --blink-swap-unit"))?;
+                    let probe = args
+                        .blink_swap_probe
+                        .get_or_insert_with(BlinkSwapProbeArgs::default);
+                    probe.unit = Some(value);
+                }
+                "--blink-swap-execute-live" => {
+                    let probe = args
+                        .blink_swap_probe
+                        .get_or_insert_with(BlinkSwapProbeArgs::default);
+                    probe.execute_live = true;
+                }
+                "--blink-swap-require-success" => {
+                    let probe = args
+                        .blink_swap_probe
+                        .get_or_insert_with(BlinkSwapProbeArgs::default);
+                    probe.require_execute_success = true;
+                }
+                "--blink-swap-memo" => {
+                    let value = input
+                        .next()
+                        .ok_or_else(|| anyhow!("missing value for --blink-swap-memo"))?;
+                    let probe = args
+                        .blink_swap_probe
+                        .get_or_insert_with(BlinkSwapProbeArgs::default);
+                    probe.memo = Some(value);
+                }
                 "--help" | "-h" => {
                     print_usage();
                     std::process::exit(0);
@@ -203,6 +318,13 @@ impl HarnessArgs {
             bail!(
                 "--require-cad-tool-call requires OpenAgents dynamic tools (omit --disable-openagents-dynamic-tools)"
             );
+        }
+        if let Some(probe) = args.blink_swap_probe.as_ref() {
+            let _ = probe.normalized_direction()?;
+            let _ = probe.resolved_unit()?;
+            if probe.require_execute_success && !probe.execute_live {
+                bail!("--blink-swap-require-success requires --blink-swap-execute-live");
+            }
         }
 
         Ok(args)
@@ -259,6 +381,19 @@ async fn run(args: HarnessArgs) -> Result<()> {
         args.require_cad_tool_call,
         args.fail_on_echo
     );
+    if let Some(probe) = args.blink_swap_probe.as_ref() {
+        println!(
+            "blink_swap_probe=true direction={} amount={} unit={} execute_live={} require_execute_success={} memo={}",
+            probe.normalized_direction()?,
+            probe.amount,
+            probe.resolved_unit()?,
+            probe.execute_live,
+            probe.require_execute_success,
+            probe.memo.as_deref().unwrap_or("<none>")
+        );
+    } else {
+        println!("blink_swap_probe=false");
+    }
     if args.include_openagents_dynamic_tools {
         println!(
             "openagents_dynamic_tools_count={}",
@@ -266,6 +401,11 @@ async fn run(args: HarnessArgs) -> Result<()> {
         );
     }
     println!();
+
+    if let Some(probe) = args.blink_swap_probe.as_ref() {
+        run_blink_swap_live_probe(args.cwd.as_path(), probe)?;
+        println!();
+    }
 
     let (client, mut channels) = AppServerClient::spawn(AppServerConfig {
         cwd: Some(args.cwd.clone()),
@@ -1901,6 +2041,271 @@ fn find_remote_skill(
         .cloned()
 }
 
+fn normalize_blink_direction(raw: &str) -> Option<&'static str> {
+    let normalized = raw.trim().to_ascii_lowercase().replace('_', "-");
+    match normalized.as_str() {
+        "btc-to-usd" | "sell-btc" | "buy-usd" => Some("btc-to-usd"),
+        "usd-to-btc" | "sell-usd" | "buy-btc" => Some("usd-to-btc"),
+        _ => None,
+    }
+}
+
+fn normalize_blink_unit(raw: &str) -> Option<&'static str> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "sats" | "sat" | "satoshi" => Some("sats"),
+        "cents" | "cent" | "usd-cents" => Some("cents"),
+        _ => None,
+    }
+}
+
+fn read_keychain_secret(account: &str) -> Option<String> {
+    let output = ProcessCommand::new("security")
+        .args([
+            "find-generic-password",
+            "-s",
+            BLINK_KEYCHAIN_SERVICE,
+            "-a",
+            account,
+            "-w",
+        ])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if value.is_empty() { None } else { Some(value) }
+}
+
+fn resolve_blink_env() -> Result<Vec<(String, String)>> {
+    let api_key = std::env::var("BLINK_API_KEY")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| read_keychain_secret(BLINK_KEYCHAIN_ACCOUNT_API_KEY))
+        .ok_or_else(|| {
+            anyhow!(
+                "BLINK_API_KEY missing from environment and keychain service '{}' account '{}'",
+                BLINK_KEYCHAIN_SERVICE,
+                BLINK_KEYCHAIN_ACCOUNT_API_KEY
+            )
+        })?;
+
+    let mut env = vec![("BLINK_API_KEY".to_string(), api_key)];
+    if let Some(api_url) = std::env::var("BLINK_API_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| read_keychain_secret(BLINK_KEYCHAIN_ACCOUNT_API_URL))
+    {
+        env.push(("BLINK_API_URL".to_string(), api_url));
+    }
+    Ok(env)
+}
+
+#[derive(Debug)]
+struct ScriptRunOutput {
+    success: bool,
+    exit_code: Option<i32>,
+    stdout: String,
+    stderr: String,
+}
+
+fn run_node_script(
+    script_path: &std::path::Path,
+    args: &[String],
+    env: &[(String, String)],
+) -> Result<ScriptRunOutput> {
+    let mut command = ProcessCommand::new("node");
+    command.arg(script_path);
+    command.args(args);
+    for (key, value) in env {
+        command.env(key, value);
+    }
+    let output = command
+        .output()
+        .with_context(|| format!("failed to execute node script {}", script_path.display()))?;
+    Ok(ScriptRunOutput {
+        success: output.status.success(),
+        exit_code: output.status.code(),
+        stdout: String::from_utf8_lossy(&output.stdout).trim().to_string(),
+        stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+    })
+}
+
+fn parse_script_json(output: &ScriptRunOutput, script_label: &str) -> Result<Value> {
+    if !output.success {
+        bail!(
+            "{} failed (exit_code={:?}) stderr='{}' stdout='{}'",
+            script_label,
+            output.exit_code,
+            summarize_text_for_log(output.stderr.as_str(), 240),
+            summarize_text_for_log(output.stdout.as_str(), 240),
+        );
+    }
+    if output.stdout.trim().is_empty() {
+        bail!("{script_label} returned empty stdout");
+    }
+    serde_json::from_str::<Value>(&output.stdout).with_context(|| {
+        format!(
+            "{} returned non-JSON stdout: {}",
+            script_label,
+            summarize_text_for_log(output.stdout.as_str(), 240)
+        )
+    })
+}
+
+fn run_blink_swap_live_probe(cwd: &std::path::Path, probe: &BlinkSwapProbeArgs) -> Result<()> {
+    let direction = probe.normalized_direction()?;
+    let unit = probe.resolved_unit()?;
+    let scripts_root = cwd.join("skills").join("blink").join("scripts");
+    let quote_script = scripts_root.join("swap_quote.js");
+    let execute_script = scripts_root.join("swap_execute.js");
+    if !quote_script.is_file() || !execute_script.is_file() {
+        bail!(
+            "Blink swap scripts not found under {}",
+            scripts_root.display()
+        );
+    }
+
+    let blink_env = resolve_blink_env()?;
+    println!(
+        "blink_swap_probe quote script={} direction={} amount={} unit={}",
+        quote_script.display(),
+        direction,
+        probe.amount,
+        unit
+    );
+    let quote_args = vec![
+        direction.to_string(),
+        probe.amount.to_string(),
+        "--unit".to_string(),
+        unit.to_string(),
+        "--ttl-seconds".to_string(),
+        "45".to_string(),
+    ];
+    let quote_output = run_node_script(
+        quote_script.as_path(),
+        quote_args.as_slice(),
+        blink_env.as_slice(),
+    )?;
+    let quote_json = parse_script_json(&quote_output, "blink swap quote")?;
+    let quote_event = quote_json
+        .get("event")
+        .and_then(Value::as_str)
+        .unwrap_or("<missing>");
+    if !quote_event.eq_ignore_ascii_case("swap_quote") {
+        bail!(
+            "blink swap quote returned unexpected event '{}'",
+            quote_event
+        );
+    }
+    let quote_id = quote_json
+        .pointer("/quote/quoteId")
+        .and_then(Value::as_str)
+        .unwrap_or("<missing>");
+    let amount_in = quote_json
+        .pointer("/quote/amountIn/value")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let amount_out = quote_json
+        .pointer("/quote/amountOut/value")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    println!(
+        "blink_swap_probe quote_ok quote_id={} amount_in={} amount_out={}",
+        quote_id, amount_in, amount_out
+    );
+
+    if !probe.execute_live {
+        println!("blink_swap_probe execute skipped (--blink-swap-execute-live not set)");
+        return Ok(());
+    }
+
+    let mut execute_args = vec![
+        direction.to_string(),
+        probe.amount.to_string(),
+        "--unit".to_string(),
+        unit.to_string(),
+    ];
+    if let Some(memo) = probe
+        .memo
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        execute_args.push("--memo".to_string());
+        execute_args.push(memo.to_string());
+    }
+    println!(
+        "blink_swap_probe execute script={} direction={} amount={} unit={}",
+        execute_script.display(),
+        direction,
+        probe.amount,
+        unit
+    );
+    let execute_output = run_node_script(
+        execute_script.as_path(),
+        execute_args.as_slice(),
+        blink_env.as_slice(),
+    )?;
+
+    if execute_output.success {
+        let execute_json = parse_script_json(&execute_output, "blink swap execute")?;
+        let execute_event = execute_json
+            .get("event")
+            .and_then(Value::as_str)
+            .unwrap_or("<missing>");
+        if !execute_event.eq_ignore_ascii_case("swap_execution") {
+            bail!(
+                "blink swap execute returned unexpected event '{}'",
+                execute_event
+            );
+        }
+        let status = execute_json
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("<missing>");
+        println!(
+            "blink_swap_probe execute_ok status={} tx={}",
+            status,
+            execute_json
+                .pointer("/execution/transactionId")
+                .and_then(Value::as_str)
+                .unwrap_or("<none>")
+        );
+        if probe.require_execute_success && !status.eq_ignore_ascii_case("SUCCESS") {
+            bail!(
+                "blink swap execute status was '{}' but --blink-swap-require-success is set",
+                status
+            );
+        }
+        return Ok(());
+    }
+
+    let failure_text = if !execute_output.stderr.is_empty() {
+        execute_output.stderr.as_str()
+    } else {
+        execute_output.stdout.as_str()
+    };
+    println!(
+        "blink_swap_probe execute_live_failure exit_code={:?} details={}",
+        execute_output.exit_code,
+        summarize_text_for_log(failure_text, 240)
+    );
+    if probe.require_execute_success {
+        bail!(
+            "blink swap execute failed but --blink-swap-require-success is set: {}",
+            summarize_text_for_log(failure_text, 240)
+        );
+    }
+    if !(failure_text.contains("Swap failed") || failure_text.contains("INVALID_INPUT")) {
+        bail!(
+            "blink swap execute failed with unexpected error: {}",
+            summarize_text_for_log(failure_text, 240)
+        );
+    }
+    Ok(())
+}
+
 fn usage_text() -> String {
     [
         "Usage:",
@@ -1921,6 +2326,13 @@ fn usage_text() -> String {
         "  --disable-openagents-dynamic-tools  Do not attach OpenAgents dynamic tools on thread/start",
         "  --require-cad-tool-call   Fail unless post-send captures CAD item/tool/call request",
         "  --allow-echo-replies      Do not fail when assistant reply exactly matches prompt",
+        "  --blink-swap-live         Run live Blink BTC<->USD swap quote probe (real network)",
+        "  --blink-swap-direction <d>  Swap direction: btc-to-usd or usd-to-btc (default: btc-to-usd)",
+        "  --blink-swap-amount <n>   Probe swap amount (default: 1)",
+        "  --blink-swap-unit <u>     Probe unit: sats or cents (default derives from direction)",
+        "  --blink-swap-execute-live Attempt real Blink settlement after quote probe",
+        "  --blink-swap-require-success  Fail unless execute status is SUCCESS",
+        "  --blink-swap-memo <text>  Optional memo for execute probe",
         "  --help                    Show this help",
     ]
     .join("\n")
@@ -1994,5 +2406,14 @@ mod tests {
         let by_id = find_remote_skill(Some(&remote), "hazelnut-2")
             .expect("expected to find remote skill by id");
         assert_eq!(by_id.name, "other");
+    }
+
+    #[test]
+    fn normalizes_blink_swap_direction_and_unit_aliases() {
+        assert_eq!(normalize_blink_direction("btc_to_usd"), Some("btc-to-usd"));
+        assert_eq!(normalize_blink_direction("buy-btc"), Some("usd-to-btc"));
+        assert_eq!(normalize_blink_unit("sat"), Some("sats"));
+        assert_eq!(normalize_blink_unit("usd-cents"), Some("cents"));
+        assert_eq!(normalize_blink_unit("bogus"), None);
     }
 }
