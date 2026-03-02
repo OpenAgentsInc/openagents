@@ -11,6 +11,7 @@ pub mod assembly_serialization_replay_parity;
 pub mod assembly_ui_selection_edit_parity;
 pub mod cad_cli_commands_parity;
 pub mod cad_cli_scaffold_parity;
+pub mod cad_mcp_tools_parity;
 pub mod chamfer_feature_graph_parity;
 pub mod ci_artifacts;
 pub mod core_modeling_checkpoint_parity;

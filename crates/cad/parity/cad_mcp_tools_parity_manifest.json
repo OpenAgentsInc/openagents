@@ -1,0 +1,50 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-085",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_corpus_path": "crates/cad/parity/fixtures/cad_mcp_tools_vcad_reference.json",
+  "reference_corpus_sha256": "f016fb85e25bb83d3129f537c506ab29425dc22d405e9dd745de064418e5d34f",
+  "reference_source": "~/code/vcad/packages/mcp/src/tools/{create.ts,export.ts,inspect.ts} + ~/code/vcad/docs/features/headless-api.md",
+  "reference_commit_match": true,
+  "tool_name_match": true,
+  "schema_contract_match": true,
+  "case_contract_match": true,
+  "deterministic_replay_match": true,
+  "create_snapshot": {
+    "document_hash": "e738724d6b2485f1",
+    "response_hash": "e738724d6b2485f1",
+    "node_count": 2,
+    "root_count": 1
+  },
+  "inspect_snapshot": {
+    "response_hash": "7c2bce339de469e9",
+    "volume_mm3": 1000.0,
+    "surface_area_mm2": 600.0,
+    "triangles": 12,
+    "parts": 1,
+    "mass_present": true
+  },
+  "export_snapshots": [
+    {
+      "format": "glb",
+      "bytes": 988,
+      "response_hash": "500ef99ca2420997",
+      "output_hash": "b14126d7ced2e980"
+    },
+    {
+      "format": "stl",
+      "bytes": 684,
+      "response_hash": "b537daa6125ebe20",
+      "output_hash": "dfd99e1145de6c6d"
+    }
+  ],
+  "deterministic_signature": "72849f432f69619f",
+  "parity_contracts": [
+    "create_cad_document returns deterministic IR document text payload",
+    "inspect_cad returns deterministic geometry summary JSON with volume/area/bbox/com",
+    "export_cad writes deterministic STL/GLB files and reports path/bytes/format/parts",
+    "MCP CAD parity fixtures replay deterministically across repeated runs"
+  ]
+}
