@@ -2,8 +2,8 @@ use wgpui::{Bounds, PaintContext, Point, Quad, curve::CurvePrimitive, theme};
 
 use crate::app_state::{
     AgentNetworkSimulationEvent, AgentNetworkSimulationPaneState, RelaySecuritySimulationPaneState,
-    StableSatsSimulationMode, StableSatsSimulationPaneState, StableSatsWalletMode,
-    TreasuryExchangeSimulationPaneState,
+    StableSatsSimulationMode, StableSatsSimulationPaneState, StableSatsTransferAsset,
+    StableSatsWalletMode, TreasuryExchangeSimulationPaneState,
 };
 use crate::pane_renderer::{
     paint_action_button, paint_label_line, paint_multiline_phrase, paint_source_badge,
@@ -345,12 +345,61 @@ pub fn paint_stable_sats_simulation_pane(
         "Aggregate USD",
         &format_usd_cents(pane_state.total_usd_balance_cents()),
     );
+    let pending_ops = pane_state
+        .treasury_operations
+        .iter()
+        .filter(|entry| {
+            matches!(
+                entry.status,
+                crate::app_state::StableSatsTreasuryOperationStatus::Queued
+                    | crate::app_state::StableSatsTreasuryOperationStatus::Running
+            )
+        })
+        .count();
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Wallet nodes",
+        &pane_state.agents.len().to_string(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Treasury ops pending",
+        &pending_ops.to_string(),
+    );
+    if pane_state.mode == StableSatsSimulationMode::RealBlink {
+        let health = if pane_state.live_refresh_pending {
+            format!(
+                "refreshing request #{}",
+                pane_state
+                    .active_live_refresh_request_id
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "?".to_string())
+            )
+        } else if pane_state.last_error.is_some() {
+            "degraded".to_string()
+        } else {
+            "healthy".to_string()
+        };
+        y = paint_label_line(
+            paint,
+            content_bounds.origin.x + 12.0,
+            y,
+            "Real mode health",
+            &health,
+        );
+    }
 
     let node_graph_end_y =
         paint_stable_sats_agent_graph(content_bounds, y + 4.0, pane_state, paint);
+    let transfer_strip_end_y =
+        paint_stable_sats_transfer_strip(content_bounds, node_graph_end_y + 6.0, pane_state, paint);
     let graph_end_y = paint_stable_sats_graph(
         content_bounds,
-        node_graph_end_y + 8.0,
+        transfer_strip_end_y + 6.0,
         &pane_state.price_history_usd_cents_per_btc,
         &pane_state.converted_sats_history,
         paint,
@@ -467,88 +516,106 @@ fn paint_stable_sats_agent_graph(
         return graph_bounds.max_y();
     }
 
-    let agents: Vec<_> = pane_state.agents.iter().take(6).collect();
+    let agents: Vec<_> = pane_state.agents.iter().take(3).collect();
     let count = agents.len();
-    let center = Point::new(
-        graph_bounds.origin.x + graph_bounds.size.width * 0.5,
-        graph_bounds.origin.y + graph_bounds.size.height * 0.5,
-    );
-    let hub_radius = if count > 1 { 15.0 } else { 0.0 };
-    if count > 1 {
-        let hub_bounds = Bounds::new(
-            center.x - hub_radius,
-            center.y - hub_radius,
-            hub_radius * 2.0,
-            hub_radius * 2.0,
+    let node_radius = if count <= 2 { 31.0 } else { 26.0 };
+    let node_centers = stable_sats_node_centers(graph_bounds, count);
+
+    let recent_transfers: Vec<_> = pane_state.transfer_ledger.iter().rev().take(10).collect();
+    for (edge_rank, transfer) in recent_transfers.iter().rev().enumerate() {
+        let from_anchor = stable_sats_wallet_anchor(transfer.from_wallet.as_str());
+        let to_anchor = stable_sats_wallet_anchor(transfer.to_wallet.as_str());
+        let Some(from_index) = agents
+            .iter()
+            .position(|agent| agent.agent_name == from_anchor)
+        else {
+            continue;
+        };
+        let Some(to_index) = agents
+            .iter()
+            .position(|agent| agent.agent_name == to_anchor)
+        else {
+            continue;
+        };
+        let from_center = node_centers[from_index];
+        let to_center = node_centers[to_index];
+        let stroke = match transfer.asset {
+            StableSatsTransferAsset::BtcSats => theme::accent::PRIMARY.with_alpha(0.74),
+            StableSatsTransferAsset::UsdCents => theme::status::SUCCESS.with_alpha(0.74),
+        };
+        if from_index == to_index {
+            let loop_top = Point::new(from_center.x, from_center.y - node_radius - 3.0);
+            let loop_end = Point::new(from_center.x + 0.1, from_center.y - node_radius - 1.0);
+            let control_1 = Point::new(loop_top.x + 24.0, loop_top.y - 20.0);
+            let control_2 = Point::new(loop_top.x - 24.0, loop_top.y - 20.0);
+            paint.scene.draw_curve(
+                CurvePrimitive::new(loop_top, control_1, control_2, loop_end)
+                    .with_stroke_width(1.2)
+                    .with_color(stroke),
+            );
+            continue;
+        }
+
+        let dx = to_center.x - from_center.x;
+        let dy = to_center.y - from_center.y;
+        let len = (dx * dx + dy * dy).sqrt().max(1.0);
+        let ux = dx / len;
+        let uy = dy / len;
+        let start = Point::new(
+            from_center.x + ux * (node_radius - 2.0),
+            from_center.y + uy * (node_radius - 2.0),
+        );
+        let end = Point::new(
+            to_center.x - ux * (node_radius - 2.0),
+            to_center.y - uy * (node_radius - 2.0),
+        );
+        let perp_x = -uy;
+        let perp_y = ux;
+        let bend_sign = if edge_rank % 2 == 0 { 1.0 } else { -1.0 };
+        let bend = (10.0 + (edge_rank as f32 * 1.4)).clamp(8.0, 22.0) * bend_sign;
+        let control_1 = Point::new(
+            start.x + dx * 0.34 + perp_x * bend,
+            start.y + dy * 0.34 + perp_y * bend,
+        );
+        let control_2 = Point::new(
+            start.x + dx * 0.72 + perp_x * bend,
+            start.y + dy * 0.72 + perp_y * bend,
+        );
+        paint.scene.draw_curve(
+            CurvePrimitive::new(start, control_1, control_2, end)
+                .with_stroke_width(1.25)
+                .with_color(stroke),
+        );
+
+        let marker_radius = 2.6;
+        let marker = Bounds::new(
+            end.x - marker_radius,
+            end.y - marker_radius,
+            marker_radius * 2.0,
+            marker_radius * 2.0,
         );
         paint.scene.draw_quad(
-            Quad::new(hub_bounds)
-                .with_background(theme::bg::SURFACE.with_alpha(0.95))
-                .with_border(theme::accent::PRIMARY.with_alpha(0.55), 1.0)
-                .with_corner_radius(hub_radius),
+            Quad::new(marker)
+                .with_background(stroke)
+                .with_corner_radius(marker_radius),
         );
-        let hub_label = "BLINK";
-        let hub_label_w = paint.text.measure(hub_label, 8.0);
-        paint.scene.draw_text(paint.text.layout(
-            hub_label,
-            Point::new(center.x - (hub_label_w * 0.5), center.y - 4.0),
-            8.0,
-            theme::text::MUTED,
-        ));
+
+        if edge_rank + 4 >= recent_transfers.len() {
+            let label = format_transfer_edge_label(transfer);
+            let label_x = (start.x + end.x) * 0.5 + perp_x * (bend * 0.28);
+            let label_y = (start.y + end.y) * 0.5 + perp_y * (bend * 0.28);
+            let label_width = paint.text.measure(label.as_str(), 8.0);
+            paint.scene.draw_text(paint.text.layout_mono(
+                label.as_str(),
+                Point::new(label_x - (label_width * 0.5), label_y - 4.0),
+                8.0,
+                stroke.with_alpha(0.92),
+            ));
+        }
     }
 
-    let radius_x = (graph_bounds.size.width * 0.36).min(162.0).max(42.0);
-    let radius_y = (graph_bounds.size.height * 0.34).min(86.0).max(30.0);
-    let node_radius = if count <= 2 { 34.0 } else { 28.0 };
-
     for (index, agent) in agents.iter().enumerate() {
-        let angle = if count == 1 {
-            0.0
-        } else {
-            ((index as f32 / count as f32) * std::f32::consts::TAU) - std::f32::consts::FRAC_PI_2
-        };
-        let node_center = if count == 1 {
-            center
-        } else {
-            Point::new(
-                center.x + radius_x * angle.cos(),
-                center.y + radius_y * angle.sin(),
-            )
-        };
-
-        if count > 1 {
-            let dx = node_center.x - center.x;
-            let dy = node_center.y - center.y;
-            let len = (dx * dx + dy * dy).sqrt().max(1.0);
-            let ux = dx / len;
-            let uy = dy / len;
-            let start = Point::new(center.x + ux * hub_radius, center.y + uy * hub_radius);
-            let end = Point::new(
-                node_center.x - ux * node_radius,
-                node_center.y - uy * node_radius,
-            );
-            let perp_x = -uy;
-            let perp_y = ux;
-            let bend = (len * 0.16).clamp(6.0, 22.0) * if index % 2 == 0 { 1.0 } else { -1.0 };
-            let control_1 = Point::new(
-                start.x + dx * 0.35 + perp_x * bend,
-                start.y + dy * 0.35 + perp_y * bend,
-            );
-            let control_2 = Point::new(
-                start.x + dx * 0.72 + perp_x * bend,
-                start.y + dy * 0.72 + perp_y * bend,
-            );
-            let edge_color = if agent.active_wallet == StableSatsWalletMode::Btc {
-                theme::accent::PRIMARY.with_alpha(0.64)
-            } else {
-                theme::status::SUCCESS.with_alpha(0.64)
-            };
-            paint.scene.draw_curve(
-                CurvePrimitive::new(start, control_1, control_2, end)
-                    .with_stroke_width(1.4)
-                    .with_color(edge_color),
-            );
-        }
+        let node_center = node_centers[index];
 
         let node_fill = if agent.active_wallet == StableSatsWalletMode::Btc {
             theme::accent::PRIMARY.with_alpha(0.20)
@@ -619,9 +686,154 @@ fn paint_stable_sats_agent_graph(
             8.0,
             node_border.with_alpha(0.95),
         ));
+
+        let owner_badge = match agent.owner_kind {
+            crate::app_state::StableSatsWalletOwnerKind::Operator => "operator",
+            crate::app_state::StableSatsWalletOwnerKind::SovereignAgent => "sovereign",
+        };
+        let owner_badge_w = paint.text.measure(owner_badge, 7.0);
+        paint.scene.draw_text(paint.text.layout(
+            owner_badge,
+            Point::new(node_center.x - (owner_badge_w * 0.5), node_center.y + 18.0),
+            7.0,
+            theme::text::MUTED,
+        ));
     }
 
+    paint.scene.draw_text(paint.text.layout(
+        "edges: blue=BTC, green=USD | dot marks direction",
+        Point::new(graph_bounds.origin.x + 8.0, graph_bounds.max_y() - 10.0),
+        8.0,
+        theme::text::MUTED,
+    ));
+
     graph_bounds.max_y()
+}
+
+fn stable_sats_node_centers(graph_bounds: Bounds, count: usize) -> Vec<Point> {
+    let center = Point::new(
+        graph_bounds.origin.x + graph_bounds.size.width * 0.5,
+        graph_bounds.origin.y + graph_bounds.size.height * 0.5,
+    );
+    match count {
+        0 => Vec::new(),
+        1 => vec![center],
+        2 => vec![
+            Point::new(
+                graph_bounds.origin.x + graph_bounds.size.width * 0.30,
+                center.y - 4.0,
+            ),
+            Point::new(
+                graph_bounds.origin.x + graph_bounds.size.width * 0.70,
+                center.y - 4.0,
+            ),
+        ],
+        _ => vec![
+            Point::new(
+                center.x,
+                graph_bounds.origin.y + graph_bounds.size.height * 0.24,
+            ),
+            Point::new(
+                graph_bounds.origin.x + graph_bounds.size.width * 0.26,
+                graph_bounds.origin.y + graph_bounds.size.height * 0.73,
+            ),
+            Point::new(
+                graph_bounds.origin.x + graph_bounds.size.width * 0.74,
+                graph_bounds.origin.y + graph_bounds.size.height * 0.73,
+            ),
+        ],
+    }
+}
+
+fn stable_sats_wallet_anchor(wallet_ref: &str) -> &str {
+    wallet_ref.split(':').next().unwrap_or(wallet_ref)
+}
+
+fn format_transfer_edge_label(
+    transfer: &crate::app_state::StableSatsTransferLedgerEntry,
+) -> String {
+    let amount = match transfer.asset {
+        StableSatsTransferAsset::BtcSats => format!("{} sats", transfer.amount),
+        StableSatsTransferAsset::UsdCents => format_usd_cents(transfer.amount),
+    };
+    let fee = match transfer.asset {
+        StableSatsTransferAsset::BtcSats => format!("{} sats", transfer.effective_fee),
+        StableSatsTransferAsset::UsdCents => format_usd_cents(transfer.effective_fee),
+    };
+    format!("{amount} fee={fee}")
+}
+
+fn paint_stable_sats_transfer_strip(
+    content_bounds: Bounds,
+    y: f32,
+    pane_state: &StableSatsSimulationPaneState,
+    paint: &mut PaintContext,
+) -> f32 {
+    let max_y = content_bounds.max_y() - 8.0;
+    if y + 12.0 > max_y {
+        return y;
+    }
+
+    paint.scene.draw_text(paint.text.layout(
+        "Latest transfer edges",
+        Point::new(content_bounds.origin.x + 12.0, y),
+        11.0,
+        theme::text::MUTED,
+    ));
+    let row_start = y + 14.0;
+    let row_height = 12.0;
+    let available_rows = ((max_y - row_start) / row_height).floor().max(0.0) as usize;
+    if available_rows == 0 {
+        return y + 12.0;
+    }
+
+    let entries = pane_state
+        .transfer_ledger
+        .iter()
+        .rev()
+        .take(available_rows.min(4))
+        .collect::<Vec<_>>();
+    if entries.is_empty() {
+        paint.scene.draw_text(paint.text.layout(
+            "No transfers yet.",
+            Point::new(content_bounds.origin.x + 12.0, row_start),
+            10.0,
+            theme::text::MUTED,
+        ));
+        return row_start + row_height;
+    }
+
+    let mut row_y = row_start;
+    for entry in entries.into_iter().rev() {
+        let edge_color = match entry.asset {
+            StableSatsTransferAsset::BtcSats => theme::accent::PRIMARY,
+            StableSatsTransferAsset::UsdCents => theme::status::SUCCESS,
+        };
+        let summary = format!(
+            "#{} {} -> {} {} fee={} status={}",
+            entry.seq,
+            stable_sats_wallet_anchor(entry.from_wallet.as_str()),
+            stable_sats_wallet_anchor(entry.to_wallet.as_str()),
+            match entry.asset {
+                StableSatsTransferAsset::BtcSats => format!("{} sats", entry.amount),
+                StableSatsTransferAsset::UsdCents => format_usd_cents(entry.amount),
+            },
+            match entry.asset {
+                StableSatsTransferAsset::BtcSats => format!("{} sats", entry.effective_fee),
+                StableSatsTransferAsset::UsdCents => format_usd_cents(entry.effective_fee),
+            },
+            entry.status.label(),
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            summary.as_str(),
+            Point::new(content_bounds.origin.x + 12.0, row_y),
+            9.0,
+            edge_color.with_alpha(0.96),
+        ));
+        row_y += row_height;
+    }
+
+    row_y
 }
 
 fn paint_simulation_timeline(
@@ -845,4 +1057,66 @@ fn paint_stable_sats_graph(
     }
 
     graph_bounds.max_y()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{format_transfer_edge_label, stable_sats_node_centers, stable_sats_wallet_anchor};
+    use crate::app_state::{
+        StableSatsTransferAsset, StableSatsTransferLedgerEntry, StableSatsTransferStatus,
+    };
+    use wgpui::Bounds;
+
+    #[test]
+    fn stablesats_topology_centers_render_three_wallet_layout() {
+        let bounds = Bounds::new(10.0, 20.0, 360.0, 160.0);
+        let centers = stable_sats_node_centers(bounds, 3);
+        assert_eq!(centers.len(), 3);
+        assert!(centers[0].y < centers[1].y);
+        assert!(centers[0].y < centers[2].y);
+    }
+
+    #[test]
+    fn stablesats_wallet_anchor_extracts_agent_name() {
+        assert_eq!(stable_sats_wallet_anchor("sa-wallet-1:BTC"), "sa-wallet-1");
+        assert_eq!(
+            stable_sats_wallet_anchor("autopilot-user:usd_cents"),
+            "autopilot-user"
+        );
+        assert_eq!(
+            stable_sats_wallet_anchor("raw-wallet-name"),
+            "raw-wallet-name"
+        );
+    }
+
+    #[test]
+    fn transfer_edge_label_includes_amount_and_fee() {
+        let btc = StableSatsTransferLedgerEntry {
+            seq: 1,
+            transfer_ref: "blink:live:transfer:1".to_string(),
+            from_wallet: "autopilot-user:BTC".to_string(),
+            to_wallet: "sa-wallet-1:BTC".to_string(),
+            asset: StableSatsTransferAsset::BtcSats,
+            amount: 2_500,
+            effective_fee: 10,
+            status: StableSatsTransferStatus::Settled,
+            summary: "btc transfer".to_string(),
+            occurred_at_epoch_seconds: 1_761_000_000,
+        };
+        assert_eq!(format_transfer_edge_label(&btc), "2500 sats fee=10 sats");
+
+        let usd = StableSatsTransferLedgerEntry {
+            seq: 2,
+            transfer_ref: "blink:live:transfer:2".to_string(),
+            from_wallet: "sa-wallet-1:USD".to_string(),
+            to_wallet: "sa-wallet-2:USD".to_string(),
+            asset: StableSatsTransferAsset::UsdCents,
+            amount: 311,
+            effective_fee: 5,
+            status: StableSatsTransferStatus::Settled,
+            summary: "usd transfer".to_string(),
+            occurred_at_epoch_seconds: 1_761_000_001,
+        };
+        assert_eq!(format_transfer_edge_label(&usd), "$3.11 fee=$0.05");
+    }
 }
