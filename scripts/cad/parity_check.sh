@@ -30,6 +30,7 @@ LANE_LABELS=(
     "expanded-finishing"
     "sweep"
     "loft"
+    "topology-repair"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -173,6 +174,9 @@ run_lane "sweep" \
 
 run_lane "loft" \
     "$ROOT_DIR/scripts/cad/parity-loft-ci.sh"
+
+run_lane "topology-repair" \
+    "$ROOT_DIR/scripts/cad/parity-topology-repair-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

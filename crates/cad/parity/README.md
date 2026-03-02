@@ -38,6 +38,7 @@ Current artifacts:
 - `expanded_finishing_parity_manifest.json` (`VCAD-PARITY-032`)
 - `sweep_parity_manifest.json` (`VCAD-PARITY-033`)
 - `loft_parity_manifest.json` (`VCAD-PARITY-034`)
+- `topology_repair_parity_manifest.json` (`VCAD-PARITY-035`)
 
 Regeneration/check command:
 
@@ -76,6 +77,7 @@ scripts/cad/parity-chamfer-feature-graph-ci.sh
 scripts/cad/parity-expanded-finishing-ci.sh
 scripts/cad/parity-sweep-ci.sh
 scripts/cad/parity-loft-ci.sh
+scripts/cad/parity-topology-repair-ci.sh
 scripts/cad/parity-blocker-workflow.sh
 scripts/cad/parity_check.sh
 scripts/cad/parity-ci-lane.sh
