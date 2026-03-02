@@ -69,6 +69,7 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/assembly_fk_parity_manifest.json"
     "crates/cad/parity/assembly_ground_delete_parity_manifest.json"
     "crates/cad/parity/assembly_ui_selection_edit_parity_manifest.json"
+    "crates/cad/parity/assembly_serialization_replay_parity_manifest.json"
     "crates/cad/parity/sketch_loft_parity_manifest.json"
     "crates/cad/parity/sketch_profile_validity_parity_manifest.json"
     "crates/cad/parity/sketch_revolve_parity_manifest.json"
@@ -83,6 +84,7 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/fixtures/assembly_fk_vcad_reference.json"
     "crates/cad/parity/fixtures/assembly_ground_delete_vcad_reference.json"
     "crates/cad/parity/fixtures/assembly_ui_selection_edit_vcad_reference.json"
+    "crates/cad/parity/fixtures/assembly_serialization_replay_vcad_reference.json"
     "crates/cad/parity/fixtures/parity_fixture_corpus.json"
 )
 
