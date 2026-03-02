@@ -40,10 +40,10 @@ use crate::state::autopilot_goals::{
 };
 use crate::state::os_scheduler::{OsSchedulerAdapterKind, preferred_adapter_for_host};
 use crate::state::swap_contract::{
-    GoalSwapExecutionReceipt, SwapAmount, SwapAmountUnit, SwapCommandProvenance, SwapDirection,
-    SwapExecutionStatus, SwapQuoteTerms,
+    SwapAmount, SwapAmountUnit, SwapCommandProvenance, SwapDirection, SwapExecutionStatus,
+    SwapQuoteTerms,
 };
-use crate::state::swap_quote_adapter::{SwapQuoteAuditReceipt, SwapQuoteProvider};
+use crate::state::swap_quote_adapter::SwapQuoteProvider;
 use crate::state::wallet_reconciliation::reconcile_wallet_events_for_goal;
 
 const LEGACY_OPENAGENTS_TOOL_PANE_LIST: &str = "openagents.pane.list";
@@ -2057,130 +2057,64 @@ fn execute_swap_quote(state: &mut RenderState, args: &SwapQuoteArgs) -> ToolBrid
         executed_at_epoch_seconds: now_epoch_seconds,
         parse_version: BLINK_SWAP_PARSE_VERSION.to_string(),
     };
-
-    let script_response = match run_blink_swap_script_json(&script_path, &script_args) {
-        Ok(value) => value,
-        Err(error) => {
-            return ToolBridgeResultEnvelope::error(
-                "OA-SWAP-QUOTE-BLINK-FAILED",
-                format!("Blink quote command failed: {error}"),
-                json!({
-                    "goal_id": goal_id,
-                    "request_id": request_id,
-                    "script_path": script_path,
-                }),
-            );
-        }
-    };
-
-    let quote = match parse_blink_quote_terms_from_json(script_response) {
-        Ok(value) => value,
-        Err(error) => {
-            return ToolBridgeResultEnvelope::error(
-                "OA-SWAP-QUOTE-BLINK-PARSE-FAILED",
-                format!("Blink quote payload parse failed: {error}"),
-                json!({
-                    "goal_id": goal_id,
-                    "request_id": request_id,
-                    "script_path": script_path,
-                }),
-            );
-        }
-    };
-
-    if let Err(error) =
-        state
-            .autopilot_goals
-            .validate_swap_quote_policy(goal_id, &quote, now_epoch_seconds)
-    {
-        return ToolBridgeResultEnvelope::error(
-            "OA-SWAP-QUOTE-POLICY-REJECTED",
-            format!("Swap quote policy rejected quote: {error}"),
-            json!({
-                "goal_id": goal_id,
-                "request_id": request_id,
-                "quote_id": quote.quote_id,
-            }),
-        );
-    }
-
-    let audit = SwapQuoteAuditReceipt {
-        audit_id: format!("swap-quote-audit-{request_id}"),
+    let worker_request_id = state.stable_sats_simulation.reserve_worker_request_id();
+    state.stable_sats_simulation.record_treasury_operation_queued(
+        worker_request_id,
+        crate::app_state::StableSatsTreasuryOperationKind::SwapQuote,
+        now_epoch_seconds,
+        format!("queued swap quote goal={} request={}", goal_id, request_id),
+    );
+    let env_overrides = resolve_swap_runtime_env_overrides(state);
+    let worker_request = crate::stablesats_blink_worker::StableSatsBlinkSwapQuoteRequest {
+        request_id: worker_request_id,
+        now_epoch_seconds,
         goal_id: goal_id.to_string(),
-        request_id: request_id.to_string(),
-        provider: SwapQuoteProvider::BlinkInfrastructure,
-        quote_id: quote.quote_id.clone(),
-        direction: quote.direction,
-        amount_in: quote.amount_in,
-        amount_out: quote.amount_out,
-        fee_sats: quote.fee_sats,
-        expires_at_epoch_seconds: quote.expires_at_epoch_seconds,
-        immediate_execution: quote.immediate_execution,
-        executed: false,
-        accepted_via_adapter: false,
-        fallback_reason: None,
-        created_at_epoch_seconds: now_epoch_seconds,
-        command_provenance: Some(command_provenance.clone()),
+        adapter_request_id: request_id.to_string(),
+        script_path,
+        script_args: script_args.clone(),
+        env_overrides,
     };
-    if let Err(error) = state.autopilot_goals.record_swap_quote_audit(audit.clone()) {
+    if let Err(error) = state
+        .stable_sats_blink_worker
+        .enqueue_swap_quote(worker_request)
+    {
+        state.stable_sats_simulation.record_treasury_operation_finished(
+            worker_request_id,
+            crate::app_state::StableSatsTreasuryOperationKind::SwapQuote,
+            crate::app_state::StableSatsTreasuryOperationStatus::Failed,
+            now_epoch_seconds,
+            format!("swap quote enqueue failed: {error}"),
+        );
         return ToolBridgeResultEnvelope::error(
-            "OA-SWAP-QUOTE-AUDIT-FAILED",
-            format!("Failed recording swap quote audit: {error}"),
+            "OA-SWAP-QUOTE-WORKER-UNAVAILABLE",
+            format!("Swap quote worker unavailable: {error}"),
             json!({
                 "goal_id": goal_id,
                 "request_id": request_id,
-                "quote_id": quote.quote_id,
+                "worker_request_id": worker_request_id,
             }),
         );
     }
-
     state.autopilot_chat.record_turn_timeline_event(format!(
-        "swap quote requested goal={} request={} direction={:?} provider=blink_infrastructure",
-        goal_id, request_id, direction
+        "swap quote queued goal={} request={} worker_request={}",
+        goal_id, request_id, worker_request_id
     ));
-
     ToolBridgeResultEnvelope::ok(
-        "OA-SWAP-QUOTE-OK",
-        "Swap quote requested through Blink infrastructure",
+        "OA-SWAP-QUOTE-QUEUED",
+        "Swap quote queued on off-thread treasury worker",
         json!({
             "goal_id": goal_id,
             "request_id": request_id,
+            "worker_request_id": worker_request_id,
+            "status": "queued",
+            "async": true,
             "provider": "blink_infrastructure",
-            "quote": {
-                "quote_id": quote.quote_id,
-                "direction": format!("{:?}", quote.direction),
-                "amount_in": {
-                    "amount": quote.amount_in.amount,
-                    "unit": match quote.amount_in.unit {
-                        SwapAmountUnit::Sats => "sats",
-                        SwapAmountUnit::Cents => "cents",
-                    },
-                },
-                "amount_out": {
-                    "amount": quote.amount_out.amount,
-                    "unit": match quote.amount_out.unit {
-                        SwapAmountUnit::Sats => "sats",
-                        SwapAmountUnit::Cents => "cents",
-                    },
-                },
-                "expires_at_epoch_seconds": quote.expires_at_epoch_seconds,
-                "immediate_execution": quote.immediate_execution,
-                "fee_sats": quote.fee_sats,
-                "fee_bps": quote.fee_bps,
-                "slippage_bps": quote.slippage_bps,
-            },
             "command_provenance": {
                 "script_path": command_provenance.script_path,
                 "args": command_provenance.args,
                 "executed_at_epoch_seconds": command_provenance.executed_at_epoch_seconds,
                 "parse_version": command_provenance.parse_version,
             },
-            "events": [{
-                "event": "swap_quote_requested",
-                "goal_id": goal_id,
-                "request_id": request_id,
-                "direction": format!("{:?}", direction),
-            }],
         }),
     )
 }
@@ -2270,182 +2204,58 @@ fn execute_swap_execute(
         executed_at_epoch_seconds: now_epoch_seconds,
         parse_version: BLINK_SWAP_PARSE_VERSION.to_string(),
     };
-
-    let script_response = match run_blink_swap_script_json(&script_path, &script_args) {
-        Ok(value) => value,
-        Err(error) => {
-            let failure_receipt = GoalSwapExecutionReceipt {
-                receipt_id: format!("swap-exec:{goal_id}:{quote_id}"),
-                goal_id: goal_id.to_string(),
-                quote_id: quote_id.to_string(),
-                direction: audit.direction,
-                amount_in: audit.amount_in,
-                amount_out: audit.amount_out,
-                fee_sats: audit.fee_sats,
-                status: SwapExecutionStatus::Failure,
-                transaction_id: None,
-                failure_reason: Some(error.clone()),
-                started_at_epoch_seconds: audit.created_at_epoch_seconds,
-                finished_at_epoch_seconds: now_epoch_seconds,
-                command_provenance: Some(command_provenance.clone()),
-            };
-            let _ = state
-                .autopilot_goals
-                .record_swap_execution_receipt(failure_receipt.clone());
-            state.autopilot_chat.record_turn_timeline_event(format!(
-                "swap failed goal={} quote={} reason={}",
-                goal_id, quote_id, error
-            ));
-            return ToolBridgeResultEnvelope::error(
-                "OA-SWAP-EXECUTE-BLINK-FAILED",
-                format!("Blink swap execution failed: {error}"),
-                json!({
-                    "goal_id": goal_id,
-                    "quote_id": quote_id,
-                    "script_path": script_path,
-                    "execution_receipt": failure_receipt,
-                }),
-            );
-        }
-    };
-
-    let parsed_execution = match parse_blink_execution_payload_from_json(script_response) {
-        Ok(value) => value,
-        Err(error) => {
-            return ToolBridgeResultEnvelope::error(
-                "OA-SWAP-EXECUTE-BLINK-PARSE-FAILED",
-                format!("Blink execution payload parse failed: {error}"),
-                json!({
-                    "goal_id": goal_id,
-                    "quote_id": quote_id,
-                    "script_path": script_path,
-                }),
-            );
-        }
-    };
-    let execution_status = match map_blink_execution_status(&parsed_execution.status) {
-        Ok(value) => value,
-        Err(error) => {
-            return ToolBridgeResultEnvelope::error(
-                "OA-SWAP-EXECUTE-BLINK-STATUS-INVALID",
-                error,
-                json!({
-                    "goal_id": goal_id,
-                    "quote_id": quote_id,
-                    "status": parsed_execution.status,
-                }),
-            );
-        }
-    };
-    let executed_quote = match map_blink_quote_terms(parsed_execution.quote) {
-        Ok(value) => value,
-        Err(error) => {
-            return ToolBridgeResultEnvelope::error(
-                "OA-SWAP-EXECUTE-BLINK-QUOTE-INVALID",
-                format!("Blink execution quote payload invalid: {error}"),
-                json!({
-                    "goal_id": goal_id,
-                    "quote_id": quote_id,
-                }),
-            );
-        }
-    };
-    if executed_quote.quote_id != quote_id {
-        return ToolBridgeResultEnvelope::error(
-            "OA-SWAP-EXECUTE-QUOTE-MISMATCH",
-            "Blink execution response quote id did not match requested quote id",
-            json!({
-                "goal_id": goal_id,
-                "quote_id": quote_id,
-                "executed_quote_id": executed_quote.quote_id,
-            }),
-        );
-    }
-    let finished_at_epoch_seconds = parsed_execution
-        .executed_at_epoch_seconds
-        .unwrap_or(now_epoch_seconds);
-    command_provenance.executed_at_epoch_seconds = finished_at_epoch_seconds;
-    let transaction_id = parsed_execution
-        .execution
-        .as_ref()
-        .and_then(|execution| execution.transaction_id.clone());
-    let failure_reason = if execution_status == SwapExecutionStatus::Failure {
-        Some("Blink execution returned FAILURE".to_string())
-    } else {
-        None
-    };
-
-    let receipt = GoalSwapExecutionReceipt {
-        receipt_id: format!("swap-exec:{goal_id}:{quote_id}"),
+    let worker_request_id = state.stable_sats_simulation.reserve_worker_request_id();
+    state.stable_sats_simulation.record_treasury_operation_queued(
+        worker_request_id,
+        crate::app_state::StableSatsTreasuryOperationKind::SwapExecute,
+        now_epoch_seconds,
+        format!("queued swap execute goal={} quote={}", goal_id, quote_id),
+    );
+    let env_overrides = resolve_swap_runtime_env_overrides(state);
+    let worker_request = crate::stablesats_blink_worker::StableSatsBlinkSwapExecuteRequest {
+        request_id: worker_request_id,
+        now_epoch_seconds,
         goal_id: goal_id.to_string(),
         quote_id: quote_id.to_string(),
-        direction: executed_quote.direction,
-        amount_in: executed_quote.amount_in,
-        amount_out: executed_quote.amount_out,
-        fee_sats: executed_quote.fee_sats,
-        status: execution_status,
-        transaction_id: transaction_id.clone(),
-        failure_reason: failure_reason.clone(),
-        started_at_epoch_seconds: audit.created_at_epoch_seconds,
-        finished_at_epoch_seconds,
-        command_provenance: Some(command_provenance.clone()),
+        script_path,
+        script_args: script_args.clone(),
+        env_overrides,
     };
     if let Err(error) = state
-        .autopilot_goals
-        .record_swap_execution_receipt(receipt.clone())
+        .stable_sats_blink_worker
+        .enqueue_swap_execute(worker_request)
     {
+        state.stable_sats_simulation.record_treasury_operation_finished(
+            worker_request_id,
+            crate::app_state::StableSatsTreasuryOperationKind::SwapExecute,
+            crate::app_state::StableSatsTreasuryOperationStatus::Failed,
+            now_epoch_seconds,
+            format!("swap execute enqueue failed: {error}"),
+        );
         return ToolBridgeResultEnvelope::error(
-            "OA-SWAP-EXECUTE-RECORD-FAILED",
-            format!("failed to persist swap execution receipt: {error}"),
+            "OA-SWAP-EXECUTE-WORKER-UNAVAILABLE",
+            format!("Swap execute worker unavailable: {error}"),
             json!({
                 "goal_id": goal_id,
                 "quote_id": quote_id,
+                "worker_request_id": worker_request_id,
             }),
         );
     }
-
-    let mut events = Vec::<Value>::new();
-    match execution_status {
-        SwapExecutionStatus::Success => {
-            state.autopilot_chat.record_turn_timeline_event(format!(
-                "swap settled goal={} quote={} tx={}",
-                goal_id,
-                quote_id,
-                transaction_id.as_deref().unwrap_or("unknown")
-            ));
-            events.push(json!({
-                "event": "swap_settled",
-                "goal_id": goal_id,
-                "quote_id": quote_id,
-                "transaction_id": transaction_id,
-            }));
-        }
-        SwapExecutionStatus::Failure => {
-            state.autopilot_chat.record_turn_timeline_event(format!(
-                "swap failed goal={} quote={} reason={}",
-                goal_id,
-                quote_id,
-                failure_reason.as_deref().unwrap_or("unknown")
-            ));
-            events.push(json!({
-                "event": "swap_failed",
-                "goal_id": goal_id,
-                "quote_id": quote_id,
-                "reason": failure_reason,
-            }));
-        }
-        _ => {}
-    }
-
+    command_provenance.executed_at_epoch_seconds = now_epoch_seconds;
+    state.autopilot_chat.record_turn_timeline_event(format!(
+        "swap execute queued goal={} quote={} worker_request={}",
+        goal_id, quote_id, worker_request_id
+    ));
     ToolBridgeResultEnvelope::ok(
-        "OA-SWAP-EXECUTE-OK",
-        "Swap execution completed through Blink infrastructure",
+        "OA-SWAP-EXECUTE-QUEUED",
+        "Swap execution queued on off-thread treasury worker",
         json!({
             "goal_id": goal_id,
             "quote_id": quote_id,
-            "status": format!("{:?}", execution_status),
-            "transaction_id": transaction_id,
-            "failure_reason": failure_reason,
+            "worker_request_id": worker_request_id,
+            "status": "queued",
+            "async": true,
             "audit": {
                 "provider": match audit.provider {
                     SwapQuoteProvider::BlinkInfrastructure => "blink_infrastructure",
@@ -2475,8 +2285,6 @@ fn execute_swap_execute(
                 "executed_at_epoch_seconds": command_provenance.executed_at_epoch_seconds,
                 "parse_version": command_provenance.parse_version,
             },
-            "events": events,
-            "execution_receipt": receipt,
         }),
     )
 }
@@ -3229,6 +3037,52 @@ fn resolve_blink_swap_script_path(
         script_name,
     );
     select_existing_blink_swap_script_path(candidates, script_name)
+}
+
+fn resolve_swap_runtime_env_overrides(state: &RenderState) -> Vec<(String, String)> {
+    if let Some(operator_wallet) = state
+        .stable_sats_simulation
+        .agents
+        .iter()
+        .find(|wallet| wallet.owner_kind == crate::app_state::StableSatsWalletOwnerKind::Operator)
+    {
+        let mut overrides = Vec::<(String, String)>::new();
+        if let Ok(Some(api_key)) = state
+            .credentials
+            .read_secure_value(operator_wallet.credential_key_name.as_str())
+        {
+            let trimmed = api_key.trim();
+            if !trimmed.is_empty() {
+                overrides.push(("BLINK_API_KEY".to_string(), trimmed.to_string()));
+            }
+        }
+        if let Some(url_name) = operator_wallet.credential_url_name.as_deref()
+            && let Ok(Some(api_url)) = state.credentials.read_secure_value(url_name)
+        {
+            let trimmed = api_url.trim();
+            if !trimmed.is_empty() {
+                overrides.push(("BLINK_API_URL".to_string(), trimmed.to_string()));
+            }
+        }
+        if !overrides.is_empty() {
+            return overrides;
+        }
+    }
+
+    let scope = crate::credentials::CREDENTIAL_SCOPE_SKILLS
+        | crate::credentials::CREDENTIAL_SCOPE_CODEX
+        | crate::credentials::CREDENTIAL_SCOPE_GLOBAL;
+    state
+        .credentials
+        .resolve_env_for_scope(scope)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|(name, value)| {
+            !value.trim().is_empty()
+                && (name.eq_ignore_ascii_case("BLINK_API_KEY")
+                    || name.eq_ignore_ascii_case("BLINK_API_URL"))
+        })
+        .collect()
 }
 
 fn blink_swap_script_candidates(
