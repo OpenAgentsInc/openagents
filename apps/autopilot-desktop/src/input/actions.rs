@@ -1870,6 +1870,49 @@ pub(super) fn run_auto_relay_security_simulation(
     changed
 }
 
+const STABLE_SATS_REAL_ROUND_MIN_INTERVAL_SECONDS: u64 = 5;
+const STABLE_SATS_REAL_ROUND_MAX_STEPS: usize = 2;
+const STABLE_SATS_REAL_ROUND_MAX_TRANSFER_SATS: u64 = 25_000;
+const STABLE_SATS_REAL_ROUND_MAX_TRANSFER_CENTS: u64 = 8_000;
+const STABLE_SATS_REAL_ROUND_MAX_CONVERT_SATS: u64 = 18_000;
+const STABLE_SATS_REAL_ROUND_MAX_CONVERT_CENTS: u64 = 4_000;
+const STABLE_SATS_REAL_ROUND_PERIOD_WINDOW_SECONDS: u64 = 3_600;
+const STABLE_SATS_REAL_ROUND_MAX_PERIOD_CONVERT_SATS: u64 = 120_000;
+const STABLE_SATS_REAL_ROUND_MAX_PERIOD_CONVERT_CENTS: u64 = 25_000;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StableSatsRealRoundStep {
+    TransferBtc { from_index: usize, to_index: usize },
+    TransferUsd { from_index: usize, to_index: usize },
+    ConvertBtcToUsd { owner_index: usize },
+    ConvertUsdToBtc { owner_index: usize },
+}
+
+impl StableSatsRealRoundStep {
+    fn operation_kind(self) -> crate::app_state::StableSatsTreasuryOperationKind {
+        match self {
+            Self::TransferBtc { .. } => {
+                crate::app_state::StableSatsTreasuryOperationKind::TransferBtc
+            }
+            Self::TransferUsd { .. } => {
+                crate::app_state::StableSatsTreasuryOperationKind::TransferUsd
+            }
+            Self::ConvertBtcToUsd { .. } | Self::ConvertUsdToBtc { .. } => {
+                crate::app_state::StableSatsTreasuryOperationKind::Convert
+            }
+        }
+    }
+
+    fn policy_tag(self) -> &'static str {
+        match self {
+            Self::TransferBtc { .. } => "transfer_btc",
+            Self::TransferUsd { .. } => "transfer_usd",
+            Self::ConvertBtcToUsd { .. } => "convert_btc_to_usd",
+            Self::ConvertUsdToBtc { .. } => "convert_usd_to_btc",
+        }
+    }
+}
+
 pub(super) fn run_stable_sats_simulation_action(
     state: &mut crate::app_state::RenderState,
     action: StableSatsSimulationPaneAction,
@@ -1879,7 +1922,7 @@ pub(super) fn run_stable_sats_simulation_action(
             if state.stable_sats_simulation.mode
                 == crate::app_state::StableSatsSimulationMode::RealBlink
             {
-                return queue_stable_sats_live_refresh(state);
+                return queue_stable_sats_real_mode_round(state);
             }
             if state.stable_sats_simulation.auto_run_enabled {
                 state.stable_sats_simulation.stop_auto_run();
@@ -1981,6 +2024,697 @@ pub(super) fn run_stable_sats_simulation_round(
         }
     }
     true
+}
+
+fn queue_stable_sats_real_mode_round(state: &mut crate::app_state::RenderState) -> bool {
+    if state.stable_sats_simulation.auto_run_enabled {
+        state.stable_sats_simulation.stop_auto_run();
+    }
+    if state.stable_sats_simulation.live_refresh_pending {
+        let reason = "Real mode round blocked: live refresh already pending".to_string();
+        state.stable_sats_simulation.last_error = Some(reason.clone());
+        state.stable_sats_simulation.last_action = Some(reason);
+        state.provider_runtime.last_result = state.stable_sats_simulation.last_action.clone();
+        return true;
+    }
+
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs());
+    if let Some(last_orchestration) = state
+        .stable_sats_simulation
+        .treasury_operations
+        .iter()
+        .rev()
+        .find(|entry| {
+            matches!(
+                entry.kind,
+                crate::app_state::StableSatsTreasuryOperationKind::TransferBtc
+                    | crate::app_state::StableSatsTreasuryOperationKind::TransferUsd
+                    | crate::app_state::StableSatsTreasuryOperationKind::Convert
+            )
+        })
+    {
+        let elapsed = now_epoch_seconds.saturating_sub(last_orchestration.updated_at_epoch_seconds);
+        if elapsed < STABLE_SATS_REAL_ROUND_MIN_INTERVAL_SECONDS {
+            let reason = format!(
+                "Real mode round blocked by rate policy: wait {}s",
+                STABLE_SATS_REAL_ROUND_MIN_INTERVAL_SECONDS.saturating_sub(elapsed)
+            );
+            state.stable_sats_simulation.last_error = Some(reason.clone());
+            state.stable_sats_simulation.last_action = Some(reason.clone());
+            state.stable_sats_simulation.record_runtime_event(
+                "NIP-SA",
+                format!("sa:round:block:rate:{now_epoch_seconds}"),
+                reason.clone(),
+            );
+            state.provider_runtime.last_result = state.stable_sats_simulation.last_action.clone();
+            return true;
+        }
+    }
+
+    let (operator_index, sovereign_a_index, sovereign_b_index) =
+        match stable_sats_real_round_topology(state) {
+            Ok(value) => value,
+            Err(reason) => {
+                state.stable_sats_simulation.last_error = Some(reason.clone());
+                state.stable_sats_simulation.last_action = Some(reason);
+                state.provider_runtime.last_result =
+                    state.stable_sats_simulation.last_action.clone();
+                return true;
+            }
+        };
+    let phase = stable_sats_real_round_phase(state);
+    let round_id = state.stable_sats_simulation.rounds_run.saturating_add(1);
+    let sa_evidence = stable_sats_sa_tick_evidence(state);
+    let steps = match phase {
+        0 => vec![
+            StableSatsRealRoundStep::TransferBtc {
+                from_index: operator_index,
+                to_index: sovereign_a_index,
+            },
+            StableSatsRealRoundStep::ConvertBtcToUsd {
+                owner_index: operator_index,
+            },
+        ],
+        1 => vec![
+            StableSatsRealRoundStep::TransferUsd {
+                from_index: sovereign_a_index,
+                to_index: sovereign_b_index,
+            },
+            StableSatsRealRoundStep::ConvertUsdToBtc {
+                owner_index: sovereign_a_index,
+            },
+        ],
+        _ => vec![
+            StableSatsRealRoundStep::TransferBtc {
+                from_index: sovereign_b_index,
+                to_index: operator_index,
+            },
+            StableSatsRealRoundStep::ConvertBtcToUsd {
+                owner_index: sovereign_b_index,
+            },
+        ],
+    };
+    state.stable_sats_simulation.record_runtime_event(
+        "NIP-SA",
+        format!("sa:round:{round_id:04}:plan"),
+        format!(
+            "planned phase={} steps={} sa_evidence={}",
+            phase,
+            steps.len(),
+            sa_evidence
+        ),
+    );
+
+    let mut queued_steps = 0usize;
+    let mut blocked_reason: Option<String> = None;
+    for (step_index, step) in steps
+        .iter()
+        .copied()
+        .take(STABLE_SATS_REAL_ROUND_MAX_STEPS)
+        .enumerate()
+    {
+        match queue_stable_sats_real_round_step(
+            state,
+            now_epoch_seconds,
+            round_id,
+            step_index,
+            step,
+            sa_evidence.as_str(),
+        ) {
+            Ok(request_id) => {
+                queued_steps = queued_steps.saturating_add(1);
+                state.stable_sats_simulation.record_runtime_event(
+                    "NIP-SA",
+                    format!("sa:round:{round_id:04}:step:{step_index}:queued"),
+                    format!(
+                        "queued {} request={} evidence={}",
+                        step.policy_tag(),
+                        request_id,
+                        sa_evidence
+                    ),
+                );
+            }
+            Err(reason) => {
+                record_stable_sats_real_round_policy_block(
+                    state,
+                    now_epoch_seconds,
+                    round_id,
+                    step_index,
+                    step,
+                    sa_evidence.as_str(),
+                    reason.clone(),
+                );
+                blocked_reason = Some(reason);
+                break;
+            }
+        }
+    }
+
+    if queued_steps > 0 {
+        let _ = queue_stable_sats_live_refresh(state);
+    }
+
+    let summary = if let Some(reason) = blocked_reason.as_ref() {
+        format!(
+            "Real mode round {round_id} partially queued ({} step(s)); blocked: {}",
+            queued_steps, reason
+        )
+    } else {
+        format!(
+            "Real mode round {round_id} queued {} step(s) with SA evidence {}",
+            queued_steps, sa_evidence
+        )
+    };
+    state.stable_sats_simulation.last_action = Some(summary.clone());
+    state.stable_sats_simulation.last_error = blocked_reason.clone();
+    state.provider_runtime.last_result = state.stable_sats_simulation.last_action.clone();
+    state
+        .activity_feed
+        .upsert_event(crate::app_state::ActivityEventRow {
+            event_id: format!("stablesats:sa-round:{round_id}:{now_epoch_seconds}"),
+            domain: crate::app_state::ActivityEventDomain::Wallet,
+            source_tag: "stablesats.sa".to_string(),
+            summary: if blocked_reason.is_some() {
+                "StableSats real round policy-blocked".to_string()
+            } else {
+                "StableSats real round queued".to_string()
+            },
+            detail: summary,
+            occurred_at_epoch_seconds: now_epoch_seconds,
+        });
+    state.activity_feed.load_state = crate::app_state::PaneLoadState::Ready;
+    true
+}
+
+fn stable_sats_real_round_topology(
+    state: &crate::app_state::RenderState,
+) -> Result<(usize, usize, usize), String> {
+    let Some(operator_index) = state
+        .stable_sats_simulation
+        .agents
+        .iter()
+        .position(|wallet| {
+            wallet.owner_kind == crate::app_state::StableSatsWalletOwnerKind::Operator
+        })
+    else {
+        return Err("Real mode round blocked: operator wallet is not configured".to_string());
+    };
+    let mut sovereign_indices = state
+        .stable_sats_simulation
+        .agents
+        .iter()
+        .enumerate()
+        .filter(|(_, wallet)| {
+            wallet.owner_kind == crate::app_state::StableSatsWalletOwnerKind::SovereignAgent
+        })
+        .map(|(index, wallet)| (wallet.owner_id.clone(), index))
+        .collect::<Vec<_>>();
+    sovereign_indices.sort_by(|left, right| left.0.cmp(&right.0));
+    if sovereign_indices.len() < 2 {
+        return Err(
+            "Real mode round blocked: expected two sovereign wallets in topology".to_string(),
+        );
+    }
+    Ok((
+        operator_index,
+        sovereign_indices[0].1,
+        sovereign_indices[1].1,
+    ))
+}
+
+fn stable_sats_real_round_phase(state: &crate::app_state::RenderState) -> usize {
+    let operation_count = state
+        .stable_sats_simulation
+        .treasury_operations
+        .iter()
+        .filter(|entry| {
+            matches!(
+                entry.kind,
+                crate::app_state::StableSatsTreasuryOperationKind::TransferBtc
+                    | crate::app_state::StableSatsTreasuryOperationKind::TransferUsd
+                    | crate::app_state::StableSatsTreasuryOperationKind::Convert
+            )
+        })
+        .count();
+    stable_sats_real_round_phase_from_operation_count(operation_count)
+}
+
+fn stable_sats_real_round_phase_from_operation_count(operation_count: usize) -> usize {
+    (operation_count / STABLE_SATS_REAL_ROUND_MAX_STEPS).wrapping_rem(3)
+}
+
+fn stable_sats_sa_tick_evidence(state: &crate::app_state::RenderState) -> String {
+    state
+        .sa_lane
+        .last_tick_result_event_id
+        .clone()
+        .or_else(|| state.sa_lane.last_tick_request_event_id.clone())
+        .unwrap_or_else(|| format!("sa:tick:{}", state.sa_lane.tick_count.saturating_add(1)))
+}
+
+fn queue_stable_sats_real_round_step(
+    state: &mut crate::app_state::RenderState,
+    now_epoch_seconds: u64,
+    round_id: u32,
+    step_index: usize,
+    step: StableSatsRealRoundStep,
+    sa_evidence: &str,
+) -> Result<u64, String> {
+    match step {
+        StableSatsRealRoundStep::TransferBtc {
+            from_index,
+            to_index,
+        } => {
+            let source = state
+                .stable_sats_simulation
+                .agents
+                .get(from_index)
+                .ok_or_else(|| {
+                    format!(
+                        "policy guard transfer_btc failed: source wallet index {from_index} invalid"
+                    )
+                })?;
+            let available = source.btc_balance_sats.saturating_sub(240);
+            if available < 200 {
+                return Err(format!(
+                    "policy guard transfer_btc blocked: {} available {} sats below minimum",
+                    source.agent_name, source.btc_balance_sats
+                ));
+            }
+            let amount = (available / 10)
+                .clamp(200, STABLE_SATS_REAL_ROUND_MAX_TRANSFER_SATS)
+                .min(available);
+            enqueue_stable_sats_transfer_worker(
+                state,
+                now_epoch_seconds,
+                step,
+                from_index,
+                to_index,
+                crate::stablesats_blink_worker::StableSatsBlinkTransferAsset::BtcSats,
+                amount,
+                Some(format!(
+                    "sa-round-{round_id:04}-step-{step_index}-btc evidence={sa_evidence}"
+                )),
+                sa_evidence,
+            )
+        }
+        StableSatsRealRoundStep::TransferUsd {
+            from_index,
+            to_index,
+        } => {
+            let source = state
+                .stable_sats_simulation
+                .agents
+                .get(from_index)
+                .ok_or_else(|| {
+                    format!(
+                        "policy guard transfer_usd failed: source wallet index {from_index} invalid"
+                    )
+                })?;
+            let available = source.usd_balance_cents.saturating_sub(70);
+            if available < 50 {
+                return Err(format!(
+                    "policy guard transfer_usd blocked: {} available {} below minimum",
+                    source.agent_name,
+                    format_usd_cents(source.usd_balance_cents)
+                ));
+            }
+            let amount = (available / 10)
+                .clamp(50, STABLE_SATS_REAL_ROUND_MAX_TRANSFER_CENTS)
+                .min(available);
+            enqueue_stable_sats_transfer_worker(
+                state,
+                now_epoch_seconds,
+                step,
+                from_index,
+                to_index,
+                crate::stablesats_blink_worker::StableSatsBlinkTransferAsset::UsdCents,
+                amount,
+                Some(format!(
+                    "sa-round-{round_id:04}-step-{step_index}-usd evidence={sa_evidence}"
+                )),
+                sa_evidence,
+            )
+        }
+        StableSatsRealRoundStep::ConvertBtcToUsd { owner_index } => {
+            let owner = state
+                .stable_sats_simulation
+                .agents
+                .get(owner_index)
+                .ok_or_else(|| {
+                    format!(
+                        "policy guard convert_btc_to_usd failed: owner index {owner_index} invalid"
+                    )
+                })?;
+            let available = owner.btc_balance_sats.saturating_sub(320);
+            if available < 300 {
+                return Err(format!(
+                    "policy guard convert_btc_to_usd blocked: {} available {} sats below minimum",
+                    owner.agent_name, owner.btc_balance_sats
+                ));
+            }
+            let amount = (available / 12)
+                .clamp(300, STABLE_SATS_REAL_ROUND_MAX_CONVERT_SATS)
+                .min(available);
+            let (window_sats, _window_cents) =
+                stable_sats_period_convert_totals(state, now_epoch_seconds);
+            if window_sats.saturating_add(amount) > STABLE_SATS_REAL_ROUND_MAX_PERIOD_CONVERT_SATS {
+                return Err(format!(
+                    "policy guard convert_btc_to_usd blocked: hourly converted sats {} + {} exceeds {}",
+                    window_sats, amount, STABLE_SATS_REAL_ROUND_MAX_PERIOD_CONVERT_SATS
+                ));
+            }
+            enqueue_stable_sats_convert_worker(
+                state,
+                now_epoch_seconds,
+                step,
+                owner_index,
+                "btc-to-usd",
+                amount,
+                "sats",
+                Some(format!(
+                    "sa-round-{round_id:04}-step-{step_index}-convert-btc evidence={sa_evidence}"
+                )),
+                sa_evidence,
+            )
+        }
+        StableSatsRealRoundStep::ConvertUsdToBtc { owner_index } => {
+            let owner = state
+                .stable_sats_simulation
+                .agents
+                .get(owner_index)
+                .ok_or_else(|| {
+                    format!(
+                        "policy guard convert_usd_to_btc failed: owner index {owner_index} invalid"
+                    )
+                })?;
+            let available = owner.usd_balance_cents.saturating_sub(90);
+            if available < 80 {
+                return Err(format!(
+                    "policy guard convert_usd_to_btc blocked: {} available {} below minimum",
+                    owner.agent_name,
+                    format_usd_cents(owner.usd_balance_cents)
+                ));
+            }
+            let amount = (available / 12)
+                .clamp(80, STABLE_SATS_REAL_ROUND_MAX_CONVERT_CENTS)
+                .min(available);
+            let (_window_sats, window_cents) =
+                stable_sats_period_convert_totals(state, now_epoch_seconds);
+            if window_cents.saturating_add(amount) > STABLE_SATS_REAL_ROUND_MAX_PERIOD_CONVERT_CENTS
+            {
+                return Err(format!(
+                    "policy guard convert_usd_to_btc blocked: hourly converted cents {} + {} exceeds {}",
+                    window_cents, amount, STABLE_SATS_REAL_ROUND_MAX_PERIOD_CONVERT_CENTS
+                ));
+            }
+            enqueue_stable_sats_convert_worker(
+                state,
+                now_epoch_seconds,
+                step,
+                owner_index,
+                "usd-to-btc",
+                amount,
+                "cents",
+                Some(format!(
+                    "sa-round-{round_id:04}-step-{step_index}-convert-usd evidence={sa_evidence}"
+                )),
+                sa_evidence,
+            )
+        }
+    }
+}
+
+fn payload_u64(value: &serde_json::Value, key: &str) -> Option<u64> {
+    value.get(key).and_then(|raw| {
+        raw.as_u64()
+            .or_else(|| raw.as_i64().and_then(|number| u64::try_from(number).ok()))
+            .or_else(|| {
+                raw.as_str()
+                    .and_then(|text| text.trim().parse::<u64>().ok())
+            })
+    })
+}
+
+fn format_usd_cents(usd_cents: u64) -> String {
+    format!("${}.{:02}", usd_cents / 100, usd_cents % 100)
+}
+
+fn stable_sats_period_convert_totals(
+    state: &crate::app_state::RenderState,
+    now_epoch_seconds: u64,
+) -> (u64, u64) {
+    let cutoff = now_epoch_seconds.saturating_sub(STABLE_SATS_REAL_ROUND_PERIOD_WINDOW_SECONDS);
+    stable_sats_period_convert_totals_from_receipts(
+        state.stable_sats_simulation.treasury_receipts.as_slice(),
+        cutoff,
+    )
+}
+
+fn stable_sats_period_convert_totals_from_receipts(
+    receipts: &[crate::app_state::StableSatsTreasuryReceipt],
+    cutoff_epoch_seconds: u64,
+) -> (u64, u64) {
+    receipts
+        .iter()
+        .filter(|receipt| {
+            receipt.kind == crate::app_state::StableSatsTreasuryOperationKind::Convert
+                && receipt.occurred_at_epoch_seconds >= cutoff_epoch_seconds
+        })
+        .fold((0_u64, 0_u64), |(sats, cents), receipt| {
+            let status = receipt
+                .payload
+                .get("status")
+                .and_then(serde_json::Value::as_str)
+                .map(|value| value.trim().to_ascii_uppercase())
+                .unwrap_or_else(|| "UNKNOWN".to_string());
+            if status != "SUCCESS" && status != "SETTLED" {
+                return (sats, cents);
+            }
+            let amount = payload_u64(&receipt.payload, "amount").unwrap_or(0);
+            let unit = receipt
+                .payload
+                .get("unit")
+                .and_then(serde_json::Value::as_str)
+                .map(|value| value.trim().to_ascii_lowercase())
+                .unwrap_or_default();
+            if unit == "sats" || unit == "sat" {
+                (sats.saturating_add(amount), cents)
+            } else if unit == "cents" || unit == "cent" {
+                (sats, cents.saturating_add(amount))
+            } else {
+                (sats, cents)
+            }
+        })
+}
+
+fn enqueue_stable_sats_transfer_worker(
+    state: &mut crate::app_state::RenderState,
+    now_epoch_seconds: u64,
+    step: StableSatsRealRoundStep,
+    from_index: usize,
+    to_index: usize,
+    asset: crate::stablesats_blink_worker::StableSatsBlinkTransferAsset,
+    amount: u64,
+    memo: Option<String>,
+    sa_evidence: &str,
+) -> Result<u64, String> {
+    let from_wallet = state
+        .stable_sats_simulation
+        .agents
+        .get(from_index)
+        .ok_or_else(|| format!("source wallet index {} out of bounds", from_index))?
+        .clone();
+    let to_wallet = state
+        .stable_sats_simulation
+        .agents
+        .get(to_index)
+        .ok_or_else(|| format!("destination wallet index {} out of bounds", to_index))?
+        .clone();
+    let source_env_overrides = resolve_wallet_blink_env(state, &from_wallet)?;
+    let destination_env_overrides = resolve_wallet_blink_env(state, &to_wallet)?;
+    let balance_script_path = resolve_blink_simulation_script_path(state, "balance.js")?;
+    let create_invoice_script_path =
+        resolve_blink_simulation_script_path(state, "create_invoice.js")?;
+    let create_invoice_usd_script_path =
+        resolve_blink_simulation_script_path(state, "create_invoice_usd.js")?;
+    let fee_probe_script_path = resolve_blink_simulation_script_path(state, "fee_probe.js")?;
+    let pay_invoice_script_path = resolve_blink_simulation_script_path(state, "pay_invoice.js")?;
+
+    let request_id = state.stable_sats_simulation.reserve_worker_request_id();
+    state
+        .stable_sats_simulation
+        .record_treasury_operation_queued(
+            request_id,
+            step.operation_kind(),
+            now_epoch_seconds,
+            format!(
+                "sa round queued {} amount={} from={} to={} evidence={}",
+                step.policy_tag(),
+                amount,
+                from_wallet.owner_id,
+                to_wallet.owner_id,
+                sa_evidence
+            ),
+        );
+
+    let request = crate::stablesats_blink_worker::StableSatsBlinkTransferRequest {
+        request_id,
+        now_epoch_seconds,
+        from_owner_id: from_wallet.owner_id.clone(),
+        from_wallet_name: from_wallet.agent_name.clone(),
+        to_owner_id: to_wallet.owner_id.clone(),
+        to_wallet_name: to_wallet.agent_name.clone(),
+        asset,
+        amount,
+        memo,
+        source_env_overrides,
+        destination_env_overrides,
+        balance_script_path,
+        create_invoice_script_path,
+        create_invoice_usd_script_path,
+        fee_probe_script_path,
+        pay_invoice_script_path,
+    };
+    if let Err(error) = state.stable_sats_blink_worker.enqueue_transfer(request) {
+        state
+            .stable_sats_simulation
+            .record_treasury_operation_finished(
+                request_id,
+                step.operation_kind(),
+                crate::app_state::StableSatsTreasuryOperationStatus::Failed,
+                now_epoch_seconds,
+                format!("sa round enqueue transfer failed: {error}"),
+            );
+        return Err(format!("failed queueing {}: {}", step.policy_tag(), error));
+    }
+    Ok(request_id)
+}
+
+fn enqueue_stable_sats_convert_worker(
+    state: &mut crate::app_state::RenderState,
+    now_epoch_seconds: u64,
+    step: StableSatsRealRoundStep,
+    owner_index: usize,
+    direction: &str,
+    amount: u64,
+    unit: &str,
+    memo: Option<String>,
+    sa_evidence: &str,
+) -> Result<u64, String> {
+    let wallet = state
+        .stable_sats_simulation
+        .agents
+        .get(owner_index)
+        .ok_or_else(|| format!("wallet index {} out of bounds", owner_index))?
+        .clone();
+    let env_overrides = resolve_wallet_blink_env(state, &wallet)?;
+    let swap_quote_script_path = resolve_blink_simulation_script_path(state, "swap_quote.js")?;
+    let swap_execute_script_path = resolve_blink_simulation_script_path(state, "swap_execute.js")?;
+
+    let request_id = state.stable_sats_simulation.reserve_worker_request_id();
+    state
+        .stable_sats_simulation
+        .record_treasury_operation_queued(
+            request_id,
+            step.operation_kind(),
+            now_epoch_seconds,
+            format!(
+                "sa round queued {} amount={} {} owner={} evidence={}",
+                step.policy_tag(),
+                amount,
+                unit,
+                wallet.owner_id,
+                sa_evidence
+            ),
+        );
+
+    let request = crate::stablesats_blink_worker::StableSatsBlinkConvertRequest {
+        request_id,
+        now_epoch_seconds,
+        owner_id: wallet.owner_id.clone(),
+        wallet_name: wallet.agent_name.clone(),
+        direction: direction.to_string(),
+        amount,
+        unit: unit.to_string(),
+        memo,
+        env_overrides,
+        swap_execute_script_path,
+        swap_quote_script_path,
+    };
+    if let Err(error) = state.stable_sats_blink_worker.enqueue_convert(request) {
+        state
+            .stable_sats_simulation
+            .record_treasury_operation_finished(
+                request_id,
+                step.operation_kind(),
+                crate::app_state::StableSatsTreasuryOperationStatus::Failed,
+                now_epoch_seconds,
+                format!("sa round enqueue convert failed: {error}"),
+            );
+        return Err(format!("failed queueing {}: {}", step.policy_tag(), error));
+    }
+    Ok(request_id)
+}
+
+fn record_stable_sats_real_round_policy_block(
+    state: &mut crate::app_state::RenderState,
+    now_epoch_seconds: u64,
+    round_id: u32,
+    step_index: usize,
+    step: StableSatsRealRoundStep,
+    sa_evidence: &str,
+    reason: String,
+) {
+    let request_id = state.stable_sats_simulation.reserve_worker_request_id();
+    state
+        .stable_sats_simulation
+        .record_treasury_operation_queued(
+            request_id,
+            step.operation_kind(),
+            now_epoch_seconds,
+            format!(
+                "policy blocked {} round={} step={} evidence={}",
+                step.policy_tag(),
+                round_id,
+                step_index,
+                sa_evidence
+            ),
+        );
+    state
+        .stable_sats_simulation
+        .record_treasury_operation_finished(
+            request_id,
+            step.operation_kind(),
+            crate::app_state::StableSatsTreasuryOperationStatus::Failed,
+            now_epoch_seconds,
+            reason.clone(),
+        );
+    state.stable_sats_simulation.record_treasury_receipt(
+        request_id,
+        step.operation_kind(),
+        now_epoch_seconds,
+        serde_json::json!({
+            "status": "blocked",
+            "reason": reason,
+            "policy_tag": step.policy_tag(),
+            "round_id": round_id,
+            "step_index": step_index,
+            "sa_tick_evidence": sa_evidence,
+        }),
+    );
+    state.stable_sats_simulation.record_runtime_event(
+        "NIP-SA",
+        format!("sa:round:{round_id:04}:step:{step_index}:blocked"),
+        format!(
+            "blocked {} reason={} evidence={}",
+            step.policy_tag(),
+            reason,
+            sa_evidence
+        ),
+    );
 }
 
 fn queue_stable_sats_live_refresh(state: &mut crate::app_state::RenderState) -> bool {
@@ -3543,7 +4277,11 @@ pub(super) fn parse_positive_amount_str(raw: &str, label: &str) -> Result<u64, S
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_wallet_blink_env_from_secure_values;
+    use super::{
+        resolve_wallet_blink_env_from_secure_values,
+        stable_sats_period_convert_totals_from_receipts,
+        stable_sats_real_round_phase_from_operation_count,
+    };
 
     fn fixture_wallet() -> crate::app_state::StableSatsAgentWalletState {
         crate::app_state::StableSatsAgentWalletState {
@@ -3645,5 +4383,79 @@ mod tests {
         )
         .expect_err("namespaced key should be required");
         assert!(error.contains("BLINK_API_KEY_SA_1"));
+    }
+
+    #[test]
+    fn real_round_phase_cycles_deterministically_by_operation_count() {
+        let phases = (0..8)
+            .map(stable_sats_real_round_phase_from_operation_count)
+            .collect::<Vec<_>>();
+        assert_eq!(phases, vec![0, 0, 1, 1, 2, 2, 0, 0]);
+    }
+
+    #[test]
+    fn convert_window_totals_include_only_recent_settled_convert_receipts() {
+        let now_epoch_seconds = 10_000_u64;
+        let cutoff = now_epoch_seconds.saturating_sub(3_600);
+        let receipts = vec![
+            crate::app_state::StableSatsTreasuryReceipt {
+                seq: 1,
+                request_id: 11,
+                kind: crate::app_state::StableSatsTreasuryOperationKind::Convert,
+                payload: serde_json::json!({
+                    "status": "SUCCESS",
+                    "amount": 1_200,
+                    "unit": "sats",
+                }),
+                occurred_at_epoch_seconds: now_epoch_seconds.saturating_sub(10),
+            },
+            crate::app_state::StableSatsTreasuryReceipt {
+                seq: 2,
+                request_id: 12,
+                kind: crate::app_state::StableSatsTreasuryOperationKind::Convert,
+                payload: serde_json::json!({
+                    "status": " settled ",
+                    "amount": "345",
+                    "unit": "CENTS",
+                }),
+                occurred_at_epoch_seconds: now_epoch_seconds.saturating_sub(42),
+            },
+            crate::app_state::StableSatsTreasuryReceipt {
+                seq: 3,
+                request_id: 13,
+                kind: crate::app_state::StableSatsTreasuryOperationKind::Convert,
+                payload: serde_json::json!({
+                    "status": "FAILED",
+                    "amount": 900,
+                    "unit": "sats",
+                }),
+                occurred_at_epoch_seconds: now_epoch_seconds.saturating_sub(18),
+            },
+            crate::app_state::StableSatsTreasuryReceipt {
+                seq: 4,
+                request_id: 14,
+                kind: crate::app_state::StableSatsTreasuryOperationKind::TransferBtc,
+                payload: serde_json::json!({
+                    "status": "SUCCESS",
+                    "amount": 2_000,
+                    "unit": "sats",
+                }),
+                occurred_at_epoch_seconds: now_epoch_seconds.saturating_sub(22),
+            },
+            crate::app_state::StableSatsTreasuryReceipt {
+                seq: 5,
+                request_id: 15,
+                kind: crate::app_state::StableSatsTreasuryOperationKind::Convert,
+                payload: serde_json::json!({
+                    "status": "SUCCESS",
+                    "amount": 777,
+                    "unit": "sats",
+                }),
+                occurred_at_epoch_seconds: cutoff.saturating_sub(1),
+            },
+        ];
+
+        let totals = stable_sats_period_convert_totals_from_receipts(receipts.as_slice(), cutoff);
+        assert_eq!(totals, (1_200, 345));
     }
 }
