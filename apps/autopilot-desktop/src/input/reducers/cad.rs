@@ -649,6 +649,50 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
             state.last_action = Some("CAD camera reset to defaults".to_string());
             true
         }
+        CadDemoPaneAction::ToggleDrawingViewMode => {
+            let mode = state.toggle_drawing_view_mode();
+            state.last_action = Some(format!("CAD drawing mode -> {}", mode.label()));
+            true
+        }
+        CadDemoPaneAction::CycleDrawingViewDirection => {
+            let direction = state.cycle_drawing_view_direction();
+            state.last_action = Some(format!("CAD drawing direction -> {}", direction.label()));
+            true
+        }
+        CadDemoPaneAction::ToggleDrawingHiddenLines => {
+            let enabled = state.toggle_drawing_hidden_lines();
+            state.last_action = Some(format!(
+                "CAD drawing hidden lines -> {}",
+                if enabled { "on" } else { "off" }
+            ));
+            true
+        }
+        CadDemoPaneAction::ToggleDrawingDimensions => {
+            let enabled = state.toggle_drawing_dimensions();
+            state.last_action = Some(format!(
+                "CAD drawing dimensions -> {}",
+                if enabled { "on" } else { "off" }
+            ));
+            true
+        }
+        CadDemoPaneAction::ResetDrawingView => {
+            state.reset_drawing_view();
+            state.last_action = Some("CAD drawing view reset".to_string());
+            true
+        }
+        CadDemoPaneAction::AddDrawingDetailView => {
+            let detail = state.add_drawing_detail_view();
+            state.last_action = Some(format!(
+                "CAD drawing detail added -> {} ({})",
+                detail.detail_id, detail.label
+            ));
+            true
+        }
+        CadDemoPaneAction::ClearDrawingDetailViews => {
+            let cleared = state.clear_drawing_detail_views();
+            state.last_action = Some(format!("CAD drawing detail views cleared ({cleared})"));
+            true
+        }
         CadDemoPaneAction::ToggleProjectionMode => {
             state.cycle_projection_mode();
             state.last_action = Some(format!(
@@ -1479,6 +1523,13 @@ fn emit_cad_event_for_action(state: &mut RenderState, action: CadDemoPaneAction)
         CadDemoPaneAction::CycleMaterialPreset
         | CadDemoPaneAction::CycleSectionPlane
         | CadDemoPaneAction::StepSectionPlaneOffset
+        | CadDemoPaneAction::ToggleDrawingViewMode
+        | CadDemoPaneAction::CycleDrawingViewDirection
+        | CadDemoPaneAction::ToggleDrawingHiddenLines
+        | CadDemoPaneAction::ToggleDrawingDimensions
+        | CadDemoPaneAction::ResetDrawingView
+        | CadDemoPaneAction::AddDrawingDetailView
+        | CadDemoPaneAction::ClearDrawingDetailViews
         | CadDemoPaneAction::DimensionInputCommit => {
             emit_cad_event(
                 state,
