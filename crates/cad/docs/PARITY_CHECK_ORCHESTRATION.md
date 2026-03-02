@@ -55,6 +55,7 @@ Provide one deterministic orchestration entrypoint for the parity baseline lanes
 - drafting dimension parity fixture check
 - drafting GD&T parity fixture check
 - drafting section-view parity fixture check
+- drafting detail-view parity fixture check
 - parity CI artifact manifest fixture check
 - parity risk register + blocker workflow check
 - baseline dashboard publication check
