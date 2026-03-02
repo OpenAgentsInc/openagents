@@ -2214,7 +2214,6 @@ impl ActiveJobState {
             }
         }
         if next_stage == JobLifecycleStage::Paid {
-            job.payment_id = Some(format!("pay-{}", job.request_id));
             if job.ac_settlement_event_id.is_none() {
                 job.ac_settlement_event_id = Some(format!("ac:39244:{}", job.request_id));
             }
@@ -2442,6 +2441,33 @@ impl JobHistoryState {
         let completed = self
             .reference_epoch_seconds
             .saturating_add(self.rows.len() as u64 * 17);
+        let payment_pointer = job
+            .payment_id
+            .clone()
+            .or_else(|| job.invoice_id.clone())
+            .unwrap_or_else(|| format!("pending:{}", job.request_id));
+        let authoritative_settlement = !payment_pointer.is_empty()
+            && !payment_pointer.starts_with("pending:")
+            && !payment_pointer.starts_with("pay:")
+            && !payment_pointer.starts_with("inv-")
+            && !payment_pointer.starts_with("pay-req-");
+        let converted_to_failed =
+            status == JobHistoryStatus::Succeeded && !authoritative_settlement;
+        let settled_success = status == JobHistoryStatus::Succeeded && authoritative_settlement;
+        let status = if settled_success {
+            JobHistoryStatus::Succeeded
+        } else if converted_to_failed {
+            JobHistoryStatus::Failed
+        } else {
+            status
+        };
+        let failure_reason = if settled_success {
+            None
+        } else if converted_to_failed && job.failure_reason.is_none() {
+            Some("payment settlement not wallet-confirmed".to_string())
+        } else {
+            job.failure_reason.clone()
+        };
         self.upsert_row(JobHistoryReceiptRow {
             job_id: job.job_id.clone(),
             status,
@@ -2454,18 +2480,14 @@ impl JobHistoryState {
             ac_envelope_event_id: job.ac_envelope_event_id.clone(),
             ac_settlement_event_id: job.ac_settlement_event_id.clone(),
             ac_default_event_id: job.ac_default_event_id.clone(),
-            payout_sats: if status == JobHistoryStatus::Succeeded {
+            payout_sats: if settled_success {
                 job.quoted_price_sats
             } else {
                 0
             },
             result_hash: format!("sha256:{}-{}", job.request_id, job.stage.label()),
-            payment_pointer: job
-                .payment_id
-                .clone()
-                .or_else(|| job.invoice_id.clone())
-                .unwrap_or_else(|| format!("pending:{}", job.request_id)),
-            failure_reason: job.failure_reason.clone(),
+            payment_pointer,
+            failure_reason,
         });
         self.page = 0;
         self.last_error = None;
@@ -3520,6 +3542,49 @@ mod tests {
     }
 
     #[test]
+    fn job_history_rejects_unconfirmed_success_settlement_from_active_job() {
+        let mut inbox = seed_job_inbox(vec![fixture_inbox_request(
+            "req-unconfirmed",
+            "summarize.text",
+            1500,
+            300,
+            JobInboxValidation::Valid,
+        )]);
+        assert!(inbox.select_by_index(0));
+        let request = inbox
+            .selected_request()
+            .expect("request should exist")
+            .clone();
+        let mut active = ActiveJobState::default();
+        active.start_from_request(&request);
+        active
+            .advance_stage()
+            .expect("accepted->running should succeed");
+        active
+            .advance_stage()
+            .expect("running->delivered should succeed");
+        active
+            .advance_stage()
+            .expect("delivered->paid should succeed");
+        let job = active.job.as_ref().expect("active job exists");
+        assert!(job.payment_id.is_none());
+
+        let mut history = JobHistoryState::default();
+        history.record_from_active_job(job, JobHistoryStatus::Succeeded);
+        let row = history
+            .rows
+            .first()
+            .expect("history row should be recorded");
+        assert_eq!(row.status, JobHistoryStatus::Failed);
+        assert_eq!(row.payout_sats, 0);
+        assert!(
+            row.failure_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("not wallet-confirmed"))
+        );
+    }
+
+    #[test]
     fn job_history_filters_search_status_and_time() {
         let mut history = seed_job_history(vec![
             fixture_history_row(
@@ -3813,7 +3878,7 @@ mod tests {
     }
 
     #[test]
-    fn starter_jobs_complete_selected_sets_payout_pointer() {
+    fn starter_jobs_complete_selected_requires_wallet_pointer() {
         let mut starter_jobs = StarterJobsState::default();
         starter_jobs.jobs.push(fixture_starter_job(
             "job-starter-001",
@@ -3822,9 +3887,12 @@ mod tests {
             StarterJobStatus::Queued,
         ));
         starter_jobs.select_by_index(0);
-        let (job_id, _payout, pointer) = starter_jobs
-            .complete_selected()
-            .expect("eligible starter job should complete");
+        let (job_id, _payout) = starter_jobs
+            .start_selected_execution()
+            .expect("eligible starter job should start");
+        let (_job_id, _payout, pointer) = starter_jobs
+            .complete_selected_with_payment("wallet:payment:starter-001")
+            .expect("wallet-confirmed payout should complete");
         let job = starter_jobs
             .jobs
             .iter()
