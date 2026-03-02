@@ -43,7 +43,7 @@ Default output directory: `target/parity-ci`
 Generated outputs:
 
 - `payload/` copied parity source artifacts and generated `parity_ci_artifact_manifest.json`
-- payload includes baseline manifests, inventories, gap matrix, scorecard, fixture corpus, risk register, and dashboard snapshot
+- payload includes baseline manifests, inventories, gap matrix, scorecard, fixture corpus, risk register, dashboard snapshot, and kernel adapter v2 manifest
 - `parity_ci_artifacts.tar.gz` bundle for CI upload
 - `parity_ci_artifacts.sha256` deterministic bundle checksum
 - `parity_ci_upload.env` env-style metadata (paths + checksum) for CI upload step wiring
