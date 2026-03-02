@@ -4186,6 +4186,10 @@ impl StableSatsSimulationPaneState {
         );
     }
 
+    pub fn record_runtime_event(&mut self, protocol: &str, event_ref: String, summary: String) {
+        self.push_event(protocol, event_ref.as_str(), summary);
+    }
+
     pub fn reserve_worker_request_id(&mut self) -> u64 {
         let request_id = self.next_live_refresh_request_id;
         self.next_live_refresh_request_id = self.next_live_refresh_request_id.saturating_add(1);
