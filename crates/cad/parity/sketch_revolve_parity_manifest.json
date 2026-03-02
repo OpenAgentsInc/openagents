@@ -1,0 +1,51 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-048",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "vcad_reference_sources": [
+    "docs/features/sketch-operations.md (Revolve full vs partial angles)",
+    "crates/vcad-kernel-sketch/src/revolve.rs (angle bounds, axis guards, partial/full behavior)"
+  ],
+  "full_case": {
+    "revolve_angle_deg": 360.0,
+    "profile_closed_loop": true,
+    "warning_codes": [],
+    "profile_bounds_mm": [
+      5.0,
+      8.0,
+      0.0,
+      10.0
+    ],
+    "profile_hash": "95546a0e9aa2a63a",
+    "node_hash": "b4ca0a0e72352dcf"
+  },
+  "partial_case": {
+    "revolve_angle_deg": 90.0,
+    "profile_closed_loop": true,
+    "warning_codes": [
+      "CAD-WARN-SLIVER-FACE"
+    ],
+    "profile_bounds_mm": [
+      5.0,
+      8.0,
+      0.0,
+      10.0
+    ],
+    "profile_hash": "53971b37ce049284",
+    "node_hash": "90c5cf578db8d209"
+  },
+  "profile_hash_order_stable": true,
+  "invalid_zero_angle_error": "parse failed: revolve_angle_deg must be finite and in (0, 360], got 0",
+  "invalid_over_360_angle_error": "parse failed: revolve_angle_deg must be finite and in (0, 360], got 361",
+  "missing_axis_error": "parse failed: revolve operations require axis_anchor_ids",
+  "unsolved_constraint_error": "evaluation failed: sketch profile profile.unsolved has unsolved constraints; conversion blocked",
+  "deterministic_replay_match": true,
+  "deterministic_signature": "3452316b040dcaf9",
+  "parity_contracts": [
+    "360-degree revolve emits deterministic sketch.revolve.v1 nodes without partial-angle seam warnings",
+    "partial-angle revolve emits deterministic CAD-WARN-SLIVER-FACE advisories",
+    "revolve rejects zero/over-360 angles, missing axis anchors, and unsolved constraints deterministically"
+  ]
+}

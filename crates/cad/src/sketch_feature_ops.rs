@@ -109,6 +109,11 @@ impl SketchProfileFeatureSpec {
                         reason: "revolve operations must not specify depth_mm".to_string(),
                     });
                 }
+                if self.source_feature_id.is_some() {
+                    return Err(CadError::ParseFailed {
+                        reason: "revolve operations must not specify source_feature_id".to_string(),
+                    });
+                }
                 let angle = self
                     .revolve_angle_deg
                     .ok_or_else(|| CadError::ParseFailed {
@@ -859,7 +864,7 @@ mod tests {
 
         let revolve_with_depth = SketchProfileFeatureSpec {
             depth_mm: Some(5.0),
-            ..revolve
+            ..revolve.clone()
         };
         assert!(
             revolve_with_depth
@@ -867,6 +872,18 @@ mod tests {
                 .expect_err("revolve must reject depth_mm")
                 .to_string()
                 .contains("depth_mm")
+        );
+
+        let revolve_with_source = SketchProfileFeatureSpec {
+            source_feature_id: Some("feature.source".to_string()),
+            ..revolve
+        };
+        assert!(
+            revolve_with_source
+                .validate()
+                .expect_err("revolve must reject source_feature_id")
+                .to_string()
+                .contains("source_feature_id")
         );
     }
 

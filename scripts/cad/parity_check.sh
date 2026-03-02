@@ -43,6 +43,7 @@ LANE_LABELS=(
     "sketch-jacobian-residual"
     "sketch-constraint-status"
     "sketch-extrude"
+    "sketch-revolve"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -225,6 +226,9 @@ run_lane "sketch-constraint-status" \
 
 run_lane "sketch-extrude" \
     "$ROOT_DIR/scripts/cad/parity-sketch-extrude-ci.sh"
+
+run_lane "sketch-revolve" \
+    "$ROOT_DIR/scripts/cad/parity-sketch-revolve-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
