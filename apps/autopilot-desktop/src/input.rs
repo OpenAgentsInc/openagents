@@ -52,19 +52,8 @@ use crate::pane_system::{
     PaneHitAction, PaneInput, RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction,
     SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StableSatsSimulationPaneAction,
     StarterJobsPaneAction, SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction,
-    cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
-    cad_demo_cycle_variant_button_bounds, cad_demo_dimension_panel_bounds,
-    cad_demo_hidden_line_mode_button_bounds, cad_demo_hotkey_profile_button_bounds,
-    cad_demo_material_button_bounds, cad_demo_projection_mode_button_bounds,
-    cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
-    cad_demo_section_offset_button_bounds, cad_demo_section_plane_button_bounds,
-    cad_demo_snap_endpoint_button_bounds, cad_demo_snap_grid_button_bounds,
-    cad_demo_snap_midpoint_button_bounds, cad_demo_snap_origin_button_bounds,
-    cad_demo_timeline_panel_bounds, cad_demo_view_snap_front_button_bounds,
-    cad_demo_view_snap_iso_button_bounds, cad_demo_view_snap_right_button_bounds,
-    cad_demo_view_snap_top_button_bounds, cad_demo_warning_filter_code_button_bounds,
-    cad_demo_warning_filter_severity_button_bounds, cad_demo_warning_panel_bounds,
-    clamp_all_panes_to_window, dispatch_chat_input_event, dispatch_chat_scroll_event,
+    cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds, clamp_all_panes_to_window,
+    dispatch_chat_input_event, dispatch_chat_scroll_event,
     dispatch_create_invoice_input_event, dispatch_credentials_input_event,
     dispatch_job_history_input_event, dispatch_network_requests_input_event,
     dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
@@ -1848,8 +1837,11 @@ fn cad_camera_target_pane_id(state: &crate::app_state::RenderState, point: Point
     let pane_order = pane_indices_by_z_desc(state);
     for pane_idx in pane_order {
         let pane = &state.panes[pane_idx];
-        if pane.kind != PaneKind::CadDemo || !pane.bounds.contains(point) {
+        if !pane.bounds.contains(point) {
             continue;
+        }
+        if pane.kind != PaneKind::CadDemo {
+            return None;
         }
         let content_bounds = pane_content_bounds(pane.bounds);
         if !content_bounds.contains(point) {
@@ -1865,29 +1857,7 @@ fn cad_camera_target_pane_id(state: &crate::app_state::RenderState, point: Point
                 return None;
             }
         }
-        if cad_demo_cycle_variant_button_bounds(content_bounds).contains(point)
-            || cad_demo_reset_button_bounds(content_bounds).contains(point)
-            || cad_demo_hidden_line_mode_button_bounds(content_bounds).contains(point)
-            || cad_demo_reset_camera_button_bounds(content_bounds).contains(point)
-            || cad_demo_projection_mode_button_bounds(content_bounds).contains(point)
-            || cad_demo_section_plane_button_bounds(content_bounds).contains(point)
-            || cad_demo_section_offset_button_bounds(content_bounds).contains(point)
-            || cad_demo_material_button_bounds(content_bounds).contains(point)
-            || cad_demo_snap_grid_button_bounds(content_bounds).contains(point)
-            || cad_demo_snap_origin_button_bounds(content_bounds).contains(point)
-            || cad_demo_snap_endpoint_button_bounds(content_bounds).contains(point)
-            || cad_demo_snap_midpoint_button_bounds(content_bounds).contains(point)
-            || cad_demo_hotkey_profile_button_bounds(content_bounds).contains(point)
-            || cad_demo_view_snap_top_button_bounds(content_bounds).contains(point)
-            || cad_demo_view_snap_front_button_bounds(content_bounds).contains(point)
-            || cad_demo_view_snap_right_button_bounds(content_bounds).contains(point)
-            || cad_demo_view_snap_iso_button_bounds(content_bounds).contains(point)
-            || cad_demo_warning_filter_severity_button_bounds(content_bounds).contains(point)
-            || cad_demo_warning_filter_code_button_bounds(content_bounds).contains(point)
-            || cad_demo_warning_panel_bounds(content_bounds).contains(point)
-            || cad_demo_dimension_panel_bounds(content_bounds).contains(point)
-            || cad_demo_timeline_panel_bounds(content_bounds).contains(point)
-        {
+        if topmost_pane_hit_action_in_order(state, point, &[pane_idx]).is_some() {
             return None;
         }
         if cad_pane::variant_tile_index_at_point(content_bounds, point).is_some() {
