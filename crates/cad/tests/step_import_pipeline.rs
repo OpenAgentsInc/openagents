@@ -135,7 +135,7 @@ fn step_import_pipeline_is_deterministic_for_identical_inputs() {
 
 #[test]
 fn step_import_pipeline_rejects_structural_checker_errors() {
-    let malformed = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('OpenAgents CAD STEP export'),'2;1');\nFILE_NAME('bad.step','1970-01-01T00:00:00',('OpenAgents'),('OpenAgents'),'openagents-cad','openagents-cad','deterministic');\nFILE_SCHEMA(('AUTOMOTIVE_DESIGN_CC2'));\nENDSEC;\nDATA;\n#1=FACETED_BREP('bad',#2);\n#2=OPEN_SHELL('',());\nENDSEC;\nEND-ISO-10303-21;\n";
+    let malformed = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('OpenAgents CAD STEP export'),'2;1');\nFILE_NAME('bad.step','1970-01-01T00:00:00',('OpenAgents'),('OpenAgents'),'openagents-cad','openagents-cad','deterministic');\nFILE_SCHEMA(('AUTOMOTIVE_DESIGN_CC2'));\nENDSEC;\nDATA;\n#1=FACETED_BREP('bad',#2);\nENDSEC;\nEND-ISO-10303-21;\n";
     let error = import_step_text_to_document(malformed, "doc.import.pipeline.bad")
         .expect_err("invalid shell topology should fail import");
     let message = error.to_string();

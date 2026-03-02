@@ -84,6 +84,7 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/drafting_dxf_export_parity_manifest.json"
     "crates/cad/parity/drafting_pdf_export_parity_manifest.json"
     "crates/cad/parity/drafting_checkpoint_parity_manifest.json"
+    "crates/cad/parity/step_import_entity_parity_manifest.json"
     "crates/cad/parity/sketch_loft_parity_manifest.json"
     "crates/cad/parity/sketch_profile_validity_parity_manifest.json"
     "crates/cad/parity/sketch_revolve_parity_manifest.json"
@@ -111,6 +112,7 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/fixtures/drafting_persistence_vcad_reference.json"
     "crates/cad/parity/fixtures/drafting_dxf_export_vcad_reference.json"
     "crates/cad/parity/fixtures/drafting_pdf_export_vcad_reference.json"
+    "crates/cad/parity/fixtures/step_import_entity_vcad_reference.json"
     "crates/cad/parity/fixtures/parity_fixture_corpus.json"
 )
 

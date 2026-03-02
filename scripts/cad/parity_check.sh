@@ -74,6 +74,7 @@ LANE_LABELS=(
     "drafting-dxf-export"
     "drafting-pdf-export"
     "drafting-checkpoint"
+    "step-import-entity"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -349,6 +350,9 @@ run_lane "drafting-pdf-export" \
 
 run_lane "drafting-checkpoint" \
     "$ROOT_DIR/scripts/cad/parity-drafting-checkpoint-ci.sh"
+
+run_lane "step-import-entity" \
+    "$ROOT_DIR/scripts/cad/parity-step-import-entity-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
