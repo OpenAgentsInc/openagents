@@ -19,6 +19,7 @@ Current artifacts:
 - `kernel_topology_parity_manifest.json` (`VCAD-PARITY-013`)
 - `kernel_geom_parity_manifest.json` (`VCAD-PARITY-014`)
 - `kernel_primitives_parity_manifest.json` (`VCAD-PARITY-015`)
+- `kernel_tessellate_parity_manifest.json` (`VCAD-PARITY-016`)
 
 Regeneration/check command:
 
@@ -38,6 +39,7 @@ scripts/cad/parity-kernel-math-ci.sh
 scripts/cad/parity-kernel-topology-ci.sh
 scripts/cad/parity-kernel-geom-ci.sh
 scripts/cad/parity-kernel-primitives-ci.sh
+scripts/cad/parity-kernel-tessellate-ci.sh
 scripts/cad/parity-blocker-workflow.sh
 scripts/cad/parity_check.sh
 scripts/cad/parity-ci-lane.sh
