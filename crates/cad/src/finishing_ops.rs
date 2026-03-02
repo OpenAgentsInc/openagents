@@ -652,6 +652,56 @@ mod tests {
     }
 
     #[test]
+    fn fillet_node_round_trip_canonicalizes_edge_refs() {
+        let op = FilletFeatureOp {
+            feature_id: "feature.fillet".to_string(),
+            source_feature_id: "feature.base".to_string(),
+            radius_param: "fillet_radius_mm".to_string(),
+            edge_refs: vec![
+                "edge.3".to_string(),
+                "edge.1".to_string(),
+                "edge.1".to_string(),
+            ],
+            allow_fallback: false,
+        };
+        let node = op.to_feature_node().expect("fillet node should build");
+        assert_eq!(node.operation_key, FILLET_OPERATION_KEY);
+        let parsed = FilletFeatureOp::from_feature_node(&node).expect("fillet node should parse");
+        assert_eq!(
+            parsed.edge_refs,
+            vec!["edge.1".to_string(), "edge.3".to_string()]
+        );
+    }
+
+    #[test]
+    fn fillet_geometry_hash_depends_on_edge_refs() {
+        let op_a = FilletFeatureOp {
+            feature_id: "feature.fillet".to_string(),
+            source_feature_id: "feature.base".to_string(),
+            radius_param: "fillet_radius_mm".to_string(),
+            edge_refs: vec!["edge.1".to_string()],
+            allow_fallback: false,
+        };
+        let op_b = FilletFeatureOp {
+            feature_id: "feature.fillet".to_string(),
+            source_feature_id: "feature.base".to_string(),
+            radius_param: "fillet_radius_mm".to_string(),
+            edge_refs: vec!["edge.2".to_string()],
+            allow_fallback: false,
+        };
+        let result_a =
+            evaluate_fillet_feature(&op_a, &params(), &context()).expect("fillet A should apply");
+        let result_b =
+            evaluate_fillet_feature(&op_b, &params(), &context()).expect("fillet B should apply");
+        assert_eq!(result_a.status, FinishingStatus::Applied);
+        assert_eq!(result_b.status, FinishingStatus::Applied);
+        assert_ne!(
+            result_a.geometry_hash, result_b.geometry_hash,
+            "fillet geometry hash must include edge selection signature"
+        );
+    }
+
+    #[test]
     fn fillet_risk_uses_fallback_with_warning_when_enabled() {
         let mut params = params();
         params
