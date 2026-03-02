@@ -71,9 +71,9 @@ pub fn build_kernel_booleans_parity_manifest(
         staged_pipeline_contracts: vec![
             "AabbFilter -> SurfaceSurfaceIntersection -> Classification -> Reconstruction stage order is stable"
                 .to_string(),
-            "Mesh fallback remains active while BRep reconstruction parity is staged".to_string(),
+            "BRep output is preserved for union/difference/intersection overlap cases".to_string(),
             "Pipeline emits deterministic signature for identical inputs".to_string(),
-            "Intersection of disjoint solids yields EmptyResult via fallback summary".to_string(),
+            "Intersection of disjoint solids yields EmptyResult without mesh fallback".to_string(),
         ],
     }
 }
@@ -172,10 +172,10 @@ mod tests {
     fn build_manifest_has_expected_stage_order_and_outcomes() {
         let manifest = build_kernel_booleans_parity_manifest(&mock_scorecard(), "scorecard.json");
         assert_eq!(manifest.issue_id, PARITY_KERNEL_BOOLEANS_ISSUE_ID);
-        assert_eq!(manifest.stage_order.len(), 5);
-        assert_eq!(manifest.sample_union.outcome, "MeshFallback");
-        assert_eq!(manifest.sample_difference.outcome, "MeshFallback");
-        assert_eq!(manifest.sample_intersection.outcome, "MeshFallback");
-        assert!(manifest.sample_union.mesh_output_triangle_count > 0);
+        assert_eq!(manifest.stage_order.len(), 4);
+        assert_eq!(manifest.sample_union.outcome, "BrepReconstruction");
+        assert_eq!(manifest.sample_difference.outcome, "BrepReconstruction");
+        assert_eq!(manifest.sample_intersection.outcome, "BrepReconstruction");
+        assert_eq!(manifest.sample_union.mesh_output_triangle_count, 0);
     }
 }

@@ -33,11 +33,11 @@ fn kernel_booleans_manifest_fixture_is_well_formed() {
     let manifest: KernelBooleansParityManifest = load_json(&path);
     assert_eq!(manifest.manifest_version, 1);
     assert_eq!(manifest.issue_id, PARITY_KERNEL_BOOLEANS_ISSUE_ID);
-    assert_eq!(manifest.stage_order.len(), 5);
-    assert_eq!(manifest.sample_union.outcome, "MeshFallback");
-    assert_eq!(manifest.sample_difference.outcome, "MeshFallback");
-    assert_eq!(manifest.sample_intersection.outcome, "MeshFallback");
-    assert!(manifest.sample_union.mesh_output_triangle_count > 0);
+    assert_eq!(manifest.stage_order.len(), 4);
+    assert_eq!(manifest.sample_union.outcome, "BrepReconstruction");
+    assert_eq!(manifest.sample_difference.outcome, "BrepReconstruction");
+    assert_eq!(manifest.sample_intersection.outcome, "BrepReconstruction");
+    assert_eq!(manifest.sample_union.mesh_output_triangle_count, 0);
 }
 
 #[test]

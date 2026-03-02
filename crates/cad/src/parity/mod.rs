@@ -3,6 +3,7 @@ pub mod dashboard;
 pub mod fixture_corpus;
 pub mod gap_matrix;
 pub mod kernel_adapter_v2;
+pub mod kernel_boolean_brep_parity;
 pub mod kernel_boolean_diagnostics_parity;
 pub mod kernel_booleans_parity;
 pub mod kernel_geom_parity;
