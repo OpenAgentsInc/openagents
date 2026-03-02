@@ -151,7 +151,7 @@ Major gaps to close:
 63. [x] VCAD-PARITY-063: Assembly UI pane parity for selection/editing.
 64. [x] VCAD-PARITY-064: Assembly serialization and replay parity.
 65. [x] VCAD-PARITY-065: Assembly acceptance scenes parity fixtures.
-66. [ ] VCAD-PARITY-066: Assembly parity checkpoint.
+66. [x] VCAD-PARITY-066: Assembly parity checkpoint.
 
 ### Phase F - 2D drafting parity (`VCAD-PARITY-067` to `VCAD-PARITY-078`)
 

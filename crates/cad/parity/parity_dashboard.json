@@ -39,9 +39,10 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 76,
+    "source_artifact_count": 77,
     "artifact_ids": [
       "assembly_acceptance_scenes_parity_manifest",
+      "assembly_checkpoint_parity_manifest",
       "assembly_fk_parity_manifest",
       "assembly_ground_delete_parity_manifest",
       "assembly_joint_cb_parity_manifest",
@@ -119,9 +120,9 @@
       "vcad_reference_manifest"
     ]
   },
-  "phase_status": "phase_e_acceptance_scenes_complete",
+  "phase_status": "phase_e_checkpoint_complete",
   "next_actions": [
-    "Execute VCAD-PARITY-066 sequentially",
+    "Execute VCAD-PARITY-067 through VCAD-PARITY-078 sequentially",
     "Keep phase_a_baseline_v1 profile passing in scorecard and risk register lanes",
     "Refresh parity dashboard after each closed parity issue"
   ]
