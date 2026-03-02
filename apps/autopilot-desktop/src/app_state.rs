@@ -3929,6 +3929,13 @@ mod tests {
                 .iter()
                 .any(|event| event.protocol == "BLINK-LEDGER")
         );
+        assert!(!state.transfer_ledger.is_empty());
+        assert!(
+            state
+                .transfer_ledger
+                .iter()
+                .all(|entry| entry.status == crate::app_state::StableSatsTransferStatus::Settled)
+        );
 
         let next_modes: Vec<_> = state
             .agents
@@ -3944,6 +3951,47 @@ mod tests {
         assert!(state.last_settlement_ref.is_none());
         assert!(state.price_history_usd_cents_per_btc.is_empty());
         assert!(state.converted_sats_history.is_empty());
+        assert!(state.transfer_ledger.is_empty());
+    }
+
+    #[test]
+    fn stablesats_real_mode_initializes_three_wallet_topology() {
+        let mut state = StableSatsSimulationPaneState::default();
+        state.set_mode(crate::app_state::StableSatsSimulationMode::RealBlink);
+        assert_eq!(state.agents.len(), 3);
+        assert_eq!(
+            state.agents[0].owner_kind,
+            crate::app_state::StableSatsWalletOwnerKind::Operator
+        );
+        assert!(state.agents[0].credential_key_name.starts_with("BLINK_API_KEY"));
+        assert_eq!(
+            state.agents[1].owner_kind,
+            crate::app_state::StableSatsWalletOwnerKind::SovereignAgent
+        );
+        assert_eq!(
+            state.agents[2].owner_kind,
+            crate::app_state::StableSatsWalletOwnerKind::SovereignAgent
+        );
+    }
+
+    #[test]
+    fn stablesats_live_snapshot_updates_operator_wallet_and_ledger() {
+        let mut state = StableSatsSimulationPaneState::default();
+        state.set_mode(crate::app_state::StableSatsSimulationMode::RealBlink);
+        state.apply_live_snapshot(1_761_921_200, 2_000, 250, 8_500_000, "btc:op usd:op");
+        assert_eq!(state.agents.len(), 3);
+        assert_eq!(state.agents[0].agent_name, "autopilot-user");
+        assert_eq!(state.agents[0].btc_balance_sats, 2_000);
+        assert_eq!(state.agents[0].usd_balance_cents, 250);
+        assert_eq!(state.agents[1].btc_balance_sats, 0);
+        assert_eq!(state.agents[2].usd_balance_cents, 0);
+        assert!(!state.transfer_ledger.is_empty());
+        assert!(
+            state
+                .transfer_ledger
+                .iter()
+                .all(|entry| entry.transfer_ref.starts_with("blink:live:transfer:"))
+        );
     }
 
     #[test]
