@@ -88,6 +88,7 @@ LANE_LABELS=(
     "text-to-cad-training-eval"
     "headless-script-harness"
     "io-headless-ai-checkpoint"
+    "viewport-camera-gizmo"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -405,6 +406,9 @@ run_lane "headless-script-harness" \
 
 run_lane "io-headless-ai-checkpoint" \
     "$ROOT_DIR/scripts/cad/parity-io-headless-ai-checkpoint-ci.sh"
+
+run_lane "viewport-camera-gizmo" \
+    "$ROOT_DIR/scripts/cad/parity-viewport-camera-gizmo-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

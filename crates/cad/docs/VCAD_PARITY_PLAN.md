@@ -187,7 +187,7 @@ Major gaps to close:
 
 ### Phase H - Rendering + GPU + raytrace parity (`VCAD-PARITY-093` to `VCAD-PARITY-104`)
 
-93. [ ] VCAD-PARITY-093: Viewport camera/gizmo parity baseline.
+93. [x] VCAD-PARITY-093: Viewport camera/gizmo parity baseline.
 94. [ ] VCAD-PARITY-094: Render mode parity (standard/wire/hidden-line variants).
 95. [ ] VCAD-PARITY-095: GPU acceleration lane parity in rendering backend.
 96. [ ] VCAD-PARITY-096: Mesh upload + processing parity contracts.

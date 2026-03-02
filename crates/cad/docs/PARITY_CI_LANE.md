@@ -43,7 +43,7 @@ Default output directory: `target/parity-ci`
 Generated outputs:
 
 - `payload/` copied parity source artifacts and generated `parity_ci_artifact_manifest.json`
-- payload includes all parity manifests/fixtures enumerated in `ARTIFACT_SOURCE_PATHS` (including compact IR + intent-modeling + text-to-cad + text-to-cad-dataset + text-to-cad-training-eval + headless-script-harness + io-headless-ai-checkpoint parity manifests and vcad reference fixtures)
+- payload includes all parity manifests/fixtures enumerated in `ARTIFACT_SOURCE_PATHS` (including compact IR + intent-modeling + text-to-cad + text-to-cad-dataset + text-to-cad-training-eval + headless-script-harness + io-headless-ai-checkpoint + viewport-camera-gizmo parity manifests and vcad reference fixtures)
 - `parity_ci_artifacts.tar.gz` bundle for CI upload
 - `parity_ci_artifacts.sha256` deterministic bundle checksum
 - `parity_ci_upload.env` env-style metadata (paths + checksum) for CI upload step wiring
