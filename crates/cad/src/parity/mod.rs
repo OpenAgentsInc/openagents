@@ -69,6 +69,7 @@ pub mod sketch_profile_validity_parity;
 pub mod sketch_revolve_parity;
 pub mod sketch_sweep_parity;
 pub mod sketch_undo_redo_parity;
+pub mod step_export_post_boolean_parity;
 pub mod step_import_entity_parity;
 pub mod sweep_parity;
 pub mod topology_repair_parity;
