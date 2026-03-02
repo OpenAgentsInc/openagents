@@ -17,7 +17,8 @@ use crate::openagents_dynamic_tools::{
     OPENAGENTS_TOOL_GOAL_SCHEDULER, OPENAGENTS_TOOL_PANE_ACTION, OPENAGENTS_TOOL_PANE_CLOSE,
     OPENAGENTS_TOOL_PANE_FOCUS, OPENAGENTS_TOOL_PANE_LIST, OPENAGENTS_TOOL_PANE_OPEN,
     OPENAGENTS_TOOL_PANE_SET_INPUT, OPENAGENTS_TOOL_PROVIDER_CONTROL, OPENAGENTS_TOOL_SWAP_EXECUTE,
-    OPENAGENTS_TOOL_SWAP_QUOTE, OPENAGENTS_TOOL_WALLET_CHECK,
+    OPENAGENTS_TOOL_SWAP_QUOTE, OPENAGENTS_TOOL_TREASURY_CONVERT, OPENAGENTS_TOOL_TREASURY_RECEIPT,
+    OPENAGENTS_TOOL_TREASURY_TRANSFER, OPENAGENTS_TOOL_WALLET_CHECK,
 };
 use crate::pane_registry::{pane_spec, pane_spec_by_command_id, pane_specs};
 use crate::pane_system::{
@@ -56,6 +57,9 @@ const LEGACY_OPENAGENTS_TOOL_CAD_INTENT: &str = "openagents.cad.intent";
 const LEGACY_OPENAGENTS_TOOL_CAD_ACTION: &str = "openagents.cad.action";
 const LEGACY_OPENAGENTS_TOOL_SWAP_QUOTE: &str = "openagents.swap.quote";
 const LEGACY_OPENAGENTS_TOOL_SWAP_EXECUTE: &str = "openagents.swap.execute";
+const LEGACY_OPENAGENTS_TOOL_TREASURY_TRANSFER: &str = "openagents.treasury.transfer";
+const LEGACY_OPENAGENTS_TOOL_TREASURY_CONVERT: &str = "openagents.treasury.convert";
+const LEGACY_OPENAGENTS_TOOL_TREASURY_RECEIPT: &str = "openagents.treasury.receipt";
 const LEGACY_OPENAGENTS_TOOL_GOAL_SCHEDULER: &str = "openagents.goal.scheduler";
 const LEGACY_OPENAGENTS_TOOL_WALLET_CHECK: &str = "openagents.wallet.check";
 const LEGACY_OPENAGENTS_TOOL_PROVIDER_CONTROL: &str = "openagents.provider.control";
@@ -70,6 +74,9 @@ const LEGACY_OPENAGENTS_TOOL_NAMES: &[&str] = &[
     LEGACY_OPENAGENTS_TOOL_CAD_ACTION,
     LEGACY_OPENAGENTS_TOOL_SWAP_QUOTE,
     LEGACY_OPENAGENTS_TOOL_SWAP_EXECUTE,
+    LEGACY_OPENAGENTS_TOOL_TREASURY_TRANSFER,
+    LEGACY_OPENAGENTS_TOOL_TREASURY_CONVERT,
+    LEGACY_OPENAGENTS_TOOL_TREASURY_RECEIPT,
     LEGACY_OPENAGENTS_TOOL_GOAL_SCHEDULER,
     LEGACY_OPENAGENTS_TOOL_WALLET_CHECK,
     LEGACY_OPENAGENTS_TOOL_PROVIDER_CONTROL,
@@ -271,6 +278,31 @@ struct SwapExecuteArgs {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+struct TreasuryTransferArgs {
+    from_owner_id: String,
+    to_owner_id: String,
+    asset: String,
+    amount: u64,
+    #[serde(default)]
+    memo: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct TreasuryConvertArgs {
+    owner_id: String,
+    direction: String,
+    amount: u64,
+    unit: String,
+    #[serde(default)]
+    memo: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct TreasuryReceiptArgs {
+    worker_request_id: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 struct BlinkSwapQuoteEnvelope {
     event: String,
     quote: BlinkSwapQuoteTerms,
@@ -373,6 +405,11 @@ struct ProviderControlArgs {
 const BLINK_SKILL_NAME: &str = "blink";
 const BLINK_SWAP_QUOTE_SCRIPT: &str = "swap_quote.js";
 const BLINK_SWAP_EXECUTE_SCRIPT: &str = "swap_execute.js";
+const BLINK_BALANCE_SCRIPT: &str = "balance.js";
+const BLINK_CREATE_INVOICE_SCRIPT: &str = "create_invoice.js";
+const BLINK_CREATE_INVOICE_USD_SCRIPT: &str = "create_invoice_usd.js";
+const BLINK_FEE_PROBE_SCRIPT: &str = "fee_probe.js";
+const BLINK_PAY_INVOICE_SCRIPT: &str = "pay_invoice.js";
 const BLINK_SWAP_PARSE_VERSION: &str = "blink.swap.v1";
 
 pub(super) fn execute_openagents_tool_request(
@@ -452,6 +489,27 @@ pub(super) fn execute_openagents_tool_request(
                 Err(error) => return error,
             };
             execute_swap_execute(state, &args)
+        }
+        OPENAGENTS_TOOL_TREASURY_TRANSFER | LEGACY_OPENAGENTS_TOOL_TREASURY_TRANSFER => {
+            let args = match decoded.decode_arguments::<TreasuryTransferArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_treasury_transfer(state, &args)
+        }
+        OPENAGENTS_TOOL_TREASURY_CONVERT | LEGACY_OPENAGENTS_TOOL_TREASURY_CONVERT => {
+            let args = match decoded.decode_arguments::<TreasuryConvertArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_treasury_convert(state, &args)
+        }
+        OPENAGENTS_TOOL_TREASURY_RECEIPT | LEGACY_OPENAGENTS_TOOL_TREASURY_RECEIPT => {
+            let args = match decoded.decode_arguments::<TreasuryReceiptArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_treasury_receipt(state, &args)
         }
         OPENAGENTS_TOOL_GOAL_SCHEDULER | LEGACY_OPENAGENTS_TOOL_GOAL_SCHEDULER => {
             let args = match decoded.decode_arguments::<GoalSchedulerToolArgs>() {
@@ -2058,12 +2116,14 @@ fn execute_swap_quote(state: &mut RenderState, args: &SwapQuoteArgs) -> ToolBrid
         parse_version: BLINK_SWAP_PARSE_VERSION.to_string(),
     };
     let worker_request_id = state.stable_sats_simulation.reserve_worker_request_id();
-    state.stable_sats_simulation.record_treasury_operation_queued(
-        worker_request_id,
-        crate::app_state::StableSatsTreasuryOperationKind::SwapQuote,
-        now_epoch_seconds,
-        format!("queued swap quote goal={} request={}", goal_id, request_id),
-    );
+    state
+        .stable_sats_simulation
+        .record_treasury_operation_queued(
+            worker_request_id,
+            crate::app_state::StableSatsTreasuryOperationKind::SwapQuote,
+            now_epoch_seconds,
+            format!("queued swap quote goal={} request={}", goal_id, request_id),
+        );
     let env_overrides = resolve_swap_runtime_env_overrides(state);
     let worker_request = crate::stablesats_blink_worker::StableSatsBlinkSwapQuoteRequest {
         request_id: worker_request_id,
@@ -2078,13 +2138,15 @@ fn execute_swap_quote(state: &mut RenderState, args: &SwapQuoteArgs) -> ToolBrid
         .stable_sats_blink_worker
         .enqueue_swap_quote(worker_request)
     {
-        state.stable_sats_simulation.record_treasury_operation_finished(
-            worker_request_id,
-            crate::app_state::StableSatsTreasuryOperationKind::SwapQuote,
-            crate::app_state::StableSatsTreasuryOperationStatus::Failed,
-            now_epoch_seconds,
-            format!("swap quote enqueue failed: {error}"),
-        );
+        state
+            .stable_sats_simulation
+            .record_treasury_operation_finished(
+                worker_request_id,
+                crate::app_state::StableSatsTreasuryOperationKind::SwapQuote,
+                crate::app_state::StableSatsTreasuryOperationStatus::Failed,
+                now_epoch_seconds,
+                format!("swap quote enqueue failed: {error}"),
+            );
         return ToolBridgeResultEnvelope::error(
             "OA-SWAP-QUOTE-WORKER-UNAVAILABLE",
             format!("Swap quote worker unavailable: {error}"),
@@ -2205,12 +2267,14 @@ fn execute_swap_execute(
         parse_version: BLINK_SWAP_PARSE_VERSION.to_string(),
     };
     let worker_request_id = state.stable_sats_simulation.reserve_worker_request_id();
-    state.stable_sats_simulation.record_treasury_operation_queued(
-        worker_request_id,
-        crate::app_state::StableSatsTreasuryOperationKind::SwapExecute,
-        now_epoch_seconds,
-        format!("queued swap execute goal={} quote={}", goal_id, quote_id),
-    );
+    state
+        .stable_sats_simulation
+        .record_treasury_operation_queued(
+            worker_request_id,
+            crate::app_state::StableSatsTreasuryOperationKind::SwapExecute,
+            now_epoch_seconds,
+            format!("queued swap execute goal={} quote={}", goal_id, quote_id),
+        );
     let env_overrides = resolve_swap_runtime_env_overrides(state);
     let worker_request = crate::stablesats_blink_worker::StableSatsBlinkSwapExecuteRequest {
         request_id: worker_request_id,
@@ -2225,13 +2289,15 @@ fn execute_swap_execute(
         .stable_sats_blink_worker
         .enqueue_swap_execute(worker_request)
     {
-        state.stable_sats_simulation.record_treasury_operation_finished(
-            worker_request_id,
-            crate::app_state::StableSatsTreasuryOperationKind::SwapExecute,
-            crate::app_state::StableSatsTreasuryOperationStatus::Failed,
-            now_epoch_seconds,
-            format!("swap execute enqueue failed: {error}"),
-        );
+        state
+            .stable_sats_simulation
+            .record_treasury_operation_finished(
+                worker_request_id,
+                crate::app_state::StableSatsTreasuryOperationKind::SwapExecute,
+                crate::app_state::StableSatsTreasuryOperationStatus::Failed,
+                now_epoch_seconds,
+                format!("swap execute enqueue failed: {error}"),
+            );
         return ToolBridgeResultEnvelope::error(
             "OA-SWAP-EXECUTE-WORKER-UNAVAILABLE",
             format!("Swap execute worker unavailable: {error}"),
@@ -2285,6 +2351,472 @@ fn execute_swap_execute(
                 "executed_at_epoch_seconds": command_provenance.executed_at_epoch_seconds,
                 "parse_version": command_provenance.parse_version,
             },
+        }),
+    )
+}
+
+fn execute_treasury_transfer(
+    state: &mut RenderState,
+    args: &TreasuryTransferArgs,
+) -> ToolBridgeResultEnvelope {
+    if state.stable_sats_simulation.mode != crate::app_state::StableSatsSimulationMode::RealBlink {
+        return ToolBridgeResultEnvelope::error(
+            "OA-TREASURY-TRANSFER-REAL-MODE-REQUIRED",
+            "StableSats treasury transfer requires real mode",
+            json!({
+                "mode": state.stable_sats_simulation.mode.label(),
+            }),
+        );
+    }
+    let from_owner_id = args.from_owner_id.trim();
+    if from_owner_id.is_empty() {
+        return ToolBridgeResultEnvelope::error(
+            "OA-TREASURY-TRANSFER-MISSING-FROM",
+            "from_owner_id is required",
+            json!({ "from_owner_id": args.from_owner_id }),
+        );
+    }
+    let to_owner_id = args.to_owner_id.trim();
+    if to_owner_id.is_empty() {
+        return ToolBridgeResultEnvelope::error(
+            "OA-TREASURY-TRANSFER-MISSING-TO",
+            "to_owner_id is required",
+            json!({ "to_owner_id": args.to_owner_id }),
+        );
+    }
+    if from_owner_id == to_owner_id {
+        return ToolBridgeResultEnvelope::error(
+            "OA-TREASURY-TRANSFER-SAME-OWNER",
+            "from_owner_id and to_owner_id must be different wallets",
+            json!({
+                "from_owner_id": from_owner_id,
+                "to_owner_id": to_owner_id,
+            }),
+        );
+    }
+
+    let asset = match parse_treasury_transfer_asset(args.asset.as_str()) {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+    let from_wallet = match resolve_stablesats_wallet_by_owner(
+        state,
+        from_owner_id,
+        "OA-TREASURY-TRANSFER-FROM-NOT-FOUND",
+    ) {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+    let to_wallet = match resolve_stablesats_wallet_by_owner(
+        state,
+        to_owner_id,
+        "OA-TREASURY-TRANSFER-TO-NOT-FOUND",
+    ) {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+
+    let source_env_overrides = match resolve_wallet_blink_env_overrides(state, &from_wallet) {
+        Ok(value) => value,
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-TREASURY-TRANSFER-FROM-CREDENTIAL-ERROR",
+                error,
+                json!({
+                    "owner_id": from_owner_id,
+                    "wallet_name": from_wallet.agent_name,
+                    "credential_key_name": from_wallet.credential_key_name,
+                    "credential_url_name": from_wallet.credential_url_name,
+                }),
+            );
+        }
+    };
+    let destination_env_overrides = match resolve_wallet_blink_env_overrides(state, &to_wallet) {
+        Ok(value) => value,
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-TREASURY-TRANSFER-TO-CREDENTIAL-ERROR",
+                error,
+                json!({
+                    "owner_id": to_owner_id,
+                    "wallet_name": to_wallet.agent_name,
+                    "credential_key_name": to_wallet.credential_key_name,
+                    "credential_url_name": to_wallet.credential_url_name,
+                }),
+            );
+        }
+    };
+
+    let balance_script_path = match resolve_blink_swap_script_path(state, BLINK_BALANCE_SCRIPT) {
+        Ok(path) => path,
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-TREASURY-TRANSFER-BLINK-SCRIPT-MISSING",
+                error,
+                json!({ "script": BLINK_BALANCE_SCRIPT }),
+            );
+        }
+    };
+    let create_invoice_script_path =
+        match resolve_blink_swap_script_path(state, BLINK_CREATE_INVOICE_SCRIPT) {
+            Ok(path) => path,
+            Err(error) => {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-TREASURY-TRANSFER-BLINK-SCRIPT-MISSING",
+                    error,
+                    json!({ "script": BLINK_CREATE_INVOICE_SCRIPT }),
+                );
+            }
+        };
+    let create_invoice_usd_script_path =
+        match resolve_blink_swap_script_path(state, BLINK_CREATE_INVOICE_USD_SCRIPT) {
+            Ok(path) => path,
+            Err(error) => {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-TREASURY-TRANSFER-BLINK-SCRIPT-MISSING",
+                    error,
+                    json!({ "script": BLINK_CREATE_INVOICE_USD_SCRIPT }),
+                );
+            }
+        };
+    let fee_probe_script_path = match resolve_blink_swap_script_path(state, BLINK_FEE_PROBE_SCRIPT)
+    {
+        Ok(path) => path,
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-TREASURY-TRANSFER-BLINK-SCRIPT-MISSING",
+                error,
+                json!({ "script": BLINK_FEE_PROBE_SCRIPT }),
+            );
+        }
+    };
+    let pay_invoice_script_path =
+        match resolve_blink_swap_script_path(state, BLINK_PAY_INVOICE_SCRIPT) {
+            Ok(path) => path,
+            Err(error) => {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-TREASURY-TRANSFER-BLINK-SCRIPT-MISSING",
+                    error,
+                    json!({ "script": BLINK_PAY_INVOICE_SCRIPT }),
+                );
+            }
+        };
+
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    let worker_request_id = state.stable_sats_simulation.reserve_worker_request_id();
+    let operation_kind = match asset {
+        crate::stablesats_blink_worker::StableSatsBlinkTransferAsset::BtcSats => {
+            crate::app_state::StableSatsTreasuryOperationKind::TransferBtc
+        }
+        crate::stablesats_blink_worker::StableSatsBlinkTransferAsset::UsdCents => {
+            crate::app_state::StableSatsTreasuryOperationKind::TransferUsd
+        }
+    };
+    state
+        .stable_sats_simulation
+        .record_treasury_operation_queued(
+            worker_request_id,
+            operation_kind,
+            now_epoch_seconds,
+            format!(
+                "queued treasury transfer {} {} {} -> {}",
+                args.amount,
+                asset.label(),
+                from_owner_id,
+                to_owner_id
+            ),
+        );
+    let request = crate::stablesats_blink_worker::StableSatsBlinkTransferRequest {
+        request_id: worker_request_id,
+        now_epoch_seconds,
+        from_owner_id: from_owner_id.to_string(),
+        from_wallet_name: from_wallet.agent_name.clone(),
+        to_owner_id: to_owner_id.to_string(),
+        to_wallet_name: to_wallet.agent_name.clone(),
+        asset,
+        amount: args.amount,
+        memo: args
+            .memo
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
+        source_env_overrides,
+        destination_env_overrides,
+        balance_script_path,
+        create_invoice_script_path,
+        create_invoice_usd_script_path,
+        fee_probe_script_path,
+        pay_invoice_script_path,
+    };
+    if let Err(error) = state.stable_sats_blink_worker.enqueue_transfer(request) {
+        state
+            .stable_sats_simulation
+            .record_treasury_operation_finished(
+                worker_request_id,
+                operation_kind,
+                crate::app_state::StableSatsTreasuryOperationStatus::Failed,
+                now_epoch_seconds,
+                format!("treasury transfer enqueue failed: {error}"),
+            );
+        return ToolBridgeResultEnvelope::error(
+            "OA-TREASURY-TRANSFER-WORKER-UNAVAILABLE",
+            format!("Treasury transfer worker unavailable: {error}"),
+            json!({
+                "worker_request_id": worker_request_id,
+                "from_owner_id": from_owner_id,
+                "to_owner_id": to_owner_id,
+                "asset": asset.label(),
+                "amount": args.amount,
+            }),
+        );
+    }
+    state.autopilot_chat.record_turn_timeline_event(format!(
+        "treasury transfer queued from={} to={} asset={} amount={} worker_request={}",
+        from_owner_id,
+        to_owner_id,
+        asset.label(),
+        args.amount,
+        worker_request_id
+    ));
+    ToolBridgeResultEnvelope::ok(
+        "OA-TREASURY-TRANSFER-QUEUED",
+        "Treasury transfer queued on off-thread worker",
+        json!({
+            "worker_request_id": worker_request_id,
+            "status": "queued",
+            "async": true,
+            "provider": "blink_infrastructure",
+            "from_owner_id": from_owner_id,
+            "from_wallet_name": from_wallet.agent_name,
+            "to_owner_id": to_owner_id,
+            "to_wallet_name": to_wallet.agent_name,
+            "asset": asset.label(),
+            "amount": args.amount,
+        }),
+    )
+}
+
+fn execute_treasury_convert(
+    state: &mut RenderState,
+    args: &TreasuryConvertArgs,
+) -> ToolBridgeResultEnvelope {
+    if state.stable_sats_simulation.mode != crate::app_state::StableSatsSimulationMode::RealBlink {
+        return ToolBridgeResultEnvelope::error(
+            "OA-TREASURY-CONVERT-REAL-MODE-REQUIRED",
+            "StableSats treasury convert requires real mode",
+            json!({
+                "mode": state.stable_sats_simulation.mode.label(),
+            }),
+        );
+    }
+    let owner_id = args.owner_id.trim();
+    if owner_id.is_empty() {
+        return ToolBridgeResultEnvelope::error(
+            "OA-TREASURY-CONVERT-MISSING-OWNER",
+            "owner_id is required",
+            json!({ "owner_id": args.owner_id }),
+        );
+    }
+    let direction = match parse_swap_direction(args.direction.as_str()) {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+    let unit = match parse_swap_unit(args.unit.as_str()) {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+    if let Some(error) = validate_direction_unit(direction, unit) {
+        return error;
+    }
+
+    let wallet = match resolve_stablesats_wallet_by_owner(
+        state,
+        owner_id,
+        "OA-TREASURY-CONVERT-OWNER-NOT-FOUND",
+    ) {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+    let env_overrides = match resolve_wallet_blink_env_overrides(state, &wallet) {
+        Ok(value) => value,
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-TREASURY-CONVERT-CREDENTIAL-ERROR",
+                error,
+                json!({
+                    "owner_id": owner_id,
+                    "wallet_name": wallet.agent_name,
+                    "credential_key_name": wallet.credential_key_name,
+                    "credential_url_name": wallet.credential_url_name,
+                }),
+            );
+        }
+    };
+    let swap_quote_script_path =
+        match resolve_blink_swap_script_path(state, BLINK_SWAP_QUOTE_SCRIPT) {
+            Ok(path) => path,
+            Err(error) => {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-TREASURY-CONVERT-BLINK-SCRIPT-MISSING",
+                    error,
+                    json!({ "script": BLINK_SWAP_QUOTE_SCRIPT }),
+                );
+            }
+        };
+    let swap_execute_script_path =
+        match resolve_blink_swap_script_path(state, BLINK_SWAP_EXECUTE_SCRIPT) {
+            Ok(path) => path,
+            Err(error) => {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-TREASURY-CONVERT-BLINK-SCRIPT-MISSING",
+                    error,
+                    json!({ "script": BLINK_SWAP_EXECUTE_SCRIPT }),
+                );
+            }
+        };
+
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    let worker_request_id = state.stable_sats_simulation.reserve_worker_request_id();
+    state
+        .stable_sats_simulation
+        .record_treasury_operation_queued(
+            worker_request_id,
+            crate::app_state::StableSatsTreasuryOperationKind::Convert,
+            now_epoch_seconds,
+            format!(
+                "queued treasury convert owner={} direction={} amount={} {}",
+                owner_id,
+                swap_direction_script_value(direction),
+                args.amount,
+                swap_unit_script_value(unit)
+            ),
+        );
+    let request = crate::stablesats_blink_worker::StableSatsBlinkConvertRequest {
+        request_id: worker_request_id,
+        now_epoch_seconds,
+        owner_id: owner_id.to_string(),
+        wallet_name: wallet.agent_name.clone(),
+        direction: swap_direction_script_value(direction).to_string(),
+        amount: args.amount,
+        unit: swap_unit_script_value(unit).to_string(),
+        memo: args
+            .memo
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
+        env_overrides,
+        swap_execute_script_path,
+        swap_quote_script_path,
+    };
+    if let Err(error) = state.stable_sats_blink_worker.enqueue_convert(request) {
+        state
+            .stable_sats_simulation
+            .record_treasury_operation_finished(
+                worker_request_id,
+                crate::app_state::StableSatsTreasuryOperationKind::Convert,
+                crate::app_state::StableSatsTreasuryOperationStatus::Failed,
+                now_epoch_seconds,
+                format!("treasury convert enqueue failed: {error}"),
+            );
+        return ToolBridgeResultEnvelope::error(
+            "OA-TREASURY-CONVERT-WORKER-UNAVAILABLE",
+            format!("Treasury convert worker unavailable: {error}"),
+            json!({
+                "worker_request_id": worker_request_id,
+                "owner_id": owner_id,
+                "direction": swap_direction_script_value(direction),
+                "amount": args.amount,
+                "unit": swap_unit_script_value(unit),
+            }),
+        );
+    }
+    state.autopilot_chat.record_turn_timeline_event(format!(
+        "treasury convert queued owner={} direction={} amount={} {} worker_request={}",
+        owner_id,
+        swap_direction_script_value(direction),
+        args.amount,
+        swap_unit_script_value(unit),
+        worker_request_id
+    ));
+    ToolBridgeResultEnvelope::ok(
+        "OA-TREASURY-CONVERT-QUEUED",
+        "Treasury convert queued on off-thread worker",
+        json!({
+            "worker_request_id": worker_request_id,
+            "status": "queued",
+            "async": true,
+            "provider": "blink_infrastructure",
+            "owner_id": owner_id,
+            "wallet_name": wallet.agent_name,
+            "direction": swap_direction_script_value(direction),
+            "amount": args.amount,
+            "unit": swap_unit_script_value(unit),
+        }),
+    )
+}
+
+fn execute_treasury_receipt(
+    state: &RenderState,
+    args: &TreasuryReceiptArgs,
+) -> ToolBridgeResultEnvelope {
+    if let Some(receipt) = state
+        .stable_sats_simulation
+        .treasury_receipts
+        .iter()
+        .rev()
+        .find(|entry| entry.request_id == args.worker_request_id)
+    {
+        return ToolBridgeResultEnvelope::ok(
+            "OA-TREASURY-RECEIPT-FOUND",
+            "Treasury receipt resolved",
+            json!({
+                "worker_request_id": args.worker_request_id,
+                "status": "completed",
+                "kind": receipt.kind.label(),
+                "occurred_at_epoch_seconds": receipt.occurred_at_epoch_seconds,
+                "receipt": receipt.payload,
+            }),
+        );
+    }
+
+    if let Some(operation) = state
+        .stable_sats_simulation
+        .treasury_operations
+        .iter()
+        .rev()
+        .find(|entry| entry.request_id == args.worker_request_id)
+    {
+        return ToolBridgeResultEnvelope::ok(
+            "OA-TREASURY-RECEIPT-PENDING",
+            "Treasury operation is known but has no receipt payload yet",
+            json!({
+                "worker_request_id": args.worker_request_id,
+                "status": operation.status.label(),
+                "kind": operation.kind.label(),
+                "detail": operation.detail,
+                "updated_at_epoch_seconds": operation.updated_at_epoch_seconds,
+            }),
+        );
+    }
+
+    ToolBridgeResultEnvelope::error(
+        "OA-TREASURY-RECEIPT-NOT-FOUND",
+        format!(
+            "No treasury operation or receipt found for worker request {}",
+            args.worker_request_id
+        ),
+        json!({
+            "worker_request_id": args.worker_request_id,
+            "known_operation_count": state.stable_sats_simulation.treasury_operations.len(),
+            "known_receipt_count": state.stable_sats_simulation.treasury_receipts.len(),
         }),
     )
 }
@@ -2938,6 +3470,129 @@ fn execute_provider_control_tool(
     }
 }
 
+fn parse_treasury_transfer_asset(
+    raw: &str,
+) -> Result<crate::stablesats_blink_worker::StableSatsBlinkTransferAsset, ToolBridgeResultEnvelope>
+{
+    match normalize_key(raw).as_str() {
+        "btc_sats" | "btc" | "sats" | "sat" => {
+            Ok(crate::stablesats_blink_worker::StableSatsBlinkTransferAsset::BtcSats)
+        }
+        "usd_cents" | "usd" | "cents" | "cent" => {
+            Ok(crate::stablesats_blink_worker::StableSatsBlinkTransferAsset::UsdCents)
+        }
+        _ => Err(ToolBridgeResultEnvelope::error(
+            "OA-TREASURY-TRANSFER-INVALID-ASSET",
+            format!("Unsupported treasury transfer asset '{}'", raw),
+            json!({
+                "asset": raw,
+                "supported": ["btc_sats", "usd_cents"],
+            }),
+        )),
+    }
+}
+
+fn resolve_stablesats_wallet_by_owner(
+    state: &RenderState,
+    owner_id: &str,
+    error_code: &str,
+) -> Result<crate::app_state::StableSatsAgentWalletState, ToolBridgeResultEnvelope> {
+    state
+        .stable_sats_simulation
+        .agents
+        .iter()
+        .find(|wallet| wallet.owner_id == owner_id)
+        .cloned()
+        .ok_or_else(|| {
+            ToolBridgeResultEnvelope::error(
+                error_code,
+                format!("StableSats wallet owner '{}' not configured", owner_id),
+                json!({
+                    "owner_id": owner_id,
+                    "known_owner_ids": state
+                        .stable_sats_simulation
+                        .agents
+                        .iter()
+                        .map(|wallet| wallet.owner_id.clone())
+                        .collect::<Vec<_>>(),
+                }),
+            )
+        })
+}
+
+fn ensure_wallet_credential_slot_enabled(
+    entries: &[crate::credentials::CredentialRecord],
+    credential_name: &str,
+) -> Result<(), String> {
+    let normalized = crate::credentials::normalize_env_var_name(credential_name);
+    let Some(entry) = entries.iter().find(|entry| entry.name == normalized) else {
+        return Err(format!(
+            "Credential slot {} is missing from credential manager",
+            normalized
+        ));
+    };
+    if !entry.enabled {
+        return Err(format!("Credential slot {} is disabled", normalized));
+    }
+    Ok(())
+}
+
+fn has_enabled_credential_slot(
+    entries: &[crate::credentials::CredentialRecord],
+    credential_name: &str,
+) -> bool {
+    let normalized = crate::credentials::normalize_env_var_name(credential_name);
+    entries
+        .iter()
+        .any(|entry| entry.name == normalized && entry.enabled)
+}
+
+fn resolve_wallet_blink_env_overrides(
+    state: &RenderState,
+    wallet: &crate::app_state::StableSatsAgentWalletState,
+) -> Result<Vec<(String, String)>, String> {
+    let entries = state.credentials.entries.as_slice();
+    ensure_wallet_credential_slot_enabled(entries, wallet.credential_key_name.as_str())?;
+
+    let api_key = state
+        .credentials
+        .read_secure_value(wallet.credential_key_name.as_str())
+        .map_err(|error| {
+            format!(
+                "{} secure credential read failed for {}: {error}",
+                wallet.agent_name, wallet.credential_key_name
+            )
+        })?
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            format!(
+                "{} missing secure value for {}",
+                wallet.agent_name, wallet.credential_key_name
+            )
+        })?;
+    let mut env_overrides = vec![("BLINK_API_KEY".to_string(), api_key)];
+
+    if let Some(url_name) = wallet.credential_url_name.as_deref()
+        && has_enabled_credential_slot(entries, url_name)
+        && let Some(url) = state
+            .credentials
+            .read_secure_value(url_name)
+            .map_err(|error| {
+                format!(
+                    "{} secure credential read failed for {}: {error}",
+                    wallet.agent_name, url_name
+                )
+            })?
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+    {
+        env_overrides.push(("BLINK_API_URL".to_string(), url));
+    }
+
+    Ok(env_overrides)
+}
+
 fn parse_goal_missed_run_policy(raw: &str) -> Option<GoalMissedRunPolicy> {
     match normalize_key(raw).as_str() {
         "catch_up" | "catchup" => Some(GoalMissedRunPolicy::CatchUp),
@@ -3040,11 +3695,10 @@ fn resolve_blink_swap_script_path(
 }
 
 fn resolve_swap_runtime_env_overrides(state: &RenderState) -> Vec<(String, String)> {
-    if let Some(operator_wallet) = state
-        .stable_sats_simulation
-        .agents
-        .iter()
-        .find(|wallet| wallet.owner_kind == crate::app_state::StableSatsWalletOwnerKind::Operator)
+    if let Some(operator_wallet) =
+        state.stable_sats_simulation.agents.iter().find(|wallet| {
+            wallet.owner_kind == crate::app_state::StableSatsWalletOwnerKind::Operator
+        })
     {
         let mut overrides = Vec::<(String, String)>::new();
         if let Ok(Some(api_key)) = state
@@ -3457,11 +4111,13 @@ mod tests {
     use super::{
         CAD_CHECKPOINT_SCHEMA_VERSION, CAD_TOOL_RESPONSE_SCHEMA_VERSION,
         LEGACY_OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_SWAP_QUOTE,
-        ToolBridgeResultEnvelope, cad_action_from_key, cad_checkpoint_payload,
-        cad_parse_retry_prompt, decode_tool_call_request, normalize_key, pane_action_to_hit_action,
-        pane_kind_key, parse_blink_execution_payload_from_json, parse_blink_quote_terms_from_json,
-        parse_bool_env_override, parse_goal_rollout_stage, parse_swap_direction, parse_swap_unit,
-        resolve_pane_kind, run_blink_swap_script_json, select_existing_blink_swap_script_path,
+        OPENAGENTS_TOOL_TREASURY_CONVERT, OPENAGENTS_TOOL_TREASURY_RECEIPT,
+        OPENAGENTS_TOOL_TREASURY_TRANSFER, ToolBridgeResultEnvelope, cad_action_from_key,
+        cad_checkpoint_payload, cad_parse_retry_prompt, decode_tool_call_request, normalize_key,
+        pane_action_to_hit_action, pane_kind_key, parse_blink_execution_payload_from_json,
+        parse_blink_quote_terms_from_json, parse_bool_env_override, parse_goal_rollout_stage,
+        parse_swap_direction, parse_swap_unit, parse_treasury_transfer_asset, resolve_pane_kind,
+        run_blink_swap_script_json, select_existing_blink_swap_script_path,
         validate_direction_unit,
     };
     use crate::app_state::{
@@ -3813,6 +4469,43 @@ mod tests {
         ))
         .expect("swap quote tool should decode");
         assert_eq!(decoded.tool, OPENAGENTS_TOOL_SWAP_QUOTE);
+    }
+
+    #[test]
+    fn treasury_tools_are_allowlisted_and_machine_parseable() {
+        let transfer = decode_tool_call_request(&request(
+            OPENAGENTS_TOOL_TREASURY_TRANSFER,
+            r#"{"from_owner_id":"operator:autopilot","to_owner_id":"sa:wallet-1","asset":"btc_sats","amount":1500}"#,
+        ))
+        .expect("treasury transfer should decode");
+        assert_eq!(transfer.tool, OPENAGENTS_TOOL_TREASURY_TRANSFER);
+
+        let convert = decode_tool_call_request(&request(
+            OPENAGENTS_TOOL_TREASURY_CONVERT,
+            r#"{"owner_id":"operator:autopilot","direction":"btc-to-usd","amount":2200,"unit":"sats"}"#,
+        ))
+        .expect("treasury convert should decode");
+        assert_eq!(convert.tool, OPENAGENTS_TOOL_TREASURY_CONVERT);
+
+        let receipt = decode_tool_call_request(&request(
+            OPENAGENTS_TOOL_TREASURY_RECEIPT,
+            r#"{"worker_request_id":12}"#,
+        ))
+        .expect("treasury receipt should decode");
+        assert_eq!(receipt.tool, OPENAGENTS_TOOL_TREASURY_RECEIPT);
+    }
+
+    #[test]
+    fn treasury_transfer_asset_parser_accepts_supported_values() {
+        assert_eq!(
+            parse_treasury_transfer_asset("btc_sats").expect("btc asset"),
+            crate::stablesats_blink_worker::StableSatsBlinkTransferAsset::BtcSats
+        );
+        assert_eq!(
+            parse_treasury_transfer_asset("usd_cents").expect("usd asset"),
+            crate::stablesats_blink_worker::StableSatsBlinkTransferAsset::UsdCents
+        );
+        assert!(parse_treasury_transfer_asset("invalid").is_err());
     }
 
     #[test]
