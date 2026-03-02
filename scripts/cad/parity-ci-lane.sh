@@ -48,6 +48,7 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/material_assignment_parity_manifest.json"
     "crates/cad/parity/vcad_eval_receipts_parity_manifest.json"
     "crates/cad/parity/feature_op_hash_parity_manifest.json"
+    "crates/cad/parity/modeling_edge_case_parity_manifest.json"
     "crates/cad/parity/fixtures/feature_op_hash_vcad_reference_corpus.json"
     "crates/cad/parity/fixtures/parity_fixture_corpus.json"
 )
