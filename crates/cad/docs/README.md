@@ -25,12 +25,13 @@ Finally, use decisions and spike notes for historical context when evaluating ar
 Recommended reading path:
 
 1. [`PLAN.md`](./PLAN.md)
-2. [`DEPENDENCY_POSTURE.md`](./DEPENDENCY_POSTURE.md)
-3. [`UNITS_TOLERANCE_POLICY.md`](./UNITS_TOLERANCE_POLICY.md)
-4. [`CAD_DOCUMENT_SCHEMA.md`](./CAD_DOCUMENT_SCHEMA.md)
-5. [`CAD_INTENTS.md`](./CAD_INTENTS.md)
-6. [`CAD_CODE_HEALTH.md`](./CAD_CODE_HEALTH.md)
-7. [`CAD_DEMO_RELEASE_GATES.md`](./CAD_DEMO_RELEASE_GATES.md)
+2. [`VCAD_PARITY_PLAN.md`](./VCAD_PARITY_PLAN.md)
+3. [`DEPENDENCY_POSTURE.md`](./DEPENDENCY_POSTURE.md)
+4. [`UNITS_TOLERANCE_POLICY.md`](./UNITS_TOLERANCE_POLICY.md)
+5. [`CAD_DOCUMENT_SCHEMA.md`](./CAD_DOCUMENT_SCHEMA.md)
+6. [`CAD_INTENTS.md`](./CAD_INTENTS.md)
+7. [`CAD_CODE_HEALTH.md`](./CAD_CODE_HEALTH.md)
+8. [`CAD_DEMO_RELEASE_GATES.md`](./CAD_DEMO_RELEASE_GATES.md)
 
 ## System Overview (Longform)
 
@@ -65,6 +66,7 @@ Everything currently in `crates/cad/docs/` is indexed below.
 ### Core Plan And Policy
 
 - [`PLAN.md`](./PLAN.md)
+- [`VCAD_PARITY_PLAN.md`](./VCAD_PARITY_PLAN.md)
 - [`DEPENDENCY_POSTURE.md`](./DEPENDENCY_POSTURE.md)
 - [`UNITS_TOLERANCE_POLICY.md`](./UNITS_TOLERANCE_POLICY.md)
 - [`CAD_CODE_HEALTH.md`](./CAD_CODE_HEALTH.md)
