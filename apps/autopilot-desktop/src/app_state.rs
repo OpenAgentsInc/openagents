@@ -2764,6 +2764,7 @@ pub struct RenderState {
     pub relay_security_simulation: RelaySecuritySimulationPaneState,
     pub stable_sats_simulation: StableSatsSimulationPaneState,
     pub autopilot_goals: crate::state::autopilot_goals::AutopilotGoalsState,
+    pub goal_loop_executor: crate::state::goal_loop_executor::GoalLoopExecutorState,
     pub sidebar: SidebarState,
     pub next_pane_id: u64,
     pub next_z_index: i32,

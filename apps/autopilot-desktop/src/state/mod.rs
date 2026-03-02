@@ -4,6 +4,7 @@ pub mod alerts_recovery;
 pub mod autopilot_goals;
 pub mod earnings_gate;
 pub mod goal_conditions;
+pub mod goal_loop_executor;
 pub mod goal_skill_resolver;
 pub mod job_inbox;
 pub mod operations;
