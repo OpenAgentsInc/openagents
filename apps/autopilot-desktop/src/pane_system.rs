@@ -270,6 +270,7 @@ pub enum AgentScheduleTickPaneAction {
     ApplySchedule,
     PublishManualTick,
     InspectLastResult,
+    ToggleOsSchedulerAdapter,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2034,6 +2035,16 @@ pub fn agent_schedule_inspect_button_bounds(content_bounds: Bounds) -> Bounds {
     )
 }
 
+pub fn agent_schedule_toggle_os_scheduler_button_bounds(content_bounds: Bounds) -> Bounds {
+    let inspect = agent_schedule_inspect_button_bounds(content_bounds);
+    Bounds::new(
+        inspect.max_x() + JOB_INBOX_BUTTON_GAP,
+        inspect.origin.y,
+        inspect.size.width,
+        inspect.size.height,
+    )
+}
+
 pub fn trajectory_open_session_button_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         content_bounds.origin.x + CHAT_PAD,
@@ -3181,6 +3192,11 @@ fn pane_hit_action_for_pane(
                     AgentScheduleTickPaneAction::InspectLastResult,
                 ));
             }
+            if agent_schedule_toggle_os_scheduler_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AgentScheduleTick(
+                    AgentScheduleTickPaneAction::ToggleOsSchedulerAdapter,
+                ));
+            }
             None
         }
         PaneKind::TrajectoryAudit => {
@@ -3721,9 +3737,10 @@ mod tests {
         agent_profile_publish_state_button_bounds, agent_profile_receipt_button_bounds,
         agent_profile_start_goal_button_bounds, agent_profile_update_goals_button_bounds,
         agent_schedule_apply_button_bounds, agent_schedule_inspect_button_bounds,
-        agent_schedule_manual_tick_button_bounds, alerts_recovery_ack_button_bounds,
-        alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
-        alerts_recovery_row_bounds, cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
+        agent_schedule_manual_tick_button_bounds, agent_schedule_toggle_os_scheduler_button_bounds,
+        alerts_recovery_ack_button_bounds, alerts_recovery_recover_button_bounds,
+        alerts_recovery_resolve_button_bounds, alerts_recovery_row_bounds,
+        cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
         cad_demo_cycle_variant_button_bounds, cad_demo_dimension_panel_bounds,
         cad_demo_dimension_row_bounds, cad_demo_hidden_line_mode_button_bounds,
         cad_demo_hotkey_profile_button_bounds, cad_demo_material_button_bounds,
@@ -4078,8 +4095,10 @@ mod tests {
         let apply = agent_schedule_apply_button_bounds(content);
         let tick = agent_schedule_manual_tick_button_bounds(content);
         let inspect = agent_schedule_inspect_button_bounds(content);
+        let toggle_os = agent_schedule_toggle_os_scheduler_button_bounds(content);
         assert!(apply.max_x() < tick.min_x());
         assert!(tick.max_x() < inspect.min_x());
+        assert!(inspect.max_x() < toggle_os.min_x());
     }
 
     #[test]

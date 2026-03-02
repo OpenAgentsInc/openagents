@@ -11,6 +11,7 @@ use crate::state::autopilot_goals::{
 };
 use crate::state::cron_schedule::{next_cron_run_epoch_seconds, parse_cron_expression};
 use crate::state::goal_loop_executor::{GoalLoopStopReason, select_runnable_goal};
+use crate::state::os_scheduler::{OsSchedulerAdapterKind, preferred_adapter_for_host};
 
 pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: SaLaneSnapshot) {
     state.provider_runtime.mode = match snapshot.mode {
@@ -542,21 +543,57 @@ pub(super) fn refresh_goal_profile_state(state: &mut RenderState) -> bool {
         )
 }
 
-pub(super) fn refresh_goal_schedule_state(state: &mut RenderState) -> bool {
-    let before = (
-        state.agent_schedule_tick.selected_goal_id.clone(),
-        state.agent_schedule_tick.scheduler_mode.clone(),
-        state.agent_schedule_tick.next_goal_run_epoch_seconds,
-        state.agent_schedule_tick.last_goal_run_epoch_seconds,
-        state.agent_schedule_tick.heartbeat_seconds,
-        state.agent_schedule_tick.cron_expression.clone(),
-        state.agent_schedule_tick.cron_timezone.clone(),
-        state
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct GoalSchedulePaneFingerprint {
+    selected_goal_id: Option<String>,
+    scheduler_mode: String,
+    next_goal_run_epoch_seconds: Option<u64>,
+    last_goal_run_epoch_seconds: Option<u64>,
+    heartbeat_seconds: u64,
+    cron_expression: String,
+    cron_timezone: String,
+    cron_next_run_preview_epoch_seconds: Option<u64>,
+    cron_parse_error: Option<String>,
+    os_scheduler_enabled: bool,
+    os_scheduler_adapter: String,
+    os_scheduler_descriptor_path: Option<String>,
+    os_scheduler_last_reconciled_epoch_seconds: Option<u64>,
+    os_scheduler_last_reconcile_result: Option<String>,
+    next_tick_reason: String,
+}
+
+fn schedule_pane_fingerprint(state: &RenderState) -> GoalSchedulePaneFingerprint {
+    GoalSchedulePaneFingerprint {
+        selected_goal_id: state.agent_schedule_tick.selected_goal_id.clone(),
+        scheduler_mode: state.agent_schedule_tick.scheduler_mode.clone(),
+        next_goal_run_epoch_seconds: state.agent_schedule_tick.next_goal_run_epoch_seconds,
+        last_goal_run_epoch_seconds: state.agent_schedule_tick.last_goal_run_epoch_seconds,
+        heartbeat_seconds: state.agent_schedule_tick.heartbeat_seconds,
+        cron_expression: state.agent_schedule_tick.cron_expression.clone(),
+        cron_timezone: state.agent_schedule_tick.cron_timezone.clone(),
+        cron_next_run_preview_epoch_seconds: state
             .agent_schedule_tick
             .cron_next_run_preview_epoch_seconds,
-        state.agent_schedule_tick.cron_parse_error.clone(),
-        state.agent_schedule_tick.next_tick_reason.clone(),
-    );
+        cron_parse_error: state.agent_schedule_tick.cron_parse_error.clone(),
+        os_scheduler_enabled: state.agent_schedule_tick.os_scheduler_enabled,
+        os_scheduler_adapter: state.agent_schedule_tick.os_scheduler_adapter.clone(),
+        os_scheduler_descriptor_path: state
+            .agent_schedule_tick
+            .os_scheduler_descriptor_path
+            .clone(),
+        os_scheduler_last_reconciled_epoch_seconds: state
+            .agent_schedule_tick
+            .os_scheduler_last_reconciled_epoch_seconds,
+        os_scheduler_last_reconcile_result: state
+            .agent_schedule_tick
+            .os_scheduler_last_reconcile_result
+            .clone(),
+        next_tick_reason: state.agent_schedule_tick.next_tick_reason.clone(),
+    }
+}
+
+pub(super) fn refresh_goal_schedule_state(state: &mut RenderState) -> bool {
+    let before = schedule_pane_fingerprint(state);
 
     let selected_goal_id = selected_goal_id(state);
     state.agent_schedule_tick.selected_goal_id = selected_goal_id.clone();
@@ -609,6 +646,21 @@ pub(super) fn refresh_goal_schedule_state(state: &mut RenderState) -> bool {
             goal.schedule.next_run_epoch_seconds;
         state.agent_schedule_tick.last_goal_run_epoch_seconds =
             goal.schedule.last_run_epoch_seconds;
+        state.agent_schedule_tick.os_scheduler_enabled = goal.schedule.os_adapter.enabled;
+        state.agent_schedule_tick.os_scheduler_adapter = goal
+            .schedule
+            .os_adapter
+            .adapter
+            .map(|kind| kind.as_str().to_string())
+            .unwrap_or_else(|| "auto".to_string());
+        state.agent_schedule_tick.os_scheduler_descriptor_path =
+            goal.schedule.os_adapter.descriptor_path.clone();
+        state
+            .agent_schedule_tick
+            .os_scheduler_last_reconciled_epoch_seconds =
+            goal.schedule.os_adapter.last_reconciled_epoch_seconds;
+        state.agent_schedule_tick.os_scheduler_last_reconcile_result =
+            goal.schedule.os_adapter.last_reconcile_result.clone();
         state.agent_schedule_tick.next_tick_reason = if goal.schedule.enabled {
             match goal.schedule.kind {
                 crate::state::autopilot_goals::GoalScheduleKind::Manual => {
@@ -641,24 +693,17 @@ pub(super) fn refresh_goal_schedule_state(state: &mut RenderState) -> bool {
             .agent_schedule_tick
             .cron_next_run_preview_epoch_seconds = None;
         state.agent_schedule_tick.cron_parse_error = None;
+        state.agent_schedule_tick.os_scheduler_enabled = false;
+        state.agent_schedule_tick.os_scheduler_adapter = "auto".to_string();
+        state.agent_schedule_tick.os_scheduler_descriptor_path = None;
+        state
+            .agent_schedule_tick
+            .os_scheduler_last_reconciled_epoch_seconds = None;
+        state.agent_schedule_tick.os_scheduler_last_reconcile_result = None;
         state.agent_schedule_tick.next_tick_reason = "manual.operator".to_string();
     }
 
-    before
-        != (
-            state.agent_schedule_tick.selected_goal_id.clone(),
-            state.agent_schedule_tick.scheduler_mode.clone(),
-            state.agent_schedule_tick.next_goal_run_epoch_seconds,
-            state.agent_schedule_tick.last_goal_run_epoch_seconds,
-            state.agent_schedule_tick.heartbeat_seconds,
-            state.agent_schedule_tick.cron_expression.clone(),
-            state.agent_schedule_tick.cron_timezone.clone(),
-            state
-                .agent_schedule_tick
-                .cron_next_run_preview_epoch_seconds,
-            state.agent_schedule_tick.cron_parse_error.clone(),
-            state.agent_schedule_tick.next_tick_reason.clone(),
-        )
+    before != schedule_pane_fingerprint(state)
 }
 
 pub(super) fn run_agent_schedule_tick_action(
@@ -748,6 +793,77 @@ pub(super) fn run_agent_schedule_tick_action(
                     state.agent_schedule_tick.load_state = PaneLoadState::Ready;
                     state.agent_schedule_tick.last_action =
                         Some(format!("Scheduled immediate goal run for {}", goal_id));
+                }
+                Err(error) => {
+                    state.agent_schedule_tick.last_error = Some(error);
+                    state.agent_schedule_tick.load_state = PaneLoadState::Error;
+                }
+            }
+            let _ = refresh_goal_schedule_state(state);
+            true
+        }
+        AgentScheduleTickPaneAction::ToggleOsSchedulerAdapter => {
+            let Some(goal_id) = selected_goal_id(state) else {
+                state.agent_schedule_tick.last_error = Some(
+                    "Select or create an active goal before toggling OS scheduler".to_string(),
+                );
+                state.agent_schedule_tick.load_state = PaneLoadState::Error;
+                let _ = refresh_goal_schedule_state(state);
+                return true;
+            };
+
+            let now_epoch_seconds = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_secs())
+                .unwrap_or(0);
+            let (current_enabled, current_adapter) = state
+                .autopilot_goals
+                .document
+                .active_goals
+                .iter()
+                .find(|goal| goal.goal_id == goal_id)
+                .map(|goal| {
+                    (
+                        goal.schedule.os_adapter.enabled,
+                        goal.schedule.os_adapter.adapter,
+                    )
+                })
+                .unwrap_or((false, None));
+            let next_enabled = !current_enabled;
+            let requested_adapter = if next_enabled {
+                OsSchedulerAdapterKind::from_label(&state.agent_schedule_tick.os_scheduler_adapter)
+                    .or(current_adapter)
+                    .or_else(preferred_adapter_for_host)
+                    .or(Some(OsSchedulerAdapterKind::Cron))
+            } else {
+                current_adapter
+                    .or_else(|| {
+                        OsSchedulerAdapterKind::from_label(
+                            &state.agent_schedule_tick.os_scheduler_adapter,
+                        )
+                    })
+                    .or(Some(OsSchedulerAdapterKind::Cron))
+            };
+
+            match state.autopilot_goals.set_goal_os_scheduler_adapter(
+                &goal_id,
+                next_enabled,
+                requested_adapter,
+                now_epoch_seconds,
+            ) {
+                Ok(()) => {
+                    if next_enabled {
+                        let _ = state
+                            .autopilot_goals
+                            .reconcile_os_scheduler_adapters(now_epoch_seconds);
+                    }
+                    state.agent_schedule_tick.last_error = None;
+                    state.agent_schedule_tick.load_state = PaneLoadState::Ready;
+                    state.agent_schedule_tick.last_action = Some(format!(
+                        "{} OS scheduler adapter for {}",
+                        if next_enabled { "Enabled" } else { "Disabled" },
+                        goal_id
+                    ));
                 }
                 Err(error) => {
                     state.agent_schedule_tick.last_error = Some(error);
