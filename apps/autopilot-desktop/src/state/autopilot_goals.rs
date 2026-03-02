@@ -5,6 +5,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
+use crate::app_state::JobHistoryState;
+use crate::spark_wallet::SparkPaneState;
+use crate::state::earnings_gate::{EarningsVerificationReport, verify_authoritative_earnings};
 use crate::state::goal_conditions::{
     ConditionEvaluation, GoalProgressSnapshot, evaluate_conditions,
 };
@@ -477,6 +480,29 @@ impl AutopilotGoalsState {
         Ok(evaluate_conditions(goal, progress))
     }
 
+    pub fn verify_authoritative_earnings_gate(
+        &self,
+        goal_id: &str,
+        progress: &GoalProgressSnapshot,
+        job_history: &JobHistoryState,
+        spark_wallet: &SparkPaneState,
+    ) -> Result<EarningsVerificationReport, String> {
+        let Some(goal) = self
+            .document
+            .active_goals
+            .iter()
+            .find(|goal| goal.goal_id == goal_id)
+        else {
+            return Err(format!("Active goal {goal_id} not found"));
+        };
+        Ok(verify_authoritative_earnings(
+            goal,
+            progress,
+            job_history,
+            spark_wallet,
+        ))
+    }
+
     pub fn file_path(&self) -> &PathBuf {
         &self.file_path
     }
@@ -589,11 +615,18 @@ fn now_epoch_seconds() -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use openagents_spark::{Balance, PaymentSummary};
+
     use super::{
         AutopilotGoalsState, GoalConstraints, GoalExecutionReceipt, GoalLifecycleEvent,
         GoalLifecycleStatus, GoalObjective, GoalRecord, GoalRetryPolicy, GoalScheduleConfig,
         GoalStopCondition,
     };
+    use crate::app_state::{
+        JobHistoryReceiptRow, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
+        JobHistoryTimeRange, PaneLoadState,
+    };
+    use crate::spark_wallet::SparkPaneState;
     use crate::state::goal_conditions::GoalProgressSnapshot;
 
     fn sample_goal(id: &str) -> GoalRecord {
@@ -782,6 +815,86 @@ mod tests {
             .expect("goal evaluator should succeed");
         assert!(evaluation.goal_complete);
         assert!(!evaluation.should_continue);
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn authoritative_earnings_gate_rejects_synthetic_history_payout() {
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch time available")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("autopilot-goals-gate-{now_nanos}.json"));
+        let mut state = AutopilotGoalsState::load_from_path(path.clone());
+        state
+            .upsert_active_goal(sample_goal("goal-gate"))
+            .expect("upsert active goal should succeed");
+
+        let progress = GoalProgressSnapshot {
+            started_at_epoch_seconds: 1_700_000_000,
+            now_epoch_seconds: 1_700_000_010,
+            attempt_count: 1,
+            wallet_delta_sats: 1_100,
+            jobs_completed: 1,
+            successes: 1,
+            errors: 0,
+            total_spend_sats: 0,
+            total_swap_cents: 0,
+            external_signals: std::collections::BTreeMap::new(),
+        };
+        let history = JobHistoryState {
+            load_state: PaneLoadState::Ready,
+            last_error: None,
+            last_action: None,
+            rows: vec![JobHistoryReceiptRow {
+                job_id: "job-1".to_string(),
+                status: JobHistoryStatus::Succeeded,
+                completed_at_epoch_seconds: 1_700_000_008,
+                skill_scope_id: None,
+                skl_manifest_a: None,
+                skl_manifest_event_id: None,
+                sa_tick_result_event_id: None,
+                sa_trajectory_session_id: None,
+                ac_envelope_event_id: None,
+                ac_settlement_event_id: None,
+                ac_default_event_id: None,
+                payout_sats: 1_000,
+                result_hash: "hash-1".to_string(),
+                payment_pointer: "pay:starter-job-1".to_string(),
+                failure_reason: None,
+            }],
+            status_filter: JobHistoryStatusFilter::All,
+            time_range: JobHistoryTimeRange::All,
+            page: 0,
+            page_size: 6,
+            search_job_id: String::new(),
+            reference_epoch_seconds: 1_700_000_010,
+        };
+        let mut wallet = SparkPaneState::default();
+        wallet.balance = Some(Balance {
+            spark_sats: 2_000,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+        wallet.recent_payments.push(PaymentSummary {
+            id: "wallet-payment-1".to_string(),
+            direction: "receive".to_string(),
+            status: "succeeded".to_string(),
+            amount_sats: 1_000,
+            timestamp: 1_700_000_009,
+        });
+
+        let report = state
+            .verify_authoritative_earnings_gate("goal-gate", &progress, &history, &wallet)
+            .expect("earnings gate should evaluate");
+        assert!(!report.authoritative_goal_complete);
+        assert!(
+            report
+                .mismatches
+                .iter()
+                .any(|mismatch| mismatch.contains("synthetic payout pointer"))
+        );
 
         let _ = std::fs::remove_file(path);
     }
