@@ -5,7 +5,7 @@
   "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
   "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
   "parity_check_entrypoint": "scripts/cad/parity_check.sh",
-  "source_artifact_count": 23,
+  "source_artifact_count": 24,
   "artifacts": [
     {
       "artifact_id": "fixtures_parity_fixture_corpus",
@@ -80,6 +80,12 @@
       "bytes": 1616
     },
     {
+      "artifact_id": "kernel_step_parity_manifest",
+      "source_path": "crates/cad/parity/kernel_step_parity_manifest.json",
+      "sha256": "11fb75222a97a391c0d56ce01024f5f11d45311aa8ed1be545a41dfb56e92316",
+      "bytes": 1166
+    },
+    {
       "artifact_id": "kernel_tessellate_parity_manifest",
       "source_path": "crates/cad/parity/kernel_tessellate_parity_manifest.json",
       "sha256": "23adfceb3c08c8c8d82d5f8a4fe1a6464848e070fd6dcaadf2fade186a2772b9",
@@ -112,8 +118,8 @@
     {
       "artifact_id": "parity_dashboard",
       "source_path": "crates/cad/parity/parity_dashboard.json",
-      "sha256": "0c398710463fd01330c2f17dcf823deccb1fbbf022ca4e487d04f2399a98fbee",
-      "bytes": 2490
+      "sha256": "93287f997821cb0a89ae9c29d0261bb45a89138e5eb470a71d7277c3d3587333",
+      "bytes": 2527
     },
     {
       "artifact_id": "parity_risk_register",

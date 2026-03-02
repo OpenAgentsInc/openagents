@@ -13,6 +13,7 @@ pub mod kernel_nurbs_parity;
 pub mod kernel_precision_parity;
 pub mod kernel_primitives_parity;
 pub mod kernel_shell_parity;
+pub mod kernel_step_parity;
 pub mod kernel_tessellate_parity;
 pub mod kernel_text_parity;
 pub mod kernel_topology_parity;

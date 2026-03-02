@@ -29,6 +29,7 @@ pub mod kernel_nurbs;
 pub mod kernel_predicates;
 pub mod kernel_primitives;
 pub mod kernel_shell;
+pub mod kernel_step;
 pub mod kernel_tessellate;
 pub mod kernel_text;
 pub mod kernel_topology;

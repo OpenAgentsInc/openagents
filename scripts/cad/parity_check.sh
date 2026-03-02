@@ -19,6 +19,7 @@ LANE_LABELS=(
     "kernel-text"
     "kernel-fillet"
     "kernel-shell"
+    "kernel-step"
     "kernel-precision"
     "ci-artifact-manifest"
     "risk-register-workflow"
@@ -130,6 +131,9 @@ run_lane "kernel-fillet" \
 
 run_lane "kernel-shell" \
     "$ROOT_DIR/scripts/cad/parity-kernel-shell-ci.sh"
+
+run_lane "kernel-step" \
+    "$ROOT_DIR/scripts/cad/parity-kernel-step-ci.sh"
 
 run_lane "kernel-precision" \
     "$ROOT_DIR/scripts/cad/parity-kernel-precision-ci.sh"

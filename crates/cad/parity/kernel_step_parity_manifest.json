@@ -1,0 +1,30 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-025",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "deterministic_step_bytes": 4766,
+  "deterministic_step_signature": "ce5223bd1b700c1b",
+  "token_count": 770,
+  "entity_id_count": 3,
+  "round_trip_solid_count": 1,
+  "round_trip_counts": {
+    "vertex_count": 8,
+    "half_edge_count": 24,
+    "edge_count": 12,
+    "loop_count": 6,
+    "face_count": 6,
+    "shell_count": 1,
+    "solid_count": 1
+  },
+  "no_solids_error": "No solids found in STEP file",
+  "invalid_utf8_error": "parse error: invalid utf-8: invalid utf-8 sequence of 1 bytes from index 0",
+  "parity_contracts": [
+    "write_step_to_buffer is deterministic for identical BRep input",
+    "read_step_from_buffer round-trips adapter-authored STEP summaries",
+    "tokenize_step and parse_step_entity_ids emit stable parse metadata",
+    "missing solids map to NoSolids error semantics",
+    "invalid UTF-8 input maps to parse error semantics"
+  ]
+}
