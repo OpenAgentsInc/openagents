@@ -145,6 +145,7 @@ Conclusion: this requested flow is in-scope for MVP and should be treated as cor
 ### Current behavior
 
 - Chat turn flow uses `AskForApproval::Never` and `DangerFullAccess` sandbox policy (`apps/autopilot-desktop/src/input/actions.rs:271-283`, `apps/autopilot-desktop/src/input/actions.rs:99-111`).
+- This no-approval/full-autonomy mode is the intended operating mode for unattended execution.
 
 ### Gap
 
@@ -153,7 +154,7 @@ Conclusion: this requested flow is in-scope for MVP and should be treated as cor
 
 ### Impact
 
-- Unsafe default for unattended automation, especially if local commands/file changes are involved.
+- No-approval autonomy increases blast radius if guardrails are missing, especially for local commands/file changes.
 
 ## Relevant Skills For "Earn Bitcoin On Autopilot"
 
@@ -200,8 +201,7 @@ Conclusion: BTC <-> stablesat USD is only partially covered in the current Blink
 3. **High:** No first-class BTC <-> stablesat USD swap operation surface, despite this being a core earning/treasury control needed for autopilot money strategies.
 4. **High:** Skill loading exists, but relevance-based multi-skill orchestration is CAD-specific and insufficient for earnings workflows.
 5. **High:** No local cron/persistent scheduler integration for unattended execution.
-6. **High:** Unsafe autonomy defaults (`DangerFullAccess`, approvals never) without explicit autonomous-goal guardrails.
-7. **Medium:** Tool surface is pane/CAD-centric; broader autonomous workflows need clearer controlled execution interfaces.
+6. **Medium:** Tool surface is pane/CAD-centric; broader autonomous workflows need clearer controlled execution interfaces.
 
 ## Recommended MVP Architecture (Scoped To Existing Ownership)
 
@@ -257,7 +257,7 @@ Proposed additions:
 
 ## Phase 3 (safety + operability)
 
-1. Replace unsafe defaults for autonomous mode with explicit policy profiles.
+1. Add explicit policy profiles for no-approval autonomous mode.
 2. Add incident/audit receipts for each autonomous run.
 3. Add deterministic tests for stop conditions and payout verification.
 
@@ -320,7 +320,7 @@ The following is the full recommended GitHub issue sequence to implement this fl
    Add only the minimal additional tools needed for autonomous earning workflows (scheduler actions, controlled wallet checks, controlled provider actions) with a strict allowlist. Avoid broad unrestricted command surfaces. Ensure tool-call results are machine-parseable by the goal runner.
 
 19. **Add Autonomous Mode Safety Policy (Permissions, Budgets, Kill Switch, Swap Limits)**
-   Introduce per-goal policy profiles covering spend caps, command/file scope, max runtime, swap size ceilings, and explicit abort controls. Autonomous runs must never default to unconstrained full-access behavior. Persist policy snapshots in receipts for auditability.
+   Introduce per-goal policy profiles covering spend caps, command/file scope, max runtime, swap size ceilings, and explicit abort controls. Because autonomous runs operate in no-approval mode, these policies should be enforced and persisted as part of every run receipt for auditability.
 
 20. **Replace Simulated Earn Path With Authoritative Paid Job Pipeline**
    Implement the real provider earn path for this feature scope: accepted job -> execution -> payment settlement -> wallet confirmation. If seed demand is used, ensure payouts are real and clearly labeled as starter/quest jobs. Remove any path where synthetic local state alone can present successful earnings.
