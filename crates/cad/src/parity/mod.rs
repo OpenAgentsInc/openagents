@@ -1,3 +1,4 @@
+pub mod assembly_acceptance_scenes_parity;
 pub mod assembly_fk_parity;
 pub mod assembly_ground_delete_parity;
 pub mod assembly_joint_cb_parity;

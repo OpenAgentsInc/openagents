@@ -1,0 +1,111 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-065",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_corpus_path": "crates/cad/parity/fixtures/assembly_acceptance_scenes_vcad_reference.json",
+  "reference_corpus_sha256": "2a9cae29d2396121baf97508a75434eb584c413b72298957134a5ad6d050b026",
+  "reference_source": "~/code/vcad/packages/core/src/stores/document-store.ts + ~/code/vcad/docs/features/assembly-joints.md",
+  "reference_commit_match": true,
+  "case_snapshots": [
+    {
+      "case_id": "cyclic_joint_acceptance_scene",
+      "accepted": false,
+      "grounded_instance_id": null,
+      "invalid_ground_instance_id": null,
+      "contains_joint_cycle": true,
+      "instance_ids": [
+        "a-1",
+        "b-1"
+      ],
+      "joint_ids": [
+        "joint.a_to_b",
+        "joint.b_to_a"
+      ],
+      "missing_part_def_instance_ids": [],
+      "missing_joint_child_instance_ids": [],
+      "missing_joint_parent_instance_ids": [],
+      "fk_resolved_instance_ids": []
+    },
+    {
+      "case_id": "invalid_reference_acceptance_scene",
+      "accepted": false,
+      "grounded_instance_id": "missing-ground",
+      "invalid_ground_instance_id": "missing-ground",
+      "contains_joint_cycle": false,
+      "instance_ids": [
+        "base-1",
+        "orphan-1"
+      ],
+      "joint_ids": [
+        "joint.missing_refs"
+      ],
+      "missing_part_def_instance_ids": [
+        "orphan-1"
+      ],
+      "missing_joint_child_instance_ids": [
+        "missing-child"
+      ],
+      "missing_joint_parent_instance_ids": [
+        "missing-parent"
+      ],
+      "fk_resolved_instance_ids": [
+        "base-1",
+        "orphan-1"
+      ]
+    },
+    {
+      "case_id": "robot_arm_acceptance_scene",
+      "accepted": true,
+      "grounded_instance_id": "base-1",
+      "invalid_ground_instance_id": null,
+      "contains_joint_cycle": false,
+      "instance_ids": [
+        "arm-1",
+        "base-1",
+        "tool-1"
+      ],
+      "joint_ids": [
+        "joint.arm_tool",
+        "joint.base_arm"
+      ],
+      "missing_part_def_instance_ids": [],
+      "missing_joint_child_instance_ids": [],
+      "missing_joint_parent_instance_ids": [],
+      "fk_resolved_instance_ids": [
+        "arm-1",
+        "base-1",
+        "tool-1"
+      ]
+    },
+    {
+      "case_id": "world_grounded_slider_acceptance_scene",
+      "accepted": true,
+      "grounded_instance_id": null,
+      "invalid_ground_instance_id": null,
+      "contains_joint_cycle": false,
+      "instance_ids": [
+        "carriage-1"
+      ],
+      "joint_ids": [
+        "joint.world_slider"
+      ],
+      "missing_part_def_instance_ids": [],
+      "missing_joint_child_instance_ids": [],
+      "missing_joint_parent_instance_ids": [],
+      "fk_resolved_instance_ids": [
+        "carriage-1"
+      ]
+    }
+  ],
+  "behavior_match": true,
+  "deterministic_replay_match": true,
+  "deterministic_signature": "552b17128eec68e6",
+  "parity_contracts": [
+    "acceptance scene fixtures evaluate deterministic instance/joint integrity and FK resolution coverage",
+    "missing part-def refs, missing joint refs, and invalid ground ids are surfaced as non-accepted scenes",
+    "joint-cycle detection in acceptance fixtures marks cyclic scenes as non-accepted",
+    "acceptance scene corpus replays deterministically across runs"
+  ]
+}
