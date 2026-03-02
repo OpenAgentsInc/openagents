@@ -40,6 +40,41 @@ pub struct CadSketchSolveReport {
     pub diagnostics: Vec<CadSketchSolveDiagnostic>,
 }
 
+/// Deterministic LM configuration used by the sketch solver.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CadSketchLmConfig {
+    pub max_iterations: u32,
+    pub residual_tolerance_mm: f64,
+    pub initial_lambda: f64,
+    pub lambda_increase: f64,
+    pub lambda_decrease: f64,
+    pub min_lambda: f64,
+    pub max_lambda: f64,
+}
+
+impl Default for CadSketchLmConfig {
+    fn default() -> Self {
+        Self {
+            max_iterations: LM_MAX_ITERATIONS,
+            residual_tolerance_mm: LM_RESIDUAL_TOLERANCE_MM,
+            initial_lambda: LM_INITIAL_LAMBDA,
+            lambda_increase: LM_LAMBDA_INCREASE,
+            lambda_decrease: LM_LAMBDA_DECREASE,
+            min_lambda: LM_MIN_LAMBDA,
+            max_lambda: LM_MAX_LAMBDA,
+        }
+    }
+}
+
+const LM_MAX_ITERATIONS: u32 = 100;
+const LM_RESIDUAL_TOLERANCE_MM: f64 = 1e-6;
+const LM_INITIAL_LAMBDA: f64 = 1e-3;
+const LM_LAMBDA_INCREASE: f64 = 10.0;
+const LM_LAMBDA_DECREASE: f64 = 0.1;
+const LM_MIN_LAMBDA: f64 = 1e-12;
+const LM_MAX_LAMBDA: f64 = 1e12;
+const LM_IMPROVEMENT_EPSILON: f64 = 1e-12;
+
 impl CadSketchModel {
     pub fn validate(&self) -> CadResult<()> {
         for (plane_id, plane) in &self.planes {
@@ -322,15 +357,54 @@ impl CadSketchModel {
         Ok(())
     }
 
-    /// Deterministic MVP solver pass over common sketch constraint scenarios.
+    /// Deterministic iterative LM-style solver pass over sketch constraints.
     pub fn solve_constraints_deterministic(&mut self) -> CadResult<CadSketchSolveReport> {
         self.validate()?;
+        let config = CadSketchLmConfig::default();
 
+        let mut lambda = config.initial_lambda;
+        let mut best_report = None::<CadSketchSolveReport>;
+        let mut best_norm = f64::INFINITY;
+        let mut completed_iterations = 0u32;
+
+        for iteration in 1..=config.max_iterations {
+            let snapshot = self.clone();
+            let iteration_outcome = self.solve_constraints_iteration(lambda)?;
+            completed_iterations = iteration;
+
+            let improved = iteration_outcome.lm_residual_norm + LM_IMPROVEMENT_EPSILON < best_norm;
+            if improved || best_report.is_none() {
+                best_norm = iteration_outcome.lm_residual_norm;
+                best_report = Some(iteration_outcome.report);
+                lambda = (lambda * config.lambda_decrease).max(config.min_lambda);
+            } else {
+                *self = snapshot;
+                lambda = (lambda * config.lambda_increase).min(config.max_lambda);
+                if lambda >= config.max_lambda {
+                    break;
+                }
+            }
+
+            if best_norm <= config.residual_tolerance_mm && iteration >= 2 {
+                break;
+            }
+        }
+
+        let mut report = best_report.ok_or_else(|| CadError::EvalFailed {
+            reason: "iterative sketch solver produced no report".to_string(),
+        })?;
+        report.iteration_count = completed_iterations.max(1);
+        Ok(report)
+    }
+
+    fn solve_constraints_iteration(&mut self, lambda: f64) -> CadResult<LmIterationOutcome> {
+        let step_scale = (1.0 / (1.0 + lambda)).clamp(0.0, 1.0);
         let mut diagnostics = Vec::<CadSketchSolveDiagnostic>::new();
         let mut constraint_status = BTreeMap::<String, String>::new();
         let mut residuals_mm = BTreeMap::<String, f64>::new();
         let mut solved_constraints = 0usize;
         let mut unsolved_constraints = 0usize;
+        let mut lm_residual_sq = 0.0f64;
 
         let constraints = self.constraints.clone();
         for (constraint_id, constraint) in constraints {
@@ -345,12 +419,13 @@ impl CadSketchModel {
                     &first_anchor_id,
                     &second_anchor_id,
                     tolerance_mm.unwrap_or(0.001),
+                    step_scale,
                 ),
                 CadSketchConstraint::Horizontal { line_entity_id, .. } => {
-                    self.solve_horizontal(&constraint_id, &line_entity_id)
+                    self.solve_horizontal(&constraint_id, &line_entity_id, step_scale)
                 }
                 CadSketchConstraint::Vertical { line_entity_id, .. } => {
-                    self.solve_vertical(&constraint_id, &line_entity_id)
+                    self.solve_vertical(&constraint_id, &line_entity_id, step_scale)
                 }
                 CadSketchConstraint::Tangent {
                     line_entity_id,
@@ -363,6 +438,7 @@ impl CadSketchModel {
                     &line_entity_id,
                     &arc_entity_id,
                     tolerance_mm.unwrap_or(0.001),
+                    step_scale,
                 ),
                 CadSketchConstraint::Dimension {
                     entity_id,
@@ -376,6 +452,7 @@ impl CadSketchModel {
                     dimension_kind,
                     target_mm,
                     tolerance_mm.unwrap_or(0.001),
+                    step_scale,
                 ),
                 CadSketchConstraint::Length {
                     line_entity_id,
@@ -388,6 +465,7 @@ impl CadSketchModel {
                     CadDimensionConstraintKind::Length,
                     target_mm,
                     tolerance_mm.unwrap_or(0.001),
+                    step_scale,
                 ),
                 CadSketchConstraint::Radius {
                     curve_entity_id,
@@ -400,11 +478,15 @@ impl CadSketchModel {
                     CadDimensionConstraintKind::Radius,
                     target_mm,
                     tolerance_mm.unwrap_or(0.001),
+                    step_scale,
                 ),
                 other => Ok(self.unsupported_constraint_outcome(&constraint_id, other.kind_key())),
             }?;
 
             residuals_mm.insert(constraint_id.clone(), outcome.residual_mm);
+            if outcome.contributes_to_lm {
+                lm_residual_sq += outcome.residual_mm * outcome.residual_mm;
+            }
             if outcome.solved {
                 solved_constraints = solved_constraints.saturating_add(1);
                 constraint_status.insert(constraint_id.clone(), "solved".to_string());
@@ -421,14 +503,17 @@ impl CadSketchModel {
             && diagnostics
                 .iter()
                 .all(|entry| entry.severity != CadSketchSolveSeverity::Error);
-        Ok(CadSketchSolveReport {
-            passed,
-            iteration_count: 1,
-            solved_constraints,
-            unsolved_constraints,
-            constraint_status,
-            residuals_mm,
-            diagnostics,
+        Ok(LmIterationOutcome {
+            report: CadSketchSolveReport {
+                passed,
+                iteration_count: 1,
+                solved_constraints,
+                unsolved_constraints,
+                constraint_status,
+                residuals_mm,
+                diagnostics,
+            },
+            lm_residual_norm: lm_residual_sq.sqrt(),
         })
     }
 
@@ -438,6 +523,7 @@ impl CadSketchModel {
         first_anchor_id: &str,
         second_anchor_id: &str,
         tolerance_mm: f64,
+        step_scale: f64,
     ) -> CadResult<ConstraintSolveOutcome> {
         let bindings = self.collect_anchor_bindings()?;
         let first = bindings.get(first_anchor_id).cloned().ok_or_else(|| {
@@ -457,7 +543,10 @@ impl CadSketchModel {
 
         let mut residual = distance_mm(first.position_mm, second.position_mm);
         if residual > tolerance_mm {
-            self.apply_anchor_position(&second, first.position_mm)?;
+            self.apply_anchor_position(
+                &second,
+                interpolate_point(second.position_mm, first.position_mm, step_scale),
+            )?;
             let updated = self.collect_anchor_bindings()?;
             let first_after = updated
                 .get(first_anchor_id)
@@ -491,6 +580,7 @@ impl CadSketchModel {
         Ok(ConstraintSolveOutcome {
             solved,
             residual_mm: residual,
+            contributes_to_lm: true,
             diagnostic,
         })
     }
@@ -499,9 +589,10 @@ impl CadSketchModel {
         &mut self,
         constraint_id: &str,
         line_entity_id: &str,
+        step_scale: f64,
     ) -> CadResult<ConstraintSolveOutcome> {
         let (start_before, mut end_before) = self.line_endpoints(line_entity_id)?;
-        end_before[1] = start_before[1];
+        end_before[1] = interpolate_scalar(end_before[1], start_before[1], step_scale);
         self.set_line_endpoints(line_entity_id, start_before, end_before)?;
         let (start_after, end_after) = self.line_endpoints(line_entity_id)?;
         let residual = (start_after[1] - end_after[1]).abs();
@@ -516,6 +607,7 @@ impl CadSketchModel {
         Ok(ConstraintSolveOutcome {
             solved,
             residual_mm: residual,
+            contributes_to_lm: true,
             diagnostic,
         })
     }
@@ -524,9 +616,10 @@ impl CadSketchModel {
         &mut self,
         constraint_id: &str,
         line_entity_id: &str,
+        step_scale: f64,
     ) -> CadResult<ConstraintSolveOutcome> {
         let (start_before, mut end_before) = self.line_endpoints(line_entity_id)?;
-        end_before[0] = start_before[0];
+        end_before[0] = interpolate_scalar(end_before[0], start_before[0], step_scale);
         self.set_line_endpoints(line_entity_id, start_before, end_before)?;
         let (start_after, end_after) = self.line_endpoints(line_entity_id)?;
         let residual = (start_after[0] - end_after[0]).abs();
@@ -541,6 +634,7 @@ impl CadSketchModel {
         Ok(ConstraintSolveOutcome {
             solved,
             residual_mm: residual,
+            contributes_to_lm: true,
             diagnostic,
         })
     }
@@ -551,6 +645,7 @@ impl CadSketchModel {
         line_entity_id: &str,
         arc_entity_id: &str,
         tolerance_mm: f64,
+        step_scale: f64,
     ) -> CadResult<ConstraintSolveOutcome> {
         let (line_start, line_end) = self.line_endpoints(line_entity_id)?;
         let (arc_center, arc_radius) = self.curve_center_radius(arc_entity_id)?;
@@ -571,8 +666,14 @@ impl CadSketchModel {
                 let target_y = arc_center[1] + sign * arc_radius;
                 self.set_line_endpoints(
                     line_entity_id,
-                    [line_start[0], target_y],
-                    [line_end[0], target_y],
+                    [
+                        line_start[0],
+                        interpolate_scalar(line_start[1], target_y, step_scale),
+                    ],
+                    [
+                        line_end[0],
+                        interpolate_scalar(line_end[1], target_y, step_scale),
+                    ],
                 )?;
             } else if dx <= 0.000_001 {
                 let sign = if line_start[0] >= arc_center[0] {
@@ -583,8 +684,14 @@ impl CadSketchModel {
                 let target_x = arc_center[0] + sign * arc_radius;
                 self.set_line_endpoints(
                     line_entity_id,
-                    [target_x, line_start[1]],
-                    [target_x, line_end[1]],
+                    [
+                        interpolate_scalar(line_start[0], target_x, step_scale),
+                        line_start[1],
+                    ],
+                    [
+                        interpolate_scalar(line_end[0], target_x, step_scale),
+                        line_end[1],
+                    ],
                 )?;
             }
             let (updated_start, updated_end) = self.line_endpoints(line_entity_id)?;
@@ -612,6 +719,7 @@ impl CadSketchModel {
         Ok(ConstraintSolveOutcome {
             solved,
             residual_mm: residual,
+            contributes_to_lm: true,
             diagnostic,
         })
     }
@@ -623,6 +731,7 @@ impl CadSketchModel {
         dimension_kind: CadDimensionConstraintKind,
         target_mm: f64,
         tolerance_mm: f64,
+        step_scale: f64,
     ) -> CadResult<ConstraintSolveOutcome> {
         match dimension_kind {
             CadDimensionConstraintKind::Length => {
@@ -630,10 +739,14 @@ impl CadSketchModel {
                 let vector = [end[0] - start[0], end[1] - start[1]];
                 let length = vector_length_mm(vector);
                 if length <= 0.000_001 {
-                    end = [start[0] + target_mm, start[1]];
+                    end = interpolate_point(end, [start[0] + target_mm, start[1]], step_scale);
                 } else {
                     let scale = target_mm / length;
-                    end = [start[0] + vector[0] * scale, start[1] + vector[1] * scale];
+                    end = interpolate_point(
+                        end,
+                        [start[0] + vector[0] * scale, start[1] + vector[1] * scale],
+                        step_scale,
+                    );
                 }
                 self.set_line_endpoints(entity_id, start, end)?;
 
@@ -656,11 +769,14 @@ impl CadSketchModel {
                 Ok(ConstraintSolveOutcome {
                     solved,
                     residual_mm: residual,
+                    contributes_to_lm: true,
                     diagnostic,
                 })
             }
             CadDimensionConstraintKind::Radius => {
-                self.set_curve_radius(entity_id, target_mm)?;
+                let (_center_before, radius_before) = self.curve_center_radius(entity_id)?;
+                let next_radius = interpolate_scalar(radius_before, target_mm, step_scale);
+                self.set_curve_radius(entity_id, next_radius)?;
                 let (_center, radius_after) = self.curve_center_radius(entity_id)?;
                 let residual = (radius_after - target_mm).abs();
                 let solved = residual <= tolerance_mm;
@@ -676,6 +792,7 @@ impl CadSketchModel {
                 Ok(ConstraintSolveOutcome {
                     solved,
                     residual_mm: residual,
+                    contributes_to_lm: true,
                     diagnostic,
                 })
             }
@@ -690,6 +807,7 @@ impl CadSketchModel {
         ConstraintSolveOutcome {
             solved: false,
             residual_mm: 1.0,
+            contributes_to_lm: false,
             diagnostic: Some(CadSketchSolveDiagnostic {
                 code: "SKETCH_CONSTRAINT_KIND_NOT_IMPLEMENTED".to_string(),
                 severity: CadSketchSolveSeverity::Warning,
@@ -1277,6 +1395,18 @@ fn ensure_curve_entity(
     }
 }
 
+fn interpolate_scalar(current: f64, target: f64, step_scale: f64) -> f64 {
+    let scale = step_scale.clamp(0.0, 1.0);
+    current + (target - current) * scale
+}
+
+fn interpolate_point(current: [f64; 2], target: [f64; 2], step_scale: f64) -> [f64; 2] {
+    [
+        interpolate_scalar(current[0], target[0], step_scale),
+        interpolate_scalar(current[1], target[1], step_scale),
+    ]
+}
+
 #[derive(Clone, Debug)]
 pub(super) struct AnchorBinding {
     pub(super) entity_id: String,
@@ -1306,7 +1436,14 @@ enum AnchorRole {
 struct ConstraintSolveOutcome {
     solved: bool,
     residual_mm: f64,
+    contributes_to_lm: bool,
     diagnostic: Option<CadSketchSolveDiagnostic>,
+}
+
+#[derive(Clone, Debug)]
+struct LmIterationOutcome {
+    report: CadSketchSolveReport,
+    lm_residual_norm: f64,
 }
 
 fn insert_binding(
