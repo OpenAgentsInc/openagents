@@ -1054,9 +1054,7 @@ fn render_treasury_transfer_summary(
         crate::app_state::StableSatsTransferAsset::BtcSats => {
             format!("{} sats", transfer.amount)
         }
-        crate::app_state::StableSatsTransferAsset::UsdCents => {
-            format_usd_cents(transfer.amount)
-        }
+        crate::app_state::StableSatsTransferAsset::UsdCents => format_usd_cents(transfer.amount),
     };
     let fee = match transfer.asset {
         crate::app_state::StableSatsTransferAsset::BtcSats => {

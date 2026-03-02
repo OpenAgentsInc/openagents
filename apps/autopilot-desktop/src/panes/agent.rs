@@ -410,7 +410,10 @@ pub fn paint_trajectory_audit_pane(
         content_bounds.origin.x + 12.0,
         y,
         "Treasury event",
-        pane_state.treasury_event_summary.as_deref().unwrap_or("n/a"),
+        pane_state
+            .treasury_event_summary
+            .as_deref()
+            .unwrap_or("n/a"),
     );
     let _ = paint_label_line(
         paint,

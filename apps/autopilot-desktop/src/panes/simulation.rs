@@ -249,6 +249,8 @@ pub fn paint_stable_sats_simulation_pane(
     let run_label = if pane_state.mode == StableSatsSimulationMode::RealBlink {
         if pane_state.live_refresh_pending {
             "Refreshing..."
+        } else if pane_state.has_settled_live_refresh() {
+            "Run SA Round"
         } else {
             "Refresh Live"
         }

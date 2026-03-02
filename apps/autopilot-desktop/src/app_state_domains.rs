@@ -3437,6 +3437,13 @@ impl StableSatsSimulationPaneState {
             .sum()
     }
 
+    pub fn has_settled_live_refresh(&self) -> bool {
+        self.treasury_operations.iter().any(|entry| {
+            entry.kind == StableSatsTreasuryOperationKind::Refresh
+                && entry.status == StableSatsTreasuryOperationStatus::Settled
+        })
+    }
+
     pub fn set_mode(&mut self, mode: StableSatsSimulationMode) {
         if self.mode == mode {
             return;
@@ -3743,7 +3750,7 @@ impl StableSatsSimulationPaneState {
         wallet_snapshots: &[(String, u64, u64, String)],
         wallet_failures: &[(String, String)],
     ) {
-        if self.agents.len() < 3 {
+        if self.agents.is_empty() {
             self.agents = Self::default_real_wallets();
         }
         let round = self.rounds_run.saturating_add(1);
@@ -4069,44 +4076,18 @@ impl StableSatsSimulationPaneState {
     }
 
     fn default_real_wallets() -> Vec<StableSatsAgentWalletState> {
-        vec![
-            StableSatsAgentWalletState {
-                agent_name: "autopilot-user".to_string(),
-                owner_kind: StableSatsWalletOwnerKind::Operator,
-                owner_id: "operator:autopilot".to_string(),
-                credential_key_name: "BLINK_API_KEY".to_string(),
-                credential_url_name: Some("BLINK_API_URL".to_string()),
-                btc_balance_sats: 0,
-                usd_balance_cents: 0,
-                active_wallet: StableSatsWalletMode::Btc,
-                switch_count: 0,
-                last_switch_summary: "awaiting live refresh".to_string(),
-            },
-            StableSatsAgentWalletState {
-                agent_name: "sa-wallet-1".to_string(),
-                owner_kind: StableSatsWalletOwnerKind::SovereignAgent,
-                owner_id: "sa:wallet-1".to_string(),
-                credential_key_name: "BLINK_API_KEY_SA_1".to_string(),
-                credential_url_name: Some("BLINK_API_URL_SA_1".to_string()),
-                btc_balance_sats: 0,
-                usd_balance_cents: 0,
-                active_wallet: StableSatsWalletMode::Btc,
-                switch_count: 0,
-                last_switch_summary: "awaiting sovereign wallet sync".to_string(),
-            },
-            StableSatsAgentWalletState {
-                agent_name: "sa-wallet-2".to_string(),
-                owner_kind: StableSatsWalletOwnerKind::SovereignAgent,
-                owner_id: "sa:wallet-2".to_string(),
-                credential_key_name: "BLINK_API_KEY_SA_2".to_string(),
-                credential_url_name: Some("BLINK_API_URL_SA_2".to_string()),
-                btc_balance_sats: 0,
-                usd_balance_cents: 0,
-                active_wallet: StableSatsWalletMode::Usd,
-                switch_count: 0,
-                last_switch_summary: "awaiting sovereign wallet sync".to_string(),
-            },
-        ]
+        vec![StableSatsAgentWalletState {
+            agent_name: "autopilot-user".to_string(),
+            owner_kind: StableSatsWalletOwnerKind::Operator,
+            owner_id: "operator:autopilot".to_string(),
+            credential_key_name: "BLINK_API_KEY".to_string(),
+            credential_url_name: Some("BLINK_API_URL".to_string()),
+            btc_balance_sats: 0,
+            usd_balance_cents: 0,
+            active_wallet: StableSatsWalletMode::Btc,
+            switch_count: 0,
+            last_switch_summary: "awaiting live refresh".to_string(),
+        }]
     }
 
     #[allow(clippy::too_many_arguments)]
