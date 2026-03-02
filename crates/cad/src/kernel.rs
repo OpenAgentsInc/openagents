@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::policy;
-use crate::primitives::{BoxPrimitive, CylinderPrimitive};
+use crate::primitives::{BoxPrimitive, ConePrimitive, CylinderPrimitive, SpherePrimitive};
 use crate::{CadError, CadResult};
 
 /// Product-agnostic kernel adapter boundary (v1).
@@ -19,6 +19,16 @@ pub trait CadKernelAdapter {
 
     /// Create a cylinder solid in kernel space.
     fn create_cylinder(&mut self, primitive: &CylinderPrimitive) -> CadResult<Self::Solid>;
+
+    /// Create a sphere solid in kernel space.
+    fn create_sphere(&mut self, _primitive: &SpherePrimitive) -> CadResult<Self::Solid> {
+        Err(CadError::NotImplemented)
+    }
+
+    /// Create a cone/frustum solid in kernel space.
+    fn create_cone(&mut self, _primitive: &ConePrimitive) -> CadResult<Self::Solid> {
+        Err(CadError::NotImplemented)
+    }
 }
 
 /// Engine family used by a pluggable v2 adapter.
@@ -34,6 +44,8 @@ pub enum KernelEngineFamily {
 pub enum KernelCapability {
     PrimitiveBox,
     PrimitiveCylinder,
+    PrimitiveSphere,
+    PrimitiveCone,
     BooleanUnion,
     BooleanDifference,
     Tessellation,
@@ -75,6 +87,8 @@ pub fn openagents_kernel_adapter_v2_descriptor() -> KernelAdapterV2Descriptor {
         capabilities: vec![
             KernelCapability::PrimitiveBox,
             KernelCapability::PrimitiveCylinder,
+            KernelCapability::PrimitiveSphere,
+            KernelCapability::PrimitiveCone,
         ],
         diagnostics_contract: "cad.error.v1 + kernel.receipt.v2".to_string(),
     }
@@ -148,6 +162,22 @@ pub trait CadKernelAdapterV2 {
         primitive: &CylinderPrimitive,
         context: &KernelOperationContext,
     ) -> CadResult<KernelOperationResult<Self::Solid>>;
+
+    fn create_sphere_v2(
+        &mut self,
+        _primitive: &SpherePrimitive,
+        _context: &KernelOperationContext,
+    ) -> CadResult<KernelOperationResult<Self::Solid>> {
+        Err(CadError::NotImplemented)
+    }
+
+    fn create_cone_v2(
+        &mut self,
+        _primitive: &ConePrimitive,
+        _context: &KernelOperationContext,
+    ) -> CadResult<KernelOperationResult<Self::Solid>> {
+        Err(CadError::NotImplemented)
+    }
 }
 
 /// Bridge legacy v1 adapters into v2 adapter contract without breaking callers.
@@ -198,6 +228,30 @@ impl<K: CadKernelAdapter> CadKernelAdapterV2 for KernelAdapterV2Bridge<K> {
         context: &KernelOperationContext,
     ) -> CadResult<KernelOperationResult<Self::Solid>> {
         let solid = self.inner.create_cylinder(primitive)?;
+        Ok(KernelOperationResult {
+            solid,
+            receipt: operation_receipt(&self.descriptor, context),
+        })
+    }
+
+    fn create_sphere_v2(
+        &mut self,
+        primitive: &SpherePrimitive,
+        context: &KernelOperationContext,
+    ) -> CadResult<KernelOperationResult<Self::Solid>> {
+        let solid = self.inner.create_sphere(primitive)?;
+        Ok(KernelOperationResult {
+            solid,
+            receipt: operation_receipt(&self.descriptor, context),
+        })
+    }
+
+    fn create_cone_v2(
+        &mut self,
+        primitive: &ConePrimitive,
+        context: &KernelOperationContext,
+    ) -> CadResult<KernelOperationResult<Self::Solid>> {
+        let solid = self.inner.create_cone(primitive)?;
         Ok(KernelOperationResult {
             solid,
             receipt: operation_receipt(&self.descriptor, context),
