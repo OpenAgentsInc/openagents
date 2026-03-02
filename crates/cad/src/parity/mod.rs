@@ -35,6 +35,7 @@ pub mod sketch_constraint_enum_parity;
 pub mod sketch_constraint_status_parity;
 pub mod sketch_entity_set_parity;
 pub mod sketch_extrude_parity;
+pub mod sketch_fixture_equivalence_parity;
 pub mod sketch_interaction_parity;
 pub mod sketch_iterative_lm_parity;
 pub mod sketch_jacobian_residual_parity;
