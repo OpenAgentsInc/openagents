@@ -38,6 +38,7 @@ LANE_LABELS=(
     "core-modeling-checkpoint"
     "sketch-entity-set"
     "sketch-plane"
+    "sketch-constraint-enum"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -205,6 +206,9 @@ run_lane "sketch-entity-set" \
 
 run_lane "sketch-plane" \
     "$ROOT_DIR/scripts/cad/parity-sketch-plane-ci.sh"
+
+run_lane "sketch-constraint-enum" \
+    "$ROOT_DIR/scripts/cad/parity-sketch-constraint-enum-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
