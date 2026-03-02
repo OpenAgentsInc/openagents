@@ -67,6 +67,21 @@ impl SketchProfileFeatureSpec {
         match self.kind {
             SketchProfileFeatureKind::Extrude => {
                 validate_positive_opt(self.depth_mm, "extrude depth_mm")?;
+                if self.source_feature_id.is_some() {
+                    return Err(CadError::ParseFailed {
+                        reason: "extrude operations must not specify source_feature_id".to_string(),
+                    });
+                }
+                if self.revolve_angle_deg.is_some() {
+                    return Err(CadError::ParseFailed {
+                        reason: "extrude operations must not specify revolve_angle_deg".to_string(),
+                    });
+                }
+                if self.axis_anchor_ids.is_some() {
+                    return Err(CadError::ParseFailed {
+                        reason: "extrude operations must not specify axis_anchor_ids".to_string(),
+                    });
+                }
             }
             SketchProfileFeatureKind::Cut => {
                 validate_positive_opt(self.depth_mm, "cut depth_mm")?;
@@ -77,8 +92,23 @@ impl SketchProfileFeatureSpec {
                             reason: "cut operations require source_feature_id".to_string(),
                         })?;
                 validate_stable_id(source_feature_id, "source_feature_id")?;
+                if self.revolve_angle_deg.is_some() {
+                    return Err(CadError::ParseFailed {
+                        reason: "cut operations must not specify revolve_angle_deg".to_string(),
+                    });
+                }
+                if self.axis_anchor_ids.is_some() {
+                    return Err(CadError::ParseFailed {
+                        reason: "cut operations must not specify axis_anchor_ids".to_string(),
+                    });
+                }
             }
             SketchProfileFeatureKind::Revolve => {
+                if self.depth_mm.is_some() {
+                    return Err(CadError::ParseFailed {
+                        reason: "revolve operations must not specify depth_mm".to_string(),
+                    });
+                }
                 let angle = self
                     .revolve_angle_deg
                     .ok_or_else(|| CadError::ParseFailed {
@@ -726,6 +756,118 @@ mod tests {
             .expect("constraints should solve");
         assert!(report.passed, "rectangle constraints should pass");
         model
+    }
+
+    #[test]
+    fn sketch_profile_spec_validation_rejects_cross_kind_parameters() {
+        let extrude = SketchProfileFeatureSpec {
+            feature_id: "feature.extrude".to_string(),
+            profile_id: "profile.extrude".to_string(),
+            plane_id: "plane.front".to_string(),
+            profile_entity_ids: vec!["entity.a".to_string()],
+            kind: SketchProfileFeatureKind::Extrude,
+            source_feature_id: None,
+            depth_mm: Some(5.0),
+            revolve_angle_deg: None,
+            axis_anchor_ids: None,
+            tolerance_mm: Some(0.001),
+        };
+        let cut = SketchProfileFeatureSpec {
+            feature_id: "feature.cut".to_string(),
+            profile_id: "profile.cut".to_string(),
+            plane_id: "plane.front".to_string(),
+            profile_entity_ids: vec!["entity.a".to_string()],
+            kind: SketchProfileFeatureKind::Cut,
+            source_feature_id: Some("feature.source".to_string()),
+            depth_mm: Some(5.0),
+            revolve_angle_deg: None,
+            axis_anchor_ids: None,
+            tolerance_mm: Some(0.001),
+        };
+        let revolve = SketchProfileFeatureSpec {
+            feature_id: "feature.revolve".to_string(),
+            profile_id: "profile.revolve".to_string(),
+            plane_id: "plane.front".to_string(),
+            profile_entity_ids: vec!["entity.a".to_string()],
+            kind: SketchProfileFeatureKind::Revolve,
+            source_feature_id: None,
+            depth_mm: None,
+            revolve_angle_deg: Some(270.0),
+            axis_anchor_ids: Some(["anchor.axis.a".to_string(), "anchor.axis.b".to_string()]),
+            tolerance_mm: Some(0.001),
+        };
+
+        let extrude_with_source = SketchProfileFeatureSpec {
+            source_feature_id: Some("feature.source".to_string()),
+            ..extrude.clone()
+        };
+        assert!(
+            extrude_with_source
+                .validate()
+                .expect_err("extrude must reject source_feature_id")
+                .to_string()
+                .contains("source_feature_id")
+        );
+
+        let extrude_with_revolve_angle = SketchProfileFeatureSpec {
+            revolve_angle_deg: Some(180.0),
+            ..extrude.clone()
+        };
+        assert!(
+            extrude_with_revolve_angle
+                .validate()
+                .expect_err("extrude must reject revolve_angle_deg")
+                .to_string()
+                .contains("revolve_angle_deg")
+        );
+
+        let extrude_with_axis = SketchProfileFeatureSpec {
+            axis_anchor_ids: Some(["anchor.axis.a".to_string(), "anchor.axis.b".to_string()]),
+            ..extrude
+        };
+        assert!(
+            extrude_with_axis
+                .validate()
+                .expect_err("extrude must reject axis_anchor_ids")
+                .to_string()
+                .contains("axis_anchor_ids")
+        );
+
+        let cut_with_revolve_angle = SketchProfileFeatureSpec {
+            revolve_angle_deg: Some(180.0),
+            ..cut.clone()
+        };
+        assert!(
+            cut_with_revolve_angle
+                .validate()
+                .expect_err("cut must reject revolve_angle_deg")
+                .to_string()
+                .contains("revolve_angle_deg")
+        );
+
+        let cut_with_axis = SketchProfileFeatureSpec {
+            axis_anchor_ids: Some(["anchor.axis.a".to_string(), "anchor.axis.b".to_string()]),
+            ..cut
+        };
+        assert!(
+            cut_with_axis
+                .validate()
+                .expect_err("cut must reject axis_anchor_ids")
+                .to_string()
+                .contains("axis_anchor_ids")
+        );
+
+        let revolve_with_depth = SketchProfileFeatureSpec {
+            depth_mm: Some(5.0),
+            ..revolve
+        };
+        assert!(
+            revolve_with_depth
+                .validate()
+                .expect_err("revolve must reject depth_mm")
+                .to_string()
+                .contains("depth_mm")
+        );
     }
 
     #[test]
