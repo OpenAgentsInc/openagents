@@ -431,6 +431,9 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     if reducers::run_cad_demo_action(state, CadDemoPaneAction::Noop) {
         changed = true;
     }
+    if run_goal_interval_scheduler(state) {
+        changed = true;
+    }
     if run_autonomous_goal_loop(state) {
         changed = true;
     }
@@ -459,6 +462,32 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     refresh_sync_health(state);
     mirror_ui_errors_to_console(state);
     changed
+}
+
+fn run_goal_interval_scheduler(state: &mut crate::app_state::RenderState) -> bool {
+    let now_epoch_seconds = current_epoch_seconds();
+    match state
+        .autopilot_goals
+        .run_interval_scheduler_tick(now_epoch_seconds)
+    {
+        Ok(triggered_goal_ids) => {
+            if triggered_goal_ids.is_empty() {
+                return false;
+            }
+            state.autopilot_chat.record_turn_timeline_event(format!(
+                "goal interval scheduler triggered: {}",
+                triggered_goal_ids.join(",")
+            ));
+            true
+        }
+        Err(error) => {
+            state.autopilot_goals.last_error = Some(error.clone());
+            state
+                .autopilot_chat
+                .record_turn_timeline_event(format!("goal interval scheduler error: {}", error));
+            true
+        }
+    }
 }
 
 fn run_autonomous_goal_loop(state: &mut crate::app_state::RenderState) -> bool {

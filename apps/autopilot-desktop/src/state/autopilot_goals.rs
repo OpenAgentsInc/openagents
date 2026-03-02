@@ -103,6 +103,8 @@ pub struct GoalScheduleConfig {
     pub enabled: bool,
     pub kind: GoalScheduleKind,
     pub next_run_epoch_seconds: Option<u64>,
+    #[serde(default)]
+    pub last_run_epoch_seconds: Option<u64>,
 }
 
 impl Default for GoalScheduleConfig {
@@ -111,6 +113,7 @@ impl Default for GoalScheduleConfig {
             enabled: false,
             kind: GoalScheduleKind::Manual,
             next_run_epoch_seconds: None,
+            last_run_epoch_seconds: None,
         }
     }
 }
@@ -637,6 +640,165 @@ impl AutopilotGoalsState {
             return Err(format!("Active goal {goal_id} not found"));
         };
         Ok(resolve_goal_skill_candidates(goal, discovered_skills))
+    }
+
+    pub fn set_goal_interval_schedule(
+        &mut self,
+        goal_id: &str,
+        interval_seconds: u64,
+        now_epoch_seconds: u64,
+    ) -> Result<(), String> {
+        if interval_seconds == 0 {
+            return Err("Interval schedule seconds must be greater than zero".to_string());
+        }
+        let Some(goal) = self
+            .document
+            .active_goals
+            .iter_mut()
+            .find(|goal| goal.goal_id == goal_id)
+        else {
+            return Err(format!("Active goal {goal_id} not found"));
+        };
+
+        goal.schedule.enabled = true;
+        goal.schedule.kind = GoalScheduleKind::IntervalSeconds {
+            seconds: interval_seconds,
+        };
+        goal.schedule.next_run_epoch_seconds =
+            Some(now_epoch_seconds.saturating_add(interval_seconds));
+        goal.updated_at_epoch_seconds = now_epoch_seconds;
+        self.persist_to_disk()?;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Set interval schedule for goal {} to {}s",
+            goal_id, interval_seconds
+        ));
+        Ok(())
+    }
+
+    pub fn schedule_goal_run_now(
+        &mut self,
+        goal_id: &str,
+        now_epoch_seconds: u64,
+    ) -> Result<(), String> {
+        let lifecycle_status = {
+            let Some(goal) = self
+                .document
+                .active_goals
+                .iter_mut()
+                .find(|goal| goal.goal_id == goal_id)
+            else {
+                return Err(format!("Active goal {goal_id} not found"));
+            };
+
+            goal.schedule.last_run_epoch_seconds = Some(now_epoch_seconds);
+            match goal.schedule.kind {
+                GoalScheduleKind::IntervalSeconds { seconds } => {
+                    goal.schedule.next_run_epoch_seconds =
+                        Some(now_epoch_seconds.saturating_add(seconds.max(1)));
+                }
+                GoalScheduleKind::Manual | GoalScheduleKind::Cron { .. } => {
+                    goal.schedule.next_run_epoch_seconds = None;
+                }
+            }
+            goal.updated_at_epoch_seconds = now_epoch_seconds;
+            goal.lifecycle_status
+        };
+        self.persist_to_disk()?;
+
+        match lifecycle_status {
+            GoalLifecycleStatus::Draft => {
+                self.transition_goal(goal_id, GoalLifecycleEvent::Queue)?;
+            }
+            GoalLifecycleStatus::Paused => {
+                self.transition_goal(goal_id, GoalLifecycleEvent::Resume)?;
+            }
+            GoalLifecycleStatus::Queued | GoalLifecycleStatus::Running => {}
+            status => {
+                return Err(format!("Cannot schedule run now from {status:?}"));
+            }
+        }
+
+        self.last_error = None;
+        self.last_action = Some(format!("Scheduled immediate run for goal {}", goal_id));
+        Ok(())
+    }
+
+    pub fn run_interval_scheduler_tick(
+        &mut self,
+        now_epoch_seconds: u64,
+    ) -> Result<Vec<String>, String> {
+        let mut triggered_goal_ids = Vec::new();
+        let mut queue_goal_ids = Vec::new();
+        let mut touched = false;
+
+        for goal in &mut self.document.active_goals {
+            if !goal.schedule.enabled {
+                continue;
+            }
+            let GoalScheduleKind::IntervalSeconds { seconds } = goal.schedule.kind else {
+                continue;
+            };
+            let interval_seconds = seconds.max(1);
+
+            let next_run = match goal.schedule.next_run_epoch_seconds {
+                Some(value) => value,
+                None => {
+                    let next = now_epoch_seconds.saturating_add(interval_seconds);
+                    goal.schedule.next_run_epoch_seconds = Some(next);
+                    goal.updated_at_epoch_seconds = now_epoch_seconds;
+                    touched = true;
+                    continue;
+                }
+            };
+            if now_epoch_seconds < next_run {
+                continue;
+            }
+
+            goal.schedule.last_run_epoch_seconds = Some(now_epoch_seconds);
+            goal.schedule.next_run_epoch_seconds =
+                Some(now_epoch_seconds.saturating_add(interval_seconds));
+            goal.updated_at_epoch_seconds = now_epoch_seconds;
+            touched = true;
+            triggered_goal_ids.push(goal.goal_id.clone());
+            if matches!(
+                goal.lifecycle_status,
+                GoalLifecycleStatus::Draft | GoalLifecycleStatus::Paused
+            ) {
+                queue_goal_ids.push(goal.goal_id.clone());
+            }
+        }
+
+        if touched {
+            self.persist_to_disk()?;
+        }
+
+        for goal_id in queue_goal_ids {
+            let lifecycle_status = self
+                .document
+                .active_goals
+                .iter()
+                .find(|goal| goal.goal_id == goal_id)
+                .map(|goal| goal.lifecycle_status);
+            match lifecycle_status {
+                Some(GoalLifecycleStatus::Draft) => {
+                    self.transition_goal(&goal_id, GoalLifecycleEvent::Queue)?;
+                }
+                Some(GoalLifecycleStatus::Paused) => {
+                    self.transition_goal(&goal_id, GoalLifecycleEvent::Resume)?;
+                }
+                _ => {}
+            }
+        }
+
+        if !triggered_goal_ids.is_empty() {
+            self.last_action = Some(format!(
+                "Interval scheduler triggered goals: {}",
+                triggered_goal_ids.join(",")
+            ));
+            self.last_error = None;
+        }
+        Ok(triggered_goal_ids)
     }
 
     pub fn file_path(&self) -> &PathBuf {
@@ -1342,6 +1504,89 @@ mod tests {
                 .candidates
                 .iter()
                 .all(|candidate| !candidate.reason.trim().is_empty())
+        );
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn interval_schedule_persists_and_triggers_queue_transition() {
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch time available")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "autopilot-goals-interval-schedule-{now_nanos}.json"
+        ));
+        let mut state = AutopilotGoalsState::load_from_path(path.clone());
+        state
+            .upsert_active_goal(sample_goal("goal-interval"))
+            .expect("upsert active goal should succeed");
+
+        state
+            .set_goal_interval_schedule("goal-interval", 15, 1_700_000_000)
+            .expect("setting interval schedule should succeed");
+        let configured_goal = state
+            .document
+            .active_goals
+            .iter()
+            .find(|goal| goal.goal_id == "goal-interval")
+            .expect("goal must exist");
+        assert!(configured_goal.schedule.enabled);
+        assert_eq!(
+            configured_goal.schedule.next_run_epoch_seconds,
+            Some(1_700_000_015)
+        );
+
+        let triggered = state
+            .run_interval_scheduler_tick(1_700_000_020)
+            .expect("scheduler tick should succeed");
+        assert_eq!(triggered, vec!["goal-interval".to_string()]);
+        let queued_goal = state
+            .document
+            .active_goals
+            .iter()
+            .find(|goal| goal.goal_id == "goal-interval")
+            .expect("goal must still be active");
+        assert_eq!(queued_goal.lifecycle_status, GoalLifecycleStatus::Queued);
+        assert_eq!(
+            queued_goal.schedule.last_run_epoch_seconds,
+            Some(1_700_000_020)
+        );
+        assert_eq!(
+            queued_goal.schedule.next_run_epoch_seconds,
+            Some(1_700_000_035)
+        );
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn schedule_goal_run_now_updates_last_run_and_queues_draft_goal() {
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch time available")
+            .as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("autopilot-goals-schedule-now-{now_nanos}.json"));
+        let mut state = AutopilotGoalsState::load_from_path(path.clone());
+        state
+            .upsert_active_goal(sample_goal("goal-manual-now"))
+            .expect("upsert active goal should succeed");
+
+        state
+            .schedule_goal_run_now("goal-manual-now", 1_700_000_100)
+            .expect("manual run scheduling should succeed");
+        let queued_goal = state
+            .document
+            .active_goals
+            .iter()
+            .find(|goal| goal.goal_id == "goal-manual-now")
+            .expect("goal must exist");
+        assert_eq!(queued_goal.lifecycle_status, GoalLifecycleStatus::Queued);
+        assert_eq!(
+            queued_goal.schedule.last_run_epoch_seconds,
+            Some(1_700_000_100)
         );
 
         let _ = std::fs::remove_file(path);

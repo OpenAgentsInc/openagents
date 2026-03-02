@@ -158,6 +158,40 @@ pub fn paint_agent_schedule_tick_pane(
         paint,
         content_bounds.origin.x + 12.0,
         y,
+        "Selected goal",
+        pane_state.selected_goal_id.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Scheduler mode",
+        &pane_state.scheduler_mode,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Next goal run (epoch)",
+        &pane_state
+            .next_goal_run_epoch_seconds
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "n/a".to_string()),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Last goal run (epoch)",
+        &pane_state
+            .last_goal_run_epoch_seconds
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "n/a".to_string()),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
         "Heartbeat (s)",
         &pane_state.heartbeat_seconds.to_string(),
     );
