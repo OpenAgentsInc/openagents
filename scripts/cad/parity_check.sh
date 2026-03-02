@@ -44,6 +44,7 @@ LANE_LABELS=(
     "sketch-constraint-status"
     "sketch-extrude"
     "sketch-revolve"
+    "sketch-sweep"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -229,6 +230,9 @@ run_lane "sketch-extrude" \
 
 run_lane "sketch-revolve" \
     "$ROOT_DIR/scripts/cad/parity-sketch-revolve-ci.sh"
+
+run_lane "sketch-sweep" \
+    "$ROOT_DIR/scripts/cad/parity-sketch-sweep-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

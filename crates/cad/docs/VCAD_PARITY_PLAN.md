@@ -131,7 +131,7 @@ Major gaps to close:
 46. [x] VCAD-PARITY-046: Under/fully/over-constrained status parity semantics.
 47. [x] VCAD-PARITY-047: Extrude-from-sketch parity behaviors.
 48. [x] VCAD-PARITY-048: Revolve-from-sketch parity (full + partial angles).
-49. [ ] VCAD-PARITY-049: Sweep-from-sketch parity.
+49. [x] VCAD-PARITY-049: Sweep-from-sketch parity.
 50. [ ] VCAD-PARITY-050: Loft-from-sketch parity.
 51. [ ] VCAD-PARITY-051: Sketch profile validity parity checks.
 52. [ ] VCAD-PARITY-052: Sketch interaction parity (shortcuts + editing flow).

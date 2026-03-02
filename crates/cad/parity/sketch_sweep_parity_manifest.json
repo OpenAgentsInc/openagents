@@ -1,0 +1,62 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-049",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "vcad_reference_sources": [
+    "docs/features/sketch-operations.md (Sweep operation + edge cases)",
+    "crates/vcad-kernel-sweep/src/sweep.rs (path/twist/scale controls)"
+  ],
+  "closed_case": {
+    "profile_closed_loop": true,
+    "warning_codes": [],
+    "sweep_path_entity_ids": [
+      "entity.path.a",
+      "entity.path.b"
+    ],
+    "sweep_twist_deg": 45.0,
+    "sweep_scale_start": 1.0,
+    "sweep_scale_end": 0.7,
+    "profile_bounds_mm": [
+      0.0,
+      40.0,
+      0.0,
+      20.0
+    ],
+    "profile_hash": "6fe35e0da83efd37",
+    "node_hash": "38f8965c3b651cdc"
+  },
+  "open_case": {
+    "profile_closed_loop": false,
+    "warning_codes": [
+      "CAD-WARN-NON-MANIFOLD"
+    ],
+    "sweep_path_entity_ids": [
+      "entity.path.open"
+    ],
+    "sweep_twist_deg": 0.0,
+    "sweep_scale_start": 1.0,
+    "sweep_scale_end": 1.0,
+    "profile_bounds_mm": [
+      0.0,
+      20.0,
+      0.0,
+      0.0
+    ],
+    "profile_hash": "613ccfa9215134b0",
+    "node_hash": "b7f851f93cfd8eea"
+  },
+  "profile_hash_order_stable": true,
+  "empty_path_error": "parse failed: sweep_path_entity_ids must not be empty",
+  "non_positive_scale_error": "parse failed: sweep_scale_end must be finite and > 0 when provided",
+  "unknown_path_entity_error": "parse failed: sweep path references unknown sketch entity entity.path.missing",
+  "unsolved_constraint_error": "evaluation failed: sketch profile profile.sweep.unsolved has unsolved constraints; conversion blocked",
+  "deterministic_replay_match": true,
+  "deterministic_signature": "1d45c0197e7b1e8c",
+  "parity_contracts": [
+    "closed sketch profiles map deterministically into sketch.sweep.v1 feature nodes with path/twist/scale controls",
+    "open sweep profiles emit deterministic CAD-WARN-NON-MANIFOLD warnings",
+    "empty-path, invalid-scale, unknown-path, and unsolved-constraint sweep inputs fail deterministically"
+  ]
+}
