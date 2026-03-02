@@ -177,7 +177,7 @@ Major gaps to close:
 83. [x] VCAD-PARITY-083: Build `openagents-cad-cli` command surface scaffold.
 84. [x] VCAD-PARITY-084: CLI command parity (`export`, `import`, `info`).
 85. [x] VCAD-PARITY-085: MCP CAD tools parity (`create`, `export`, `inspect`).
-86. [ ] VCAD-PARITY-086: Compact IR parser/serializer parity.
+86. [x] VCAD-PARITY-086: Compact IR parser/serializer parity.
 87. [ ] VCAD-PARITY-087: Intent-based modeling parity execution path.
 88. [ ] VCAD-PARITY-088: Text-to-CAD adapter parity lane (prompt->model).
 89. [ ] VCAD-PARITY-089: Dataset generation and annotation parity tooling.

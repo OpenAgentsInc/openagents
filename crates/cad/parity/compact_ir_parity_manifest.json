@@ -1,0 +1,45 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-086",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_corpus_path": "crates/cad/parity/fixtures/compact_ir_vcad_reference.json",
+  "reference_corpus_sha256": "e2e2127fd27049a4962ea304ba24030f79b978a0965cb2c2242c789161d3ed64",
+  "reference_source": "~/code/vcad/crates/vcad-ir/src/compact.rs + ~/code/vcad/docs/features/compact-ir.md",
+  "reference_commit_match": true,
+  "opcode_coverage_match": true,
+  "parse_error_contract_match": true,
+  "roundtrip_contract_match": true,
+  "deterministic_replay_match": true,
+  "snapshot": {
+    "compact_hash": "95b8cb7eca55c440",
+    "roundtrip_compact_hash": "95b8cb7eca55c440",
+    "non_comment_line_count": 13,
+    "node_count": 10,
+    "root_count": 1,
+    "root_material": "aluminum",
+    "opcodes": [
+      "C",
+      "D",
+      "I",
+      "K",
+      "M",
+      "R",
+      "ROOT",
+      "S",
+      "T",
+      "U",
+      "X",
+      "Y"
+    ],
+    "parse_error": "parse failed: compact ir line 1: node 4 referenced but only 1 nodes defined"
+  },
+  "deterministic_signature": "03788ddc74e59b24",
+  "parity_contracts": [
+    "compact IR serializer emits vcad-style opcode stream with deterministic ordering",
+    "compact IR parser accepts vcad-style materials/geometry/root records",
+    "compact IR parser rejects invalid node references with explicit diagnostics",
+    "compact IR parse/serialize replay is deterministic across repeated runs"
+  ]
+}

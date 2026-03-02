@@ -9,8 +9,9 @@ use crate::hash::stable_hex_digest;
 use crate::mcp_tools::{
     CadMcpCreateInput, CadMcpInspectInput, CadMcpInspectResult, CadMcpOperation, CadMcpPartInput,
     CadMcpPrimitive, CadMcpPrimitiveType, CadMcpToolResponse, CadMcpVec3, MCP_CAD_CREATE_TOOL,
-    MCP_CAD_EXPORT_TOOL, MCP_CAD_INSPECT_TOOL, create_cad_document, create_cad_document_schema,
-    export_cad, export_cad_schema, inspect_cad, inspect_cad_schema, mcp_document_hash,
+    MCP_CAD_EXPORT_TOOL, MCP_CAD_INSPECT_TOOL, cad_document_from_text, create_cad_document,
+    create_cad_document_schema, export_cad, export_cad_schema, inspect_cad, inspect_cad_schema,
+    mcp_document_hash,
 };
 use crate::parity::scorecard::ParityScorecard;
 use crate::{CadError, CadResult};
@@ -219,10 +220,7 @@ fn collect_cad_mcp_tools_snapshot() -> CadResult<CadMcpToolsSnapshot> {
     let create_input = sample_create_input();
     let created = create_cad_document(create_input)?;
     let created_text = response_text(&created, MCP_CAD_CREATE_TOOL)?;
-    let document = serde_json::from_str::<crate::mcp_tools::CadMcpDocument>(&created_text)
-        .map_err(|error| CadError::ParseFailed {
-            reason: format!("failed to parse create_cad_document response text: {error}"),
-        })?;
+    let document = cad_document_from_text(&created_text)?;
 
     let create_snapshot = CadMcpCreateSnapshot {
         document_hash: mcp_document_hash(&document)?,

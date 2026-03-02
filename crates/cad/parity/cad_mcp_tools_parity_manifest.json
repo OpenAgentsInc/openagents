@@ -13,8 +13,8 @@
   "case_contract_match": true,
   "deterministic_replay_match": true,
   "create_snapshot": {
-    "document_hash": "e738724d6b2485f1",
-    "response_hash": "e738724d6b2485f1",
+    "document_hash": "d0cf9a2c6f37c2ed",
+    "response_hash": "06daf12fe83ac309",
     "node_count": 2,
     "root_count": 1
   },
@@ -40,7 +40,7 @@
       "output_hash": "dfd99e1145de6c6d"
     }
   ],
-  "deterministic_signature": "72849f432f69619f",
+  "deterministic_signature": "ab5e054909d24404",
   "parity_contracts": [
     "create_cad_document returns deterministic IR document text payload",
     "inspect_cad returns deterministic geometry summary JSON with volume/area/bbox/com",

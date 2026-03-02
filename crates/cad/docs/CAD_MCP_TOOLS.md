@@ -25,12 +25,14 @@ Input:
 - `format` (`json` or `compact`, default `compact`).
 
 Output:
-- One text content item containing serialized IR document JSON (`version=0.1`).
+- One text content item containing serialized IR:
+  - `format=json`: pretty JSON document (`version=0.1`)
+  - `format=compact`: vcad-style compact IR text (`cad0`-like opcode stream)
 
 ### `export_cad`
 
 Input:
-- `ir` (document from `create_cad_document`)
+- `ir` (document object from `create_cad_document`, or compact IR string)
 - `filename` ending in `.stl` or `.glb`
 
 Behavior:
@@ -45,7 +47,7 @@ Behavior:
 ### `inspect_cad`
 
 Input:
-- `ir` (document from `create_cad_document`)
+- `ir` (document object from `create_cad_document`, or compact IR string)
 
 Behavior:
 - Evaluates part meshes deterministically.
