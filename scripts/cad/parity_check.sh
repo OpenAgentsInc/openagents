@@ -56,6 +56,7 @@ LANE_LABELS=(
     "assembly-joint-frs"
     "assembly-joint-cb"
     "assembly-joint-limits-state"
+    "assembly-fk"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -277,6 +278,9 @@ run_lane "assembly-joint-cb" \
 
 run_lane "assembly-joint-limits-state" \
     "$ROOT_DIR/scripts/cad/parity-assembly-joint-limits-state-ci.sh"
+
+run_lane "assembly-fk" \
+    "$ROOT_DIR/scripts/cad/parity-assembly-fk-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

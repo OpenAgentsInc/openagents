@@ -66,6 +66,7 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/assembly_joint_frs_parity_manifest.json"
     "crates/cad/parity/assembly_joint_cb_parity_manifest.json"
     "crates/cad/parity/assembly_joint_limits_state_parity_manifest.json"
+    "crates/cad/parity/assembly_fk_parity_manifest.json"
     "crates/cad/parity/sketch_loft_parity_manifest.json"
     "crates/cad/parity/sketch_profile_validity_parity_manifest.json"
     "crates/cad/parity/sketch_revolve_parity_manifest.json"
@@ -77,6 +78,7 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/fixtures/assembly_joint_frs_vcad_reference.json"
     "crates/cad/parity/fixtures/assembly_joint_cb_vcad_reference.json"
     "crates/cad/parity/fixtures/assembly_joint_limits_state_vcad_reference.json"
+    "crates/cad/parity/fixtures/assembly_fk_vcad_reference.json"
     "crates/cad/parity/fixtures/parity_fixture_corpus.json"
 )
 

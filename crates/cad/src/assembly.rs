@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
@@ -443,6 +443,93 @@ impl CadAssemblySchema {
         }
     }
 
+    pub fn solve_forward_kinematics(&self) -> BTreeMap<String, CadTransform3D> {
+        let mut results = BTreeMap::new();
+        if self.instances.is_empty() {
+            return results;
+        }
+
+        let mut joint_tree: HashMap<&str, (&CadAssemblyJoint, Option<&str>)> = HashMap::new();
+        let mut children_by_parent: HashMap<Option<&str>, Vec<&str>> = HashMap::new();
+        children_by_parent.insert(None, Vec::new());
+
+        for joint in &self.joints {
+            let parent_id = joint.parent_instance_id.as_deref();
+            joint_tree.insert(&joint.child_instance_id, (joint, parent_id));
+            children_by_parent
+                .entry(parent_id)
+                .or_default()
+                .push(&joint.child_instance_id);
+        }
+
+        let child_ids: HashSet<&str> = self
+            .joints
+            .iter()
+            .map(|joint| joint.child_instance_id.as_str())
+            .collect();
+        let root_instances: Vec<&CadPartInstance> = self
+            .instances
+            .iter()
+            .filter(|instance| !child_ids.contains(instance.id.as_str()))
+            .collect();
+        for instance in &root_instances {
+            results.insert(
+                instance.id.clone(),
+                clean_transform(instance.transform.unwrap_or_else(CadTransform3D::identity)),
+            );
+        }
+
+        let mut queue: VecDeque<Option<&str>> = VecDeque::new();
+        queue.push_back(None);
+        for instance in &root_instances {
+            queue.push_back(Some(&instance.id));
+        }
+
+        let mut visited: HashSet<Option<&str>> = HashSet::new();
+        visited.insert(None);
+
+        let instance_by_id: HashMap<&str, &CadPartInstance> = self
+            .instances
+            .iter()
+            .map(|instance| (instance.id.as_str(), instance))
+            .collect();
+
+        while let Some(parent_id) = queue.pop_front() {
+            let children = children_by_parent
+                .get(&parent_id)
+                .cloned()
+                .unwrap_or_default();
+
+            for child_id in children {
+                if visited.contains(&Some(child_id)) {
+                    continue;
+                }
+                visited.insert(Some(child_id));
+
+                let Some((joint, edge_parent_id)) = joint_tree.get(child_id) else {
+                    continue;
+                };
+                let Some(instance) = instance_by_id.get(child_id) else {
+                    continue;
+                };
+
+                let parent_world = edge_parent_id
+                    .and_then(|parent| results.get(parent))
+                    .copied()
+                    .unwrap_or_else(CadTransform3D::identity);
+                let joint_transform = compute_joint_fk_transform(joint);
+                let local_transform = instance.transform.unwrap_or_else(CadTransform3D::identity);
+                let jointed = compose_transforms(joint_transform, local_transform);
+                let world = compose_transforms(parent_world, jointed);
+
+                results.insert(child_id.to_string(), clean_transform(world));
+                queue.push_back(Some(child_id));
+            }
+        }
+
+        results
+    }
+
     fn next_instance_id(&self, part_def_id: &str) -> String {
         let mut next_index = 1_u64;
         loop {
@@ -519,6 +606,170 @@ fn normalize_limits(limits: CadJointLimits) -> CadJointLimits {
         (lower, upper)
     } else {
         (upper, lower)
+    }
+}
+
+type Mat3 = [[f64; 3]; 3];
+
+fn euler_to_matrix(angles: Vec3) -> Mat3 {
+    let rx = deg_to_rad(angles.x);
+    let ry = deg_to_rad(angles.y);
+    let rz = deg_to_rad(angles.z);
+
+    let (cx, sx) = (rx.cos(), rx.sin());
+    let (cy, sy) = (ry.cos(), ry.sin());
+    let (cz, sz) = (rz.cos(), rz.sin());
+
+    [
+        [cy * cz, sx * sy * cz - cx * sz, cx * sy * cz + sx * sz],
+        [cy * sz, sx * sy * sz + cx * cz, cx * sy * sz - sx * cz],
+        [-sy, sx * cy, cx * cy],
+    ]
+}
+
+fn mat_vec3(matrix: &Mat3, value: Vec3) -> Vec3 {
+    Vec3::new(
+        matrix[0][0] * value.x + matrix[0][1] * value.y + matrix[0][2] * value.z,
+        matrix[1][0] * value.x + matrix[1][1] * value.y + matrix[1][2] * value.z,
+        matrix[2][0] * value.x + matrix[2][1] * value.y + matrix[2][2] * value.z,
+    )
+}
+
+fn mat_mul(left: &Mat3, right: &Mat3) -> Mat3 {
+    let mut result = [[0.0; 3]; 3];
+    for i in 0..3 {
+        for j in 0..3 {
+            result[i][j] =
+                left[i][0] * right[0][j] + left[i][1] * right[1][j] + left[i][2] * right[2][j];
+        }
+    }
+    result
+}
+
+fn matrix_to_euler(matrix: &Mat3) -> Vec3 {
+    let sy = -matrix[2][0];
+    let cy = (matrix[0][0] * matrix[0][0] + matrix[1][0] * matrix[1][0]).sqrt();
+
+    if cy > 1e-6 {
+        Vec3::new(
+            matrix[2][1].atan2(matrix[2][2]) * 180.0 / std::f64::consts::PI,
+            sy.atan2(cy) * 180.0 / std::f64::consts::PI,
+            matrix[1][0].atan2(matrix[0][0]) * 180.0 / std::f64::consts::PI,
+        )
+    } else {
+        Vec3::new(
+            (-matrix[1][2]).atan2(matrix[1][1]) * 180.0 / std::f64::consts::PI,
+            sy.atan2(cy) * 180.0 / std::f64::consts::PI,
+            0.0,
+        )
+    }
+}
+
+fn axis_angle_to_matrix(axis: Vec3, angle_deg: f64) -> Mat3 {
+    let normalized_axis = normalize_axis_or_z(axis);
+    let angle = deg_to_rad(angle_deg);
+    let c = angle.cos();
+    let s = angle.sin();
+    let t = 1.0 - c;
+    let (x, y, z) = (normalized_axis.x, normalized_axis.y, normalized_axis.z);
+
+    [
+        [t * x * x + c, t * x * y - s * z, t * x * z + s * y],
+        [t * x * y + s * z, t * y * y + c, t * y * z - s * x],
+        [t * x * z - s * y, t * y * z + s * x, t * z * z + c],
+    ]
+}
+
+fn compose_transforms(outer: CadTransform3D, inner: CadTransform3D) -> CadTransform3D {
+    let scale = Vec3::new(
+        outer.scale.x * inner.scale.x,
+        outer.scale.y * inner.scale.y,
+        outer.scale.z * inner.scale.z,
+    );
+
+    let outer_rot = euler_to_matrix(outer.rotation);
+    let inner_rot = euler_to_matrix(inner.rotation);
+    let composed_rot = mat_mul(&outer_rot, &inner_rot);
+    let rotation = matrix_to_euler(&composed_rot);
+
+    let scaled_inner_trans = Vec3::new(
+        outer.scale.x * inner.translation.x,
+        outer.scale.y * inner.translation.y,
+        outer.scale.z * inner.translation.z,
+    );
+    let rotated_inner_trans = mat_vec3(&outer_rot, scaled_inner_trans);
+    let translation = vec3_add(outer.translation, rotated_inner_trans);
+
+    clean_transform(CadTransform3D {
+        translation,
+        rotation,
+        scale,
+    })
+}
+
+fn compute_joint_fk_transform(joint: &CadAssemblyJoint) -> CadTransform3D {
+    match &joint.kind {
+        CadJointKind::Fixed => CadTransform3D {
+            translation: clean_vec3(vec3_sub(joint.parent_anchor, joint.child_anchor)),
+            rotation: Vec3::new(0.0, 0.0, 0.0),
+            scale: Vec3::new(1.0, 1.0, 1.0),
+        },
+        CadJointKind::Revolute { axis, .. } => {
+            let normalized_axis = normalize_axis_or_z(*axis);
+            let rotation_matrix = axis_angle_to_matrix(normalized_axis, joint.state);
+            let rotation = clean_vec3(matrix_to_euler(&rotation_matrix));
+            let rotated_child = mat_vec3(&rotation_matrix, joint.child_anchor);
+            let translation = clean_vec3(vec3_sub(joint.parent_anchor, rotated_child));
+            CadTransform3D {
+                translation,
+                rotation,
+                scale: Vec3::new(1.0, 1.0, 1.0),
+            }
+        }
+        CadJointKind::Slider { axis, .. } => {
+            let normalized_axis = normalize_axis_or_z(*axis);
+            let slide_offset = vec3_scale(normalized_axis, joint.state);
+            CadTransform3D {
+                translation: clean_vec3(vec3_add(
+                    vec3_sub(joint.parent_anchor, joint.child_anchor),
+                    slide_offset,
+                )),
+                rotation: Vec3::new(0.0, 0.0, 0.0),
+                scale: Vec3::new(1.0, 1.0, 1.0),
+            }
+        }
+        CadJointKind::Cylindrical { axis } => {
+            let normalized_axis = normalize_axis_or_z(*axis);
+            let rotation_matrix = axis_angle_to_matrix(normalized_axis, joint.state);
+            let rotation = clean_vec3(matrix_to_euler(&rotation_matrix));
+            let rotated_child = mat_vec3(&rotation_matrix, joint.child_anchor);
+            let translation = clean_vec3(vec3_sub(joint.parent_anchor, rotated_child));
+            CadTransform3D {
+                translation,
+                rotation,
+                scale: Vec3::new(1.0, 1.0, 1.0),
+            }
+        }
+        CadJointKind::Ball => {
+            let z_axis = Vec3::z();
+            let rotation_matrix = axis_angle_to_matrix(z_axis, joint.state);
+            let rotation = clean_vec3(matrix_to_euler(&rotation_matrix));
+            let rotated_child = mat_vec3(&rotation_matrix, joint.child_anchor);
+            let translation = clean_vec3(vec3_sub(joint.parent_anchor, rotated_child));
+            CadTransform3D {
+                translation,
+                rotation,
+                scale: Vec3::new(1.0, 1.0, 1.0),
+            }
+        }
+    }
+}
+
+fn clean_transform(transform: CadTransform3D) -> CadTransform3D {
+    CadTransform3D {
+        translation: clean_vec3(transform.translation),
+        rotation: clean_vec3(transform.rotation),
+        scale: clean_vec3(transform.scale),
     }
 }
 
@@ -856,6 +1107,199 @@ mod tests {
         assert_eq!(b.dof, 3);
         assert_eq!(b.state_unit, "deg");
         assert!((b.physics_state + std::f64::consts::PI).abs() < 1e-10);
+    }
+
+    #[test]
+    fn forward_kinematics_composes_joint_chain_transforms() {
+        let schema = CadAssemblySchema {
+            part_defs: BTreeMap::new(),
+            instances: vec![
+                CadPartInstance {
+                    id: "base-1".to_string(),
+                    part_def_id: "base".to_string(),
+                    name: None,
+                    transform: Some(CadTransform3D {
+                        translation: Vec3::new(100.0, 0.0, 0.0),
+                        rotation: Vec3::new(0.0, 0.0, 0.0),
+                        scale: Vec3::new(1.0, 1.0, 1.0),
+                    }),
+                    material: None,
+                },
+                CadPartInstance {
+                    id: "arm-1".to_string(),
+                    part_def_id: "arm".to_string(),
+                    name: None,
+                    transform: Some(CadTransform3D {
+                        translation: Vec3::new(10.0, 0.0, 0.0),
+                        rotation: Vec3::new(0.0, 0.0, 0.0),
+                        scale: Vec3::new(1.0, 1.0, 1.0),
+                    }),
+                    material: None,
+                },
+                CadPartInstance {
+                    id: "slider-1".to_string(),
+                    part_def_id: "slider".to_string(),
+                    name: None,
+                    transform: Some(CadTransform3D {
+                        translation: Vec3::new(5.0, 0.0, 0.0),
+                        rotation: Vec3::new(0.0, 0.0, 0.0),
+                        scale: Vec3::new(1.0, 1.0, 1.0),
+                    }),
+                    material: None,
+                },
+            ],
+            joints: vec![
+                CadAssemblyJoint {
+                    id: "joint.revolute.001".to_string(),
+                    name: None,
+                    parent_instance_id: Some("base-1".to_string()),
+                    child_instance_id: "arm-1".to_string(),
+                    parent_anchor: Vec3::new(0.0, 0.0, 0.0),
+                    child_anchor: Vec3::new(1.0, 0.0, 0.0),
+                    kind: CadJointKind::Revolute {
+                        axis: Vec3::new(0.0, 0.0, 1.0),
+                        limits: None,
+                    },
+                    state: 90.0,
+                },
+                CadAssemblyJoint {
+                    id: "joint.slider.001".to_string(),
+                    name: None,
+                    parent_instance_id: Some("arm-1".to_string()),
+                    child_instance_id: "slider-1".to_string(),
+                    parent_anchor: Vec3::new(0.0, 0.0, 0.0),
+                    child_anchor: Vec3::new(0.0, 0.0, 0.0),
+                    kind: CadJointKind::Slider {
+                        axis: Vec3::new(1.0, 0.0, 0.0),
+                        limits: None,
+                    },
+                    state: 20.0,
+                },
+            ],
+            ground_instance_id: Some("base-1".to_string()),
+        };
+
+        let world = schema.solve_forward_kinematics();
+        assert_eq!(world.len(), 3);
+
+        let base = world.get("base-1").expect("base world transform");
+        assert_eq!(base.translation, Vec3::new(100.0, 0.0, 0.0));
+        assert_eq!(base.rotation, Vec3::new(0.0, 0.0, 0.0));
+
+        let arm = world.get("arm-1").expect("arm world transform");
+        assert_eq!(arm.translation, Vec3::new(100.0, 9.0, 0.0));
+        assert_eq!(arm.rotation, Vec3::new(0.0, 0.0, 90.0));
+
+        let slider = world.get("slider-1").expect("slider world transform");
+        assert_eq!(slider.translation, Vec3::new(100.0, 34.0, 0.0));
+        assert_eq!(slider.rotation, Vec3::new(0.0, 0.0, 90.0));
+    }
+
+    #[test]
+    fn forward_kinematics_uses_identity_for_world_grounded_parent() {
+        let schema = CadAssemblySchema {
+            part_defs: BTreeMap::new(),
+            instances: vec![CadPartInstance {
+                id: "free-1".to_string(),
+                part_def_id: "arm".to_string(),
+                name: None,
+                transform: Some(CadTransform3D {
+                    translation: Vec3::new(2.0, 3.0, 4.0),
+                    rotation: Vec3::new(0.0, 0.0, 0.0),
+                    scale: Vec3::new(1.0, 1.0, 1.0),
+                }),
+                material: None,
+            }],
+            joints: vec![CadAssemblyJoint {
+                id: "joint.fixed.world".to_string(),
+                name: None,
+                parent_instance_id: None,
+                child_instance_id: "free-1".to_string(),
+                parent_anchor: Vec3::new(10.0, 0.0, 0.0),
+                child_anchor: Vec3::new(1.0, 0.0, 0.0),
+                kind: CadJointKind::Fixed,
+                state: 0.0,
+            }],
+            ground_instance_id: None,
+        };
+
+        let world = schema.solve_forward_kinematics();
+        let free = world.get("free-1").expect("free-1 world transform");
+        assert_eq!(free.translation, Vec3::new(11.0, 3.0, 4.0));
+        assert_eq!(free.rotation, Vec3::new(0.0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn forward_kinematics_cycle_is_stabilized_by_visited_guard() {
+        let schema = CadAssemblySchema {
+            part_defs: BTreeMap::new(),
+            instances: vec![
+                CadPartInstance {
+                    id: "a-1".to_string(),
+                    part_def_id: "a".to_string(),
+                    name: None,
+                    transform: None,
+                    material: None,
+                },
+                CadPartInstance {
+                    id: "b-1".to_string(),
+                    part_def_id: "b".to_string(),
+                    name: None,
+                    transform: None,
+                    material: None,
+                },
+            ],
+            joints: vec![
+                CadAssemblyJoint {
+                    id: "joint.root".to_string(),
+                    name: None,
+                    parent_instance_id: None,
+                    child_instance_id: "a-1".to_string(),
+                    parent_anchor: Vec3::new(0.0, 0.0, 0.0),
+                    child_anchor: Vec3::new(0.0, 0.0, 0.0),
+                    kind: CadJointKind::Fixed,
+                    state: 0.0,
+                },
+                CadAssemblyJoint {
+                    id: "joint.a_to_b".to_string(),
+                    name: None,
+                    parent_instance_id: Some("a-1".to_string()),
+                    child_instance_id: "b-1".to_string(),
+                    parent_anchor: Vec3::new(0.0, 0.0, 0.0),
+                    child_anchor: Vec3::new(0.0, 0.0, 0.0),
+                    kind: CadJointKind::Slider {
+                        axis: Vec3::new(1.0, 0.0, 0.0),
+                        limits: None,
+                    },
+                    state: 10.0,
+                },
+                CadAssemblyJoint {
+                    id: "joint.b_to_a".to_string(),
+                    name: None,
+                    parent_instance_id: Some("b-1".to_string()),
+                    child_instance_id: "a-1".to_string(),
+                    parent_anchor: Vec3::new(0.0, 0.0, 0.0),
+                    child_anchor: Vec3::new(0.0, 0.0, 0.0),
+                    kind: CadJointKind::Slider {
+                        axis: Vec3::new(0.0, 1.0, 0.0),
+                        limits: None,
+                    },
+                    state: 5.0,
+                },
+            ],
+            ground_instance_id: None,
+        };
+
+        let world = schema.solve_forward_kinematics();
+        assert_eq!(world.len(), 2);
+        assert_eq!(
+            world.get("a-1").expect("a-1 world transform").translation,
+            Vec3::new(0.0, 5.0, 0.0)
+        );
+        assert_eq!(
+            world.get("b-1").expect("b-1 world transform").translation,
+            Vec3::new(10.0, 5.0, 0.0)
+        );
     }
 
     #[test]
