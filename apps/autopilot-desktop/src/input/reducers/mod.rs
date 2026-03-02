@@ -99,7 +99,9 @@ pub(super) fn run_agent_profile_state_action(
 }
 
 pub(super) fn refresh_goal_profile_state(state: &mut RenderState) -> bool {
-    sa::refresh_goal_profile_state(state)
+    let profile_changed = sa::refresh_goal_profile_state(state);
+    let schedule_changed = sa::refresh_goal_schedule_state(state);
+    profile_changed || schedule_changed
 }
 
 pub(super) fn run_agent_schedule_tick_action(

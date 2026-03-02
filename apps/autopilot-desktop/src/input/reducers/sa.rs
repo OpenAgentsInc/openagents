@@ -98,6 +98,7 @@ fn sync_agent_pane_snapshots(state: &mut RenderState) {
     if state.agent_schedule_tick.schedule_event_id.is_some() {
         state.agent_schedule_tick.load_state = PaneLoadState::Ready;
     }
+    let _ = refresh_goal_schedule_state(state);
 
     state.trajectory_audit.active_session_id = state
         .sa_lane
@@ -540,55 +541,143 @@ pub(super) fn refresh_goal_profile_state(state: &mut RenderState) -> bool {
         )
 }
 
+pub(super) fn refresh_goal_schedule_state(state: &mut RenderState) -> bool {
+    let before = (
+        state.agent_schedule_tick.selected_goal_id.clone(),
+        state.agent_schedule_tick.scheduler_mode.clone(),
+        state.agent_schedule_tick.next_goal_run_epoch_seconds,
+        state.agent_schedule_tick.last_goal_run_epoch_seconds,
+        state.agent_schedule_tick.heartbeat_seconds,
+        state.agent_schedule_tick.next_tick_reason.clone(),
+    );
+
+    let selected_goal_id = selected_goal_id(state);
+    state.agent_schedule_tick.selected_goal_id = selected_goal_id.clone();
+
+    if let Some(goal_id) = selected_goal_id
+        && let Some(goal) = state
+            .autopilot_goals
+            .document
+            .active_goals
+            .iter()
+            .find(|goal| goal.goal_id == goal_id)
+    {
+        state.agent_schedule_tick.scheduler_mode = match goal.schedule.kind {
+            crate::state::autopilot_goals::GoalScheduleKind::Manual => "manual".to_string(),
+            crate::state::autopilot_goals::GoalScheduleKind::IntervalSeconds { seconds } => {
+                state.agent_schedule_tick.heartbeat_seconds = seconds.max(1);
+                format!("interval:{}s", seconds)
+            }
+            crate::state::autopilot_goals::GoalScheduleKind::Cron { .. } => "cron".to_string(),
+        };
+        state.agent_schedule_tick.next_goal_run_epoch_seconds =
+            goal.schedule.next_run_epoch_seconds;
+        state.agent_schedule_tick.last_goal_run_epoch_seconds =
+            goal.schedule.last_run_epoch_seconds;
+        state.agent_schedule_tick.next_tick_reason = if goal.schedule.enabled {
+            "goal.scheduler.interval".to_string()
+        } else {
+            "goal.scheduler.manual".to_string()
+        };
+    } else {
+        state.agent_schedule_tick.scheduler_mode = "manual".to_string();
+        state.agent_schedule_tick.next_goal_run_epoch_seconds = None;
+        state.agent_schedule_tick.last_goal_run_epoch_seconds = None;
+        state.agent_schedule_tick.next_tick_reason = "manual.operator".to_string();
+    }
+
+    before
+        != (
+            state.agent_schedule_tick.selected_goal_id.clone(),
+            state.agent_schedule_tick.scheduler_mode.clone(),
+            state.agent_schedule_tick.next_goal_run_epoch_seconds,
+            state.agent_schedule_tick.last_goal_run_epoch_seconds,
+            state.agent_schedule_tick.heartbeat_seconds,
+            state.agent_schedule_tick.next_tick_reason.clone(),
+        )
+}
+
 pub(super) fn run_agent_schedule_tick_action(
     state: &mut RenderState,
     action: AgentScheduleTickPaneAction,
 ) -> bool {
     match action {
         AgentScheduleTickPaneAction::ApplySchedule => {
-            match state.queue_sa_command(SaLifecycleCommand::ConfigureAgentSchedule {
-                heartbeat_seconds: state.agent_schedule_tick.heartbeat_seconds.max(1),
-            }) {
-                Ok(command_seq) => {
+            let Some(goal_id) = selected_goal_id(state) else {
+                state.agent_schedule_tick.last_error = Some(
+                    "Select or create an active goal before applying interval schedule".to_string(),
+                );
+                state.agent_schedule_tick.load_state = PaneLoadState::Error;
+                let _ = refresh_goal_schedule_state(state);
+                return true;
+            };
+            let interval_seconds = state.agent_schedule_tick.heartbeat_seconds.max(1);
+            let now_epoch_seconds = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_secs())
+                .unwrap_or(0);
+            match state.autopilot_goals.set_goal_interval_schedule(
+                &goal_id,
+                interval_seconds,
+                now_epoch_seconds,
+            ) {
+                Ok(()) => {
                     state.agent_schedule_tick.last_error = None;
                     state.agent_schedule_tick.load_state = PaneLoadState::Ready;
-                    state.agent_schedule_tick.last_action =
-                        Some(format!("Queued schedule command #{command_seq}"));
+                    state.agent_schedule_tick.last_action = Some(format!(
+                        "Set {}s interval schedule for {}",
+                        interval_seconds, goal_id
+                    ));
                 }
                 Err(error) => {
                     state.agent_schedule_tick.last_error = Some(error);
                     state.agent_schedule_tick.load_state = PaneLoadState::Error;
                 }
             }
+            let _ = refresh_goal_schedule_state(state);
             true
         }
         AgentScheduleTickPaneAction::PublishManualTick => {
-            match state.queue_sa_command(SaLifecycleCommand::PublishTickRequest {
-                reason: state.agent_schedule_tick.next_tick_reason.clone(),
-            }) {
-                Ok(command_seq) => {
+            let Some(goal_id) = selected_goal_id(state) else {
+                state.agent_schedule_tick.last_error =
+                    Some("Select or create an active goal before manual run".to_string());
+                state.agent_schedule_tick.load_state = PaneLoadState::Error;
+                let _ = refresh_goal_schedule_state(state);
+                return true;
+            };
+            let now_epoch_seconds = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_secs())
+                .unwrap_or(0);
+            match state
+                .autopilot_goals
+                .schedule_goal_run_now(&goal_id, now_epoch_seconds)
+            {
+                Ok(()) => {
                     state.agent_schedule_tick.last_error = None;
                     state.agent_schedule_tick.load_state = PaneLoadState::Ready;
                     state.agent_schedule_tick.last_action =
-                        Some(format!("Queued manual tick request #{command_seq}"));
+                        Some(format!("Scheduled immediate goal run for {}", goal_id));
                 }
                 Err(error) => {
                     state.agent_schedule_tick.last_error = Some(error);
                     state.agent_schedule_tick.load_state = PaneLoadState::Error;
                 }
             }
+            let _ = refresh_goal_schedule_state(state);
             true
         }
         AgentScheduleTickPaneAction::InspectLastResult => {
+            let _ = refresh_goal_schedule_state(state);
             state.agent_schedule_tick.last_tick_outcome = state
-                .sa_lane
-                .last_result
+                .autopilot_goals
+                .last_action
                 .clone()
-                .unwrap_or_else(|| "No SA tick result yet".to_string());
+                .unwrap_or_else(|| "No goal scheduler result yet".to_string());
             state.agent_schedule_tick.last_error = None;
             state.agent_schedule_tick.load_state = PaneLoadState::Ready;
             state.agent_schedule_tick.last_action =
-                Some("Refreshed last tick outcome from SA lane".to_string());
+                Some("Refreshed goal scheduler status".to_string());
             true
         }
     }
