@@ -23,6 +23,7 @@ pub(super) fn run_chat_submit_action(state: &mut crate::app_state::RenderState) 
         classification.is_cad_turn,
         classification.reason.clone(),
         current_epoch_millis(),
+        Vec::new(),
     );
     state.autopilot_chat.record_turn_timeline_event(format!(
         "cad-turn classifier: is_cad_turn={} reason={}",
@@ -98,6 +99,13 @@ pub(super) fn run_chat_submit_action(state: &mut crate::app_state::RenderState) 
         policy_skill.enabled = true;
         turn_skill_attachments.push(policy_skill);
     }
+    let selected_skill_names = turn_skill_attachments
+        .iter()
+        .map(|skill| skill.name.clone())
+        .collect::<Vec<_>>();
+    state
+        .autopilot_chat
+        .set_last_pending_turn_selected_skills(selected_skill_names);
 
     log_chat_prompt_to_console(&thread_id, &prompt);
     let (input, skill_error) = assemble_chat_turn_input(prompt, turn_skill_attachments);

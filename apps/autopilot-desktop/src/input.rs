@@ -83,14 +83,17 @@ use crate::runtime_lanes::{
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
 use crate::spark_wallet::SparkWalletCommand;
 use crate::state::autopilot_goals::{
-    GoalExecutionReceipt, GoalLifecycleEvent, GoalLifecycleStatus,
+    GoalAttemptAuditReceipt, GoalExecutionReceipt, GoalLifecycleEvent, GoalLifecycleStatus,
+    GoalPayoutEvidence, GoalRunAuditReceipt, GoalToolInvocationAudit,
 };
-use crate::state::goal_conditions::GoalProgressSnapshot;
+use crate::state::goal_conditions::{ConditionEvaluation, GoalProgressSnapshot};
 use crate::state::goal_loop_executor::{
     ActiveGoalLoopRun, GoalLoopPhase, GoalLoopStopReason, retry_backoff_seconds,
     select_runnable_goal,
 };
-use crate::state::wallet_reconciliation::reconcile_wallet_events_for_goal;
+use crate::state::wallet_reconciliation::{
+    WalletLedgerEventKind, reconcile_wallet_events_for_goal,
+};
 
 mod actions;
 mod cad_turn_classifier;
@@ -630,6 +633,7 @@ fn run_autonomous_goal_loop(state: &mut crate::app_state::RenderState) -> bool {
             goal_loop_progress_snapshot(state, &active_run, now_epoch_seconds, wallet_total_sats),
             now_epoch_seconds,
             Some(reason),
+            None,
         );
         return true;
     }
@@ -654,10 +658,17 @@ fn run_autonomous_goal_loop(state: &mut crate::app_state::RenderState) -> bool {
                 progress,
                 now_epoch_seconds,
                 Some(error),
+                None,
             );
             return true;
         }
     };
+    state.goal_loop_executor.record_condition_evaluation(
+        evaluation.goal_complete,
+        evaluation.should_continue,
+        &evaluation.completion_reasons,
+        &evaluation.stop_reasons,
+    );
 
     if evaluation.goal_complete {
         finalize_goal_loop_run(
@@ -669,6 +680,7 @@ fn run_autonomous_goal_loop(state: &mut crate::app_state::RenderState) -> bool {
             progress,
             now_epoch_seconds,
             Some("goal conditions satisfied".to_string()),
+            Some(evaluation.clone()),
         );
         return true;
     }
@@ -687,6 +699,7 @@ fn run_autonomous_goal_loop(state: &mut crate::app_state::RenderState) -> bool {
             progress,
             now_epoch_seconds,
             Some(reason_text),
+            Some(evaluation.clone()),
         );
         return true;
     }
@@ -734,6 +747,7 @@ fn run_autonomous_goal_loop(state: &mut crate::app_state::RenderState) -> bool {
                         progress,
                         now_epoch_seconds,
                         Some(error),
+                        Some(evaluation.clone()),
                     );
                     return true;
                 }
@@ -801,9 +815,17 @@ fn run_autonomous_goal_loop(state: &mut crate::app_state::RenderState) -> bool {
     let pending_after = state.autopilot_chat.pending_turn_metadata.len();
 
     if pending_after > pending_before && state.autopilot_chat.last_error.is_none() {
-        state
-            .goal_loop_executor
-            .mark_attempt_submitted(now_epoch_seconds);
+        let selected_skills = state
+            .autopilot_chat
+            .pending_turn_metadata
+            .back()
+            .map(|metadata| metadata.selected_skill_names.clone())
+            .unwrap_or_default();
+        state.goal_loop_executor.mark_attempt_submitted(
+            now_epoch_seconds,
+            state.autopilot_chat.active_thread_id.clone(),
+            selected_skills,
+        );
         if let Some(run) = state.goal_loop_executor.active_run.as_ref() {
             let attempt_index = run.attempts.len();
             state.autopilot_chat.record_turn_timeline_event(format!(
@@ -833,6 +855,7 @@ fn run_autonomous_goal_loop(state: &mut crate::app_state::RenderState) -> bool {
             progress,
             now_epoch_seconds,
             Some(error),
+            Some(evaluation),
         );
         return true;
     }
@@ -1017,8 +1040,15 @@ fn finalize_goal_loop_run(
     progress: GoalProgressSnapshot,
     now_epoch_seconds: u64,
     notes: Option<String>,
+    condition_evaluation: Option<ConditionEvaluation>,
 ) {
     let goal_id = active_run.goal_id.clone();
+    let run_snapshot = state
+        .goal_loop_executor
+        .active_run
+        .as_ref()
+        .cloned()
+        .unwrap_or_else(|| active_run.clone());
     let transition_result = match lifecycle_status {
         GoalLifecycleStatus::Succeeded => state.autopilot_goals.transition_goal(
             &goal_id,
@@ -1063,11 +1093,12 @@ fn finalize_goal_loop_run(
         ));
     }
 
+    let receipt_id = format!("goal-loop-receipt-{}-{}", goal_id, now_epoch_seconds);
     let receipt = GoalExecutionReceipt {
-        receipt_id: format!("goal-loop-receipt-{}-{}", goal_id, now_epoch_seconds),
+        receipt_id: receipt_id.clone(),
         goal_id: goal_id.clone(),
         attempt_index: progress.attempt_count,
-        started_at_epoch_seconds: active_run.started_at_epoch_seconds,
+        started_at_epoch_seconds: run_snapshot.started_at_epoch_seconds,
         finished_at_epoch_seconds: now_epoch_seconds,
         lifecycle_status,
         wallet_delta_sats: progress.wallet_delta_sats,
@@ -1075,10 +1106,143 @@ fn finalize_goal_loop_run(
         successes: progress.successes,
         errors: progress.errors,
         notes: notes.clone(),
-        recovered_from_restart: active_run.recovered_from_restart,
+        recovered_from_restart: run_snapshot.recovered_from_restart,
         policy_snapshot: goal.constraints.policy_snapshot(),
     };
     if let Err(error) = state.autopilot_goals.record_receipt(receipt) {
+        state.autopilot_goals.last_error = Some(error);
+    }
+
+    let reconciliation = reconcile_wallet_events_for_goal(
+        run_snapshot.started_at_epoch_seconds,
+        run_snapshot.initial_wallet_sats,
+        state
+            .spark_wallet
+            .balance
+            .as_ref()
+            .map_or(0, spark_total_balance_sats),
+        goal_id.as_str(),
+        &state.job_history,
+        &state.spark_wallet,
+        &state.autopilot_goals.document.swap_execution_receipts,
+    );
+    let payout_evidence = reconciliation
+        .events
+        .iter()
+        .filter(|event| event.kind == WalletLedgerEventKind::EarnPayout)
+        .filter_map(|event| {
+            let Some(job_id) = event.job_id.clone() else {
+                return None;
+            };
+            let Some(payment_pointer) = event.payment_pointer.clone() else {
+                return None;
+            };
+            Some(GoalPayoutEvidence {
+                event_id: event.event_id.clone(),
+                occurred_at_epoch_seconds: event.occurred_at_epoch_seconds,
+                job_id,
+                payment_pointer,
+                payout_sats: event.sats_delta.max(0) as u64,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let swap_quote_evidence = state
+        .autopilot_goals
+        .document
+        .swap_quote_audits
+        .iter()
+        .filter(|audit| {
+            audit.goal_id == goal_id
+                && audit.created_at_epoch_seconds >= run_snapshot.started_at_epoch_seconds
+                && audit.created_at_epoch_seconds <= now_epoch_seconds
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    let swap_execution_evidence = state
+        .autopilot_goals
+        .document
+        .swap_execution_receipts
+        .iter()
+        .filter(|receipt| {
+            receipt.goal_id == goal_id
+                && receipt.finished_at_epoch_seconds >= run_snapshot.started_at_epoch_seconds
+                && receipt.finished_at_epoch_seconds <= now_epoch_seconds
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+
+    let attempts = run_snapshot
+        .attempts
+        .iter()
+        .map(|attempt| GoalAttemptAuditReceipt {
+            attempt_index: attempt.attempt_index,
+            submitted_at_epoch_seconds: attempt.submitted_at_epoch_seconds,
+            finished_at_epoch_seconds: attempt.finished_at_epoch_seconds,
+            thread_id: attempt.thread_id.clone(),
+            turn_id: attempt.turn_id.clone(),
+            selected_skills: attempt.selected_skills.clone(),
+            turn_status: attempt.turn_status.clone(),
+            error: attempt.error.clone(),
+            condition_goal_complete: attempt.condition_goal_complete,
+            condition_should_continue: attempt.condition_should_continue,
+            condition_completion_reasons: attempt.condition_completion_reasons.clone(),
+            condition_stop_reasons: attempt.condition_stop_reasons.clone(),
+            tool_invocations: attempt
+                .tool_invocations
+                .iter()
+                .map(|tool| GoalToolInvocationAudit {
+                    request_id: tool.request_id.clone(),
+                    call_id: tool.call_id.clone(),
+                    tool_name: tool.tool_name.clone(),
+                    response_code: tool.response_code.clone(),
+                    success: tool.success,
+                    response_message: tool.response_message.clone(),
+                    recorded_at_epoch_seconds: tool.recorded_at_epoch_seconds,
+                })
+                .collect::<Vec<_>>(),
+        })
+        .collect::<Vec<_>>();
+    let mut selected_skills = attempts
+        .iter()
+        .flat_map(|attempt| attempt.selected_skills.clone())
+        .collect::<Vec<_>>();
+    selected_skills.sort();
+    selected_skills.dedup();
+    let terminal_status_reason = notes
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| format!("{:?}", stop_reason));
+    let run_audit = GoalRunAuditReceipt {
+        audit_id: format!("goal-run-audit-{}-{}", goal_id, now_epoch_seconds),
+        receipt_id,
+        goal_id: goal_id.clone(),
+        run_id: run_snapshot.run_id.clone(),
+        started_at_epoch_seconds: run_snapshot.started_at_epoch_seconds,
+        finished_at_epoch_seconds: now_epoch_seconds,
+        lifecycle_status,
+        terminal_status_reason,
+        selected_skills,
+        attempts,
+        condition_goal_complete: condition_evaluation
+            .as_ref()
+            .map(|value| value.goal_complete),
+        condition_should_continue: condition_evaluation
+            .as_ref()
+            .map(|value| value.should_continue),
+        condition_completion_reasons: condition_evaluation
+            .as_ref()
+            .map(|value| value.completion_reasons.clone())
+            .unwrap_or_default(),
+        condition_stop_reasons: condition_evaluation
+            .as_ref()
+            .map(|value| value.stop_reasons.clone())
+            .unwrap_or_default(),
+        payout_evidence,
+        swap_quote_evidence,
+        swap_execution_evidence,
+    };
+    if let Err(error) = state.autopilot_goals.record_run_audit_receipt(run_audit) {
         state.autopilot_goals.last_error = Some(error);
     }
 
