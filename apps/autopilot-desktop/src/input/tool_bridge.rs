@@ -1,3 +1,7 @@
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
 use codex_client::{DynamicToolCallOutputContentItem, DynamicToolCallResponse};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -38,10 +42,7 @@ use crate::state::swap_contract::{
     GoalSwapExecutionReceipt, SwapAmount, SwapAmountUnit, SwapDirection, SwapExecutionStatus,
     SwapQuoteTerms,
 };
-use crate::state::swap_quote_adapter::{
-    StablesatsQuoteClient, StablesatsQuoteFor, StablesatsQuoteResponse, SwapQuoteAdapterRequest,
-    SwapQuoteProvider,
-};
+use crate::state::swap_quote_adapter::{SwapQuoteAuditReceipt, SwapQuoteProvider};
 use crate::state::wallet_reconciliation::reconcile_wallet_events_for_goal;
 
 const LEGACY_OPENAGENTS_TOOL_PANE_LIST: &str = "openagents.pane.list";
@@ -258,40 +259,64 @@ struct SwapQuoteArgs {
     immediate_execution: bool,
     #[serde(default)]
     quote_ttl_seconds: Option<u64>,
-    #[serde(default)]
-    fallback_quote_id: Option<String>,
-    #[serde(default)]
-    fallback_amount_out: Option<u64>,
-    #[serde(default)]
-    stablesats_error: Option<String>,
-    #[serde(default)]
-    stablesats_quote: Option<SwapStablesatsQuoteArgs>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-struct SwapStablesatsQuoteArgs {
-    quote_id: String,
-    #[serde(default)]
-    amount_to_sell_in_sats: Option<u64>,
-    #[serde(default)]
-    amount_to_buy_in_cents: Option<u64>,
-    #[serde(default)]
-    amount_to_buy_in_sats: Option<u64>,
-    #[serde(default)]
-    amount_to_sell_in_cents: Option<u64>,
-    expires_at_epoch_seconds: u64,
-    executed: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 struct SwapExecuteArgs {
     goal_id: String,
     quote_id: String,
+    #[serde(default)]
+    memo: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct BlinkSwapQuoteEnvelope {
+    event: String,
+    quote: BlinkSwapQuoteTerms,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct BlinkSwapExecutionEnvelope {
+    event: String,
     status: String,
+    quote: BlinkSwapQuoteTerms,
+    #[serde(default, rename = "executedAtEpochSeconds")]
+    executed_at_epoch_seconds: Option<u64>,
     #[serde(default)]
+    execution: Option<BlinkSwapExecutionMetadata>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct BlinkSwapExecutionMetadata {
+    #[serde(default, rename = "transactionId")]
     transaction_id: Option<String>,
-    #[serde(default)]
-    failure_reason: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct BlinkSwapQuoteTerms {
+    #[serde(rename = "quoteId")]
+    quote_id: String,
+    direction: String,
+    #[serde(rename = "amountIn")]
+    amount_in: BlinkSwapAmount,
+    #[serde(rename = "amountOut")]
+    amount_out: BlinkSwapAmount,
+    #[serde(rename = "expiresAtEpochSeconds")]
+    expires_at_epoch_seconds: u64,
+    #[serde(rename = "immediateExecution")]
+    immediate_execution: bool,
+    #[serde(rename = "feeSats")]
+    fee_sats: u64,
+    #[serde(rename = "feeBps")]
+    fee_bps: u32,
+    #[serde(rename = "slippageBps")]
+    slippage_bps: u32,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct BlinkSwapAmount {
+    value: u64,
+    unit: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -344,71 +369,9 @@ struct ProviderControlArgs {
     action: String,
 }
 
-struct ToolBridgeStablesatsClient {
-    quote: Option<StablesatsQuoteResponse>,
-    unavailable_reason: Option<String>,
-    fail_accept_reason: Option<String>,
-    accepted_quote_ids: Vec<String>,
-}
-
-impl ToolBridgeStablesatsClient {
-    fn from_args(args: &SwapQuoteArgs) -> Self {
-        let quote = args
-            .stablesats_quote
-            .as_ref()
-            .map(|value| StablesatsQuoteResponse {
-                quote_id: value.quote_id.clone(),
-                amount_to_sell_in_sats: value.amount_to_sell_in_sats,
-                amount_to_buy_in_cents: value.amount_to_buy_in_cents,
-                amount_to_buy_in_sats: value.amount_to_buy_in_sats,
-                amount_to_sell_in_cents: value.amount_to_sell_in_cents,
-                expires_at_epoch_seconds: value.expires_at_epoch_seconds,
-                executed: value.executed,
-            });
-        Self {
-            quote,
-            unavailable_reason: args.stablesats_error.clone(),
-            fail_accept_reason: None,
-            accepted_quote_ids: Vec::new(),
-        }
-    }
-}
-
-impl StablesatsQuoteClient for ToolBridgeStablesatsClient {
-    fn get_quote_to_buy_usd(
-        &mut self,
-        _quote_for: StablesatsQuoteFor,
-        _immediate_execution: bool,
-    ) -> Result<StablesatsQuoteResponse, String> {
-        if let Some(reason) = self.unavailable_reason.clone() {
-            return Err(reason);
-        }
-        self.quote
-            .clone()
-            .ok_or_else(|| "stablesats quote unavailable".to_string())
-    }
-
-    fn get_quote_to_sell_usd(
-        &mut self,
-        _quote_for: StablesatsQuoteFor,
-        _immediate_execution: bool,
-    ) -> Result<StablesatsQuoteResponse, String> {
-        if let Some(reason) = self.unavailable_reason.clone() {
-            return Err(reason);
-        }
-        self.quote
-            .clone()
-            .ok_or_else(|| "stablesats quote unavailable".to_string())
-    }
-
-    fn accept_quote(&mut self, quote_id: &str) -> Result<(), String> {
-        if let Some(reason) = self.fail_accept_reason.clone() {
-            return Err(reason);
-        }
-        self.accepted_quote_ids.push(quote_id.to_string());
-        Ok(())
-    }
-}
+const BLINK_SKILL_NAME: &str = "blink";
+const BLINK_SWAP_QUOTE_SCRIPT: &str = "swap_quote.js";
+const BLINK_SWAP_EXECUTE_SCRIPT: &str = "swap_execute.js";
 
 pub(super) fn execute_openagents_tool_request(
     state: &mut RenderState,
@@ -2005,105 +1968,202 @@ fn execute_swap_quote(state: &mut RenderState, args: &SwapQuoteArgs) -> ToolBrid
         return error;
     }
 
-    let now = std::time::SystemTime::now()
+    let now_epoch_seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or(0);
     let quote_ttl_seconds = args.quote_ttl_seconds.unwrap_or(60).max(1);
+    let goal_id = args.goal_id.trim();
+    let request_id = args.request_id.trim();
 
-    let request = SwapQuoteAdapterRequest {
-        request_id: args.request_id.clone(),
+    let (daily_converted_sats, daily_converted_cents) = state
+        .autopilot_goals
+        .document
+        .swap_execution_receipts
+        .iter()
+        .filter(|receipt| receipt.goal_id == goal_id)
+        .fold((0_u64, 0_u64), |(sats, cents), receipt| {
+            match receipt.amount_in.unit {
+                SwapAmountUnit::Sats => (sats.saturating_add(receipt.amount_in.amount), cents),
+                SwapAmountUnit::Cents => (sats, cents.saturating_add(receipt.amount_in.amount)),
+            }
+        });
+
+    let policy_request = crate::state::swap_contract::SwapExecutionRequest {
+        request_id: request_id.to_string(),
         direction,
         amount: SwapAmount {
             amount: args.amount,
             unit,
         },
+        quote_ttl_seconds,
         immediate_execution: args.immediate_execution,
-        now_epoch_seconds: now,
+        max_fee_sats_override: None,
+        max_slippage_bps_override: None,
     };
-
-    let fallback_quote = build_fallback_quote(args, direction, unit, now, quote_ttl_seconds);
-
-    let mut stablesats_client = ToolBridgeStablesatsClient::from_args(args);
-    let outcome = match state.autopilot_goals.request_swap_quote_with_adapter(
-        args.goal_id.trim(),
-        &request,
-        &mut stablesats_client,
-        fallback_quote,
+    if let Err(error) = state.autopilot_goals.validate_swap_request_policy(
+        goal_id,
+        &policy_request,
+        daily_converted_sats,
+        daily_converted_cents,
     ) {
-        Ok(value) => value,
+        return ToolBridgeResultEnvelope::error(
+            "OA-SWAP-QUOTE-POLICY-REJECTED",
+            format!("Swap quote policy rejected request: {error}"),
+            json!({
+                "goal_id": goal_id,
+                "request_id": request_id,
+            }),
+        );
+    }
+
+    let script_path = match resolve_blink_swap_script_path(state, BLINK_SWAP_QUOTE_SCRIPT) {
+        Ok(path) => path,
         Err(error) => {
             return ToolBridgeResultEnvelope::error(
-                "OA-SWAP-QUOTE-FAILED",
-                format!("Swap quote request failed: {error}"),
+                "OA-SWAP-QUOTE-BLINK-SCRIPT-MISSING",
+                error,
                 json!({
-                    "goal_id": args.goal_id,
-                    "request_id": args.request_id,
+                    "goal_id": goal_id,
+                    "request_id": request_id,
+                    "script": BLINK_SWAP_QUOTE_SCRIPT,
                 }),
             );
         }
     };
 
-    state.autopilot_chat.record_turn_timeline_event(format!(
-        "swap quote requested goal={} request={} direction={:?}",
-        args.goal_id, args.request_id, direction
-    ));
-    if outcome.provider == SwapQuoteProvider::StablesatsQuoteService && outcome.accepted_via_adapter
-    {
-        state.autopilot_chat.record_turn_timeline_event(format!(
-            "swap quote accepted goal={} quote={}",
-            args.goal_id, outcome.quote.quote_id
-        ));
+    let mut script_args = vec![
+        swap_direction_script_value(direction).to_string(),
+        args.amount.to_string(),
+        "--unit".to_string(),
+        swap_unit_script_value(unit).to_string(),
+        "--ttl-seconds".to_string(),
+        quote_ttl_seconds.to_string(),
+    ];
+    if args.immediate_execution {
+        script_args.push("--immediate".to_string());
     }
 
-    let mut events = vec![json!({
-        "event": "swap_quote_requested",
-        "goal_id": args.goal_id,
-        "request_id": args.request_id,
-        "direction": format!("{:?}", direction),
-    })];
-    if outcome.provider == SwapQuoteProvider::StablesatsQuoteService && outcome.accepted_via_adapter
+    let script_response = match run_blink_swap_script_json(&script_path, &script_args) {
+        Ok(value) => value,
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-SWAP-QUOTE-BLINK-FAILED",
+                format!("Blink quote command failed: {error}"),
+                json!({
+                    "goal_id": goal_id,
+                    "request_id": request_id,
+                    "script_path": script_path,
+                }),
+            );
+        }
+    };
+
+    let quote = match parse_blink_quote_terms_from_json(script_response) {
+        Ok(value) => value,
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-SWAP-QUOTE-BLINK-PARSE-FAILED",
+                format!("Blink quote payload parse failed: {error}"),
+                json!({
+                    "goal_id": goal_id,
+                    "request_id": request_id,
+                    "script_path": script_path,
+                }),
+            );
+        }
+    };
+
+    if let Err(error) =
+        state
+            .autopilot_goals
+            .validate_swap_quote_policy(goal_id, &quote, now_epoch_seconds)
     {
-        events.push(json!({
-            "event": "swap_quote_accepted",
-            "goal_id": args.goal_id,
-            "quote_id": outcome.quote.quote_id,
-        }));
+        return ToolBridgeResultEnvelope::error(
+            "OA-SWAP-QUOTE-POLICY-REJECTED",
+            format!("Swap quote policy rejected quote: {error}"),
+            json!({
+                "goal_id": goal_id,
+                "request_id": request_id,
+                "quote_id": quote.quote_id,
+            }),
+        );
     }
+
+    let audit = SwapQuoteAuditReceipt {
+        audit_id: format!("swap-quote-audit-{request_id}"),
+        goal_id: goal_id.to_string(),
+        request_id: request_id.to_string(),
+        provider: SwapQuoteProvider::BlinkInfrastructure,
+        quote_id: quote.quote_id.clone(),
+        direction: quote.direction,
+        amount_in: quote.amount_in,
+        amount_out: quote.amount_out,
+        fee_sats: quote.fee_sats,
+        expires_at_epoch_seconds: quote.expires_at_epoch_seconds,
+        immediate_execution: quote.immediate_execution,
+        executed: false,
+        accepted_via_adapter: false,
+        fallback_reason: None,
+        created_at_epoch_seconds: now_epoch_seconds,
+    };
+    if let Err(error) = state.autopilot_goals.record_swap_quote_audit(audit.clone()) {
+        return ToolBridgeResultEnvelope::error(
+            "OA-SWAP-QUOTE-AUDIT-FAILED",
+            format!("Failed recording swap quote audit: {error}"),
+            json!({
+                "goal_id": goal_id,
+                "request_id": request_id,
+                "quote_id": quote.quote_id,
+            }),
+        );
+    }
+
+    state.autopilot_chat.record_turn_timeline_event(format!(
+        "swap quote requested goal={} request={} direction={:?} provider=blink_infrastructure",
+        goal_id, request_id, direction
+    ));
 
     ToolBridgeResultEnvelope::ok(
         "OA-SWAP-QUOTE-OK",
-        "Swap quote requested through controlled adapter",
+        "Swap quote requested through Blink infrastructure",
         json!({
-            "goal_id": args.goal_id,
-            "request_id": args.request_id,
-            "provider": match outcome.provider {
-                SwapQuoteProvider::StablesatsQuoteService => "stablesats_quote_service",
-                SwapQuoteProvider::BlinkFallback => "blink_fallback",
-            },
+            "goal_id": goal_id,
+            "request_id": request_id,
+            "provider": "blink_infrastructure",
             "quote": {
-                "quote_id": outcome.quote.quote_id,
-                "direction": format!("{:?}", outcome.quote.direction),
+                "quote_id": quote.quote_id,
+                "direction": format!("{:?}", quote.direction),
                 "amount_in": {
-                    "amount": outcome.quote.amount_in.amount,
-                    "unit": match outcome.quote.amount_in.unit {
+                    "amount": quote.amount_in.amount,
+                    "unit": match quote.amount_in.unit {
                         SwapAmountUnit::Sats => "sats",
                         SwapAmountUnit::Cents => "cents",
                     },
                 },
                 "amount_out": {
-                    "amount": outcome.quote.amount_out.amount,
-                    "unit": match outcome.quote.amount_out.unit {
+                    "amount": quote.amount_out.amount,
+                    "unit": match quote.amount_out.unit {
                         SwapAmountUnit::Sats => "sats",
                         SwapAmountUnit::Cents => "cents",
                     },
                 },
-                "expires_at_epoch_seconds": outcome.quote.expires_at_epoch_seconds,
-                "immediate_execution": outcome.quote.immediate_execution,
+                "expires_at_epoch_seconds": quote.expires_at_epoch_seconds,
+                "immediate_execution": quote.immediate_execution,
+                "fee_sats": quote.fee_sats,
+                "fee_bps": quote.fee_bps,
+                "slippage_bps": quote.slippage_bps,
             },
-            "accepted_via_adapter": outcome.accepted_via_adapter,
-            "fallback_reason": outcome.fallback_reason,
-            "events": events,
+            "command_provenance": {
+                "script_path": script_path,
+                "args": script_args,
+            },
+            "events": [{
+                "event": "swap_quote_requested",
+                "goal_id": goal_id,
+                "request_id": request_id,
+                "direction": format!("{:?}", direction),
+            }],
         }),
     )
 }
@@ -2127,17 +2187,8 @@ fn execute_swap_execute(
         );
     }
 
-    let status = args.status.trim().to_ascii_uppercase();
-    if !matches!(
-        status.as_str(),
-        "SUCCESS" | "FAILURE" | "PENDING" | "ALREADY_PAID"
-    ) {
-        return ToolBridgeResultEnvelope::error(
-            "OA-SWAP-EXECUTE-INVALID-STATUS",
-            "status must be SUCCESS, FAILURE, PENDING, or ALREADY_PAID",
-            json!({ "status": args.status }),
-        );
-    }
+    let goal_id = args.goal_id.trim();
+    let quote_id = args.quote_id.trim();
 
     let audit = state
         .autopilot_goals
@@ -2145,62 +2196,162 @@ fn execute_swap_execute(
         .swap_quote_audits
         .iter()
         .rev()
-        .find(|entry| entry.goal_id == args.goal_id && entry.quote_id == args.quote_id)
+        .find(|entry| entry.goal_id == goal_id && entry.quote_id == quote_id)
         .cloned();
     let Some(audit) = audit else {
         return ToolBridgeResultEnvelope::error(
             "OA-SWAP-EXECUTE-QUOTE-NOT-FOUND",
             format!(
                 "No swap quote audit found for goal '{}' and quote '{}'",
-                args.goal_id, args.quote_id
+                goal_id, quote_id
             ),
             json!({
-                "goal_id": args.goal_id,
-                "quote_id": args.quote_id,
+                "goal_id": goal_id,
+                "quote_id": quote_id,
             }),
         );
     };
 
-    let execution_status = match status.as_str() {
-        "SUCCESS" => SwapExecutionStatus::Success,
-        "FAILURE" => SwapExecutionStatus::Failure,
-        "PENDING" => SwapExecutionStatus::Pending,
-        "ALREADY_PAID" => SwapExecutionStatus::AlreadyPaid,
-        _ => {
-            return ToolBridgeResultEnvelope::error(
-                "OA-SWAP-EXECUTE-INVALID-STATUS",
-                "status must be SUCCESS, FAILURE, PENDING, or ALREADY_PAID",
-                json!({ "status": args.status }),
-            );
-        }
-    };
     let now_epoch_seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or(0);
+    let script_path = match resolve_blink_swap_script_path(state, BLINK_SWAP_EXECUTE_SCRIPT) {
+        Ok(path) => path,
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-SWAP-EXECUTE-BLINK-SCRIPT-MISSING",
+                error,
+                json!({
+                    "goal_id": goal_id,
+                    "quote_id": quote_id,
+                    "script": BLINK_SWAP_EXECUTE_SCRIPT,
+                }),
+            );
+        }
+    };
+
+    let direction = swap_direction_script_value(audit.direction).to_string();
+    let mut script_args = vec![
+        direction,
+        audit.amount_in.amount.to_string(),
+        "--unit".to_string(),
+        swap_unit_script_value(audit.amount_in.unit).to_string(),
+    ];
+    if let Some(memo) = args
+        .memo
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        script_args.push("--memo".to_string());
+        script_args.push(memo.to_string());
+    }
+
+    let script_response = match run_blink_swap_script_json(&script_path, &script_args) {
+        Ok(value) => value,
+        Err(error) => {
+            let failure_receipt = GoalSwapExecutionReceipt {
+                receipt_id: format!("swap-exec:{goal_id}:{quote_id}"),
+                goal_id: goal_id.to_string(),
+                quote_id: quote_id.to_string(),
+                direction: audit.direction,
+                amount_in: audit.amount_in,
+                amount_out: audit.amount_out,
+                fee_sats: audit.fee_sats,
+                status: SwapExecutionStatus::Failure,
+                transaction_id: None,
+                failure_reason: Some(error.clone()),
+                started_at_epoch_seconds: audit.created_at_epoch_seconds,
+                finished_at_epoch_seconds: now_epoch_seconds,
+            };
+            let _ = state
+                .autopilot_goals
+                .record_swap_execution_receipt(failure_receipt.clone());
+            state.autopilot_chat.record_turn_timeline_event(format!(
+                "swap failed goal={} quote={} reason={}",
+                goal_id, quote_id, error
+            ));
+            return ToolBridgeResultEnvelope::error(
+                "OA-SWAP-EXECUTE-BLINK-FAILED",
+                format!("Blink swap execution failed: {error}"),
+                json!({
+                    "goal_id": goal_id,
+                    "quote_id": quote_id,
+                    "script_path": script_path,
+                    "execution_receipt": failure_receipt,
+                }),
+            );
+        }
+    };
+
+    let parsed_execution = match parse_blink_execution_payload_from_json(script_response) {
+        Ok(value) => value,
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-SWAP-EXECUTE-BLINK-PARSE-FAILED",
+                format!("Blink execution payload parse failed: {error}"),
+                json!({
+                    "goal_id": goal_id,
+                    "quote_id": quote_id,
+                    "script_path": script_path,
+                }),
+            );
+        }
+    };
+    let execution_status = match map_blink_execution_status(&parsed_execution.status) {
+        Ok(value) => value,
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-SWAP-EXECUTE-BLINK-STATUS-INVALID",
+                error,
+                json!({
+                    "goal_id": goal_id,
+                    "quote_id": quote_id,
+                    "status": parsed_execution.status,
+                }),
+            );
+        }
+    };
+    let executed_quote = match map_blink_quote_terms(parsed_execution.quote) {
+        Ok(value) => value,
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-SWAP-EXECUTE-BLINK-QUOTE-INVALID",
+                format!("Blink execution quote payload invalid: {error}"),
+                json!({
+                    "goal_id": goal_id,
+                    "quote_id": quote_id,
+                }),
+            );
+        }
+    };
+    let finished_at_epoch_seconds = parsed_execution
+        .executed_at_epoch_seconds
+        .unwrap_or(now_epoch_seconds);
+    let transaction_id = parsed_execution
+        .execution
+        .as_ref()
+        .and_then(|execution| execution.transaction_id.clone());
+    let failure_reason = if execution_status == SwapExecutionStatus::Failure {
+        Some("Blink execution returned FAILURE".to_string())
+    } else {
+        None
+    };
+
     let receipt = GoalSwapExecutionReceipt {
-        receipt_id: format!("swap-exec:{}:{}", args.goal_id.trim(), args.quote_id.trim()),
-        goal_id: args.goal_id.trim().to_string(),
-        quote_id: args.quote_id.trim().to_string(),
-        direction: audit.direction,
-        amount_in: audit.amount_in,
-        amount_out: audit.amount_out,
-        fee_sats: audit.fee_sats,
+        receipt_id: format!("swap-exec:{goal_id}:{quote_id}"),
+        goal_id: goal_id.to_string(),
+        quote_id: quote_id.to_string(),
+        direction: executed_quote.direction,
+        amount_in: executed_quote.amount_in,
+        amount_out: executed_quote.amount_out,
+        fee_sats: executed_quote.fee_sats,
         status: execution_status,
-        transaction_id: args
-            .transaction_id
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string),
-        failure_reason: args
-            .failure_reason
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string),
+        transaction_id: transaction_id.clone(),
+        failure_reason: failure_reason.clone(),
         started_at_epoch_seconds: audit.created_at_epoch_seconds,
-        finished_at_epoch_seconds: now_epoch_seconds,
+        finished_at_epoch_seconds,
     };
     if let Err(error) = state
         .autopilot_goals
@@ -2210,46 +2361,40 @@ fn execute_swap_execute(
             "OA-SWAP-EXECUTE-RECORD-FAILED",
             format!("failed to persist swap execution receipt: {error}"),
             json!({
-                "goal_id": args.goal_id,
-                "quote_id": args.quote_id,
+                "goal_id": goal_id,
+                "quote_id": quote_id,
             }),
         );
     }
 
     let mut events = Vec::<Value>::new();
-    match status.as_str() {
-        "SUCCESS" => {
+    match execution_status {
+        SwapExecutionStatus::Success => {
             state.autopilot_chat.record_turn_timeline_event(format!(
                 "swap settled goal={} quote={} tx={}",
-                args.goal_id,
-                args.quote_id,
-                args.transaction_id
-                    .as_deref()
-                    .filter(|value| !value.is_empty())
-                    .unwrap_or("unknown")
+                goal_id,
+                quote_id,
+                transaction_id.as_deref().unwrap_or("unknown")
             ));
             events.push(json!({
                 "event": "swap_settled",
-                "goal_id": args.goal_id,
-                "quote_id": args.quote_id,
-                "transaction_id": args.transaction_id,
+                "goal_id": goal_id,
+                "quote_id": quote_id,
+                "transaction_id": transaction_id,
             }));
         }
-        "FAILURE" => {
+        SwapExecutionStatus::Failure => {
             state.autopilot_chat.record_turn_timeline_event(format!(
                 "swap failed goal={} quote={} reason={}",
-                args.goal_id,
-                args.quote_id,
-                args.failure_reason
-                    .as_deref()
-                    .filter(|value| !value.trim().is_empty())
-                    .unwrap_or("unknown")
+                goal_id,
+                quote_id,
+                failure_reason.as_deref().unwrap_or("unknown")
             ));
             events.push(json!({
                 "event": "swap_failed",
-                "goal_id": args.goal_id,
-                "quote_id": args.quote_id,
-                "reason": args.failure_reason,
+                "goal_id": goal_id,
+                "quote_id": quote_id,
+                "reason": failure_reason,
             }));
         }
         _ => {}
@@ -2257,15 +2402,16 @@ fn execute_swap_execute(
 
     ToolBridgeResultEnvelope::ok(
         "OA-SWAP-EXECUTE-OK",
-        "Swap execution status recorded",
+        "Swap execution completed through Blink infrastructure",
         json!({
-            "goal_id": args.goal_id,
-            "quote_id": args.quote_id,
-            "status": status,
-            "transaction_id": args.transaction_id,
-            "failure_reason": args.failure_reason,
+            "goal_id": goal_id,
+            "quote_id": quote_id,
+            "status": format!("{:?}", execution_status),
+            "transaction_id": transaction_id,
+            "failure_reason": failure_reason,
             "audit": {
                 "provider": match audit.provider {
+                    SwapQuoteProvider::BlinkInfrastructure => "blink_infrastructure",
                     SwapQuoteProvider::StablesatsQuoteService => "stablesats_quote_service",
                     SwapQuoteProvider::BlinkFallback => "blink_fallback",
                 },
@@ -2285,6 +2431,10 @@ fn execute_swap_execute(
                     },
                 },
                 "expires_at_epoch_seconds": audit.expires_at_epoch_seconds,
+            },
+            "command_provenance": {
+                "script_path": script_path,
+                "args": script_args,
             },
             "events": events,
             "execution_receipt": receipt,
@@ -3014,50 +3164,190 @@ fn validate_direction_unit(
     }
 }
 
-fn build_fallback_quote(
-    args: &SwapQuoteArgs,
-    direction: SwapDirection,
-    unit: SwapAmountUnit,
-    now_epoch_seconds: u64,
-    quote_ttl_seconds: u64,
-) -> SwapQuoteTerms {
-    let quote_id = args
-        .fallback_quote_id
-        .as_deref()
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or("blink-fallback-quote")
-        .to_string();
-    let amount_out = args.fallback_amount_out.unwrap_or(match direction {
-        SwapDirection::BtcToUsd => std::cmp::max(1, args.amount / 15),
-        SwapDirection::UsdToBtc => args.amount.saturating_mul(15),
-    });
+fn swap_direction_script_value(direction: SwapDirection) -> &'static str {
+    match direction {
+        SwapDirection::BtcToUsd => "btc-to-usd",
+        SwapDirection::UsdToBtc => "usd-to-btc",
+    }
+}
 
-    let (amount_in_value, amount_in_unit, amount_out_unit) = match (direction, unit) {
-        (SwapDirection::BtcToUsd, SwapAmountUnit::Sats) => {
-            (args.amount, SwapAmountUnit::Sats, SwapAmountUnit::Cents)
-        }
-        (SwapDirection::UsdToBtc, SwapAmountUnit::Cents) => {
-            (args.amount, SwapAmountUnit::Cents, SwapAmountUnit::Sats)
-        }
-        _ => (args.amount, unit, unit),
-    };
+fn swap_unit_script_value(unit: SwapAmountUnit) -> &'static str {
+    match unit {
+        SwapAmountUnit::Sats => "sats",
+        SwapAmountUnit::Cents => "cents",
+    }
+}
 
-    SwapQuoteTerms {
-        quote_id,
+fn resolve_blink_swap_script_path(
+    state: &RenderState,
+    script_name: &str,
+) -> Result<PathBuf, String> {
+    let mut candidates = BTreeSet::<PathBuf>::new();
+    for skill in state
+        .skill_registry
+        .discovered_skills
+        .iter()
+        .filter(|skill| skill.enabled && skill.name.eq_ignore_ascii_case(BLINK_SKILL_NAME))
+    {
+        let skill_path = PathBuf::from(skill.path.trim());
+        let skill_root = if skill_path
+            .file_name()
+            .map(|file_name| file_name.to_string_lossy().eq_ignore_ascii_case("SKILL.md"))
+            .unwrap_or(false)
+        {
+            skill_path.parent().map(Path::to_path_buf)
+        } else if skill_path.is_dir() {
+            Some(skill_path)
+        } else {
+            skill_path.parent().map(Path::to_path_buf)
+        };
+        if let Some(skill_root) = skill_root {
+            candidates.insert(skill_root.join("scripts").join(script_name));
+        }
+    }
+    if let Some(repo_skills_root) = state.skill_registry.repo_skills_root.as_ref() {
+        candidates.insert(
+            PathBuf::from(repo_skills_root)
+                .join(BLINK_SKILL_NAME)
+                .join("scripts")
+                .join(script_name),
+        );
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.insert(
+            cwd.join("skills")
+                .join(BLINK_SKILL_NAME)
+                .join("scripts")
+                .join(script_name),
+        );
+    }
+
+    candidates
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+        .ok_or_else(|| {
+            format!(
+                "Unable to locate Blink swap script '{}'. Ensure skills/blink is discovered and available.",
+                script_name
+            )
+        })
+}
+
+fn run_blink_swap_script_json(
+    script_path: &Path,
+    args: &[String],
+) -> Result<serde_json::Value, String> {
+    let mut command = Command::new("node");
+    command.arg(script_path);
+    command.args(args);
+    let output = command.output().map_err(|error| {
+        format!(
+            "Failed launching node for Blink script {}: {error}",
+            script_path.display()
+        )
+    })?;
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if !output.status.success() {
+        let status = output.status.code().map_or_else(
+            || "signal".to_string(),
+            |value| format!("exit_code={value}"),
+        );
+        let details = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            "no output".to_string()
+        };
+        return Err(format!(
+            "Blink script {} failed ({status}): {details}",
+            script_path.display()
+        ));
+    }
+    if stdout.is_empty() {
+        return Err(format!(
+            "Blink script {} returned empty stdout",
+            script_path.display()
+        ));
+    }
+    serde_json::from_str::<serde_json::Value>(&stdout).map_err(|error| {
+        format!(
+            "Blink script {} returned non-JSON stdout: {error}",
+            script_path.display()
+        )
+    })
+}
+
+fn parse_blink_swap_direction(raw: &str) -> Result<SwapDirection, String> {
+    match normalize_key(raw).as_str() {
+        "btc_to_usd" => Ok(SwapDirection::BtcToUsd),
+        "usd_to_btc" => Ok(SwapDirection::UsdToBtc),
+        _ => Err(format!("Unsupported Blink swap direction '{raw}'")),
+    }
+}
+
+fn parse_blink_swap_unit(raw: &str) -> Result<SwapAmountUnit, String> {
+    match normalize_key(raw).as_str() {
+        "sats" | "sat" => Ok(SwapAmountUnit::Sats),
+        "cents" | "cent" => Ok(SwapAmountUnit::Cents),
+        _ => Err(format!("Unsupported Blink swap unit '{raw}'")),
+    }
+}
+
+fn map_blink_quote_terms(quote: BlinkSwapQuoteTerms) -> Result<SwapQuoteTerms, String> {
+    let direction = parse_blink_swap_direction(&quote.direction)?;
+    let amount_in_unit = parse_blink_swap_unit(&quote.amount_in.unit)?;
+    let amount_out_unit = parse_blink_swap_unit(&quote.amount_out.unit)?;
+    Ok(SwapQuoteTerms {
+        quote_id: quote.quote_id,
         direction,
         amount_in: SwapAmount {
-            amount: amount_in_value,
+            amount: quote.amount_in.value,
             unit: amount_in_unit,
         },
         amount_out: SwapAmount {
-            amount: amount_out,
+            amount: quote.amount_out.value,
             unit: amount_out_unit,
         },
-        expires_at_epoch_seconds: now_epoch_seconds.saturating_add(quote_ttl_seconds),
-        immediate_execution: args.immediate_execution,
-        fee_sats: 0,
-        fee_bps: 0,
-        slippage_bps: 0,
+        expires_at_epoch_seconds: quote.expires_at_epoch_seconds,
+        immediate_execution: quote.immediate_execution,
+        fee_sats: quote.fee_sats,
+        fee_bps: quote.fee_bps,
+        slippage_bps: quote.slippage_bps,
+    })
+}
+
+fn parse_blink_quote_terms_from_json(raw: serde_json::Value) -> Result<SwapQuoteTerms, String> {
+    let envelope = serde_json::from_value::<BlinkSwapQuoteEnvelope>(raw)
+        .map_err(|error| format!("Invalid Blink quote payload: {error}"))?;
+    if !envelope.event.eq_ignore_ascii_case("swap_quote") {
+        return Err(format!("Unexpected Blink quote event '{}'", envelope.event));
+    }
+    map_blink_quote_terms(envelope.quote)
+}
+
+fn parse_blink_execution_payload_from_json(
+    raw: serde_json::Value,
+) -> Result<BlinkSwapExecutionEnvelope, String> {
+    let envelope = serde_json::from_value::<BlinkSwapExecutionEnvelope>(raw)
+        .map_err(|error| format!("Invalid Blink execution payload: {error}"))?;
+    if !envelope.event.eq_ignore_ascii_case("swap_execution") {
+        return Err(format!(
+            "Unexpected Blink execution event '{}'",
+            envelope.event
+        ));
+    }
+    Ok(envelope)
+}
+
+fn map_blink_execution_status(status: &str) -> Result<SwapExecutionStatus, String> {
+    match status.trim().to_ascii_uppercase().as_str() {
+        "SUCCESS" => Ok(SwapExecutionStatus::Success),
+        "FAILURE" => Ok(SwapExecutionStatus::Failure),
+        "PENDING" => Ok(SwapExecutionStatus::Pending),
+        "ALREADY_PAID" => Ok(SwapExecutionStatus::AlreadyPaid),
+        value => Err(format!("Unsupported Blink execution status '{value}'")),
     }
 }
 
@@ -3250,11 +3540,11 @@ mod tests {
     use super::{
         CAD_CHECKPOINT_SCHEMA_VERSION, CAD_TOOL_RESPONSE_SCHEMA_VERSION,
         LEGACY_OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_SWAP_QUOTE,
-        ToolBridgeResultEnvelope, build_fallback_quote, cad_action_from_key,
-        cad_checkpoint_payload, cad_parse_retry_prompt, decode_tool_call_request, normalize_key,
-        pane_action_to_hit_action, pane_kind_key, parse_bool_env_override,
-        parse_goal_rollout_stage, parse_swap_direction, parse_swap_unit, resolve_pane_kind,
-        validate_direction_unit,
+        ToolBridgeResultEnvelope, cad_action_from_key, cad_checkpoint_payload,
+        cad_parse_retry_prompt, decode_tool_call_request, normalize_key, pane_action_to_hit_action,
+        pane_kind_key, parse_blink_execution_payload_from_json, parse_blink_quote_terms_from_json,
+        parse_bool_env_override, parse_goal_rollout_stage, parse_swap_direction, parse_swap_unit,
+        resolve_pane_kind, validate_direction_unit,
     };
     use crate::app_state::{
         AutopilotToolCallRequest, CadDemoPaneState, CadDemoWarningState, PaneKind,
@@ -3621,29 +3911,49 @@ mod tests {
     }
 
     #[test]
-    fn fallback_quote_builder_uses_stable_shape() {
-        let args = serde_json::from_str::<super::SwapQuoteArgs>(
-            r#"{
-                "goal_id":"goal-1",
-                "request_id":"req-1",
-                "direction":"btc_to_usd",
-                "amount":3000,
-                "unit":"sats",
-                "fallback_quote_id":"quote-xyz",
-                "fallback_amount_out":220
-            }"#,
-        )
-        .expect("quote args");
-        let quote = build_fallback_quote(
-            &args,
-            SwapDirection::BtcToUsd,
-            SwapAmountUnit::Sats,
-            1_700_000_000,
-            60,
-        );
-        assert_eq!(quote.quote_id, "quote-xyz");
-        assert_eq!(quote.amount_in.amount, 3_000);
-        assert_eq!(quote.amount_out.amount, 220);
-        assert_eq!(quote.expires_at_epoch_seconds, 1_700_000_060);
+    fn blink_quote_payload_parsing_maps_swap_terms() {
+        let raw = serde_json::json!({
+            "event": "swap_quote",
+            "quote": {
+                "quoteId": "blink-swap-123",
+                "direction": "BTC_TO_USD",
+                "amountIn": { "value": 2000, "unit": "sats" },
+                "amountOut": { "value": 130, "unit": "cents" },
+                "expiresAtEpochSeconds": 1_800_000_000_u64,
+                "immediateExecution": false,
+                "feeSats": 0,
+                "feeBps": 0,
+                "slippageBps": 0
+            }
+        });
+        let quote = parse_blink_quote_terms_from_json(raw).expect("quote parse should succeed");
+        assert_eq!(quote.quote_id, "blink-swap-123");
+        assert_eq!(quote.direction, SwapDirection::BtcToUsd);
+        assert_eq!(quote.amount_in.amount, 2_000);
+        assert_eq!(quote.amount_in.unit, SwapAmountUnit::Sats);
+        assert_eq!(quote.amount_out.amount, 130);
+        assert_eq!(quote.amount_out.unit, SwapAmountUnit::Cents);
+    }
+
+    #[test]
+    fn blink_execution_payload_parser_rejects_wrong_event() {
+        let raw = serde_json::json!({
+            "event": "not_swap_execution",
+            "status": "SUCCESS",
+            "quote": {
+                "quoteId": "blink-swap-123",
+                "direction": "USD_TO_BTC",
+                "amountIn": { "value": 500, "unit": "cents" },
+                "amountOut": { "value": 7400, "unit": "sats" },
+                "expiresAtEpochSeconds": 1_800_000_000_u64,
+                "immediateExecution": false,
+                "feeSats": 0,
+                "feeBps": 0,
+                "slippageBps": 0
+            }
+        });
+        let error = parse_blink_execution_payload_from_json(raw)
+            .expect_err("non-execution event should be rejected");
+        assert!(error.contains("Unexpected Blink execution event"));
     }
 }

@@ -148,24 +148,7 @@ pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
                     "amount": { "type": "integer", "minimum": 1 },
                     "unit": { "type": "string", "enum": ["sats", "cents"] },
                     "immediate_execution": { "type": "boolean" },
-                    "quote_ttl_seconds": { "type": "integer", "minimum": 1 },
-                    "fallback_quote_id": { "type": "string" },
-                    "fallback_amount_out": { "type": "integer", "minimum": 1 },
-                    "stablesats_error": { "type": "string" },
-                    "stablesats_quote": {
-                        "type": "object",
-                        "properties": {
-                            "quote_id": { "type": "string" },
-                            "amount_to_sell_in_sats": { "type": "integer", "minimum": 1 },
-                            "amount_to_buy_in_cents": { "type": "integer", "minimum": 1 },
-                            "amount_to_buy_in_sats": { "type": "integer", "minimum": 1 },
-                            "amount_to_sell_in_cents": { "type": "integer", "minimum": 1 },
-                            "expires_at_epoch_seconds": { "type": "integer", "minimum": 1 },
-                            "executed": { "type": "boolean" }
-                        },
-                        "required": ["quote_id", "expires_at_epoch_seconds", "executed"],
-                        "additionalProperties": false
-                    }
+                    "quote_ttl_seconds": { "type": "integer", "minimum": 1 }
                 },
                 "required": ["goal_id", "request_id", "direction", "amount", "unit"],
                 "additionalProperties": false
@@ -181,11 +164,9 @@ pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
                 "properties": {
                     "goal_id": { "type": "string" },
                     "quote_id": { "type": "string" },
-                    "status": { "type": "string", "enum": ["SUCCESS", "FAILURE", "PENDING", "ALREADY_PAID"] },
-                    "transaction_id": { "type": "string" },
-                    "failure_reason": { "type": "string" }
+                    "memo": { "type": "string" }
                 },
-                "required": ["goal_id", "quote_id", "status"],
+                "required": ["goal_id", "quote_id"],
                 "additionalProperties": false
             }),
         },
@@ -281,7 +262,10 @@ pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
 
 #[cfg(test)]
 mod tests {
-    use super::{OPENAGENTS_DYNAMIC_TOOL_NAMES, openagents_dynamic_tool_specs};
+    use super::{
+        OPENAGENTS_DYNAMIC_TOOL_NAMES, OPENAGENTS_TOOL_SWAP_EXECUTE, OPENAGENTS_TOOL_SWAP_QUOTE,
+        openagents_dynamic_tool_specs,
+    };
     use std::collections::HashSet;
 
     fn matches_server_name_pattern(name: &str) -> bool {
@@ -310,5 +294,43 @@ mod tests {
                 "tool name should match server pattern: {name}"
             );
         }
+    }
+
+    #[test]
+    fn swap_tool_schemas_do_not_allow_injected_quote_or_status_fields() {
+        let specs = openagents_dynamic_tool_specs();
+        let quote_spec = specs
+            .iter()
+            .find(|spec| spec.name == OPENAGENTS_TOOL_SWAP_QUOTE)
+            .expect("swap quote spec should exist");
+        let execute_spec = specs
+            .iter()
+            .find(|spec| spec.name == OPENAGENTS_TOOL_SWAP_EXECUTE)
+            .expect("swap execute spec should exist");
+
+        assert!(
+            quote_spec
+                .input_schema
+                .pointer("/properties/stablesats_quote")
+                .is_none()
+        );
+        assert!(
+            quote_spec
+                .input_schema
+                .pointer("/properties/stablesats_error")
+                .is_none()
+        );
+        assert!(
+            quote_spec
+                .input_schema
+                .pointer("/properties/fallback_quote_id")
+                .is_none()
+        );
+        assert!(
+            execute_spec
+                .input_schema
+                .pointer("/properties/status")
+                .is_none()
+        );
     }
 }
