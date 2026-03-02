@@ -317,6 +317,14 @@ pub struct CadResolvedPartInstanceSet {
     pub unresolved_instance_ids: Vec<String>,
 }
 
+/// Result payload for deleting an instance with joint cleanup.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct CadInstanceDeletionSummary {
+    pub deleted_instance_id: String,
+    pub removed_joint_ids: Vec<String>,
+    pub cleared_ground: bool,
+}
+
 impl CadAssemblySchema {
     pub fn create_part_def(
         &mut self,
@@ -528,6 +536,83 @@ impl CadAssemblySchema {
         }
 
         results
+    }
+
+    pub fn set_ground_instance(&mut self, instance_id: &str) -> CadResult<()> {
+        if !self
+            .instances
+            .iter()
+            .any(|instance| instance.id == instance_id)
+        {
+            return Err(CadError::InvalidParameter {
+                name: "ground_instance_id".to_string(),
+                reason: format!("unknown instance: {instance_id}"),
+            });
+        }
+        self.ground_instance_id = Some(instance_id.to_string());
+        Ok(())
+    }
+
+    pub fn delete_joint(&mut self, joint_id: &str) -> CadResult<()> {
+        let Some(index) = self.joints.iter().position(|joint| joint.id == joint_id) else {
+            return Err(CadError::InvalidParameter {
+                name: "joint.id".to_string(),
+                reason: format!("unknown joint: {joint_id}"),
+            });
+        };
+        self.joints.remove(index);
+        Ok(())
+    }
+
+    pub fn delete_instance(&mut self, instance_id: &str) -> CadResult<CadInstanceDeletionSummary> {
+        let Some(instance_index) = self
+            .instances
+            .iter()
+            .position(|instance| instance.id == instance_id)
+        else {
+            return Err(CadError::InvalidParameter {
+                name: "instance.id".to_string(),
+                reason: format!("unknown instance: {instance_id}"),
+            });
+        };
+
+        self.instances.remove(instance_index);
+
+        let mut removed_joint_ids: Vec<String> = self
+            .joints
+            .iter()
+            .filter(|joint| {
+                joint.child_instance_id == instance_id
+                    || joint
+                        .parent_instance_id
+                        .as_deref()
+                        .is_some_and(|parent_id| parent_id == instance_id)
+            })
+            .map(|joint| joint.id.clone())
+            .collect();
+        self.joints.retain(|joint| {
+            joint.child_instance_id != instance_id
+                && joint
+                    .parent_instance_id
+                    .as_deref()
+                    .map_or(true, |parent_id| parent_id != instance_id)
+        });
+        removed_joint_ids.sort();
+        removed_joint_ids.dedup();
+
+        let cleared_ground = self
+            .ground_instance_id
+            .as_deref()
+            .is_some_and(|ground_id| ground_id == instance_id);
+        if cleared_ground {
+            self.ground_instance_id = None;
+        }
+
+        Ok(CadInstanceDeletionSummary {
+            deleted_instance_id: instance_id.to_string(),
+            removed_joint_ids,
+            cleared_ground,
+        })
     }
 
     fn next_instance_id(&self, part_def_id: &str) -> String {
@@ -1299,6 +1384,149 @@ mod tests {
         assert_eq!(
             world.get("b-1").expect("b-1 world transform").translation,
             Vec3::new(10.0, 5.0, 0.0)
+        );
+    }
+
+    #[test]
+    fn set_ground_instance_requires_known_instance() {
+        let mut schema = CadAssemblySchema::default();
+        schema.instances.push(CadPartInstance {
+            id: "base-1".to_string(),
+            part_def_id: "base".to_string(),
+            name: None,
+            transform: None,
+            material: None,
+        });
+
+        schema
+            .set_ground_instance("base-1")
+            .expect("set known ground instance");
+        assert_eq!(schema.ground_instance_id.as_deref(), Some("base-1"));
+
+        let error = schema
+            .set_ground_instance("missing")
+            .expect_err("unknown ground instance should fail");
+        assert!(error.to_string().contains("unknown instance: missing"));
+    }
+
+    #[test]
+    fn delete_instance_removes_referencing_joints_and_clears_ground() {
+        let mut schema = CadAssemblySchema {
+            part_defs: BTreeMap::new(),
+            instances: vec![
+                CadPartInstance {
+                    id: "base-1".to_string(),
+                    part_def_id: "base".to_string(),
+                    name: None,
+                    transform: None,
+                    material: None,
+                },
+                CadPartInstance {
+                    id: "arm-1".to_string(),
+                    part_def_id: "arm".to_string(),
+                    name: None,
+                    transform: None,
+                    material: None,
+                },
+                CadPartInstance {
+                    id: "tool-1".to_string(),
+                    part_def_id: "tool".to_string(),
+                    name: None,
+                    transform: None,
+                    material: None,
+                },
+            ],
+            joints: vec![
+                CadAssemblyJoint {
+                    id: "joint.base_arm".to_string(),
+                    name: None,
+                    parent_instance_id: Some("base-1".to_string()),
+                    child_instance_id: "arm-1".to_string(),
+                    parent_anchor: Vec3::new(0.0, 0.0, 0.0),
+                    child_anchor: Vec3::new(0.0, 0.0, 0.0),
+                    kind: CadJointKind::Fixed,
+                    state: 0.0,
+                },
+                CadAssemblyJoint {
+                    id: "joint.arm_tool".to_string(),
+                    name: None,
+                    parent_instance_id: Some("arm-1".to_string()),
+                    child_instance_id: "tool-1".to_string(),
+                    parent_anchor: Vec3::new(0.0, 0.0, 0.0),
+                    child_anchor: Vec3::new(0.0, 0.0, 0.0),
+                    kind: CadJointKind::Slider {
+                        axis: Vec3::new(1.0, 0.0, 0.0),
+                        limits: None,
+                    },
+                    state: 0.0,
+                },
+            ],
+            ground_instance_id: Some("arm-1".to_string()),
+        };
+
+        let summary = schema
+            .delete_instance("arm-1")
+            .expect("delete instance with cleanup");
+        assert_eq!(summary.deleted_instance_id, "arm-1");
+        assert!(summary.cleared_ground);
+        assert_eq!(
+            summary.removed_joint_ids,
+            vec!["joint.arm_tool".to_string(), "joint.base_arm".to_string()]
+        );
+        assert_eq!(schema.ground_instance_id, None);
+        assert_eq!(schema.instances.len(), 2);
+        assert!(
+            schema
+                .instances
+                .iter()
+                .all(|instance| instance.id != "arm-1")
+        );
+        assert!(schema.joints.is_empty());
+    }
+
+    #[test]
+    fn delete_joint_and_instance_require_known_ids() {
+        let mut schema = CadAssemblySchema {
+            part_defs: BTreeMap::new(),
+            instances: vec![CadPartInstance {
+                id: "base-1".to_string(),
+                part_def_id: "base".to_string(),
+                name: None,
+                transform: None,
+                material: None,
+            }],
+            joints: vec![CadAssemblyJoint {
+                id: "joint.1".to_string(),
+                name: None,
+                parent_instance_id: None,
+                child_instance_id: "base-1".to_string(),
+                parent_anchor: Vec3::new(0.0, 0.0, 0.0),
+                child_anchor: Vec3::new(0.0, 0.0, 0.0),
+                kind: CadJointKind::Fixed,
+                state: 0.0,
+            }],
+            ground_instance_id: None,
+        };
+
+        schema.delete_joint("joint.1").expect("delete known joint");
+        assert!(schema.joints.is_empty());
+
+        let joint_error = schema
+            .delete_joint("joint.missing")
+            .expect_err("missing joint should fail");
+        assert!(
+            joint_error
+                .to_string()
+                .contains("unknown joint: joint.missing")
+        );
+
+        let instance_error = schema
+            .delete_instance("missing")
+            .expect_err("missing instance should fail");
+        assert!(
+            instance_error
+                .to_string()
+                .contains("unknown instance: missing")
         );
     }
 
