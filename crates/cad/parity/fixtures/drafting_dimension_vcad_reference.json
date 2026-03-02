@@ -1,0 +1,89 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-070",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "vcad-kernel-drafting dimension measurement and render contracts",
+  "measurement_tolerance": 1e-9,
+  "expected_measurement_cases": [
+    {
+      "case_id": "angular_from_points",
+      "value": 90.0
+    },
+    {
+      "case_id": "linear_aligned",
+      "value": 13.0
+    },
+    {
+      "case_id": "linear_horizontal",
+      "value": 12.0
+    },
+    {
+      "case_id": "linear_rotated_45",
+      "value": 14.142135623730951
+    },
+    {
+      "case_id": "linear_vertical",
+      "value": 5.0
+    },
+    {
+      "case_id": "ordinate_x",
+      "value": 7.5
+    },
+    {
+      "case_id": "ordinate_y",
+      "value": 4.25
+    },
+    {
+      "case_id": "radial_diameter",
+      "value": 10.0
+    },
+    {
+      "case_id": "radial_radius",
+      "value": 5.0
+    }
+  ],
+  "expected_render_cases": [
+    {
+      "case_id": "angular_from_points",
+      "line_count": 0,
+      "arc_count": 1,
+      "text_count": 1,
+      "primary_label": "90.00deg"
+    },
+    {
+      "case_id": "linear_horizontal",
+      "line_count": 1,
+      "arc_count": 0,
+      "text_count": 1,
+      "primary_label": "12.00"
+    },
+    {
+      "case_id": "ordinate_x",
+      "line_count": 1,
+      "arc_count": 0,
+      "text_count": 1,
+      "primary_label": "X7.50"
+    },
+    {
+      "case_id": "ordinate_y",
+      "line_count": 1,
+      "arc_count": 0,
+      "text_count": 1,
+      "primary_label": "Y4.25"
+    },
+    {
+      "case_id": "radial_diameter",
+      "line_count": 1,
+      "arc_count": 0,
+      "text_count": 1,
+      "primary_label": "D10.00"
+    },
+    {
+      "case_id": "radial_radius",
+      "line_count": 1,
+      "arc_count": 0,
+      "text_count": 1,
+      "primary_label": "R5.00"
+    }
+  ]
+}

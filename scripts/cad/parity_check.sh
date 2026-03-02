@@ -65,6 +65,7 @@ LANE_LABELS=(
     "drafting-kernel-scaffolding"
     "drafting-projection"
     "drafting-hidden-line"
+    "drafting-dimension"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -313,6 +314,9 @@ run_lane "drafting-projection" \
 
 run_lane "drafting-hidden-line" \
     "$ROOT_DIR/scripts/cad/parity-drafting-hidden-line-ci.sh"
+
+run_lane "drafting-dimension" \
+    "$ROOT_DIR/scripts/cad/parity-drafting-dimension-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
