@@ -135,7 +135,7 @@ Major gaps to close:
 50. [x] VCAD-PARITY-050: Loft-from-sketch parity.
 51. [x] VCAD-PARITY-051: Sketch profile validity parity checks.
 52. [x] VCAD-PARITY-052: Sketch interaction parity (shortcuts + editing flow).
-53. [ ] VCAD-PARITY-053: Sketch undo/redo parity with deterministic replay.
+53. [x] VCAD-PARITY-053: Sketch undo/redo parity with deterministic replay.
 54. [ ] VCAD-PARITY-054: Sketch fixture equivalence tests vs vcad corpus.
 55. [ ] VCAD-PARITY-055: Sketch/constraints parity checkpoint.
 

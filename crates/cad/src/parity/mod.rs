@@ -43,6 +43,7 @@ pub mod sketch_plane_parity;
 pub mod sketch_profile_validity_parity;
 pub mod sketch_revolve_parity;
 pub mod sketch_sweep_parity;
+pub mod sketch_undo_redo_parity;
 pub mod sweep_parity;
 pub mod topology_repair_parity;
 pub mod transform_parity;

@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::history::CadHistoryCommand;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum SketchDrawTool {
     Line,
@@ -323,12 +325,38 @@ pub fn apply_exit_cancel(state: &SketchInteractionState) -> SketchInteractionTra
     }
 }
 
+pub fn history_command_for_shortcut(
+    shortcut: SketchShortcut,
+    transition: &SketchInteractionTransition,
+) -> Option<CadHistoryCommand> {
+    history_command_for_transition(shortcut.stable_id(), transition)
+}
+
+pub fn history_command_for_transition(
+    shortcut_id: &str,
+    transition: &SketchInteractionTransition,
+) -> Option<CadHistoryCommand> {
+    if transition.commands.is_empty() {
+        return None;
+    }
+    Some(CadHistoryCommand::ApplySketchInteraction {
+        shortcut_id: shortcut_id.to_string(),
+        command_codes: transition
+            .commands
+            .iter()
+            .map(|command| command.stable_code())
+            .collect(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         SketchDrawTool, SketchInteractionCommand, SketchInteractionState, SketchShortcut,
         apply_exit_cancel, apply_exit_confirm, apply_face_selection_confirm, apply_shortcut,
+        history_command_for_shortcut, history_command_for_transition,
     };
+    use crate::history::CadHistoryCommand;
 
     #[test]
     fn sketch_mode_entry_shortcut_uses_face_selection_when_parts_exist() {
@@ -435,6 +463,64 @@ mod tests {
         assert_eq!(
             confirm_exit.commands,
             vec![SketchInteractionCommand::ExitSketchMode]
+        );
+    }
+
+    #[test]
+    fn history_command_mapping_for_shortcuts_is_deterministic() {
+        let active = SketchInteractionState {
+            has_parts: false,
+            sketch_active: true,
+            face_selection_mode: false,
+            pending_exit_confirmation: false,
+            active_tool: SketchDrawTool::Line,
+            pending_points: 0,
+            segment_count: 1,
+            selected_line_count: 1,
+        };
+        let transition = apply_shortcut(&active, SketchShortcut::HorizontalConstraint);
+        let Some(command) =
+            history_command_for_shortcut(SketchShortcut::HorizontalConstraint, &transition)
+        else {
+            panic!("shortcut should produce history command");
+        };
+        assert_eq!(
+            command,
+            CadHistoryCommand::ApplySketchInteraction {
+                shortcut_id: "sketch.constraint.horizontal".to_string(),
+                command_codes: vec![
+                    "SKETCH-CMD-APPLY-horizontal".to_string(),
+                    "SKETCH-CMD-RUN-SOLVER".to_string(),
+                ],
+            }
+        );
+    }
+
+    #[test]
+    fn history_command_mapping_skips_noop_and_supports_non_shortcut_transitions() {
+        let idle = SketchInteractionState::with_has_parts(false);
+        let noop_line = apply_shortcut(&idle, SketchShortcut::LineTool);
+        assert!(
+            history_command_for_shortcut(SketchShortcut::LineTool, &noop_line).is_none(),
+            "noop transitions should not create history entries"
+        );
+
+        let with_parts = apply_shortcut(
+            &SketchInteractionState::with_has_parts(true),
+            SketchShortcut::EnterSketchMode,
+        );
+        let face_confirm = apply_face_selection_confirm(&with_parts.next_state);
+        let Some(face_command) =
+            history_command_for_transition("sketch.face-selection.confirm", &face_confirm)
+        else {
+            panic!("face confirm should produce history command");
+        };
+        assert_eq!(
+            face_command,
+            CadHistoryCommand::ApplySketchInteraction {
+                shortcut_id: "sketch.face-selection.confirm".to_string(),
+                command_codes: vec!["SKETCH-CMD-ENTER-SKETCH-FACE".to_string()],
+            }
         );
     }
 }
