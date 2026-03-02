@@ -1,0 +1,116 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-027",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "compose_snapshot": {
+    "feature_matrix_row_major": [
+      0.9185586535436919,
+      -0.29575317547305485,
+      1.049038105676658,
+      12.0,
+      0.9185586535436917,
+      0.3872595264191645,
+      0.31698729810778054,
+      -3.0,
+      -0.7499999999999999,
+      0.1120719340210067,
+      1.6730326074756159,
+      8.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "kernel_reference_matrix_row_major": [
+      0.9185586535436918,
+      -0.2957531754730548,
+      1.049038105676658,
+      12.0,
+      0.9185586535436917,
+      0.3872595264191645,
+      0.31698729810778054,
+      -3.0,
+      -0.7499999999999999,
+      0.1120719340210067,
+      1.6730326074756159,
+      8.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "feature_probe_point": [
+      14.657389535398767,
+      -1.391648570277891,
+      7.224444369716801
+    ],
+    "kernel_reference_probe_point": [
+      14.657389535398767,
+      -1.391648570277891,
+      7.224444369716801
+    ],
+    "matrix_match_within_tolerance": true,
+    "geometry_hash": "cec93f5f75d901bd"
+  },
+  "sequence_snapshot": {
+    "ab_matrix_row_major": [
+      1.1099069304367545e-16,
+      -0.9063077870366499,
+      0.42261826174069944,
+      5.0,
+      2.0,
+      6.123233995736766e-17,
+      0.0,
+      4.0,
+      -5.175581015019659e-17,
+      0.42261826174069944,
+      0.9063077870366499,
+      -2.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "ba_matrix_row_major": [
+      1.1099069304367545e-16,
+      -1.0,
+      5.175581015019659e-17,
+      6.123233995736766e-16,
+      1.8126155740732999,
+      6.123233995736766e-17,
+      0.8452365234813989,
+      14.0,
+      -0.42261826174069944,
+      0.0,
+      0.9063077870366499,
+      -2.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "ab_probe_point": [
+      4.455239211148799,
+      6.0,
+      1.5641598845913487
+    ],
+    "ba_probe_point": [
+      -1.9999999999999991,
+      18.348325144517496,
+      0.2963050993692504
+    ],
+    "order_sensitive": true,
+    "deterministic_replay_match": true
+  },
+  "invalid_scale_error": "invalid primitive: transform scale x must be finite and > 0",
+  "deterministic_signature": "9e5d203d841e40c6",
+  "parity_contracts": [
+    "transform feature matrix composes in vcad canonical order: T * Rz * Ry * Rx * S",
+    "feature transform matrix matches kernel-math reference composition within tolerance",
+    "compose_transform_sequence is deterministic for repeated runs with identical op order",
+    "compose_transform_sequence preserves input order (A->B differs from B->A)",
+    "invalid non-positive scale maps to stable CadError::InvalidPrimitive diagnostics"
+  ]
+}
