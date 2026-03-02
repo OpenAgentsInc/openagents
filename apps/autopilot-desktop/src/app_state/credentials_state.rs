@@ -264,6 +264,10 @@ impl CredentialsState {
             .resolve_env_for_scope(self.entries.as_slice(), scope)
     }
 
+    pub fn read_secure_value(&self, name: &str) -> Result<Option<String>, String> {
+        self.repository.read_value_secure(name)
+    }
+
     fn persist_metadata(&mut self) -> Result<(), String> {
         self.repository
             .persist_records(self.entries.as_slice())

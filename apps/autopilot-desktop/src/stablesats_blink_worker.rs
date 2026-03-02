@@ -8,17 +8,39 @@ pub struct StableSatsBlinkRefreshRequest {
     pub now_epoch_seconds: u64,
     pub balance_script_path: PathBuf,
     pub price_script_path: PathBuf,
+    pub wallets: Vec<StableSatsBlinkWalletRefreshRequest>,
+    pub preflight_failures: Vec<StableSatsBlinkWalletFailure>,
+}
+
+#[derive(Clone, Debug)]
+pub struct StableSatsBlinkWalletRefreshRequest {
+    pub owner_id: String,
+    pub wallet_name: String,
     pub env_overrides: Vec<(String, String)>,
+}
+
+#[derive(Clone, Debug)]
+pub struct StableSatsBlinkWalletSnapshot {
+    pub owner_id: String,
+    pub btc_balance_sats: u64,
+    pub usd_balance_cents: u64,
+    pub source_ref: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct StableSatsBlinkWalletFailure {
+    pub owner_id: String,
+    pub wallet_name: String,
+    pub error: String,
 }
 
 #[derive(Clone, Debug)]
 pub struct StableSatsBlinkLiveSnapshot {
     pub request_id: u64,
     pub now_epoch_seconds: u64,
-    pub btc_balance_sats: u64,
-    pub usd_balance_cents: u64,
+    pub wallet_snapshots: Vec<StableSatsBlinkWalletSnapshot>,
+    pub wallet_failures: Vec<StableSatsBlinkWalletFailure>,
     pub price_usd_cents_per_btc: u64,
-    pub source_ref: String,
 }
 
 #[derive(Clone, Debug)]
@@ -87,24 +109,102 @@ impl StableSatsBlinkWorker {
 fn run_refresh(
     request: &StableSatsBlinkRefreshRequest,
 ) -> Result<StableSatsBlinkLiveSnapshot, String> {
-    let balance_json = run_blink_script_json(
-        request.balance_script_path.as_path(),
-        &[],
-        request.env_overrides.as_slice(),
-    )?;
-    let btc_balance_sats = parse_json_u64(&balance_json, "btcBalanceSats")
-        .or_else(|| parse_json_u64(&balance_json, "btcBalance"))
-        .ok_or_else(|| "Blink balance payload missing btcBalanceSats".to_string())?;
-    let usd_balance_cents = parse_json_u64(&balance_json, "usdBalanceCents")
-        .or_else(|| parse_json_u64(&balance_json, "usdBalance"))
-        .ok_or_else(|| "Blink balance payload missing usdBalanceCents".to_string())?;
+    if request.wallets.is_empty() {
+        return Err("Live refresh request did not include any wallet bindings".to_string());
+    }
 
-    let price_json = run_blink_script_json(
-        request.price_script_path.as_path(),
-        &[],
-        request.env_overrides.as_slice(),
-    )
-    .ok();
+    let mut wallet_snapshots = Vec::<StableSatsBlinkWalletSnapshot>::new();
+    let mut wallet_failures = request.preflight_failures.clone();
+
+    for wallet in &request.wallets {
+        let balance_json = match run_blink_script_json(
+            request.balance_script_path.as_path(),
+            &[],
+            wallet.env_overrides.as_slice(),
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                wallet_failures.push(StableSatsBlinkWalletFailure {
+                    owner_id: wallet.owner_id.clone(),
+                    wallet_name: wallet.wallet_name.clone(),
+                    error,
+                });
+                continue;
+            }
+        };
+        let btc_balance_sats = match parse_json_u64(&balance_json, "btcBalanceSats")
+            .or_else(|| parse_json_u64(&balance_json, "btcBalance"))
+        {
+            Some(value) => value,
+            None => {
+                wallet_failures.push(StableSatsBlinkWalletFailure {
+                    owner_id: wallet.owner_id.clone(),
+                    wallet_name: wallet.wallet_name.clone(),
+                    error: "Blink balance payload missing btcBalanceSats".to_string(),
+                });
+                continue;
+            }
+        };
+        let usd_balance_cents = match parse_json_u64(&balance_json, "usdBalanceCents")
+            .or_else(|| parse_json_u64(&balance_json, "usdBalance"))
+        {
+            Some(value) => value,
+            None => {
+                wallet_failures.push(StableSatsBlinkWalletFailure {
+                    owner_id: wallet.owner_id.clone(),
+                    wallet_name: wallet.wallet_name.clone(),
+                    error: "Blink balance payload missing usdBalanceCents".to_string(),
+                });
+                continue;
+            }
+        };
+
+        let btc_wallet_id = balance_json
+            .get("btcWalletId")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("unknown-btc");
+        let usd_wallet_id = balance_json
+            .get("usdWalletId")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("unknown-usd");
+
+        wallet_snapshots.push(StableSatsBlinkWalletSnapshot {
+            owner_id: wallet.owner_id.clone(),
+            btc_balance_sats,
+            usd_balance_cents,
+            source_ref: format!("btc:{} usd:{}", btc_wallet_id, usd_wallet_id),
+        });
+    }
+
+    if wallet_snapshots.is_empty() {
+        let message = wallet_failures
+            .iter()
+            .map(|entry| {
+                format!(
+                    "{} ({}) refresh failed: {}",
+                    entry.wallet_name, entry.owner_id, entry.error
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" | ");
+        return Err(if message.is_empty() {
+            "All wallet refresh requests failed".to_string()
+        } else {
+            message
+        });
+    }
+
+    let price_env = wallet_snapshots
+        .first()
+        .and_then(|snapshot| {
+            request
+                .wallets
+                .iter()
+                .find(|wallet| wallet.owner_id == snapshot.owner_id)
+        })
+        .map_or(&[][..], |wallet| wallet.env_overrides.as_slice());
+    let price_json =
+        run_blink_script_json(request.price_script_path.as_path(), &[], price_env).ok();
     let price_usd_cents_per_btc = price_json
         .as_ref()
         .and_then(|json| parse_json_f64(json, "btcPriceUsd"))
@@ -118,22 +218,12 @@ fn run_refresh(
         })
         .unwrap_or(1);
 
-    let btc_wallet_id = balance_json
-        .get("btcWalletId")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or("unknown-btc");
-    let usd_wallet_id = balance_json
-        .get("usdWalletId")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or("unknown-usd");
-
     Ok(StableSatsBlinkLiveSnapshot {
         request_id: request.request_id,
         now_epoch_seconds: request.now_epoch_seconds,
-        btc_balance_sats,
-        usd_balance_cents,
+        wallet_snapshots,
+        wallet_failures,
         price_usd_cents_per_btc,
-        source_ref: format!("btc:{} usd:{}", btc_wallet_id, usd_wallet_id),
     })
 }
 

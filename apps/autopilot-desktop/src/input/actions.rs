@@ -2016,16 +2016,27 @@ fn queue_stable_sats_live_refresh(state: &mut crate::app_state::RenderState) -> 
             return true;
         }
     };
-    let env_overrides = resolve_blink_simulation_env(state);
+    let (wallet_requests, scoped_wallet_errors) = resolve_blink_wallet_refresh_requests(state);
     let now_epoch_seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs());
+    apply_scoped_wallet_refresh_errors(state, now_epoch_seconds, scoped_wallet_errors.as_slice());
+    if wallet_requests.is_empty() {
+        let _ = state.stable_sats_simulation.fail_live_refresh(
+            request_id,
+            "No live Blink wallets resolved from secure credential bindings".to_string(),
+        );
+        state.provider_runtime.last_result = state.stable_sats_simulation.last_action.clone();
+        return true;
+    }
+
     let request = crate::stablesats_blink_worker::StableSatsBlinkRefreshRequest {
         request_id,
         now_epoch_seconds,
         balance_script_path: balance_script,
         price_script_path: price_script,
-        env_overrides,
+        wallets: wallet_requests,
+        preflight_failures: scoped_wallet_errors,
     };
     if let Err(error) = state.stable_sats_blink_worker.enqueue_refresh(request) {
         let _ = state
@@ -2037,22 +2048,173 @@ fn queue_stable_sats_live_refresh(state: &mut crate::app_state::RenderState) -> 
     true
 }
 
-fn resolve_blink_simulation_env(state: &crate::app_state::RenderState) -> Vec<(String, String)> {
-    let scope = crate::credentials::CREDENTIAL_SCOPE_SKILLS
-        | crate::credentials::CREDENTIAL_SCOPE_CODEX
-        | crate::credentials::CREDENTIAL_SCOPE_GLOBAL;
-    let resolved = state
+fn resolve_blink_wallet_refresh_requests(
+    state: &crate::app_state::RenderState,
+) -> (
+    Vec<crate::stablesats_blink_worker::StableSatsBlinkWalletRefreshRequest>,
+    Vec<crate::stablesats_blink_worker::StableSatsBlinkWalletFailure>,
+) {
+    let mut requests =
+        Vec::<crate::stablesats_blink_worker::StableSatsBlinkWalletRefreshRequest>::new();
+    let mut scoped_errors =
+        Vec::<crate::stablesats_blink_worker::StableSatsBlinkWalletFailure>::new();
+    for wallet in &state.stable_sats_simulation.agents {
+        match resolve_wallet_blink_env(state, wallet) {
+            Ok(env_overrides) => {
+                requests.push(
+                    crate::stablesats_blink_worker::StableSatsBlinkWalletRefreshRequest {
+                        owner_id: wallet.owner_id.clone(),
+                        wallet_name: wallet.agent_name.clone(),
+                        env_overrides,
+                    },
+                );
+            }
+            Err(error) => {
+                scoped_errors.push(
+                    crate::stablesats_blink_worker::StableSatsBlinkWalletFailure {
+                        owner_id: wallet.owner_id.clone(),
+                        wallet_name: wallet.agent_name.clone(),
+                        error,
+                    },
+                );
+            }
+        }
+    }
+    (requests, scoped_errors)
+}
+
+fn resolve_wallet_blink_env(
+    state: &crate::app_state::RenderState,
+    wallet: &crate::app_state::StableSatsAgentWalletState,
+) -> Result<Vec<(String, String)>, String> {
+    let mut secure_values = std::collections::BTreeMap::<String, String>::new();
+    let key_name = crate::credentials::normalize_env_var_name(wallet.credential_key_name.as_str());
+    if let Some(value) = state
         .credentials
-        .resolve_env_for_scope(scope)
-        .unwrap_or_default();
-    resolved
-        .into_iter()
-        .filter(|(name, value)| {
-            !value.trim().is_empty()
-                && (name.eq_ignore_ascii_case("BLINK_API_KEY")
-                    || name.eq_ignore_ascii_case("BLINK_API_URL"))
-        })
-        .collect()
+        .read_secure_value(wallet.credential_key_name.as_str())
+        .map_err(|error| {
+            format!(
+                "{} secure credential read failed for {}: {error}",
+                wallet.agent_name, wallet.credential_key_name
+            )
+        })?
+        .filter(|value| !value.trim().is_empty())
+    {
+        secure_values.insert(key_name, value);
+    }
+    if let Some(url_name) = wallet.credential_url_name.as_deref() {
+        let normalized_url_name = crate::credentials::normalize_env_var_name(url_name);
+        if let Some(value) = state
+            .credentials
+            .read_secure_value(url_name)
+            .map_err(|error| {
+                format!(
+                    "{} secure credential read failed for {}: {error}",
+                    wallet.agent_name, url_name
+                )
+            })?
+            .filter(|value| !value.trim().is_empty())
+        {
+            secure_values.insert(normalized_url_name, value);
+        }
+    }
+    resolve_wallet_blink_env_from_secure_values(
+        wallet,
+        state.credentials.entries.as_slice(),
+        &secure_values,
+    )
+}
+
+fn ensure_wallet_credential_slot_enabled(
+    entries: &[crate::credentials::CredentialRecord],
+    credential_name: &str,
+) -> Result<(), String> {
+    let normalized = crate::credentials::normalize_env_var_name(credential_name);
+    let Some(entry) = entries.iter().find(|entry| entry.name == normalized) else {
+        return Err(format!(
+            "Credential slot {} is missing from credential manager",
+            normalized
+        ));
+    };
+    if !entry.enabled {
+        return Err(format!("Credential slot {} is disabled", normalized));
+    }
+    Ok(())
+}
+
+fn has_enabled_credential_slot(
+    entries: &[crate::credentials::CredentialRecord],
+    credential_name: &str,
+) -> bool {
+    let normalized = crate::credentials::normalize_env_var_name(credential_name);
+    entries
+        .iter()
+        .any(|entry| entry.name == normalized && entry.enabled)
+}
+
+fn resolve_wallet_blink_env_from_secure_values(
+    wallet: &crate::app_state::StableSatsAgentWalletState,
+    entries: &[crate::credentials::CredentialRecord],
+    secure_values: &std::collections::BTreeMap<String, String>,
+) -> Result<Vec<(String, String)>, String> {
+    ensure_wallet_credential_slot_enabled(entries, wallet.credential_key_name.as_str())?;
+    let normalized_key =
+        crate::credentials::normalize_env_var_name(wallet.credential_key_name.as_str());
+    let Some(api_key) = secure_values
+        .get(normalized_key.as_str())
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+    else {
+        return Err(format!(
+            "{} missing secure value for {}",
+            wallet.agent_name, wallet.credential_key_name
+        ));
+    };
+    let mut env_overrides = vec![("BLINK_API_KEY".to_string(), api_key.to_string())];
+    if let Some(url_name) = wallet.credential_url_name.as_deref()
+        && has_enabled_credential_slot(entries, url_name)
+    {
+        let normalized_url = crate::credentials::normalize_env_var_name(url_name);
+        if let Some(url) = secure_values
+            .get(normalized_url.as_str())
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+        {
+            env_overrides.push(("BLINK_API_URL".to_string(), url.to_string()));
+        }
+    }
+    Ok(env_overrides)
+}
+
+fn apply_scoped_wallet_refresh_errors(
+    state: &mut crate::app_state::RenderState,
+    _now_epoch_seconds: u64,
+    scoped_errors: &[crate::stablesats_blink_worker::StableSatsBlinkWalletFailure],
+) {
+    let mut summaries = Vec::<String>::new();
+    for scoped_error in scoped_errors {
+        let owner_id = scoped_error.owner_id.as_str();
+        let error = scoped_error.error.as_str();
+        if let Some(wallet_index) = state
+            .stable_sats_simulation
+            .agents
+            .iter()
+            .position(|wallet| wallet.owner_id == owner_id)
+        {
+            let wallet_name = state.stable_sats_simulation.agents[wallet_index]
+                .agent_name
+                .clone();
+            state.stable_sats_simulation.agents[wallet_index].last_switch_summary =
+                format!("credential error: {error}");
+            summaries.push(format!("{wallet_name}: {error}"));
+        }
+    }
+    if !summaries.is_empty() {
+        state.stable_sats_simulation.last_error = Some(format!(
+            "Scoped wallet credential errors: {}",
+            summaries.join(" | ")
+        ));
+    }
 }
 
 fn resolve_blink_simulation_script_path(
@@ -3373,5 +3535,112 @@ pub(super) fn parse_positive_amount_str(raw: &str, label: &str) -> Result<u64, S
         Ok(value) if value > 0 => Ok(value),
         Ok(_) => Err(format!("{label} must be greater than 0")),
         Err(error) => Err(format!("{label} must be a valid integer: {error}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_wallet_blink_env_from_secure_values;
+
+    fn fixture_wallet() -> crate::app_state::StableSatsAgentWalletState {
+        crate::app_state::StableSatsAgentWalletState {
+            agent_name: "sa-wallet-1".to_string(),
+            owner_kind: crate::app_state::StableSatsWalletOwnerKind::SovereignAgent,
+            owner_id: "sa:wallet-1".to_string(),
+            credential_key_name: "BLINK_API_KEY_SA_1".to_string(),
+            credential_url_name: Some("BLINK_API_URL_SA_1".to_string()),
+            btc_balance_sats: 0,
+            usd_balance_cents: 0,
+            active_wallet: crate::app_state::StableSatsWalletMode::Btc,
+            switch_count: 0,
+            last_switch_summary: "none".to_string(),
+        }
+    }
+
+    fn fixture_entries() -> Vec<crate::credentials::CredentialRecord> {
+        vec![
+            crate::credentials::CredentialRecord {
+                name: "BLINK_API_KEY_SA_1".to_string(),
+                enabled: true,
+                secret: true,
+                template: true,
+                scopes: crate::credentials::CREDENTIAL_SCOPE_ALL,
+                has_value: true,
+            },
+            crate::credentials::CredentialRecord {
+                name: "BLINK_API_URL_SA_1".to_string(),
+                enabled: true,
+                secret: false,
+                template: true,
+                scopes: crate::credentials::CREDENTIAL_SCOPE_ALL,
+                has_value: true,
+            },
+            crate::credentials::CredentialRecord {
+                name: "BLINK_API_KEY".to_string(),
+                enabled: true,
+                secret: true,
+                template: true,
+                scopes: crate::credentials::CREDENTIAL_SCOPE_ALL,
+                has_value: true,
+            },
+        ]
+    }
+
+    #[test]
+    fn resolves_namespaced_wallet_binding_to_runtime_blink_env() {
+        let wallet = fixture_wallet();
+        let entries = fixture_entries();
+        let secure_values = std::collections::BTreeMap::from([
+            (
+                "BLINK_API_KEY_SA_1".to_string(),
+                "blink_namespaced_value".to_string(),
+            ),
+            (
+                "BLINK_API_URL_SA_1".to_string(),
+                "https://api.staging.blink.sv/graphql".to_string(),
+            ),
+            (
+                "BLINK_API_KEY".to_string(),
+                "blink_global_value_should_not_override".to_string(),
+            ),
+        ]);
+
+        let resolved = resolve_wallet_blink_env_from_secure_values(
+            &wallet,
+            entries.as_slice(),
+            &secure_values,
+        )
+        .expect("wallet binding should resolve");
+        assert_eq!(
+            resolved,
+            vec![
+                (
+                    "BLINK_API_KEY".to_string(),
+                    "blink_namespaced_value".to_string()
+                ),
+                (
+                    "BLINK_API_URL".to_string(),
+                    "https://api.staging.blink.sv/graphql".to_string()
+                )
+            ]
+        );
+    }
+
+    #[test]
+    fn wallet_binding_does_not_fallback_to_global_key_when_namespaced_value_missing() {
+        let wallet = fixture_wallet();
+        let entries = fixture_entries();
+        let secure_values = std::collections::BTreeMap::from([(
+            "BLINK_API_KEY".to_string(),
+            "blink_global_only".to_string(),
+        )]);
+
+        let error = resolve_wallet_blink_env_from_secure_values(
+            &wallet,
+            entries.as_slice(),
+            &secure_values,
+        )
+        .expect_err("namespaced key should be required");
+        assert!(error.contains("BLINK_API_KEY_SA_1"));
     }
 }
