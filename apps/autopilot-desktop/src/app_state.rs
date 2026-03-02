@@ -2763,6 +2763,7 @@ pub struct RenderState {
     pub treasury_exchange_simulation: TreasuryExchangeSimulationPaneState,
     pub relay_security_simulation: RelaySecuritySimulationPaneState,
     pub stable_sats_simulation: StableSatsSimulationPaneState,
+    pub autopilot_goals: crate::state::autopilot_goals::AutopilotGoalsState,
     pub sidebar: SidebarState,
     pub next_pane_id: u64,
     pub next_z_index: i32,
