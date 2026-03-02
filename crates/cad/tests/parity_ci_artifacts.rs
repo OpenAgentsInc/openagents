@@ -32,8 +32,8 @@ fn parity_ci_artifact_manifest_fixture_is_well_formed() {
     let manifest: ParityCiArtifactManifest = load_json(&path);
     assert_eq!(manifest.manifest_version, 1);
     assert_eq!(manifest.issue_id, PARITY_CI_ARTIFACTS_ISSUE_ID);
-    assert_eq!(manifest.source_artifact_count, 22);
-    assert_eq!(manifest.artifacts.len(), 22);
+    assert_eq!(manifest.source_artifact_count, 23);
+    assert_eq!(manifest.artifacts.len(), 23);
     assert_eq!(
         manifest.parity_check_entrypoint,
         "scripts/cad/parity_check.sh".to_string()

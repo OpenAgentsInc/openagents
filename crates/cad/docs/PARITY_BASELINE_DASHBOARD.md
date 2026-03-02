@@ -15,7 +15,7 @@ Issue coverage: `VCAD-PARITY-010`
 | commands match rate | `0.083333` |
 | open risks | `24` |
 | open hard blockers (p0) | `16` |
-| CI source artifact count | `22` |
+| CI source artifact count | `23` |
 
 ## Profile Gates
 
@@ -39,6 +39,7 @@ Issue coverage: `VCAD-PARITY-010`
 - `kernel_nurbs_parity_manifest`
 - `kernel_precision_parity_manifest`
 - `kernel_primitives_parity_manifest`
+- `kernel_shell_parity_manifest`
 - `kernel_tessellate_parity_manifest`
 - `kernel_text_parity_manifest`
 - `kernel_topology_parity_manifest`

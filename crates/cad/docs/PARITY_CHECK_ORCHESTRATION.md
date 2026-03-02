@@ -20,6 +20,7 @@ Provide one deterministic orchestration entrypoint for the parity baseline lanes
 - kernel NURBS parity fixture check
 - kernel text parity fixture check
 - kernel fillet parity fixture check
+- kernel shell parity fixture check
 - kernel precision parity fixture check
 - parity CI artifact manifest fixture check
 - parity risk register + blocker workflow check
