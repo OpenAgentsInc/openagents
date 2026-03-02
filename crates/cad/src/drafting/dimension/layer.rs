@@ -147,6 +147,12 @@ impl AnnotationLayer {
                 .iter()
                 .map(OrdinateDimension::render),
         );
+        rendered.extend(
+            self.feature_control_frames
+                .iter()
+                .map(FeatureControlFrame::render),
+        );
+        rendered.extend(self.datum_symbols.iter().map(DatumFeatureSymbol::render));
         rendered
     }
 
@@ -185,5 +191,33 @@ mod tests {
 
         assert_eq!(layer.num_annotations(), 3);
         assert_eq!(layer.render_all().len(), 3);
+    }
+
+    #[test]
+    fn layer_renders_gdt_annotations() {
+        let mut layer = AnnotationLayer::new();
+        layer
+            .add_feature_control_frame(FeatureControlFrame {
+                symbol: super::super::gdt::GdtSymbol::Position,
+                tolerance: 0.1,
+                tolerance_is_diameter: true,
+                material_condition: None,
+                datum_a: Some(super::super::gdt::DatumRef {
+                    label: "A".to_string(),
+                    material_condition: None,
+                }),
+                datum_b: None,
+                datum_c: None,
+                position: Point2D::new(0.0, 0.0),
+                leader_to: None,
+            })
+            .add_datum_symbol(DatumFeatureSymbol {
+                label: "A".to_string(),
+                position: Point2D::new(10.0, 10.0),
+                leader_to: None,
+            });
+
+        assert_eq!(layer.num_annotations(), 2);
+        assert_eq!(layer.render_all().len(), 2);
     }
 }

@@ -14,6 +14,7 @@ pub mod ci_artifacts;
 pub mod core_modeling_checkpoint_parity;
 pub mod dashboard;
 pub mod drafting_dimension_parity;
+pub mod drafting_gdt_parity;
 pub mod drafting_hidden_line_parity;
 pub mod drafting_kernel_scaffolding_parity;
 pub mod drafting_projection_parity;
