@@ -54,6 +54,7 @@ This document tracks feature-op contracts built on the CAD kernel adapter path.
 
 - `crates/cad/tests/goldens/feature_box_geometry_hashes.json`
 - `crates/cad/tests/goldens/feature_cylinder_geometry_hashes.json`
+- `crates/cad/parity/fixtures/feature_op_hash_vcad_reference_corpus.json`
 
 ## Reviewer Verification
 

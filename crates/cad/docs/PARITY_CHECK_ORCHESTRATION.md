@@ -35,6 +35,7 @@ Provide one deterministic orchestration entrypoint for the parity baseline lanes
 - topology repair parity fixture check
 - material assignment parity fixture check
 - vcad-eval receipts parity fixture check
+- feature-op hash parity fixture check
 - parity CI artifact manifest fixture check
 - parity risk register + blocker workflow check
 - baseline dashboard publication check

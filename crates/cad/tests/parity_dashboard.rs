@@ -39,7 +39,7 @@ fn parity_dashboard_fixture_is_well_formed() {
     assert_eq!(dashboard.manifest_version, 1);
     assert_eq!(dashboard.issue_id, PARITY_DASHBOARD_ISSUE_ID);
     assert_eq!(dashboard.phase_status, "phase_a_baseline_complete");
-    assert_eq!(dashboard.artifacts.source_artifact_count, 36);
+    assert_eq!(dashboard.artifacts.source_artifact_count, 38);
     assert!(dashboard.summary.overall_match_rate > 0.0);
 }
 
