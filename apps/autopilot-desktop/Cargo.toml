@@ -36,6 +36,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 dirs = "6.0"
 reqwest = { workspace = true, features = ["blocking"] }
+chrono = { version = "0.4", default-features = true, features = ["clock"] }
 
 [package.metadata.bundle]
 name = "Autopilot"
