@@ -8,6 +8,7 @@ LANE_LABELS=(
     "fixture-corpus-pipeline"
     "kernel-adapter-v2"
     "kernel-math"
+    "kernel-topology"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -85,6 +86,9 @@ run_lane "kernel-adapter-v2" \
 
 run_lane "kernel-math" \
     "$ROOT_DIR/scripts/cad/parity-kernel-math-ci.sh"
+
+run_lane "kernel-topology" \
+    "$ROOT_DIR/scripts/cad/parity-kernel-topology-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

@@ -22,6 +22,7 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/parity_dashboard.json"
     "crates/cad/parity/kernel_adapter_v2_manifest.json"
     "crates/cad/parity/kernel_math_parity_manifest.json"
+    "crates/cad/parity/kernel_topology_parity_manifest.json"
     "crates/cad/parity/fixtures/parity_fixture_corpus.json"
 )
 
