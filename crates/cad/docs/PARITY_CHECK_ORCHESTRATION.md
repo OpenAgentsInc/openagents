@@ -11,6 +11,7 @@ Provide one deterministic orchestration entrypoint for the parity baseline lanes
 - kernel adapter v2 parity fixture check
 - kernel math parity fixture check
 - kernel topology parity fixture check
+- kernel geom parity fixture check
 - parity CI artifact manifest fixture check
 - parity risk register + blocker workflow check
 - baseline dashboard publication check

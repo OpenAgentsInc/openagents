@@ -9,7 +9,7 @@ use crate::parity::scorecard::ParityScorecard;
 
 pub const PARITY_CI_ARTIFACTS_ISSUE_ID: &str = "VCAD-PARITY-008";
 
-pub const PARITY_CI_SOURCE_PATHS: [&str; 12] = [
+pub const PARITY_CI_SOURCE_PATHS: [&str; 13] = [
     "crates/cad/parity/vcad_reference_manifest.json",
     "crates/cad/parity/openagents_start_manifest.json",
     "crates/cad/parity/vcad_capabilities_inventory.json",
@@ -21,6 +21,7 @@ pub const PARITY_CI_SOURCE_PATHS: [&str; 12] = [
     "crates/cad/parity/kernel_adapter_v2_manifest.json",
     "crates/cad/parity/kernel_math_parity_manifest.json",
     "crates/cad/parity/kernel_topology_parity_manifest.json",
+    "crates/cad/parity/kernel_geom_parity_manifest.json",
     "crates/cad/parity/fixtures/parity_fixture_corpus.json",
 ];
 
