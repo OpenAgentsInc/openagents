@@ -35,6 +35,7 @@ LANE_LABELS=(
     "vcad-eval-receipts"
     "feature-op-hash"
     "modeling-edge-cases"
+    "core-modeling-checkpoint"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -193,6 +194,9 @@ run_lane "feature-op-hash" \
 
 run_lane "modeling-edge-cases" \
     "$ROOT_DIR/scripts/cad/parity-modeling-edge-cases-ci.sh"
+
+run_lane "core-modeling-checkpoint" \
+    "$ROOT_DIR/scripts/cad/parity-core-modeling-checkpoint-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

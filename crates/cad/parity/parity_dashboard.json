@@ -39,9 +39,10 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 39,
+    "source_artifact_count": 40,
     "artifact_ids": [
       "chamfer_feature_graph_parity_manifest",
+      "core_modeling_checkpoint_parity_manifest",
       "expanded_finishing_parity_manifest",
       "feature_op_hash_parity_manifest",
       "fillet_feature_graph_parity_manifest",
@@ -82,9 +83,9 @@
       "vcad_reference_manifest"
     ]
   },
-  "phase_status": "phase_a_baseline_complete",
+  "phase_status": "phase_c_core_modeling_complete",
   "next_actions": [
-    "Execute VCAD-PARITY-011 through VCAD-PARITY-025 sequentially",
+    "Execute VCAD-PARITY-041 through VCAD-PARITY-055 sequentially",
     "Keep phase_a_baseline_v1 profile passing in scorecard and risk register lanes",
     "Refresh parity dashboard after each closed parity issue"
   ]

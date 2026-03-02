@@ -119,7 +119,7 @@ Major gaps to close:
 37. [x] VCAD-PARITY-037: `vcad-eval` parity behaviors in OpenAgents eval receipts.
 38. [x] VCAD-PARITY-038: Feature-op hash parity fixtures vs vcad reference corpus.
 39. [x] VCAD-PARITY-039: Modeling edge-case parity fixtures (coincident/tangent/seam).
-40. [ ] VCAD-PARITY-040: Core modeling parity checkpoint (must hit 100% for this phase).
+40. [x] VCAD-PARITY-040: Core modeling parity checkpoint (must hit 100% for this phase).
 
 ### Phase D - Sketch + constraints parity (`VCAD-PARITY-041` to `VCAD-PARITY-055`)
 

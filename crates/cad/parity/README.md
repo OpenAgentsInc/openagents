@@ -44,6 +44,7 @@ Current artifacts:
 - `feature_op_hash_parity_manifest.json` (`VCAD-PARITY-038`)
 - `fixtures/feature_op_hash_vcad_reference_corpus.json` (`VCAD-PARITY-038`)
 - `modeling_edge_case_parity_manifest.json` (`VCAD-PARITY-039`)
+- `core_modeling_checkpoint_parity_manifest.json` (`VCAD-PARITY-040`)
 
 Regeneration/check command:
 
@@ -87,6 +88,7 @@ scripts/cad/parity-material-assignment-ci.sh
 scripts/cad/parity-vcad-eval-receipts-ci.sh
 scripts/cad/parity-feature-op-hash-ci.sh
 scripts/cad/parity-modeling-edge-cases-ci.sh
+scripts/cad/parity-core-modeling-checkpoint-ci.sh
 scripts/cad/parity-blocker-workflow.sh
 scripts/cad/parity_check.sh
 scripts/cad/parity-ci-lane.sh
