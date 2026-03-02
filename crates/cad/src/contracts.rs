@@ -26,6 +26,10 @@ pub enum CadWarningCode {
     SliverFace,
     #[serde(rename = "CAD-WARN-FILLET-FAILED")]
     FilletFailed,
+    #[serde(rename = "CAD-WARN-CHAMFER-FAILED")]
+    ChamferFailed,
+    #[serde(rename = "CAD-WARN-SHELL-FAILED")]
+    ShellFailed,
     #[serde(rename = "CAD-WARN-SEMANTIC-REF-EXPIRED")]
     SemanticRefExpired,
     Unknown(String),
@@ -39,6 +43,8 @@ impl CadWarningCode {
             Self::ZeroThicknessFace => "CAD-WARN-ZERO-THICKNESS",
             Self::SliverFace => "CAD-WARN-SLIVER-FACE",
             Self::FilletFailed => "CAD-WARN-FILLET-FAILED",
+            Self::ChamferFailed => "CAD-WARN-CHAMFER-FAILED",
+            Self::ShellFailed => "CAD-WARN-SHELL-FAILED",
             Self::SemanticRefExpired => "CAD-WARN-SEMANTIC-REF-EXPIRED",
             Self::Unknown(code) => code.as_str(),
         }

@@ -448,7 +448,7 @@ fn evaluate_finishing_value(
                 fallback_message: Some(fallback_message.clone()),
                 remediation_hint: failure_class.remediation_hint().to_string(),
                 warnings: vec![CadWarning {
-                    code: CadWarningCode::FilletFailed,
+                    code: warning_code_for_operation(request.operation_key),
                     severity: CadWarningSeverity::Warning,
                     message: fallback_message,
                     remediation_hint: failure_class.remediation_hint().to_string(),
@@ -505,6 +505,15 @@ fn evaluate_finishing_value(
         remediation_hint: "operation applied".to_string(),
         warnings: Vec::new(),
     })
+}
+
+fn warning_code_for_operation(operation_key: &str) -> CadWarningCode {
+    match operation_key {
+        FILLET_OPERATION_KEY => CadWarningCode::FilletFailed,
+        CHAMFER_OPERATION_KEY => CadWarningCode::ChamferFailed,
+        SHELL_OPERATION_KEY => CadWarningCode::ShellFailed,
+        _ => CadWarningCode::Unknown("CAD-WARN-FINISHING-FAILED".to_string()),
+    }
 }
 
 fn validate_finishing_refs(
@@ -794,6 +803,36 @@ mod tests {
     }
 
     #[test]
+    fn chamfer_risk_uses_chamfer_warning_code_on_fallback() {
+        let mut params = params();
+        params
+            .set(
+                "chamfer_distance_mm",
+                ScalarValue {
+                    value: 12.0,
+                    unit: ScalarUnit::Millimeter,
+                },
+            )
+            .expect("chamfer distance override");
+        let op = ChamferFeatureOp {
+            feature_id: "feature.chamfer".to_string(),
+            source_feature_id: "feature.base".to_string(),
+            distance_param: "chamfer_distance_mm".to_string(),
+            edge_refs: vec!["edge.1".to_string()],
+            allow_fallback: true,
+        };
+        let result = evaluate_chamfer_feature(&op, &params, &context())
+            .expect("chamfer fallback should succeed");
+        assert_eq!(result.status, FinishingStatus::FallbackKeptSource);
+        assert_eq!(result.warnings.len(), 1);
+        assert_eq!(result.warnings[0].code, CadWarningCode::ChamferFailed);
+        assert_eq!(
+            result.failure_classification,
+            Some(FinishingFailureClass::TopologyRisk)
+        );
+    }
+
+    #[test]
     fn shell_node_round_trip_allows_empty_remove_faces() {
         let op = ShellFeatureOp {
             feature_id: "feature.shell.closed".to_string(),
@@ -882,5 +921,7 @@ mod tests {
                 .unwrap_or_default()
                 .contains("fallback kept source geometry")
         );
+        assert_eq!(result.warnings.len(), 1);
+        assert_eq!(result.warnings[0].code, CadWarningCode::ShellFailed);
     }
 }
