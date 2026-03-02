@@ -1,0 +1,744 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-003",
+  "crawler": "openagents-cad::parity::openagents_crawler",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "source_files": [
+    "Cargo.toml",
+    "crates/cad/src/lib.rs",
+    "crates/cad/src/intent.rs",
+    "apps/autopilot-desktop/src/openagents_dynamic_tools.rs",
+    "crates/cad/docs/PLAN.md",
+    "crates/cad/docs/decisions/0001-kernel-strategy.md",
+    "crates/cad/docs/CAD_FEATURE_OPS.md",
+    "crates/cad/docs/CAD_SKETCH_CONSTRAINTS.md",
+    "crates/cad/docs/CAD_SKETCH_FEATURE_OPS.md",
+    "crates/cad/docs/CAD_STEP_IMPORT.md",
+    "crates/cad/docs/CAD_STEP_EXPORT.md"
+  ],
+  "docs": [
+    {
+      "source_file": "crates/cad/docs/CAD_FEATURE_OPS.md",
+      "section": "root",
+      "capability": "Current Ops (MVP)",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/CAD_FEATURE_OPS.md",
+      "section": "root",
+      "capability": "Golden Hash Fixtures",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/CAD_FEATURE_OPS.md",
+      "section": "root",
+      "capability": "Reviewer Verification",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/CAD_SKETCH_CONSTRAINTS.md",
+      "section": "root",
+      "capability": "Deterministic Solver Contract",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/CAD_SKETCH_CONSTRAINTS.md",
+      "section": "root",
+      "capability": "Diagnostic Codes",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/CAD_SKETCH_CONSTRAINTS.md",
+      "section": "root",
+      "capability": "Supported Constraints",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/CAD_SKETCH_CONSTRAINTS.md",
+      "section": "root",
+      "capability": "Test Coverage",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/CAD_SKETCH_CONSTRAINTS.md",
+      "section": "root",
+      "capability": "Validation Rules",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/CAD_SKETCH_FEATURE_OPS.md",
+      "section": "root",
+      "capability": "Conversion Contract",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/CAD_SKETCH_FEATURE_OPS.md",
+      "section": "root",
+      "capability": "History/Warn/Undo Participation",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/CAD_SKETCH_FEATURE_OPS.md",
+      "section": "root",
+      "capability": "Operation Keys",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/CAD_SKETCH_FEATURE_OPS.md",
+      "section": "root",
+      "capability": "Tests",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/CAD_SKETCH_FEATURE_OPS.md",
+      "section": "root",
+      "capability": "Warnings",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/CAD_STEP_EXPORT.md",
+      "section": "root",
+      "capability": "API",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/CAD_STEP_EXPORT.md",
+      "section": "root",
+      "capability": "Determinism Rules",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/CAD_STEP_EXPORT.md",
+      "section": "root",
+      "capability": "Failure Handling",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/CAD_STEP_EXPORT.md",
+      "section": "root",
+      "capability": "Observability",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/CAD_STEP_EXPORT.md",
+      "section": "root",
+      "capability": "Scope",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/CAD_STEP_IMPORT.md",
+      "section": "root",
+      "capability": "API",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/CAD_STEP_IMPORT.md",
+      "section": "root",
+      "capability": "Determinism Rules",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/CAD_STEP_IMPORT.md",
+      "section": "root",
+      "capability": "Failure Handling",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/CAD_STEP_IMPORT.md",
+      "section": "root",
+      "capability": "Observability",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/CAD_STEP_IMPORT.md",
+      "section": "root",
+      "capability": "Scope",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/CAD_STEP_IMPORT.md",
+      "section": "root",
+      "capability": "Validation Commands",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "2) Definition of Success",
+      "capability": "Drop-In Replacement Scope Ladder",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "7) Core Architectural Invariants",
+      "capability": "Eval, Caching, and Concurrency",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "7) Core Architectural Invariants",
+      "capability": "External Dependency License and Security Posture",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "7) Core Architectural Invariants",
+      "capability": "Geometry Representation Strategy (Wave 1)",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "7) Core Architectural Invariants",
+      "capability": "Headless CAD Script Harness",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "7) Core Architectural Invariants",
+      "capability": "Input Mapping Policy",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "7) Core Architectural Invariants",
+      "capability": "Model Validity and Failure Surfacing",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "7) Core Architectural Invariants",
+      "capability": "Performance Budgets",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "7) Core Architectural Invariants",
+      "capability": "Persistence and Deterministic File Format",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "7) Core Architectural Invariants",
+      "capability": "Rendering Policy: CAD Visual Requirements",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "7) Core Architectural Invariants",
+      "capability": "STEP Validation Strategy",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "7) Core Architectural Invariants",
+      "capability": "Stable References MVP",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "7) Core Architectural Invariants",
+      "capability": "Undo/Redo and Feature Timeline",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "7) Core Architectural Invariants",
+      "capability": "Units, Tolerances, and Robustness Policy",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "1) Objective",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "10) Milestone Acceptance Gates",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "11) Risks and Mitigations",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "12) CAD Quality Bar (Non-Negotiable)",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "13) Non-Goals for This First Wave",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "14) Immediate Next Implementation Tasks",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "15) GitHub Issue Backlog (Sequential)",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "2) Definition of Success",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "3) Constraints From Current Repo",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "3.1) CAD Code Health Runbook",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "4) What We Borrow From `vcad` (and What We Don’t)",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "5) First Demo Definition (North Star)",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "6) Proposed Repo Shape",
+      "status": "proposed"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "7) Core Architectural Invariants",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "8) Build Order",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "9) CAD-Autopilot Contract (MVP)",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "Phase 0: Contracts + Decisions + Skeleton",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "Phase 1: Deterministic Parametric Core + Validity + History",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "Phase 2: Viewport + Pro UX Foundation",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "Phase 3: Selection + Inspect + Engineering Overlay",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "Phase 4: Rack Generator + Variant Engine",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "Phase 5: AI Contract + Chat Bridge",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "Phase 6: Manual Proof + STEP Export",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "Phase 7: Demo Polish + Reliability",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "`apps/autopilot-desktop` integration",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "`crates/cad` (new)",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/PLAN.md",
+      "section": "root",
+      "capability": "`crates/wgpui*` integration (generic only)",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/decisions/0001-kernel-strategy.md",
+      "section": "root",
+      "capability": "Context",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/decisions/0001-kernel-strategy.md",
+      "section": "root",
+      "capability": "Decision",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/decisions/0001-kernel-strategy.md",
+      "section": "root",
+      "capability": "In Scope",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/decisions/0001-kernel-strategy.md",
+      "section": "root",
+      "capability": "Kill Criteria (Switch A -> B)",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/decisions/0001-kernel-strategy.md",
+      "section": "root",
+      "capability": "Out of Scope",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/decisions/0001-kernel-strategy.md",
+      "section": "root",
+      "capability": "Required Follow-On Actions",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/decisions/0001-kernel-strategy.md",
+      "section": "root",
+      "capability": "Sign-Off",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/decisions/0001-kernel-strategy.md",
+      "section": "root",
+      "capability": "Spike Summary",
+      "status": "documented"
+    },
+    {
+      "source_file": "crates/cad/docs/decisions/0001-kernel-strategy.md",
+      "section": "root",
+      "capability": "Weighted Scorecard",
+      "status": "documented"
+    }
+  ],
+  "crates": [
+    {
+      "member_path": "apps/autopilot-desktop",
+      "package_name": "autopilot-desktop",
+      "category": "cad-app"
+    },
+    {
+      "member_path": "crates/cad",
+      "package_name": "openagents-cad",
+      "category": "cad-core"
+    },
+    {
+      "member_path": "crates/cad/src/analysis.rs",
+      "package_name": "openagents-cad::analysis",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/boolean.rs",
+      "package_name": "openagents-cad::boolean",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/chat_adapter.rs",
+      "package_name": "openagents-cad::chat_adapter",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/contracts.rs",
+      "package_name": "openagents-cad::contracts",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/dispatch.rs",
+      "package_name": "openagents-cad::dispatch",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/document.rs",
+      "package_name": "openagents-cad::document",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/error.rs",
+      "package_name": "openagents-cad::error",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/eval.rs",
+      "package_name": "openagents-cad::eval",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/events.rs",
+      "package_name": "openagents-cad::events",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/export.rs",
+      "package_name": "openagents-cad::export",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/feature_graph.rs",
+      "package_name": "openagents-cad::feature_graph",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/features.rs",
+      "package_name": "openagents-cad::features",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/finishing_ops.rs",
+      "package_name": "openagents-cad::finishing_ops",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/format.rs",
+      "package_name": "openagents-cad::format",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/hash.rs",
+      "package_name": "openagents-cad::hash",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/history.rs",
+      "package_name": "openagents-cad::history",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/intent.rs",
+      "package_name": "openagents-cad::intent",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/kernel.rs",
+      "package_name": "openagents-cad::kernel",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/keys.rs",
+      "package_name": "openagents-cad::keys",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/materials.rs",
+      "package_name": "openagents-cad::materials",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/measurement.rs",
+      "package_name": "openagents-cad::measurement",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/mesh.rs",
+      "package_name": "openagents-cad::mesh",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/params.rs",
+      "package_name": "openagents-cad::params",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/policy.rs",
+      "package_name": "openagents-cad::policy",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/primitives.rs",
+      "package_name": "openagents-cad::primitives",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/query.rs",
+      "package_name": "openagents-cad::query",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/rack.rs",
+      "package_name": "openagents-cad::rack",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/section.rs",
+      "package_name": "openagents-cad::section",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/selection.rs",
+      "package_name": "openagents-cad::selection",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/semantic_refs.rs",
+      "package_name": "openagents-cad::semantic_refs",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/sketch.rs",
+      "package_name": "openagents-cad::sketch",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/sketch_feature_ops.rs",
+      "package_name": "openagents-cad::sketch_feature_ops",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/step_checker.rs",
+      "package_name": "openagents-cad::step_checker",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/step_import.rs",
+      "package_name": "openagents-cad::step_import",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/step_import_metadata.rs",
+      "package_name": "openagents-cad::step_import_metadata",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/step_roundtrip.rs",
+      "package_name": "openagents-cad::step_roundtrip",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/tessellation.rs",
+      "package_name": "openagents-cad::tessellation",
+      "category": "cad-module"
+    },
+    {
+      "member_path": "crates/cad/src/validity.rs",
+      "package_name": "openagents-cad::validity",
+      "category": "cad-module"
+    }
+  ],
+  "commands": [
+    {
+      "source_file": "crates/cad/src/intent.rs",
+      "command": "AddVentPattern",
+      "kind": "cad_intent",
+      "detail": "add-vent-pattern"
+    },
+    {
+      "source_file": "crates/cad/src/intent.rs",
+      "command": "AdjustParameter",
+      "kind": "cad_intent",
+      "detail": "adjust-parameter"
+    },
+    {
+      "source_file": "crates/cad/src/intent.rs",
+      "command": "CompareVariants",
+      "kind": "cad_intent",
+      "detail": "compare-variants"
+    },
+    {
+      "source_file": "crates/cad/src/intent.rs",
+      "command": "CreateRackSpec",
+      "kind": "cad_intent",
+      "detail": "create-rack-spec"
+    },
+    {
+      "source_file": "crates/cad/src/intent.rs",
+      "command": "Export",
+      "kind": "cad_intent",
+      "detail": "export"
+    },
+    {
+      "source_file": "crates/cad/src/intent.rs",
+      "command": "GenerateVariants",
+      "kind": "cad_intent",
+      "detail": "generate-variants"
+    },
+    {
+      "source_file": "crates/cad/src/intent.rs",
+      "command": "Select",
+      "kind": "cad_intent",
+      "detail": "select"
+    },
+    {
+      "source_file": "crates/cad/src/intent.rs",
+      "command": "SetMaterial",
+      "kind": "cad_intent",
+      "detail": "set-material"
+    },
+    {
+      "source_file": "crates/cad/src/intent.rs",
+      "command": "SetObjective",
+      "kind": "cad_intent",
+      "detail": "set-objective"
+    },
+    {
+      "source_file": "apps/autopilot-desktop/src/openagents_dynamic_tools.rs",
+      "command": "openagents_cad_action",
+      "kind": "dynamic_tool",
+      "detail": null
+    },
+    {
+      "source_file": "apps/autopilot-desktop/src/openagents_dynamic_tools.rs",
+      "command": "openagents_cad_intent",
+      "kind": "dynamic_tool",
+      "detail": null
+    }
+  ],
+  "summary": {
+    "docs_capability_count": 74,
+    "docs_status_counts": {
+      "documented": 73,
+      "proposed": 1
+    },
+    "crate_count": 40,
+    "command_count": 11
+  }
+}
