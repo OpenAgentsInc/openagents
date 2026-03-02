@@ -87,7 +87,7 @@ Major gaps to close:
 
 ### Phase B - Kernel substrate parity (`VCAD-PARITY-011` to `VCAD-PARITY-025`)
 
-11. [ ] VCAD-PARITY-011: Finalize `cad::kernel` adapter v2 for engine pluggability.
+11. [x] VCAD-PARITY-011: Finalize `cad::kernel` adapter v2 for engine pluggability.
 12. [ ] VCAD-PARITY-012: Integrate `vcad-kernel-math` parity types/adapters.
 13. [ ] VCAD-PARITY-013: Integrate `vcad-kernel-topo` parity topology model.
 14. [ ] VCAD-PARITY-014: Integrate `vcad-kernel-geom` parity surface types.

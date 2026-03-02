@@ -6,6 +6,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 LANE_LABELS=(
     "baseline-manifests"
     "fixture-corpus-pipeline"
+    "kernel-adapter-v2"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -77,6 +78,9 @@ run_lane "baseline-manifests" \
 
 run_lane "fixture-corpus-pipeline" \
     "$ROOT_DIR/scripts/cad/parity-fixture-corpus-ci.sh"
+
+run_lane "kernel-adapter-v2" \
+    "$ROOT_DIR/scripts/cad/parity-kernel-adapter-v2-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

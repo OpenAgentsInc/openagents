@@ -14,6 +14,7 @@ Current artifacts:
 - `parity_ci_artifact_manifest.json` (`VCAD-PARITY-008`)
 - `parity_risk_register.json` (`VCAD-PARITY-009`)
 - `parity_dashboard.json` (`VCAD-PARITY-010`)
+- `kernel_adapter_v2_manifest.json` (`VCAD-PARITY-011`)
 
 Regeneration/check command:
 
@@ -28,6 +29,7 @@ scripts/cad/parity-fixture-corpus-ci.sh
 scripts/cad/parity-ci-artifacts-ci.sh
 scripts/cad/parity-risk-register-ci.sh
 scripts/cad/parity-dashboard-ci.sh
+scripts/cad/parity-kernel-adapter-v2-ci.sh
 scripts/cad/parity-blocker-workflow.sh
 scripts/cad/parity_check.sh
 scripts/cad/parity-ci-lane.sh

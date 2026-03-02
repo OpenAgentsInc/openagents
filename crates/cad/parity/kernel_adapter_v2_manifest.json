@@ -1,0 +1,32 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-011",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "adapter_descriptor": {
+    "schema_version": 1,
+    "issue_id": "VCAD-PARITY-011",
+    "adapter_version": "2.0.0",
+    "engine_id": "openagents-kernel-v2",
+    "engine_family": "VcadSubset",
+    "supports_hot_swap": true,
+    "capabilities": [
+      "PrimitiveBox",
+      "PrimitiveCylinder"
+    ],
+    "diagnostics_contract": "cad.error.v1 + kernel.receipt.v2"
+  },
+  "pluggability": {
+    "active_engine_id": "openagents-kernel-v2",
+    "registered_engine_count": 2,
+    "available_engine_ids": [
+      "openagents-kernel-v2",
+      "opencascade-kernel-v2"
+    ],
+    "required_capabilities": [
+      "PrimitiveBox",
+      "PrimitiveCylinder"
+    ]
+  }
+}
