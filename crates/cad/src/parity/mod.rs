@@ -21,4 +21,5 @@ pub mod openagents_crawler;
 pub mod primitive_contracts_parity;
 pub mod risk_register;
 pub mod scorecard;
+pub mod transform_parity;
 pub mod vcad_crawler;
