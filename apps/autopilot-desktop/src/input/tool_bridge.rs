@@ -11,6 +11,7 @@ use crate::openagents_dynamic_tools::{
     OPENAGENTS_DYNAMIC_TOOL_NAMES, OPENAGENTS_TOOL_CAD_ACTION, OPENAGENTS_TOOL_CAD_INTENT,
     OPENAGENTS_TOOL_PANE_ACTION, OPENAGENTS_TOOL_PANE_CLOSE, OPENAGENTS_TOOL_PANE_FOCUS,
     OPENAGENTS_TOOL_PANE_LIST, OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_PANE_SET_INPUT,
+    OPENAGENTS_TOOL_SWAP_EXECUTE, OPENAGENTS_TOOL_SWAP_QUOTE,
 };
 use crate::pane_registry::{pane_spec, pane_spec_by_command_id, pane_specs};
 use crate::pane_system::{
@@ -26,6 +27,11 @@ use crate::pane_system::{
     SyncHealthPaneAction, TrajectoryAuditPaneAction, TreasuryExchangeSimulationPaneAction,
 };
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
+use crate::state::swap_contract::{SwapAmount, SwapAmountUnit, SwapDirection, SwapQuoteTerms};
+use crate::state::swap_quote_adapter::{
+    StablesatsQuoteClient, StablesatsQuoteFor, StablesatsQuoteResponse, SwapQuoteAdapterRequest,
+    SwapQuoteProvider,
+};
 
 const LEGACY_OPENAGENTS_TOOL_PANE_LIST: &str = "openagents.pane.list";
 const LEGACY_OPENAGENTS_TOOL_PANE_OPEN: &str = "openagents.pane.open";
@@ -35,6 +41,8 @@ const LEGACY_OPENAGENTS_TOOL_PANE_SET_INPUT: &str = "openagents.pane.set_input";
 const LEGACY_OPENAGENTS_TOOL_PANE_ACTION: &str = "openagents.pane.action";
 const LEGACY_OPENAGENTS_TOOL_CAD_INTENT: &str = "openagents.cad.intent";
 const LEGACY_OPENAGENTS_TOOL_CAD_ACTION: &str = "openagents.cad.action";
+const LEGACY_OPENAGENTS_TOOL_SWAP_QUOTE: &str = "openagents.swap.quote";
+const LEGACY_OPENAGENTS_TOOL_SWAP_EXECUTE: &str = "openagents.swap.execute";
 const LEGACY_OPENAGENTS_TOOL_NAMES: &[&str] = &[
     LEGACY_OPENAGENTS_TOOL_PANE_LIST,
     LEGACY_OPENAGENTS_TOOL_PANE_OPEN,
@@ -44,6 +52,8 @@ const LEGACY_OPENAGENTS_TOOL_NAMES: &[&str] = &[
     LEGACY_OPENAGENTS_TOOL_PANE_ACTION,
     LEGACY_OPENAGENTS_TOOL_CAD_INTENT,
     LEGACY_OPENAGENTS_TOOL_CAD_ACTION,
+    LEGACY_OPENAGENTS_TOOL_SWAP_QUOTE,
+    LEGACY_OPENAGENTS_TOOL_SWAP_EXECUTE,
 ];
 pub(super) const OPENAGENTS_TOOL_PREFIXES: &[&str] = &["openagents_", "openagents."];
 pub(super) const OPENAGENTS_TOOL_NAMES: &[&str] = OPENAGENTS_DYNAMIC_TOOL_NAMES;
@@ -220,6 +230,119 @@ struct CadActionArgs {
     index: Option<usize>,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+struct SwapQuoteArgs {
+    goal_id: String,
+    request_id: String,
+    direction: String,
+    amount: u64,
+    unit: String,
+    #[serde(default)]
+    immediate_execution: bool,
+    #[serde(default)]
+    quote_ttl_seconds: Option<u64>,
+    #[serde(default)]
+    fallback_quote_id: Option<String>,
+    #[serde(default)]
+    fallback_amount_out: Option<u64>,
+    #[serde(default)]
+    stablesats_error: Option<String>,
+    #[serde(default)]
+    stablesats_quote: Option<SwapStablesatsQuoteArgs>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct SwapStablesatsQuoteArgs {
+    quote_id: String,
+    #[serde(default)]
+    amount_to_sell_in_sats: Option<u64>,
+    #[serde(default)]
+    amount_to_buy_in_cents: Option<u64>,
+    #[serde(default)]
+    amount_to_buy_in_sats: Option<u64>,
+    #[serde(default)]
+    amount_to_sell_in_cents: Option<u64>,
+    expires_at_epoch_seconds: u64,
+    executed: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct SwapExecuteArgs {
+    goal_id: String,
+    quote_id: String,
+    status: String,
+    #[serde(default)]
+    transaction_id: Option<String>,
+    #[serde(default)]
+    failure_reason: Option<String>,
+}
+
+struct ToolBridgeStablesatsClient {
+    quote: Option<StablesatsQuoteResponse>,
+    unavailable_reason: Option<String>,
+    fail_accept_reason: Option<String>,
+    accepted_quote_ids: Vec<String>,
+}
+
+impl ToolBridgeStablesatsClient {
+    fn from_args(args: &SwapQuoteArgs) -> Self {
+        let quote = args
+            .stablesats_quote
+            .as_ref()
+            .map(|value| StablesatsQuoteResponse {
+                quote_id: value.quote_id.clone(),
+                amount_to_sell_in_sats: value.amount_to_sell_in_sats,
+                amount_to_buy_in_cents: value.amount_to_buy_in_cents,
+                amount_to_buy_in_sats: value.amount_to_buy_in_sats,
+                amount_to_sell_in_cents: value.amount_to_sell_in_cents,
+                expires_at_epoch_seconds: value.expires_at_epoch_seconds,
+                executed: value.executed,
+            });
+        Self {
+            quote,
+            unavailable_reason: args.stablesats_error.clone(),
+            fail_accept_reason: None,
+            accepted_quote_ids: Vec::new(),
+        }
+    }
+}
+
+impl StablesatsQuoteClient for ToolBridgeStablesatsClient {
+    fn get_quote_to_buy_usd(
+        &mut self,
+        _quote_for: StablesatsQuoteFor,
+        _immediate_execution: bool,
+    ) -> Result<StablesatsQuoteResponse, String> {
+        if let Some(reason) = self.unavailable_reason.clone() {
+            return Err(reason);
+        }
+        self.quote
+            .clone()
+            .ok_or_else(|| "stablesats quote unavailable".to_string())
+    }
+
+    fn get_quote_to_sell_usd(
+        &mut self,
+        _quote_for: StablesatsQuoteFor,
+        _immediate_execution: bool,
+    ) -> Result<StablesatsQuoteResponse, String> {
+        if let Some(reason) = self.unavailable_reason.clone() {
+            return Err(reason);
+        }
+        self.quote
+            .clone()
+            .ok_or_else(|| "stablesats quote unavailable".to_string())
+    }
+
+    fn accept_quote(&mut self, quote_id: &str) -> Result<(), String> {
+        if let Some(reason) = self.fail_accept_reason.clone() {
+            return Err(reason);
+        }
+        self.accepted_quote_ids.push(quote_id.to_string());
+        Ok(())
+    }
+}
+
 pub(super) fn execute_openagents_tool_request(
     state: &mut RenderState,
     request: &AutopilotToolCallRequest,
@@ -279,6 +402,20 @@ pub(super) fn execute_openagents_tool_request(
                 Err(error) => return error,
             };
             execute_cad_action(state, &args)
+        }
+        OPENAGENTS_TOOL_SWAP_QUOTE | LEGACY_OPENAGENTS_TOOL_SWAP_QUOTE => {
+            let args = match decoded.decode_arguments::<SwapQuoteArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_swap_quote(state, &args)
+        }
+        OPENAGENTS_TOOL_SWAP_EXECUTE | LEGACY_OPENAGENTS_TOOL_SWAP_EXECUTE => {
+            let args = match decoded.decode_arguments::<SwapExecuteArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_swap_execute(state, &args)
         }
         _ => ToolBridgeResultEnvelope::error(
             "OA-TOOL-NOT-IMPLEMENTED",
@@ -1679,6 +1816,363 @@ fn execute_cad_action(state: &mut RenderState, args: &CadActionArgs) -> ToolBrid
     )
 }
 
+fn execute_swap_quote(state: &mut RenderState, args: &SwapQuoteArgs) -> ToolBridgeResultEnvelope {
+    if args.goal_id.trim().is_empty() {
+        return ToolBridgeResultEnvelope::error(
+            "OA-SWAP-QUOTE-MISSING-GOAL",
+            "goal_id is required",
+            json!({ "goal_id": args.goal_id }),
+        );
+    }
+    if args.request_id.trim().is_empty() {
+        return ToolBridgeResultEnvelope::error(
+            "OA-SWAP-QUOTE-MISSING-REQUEST",
+            "request_id is required",
+            json!({ "request_id": args.request_id }),
+        );
+    }
+
+    let direction = match parse_swap_direction(&args.direction) {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+    let unit = match parse_swap_unit(&args.unit) {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+    if let Some(error) = validate_direction_unit(direction, unit) {
+        return error;
+    }
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    let quote_ttl_seconds = args.quote_ttl_seconds.unwrap_or(60).max(1);
+
+    let request = SwapQuoteAdapterRequest {
+        request_id: args.request_id.clone(),
+        direction,
+        amount: SwapAmount {
+            amount: args.amount,
+            unit,
+        },
+        immediate_execution: args.immediate_execution,
+        now_epoch_seconds: now,
+    };
+
+    let fallback_quote = build_fallback_quote(args, direction, unit, now, quote_ttl_seconds);
+
+    let mut stablesats_client = ToolBridgeStablesatsClient::from_args(args);
+    let outcome = match state.autopilot_goals.request_swap_quote_with_adapter(
+        args.goal_id.trim(),
+        &request,
+        &mut stablesats_client,
+        fallback_quote,
+    ) {
+        Ok(value) => value,
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-SWAP-QUOTE-FAILED",
+                format!("Swap quote request failed: {error}"),
+                json!({
+                    "goal_id": args.goal_id,
+                    "request_id": args.request_id,
+                }),
+            );
+        }
+    };
+
+    state.autopilot_chat.record_turn_timeline_event(format!(
+        "swap quote requested goal={} request={} direction={:?}",
+        args.goal_id, args.request_id, direction
+    ));
+    if outcome.provider == SwapQuoteProvider::StablesatsQuoteService && outcome.accepted_via_adapter
+    {
+        state.autopilot_chat.record_turn_timeline_event(format!(
+            "swap quote accepted goal={} quote={}",
+            args.goal_id, outcome.quote.quote_id
+        ));
+    }
+
+    let mut events = vec![json!({
+        "event": "swap_quote_requested",
+        "goal_id": args.goal_id,
+        "request_id": args.request_id,
+        "direction": format!("{:?}", direction),
+    })];
+    if outcome.provider == SwapQuoteProvider::StablesatsQuoteService && outcome.accepted_via_adapter
+    {
+        events.push(json!({
+            "event": "swap_quote_accepted",
+            "goal_id": args.goal_id,
+            "quote_id": outcome.quote.quote_id,
+        }));
+    }
+
+    ToolBridgeResultEnvelope::ok(
+        "OA-SWAP-QUOTE-OK",
+        "Swap quote requested through controlled adapter",
+        json!({
+            "goal_id": args.goal_id,
+            "request_id": args.request_id,
+            "provider": match outcome.provider {
+                SwapQuoteProvider::StablesatsQuoteService => "stablesats_quote_service",
+                SwapQuoteProvider::BlinkFallback => "blink_fallback",
+            },
+            "quote": {
+                "quote_id": outcome.quote.quote_id,
+                "direction": format!("{:?}", outcome.quote.direction),
+                "amount_in": {
+                    "amount": outcome.quote.amount_in.amount,
+                    "unit": match outcome.quote.amount_in.unit {
+                        SwapAmountUnit::Sats => "sats",
+                        SwapAmountUnit::Cents => "cents",
+                    },
+                },
+                "amount_out": {
+                    "amount": outcome.quote.amount_out.amount,
+                    "unit": match outcome.quote.amount_out.unit {
+                        SwapAmountUnit::Sats => "sats",
+                        SwapAmountUnit::Cents => "cents",
+                    },
+                },
+                "expires_at_epoch_seconds": outcome.quote.expires_at_epoch_seconds,
+                "immediate_execution": outcome.quote.immediate_execution,
+            },
+            "accepted_via_adapter": outcome.accepted_via_adapter,
+            "fallback_reason": outcome.fallback_reason,
+            "events": events,
+        }),
+    )
+}
+
+fn execute_swap_execute(
+    state: &mut RenderState,
+    args: &SwapExecuteArgs,
+) -> ToolBridgeResultEnvelope {
+    if args.goal_id.trim().is_empty() {
+        return ToolBridgeResultEnvelope::error(
+            "OA-SWAP-EXECUTE-MISSING-GOAL",
+            "goal_id is required",
+            json!({ "goal_id": args.goal_id }),
+        );
+    }
+    if args.quote_id.trim().is_empty() {
+        return ToolBridgeResultEnvelope::error(
+            "OA-SWAP-EXECUTE-MISSING-QUOTE",
+            "quote_id is required",
+            json!({ "quote_id": args.quote_id }),
+        );
+    }
+
+    let status = args.status.trim().to_ascii_uppercase();
+    if !matches!(
+        status.as_str(),
+        "SUCCESS" | "FAILURE" | "PENDING" | "ALREADY_PAID"
+    ) {
+        return ToolBridgeResultEnvelope::error(
+            "OA-SWAP-EXECUTE-INVALID-STATUS",
+            "status must be SUCCESS, FAILURE, PENDING, or ALREADY_PAID",
+            json!({ "status": args.status }),
+        );
+    }
+
+    let audit = state
+        .autopilot_goals
+        .document
+        .swap_quote_audits
+        .iter()
+        .rev()
+        .find(|entry| entry.goal_id == args.goal_id && entry.quote_id == args.quote_id)
+        .cloned();
+    let Some(audit) = audit else {
+        return ToolBridgeResultEnvelope::error(
+            "OA-SWAP-EXECUTE-QUOTE-NOT-FOUND",
+            format!(
+                "No swap quote audit found for goal '{}' and quote '{}'",
+                args.goal_id, args.quote_id
+            ),
+            json!({
+                "goal_id": args.goal_id,
+                "quote_id": args.quote_id,
+            }),
+        );
+    };
+
+    let mut events = Vec::<Value>::new();
+    match status.as_str() {
+        "SUCCESS" => {
+            state.autopilot_chat.record_turn_timeline_event(format!(
+                "swap settled goal={} quote={} tx={}",
+                args.goal_id,
+                args.quote_id,
+                args.transaction_id
+                    .as_deref()
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("unknown")
+            ));
+            events.push(json!({
+                "event": "swap_settled",
+                "goal_id": args.goal_id,
+                "quote_id": args.quote_id,
+                "transaction_id": args.transaction_id,
+            }));
+        }
+        "FAILURE" => {
+            state.autopilot_chat.record_turn_timeline_event(format!(
+                "swap failed goal={} quote={} reason={}",
+                args.goal_id,
+                args.quote_id,
+                args.failure_reason
+                    .as_deref()
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or("unknown")
+            ));
+            events.push(json!({
+                "event": "swap_failed",
+                "goal_id": args.goal_id,
+                "quote_id": args.quote_id,
+                "reason": args.failure_reason,
+            }));
+        }
+        _ => {}
+    }
+
+    ToolBridgeResultEnvelope::ok(
+        "OA-SWAP-EXECUTE-OK",
+        "Swap execution status recorded",
+        json!({
+            "goal_id": args.goal_id,
+            "quote_id": args.quote_id,
+            "status": status,
+            "transaction_id": args.transaction_id,
+            "failure_reason": args.failure_reason,
+            "audit": {
+                "provider": match audit.provider {
+                    SwapQuoteProvider::StablesatsQuoteService => "stablesats_quote_service",
+                    SwapQuoteProvider::BlinkFallback => "blink_fallback",
+                },
+                "direction": format!("{:?}", audit.direction),
+                "amount_in": {
+                    "amount": audit.amount_in.amount,
+                    "unit": match audit.amount_in.unit {
+                        SwapAmountUnit::Sats => "sats",
+                        SwapAmountUnit::Cents => "cents",
+                    },
+                },
+                "amount_out": {
+                    "amount": audit.amount_out.amount,
+                    "unit": match audit.amount_out.unit {
+                        SwapAmountUnit::Sats => "sats",
+                        SwapAmountUnit::Cents => "cents",
+                    },
+                },
+                "expires_at_epoch_seconds": audit.expires_at_epoch_seconds,
+            },
+            "events": events,
+        }),
+    )
+}
+
+fn parse_swap_direction(direction: &str) -> Result<SwapDirection, ToolBridgeResultEnvelope> {
+    match normalize_key(direction).as_str() {
+        "btc_to_usd" | "sell_btc" | "buy_usd" => Ok(SwapDirection::BtcToUsd),
+        "usd_to_btc" | "sell_usd" | "buy_btc" => Ok(SwapDirection::UsdToBtc),
+        _ => Err(ToolBridgeResultEnvelope::error(
+            "OA-SWAP-QUOTE-INVALID-DIRECTION",
+            format!("Unsupported swap direction '{}'", direction),
+            json!({
+                "direction": direction,
+                "supported": ["btc_to_usd", "usd_to_btc"],
+            }),
+        )),
+    }
+}
+
+fn parse_swap_unit(unit: &str) -> Result<SwapAmountUnit, ToolBridgeResultEnvelope> {
+    match normalize_key(unit).as_str() {
+        "sats" | "sat" => Ok(SwapAmountUnit::Sats),
+        "cents" | "cent" | "usd_cents" => Ok(SwapAmountUnit::Cents),
+        _ => Err(ToolBridgeResultEnvelope::error(
+            "OA-SWAP-QUOTE-INVALID-UNIT",
+            format!("Unsupported swap unit '{}'", unit),
+            json!({
+                "unit": unit,
+                "supported": ["sats", "cents"],
+            }),
+        )),
+    }
+}
+
+fn validate_direction_unit(
+    direction: SwapDirection,
+    unit: SwapAmountUnit,
+) -> Option<ToolBridgeResultEnvelope> {
+    match (direction, unit) {
+        (SwapDirection::BtcToUsd, SwapAmountUnit::Sats)
+        | (SwapDirection::UsdToBtc, SwapAmountUnit::Cents) => None,
+        _ => Some(ToolBridgeResultEnvelope::error(
+            "OA-SWAP-QUOTE-UNIT-MISMATCH",
+            "For controlled tool path, BTC->USD requires sats and USD->BTC requires cents",
+            json!({
+                "direction": format!("{:?}", direction),
+                "unit": match unit {
+                    SwapAmountUnit::Sats => "sats",
+                    SwapAmountUnit::Cents => "cents",
+                },
+            }),
+        )),
+    }
+}
+
+fn build_fallback_quote(
+    args: &SwapQuoteArgs,
+    direction: SwapDirection,
+    unit: SwapAmountUnit,
+    now_epoch_seconds: u64,
+    quote_ttl_seconds: u64,
+) -> SwapQuoteTerms {
+    let quote_id = args
+        .fallback_quote_id
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("blink-fallback-quote")
+        .to_string();
+    let amount_out = args.fallback_amount_out.unwrap_or(match direction {
+        SwapDirection::BtcToUsd => std::cmp::max(1, args.amount / 15),
+        SwapDirection::UsdToBtc => args.amount.saturating_mul(15),
+    });
+
+    let (amount_in_value, amount_in_unit, amount_out_unit) = match (direction, unit) {
+        (SwapDirection::BtcToUsd, SwapAmountUnit::Sats) => {
+            (args.amount, SwapAmountUnit::Sats, SwapAmountUnit::Cents)
+        }
+        (SwapDirection::UsdToBtc, SwapAmountUnit::Cents) => {
+            (args.amount, SwapAmountUnit::Cents, SwapAmountUnit::Sats)
+        }
+        _ => (args.amount, unit, unit),
+    };
+
+    SwapQuoteTerms {
+        quote_id,
+        direction,
+        amount_in: SwapAmount {
+            amount: amount_in_value,
+            unit: amount_in_unit,
+        },
+        amount_out: SwapAmount {
+            amount: amount_out,
+            unit: amount_out_unit,
+        },
+        expires_at_epoch_seconds: now_epoch_seconds.saturating_add(quote_ttl_seconds),
+        immediate_execution: args.immediate_execution,
+        fee_sats: 0,
+        fee_bps: 0,
+        slippage_bps: 0,
+    }
+}
+
 fn cad_action_from_key(
     action: &str,
     index: Option<usize>,
@@ -1867,10 +2361,11 @@ fn normalize_key(value: &str) -> String {
 mod tests {
     use super::{
         CAD_CHECKPOINT_SCHEMA_VERSION, CAD_TOOL_RESPONSE_SCHEMA_VERSION,
-        LEGACY_OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_PANE_OPEN, ToolBridgeResultEnvelope,
-        cad_action_from_key, cad_checkpoint_payload, cad_parse_retry_prompt,
-        decode_tool_call_request, normalize_key, pane_action_to_hit_action, pane_kind_key,
-        parse_bool_env_override, resolve_pane_kind,
+        LEGACY_OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_SWAP_QUOTE,
+        ToolBridgeResultEnvelope, build_fallback_quote, cad_action_from_key,
+        cad_checkpoint_payload, cad_parse_retry_prompt, decode_tool_call_request, normalize_key,
+        pane_action_to_hit_action, pane_kind_key, parse_bool_env_override, parse_swap_direction,
+        parse_swap_unit, resolve_pane_kind, validate_direction_unit,
     };
     use crate::app_state::{
         AutopilotToolCallRequest, CadDemoPaneState, CadDemoWarningState, PaneKind,
@@ -1879,6 +2374,7 @@ mod tests {
         CadDemoPaneAction, PaneHitAction, RelayConnectionsPaneAction, SettingsPaneAction,
     };
     use crate::spark_pane::SparkPaneAction;
+    use crate::state::swap_contract::{SwapAmountUnit, SwapDirection};
     use codex_client::AppServerRequestId;
     use serde::Deserialize;
 
@@ -2178,5 +2674,65 @@ mod tests {
         assert_eq!(parse_bool_env_override("No"), Some(false));
         assert_eq!(parse_bool_env_override("off"), Some(false));
         assert_eq!(parse_bool_env_override("unexpected"), None);
+    }
+
+    #[test]
+    fn swap_quote_tool_is_allowlisted_and_machine_parseable() {
+        let decoded = decode_tool_call_request(&request(
+            OPENAGENTS_TOOL_SWAP_QUOTE,
+            r#"{"goal_id":"goal-swap-quote","request_id":"req-1","direction":"btc_to_usd","amount":2000,"unit":"sats"}"#,
+        ))
+        .expect("swap quote tool should decode");
+        assert_eq!(decoded.tool, OPENAGENTS_TOOL_SWAP_QUOTE);
+    }
+
+    #[test]
+    fn swap_direction_and_unit_parsing_is_deterministic() {
+        assert_eq!(
+            parse_swap_direction("btc_to_usd").expect("direction"),
+            SwapDirection::BtcToUsd
+        );
+        assert_eq!(
+            parse_swap_direction("usd-to-btc").expect("direction"),
+            SwapDirection::UsdToBtc
+        );
+        assert_eq!(parse_swap_unit("sats").expect("unit"), SwapAmountUnit::Sats);
+        assert_eq!(
+            parse_swap_unit("cents").expect("unit"),
+            SwapAmountUnit::Cents
+        );
+        assert!(parse_swap_direction("invalid").is_err());
+        assert!(parse_swap_unit("invalid").is_err());
+
+        assert!(validate_direction_unit(SwapDirection::BtcToUsd, SwapAmountUnit::Sats).is_none());
+        assert!(validate_direction_unit(SwapDirection::UsdToBtc, SwapAmountUnit::Cents).is_none());
+        assert!(validate_direction_unit(SwapDirection::BtcToUsd, SwapAmountUnit::Cents).is_some());
+    }
+
+    #[test]
+    fn fallback_quote_builder_uses_stable_shape() {
+        let args = serde_json::from_str::<super::SwapQuoteArgs>(
+            r#"{
+                "goal_id":"goal-1",
+                "request_id":"req-1",
+                "direction":"btc_to_usd",
+                "amount":3000,
+                "unit":"sats",
+                "fallback_quote_id":"quote-xyz",
+                "fallback_amount_out":220
+            }"#,
+        )
+        .expect("quote args");
+        let quote = build_fallback_quote(
+            &args,
+            SwapDirection::BtcToUsd,
+            SwapAmountUnit::Sats,
+            1_700_000_000,
+            60,
+        );
+        assert_eq!(quote.quote_id, "quote-xyz");
+        assert_eq!(quote.amount_in.amount, 3_000);
+        assert_eq!(quote.amount_out.amount, 220);
+        assert_eq!(quote.expires_at_epoch_seconds, 1_700_000_060);
     }
 }

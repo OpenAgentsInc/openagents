@@ -9,6 +9,8 @@ pub(crate) const OPENAGENTS_TOOL_PANE_SET_INPUT: &str = "openagents_pane_set_inp
 pub(crate) const OPENAGENTS_TOOL_PANE_ACTION: &str = "openagents_pane_action";
 pub(crate) const OPENAGENTS_TOOL_CAD_INTENT: &str = "openagents_cad_intent";
 pub(crate) const OPENAGENTS_TOOL_CAD_ACTION: &str = "openagents_cad_action";
+pub(crate) const OPENAGENTS_TOOL_SWAP_QUOTE: &str = "openagents_swap_quote";
+pub(crate) const OPENAGENTS_TOOL_SWAP_EXECUTE: &str = "openagents_swap_execute";
 
 pub(crate) const OPENAGENTS_DYNAMIC_TOOL_NAMES: &[&str] = &[
     OPENAGENTS_TOOL_PANE_LIST,
@@ -19,6 +21,8 @@ pub(crate) const OPENAGENTS_DYNAMIC_TOOL_NAMES: &[&str] = &[
     OPENAGENTS_TOOL_PANE_ACTION,
     OPENAGENTS_TOOL_CAD_INTENT,
     OPENAGENTS_TOOL_CAD_ACTION,
+    OPENAGENTS_TOOL_SWAP_QUOTE,
+    OPENAGENTS_TOOL_SWAP_EXECUTE,
 ];
 
 pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
@@ -122,6 +126,60 @@ pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
                     "index": { "type": "integer", "minimum": 0 }
                 },
                 "required": ["action"],
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_SWAP_QUOTE.to_string(),
+            description: "Request a controlled BTC<->USD swap quote for an autonomous goal run."
+                .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "goal_id": { "type": "string" },
+                    "request_id": { "type": "string" },
+                    "direction": { "type": "string", "enum": ["btc_to_usd", "usd_to_btc"] },
+                    "amount": { "type": "integer", "minimum": 1 },
+                    "unit": { "type": "string", "enum": ["sats", "cents"] },
+                    "immediate_execution": { "type": "boolean" },
+                    "quote_ttl_seconds": { "type": "integer", "minimum": 1 },
+                    "fallback_quote_id": { "type": "string" },
+                    "fallback_amount_out": { "type": "integer", "minimum": 1 },
+                    "stablesats_error": { "type": "string" },
+                    "stablesats_quote": {
+                        "type": "object",
+                        "properties": {
+                            "quote_id": { "type": "string" },
+                            "amount_to_sell_in_sats": { "type": "integer", "minimum": 1 },
+                            "amount_to_buy_in_cents": { "type": "integer", "minimum": 1 },
+                            "amount_to_buy_in_sats": { "type": "integer", "minimum": 1 },
+                            "amount_to_sell_in_cents": { "type": "integer", "minimum": 1 },
+                            "expires_at_epoch_seconds": { "type": "integer", "minimum": 1 },
+                            "executed": { "type": "boolean" }
+                        },
+                        "required": ["quote_id", "expires_at_epoch_seconds", "executed"],
+                        "additionalProperties": false
+                    }
+                },
+                "required": ["goal_id", "request_id", "direction", "amount", "unit"],
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_SWAP_EXECUTE.to_string(),
+            description:
+                "Record controlled swap settlement/failure for a quoted autonomous goal swap."
+                    .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "goal_id": { "type": "string" },
+                    "quote_id": { "type": "string" },
+                    "status": { "type": "string", "enum": ["SUCCESS", "FAILURE", "PENDING", "ALREADY_PAID"] },
+                    "transaction_id": { "type": "string" },
+                    "failure_reason": { "type": "string" }
+                },
+                "required": ["goal_id", "quote_id", "status"],
                 "additionalProperties": false
             }),
         },
