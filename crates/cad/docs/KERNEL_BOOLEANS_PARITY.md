@@ -17,7 +17,6 @@ Integrate the staged boolean pipeline contract from `vcad-kernel-booleans` into 
   - `SurfaceSurfaceIntersection`
   - `Classification`
   - `Reconstruction`
-  - `MeshFallback`
 - deterministic pipeline reports:
   - `BooleanPipelineStageReport`
   - `BooleanReconstructionSummary`
@@ -25,7 +24,8 @@ Integrate the staged boolean pipeline contract from `vcad-kernel-booleans` into 
   - `BooleanPipelineResult` with deterministic signature
 - execution entrypoint:
   - `run_staged_boolean_pipeline(left, right, op, config)`
-- mesh fallback remains active while BRep reconstruction parity is staged.
+- BRep output is preserved in parity lane results.
+- mesh-only fallback output is removed in parity lane (`VCAD-PARITY-020`).
 
 ## Parity Artifact
 

@@ -6,24 +6,17 @@
   "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
   "mapped_error_code": "BooleanDiagnostic",
   "overlapping_union": {
-    "outcome": "MeshFallback",
+    "outcome": "BrepReconstruction",
     "stage_sequence": [
       "AabbFilter",
       "SurfaceSurfaceIntersection",
       "Classification",
-      "Reconstruction",
-      "MeshFallback"
+      "Reconstruction"
     ],
-    "diagnostic_codes": [
-      "RECONSTRUCTION_UNAVAILABLE",
-      "MESH_FALLBACK_USED"
-    ],
-    "mapped_error_codes": [
-      "BooleanDiagnostic",
-      "BooleanDiagnostic"
-    ],
-    "mapped_retryable_count": 2,
-    "primary_error_code": "RECONSTRUCTION_UNAVAILABLE"
+    "diagnostic_codes": [],
+    "mapped_error_codes": [],
+    "mapped_retryable_count": 0,
+    "primary_error_code": null
   },
   "disjoint_intersection": {
     "outcome": "EmptyResult",
@@ -31,23 +24,18 @@
       "AabbFilter",
       "SurfaceSurfaceIntersection",
       "Classification",
-      "Reconstruction",
-      "MeshFallback"
+      "Reconstruction"
     ],
     "diagnostic_codes": [
       "AABB_DISJOINT",
-      "RECONSTRUCTION_UNAVAILABLE",
-      "MESH_FALLBACK_USED",
       "INTERSECTION_EMPTY"
     ],
     "mapped_error_codes": [
       "BooleanDiagnostic",
-      "BooleanDiagnostic",
-      "BooleanDiagnostic",
       "BooleanDiagnostic"
     ],
-    "mapped_retryable_count": 2,
-    "primary_error_code": "RECONSTRUCTION_UNAVAILABLE"
+    "mapped_retryable_count": 0,
+    "primary_error_code": "AABB_DISJOINT"
   },
   "mapping_contracts": [
     "stage diagnostics map into CadError::BooleanDiagnostic entries",

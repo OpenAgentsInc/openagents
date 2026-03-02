@@ -21,7 +21,7 @@ Map staged `vcad-kernel-booleans` diagnostics into the OpenAgents CAD error mode
 - staged diagnostics emitted from the parity pipeline for:
   - disjoint AABB operands
   - empty SSI/classification stages
-  - staged reconstruction fallback behavior
+  - reconstruction-stage outcomes and empty intersections
   - empty intersection outcomes
 
 `crates/cad/src/error.rs` now includes:

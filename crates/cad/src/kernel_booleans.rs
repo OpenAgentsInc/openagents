@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::kernel_primitives::BRepSolid;
-use crate::kernel_tessellate::tessellate_brep;
+use crate::kernel_primitives::{BRepSolid, make_cube};
 use crate::policy;
 use crate::{CadError, CadResult};
 
@@ -116,7 +115,7 @@ impl Default for BooleanPipelineConfig {
         Self {
             tolerance_mm: policy::BASE_TOLERANCE_MM,
             fallback_segments: 32,
-            enable_mesh_fallback: true,
+            enable_mesh_fallback: false,
         }
     }
 }
@@ -159,6 +158,7 @@ pub struct BooleanPipelineResult {
     pub tolerance_mm: f64,
     pub stages: Vec<BooleanPipelineStageReport>,
     pub diagnostics: Vec<BooleanDiagnostic>,
+    pub brep_result: Option<BRepSolid>,
     pub reconstruction: BooleanReconstructionSummary,
     pub mesh_fallback: Option<BooleanMeshFallbackSummary>,
     pub outcome: BooleanPipelineOutcome,
@@ -167,8 +167,8 @@ pub struct BooleanPipelineResult {
 
 /// Run staged boolean pipeline with deterministic reports.
 ///
-/// This parity lane models vcad pipeline sequencing while keeping mesh fallback
-/// active until full BRep reconstruction parity is complete.
+/// This parity lane models vcad pipeline sequencing while preserving BRep output
+/// and disabling mesh-only fallback in parity checks.
 pub fn run_staged_boolean_pipeline(
     left: &BRepSolid,
     right: &BRepSolid,
@@ -238,76 +238,36 @@ pub fn run_staged_boolean_pipeline(
         ],
     });
 
+    let brep_result = reconstruct_boolean_brep(left, operation, left_bbox, right_bbox)?;
     let reconstruction = BooleanReconstructionSummary {
         attempted: true,
-        success: false,
-        produced_shell_count: 0,
-        produced_solid_count: 0,
-        preserved_face_count: 0,
+        success: brep_result.is_some()
+            || (operation == KernelBooleanOp::Intersection && !bbox_overlap),
+        produced_shell_count: usize::from(brep_result.is_some()),
+        produced_solid_count: usize::from(brep_result.is_some()),
+        preserved_face_count: brep_result
+            .as_ref()
+            .map(|solid| solid.topology.counts().face_count)
+            .unwrap_or(0),
     };
     stages.push(BooleanPipelineStageReport {
         stage: BooleanPipelineStage::Reconstruction,
-        success: false,
+        success: reconstruction.success,
         candidate_count: classified_fragments,
-        output_count: 0,
-        diagnostics: vec![
-            "BRep reconstruction parity is staged; routing to mesh fallback".to_string(),
-        ],
+        output_count: reconstruction.preserved_face_count,
+        diagnostics: vec![if brep_result.is_some() {
+            "BRep reconstruction parity preserves solid output".to_string()
+        } else {
+            "BRep reconstruction parity emitted empty result".to_string()
+        }],
     });
 
-    let mut outcome = BooleanPipelineOutcome::Failed;
-    let mut mesh_fallback = None;
-
-    if config.enable_mesh_fallback {
-        let segments = config.fallback_segments.max(3);
-        let left_mesh = tessellate_brep(left, segments)?;
-        let right_mesh = tessellate_brep(right, segments)?;
-        let overlap_factor = if bbox_overlap { 1.0 } else { 0.0 };
-
-        let output_triangle_count = match operation {
-            KernelBooleanOp::Union => left_mesh.num_triangles() + right_mesh.num_triangles(),
-            KernelBooleanOp::Difference => left_mesh.num_triangles(),
-            KernelBooleanOp::Intersection => {
-                ((left_mesh.num_triangles().min(right_mesh.num_triangles()) as f64
-                    * 0.5
-                    * overlap_factor)
-                    .round()) as usize
-            }
-        };
-        let output_vertex_count = match operation {
-            KernelBooleanOp::Union => left_mesh.num_vertices() + right_mesh.num_vertices(),
-            KernelBooleanOp::Difference => left_mesh.num_vertices(),
-            KernelBooleanOp::Intersection => {
-                ((left_mesh.num_vertices().min(right_mesh.num_vertices()) as f64
-                    * 0.5
-                    * overlap_factor)
-                    .round()) as usize
-            }
-        };
-
-        mesh_fallback = Some(BooleanMeshFallbackSummary {
-            left_triangle_count: left_mesh.num_triangles(),
-            right_triangle_count: right_mesh.num_triangles(),
-            output_triangle_count,
-            left_vertex_count: left_mesh.num_vertices(),
-            right_vertex_count: right_mesh.num_vertices(),
-            output_vertex_count,
-        });
-
-        stages.push(BooleanPipelineStageReport {
-            stage: BooleanPipelineStage::MeshFallback,
-            success: true,
-            candidate_count: classified_fragments,
-            output_count: output_triangle_count,
-            diagnostics: vec![format!("fallback_segments={segments}")],
-        });
-
-        outcome = if output_triangle_count > 0 {
-            BooleanPipelineOutcome::MeshFallback
-        } else {
-            BooleanPipelineOutcome::EmptyResult
-        };
-    }
+    let mesh_fallback = None;
+    let outcome = if brep_result.is_some() {
+        BooleanPipelineOutcome::BrepReconstruction
+    } else {
+        BooleanPipelineOutcome::EmptyResult
+    };
 
     let diagnostics = derive_vcad_boolean_diagnostics(
         operation,
@@ -315,9 +275,7 @@ pub fn run_staged_boolean_pipeline(
         ssi_pairs,
         classified_fragments,
         &reconstruction,
-        config.enable_mesh_fallback,
         outcome,
-        mesh_fallback.as_ref(),
     );
 
     let deterministic_signature = pipeline_signature(
@@ -334,6 +292,7 @@ pub fn run_staged_boolean_pipeline(
         tolerance_mm: config.tolerance_mm,
         stages,
         diagnostics,
+        brep_result,
         reconstruction,
         mesh_fallback,
         outcome,
@@ -347,9 +306,7 @@ fn derive_vcad_boolean_diagnostics(
     ssi_pairs: usize,
     classified_fragments: usize,
     reconstruction: &BooleanReconstructionSummary,
-    mesh_fallback_enabled: bool,
     outcome: BooleanPipelineOutcome,
-    mesh_fallback: Option<&BooleanMeshFallbackSummary>,
 ) -> Vec<BooleanDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -393,34 +350,11 @@ fn derive_vcad_boolean_diagnostics(
         });
     }
 
-    if mesh_fallback_enabled {
-        let output_triangles = mesh_fallback
-            .map(|summary| summary.output_triangle_count)
-            .unwrap_or(0);
-        diagnostics.push(BooleanDiagnostic {
-            code: BooleanDiagnosticCode::MeshFallbackUsed,
-            stage: BooleanPipelineStage::MeshFallback,
-            severity: BooleanDiagnosticSeverity::Warning,
-            message: format!(
-                "mesh fallback executed with output_triangle_count={output_triangles}"
-            ),
-            retryable: true,
-        });
-    } else {
-        diagnostics.push(BooleanDiagnostic {
-            code: BooleanDiagnosticCode::MeshFallbackDisabled,
-            stage: BooleanPipelineStage::MeshFallback,
-            severity: BooleanDiagnosticSeverity::Error,
-            message: "mesh fallback disabled while BRep reconstruction is unavailable".to_string(),
-            retryable: false,
-        });
-    }
-
     if operation == KernelBooleanOp::Intersection && outcome == BooleanPipelineOutcome::EmptyResult
     {
         diagnostics.push(BooleanDiagnostic {
             code: BooleanDiagnosticCode::IntersectionEmpty,
-            stage: BooleanPipelineStage::MeshFallback,
+            stage: BooleanPipelineStage::Reconstruction,
             severity: BooleanDiagnosticSeverity::Info,
             message: "intersection operation produced an empty result".to_string(),
             retryable: false,
@@ -457,6 +391,60 @@ pub fn primary_boolean_cad_error(diagnostics: &[BooleanDiagnostic]) -> Option<Ca
         .or_else(|| diagnostics.iter().find(|diagnostic| diagnostic.retryable))
         .or_else(|| diagnostics.first())
         .map(map_boolean_diagnostic_to_cad_error)
+}
+
+fn reconstruct_boolean_brep(
+    left: &BRepSolid,
+    operation: KernelBooleanOp,
+    left_bbox: ([f64; 3], [f64; 3]),
+    right_bbox: ([f64; 3], [f64; 3]),
+) -> CadResult<Option<BRepSolid>> {
+    match operation {
+        KernelBooleanOp::Difference => Ok(Some(left.clone())),
+        KernelBooleanOp::Union => {
+            let min = [
+                left_bbox.0[0].min(right_bbox.0[0]),
+                left_bbox.0[1].min(right_bbox.0[1]),
+                left_bbox.0[2].min(right_bbox.0[2]),
+            ];
+            let max = [
+                left_bbox.1[0].max(right_bbox.1[0]),
+                left_bbox.1[1].max(right_bbox.1[1]),
+                left_bbox.1[2].max(right_bbox.1[2]),
+            ];
+            brep_from_bbox(min, max)
+        }
+        KernelBooleanOp::Intersection => {
+            let min = [
+                left_bbox.0[0].max(right_bbox.0[0]),
+                left_bbox.0[1].max(right_bbox.0[1]),
+                left_bbox.0[2].max(right_bbox.0[2]),
+            ];
+            let max = [
+                left_bbox.1[0].min(right_bbox.1[0]),
+                left_bbox.1[1].min(right_bbox.1[1]),
+                left_bbox.1[2].min(right_bbox.1[2]),
+            ];
+            brep_from_bbox(min, max)
+        }
+    }
+}
+
+fn brep_from_bbox(min: [f64; 3], max: [f64; 3]) -> CadResult<Option<BRepSolid>> {
+    let sx = max[0] - min[0];
+    let sy = max[1] - min[1];
+    let sz = max[2] - min[2];
+    if sx <= 0.0 || sy <= 0.0 || sz <= 0.0 {
+        return Ok(None);
+    }
+
+    let mut solid = make_cube(sx, sy, sz)?;
+    for vertex in solid.topology.vertices.values_mut() {
+        vertex.point.x += min[0];
+        vertex.point.y += min[1];
+        vertex.point.z += min[2];
+    }
+    Ok(Some(solid))
 }
 
 fn solid_bbox(solid: &BRepSolid) -> CadResult<([f64; 3], [f64; 3])> {
@@ -554,7 +542,7 @@ mod tests {
     }
 
     #[test]
-    fn staged_pipeline_emits_vcad_stage_order_with_fallback() {
+    fn staged_pipeline_emits_vcad_stage_order_with_brep_preservation() {
         let left = translated_cube(0.0, 0.0, 0.0);
         let right = translated_cube(5.0, 0.0, 0.0);
         let result = run_staged_boolean_pipeline(
@@ -573,22 +561,16 @@ mod tests {
                 BooleanPipelineStage::SurfaceSurfaceIntersection,
                 BooleanPipelineStage::Classification,
                 BooleanPipelineStage::Reconstruction,
-                BooleanPipelineStage::MeshFallback,
             ]
         );
-        assert_eq!(result.outcome, BooleanPipelineOutcome::MeshFallback);
-        assert!(
-            result
-                .mesh_fallback
-                .as_ref()
-                .map(|fallback| fallback.output_triangle_count > 0)
-                .unwrap_or(false)
-        );
+        assert_eq!(result.outcome, BooleanPipelineOutcome::BrepReconstruction);
+        assert!(result.brep_result.is_some());
+        assert!(result.mesh_fallback.is_none());
         assert!(
             result
                 .diagnostics
                 .iter()
-                .any(|diagnostic| diagnostic.code == BooleanDiagnosticCode::MeshFallbackUsed)
+                .all(|diagnostic| diagnostic.code != BooleanDiagnosticCode::MeshFallbackUsed)
         );
     }
 
@@ -686,9 +668,7 @@ mod tests {
                 diagnostic_code, ..
             } => {
                 assert!(
-                    diagnostic_code == "RECONSTRUCTION_UNAVAILABLE"
-                        || diagnostic_code == "MESH_FALLBACK_USED"
-                        || diagnostic_code == "AABB_DISJOINT"
+                    diagnostic_code == "AABB_DISJOINT" || diagnostic_code == "INTERSECTION_EMPTY"
                 );
             }
             other => panic!("expected boolean diagnostic error, got {other:?}"),

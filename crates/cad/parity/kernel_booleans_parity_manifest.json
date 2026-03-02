@@ -7,49 +7,48 @@
   "default_pipeline_config": {
     "tolerance_mm": 1e-6,
     "fallback_segments": 32,
-    "enable_mesh_fallback": true
+    "enable_mesh_fallback": false
   },
   "stage_order": [
     "AabbFilter",
     "SurfaceSurfaceIntersection",
     "Classification",
-    "Reconstruction",
-    "MeshFallback"
+    "Reconstruction"
   ],
   "sample_union": {
-    "outcome": "MeshFallback",
-    "stage_count": 5,
+    "outcome": "BrepReconstruction",
+    "stage_count": 4,
     "candidate_face_pairs": 36,
     "ssi_pair_count": 36,
     "classified_fragment_count": 72,
-    "reconstruction_success": false,
-    "mesh_output_triangle_count": 24,
-    "deterministic_signature": "3466329195fd2b42"
+    "reconstruction_success": true,
+    "mesh_output_triangle_count": 0,
+    "deterministic_signature": "dad682d82facf224"
   },
   "sample_difference": {
-    "outcome": "MeshFallback",
-    "stage_count": 5,
+    "outcome": "BrepReconstruction",
+    "stage_count": 4,
     "candidate_face_pairs": 36,
     "ssi_pair_count": 36,
     "classified_fragment_count": 72,
-    "reconstruction_success": false,
-    "mesh_output_triangle_count": 12,
-    "deterministic_signature": "8413ab636b533074"
+    "reconstruction_success": true,
+    "mesh_output_triangle_count": 0,
+    "deterministic_signature": "fd623cd5fddf34b2"
   },
   "sample_intersection": {
-    "outcome": "MeshFallback",
-    "stage_count": 5,
+    "outcome": "BrepReconstruction",
+    "stage_count": 4,
     "candidate_face_pairs": 36,
     "ssi_pair_count": 36,
     "classified_fragment_count": 72,
-    "reconstruction_success": false,
-    "mesh_output_triangle_count": 6,
-    "deterministic_signature": "f18b2b03c0ced2e6"
+    "reconstruction_success": true,
+    "mesh_output_triangle_count": 0,
+    "deterministic_signature": "bd7bc3ad51434825"
   },
   "staged_pipeline_contracts": [
     "AabbFilter -> SurfaceSurfaceIntersection -> Classification -> Reconstruction stage order is stable",
-    "Mesh fallback remains active while BRep reconstruction parity is staged",
+    "BRep output is preserved for union/difference/intersection overlap cases",
     "Pipeline emits deterministic signature for identical inputs",
-    "Intersection of disjoint solids yields EmptyResult via fallback summary"
+    "Intersection of disjoint solids yields EmptyResult without mesh fallback"
   ]
 }

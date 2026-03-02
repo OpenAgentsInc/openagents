@@ -16,6 +16,7 @@ Provide one deterministic orchestration entrypoint for the parity baseline lanes
 - kernel tessellate parity fixture check
 - kernel booleans parity fixture check
 - kernel boolean diagnostics parity fixture check
+- kernel boolean BRep parity fixture check
 - kernel precision parity fixture check
 - parity CI artifact manifest fixture check
 - parity risk register + blocker workflow check
