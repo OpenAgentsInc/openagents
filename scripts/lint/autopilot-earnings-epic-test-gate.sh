@@ -43,6 +43,31 @@ run_test \
     input::tool_bridge::tests::blink_quote_payload_parsing_maps_swap_terms \
     -- --nocapture
 run_test \
+    "Blink script path missing contract" \
+    cargo test -p autopilot-desktop \
+    input::tool_bridge::tests::blink_script_selection_errors_when_no_candidate_exists \
+    -- --nocapture
+run_test \
+    "Blink script failure contract" \
+    cargo test -p autopilot-desktop \
+    input::tool_bridge::tests::blink_script_runner_reports_script_failure \
+    -- --nocapture
+run_test \
+    "Blink script JSON parse contract" \
+    cargo test -p autopilot-desktop \
+    input::tool_bridge::tests::blink_script_runner_rejects_non_json_stdout \
+    -- --nocapture
+run_test \
+    "Blink quote required-field contract" \
+    cargo test -p autopilot-desktop \
+    input::tool_bridge::tests::blink_quote_payload_parser_rejects_missing_required_fields \
+    -- --nocapture
+run_test \
+    "Blink execution required-field contract" \
+    cargo test -p autopilot-desktop \
+    input::tool_bridge::tests::blink_execution_payload_parser_rejects_missing_status \
+    -- --nocapture
+run_test \
     "Swap tool schema blocks injected quote/status fields" \
     cargo test -p autopilot-desktop \
     openagents_dynamic_tools::tests::swap_tool_schemas_do_not_allow_injected_quote_or_status_fields \
