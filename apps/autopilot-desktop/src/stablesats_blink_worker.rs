@@ -1,6 +1,10 @@
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
+use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError};
 use std::time::{Duration, Instant};
+
+const DEFAULT_WORKER_TIMEOUT: Duration = Duration::from_secs(8);
+const SWAP_WORKER_TIMEOUT: Duration = Duration::from_secs(12);
+const WORKER_QUEUE_CAPACITY: usize = 64;
 
 #[derive(Clone, Debug)]
 pub struct StableSatsBlinkRefreshRequest {
@@ -44,39 +48,195 @@ pub struct StableSatsBlinkLiveSnapshot {
 }
 
 #[derive(Clone, Debug)]
+pub struct StableSatsBlinkSwapQuoteRequest {
+    pub request_id: u64,
+    pub now_epoch_seconds: u64,
+    pub goal_id: String,
+    pub adapter_request_id: String,
+    pub script_path: PathBuf,
+    pub script_args: Vec<String>,
+    pub env_overrides: Vec<(String, String)>,
+}
+
+#[derive(Clone, Debug)]
+pub struct StableSatsBlinkSwapQuoteResult {
+    pub request_id: u64,
+    pub now_epoch_seconds: u64,
+    pub goal_id: String,
+    pub adapter_request_id: String,
+    pub script_path: String,
+    pub script_args: Vec<String>,
+    pub payload: serde_json::Value,
+}
+
+#[derive(Clone, Debug)]
+pub struct StableSatsBlinkSwapExecuteRequest {
+    pub request_id: u64,
+    pub now_epoch_seconds: u64,
+    pub goal_id: String,
+    pub quote_id: String,
+    pub script_path: PathBuf,
+    pub script_args: Vec<String>,
+    pub env_overrides: Vec<(String, String)>,
+}
+
+#[derive(Clone, Debug)]
+pub struct StableSatsBlinkSwapExecuteResult {
+    pub request_id: u64,
+    pub now_epoch_seconds: u64,
+    pub goal_id: String,
+    pub quote_id: String,
+    pub script_path: String,
+    pub script_args: Vec<String>,
+    pub payload: serde_json::Value,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StableSatsBlinkCommandKind {
+    Refresh,
+    SwapQuote,
+    SwapExecute,
+}
+
+impl StableSatsBlinkCommandKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Refresh => "refresh",
+            Self::SwapQuote => "swap_quote",
+            Self::SwapExecute => "swap_execute",
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub enum StableSatsBlinkUpdate {
+    CommandStarted {
+        request_id: u64,
+        kind: StableSatsBlinkCommandKind,
+    },
+    CommandCancelled {
+        request_id: u64,
+        kind: StableSatsBlinkCommandKind,
+        detail: String,
+    },
     Completed(StableSatsBlinkLiveSnapshot),
     Failed { request_id: u64, error: String },
+    SwapQuoteCompleted(StableSatsBlinkSwapQuoteResult),
+    SwapQuoteFailed {
+        request_id: u64,
+        goal_id: String,
+        adapter_request_id: String,
+        error: String,
+    },
+    SwapExecuteCompleted(StableSatsBlinkSwapExecuteResult),
+    SwapExecuteFailed {
+        request_id: u64,
+        goal_id: String,
+        quote_id: String,
+        error: String,
+    },
 }
 
 enum StableSatsBlinkCommand {
     Refresh(StableSatsBlinkRefreshRequest),
+    SwapQuote(StableSatsBlinkSwapQuoteRequest),
+    SwapExecute(StableSatsBlinkSwapExecuteRequest),
+    CancelPending,
 }
 
 pub struct StableSatsBlinkWorker {
-    command_tx: Sender<StableSatsBlinkCommand>,
+    command_tx: SyncSender<StableSatsBlinkCommand>,
     update_rx: Receiver<StableSatsBlinkUpdate>,
 }
 
 impl StableSatsBlinkWorker {
     pub fn spawn() -> Self {
-        let (command_tx, command_rx) = mpsc::channel::<StableSatsBlinkCommand>();
+        let (command_tx, command_rx) =
+            mpsc::sync_channel::<StableSatsBlinkCommand>(WORKER_QUEUE_CAPACITY);
         let (update_tx, update_rx) = mpsc::channel::<StableSatsBlinkUpdate>();
         std::thread::Builder::new()
             .name("stablesats-blink-worker".to_string())
             .spawn(move || {
                 while let Ok(command) = command_rx.recv() {
-                    let update = match command {
-                        StableSatsBlinkCommand::Refresh(request) => match run_refresh(&request) {
-                            Ok(snapshot) => StableSatsBlinkUpdate::Completed(snapshot),
-                            Err(error) => StableSatsBlinkUpdate::Failed {
-                                request_id: request.request_id,
-                                error,
-                            },
-                        },
-                    };
-                    if update_tx.send(update).is_err() {
-                        break;
+                    match command {
+                        StableSatsBlinkCommand::Refresh(request) => {
+                            if update_tx
+                                .send(StableSatsBlinkUpdate::CommandStarted {
+                                    request_id: request.request_id,
+                                    kind: StableSatsBlinkCommandKind::Refresh,
+                                })
+                                .is_err()
+                            {
+                                break;
+                            }
+                            let update = match run_refresh(&request) {
+                                Ok(snapshot) => StableSatsBlinkUpdate::Completed(snapshot),
+                                Err(error) => StableSatsBlinkUpdate::Failed {
+                                    request_id: request.request_id,
+                                    error,
+                                },
+                            };
+                            if update_tx.send(update).is_err() {
+                                break;
+                            }
+                        }
+                        StableSatsBlinkCommand::SwapQuote(request) => {
+                            if update_tx
+                                .send(StableSatsBlinkUpdate::CommandStarted {
+                                    request_id: request.request_id,
+                                    kind: StableSatsBlinkCommandKind::SwapQuote,
+                                })
+                                .is_err()
+                            {
+                                break;
+                            }
+                            let update = match run_swap_quote(&request) {
+                                Ok(result) => StableSatsBlinkUpdate::SwapQuoteCompleted(result),
+                                Err(error) => StableSatsBlinkUpdate::SwapQuoteFailed {
+                                    request_id: request.request_id,
+                                    goal_id: request.goal_id.clone(),
+                                    adapter_request_id: request.adapter_request_id.clone(),
+                                    error,
+                                },
+                            };
+                            if update_tx.send(update).is_err() {
+                                break;
+                            }
+                        }
+                        StableSatsBlinkCommand::SwapExecute(request) => {
+                            if update_tx
+                                .send(StableSatsBlinkUpdate::CommandStarted {
+                                    request_id: request.request_id,
+                                    kind: StableSatsBlinkCommandKind::SwapExecute,
+                                })
+                                .is_err()
+                            {
+                                break;
+                            }
+                            let update = match run_swap_execute(&request) {
+                                Ok(result) => StableSatsBlinkUpdate::SwapExecuteCompleted(result),
+                                Err(error) => StableSatsBlinkUpdate::SwapExecuteFailed {
+                                    request_id: request.request_id,
+                                    goal_id: request.goal_id.clone(),
+                                    quote_id: request.quote_id.clone(),
+                                    error,
+                                },
+                            };
+                            if update_tx.send(update).is_err() {
+                                break;
+                            }
+                        }
+                        StableSatsBlinkCommand::CancelPending => {
+                            while let Ok(pending) = command_rx.try_recv() {
+                                if let Some((request_id, kind)) = command_identity(&pending) {
+                                    let _ = update_tx.send(StableSatsBlinkUpdate::CommandCancelled {
+                                        request_id,
+                                        kind,
+                                        detail: "command cancelled before execution".to_string(),
+                                    });
+                                }
+                            }
+                        }
                     }
                 }
             })
@@ -90,8 +250,32 @@ impl StableSatsBlinkWorker {
 
     pub fn enqueue_refresh(&self, request: StableSatsBlinkRefreshRequest) -> Result<(), String> {
         self.command_tx
-            .send(StableSatsBlinkCommand::Refresh(request))
+            .try_send(StableSatsBlinkCommand::Refresh(request))
             .map_err(|error| format!("stablesats blink worker offline: {error}"))
+    }
+
+    pub fn enqueue_swap_quote(
+        &self,
+        request: StableSatsBlinkSwapQuoteRequest,
+    ) -> Result<(), String> {
+        self.command_tx
+            .try_send(StableSatsBlinkCommand::SwapQuote(request))
+            .map_err(|error| format!("stablesats blink worker unavailable: {error}"))
+    }
+
+    pub fn enqueue_swap_execute(
+        &self,
+        request: StableSatsBlinkSwapExecuteRequest,
+    ) -> Result<(), String> {
+        self.command_tx
+            .try_send(StableSatsBlinkCommand::SwapExecute(request))
+            .map_err(|error| format!("stablesats blink worker unavailable: {error}"))
+    }
+
+    pub fn cancel_pending(&self) -> Result<(), String> {
+        self.command_tx
+            .try_send(StableSatsBlinkCommand::CancelPending)
+            .map_err(|error| format!("stablesats blink worker cancel failed: {error}"))
     }
 
     pub fn drain_updates(&self, max_items: usize) -> Vec<StableSatsBlinkUpdate> {
@@ -121,6 +305,7 @@ fn run_refresh(
             request.balance_script_path.as_path(),
             &[],
             wallet.env_overrides.as_slice(),
+            DEFAULT_WORKER_TIMEOUT,
         ) {
             Ok(value) => value,
             Err(error) => {
@@ -203,8 +388,13 @@ fn run_refresh(
                 .find(|wallet| wallet.owner_id == snapshot.owner_id)
         })
         .map_or(&[][..], |wallet| wallet.env_overrides.as_slice());
-    let price_json =
-        run_blink_script_json(request.price_script_path.as_path(), &[], price_env).ok();
+    let price_json = run_blink_script_json(
+        request.price_script_path.as_path(),
+        &[],
+        price_env,
+        DEFAULT_WORKER_TIMEOUT,
+    )
+    .ok();
     let price_usd_cents_per_btc = price_json
         .as_ref()
         .and_then(|json| parse_json_f64(json, "btcPriceUsd"))
@@ -227,12 +417,67 @@ fn run_refresh(
     })
 }
 
+fn command_identity(command: &StableSatsBlinkCommand) -> Option<(u64, StableSatsBlinkCommandKind)> {
+    match command {
+        StableSatsBlinkCommand::Refresh(request) => {
+            Some((request.request_id, StableSatsBlinkCommandKind::Refresh))
+        }
+        StableSatsBlinkCommand::SwapQuote(request) => {
+            Some((request.request_id, StableSatsBlinkCommandKind::SwapQuote))
+        }
+        StableSatsBlinkCommand::SwapExecute(request) => {
+            Some((request.request_id, StableSatsBlinkCommandKind::SwapExecute))
+        }
+        StableSatsBlinkCommand::CancelPending => None,
+    }
+}
+
+fn run_swap_quote(
+    request: &StableSatsBlinkSwapQuoteRequest,
+) -> Result<StableSatsBlinkSwapQuoteResult, String> {
+    let payload = run_blink_script_json(
+        request.script_path.as_path(),
+        request.script_args.as_slice(),
+        request.env_overrides.as_slice(),
+        SWAP_WORKER_TIMEOUT,
+    )?;
+    Ok(StableSatsBlinkSwapQuoteResult {
+        request_id: request.request_id,
+        now_epoch_seconds: request.now_epoch_seconds,
+        goal_id: request.goal_id.clone(),
+        adapter_request_id: request.adapter_request_id.clone(),
+        script_path: request.script_path.display().to_string(),
+        script_args: request.script_args.clone(),
+        payload,
+    })
+}
+
+fn run_swap_execute(
+    request: &StableSatsBlinkSwapExecuteRequest,
+) -> Result<StableSatsBlinkSwapExecuteResult, String> {
+    let payload = run_blink_script_json(
+        request.script_path.as_path(),
+        request.script_args.as_slice(),
+        request.env_overrides.as_slice(),
+        SWAP_WORKER_TIMEOUT,
+    )?;
+    Ok(StableSatsBlinkSwapExecuteResult {
+        request_id: request.request_id,
+        now_epoch_seconds: request.now_epoch_seconds,
+        goal_id: request.goal_id.clone(),
+        quote_id: request.quote_id.clone(),
+        script_path: request.script_path.display().to_string(),
+        script_args: request.script_args.clone(),
+        payload,
+    })
+}
+
 fn run_blink_script_json(
     script_path: &Path,
     args: &[String],
     env_overrides: &[(String, String)],
+    timeout: Duration,
 ) -> Result<serde_json::Value, String> {
-    let timeout = Duration::from_secs(8);
     let mut command = std::process::Command::new("node");
     command.arg(script_path);
     command.args(args);

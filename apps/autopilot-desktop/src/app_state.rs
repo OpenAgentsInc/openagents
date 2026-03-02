@@ -4043,6 +4043,39 @@ mod tests {
     }
 
     #[test]
+    fn stablesats_treasury_operation_log_tracks_refresh_lifecycle() {
+        let mut state = StableSatsSimulationPaneState::default();
+        state.set_mode(crate::app_state::StableSatsSimulationMode::RealBlink);
+        let request_id = state
+            .begin_live_refresh()
+            .expect("real mode refresh should start");
+        let running_entry = state
+            .treasury_operations
+            .iter()
+            .find(|entry| entry.request_id == request_id)
+            .expect("refresh operation should be recorded");
+        assert_eq!(
+            running_entry.kind,
+            crate::app_state::StableSatsTreasuryOperationKind::Refresh
+        );
+        assert_eq!(
+            running_entry.status,
+            crate::app_state::StableSatsTreasuryOperationStatus::Running
+        );
+
+        assert!(state.fail_live_refresh(request_id, "timeout".to_string()));
+        let finished_entry = state
+            .treasury_operations
+            .iter()
+            .find(|entry| entry.request_id == request_id)
+            .expect("refresh operation should remain recorded");
+        assert_eq!(
+            finished_entry.status,
+            crate::app_state::StableSatsTreasuryOperationStatus::Failed
+        );
+    }
+
+    #[test]
     fn starter_jobs_complete_selected_requires_wallet_pointer() {
         let mut starter_jobs = StarterJobsState::default();
         starter_jobs.jobs.push(fixture_starter_job(

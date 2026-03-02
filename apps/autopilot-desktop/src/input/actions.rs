@@ -1897,11 +1897,13 @@ pub(super) fn run_stable_sats_simulation_action(
             ran_round
         }
         StableSatsSimulationPaneAction::Reset => {
+            let _ = state.stable_sats_blink_worker.cancel_pending();
             state.stable_sats_simulation.reset();
             state.provider_runtime.last_result = state.stable_sats_simulation.last_action.clone();
             true
         }
         StableSatsSimulationPaneAction::SetModeDemo => {
+            let _ = state.stable_sats_blink_worker.cancel_pending();
             state
                 .stable_sats_simulation
                 .set_mode(crate::app_state::StableSatsSimulationMode::Demo);
@@ -1909,6 +1911,7 @@ pub(super) fn run_stable_sats_simulation_action(
             true
         }
         StableSatsSimulationPaneAction::SetModeReal => {
+            let _ = state.stable_sats_blink_worker.cancel_pending();
             state
                 .stable_sats_simulation
                 .set_mode(crate::app_state::StableSatsSimulationMode::RealBlink);

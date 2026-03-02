@@ -3238,6 +3238,55 @@ impl StableSatsTransferStatus {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StableSatsTreasuryOperationKind {
+    Refresh,
+    SwapQuote,
+    SwapExecute,
+}
+
+impl StableSatsTreasuryOperationKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Refresh => "refresh",
+            Self::SwapQuote => "swap_quote",
+            Self::SwapExecute => "swap_execute",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StableSatsTreasuryOperationStatus {
+    Queued,
+    Running,
+    Settled,
+    Failed,
+    Cancelled,
+}
+
+impl StableSatsTreasuryOperationStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Queued => "queued",
+            Self::Running => "running",
+            Self::Settled => "settled",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StableSatsTreasuryOperationEntry {
+    pub seq: u64,
+    pub request_id: u64,
+    pub kind: StableSatsTreasuryOperationKind,
+    pub status: StableSatsTreasuryOperationStatus,
+    pub detail: String,
+    pub created_at_epoch_seconds: u64,
+    pub updated_at_epoch_seconds: u64,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StableSatsTransferLedgerEntry {
     pub seq: u64,
@@ -3270,9 +3319,11 @@ pub struct StableSatsSimulationPaneState {
     pub live_refresh_pending: bool,
     pub active_live_refresh_request_id: Option<u64>,
     pub transfer_ledger: Vec<StableSatsTransferLedgerEntry>,
+    pub treasury_operations: Vec<StableSatsTreasuryOperationEntry>,
     pub events: Vec<AgentNetworkSimulationEvent>,
     next_seq: u64,
     next_transfer_seq: u64,
+    next_operation_seq: u64,
     auto_run_last_tick: Option<Instant>,
     next_live_refresh_request_id: u64,
 }
@@ -3299,9 +3350,11 @@ impl Default for StableSatsSimulationPaneState {
             live_refresh_pending: false,
             active_live_refresh_request_id: None,
             transfer_ledger: Vec::new(),
+            treasury_operations: Vec::new(),
             events: Vec::new(),
             next_seq: 1,
             next_transfer_seq: 1,
+            next_operation_seq: 1,
             auto_run_last_tick: None,
             next_live_refresh_request_id: 1,
         }
@@ -3384,9 +3437,11 @@ impl StableSatsSimulationPaneState {
         self.live_refresh_pending = false;
         self.active_live_refresh_request_id = None;
         self.transfer_ledger.clear();
+        self.treasury_operations.clear();
         self.events.clear();
         self.next_seq = 1;
         self.next_transfer_seq = 1;
+        self.next_operation_seq = 1;
         self.next_live_refresh_request_id = 1;
         match mode {
             StableSatsSimulationMode::Demo => {
@@ -3408,8 +3463,7 @@ impl StableSatsSimulationPaneState {
         if self.live_refresh_pending {
             return Err("Live Blink refresh already in progress".to_string());
         }
-        let request_id = self.next_live_refresh_request_id;
-        self.next_live_refresh_request_id = self.next_live_refresh_request_id.saturating_add(1);
+        let request_id = self.reserve_worker_request_id();
         self.live_refresh_pending = true;
         self.active_live_refresh_request_id = Some(request_id);
         self.load_state = PaneLoadState::Loading;
@@ -3417,6 +3471,21 @@ impl StableSatsSimulationPaneState {
         self.last_action = Some(format!(
             "Refreshing live Blink balances (request #{request_id})"
         ));
+        let now_epoch_seconds = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |duration| duration.as_secs());
+        self.record_treasury_operation_queued(
+            request_id,
+            StableSatsTreasuryOperationKind::Refresh,
+            now_epoch_seconds,
+            "live wallet refresh queued".to_string(),
+        );
+        self.record_treasury_operation_running(
+            request_id,
+            StableSatsTreasuryOperationKind::Refresh,
+            now_epoch_seconds,
+            "live wallet refresh running".to_string(),
+        );
         Ok(request_id)
     }
 
@@ -3436,6 +3505,16 @@ impl StableSatsSimulationPaneState {
         self.load_state = PaneLoadState::Error;
         self.last_error = Some(error.clone());
         self.last_action = Some(format!("Live Blink refresh failed: {error}"));
+        let now_epoch_seconds = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |duration| duration.as_secs());
+        self.record_treasury_operation_finished(
+            request_id,
+            StableSatsTreasuryOperationKind::Refresh,
+            StableSatsTreasuryOperationStatus::Failed,
+            now_epoch_seconds,
+            format!("live wallet refresh failed: {error}"),
+        );
         true
     }
 
@@ -3897,9 +3976,11 @@ impl StableSatsSimulationPaneState {
         self.live_refresh_pending = false;
         self.active_live_refresh_request_id = None;
         self.transfer_ledger.clear();
+        self.treasury_operations.clear();
         self.events.clear();
         self.next_seq = 1;
         self.next_transfer_seq = 1;
+        self.next_operation_seq = 1;
         self.auto_run_last_tick = None;
         self.next_live_refresh_request_id = 1;
     }
@@ -4036,5 +4117,101 @@ impl StableSatsSimulationPaneState {
             self.transfer_ledger.drain(0..overflow);
         }
         self.push_event("BLINK-XFER", transfer_ref.as_str(), summary);
+    }
+
+    pub fn reserve_worker_request_id(&mut self) -> u64 {
+        let request_id = self.next_live_refresh_request_id;
+        self.next_live_refresh_request_id = self.next_live_refresh_request_id.saturating_add(1);
+        request_id
+    }
+
+    pub fn record_treasury_operation_queued(
+        &mut self,
+        request_id: u64,
+        kind: StableSatsTreasuryOperationKind,
+        now_epoch_seconds: u64,
+        detail: String,
+    ) {
+        self.treasury_operations.push(StableSatsTreasuryOperationEntry {
+            seq: self.next_operation_seq,
+            request_id,
+            kind,
+            status: StableSatsTreasuryOperationStatus::Queued,
+            detail,
+            created_at_epoch_seconds: now_epoch_seconds,
+            updated_at_epoch_seconds: now_epoch_seconds,
+        });
+        self.next_operation_seq = self.next_operation_seq.saturating_add(1);
+        self.trim_treasury_operations();
+    }
+
+    pub fn record_treasury_operation_running(
+        &mut self,
+        request_id: u64,
+        kind: StableSatsTreasuryOperationKind,
+        now_epoch_seconds: u64,
+        detail: String,
+    ) {
+        if let Some(entry) = self
+            .treasury_operations
+            .iter_mut()
+            .rev()
+            .find(|entry| entry.request_id == request_id && entry.kind == kind)
+        {
+            entry.status = StableSatsTreasuryOperationStatus::Running;
+            entry.detail = detail;
+            entry.updated_at_epoch_seconds = now_epoch_seconds;
+        } else {
+            self.treasury_operations.push(StableSatsTreasuryOperationEntry {
+                seq: self.next_operation_seq,
+                request_id,
+                kind,
+                status: StableSatsTreasuryOperationStatus::Running,
+                detail,
+                created_at_epoch_seconds: now_epoch_seconds,
+                updated_at_epoch_seconds: now_epoch_seconds,
+            });
+            self.next_operation_seq = self.next_operation_seq.saturating_add(1);
+            self.trim_treasury_operations();
+        }
+    }
+
+    pub fn record_treasury_operation_finished(
+        &mut self,
+        request_id: u64,
+        kind: StableSatsTreasuryOperationKind,
+        status: StableSatsTreasuryOperationStatus,
+        now_epoch_seconds: u64,
+        detail: String,
+    ) {
+        if let Some(entry) = self
+            .treasury_operations
+            .iter_mut()
+            .rev()
+            .find(|entry| entry.request_id == request_id && entry.kind == kind)
+        {
+            entry.status = status;
+            entry.detail = detail;
+            entry.updated_at_epoch_seconds = now_epoch_seconds;
+        } else {
+            self.treasury_operations.push(StableSatsTreasuryOperationEntry {
+                seq: self.next_operation_seq,
+                request_id,
+                kind,
+                status,
+                detail,
+                created_at_epoch_seconds: now_epoch_seconds,
+                updated_at_epoch_seconds: now_epoch_seconds,
+            });
+            self.next_operation_seq = self.next_operation_seq.saturating_add(1);
+            self.trim_treasury_operations();
+        }
+    }
+
+    fn trim_treasury_operations(&mut self) {
+        if self.treasury_operations.len() > 96 {
+            let overflow = self.treasury_operations.len().saturating_sub(96);
+            self.treasury_operations.drain(0..overflow);
+        }
     }
 }
