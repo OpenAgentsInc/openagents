@@ -1,0 +1,59 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-081",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_corpus_path": "crates/cad/parity/fixtures/stl_import_export_vcad_reference.json",
+  "reference_corpus_sha256": "e9a026daa8d8602a73572e7e8f1a01b5b24536c44570e94456aa8573d28d53c6",
+  "reference_source": "~/code/vcad/crates/vcad/src/export/stl.rs + ~/code/vcad/packages/core/src/utils/{export-stl.ts,import-stl.ts}",
+  "reference_commit_match": true,
+  "header_label_match": true,
+  "case_snapshots": [
+    {
+      "case_id": "ascii_import",
+      "source_format": "ascii",
+      "triangle_count": 2,
+      "unique_vertex_count": 4,
+      "export_succeeds": false,
+      "import_succeeds": true,
+      "error": null,
+      "export_hash": null,
+      "import_hash": "c9b65d96dc160ba6",
+      "header_prefix": null
+    },
+    {
+      "case_id": "binary_export_roundtrip",
+      "source_format": "binary",
+      "triangle_count": 4,
+      "unique_vertex_count": 4,
+      "export_succeeds": true,
+      "import_succeeds": true,
+      "error": null,
+      "export_hash": "868acd3a4eaf17bc",
+      "import_hash": "868acd3a4eaf17bc",
+      "header_prefix": "vcad binary STL export"
+    },
+    {
+      "case_id": "truncated_binary_import",
+      "source_format": null,
+      "triangle_count": 0,
+      "unique_vertex_count": 0,
+      "export_succeeds": false,
+      "import_succeeds": false,
+      "error": "Invalid STL: expected at least 84 bytes, got 12",
+      "export_hash": null,
+      "import_hash": null,
+      "header_prefix": null
+    }
+  ],
+  "stl_contract_match": true,
+  "deterministic_replay_match": true,
+  "deterministic_signature": "1290c9a8f8fba596",
+  "parity_contracts": [
+    "binary STL export uses vcad header label and deterministic triangle byte ordering",
+    "STL import autodetects binary and ASCII formats with vcad-style parser rules",
+    "STL import deduplicates repeated per-face vertices deterministically",
+    "STL import/export parity fixtures replay deterministically"
+  ]
+}
