@@ -1,0 +1,61 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-010",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from": {
+    "scorecard_path": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+    "risk_register_path": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_risk_register.json",
+    "ci_manifest_path": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_ci_artifact_manifest.json"
+  },
+  "summary": {
+    "docs_match_rate": 0.03896103896103896,
+    "crates_match_rate": 0.12244897959183672,
+    "commands_match_rate": 0.08333333333333333,
+    "overall_match_rate": 0.07246376811594203,
+    "open_risks": 24,
+    "open_hard_blockers": 16
+  },
+  "profile_status": [
+    {
+      "profile_id": "parity_complete_v1",
+      "lane": "risk_register",
+      "pass": false
+    },
+    {
+      "profile_id": "parity_complete_v1",
+      "lane": "scorecard",
+      "pass": false
+    },
+    {
+      "profile_id": "phase_a_baseline_v1",
+      "lane": "risk_register",
+      "pass": true
+    },
+    {
+      "profile_id": "phase_a_baseline_v1",
+      "lane": "scorecard",
+      "pass": true
+    }
+  ],
+  "artifacts": {
+    "source_artifact_count": 9,
+    "artifact_ids": [
+      "fixtures_parity_fixture_corpus",
+      "openagents_capabilities_inventory",
+      "openagents_start_manifest",
+      "parity_dashboard",
+      "parity_risk_register",
+      "parity_scorecard",
+      "vcad_capabilities_inventory",
+      "vcad_openagents_gap_matrix",
+      "vcad_reference_manifest"
+    ]
+  },
+  "phase_status": "phase_a_baseline_complete",
+  "next_actions": [
+    "Execute VCAD-PARITY-011 through VCAD-PARITY-025 sequentially",
+    "Keep phase_a_baseline_v1 profile passing in scorecard and risk register lanes",
+    "Refresh parity dashboard after each closed parity issue"
+  ]
+}
