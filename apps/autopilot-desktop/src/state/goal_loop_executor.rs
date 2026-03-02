@@ -44,6 +44,7 @@ pub struct ActiveGoalLoopRun {
     pub goal_id: String,
     pub started_at_epoch_seconds: u64,
     pub initial_wallet_sats: u64,
+    pub recovered_from_restart: bool,
     pub phase: GoalLoopPhase,
     pub retries_used: u32,
     pub backoff_until_epoch_seconds: Option<u64>,
@@ -56,6 +57,7 @@ pub struct GoalLoopRunReceipt {
     pub goal_id: String,
     pub started_at_epoch_seconds: u64,
     pub finished_at_epoch_seconds: u64,
+    pub recovered_from_restart: bool,
     pub lifecycle_status: GoalLifecycleStatus,
     pub stop_reason: GoalLoopStopReason,
     pub attempts: Vec<GoalLoopAttemptRecord>,
@@ -78,17 +80,28 @@ impl Default for GoalLoopExecutorState {
 }
 
 impl GoalLoopExecutorState {
-    pub fn begin_run(&mut self, goal_id: &str, now_epoch_seconds: u64, initial_wallet_sats: u64) {
+    pub fn begin_run(
+        &mut self,
+        goal_id: &str,
+        now_epoch_seconds: u64,
+        initial_wallet_sats: u64,
+        recovered_from_restart: bool,
+    ) -> bool {
+        if self.active_run.is_some() {
+            return false;
+        }
         self.active_run = Some(ActiveGoalLoopRun {
             run_id: format!("goal-run-{goal_id}-{now_epoch_seconds}"),
             goal_id: goal_id.to_string(),
             started_at_epoch_seconds: now_epoch_seconds,
             initial_wallet_sats,
+            recovered_from_restart,
             phase: GoalLoopPhase::DispatchingTurn,
             retries_used: 0,
             backoff_until_epoch_seconds: None,
             attempts: Vec::new(),
         });
+        true
     }
 
     pub fn mark_attempt_submitted(&mut self, now_epoch_seconds: u64) {
@@ -163,6 +176,7 @@ impl GoalLoopExecutorState {
             goal_id: run.goal_id,
             started_at_epoch_seconds: run.started_at_epoch_seconds,
             finished_at_epoch_seconds: now_epoch_seconds,
+            recovered_from_restart: run.recovered_from_restart,
             lifecycle_status,
             stop_reason,
             attempts: run.attempts,
@@ -208,7 +222,7 @@ pub fn retry_backoff_seconds(policy: &GoalRetryPolicy, retries_used: u32) -> u64
 
 #[cfg(test)]
 mod tests {
-    use super::{retry_backoff_seconds, select_runnable_goal};
+    use super::{GoalLoopExecutorState, retry_backoff_seconds, select_runnable_goal};
     use crate::state::autopilot_goals::{
         GoalConstraints, GoalLifecycleStatus, GoalObjective, GoalRecord, GoalRetryPolicy,
         GoalScheduleConfig, GoalStopCondition,
@@ -232,6 +246,7 @@ mod tests {
             last_failure_reason: None,
             terminal_reason: None,
             last_receipt_id: None,
+            recovery_replay_pending: false,
         }
     }
 
@@ -276,5 +291,12 @@ mod tests {
         };
         assert_eq!(retry_backoff_seconds(&policy, 1), 7);
         assert_eq!(retry_backoff_seconds(&policy, 4), 7);
+    }
+
+    #[test]
+    fn begin_run_rejects_duplicate_concurrent_goal_run() {
+        let mut executor = GoalLoopExecutorState::default();
+        assert!(executor.begin_run("goal-a", 1_700_000_000, 1_000, false));
+        assert!(!executor.begin_run("goal-a", 1_700_000_001, 1_100, true));
     }
 }

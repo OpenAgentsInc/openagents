@@ -431,6 +431,9 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     if reducers::run_cad_demo_action(state, CadDemoPaneAction::Noop) {
         changed = true;
     }
+    if run_goal_restart_recovery(state) {
+        changed = true;
+    }
     if run_goal_interval_scheduler(state) {
         changed = true;
     }
@@ -462,6 +465,49 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     refresh_sync_health(state);
     mirror_ui_errors_to_console(state);
     changed
+}
+
+fn run_goal_restart_recovery(state: &mut crate::app_state::RenderState) -> bool {
+    if state.goal_restart_recovery_ran {
+        return false;
+    }
+    state.goal_restart_recovery_ran = true;
+
+    let now_epoch_seconds = current_epoch_seconds();
+    match state
+        .autopilot_goals
+        .recover_after_restart(now_epoch_seconds)
+    {
+        Ok(report) => {
+            let _ = state
+                .autopilot_goals
+                .reconcile_os_scheduler_adapters(now_epoch_seconds);
+            let recovered = report.recovered_running_goals.len();
+            let replay = report.replay_queued_goals.len();
+            let skipped = report.skipped_goals.len();
+            if recovered == 0 && replay == 0 && skipped == 0 {
+                return false;
+            }
+            state.autopilot_chat.record_turn_timeline_event(format!(
+                "goal restart recovery recovered_running={} replay={} skipped={}",
+                recovered, replay, skipped
+            ));
+            for (goal_id, missed_runs) in report.catchup_backlog {
+                state.autopilot_chat.record_turn_timeline_event(format!(
+                    "goal restart catchup goal={} missed_runs={}",
+                    goal_id, missed_runs
+                ));
+            }
+            true
+        }
+        Err(error) => {
+            state.autopilot_goals.last_error = Some(error.clone());
+            state
+                .autopilot_chat
+                .record_turn_timeline_event(format!("goal restart recovery error: {}", error));
+            true
+        }
+    }
 }
 
 fn run_goal_interval_scheduler(state: &mut crate::app_state::RenderState) -> bool {
@@ -510,12 +556,34 @@ fn run_autonomous_goal_loop(state: &mut crate::app_state::RenderState) -> bool {
             state.autopilot_goals.last_error = Some(error);
             return true;
         }
-        state
-            .goal_loop_executor
-            .begin_run(&goal_id, now_epoch_seconds, wallet_total_sats);
-        state
-            .autopilot_chat
-            .record_turn_timeline_event(format!("goal loop started goal={goal_id}"));
+        let recovered_from_restart =
+            match state.autopilot_goals.consume_recovery_replay_flag(&goal_id) {
+                Ok(value) => value,
+                Err(error) => {
+                    state.autopilot_goals.last_error = Some(error.clone());
+                    state.autopilot_chat.record_turn_timeline_event(format!(
+                        "goal loop recovery flag consume error goal={} error={}",
+                        goal_id, error
+                    ));
+                    false
+                }
+            };
+        if !state.goal_loop_executor.begin_run(
+            &goal_id,
+            now_epoch_seconds,
+            wallet_total_sats,
+            recovered_from_restart,
+        ) {
+            state.autopilot_chat.record_turn_timeline_event(format!(
+                "goal loop start suppressed goal={} reason=active_run_exists",
+                goal_id
+            ));
+            return false;
+        }
+        state.autopilot_chat.record_turn_timeline_event(format!(
+            "goal loop started goal={} recovered={}",
+            goal_id, recovered_from_restart
+        ));
         return true;
     }
 
@@ -917,6 +985,7 @@ fn finalize_goal_loop_run(
         successes: progress.successes,
         errors: progress.errors,
         notes: notes.clone(),
+        recovered_from_restart: active_run.recovered_from_restart,
     };
     if let Err(error) = state.autopilot_goals.record_receipt(receipt) {
         state.autopilot_goals.last_error = Some(error);
