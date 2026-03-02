@@ -2166,44 +2166,91 @@ pub(super) fn run_starter_jobs_action(
             true
         }
         StarterJobsPaneAction::CompleteSelected => {
-            match state.starter_jobs.complete_selected() {
-                Ok((job_id, payout_sats, payout_pointer)) => {
-                    state.spark_wallet.last_payment_id = Some(payout_pointer.clone());
-                    state.spark_wallet.last_action = Some(format!(
-                        "Starter payout settled for {job_id} ({payout_sats} sats)"
-                    ));
-                    state.provider_runtime.last_result =
-                        Some(format!("completed starter job {job_id}"));
-                    state
-                        .job_history
-                        .upsert_row(crate::app_state::JobHistoryReceiptRow {
-                            job_id,
-                            status: crate::app_state::JobHistoryStatus::Succeeded,
-                            completed_at_epoch_seconds: state
+            match state.starter_jobs.start_selected_execution() {
+                Ok((job_id, payout_sats)) => {
+                    let payout_pointer =
+                        resolve_wallet_settlement_pointer_for_starter_payout(state, payout_sats);
+                    let Some(payout_pointer) = payout_pointer else {
+                        state.starter_jobs.last_error = Some(format!(
+                            "Starter quest {} is running but payout is not wallet-confirmed yet",
+                            job_id
+                        ));
+                        state.starter_jobs.load_state = crate::app_state::PaneLoadState::Error;
+                        state.provider_runtime.last_result = Some(format!(
+                            "starter quest {} awaiting wallet settlement confirmation",
+                            job_id
+                        ));
+                        return true;
+                    };
+                    match state
+                        .starter_jobs
+                        .complete_selected_with_payment(&payout_pointer)
+                    {
+                        Ok((job_id, payout_sats, payout_pointer)) => {
+                            state.spark_wallet.last_payment_id = Some(payout_pointer.clone());
+                            state.spark_wallet.last_action = Some(format!(
+                                "Starter quest payout wallet-confirmed for {job_id} ({payout_sats} sats)"
+                            ));
+                            state.provider_runtime.last_result =
+                                Some(format!("completed starter quest {}", job_id));
+                            state
                                 .job_history
-                                .reference_epoch_seconds
-                                .saturating_add(state.job_history.rows.len() as u64 * 19),
-                            skill_scope_id: state
-                                .network_requests
-                                .submitted
-                                .first()
-                                .and_then(|request| request.skill_scope_id.clone()),
-                            skl_manifest_a: state.skl_lane.manifest_a.clone(),
-                            skl_manifest_event_id: state.skl_lane.manifest_event_id.clone(),
-                            sa_tick_result_event_id: state
-                                .sa_lane
-                                .last_tick_result_event_id
-                                .clone(),
-                            sa_trajectory_session_id: Some("traj:starter-job".to_string()),
-                            ac_envelope_event_id: state.ac_lane.envelope_event_id.clone(),
-                            ac_settlement_event_id: state.ac_lane.settlement_event_id.clone(),
-                            ac_default_event_id: None,
-                            payout_sats,
-                            result_hash: "sha256:starter-job".to_string(),
-                            payment_pointer: payout_pointer,
-                            failure_reason: None,
-                        });
-                    refresh_earnings_scoreboard(state, std::time::Instant::now());
+                                .upsert_row(crate::app_state::JobHistoryReceiptRow {
+                                    job_id: job_id.clone(),
+                                    status: crate::app_state::JobHistoryStatus::Succeeded,
+                                    completed_at_epoch_seconds: state
+                                        .job_history
+                                        .reference_epoch_seconds
+                                        .saturating_add(state.job_history.rows.len() as u64 * 19),
+                                    skill_scope_id: state
+                                        .network_requests
+                                        .submitted
+                                        .first()
+                                        .and_then(|request| request.skill_scope_id.clone()),
+                                    skl_manifest_a: state.skl_lane.manifest_a.clone(),
+                                    skl_manifest_event_id: state.skl_lane.manifest_event_id.clone(),
+                                    sa_tick_result_event_id: state
+                                        .sa_lane
+                                        .last_tick_result_event_id
+                                        .clone(),
+                                    sa_trajectory_session_id: Some(
+                                        "traj:starter-quest".to_string(),
+                                    ),
+                                    ac_envelope_event_id: state.ac_lane.envelope_event_id.clone(),
+                                    ac_settlement_event_id: state
+                                        .ac_lane
+                                        .settlement_event_id
+                                        .clone(),
+                                    ac_default_event_id: None,
+                                    payout_sats,
+                                    result_hash: "sha256:starter-quest-job".to_string(),
+                                    payment_pointer: payout_pointer.clone(),
+                                    failure_reason: None,
+                                });
+                            state
+                                .activity_feed
+                                .upsert_event(crate::app_state::ActivityEventRow {
+                                    event_id: format!(
+                                        "starter.quest.settlement:{}",
+                                        payout_pointer
+                                    ),
+                                    domain: crate::app_state::ActivityEventDomain::Wallet,
+                                    source_tag: "starter.quest".to_string(),
+                                    summary: "Starter quest payout wallet-confirmed".to_string(),
+                                    detail: format!(
+                                        "job={} payout_sats={} payment_pointer={}",
+                                        job_id, payout_sats, payout_pointer
+                                    ),
+                                    occurred_at_epoch_seconds: std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .map_or(0, |duration| duration.as_secs()),
+                                });
+                            refresh_earnings_scoreboard(state, std::time::Instant::now());
+                        }
+                        Err(error) => {
+                            state.starter_jobs.last_error = Some(error);
+                        }
+                    }
                 }
                 Err(error) => {
                     state.starter_jobs.last_error = Some(error);
@@ -2212,6 +2259,32 @@ pub(super) fn run_starter_jobs_action(
             true
         }
     }
+}
+
+fn resolve_wallet_settlement_pointer_for_starter_payout(
+    state: &crate::app_state::RenderState,
+    payout_sats: u64,
+) -> Option<String> {
+    state
+        .spark_wallet
+        .recent_payments
+        .iter()
+        .filter(|payment| {
+            payment.direction.eq_ignore_ascii_case("receive")
+                && payment.status.eq_ignore_ascii_case("succeeded")
+                && payment.amount_sats == payout_sats
+                && !payment.id.trim().is_empty()
+                && !is_synthetic_local_payment_pointer(payment.id.as_str())
+        })
+        .max_by(|left, right| left.timestamp.cmp(&right.timestamp))
+        .map(|payment| payment.id.clone())
+}
+
+fn is_synthetic_local_payment_pointer(pointer: &str) -> bool {
+    let normalized = pointer.trim().to_ascii_lowercase();
+    normalized.starts_with("pay:")
+        || normalized.starts_with("pending:")
+        || normalized.starts_with("pay-req-")
 }
 
 pub(super) fn run_activity_feed_action(
