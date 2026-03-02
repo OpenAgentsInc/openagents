@@ -61,6 +61,7 @@ Provide one deterministic orchestration entrypoint for the parity baseline lanes
 - STL import/export parity fixture check
 - GLB export parity fixture check
 - CAD CLI scaffold parity fixture check
+- CAD CLI commands parity fixture check
 - parity CI artifact manifest fixture check
 - parity risk register + blocker workflow check
 - baseline dashboard publication check

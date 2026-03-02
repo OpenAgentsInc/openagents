@@ -5,7 +5,7 @@
   "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
   "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
   "parity_check_entrypoint": "scripts/cad/parity_check.sh",
-  "source_artifact_count": 110,
+  "source_artifact_count": 112,
   "artifacts": [
     {
       "artifact_id": "assembly_acceptance_scenes_parity_manifest",
@@ -74,9 +74,15 @@
       "bytes": 3105
     },
     {
+      "artifact_id": "cad_cli_commands_parity_manifest",
+      "source_path": "crates/cad/parity/cad_cli_commands_parity_manifest.json",
+      "sha256": "a19df9045bc872163bd171f0c682c6b601e07238a5de4caec352e47f8b4fd14c",
+      "bytes": 4994
+    },
+    {
       "artifact_id": "cad_cli_scaffold_parity_manifest",
       "source_path": "crates/cad/parity/cad_cli_scaffold_parity_manifest.json",
-      "sha256": "5a3783fd5926619a4acb7883b26d476778d565ff2f96153a5d5e0657bf93fed0",
+      "sha256": "5dd2625e7a450960d0b832d451f47511175247037be1f2b5f0041ede214afd99",
       "bytes": 2067
     },
     {
@@ -240,6 +246,12 @@
       "source_path": "crates/cad/parity/fixtures/assembly_ui_selection_edit_vcad_reference.json",
       "sha256": "741469a2cca55db862e81bee864551719626bc022d0b08ce3cb06a5a7a01a092",
       "bytes": 2240
+    },
+    {
+      "artifact_id": "fixtures_cad_cli_commands_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/cad_cli_commands_vcad_reference.json",
+      "sha256": "b6dfac9e1006e7e62e49492b7bcbb77c62a5f5be2633e6a7cfe718ea3aa2b0a1",
+      "bytes": 1381
     },
     {
       "artifact_id": "fixtures_cad_cli_scaffold_vcad_reference",
@@ -484,8 +496,8 @@
     {
       "artifact_id": "parity_dashboard",
       "source_path": "crates/cad/parity/parity_dashboard.json",
-      "sha256": "1be3f862b78bf5b6753b258aa567c2c82d4f8f6e2c2bb6abea161add19091af7",
-      "bytes": 6595
+      "sha256": "53abd3c8f62d052e61eca2f61d7953b0bc23748c5fe2c6c8af43248aff8b890d",
+      "bytes": 6687
     },
     {
       "artifact_id": "parity_risk_register",

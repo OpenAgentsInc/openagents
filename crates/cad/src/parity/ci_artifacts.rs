@@ -9,7 +9,7 @@ use crate::parity::scorecard::ParityScorecard;
 
 pub const PARITY_CI_ARTIFACTS_ISSUE_ID: &str = "VCAD-PARITY-008";
 
-pub const PARITY_CI_SOURCE_PATHS: [&str; 110] = [
+pub const PARITY_CI_SOURCE_PATHS: [&str; 112] = [
     "crates/cad/parity/vcad_reference_manifest.json",
     "crates/cad/parity/openagents_start_manifest.json",
     "crates/cad/parity/vcad_capabilities_inventory.json",
@@ -87,6 +87,7 @@ pub const PARITY_CI_SOURCE_PATHS: [&str; 110] = [
     "crates/cad/parity/stl_import_export_parity_manifest.json",
     "crates/cad/parity/glb_export_parity_manifest.json",
     "crates/cad/parity/cad_cli_scaffold_parity_manifest.json",
+    "crates/cad/parity/cad_cli_commands_parity_manifest.json",
     "crates/cad/parity/sketch_loft_parity_manifest.json",
     "crates/cad/parity/sketch_profile_validity_parity_manifest.json",
     "crates/cad/parity/sketch_revolve_parity_manifest.json",
@@ -119,6 +120,7 @@ pub const PARITY_CI_SOURCE_PATHS: [&str; 110] = [
     "crates/cad/parity/fixtures/stl_import_export_vcad_reference.json",
     "crates/cad/parity/fixtures/glb_export_vcad_reference.json",
     "crates/cad/parity/fixtures/cad_cli_scaffold_vcad_reference.json",
+    "crates/cad/parity/fixtures/cad_cli_commands_vcad_reference.json",
     "crates/cad/parity/fixtures/parity_fixture_corpus.json",
 ];
 

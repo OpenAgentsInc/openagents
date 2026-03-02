@@ -79,6 +79,7 @@ LANE_LABELS=(
     "stl-import-export"
     "glb-export"
     "cad-cli-scaffold"
+    "cad-cli-commands"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -369,6 +370,9 @@ run_lane "glb-export" \
 
 run_lane "cad-cli-scaffold" \
     "$ROOT_DIR/scripts/cad/parity-cad-cli-scaffold-ci.sh"
+
+run_lane "cad-cli-commands" \
+    "$ROOT_DIR/scripts/cad/parity-cad-cli-commands-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
