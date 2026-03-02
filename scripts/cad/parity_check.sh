@@ -42,6 +42,7 @@ LANE_LABELS=(
     "sketch-iterative-lm"
     "sketch-jacobian-residual"
     "sketch-constraint-status"
+    "sketch-extrude"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -221,6 +222,9 @@ run_lane "sketch-jacobian-residual" \
 
 run_lane "sketch-constraint-status" \
     "$ROOT_DIR/scripts/cad/parity-sketch-constraint-status-ci.sh"
+
+run_lane "sketch-extrude" \
+    "$ROOT_DIR/scripts/cad/parity-sketch-extrude-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
