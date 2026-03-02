@@ -41,6 +41,7 @@ LANE_LABELS=(
     "sketch-constraint-enum"
     "sketch-iterative-lm"
     "sketch-jacobian-residual"
+    "sketch-constraint-status"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -217,6 +218,9 @@ run_lane "sketch-iterative-lm" \
 
 run_lane "sketch-jacobian-residual" \
     "$ROOT_DIR/scripts/cad/parity-sketch-jacobian-residual-ci.sh"
+
+run_lane "sketch-constraint-status" \
+    "$ROOT_DIR/scripts/cad/parity-sketch-constraint-status-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

@@ -225,6 +225,35 @@ impl CadSketchConstraint {
         }
     }
 
+    pub fn residual_component_count(&self) -> usize {
+        match self {
+            Self::Coincident { .. } => 2,
+            Self::Concentric { .. } => 2,
+            Self::Fixed { .. } => 2,
+            Self::Midpoint { .. } => 2,
+            Self::Symmetric { .. } => 2,
+            Self::PointOnLine { .. }
+            | Self::Parallel { .. }
+            | Self::Perpendicular { .. }
+            | Self::Horizontal { .. }
+            | Self::Vertical { .. }
+            | Self::Tangent { .. }
+            | Self::EqualLength { .. }
+            | Self::EqualRadius { .. }
+            | Self::PointOnCircle { .. }
+            | Self::LineThroughCenter { .. }
+            | Self::Distance { .. }
+            | Self::PointLineDistance { .. }
+            | Self::Angle { .. }
+            | Self::Radius { .. }
+            | Self::Length { .. }
+            | Self::HorizontalDistance { .. }
+            | Self::VerticalDistance { .. }
+            | Self::Diameter { .. }
+            | Self::Dimension { .. } => 1,
+        }
+    }
+
     pub fn validate(&self) -> CadResult<()> {
         validate_stable_id(self.id(), "constraint id")?;
         match self {

@@ -128,7 +128,7 @@ Major gaps to close:
 43. [x] VCAD-PARITY-043: Full constraint enum parity (geometric + dimensional).
 44. [x] VCAD-PARITY-044: Iterative LM solver parity (not one-pass MVP).
 45. [x] VCAD-PARITY-045: Jacobian/residual pipeline parity and diagnostics.
-46. [ ] VCAD-PARITY-046: Under/fully/over-constrained status parity semantics.
+46. [x] VCAD-PARITY-046: Under/fully/over-constrained status parity semantics.
 47. [ ] VCAD-PARITY-047: Extrude-from-sketch parity behaviors.
 48. [ ] VCAD-PARITY-048: Revolve-from-sketch parity (full + partial angles).
 49. [ ] VCAD-PARITY-049: Sweep-from-sketch parity.

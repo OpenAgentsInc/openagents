@@ -32,6 +32,7 @@ pub mod risk_register;
 pub mod scorecard;
 pub mod shell_feature_graph_parity;
 pub mod sketch_constraint_enum_parity;
+pub mod sketch_constraint_status_parity;
 pub mod sketch_entity_set_parity;
 pub mod sketch_iterative_lm_parity;
 pub mod sketch_jacobian_residual_parity;

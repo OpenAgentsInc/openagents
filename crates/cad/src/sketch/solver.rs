@@ -71,6 +71,24 @@ pub struct CadSketchLmPipelineSummary {
     pub constraint_component_counts: BTreeMap<String, usize>,
 }
 
+/// Constraint-status classification for sketch solvability semantics.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CadSketchConstraintStatus {
+    UnderConstrained,
+    FullyConstrained,
+    OverConstrained,
+}
+
+/// Deterministic DOF/status report for sketch constraint-state UX.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct CadSketchConstraintStatusReport {
+    pub status: CadSketchConstraintStatus,
+    pub degrees_of_freedom: i32,
+    pub parameter_count: usize,
+    pub constraint_equation_count: usize,
+}
+
 impl Default for CadSketchLmConfig {
     fn default() -> Self {
         Self {
@@ -466,6 +484,68 @@ impl CadSketchModel {
             jacobian_hash,
             constraint_component_counts,
         })
+    }
+
+    /// Calculate sketch degrees of freedom (DOF) using vcad parity semantics:
+    /// `DOF = parameter_count - constraint_equation_count`.
+    pub fn degrees_of_freedom(&self) -> CadResult<i32> {
+        self.validate()?;
+        let parameter_count = self.collect_anchor_bindings()?.len().saturating_mul(2);
+        let constraint_equation_count = self
+            .constraints
+            .values()
+            .map(CadSketchConstraint::residual_component_count)
+            .sum::<usize>();
+        let parameter_count_i32 =
+            i32::try_from(parameter_count).map_err(|_| CadError::EvalFailed {
+                reason: format!("parameter count exceeds i32 range: {parameter_count}"),
+            })?;
+        let constraint_count_i32 =
+            i32::try_from(constraint_equation_count).map_err(|_| CadError::EvalFailed {
+                reason: format!(
+                    "constraint equation count exceeds i32 range: {constraint_equation_count}"
+                ),
+            })?;
+        Ok(parameter_count_i32 - constraint_count_i32)
+    }
+
+    pub fn constraint_status(&self) -> CadResult<CadSketchConstraintStatus> {
+        let dof = self.degrees_of_freedom()?;
+        Ok(if dof < 0 {
+            CadSketchConstraintStatus::OverConstrained
+        } else if dof == 0 {
+            CadSketchConstraintStatus::FullyConstrained
+        } else {
+            CadSketchConstraintStatus::UnderConstrained
+        })
+    }
+
+    pub fn constraint_status_report(&self) -> CadResult<CadSketchConstraintStatusReport> {
+        let parameter_count = self.collect_anchor_bindings()?.len().saturating_mul(2);
+        let constraint_equation_count = self
+            .constraints
+            .values()
+            .map(CadSketchConstraint::residual_component_count)
+            .sum::<usize>();
+        let degrees_of_freedom = self.degrees_of_freedom()?;
+        Ok(CadSketchConstraintStatusReport {
+            status: self.constraint_status()?,
+            degrees_of_freedom,
+            parameter_count,
+            constraint_equation_count,
+        })
+    }
+
+    pub fn is_under_constrained(&self) -> CadResult<bool> {
+        Ok(self.constraint_status()? == CadSketchConstraintStatus::UnderConstrained)
+    }
+
+    pub fn is_fully_constrained(&self) -> CadResult<bool> {
+        Ok(self.constraint_status()? == CadSketchConstraintStatus::FullyConstrained)
+    }
+
+    pub fn is_over_constrained(&self) -> CadResult<bool> {
+        Ok(self.constraint_status()? == CadSketchConstraintStatus::OverConstrained)
     }
 
     /// Deterministic iterative LM-style solver pass over sketch constraints.
