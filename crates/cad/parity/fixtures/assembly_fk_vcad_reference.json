@@ -1,0 +1,131 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-061",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/crates/vcad-eval/src/kinematics.rs",
+  "expected_case_snapshots": [
+    {
+      "case_id": "cyclic_chain_visited_guard",
+      "world_transforms": [
+        {
+          "instance_id": "a-1",
+          "translation_mm": [
+            "0.000000",
+            "5.000000",
+            "0.000000"
+          ],
+          "rotation_deg": [
+            "0.000000",
+            "0.000000",
+            "0.000000"
+          ],
+          "scale": [
+            "1.000000",
+            "1.000000",
+            "1.000000"
+          ]
+        },
+        {
+          "instance_id": "b-1",
+          "translation_mm": [
+            "10.000000",
+            "5.000000",
+            "0.000000"
+          ],
+          "rotation_deg": [
+            "0.000000",
+            "0.000000",
+            "0.000000"
+          ],
+          "scale": [
+            "1.000000",
+            "1.000000",
+            "1.000000"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "joint_chain_compose",
+      "world_transforms": [
+        {
+          "instance_id": "arm-1",
+          "translation_mm": [
+            "100.000000",
+            "9.000000",
+            "0.000000"
+          ],
+          "rotation_deg": [
+            "0.000000",
+            "0.000000",
+            "90.000000"
+          ],
+          "scale": [
+            "1.000000",
+            "1.000000",
+            "1.000000"
+          ]
+        },
+        {
+          "instance_id": "base-1",
+          "translation_mm": [
+            "100.000000",
+            "0.000000",
+            "0.000000"
+          ],
+          "rotation_deg": [
+            "0.000000",
+            "0.000000",
+            "0.000000"
+          ],
+          "scale": [
+            "1.000000",
+            "1.000000",
+            "1.000000"
+          ]
+        },
+        {
+          "instance_id": "slider-1",
+          "translation_mm": [
+            "100.000000",
+            "34.000000",
+            "0.000000"
+          ],
+          "rotation_deg": [
+            "0.000000",
+            "0.000000",
+            "90.000000"
+          ],
+          "scale": [
+            "1.000000",
+            "1.000000",
+            "1.000000"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "world_grounded_parent_none",
+      "world_transforms": [
+        {
+          "instance_id": "free-1",
+          "translation_mm": [
+            "11.000000",
+            "3.000000",
+            "4.000000"
+          ],
+          "rotation_deg": [
+            "0.000000",
+            "0.000000",
+            "0.000000"
+          ],
+          "scale": [
+            "1.000000",
+            "1.000000",
+            "1.000000"
+          ]
+        }
+      ]
+    }
+  ]
+}

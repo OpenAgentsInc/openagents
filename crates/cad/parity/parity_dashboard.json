@@ -39,8 +39,9 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 66,
+    "source_artifact_count": 68,
     "artifact_ids": [
+      "assembly_fk_parity_manifest",
       "assembly_joint_cb_parity_manifest",
       "assembly_joint_frs_parity_manifest",
       "assembly_joint_limits_state_parity_manifest",
@@ -51,6 +52,7 @@
       "expanded_finishing_parity_manifest",
       "feature_op_hash_parity_manifest",
       "fillet_feature_graph_parity_manifest",
+      "fixtures_assembly_fk_vcad_reference",
       "fixtures_assembly_joint_cb_vcad_reference",
       "fixtures_assembly_joint_frs_vcad_reference",
       "fixtures_assembly_joint_limits_state_vcad_reference",
@@ -109,9 +111,9 @@
       "vcad_reference_manifest"
     ]
   },
-  "phase_status": "phase_e_joint_limits_state_complete",
+  "phase_status": "phase_e_fk_complete",
   "next_actions": [
-    "Execute VCAD-PARITY-061 through VCAD-PARITY-066 sequentially",
+    "Execute VCAD-PARITY-062 through VCAD-PARITY-066 sequentially",
     "Keep phase_a_baseline_v1 profile passing in scorecard and risk register lanes",
     "Refresh parity dashboard after each closed parity issue"
   ]
