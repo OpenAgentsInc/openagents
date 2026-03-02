@@ -7,8 +7,9 @@ mod transform;
 mod tests;
 
 pub use pattern::{
+    CircularPatternFeatureOp, CircularPatternFeatureResult, CircularPatternInstance,
     LinearPatternFeatureOp, LinearPatternFeatureResult, LinearPatternInstance,
-    evaluate_linear_pattern_feature,
+    evaluate_circular_pattern_feature, evaluate_linear_pattern_feature,
 };
 pub use placeholder::{
     FILLET_PLACEHOLDER_OPERATION_KEY, FilletPlaceholderFeatureOp, FilletPlaceholderFeatureResult,

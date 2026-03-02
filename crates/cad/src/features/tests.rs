@@ -1,10 +1,10 @@
 use super::primitives::evaluate_cut_hole_feature_with_boolean;
 use super::{
-    BoxFeatureOp, CutHoleFeatureOp, CylinderFeatureOp, FilletPlaceholderFeatureOp,
-    FilletPlaceholderKind, LinearPatternFeatureOp, TransformFeatureOp, compose_transform_sequence,
-    evaluate_box_feature, evaluate_cut_hole_feature, evaluate_cylinder_feature,
-    evaluate_fillet_placeholder_feature, evaluate_linear_pattern_feature,
-    evaluate_transform_feature,
+    BoxFeatureOp, CircularPatternFeatureOp, CutHoleFeatureOp, CylinderFeatureOp,
+    FilletPlaceholderFeatureOp, FilletPlaceholderKind, LinearPatternFeatureOp, TransformFeatureOp,
+    compose_transform_sequence, evaluate_box_feature, evaluate_circular_pattern_feature,
+    evaluate_cut_hole_feature, evaluate_cylinder_feature, evaluate_fillet_placeholder_feature,
+    evaluate_linear_pattern_feature, evaluate_transform_feature,
 };
 use crate::feature_graph::{FeatureGraph, FeatureNode};
 use crate::kernel::CadKernelAdapter;
@@ -600,6 +600,212 @@ fn linear_pattern_preserves_prefix_indices_when_count_increases() {
         &expanded.instances[..baseline.instances.len()],
         baseline.instances.as_slice()
     );
+}
+
+#[test]
+fn circular_pattern_positions_are_stable_and_match_quadrants() {
+    let mut params = ParameterStore::default();
+    params
+        .set(
+            "bolt_count",
+            ScalarValue {
+                value: 4.0,
+                unit: ScalarUnit::Unitless,
+            },
+        )
+        .expect("count should set");
+    params
+        .set(
+            "bolt_span_deg",
+            ScalarValue {
+                value: 360.0,
+                unit: ScalarUnit::Unitless,
+            },
+        )
+        .expect("span should set");
+    params
+        .set(
+            "bolt_radius_mm",
+            ScalarValue {
+                value: 10.0,
+                unit: ScalarUnit::Millimeter,
+            },
+        )
+        .expect("radius should set");
+
+    let op = CircularPatternFeatureOp {
+        feature_id: "feature.bolt_circle".to_string(),
+        source_feature_id: "feature.hole".to_string(),
+        count_param: "bolt_count".to_string(),
+        angle_deg_param: "bolt_span_deg".to_string(),
+        radius_param: "bolt_radius_mm".to_string(),
+        axis_origin_mm: [0.0, 0.0, 0.0],
+        axis_direction_xyz: [0.0, 0.0, 1.0],
+        start_index: 50,
+    };
+
+    let first =
+        evaluate_circular_pattern_feature(&op, &params, "hash-hole").expect("eval should pass");
+    let second =
+        evaluate_circular_pattern_feature(&op, &params, "hash-hole").expect("eval should pass");
+    assert_eq!(first, second);
+    assert_eq!(first.instances.len(), 4);
+    assert_eq!(first.instances[0].pattern_index, 50);
+    assert_eq!(first.instances[1].pattern_index, 51);
+    assert_eq!(first.instances[2].pattern_index, 52);
+    assert_eq!(first.instances[3].pattern_index, 53);
+
+    let expected = [
+        [0.0, 10.0, 0.0],
+        [-10.0, 0.0, 0.0],
+        [0.0, -10.0, 0.0],
+        [10.0, 0.0, 0.0],
+    ];
+    for (instance, expected_center) in first.instances.iter().zip(expected.iter()) {
+        assert!(
+            (instance.center_mm[0] - expected_center[0]).abs() < 1e-9
+                && (instance.center_mm[1] - expected_center[1]).abs() < 1e-9
+                && (instance.center_mm[2] - expected_center[2]).abs() < 1e-9,
+            "center mismatch: {:?} vs {:?}",
+            instance.center_mm,
+            expected_center
+        );
+    }
+}
+
+#[test]
+fn circular_pattern_rejects_non_integer_count() {
+    let mut params = ParameterStore::default();
+    params
+        .set(
+            "bolt_count",
+            ScalarValue {
+                value: 3.5,
+                unit: ScalarUnit::Unitless,
+            },
+        )
+        .expect("count should set");
+    params
+        .set(
+            "bolt_span_deg",
+            ScalarValue {
+                value: 360.0,
+                unit: ScalarUnit::Unitless,
+            },
+        )
+        .expect("span should set");
+    params
+        .set(
+            "bolt_radius_mm",
+            ScalarValue {
+                value: 10.0,
+                unit: ScalarUnit::Millimeter,
+            },
+        )
+        .expect("radius should set");
+    let op = CircularPatternFeatureOp {
+        feature_id: "feature.bolt_circle".to_string(),
+        source_feature_id: "feature.hole".to_string(),
+        count_param: "bolt_count".to_string(),
+        angle_deg_param: "bolt_span_deg".to_string(),
+        radius_param: "bolt_radius_mm".to_string(),
+        axis_origin_mm: [0.0, 0.0, 0.0],
+        axis_direction_xyz: [0.0, 0.0, 1.0],
+        start_index: 0,
+    };
+    let error = evaluate_circular_pattern_feature(&op, &params, "hash-hole")
+        .expect_err("fractional count must be rejected");
+    assert!(matches!(error, CadError::InvalidParameter { .. }));
+}
+
+#[test]
+fn circular_pattern_rejects_zero_axis_direction() {
+    let mut params = ParameterStore::default();
+    params
+        .set(
+            "bolt_count",
+            ScalarValue {
+                value: 4.0,
+                unit: ScalarUnit::Unitless,
+            },
+        )
+        .expect("count should set");
+    params
+        .set(
+            "bolt_span_deg",
+            ScalarValue {
+                value: 360.0,
+                unit: ScalarUnit::Unitless,
+            },
+        )
+        .expect("span should set");
+    params
+        .set(
+            "bolt_radius_mm",
+            ScalarValue {
+                value: 10.0,
+                unit: ScalarUnit::Millimeter,
+            },
+        )
+        .expect("radius should set");
+    let op = CircularPatternFeatureOp {
+        feature_id: "feature.bolt_circle".to_string(),
+        source_feature_id: "feature.hole".to_string(),
+        count_param: "bolt_count".to_string(),
+        angle_deg_param: "bolt_span_deg".to_string(),
+        radius_param: "bolt_radius_mm".to_string(),
+        axis_origin_mm: [0.0, 0.0, 0.0],
+        axis_direction_xyz: [0.0, 0.0, 0.0],
+        start_index: 0,
+    };
+    let error = evaluate_circular_pattern_feature(&op, &params, "hash-hole")
+        .expect_err("zero axis must be rejected");
+    assert!(matches!(error, CadError::InvalidPrimitive { .. }));
+}
+
+#[test]
+fn circular_pattern_rejects_negative_radius() {
+    let mut params = ParameterStore::default();
+    params
+        .set(
+            "bolt_count",
+            ScalarValue {
+                value: 4.0,
+                unit: ScalarUnit::Unitless,
+            },
+        )
+        .expect("count should set");
+    params
+        .set(
+            "bolt_span_deg",
+            ScalarValue {
+                value: 360.0,
+                unit: ScalarUnit::Unitless,
+            },
+        )
+        .expect("span should set");
+    params
+        .set(
+            "bolt_radius_mm",
+            ScalarValue {
+                value: -1.0,
+                unit: ScalarUnit::Millimeter,
+            },
+        )
+        .expect("radius should set");
+    let op = CircularPatternFeatureOp {
+        feature_id: "feature.bolt_circle".to_string(),
+        source_feature_id: "feature.hole".to_string(),
+        count_param: "bolt_count".to_string(),
+        angle_deg_param: "bolt_span_deg".to_string(),
+        radius_param: "bolt_radius_mm".to_string(),
+        axis_origin_mm: [0.0, 0.0, 0.0],
+        axis_direction_xyz: [0.0, 0.0, 1.0],
+        start_index: 0,
+    };
+    let error = evaluate_circular_pattern_feature(&op, &params, "hash-hole")
+        .expect_err("negative radius must be rejected");
+    assert!(matches!(error, CadError::InvalidParameter { .. }));
 }
 
 #[test]
