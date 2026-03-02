@@ -110,6 +110,14 @@ fn sync_agent_pane_snapshots(state: &mut RenderState) {
     if state.trajectory_audit.active_session_id.is_some() {
         state.trajectory_audit.load_state = PaneLoadState::Ready;
     }
+    if let Some(last_transfer) = state.stable_sats_simulation.transfer_ledger.last() {
+        state.trajectory_audit.treasury_event_ref = Some(last_transfer.transfer_ref.clone());
+        state.trajectory_audit.treasury_event_summary =
+            Some(render_treasury_transfer_summary(last_transfer));
+    } else {
+        state.trajectory_audit.treasury_event_ref = None;
+        state.trajectory_audit.treasury_event_summary = None;
+    }
 }
 
 pub(super) fn run_agent_profile_state_action(
@@ -429,6 +437,11 @@ pub(super) fn refresh_goal_profile_state(state: &mut RenderState) -> bool {
             .agent_profile_state
             .selected_goal_receipt_summary
             .clone(),
+        state.agent_profile_state.treasury_wallet_projection_count,
+        state
+            .agent_profile_state
+            .treasury_wallet_projection_summary
+            .clone(),
     );
     let active_count = state.autopilot_goals.document.active_goals.len();
     let historical_count = state.autopilot_goals.document.historical_goals.len();
@@ -437,6 +450,18 @@ pub(super) fn refresh_goal_profile_state(state: &mut RenderState) -> bool {
         "Active: {} | Historical: {} | Receipts: {}",
         active_count, historical_count, receipt_count
     );
+    let (wallet_projection_count, wallet_projection_summary) =
+        treasury_wallet_projection(state).unwrap_or_else(|| (0, "n/a".to_string()));
+    state.agent_profile_state.treasury_wallet_projection_count = wallet_projection_count;
+    state.agent_profile_state.treasury_wallet_projection_summary = wallet_projection_summary;
+    if let Some(last_transfer) = state.stable_sats_simulation.transfer_ledger.last() {
+        state.trajectory_audit.treasury_event_ref = Some(last_transfer.transfer_ref.clone());
+        state.trajectory_audit.treasury_event_summary =
+            Some(render_treasury_transfer_summary(last_transfer));
+    } else {
+        state.trajectory_audit.treasury_event_ref = None;
+        state.trajectory_audit.treasury_event_summary = None;
+    }
 
     let selected_goal_id = selected_goal_id(state);
     state.agent_profile_state.selected_goal_id = selected_goal_id.clone();
@@ -459,6 +484,11 @@ pub(super) fn refresh_goal_profile_state(state: &mut RenderState) -> bool {
                 state
                     .agent_profile_state
                     .selected_goal_receipt_summary
+                    .clone(),
+                state.agent_profile_state.treasury_wallet_projection_count,
+                state
+                    .agent_profile_state
+                    .treasury_wallet_projection_summary
                     .clone(),
             );
     };
@@ -540,6 +570,11 @@ pub(super) fn refresh_goal_profile_state(state: &mut RenderState) -> bool {
             state
                 .agent_profile_state
                 .selected_goal_receipt_summary
+                .clone(),
+            state.agent_profile_state.treasury_wallet_projection_count,
+            state
+                .agent_profile_state
+                .treasury_wallet_projection_summary
                 .clone(),
         )
 }
@@ -935,10 +970,17 @@ pub(super) fn run_trajectory_audit_action(
     match action {
         TrajectoryAuditPaneAction::OpenSession => {
             let session = state
-                .sa_lane
-                .last_tick_request_event_id
+                .trajectory_audit
+                .treasury_event_ref
                 .as_deref()
-                .map(|event| format!("traj:{event}"))
+                .map(|event| format!("traj:treasury:{event}"))
+                .or_else(|| {
+                    state
+                        .sa_lane
+                        .last_tick_request_event_id
+                        .as_deref()
+                        .map(|event| format!("traj:{event}"))
+                })
                 .unwrap_or_else(|| format!("traj:manual:{}", state.sa_lane.tick_count + 1));
             state.trajectory_audit.active_session_id = Some(session.clone());
             state.trajectory_audit.last_error = None;
@@ -981,5 +1023,111 @@ pub(super) fn run_trajectory_audit_action(
                 Some("Verified trajectory hash from SA tick context".to_string());
             true
         }
+    }
+}
+
+fn treasury_wallet_projection(state: &RenderState) -> Option<(usize, String)> {
+    let wallets = state.stable_sats_simulation.agents.as_slice();
+    if wallets.is_empty() {
+        return None;
+    }
+    let summary = wallets
+        .iter()
+        .map(|wallet| {
+            format!(
+                "{}({}): {} sats {}",
+                wallet.agent_name,
+                wallet.owner_kind.label(),
+                wallet.btc_balance_sats,
+                format_usd_cents(wallet.usd_balance_cents)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" | ");
+    Some((wallets.len(), summary))
+}
+
+fn render_treasury_transfer_summary(
+    transfer: &crate::app_state::StableSatsTransferLedgerEntry,
+) -> String {
+    let amount = match transfer.asset {
+        crate::app_state::StableSatsTransferAsset::BtcSats => {
+            format!("{} sats", transfer.amount)
+        }
+        crate::app_state::StableSatsTransferAsset::UsdCents => {
+            format_usd_cents(transfer.amount)
+        }
+    };
+    let fee = match transfer.asset {
+        crate::app_state::StableSatsTransferAsset::BtcSats => {
+            format!("{} sats", transfer.effective_fee)
+        }
+        crate::app_state::StableSatsTransferAsset::UsdCents => {
+            format_usd_cents(transfer.effective_fee)
+        }
+    };
+    format!(
+        "{} {} {} {} -> {} fee={} [{}]",
+        transfer.status.label(),
+        transfer.asset.label(),
+        amount,
+        transfer.from_wallet,
+        transfer.to_wallet,
+        fee,
+        transfer.transfer_ref
+    )
+}
+
+fn format_usd_cents(usd_cents: u64) -> String {
+    format!("${}.{:02}", usd_cents / 100, usd_cents % 100)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::render_treasury_transfer_summary;
+    use crate::app_state::{
+        StableSatsTransferAsset, StableSatsTransferLedgerEntry, StableSatsTransferStatus,
+    };
+
+    #[test]
+    fn renders_btc_treasury_transfer_summary() {
+        let transfer = StableSatsTransferLedgerEntry {
+            seq: 1,
+            transfer_ref: "blink:live:transfer:0001".to_string(),
+            from_wallet: "autopilot-user:BTC".to_string(),
+            to_wallet: "sa-wallet-1:USD".to_string(),
+            asset: StableSatsTransferAsset::BtcSats,
+            amount: 500,
+            effective_fee: 1,
+            status: StableSatsTransferStatus::Settled,
+            summary: "test".to_string(),
+            occurred_at_epoch_seconds: 1_761_922_000,
+        };
+
+        let rendered = render_treasury_transfer_summary(&transfer);
+        assert!(rendered.contains("settled BTC 500 sats"));
+        assert!(rendered.contains("fee=1 sats"));
+        assert!(rendered.contains("blink:live:transfer:0001"));
+    }
+
+    #[test]
+    fn renders_usd_treasury_transfer_summary() {
+        let transfer = StableSatsTransferLedgerEntry {
+            seq: 2,
+            transfer_ref: "blink:live:transfer:0002".to_string(),
+            from_wallet: "sa-wallet-2:USD".to_string(),
+            to_wallet: "autopilot-user:BTC".to_string(),
+            asset: StableSatsTransferAsset::UsdCents,
+            amount: 135,
+            effective_fee: 2,
+            status: StableSatsTransferStatus::Settled,
+            summary: "test".to_string(),
+            occurred_at_epoch_seconds: 1_761_922_001,
+        };
+
+        let rendered = render_treasury_transfer_summary(&transfer);
+        assert!(rendered.contains("settled USD $1.35"));
+        assert!(rendered.contains("fee=$0.02"));
+        assert!(rendered.contains("blink:live:transfer:0002"));
     }
 }

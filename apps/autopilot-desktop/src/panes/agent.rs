@@ -110,6 +110,20 @@ pub fn paint_agent_profile_state_pane(
         paint,
         content_bounds.origin.x + 12.0,
         y,
+        "Treasury wallets",
+        &pane_state.treasury_wallet_projection_count.to_string(),
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Treasury projection",
+        &pane_state.treasury_wallet_projection_summary,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
         "39200 profile",
         pane_state.profile_event_id.as_deref().unwrap_or("n/a"),
     );
@@ -383,6 +397,20 @@ pub fn paint_trajectory_audit_pane(
         y,
         "Step filter",
         &pane_state.step_filter,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Treasury ref",
+        pane_state.treasury_event_ref.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Treasury event",
+        pane_state.treasury_event_summary.as_deref().unwrap_or("n/a"),
     );
     let _ = paint_label_line(
         paint,
