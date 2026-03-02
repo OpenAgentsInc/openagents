@@ -60,6 +60,7 @@ LANE_LABELS=(
     "assembly-ground-delete"
     "assembly-ui-selection-edit"
     "assembly-serialization-replay"
+    "assembly-acceptance-scenes"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -293,6 +294,9 @@ run_lane "assembly-ui-selection-edit" \
 
 run_lane "assembly-serialization-replay" \
     "$ROOT_DIR/scripts/cad/parity-assembly-serialization-replay-ci.sh"
+
+run_lane "assembly-acceptance-scenes" \
+    "$ROOT_DIR/scripts/cad/parity-assembly-acceptance-scenes-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

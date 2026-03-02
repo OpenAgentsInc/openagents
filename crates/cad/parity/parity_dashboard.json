@@ -39,8 +39,9 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 74,
+    "source_artifact_count": 76,
     "artifact_ids": [
+      "assembly_acceptance_scenes_parity_manifest",
       "assembly_fk_parity_manifest",
       "assembly_ground_delete_parity_manifest",
       "assembly_joint_cb_parity_manifest",
@@ -55,6 +56,7 @@
       "expanded_finishing_parity_manifest",
       "feature_op_hash_parity_manifest",
       "fillet_feature_graph_parity_manifest",
+      "fixtures_assembly_acceptance_scenes_vcad_reference",
       "fixtures_assembly_fk_vcad_reference",
       "fixtures_assembly_ground_delete_vcad_reference",
       "fixtures_assembly_joint_cb_vcad_reference",
@@ -117,9 +119,9 @@
       "vcad_reference_manifest"
     ]
   },
-  "phase_status": "phase_e_serialization_replay_complete",
+  "phase_status": "phase_e_acceptance_scenes_complete",
   "next_actions": [
-    "Execute VCAD-PARITY-065 through VCAD-PARITY-066 sequentially",
+    "Execute VCAD-PARITY-066 sequentially",
     "Keep phase_a_baseline_v1 profile passing in scorecard and risk register lanes",
     "Refresh parity dashboard after each closed parity issue"
   ]

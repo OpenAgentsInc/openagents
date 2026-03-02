@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
@@ -325,6 +325,21 @@ pub struct CadInstanceDeletionSummary {
     pub cleared_ground: bool,
 }
 
+/// Deterministic acceptance report for an assembly scene fixture.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CadAssemblyAcceptanceSceneReport {
+    pub accepted: bool,
+    pub grounded_instance_id: Option<String>,
+    pub invalid_ground_instance_id: Option<String>,
+    pub contains_joint_cycle: bool,
+    pub instance_ids: Vec<String>,
+    pub joint_ids: Vec<String>,
+    pub missing_part_def_instance_ids: Vec<String>,
+    pub missing_joint_child_instance_ids: Vec<String>,
+    pub missing_joint_parent_instance_ids: Vec<String>,
+    pub fk_resolved_instance_ids: Vec<String>,
+}
+
 /// Assembly pane selection/editing state used by UI layers.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct CadAssemblyUiState {
@@ -474,6 +489,77 @@ impl CadAssemblySchema {
         CadResolvedPartInstanceSet {
             resolved_instances,
             unresolved_instance_ids,
+        }
+    }
+
+    pub fn acceptance_scene_report(&self) -> CadAssemblyAcceptanceSceneReport {
+        let mut instance_ids: Vec<String> = self
+            .instances
+            .iter()
+            .map(|instance| instance.id.clone())
+            .collect();
+        instance_ids.sort();
+        instance_ids.dedup();
+        let instance_id_set: BTreeSet<String> = instance_ids.iter().cloned().collect();
+
+        let mut joint_ids: Vec<String> = self.joints.iter().map(|joint| joint.id.clone()).collect();
+        joint_ids.sort();
+        joint_ids.dedup();
+
+        let mut missing_part_def_instance_ids: Vec<String> = self
+            .instances
+            .iter()
+            .filter(|instance| !self.part_defs.contains_key(&instance.part_def_id))
+            .map(|instance| instance.id.clone())
+            .collect();
+        missing_part_def_instance_ids.sort();
+        missing_part_def_instance_ids.dedup();
+
+        let mut missing_joint_child_instance_ids = BTreeSet::new();
+        let mut missing_joint_parent_instance_ids = BTreeSet::new();
+        for joint in &self.joints {
+            if !instance_id_set.contains(&joint.child_instance_id) {
+                missing_joint_child_instance_ids.insert(joint.child_instance_id.clone());
+            }
+            if let Some(parent_id) = joint.parent_instance_id.as_deref()
+                && !instance_id_set.contains(parent_id)
+            {
+                missing_joint_parent_instance_ids.insert(parent_id.to_string());
+            }
+        }
+
+        let invalid_ground_instance_id = self
+            .ground_instance_id
+            .clone()
+            .filter(|ground_id| !instance_id_set.contains(ground_id));
+        let contains_joint_cycle = joint_cycle_detected(&self.joints, &instance_id_set);
+
+        let fk_world = self.solve_forward_kinematics();
+        let mut fk_resolved_instance_ids: Vec<String> = fk_world.keys().cloned().collect();
+        fk_resolved_instance_ids.sort();
+        fk_resolved_instance_ids.dedup();
+
+        let accepted = invalid_ground_instance_id.is_none()
+            && !contains_joint_cycle
+            && missing_part_def_instance_ids.is_empty()
+            && missing_joint_child_instance_ids.is_empty()
+            && missing_joint_parent_instance_ids.is_empty();
+
+        CadAssemblyAcceptanceSceneReport {
+            accepted,
+            grounded_instance_id: self.ground_instance_id.clone(),
+            invalid_ground_instance_id,
+            contains_joint_cycle,
+            instance_ids,
+            joint_ids,
+            missing_part_def_instance_ids,
+            missing_joint_child_instance_ids: missing_joint_child_instance_ids
+                .into_iter()
+                .collect(),
+            missing_joint_parent_instance_ids: missing_joint_parent_instance_ids
+                .into_iter()
+                .collect(),
+            fk_resolved_instance_ids,
         }
     }
 
@@ -790,6 +876,67 @@ impl CadAssemblyUiState {
             self.selected_joint_id = None;
         }
     }
+}
+
+fn joint_cycle_detected(
+    joints: &[CadAssemblyJoint],
+    known_instance_ids: &BTreeSet<String>,
+) -> bool {
+    let mut adjacency: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for joint in joints {
+        let Some(parent_id) = joint.parent_instance_id.as_deref() else {
+            continue;
+        };
+        if !known_instance_ids.contains(parent_id)
+            || !known_instance_ids.contains(&joint.child_instance_id)
+        {
+            continue;
+        }
+        adjacency
+            .entry(parent_id.to_string())
+            .or_default()
+            .push(joint.child_instance_id.clone());
+    }
+
+    for children in adjacency.values_mut() {
+        children.sort();
+        children.dedup();
+    }
+
+    let mut visiting = BTreeSet::new();
+    let mut visited = BTreeSet::new();
+    for node in adjacency.keys() {
+        if detect_cycle_depth_first(node, &adjacency, &mut visiting, &mut visited) {
+            return true;
+        }
+    }
+    false
+}
+
+fn detect_cycle_depth_first(
+    node: &str,
+    adjacency: &BTreeMap<String, Vec<String>>,
+    visiting: &mut BTreeSet<String>,
+    visited: &mut BTreeSet<String>,
+) -> bool {
+    if visited.contains(node) {
+        return false;
+    }
+    if !visiting.insert(node.to_string()) {
+        return true;
+    }
+
+    if let Some(children) = adjacency.get(node) {
+        for child in children {
+            if detect_cycle_depth_first(child, adjacency, visiting, visited) {
+                return true;
+            }
+        }
+    }
+
+    visiting.remove(node);
+    visited.insert(node.to_string());
+    false
 }
 
 fn normalize_axis_or_z(axis: Vec3) -> Vec3 {
@@ -1770,6 +1917,136 @@ mod tests {
             instance_error
                 .to_string()
                 .contains("unknown instance: missing")
+        );
+    }
+
+    #[test]
+    fn acceptance_scene_report_accepts_valid_world_grounded_scene() {
+        let schema = CadAssemblySchema {
+            part_defs: BTreeMap::from([(
+                "carriage".to_string(),
+                CadPartDef {
+                    id: "carriage".to_string(),
+                    name: Some("Carriage".to_string()),
+                    root: 1,
+                    default_material: Some("steel".to_string()),
+                },
+            )]),
+            instances: vec![CadPartInstance {
+                id: "carriage-1".to_string(),
+                part_def_id: "carriage".to_string(),
+                name: Some("Carriage".to_string()),
+                transform: Some(CadTransform3D::identity()),
+                material: None,
+            }],
+            joints: vec![CadAssemblyJoint {
+                id: "joint.world_slider".to_string(),
+                name: Some("World Slider".to_string()),
+                parent_instance_id: None,
+                child_instance_id: "carriage-1".to_string(),
+                parent_anchor: Vec3::new(0.0, 0.0, 0.0),
+                child_anchor: Vec3::new(0.0, 0.0, 0.0),
+                kind: CadJointKind::Slider {
+                    axis: Vec3::new(1.0, 0.0, 0.0),
+                    limits: Some((0.0, 100.0)),
+                },
+                state: 25.0,
+            }],
+            ground_instance_id: None,
+        };
+
+        let report = schema.acceptance_scene_report();
+        assert!(report.accepted);
+        assert!(!report.contains_joint_cycle);
+        assert_eq!(report.invalid_ground_instance_id, None);
+        assert_eq!(report.missing_part_def_instance_ids, Vec::<String>::new());
+        assert_eq!(
+            report.fk_resolved_instance_ids,
+            vec!["carriage-1".to_string()]
+        );
+    }
+
+    #[test]
+    fn acceptance_scene_report_flags_missing_references_and_joint_cycles() {
+        let schema = CadAssemblySchema {
+            part_defs: BTreeMap::from([(
+                "base".to_string(),
+                CadPartDef {
+                    id: "base".to_string(),
+                    name: Some("Base".to_string()),
+                    root: 1,
+                    default_material: None,
+                },
+            )]),
+            instances: vec![
+                CadPartInstance {
+                    id: "a-1".to_string(),
+                    part_def_id: "base".to_string(),
+                    name: None,
+                    transform: None,
+                    material: None,
+                },
+                CadPartInstance {
+                    id: "b-1".to_string(),
+                    part_def_id: "missing-def".to_string(),
+                    name: None,
+                    transform: None,
+                    material: None,
+                },
+            ],
+            joints: vec![
+                CadAssemblyJoint {
+                    id: "joint.a_to_b".to_string(),
+                    name: None,
+                    parent_instance_id: Some("a-1".to_string()),
+                    child_instance_id: "b-1".to_string(),
+                    parent_anchor: Vec3::new(0.0, 0.0, 0.0),
+                    child_anchor: Vec3::new(0.0, 0.0, 0.0),
+                    kind: CadJointKind::Fixed,
+                    state: 0.0,
+                },
+                CadAssemblyJoint {
+                    id: "joint.b_to_a".to_string(),
+                    name: None,
+                    parent_instance_id: Some("b-1".to_string()),
+                    child_instance_id: "a-1".to_string(),
+                    parent_anchor: Vec3::new(0.0, 0.0, 0.0),
+                    child_anchor: Vec3::new(0.0, 0.0, 0.0),
+                    kind: CadJointKind::Fixed,
+                    state: 0.0,
+                },
+                CadAssemblyJoint {
+                    id: "joint.missing_refs".to_string(),
+                    name: None,
+                    parent_instance_id: Some("missing-parent".to_string()),
+                    child_instance_id: "missing-child".to_string(),
+                    parent_anchor: Vec3::new(0.0, 0.0, 0.0),
+                    child_anchor: Vec3::new(0.0, 0.0, 0.0),
+                    kind: CadJointKind::Fixed,
+                    state: 0.0,
+                },
+            ],
+            ground_instance_id: Some("missing-ground".to_string()),
+        };
+
+        let report = schema.acceptance_scene_report();
+        assert!(!report.accepted);
+        assert!(report.contains_joint_cycle);
+        assert_eq!(
+            report.invalid_ground_instance_id,
+            Some("missing-ground".to_string())
+        );
+        assert_eq!(
+            report.missing_part_def_instance_ids,
+            vec!["b-1".to_string()]
+        );
+        assert_eq!(
+            report.missing_joint_child_instance_ids,
+            vec!["missing-child".to_string()]
+        );
+        assert_eq!(
+            report.missing_joint_parent_instance_ids,
+            vec!["missing-parent".to_string()]
         );
     }
 
