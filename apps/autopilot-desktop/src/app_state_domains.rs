@@ -239,6 +239,8 @@ pub struct AgentProfileStatePaneState {
     pub selected_goal_attempts: u32,
     pub selected_goal_selected_skills: String,
     pub selected_goal_receipt_summary: String,
+    pub treasury_wallet_projection_count: usize,
+    pub treasury_wallet_projection_summary: String,
     pub profile_event_id: Option<String>,
     pub state_event_id: Option<String>,
     pub goals_event_id: Option<String>,
@@ -258,6 +260,8 @@ impl Default for AgentProfileStatePaneState {
             selected_goal_attempts: 0,
             selected_goal_selected_skills: "n/a".to_string(),
             selected_goal_receipt_summary: "n/a".to_string(),
+            treasury_wallet_projection_count: 0,
+            treasury_wallet_projection_summary: "n/a".to_string(),
             profile_event_id: None,
             state_event_id: None,
             goals_event_id: None,
@@ -332,6 +336,8 @@ pub struct TrajectoryAuditPaneState {
     pub active_session_id: Option<String>,
     pub verified_hash: Option<String>,
     pub step_filter: String,
+    pub treasury_event_ref: Option<String>,
+    pub treasury_event_summary: Option<String>,
 }
 
 impl Default for TrajectoryAuditPaneState {
@@ -343,6 +349,8 @@ impl Default for TrajectoryAuditPaneState {
             active_session_id: None,
             verified_hash: None,
             step_filter: "all".to_string(),
+            treasury_event_ref: None,
+            treasury_event_summary: None,
         }
     }
 }
