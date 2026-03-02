@@ -38,8 +38,11 @@ fn parity_dashboard_fixture_is_well_formed() {
     let dashboard: ParityDashboard = load_json(&path);
     assert_eq!(dashboard.manifest_version, 1);
     assert_eq!(dashboard.issue_id, PARITY_DASHBOARD_ISSUE_ID);
-    assert_eq!(dashboard.phase_status, "phase_e_joint_cb_complete");
-    assert_eq!(dashboard.artifacts.source_artifact_count, 64);
+    assert_eq!(
+        dashboard.phase_status,
+        "phase_e_joint_limits_state_complete"
+    );
+    assert_eq!(dashboard.artifacts.source_artifact_count, 66);
     assert!(dashboard.summary.overall_match_rate > 0.0);
 }
 

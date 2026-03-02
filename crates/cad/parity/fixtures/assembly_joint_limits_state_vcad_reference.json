@@ -1,0 +1,27 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-060",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/crates/vcad-kernel-physics/src/joints.rs",
+  "expected_dof_by_joint_type": {
+    "Fixed": 0,
+    "Revolute": 1,
+    "Slider": 1,
+    "Cylindrical": 1,
+    "Ball": 3
+  },
+  "expected_state_unit_by_joint_type": {
+    "Fixed": "fixed",
+    "Revolute": "deg",
+    "Slider": "mm",
+    "Cylindrical": "deg",
+    "Ball": "deg"
+  },
+  "expected_case_ids": [
+    "revolute.limit_clamp",
+    "slider.limit_clamp",
+    "fixed.force_zero",
+    "cylindrical.rad_conversion",
+    "ball.rad_conversion"
+  ]
+}

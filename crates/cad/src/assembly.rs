@@ -130,7 +130,97 @@ pub enum CadJointMotion {
     },
 }
 
+/// Joint state semantic resolution for deterministic state updates.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CadJointStateSemantics {
+    pub requested_state: f64,
+    pub effective_state: f64,
+    pub limits: Option<CadJointLimits>,
+    pub was_clamped: bool,
+    pub physics_state: f64,
+    pub dof: usize,
+    pub state_unit: String,
+}
+
 impl CadAssemblyJoint {
+    pub fn joint_dof(&self) -> usize {
+        match self.kind {
+            CadJointKind::Fixed => 0,
+            CadJointKind::Revolute { .. }
+            | CadJointKind::Slider { .. }
+            | CadJointKind::Cylindrical { .. } => 1,
+            CadJointKind::Ball => 3,
+        }
+    }
+
+    pub fn joint_limits(&self) -> Option<CadJointLimits> {
+        match self.kind {
+            CadJointKind::Revolute { limits, .. } | CadJointKind::Slider { limits, .. } => limits,
+            CadJointKind::Fixed | CadJointKind::Cylindrical { .. } | CadJointKind::Ball => None,
+        }
+    }
+
+    pub fn convert_state_to_physics_units(&self, state: f64) -> f64 {
+        match self.kind {
+            CadJointKind::Revolute { .. }
+            | CadJointKind::Cylindrical { .. }
+            | CadJointKind::Ball => state.to_radians(),
+            CadJointKind::Slider { .. } => state / 1000.0,
+            CadJointKind::Fixed => 0.0,
+        }
+    }
+
+    pub fn convert_state_from_physics_units(&self, physics_state: f64) -> f64 {
+        match self.kind {
+            CadJointKind::Revolute { .. }
+            | CadJointKind::Cylindrical { .. }
+            | CadJointKind::Ball => physics_state.to_degrees(),
+            CadJointKind::Slider { .. } => physics_state * 1000.0,
+            CadJointKind::Fixed => 0.0,
+        }
+    }
+
+    pub fn resolve_state_semantics(&self, requested_state: f64) -> CadJointStateSemantics {
+        let limits = self.joint_limits().map(normalize_limits);
+        let unclamped_state = match self.kind {
+            CadJointKind::Fixed => 0.0,
+            CadJointKind::Revolute { .. }
+            | CadJointKind::Slider { .. }
+            | CadJointKind::Cylindrical { .. }
+            | CadJointKind::Ball => requested_state,
+        };
+        let effective_state = limits
+            .map(|(lower, upper)| unclamped_state.clamp(lower, upper))
+            .unwrap_or(unclamped_state);
+        let was_clamped = (effective_state - unclamped_state).abs() > 1e-12;
+
+        CadJointStateSemantics {
+            requested_state,
+            effective_state,
+            limits,
+            was_clamped,
+            physics_state: self.convert_state_to_physics_units(effective_state),
+            dof: self.joint_dof(),
+            state_unit: self.state_unit_label().to_string(),
+        }
+    }
+
+    pub fn set_state_with_limits(&mut self, requested_state: f64) -> CadJointStateSemantics {
+        let semantics = self.resolve_state_semantics(requested_state);
+        self.state = semantics.effective_state;
+        semantics
+    }
+
+    fn state_unit_label(&self) -> &'static str {
+        match self.kind {
+            CadJointKind::Slider { .. } => "mm",
+            CadJointKind::Fixed => "fixed",
+            CadJointKind::Revolute { .. }
+            | CadJointKind::Cylindrical { .. }
+            | CadJointKind::Ball => "deg",
+        }
+    }
+
     pub fn solve_motion(&self) -> CadJointMotion {
         let anchor_delta = vec3_sub(self.parent_anchor, self.child_anchor);
         match &self.kind {
@@ -423,6 +513,15 @@ fn clean_scalar(value: f64) -> f64 {
     if value.abs() < 1e-12 { 0.0 } else { value }
 }
 
+fn normalize_limits(limits: CadJointLimits) -> CadJointLimits {
+    let (lower, upper) = limits;
+    if lower <= upper {
+        (lower, upper)
+    } else {
+        (upper, lower)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -649,6 +748,114 @@ mod tests {
             .create_part_def("base", 2, None, None)
             .expect_err("duplicate part def should fail");
         assert!(error.to_string().contains("part definition already exists"));
+    }
+
+    #[test]
+    fn revolute_limits_clamp_state_and_convert_to_radians() {
+        let mut joint = CadAssemblyJoint {
+            id: "joint.revolute.limit".to_string(),
+            name: None,
+            parent_instance_id: Some("base-1".to_string()),
+            child_instance_id: "arm-1".to_string(),
+            parent_anchor: Vec3::new(0.0, 0.0, 0.0),
+            child_anchor: Vec3::new(0.0, 0.0, 0.0),
+            kind: CadJointKind::Revolute {
+                axis: Vec3::new(0.0, 0.0, 1.0),
+                limits: Some((-90.0, 90.0)),
+            },
+            state: 0.0,
+        };
+
+        let semantics = joint.set_state_with_limits(120.0);
+        assert!(semantics.was_clamped);
+        assert_eq!(semantics.effective_state, 90.0);
+        assert_eq!(joint.state, 90.0);
+        assert_eq!(semantics.dof, 1);
+        assert_eq!(semantics.state_unit, "deg");
+        assert!((semantics.physics_state - std::f64::consts::FRAC_PI_2).abs() < 1e-10);
+    }
+
+    #[test]
+    fn slider_limits_clamp_state_and_convert_to_meters() {
+        let mut joint = CadAssemblyJoint {
+            id: "joint.slider.limit".to_string(),
+            name: None,
+            parent_instance_id: Some("base-1".to_string()),
+            child_instance_id: "arm-1".to_string(),
+            parent_anchor: Vec3::new(0.0, 0.0, 0.0),
+            child_anchor: Vec3::new(0.0, 0.0, 0.0),
+            kind: CadJointKind::Slider {
+                axis: Vec3::new(1.0, 0.0, 0.0),
+                limits: Some((100.0, -100.0)),
+            },
+            state: 0.0,
+        };
+
+        let semantics = joint.set_state_with_limits(150.0);
+        assert!(semantics.was_clamped);
+        assert_eq!(semantics.effective_state, 100.0);
+        assert_eq!(semantics.limits, Some((-100.0, 100.0)));
+        assert_eq!(semantics.state_unit, "mm");
+        assert!((semantics.physics_state - 0.1).abs() < 1e-10);
+        let back_to_vcad = joint.convert_state_from_physics_units(semantics.physics_state);
+        assert!((back_to_vcad - 100.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn fixed_joint_state_semantics_force_zero_state() {
+        let mut joint = CadAssemblyJoint {
+            id: "joint.fixed.state".to_string(),
+            name: None,
+            parent_instance_id: Some("base-1".to_string()),
+            child_instance_id: "arm-1".to_string(),
+            parent_anchor: Vec3::new(0.0, 0.0, 0.0),
+            child_anchor: Vec3::new(0.0, 0.0, 0.0),
+            kind: CadJointKind::Fixed,
+            state: 7.0,
+        };
+
+        let semantics = joint.set_state_with_limits(42.0);
+        assert!(!semantics.was_clamped);
+        assert_eq!(semantics.effective_state, 0.0);
+        assert_eq!(semantics.physics_state, 0.0);
+        assert_eq!(semantics.dof, 0);
+        assert_eq!(joint.state, 0.0);
+        assert_eq!(semantics.state_unit, "fixed");
+    }
+
+    #[test]
+    fn cylindrical_and_ball_state_semantics_match_degree_to_radian_conversion() {
+        let mut cylindrical = CadAssemblyJoint {
+            id: "joint.cyl.state".to_string(),
+            name: None,
+            parent_instance_id: Some("base-1".to_string()),
+            child_instance_id: "arm-1".to_string(),
+            parent_anchor: Vec3::new(0.0, 0.0, 0.0),
+            child_anchor: Vec3::new(0.0, 0.0, 0.0),
+            kind: CadJointKind::Cylindrical {
+                axis: Vec3::new(0.0, 0.0, 1.0),
+            },
+            state: 0.0,
+        };
+        let cyl = cylindrical.set_state_with_limits(180.0);
+        assert_eq!(cyl.dof, 1);
+        assert_eq!(cyl.state_unit, "deg");
+        assert!((cyl.physics_state - std::f64::consts::PI).abs() < 1e-10);
+
+        let mut ball = CadAssemblyJoint {
+            id: "joint.ball.state".to_string(),
+            name: None,
+            parent_instance_id: Some("base-1".to_string()),
+            child_instance_id: "arm-1".to_string(),
+            parent_anchor: Vec3::new(0.0, 0.0, 0.0),
+            child_anchor: Vec3::new(0.0, 0.0, 0.0),
+            kind: CadJointKind::Ball,
+            state: 0.0,
+        };
+        let b = ball.set_state_with_limits(-180.0);
+        assert_eq!(b.dof, 3);
+        assert_eq!(b.state_unit, "deg");
+        assert!((b.physics_state + std::f64::consts::PI).abs() < 1e-10);
     }
 
     #[test]

@@ -1,5 +1,6 @@
 pub mod assembly_joint_cb_parity;
 pub mod assembly_joint_frs_parity;
+pub mod assembly_joint_limits_state_parity;
 pub mod assembly_part_instance_parity;
 pub mod assembly_schema_parity;
 pub mod chamfer_feature_graph_parity;
