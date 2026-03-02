@@ -9,7 +9,7 @@ use crate::parity::scorecard::ParityScorecard;
 
 pub const PARITY_CI_ARTIFACTS_ISSUE_ID: &str = "VCAD-PARITY-008";
 
-pub const PARITY_CI_SOURCE_PATHS: [&str; 60] = [
+pub const PARITY_CI_SOURCE_PATHS: [&str; 62] = [
     "crates/cad/parity/vcad_reference_manifest.json",
     "crates/cad/parity/openagents_start_manifest.json",
     "crates/cad/parity/vcad_capabilities_inventory.json",
@@ -61,6 +61,7 @@ pub const PARITY_CI_SOURCE_PATHS: [&str; 60] = [
     "crates/cad/parity/sketch_constraints_checkpoint_parity_manifest.json",
     "crates/cad/parity/assembly_schema_parity_manifest.json",
     "crates/cad/parity/assembly_part_instance_parity_manifest.json",
+    "crates/cad/parity/assembly_joint_frs_parity_manifest.json",
     "crates/cad/parity/sketch_loft_parity_manifest.json",
     "crates/cad/parity/sketch_profile_validity_parity_manifest.json",
     "crates/cad/parity/sketch_revolve_parity_manifest.json",
@@ -69,6 +70,7 @@ pub const PARITY_CI_SOURCE_PATHS: [&str; 60] = [
     "crates/cad/parity/fixtures/sketch_vcad_reference_corpus.json",
     "crates/cad/parity/fixtures/assembly_schema_vcad_reference.json",
     "crates/cad/parity/fixtures/assembly_part_instance_vcad_reference.json",
+    "crates/cad/parity/fixtures/assembly_joint_frs_vcad_reference.json",
     "crates/cad/parity/fixtures/parity_fixture_corpus.json",
 ];
 

@@ -8,14 +8,14 @@ Issue coverage: `VCAD-PARITY-010`
 | --- | --- |
 | vcad commit | `1b59e7948efcdb848d8dba6848785d57aa310e81` |
 | openagents commit (plan baseline) | `04faa5227f077c419f1c5c52ddebbb7552838fd4` |
-| phase status | `phase_e_part_instance_complete` |
+| phase status | `phase_e_joint_frs_complete` |
 | overall match rate | `0.072464` |
 | docs match rate | `0.038961` |
 | crates match rate | `0.122449` |
 | commands match rate | `0.083333` |
 | open risks | `24` |
 | open hard blockers (p0) | `16` |
-| CI source artifact count | `60` |
+| CI source artifact count | `62` |
 
 ## Profile Gates
 
@@ -28,6 +28,7 @@ Issue coverage: `VCAD-PARITY-010`
 
 ## CI Evidence Artifacts
 
+- `assembly_joint_frs_parity_manifest`
 - `assembly_part_instance_parity_manifest`
 - `assembly_schema_parity_manifest`
 - `chamfer_feature_graph_parity_manifest`
@@ -35,6 +36,7 @@ Issue coverage: `VCAD-PARITY-010`
 - `expanded_finishing_parity_manifest`
 - `feature_op_hash_parity_manifest`
 - `fillet_feature_graph_parity_manifest`
+- `fixtures_assembly_joint_frs_vcad_reference`
 - `fixtures_assembly_part_instance_vcad_reference`
 - `fixtures_assembly_schema_vcad_reference`
 - `fixtures_feature_op_hash_vcad_reference_corpus`
@@ -91,6 +93,6 @@ Issue coverage: `VCAD-PARITY-010`
 
 ## Next Actions
 
-- Execute VCAD-PARITY-058 through VCAD-PARITY-066 sequentially
+- Execute VCAD-PARITY-059 through VCAD-PARITY-066 sequentially
 - Keep phase_a_baseline_v1 profile passing in scorecard and risk register lanes
 - Refresh parity dashboard after each closed parity issue
