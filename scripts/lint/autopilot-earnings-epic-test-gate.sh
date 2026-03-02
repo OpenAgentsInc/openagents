@@ -72,5 +72,15 @@ run_test \
     cargo test -p autopilot-desktop \
     state::earnings_gate::tests::earn_bitcoin_until_target_sats_requires_wallet_confirmed_threshold \
     -- --nocapture
+run_test \
+    "Rollout gate stage/cohort enforcement" \
+    cargo test -p autopilot-desktop \
+    state::autopilot_goals::tests::rollout_gate_respects_feature_flag_stage_and_cohorts \
+    -- --nocapture
+run_test \
+    "Rollout metrics and rollback health thresholds" \
+    cargo test -p autopilot-desktop \
+    state::autopilot_goals::tests::rollout_metrics_and_health_capture_false_success_latency_and_abort_distribution \
+    -- --nocapture
 
 printf 'Autopilot earnings epic test matrix gate passed.\n'

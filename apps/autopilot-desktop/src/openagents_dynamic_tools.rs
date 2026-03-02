@@ -192,7 +192,7 @@ pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
         DynamicToolSpec {
             name: OPENAGENTS_TOOL_GOAL_SCHEDULER.to_string(),
             description:
-                "Run allowlisted goal scheduler operations (status, recovery, run-now, policy, OS adapter reconcile)."
+                "Run allowlisted goal scheduler operations (status, recovery, run-now, policy, rollout, OS adapter reconcile)."
                     .to_string(),
             input_schema: json!({
                 "type": "object",
@@ -205,6 +205,7 @@ pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
                             "run_now",
                             "set_missed_policy",
                             "set_kill_switch",
+                            "set_rollout",
                             "toggle_os_adapter",
                             "reconcile_os_adapters"
                         ]
@@ -215,7 +216,30 @@ pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
                         "enum": ["catch_up", "skip", "single_replay"]
                     },
                     "kill_switch_active": { "type": "boolean" },
-                    "kill_switch_reason": { "type": "string" }
+                    "kill_switch_reason": { "type": "string" },
+                    "rollout_enabled": { "type": "boolean" },
+                    "rollout_stage": {
+                        "type": "string",
+                        "enum": [
+                            "disabled",
+                            "internal_dogfood",
+                            "canary",
+                            "general_availability"
+                        ]
+                    },
+                    "rollout_cohorts": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                    },
+                    "max_false_success_rate_bps": { "type": "integer", "minimum": 0, "maximum": 10000 },
+                    "max_abort_rate_bps": { "type": "integer", "minimum": 0, "maximum": 10000 },
+                    "max_error_rate_bps": { "type": "integer", "minimum": 0, "maximum": 10000 },
+                    "max_avg_payout_confirm_latency_seconds": { "type": "integer", "minimum": 1 },
+                    "hardening_authoritative_payout_gate_validated": { "type": "boolean" },
+                    "hardening_scheduler_recovery_drills_validated": { "type": "boolean" },
+                    "hardening_swap_risk_alerting_validated": { "type": "boolean" },
+                    "hardening_incident_runbook_validated": { "type": "boolean" },
+                    "hardening_test_matrix_gate_green": { "type": "boolean" }
                 },
                 "required": ["action"],
                 "additionalProperties": false

@@ -203,7 +203,11 @@ mod tests {
         sample_history_with_payout(pointer, 1_000)
     }
 
-    fn sample_wallet_with_receive(payment_id: &str, status: &str, amount_sats: u64) -> SparkPaneState {
+    fn sample_wallet_with_receive(
+        payment_id: &str,
+        status: &str,
+        amount_sats: u64,
+    ) -> SparkPaneState {
         let mut wallet = SparkPaneState::default();
         wallet.balance = Some(Balance {
             spark_sats: 10_000,

@@ -1,5 +1,6 @@
 //! App-owned autonomous goal specification and persistence model.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -359,6 +360,123 @@ pub struct GoalRunAuditReceipt {
     pub swap_execution_evidence: Vec<GoalSwapExecutionReceipt>,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub enum GoalRolloutStage {
+    Disabled,
+    InternalDogfood,
+    Canary,
+    GeneralAvailability,
+}
+
+impl GoalRolloutStage {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Disabled => "disabled",
+            Self::InternalDogfood => "internal_dogfood",
+            Self::Canary => "canary",
+            Self::GeneralAvailability => "general_availability",
+        }
+    }
+}
+
+impl Default for GoalRolloutStage {
+    fn default() -> Self {
+        Self::Disabled
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct GoalRolloutRollbackPolicy {
+    pub max_false_success_rate_bps: u32,
+    pub max_abort_rate_bps: u32,
+    pub max_error_rate_bps: u32,
+    pub max_avg_payout_confirm_latency_seconds: u64,
+}
+
+impl Default for GoalRolloutRollbackPolicy {
+    fn default() -> Self {
+        Self {
+            max_false_success_rate_bps: 50,
+            max_abort_rate_bps: 2_000,
+            max_error_rate_bps: 1_500,
+            max_avg_payout_confirm_latency_seconds: 300,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Default)]
+pub struct GoalRolloutHardeningChecklist {
+    #[serde(default)]
+    pub authoritative_payout_gate_validated: bool,
+    #[serde(default)]
+    pub scheduler_recovery_drills_validated: bool,
+    #[serde(default)]
+    pub swap_risk_alerting_validated: bool,
+    #[serde(default)]
+    pub incident_runbook_validated: bool,
+    #[serde(default)]
+    pub test_matrix_gate_green: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct GoalRolloutConfig {
+    #[serde(default)]
+    pub feature_flag_enabled: bool,
+    #[serde(default)]
+    pub stage: GoalRolloutStage,
+    #[serde(default)]
+    pub allowed_cohorts: Vec<String>,
+    #[serde(default)]
+    pub rollback_policy: GoalRolloutRollbackPolicy,
+    #[serde(default)]
+    pub hardening_checklist: GoalRolloutHardeningChecklist,
+    #[serde(default)]
+    pub last_updated_epoch_seconds: Option<u64>,
+}
+
+impl Default for GoalRolloutConfig {
+    fn default() -> Self {
+        Self {
+            feature_flag_enabled: false,
+            stage: GoalRolloutStage::Disabled,
+            allowed_cohorts: Vec::new(),
+            rollback_policy: GoalRolloutRollbackPolicy::default(),
+            hardening_checklist: GoalRolloutHardeningChecklist::default(),
+            last_updated_epoch_seconds: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct GoalRolloutGateDecision {
+    pub enabled: bool,
+    pub reason: String,
+    pub stage: GoalRolloutStage,
+    pub local_cohort: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct GoalRolloutMetricsSnapshot {
+    pub total_runs: u64,
+    pub succeeded_runs: u64,
+    pub completion_rate_bps: u32,
+    pub false_success_runs: u64,
+    pub false_success_rate_bps: u32,
+    pub payout_confirmed_success_runs: u64,
+    pub avg_payout_confirm_latency_seconds: Option<u64>,
+    pub aborted_runs: u64,
+    pub failed_runs: u64,
+    pub error_attempts: u64,
+    #[serde(default)]
+    pub abort_error_distribution: BTreeMap<String, u64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct GoalRolloutHealthReport {
+    pub healthy: bool,
+    pub violations: Vec<String>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GoalRestartRecoveryReport {
     pub recovered_running_goals: Vec<String>,
@@ -401,6 +519,8 @@ pub struct AutopilotGoalsDocumentV1 {
     pub swap_execution_receipts: Vec<GoalSwapExecutionReceipt>,
     #[serde(default)]
     pub run_audit_receipts: Vec<GoalRunAuditReceipt>,
+    #[serde(default)]
+    pub rollout_config: GoalRolloutConfig,
 }
 
 impl Default for AutopilotGoalsDocumentV1 {
@@ -413,6 +533,7 @@ impl Default for AutopilotGoalsDocumentV1 {
             swap_quote_audits: Vec::new(),
             swap_execution_receipts: Vec::new(),
             run_audit_receipts: Vec::new(),
+            rollout_config: GoalRolloutConfig::default(),
         }
     }
 }
@@ -835,6 +956,272 @@ impl AutopilotGoalsState {
         ));
         self.last_error = None;
         Ok(())
+    }
+
+    pub fn update_rollout_config(
+        &mut self,
+        feature_flag_enabled: Option<bool>,
+        stage: Option<GoalRolloutStage>,
+        allowed_cohorts: Option<Vec<String>>,
+        rollback_policy: Option<GoalRolloutRollbackPolicy>,
+        hardening_checklist: Option<GoalRolloutHardeningChecklist>,
+        now_epoch_seconds: u64,
+    ) -> Result<(), String> {
+        if let Some(enabled) = feature_flag_enabled {
+            self.document.rollout_config.feature_flag_enabled = enabled;
+        }
+        if let Some(stage) = stage {
+            self.document.rollout_config.stage = stage;
+        }
+        if let Some(allowed_cohorts) = allowed_cohorts {
+            let mut normalized = allowed_cohorts
+                .into_iter()
+                .map(|value| value.trim().to_ascii_lowercase())
+                .filter(|value| !value.is_empty())
+                .collect::<Vec<_>>();
+            normalized.sort();
+            normalized.dedup();
+            self.document.rollout_config.allowed_cohorts = normalized;
+        }
+        if let Some(rollback_policy) = rollback_policy {
+            if rollback_policy.max_false_success_rate_bps > 10_000 {
+                return Err("max_false_success_rate_bps must be <= 10000".to_string());
+            }
+            if rollback_policy.max_abort_rate_bps > 10_000 {
+                return Err("max_abort_rate_bps must be <= 10000".to_string());
+            }
+            if rollback_policy.max_error_rate_bps > 10_000 {
+                return Err("max_error_rate_bps must be <= 10000".to_string());
+            }
+            self.document.rollout_config.rollback_policy = rollback_policy;
+        }
+        if let Some(hardening_checklist) = hardening_checklist {
+            self.document.rollout_config.hardening_checklist = hardening_checklist;
+        }
+        self.document.rollout_config.last_updated_epoch_seconds = Some(now_epoch_seconds);
+        self.persist_to_disk()?;
+        self.last_action = Some(format!(
+            "Updated rollout config: enabled={} stage={}",
+            self.document.rollout_config.feature_flag_enabled,
+            self.document.rollout_config.stage.as_str()
+        ));
+        self.last_error = None;
+        Ok(())
+    }
+
+    pub fn rollout_gate_decision(&self) -> GoalRolloutGateDecision {
+        let config = &self.document.rollout_config;
+        let local_cohort = local_rollout_cohort();
+
+        if !config.feature_flag_enabled {
+            return GoalRolloutGateDecision {
+                enabled: false,
+                reason: "feature flag disabled".to_string(),
+                stage: config.stage,
+                local_cohort,
+            };
+        }
+
+        match config.stage {
+            GoalRolloutStage::Disabled => GoalRolloutGateDecision {
+                enabled: false,
+                reason: "rollout stage disabled".to_string(),
+                stage: config.stage,
+                local_cohort,
+            },
+            GoalRolloutStage::GeneralAvailability => GoalRolloutGateDecision {
+                enabled: true,
+                reason: "general availability enabled".to_string(),
+                stage: config.stage,
+                local_cohort,
+            },
+            GoalRolloutStage::InternalDogfood | GoalRolloutStage::Canary => {
+                if config.allowed_cohorts.is_empty() {
+                    return GoalRolloutGateDecision {
+                        enabled: false,
+                        reason: "staged rollout has no allowed cohorts".to_string(),
+                        stage: config.stage,
+                        local_cohort,
+                    };
+                }
+                if config.allowed_cohorts.iter().any(|cohort| cohort == "*") {
+                    return GoalRolloutGateDecision {
+                        enabled: true,
+                        reason: format!(
+                            "staged rollout wildcard cohort allowed for {}",
+                            config.stage.as_str()
+                        ),
+                        stage: config.stage,
+                        local_cohort,
+                    };
+                }
+                let Some(local) = local_cohort.clone() else {
+                    return GoalRolloutGateDecision {
+                        enabled: false,
+                        reason: "no local rollout cohort configured".to_string(),
+                        stage: config.stage,
+                        local_cohort,
+                    };
+                };
+                let local_normalized = local.trim().to_ascii_lowercase();
+                let matched = config
+                    .allowed_cohorts
+                    .iter()
+                    .any(|cohort| cohort.eq_ignore_ascii_case(&local_normalized));
+                if matched {
+                    GoalRolloutGateDecision {
+                        enabled: true,
+                        reason: format!(
+                            "staged rollout cohort '{}' allowed for {}",
+                            local_normalized,
+                            config.stage.as_str()
+                        ),
+                        stage: config.stage,
+                        local_cohort: Some(local_normalized),
+                    }
+                } else {
+                    GoalRolloutGateDecision {
+                        enabled: false,
+                        reason: format!(
+                            "cohort '{}' not allowlisted for {}",
+                            local_normalized,
+                            config.stage.as_str()
+                        ),
+                        stage: config.stage,
+                        local_cohort: Some(local_normalized),
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn rollout_metrics_snapshot(&self) -> GoalRolloutMetricsSnapshot {
+        let mut total_runs = 0u64;
+        let mut succeeded_runs = 0u64;
+        let mut false_success_runs = 0u64;
+        let mut payout_confirmed_success_runs = 0u64;
+        let mut aborted_runs = 0u64;
+        let mut failed_runs = 0u64;
+        let mut error_attempts = 0u64;
+        let mut latency_samples = 0u64;
+        let mut latency_total = 0u64;
+        let mut abort_error_distribution = BTreeMap::<String, u64>::new();
+
+        for audit in &self.document.run_audit_receipts {
+            total_runs = total_runs.saturating_add(1);
+            match audit.lifecycle_status {
+                GoalLifecycleStatus::Succeeded => {
+                    succeeded_runs = succeeded_runs.saturating_add(1);
+                    if audit.payout_evidence.is_empty() {
+                        false_success_runs = false_success_runs.saturating_add(1);
+                        *abort_error_distribution
+                            .entry("false_success_without_payout_evidence".to_string())
+                            .or_insert(0) += 1;
+                    } else {
+                        payout_confirmed_success_runs =
+                            payout_confirmed_success_runs.saturating_add(1);
+                        if let Some(first_payout) = audit
+                            .payout_evidence
+                            .iter()
+                            .map(|entry| entry.occurred_at_epoch_seconds)
+                            .min()
+                        {
+                            latency_samples = latency_samples.saturating_add(1);
+                            latency_total = latency_total.saturating_add(
+                                first_payout.saturating_sub(audit.started_at_epoch_seconds),
+                            );
+                        }
+                    }
+                }
+                GoalLifecycleStatus::Aborted => {
+                    aborted_runs = aborted_runs.saturating_add(1);
+                    *abort_error_distribution
+                        .entry("aborted".to_string())
+                        .or_insert(0) += 1;
+                }
+                GoalLifecycleStatus::Failed => {
+                    failed_runs = failed_runs.saturating_add(1);
+                    *abort_error_distribution
+                        .entry("failed".to_string())
+                        .or_insert(0) += 1;
+                }
+                _ => {}
+            }
+
+            for attempt in &audit.attempts {
+                if attempt
+                    .error
+                    .as_deref()
+                    .is_some_and(|value| !value.trim().is_empty())
+                {
+                    error_attempts = error_attempts.saturating_add(1);
+                    *abort_error_distribution
+                        .entry("attempt_error".to_string())
+                        .or_insert(0) += 1;
+                }
+            }
+        }
+
+        GoalRolloutMetricsSnapshot {
+            total_runs,
+            succeeded_runs,
+            completion_rate_bps: rate_bps(succeeded_runs, total_runs),
+            false_success_runs,
+            false_success_rate_bps: rate_bps(false_success_runs, succeeded_runs),
+            payout_confirmed_success_runs,
+            avg_payout_confirm_latency_seconds: if latency_samples > 0 {
+                Some(latency_total / latency_samples)
+            } else {
+                None
+            },
+            aborted_runs,
+            failed_runs,
+            error_attempts,
+            abort_error_distribution,
+        }
+    }
+
+    pub fn rollout_health_report(&self) -> GoalRolloutHealthReport {
+        let metrics = self.rollout_metrics_snapshot();
+        let policy = &self.document.rollout_config.rollback_policy;
+        let mut violations = Vec::<String>::new();
+
+        if metrics.false_success_rate_bps > policy.max_false_success_rate_bps {
+            violations.push(format!(
+                "false_success_rate_bps {} > {}",
+                metrics.false_success_rate_bps, policy.max_false_success_rate_bps
+            ));
+        }
+
+        let abort_rate_bps = rate_bps(metrics.aborted_runs, metrics.total_runs);
+        if abort_rate_bps > policy.max_abort_rate_bps {
+            violations.push(format!(
+                "abort_rate_bps {} > {}",
+                abort_rate_bps, policy.max_abort_rate_bps
+            ));
+        }
+
+        let error_rate_bps = rate_bps(metrics.failed_runs, metrics.total_runs);
+        if error_rate_bps > policy.max_error_rate_bps {
+            violations.push(format!(
+                "error_rate_bps {} > {}",
+                error_rate_bps, policy.max_error_rate_bps
+            ));
+        }
+
+        if let Some(avg_latency) = metrics.avg_payout_confirm_latency_seconds
+            && avg_latency > policy.max_avg_payout_confirm_latency_seconds
+        {
+            violations.push(format!(
+                "avg_payout_confirm_latency_seconds {} > {}",
+                avg_latency, policy.max_avg_payout_confirm_latency_seconds
+            ));
+        }
+
+        GoalRolloutHealthReport {
+            healthy: violations.is_empty(),
+            violations,
+        }
     }
 
     pub fn evaluate_active_goal_conditions(
@@ -1648,6 +2035,32 @@ fn default_goals_file_path() -> PathBuf {
         .join("autopilot-goals-v1.json")
 }
 
+fn local_rollout_cohort() -> Option<String> {
+    let explicit = std::env::var("OPENAGENTS_EARNINGS_ROLLOUT_COHORT")
+        .ok()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty());
+    if explicit.is_some() {
+        return explicit;
+    }
+
+    std::env::var("USER")
+        .ok()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+}
+
+fn rate_bps(numerator: u64, denominator: u64) -> u32 {
+    if denominator == 0 {
+        return 0;
+    }
+    numerator
+        .saturating_mul(10_000)
+        .checked_div(denominator)
+        .unwrap_or(0)
+        .min(10_000) as u32
+}
+
 fn next_schedule_after(kind: &GoalScheduleKind, from_epoch_seconds: u64) -> Result<u64, String> {
     match kind {
         GoalScheduleKind::Manual => Ok(from_epoch_seconds.saturating_add(60)),
@@ -1716,8 +2129,10 @@ mod tests {
     use super::{
         AutopilotGoalsState, GoalAttemptAuditReceipt, GoalConstraints, GoalExecutionReceipt,
         GoalLifecycleEvent, GoalLifecycleStatus, GoalMissedRunPolicy, GoalObjective,
-        GoalPayoutEvidence, GoalPolicySnapshot, GoalRecord, GoalRetryPolicy, GoalRunAuditReceipt,
-        GoalScheduleConfig, GoalScheduleKind, GoalStopCondition, GoalToolInvocationAudit,
+        GoalPayoutEvidence, GoalPolicySnapshot, GoalRecord, GoalRetryPolicy, GoalRolloutConfig,
+        GoalRolloutHardeningChecklist, GoalRolloutRollbackPolicy, GoalRolloutStage,
+        GoalRunAuditReceipt, GoalScheduleConfig, GoalScheduleKind, GoalStopCondition,
+        GoalToolInvocationAudit,
     };
     use crate::app_state::{
         JobHistoryReceiptRow, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
@@ -2946,6 +3361,258 @@ mod tests {
                 .autonomy_policy
                 .kill_switch_reason
                 .is_none()
+        );
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn rollout_gate_respects_feature_flag_stage_and_cohorts() {
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch time available")
+            .as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("autopilot-goals-rollout-gate-{now_nanos}.json"));
+        let mut state = AutopilotGoalsState::load_from_path(path.clone());
+
+        let disabled = state.rollout_gate_decision();
+        assert!(!disabled.enabled);
+        assert!(disabled.reason.contains("feature flag disabled"));
+
+        state
+            .update_rollout_config(
+                Some(true),
+                Some(GoalRolloutStage::InternalDogfood),
+                Some(vec!["*".to_string()]),
+                None,
+                None,
+                1_700_000_100,
+            )
+            .expect("rollout update should persist");
+        let wildcard = state.rollout_gate_decision();
+        assert!(wildcard.enabled);
+        assert_eq!(wildcard.stage, GoalRolloutStage::InternalDogfood);
+
+        state
+            .update_rollout_config(
+                Some(true),
+                Some(GoalRolloutStage::Canary),
+                Some(vec!["cohort-not-present".to_string()]),
+                None,
+                None,
+                1_700_000_200,
+            )
+            .expect("rollout update should persist");
+        let restricted = state.rollout_gate_decision();
+        assert!(!restricted.enabled);
+        assert!(restricted.reason.contains("not allowlisted"));
+
+        state
+            .update_rollout_config(
+                Some(true),
+                Some(GoalRolloutStage::GeneralAvailability),
+                None,
+                None,
+                None,
+                1_700_000_300,
+            )
+            .expect("rollout update should persist");
+        let ga = state.rollout_gate_decision();
+        assert!(ga.enabled);
+        assert_eq!(ga.stage, GoalRolloutStage::GeneralAvailability);
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn rollout_metrics_and_health_capture_false_success_latency_and_abort_distribution() {
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch time available")
+            .as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("autopilot-goals-rollout-metrics-{now_nanos}.json"));
+        let mut state = AutopilotGoalsState::load_from_path(path.clone());
+        state
+            .upsert_active_goal(sample_goal("goal-rollout-metrics"))
+            .expect("upsert active goal should succeed");
+
+        state
+            .record_run_audit_receipt(GoalRunAuditReceipt {
+                audit_id: "rollout-audit-1".to_string(),
+                receipt_id: "goal-loop-receipt-goal-rollout-metrics-1".to_string(),
+                goal_id: "goal-rollout-metrics".to_string(),
+                run_id: "run-1".to_string(),
+                started_at_epoch_seconds: 1_700_000_000,
+                finished_at_epoch_seconds: 1_700_000_050,
+                lifecycle_status: GoalLifecycleStatus::Succeeded,
+                terminal_status_reason: "goal conditions satisfied".to_string(),
+                selected_skills: vec!["blink".to_string()],
+                attempts: vec![GoalAttemptAuditReceipt {
+                    attempt_index: 1,
+                    submitted_at_epoch_seconds: 1_700_000_001,
+                    finished_at_epoch_seconds: Some(1_700_000_040),
+                    thread_id: Some("thread-1".to_string()),
+                    turn_id: Some("turn-1".to_string()),
+                    selected_skills: vec!["blink".to_string()],
+                    turn_status: Some("completed".to_string()),
+                    error: None,
+                    condition_goal_complete: Some(true),
+                    condition_should_continue: Some(false),
+                    condition_completion_reasons: vec![
+                        "wallet delta reached 1000 sats".to_string(),
+                    ],
+                    condition_stop_reasons: Vec::new(),
+                    tool_invocations: Vec::new(),
+                }],
+                condition_goal_complete: Some(true),
+                condition_should_continue: Some(false),
+                condition_completion_reasons: vec!["wallet delta reached 1000 sats".to_string()],
+                condition_stop_reasons: Vec::new(),
+                payout_evidence: Vec::new(),
+                swap_quote_evidence: Vec::new(),
+                swap_execution_evidence: Vec::new(),
+            })
+            .expect("false-success run should persist");
+
+        state
+            .record_run_audit_receipt(GoalRunAuditReceipt {
+                audit_id: "rollout-audit-2".to_string(),
+                receipt_id: "goal-loop-receipt-goal-rollout-metrics-2".to_string(),
+                goal_id: "goal-rollout-metrics".to_string(),
+                run_id: "run-2".to_string(),
+                started_at_epoch_seconds: 1_700_000_100,
+                finished_at_epoch_seconds: 1_700_000_180,
+                lifecycle_status: GoalLifecycleStatus::Succeeded,
+                terminal_status_reason: "goal conditions satisfied".to_string(),
+                selected_skills: vec!["blink".to_string(), "l402".to_string()],
+                attempts: vec![GoalAttemptAuditReceipt {
+                    attempt_index: 1,
+                    submitted_at_epoch_seconds: 1_700_000_101,
+                    finished_at_epoch_seconds: Some(1_700_000_170),
+                    thread_id: Some("thread-2".to_string()),
+                    turn_id: Some("turn-2".to_string()),
+                    selected_skills: vec!["blink".to_string()],
+                    turn_status: Some("completed".to_string()),
+                    error: Some("transient quote timeout".to_string()),
+                    condition_goal_complete: Some(true),
+                    condition_should_continue: Some(false),
+                    condition_completion_reasons: vec![
+                        "wallet delta reached 1000 sats".to_string(),
+                    ],
+                    condition_stop_reasons: Vec::new(),
+                    tool_invocations: Vec::new(),
+                }],
+                condition_goal_complete: Some(true),
+                condition_should_continue: Some(false),
+                condition_completion_reasons: vec!["wallet delta reached 1000 sats".to_string()],
+                condition_stop_reasons: Vec::new(),
+                payout_evidence: vec![GoalPayoutEvidence {
+                    event_id: "earn:job-2:wallet:pay:job-2".to_string(),
+                    occurred_at_epoch_seconds: 1_700_000_130,
+                    job_id: "job-2".to_string(),
+                    payment_pointer: "wallet:pay:job-2".to_string(),
+                    payout_sats: 1_000,
+                }],
+                swap_quote_evidence: Vec::new(),
+                swap_execution_evidence: Vec::new(),
+            })
+            .expect("payout-confirmed success run should persist");
+
+        state
+            .record_run_audit_receipt(GoalRunAuditReceipt {
+                audit_id: "rollout-audit-3".to_string(),
+                receipt_id: "goal-loop-receipt-goal-rollout-metrics-3".to_string(),
+                goal_id: "goal-rollout-metrics".to_string(),
+                run_id: "run-3".to_string(),
+                started_at_epoch_seconds: 1_700_000_200,
+                finished_at_epoch_seconds: 1_700_000_220,
+                lifecycle_status: GoalLifecycleStatus::Aborted,
+                terminal_status_reason: "kill switch engaged".to_string(),
+                selected_skills: vec!["blink".to_string()],
+                attempts: Vec::new(),
+                condition_goal_complete: Some(false),
+                condition_should_continue: Some(false),
+                condition_completion_reasons: Vec::new(),
+                condition_stop_reasons: vec!["kill switch engaged".to_string()],
+                payout_evidence: Vec::new(),
+                swap_quote_evidence: Vec::new(),
+                swap_execution_evidence: Vec::new(),
+            })
+            .expect("aborted run should persist");
+
+        let metrics = state.rollout_metrics_snapshot();
+        assert_eq!(metrics.total_runs, 3);
+        assert_eq!(metrics.succeeded_runs, 2);
+        assert_eq!(metrics.completion_rate_bps, 6_666);
+        assert_eq!(metrics.false_success_runs, 1);
+        assert_eq!(metrics.false_success_rate_bps, 5_000);
+        assert_eq!(metrics.payout_confirmed_success_runs, 1);
+        assert_eq!(metrics.avg_payout_confirm_latency_seconds, Some(30));
+        assert_eq!(metrics.aborted_runs, 1);
+        assert_eq!(metrics.error_attempts, 1);
+        assert!(
+            metrics
+                .abort_error_distribution
+                .contains_key("attempt_error")
+        );
+
+        let unhealthy = state.rollout_health_report();
+        assert!(!unhealthy.healthy);
+        assert!(
+            unhealthy
+                .violations
+                .iter()
+                .any(|violation| violation.contains("false_success_rate_bps"))
+        );
+
+        state
+            .update_rollout_config(
+                None,
+                None,
+                None,
+                Some(GoalRolloutRollbackPolicy {
+                    max_false_success_rate_bps: 6_000,
+                    max_abort_rate_bps: 4_000,
+                    max_error_rate_bps: 4_000,
+                    max_avg_payout_confirm_latency_seconds: 60,
+                }),
+                Some(GoalRolloutHardeningChecklist {
+                    authoritative_payout_gate_validated: true,
+                    scheduler_recovery_drills_validated: true,
+                    swap_risk_alerting_validated: true,
+                    incident_runbook_validated: true,
+                    test_matrix_gate_green: true,
+                }),
+                1_700_000_500,
+            )
+            .expect("rollout policy update should persist");
+        let healthy = state.rollout_health_report();
+        assert!(healthy.healthy);
+
+        let reloaded = AutopilotGoalsState::load_from_path(path.clone());
+        assert_eq!(
+            reloaded.document.rollout_config,
+            GoalRolloutConfig {
+                feature_flag_enabled: false,
+                stage: GoalRolloutStage::Disabled,
+                allowed_cohorts: Vec::new(),
+                rollback_policy: GoalRolloutRollbackPolicy {
+                    max_false_success_rate_bps: 6_000,
+                    max_abort_rate_bps: 4_000,
+                    max_error_rate_bps: 4_000,
+                    max_avg_payout_confirm_latency_seconds: 60,
+                },
+                hardening_checklist: GoalRolloutHardeningChecklist {
+                    authoritative_payout_gate_validated: true,
+                    scheduler_recovery_drills_validated: true,
+                    swap_risk_alerting_validated: true,
+                    incident_runbook_validated: true,
+                    test_matrix_gate_green: true,
+                },
+                last_updated_epoch_seconds: Some(1_700_000_500),
+            }
         );
 
         let _ = std::fs::remove_file(path);
