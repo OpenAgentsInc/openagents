@@ -307,6 +307,10 @@ pub fn build_dashboard(
         .artifact_ids
         .iter()
         .any(|artifact_id| artifact_id == "text_to_cad_parity_manifest");
+    let has_phase_g_text_to_cad_dataset = artifacts
+        .artifact_ids
+        .iter()
+        .any(|artifact_id| artifact_id == "text_to_cad_dataset_parity_manifest");
     let phase_status = if baseline_scorecard_pass
         && baseline_risk_pass
         && has_phase_c_checkpoint
@@ -359,7 +363,11 @@ pub fn build_dashboard(
         && has_phase_g_intent_modeling
     {
         if has_phase_g_text_to_cad {
-            "phase_g_text_to_cad_complete".to_string()
+            if has_phase_g_text_to_cad_dataset {
+                "phase_g_text_to_cad_dataset_complete".to_string()
+            } else {
+                "phase_g_text_to_cad_complete".to_string()
+            }
         } else {
             "phase_g_intent_modeling_complete".to_string()
         }
@@ -1684,6 +1692,13 @@ pub fn build_dashboard(
     let next_actions = if phase_status == "phase_c_core_modeling_complete" {
         vec![
             "Execute VCAD-PARITY-041 through VCAD-PARITY-055 sequentially".to_string(),
+            "Keep phase_a_baseline_v1 profile passing in scorecard and risk register lanes"
+                .to_string(),
+            "Refresh parity dashboard after each closed parity issue".to_string(),
+        ]
+    } else if phase_status == "phase_g_text_to_cad_dataset_complete" {
+        vec![
+            "Execute VCAD-PARITY-090 through VCAD-PARITY-092 sequentially".to_string(),
             "Keep phase_a_baseline_v1 profile passing in scorecard and risk register lanes"
                 .to_string(),
             "Refresh parity dashboard after each closed parity issue".to_string(),

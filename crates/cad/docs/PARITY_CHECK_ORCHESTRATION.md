@@ -66,6 +66,7 @@ Provide one deterministic orchestration entrypoint for the parity baseline lanes
 - compact IR parser/serializer parity fixture check
 - intent-based modeling execution parity fixture check
 - text-to-cad adapter parity fixture check
+- text-to-cad dataset tooling parity fixture check
 - parity CI artifact manifest fixture check
 - parity risk register + blocker workflow check
 - baseline dashboard publication check

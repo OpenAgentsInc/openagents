@@ -84,6 +84,7 @@ LANE_LABELS=(
     "compact-ir"
     "intent-modeling"
     "text-to-cad"
+    "text-to-cad-dataset"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -389,6 +390,9 @@ run_lane "intent-modeling" \
 
 run_lane "text-to-cad" \
     "$ROOT_DIR/scripts/cad/parity-text-to-cad-ci.sh"
+
+run_lane "text-to-cad-dataset" \
+    "$ROOT_DIR/scripts/cad/parity-text-to-cad-dataset-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
