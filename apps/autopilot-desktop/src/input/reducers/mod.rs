@@ -98,6 +98,10 @@ pub(super) fn run_agent_profile_state_action(
     sa::run_agent_profile_state_action(state, action)
 }
 
+pub(super) fn refresh_goal_profile_state(state: &mut RenderState) -> bool {
+    sa::refresh_goal_profile_state(state)
+}
+
 pub(super) fn run_agent_schedule_tick_action(
     state: &mut RenderState,
     action: AgentScheduleTickPaneAction,

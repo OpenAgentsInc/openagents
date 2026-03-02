@@ -8,7 +8,9 @@ use crate::pane_renderer::{
     paint_state_summary,
 };
 use crate::pane_system::{
+    agent_profile_abort_goal_button_bounds, agent_profile_create_goal_button_bounds,
     agent_profile_publish_profile_button_bounds, agent_profile_publish_state_button_bounds,
+    agent_profile_receipt_button_bounds, agent_profile_start_goal_button_bounds,
     agent_profile_update_goals_button_bounds, agent_schedule_apply_button_bounds,
     agent_schedule_inspect_button_bounds, agent_schedule_manual_tick_button_bounds,
     trajectory_filter_button_bounds, trajectory_open_session_button_bounds,
@@ -25,15 +27,23 @@ pub fn paint_agent_profile_state_pane(
     let publish_profile = agent_profile_publish_profile_button_bounds(content_bounds);
     let publish_state = agent_profile_publish_state_button_bounds(content_bounds);
     let update_goals = agent_profile_update_goals_button_bounds(content_bounds);
+    let create_goal = agent_profile_create_goal_button_bounds(content_bounds);
+    let start_goal = agent_profile_start_goal_button_bounds(content_bounds);
+    let abort_goal = agent_profile_abort_goal_button_bounds(content_bounds);
+    let inspect_receipt = agent_profile_receipt_button_bounds(content_bounds);
 
     paint_action_button(publish_profile, "Publish Profile", paint);
     paint_action_button(publish_state, "Publish State", paint);
     paint_action_button(update_goals, "Update Goals", paint);
+    paint_action_button(create_goal, "Create Goal", paint);
+    paint_action_button(start_goal, "Start Goal", paint);
+    paint_action_button(abort_goal, "Abort Goal", paint);
+    paint_action_button(inspect_receipt, "Inspect Receipt", paint);
 
     let mut y = paint_state_summary(
         paint,
         content_bounds.origin.x + 12.0,
-        publish_profile.max_y() + 12.0,
+        create_goal.max_y() + 12.0,
         pane_state.load_state,
         &format!("State: {}", pane_state.load_state.label()),
         pane_state.last_action.as_deref(),
@@ -60,6 +70,41 @@ pub fn paint_agent_profile_state_pane(
         y,
         "Goals",
         &pane_state.goals_summary,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Selected goal",
+        pane_state.selected_goal_id.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Goal status",
+        &pane_state.selected_goal_status,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Goal attempts",
+        &pane_state.selected_goal_attempts.to_string(),
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Selected skills",
+        &pane_state.selected_goal_selected_skills,
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Last receipt",
+        &pane_state.selected_goal_receipt_summary,
     );
     y = paint_label_line(
         paint,

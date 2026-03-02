@@ -1073,6 +1073,18 @@ fn pane_action_to_hit_action(
             "update_goals" => Ok(PaneHitAction::AgentProfileState(
                 AgentProfileStatePaneAction::UpdateGoals,
             )),
+            "create_goal" => Ok(PaneHitAction::AgentProfileState(
+                AgentProfileStatePaneAction::CreateGoal,
+            )),
+            "start_goal" => Ok(PaneHitAction::AgentProfileState(
+                AgentProfileStatePaneAction::StartGoal,
+            )),
+            "abort_goal" => Ok(PaneHitAction::AgentProfileState(
+                AgentProfileStatePaneAction::AbortGoal,
+            )),
+            "inspect_goal_receipt" => Ok(PaneHitAction::AgentProfileState(
+                AgentProfileStatePaneAction::InspectGoalReceipt,
+            )),
             _ => unsupported(),
         },
         PaneKind::AgentScheduleTick => match action {
