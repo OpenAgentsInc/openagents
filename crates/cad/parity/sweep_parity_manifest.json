@@ -1,0 +1,59 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-033",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "default_segments_snapshot": {
+    "segment_count": 32,
+    "station_count": 33,
+    "path_length_mm": 75.0,
+    "start_center_mm": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "end_center_mm": [
+      25.0,
+      0.0,
+      50.0
+    ],
+    "geometry_hash": "10f71ed8fe828839"
+  },
+  "explicit_segments_snapshot": {
+    "segment_count": 8,
+    "station_count": 9,
+    "path_length_mm": 40.0,
+    "start_center_mm": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "end_center_mm": [
+      0.0,
+      20.0,
+      20.0
+    ],
+    "geometry_hash": "57e48b20ed98c066"
+  },
+  "control_snapshot": {
+    "start_scale": 1.0,
+    "mid_scale": 0.75,
+    "end_scale": 0.5,
+    "start_twist_rad": 0.0,
+    "mid_twist_rad": 0.7853981633974483,
+    "end_twist_rad": 1.5707963267948966,
+    "default_segments_applied": true
+  },
+  "deterministic_replay_match": true,
+  "invalid_zero_length_path_error": "invalid primitive: sweep path has zero length",
+  "invalid_scale_error": "invalid parameter sweep_scale_end: sweep end scale must be finite and > 0",
+  "deterministic_signature": "454e8fefb50731ee",
+  "parity_contracts": [
+    "sweep path controls support deterministic polyline path sampling",
+    "path_segments=0 maps to vcad-aligned default of 32 path segments",
+    "twist and scale controls interpolate deterministically from start to end along path",
+    "zero-length paths and non-positive scales emit stable CAD diagnostics",
+    "repeated sweep evaluations replay deterministically for identical inputs"
+  ]
+}

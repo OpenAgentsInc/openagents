@@ -1,6 +1,7 @@
 mod pattern;
 mod placeholder;
 mod primitives;
+mod sweep;
 mod transform;
 
 #[cfg(test)]
@@ -19,6 +20,7 @@ pub use primitives::{
     BoxFeatureOp, CutHoleFeatureOp, CylinderFeatureOp, FeatureOpResult, evaluate_box_feature,
     evaluate_cut_hole_feature, evaluate_cylinder_feature,
 };
+pub use sweep::{SweepFeatureOp, SweepFeatureResult, SweepFeatureStation, evaluate_sweep_feature};
 pub use transform::{
     TransformFeatureOp, TransformFeatureResult, compose_transform_sequence,
     evaluate_transform_feature,

@@ -28,6 +28,7 @@ LANE_LABELS=(
     "fillet-feature-graph"
     "chamfer-feature-graph"
     "expanded-finishing"
+    "sweep"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -165,6 +166,9 @@ run_lane "chamfer-feature-graph" \
 
 run_lane "expanded-finishing" \
     "$ROOT_DIR/scripts/cad/parity-expanded-finishing-ci.sh"
+
+run_lane "sweep" \
+    "$ROOT_DIR/scripts/cad/parity-sweep-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
