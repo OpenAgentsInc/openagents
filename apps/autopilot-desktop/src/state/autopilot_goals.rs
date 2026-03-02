@@ -5,12 +5,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-use crate::app_state::JobHistoryState;
+use crate::app_state::{JobHistoryState, SkillRegistryDiscoveredSkill};
 use crate::spark_wallet::SparkPaneState;
 use crate::state::earnings_gate::{EarningsVerificationReport, verify_authoritative_earnings};
 use crate::state::goal_conditions::{
     ConditionEvaluation, GoalProgressSnapshot, evaluate_conditions,
 };
+use crate::state::goal_skill_resolver::{GoalSkillResolution, resolve_goal_skill_candidates};
 use crate::state::swap_contract::{SwapExecutionRequest, SwapPolicy, SwapQuoteTerms};
 use crate::state::swap_quote_adapter::{
     StablesatsQuoteClient, SwapQuoteAdapterOutcome, SwapQuoteAdapterRequest, SwapQuoteAuditReceipt,
@@ -622,6 +623,22 @@ impl AutopilotGoalsState {
         Ok(outcome)
     }
 
+    pub fn resolve_skill_candidates_for_goal(
+        &self,
+        goal_id: &str,
+        discovered_skills: &[SkillRegistryDiscoveredSkill],
+    ) -> Result<GoalSkillResolution, String> {
+        let Some(goal) = self
+            .document
+            .active_goals
+            .iter()
+            .find(|goal| goal.goal_id == goal_id)
+        else {
+            return Err(format!("Active goal {goal_id} not found"));
+        };
+        Ok(resolve_goal_skill_candidates(goal, discovered_skills))
+    }
+
     pub fn file_path(&self) -> &PathBuf {
         &self.file_path
     }
@@ -743,7 +760,7 @@ mod tests {
     };
     use crate::app_state::{
         JobHistoryReceiptRow, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
-        JobHistoryTimeRange, PaneLoadState,
+        JobHistoryTimeRange, PaneLoadState, SkillRegistryDiscoveredSkill,
     };
     use crate::spark_wallet::SparkPaneState;
     use crate::state::goal_conditions::GoalProgressSnapshot;
@@ -1258,6 +1275,73 @@ mod tests {
         assert_eq!(
             reloaded.document.swap_quote_audits[0].quote_id,
             fallback_quote.quote_id
+        );
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn resolve_skill_candidates_for_goal_is_ranked_and_reasoned() {
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch time available")
+            .as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("autopilot-goals-skill-resolve-{now_nanos}.json"));
+        let mut state = AutopilotGoalsState::load_from_path(path.clone());
+        state
+            .upsert_active_goal(sample_goal("goal-skill-resolve"))
+            .expect("upsert active goal should succeed");
+
+        let discovered = vec![
+            SkillRegistryDiscoveredSkill {
+                name: "moneydevkit".to_string(),
+                path: "/repo/skills/moneydevkit/SKILL.md".to_string(),
+                scope: "user".to_string(),
+                enabled: true,
+                interface_display_name: None,
+                dependency_count: 0,
+            },
+            SkillRegistryDiscoveredSkill {
+                name: "blink".to_string(),
+                path: "/repo/skills/blink/SKILL.md".to_string(),
+                scope: "user".to_string(),
+                enabled: true,
+                interface_display_name: None,
+                dependency_count: 0,
+            },
+            SkillRegistryDiscoveredSkill {
+                name: "l402".to_string(),
+                path: "/repo/skills/l402/SKILL.md".to_string(),
+                scope: "user".to_string(),
+                enabled: true,
+                interface_display_name: None,
+                dependency_count: 0,
+            },
+            SkillRegistryDiscoveredSkill {
+                name: "neutronpay".to_string(),
+                path: "/repo/skills/neutronpay/SKILL.md".to_string(),
+                scope: "user".to_string(),
+                enabled: true,
+                interface_display_name: None,
+                dependency_count: 0,
+            },
+        ];
+
+        let resolution = state
+            .resolve_skill_candidates_for_goal("goal-skill-resolve", &discovered)
+            .expect("goal skill resolver should succeed");
+        let ordered = resolution
+            .candidates
+            .iter()
+            .map(|candidate| candidate.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(ordered, vec!["blink", "l402", "moneydevkit", "neutronpay"]);
+        assert!(
+            resolution
+                .candidates
+                .iter()
+                .all(|candidate| !candidate.reason.trim().is_empty())
         );
 
         let _ = std::fs::remove_file(path);
