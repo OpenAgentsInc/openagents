@@ -32,3 +32,4 @@ pub mod sweep_parity;
 pub mod topology_repair_parity;
 pub mod transform_parity;
 pub mod vcad_crawler;
+pub mod vcad_eval_receipts_parity;

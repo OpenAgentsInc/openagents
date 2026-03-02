@@ -186,6 +186,70 @@ fn deterministic_rebuild_receipt_is_stable_and_complete() {
     );
     assert_eq!(receipt.feature_count, 2);
     assert_eq!(receipt.rebuild_hash, result.rebuild_hash);
+    assert_eq!(receipt.vcad_eval_timing.parse_ms, None);
+    assert_eq!(receipt.vcad_eval_timing.serialize_ms, None);
+    assert_eq!(receipt.vcad_eval_timing.clash_ms, 0.0);
+    assert_eq!(receipt.vcad_eval_timing.assembly_ms, 0.0);
+    assert_eq!(receipt.vcad_eval_timing.nodes.len(), 2);
+    assert_eq!(
+        receipt
+            .vcad_eval_timing
+            .nodes
+            .get("feature.base")
+            .expect("base timing should exist")
+            .op,
+        "primitive.box.v1".to_string()
+    );
+    assert_eq!(
+        receipt
+            .vcad_eval_timing
+            .nodes
+            .get("feature.fillet_marker")
+            .expect("fillet timing should exist")
+            .op,
+        "fillet.placeholder.v1".to_string()
+    );
+    let node_sum = receipt
+        .vcad_eval_timing
+        .nodes
+        .values()
+        .fold(0.0, |sum, node| sum + node.eval_ms + node.mesh_ms);
+    let expected_total = (node_sum * 1_000.0).round() / 1_000.0;
+    assert_eq!(receipt.vcad_eval_timing.total_ms, expected_total);
+}
+
+#[test]
+fn deterministic_rebuild_receipt_vcad_timing_is_order_stable() {
+    let graph_a = FeatureGraph {
+        nodes: vec![
+            node(
+                "feature.top",
+                "linear.pattern.v1",
+                &["feature.root"],
+                &[("count_param", "count")],
+            ),
+            node("feature.root", "primitive.box.v1", &[], &[("w", "100")]),
+        ],
+    };
+    let graph_b = FeatureGraph {
+        nodes: vec![
+            node("feature.root", "primitive.box.v1", &[], &[("w", "100")]),
+            node(
+                "feature.top",
+                "linear.pattern.v1",
+                &["feature.root"],
+                &[("count_param", "count")],
+            ),
+        ],
+    };
+
+    let receipt_a = evaluate_feature_graph_deterministic(&graph_a)
+        .expect("graph a rebuild should succeed")
+        .receipt();
+    let receipt_b = evaluate_feature_graph_deterministic(&graph_b)
+        .expect("graph b rebuild should succeed")
+        .receipt();
+    assert_eq!(receipt_a.vcad_eval_timing, receipt_b.vcad_eval_timing);
 }
 
 #[test]

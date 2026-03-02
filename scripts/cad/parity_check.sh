@@ -32,6 +32,7 @@ LANE_LABELS=(
     "loft"
     "topology-repair"
     "material-assignment"
+    "vcad-eval-receipts"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -181,6 +182,9 @@ run_lane "topology-repair" \
 
 run_lane "material-assignment" \
     "$ROOT_DIR/scripts/cad/parity-material-assignment-ci.sh"
+
+run_lane "vcad-eval-receipts" \
+    "$ROOT_DIR/scripts/cad/parity-vcad-eval-receipts-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

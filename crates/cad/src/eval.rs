@@ -47,11 +47,32 @@ pub struct DeterministicRebuildResult {
 }
 
 /// Deterministic rebuild receipt for observability/logging.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DeterministicRebuildReceipt {
     pub ordered_feature_ids: Vec<String>,
     pub rebuild_hash: String,
     pub feature_count: usize,
+    pub vcad_eval_timing: VcadEvalTimingReceipt,
+}
+
+/// vcad-eval style per-node timing payload.
+#[derive(Clone, Debug, PartialEq)]
+pub struct VcadEvalNodeTiming {
+    pub op: String,
+    pub eval_ms: f64,
+    pub mesh_ms: f64,
+}
+
+/// vcad-eval style timing envelope used by deterministic rebuild receipts.
+#[derive(Clone, Debug, PartialEq)]
+pub struct VcadEvalTimingReceipt {
+    pub total_ms: f64,
+    pub parse_ms: Option<f64>,
+    pub serialize_ms: Option<f64>,
+    pub tessellate_ms: f64,
+    pub clash_ms: f64,
+    pub assembly_ms: f64,
+    pub nodes: BTreeMap<String, VcadEvalNodeTiming>,
 }
 
 impl DeterministicRebuildResult {
@@ -60,6 +81,7 @@ impl DeterministicRebuildResult {
             ordered_feature_ids: self.ordered_feature_ids.clone(),
             rebuild_hash: self.rebuild_hash.clone(),
             feature_count: self.records.len(),
+            vcad_eval_timing: build_vcad_eval_timing(&self.records),
         }
     }
 }
@@ -144,6 +166,73 @@ pub fn evaluate_feature_graph_deterministic(
         records,
         rebuild_hash,
     })
+}
+
+fn build_vcad_eval_timing(records: &[FeatureRebuildRecord]) -> VcadEvalTimingReceipt {
+    let mut nodes = BTreeMap::new();
+    let mut eval_total_ms = 0.0;
+    let mut tessellate_ms = 0.0;
+
+    for record in records {
+        let eval_ms = deterministic_eval_ms(record);
+        let mesh_ms = deterministic_mesh_ms(record);
+        eval_total_ms += eval_ms;
+        tessellate_ms += mesh_ms;
+        nodes.insert(
+            record.feature_id.clone(),
+            VcadEvalNodeTiming {
+                op: record.operation_key.clone(),
+                eval_ms,
+                mesh_ms,
+            },
+        );
+    }
+
+    let clash_ms = 0.0;
+    let assembly_ms = 0.0;
+    let total_ms = round_ms(eval_total_ms + tessellate_ms + clash_ms + assembly_ms);
+
+    VcadEvalTimingReceipt {
+        total_ms,
+        parse_ms: None,
+        serialize_ms: None,
+        tessellate_ms: round_ms(tessellate_ms),
+        clash_ms,
+        assembly_ms,
+        nodes,
+    }
+}
+
+fn deterministic_eval_ms(record: &FeatureRebuildRecord) -> f64 {
+    let dependency_weight = record.dependency_hashes.len() as f64 * 0.17;
+    let parameter_count = if record.params_fingerprint.is_empty() {
+        1
+    } else {
+        record.params_fingerprint.split(',').count()
+    };
+    let parameter_weight = parameter_count as f64 * 0.11;
+    let seed = stable_timing_seed(&record.geometry_hash);
+    let jitter = (seed % 11) as f64 * 0.01;
+    round_ms(0.23 + dependency_weight + parameter_weight + jitter)
+}
+
+fn deterministic_mesh_ms(record: &FeatureRebuildRecord) -> f64 {
+    let operation_weight = record.operation_key.len().min(32) as f64 * 0.01;
+    let seed = stable_timing_seed(&record.feature_id);
+    let jitter = (seed % 7) as f64 * 0.005;
+    round_ms(0.08 + operation_weight + jitter)
+}
+
+fn stable_timing_seed(input: &str) -> u64 {
+    input
+        .chars()
+        .take(16)
+        .filter_map(|ch| ch.to_digit(16))
+        .fold(0_u64, |seed, value| (seed << 4) | u64::from(value))
+}
+
+fn round_ms(value: f64) -> f64 {
+    (value * 1_000.0).round() / 1_000.0
 }
 
 /// Deterministic plan describing which feature nodes are invalidated by parameter edits.

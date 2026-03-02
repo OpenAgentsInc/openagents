@@ -39,7 +39,7 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 35,
+    "source_artifact_count": 36,
     "artifact_ids": [
       "chamfer_feature_graph_parity_manifest",
       "expanded_finishing_parity_manifest",
@@ -74,6 +74,7 @@
       "topology_repair_parity_manifest",
       "transform_parity_manifest",
       "vcad_capabilities_inventory",
+      "vcad_eval_receipts_parity_manifest",
       "vcad_openagents_gap_matrix",
       "vcad_reference_manifest"
     ]
