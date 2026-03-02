@@ -202,6 +202,30 @@ pub fn paint_agent_schedule_tick_pane(
         paint,
         content_bounds.origin.x + 12.0,
         y,
+        "Missed-run policy",
+        &pane_state.missed_run_policy,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Pending catch-up runs",
+        &pane_state.pending_catchup_runs.to_string(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Last recovery (epoch)",
+        &pane_state
+            .last_recovery_epoch_seconds
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "n/a".to_string()),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
         "Cron expression",
         &pane_state.cron_expression,
     );

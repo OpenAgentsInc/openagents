@@ -6,8 +6,8 @@ use crate::runtime_lanes::{
     RuntimeCommandResponse, RuntimeCommandStatus, SaLaneSnapshot, SaLifecycleCommand, SaRunnerMode,
 };
 use crate::state::autopilot_goals::{
-    GoalConstraints, GoalLifecycleEvent, GoalLifecycleStatus, GoalObjective, GoalRecord,
-    GoalRetryPolicy, GoalScheduleConfig, GoalStopCondition,
+    GoalConstraints, GoalLifecycleEvent, GoalLifecycleStatus, GoalMissedRunPolicy, GoalObjective,
+    GoalRecord, GoalRetryPolicy, GoalScheduleConfig, GoalStopCondition,
 };
 use crate::state::cron_schedule::{next_cron_run_epoch_seconds, parse_cron_expression};
 use crate::state::goal_loop_executor::{GoalLoopStopReason, select_runnable_goal};
@@ -206,6 +206,7 @@ pub(super) fn run_agent_profile_state_action(
                 last_failure_reason: None,
                 terminal_reason: None,
                 last_receipt_id: None,
+                recovery_replay_pending: false,
             };
             match state.autopilot_goals.upsert_active_goal(goal) {
                 Ok(()) => {
@@ -549,6 +550,9 @@ struct GoalSchedulePaneFingerprint {
     scheduler_mode: String,
     next_goal_run_epoch_seconds: Option<u64>,
     last_goal_run_epoch_seconds: Option<u64>,
+    missed_run_policy: String,
+    pending_catchup_runs: u32,
+    last_recovery_epoch_seconds: Option<u64>,
     heartbeat_seconds: u64,
     cron_expression: String,
     cron_timezone: String,
@@ -568,6 +572,9 @@ fn schedule_pane_fingerprint(state: &RenderState) -> GoalSchedulePaneFingerprint
         scheduler_mode: state.agent_schedule_tick.scheduler_mode.clone(),
         next_goal_run_epoch_seconds: state.agent_schedule_tick.next_goal_run_epoch_seconds,
         last_goal_run_epoch_seconds: state.agent_schedule_tick.last_goal_run_epoch_seconds,
+        missed_run_policy: state.agent_schedule_tick.missed_run_policy.clone(),
+        pending_catchup_runs: state.agent_schedule_tick.pending_catchup_runs,
+        last_recovery_epoch_seconds: state.agent_schedule_tick.last_recovery_epoch_seconds,
         heartbeat_seconds: state.agent_schedule_tick.heartbeat_seconds,
         cron_expression: state.agent_schedule_tick.cron_expression.clone(),
         cron_timezone: state.agent_schedule_tick.cron_timezone.clone(),
@@ -646,6 +653,16 @@ pub(super) fn refresh_goal_schedule_state(state: &mut RenderState) -> bool {
             goal.schedule.next_run_epoch_seconds;
         state.agent_schedule_tick.last_goal_run_epoch_seconds =
             goal.schedule.last_run_epoch_seconds;
+        state.agent_schedule_tick.missed_run_policy = match goal.schedule.missed_run_policy {
+            crate::state::autopilot_goals::GoalMissedRunPolicy::CatchUp => "catch_up".to_string(),
+            crate::state::autopilot_goals::GoalMissedRunPolicy::Skip => "skip".to_string(),
+            crate::state::autopilot_goals::GoalMissedRunPolicy::SingleReplay => {
+                "single_replay".to_string()
+            }
+        };
+        state.agent_schedule_tick.pending_catchup_runs = goal.schedule.pending_catchup_runs;
+        state.agent_schedule_tick.last_recovery_epoch_seconds =
+            goal.schedule.last_recovery_epoch_seconds;
         state.agent_schedule_tick.os_scheduler_enabled = goal.schedule.os_adapter.enabled;
         state.agent_schedule_tick.os_scheduler_adapter = goal
             .schedule
@@ -689,6 +706,9 @@ pub(super) fn refresh_goal_schedule_state(state: &mut RenderState) -> bool {
         state.agent_schedule_tick.scheduler_mode = "manual".to_string();
         state.agent_schedule_tick.next_goal_run_epoch_seconds = None;
         state.agent_schedule_tick.last_goal_run_epoch_seconds = None;
+        state.agent_schedule_tick.missed_run_policy = "single_replay".to_string();
+        state.agent_schedule_tick.pending_catchup_runs = 0;
+        state.agent_schedule_tick.last_recovery_epoch_seconds = None;
         state
             .agent_schedule_tick
             .cron_next_run_preview_epoch_seconds = None;
@@ -704,6 +724,16 @@ pub(super) fn refresh_goal_schedule_state(state: &mut RenderState) -> bool {
     }
 
     before != schedule_pane_fingerprint(state)
+}
+
+fn parse_missed_run_policy(raw: &str) -> Option<GoalMissedRunPolicy> {
+    let normalized = raw.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "catch_up" | "catchup" => Some(GoalMissedRunPolicy::CatchUp),
+        "skip" => Some(GoalMissedRunPolicy::Skip),
+        "single_replay" | "single-replay" | "single" => Some(GoalMissedRunPolicy::SingleReplay),
+        _ => None,
+    }
 }
 
 pub(super) fn run_agent_schedule_tick_action(
@@ -729,6 +759,15 @@ pub(super) fn run_agent_schedule_tick_action(
                 .scheduler_mode
                 .to_ascii_lowercase();
             let cron_override = state.agent_schedule_tick.next_tick_reason.trim();
+            if let Some((_, policy_raw)) = cron_override.split_once("missed:")
+                && let Some(policy) = parse_missed_run_policy(policy_raw)
+            {
+                let _ = state.autopilot_goals.set_goal_missed_run_policy(
+                    &goal_id,
+                    policy,
+                    now_epoch_seconds,
+                );
+            }
             let is_cron_mode =
                 schedule_mode.starts_with("cron") || cron_override.starts_with("cron:");
 

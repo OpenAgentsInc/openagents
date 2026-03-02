@@ -104,6 +104,19 @@ pub enum GoalScheduleKind {
     },
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub enum GoalMissedRunPolicy {
+    CatchUp,
+    Skip,
+    SingleReplay,
+}
+
+impl Default for GoalMissedRunPolicy {
+    fn default() -> Self {
+        Self::SingleReplay
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct GoalScheduleConfig {
     pub enabled: bool,
@@ -111,6 +124,12 @@ pub struct GoalScheduleConfig {
     pub next_run_epoch_seconds: Option<u64>,
     #[serde(default)]
     pub last_run_epoch_seconds: Option<u64>,
+    #[serde(default)]
+    pub missed_run_policy: GoalMissedRunPolicy,
+    #[serde(default)]
+    pub pending_catchup_runs: u32,
+    #[serde(default)]
+    pub last_recovery_epoch_seconds: Option<u64>,
     #[serde(default)]
     pub os_adapter: OsSchedulerAdapterConfig,
 }
@@ -122,6 +141,9 @@ impl Default for GoalScheduleConfig {
             kind: GoalScheduleKind::Manual,
             next_run_epoch_seconds: None,
             last_run_epoch_seconds: None,
+            missed_run_policy: GoalMissedRunPolicy::default(),
+            pending_catchup_runs: 0,
+            last_recovery_epoch_seconds: None,
             os_adapter: OsSchedulerAdapterConfig::default(),
         }
     }
@@ -170,6 +192,8 @@ pub struct GoalRecord {
     #[serde(default)]
     pub terminal_reason: Option<String>,
     pub last_receipt_id: Option<String>,
+    #[serde(default)]
+    pub recovery_replay_pending: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -185,6 +209,16 @@ pub struct GoalExecutionReceipt {
     pub successes: u32,
     pub errors: u32,
     pub notes: Option<String>,
+    #[serde(default)]
+    pub recovered_from_restart: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GoalRestartRecoveryReport {
+    pub recovered_running_goals: Vec<String>,
+    pub replay_queued_goals: Vec<String>,
+    pub skipped_goals: Vec<String>,
+    pub catchup_backlog: Vec<(String, u32)>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -651,6 +685,130 @@ impl AutopilotGoalsState {
         Ok(resolve_goal_skill_candidates(goal, discovered_skills))
     }
 
+    pub fn recover_after_restart(
+        &mut self,
+        now_epoch_seconds: u64,
+    ) -> Result<GoalRestartRecoveryReport, String> {
+        let mut recovered_running_goals = Vec::new();
+        let mut replay_queued_goals = Vec::new();
+        let mut skipped_goals = Vec::new();
+        let mut catchup_backlog = Vec::new();
+        let mut touched = false;
+
+        for goal in &mut self.document.active_goals {
+            if goal.lifecycle_status == GoalLifecycleStatus::Running {
+                goal.lifecycle_status = GoalLifecycleStatus::Queued;
+                goal.recovery_replay_pending = true;
+                goal.schedule.last_recovery_epoch_seconds = Some(now_epoch_seconds);
+                goal.updated_at_epoch_seconds = now_epoch_seconds;
+                recovered_running_goals.push(goal.goal_id.clone());
+                touched = true;
+            }
+
+            if !goal.schedule.enabled {
+                continue;
+            }
+            let Some(next_run_epoch_seconds) = goal.schedule.next_run_epoch_seconds else {
+                continue;
+            };
+            if next_run_epoch_seconds > now_epoch_seconds {
+                continue;
+            }
+
+            match goal.schedule.missed_run_policy {
+                GoalMissedRunPolicy::Skip => {
+                    goal.schedule.next_run_epoch_seconds =
+                        Some(next_schedule_after(&goal.schedule.kind, now_epoch_seconds)?);
+                    goal.schedule.last_recovery_epoch_seconds = Some(now_epoch_seconds);
+                    goal.updated_at_epoch_seconds = now_epoch_seconds;
+                    skipped_goals.push(goal.goal_id.clone());
+                    touched = true;
+                }
+                GoalMissedRunPolicy::SingleReplay => {
+                    goal.recovery_replay_pending = true;
+                    if matches!(
+                        goal.lifecycle_status,
+                        GoalLifecycleStatus::Draft | GoalLifecycleStatus::Paused
+                    ) {
+                        goal.lifecycle_status = GoalLifecycleStatus::Queued;
+                    }
+                    goal.schedule.next_run_epoch_seconds =
+                        Some(next_schedule_after(&goal.schedule.kind, now_epoch_seconds)?);
+                    goal.schedule.last_recovery_epoch_seconds = Some(now_epoch_seconds);
+                    goal.updated_at_epoch_seconds = now_epoch_seconds;
+                    replay_queued_goals.push(goal.goal_id.clone());
+                    touched = true;
+                }
+                GoalMissedRunPolicy::CatchUp => {
+                    let mut missed_runs = 0u32;
+                    let mut cursor = next_run_epoch_seconds;
+                    while cursor <= now_epoch_seconds && missed_runs < 128 {
+                        missed_runs = missed_runs.saturating_add(1);
+                        cursor = next_schedule_after(&goal.schedule.kind, cursor)?;
+                    }
+                    if missed_runs > 0 {
+                        goal.recovery_replay_pending = true;
+                        goal.schedule.pending_catchup_runs = goal
+                            .schedule
+                            .pending_catchup_runs
+                            .saturating_add(missed_runs.saturating_sub(1));
+                        if matches!(
+                            goal.lifecycle_status,
+                            GoalLifecycleStatus::Draft | GoalLifecycleStatus::Paused
+                        ) {
+                            goal.lifecycle_status = GoalLifecycleStatus::Queued;
+                        }
+                        goal.schedule.next_run_epoch_seconds = Some(cursor);
+                        goal.schedule.last_recovery_epoch_seconds = Some(now_epoch_seconds);
+                        goal.updated_at_epoch_seconds = now_epoch_seconds;
+                        replay_queued_goals.push(goal.goal_id.clone());
+                        catchup_backlog.push((goal.goal_id.clone(), missed_runs));
+                        touched = true;
+                    }
+                }
+            }
+        }
+
+        if touched {
+            self.persist_to_disk()?;
+            self.last_error = None;
+            self.last_action = Some(format!(
+                "Recovered goals on startup running={} replay={} skipped={}",
+                recovered_running_goals.len(),
+                replay_queued_goals.len(),
+                skipped_goals.len()
+            ));
+        }
+
+        Ok(GoalRestartRecoveryReport {
+            recovered_running_goals,
+            replay_queued_goals,
+            skipped_goals,
+            catchup_backlog,
+        })
+    }
+
+    pub fn consume_recovery_replay_flag(&mut self, goal_id: &str) -> Result<bool, String> {
+        let Some(index) = self
+            .document
+            .active_goals
+            .iter()
+            .position(|goal| goal.goal_id == goal_id)
+        else {
+            return Ok(false);
+        };
+        let was_pending = self.document.active_goals[index].recovery_replay_pending;
+        if was_pending {
+            self.document.active_goals[index].recovery_replay_pending = false;
+            self.document.active_goals[index].updated_at_epoch_seconds = now_epoch_seconds();
+            if let Err(error) = self.persist_to_disk() {
+                self.document.active_goals[index].recovery_replay_pending = true;
+                return Err(error);
+            }
+        }
+        Ok(was_pending)
+    }
+
     pub fn set_goal_interval_schedule(
         &mut self,
         goal_id: &str,
@@ -675,6 +833,7 @@ impl AutopilotGoalsState {
         };
         goal.schedule.next_run_epoch_seconds =
             Some(now_epoch_seconds.saturating_add(interval_seconds));
+        goal.schedule.pending_catchup_runs = 0;
         if goal.schedule.os_adapter.enabled {
             reconcile_goal_os_scheduler(goal, now_epoch_seconds)?;
         }
@@ -723,6 +882,7 @@ impl AutopilotGoalsState {
             timezone: Some(normalized_timezone.clone()),
         };
         goal.schedule.next_run_epoch_seconds = Some(next_run);
+        goal.schedule.pending_catchup_runs = 0;
         if goal.schedule.os_adapter.enabled {
             reconcile_goal_os_scheduler(goal, now_epoch_seconds)?;
         }
@@ -800,6 +960,32 @@ impl AutopilotGoalsState {
             "{} OS scheduler adapter for goal {}",
             if enabled { "Enabled" } else { "Disabled" },
             goal_id
+        ));
+        Ok(())
+    }
+
+    pub fn set_goal_missed_run_policy(
+        &mut self,
+        goal_id: &str,
+        policy: GoalMissedRunPolicy,
+        now_epoch_seconds: u64,
+    ) -> Result<(), String> {
+        let Some(goal) = self
+            .document
+            .active_goals
+            .iter_mut()
+            .find(|goal| goal.goal_id == goal_id)
+        else {
+            return Err(format!("Active goal {goal_id} not found"));
+        };
+        goal.schedule.missed_run_policy = policy;
+        goal.schedule.last_recovery_epoch_seconds = Some(now_epoch_seconds);
+        goal.updated_at_epoch_seconds = now_epoch_seconds;
+        self.persist_to_disk()?;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Set missed-run policy for goal {} to {:?}",
+            goal_id, policy
         ));
         Ok(())
     }
@@ -1155,6 +1341,23 @@ fn default_goals_file_path() -> PathBuf {
         .join("autopilot-goals-v1.json")
 }
 
+fn next_schedule_after(kind: &GoalScheduleKind, from_epoch_seconds: u64) -> Result<u64, String> {
+    match kind {
+        GoalScheduleKind::Manual => Ok(from_epoch_seconds.saturating_add(60)),
+        GoalScheduleKind::IntervalSeconds { seconds } => {
+            Ok(from_epoch_seconds.saturating_add((*seconds).max(1)))
+        }
+        GoalScheduleKind::Cron {
+            expression,
+            timezone,
+        } => {
+            let timezone = timezone.as_deref().unwrap_or("UTC");
+            let spec = parse_cron_expression(expression)?;
+            next_cron_run_epoch_seconds(&spec, timezone, from_epoch_seconds)
+        }
+    }
+}
+
 fn os_schedule_spec_from_kind(kind: &GoalScheduleKind) -> OsSchedulerScheduleSpec {
     match kind {
         GoalScheduleKind::Manual => OsSchedulerScheduleSpec::Manual,
@@ -1205,8 +1408,8 @@ mod tests {
 
     use super::{
         AutopilotGoalsState, GoalConstraints, GoalExecutionReceipt, GoalLifecycleEvent,
-        GoalLifecycleStatus, GoalObjective, GoalRecord, GoalRetryPolicy, GoalScheduleConfig,
-        GoalScheduleKind, GoalStopCondition,
+        GoalLifecycleStatus, GoalMissedRunPolicy, GoalObjective, GoalRecord, GoalRetryPolicy,
+        GoalScheduleConfig, GoalScheduleKind, GoalStopCondition,
     };
     use crate::app_state::{
         JobHistoryReceiptRow, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
@@ -1242,6 +1445,7 @@ mod tests {
             last_failure_reason: None,
             terminal_reason: None,
             last_receipt_id: None,
+            recovery_replay_pending: false,
         }
     }
 
@@ -1271,6 +1475,7 @@ mod tests {
                 successes: 0,
                 errors: 0,
                 notes: Some("partial progress".to_string()),
+                recovered_from_restart: false,
             })
             .expect("record receipt should persist");
         state
@@ -1966,6 +2171,161 @@ mod tests {
                 .next_run_epoch_seconds
                 .is_some_and(|next| next > 1_700_000_060)
         );
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn recover_after_restart_applies_running_and_missed_run_semantics() {
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch time available")
+            .as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("autopilot-goals-restart-recovery-{now_nanos}.json"));
+        let mut state = AutopilotGoalsState::load_from_path(path.clone());
+
+        let mut running = sample_goal("goal-running-recover");
+        running.lifecycle_status = GoalLifecycleStatus::Running;
+        running.schedule.enabled = true;
+        running.schedule.kind = GoalScheduleKind::IntervalSeconds { seconds: 300 };
+        running.schedule.next_run_epoch_seconds = Some(1_700_001_000);
+        state
+            .upsert_active_goal(running)
+            .expect("running goal should persist");
+
+        let mut skip = sample_goal("goal-skip-missed");
+        skip.lifecycle_status = GoalLifecycleStatus::Draft;
+        skip.schedule.enabled = true;
+        skip.schedule.kind = GoalScheduleKind::IntervalSeconds { seconds: 120 };
+        skip.schedule.next_run_epoch_seconds = Some(1_700_000_000);
+        skip.schedule.missed_run_policy = GoalMissedRunPolicy::Skip;
+        state
+            .upsert_active_goal(skip)
+            .expect("skip goal should persist");
+
+        let mut replay = sample_goal("goal-single-replay");
+        replay.lifecycle_status = GoalLifecycleStatus::Draft;
+        replay.schedule.enabled = true;
+        replay.schedule.kind = GoalScheduleKind::IntervalSeconds { seconds: 120 };
+        replay.schedule.next_run_epoch_seconds = Some(1_700_000_000);
+        replay.schedule.missed_run_policy = GoalMissedRunPolicy::SingleReplay;
+        state
+            .upsert_active_goal(replay)
+            .expect("single replay goal should persist");
+
+        let mut catchup = sample_goal("goal-catchup");
+        catchup.lifecycle_status = GoalLifecycleStatus::Paused;
+        catchup.schedule.enabled = true;
+        catchup.schedule.kind = GoalScheduleKind::IntervalSeconds { seconds: 60 };
+        catchup.schedule.next_run_epoch_seconds = Some(1_700_000_000);
+        catchup.schedule.missed_run_policy = GoalMissedRunPolicy::CatchUp;
+        state
+            .upsert_active_goal(catchup)
+            .expect("catchup goal should persist");
+
+        let report = state
+            .recover_after_restart(1_700_000_300)
+            .expect("restart recovery should succeed");
+        assert!(
+            report
+                .recovered_running_goals
+                .contains(&"goal-running-recover".to_string())
+        );
+        assert!(
+            report
+                .replay_queued_goals
+                .contains(&"goal-single-replay".to_string())
+        );
+        assert!(
+            report
+                .skipped_goals
+                .contains(&"goal-skip-missed".to_string())
+        );
+        assert!(
+            report
+                .catchup_backlog
+                .iter()
+                .any(|(goal_id, missed)| goal_id == "goal-catchup" && *missed > 1)
+        );
+
+        let running_goal = state
+            .document
+            .active_goals
+            .iter()
+            .find(|goal| goal.goal_id == "goal-running-recover")
+            .expect("running goal should still exist");
+        assert_eq!(running_goal.lifecycle_status, GoalLifecycleStatus::Queued);
+        assert!(running_goal.recovery_replay_pending);
+
+        let skip_goal = state
+            .document
+            .active_goals
+            .iter()
+            .find(|goal| goal.goal_id == "goal-skip-missed")
+            .expect("skip goal should still exist");
+        assert_eq!(skip_goal.lifecycle_status, GoalLifecycleStatus::Draft);
+        assert!(!skip_goal.recovery_replay_pending);
+        assert!(
+            skip_goal
+                .schedule
+                .next_run_epoch_seconds
+                .is_some_and(|next| next > 1_700_000_300)
+        );
+
+        let replay_goal = state
+            .document
+            .active_goals
+            .iter()
+            .find(|goal| goal.goal_id == "goal-single-replay")
+            .expect("replay goal should still exist");
+        assert_eq!(replay_goal.lifecycle_status, GoalLifecycleStatus::Queued);
+        assert!(replay_goal.recovery_replay_pending);
+
+        let catchup_goal = state
+            .document
+            .active_goals
+            .iter()
+            .find(|goal| goal.goal_id == "goal-catchup")
+            .expect("catchup goal should still exist");
+        assert!(catchup_goal.recovery_replay_pending);
+        assert!(catchup_goal.schedule.pending_catchup_runs > 0);
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn consume_recovery_replay_flag_clears_pending_marker() {
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch time available")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "autopilot-goals-consume-recovery-flag-{now_nanos}.json"
+        ));
+        let mut state = AutopilotGoalsState::load_from_path(path.clone());
+        let mut goal = sample_goal("goal-consume-recovery");
+        goal.recovery_replay_pending = true;
+        state.upsert_active_goal(goal).expect("goal should persist");
+
+        assert!(
+            state
+                .consume_recovery_replay_flag("goal-consume-recovery")
+                .expect("first consume should succeed")
+        );
+        assert!(
+            !state
+                .consume_recovery_replay_flag("goal-consume-recovery")
+                .expect("second consume should succeed")
+        );
+
+        let refreshed = state
+            .document
+            .active_goals
+            .iter()
+            .find(|goal| goal.goal_id == "goal-consume-recovery")
+            .expect("goal should remain active");
+        assert!(!refreshed.recovery_replay_pending);
 
         let _ = std::fs::remove_file(path);
     }

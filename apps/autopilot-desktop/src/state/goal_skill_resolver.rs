@@ -193,6 +193,7 @@ mod tests {
             last_failure_reason: None,
             terminal_reason: None,
             last_receipt_id: None,
+            recovery_replay_pending: false,
         }
     }
 

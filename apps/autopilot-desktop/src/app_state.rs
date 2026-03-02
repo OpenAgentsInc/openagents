@@ -2765,6 +2765,7 @@ pub struct RenderState {
     pub stable_sats_simulation: StableSatsSimulationPaneState,
     pub autopilot_goals: crate::state::autopilot_goals::AutopilotGoalsState,
     pub goal_loop_executor: crate::state::goal_loop_executor::GoalLoopExecutorState,
+    pub goal_restart_recovery_ran: bool,
     pub sidebar: SidebarState,
     pub next_pane_id: u64,
     pub next_z_index: i32,
