@@ -156,7 +156,7 @@ Major gaps to close:
 ### Phase F - 2D drafting parity (`VCAD-PARITY-067` to `VCAD-PARITY-078`)
 
 67. [x] VCAD-PARITY-067: Drafting kernel scaffolding parity modules.
-68. [ ] VCAD-PARITY-068: Orthographic/isometric projection parity.
+68. [x] VCAD-PARITY-068: Orthographic/isometric projection parity.
 69. [ ] VCAD-PARITY-069: Hidden-line removal parity.
 70. [ ] VCAD-PARITY-070: Dimension parity (linear/angular/radial/ordinate).
 71. [ ] VCAD-PARITY-071: GD&T annotation parity.

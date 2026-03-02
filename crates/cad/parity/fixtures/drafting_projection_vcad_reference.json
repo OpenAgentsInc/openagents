@@ -1,0 +1,63 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-068",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "vcad-kernel-drafting/src/projection.rs canonical view projections",
+  "projection_tolerance": 1e-9,
+  "orthonormal_tolerance": 1e-9,
+  "isometric_up_min_y": 0.0,
+  "sample_point": {
+    "x": 1.0,
+    "y": 2.0,
+    "z": 3.0
+  },
+  "up_check_point": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 10.0
+  },
+  "expected_projection_cases": [
+    {
+      "view_direction": "back",
+      "projected_x": 1.0,
+      "projected_y": 3.0,
+      "depth": -2.0
+    },
+    {
+      "view_direction": "bottom",
+      "projected_x": -1.0,
+      "projected_y": -2.0,
+      "depth": 3.0
+    },
+    {
+      "view_direction": "front",
+      "projected_x": -1.0,
+      "projected_y": 3.0,
+      "depth": 2.0
+    },
+    {
+      "view_direction": "isometric",
+      "projected_x": 0.1339745962155614,
+      "projected_y": 3.7141016151377544,
+      "depth": 0.4330127018922194
+    },
+    {
+      "view_direction": "left",
+      "projected_x": -2.0,
+      "projected_y": 3.0,
+      "depth": -1.0
+    },
+    {
+      "view_direction": "right",
+      "projected_x": 2.0,
+      "projected_y": 3.0,
+      "depth": 1.0
+    },
+    {
+      "view_direction": "top",
+      "projected_x": -1.0,
+      "projected_y": 2.0,
+      "depth": -3.0
+    }
+  ]
+}
