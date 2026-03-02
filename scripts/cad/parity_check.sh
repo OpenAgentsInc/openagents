@@ -10,6 +10,7 @@ LANE_LABELS=(
     "kernel-math"
     "kernel-topology"
     "kernel-geom"
+    "kernel-primitives"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -93,6 +94,9 @@ run_lane "kernel-topology" \
 
 run_lane "kernel-geom" \
     "$ROOT_DIR/scripts/cad/parity-kernel-geom-ci.sh"
+
+run_lane "kernel-primitives" \
+    "$ROOT_DIR/scripts/cad/parity-kernel-primitives-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
