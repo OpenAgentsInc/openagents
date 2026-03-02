@@ -137,7 +137,7 @@ Major gaps to close:
 52. [x] VCAD-PARITY-052: Sketch interaction parity (shortcuts + editing flow).
 53. [x] VCAD-PARITY-053: Sketch undo/redo parity with deterministic replay.
 54. [x] VCAD-PARITY-054: Sketch fixture equivalence tests vs vcad corpus.
-55. [ ] VCAD-PARITY-055: Sketch/constraints parity checkpoint.
+55. [x] VCAD-PARITY-055: Sketch/constraints parity checkpoint.
 
 ### Phase E - Assembly + joints parity (`VCAD-PARITY-056` to `VCAD-PARITY-066`)
 

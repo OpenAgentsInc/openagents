@@ -33,6 +33,7 @@ pub mod scorecard;
 pub mod shell_feature_graph_parity;
 pub mod sketch_constraint_enum_parity;
 pub mod sketch_constraint_status_parity;
+pub mod sketch_constraints_checkpoint_parity;
 pub mod sketch_entity_set_parity;
 pub mod sketch_extrude_parity;
 pub mod sketch_fixture_equivalence_parity;
