@@ -39,9 +39,10 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 30,
+    "source_artifact_count": 31,
     "artifact_ids": [
       "chamfer_feature_graph_parity_manifest",
+      "expanded_finishing_parity_manifest",
       "fillet_feature_graph_parity_manifest",
       "fixtures_parity_fixture_corpus",
       "kernel_adapter_v2_manifest",

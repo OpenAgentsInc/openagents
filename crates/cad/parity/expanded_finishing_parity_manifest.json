@@ -1,0 +1,31 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-032",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "fillet_expansion_snapshot": {
+    "planar_safe_error": "evaluation failed: fillet.v2: fillet value 10.000000mm exceeded threshold 9.000000mm (class=FINISHING_TOPOLOGY_RISK) remediation=Reduce operation size or simplify edge selection.",
+    "expanded_status": "applied",
+    "expanded_geometry_hash": "eea1362e5f3e18c6"
+  },
+  "chamfer_expansion_snapshot": {
+    "planar_safe_error": "evaluation failed: chamfer.v2: chamfer value 9.000000mm exceeded threshold 8.000000mm (class=FINISHING_TOPOLOGY_RISK) remediation=Reduce operation size or simplify edge selection.",
+    "expanded_status": "applied",
+    "expanded_geometry_hash": "5a128e0645871c60"
+  },
+  "mode_roundtrip_snapshot": {
+    "fillet_mode_roundtrip": "expanded",
+    "chamfer_mode_roundtrip": "expanded",
+    "legacy_missing_mode_default": "planar_safe"
+  },
+  "deterministic_replay_match": true,
+  "deterministic_signature": "590968b95b4c4a90",
+  "parity_contracts": [
+    "finishing constraint_mode supports planar_safe and expanded parity semantics",
+    "expanded mode increases deterministic risk thresholds for fillet/chamfer paths",
+    "legacy nodes without constraint_mode default to planar_safe for backward compatibility",
+    "expanded mode node serialization round-trips deterministically for fillet/chamfer",
+    "expanded mode replay is deterministic across repeated evaluation"
+  ]
+}

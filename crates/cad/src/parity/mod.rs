@@ -1,6 +1,7 @@
 pub mod chamfer_feature_graph_parity;
 pub mod ci_artifacts;
 pub mod dashboard;
+pub mod expanded_finishing_parity;
 pub mod fillet_feature_graph_parity;
 pub mod fixture_corpus;
 pub mod gap_matrix;

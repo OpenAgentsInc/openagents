@@ -111,7 +111,7 @@ Major gaps to close:
 29. [x] VCAD-PARITY-029: Production shell op parity in feature graph.
 30. [x] VCAD-PARITY-030: Production fillet parity for planar-safe paths.
 31. [x] VCAD-PARITY-031: Production chamfer parity paths and diagnostics.
-32. [ ] VCAD-PARITY-032: Expand fillet/chamfer beyond planar-safe constraints.
+32. [x] VCAD-PARITY-032: Expand fillet/chamfer beyond planar-safe constraints.
 33. [ ] VCAD-PARITY-033: Sweep op parity (path + twist + scale controls).
 34. [ ] VCAD-PARITY-034: Loft op parity (multi-profile + closed options).
 35. [ ] VCAD-PARITY-035: Topology repair parity after boolean/finishing ops.
