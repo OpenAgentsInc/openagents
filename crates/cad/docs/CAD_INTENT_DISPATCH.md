@@ -5,6 +5,7 @@ This document defines typed intent execution for CAD state mutation.
 ## Module
 
 - `crates/cad/src/dispatch.rs`
+- Integrated execution flow: `crates/cad/src/intent_execution.rs`
 
 ## Entry Points
 

@@ -5,7 +5,7 @@
   "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
   "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
   "parity_check_entrypoint": "scripts/cad/parity_check.sh",
-  "source_artifact_count": 116,
+  "source_artifact_count": 118,
   "artifacts": [
     {
       "artifact_id": "assembly_acceptance_scenes_parity_manifest",
@@ -362,6 +362,12 @@
       "bytes": 1152
     },
     {
+      "artifact_id": "fixtures_intent_modeling_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/intent_modeling_vcad_reference.json",
+      "sha256": "1c24801ebd7d14b6a23e3f2d6829ccf3f38dc390514949dba489d266be0481bf",
+      "bytes": 433
+    },
+    {
       "artifact_id": "fixtures_parity_fixture_corpus",
       "source_path": "crates/cad/parity/fixtures/parity_fixture_corpus.json",
       "sha256": "3d59ec81dc5944df543ae51dede9d9dc32f006427bf87886634e723bfcde98d7",
@@ -396,6 +402,12 @@
       "source_path": "crates/cad/parity/glb_export_parity_manifest.json",
       "sha256": "42b557a05e5edfe0d452bcd5a87844acc23e1bec2b80860384c66d36e308c693",
       "bytes": 2317
+    },
+    {
+      "artifact_id": "intent_modeling_parity_manifest",
+      "source_path": "crates/cad/parity/intent_modeling_parity_manifest.json",
+      "sha256": "eeda41db1f1f97c279fb45838f58ac82cf4d77232d31a0a5fb25cb55100791c0",
+      "bytes": 1758
     },
     {
       "artifact_id": "kernel_adapter_v2_manifest",
@@ -520,8 +532,8 @@
     {
       "artifact_id": "parity_dashboard",
       "source_path": "crates/cad/parity/parity_dashboard.json",
-      "sha256": "7c46d85c0d8a0b963b5443cb4b3f9008295f58b947eee9b5325116c6b402f164",
-      "bytes": 6847
+      "sha256": "e533f16703b9e596e2eaa16c7412943eaa9c63bc9142469dd8deac425efdf2e0",
+      "bytes": 6942
     },
     {
       "artifact_id": "parity_risk_register",

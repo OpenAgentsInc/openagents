@@ -25,6 +25,7 @@ pub mod glb;
 pub mod hash;
 pub mod history;
 pub mod intent;
+pub mod intent_execution;
 pub mod kernel;
 pub mod kernel_booleans;
 pub mod kernel_fillet;
