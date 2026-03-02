@@ -124,7 +124,7 @@ Major gaps to close:
 ### Phase D - Sketch + constraints parity (`VCAD-PARITY-041` to `VCAD-PARITY-055`)
 
 41. [x] VCAD-PARITY-041: Expand sketch entity set (line/rect/circle/arc/spline).
-42. [ ] VCAD-PARITY-042: Sketch plane parity (XY/XZ/YZ + planar face selection).
+42. [x] VCAD-PARITY-042: Sketch plane parity (XY/XZ/YZ + planar face selection).
 43. [ ] VCAD-PARITY-043: Full constraint enum parity (geometric + dimensional).
 44. [ ] VCAD-PARITY-044: Iterative LM solver parity (not one-pass MVP).
 45. [ ] VCAD-PARITY-045: Jacobian/residual pipeline parity and diagnostics.

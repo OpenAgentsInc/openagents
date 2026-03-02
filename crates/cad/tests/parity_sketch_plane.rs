@@ -1,10 +1,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use openagents_cad::parity::ci_artifacts::{
-    PARITY_CI_ARTIFACTS_ISSUE_ID, ParityCiArtifactManifest, build_ci_artifact_manifest,
-};
 use openagents_cad::parity::scorecard::ParityScorecard;
+use openagents_cad::parity::sketch_plane_parity::{
+    PARITY_SKETCH_PLANE_ISSUE_ID, SketchPlaneParityManifest, build_sketch_plane_parity_manifest,
+};
 
 fn repo_root() -> PathBuf {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -27,33 +27,35 @@ fn load_json<T: serde::de::DeserializeOwned>(path: &Path) -> T {
 }
 
 #[test]
-fn parity_ci_artifact_manifest_fixture_is_well_formed() {
-    let path = parity_dir().join("parity_ci_artifact_manifest.json");
-    let manifest: ParityCiArtifactManifest = load_json(&path);
+fn sketch_plane_manifest_fixture_is_well_formed() {
+    let path = parity_dir().join("sketch_plane_parity_manifest.json");
+    let manifest: SketchPlaneParityManifest = load_json(&path);
     assert_eq!(manifest.manifest_version, 1);
-    assert_eq!(manifest.issue_id, PARITY_CI_ARTIFACTS_ISSUE_ID);
-    assert_eq!(manifest.source_artifact_count, 42);
-    assert_eq!(manifest.artifacts.len(), 42);
-    assert_eq!(
-        manifest.parity_check_entrypoint,
-        "scripts/cad/parity_check.sh".to_string()
+    assert_eq!(manifest.issue_id, PARITY_SKETCH_PLANE_ISSUE_ID);
+    assert_eq!(manifest.supported_standard_planes, vec!["xy", "xz", "yz"]);
+    assert_eq!(manifest.preset_planes.len(), 3);
+    assert!(!manifest.planar_face_selection_cases.is_empty());
+    assert!(
+        manifest
+            .non_planar_face_rejection
+            .contains("must reference a planar face")
     );
+    assert!(manifest.deterministic_replay_match);
 }
 
 #[test]
-fn parity_ci_artifact_manifest_fixture_matches_generation() {
-    let repo = repo_root();
+fn sketch_plane_manifest_fixture_matches_generation() {
     let parity = parity_dir();
     let scorecard_path = parity.join("parity_scorecard.json");
-    let fixture_path = parity.join("parity_ci_artifact_manifest.json");
+    let fixture_path = parity.join("sketch_plane_parity_manifest.json");
     let scorecard: ParityScorecard = load_json(&scorecard_path);
     let generated =
-        build_ci_artifact_manifest(&scorecard, &scorecard_path.to_string_lossy(), &repo)
-            .expect("build ci artifact manifest");
+        build_sketch_plane_parity_manifest(&scorecard, &scorecard_path.to_string_lossy())
+            .expect("build sketch plane parity manifest");
     let generated_json = format!(
         "{}\n",
         serde_json::to_string_pretty(&generated).expect("serialize generated manifest")
     );
-    let fixture_json = fs::read_to_string(fixture_path).expect("read ci artifact fixture");
+    let fixture_json = fs::read_to_string(fixture_path).expect("read sketch plane fixture");
     assert_eq!(generated_json, fixture_json);
 }

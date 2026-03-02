@@ -4,6 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use super::common::{validate_stable_id, validate_vec2_finite, validate_vec3_finite};
 use super::constraints::CadSketchConstraint;
+use crate::kernel_geom::SurfaceRecord;
+use crate::kernel_primitives::BRepSolid;
+use crate::kernel_topology::{FaceId, Orientation};
 use crate::{CadError, CadResult};
 
 /// Stable sketch plane definition in model-space millimeters.
@@ -17,7 +20,125 @@ pub struct CadSketchPlane {
     pub y_axis: [f64; 3],
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CadSketchPlanePreset {
+    Xy,
+    Xz,
+    Yz,
+}
+
+impl CadSketchPlanePreset {
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Xy => "xy",
+            Self::Xz => "xz",
+            Self::Yz => "yz",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Xy => "XY",
+            Self::Xz => "XZ",
+            Self::Yz => "YZ",
+        }
+    }
+}
+
 impl CadSketchPlane {
+    pub fn from_preset(preset: CadSketchPlanePreset) -> Self {
+        let (normal, x_axis, y_axis) = match preset {
+            CadSketchPlanePreset::Xy => ([0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]),
+            CadSketchPlanePreset::Xz => ([0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
+            CadSketchPlanePreset::Yz => ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]),
+        };
+        Self {
+            id: format!("plane.{}", preset.key()),
+            name: preset.label().to_string(),
+            origin_mm: [0.0, 0.0, 0.0],
+            normal,
+            x_axis,
+            y_axis,
+        }
+    }
+
+    pub fn xy() -> Self {
+        Self::from_preset(CadSketchPlanePreset::Xy)
+    }
+
+    pub fn xz() -> Self {
+        Self::from_preset(CadSketchPlanePreset::Xz)
+    }
+
+    pub fn yz() -> Self {
+        Self::from_preset(CadSketchPlanePreset::Yz)
+    }
+
+    pub fn from_planar_face(brep: &BRepSolid, face_ref: &str) -> CadResult<Self> {
+        let face_id = parse_face_ref(face_ref)?;
+        Self::from_planar_face_with_identity(
+            brep,
+            face_ref,
+            format!("plane.face.{}", face_id.0),
+            format!("Face {}", face_id.0),
+        )
+    }
+
+    pub fn from_planar_face_with_identity(
+        brep: &BRepSolid,
+        face_ref: &str,
+        id: impl Into<String>,
+        name: impl Into<String>,
+    ) -> CadResult<Self> {
+        let face_id = parse_face_ref(face_ref)?;
+        let face = brep
+            .topology
+            .faces
+            .get(&face_id)
+            .ok_or_else(|| CadError::ParseFailed {
+                reason: format!("sketch plane face_ref {face_ref} does not exist"),
+            })?;
+        let surface = brep
+            .geometry
+            .surfaces
+            .get(face.surface_index)
+            .ok_or_else(|| CadError::ParseFailed {
+                reason: format!(
+                    "sketch plane face_ref {face_ref} references missing surface {}",
+                    face.surface_index
+                ),
+            })?;
+        let plane = match surface {
+            SurfaceRecord::Plane(plane) => plane,
+            _ => {
+                return Err(CadError::ParseFailed {
+                    reason: format!(
+                        "sketch plane face_ref {face_ref} must reference a planar face, found {:?}",
+                        surface.kind()
+                    ),
+                });
+            }
+        };
+
+        let mut normal = vec3_to_array(plane.normal_dir.into_inner());
+        let x_axis = vec3_to_array(plane.x_dir.into_inner());
+        let mut y_axis = vec3_to_array(plane.y_dir.into_inner());
+        if face.orientation == Orientation::Reversed {
+            normal = negate_vec3(normal);
+            y_axis = negate_vec3(y_axis);
+        }
+
+        Ok(Self {
+            id: id.into(),
+            name: name.into(),
+            origin_mm: point3_to_array(plane.origin),
+            normal,
+            x_axis,
+            y_axis,
+        })
+    }
+
     pub fn validate(&self) -> CadResult<()> {
         validate_stable_id(&self.id, "sketch plane id")?;
         if self.name.trim().is_empty() {
@@ -31,6 +152,35 @@ impl CadSketchPlane {
         validate_vec3_finite(self.y_axis, "sketch plane y_axis")?;
         Ok(())
     }
+}
+
+fn parse_face_ref(face_ref: &str) -> CadResult<FaceId> {
+    let raw = face_ref
+        .strip_prefix("face.")
+        .ok_or_else(|| CadError::ParseFailed {
+            reason: format!("sketch face ref must use face.<id> format, found {face_ref}"),
+        })?;
+    let face_id_value = raw.parse::<u64>().map_err(|error| CadError::ParseFailed {
+        reason: format!("sketch face ref {face_ref} has invalid id: {error}"),
+    })?;
+    if face_id_value == 0 {
+        return Err(CadError::ParseFailed {
+            reason: format!("sketch face ref {face_ref} must use id >= 1"),
+        });
+    }
+    Ok(FaceId(face_id_value))
+}
+
+fn point3_to_array(point: crate::kernel_math::Point3) -> [f64; 3] {
+    [point.x, point.y, point.z]
+}
+
+fn vec3_to_array(vector: crate::kernel_math::Vec3) -> [f64; 3] {
+    [vector.x, vector.y, vector.z]
+}
+
+fn negate_vec3(vector: [f64; 3]) -> [f64; 3] {
+    [-vector[0], -vector[1], -vector[2]]
 }
 
 /// Stable sketch entity model for Wave 2 kickoff.
