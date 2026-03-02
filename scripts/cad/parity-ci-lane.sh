@@ -31,6 +31,7 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/kernel_boolean_brep_parity_manifest.json"
     "crates/cad/parity/kernel_nurbs_parity_manifest.json"
     "crates/cad/parity/kernel_text_parity_manifest.json"
+    "crates/cad/parity/kernel_fillet_parity_manifest.json"
     "crates/cad/parity/kernel_precision_parity_manifest.json"
     "crates/cad/parity/fixtures/parity_fixture_corpus.json"
 )

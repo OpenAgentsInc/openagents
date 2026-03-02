@@ -22,6 +22,7 @@ pub mod history;
 pub mod intent;
 pub mod kernel;
 pub mod kernel_booleans;
+pub mod kernel_fillet;
 pub mod kernel_geom;
 pub mod kernel_math;
 pub mod kernel_nurbs;
