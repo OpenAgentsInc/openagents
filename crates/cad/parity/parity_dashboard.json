@@ -39,8 +39,9 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 28,
+    "source_artifact_count": 29,
     "artifact_ids": [
+      "fillet_feature_graph_parity_manifest",
       "fixtures_parity_fixture_corpus",
       "kernel_adapter_v2_manifest",
       "kernel_boolean_brep_parity_manifest",

@@ -1,5 +1,6 @@
 pub mod ci_artifacts;
 pub mod dashboard;
+pub mod fillet_feature_graph_parity;
 pub mod fixture_corpus;
 pub mod gap_matrix;
 pub mod kernel_adapter_v2;

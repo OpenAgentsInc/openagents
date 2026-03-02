@@ -1,0 +1,45 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-030",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "fillet_node_snapshot": {
+    "operation_key": "fillet.v2",
+    "depends_on": [
+      "feature.base"
+    ],
+    "radius_param": "fillet_radius_mm",
+    "edge_refs": [
+      "edge.001",
+      "edge.003"
+    ],
+    "allow_fallback": false
+  },
+  "graph_topo_order": [
+    "feature.base",
+    "feature.fillet.primary"
+  ],
+  "applied_snapshot": {
+    "status": "applied",
+    "geometry_hash": "52c942e27177aaf0",
+    "failure_classification": null,
+    "warning_count": 0
+  },
+  "fallback_snapshot": {
+    "status": "fallback_kept_source",
+    "geometry_hash": "fillet-source-geometry-hash",
+    "failure_classification": "FINISHING_TOPOLOGY_RISK",
+    "warning_count": 1
+  },
+  "edge_selection_affects_hash": true,
+  "invalid_radius_error": "evaluation failed: fillet.v2: fillet value must be finite and > 0 (class=FINISHING_INVALID_INPUT)",
+  "deterministic_signature": "0b618f7ec2b79699",
+  "parity_contracts": [
+    "fillet.v2 feature nodes round-trip deterministically in feature graph serialization",
+    "fillet edge refs are canonicalized (sorted + deduplicated) on node conversion",
+    "planar-safe fillet path applies deterministically for safe radii",
+    "fillet fallback maps to TOPOLOGY_RISK with deterministic warning payload",
+    "applied fillet geometry hash includes edge selection signature"
+  ]
+}

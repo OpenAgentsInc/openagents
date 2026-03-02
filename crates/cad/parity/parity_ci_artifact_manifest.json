@@ -5,8 +5,14 @@
   "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
   "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
   "parity_check_entrypoint": "scripts/cad/parity_check.sh",
-  "source_artifact_count": 28,
+  "source_artifact_count": 29,
   "artifacts": [
+    {
+      "artifact_id": "fillet_feature_graph_parity_manifest",
+      "source_path": "crates/cad/parity/fillet_feature_graph_parity_manifest.json",
+      "sha256": "5ac005df2defc3aad80e7eee590522d6fedad1ea9143d9a9215d7e1c24da446b",
+      "bytes": 1618
+    },
     {
       "artifact_id": "fixtures_parity_fixture_corpus",
       "source_path": "crates/cad/parity/fixtures/parity_fixture_corpus.json",
@@ -118,8 +124,8 @@
     {
       "artifact_id": "parity_dashboard",
       "source_path": "crates/cad/parity/parity_dashboard.json",
-      "sha256": "70938157092ceba3349b463c849a7cfbb576c25a6bbaace6ea3bc384d3f7987c",
-      "bytes": 2685
+      "sha256": "087366154af5c06e8f663c8df2f74d1bba2b64372d2b7bc475c649ceab1b87e0",
+      "bytes": 2731
     },
     {
       "artifact_id": "parity_risk_register",
