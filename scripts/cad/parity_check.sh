@@ -58,6 +58,7 @@ LANE_LABELS=(
     "assembly-joint-limits-state"
     "assembly-fk"
     "assembly-ground-delete"
+    "assembly-ui-selection-edit"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -285,6 +286,9 @@ run_lane "assembly-fk" \
 
 run_lane "assembly-ground-delete" \
     "$ROOT_DIR/scripts/cad/parity-assembly-ground-delete-ci.sh"
+
+run_lane "assembly-ui-selection-edit" \
+    "$ROOT_DIR/scripts/cad/parity-assembly-ui-selection-edit-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

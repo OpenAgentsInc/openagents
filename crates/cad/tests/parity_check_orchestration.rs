@@ -41,6 +41,7 @@ fn parity_check_script_list_mode_includes_required_lanes() {
     assert!(lines.contains(&"assembly-joint-limits-state"));
     assert!(lines.contains(&"assembly-fk"));
     assert!(lines.contains(&"assembly-ground-delete"));
+    assert!(lines.contains(&"assembly-ui-selection-edit"));
     assert!(lines.contains(&"ci-artifact-manifest"));
     assert!(lines.contains(&"risk-register-workflow"));
     assert!(lines.contains(&"baseline-dashboard"));

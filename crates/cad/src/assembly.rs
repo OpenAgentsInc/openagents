@@ -325,6 +325,14 @@ pub struct CadInstanceDeletionSummary {
     pub cleared_ground: bool,
 }
 
+/// Assembly pane selection/editing state used by UI layers.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct CadAssemblyUiState {
+    pub selected_instance_id: Option<String>,
+    pub selected_joint_id: Option<String>,
+    pub last_error: Option<String>,
+}
+
 impl CadAssemblySchema {
     pub fn create_part_def(
         &mut self,
@@ -615,6 +623,15 @@ impl CadAssemblySchema {
         })
     }
 
+    pub fn set_joint_state_with_limits(
+        &mut self,
+        joint_id: &str,
+        requested_state: f64,
+    ) -> CadResult<CadJointStateSemantics> {
+        let joint = self.joint_mut(joint_id)?;
+        Ok(joint.set_state_with_limits(requested_state))
+    }
+
     fn next_instance_id(&self, part_def_id: &str) -> String {
         let mut next_index = 1_u64;
         loop {
@@ -638,6 +655,104 @@ impl CadAssemblySchema {
                 name: "instance.id".to_string(),
                 reason: format!("unknown instance: {instance_id}"),
             })
+    }
+
+    fn joint_mut(&mut self, joint_id: &str) -> CadResult<&mut CadAssemblyJoint> {
+        self.joints
+            .iter_mut()
+            .find(|joint| joint.id == joint_id)
+            .ok_or_else(|| CadError::InvalidParameter {
+                name: "joint.id".to_string(),
+                reason: format!("unknown joint: {joint_id}"),
+            })
+    }
+}
+
+impl CadAssemblyUiState {
+    pub fn select_instance(
+        &mut self,
+        schema: &CadAssemblySchema,
+        instance_id: &str,
+    ) -> CadResult<()> {
+        if !schema
+            .instances
+            .iter()
+            .any(|instance| instance.id == instance_id)
+        {
+            return Err(CadError::InvalidParameter {
+                name: "instance.id".to_string(),
+                reason: format!("unknown instance: {instance_id}"),
+            });
+        }
+        self.selected_instance_id = Some(instance_id.to_string());
+        self.last_error = None;
+        Ok(())
+    }
+
+    pub fn select_joint(&mut self, schema: &CadAssemblySchema, joint_id: &str) -> CadResult<()> {
+        if !schema.joints.iter().any(|joint| joint.id == joint_id) {
+            return Err(CadError::InvalidParameter {
+                name: "joint.id".to_string(),
+                reason: format!("unknown joint: {joint_id}"),
+            });
+        }
+        self.selected_joint_id = Some(joint_id.to_string());
+        self.last_error = None;
+        Ok(())
+    }
+
+    pub fn rename_selected_instance(
+        &mut self,
+        schema: &mut CadAssemblySchema,
+        name: String,
+    ) -> CadResult<()> {
+        let Some(instance_id) = self.selected_instance_id.as_deref() else {
+            return Err(CadError::InvalidParameter {
+                name: "ui.selected_instance_id".to_string(),
+                reason: "no selected assembly instance".to_string(),
+            });
+        };
+        schema.rename_instance(instance_id, name)?;
+        self.last_error = None;
+        Ok(())
+    }
+
+    pub fn set_selected_joint_state(
+        &mut self,
+        schema: &mut CadAssemblySchema,
+        requested_state: f64,
+    ) -> CadResult<CadJointStateSemantics> {
+        let Some(joint_id) = self.selected_joint_id.as_deref() else {
+            return Err(CadError::InvalidParameter {
+                name: "ui.selected_joint_id".to_string(),
+                reason: "no selected assembly joint".to_string(),
+            });
+        };
+        let semantics = schema.set_joint_state_with_limits(joint_id, requested_state)?;
+        self.last_error = None;
+        Ok(semantics)
+    }
+
+    pub fn sync_with_schema(&mut self, schema: &CadAssemblySchema) {
+        if self
+            .selected_instance_id
+            .as_deref()
+            .is_some_and(|instance_id| {
+                !schema
+                    .instances
+                    .iter()
+                    .any(|instance| instance.id == instance_id)
+            })
+        {
+            self.selected_instance_id = None;
+        }
+        if self
+            .selected_joint_id
+            .as_deref()
+            .is_some_and(|joint_id| !schema.joints.iter().any(|joint| joint.id == joint_id))
+        {
+            self.selected_joint_id = None;
+        }
     }
 }
 
@@ -861,8 +976,8 @@ fn clean_transform(transform: CadTransform3D) -> CadTransform3D {
 #[cfg(test)]
 mod tests {
     use super::{
-        CadAssemblyJoint, CadAssemblySchema, CadJointKind, CadJointMotion, CadPartDef,
-        CadPartInstance, CadTransform3D,
+        CadAssemblyJoint, CadAssemblySchema, CadAssemblyUiState, CadJointKind, CadJointMotion,
+        CadPartDef, CadPartInstance, CadTransform3D,
     };
     use crate::kernel_math::Vec3;
     use std::collections::BTreeMap;
@@ -1528,6 +1643,111 @@ mod tests {
                 .to_string()
                 .contains("unknown instance: missing")
         );
+    }
+
+    #[test]
+    fn assembly_ui_selection_and_editing_follow_selected_entities() {
+        let mut schema = CadAssemblySchema {
+            part_defs: BTreeMap::new(),
+            instances: vec![
+                CadPartInstance {
+                    id: "base-1".to_string(),
+                    part_def_id: "base".to_string(),
+                    name: Some("Base".to_string()),
+                    transform: None,
+                    material: None,
+                },
+                CadPartInstance {
+                    id: "arm-1".to_string(),
+                    part_def_id: "arm".to_string(),
+                    name: Some("Arm".to_string()),
+                    transform: None,
+                    material: None,
+                },
+            ],
+            joints: vec![CadAssemblyJoint {
+                id: "joint.hinge".to_string(),
+                name: Some("Hinge".to_string()),
+                parent_instance_id: Some("base-1".to_string()),
+                child_instance_id: "arm-1".to_string(),
+                parent_anchor: Vec3::new(0.0, 0.0, 0.0),
+                child_anchor: Vec3::new(0.0, 0.0, 0.0),
+                kind: CadJointKind::Revolute {
+                    axis: Vec3::new(0.0, 0.0, 1.0),
+                    limits: Some((-90.0, 90.0)),
+                },
+                state: 0.0,
+            }],
+            ground_instance_id: Some("base-1".to_string()),
+        };
+        let mut ui = CadAssemblyUiState::default();
+
+        ui.select_instance(&schema, "arm-1")
+            .expect("select instance");
+        ui.rename_selected_instance(&mut schema, "Arm Segment".to_string())
+            .expect("rename selected instance");
+        assert_eq!(
+            schema
+                .instances
+                .iter()
+                .find(|instance| instance.id == "arm-1")
+                .and_then(|instance| instance.name.as_deref()),
+            Some("Arm Segment")
+        );
+
+        ui.select_joint(&schema, "joint.hinge")
+            .expect("select joint");
+        let semantics = ui
+            .set_selected_joint_state(&mut schema, 120.0)
+            .expect("set selected joint state");
+        assert!(semantics.was_clamped);
+        assert_eq!(semantics.effective_state, 90.0);
+    }
+
+    #[test]
+    fn assembly_ui_sync_clears_stale_selection_refs_after_deletes() {
+        let mut schema = CadAssemblySchema {
+            part_defs: BTreeMap::new(),
+            instances: vec![
+                CadPartInstance {
+                    id: "base-1".to_string(),
+                    part_def_id: "base".to_string(),
+                    name: None,
+                    transform: None,
+                    material: None,
+                },
+                CadPartInstance {
+                    id: "arm-1".to_string(),
+                    part_def_id: "arm".to_string(),
+                    name: None,
+                    transform: None,
+                    material: None,
+                },
+            ],
+            joints: vec![CadAssemblyJoint {
+                id: "joint.hinge".to_string(),
+                name: None,
+                parent_instance_id: Some("base-1".to_string()),
+                child_instance_id: "arm-1".to_string(),
+                parent_anchor: Vec3::new(0.0, 0.0, 0.0),
+                child_anchor: Vec3::new(0.0, 0.0, 0.0),
+                kind: CadJointKind::Fixed,
+                state: 0.0,
+            }],
+            ground_instance_id: None,
+        };
+        let mut ui = CadAssemblyUiState {
+            selected_instance_id: Some("arm-1".to_string()),
+            selected_joint_id: Some("joint.hinge".to_string()),
+            last_error: None,
+        };
+
+        schema
+            .delete_instance("arm-1")
+            .expect("delete selected instance");
+        ui.sync_with_schema(&schema);
+        assert_eq!(ui.selected_instance_id, None);
+        assert_eq!(ui.selected_joint_id, None);
     }
 
     #[test]
