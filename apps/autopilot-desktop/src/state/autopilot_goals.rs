@@ -11,6 +11,7 @@ use crate::state::earnings_gate::{EarningsVerificationReport, verify_authoritati
 use crate::state::goal_conditions::{
     ConditionEvaluation, GoalProgressSnapshot, evaluate_conditions,
 };
+use crate::state::swap_contract::{SwapExecutionRequest, SwapPolicy, SwapQuoteTerms};
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum GoalObjective {
@@ -37,6 +38,8 @@ pub struct GoalConstraints {
     pub max_attempts: u32,
     pub max_total_spend_sats: Option<u64>,
     pub max_total_swap_cents: Option<u64>,
+    #[serde(default)]
+    pub swap_policy: SwapPolicy,
 }
 
 impl Default for GoalConstraints {
@@ -46,6 +49,7 @@ impl Default for GoalConstraints {
             max_attempts: 12,
             max_total_spend_sats: None,
             max_total_swap_cents: None,
+            swap_policy: SwapPolicy::default(),
         }
     }
 }
@@ -503,6 +507,47 @@ impl AutopilotGoalsState {
         ))
     }
 
+    pub fn validate_swap_request_policy(
+        &self,
+        goal_id: &str,
+        request: &SwapExecutionRequest,
+        daily_converted_sats: u64,
+        daily_converted_cents: u64,
+    ) -> Result<(), String> {
+        let Some(goal) = self
+            .document
+            .active_goals
+            .iter()
+            .find(|goal| goal.goal_id == goal_id)
+        else {
+            return Err(format!("Active goal {goal_id} not found"));
+        };
+        goal.constraints.swap_policy.validate_request(
+            request,
+            daily_converted_sats,
+            daily_converted_cents,
+        )
+    }
+
+    pub fn validate_swap_quote_policy(
+        &self,
+        goal_id: &str,
+        quote: &SwapQuoteTerms,
+        now_epoch_seconds: u64,
+    ) -> Result<(), String> {
+        let Some(goal) = self
+            .document
+            .active_goals
+            .iter()
+            .find(|goal| goal.goal_id == goal_id)
+        else {
+            return Err(format!("Active goal {goal_id} not found"));
+        };
+        goal.constraints
+            .swap_policy
+            .validate_quote(quote, now_epoch_seconds)
+    }
+
     pub fn file_path(&self) -> &PathBuf {
         &self.file_path
     }
@@ -628,6 +673,9 @@ mod tests {
     };
     use crate::spark_wallet::SparkPaneState;
     use crate::state::goal_conditions::GoalProgressSnapshot;
+    use crate::state::swap_contract::{
+        SwapAmount, SwapAmountUnit, SwapDirection, SwapExecutionRequest, SwapQuoteTerms,
+    };
 
     fn sample_goal(id: &str) -> GoalRecord {
         GoalRecord {
@@ -895,6 +943,100 @@ mod tests {
                 .iter()
                 .any(|mismatch| mismatch.contains("synthetic payout pointer"))
         );
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn validate_swap_request_policy_by_goal_id() {
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch time available")
+            .as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("autopilot-goals-swap-request-{now_nanos}.json"));
+        let mut state = AutopilotGoalsState::load_from_path(path.clone());
+        state
+            .upsert_active_goal(sample_goal("goal-swap-request"))
+            .expect("upsert active goal should succeed");
+
+        let valid_request = SwapExecutionRequest {
+            request_id: "swap-request-1".to_string(),
+            direction: SwapDirection::BtcToUsd,
+            amount: SwapAmount {
+                amount: 5_000,
+                unit: SwapAmountUnit::Sats,
+            },
+            quote_ttl_seconds: 30,
+            immediate_execution: true,
+            max_fee_sats_override: Some(500),
+            max_slippage_bps_override: Some(50),
+        };
+        state
+            .validate_swap_request_policy("goal-swap-request", &valid_request, 10_000, 0)
+            .expect("valid swap request should pass policy");
+
+        let invalid_request = SwapExecutionRequest {
+            request_id: "swap-request-2".to_string(),
+            direction: SwapDirection::BtcToUsd,
+            amount: SwapAmount {
+                amount: GoalConstraints::default()
+                    .swap_policy
+                    .max_per_swap_sats
+                    .saturating_add(1),
+                unit: SwapAmountUnit::Sats,
+            },
+            quote_ttl_seconds: 30,
+            immediate_execution: true,
+            max_fee_sats_override: None,
+            max_slippage_bps_override: None,
+        };
+        let error = state
+            .validate_swap_request_policy("goal-swap-request", &invalid_request, 0, 0)
+            .expect_err("request above per-swap limit should fail");
+        assert!(error.contains("exceeds per-swap limit"));
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn validate_swap_quote_policy_by_goal_id() {
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch time available")
+            .as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("autopilot-goals-swap-quote-{now_nanos}.json"));
+        let mut state = AutopilotGoalsState::load_from_path(path.clone());
+        state
+            .upsert_active_goal(sample_goal("goal-swap-quote"))
+            .expect("upsert active goal should succeed");
+
+        let quote = SwapQuoteTerms {
+            quote_id: "quote-1".to_string(),
+            direction: SwapDirection::UsdToBtc,
+            amount_in: SwapAmount {
+                amount: 100_00,
+                unit: SwapAmountUnit::Cents,
+            },
+            amount_out: SwapAmount {
+                amount: 3_200,
+                unit: SwapAmountUnit::Sats,
+            },
+            expires_at_epoch_seconds: 500,
+            immediate_execution: false,
+            fee_sats: 100,
+            fee_bps: 15,
+            slippage_bps: 20,
+        };
+        state
+            .validate_swap_quote_policy("goal-swap-quote", &quote, 400)
+            .expect("valid quote should pass policy");
+
+        let expired_error = state
+            .validate_swap_quote_policy("goal-swap-quote", &quote, 500)
+            .expect_err("expired quote should fail");
+        assert!(expired_error.contains("expired"));
 
         let _ = std::fs::remove_file(path);
     }

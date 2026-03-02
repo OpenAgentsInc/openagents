@@ -167,6 +167,7 @@ mod tests {
                 max_attempts: 5,
                 max_total_spend_sats: Some(10_000),
                 max_total_swap_cents: Some(20_000),
+                swap_policy: crate::state::swap_contract::SwapPolicy::default(),
             },
             stop_conditions: vec![
                 GoalStopCondition::WalletDeltaSatsAtLeast { sats: 1_000 },
