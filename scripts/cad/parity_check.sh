@@ -51,6 +51,7 @@ LANE_LABELS=(
     "sketch-undo-redo"
     "sketch-fixture-equivalence"
     "sketch-constraints-checkpoint"
+    "assembly-schema"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -257,6 +258,9 @@ run_lane "sketch-fixture-equivalence" \
 
 run_lane "sketch-constraints-checkpoint" \
     "$ROOT_DIR/scripts/cad/parity-sketch-constraints-checkpoint-ci.sh"
+
+run_lane "assembly-schema" \
+    "$ROOT_DIR/scripts/cad/parity-assembly-schema-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

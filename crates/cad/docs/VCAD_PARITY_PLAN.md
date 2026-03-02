@@ -141,7 +141,7 @@ Major gaps to close:
 
 ### Phase E - Assembly + joints parity (`VCAD-PARITY-056` to `VCAD-PARITY-066`)
 
-56. [ ] VCAD-PARITY-056: Add assembly schema (`PartDef`, `Instance`, `Joint`, ground ID).
+56. [x] VCAD-PARITY-056: Add assembly schema (`PartDef`, `Instance`, `Joint`, ground ID).
 57. [ ] VCAD-PARITY-057: Part definition and instance parity behavior.
 58. [ ] VCAD-PARITY-058: Joint parity (Fixed/Revolute/Slider).
 59. [ ] VCAD-PARITY-059: Joint parity (Cylindrical/Ball).

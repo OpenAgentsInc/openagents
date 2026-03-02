@@ -4,6 +4,7 @@
 //! Higher-level CAD workflows are introduced incrementally via the CAD backlog.
 
 pub mod analysis;
+pub mod assembly;
 pub mod boolean;
 pub mod chat_adapter;
 pub mod contracts;
