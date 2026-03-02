@@ -123,9 +123,9 @@ pub(super) fn run_chat_submit_action(state: &mut crate::app_state::RenderState) 
     let command = crate::codex_lane::CodexLaneCommand::TurnStart(TurnStartParams {
         thread_id: thread_id.clone(),
         input,
-        cwd: None,
+        cwd: goal_scoped_turn_cwd(state).map(std::path::PathBuf::from),
         approval_policy: cad_turn_approval_policy(classification.is_cad_turn),
-        sandbox_policy: dangerous_sandbox_policy(),
+        sandbox_policy: goal_scoped_turn_sandbox_policy(state),
         model: model_override.clone(),
         effort: None,
         summary: None,
@@ -388,6 +388,61 @@ pub(super) fn dangerous_sandbox_mode() -> Option<codex_client::SandboxMode> {
     Some(codex_client::SandboxMode::DangerFullAccess)
 }
 
+fn active_goal_autonomy_policy(
+    state: &crate::app_state::RenderState,
+) -> Option<&crate::state::autopilot_goals::GoalAutonomyPolicy> {
+    let active_run = state.goal_loop_executor.active_run.as_ref()?;
+    state
+        .autopilot_goals
+        .document
+        .active_goals
+        .iter()
+        .find(|goal| goal.goal_id == active_run.goal_id)
+        .map(|goal| &goal.constraints.autonomy_policy)
+}
+
+fn normalized_policy_file_roots(state: &crate::app_state::RenderState) -> Vec<String> {
+    let Some(policy) = active_goal_autonomy_policy(state) else {
+        return Vec::new();
+    };
+    policy
+        .allowed_file_roots
+        .iter()
+        .map(|root| root.trim())
+        .filter(|root| !root.is_empty())
+        .map(|root| root.to_string())
+        .collect::<Vec<_>>()
+}
+
+pub(super) fn goal_scoped_turn_cwd(state: &crate::app_state::RenderState) -> Option<String> {
+    normalized_policy_file_roots(state).into_iter().next()
+}
+
+pub(super) fn goal_scoped_turn_sandbox_policy(
+    state: &crate::app_state::RenderState,
+) -> Option<codex_client::SandboxPolicy> {
+    let roots = normalized_policy_file_roots(state);
+    if roots.is_empty() {
+        return dangerous_sandbox_policy();
+    }
+    Some(codex_client::SandboxPolicy::WorkspaceWrite {
+        writable_roots: roots,
+        network_access: true,
+        exclude_tmpdir_env_var: false,
+        exclude_slash_tmp: false,
+    })
+}
+
+pub(super) fn goal_scoped_thread_sandbox_mode(
+    state: &crate::app_state::RenderState,
+) -> Option<codex_client::SandboxMode> {
+    if normalized_policy_file_roots(state).is_empty() {
+        dangerous_sandbox_mode()
+    } else {
+        Some(codex_client::SandboxMode::WorkspaceWrite)
+    }
+}
+
 pub(super) fn assemble_chat_turn_input(
     prompt: String,
     skill_attachments: Vec<TurnSkillAttachment>,
@@ -465,16 +520,18 @@ pub(super) fn run_chat_refresh_threads_action(state: &mut crate::app_state::Rend
 
 pub(super) fn run_chat_new_thread_action(state: &mut crate::app_state::RenderState) -> bool {
     focus_chat_composer(state);
-    let cwd = std::env::current_dir()
-        .ok()
-        .and_then(|value| value.into_os_string().into_string().ok());
+    let cwd = goal_scoped_turn_cwd(state).or_else(|| {
+        std::env::current_dir()
+            .ok()
+            .and_then(|value| value.into_os_string().into_string().ok())
+    });
     let model_override = state.autopilot_chat.selected_model_override();
     let command = crate::codex_lane::CodexLaneCommand::ThreadStart(ThreadStartParams {
         model: model_override,
         model_provider: None,
         cwd,
         approval_policy: cad_turn_approval_policy(false),
-        sandbox: dangerous_sandbox_mode(),
+        sandbox: goal_scoped_thread_sandbox_mode(state),
         dynamic_tools: Some(crate::openagents_dynamic_tools::openagents_dynamic_tool_specs()),
     });
     if let Err(error) = state.queue_codex_command(command) {

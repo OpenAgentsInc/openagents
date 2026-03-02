@@ -44,6 +44,29 @@ pub enum GoalObjective {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct GoalAutonomyPolicy {
+    #[serde(default)]
+    pub allowed_command_prefixes: Vec<String>,
+    #[serde(default)]
+    pub allowed_file_roots: Vec<String>,
+    #[serde(default)]
+    pub kill_switch_active: bool,
+    #[serde(default)]
+    pub kill_switch_reason: Option<String>,
+}
+
+impl Default for GoalAutonomyPolicy {
+    fn default() -> Self {
+        Self {
+            allowed_command_prefixes: vec!["openagents_".to_string(), "openagents.".to_string()],
+            allowed_file_roots: Vec::new(),
+            kill_switch_active: false,
+            kill_switch_reason: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct GoalConstraints {
     pub max_runtime_seconds: u64,
     pub max_attempts: u32,
@@ -51,6 +74,8 @@ pub struct GoalConstraints {
     pub max_total_swap_cents: Option<u64>,
     #[serde(default)]
     pub swap_policy: SwapPolicy,
+    #[serde(default)]
+    pub autonomy_policy: GoalAutonomyPolicy,
 }
 
 impl Default for GoalConstraints {
@@ -61,6 +86,55 @@ impl Default for GoalConstraints {
             max_total_spend_sats: None,
             max_total_swap_cents: None,
             swap_policy: SwapPolicy::default(),
+            autonomy_policy: GoalAutonomyPolicy::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct GoalPolicySnapshot {
+    pub max_runtime_seconds: u64,
+    pub max_attempts: u32,
+    pub max_total_spend_sats: Option<u64>,
+    pub max_total_swap_cents: Option<u64>,
+    pub max_per_swap_sats: u64,
+    pub max_per_swap_cents: u64,
+    pub max_daily_converted_sats: u64,
+    pub max_daily_converted_cents: u64,
+    pub max_fee_sats: u64,
+    pub max_slippage_bps: u32,
+    pub require_quote_confirmation: bool,
+    pub allowed_command_prefixes: Vec<String>,
+    pub allowed_file_roots: Vec<String>,
+    pub kill_switch_active: bool,
+    pub kill_switch_reason: Option<String>,
+}
+
+impl Default for GoalPolicySnapshot {
+    fn default() -> Self {
+        let constraints = GoalConstraints::default();
+        constraints.policy_snapshot()
+    }
+}
+
+impl GoalConstraints {
+    pub fn policy_snapshot(&self) -> GoalPolicySnapshot {
+        GoalPolicySnapshot {
+            max_runtime_seconds: self.max_runtime_seconds,
+            max_attempts: self.max_attempts,
+            max_total_spend_sats: self.max_total_spend_sats,
+            max_total_swap_cents: self.max_total_swap_cents,
+            max_per_swap_sats: self.swap_policy.max_per_swap_sats,
+            max_per_swap_cents: self.swap_policy.max_per_swap_cents,
+            max_daily_converted_sats: self.swap_policy.max_daily_converted_sats,
+            max_daily_converted_cents: self.swap_policy.max_daily_converted_cents,
+            max_fee_sats: self.swap_policy.max_fee_sats,
+            max_slippage_bps: self.swap_policy.max_slippage_bps,
+            require_quote_confirmation: self.swap_policy.require_quote_confirmation,
+            allowed_command_prefixes: self.autonomy_policy.allowed_command_prefixes.clone(),
+            allowed_file_roots: self.autonomy_policy.allowed_file_roots.clone(),
+            kill_switch_active: self.autonomy_policy.kill_switch_active,
+            kill_switch_reason: self.autonomy_policy.kill_switch_reason.clone(),
         }
     }
 }
@@ -211,6 +285,8 @@ pub struct GoalExecutionReceipt {
     pub notes: Option<String>,
     #[serde(default)]
     pub recovered_from_restart: bool,
+    #[serde(default)]
+    pub policy_snapshot: GoalPolicySnapshot,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -990,6 +1066,43 @@ impl AutopilotGoalsState {
         Ok(())
     }
 
+    pub fn set_goal_kill_switch(
+        &mut self,
+        goal_id: &str,
+        active: bool,
+        reason: Option<&str>,
+        now_epoch_seconds: u64,
+    ) -> Result<(), String> {
+        let Some(goal) = self
+            .document
+            .active_goals
+            .iter_mut()
+            .find(|goal| goal.goal_id == goal_id)
+        else {
+            return Err(format!("Active goal {goal_id} not found"));
+        };
+
+        goal.constraints.autonomy_policy.kill_switch_active = active;
+        goal.constraints.autonomy_policy.kill_switch_reason = if active {
+            reason
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string())
+                .or_else(|| Some("kill switch engaged".to_string()))
+        } else {
+            None
+        };
+        goal.updated_at_epoch_seconds = now_epoch_seconds;
+        self.persist_to_disk()?;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "{} kill switch for goal {}",
+            if active { "Enabled" } else { "Disabled" },
+            goal_id
+        ));
+        Ok(())
+    }
+
     pub fn reconcile_os_scheduler_adapters(
         &mut self,
         now_epoch_seconds: u64,
@@ -1408,8 +1521,8 @@ mod tests {
 
     use super::{
         AutopilotGoalsState, GoalConstraints, GoalExecutionReceipt, GoalLifecycleEvent,
-        GoalLifecycleStatus, GoalMissedRunPolicy, GoalObjective, GoalRecord, GoalRetryPolicy,
-        GoalScheduleConfig, GoalScheduleKind, GoalStopCondition,
+        GoalLifecycleStatus, GoalMissedRunPolicy, GoalObjective, GoalPolicySnapshot, GoalRecord,
+        GoalRetryPolicy, GoalScheduleConfig, GoalScheduleKind, GoalStopCondition,
     };
     use crate::app_state::{
         JobHistoryReceiptRow, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
@@ -1476,6 +1589,7 @@ mod tests {
                 errors: 0,
                 notes: Some("partial progress".to_string()),
                 recovered_from_restart: false,
+                policy_snapshot: GoalPolicySnapshot::default(),
             })
             .expect("record receipt should persist");
         state
@@ -2401,6 +2515,110 @@ mod tests {
         assert!(
             error.contains("only available") || error.contains("not found"),
             "unexpected error: {error}"
+        );
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn policy_snapshot_captures_budget_scope_and_swap_limits() {
+        let mut goal = sample_goal("goal-policy-snapshot");
+        goal.constraints.max_runtime_seconds = 90;
+        goal.constraints.max_attempts = 4;
+        goal.constraints.max_total_spend_sats = Some(3_000);
+        goal.constraints.max_total_swap_cents = Some(42_000);
+        goal.constraints.swap_policy.max_per_swap_sats = 15_000;
+        goal.constraints.swap_policy.max_per_swap_cents = 200_000;
+        goal.constraints.swap_policy.max_daily_converted_sats = 120_000;
+        goal.constraints.swap_policy.max_daily_converted_cents = 1_500_000;
+        goal.constraints.swap_policy.max_fee_sats = 120;
+        goal.constraints.swap_policy.max_slippage_bps = 25;
+        goal.constraints.swap_policy.require_quote_confirmation = false;
+        goal.constraints.autonomy_policy.allowed_command_prefixes =
+            vec!["openagents_goal_".to_string()];
+        goal.constraints.autonomy_policy.allowed_file_roots =
+            vec!["/tmp/openagents-goal".to_string()];
+        goal.constraints.autonomy_policy.kill_switch_active = true;
+        goal.constraints.autonomy_policy.kill_switch_reason = Some("operator stop".to_string());
+
+        let snapshot = goal.constraints.policy_snapshot();
+        assert_eq!(snapshot.max_runtime_seconds, 90);
+        assert_eq!(snapshot.max_attempts, 4);
+        assert_eq!(snapshot.max_total_spend_sats, Some(3_000));
+        assert_eq!(snapshot.max_total_swap_cents, Some(42_000));
+        assert_eq!(snapshot.max_per_swap_sats, 15_000);
+        assert_eq!(snapshot.max_per_swap_cents, 200_000);
+        assert_eq!(snapshot.max_daily_converted_sats, 120_000);
+        assert_eq!(snapshot.max_daily_converted_cents, 1_500_000);
+        assert_eq!(snapshot.max_fee_sats, 120);
+        assert_eq!(snapshot.max_slippage_bps, 25);
+        assert!(!snapshot.require_quote_confirmation);
+        assert_eq!(
+            snapshot.allowed_command_prefixes,
+            vec!["openagents_goal_".to_string()]
+        );
+        assert_eq!(
+            snapshot.allowed_file_roots,
+            vec!["/tmp/openagents-goal".to_string()]
+        );
+        assert!(snapshot.kill_switch_active);
+        assert_eq!(
+            snapshot.kill_switch_reason.as_deref(),
+            Some("operator stop")
+        );
+    }
+
+    #[test]
+    fn set_goal_kill_switch_updates_and_clears_reason() {
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch time available")
+            .as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("autopilot-goals-kill-switch-{now_nanos}.json"));
+        let mut state = AutopilotGoalsState::load_from_path(path.clone());
+        state
+            .upsert_active_goal(sample_goal("goal-kill-switch"))
+            .expect("upsert active goal should succeed");
+
+        state
+            .set_goal_kill_switch(
+                "goal-kill-switch",
+                true,
+                Some("manual safety stop"),
+                1_700_000_100,
+            )
+            .expect("enable kill switch should succeed");
+        let goal = state
+            .document
+            .active_goals
+            .iter()
+            .find(|goal| goal.goal_id == "goal-kill-switch")
+            .expect("goal should exist");
+        assert!(goal.constraints.autonomy_policy.kill_switch_active);
+        assert_eq!(
+            goal.constraints
+                .autonomy_policy
+                .kill_switch_reason
+                .as_deref(),
+            Some("manual safety stop")
+        );
+
+        state
+            .set_goal_kill_switch("goal-kill-switch", false, None, 1_700_000_200)
+            .expect("disable kill switch should succeed");
+        let goal = state
+            .document
+            .active_goals
+            .iter()
+            .find(|goal| goal.goal_id == "goal-kill-switch")
+            .expect("goal should exist");
+        assert!(!goal.constraints.autonomy_policy.kill_switch_active);
+        assert!(
+            goal.constraints
+                .autonomy_policy
+                .kill_switch_reason
+                .is_none()
         );
 
         let _ = std::fs::remove_file(path);

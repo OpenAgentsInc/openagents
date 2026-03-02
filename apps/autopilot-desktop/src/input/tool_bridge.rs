@@ -295,6 +295,10 @@ struct GoalSchedulerToolArgs {
     goal_id: Option<String>,
     #[serde(default)]
     missed_run_policy: Option<String>,
+    #[serde(default)]
+    kill_switch_active: Option<bool>,
+    #[serde(default)]
+    kill_switch_reason: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -384,6 +388,10 @@ pub(super) fn execute_openagents_tool_request(
         Ok(value) => value,
         Err(error) => return error,
     };
+
+    if let Some(policy_error) = enforce_active_goal_command_scope(state, decoded.tool.as_str()) {
+        return policy_error;
+    }
 
     match decoded.tool.as_str() {
         OPENAGENTS_TOOL_PANE_LIST | LEGACY_OPENAGENTS_TOOL_PANE_LIST => execute_pane_list(state),
@@ -499,6 +507,60 @@ pub(super) fn is_openagents_cad_intent_tool(tool: &str) -> bool {
     let trimmed = tool.trim();
     trimmed.eq_ignore_ascii_case(OPENAGENTS_TOOL_CAD_INTENT)
         || trimmed.eq_ignore_ascii_case(LEGACY_OPENAGENTS_TOOL_CAD_INTENT)
+}
+
+fn enforce_active_goal_command_scope(
+    state: &RenderState,
+    tool_name: &str,
+) -> Option<ToolBridgeResultEnvelope> {
+    let active_run = state.goal_loop_executor.active_run.as_ref()?;
+    let goal = state
+        .autopilot_goals
+        .document
+        .active_goals
+        .iter()
+        .find(|goal| goal.goal_id == active_run.goal_id)?;
+    let policy = &goal.constraints.autonomy_policy;
+
+    if policy.kill_switch_active {
+        return Some(ToolBridgeResultEnvelope::error(
+            "OA-GOAL-POLICY-KILL-SWITCH",
+            "Goal kill switch is engaged; tool command denied",
+            json!({
+                "goal_id": goal.goal_id,
+                "tool": tool_name,
+                "kill_switch_reason": policy.kill_switch_reason,
+            }),
+        ));
+    }
+
+    let allowlist = policy
+        .allowed_command_prefixes
+        .iter()
+        .map(|prefix| normalize_key(prefix))
+        .filter(|prefix| !prefix.is_empty())
+        .collect::<Vec<_>>();
+    if allowlist.is_empty() {
+        return None;
+    }
+
+    let normalized_tool = normalize_key(tool_name);
+    if allowlist
+        .iter()
+        .any(|prefix| normalized_tool.starts_with(prefix))
+    {
+        None
+    } else {
+        Some(ToolBridgeResultEnvelope::error(
+            "OA-GOAL-POLICY-COMMAND-DENIED",
+            "Tool command denied by goal command scope policy",
+            json!({
+                "goal_id": goal.goal_id,
+                "tool": tool_name,
+                "allowed_command_prefixes": policy.allowed_command_prefixes,
+            }),
+        ))
+    }
 }
 
 fn execute_pane_list(state: &RenderState) -> ToolBridgeResultEnvelope {
@@ -2176,6 +2238,7 @@ fn execute_goal_scheduler_tool(
                     json!({
                         "goal_id": goal.goal_id,
                         "lifecycle_status": format!("{:?}", goal.lifecycle_status),
+                        "policy": goal.constraints.policy_snapshot(),
                         "schedule": {
                             "enabled": goal.schedule.enabled,
                             "kind": format!("{:?}", goal.schedule.kind),
@@ -2345,6 +2408,52 @@ fn execute_goal_scheduler_tool(
                 ),
             }
         }
+        "set_kill_switch" => {
+            let Some(goal_id) = args
+                .goal_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            else {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-GOAL-SCHEDULER-MISSING-GOAL",
+                    "set_kill_switch requires a non-empty goal_id",
+                    json!({ "action": args.action }),
+                );
+            };
+            let Some(active) = args.kill_switch_active else {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-GOAL-SCHEDULER-MISSING-KILL-SWITCH",
+                    "set_kill_switch requires kill_switch_active=true|false",
+                    json!({ "goal_id": goal_id }),
+                );
+            };
+            match state.autopilot_goals.set_goal_kill_switch(
+                goal_id,
+                active,
+                args.kill_switch_reason.as_deref(),
+                now_epoch_seconds,
+            ) {
+                Ok(()) => ToolBridgeResultEnvelope::ok(
+                    "OA-GOAL-SCHEDULER-KILL-SWITCH-OK",
+                    if active {
+                        "Enabled goal kill switch"
+                    } else {
+                        "Disabled goal kill switch"
+                    },
+                    json!({
+                        "goal_id": goal_id,
+                        "kill_switch_active": active,
+                        "kill_switch_reason": args.kill_switch_reason.clone(),
+                    }),
+                ),
+                Err(error) => ToolBridgeResultEnvelope::error(
+                    "OA-GOAL-SCHEDULER-KILL-SWITCH-FAILED",
+                    format!("Failed updating goal kill switch: {}", error),
+                    json!({ "goal_id": goal_id, "error": error }),
+                ),
+            }
+        }
         "toggle_os_adapter" => {
             let Some(goal_id) = args
                 .goal_id
@@ -2430,7 +2539,7 @@ fn execute_goal_scheduler_tool(
         _ => ToolBridgeResultEnvelope::error(
             "OA-GOAL-SCHEDULER-ACTION-UNSUPPORTED",
             format!(
-                "Unsupported goal scheduler action '{}'. Allowed: status, recover_startup, run_now, set_missed_policy, toggle_os_adapter, reconcile_os_adapters",
+                "Unsupported goal scheduler action '{}'. Allowed: status, recover_startup, run_now, set_missed_policy, set_kill_switch, toggle_os_adapter, reconcile_os_adapters",
                 args.action
             ),
             json!({ "action": args.action }),

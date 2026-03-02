@@ -611,6 +611,28 @@ fn run_autonomous_goal_loop(state: &mut crate::app_state::RenderState) -> bool {
         return true;
     };
 
+    if goal.constraints.autonomy_policy.kill_switch_active {
+        let reason = goal
+            .constraints
+            .autonomy_policy
+            .kill_switch_reason
+            .clone()
+            .unwrap_or_else(|| "kill switch engaged".to_string());
+        finalize_goal_loop_run(
+            state,
+            &active_run,
+            &goal,
+            GoalLifecycleStatus::Aborted,
+            GoalLoopStopReason::PolicyAbort {
+                reason: reason.clone(),
+            },
+            goal_loop_progress_snapshot(state, &active_run, now_epoch_seconds, wallet_total_sats),
+            now_epoch_seconds,
+            Some(reason),
+        );
+        return true;
+    }
+
     let progress =
         goal_loop_progress_snapshot(state, &active_run, now_epoch_seconds, wallet_total_sats);
     let evaluation = match state
@@ -625,6 +647,7 @@ fn run_autonomous_goal_loop(state: &mut crate::app_state::RenderState) -> bool {
             finalize_goal_loop_run(
                 state,
                 &active_run,
+                &goal,
                 GoalLifecycleStatus::Failed,
                 stop_reason,
                 progress,
@@ -639,6 +662,7 @@ fn run_autonomous_goal_loop(state: &mut crate::app_state::RenderState) -> bool {
         finalize_goal_loop_run(
             state,
             &active_run,
+            &goal,
             GoalLifecycleStatus::Succeeded,
             GoalLoopStopReason::GoalComplete,
             progress,
@@ -656,6 +680,7 @@ fn run_autonomous_goal_loop(state: &mut crate::app_state::RenderState) -> bool {
         finalize_goal_loop_run(
             state,
             &active_run,
+            &goal,
             GoalLifecycleStatus::Failed,
             stop_reason,
             progress,
@@ -702,6 +727,7 @@ fn run_autonomous_goal_loop(state: &mut crate::app_state::RenderState) -> bool {
                     finalize_goal_loop_run(
                         state,
                         &active_run,
+                        &goal,
                         GoalLifecycleStatus::Failed,
                         stop_reason,
                         progress,
@@ -800,6 +826,7 @@ fn run_autonomous_goal_loop(state: &mut crate::app_state::RenderState) -> bool {
         finalize_goal_loop_run(
             state,
             &active_run,
+            &goal,
             GoalLifecycleStatus::Failed,
             stop_reason,
             progress,
@@ -870,7 +897,7 @@ fn goal_loop_progress_snapshot(
 }
 
 fn goal_loop_prompt_for_goal(goal: &crate::state::autopilot_goals::GoalRecord) -> String {
-    match &goal.objective {
+    let mut prompt = match &goal.objective {
         crate::state::autopilot_goals::GoalObjective::EarnBitcoin {
             min_wallet_delta_sats,
             note,
@@ -916,12 +943,47 @@ fn goal_loop_prompt_for_goal(goal: &crate::state::autopilot_goals::GoalRecord) -
         crate::state::autopilot_goals::GoalObjective::Custom { instruction } => {
             instruction.trim().to_string()
         }
+    };
+
+    if !goal
+        .constraints
+        .autonomy_policy
+        .allowed_command_prefixes
+        .is_empty()
+    {
+        prompt.push_str(" Allowed command prefixes: ");
+        prompt.push_str(
+            &goal
+                .constraints
+                .autonomy_policy
+                .allowed_command_prefixes
+                .join(", "),
+        );
+        prompt.push('.');
     }
+    if !goal
+        .constraints
+        .autonomy_policy
+        .allowed_file_roots
+        .is_empty()
+    {
+        prompt.push_str(" File scope roots: ");
+        prompt.push_str(
+            &goal
+                .constraints
+                .autonomy_policy
+                .allowed_file_roots
+                .join(", "),
+        );
+        prompt.push('.');
+    }
+    prompt
 }
 
 fn finalize_goal_loop_run(
     state: &mut crate::app_state::RenderState,
     active_run: &ActiveGoalLoopRun,
+    goal: &crate::state::autopilot_goals::GoalRecord,
     lifecycle_status: GoalLifecycleStatus,
     stop_reason: GoalLoopStopReason,
     progress: GoalProgressSnapshot,
@@ -986,6 +1048,7 @@ fn finalize_goal_loop_run(
         errors: progress.errors,
         notes: notes.clone(),
         recovered_from_restart: active_run.recovered_from_restart,
+        policy_snapshot: goal.constraints.policy_snapshot(),
     };
     if let Err(error) = state.autopilot_goals.record_receipt(receipt) {
         state.autopilot_goals.last_error = Some(error);
