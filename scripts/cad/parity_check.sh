@@ -26,6 +26,7 @@ LANE_LABELS=(
     "pattern"
     "shell-feature-graph"
     "fillet-feature-graph"
+    "chamfer-feature-graph"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -157,6 +158,9 @@ run_lane "shell-feature-graph" \
 
 run_lane "fillet-feature-graph" \
     "$ROOT_DIR/scripts/cad/parity-fillet-feature-graph-ci.sh"
+
+run_lane "chamfer-feature-graph" \
+    "$ROOT_DIR/scripts/cad/parity-chamfer-feature-graph-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

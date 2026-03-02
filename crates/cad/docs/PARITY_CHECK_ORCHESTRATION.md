@@ -28,6 +28,7 @@ Provide one deterministic orchestration entrypoint for the parity baseline lanes
 - pattern parity fixture check
 - shell feature-graph parity fixture check
 - fillet feature-graph parity fixture check
+- chamfer feature-graph parity fixture check
 - parity CI artifact manifest fixture check
 - parity risk register + blocker workflow check
 - baseline dashboard publication check

@@ -1,3 +1,4 @@
+pub mod chamfer_feature_graph_parity;
 pub mod ci_artifacts;
 pub mod dashboard;
 pub mod fillet_feature_graph_parity;
