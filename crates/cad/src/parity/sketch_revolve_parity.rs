@@ -60,6 +60,10 @@ pub fn build_sketch_revolve_parity_manifest(
         depth_mm: None,
         revolve_angle_deg: Some(360.0),
         axis_anchor_ids: Some(["anchor.axis.a".to_string(), "anchor.axis.b".to_string()]),
+        sweep_path_entity_ids: None,
+        sweep_twist_deg: None,
+        sweep_scale_start: None,
+        sweep_scale_end: None,
         tolerance_mm: Some(0.001),
     };
     let partial_spec = SketchProfileFeatureSpec {
@@ -72,6 +76,10 @@ pub fn build_sketch_revolve_parity_manifest(
         depth_mm: None,
         revolve_angle_deg: Some(90.0),
         axis_anchor_ids: Some(["anchor.axis.a".to_string(), "anchor.axis.b".to_string()]),
+        sweep_path_entity_ids: None,
+        sweep_twist_deg: None,
+        sweep_scale_start: None,
+        sweep_scale_end: None,
         tolerance_mm: Some(0.001),
     };
 
@@ -134,6 +142,10 @@ pub fn build_sketch_revolve_parity_manifest(
                 "anchor.unsolved.axis.a".to_string(),
                 "anchor.unsolved.axis.b".to_string(),
             ]),
+            sweep_path_entity_ids: None,
+            sweep_twist_deg: None,
+            sweep_scale_start: None,
+            sweep_scale_end: None,
             tolerance_mm: Some(0.001),
         },
     )

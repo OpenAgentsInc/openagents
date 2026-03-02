@@ -11,12 +11,14 @@ use crate::{CadError, CadResult};
 pub const SKETCH_EXTRUDE_OPERATION_KEY: &str = "sketch.extrude.v1";
 pub const SKETCH_CUT_OPERATION_KEY: &str = "sketch.cut.v1";
 pub const SKETCH_REVOLVE_OPERATION_KEY: &str = "sketch.revolve.v1";
+pub const SKETCH_SWEEP_OPERATION_KEY: &str = "sketch.sweep.v1";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SketchProfileFeatureKind {
     Extrude,
     Cut,
     Revolve,
+    Sweep,
 }
 
 impl SketchProfileFeatureKind {
@@ -25,6 +27,7 @@ impl SketchProfileFeatureKind {
             Self::Extrude => "extrude",
             Self::Cut => "cut",
             Self::Revolve => "revolve",
+            Self::Sweep => "sweep",
         }
     }
 
@@ -33,6 +36,7 @@ impl SketchProfileFeatureKind {
             Self::Extrude => SKETCH_EXTRUDE_OPERATION_KEY,
             Self::Cut => SKETCH_CUT_OPERATION_KEY,
             Self::Revolve => SKETCH_REVOLVE_OPERATION_KEY,
+            Self::Sweep => SKETCH_SWEEP_OPERATION_KEY,
         }
     }
 }
@@ -48,6 +52,10 @@ pub struct SketchProfileFeatureSpec {
     pub depth_mm: Option<f64>,
     pub revolve_angle_deg: Option<f64>,
     pub axis_anchor_ids: Option<[String; 2]>,
+    pub sweep_path_entity_ids: Option<Vec<String>>,
+    pub sweep_twist_deg: Option<f64>,
+    pub sweep_scale_start: Option<f64>,
+    pub sweep_scale_end: Option<f64>,
     pub tolerance_mm: Option<f64>,
 }
 
@@ -140,6 +148,64 @@ impl SketchProfileFeatureSpec {
                     });
                 }
             }
+            SketchProfileFeatureKind::Sweep => {
+                if self.source_feature_id.is_some() {
+                    return Err(CadError::ParseFailed {
+                        reason: "sweep operations must not specify source_feature_id".to_string(),
+                    });
+                }
+                if self.depth_mm.is_some() {
+                    return Err(CadError::ParseFailed {
+                        reason: "sweep operations must not specify depth_mm".to_string(),
+                    });
+                }
+                if self.revolve_angle_deg.is_some() {
+                    return Err(CadError::ParseFailed {
+                        reason: "sweep operations must not specify revolve_angle_deg".to_string(),
+                    });
+                }
+                if self.axis_anchor_ids.is_some() {
+                    return Err(CadError::ParseFailed {
+                        reason: "sweep operations must not specify axis_anchor_ids".to_string(),
+                    });
+                }
+                let path_entity_ids =
+                    self.sweep_path_entity_ids
+                        .as_ref()
+                        .ok_or_else(|| CadError::ParseFailed {
+                            reason: "sweep operations require sweep_path_entity_ids".to_string(),
+                        })?;
+                if path_entity_ids.is_empty() {
+                    return Err(CadError::ParseFailed {
+                        reason: "sweep_path_entity_ids must not be empty".to_string(),
+                    });
+                }
+                for entity_id in path_entity_ids {
+                    validate_stable_id(entity_id, "sweep_path_entity_id")?;
+                }
+                if let Some(twist_deg) = self.sweep_twist_deg
+                    && !twist_deg.is_finite()
+                {
+                    return Err(CadError::ParseFailed {
+                        reason: "sweep_twist_deg must be finite when provided".to_string(),
+                    });
+                }
+                if let Some(scale_start) = self.sweep_scale_start
+                    && (!scale_start.is_finite() || scale_start <= 0.0)
+                {
+                    return Err(CadError::ParseFailed {
+                        reason: "sweep_scale_start must be finite and > 0 when provided"
+                            .to_string(),
+                    });
+                }
+                if let Some(scale_end) = self.sweep_scale_end
+                    && (!scale_end.is_finite() || scale_end <= 0.0)
+                {
+                    return Err(CadError::ParseFailed {
+                        reason: "sweep_scale_end must be finite and > 0 when provided".to_string(),
+                    });
+                }
+            }
         }
         if let Some(source) = self.source_feature_id.as_deref() {
             validate_stable_id(source, "source_feature_id")?;
@@ -187,6 +253,15 @@ pub fn convert_sketch_profile_to_feature_node(
             ),
         });
     }
+    if let Some(path_entity_ids) = spec.sweep_path_entity_ids.as_ref() {
+        for entity_id in path_entity_ids {
+            if !solved.entities.contains_key(entity_id) {
+                return Err(CadError::ParseFailed {
+                    reason: format!("sweep path references unknown sketch entity {entity_id}"),
+                });
+            }
+        }
+    }
 
     let points = collect_profile_points(&solved, &spec.profile_entity_ids)?;
     let bounds = profile_bounds(&points)?;
@@ -218,6 +293,21 @@ pub fn convert_sketch_profile_to_feature_node(
         params.insert("axis_anchor_a".to_string(), anchors[0].clone());
         params.insert("axis_anchor_b".to_string(), anchors[1].clone());
     }
+    if let Some(path_entity_ids) = spec.sweep_path_entity_ids.as_ref() {
+        params.insert(
+            "sweep_path_entity_ids".to_string(),
+            sorted_ids(path_entity_ids).join(","),
+        );
+    }
+    if let Some(twist_deg) = spec.sweep_twist_deg {
+        params.insert("sweep_twist_deg".to_string(), format!("{twist_deg:.6}"));
+    }
+    if let Some(scale_start) = spec.sweep_scale_start {
+        params.insert("sweep_scale_start".to_string(), format!("{scale_start:.6}"));
+    }
+    if let Some(scale_end) = spec.sweep_scale_end {
+        params.insert("sweep_scale_end".to_string(), format!("{scale_end:.6}"));
+    }
     if let Some(tolerance) = spec.tolerance_mm {
         params.insert("tolerance_mm".to_string(), format!("{tolerance:.6}"));
     }
@@ -226,7 +316,9 @@ pub fn convert_sketch_profile_to_feature_node(
     if !closed_loop
         && matches!(
             spec.kind,
-            SketchProfileFeatureKind::Extrude | SketchProfileFeatureKind::Cut
+            SketchProfileFeatureKind::Extrude
+                | SketchProfileFeatureKind::Cut
+                | SketchProfileFeatureKind::Sweep
         )
     {
         warnings.push(CadWarning {
@@ -555,8 +647,13 @@ fn sorted_ids(values: &[String]) -> Vec<String> {
 }
 
 fn sketch_profile_hash(spec: &SketchProfileFeatureSpec, bounds: [f64; 4]) -> String {
+    let sweep_path_ids = spec
+        .sweep_path_entity_ids
+        .as_ref()
+        .map(|ids| sorted_ids(ids).join(","))
+        .unwrap_or_default();
     let payload = format!(
-        "{}|{}|{}|{}|{:.6}|{:.6}|{:.6}|{:.6}|{}|{:?}|{:?}|{:?}",
+        "{}|{}|{}|{}|{:.6}|{:.6}|{:.6}|{:.6}|{}|{:?}|{:?}|{:?}|{}|{:?}|{:?}|{:?}",
         spec.kind.as_str(),
         spec.feature_id,
         spec.profile_id,
@@ -568,7 +665,11 @@ fn sketch_profile_hash(spec: &SketchProfileFeatureSpec, bounds: [f64; 4]) -> Str
         spec.source_feature_id.as_deref().unwrap_or(""),
         spec.depth_mm,
         spec.revolve_angle_deg,
-        spec.axis_anchor_ids
+        spec.axis_anchor_ids,
+        sweep_path_ids,
+        spec.sweep_twist_deg,
+        spec.sweep_scale_start,
+        spec.sweep_scale_end,
     );
     stable_hex_digest(payload.as_bytes())
 }
@@ -619,8 +720,8 @@ fn arc_point(center: [f64; 2], radius_mm: f64, angle_deg: f64) -> CadResult<[f64
 mod tests {
     use super::{
         SKETCH_CUT_OPERATION_KEY, SKETCH_EXTRUDE_OPERATION_KEY, SKETCH_REVOLVE_OPERATION_KEY,
-        SketchProfileFeatureKind, SketchProfileFeatureSpec, convert_sketch_profile_to_feature_node,
-        history_command_for_sketch_feature,
+        SKETCH_SWEEP_OPERATION_KEY, SketchProfileFeatureKind, SketchProfileFeatureSpec,
+        convert_sketch_profile_to_feature_node, history_command_for_sketch_feature,
     };
     use crate::contracts::CadWarningCode;
     use crate::history::CadHistoryCommand;
@@ -775,6 +876,10 @@ mod tests {
             depth_mm: Some(5.0),
             revolve_angle_deg: None,
             axis_anchor_ids: None,
+            sweep_path_entity_ids: None,
+            sweep_twist_deg: None,
+            sweep_scale_start: None,
+            sweep_scale_end: None,
             tolerance_mm: Some(0.001),
         };
         let cut = SketchProfileFeatureSpec {
@@ -787,6 +892,10 @@ mod tests {
             depth_mm: Some(5.0),
             revolve_angle_deg: None,
             axis_anchor_ids: None,
+            sweep_path_entity_ids: None,
+            sweep_twist_deg: None,
+            sweep_scale_start: None,
+            sweep_scale_end: None,
             tolerance_mm: Some(0.001),
         };
         let revolve = SketchProfileFeatureSpec {
@@ -799,6 +908,26 @@ mod tests {
             depth_mm: None,
             revolve_angle_deg: Some(270.0),
             axis_anchor_ids: Some(["anchor.axis.a".to_string(), "anchor.axis.b".to_string()]),
+            sweep_path_entity_ids: None,
+            sweep_twist_deg: None,
+            sweep_scale_start: None,
+            sweep_scale_end: None,
+            tolerance_mm: Some(0.001),
+        };
+        let sweep = SketchProfileFeatureSpec {
+            feature_id: "feature.sweep".to_string(),
+            profile_id: "profile.sweep".to_string(),
+            plane_id: "plane.front".to_string(),
+            profile_entity_ids: vec!["entity.a".to_string()],
+            kind: SketchProfileFeatureKind::Sweep,
+            source_feature_id: None,
+            depth_mm: None,
+            revolve_angle_deg: None,
+            axis_anchor_ids: None,
+            sweep_path_entity_ids: Some(vec!["entity.path".to_string()]),
+            sweep_twist_deg: Some(30.0),
+            sweep_scale_start: Some(1.0),
+            sweep_scale_end: Some(0.5),
             tolerance_mm: Some(0.001),
         };
 
@@ -885,6 +1014,42 @@ mod tests {
                 .to_string()
                 .contains("source_feature_id")
         );
+
+        let sweep_with_source = SketchProfileFeatureSpec {
+            source_feature_id: Some("feature.source".to_string()),
+            ..sweep.clone()
+        };
+        assert!(
+            sweep_with_source
+                .validate()
+                .expect_err("sweep must reject source_feature_id")
+                .to_string()
+                .contains("source_feature_id")
+        );
+
+        let sweep_with_empty_path = SketchProfileFeatureSpec {
+            sweep_path_entity_ids: Some(Vec::new()),
+            ..sweep.clone()
+        };
+        assert!(
+            sweep_with_empty_path
+                .validate()
+                .expect_err("sweep must reject empty path")
+                .to_string()
+                .contains("sweep_path_entity_ids")
+        );
+
+        let sweep_with_non_positive_scale = SketchProfileFeatureSpec {
+            sweep_scale_end: Some(0.0),
+            ..sweep
+        };
+        assert!(
+            sweep_with_non_positive_scale
+                .validate()
+                .expect_err("sweep must reject non-positive scale")
+                .to_string()
+                .contains("sweep_scale_end")
+        );
     }
 
     #[test]
@@ -906,6 +1071,10 @@ mod tests {
             depth_mm: Some(25.0),
             revolve_angle_deg: None,
             axis_anchor_ids: None,
+            sweep_path_entity_ids: None,
+            sweep_twist_deg: None,
+            sweep_scale_start: None,
+            sweep_scale_end: None,
             tolerance_mm: Some(0.001),
         };
         let extrude_rev = SketchProfileFeatureSpec {
@@ -950,6 +1119,10 @@ mod tests {
             depth_mm: Some(10.0),
             revolve_angle_deg: None,
             axis_anchor_ids: None,
+            sweep_path_entity_ids: None,
+            sweep_twist_deg: None,
+            sweep_scale_start: None,
+            sweep_scale_end: None,
             tolerance_mm: Some(0.001),
         };
         let cut_conversion =
@@ -975,6 +1148,10 @@ mod tests {
             depth_mm: None,
             revolve_angle_deg: Some(270.0),
             axis_anchor_ids: Some(["anchor.a.start".to_string(), "anchor.d.end".to_string()]),
+            sweep_path_entity_ids: None,
+            sweep_twist_deg: None,
+            sweep_scale_start: None,
+            sweep_scale_end: None,
             tolerance_mm: Some(0.001),
         };
         let revolve_conversion =
@@ -989,6 +1166,165 @@ mod tests {
                 .iter()
                 .any(|warning| warning.code == CadWarningCode::SliverFace),
             "partial revolve should emit seam/sliver advisory warning"
+        );
+    }
+
+    #[test]
+    fn sweep_conversion_maps_path_controls_and_open_profile_warning() {
+        let mut model = CadSketchModel::default();
+        model
+            .insert_plane(CadSketchPlane {
+                id: "plane.front".to_string(),
+                name: "Front".to_string(),
+                origin_mm: [0.0, 0.0, 0.0],
+                normal: [0.0, 0.0, 1.0],
+                x_axis: [1.0, 0.0, 0.0],
+                y_axis: [0.0, 1.0, 0.0],
+            })
+            .expect("plane should insert");
+        model
+            .insert_entity(CadSketchEntity::Rectangle {
+                id: "entity.rect".to_string(),
+                plane_id: "plane.front".to_string(),
+                min_mm: [0.0, 0.0],
+                max_mm: [40.0, 20.0],
+                anchor_ids: [
+                    "anchor.rect.00".to_string(),
+                    "anchor.rect.10".to_string(),
+                    "anchor.rect.11".to_string(),
+                    "anchor.rect.01".to_string(),
+                ],
+                construction: false,
+            })
+            .expect("rectangle should insert");
+        model
+            .insert_entity(CadSketchEntity::Line {
+                id: "entity.path.a".to_string(),
+                plane_id: "plane.front".to_string(),
+                start_mm: [60.0, 0.0],
+                end_mm: [90.0, 20.0],
+                anchor_ids: ["anchor.path.a".to_string(), "anchor.path.b".to_string()],
+                construction: true,
+            })
+            .expect("path line should insert");
+
+        let closed_spec = SketchProfileFeatureSpec {
+            feature_id: "feature.sketch.sweep.closed".to_string(),
+            profile_id: "profile.sweep.closed".to_string(),
+            plane_id: "plane.front".to_string(),
+            profile_entity_ids: vec!["entity.rect".to_string()],
+            kind: SketchProfileFeatureKind::Sweep,
+            source_feature_id: None,
+            depth_mm: None,
+            revolve_angle_deg: None,
+            axis_anchor_ids: None,
+            sweep_path_entity_ids: Some(vec!["entity.path.a".to_string()]),
+            sweep_twist_deg: Some(45.0),
+            sweep_scale_start: Some(1.0),
+            sweep_scale_end: Some(0.7),
+            tolerance_mm: Some(0.001),
+        };
+        let closed_conversion = convert_sketch_profile_to_feature_node(&model, &closed_spec)
+            .expect("closed sweep conversion should succeed");
+        assert_eq!(
+            closed_conversion.node.operation_key,
+            SKETCH_SWEEP_OPERATION_KEY
+        );
+        assert_eq!(
+            closed_conversion
+                .node
+                .params
+                .get("sweep_path_entity_ids")
+                .map(String::as_str),
+            Some("entity.path.a")
+        );
+        assert_eq!(
+            closed_conversion
+                .node
+                .params
+                .get("sweep_twist_deg")
+                .map(String::as_str),
+            Some("45.000000")
+        );
+        assert!(
+            closed_conversion
+                .warnings
+                .iter()
+                .all(|warning| warning.code != CadWarningCode::NonManifoldBody),
+            "closed sweep profile should not emit open-profile warning"
+        );
+
+        let missing_path_error = convert_sketch_profile_to_feature_node(
+            &model,
+            &SketchProfileFeatureSpec {
+                sweep_path_entity_ids: Some(vec!["entity.path.missing".to_string()]),
+                ..closed_spec.clone()
+            },
+        )
+        .expect_err("missing sweep path entity must fail conversion")
+        .to_string();
+        assert!(missing_path_error.contains("unknown sketch entity"));
+
+        let mut open_model = CadSketchModel::default();
+        open_model
+            .insert_plane(CadSketchPlane {
+                id: "plane.front".to_string(),
+                name: "Front".to_string(),
+                origin_mm: [0.0, 0.0, 0.0],
+                normal: [0.0, 0.0, 1.0],
+                x_axis: [1.0, 0.0, 0.0],
+                y_axis: [0.0, 1.0, 0.0],
+            })
+            .expect("plane should insert");
+        open_model
+            .insert_entity(CadSketchEntity::Line {
+                id: "entity.open".to_string(),
+                plane_id: "plane.front".to_string(),
+                start_mm: [0.0, 0.0],
+                end_mm: [20.0, 0.0],
+                anchor_ids: [
+                    "anchor.open.start".to_string(),
+                    "anchor.open.end".to_string(),
+                ],
+                construction: false,
+            })
+            .expect("open profile line should insert");
+        open_model
+            .insert_entity(CadSketchEntity::Line {
+                id: "entity.path.open".to_string(),
+                plane_id: "plane.front".to_string(),
+                start_mm: [30.0, 0.0],
+                end_mm: [50.0, 10.0],
+                anchor_ids: [
+                    "anchor.path.open.a".to_string(),
+                    "anchor.path.open.b".to_string(),
+                ],
+                construction: true,
+            })
+            .expect("open path line should insert");
+        let open_spec = SketchProfileFeatureSpec {
+            feature_id: "feature.sketch.sweep.open".to_string(),
+            profile_id: "profile.sweep.open".to_string(),
+            plane_id: "plane.front".to_string(),
+            profile_entity_ids: vec!["entity.open".to_string()],
+            kind: SketchProfileFeatureKind::Sweep,
+            source_feature_id: None,
+            depth_mm: None,
+            revolve_angle_deg: None,
+            axis_anchor_ids: None,
+            sweep_path_entity_ids: Some(vec!["entity.path.open".to_string()]),
+            sweep_twist_deg: Some(0.0),
+            sweep_scale_start: Some(1.0),
+            sweep_scale_end: Some(1.0),
+            tolerance_mm: Some(0.001),
+        };
+        let open_conversion = convert_sketch_profile_to_feature_node(&open_model, &open_spec)
+            .expect("open sweep profile should convert with warning");
+        assert!(
+            open_conversion
+                .warnings
+                .iter()
+                .any(|warning| warning.code == CadWarningCode::NonManifoldBody)
         );
     }
 
@@ -1028,6 +1364,10 @@ mod tests {
             depth_mm: Some(8.0),
             revolve_angle_deg: None,
             axis_anchor_ids: None,
+            sweep_path_entity_ids: None,
+            sweep_twist_deg: None,
+            sweep_scale_start: None,
+            sweep_scale_end: None,
             tolerance_mm: Some(0.001),
         };
         let conversion = convert_sketch_profile_to_feature_node(&model, &spec)
@@ -1130,6 +1470,10 @@ mod tests {
                 depth_mm: Some(5.0),
                 revolve_angle_deg: None,
                 axis_anchor_ids: None,
+                sweep_path_entity_ids: None,
+                sweep_twist_deg: None,
+                sweep_scale_start: None,
+                sweep_scale_end: None,
                 tolerance_mm: Some(0.001),
             };
             let conversion = convert_sketch_profile_to_feature_node(&model, &spec)

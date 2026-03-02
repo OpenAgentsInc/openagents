@@ -209,6 +209,10 @@ fn profile_closed_loop_flag(model: &CadSketchModel, entity_id: &str) -> CadResul
         depth_mm: Some(1.0),
         revolve_angle_deg: None,
         axis_anchor_ids: None,
+        sweep_path_entity_ids: None,
+        sweep_twist_deg: None,
+        sweep_scale_start: None,
+        sweep_scale_end: None,
         tolerance_mm: Some(0.001),
     };
     let conversion = convert_sketch_profile_to_feature_node(model, &spec)?;
@@ -231,6 +235,10 @@ fn profile_warning_codes(model: &CadSketchModel, entity_id: &str) -> CadResult<V
         depth_mm: Some(1.0),
         revolve_angle_deg: None,
         axis_anchor_ids: None,
+        sweep_path_entity_ids: None,
+        sweep_twist_deg: None,
+        sweep_scale_start: None,
+        sweep_scale_end: None,
         tolerance_mm: Some(0.001),
     };
     let conversion = convert_sketch_profile_to_feature_node(model, &spec)?;
