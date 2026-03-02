@@ -71,6 +71,7 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/assembly_ui_selection_edit_parity_manifest.json"
     "crates/cad/parity/assembly_serialization_replay_parity_manifest.json"
     "crates/cad/parity/assembly_acceptance_scenes_parity_manifest.json"
+    "crates/cad/parity/assembly_checkpoint_parity_manifest.json"
     "crates/cad/parity/sketch_loft_parity_manifest.json"
     "crates/cad/parity/sketch_profile_validity_parity_manifest.json"
     "crates/cad/parity/sketch_revolve_parity_manifest.json"

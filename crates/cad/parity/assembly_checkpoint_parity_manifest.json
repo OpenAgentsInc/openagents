@@ -1,0 +1,56 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-066",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "plan_path": "crates/cad/docs/VCAD_PARITY_PLAN.md",
+  "required_issue_ids": [
+    "VCAD-PARITY-056",
+    "VCAD-PARITY-057",
+    "VCAD-PARITY-058",
+    "VCAD-PARITY-059",
+    "VCAD-PARITY-060",
+    "VCAD-PARITY-061",
+    "VCAD-PARITY-062",
+    "VCAD-PARITY-063",
+    "VCAD-PARITY-064",
+    "VCAD-PARITY-065"
+  ],
+  "validated_issue_ids": [
+    "VCAD-PARITY-056",
+    "VCAD-PARITY-057",
+    "VCAD-PARITY-058",
+    "VCAD-PARITY-059",
+    "VCAD-PARITY-060",
+    "VCAD-PARITY-061",
+    "VCAD-PARITY-062",
+    "VCAD-PARITY-063",
+    "VCAD-PARITY-064",
+    "VCAD-PARITY-065"
+  ],
+  "missing_issue_ids": [],
+  "mismatched_issue_ids": [],
+  "checked_manifest_paths": [
+    "crates/cad/parity/assembly_acceptance_scenes_parity_manifest.json",
+    "crates/cad/parity/assembly_fk_parity_manifest.json",
+    "crates/cad/parity/assembly_ground_delete_parity_manifest.json",
+    "crates/cad/parity/assembly_joint_cb_parity_manifest.json",
+    "crates/cad/parity/assembly_joint_frs_parity_manifest.json",
+    "crates/cad/parity/assembly_joint_limits_state_parity_manifest.json",
+    "crates/cad/parity/assembly_part_instance_parity_manifest.json",
+    "crates/cad/parity/assembly_schema_parity_manifest.json",
+    "crates/cad/parity/assembly_serialization_replay_parity_manifest.json",
+    "crates/cad/parity/assembly_ui_selection_edit_parity_manifest.json"
+  ],
+  "plan_items_checked": true,
+  "parity_completion_percent": 100.0,
+  "checkpoint_pass": true,
+  "deterministic_signature": "9dd5fe36303a501f",
+  "parity_contracts": [
+    "phase-e assembly checkpoint validates all VCAD-PARITY-056..065 manifests",
+    "each phase-e assembly manifest issue_id must match its expected VCAD-PARITY issue",
+    "phase-e plan entries must be checked before checkpoint pass",
+    "phase-e parity completion must be exactly 100.0%"
+  ]
+}
