@@ -32,6 +32,7 @@ Current artifacts:
 - `primitive_contracts_parity_manifest.json` (`VCAD-PARITY-026`)
 - `transform_parity_manifest.json` (`VCAD-PARITY-027`)
 - `pattern_parity_manifest.json` (`VCAD-PARITY-028`)
+- `shell_feature_graph_parity_manifest.json` (`VCAD-PARITY-029`)
 
 Regeneration/check command:
 
@@ -64,6 +65,7 @@ scripts/cad/parity-kernel-precision-ci.sh
 scripts/cad/parity-primitive-contracts-ci.sh
 scripts/cad/parity-transform-ci.sh
 scripts/cad/parity-pattern-ci.sh
+scripts/cad/parity-shell-feature-graph-ci.sh
 scripts/cad/parity-blocker-workflow.sh
 scripts/cad/parity_check.sh
 scripts/cad/parity-ci-lane.sh

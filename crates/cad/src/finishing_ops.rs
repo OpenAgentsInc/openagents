@@ -131,6 +131,7 @@ impl FilletFeatureOp {
             &self.radius_param,
             &self.edge_refs,
             "fillet",
+            true,
         )
     }
 
@@ -199,6 +200,7 @@ impl ChamferFeatureOp {
             &self.distance_param,
             &self.edge_refs,
             "chamfer",
+            true,
         )
     }
 
@@ -264,6 +266,7 @@ impl ShellFeatureOp {
             &self.thickness_param,
             &self.remove_face_refs,
             "shell",
+            false,
         )
     }
 
@@ -341,6 +344,7 @@ pub fn evaluate_fillet_feature(
         value_mm: radius_mm,
         risk_threshold_mm,
         allow_fallback: op.allow_fallback,
+        selection_signature: canonical_refs(&op.edge_refs).join(","),
         context,
     })
 }
@@ -365,6 +369,7 @@ pub fn evaluate_chamfer_feature(
         value_mm: distance_mm,
         risk_threshold_mm,
         allow_fallback: op.allow_fallback,
+        selection_signature: canonical_refs(&op.edge_refs).join(","),
         context,
     })
 }
@@ -390,6 +395,7 @@ pub fn evaluate_shell_feature(
         value_mm: thickness_mm,
         risk_threshold_mm,
         allow_fallback: op.allow_fallback,
+        selection_signature: canonical_refs(&op.remove_face_refs).join(","),
         context,
     })
 }
@@ -402,6 +408,7 @@ struct FinishingEvalRequest<'a> {
     value_mm: f64,
     risk_threshold_mm: f64,
     allow_fallback: bool,
+    selection_signature: String,
     context: &'a FinishingContext,
 }
 
@@ -477,13 +484,14 @@ fn evaluate_finishing_value(
     }
 
     let payload = format!(
-        "{}|feature={}|source={}|src_hash={}|value_mm={:.6}|threshold={:.6}",
+        "{}|feature={}|source={}|src_hash={}|value_mm={:.6}|threshold={:.6}|selection={}",
         request.operation_key,
         request.feature_id,
         request.source_feature_id,
         request.context.source_geometry_hash,
         request.value_mm,
-        request.risk_threshold_mm
+        request.risk_threshold_mm,
+        request.selection_signature
     );
     let geometry_hash = stable_hex_digest(payload.as_bytes());
     Ok(FinishingFeatureResult {
@@ -505,11 +513,12 @@ fn validate_finishing_refs(
     value_param: &str,
     refs: &[String],
     label: &str,
+    require_refs: bool,
 ) -> CadResult<()> {
     validate_stable_id(feature_id, "feature_id")?;
     validate_stable_id(source_feature_id, "source_feature_id")?;
     validate_stable_id(value_param, "value_param")?;
-    if refs.is_empty() {
+    if require_refs && refs.is_empty() {
         return Err(CadError::InvalidPrimitive {
             reason: format!("{label} refs must not be empty"),
         });
@@ -732,6 +741,59 @@ mod tests {
         let result = evaluate_chamfer_feature(&parsed, &params(), &context())
             .expect("safe chamfer should apply");
         assert_eq!(result.status, FinishingStatus::Applied);
+    }
+
+    #[test]
+    fn shell_node_round_trip_allows_empty_remove_faces() {
+        let op = ShellFeatureOp {
+            feature_id: "feature.shell.closed".to_string(),
+            source_feature_id: "feature.base".to_string(),
+            thickness_param: "shell_thickness_mm".to_string(),
+            remove_face_refs: Vec::new(),
+            allow_fallback: false,
+        };
+        let node = op.to_feature_node().expect("shell node should build");
+        assert_eq!(
+            node.params
+                .get("remove_face_refs")
+                .expect("remove_face_refs param"),
+            ""
+        );
+        let parsed = ShellFeatureOp::from_feature_node(&node).expect("shell node should parse");
+        assert_eq!(parsed.remove_face_refs, Vec::<String>::new());
+        let result =
+            evaluate_shell_feature(&parsed, &params(), &context()).expect("shell should apply");
+        assert_eq!(result.status, FinishingStatus::Applied);
+    }
+
+    #[test]
+    fn shell_geometry_hash_depends_on_remove_face_refs() {
+        let op_a = ShellFeatureOp {
+            feature_id: "feature.shell.a".to_string(),
+            source_feature_id: "feature.base".to_string(),
+            thickness_param: "shell_thickness_mm".to_string(),
+            remove_face_refs: vec!["face.001".to_string()],
+            allow_fallback: false,
+        };
+        let op_b = ShellFeatureOp {
+            feature_id: "feature.shell.a".to_string(),
+            source_feature_id: "feature.base".to_string(),
+            thickness_param: "shell_thickness_mm".to_string(),
+            remove_face_refs: vec!["face.002".to_string()],
+            allow_fallback: false,
+        };
+
+        let result_a =
+            evaluate_shell_feature(&op_a, &params(), &context()).expect("shell op a should apply");
+        let result_b =
+            evaluate_shell_feature(&op_b, &params(), &context()).expect("shell op b should apply");
+
+        assert_eq!(result_a.status, FinishingStatus::Applied);
+        assert_eq!(result_b.status, FinishingStatus::Applied);
+        assert_ne!(
+            result_a.geometry_hash, result_b.geometry_hash,
+            "shell geometry hash must include remove-face selection signature"
+        );
     }
 
     #[test]

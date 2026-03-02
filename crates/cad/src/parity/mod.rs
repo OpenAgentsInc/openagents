@@ -22,5 +22,6 @@ pub mod pattern_parity;
 pub mod primitive_contracts_parity;
 pub mod risk_register;
 pub mod scorecard;
+pub mod shell_feature_graph_parity;
 pub mod transform_parity;
 pub mod vcad_crawler;
