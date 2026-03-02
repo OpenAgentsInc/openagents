@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::drafting::{ProjectedView, Visibility};
 use crate::hash::stable_hex_digest;
 use crate::mesh::CadMeshPayload;
 use crate::{CadError, CadResult};
@@ -37,6 +38,219 @@ impl CadStepExportArtifact {
     }
 }
 
+/// Stable receipt emitted for deterministic drafting DXF exports.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct CadDraftingDxfExportReceipt {
+    pub edge_count: usize,
+    pub visible_edge_count: usize,
+    pub hidden_edge_count: usize,
+    pub byte_count: usize,
+    pub deterministic_hash: String,
+}
+
+/// Deterministic drafting DXF export artifact.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct CadDraftingDxfExportArtifact {
+    pub receipt: CadDraftingDxfExportReceipt,
+    pub bytes: Vec<u8>,
+}
+
+impl CadDraftingDxfExportArtifact {
+    /// Return the DXF payload as UTF-8 text.
+    pub fn text(&self) -> CadResult<&str> {
+        std::str::from_utf8(&self.bytes).map_err(|error| CadError::ExportFailed {
+            format: "dxf".to_string(),
+            reason: format!("dxf payload is not valid utf-8: {error}"),
+        })
+    }
+}
+
+/// Export a projected drafting view to deterministic DXF R12 bytes.
+///
+/// The output intentionally matches vcad's drafting DXF contract:
+/// - Header: `$ACADVER=AC1009`, `$INSUNITS=4`
+/// - Linetypes: `CONTINUOUS`, `HIDDEN`
+/// - Layers: `VISIBLE`, `HIDDEN`
+/// - Entities: one `LINE` per projected edge with visibility-mapped layer/linetype.
+pub fn export_projected_view_to_dxf(
+    view: &ProjectedView,
+) -> CadResult<CadDraftingDxfExportArtifact> {
+    for (index, edge) in view.edges.iter().enumerate() {
+        if !edge.start.x.is_finite()
+            || !edge.start.y.is_finite()
+            || !edge.end.x.is_finite()
+            || !edge.end.y.is_finite()
+        {
+            return Err(dxf_export_failed(format!(
+                "edge {index} contains non-finite coordinate"
+            )));
+        }
+    }
+
+    let mut text = String::new();
+
+    // Header.
+    push_dxf_line(&mut text, "0");
+    push_dxf_line(&mut text, "SECTION");
+    push_dxf_line(&mut text, "2");
+    push_dxf_line(&mut text, "HEADER");
+    push_dxf_line(&mut text, "9");
+    push_dxf_line(&mut text, "$ACADVER");
+    push_dxf_line(&mut text, "1");
+    push_dxf_line(&mut text, "AC1009");
+    push_dxf_line(&mut text, "9");
+    push_dxf_line(&mut text, "$INSUNITS");
+    push_dxf_line(&mut text, "70");
+    push_dxf_line(&mut text, "4");
+    push_dxf_line(&mut text, "0");
+    push_dxf_line(&mut text, "ENDSEC");
+
+    // Tables.
+    push_dxf_line(&mut text, "0");
+    push_dxf_line(&mut text, "SECTION");
+    push_dxf_line(&mut text, "2");
+    push_dxf_line(&mut text, "TABLES");
+
+    // Linetype table.
+    push_dxf_line(&mut text, "0");
+    push_dxf_line(&mut text, "TABLE");
+    push_dxf_line(&mut text, "2");
+    push_dxf_line(&mut text, "LTYPE");
+    push_dxf_line(&mut text, "70");
+    push_dxf_line(&mut text, "2");
+
+    // CONTINUOUS linetype.
+    push_dxf_line(&mut text, "0");
+    push_dxf_line(&mut text, "LTYPE");
+    push_dxf_line(&mut text, "2");
+    push_dxf_line(&mut text, "CONTINUOUS");
+    push_dxf_line(&mut text, "70");
+    push_dxf_line(&mut text, "0");
+    push_dxf_line(&mut text, "3");
+    push_dxf_line(&mut text, "Solid line");
+    push_dxf_line(&mut text, "72");
+    push_dxf_line(&mut text, "65");
+    push_dxf_line(&mut text, "73");
+    push_dxf_line(&mut text, "0");
+    push_dxf_line(&mut text, "40");
+    push_dxf_line(&mut text, "0.0");
+
+    // HIDDEN linetype.
+    push_dxf_line(&mut text, "0");
+    push_dxf_line(&mut text, "LTYPE");
+    push_dxf_line(&mut text, "2");
+    push_dxf_line(&mut text, "HIDDEN");
+    push_dxf_line(&mut text, "70");
+    push_dxf_line(&mut text, "0");
+    push_dxf_line(&mut text, "3");
+    push_dxf_line(&mut text, "Hidden line");
+    push_dxf_line(&mut text, "72");
+    push_dxf_line(&mut text, "65");
+    push_dxf_line(&mut text, "73");
+    push_dxf_line(&mut text, "2");
+    push_dxf_line(&mut text, "40");
+    push_dxf_line(&mut text, "9.525");
+    push_dxf_line(&mut text, "49");
+    push_dxf_line(&mut text, "6.35");
+    push_dxf_line(&mut text, "49");
+    push_dxf_line(&mut text, "-3.175");
+    push_dxf_line(&mut text, "0");
+    push_dxf_line(&mut text, "ENDTAB");
+
+    // Layer table.
+    push_dxf_line(&mut text, "0");
+    push_dxf_line(&mut text, "TABLE");
+    push_dxf_line(&mut text, "2");
+    push_dxf_line(&mut text, "LAYER");
+    push_dxf_line(&mut text, "70");
+    push_dxf_line(&mut text, "2");
+
+    // VISIBLE layer.
+    push_dxf_line(&mut text, "0");
+    push_dxf_line(&mut text, "LAYER");
+    push_dxf_line(&mut text, "2");
+    push_dxf_line(&mut text, "VISIBLE");
+    push_dxf_line(&mut text, "70");
+    push_dxf_line(&mut text, "0");
+    push_dxf_line(&mut text, "62");
+    push_dxf_line(&mut text, "7");
+    push_dxf_line(&mut text, "6");
+    push_dxf_line(&mut text, "CONTINUOUS");
+
+    // HIDDEN layer.
+    push_dxf_line(&mut text, "0");
+    push_dxf_line(&mut text, "LAYER");
+    push_dxf_line(&mut text, "2");
+    push_dxf_line(&mut text, "HIDDEN");
+    push_dxf_line(&mut text, "70");
+    push_dxf_line(&mut text, "0");
+    push_dxf_line(&mut text, "62");
+    push_dxf_line(&mut text, "8");
+    push_dxf_line(&mut text, "6");
+    push_dxf_line(&mut text, "HIDDEN");
+    push_dxf_line(&mut text, "0");
+    push_dxf_line(&mut text, "ENDTAB");
+
+    push_dxf_line(&mut text, "0");
+    push_dxf_line(&mut text, "ENDSEC");
+
+    // Entities.
+    push_dxf_line(&mut text, "0");
+    push_dxf_line(&mut text, "SECTION");
+    push_dxf_line(&mut text, "2");
+    push_dxf_line(&mut text, "ENTITIES");
+
+    let mut visible_edge_count = 0usize;
+    let mut hidden_edge_count = 0usize;
+
+    for edge in &view.edges {
+        let (layer, linetype) = match edge.visibility {
+            Visibility::Visible => {
+                visible_edge_count = visible_edge_count.saturating_add(1);
+                ("VISIBLE", "CONTINUOUS")
+            }
+            Visibility::Hidden => {
+                hidden_edge_count = hidden_edge_count.saturating_add(1);
+                ("HIDDEN", "HIDDEN")
+            }
+        };
+        push_dxf_line(&mut text, "0");
+        push_dxf_line(&mut text, "LINE");
+        push_dxf_line(&mut text, "8");
+        push_dxf_line(&mut text, layer);
+        push_dxf_line(&mut text, "6");
+        push_dxf_line(&mut text, linetype);
+        push_dxf_line(&mut text, "10");
+        push_dxf_line(&mut text, &format_dxf_real(edge.start.x));
+        push_dxf_line(&mut text, "20");
+        push_dxf_line(&mut text, &format_dxf_real(edge.start.y));
+        push_dxf_line(&mut text, "11");
+        push_dxf_line(&mut text, &format_dxf_real(edge.end.x));
+        push_dxf_line(&mut text, "21");
+        push_dxf_line(&mut text, &format_dxf_real(edge.end.y));
+    }
+
+    push_dxf_line(&mut text, "0");
+    push_dxf_line(&mut text, "ENDSEC");
+    push_dxf_line(&mut text, "0");
+    push_dxf_line(&mut text, "EOF");
+
+    let bytes = text.into_bytes();
+    let receipt = CadDraftingDxfExportReceipt {
+        edge_count: view.edges.len(),
+        visible_edge_count,
+        hidden_edge_count,
+        byte_count: bytes.len(),
+        deterministic_hash: stable_hex_digest(&bytes),
+    };
+    Ok(CadDraftingDxfExportArtifact { receipt, bytes })
+}
+
+/// Export a projected drafting view to deterministic DXF bytes.
+pub fn export_projected_view_to_dxf_buffer(view: &ProjectedView) -> CadResult<Vec<u8>> {
+    Ok(export_projected_view_to_dxf(view)?.bytes)
+}
+
 /// Export the active mesh as deterministic STEP text (solid-only, no assembly/PMI/colors).
 pub fn export_step_from_mesh(
     document_id: &str,
@@ -45,22 +259,22 @@ pub fn export_step_from_mesh(
     mesh: &CadMeshPayload,
 ) -> CadResult<CadStepExportArtifact> {
     if document_id.trim().is_empty() {
-        return Err(export_failed("document id must not be empty"));
+        return Err(step_export_failed("document id must not be empty"));
     }
     if variant_id.trim().is_empty() {
-        return Err(export_failed("variant id must not be empty"));
+        return Err(step_export_failed("variant id must not be empty"));
     }
     mesh.validate_contract()
-        .map_err(|error| export_failed(format!("mesh payload is invalid: {error}")))?;
+        .map_err(|error| step_export_failed(format!("mesh payload is invalid: {error}")))?;
     if mesh.variant_id != variant_id {
-        return Err(export_failed(format!(
+        return Err(step_export_failed(format!(
             "mesh variant_id mismatch: payload={} requested={variant_id}",
             mesh.variant_id
         )));
     }
     let triangle_count = mesh.triangle_indices.len() / 3;
     if triangle_count == 0 {
-        return Err(export_failed("mesh has zero triangles"));
+        return Err(step_export_failed("mesh has zero triangles"));
     }
 
     let mut writer = StepEntityWriter::default();
@@ -102,7 +316,7 @@ pub fn export_step_from_mesh(
         let b = triangle_vertex(mesh, triangle[1])?;
         let c = triangle_vertex(mesh, triangle[2])?;
         if is_degenerate_triangle(a, b, c) {
-            return Err(export_failed(format!(
+            return Err(step_export_failed(format!(
                 "triangle is degenerate at indices [{}, {}, {}]",
                 triangle[0], triangle[1], triangle[2]
             )));
@@ -204,13 +418,13 @@ fn triangle_vertex(mesh: &CadMeshPayload, index: u32) -> CadResult<[f32; 3]> {
     let vertex = mesh
         .vertices
         .get(index as usize)
-        .ok_or_else(|| export_failed(format!("triangle index out of range: {index}")))?;
+        .ok_or_else(|| step_export_failed(format!("triangle index out of range: {index}")))?;
     Ok(vertex.position_mm)
 }
 
 fn cartesian_point_line(position_mm: [f32; 3]) -> CadResult<String> {
     if !position_mm.iter().all(|value| value.is_finite()) {
-        return Err(export_failed(
+        return Err(step_export_failed(
             "triangle vertex contains non-finite coordinate",
         ));
     }
@@ -282,19 +496,64 @@ fn escape_step_string(value: &str) -> String {
     value.replace('\'', "''")
 }
 
-fn export_failed(reason: impl Into<String>) -> CadError {
+fn push_dxf_line(text: &mut String, line: &str) {
+    text.push_str(line);
+    text.push('\n');
+}
+
+fn format_dxf_real(value: f64) -> String {
+    format!("{value:.6}")
+}
+
+fn step_export_failed(reason: impl Into<String>) -> CadError {
     CadError::ExportFailed {
         format: "step".to_string(),
         reason: reason.into(),
     }
 }
 
+fn dxf_export_failed(reason: impl Into<String>) -> CadError {
+    CadError::ExportFailed {
+        format: "dxf".to_string(),
+        reason: reason.into(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{export_step_from_mesh, sanitize_step_segment};
+    use super::{export_projected_view_to_dxf, export_step_from_mesh, sanitize_step_segment};
+    use crate::drafting::{
+        EdgeType, Point2D, ProjectedEdge, ProjectedView, ViewDirection, Visibility,
+    };
     use crate::mesh::{
         CadMeshBounds, CadMeshMaterialSlot, CadMeshPayload, CadMeshTopology, CadMeshVertex,
     };
+
+    fn sample_projected_view() -> ProjectedView {
+        let mut view = ProjectedView::new(ViewDirection::Front);
+        view.add_edge(ProjectedEdge::new(
+            Point2D::new(0.0, 0.0),
+            Point2D::new(40.0, 0.0),
+            Visibility::Visible,
+            EdgeType::Sharp,
+            0.0,
+        ));
+        view.add_edge(ProjectedEdge::new(
+            Point2D::new(40.0, 0.0),
+            Point2D::new(40.0, 25.0),
+            Visibility::Hidden,
+            EdgeType::Boundary,
+            0.0,
+        ));
+        view.add_edge(ProjectedEdge::new(
+            Point2D::new(40.0, 25.0),
+            Point2D::new(0.0, 25.0),
+            Visibility::Visible,
+            EdgeType::Silhouette,
+            0.0,
+        ));
+        view
+    }
 
     fn sample_tetra_mesh() -> CadMeshPayload {
         CadMeshPayload {
@@ -345,6 +604,63 @@ mod tests {
                 max_mm: [40.0, 40.0, 40.0],
             },
         }
+    }
+
+    #[test]
+    fn dxf_export_is_deterministic_and_byte_stable() {
+        let view = sample_projected_view();
+        let first = export_projected_view_to_dxf(&view).expect("dxf export should succeed");
+        let second =
+            export_projected_view_to_dxf(&view).expect("dxf export should be deterministic");
+        assert_eq!(first.bytes, second.bytes);
+        assert_eq!(
+            first.receipt.deterministic_hash,
+            second.receipt.deterministic_hash
+        );
+        assert_eq!(first.receipt.edge_count, 3);
+        assert_eq!(first.receipt.visible_edge_count, 2);
+        assert_eq!(first.receipt.hidden_edge_count, 1);
+    }
+
+    #[test]
+    fn dxf_export_matches_vcad_r12_contract_tokens() {
+        let view = sample_projected_view();
+        let artifact = export_projected_view_to_dxf(&view).expect("dxf export should succeed");
+        let text = artifact.text().expect("dxf payload should be utf-8");
+        assert!(text.contains("$ACADVER\n1\nAC1009\n"));
+        assert!(text.contains("$INSUNITS\n70\n4\n"));
+        assert!(text.contains("TABLE\n2\nLTYPE\n70\n2\n"));
+        assert!(text.contains("TABLE\n2\nLAYER\n70\n2\n"));
+        assert!(text.contains("SECTION\n2\nENTITIES\n"));
+        assert!(text.contains("\n8\nVISIBLE\n6\nCONTINUOUS\n"));
+        assert!(text.contains("\n8\nHIDDEN\n6\nHIDDEN\n"));
+        assert!(text.ends_with("0\nEOF\n"));
+    }
+
+    #[test]
+    fn dxf_export_hash_matches_golden_fingerprint() {
+        let view = sample_projected_view();
+        let artifact = export_projected_view_to_dxf(&view).expect("dxf export should succeed");
+        assert_eq!(artifact.receipt.deterministic_hash, "f995b4f675c0711c");
+    }
+
+    #[test]
+    fn dxf_export_rejects_non_finite_coordinates() {
+        let mut view = ProjectedView::new(ViewDirection::Front);
+        view.add_edge(ProjectedEdge::new(
+            Point2D::new(f64::NAN, 0.0),
+            Point2D::new(10.0, 0.0),
+            Visibility::Visible,
+            EdgeType::Sharp,
+            0.0,
+        ));
+        let error =
+            export_projected_view_to_dxf(&view).expect_err("non-finite coordinates should fail");
+        assert!(
+            error
+                .to_string()
+                .contains("edge 0 contains non-finite coordinate")
+        );
     }
 
     #[test]

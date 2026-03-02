@@ -1,0 +1,44 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-076",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "vcad/src/export/dxf.rs::DxfDraftingDocument + vcad-kernel-wasm::export_projected_view_to_dxf",
+  "expected_case_snapshots": [
+    {
+      "case_id": "empty_view",
+      "edge_count": 0,
+      "visible_edge_count": 0,
+      "hidden_edge_count": 0,
+      "line_entity_count": 0,
+      "entity_visible_layer_count": 0,
+      "entity_hidden_layer_count": 0,
+      "byte_count": 397,
+      "deterministic_hash": "733ea69aaab23693",
+      "ends_with_eof": true
+    },
+    {
+      "case_id": "mixed_visibility",
+      "edge_count": 3,
+      "visible_edge_count": 2,
+      "hidden_edge_count": 1,
+      "line_entity_count": 3,
+      "entity_visible_layer_count": 2,
+      "entity_hidden_layer_count": 1,
+      "byte_count": 633,
+      "deterministic_hash": "f995b4f675c0711c",
+      "ends_with_eof": true
+    },
+    {
+      "case_id": "visible_only",
+      "edge_count": 1,
+      "visible_edge_count": 1,
+      "hidden_edge_count": 0,
+      "line_entity_count": 1,
+      "entity_visible_layer_count": 1,
+      "entity_hidden_layer_count": 0,
+      "byte_count": 477,
+      "deterministic_hash": "ee83a3d1c905b635",
+      "ends_with_eof": true
+    }
+  ]
+}
