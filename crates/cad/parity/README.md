@@ -7,6 +7,7 @@ Current artifacts:
 - `vcad_reference_manifest.json` (`VCAD-PARITY-001`)
 - `openagents_start_manifest.json` (`VCAD-PARITY-001`)
 - `vcad_capabilities_inventory.json` (`VCAD-PARITY-002`)
+- `openagents_capabilities_inventory.json` (`VCAD-PARITY-003`)
 
 Regeneration/check command:
 
@@ -14,4 +15,5 @@ Regeneration/check command:
 scripts/cad/freeze-parity-baseline.sh
 scripts/cad/freeze-parity-baseline.sh --check
 scripts/cad/vcad-capability-crawler-ci.sh
+scripts/cad/openagents-capability-crawler-ci.sh
 ```
