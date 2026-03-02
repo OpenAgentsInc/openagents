@@ -1,5 +1,9 @@
 use std::collections::BTreeMap;
 
+use serde::{Deserialize, Serialize};
+
+use crate::hash::stable_hex_digest;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CadMaterialPreset {
     pub id: &'static str,
@@ -84,6 +88,172 @@ pub fn estimate_material_cost_usd(mass_kg: f64, preset: CadMaterialPreset) -> Op
         return None;
     }
     Some((mass_kg * preset.cnc_cost_usd_per_kg) + preset.cnc_setup_usd)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CadMaterialAssignmentScope {
+    Feature,
+    Part,
+    Default,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CadMaterialAssignmentReceipt {
+    pub part_id: String,
+    pub feature_id: String,
+    pub material_id: String,
+    pub scope: CadMaterialAssignmentScope,
+    pub density_kg_m3: f64,
+    pub assignment_hash: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CadMaterialAssignmentState {
+    pub default_material_id: String,
+    pub part_materials: BTreeMap<String, String>,
+    pub feature_materials: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CadMaterialAssignmentErrorCode {
+    InvalidEntityId,
+    UnknownMaterialPreset,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CadMaterialAssignmentError {
+    pub code: CadMaterialAssignmentErrorCode,
+    pub message: String,
+}
+
+impl CadMaterialAssignmentError {
+    fn new(code: CadMaterialAssignmentErrorCode, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+        }
+    }
+}
+
+impl Default for CadMaterialAssignmentState {
+    fn default() -> Self {
+        Self {
+            default_material_id: DEFAULT_CAD_MATERIAL_ID.to_string(),
+            part_materials: BTreeMap::new(),
+            feature_materials: BTreeMap::new(),
+        }
+    }
+}
+
+impl CadMaterialAssignmentState {
+    pub fn with_default_material(
+        default_material_id: &str,
+    ) -> Result<Self, CadMaterialAssignmentError> {
+        let canonical_default = canonical_material_id(default_material_id)?;
+        Ok(Self {
+            default_material_id: canonical_default,
+            part_materials: BTreeMap::new(),
+            feature_materials: BTreeMap::new(),
+        })
+    }
+
+    pub fn set_part_material(
+        &mut self,
+        part_id: &str,
+        material_id: &str,
+    ) -> Result<(), CadMaterialAssignmentError> {
+        validate_entity_id(part_id, "part_id")?;
+        let canonical_material = canonical_material_id(material_id)?;
+        self.part_materials
+            .insert(part_id.to_string(), canonical_material);
+        Ok(())
+    }
+
+    pub fn set_feature_material(
+        &mut self,
+        feature_id: &str,
+        material_id: &str,
+    ) -> Result<(), CadMaterialAssignmentError> {
+        validate_entity_id(feature_id, "feature_id")?;
+        let canonical_material = canonical_material_id(material_id)?;
+        self.feature_materials
+            .insert(feature_id.to_string(), canonical_material);
+        Ok(())
+    }
+
+    pub fn clear_part_material(&mut self, part_id: &str) {
+        self.part_materials.remove(part_id);
+    }
+
+    pub fn clear_feature_material(&mut self, feature_id: &str) {
+        self.feature_materials.remove(feature_id);
+    }
+
+    pub fn resolve_assignment(
+        &self,
+        part_id: &str,
+        feature_id: &str,
+    ) -> Result<CadMaterialAssignmentReceipt, CadMaterialAssignmentError> {
+        validate_entity_id(part_id, "part_id")?;
+        validate_entity_id(feature_id, "feature_id")?;
+
+        let (scope, material_id) = if let Some(material) = self.feature_materials.get(feature_id) {
+            (CadMaterialAssignmentScope::Feature, material.clone())
+        } else if let Some(material) = self.part_materials.get(part_id) {
+            (CadMaterialAssignmentScope::Part, material.clone())
+        } else {
+            (
+                CadMaterialAssignmentScope::Default,
+                self.default_material_id.clone(),
+            )
+        };
+
+        let preset = material_preset_by_id(&material_id).ok_or_else(|| {
+            CadMaterialAssignmentError::new(
+                CadMaterialAssignmentErrorCode::UnknownMaterialPreset,
+                format!("unknown material preset: {material_id}"),
+            )
+        })?;
+
+        let assignment_hash = stable_hex_digest(
+            format!(
+                "material_assignment|part={}|feature={}|scope={:?}|material={}",
+                part_id, feature_id, scope, material_id
+            )
+            .as_bytes(),
+        )[..16]
+            .to_string();
+
+        Ok(CadMaterialAssignmentReceipt {
+            part_id: part_id.to_string(),
+            feature_id: feature_id.to_string(),
+            material_id,
+            scope,
+            density_kg_m3: preset.density_kg_m3,
+            assignment_hash,
+        })
+    }
+}
+
+fn validate_entity_id(entity_id: &str, label: &str) -> Result<(), CadMaterialAssignmentError> {
+    if entity_id.trim().is_empty() {
+        return Err(CadMaterialAssignmentError::new(
+            CadMaterialAssignmentErrorCode::InvalidEntityId,
+            format!("{label} must not be empty"),
+        ));
+    }
+    Ok(())
+}
+
+fn canonical_material_id(material_id: &str) -> Result<String, CadMaterialAssignmentError> {
+    let preset = material_preset_by_id(material_id).ok_or_else(|| {
+        CadMaterialAssignmentError::new(
+            CadMaterialAssignmentErrorCode::UnknownMaterialPreset,
+            format!("unknown material preset: {material_id}"),
+        )
+    })?;
+    Ok(preset.id.to_string())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -320,8 +490,9 @@ fn fmt6(value: f64) -> String {
 mod tests {
     use super::{
         CAD_COST_HEURISTIC_MODEL_ID, CadCostHeuristicErrorCode, CadCostHeuristicInput,
-        DEFAULT_CAD_MATERIAL_ID, estimate_cnc_cost_heuristic_usd, estimate_material_cost_usd,
-        material_preset_by_id, material_presets, next_material_preset_id,
+        CadMaterialAssignmentScope, CadMaterialAssignmentState, DEFAULT_CAD_MATERIAL_ID,
+        estimate_cnc_cost_heuristic_usd, estimate_material_cost_usd, material_preset_by_id,
+        material_presets, next_material_preset_id,
     };
 
     #[test]
@@ -401,5 +572,60 @@ mod tests {
         assert_eq!(error.code, CadCostHeuristicErrorCode::InvalidMass);
         assert_eq!(error.code.stable_code(), "CAD-COST-INVALID-MASS");
         assert!(!error.remediation_hint().is_empty());
+    }
+
+    #[test]
+    fn material_assignment_resolves_feature_over_part_over_default() {
+        let mut assignments =
+            CadMaterialAssignmentState::with_default_material("al-6061-t6").expect("default");
+        assignments
+            .set_part_material("part.housing", "steel-1018")
+            .expect("part assignment");
+        assignments
+            .set_feature_material("feature.fillet.1", "ti-6al-4v")
+            .expect("feature assignment");
+
+        let feature_receipt = assignments
+            .resolve_assignment("part.housing", "feature.fillet.1")
+            .expect("feature receipt");
+        assert_eq!(feature_receipt.scope, CadMaterialAssignmentScope::Feature);
+        assert_eq!(feature_receipt.material_id, "ti-6al-4v");
+
+        let part_receipt = assignments
+            .resolve_assignment("part.housing", "feature.chamfer.1")
+            .expect("part receipt");
+        assert_eq!(part_receipt.scope, CadMaterialAssignmentScope::Part);
+        assert_eq!(part_receipt.material_id, "steel-1018");
+
+        let default_receipt = assignments
+            .resolve_assignment("part.frame", "feature.base")
+            .expect("default receipt");
+        assert_eq!(default_receipt.scope, CadMaterialAssignmentScope::Default);
+        assert_eq!(default_receipt.material_id, "al-6061-t6");
+    }
+
+    #[test]
+    fn material_assignment_rejects_unknown_materials() {
+        let mut assignments = CadMaterialAssignmentState::default();
+        let error = assignments
+            .set_part_material("part.housing", "unknown-material")
+            .expect_err("unknown material should fail");
+        assert!(error.message.contains("unknown material preset"));
+    }
+
+    #[test]
+    fn material_assignment_receipts_are_deterministic() {
+        let mut assignments = CadMaterialAssignmentState::default();
+        assignments
+            .set_part_material("part.housing", "steel-1018")
+            .expect("part assignment");
+        let first = assignments
+            .resolve_assignment("part.housing", "feature.base")
+            .expect("first receipt");
+        let second = assignments
+            .resolve_assignment("part.housing", "feature.base")
+            .expect("second receipt");
+        assert_eq!(first, second);
+        assert_eq!(first.assignment_hash.len(), 16);
     }
 }
