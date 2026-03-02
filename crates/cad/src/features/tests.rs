@@ -1,10 +1,11 @@
 use super::primitives::evaluate_cut_hole_feature_with_boolean;
 use super::{
     BoxFeatureOp, CircularPatternFeatureOp, CutHoleFeatureOp, CylinderFeatureOp,
-    FilletPlaceholderFeatureOp, FilletPlaceholderKind, LinearPatternFeatureOp, TransformFeatureOp,
-    compose_transform_sequence, evaluate_box_feature, evaluate_circular_pattern_feature,
-    evaluate_cut_hole_feature, evaluate_cylinder_feature, evaluate_fillet_placeholder_feature,
-    evaluate_linear_pattern_feature, evaluate_transform_feature,
+    FilletPlaceholderFeatureOp, FilletPlaceholderKind, LinearPatternFeatureOp, SweepFeatureOp,
+    TransformFeatureOp, compose_transform_sequence, evaluate_box_feature,
+    evaluate_circular_pattern_feature, evaluate_cut_hole_feature, evaluate_cylinder_feature,
+    evaluate_fillet_placeholder_feature, evaluate_linear_pattern_feature, evaluate_sweep_feature,
+    evaluate_transform_feature,
 };
 use crate::feature_graph::{FeatureGraph, FeatureNode};
 use crate::kernel::CadKernelAdapter;
@@ -806,6 +807,102 @@ fn circular_pattern_rejects_negative_radius() {
     let error = evaluate_circular_pattern_feature(&op, &params, "hash-hole")
         .expect_err("negative radius must be rejected");
     assert!(matches!(error, CadError::InvalidParameter { .. }));
+}
+
+fn sweep_params(twist_rad: f64, scale_start: f64, scale_end: f64) -> ParameterStore {
+    let mut params = ParameterStore::default();
+    params
+        .set(
+            "sweep_twist_rad",
+            ScalarValue {
+                value: twist_rad,
+                unit: ScalarUnit::Unitless,
+            },
+        )
+        .expect("twist should set");
+    params
+        .set(
+            "sweep_scale_start",
+            ScalarValue {
+                value: scale_start,
+                unit: ScalarUnit::Unitless,
+            },
+        )
+        .expect("scale start should set");
+    params
+        .set(
+            "sweep_scale_end",
+            ScalarValue {
+                value: scale_end,
+                unit: ScalarUnit::Unitless,
+            },
+        )
+        .expect("scale end should set");
+    params
+}
+
+#[test]
+fn sweep_feature_evaluates_path_twist_and_scale_controls() {
+    let op = SweepFeatureOp {
+        feature_id: "feature.sweep.main".to_string(),
+        source_feature_id: "feature.profile.base".to_string(),
+        path_points_mm: vec![[0.0, 0.0, 0.0], [0.0, 0.0, 60.0], [30.0, 0.0, 60.0]],
+        twist_angle_param: "sweep_twist_rad".to_string(),
+        scale_start_param: "sweep_scale_start".to_string(),
+        scale_end_param: "sweep_scale_end".to_string(),
+        path_segments: 0,
+    };
+    let params = sweep_params(std::f64::consts::PI, 1.0, 0.5);
+    let first = evaluate_sweep_feature(&op, &params, "hash-profile").expect("sweep should eval");
+    let second = evaluate_sweep_feature(&op, &params, "hash-profile").expect("sweep should eval");
+
+    assert_eq!(first, second, "sweep evaluation must be deterministic");
+    assert_eq!(first.segment_count, 32, "path_segments=0 uses vcad default");
+    assert_eq!(first.stations.len(), 33);
+    assert_eq!(first.path_length_mm, 90.0);
+
+    let start = first.stations.first().expect("start station");
+    let end = first.stations.last().expect("end station");
+    assert_eq!(start.center_mm, [0.0, 0.0, 0.0]);
+    assert_eq!(end.center_mm, [30.0, 0.0, 60.0]);
+    assert_eq!(start.scale, 1.0);
+    assert_eq!(end.scale, 0.5);
+    assert_eq!(start.twist_angle_rad, 0.0);
+    assert!((end.twist_angle_rad - std::f64::consts::PI).abs() < 1e-12);
+}
+
+#[test]
+fn sweep_feature_rejects_zero_length_path() {
+    let op = SweepFeatureOp {
+        feature_id: "feature.sweep.zero".to_string(),
+        source_feature_id: "feature.profile.base".to_string(),
+        path_points_mm: vec![[10.0, 20.0, 30.0], [10.0, 20.0, 30.0]],
+        twist_angle_param: "sweep_twist_rad".to_string(),
+        scale_start_param: "sweep_scale_start".to_string(),
+        scale_end_param: "sweep_scale_end".to_string(),
+        path_segments: 16,
+    };
+    let error = evaluate_sweep_feature(&op, &sweep_params(0.0, 1.0, 1.0), "hash-profile")
+        .expect_err("zero-length path must fail");
+    assert!(matches!(error, CadError::InvalidPrimitive { .. }));
+    assert!(error.to_string().contains("zero length"));
+}
+
+#[test]
+fn sweep_feature_rejects_non_positive_scale() {
+    let op = SweepFeatureOp {
+        feature_id: "feature.sweep.invalid_scale".to_string(),
+        source_feature_id: "feature.profile.base".to_string(),
+        path_points_mm: vec![[0.0, 0.0, 0.0], [0.0, 10.0, 0.0]],
+        twist_angle_param: "sweep_twist_rad".to_string(),
+        scale_start_param: "sweep_scale_start".to_string(),
+        scale_end_param: "sweep_scale_end".to_string(),
+        path_segments: 8,
+    };
+    let error = evaluate_sweep_feature(&op, &sweep_params(0.0, 1.0, 0.0), "hash-profile")
+        .expect_err("non-positive scale should fail");
+    assert!(matches!(error, CadError::InvalidParameter { .. }));
+    assert!(error.to_string().contains("scale"));
 }
 
 #[test]

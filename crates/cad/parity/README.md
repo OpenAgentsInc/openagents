@@ -36,6 +36,7 @@ Current artifacts:
 - `fillet_feature_graph_parity_manifest.json` (`VCAD-PARITY-030`)
 - `chamfer_feature_graph_parity_manifest.json` (`VCAD-PARITY-031`)
 - `expanded_finishing_parity_manifest.json` (`VCAD-PARITY-032`)
+- `sweep_parity_manifest.json` (`VCAD-PARITY-033`)
 
 Regeneration/check command:
 
@@ -72,6 +73,7 @@ scripts/cad/parity-shell-feature-graph-ci.sh
 scripts/cad/parity-fillet-feature-graph-ci.sh
 scripts/cad/parity-chamfer-feature-graph-ci.sh
 scripts/cad/parity-expanded-finishing-ci.sh
+scripts/cad/parity-sweep-ci.sh
 scripts/cad/parity-blocker-workflow.sh
 scripts/cad/parity_check.sh
 scripts/cad/parity-ci-lane.sh
