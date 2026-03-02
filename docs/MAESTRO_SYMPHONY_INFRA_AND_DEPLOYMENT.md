@@ -946,6 +946,76 @@ Store deploy evidence in backroom archive (or your ops artifact store):
 }
 ```
 
+### 15.11 Existing `oa-bitcoind` backend integration details
+
+For this OpenAgents environment, Symphony is expected to connect to the already-running Bitcoin node:
+- Project: `openagentsgemini`
+- VPC/subnet: `oa-lightning` / `oa-lightning-us-central1`
+- Bitcoind VM: `oa-bitcoind`
+- Internal RPC endpoint: `10.42.0.2:8332`
+- Internal P2P endpoint: `10.42.0.2:8333`
+- ZMQ endpoints: `10.42.0.2:28332`, `10.42.0.2:28333`
+- Secret Manager credentials source: `oa-bitcoind-rpc-creds`
+
+The Symphony deployment scripts in this repo default to these values and can be overridden with env vars when needed.
+
+### 15.12 Delivery issues and execution tracking
+
+Symphony deployment and operationalization work is tracked in:
+- Baseline deploy: https://github.com/OpenAgentsInc/openagents/issues/2738
+- Network hardening: https://github.com/OpenAgentsInc/openagents/issues/2739
+- Ops/bootstrap/restore controls: https://github.com/OpenAgentsInc/openagents/issues/2740
+- Maestro skill integration: https://github.com/OpenAgentsInc/openagents/issues/2741
+
+Recommended operator behavior:
+- Keep issue comments updated with exact UTC timestamps, image tags, and gate outcomes.
+- Attach generated receipts/reports from `docs/reports/symphony/` as evidence.
+
+### 15.13 Scripted deployment path in this repo
+
+Canonical execution order:
+
+```bash
+scripts/deploy/symphony/01-build-and-push-image.sh
+scripts/deploy/symphony/02-provision-baseline.sh
+scripts/deploy/symphony/03-configure-and-start.sh
+scripts/deploy/symphony/04-harden-network.sh
+scripts/deploy/symphony/05-ops-bootstrap.sh
+scripts/deploy/symphony/06-verify-gates.sh
+scripts/deploy/symphony/07-restore-drill.sh
+```
+
+Credential rotation:
+
+```bash
+NEW_RPC_USER="<new-user>" \
+NEW_RPC_PASSWORD="<new-password>" \
+BITCOIND_UPDATED=1 \
+scripts/deploy/symphony/rotate-rpc-creds.sh
+```
+
+Operational notes:
+- Scripts assume `gcloud` auth is already in place.
+- `03-configure-and-start.sh` mounts and uses `/var/lib/symphony` on an attached PD.
+- `06-verify-gates.sh` emits deploy receipts under `docs/reports/symphony/`.
+- `07-restore-drill.sh` exercises snapshot -> restore-disk flow and writes drill reports.
+
+### 15.14 Maestro skill integration for agent queries
+
+The local Maestro skill in this repo provides post-deploy agent query workflows:
+- Skill definition: `skills/maestro/SKILL.md`
+- Query references: `skills/maestro/references/symphony-query-recipes.md`
+- Preflight checker: `skills/maestro/scripts/check-symphony-prereqs.sh`
+
+Expected env contract:
+- `SYMPHONY_BASE_URL`
+- `SYMPHONY_NETWORK`
+- `BITCOIND_RPC_URL`
+- `BITCOIND_RPC_USER`
+- `BITCOIND_RPC_PASS`
+
+This enables agents to run deterministic liveness/freshness checks and query address/runes endpoints without exposing secrets in outputs.
+
 ## 16. Source Pointers
 
 Primary upstream files used for this guide:
@@ -970,3 +1040,16 @@ Primary upstream files used for this guide:
 - `/Users/christopherdavid/code/backroom/openagents-prune-20260225-205724-wgpui-mvp/apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh`
 - `/Users/christopherdavid/code/backroom/openagents-prune-20260225-205724-wgpui-mvp/apps/runtime/deploy/cloudrun/check-migration-drift.sh`
 - `/Users/christopherdavid/code/backroom/openagents-prune-20260225-205724-wgpui-mvp/docs/core/DEPLOYMENT_RUST_SERVICES.md`
+- `docs/deploy/SYMPHONY_GCP_RUNBOOK.md`
+- `scripts/deploy/symphony/common.sh`
+- `scripts/deploy/symphony/01-build-and-push-image.sh`
+- `scripts/deploy/symphony/02-provision-baseline.sh`
+- `scripts/deploy/symphony/03-configure-and-start.sh`
+- `scripts/deploy/symphony/04-harden-network.sh`
+- `scripts/deploy/symphony/05-ops-bootstrap.sh`
+- `scripts/deploy/symphony/06-verify-gates.sh`
+- `scripts/deploy/symphony/07-restore-drill.sh`
+- `scripts/deploy/symphony/rotate-rpc-creds.sh`
+- `skills/maestro/SKILL.md`
+- `skills/maestro/references/symphony-query-recipes.md`
+- `skills/maestro/scripts/check-symphony-prereqs.sh`
