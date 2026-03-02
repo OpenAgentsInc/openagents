@@ -116,6 +116,12 @@ impl GoalLifecycleStatus {
     }
 }
 
+impl Default for GoalLifecycleStatus {
+    fn default() -> Self {
+        Self::Draft
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct GoalRecord {
     pub goal_id: String,
@@ -125,9 +131,16 @@ pub struct GoalRecord {
     pub stop_conditions: Vec<GoalStopCondition>,
     pub retry_policy: GoalRetryPolicy,
     pub schedule: GoalScheduleConfig,
+    #[serde(default)]
     pub lifecycle_status: GoalLifecycleStatus,
     pub created_at_epoch_seconds: u64,
     pub updated_at_epoch_seconds: u64,
+    #[serde(default)]
+    pub attempt_count: u32,
+    #[serde(default)]
+    pub last_failure_reason: Option<String>,
+    #[serde(default)]
+    pub terminal_reason: Option<String>,
     pub last_receipt_id: Option<String>,
 }
 
@@ -144,6 +157,28 @@ pub struct GoalExecutionReceipt {
     pub successes: u32,
     pub errors: u32,
     pub notes: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub enum GoalLifecycleEvent {
+    Queue,
+    StartRun,
+    Pause,
+    Resume,
+    Succeed { reason: Option<String> },
+    Fail { reason: String },
+    Abort { reason: String },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct GoalStateTransition {
+    pub goal_id: String,
+    pub from: GoalLifecycleStatus,
+    pub to: GoalLifecycleStatus,
+    pub event: GoalLifecycleEvent,
+    pub attempt_count: u32,
+    pub reason: Option<String>,
+    pub transitioned_at_epoch_seconds: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -254,6 +289,82 @@ impl AutopilotGoalsState {
         Ok(())
     }
 
+    pub fn transition_goal(
+        &mut self,
+        goal_id: &str,
+        event: GoalLifecycleEvent,
+    ) -> Result<GoalStateTransition, String> {
+        let Some(index) = self
+            .document
+            .active_goals
+            .iter()
+            .position(|goal| goal.goal_id == goal_id)
+        else {
+            return Err(format!("Active goal {goal_id} not found"));
+        };
+
+        let current = self.document.active_goals[index].lifecycle_status;
+        let (next_status, reason, increment_attempt) = transition_target(current, &event)?;
+        let now = now_epoch_seconds();
+        let attempt_count_after: u32;
+
+        if next_status.is_terminal() {
+            let mut goal = self.document.active_goals.remove(index);
+            goal.lifecycle_status = next_status;
+            goal.updated_at_epoch_seconds = now;
+            if increment_attempt {
+                goal.attempt_count = goal.attempt_count.saturating_add(1);
+            }
+            attempt_count_after = goal.attempt_count;
+            match next_status {
+                GoalLifecycleStatus::Failed => {
+                    goal.last_failure_reason = reason.clone();
+                    goal.terminal_reason = reason.clone();
+                }
+                GoalLifecycleStatus::Aborted | GoalLifecycleStatus::Succeeded => {
+                    goal.terminal_reason = reason.clone();
+                }
+                _ => {}
+            }
+            self.document
+                .historical_goals
+                .retain(|existing| existing.goal_id != goal.goal_id);
+            self.document.historical_goals.push(goal);
+            if self.document.historical_goals.len() > 512 {
+                let remove_count = self.document.historical_goals.len().saturating_sub(512);
+                self.document.historical_goals.drain(0..remove_count);
+            }
+        } else {
+            let goal = &mut self.document.active_goals[index];
+            goal.lifecycle_status = next_status;
+            goal.updated_at_epoch_seconds = now;
+            if increment_attempt {
+                goal.attempt_count = goal.attempt_count.saturating_add(1);
+            }
+            if next_status != GoalLifecycleStatus::Failed {
+                goal.last_failure_reason = None;
+            }
+            attempt_count_after = goal.attempt_count;
+        }
+
+        self.persist_to_disk()?;
+        self.last_action = Some(format!(
+            "Transitioned goal {goal_id}: {:?} -> {:?}",
+            current, next_status
+        ));
+        self.last_error = None;
+
+        Ok(GoalStateTransition {
+            goal_id: goal_id.to_string(),
+            from: current,
+            to: next_status,
+            event,
+            attempt_count: attempt_count_after,
+            reason,
+            transitioned_at_epoch_seconds: now,
+        })
+    }
+
     pub fn archive_goal(
         &mut self,
         goal_id: &str,
@@ -274,6 +385,17 @@ impl AutopilotGoalsState {
         let mut goal = self.document.active_goals.remove(index);
         goal.lifecycle_status = terminal_status;
         goal.updated_at_epoch_seconds = now_epoch_seconds();
+        if goal.terminal_reason.is_none() {
+            goal.terminal_reason = Some(match terminal_status {
+                GoalLifecycleStatus::Succeeded => "archived as succeeded".to_string(),
+                GoalLifecycleStatus::Failed => "archived as failed".to_string(),
+                GoalLifecycleStatus::Aborted => "archived as aborted".to_string(),
+                _ => "archived".to_string(),
+            });
+        }
+        if terminal_status == GoalLifecycleStatus::Failed && goal.last_failure_reason.is_none() {
+            goal.last_failure_reason = goal.terminal_reason.clone();
+        }
         self.document
             .historical_goals
             .retain(|existing| existing.goal_id != goal.goal_id);
@@ -352,6 +474,84 @@ impl AutopilotGoalsState {
     }
 }
 
+fn transition_target(
+    current: GoalLifecycleStatus,
+    event: &GoalLifecycleEvent,
+) -> Result<(GoalLifecycleStatus, Option<String>, bool), String> {
+    match event {
+        GoalLifecycleEvent::Queue => match current {
+            GoalLifecycleStatus::Draft | GoalLifecycleStatus::Paused => {
+                Ok((GoalLifecycleStatus::Queued, None, false))
+            }
+            _ => Err(format!("Cannot queue goal from {current:?}")),
+        },
+        GoalLifecycleEvent::StartRun => match current {
+            GoalLifecycleStatus::Queued => Ok((GoalLifecycleStatus::Running, None, true)),
+            _ => Err(format!("Cannot start run from {current:?}")),
+        },
+        GoalLifecycleEvent::Pause => match current {
+            GoalLifecycleStatus::Queued | GoalLifecycleStatus::Running => {
+                Ok((GoalLifecycleStatus::Paused, None, false))
+            }
+            _ => Err(format!("Cannot pause goal from {current:?}")),
+        },
+        GoalLifecycleEvent::Resume => match current {
+            GoalLifecycleStatus::Paused => Ok((GoalLifecycleStatus::Queued, None, false)),
+            _ => Err(format!("Cannot resume goal from {current:?}")),
+        },
+        GoalLifecycleEvent::Succeed { reason } => match current {
+            GoalLifecycleStatus::Queued
+            | GoalLifecycleStatus::Running
+            | GoalLifecycleStatus::Paused => Ok((
+                GoalLifecycleStatus::Succeeded,
+                normalize_reason(reason),
+                false,
+            )),
+            _ => Err(format!("Cannot mark success from {current:?}")),
+        },
+        GoalLifecycleEvent::Fail { reason } => match current {
+            GoalLifecycleStatus::Queued
+            | GoalLifecycleStatus::Running
+            | GoalLifecycleStatus::Paused => Ok((
+                GoalLifecycleStatus::Failed,
+                Some(require_reason(reason)?),
+                false,
+            )),
+            _ => Err(format!("Cannot fail goal from {current:?}")),
+        },
+        GoalLifecycleEvent::Abort { reason } => match current {
+            GoalLifecycleStatus::Draft
+            | GoalLifecycleStatus::Queued
+            | GoalLifecycleStatus::Running
+            | GoalLifecycleStatus::Paused => Ok((
+                GoalLifecycleStatus::Aborted,
+                Some(require_reason(reason)?),
+                false,
+            )),
+            _ => Err(format!("Cannot abort goal from {current:?}")),
+        },
+    }
+}
+
+fn require_reason(reason: &str) -> Result<String, String> {
+    let normalized = reason.trim();
+    if normalized.is_empty() {
+        return Err("Lifecycle transition reason cannot be empty".to_string());
+    }
+    Ok(normalized.to_string())
+}
+
+fn normalize_reason(reason: &Option<String>) -> Option<String> {
+    reason.as_ref().and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
 fn default_goals_file_path() -> PathBuf {
     std::env::var("HOME")
         .map(PathBuf::from)
@@ -370,8 +570,9 @@ fn now_epoch_seconds() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        AutopilotGoalsState, GoalConstraints, GoalExecutionReceipt, GoalLifecycleStatus,
-        GoalObjective, GoalRecord, GoalRetryPolicy, GoalScheduleConfig, GoalStopCondition,
+        AutopilotGoalsState, GoalConstraints, GoalExecutionReceipt, GoalLifecycleEvent,
+        GoalLifecycleStatus, GoalObjective, GoalRecord, GoalRetryPolicy, GoalScheduleConfig,
+        GoalStopCondition,
     };
 
     fn sample_goal(id: &str) -> GoalRecord {
@@ -389,6 +590,9 @@ mod tests {
             lifecycle_status: GoalLifecycleStatus::Queued,
             created_at_epoch_seconds: 1_700_000_000,
             updated_at_epoch_seconds: 1_700_000_000,
+            attempt_count: 0,
+            last_failure_reason: None,
+            terminal_reason: None,
             last_receipt_id: None,
         }
     }
@@ -433,6 +637,94 @@ mod tests {
             GoalLifecycleStatus::Succeeded
         );
         assert_eq!(reloaded.document.receipts.len(), 1);
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn goal_state_machine_enforces_transitions_and_attempt_counter() {
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch time available")
+            .as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("autopilot-goals-transition-{now_nanos}.json"));
+
+        let mut state = AutopilotGoalsState::load_from_path(path.clone());
+        state
+            .upsert_active_goal(sample_goal("goal-state-machine"))
+            .expect("upsert active goal should succeed");
+
+        let running = state
+            .transition_goal("goal-state-machine", GoalLifecycleEvent::StartRun)
+            .expect("queued->running should be valid");
+        assert_eq!(running.to, GoalLifecycleStatus::Running);
+        assert_eq!(running.attempt_count, 1);
+
+        let paused = state
+            .transition_goal("goal-state-machine", GoalLifecycleEvent::Pause)
+            .expect("running->paused should be valid");
+        assert_eq!(paused.to, GoalLifecycleStatus::Paused);
+        assert_eq!(paused.attempt_count, 1);
+
+        let queued = state
+            .transition_goal("goal-state-machine", GoalLifecycleEvent::Resume)
+            .expect("paused->queued should be valid");
+        assert_eq!(queued.to, GoalLifecycleStatus::Queued);
+
+        let resumed = state
+            .transition_goal("goal-state-machine", GoalLifecycleEvent::StartRun)
+            .expect("queued->running should be valid again");
+        assert_eq!(resumed.attempt_count, 2);
+
+        let failed = state
+            .transition_goal(
+                "goal-state-machine",
+                GoalLifecycleEvent::Fail {
+                    reason: "network timeout".to_string(),
+                },
+            )
+            .expect("running->failed should be valid");
+        assert_eq!(failed.to, GoalLifecycleStatus::Failed);
+        assert_eq!(failed.reason.as_deref(), Some("network timeout"));
+
+        assert!(state.document.active_goals.is_empty());
+        assert_eq!(state.document.historical_goals.len(), 1);
+        assert_eq!(
+            state.document.historical_goals[0].attempt_count, 2,
+            "attempt counter should persist in historical record"
+        );
+        assert_eq!(
+            state.document.historical_goals[0]
+                .last_failure_reason
+                .as_deref(),
+            Some("network timeout")
+        );
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn goal_state_machine_rejects_invalid_transition() {
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch time available")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "autopilot-goals-invalid-transition-{now_nanos}.json"
+        ));
+
+        let mut state = AutopilotGoalsState::load_from_path(path.clone());
+        state
+            .upsert_active_goal(sample_goal("goal-invalid"))
+            .expect("upsert active goal should succeed");
+        let error = state
+            .transition_goal("goal-invalid", GoalLifecycleEvent::Resume)
+            .expect_err("queued->resume should be invalid");
+        assert!(
+            error.contains("Cannot resume goal from"),
+            "unexpected transition error: {error}"
+        );
 
         let _ = std::fs::remove_file(path);
     }
