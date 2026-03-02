@@ -3243,6 +3243,9 @@ pub enum StableSatsTreasuryOperationKind {
     Refresh,
     SwapQuote,
     SwapExecute,
+    TransferBtc,
+    TransferUsd,
+    Convert,
 }
 
 impl StableSatsTreasuryOperationKind {
@@ -3251,6 +3254,9 @@ impl StableSatsTreasuryOperationKind {
             Self::Refresh => "refresh",
             Self::SwapQuote => "swap_quote",
             Self::SwapExecute => "swap_execute",
+            Self::TransferBtc => "transfer_btc",
+            Self::TransferUsd => "transfer_usd",
+            Self::Convert => "convert",
         }
     }
 }
@@ -3287,6 +3293,15 @@ pub struct StableSatsTreasuryOperationEntry {
     pub updated_at_epoch_seconds: u64,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct StableSatsTreasuryReceipt {
+    pub seq: u64,
+    pub request_id: u64,
+    pub kind: StableSatsTreasuryOperationKind,
+    pub payload: serde_json::Value,
+    pub occurred_at_epoch_seconds: u64,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StableSatsTransferLedgerEntry {
     pub seq: u64,
@@ -3320,10 +3335,12 @@ pub struct StableSatsSimulationPaneState {
     pub active_live_refresh_request_id: Option<u64>,
     pub transfer_ledger: Vec<StableSatsTransferLedgerEntry>,
     pub treasury_operations: Vec<StableSatsTreasuryOperationEntry>,
+    pub treasury_receipts: Vec<StableSatsTreasuryReceipt>,
     pub events: Vec<AgentNetworkSimulationEvent>,
     next_seq: u64,
     next_transfer_seq: u64,
     next_operation_seq: u64,
+    next_receipt_seq: u64,
     auto_run_last_tick: Option<Instant>,
     next_live_refresh_request_id: u64,
 }
@@ -3351,10 +3368,12 @@ impl Default for StableSatsSimulationPaneState {
             active_live_refresh_request_id: None,
             transfer_ledger: Vec::new(),
             treasury_operations: Vec::new(),
+            treasury_receipts: Vec::new(),
             events: Vec::new(),
             next_seq: 1,
             next_transfer_seq: 1,
             next_operation_seq: 1,
+            next_receipt_seq: 1,
             auto_run_last_tick: None,
             next_live_refresh_request_id: 1,
         }
@@ -3438,10 +3457,12 @@ impl StableSatsSimulationPaneState {
         self.active_live_refresh_request_id = None;
         self.transfer_ledger.clear();
         self.treasury_operations.clear();
+        self.treasury_receipts.clear();
         self.events.clear();
         self.next_seq = 1;
         self.next_transfer_seq = 1;
         self.next_operation_seq = 1;
+        self.next_receipt_seq = 1;
         self.next_live_refresh_request_id = 1;
         match mode {
             StableSatsSimulationMode::Demo => {
@@ -3977,10 +3998,12 @@ impl StableSatsSimulationPaneState {
         self.active_live_refresh_request_id = None;
         self.transfer_ledger.clear();
         self.treasury_operations.clear();
+        self.treasury_receipts.clear();
         self.events.clear();
         self.next_seq = 1;
         self.next_transfer_seq = 1;
         self.next_operation_seq = 1;
+        self.next_receipt_seq = 1;
         self.auto_run_last_tick = None;
         self.next_live_refresh_request_id = 1;
     }
@@ -4119,6 +4142,50 @@ impl StableSatsSimulationPaneState {
         self.push_event("BLINK-XFER", transfer_ref.as_str(), summary);
     }
 
+    pub fn apply_wallet_balance(
+        &mut self,
+        owner_id: &str,
+        btc_balance_sats: u64,
+        usd_balance_cents: u64,
+        summary: String,
+    ) {
+        if let Some(wallet_index) = self
+            .agents
+            .iter()
+            .position(|wallet| wallet.owner_id == owner_id)
+        {
+            let wallet = &mut self.agents[wallet_index];
+            wallet.btc_balance_sats = btc_balance_sats;
+            wallet.usd_balance_cents = usd_balance_cents;
+            wallet.last_switch_summary = summary;
+        }
+    }
+
+    pub fn record_external_transfer(
+        &mut self,
+        now_epoch_seconds: u64,
+        transfer_ref: String,
+        from_wallet: String,
+        to_wallet: String,
+        asset: StableSatsTransferAsset,
+        amount: u64,
+        effective_fee: u64,
+        status: StableSatsTransferStatus,
+        summary: String,
+    ) {
+        self.push_transfer_ledger_entry(
+            now_epoch_seconds,
+            transfer_ref,
+            from_wallet,
+            to_wallet,
+            asset,
+            amount,
+            effective_fee,
+            status,
+            summary,
+        );
+    }
+
     pub fn reserve_worker_request_id(&mut self) -> u64 {
         let request_id = self.next_live_refresh_request_id;
         self.next_live_refresh_request_id = self.next_live_refresh_request_id.saturating_add(1);
@@ -4132,15 +4199,16 @@ impl StableSatsSimulationPaneState {
         now_epoch_seconds: u64,
         detail: String,
     ) {
-        self.treasury_operations.push(StableSatsTreasuryOperationEntry {
-            seq: self.next_operation_seq,
-            request_id,
-            kind,
-            status: StableSatsTreasuryOperationStatus::Queued,
-            detail,
-            created_at_epoch_seconds: now_epoch_seconds,
-            updated_at_epoch_seconds: now_epoch_seconds,
-        });
+        self.treasury_operations
+            .push(StableSatsTreasuryOperationEntry {
+                seq: self.next_operation_seq,
+                request_id,
+                kind,
+                status: StableSatsTreasuryOperationStatus::Queued,
+                detail,
+                created_at_epoch_seconds: now_epoch_seconds,
+                updated_at_epoch_seconds: now_epoch_seconds,
+            });
         self.next_operation_seq = self.next_operation_seq.saturating_add(1);
         self.trim_treasury_operations();
     }
@@ -4162,15 +4230,16 @@ impl StableSatsSimulationPaneState {
             entry.detail = detail;
             entry.updated_at_epoch_seconds = now_epoch_seconds;
         } else {
-            self.treasury_operations.push(StableSatsTreasuryOperationEntry {
-                seq: self.next_operation_seq,
-                request_id,
-                kind,
-                status: StableSatsTreasuryOperationStatus::Running,
-                detail,
-                created_at_epoch_seconds: now_epoch_seconds,
-                updated_at_epoch_seconds: now_epoch_seconds,
-            });
+            self.treasury_operations
+                .push(StableSatsTreasuryOperationEntry {
+                    seq: self.next_operation_seq,
+                    request_id,
+                    kind,
+                    status: StableSatsTreasuryOperationStatus::Running,
+                    detail,
+                    created_at_epoch_seconds: now_epoch_seconds,
+                    updated_at_epoch_seconds: now_epoch_seconds,
+                });
             self.next_operation_seq = self.next_operation_seq.saturating_add(1);
             self.trim_treasury_operations();
         }
@@ -4194,15 +4263,16 @@ impl StableSatsSimulationPaneState {
             entry.detail = detail;
             entry.updated_at_epoch_seconds = now_epoch_seconds;
         } else {
-            self.treasury_operations.push(StableSatsTreasuryOperationEntry {
-                seq: self.next_operation_seq,
-                request_id,
-                kind,
-                status,
-                detail,
-                created_at_epoch_seconds: now_epoch_seconds,
-                updated_at_epoch_seconds: now_epoch_seconds,
-            });
+            self.treasury_operations
+                .push(StableSatsTreasuryOperationEntry {
+                    seq: self.next_operation_seq,
+                    request_id,
+                    kind,
+                    status,
+                    detail,
+                    created_at_epoch_seconds: now_epoch_seconds,
+                    updated_at_epoch_seconds: now_epoch_seconds,
+                });
             self.next_operation_seq = self.next_operation_seq.saturating_add(1);
             self.trim_treasury_operations();
         }
@@ -4212,6 +4282,27 @@ impl StableSatsSimulationPaneState {
         if self.treasury_operations.len() > 96 {
             let overflow = self.treasury_operations.len().saturating_sub(96);
             self.treasury_operations.drain(0..overflow);
+        }
+    }
+
+    pub fn record_treasury_receipt(
+        &mut self,
+        request_id: u64,
+        kind: StableSatsTreasuryOperationKind,
+        now_epoch_seconds: u64,
+        payload: serde_json::Value,
+    ) {
+        self.treasury_receipts.push(StableSatsTreasuryReceipt {
+            seq: self.next_receipt_seq,
+            request_id,
+            kind,
+            payload,
+            occurred_at_epoch_seconds: now_epoch_seconds,
+        });
+        self.next_receipt_seq = self.next_receipt_seq.saturating_add(1);
+        if self.treasury_receipts.len() > 128 {
+            let overflow = self.treasury_receipts.len().saturating_sub(128);
+            self.treasury_receipts.drain(0..overflow);
         }
     }
 }

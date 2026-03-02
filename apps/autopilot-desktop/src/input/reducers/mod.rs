@@ -107,13 +107,24 @@ pub(super) fn drain_stable_sats_blink_worker_updates(state: &mut RenderState) ->
                 let now_epoch_seconds = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map_or(0, |duration| duration.as_secs());
-                if let Some(operation_kind) = map_stablesats_operation_kind(kind) {
-                    state.stable_sats_simulation.record_treasury_operation_running(
-                        request_id,
-                        operation_kind,
-                        now_epoch_seconds,
-                        format!("{} running", kind.label()),
-                    );
+                let operation_kind = map_stablesats_operation_kind(kind).or_else(|| {
+                    state
+                        .stable_sats_simulation
+                        .treasury_operations
+                        .iter()
+                        .rev()
+                        .find(|entry| entry.request_id == request_id)
+                        .map(|entry| entry.kind)
+                });
+                if let Some(operation_kind) = operation_kind {
+                    state
+                        .stable_sats_simulation
+                        .record_treasury_operation_running(
+                            request_id,
+                            operation_kind,
+                            now_epoch_seconds,
+                            format!("{} running", kind.label()),
+                        );
                     changed = true;
                 }
             }
@@ -126,13 +137,15 @@ pub(super) fn drain_stable_sats_blink_worker_updates(state: &mut RenderState) ->
                     .duration_since(std::time::UNIX_EPOCH)
                     .map_or(0, |duration| duration.as_secs());
                 if let Some(operation_kind) = map_stablesats_operation_kind(kind) {
-                    state.stable_sats_simulation.record_treasury_operation_finished(
-                        request_id,
-                        operation_kind,
-                        crate::app_state::StableSatsTreasuryOperationStatus::Cancelled,
-                        now_epoch_seconds,
-                        detail,
-                    );
+                    state
+                        .stable_sats_simulation
+                        .record_treasury_operation_finished(
+                            request_id,
+                            operation_kind,
+                            crate::app_state::StableSatsTreasuryOperationStatus::Cancelled,
+                            now_epoch_seconds,
+                            detail,
+                        );
                     changed = true;
                 }
             }
@@ -166,17 +179,19 @@ pub(super) fn drain_stable_sats_blink_worker_updates(state: &mut RenderState) ->
                     wallet_snapshots.as_slice(),
                     wallet_failures.as_slice(),
                 );
-                state.stable_sats_simulation.record_treasury_operation_finished(
-                    snapshot.request_id,
-                    crate::app_state::StableSatsTreasuryOperationKind::Refresh,
-                    crate::app_state::StableSatsTreasuryOperationStatus::Settled,
-                    snapshot.now_epoch_seconds,
-                    format!(
-                        "live refresh settled with {} wallet snapshot(s) and {} failure(s)",
-                        snapshot.wallet_snapshots.len(),
-                        snapshot.wallet_failures.len()
-                    ),
-                );
+                state
+                    .stable_sats_simulation
+                    .record_treasury_operation_finished(
+                        snapshot.request_id,
+                        crate::app_state::StableSatsTreasuryOperationKind::Refresh,
+                        crate::app_state::StableSatsTreasuryOperationStatus::Settled,
+                        snapshot.now_epoch_seconds,
+                        format!(
+                            "live refresh settled with {} wallet snapshot(s) and {} failure(s)",
+                            snapshot.wallet_snapshots.len(),
+                            snapshot.wallet_failures.len()
+                        ),
+                    );
                 state.provider_runtime.last_result =
                     state.stable_sats_simulation.last_action.clone();
                 let event_id = format!(
@@ -219,16 +234,18 @@ pub(super) fn drain_stable_sats_blink_worker_updates(state: &mut RenderState) ->
                     .pointer("/quote/quoteId")
                     .and_then(serde_json::Value::as_str)
                     .unwrap_or("unknown");
-                state.stable_sats_simulation.record_treasury_operation_finished(
-                    result.request_id,
-                    crate::app_state::StableSatsTreasuryOperationKind::SwapQuote,
-                    crate::app_state::StableSatsTreasuryOperationStatus::Settled,
-                    result.now_epoch_seconds,
-                    format!(
-                        "swap quote completed goal={} request={} quote={}",
-                        result.goal_id, result.adapter_request_id, quote_id
-                    ),
-                );
+                state
+                    .stable_sats_simulation
+                    .record_treasury_operation_finished(
+                        result.request_id,
+                        crate::app_state::StableSatsTreasuryOperationKind::SwapQuote,
+                        crate::app_state::StableSatsTreasuryOperationStatus::Settled,
+                        result.now_epoch_seconds,
+                        format!(
+                            "swap quote completed goal={} request={} quote={}",
+                            result.goal_id, result.adapter_request_id, quote_id
+                        ),
+                    );
                 state
                     .activity_feed
                     .upsert_event(crate::app_state::ActivityEventRow {
@@ -262,13 +279,18 @@ pub(super) fn drain_stable_sats_blink_worker_updates(state: &mut RenderState) ->
                 let now_epoch_seconds = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map_or(0, |duration| duration.as_secs());
-                state.stable_sats_simulation.record_treasury_operation_finished(
-                    request_id,
-                    crate::app_state::StableSatsTreasuryOperationKind::SwapQuote,
-                    crate::app_state::StableSatsTreasuryOperationStatus::Failed,
-                    now_epoch_seconds,
-                    format!("swap quote failed goal={} request={}: {}", goal_id, adapter_request_id, error),
-                );
+                state
+                    .stable_sats_simulation
+                    .record_treasury_operation_finished(
+                        request_id,
+                        crate::app_state::StableSatsTreasuryOperationKind::SwapQuote,
+                        crate::app_state::StableSatsTreasuryOperationStatus::Failed,
+                        now_epoch_seconds,
+                        format!(
+                            "swap quote failed goal={} request={}: {}",
+                            goal_id, adapter_request_id, error
+                        ),
+                    );
                 state.autopilot_chat.record_turn_timeline_event(format!(
                     "swap quote failed goal={} request={} worker_request={} error={}",
                     goal_id, adapter_request_id, request_id, error
@@ -286,16 +308,18 @@ pub(super) fn drain_stable_sats_blink_worker_updates(state: &mut RenderState) ->
                     .pointer("/execution/transactionId")
                     .and_then(serde_json::Value::as_str)
                     .unwrap_or("unknown");
-                state.stable_sats_simulation.record_treasury_operation_finished(
-                    result.request_id,
-                    crate::app_state::StableSatsTreasuryOperationKind::SwapExecute,
-                    crate::app_state::StableSatsTreasuryOperationStatus::Settled,
-                    result.now_epoch_seconds,
-                    format!(
-                        "swap execute completed goal={} quote={} status={} tx={}",
-                        result.goal_id, result.quote_id, status, transaction_id
-                    ),
-                );
+                state
+                    .stable_sats_simulation
+                    .record_treasury_operation_finished(
+                        result.request_id,
+                        crate::app_state::StableSatsTreasuryOperationKind::SwapExecute,
+                        crate::app_state::StableSatsTreasuryOperationStatus::Settled,
+                        result.now_epoch_seconds,
+                        format!(
+                            "swap execute completed goal={} quote={} status={} tx={}",
+                            result.goal_id, result.quote_id, status, transaction_id
+                        ),
+                    );
                 state
                     .activity_feed
                     .upsert_event(crate::app_state::ActivityEventRow {
@@ -330,17 +354,306 @@ pub(super) fn drain_stable_sats_blink_worker_updates(state: &mut RenderState) ->
                 let now_epoch_seconds = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map_or(0, |duration| duration.as_secs());
-                state.stable_sats_simulation.record_treasury_operation_finished(
-                    request_id,
-                    crate::app_state::StableSatsTreasuryOperationKind::SwapExecute,
-                    crate::app_state::StableSatsTreasuryOperationStatus::Failed,
-                    now_epoch_seconds,
-                    format!("swap execute failed goal={} quote={}: {}", goal_id, quote_id, error),
-                );
+                state
+                    .stable_sats_simulation
+                    .record_treasury_operation_finished(
+                        request_id,
+                        crate::app_state::StableSatsTreasuryOperationKind::SwapExecute,
+                        crate::app_state::StableSatsTreasuryOperationStatus::Failed,
+                        now_epoch_seconds,
+                        format!(
+                            "swap execute failed goal={} quote={}: {}",
+                            goal_id, quote_id, error
+                        ),
+                    );
                 state.autopilot_chat.record_turn_timeline_event(format!(
                     "swap execute failed goal={} quote={} worker_request={} error={}",
                     goal_id, quote_id, request_id, error
                 ));
+                changed = true;
+            }
+            crate::stablesats_blink_worker::StableSatsBlinkUpdate::TransferCompleted(result) => {
+                let operation_kind = match result.asset {
+                    crate::stablesats_blink_worker::StableSatsBlinkTransferAsset::BtcSats => {
+                        crate::app_state::StableSatsTreasuryOperationKind::TransferBtc
+                    }
+                    crate::stablesats_blink_worker::StableSatsBlinkTransferAsset::UsdCents => {
+                        crate::app_state::StableSatsTreasuryOperationKind::TransferUsd
+                    }
+                };
+                let payment_status_upper = result.payment_status.trim().to_ascii_uppercase();
+                let success = matches!(payment_status_upper.as_str(), "SUCCESS" | "ALREADY_PAID");
+                let operation_status = if success {
+                    crate::app_state::StableSatsTreasuryOperationStatus::Settled
+                } else {
+                    crate::app_state::StableSatsTreasuryOperationStatus::Failed
+                };
+                state
+                    .stable_sats_simulation
+                    .record_treasury_operation_finished(
+                        result.request_id,
+                        operation_kind,
+                        operation_status,
+                        result.now_epoch_seconds,
+                        format!(
+                            "transfer {} {} status={} reference={}",
+                            result.amount,
+                            result.asset.label(),
+                            result.payment_status,
+                            result.payment_reference.as_deref().unwrap_or("n/a")
+                        ),
+                    );
+                state.stable_sats_simulation.record_treasury_receipt(
+                    result.request_id,
+                    operation_kind,
+                    result.now_epoch_seconds,
+                    serde_json::json!({
+                        "request_id": result.request_id,
+                        "kind": operation_kind.label(),
+                        "status": operation_status.label(),
+                        "asset": result.asset.label(),
+                        "amount": result.amount,
+                        "payment_status": result.payment_status,
+                        "payment_reference": result.payment_reference,
+                        "estimated_fee_sats": result.estimated_fee_sats,
+                        "effective_fee": result.effective_fee,
+                        "source": {
+                            "owner_id": result.from_owner_id,
+                            "wallet_name": result.from_wallet_name,
+                            "pre_btc_sats": result.source_pre_btc_sats,
+                            "pre_usd_cents": result.source_pre_usd_cents,
+                            "post_btc_sats": result.source_post_btc_sats,
+                            "post_usd_cents": result.source_post_usd_cents,
+                        },
+                        "destination": {
+                            "owner_id": result.to_owner_id,
+                            "wallet_name": result.to_wallet_name,
+                            "pre_btc_sats": result.destination_pre_btc_sats,
+                            "pre_usd_cents": result.destination_pre_usd_cents,
+                            "post_btc_sats": result.destination_post_btc_sats,
+                            "post_usd_cents": result.destination_post_usd_cents,
+                        },
+                        "raw": result.payload,
+                    }),
+                );
+                state.stable_sats_simulation.apply_wallet_balance(
+                    result.from_owner_id.as_str(),
+                    result.source_post_btc_sats,
+                    result.source_post_usd_cents,
+                    format!(
+                        "sent {} {} status={} fee={}",
+                        result.amount,
+                        result.asset.label(),
+                        result.payment_status,
+                        result.effective_fee
+                    ),
+                );
+                state.stable_sats_simulation.apply_wallet_balance(
+                    result.to_owner_id.as_str(),
+                    result.destination_post_btc_sats,
+                    result.destination_post_usd_cents,
+                    format!(
+                        "received {} {} status={}",
+                        result.amount,
+                        result.asset.label(),
+                        result.payment_status
+                    ),
+                );
+                state.stable_sats_simulation.record_external_transfer(
+                    result.now_epoch_seconds,
+                    format!("blink:live:transfer:worker:{:08}", result.request_id),
+                    format!("{}:{}", result.from_wallet_name, result.asset.label()),
+                    format!("{}:{}", result.to_wallet_name, result.asset.label()),
+                    match result.asset {
+                        crate::stablesats_blink_worker::StableSatsBlinkTransferAsset::BtcSats => {
+                            crate::app_state::StableSatsTransferAsset::BtcSats
+                        }
+                        crate::stablesats_blink_worker::StableSatsBlinkTransferAsset::UsdCents => {
+                            crate::app_state::StableSatsTransferAsset::UsdCents
+                        }
+                    },
+                    result.amount,
+                    result.effective_fee,
+                    if success {
+                        crate::app_state::StableSatsTransferStatus::Settled
+                    } else {
+                        crate::app_state::StableSatsTransferStatus::Failed
+                    },
+                    format!(
+                        "transfer {} {} status={} ref={}",
+                        result.amount,
+                        result.asset.label(),
+                        result.payment_status,
+                        result.payment_reference.as_deref().unwrap_or("n/a")
+                    ),
+                );
+                changed = true;
+            }
+            crate::stablesats_blink_worker::StableSatsBlinkUpdate::TransferFailed {
+                request_id,
+                from_owner_id,
+                to_owner_id,
+                error,
+            } => {
+                let now_epoch_seconds = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |duration| duration.as_secs());
+                let operation_kind = state
+                    .stable_sats_simulation
+                    .treasury_operations
+                    .iter()
+                    .rev()
+                    .find(|entry| entry.request_id == request_id)
+                    .map(|entry| entry.kind)
+                    .unwrap_or(crate::app_state::StableSatsTreasuryOperationKind::TransferBtc);
+                state
+                    .stable_sats_simulation
+                    .record_treasury_operation_finished(
+                        request_id,
+                        operation_kind,
+                        crate::app_state::StableSatsTreasuryOperationStatus::Failed,
+                        now_epoch_seconds,
+                        format!(
+                            "transfer failed from={} to={} error={}",
+                            from_owner_id, to_owner_id, error
+                        ),
+                    );
+                state.stable_sats_simulation.record_treasury_receipt(
+                    request_id,
+                    operation_kind,
+                    now_epoch_seconds,
+                    serde_json::json!({
+                        "request_id": request_id,
+                        "kind": operation_kind.label(),
+                        "status": "failed",
+                        "from_owner_id": from_owner_id,
+                        "to_owner_id": to_owner_id,
+                        "error": error,
+                    }),
+                );
+                changed = true;
+            }
+            crate::stablesats_blink_worker::StableSatsBlinkUpdate::ConvertCompleted(result) => {
+                let status_upper = result.status.trim().to_ascii_uppercase();
+                let success = matches!(status_upper.as_str(), "SUCCESS");
+                let operation_status = if success {
+                    crate::app_state::StableSatsTreasuryOperationStatus::Settled
+                } else {
+                    crate::app_state::StableSatsTreasuryOperationStatus::Failed
+                };
+                state
+                    .stable_sats_simulation
+                    .record_treasury_operation_finished(
+                        result.request_id,
+                        crate::app_state::StableSatsTreasuryOperationKind::Convert,
+                        operation_status,
+                        result.now_epoch_seconds,
+                        format!(
+                            "convert {} {} direction={} status={} tx={}",
+                            result.amount,
+                            result.unit,
+                            result.direction,
+                            result.status,
+                            result.transaction_id.as_deref().unwrap_or("n/a")
+                        ),
+                    );
+                state.stable_sats_simulation.record_treasury_receipt(
+                    result.request_id,
+                    crate::app_state::StableSatsTreasuryOperationKind::Convert,
+                    result.now_epoch_seconds,
+                    serde_json::json!({
+                        "request_id": result.request_id,
+                        "kind": "convert",
+                        "status": result.status,
+                        "owner_id": result.owner_id,
+                        "wallet_name": result.wallet_name,
+                        "direction": result.direction,
+                        "amount": result.amount,
+                        "unit": result.unit,
+                        "quote_id": result.quote_id,
+                        "transaction_id": result.transaction_id,
+                        "fee_sats": result.fee_sats,
+                        "effective_spread_bps": result.effective_spread_bps,
+                        "pre_btc_sats": result.pre_btc_sats,
+                        "pre_usd_cents": result.pre_usd_cents,
+                        "post_btc_sats": result.post_btc_sats,
+                        "post_usd_cents": result.post_usd_cents,
+                        "raw": result.payload,
+                    }),
+                );
+                state.stable_sats_simulation.apply_wallet_balance(
+                    result.owner_id.as_str(),
+                    result.post_btc_sats,
+                    result.post_usd_cents,
+                    format!(
+                        "convert {} {} direction={} status={}",
+                        result.amount, result.unit, result.direction, result.status
+                    ),
+                );
+                let (asset, amount) = if result.pre_btc_sats > result.post_btc_sats {
+                    (
+                        crate::app_state::StableSatsTransferAsset::BtcSats,
+                        result.pre_btc_sats.saturating_sub(result.post_btc_sats),
+                    )
+                } else {
+                    (
+                        crate::app_state::StableSatsTransferAsset::UsdCents,
+                        result.pre_usd_cents.saturating_sub(result.post_usd_cents),
+                    )
+                };
+                state.stable_sats_simulation.record_external_transfer(
+                    result.now_epoch_seconds,
+                    format!("blink:live:convert:{:08}", result.request_id),
+                    format!("{}:{}", result.wallet_name, "source"),
+                    format!("{}:{}", result.wallet_name, "target"),
+                    asset,
+                    amount,
+                    result.fee_sats,
+                    if success {
+                        crate::app_state::StableSatsTransferStatus::Settled
+                    } else {
+                        crate::app_state::StableSatsTransferStatus::Failed
+                    },
+                    format!(
+                        "convert direction={} amount={} {} status={} quote={}",
+                        result.direction,
+                        result.amount,
+                        result.unit,
+                        result.status,
+                        result.quote_id.as_deref().unwrap_or("n/a")
+                    ),
+                );
+                changed = true;
+            }
+            crate::stablesats_blink_worker::StableSatsBlinkUpdate::ConvertFailed {
+                request_id,
+                owner_id,
+                error,
+            } => {
+                let now_epoch_seconds = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |duration| duration.as_secs());
+                state
+                    .stable_sats_simulation
+                    .record_treasury_operation_finished(
+                        request_id,
+                        crate::app_state::StableSatsTreasuryOperationKind::Convert,
+                        crate::app_state::StableSatsTreasuryOperationStatus::Failed,
+                        now_epoch_seconds,
+                        format!("convert failed owner={} error={}", owner_id, error),
+                    );
+                state.stable_sats_simulation.record_treasury_receipt(
+                    request_id,
+                    crate::app_state::StableSatsTreasuryOperationKind::Convert,
+                    now_epoch_seconds,
+                    serde_json::json!({
+                        "request_id": request_id,
+                        "kind": "convert",
+                        "status": "failed",
+                        "owner_id": owner_id,
+                        "error": error,
+                    }),
+                );
                 changed = true;
             }
         }
@@ -361,6 +674,10 @@ fn map_stablesats_operation_kind(
         }
         crate::stablesats_blink_worker::StableSatsBlinkCommandKind::SwapExecute => {
             Some(crate::app_state::StableSatsTreasuryOperationKind::SwapExecute)
+        }
+        crate::stablesats_blink_worker::StableSatsBlinkCommandKind::Transfer => None,
+        crate::stablesats_blink_worker::StableSatsBlinkCommandKind::Convert => {
+            Some(crate::app_state::StableSatsTreasuryOperationKind::Convert)
         }
     }
 }

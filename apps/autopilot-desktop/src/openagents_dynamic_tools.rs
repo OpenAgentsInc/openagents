@@ -11,6 +11,9 @@ pub(crate) const OPENAGENTS_TOOL_CAD_INTENT: &str = "openagents_cad_intent";
 pub(crate) const OPENAGENTS_TOOL_CAD_ACTION: &str = "openagents_cad_action";
 pub(crate) const OPENAGENTS_TOOL_SWAP_QUOTE: &str = "openagents_swap_quote";
 pub(crate) const OPENAGENTS_TOOL_SWAP_EXECUTE: &str = "openagents_swap_execute";
+pub(crate) const OPENAGENTS_TOOL_TREASURY_TRANSFER: &str = "openagents_treasury_transfer";
+pub(crate) const OPENAGENTS_TOOL_TREASURY_CONVERT: &str = "openagents_treasury_convert";
+pub(crate) const OPENAGENTS_TOOL_TREASURY_RECEIPT: &str = "openagents_treasury_receipt";
 pub(crate) const OPENAGENTS_TOOL_GOAL_SCHEDULER: &str = "openagents_goal_scheduler";
 pub(crate) const OPENAGENTS_TOOL_WALLET_CHECK: &str = "openagents_wallet_check";
 pub(crate) const OPENAGENTS_TOOL_PROVIDER_CONTROL: &str = "openagents_provider_control";
@@ -26,6 +29,9 @@ pub(crate) const OPENAGENTS_DYNAMIC_TOOL_NAMES: &[&str] = &[
     OPENAGENTS_TOOL_CAD_ACTION,
     OPENAGENTS_TOOL_SWAP_QUOTE,
     OPENAGENTS_TOOL_SWAP_EXECUTE,
+    OPENAGENTS_TOOL_TREASURY_TRANSFER,
+    OPENAGENTS_TOOL_TREASURY_CONVERT,
+    OPENAGENTS_TOOL_TREASURY_RECEIPT,
     OPENAGENTS_TOOL_GOAL_SCHEDULER,
     OPENAGENTS_TOOL_WALLET_CHECK,
     OPENAGENTS_TOOL_PROVIDER_CONTROL,
@@ -167,6 +173,53 @@ pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
                     "memo": { "type": "string" }
                 },
                 "required": ["goal_id", "quote_id"],
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_TREASURY_TRANSFER.to_string(),
+            description: "Queue a real Blink BTC/USD wallet-to-wallet transfer across StableSats topology."
+                .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "from_owner_id": { "type": "string" },
+                    "to_owner_id": { "type": "string" },
+                    "asset": { "type": "string", "enum": ["btc_sats", "usd_cents"] },
+                    "amount": { "type": "integer", "minimum": 1 },
+                    "memo": { "type": "string" }
+                },
+                "required": ["from_owner_id", "to_owner_id", "asset", "amount"],
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_TREASURY_CONVERT.to_string(),
+            description: "Queue a real Blink BTC<->USD conversion for a specific wallet owner."
+                .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "owner_id": { "type": "string" },
+                    "direction": { "type": "string", "enum": ["btc-to-usd", "usd-to-btc"] },
+                    "amount": { "type": "integer", "minimum": 1 },
+                    "unit": { "type": "string", "enum": ["sats", "cents"] },
+                    "memo": { "type": "string" }
+                },
+                "required": ["owner_id", "direction", "amount", "unit"],
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_TREASURY_RECEIPT.to_string(),
+            description: "Fetch machine-parseable treasury receipt/status for an async worker request."
+                .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "worker_request_id": { "type": "integer", "minimum": 1 }
+                },
+                "required": ["worker_request_id"],
                 "additionalProperties": false
             }),
         },
