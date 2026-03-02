@@ -814,3 +814,53 @@ fn command_response_summary(response: &RuntimeCommandResponse) -> String {
     }
     parts.join(" | ")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{command_response_summary, map_stablesats_operation_kind};
+
+    #[test]
+    fn maps_stablesats_worker_command_kinds_to_operation_kinds() {
+        use crate::app_state::StableSatsTreasuryOperationKind;
+        use crate::stablesats_blink_worker::StableSatsBlinkCommandKind;
+
+        assert_eq!(
+            map_stablesats_operation_kind(StableSatsBlinkCommandKind::Refresh),
+            Some(StableSatsTreasuryOperationKind::Refresh)
+        );
+        assert_eq!(
+            map_stablesats_operation_kind(StableSatsBlinkCommandKind::SwapQuote),
+            Some(StableSatsTreasuryOperationKind::SwapQuote)
+        );
+        assert_eq!(
+            map_stablesats_operation_kind(StableSatsBlinkCommandKind::SwapExecute),
+            Some(StableSatsTreasuryOperationKind::SwapExecute)
+        );
+        assert_eq!(
+            map_stablesats_operation_kind(StableSatsBlinkCommandKind::Convert),
+            Some(StableSatsTreasuryOperationKind::Convert)
+        );
+        assert_eq!(
+            map_stablesats_operation_kind(StableSatsBlinkCommandKind::Transfer),
+            None
+        );
+    }
+
+    #[test]
+    fn command_response_summary_preserves_event_and_error_context() {
+        let summary = command_response_summary(&crate::runtime_lanes::RuntimeCommandResponse {
+            lane: crate::runtime_lanes::RuntimeLane::SaLifecycle,
+            command_seq: 42,
+            command: crate::runtime_lanes::RuntimeCommandKind::PublishTickRequest,
+            status: crate::runtime_lanes::RuntimeCommandStatus::Rejected,
+            event_id: Some("event-123".to_string()),
+            error: Some(crate::runtime_lanes::RuntimeCommandError {
+                class: crate::runtime_lanes::RuntimeCommandErrorClass::Validation,
+                message: "payload mismatch".to_string(),
+            }),
+        });
+        assert!(summary.contains("sa_lifecycle PublishTickRequest rejected"));
+        assert!(summary.contains("event:event-123"));
+        assert!(summary.contains("validation:payload mismatch"));
+    }
+}
