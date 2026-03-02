@@ -162,6 +162,62 @@ cargo run -p autopilot-desktop --bin codex-live-harness -- \
   --model gpt-5.3-codex
 ```
 
+## Spark Funding Flow (For Live Blink Payments)
+
+Use `spark-wallet-cli` to verify Spark funds and to fund Spark before paying fresh Blink invoices.
+
+Binary location:
+
+- `apps/autopilot-desktop/src/bin/spark_wallet_cli.rs`
+- `cargo run -p autopilot-desktop --bin spark-wallet-cli -- ...`
+
+Check Spark balance and connectivity:
+
+```bash
+set -a; source .env.local; set +a
+cargo run -p autopilot-desktop --bin spark-wallet-cli -- \
+  --network mainnet status
+```
+
+Generate Spark funding targets:
+
+```bash
+# Spark transfer address
+cargo run -p autopilot-desktop --bin spark-wallet-cli -- \
+  --network mainnet spark-address
+
+# Lightning-like Spark invoice for funding
+cargo run -p autopilot-desktop --bin spark-wallet-cli -- \
+  --network mainnet create-invoice 2000 --description "fund-spark-wallet" --expiry-seconds 3600
+
+# On-chain BTC funding address
+cargo run -p autopilot-desktop --bin spark-wallet-cli -- \
+  --network mainnet bitcoin-address
+```
+
+Regenerate a fresh Blink BTC invoice and pay it from Spark:
+
+```bash
+set -a; source .env.local; set +a
+node skills/blink/scripts/create_invoice.js 100 --no-subscribe "spark-funding-test" | tee /tmp/blink_btc_invoice.out
+INVOICE=$(sed '/^Subscription skipped/d' /tmp/blink_btc_invoice.out | jq -r '.paymentRequest')
+
+cargo run -p autopilot-desktop --bin spark-wallet-cli -- \
+  --network mainnet pay-invoice "$INVOICE"
+```
+
+Check settlement status on Blink:
+
+```bash
+HASH=$(sed '/^Subscription skipped/d' /tmp/blink_btc_invoice.out | jq -r '.paymentHash')
+node skills/blink/scripts/check_invoice.js "$HASH"
+```
+
+Notes:
+
+- Blink USD invoices expire in about 5 minutes; regenerate right before payment.
+- If Spark payment returns `insufficient funds`, fund Spark first using one of the targets above.
+
 ## Flags
 
 - `--cwd <path>`: working directory sent to app-server
