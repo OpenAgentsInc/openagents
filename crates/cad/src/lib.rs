@@ -10,6 +10,7 @@ pub mod chat_adapter;
 pub mod contracts;
 pub mod dispatch;
 pub mod document;
+pub mod drafting;
 pub mod error;
 pub mod eval;
 pub mod events;

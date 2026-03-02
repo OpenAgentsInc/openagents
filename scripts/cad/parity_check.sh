@@ -62,6 +62,7 @@ LANE_LABELS=(
     "assembly-serialization-replay"
     "assembly-acceptance-scenes"
     "assembly-checkpoint"
+    "drafting-kernel-scaffolding"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -301,6 +302,9 @@ run_lane "assembly-acceptance-scenes" \
 
 run_lane "assembly-checkpoint" \
     "$ROOT_DIR/scripts/cad/parity-assembly-checkpoint-ci.sh"
+
+run_lane "drafting-kernel-scaffolding" \
+    "$ROOT_DIR/scripts/cad/parity-drafting-kernel-scaffolding-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
