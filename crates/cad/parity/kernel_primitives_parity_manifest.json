@@ -88,7 +88,7 @@
   ],
   "error_contracts": [
     "non-finite primitive dimensions return CadError::InvalidPrimitive",
-    "positive dimensions must be greater than 0.001 mm",
+    "positive dimensions must be greater than 0.000001 mm",
     "cone radius_top may be zero but may not be negative"
   ]
 }

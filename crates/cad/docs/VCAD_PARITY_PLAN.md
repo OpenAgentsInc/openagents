@@ -93,7 +93,7 @@ Major gaps to close:
 14. [x] VCAD-PARITY-014: Integrate `vcad-kernel-geom` parity surface types.
 15. [x] VCAD-PARITY-015: Integrate `vcad-kernel-primitives` parity constructors.
 16. [x] VCAD-PARITY-016: Integrate `vcad-kernel-tessellate` parity pipeline.
-17. [ ] VCAD-PARITY-017: Align tolerance/exact-predicate strategy to vcad behavior.
+17. [x] VCAD-PARITY-017: Align tolerance/exact-predicate strategy to vcad behavior.
 18. [ ] VCAD-PARITY-018: Integrate `vcad-kernel-booleans` staged boolean pipeline.
 19. [ ] VCAD-PARITY-019: Map vcad boolean diagnostics into OpenAgents error model.
 20. [ ] VCAD-PARITY-020: Preserve BRep after booleans (remove mesh-only fallback in parity lane).
