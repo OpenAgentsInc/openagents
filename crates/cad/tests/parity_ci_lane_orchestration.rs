@@ -11,23 +11,23 @@ fn repo_root() -> PathBuf {
 }
 
 #[test]
-fn parity_check_script_list_mode_includes_required_lanes() {
-    let script = repo_root().join("scripts/cad/parity_check.sh");
+fn parity_ci_lane_script_list_mode_includes_required_steps() {
+    let script = repo_root().join("scripts/cad/parity-ci-lane.sh");
     let output = Command::new("bash")
         .arg(script.as_os_str())
         .arg("--list")
         .output()
-        .expect("parity_check --list should run");
+        .expect("parity-ci-lane --list should run");
     assert!(
         output.status.success(),
-        "parity_check --list failed: {}",
+        "parity-ci-lane --list failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
     let lines: Vec<&str> = stdout.lines().collect();
-    assert!(lines.contains(&"baseline-manifests"));
-    assert!(lines.contains(&"fixture-corpus-pipeline"));
-    assert!(lines.contains(&"ci-artifact-manifest"));
-    assert!(lines.contains(&"parity-fixture-tests"));
-    assert!(lines.contains(&"rustfmt-check"));
+    assert!(lines.contains(&"parity-check"));
+    assert!(lines.contains(&"ci-artifact-manifest-check"));
+    assert!(lines.contains(&"artifact-copy"));
+    assert!(lines.contains(&"artifact-bundle"));
+    assert!(lines.contains(&"artifact-checksum"));
 }
