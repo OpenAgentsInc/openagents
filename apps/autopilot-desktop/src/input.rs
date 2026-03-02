@@ -90,6 +90,7 @@ use crate::state::goal_loop_executor::{
     ActiveGoalLoopRun, GoalLoopPhase, GoalLoopStopReason, retry_backoff_seconds,
     select_runnable_goal,
 };
+use crate::state::wallet_reconciliation::reconcile_wallet_events_for_goal;
 
 mod actions;
 mod cad_turn_classifier;
@@ -869,30 +870,57 @@ fn goal_loop_progress_snapshot(
             }
         });
 
-    let total_spend_sats = state
-        .spark_wallet
-        .recent_payments
-        .iter()
-        .filter(|payment| {
-            payment.direction.eq_ignore_ascii_case("send")
-                && payment.status.eq_ignore_ascii_case("succeeded")
-                && payment.timestamp >= active_run.started_at_epoch_seconds
-        })
-        .fold(0u64, |acc, payment| {
-            acc.saturating_add(payment.amount_sats as u64)
-        });
+    let reconciliation = reconcile_wallet_events_for_goal(
+        active_run.started_at_epoch_seconds,
+        active_run.initial_wallet_sats,
+        wallet_total_sats,
+        active_run.goal_id.as_str(),
+        &state.job_history,
+        &state.spark_wallet,
+        &state.autopilot_goals.document.swap_execution_receipts,
+    );
+    let mut external_signals = std::collections::BTreeMap::new();
+    external_signals.insert(
+        "recon.wallet_delta_raw_sats".to_string(),
+        reconciliation.wallet_delta_sats_raw.to_string(),
+    );
+    external_signals.insert(
+        "recon.wallet_delta_excluding_swaps_sats".to_string(),
+        reconciliation.wallet_delta_excluding_swaps_sats.to_string(),
+    );
+    external_signals.insert(
+        "recon.earned_wallet_delta_sats".to_string(),
+        reconciliation.earned_wallet_delta_sats.to_string(),
+    );
+    external_signals.insert(
+        "recon.swap_fee_sats".to_string(),
+        reconciliation.swap_fee_sats.to_string(),
+    );
+    external_signals.insert(
+        "recon.swap_converted_out_sats".to_string(),
+        reconciliation.swap_converted_out_sats.to_string(),
+    );
+    external_signals.insert(
+        "recon.swap_converted_in_sats".to_string(),
+        reconciliation.swap_converted_in_sats.to_string(),
+    );
+    external_signals.insert(
+        "recon.events".to_string(),
+        reconciliation.events.len().to_string(),
+    );
 
     GoalProgressSnapshot {
         started_at_epoch_seconds: active_run.started_at_epoch_seconds,
         now_epoch_seconds,
         attempt_count: active_run.attempts.len() as u32,
-        wallet_delta_sats: wallet_total_sats as i64 - active_run.initial_wallet_sats as i64,
+        wallet_delta_sats: reconciliation.wallet_delta_excluding_swaps_sats,
+        earned_wallet_delta_sats: reconciliation.earned_wallet_delta_sats,
         jobs_completed,
         successes,
         errors,
-        total_spend_sats,
-        total_swap_cents: 0,
-        external_signals: std::collections::BTreeMap::new(),
+        total_spend_sats: reconciliation.non_swap_spend_sats,
+        total_swap_cents: reconciliation.total_swap_cents,
+        external_signals,
     }
 }
 

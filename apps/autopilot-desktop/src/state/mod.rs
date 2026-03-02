@@ -13,3 +13,4 @@ pub mod os_scheduler;
 pub mod provider_runtime;
 pub mod swap_contract;
 pub mod swap_quote_adapter;
+pub mod wallet_reconciliation;

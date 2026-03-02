@@ -32,11 +32,15 @@ use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPane
 use crate::spark_wallet::SparkWalletCommand;
 use crate::state::autopilot_goals::GoalMissedRunPolicy;
 use crate::state::os_scheduler::{OsSchedulerAdapterKind, preferred_adapter_for_host};
-use crate::state::swap_contract::{SwapAmount, SwapAmountUnit, SwapDirection, SwapQuoteTerms};
+use crate::state::swap_contract::{
+    GoalSwapExecutionReceipt, SwapAmount, SwapAmountUnit, SwapDirection, SwapExecutionStatus,
+    SwapQuoteTerms,
+};
 use crate::state::swap_quote_adapter::{
     StablesatsQuoteClient, StablesatsQuoteFor, StablesatsQuoteResponse, SwapQuoteAdapterRequest,
     SwapQuoteProvider,
 };
+use crate::state::wallet_reconciliation::reconcile_wallet_events_for_goal;
 
 const LEGACY_OPENAGENTS_TOOL_PANE_LIST: &str = "openagents.pane.list";
 const LEGACY_OPENAGENTS_TOOL_PANE_OPEN: &str = "openagents.pane.open";
@@ -2131,6 +2135,61 @@ fn execute_swap_execute(
         );
     };
 
+    let execution_status = match status.as_str() {
+        "SUCCESS" => SwapExecutionStatus::Success,
+        "FAILURE" => SwapExecutionStatus::Failure,
+        "PENDING" => SwapExecutionStatus::Pending,
+        "ALREADY_PAID" => SwapExecutionStatus::AlreadyPaid,
+        _ => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-SWAP-EXECUTE-INVALID-STATUS",
+                "status must be SUCCESS, FAILURE, PENDING, or ALREADY_PAID",
+                json!({ "status": args.status }),
+            );
+        }
+    };
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    let receipt = GoalSwapExecutionReceipt {
+        receipt_id: format!("swap-exec:{}:{}", args.goal_id.trim(), args.quote_id.trim()),
+        goal_id: args.goal_id.trim().to_string(),
+        quote_id: args.quote_id.trim().to_string(),
+        direction: audit.direction,
+        amount_in: audit.amount_in,
+        amount_out: audit.amount_out,
+        fee_sats: audit.fee_sats,
+        status: execution_status,
+        transaction_id: args
+            .transaction_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
+        failure_reason: args
+            .failure_reason
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
+        started_at_epoch_seconds: audit.created_at_epoch_seconds,
+        finished_at_epoch_seconds: now_epoch_seconds,
+    };
+    if let Err(error) = state
+        .autopilot_goals
+        .record_swap_execution_receipt(receipt.clone())
+    {
+        return ToolBridgeResultEnvelope::error(
+            "OA-SWAP-EXECUTE-RECORD-FAILED",
+            format!("failed to persist swap execution receipt: {error}"),
+            json!({
+                "goal_id": args.goal_id,
+                "quote_id": args.quote_id,
+            }),
+        );
+    }
+
     let mut events = Vec::<Value>::new();
     match status.as_str() {
         "SUCCESS" => {
@@ -2202,6 +2261,7 @@ fn execute_swap_execute(
                 "expires_at_epoch_seconds": audit.expires_at_epoch_seconds,
             },
             "events": events,
+            "execution_receipt": receipt,
         }),
     )
 }
@@ -2232,6 +2292,27 @@ fn execute_goal_scheduler_tool(
                         json!({ "goal_id": goal_id }),
                     );
                 };
+                let reconciliation = state
+                    .goal_loop_executor
+                    .active_run
+                    .as_ref()
+                    .filter(|run| run.goal_id == goal.goal_id)
+                    .map(|run| {
+                        let wallet_total_sats = state
+                            .spark_wallet
+                            .balance
+                            .as_ref()
+                            .map_or(0, spark_total_balance_sats);
+                        reconcile_wallet_events_for_goal(
+                            run.started_at_epoch_seconds,
+                            run.initial_wallet_sats,
+                            wallet_total_sats,
+                            goal.goal_id.as_str(),
+                            &state.job_history,
+                            &state.spark_wallet,
+                            &state.autopilot_goals.document.swap_execution_receipts,
+                        )
+                    });
                 return ToolBridgeResultEnvelope::ok(
                     "OA-GOAL-SCHEDULER-STATUS-OK",
                     "Goal scheduler status read",
@@ -2265,6 +2346,18 @@ fn execute_goal_scheduler_tool(
                                     .last_reconcile_result,
                             },
                         },
+                        "reconciliation": reconciliation.as_ref().map(|report| json!({
+                            "wallet_delta_sats_raw": report.wallet_delta_sats_raw,
+                            "wallet_delta_excluding_swaps_sats": report.wallet_delta_excluding_swaps_sats,
+                            "earned_wallet_delta_sats": report.earned_wallet_delta_sats,
+                            "swap_converted_out_sats": report.swap_converted_out_sats,
+                            "swap_converted_in_sats": report.swap_converted_in_sats,
+                            "swap_fee_sats": report.swap_fee_sats,
+                            "non_swap_spend_sats": report.non_swap_spend_sats,
+                            "unattributed_receive_sats": report.unattributed_receive_sats,
+                            "total_swap_cents": report.total_swap_cents,
+                            "events": report.events,
+                        })),
                     }),
                 );
             }

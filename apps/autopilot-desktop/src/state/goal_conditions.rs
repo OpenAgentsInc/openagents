@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::state::autopilot_goals::{GoalRecord, GoalStopCondition};
+use crate::state::autopilot_goals::{GoalObjective, GoalRecord, GoalStopCondition};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GoalProgressSnapshot {
@@ -10,6 +10,7 @@ pub struct GoalProgressSnapshot {
     pub now_epoch_seconds: u64,
     pub attempt_count: u32,
     pub wallet_delta_sats: i64,
+    pub earned_wallet_delta_sats: i64,
     pub jobs_completed: u32,
     pub successes: u32,
     pub errors: u32,
@@ -53,7 +54,12 @@ pub fn evaluate_conditions(
         match condition {
             GoalStopCondition::WalletDeltaSatsAtLeast { sats } => {
                 completion_condition_total = completion_condition_total.saturating_add(1);
-                if progress.wallet_delta_sats >= *sats as i64 {
+                let delta_sats = if matches!(goal.objective, GoalObjective::EarnBitcoin { .. }) {
+                    progress.earned_wallet_delta_sats
+                } else {
+                    progress.wallet_delta_sats
+                };
+                if delta_sats >= *sats as i64 {
                     completion_condition_met = completion_condition_met.saturating_add(1);
                     evaluation
                         .completion_reasons
@@ -193,6 +199,7 @@ mod tests {
             now_epoch_seconds: 120,
             attempt_count: 1,
             wallet_delta_sats: 0,
+            earned_wallet_delta_sats: 0,
             jobs_completed: 0,
             successes: 0,
             errors: 0,
@@ -219,11 +226,25 @@ mod tests {
         let goal = base_goal();
         let mut progress = base_progress();
         progress.wallet_delta_sats = 1_200;
+        progress.earned_wallet_delta_sats = 1_200;
         progress.jobs_completed = 2;
 
         let evaluation = evaluate_conditions(&goal, &progress);
         assert!(evaluation.goal_complete);
         assert!(!evaluation.should_continue);
+    }
+
+    #[test]
+    fn evaluate_earn_goal_uses_earned_delta_instead_of_raw_wallet_delta() {
+        let goal = base_goal();
+        let mut progress = base_progress();
+        progress.wallet_delta_sats = 2_000;
+        progress.earned_wallet_delta_sats = 500;
+        progress.jobs_completed = 2;
+
+        let evaluation = evaluate_conditions(&goal, &progress);
+        assert!(!evaluation.goal_complete);
+        assert!(evaluation.should_continue);
     }
 
     #[test]
