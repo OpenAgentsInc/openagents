@@ -193,9 +193,9 @@
     ]
   },
   "sample_model_hash": "ce8cfa777746258f",
-  "solve_report_hash": "7823f08a64ec5b83",
+  "solve_report_hash": "59edef3f7cc11255",
   "deterministic_replay_match": true,
-  "deterministic_signature": "1afc35d1c66421fb",
+  "deterministic_signature": "6fef129914775c14",
   "parity_contracts": [
     "sketch constraint schema exposes full geometric + dimensional enum parity surface",
     "model-level validation enforces anchor/entity reference integrity for all constraint kinds",

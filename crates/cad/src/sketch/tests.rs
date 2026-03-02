@@ -299,17 +299,23 @@ fn constraint_solver_solves_common_mvp_constraints_deterministically() {
         })
         .expect("tangent constraint should insert");
 
+    let replay_seed = model.clone();
     let report_first = model
         .solve_constraints_deterministic()
         .expect("solver should run");
     assert!(report_first.passed, "common scenario should solve");
+    assert!(
+        report_first.iteration_count > 1,
+        "iterative LM parity should perform multi-iteration solve for coupled constraints"
+    );
     assert_eq!(report_first.unsolved_constraints, 0);
     assert_eq!(report_first.solved_constraints, 6);
     assert!(report_first.diagnostics.is_empty());
 
     let report_json_first =
         serde_json::to_string(&report_first).expect("solver report should serialize");
-    let report_second = model
+    let mut replay_model = replay_seed;
+    let report_second = replay_model
         .solve_constraints_deterministic()
         .expect("solver should stay deterministic across repeated runs");
     let report_json_second =

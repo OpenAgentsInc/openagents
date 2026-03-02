@@ -39,6 +39,7 @@ LANE_LABELS=(
     "sketch-entity-set"
     "sketch-plane"
     "sketch-constraint-enum"
+    "sketch-iterative-lm"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -209,6 +210,9 @@ run_lane "sketch-plane" \
 
 run_lane "sketch-constraint-enum" \
     "$ROOT_DIR/scripts/cad/parity-sketch-constraint-enum-ci.sh"
+
+run_lane "sketch-iterative-lm" \
+    "$ROOT_DIR/scripts/cad/parity-sketch-iterative-lm-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
