@@ -2204,6 +2204,67 @@ mod tests {
     }
 
     #[test]
+    fn assemble_chat_turn_input_prefers_user_selected_over_goal_auto_selected_duplicate() {
+        let (input, last_error) = assemble_chat_turn_input(
+            "run automation".to_string(),
+            vec![
+                TurnSkillAttachment {
+                    name: "blink".to_string(),
+                    path: "/repo/skills/blink/SKILL.md".to_string(),
+                    enabled: true,
+                    source: TurnSkillSource::GoalAutoSelected,
+                },
+                TurnSkillAttachment {
+                    name: "blink".to_string(),
+                    path: "/repo/skills/blink/SKILL.md".to_string(),
+                    enabled: true,
+                    source: TurnSkillSource::UserSelected,
+                },
+            ],
+        );
+
+        assert!(last_error.is_none());
+        assert_eq!(input.len(), 2);
+        assert!(matches!(
+            &input[1],
+            UserInput::Skill { name, path }
+                if name == "blink" && path == &PathBuf::from("/repo/skills/blink/SKILL.md")
+        ));
+    }
+
+    #[test]
+    fn assemble_chat_turn_input_orders_goal_auto_selected_before_policy_required() {
+        let (input, last_error) = assemble_chat_turn_input(
+            "run automation".to_string(),
+            vec![
+                TurnSkillAttachment {
+                    name: "pane-control".to_string(),
+                    path: "/repo/skills/pane-control/SKILL.md".to_string(),
+                    enabled: true,
+                    source: TurnSkillSource::PolicyRequired,
+                },
+                TurnSkillAttachment {
+                    name: "blink".to_string(),
+                    path: "/repo/skills/blink/SKILL.md".to_string(),
+                    enabled: true,
+                    source: TurnSkillSource::GoalAutoSelected,
+                },
+            ],
+        );
+
+        assert!(last_error.is_none());
+        assert_eq!(input.len(), 3);
+        assert!(matches!(
+            &input[1],
+            UserInput::Skill { name, .. } if name == "blink"
+        ));
+        assert!(matches!(
+            &input[2],
+            UserInput::Skill { name, .. } if name == "pane-control"
+        ));
+    }
+
+    #[test]
     fn resolve_turn_skill_helpers_match_name_and_path() {
         let discovered = vec![
             SkillRegistryDiscoveredSkill {

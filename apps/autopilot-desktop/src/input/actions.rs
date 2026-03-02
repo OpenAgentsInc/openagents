@@ -31,6 +31,30 @@ pub(super) fn run_chat_submit_action(state: &mut crate::app_state::RenderState) 
     let _ = super::reducers::apply_chat_prompt_to_cad_session(state, &thread_id, &prompt);
 
     let mut turn_skill_attachments = selected_skill_candidates_for_turn(state);
+    if let Some(goal_selection) = goal_policy_skill_candidates_for_turn(state) {
+        let names = goal_selection
+            .candidates
+            .iter()
+            .map(|candidate| candidate.attachment.name.clone())
+            .collect::<Vec<_>>()
+            .join(",");
+        let reasons = goal_selection
+            .candidates
+            .iter()
+            .map(|candidate| format!("{}: {}", candidate.attachment.name, candidate.reason))
+            .collect::<Vec<_>>()
+            .join(" | ");
+        state.autopilot_chat.record_turn_timeline_event(format!(
+            "selected skills (goal={} objective={}): {names}",
+            goal_selection.goal_id, goal_selection.objective_tag
+        ));
+        state
+            .autopilot_chat
+            .record_turn_timeline_event(format!("selected skills reasons: {reasons}"));
+        for candidate in goal_selection.candidates {
+            turn_skill_attachments.push(candidate.attachment);
+        }
+    }
     let mut required_skill_errors = Vec::new();
     let mut policy_skills = cad_policy_skill_candidates_for_turn(
         classification.is_cad_turn,
@@ -174,6 +198,7 @@ pub(super) fn current_epoch_millis() -> u64 {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub(super) enum TurnSkillSource {
     UserSelected,
+    GoalAutoSelected,
     PolicyRequired,
 }
 
@@ -183,6 +208,19 @@ pub(super) struct TurnSkillAttachment {
     pub path: String,
     pub enabled: bool,
     pub source: TurnSkillSource,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct GoalTurnSkillCandidate {
+    pub attachment: TurnSkillAttachment,
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct GoalTurnSkillSelection {
+    pub goal_id: String,
+    pub objective_tag: String,
+    pub candidates: Vec<GoalTurnSkillCandidate>,
 }
 
 pub(super) fn resolve_turn_skill_by_name(
@@ -268,6 +306,74 @@ pub(super) fn cad_policy_skill_candidates_for_turn(
     resolved
 }
 
+fn goal_priority_status_rank(
+    status: crate::state::autopilot_goals::GoalLifecycleStatus,
+) -> Option<u8> {
+    match status {
+        crate::state::autopilot_goals::GoalLifecycleStatus::Running => Some(0),
+        crate::state::autopilot_goals::GoalLifecycleStatus::Queued => Some(1),
+        _ => None,
+    }
+}
+
+pub(super) fn goal_policy_skill_candidates_for_turn(
+    state: &crate::app_state::RenderState,
+) -> Option<GoalTurnSkillSelection> {
+    let active_goal = state
+        .autopilot_goals
+        .document
+        .active_goals
+        .iter()
+        .filter_map(|goal| {
+            goal_priority_status_rank(goal.lifecycle_status).map(|rank| (rank, goal))
+        })
+        .min_by(|left, right| {
+            left.0
+                .cmp(&right.0)
+                .then_with(|| left.1.goal_id.cmp(&right.1.goal_id))
+        })
+        .map(|entry| entry.1)?;
+
+    let resolution = state
+        .autopilot_goals
+        .resolve_skill_candidates_for_goal(
+            &active_goal.goal_id,
+            &state.skill_registry.discovered_skills,
+        )
+        .ok()?;
+    if resolution.candidates.is_empty() {
+        return None;
+    }
+
+    let mut dedupe = std::collections::HashSet::new();
+    let candidates = resolution
+        .candidates
+        .into_iter()
+        .filter(|candidate| {
+            dedupe.insert(format!(
+                "{}::{}",
+                candidate.name.to_ascii_lowercase(),
+                candidate.path
+            ))
+        })
+        .map(|candidate| GoalTurnSkillCandidate {
+            reason: candidate.reason,
+            attachment: TurnSkillAttachment {
+                name: candidate.name,
+                path: candidate.path,
+                enabled: true,
+                source: TurnSkillSource::GoalAutoSelected,
+            },
+        })
+        .collect::<Vec<_>>();
+
+    Some(GoalTurnSkillSelection {
+        goal_id: resolution.goal_id,
+        objective_tag: resolution.objective_tag,
+        candidates,
+    })
+}
+
 pub(super) fn cad_turn_approval_policy(is_cad_turn: bool) -> Option<codex_client::AskForApproval> {
     let _ = is_cad_turn;
     // Force unsafe mode for all turns: never ask for approvals.
@@ -316,6 +422,7 @@ pub(super) fn assemble_chat_turn_input(
         if !attachment.enabled && attachment.source == TurnSkillSource::UserSelected {
             let label = match attachment.source {
                 TurnSkillSource::UserSelected => "Selected",
+                TurnSkillSource::GoalAutoSelected => "Auto-selected",
                 TurnSkillSource::PolicyRequired => "Required",
             };
             last_errors.push(format!(
