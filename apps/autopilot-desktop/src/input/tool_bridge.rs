@@ -1097,6 +1097,9 @@ fn pane_action_to_hit_action(
             "inspect_last_result" => Ok(PaneHitAction::AgentScheduleTick(
                 AgentScheduleTickPaneAction::InspectLastResult,
             )),
+            "toggle_os_scheduler_adapter" => Ok(PaneHitAction::AgentScheduleTick(
+                AgentScheduleTickPaneAction::ToggleOsSchedulerAdapter,
+            )),
             _ => unsupported(),
         },
         PaneKind::TrajectoryAudit => match action {

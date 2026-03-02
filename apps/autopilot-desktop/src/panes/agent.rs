@@ -13,8 +13,8 @@ use crate::pane_system::{
     agent_profile_receipt_button_bounds, agent_profile_start_goal_button_bounds,
     agent_profile_update_goals_button_bounds, agent_schedule_apply_button_bounds,
     agent_schedule_inspect_button_bounds, agent_schedule_manual_tick_button_bounds,
-    trajectory_filter_button_bounds, trajectory_open_session_button_bounds,
-    trajectory_verify_button_bounds,
+    agent_schedule_toggle_os_scheduler_button_bounds, trajectory_filter_button_bounds,
+    trajectory_open_session_button_bounds, trajectory_verify_button_bounds,
 };
 
 pub fn paint_agent_profile_state_pane(
@@ -139,10 +139,20 @@ pub fn paint_agent_schedule_tick_pane(
     let apply_schedule = agent_schedule_apply_button_bounds(content_bounds);
     let manual_tick = agent_schedule_manual_tick_button_bounds(content_bounds);
     let inspect = agent_schedule_inspect_button_bounds(content_bounds);
+    let toggle_os_scheduler = agent_schedule_toggle_os_scheduler_button_bounds(content_bounds);
 
     paint_action_button(apply_schedule, "Apply Schedule", paint);
     paint_action_button(manual_tick, "Manual Tick", paint);
     paint_action_button(inspect, "Inspect Result", paint);
+    paint_action_button(
+        toggle_os_scheduler,
+        if pane_state.os_scheduler_enabled {
+            "Disable OS Scheduler"
+        } else {
+            "Enable OS Scheduler"
+        },
+        paint,
+    );
 
     let mut y = paint_state_summary(
         paint,
@@ -218,6 +228,54 @@ pub fn paint_agent_schedule_tick_pane(
         y,
         "Cron parse status",
         pane_state.cron_parse_error.as_deref().unwrap_or("ok"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "OS scheduler opt-in",
+        if pane_state.os_scheduler_enabled {
+            "enabled"
+        } else {
+            "disabled"
+        },
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "OS scheduler adapter",
+        &pane_state.os_scheduler_adapter,
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "OS scheduler descriptor",
+        pane_state
+            .os_scheduler_descriptor_path
+            .as_deref()
+            .unwrap_or("n/a"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "OS scheduler last reconcile",
+        &pane_state
+            .os_scheduler_last_reconciled_epoch_seconds
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "n/a".to_string()),
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "OS scheduler status",
+        pane_state
+            .os_scheduler_last_reconcile_result
+            .as_deref()
+            .unwrap_or("n/a"),
     );
     y = paint_label_line(
         paint,

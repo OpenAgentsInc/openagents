@@ -13,6 +13,11 @@ use crate::state::goal_conditions::{
     ConditionEvaluation, GoalProgressSnapshot, evaluate_conditions,
 };
 use crate::state::goal_skill_resolver::{GoalSkillResolution, resolve_goal_skill_candidates};
+use crate::state::os_scheduler::{
+    OsSchedulerAdapterConfig, OsSchedulerAdapterKind, OsSchedulerReconcileResult,
+    OsSchedulerScheduleSpec, detect_adapter_capability, preferred_adapter_for_host,
+    reconcile_os_scheduler_descriptor,
+};
 use crate::state::swap_contract::{SwapExecutionRequest, SwapPolicy, SwapQuoteTerms};
 use crate::state::swap_quote_adapter::{
     StablesatsQuoteClient, SwapQuoteAdapterOutcome, SwapQuoteAdapterRequest, SwapQuoteAuditReceipt,
@@ -106,6 +111,8 @@ pub struct GoalScheduleConfig {
     pub next_run_epoch_seconds: Option<u64>,
     #[serde(default)]
     pub last_run_epoch_seconds: Option<u64>,
+    #[serde(default)]
+    pub os_adapter: OsSchedulerAdapterConfig,
 }
 
 impl Default for GoalScheduleConfig {
@@ -115,6 +122,7 @@ impl Default for GoalScheduleConfig {
             kind: GoalScheduleKind::Manual,
             next_run_epoch_seconds: None,
             last_run_epoch_seconds: None,
+            os_adapter: OsSchedulerAdapterConfig::default(),
         }
     }
 }
@@ -667,6 +675,9 @@ impl AutopilotGoalsState {
         };
         goal.schedule.next_run_epoch_seconds =
             Some(now_epoch_seconds.saturating_add(interval_seconds));
+        if goal.schedule.os_adapter.enabled {
+            reconcile_goal_os_scheduler(goal, now_epoch_seconds)?;
+        }
         goal.updated_at_epoch_seconds = now_epoch_seconds;
         self.persist_to_disk()?;
         self.last_error = None;
@@ -712,6 +723,9 @@ impl AutopilotGoalsState {
             timezone: Some(normalized_timezone.clone()),
         };
         goal.schedule.next_run_epoch_seconds = Some(next_run);
+        if goal.schedule.os_adapter.enabled {
+            reconcile_goal_os_scheduler(goal, now_epoch_seconds)?;
+        }
         goal.updated_at_epoch_seconds = now_epoch_seconds;
         self.persist_to_disk()?;
         self.last_error = None;
@@ -720,6 +734,129 @@ impl AutopilotGoalsState {
             goal_id, normalized_expression, normalized_timezone
         ));
         Ok(())
+    }
+
+    pub fn set_goal_os_scheduler_adapter(
+        &mut self,
+        goal_id: &str,
+        enabled: bool,
+        adapter: Option<OsSchedulerAdapterKind>,
+        now_epoch_seconds: u64,
+    ) -> Result<(), String> {
+        let Some(goal) = self
+            .document
+            .active_goals
+            .iter_mut()
+            .find(|goal| goal.goal_id == goal_id)
+        else {
+            return Err(format!("Active goal {goal_id} not found"));
+        };
+
+        if enabled {
+            let resolved_adapter = adapter
+                .or(goal.schedule.os_adapter.adapter)
+                .or_else(preferred_adapter_for_host)
+                .ok_or_else(|| {
+                    "No supported OS-backed scheduler adapter available on this host".to_string()
+                })?;
+            let capability = detect_adapter_capability(resolved_adapter);
+            if !capability.available {
+                return Err(capability.reason.unwrap_or_else(|| {
+                    format!(
+                        "{} adapter unavailable on current host",
+                        resolved_adapter.as_str()
+                    )
+                }));
+            }
+            goal.schedule.os_adapter.enabled = true;
+            goal.schedule.os_adapter.adapter = Some(resolved_adapter);
+
+            if goal.schedule.enabled {
+                let reconcile = reconcile_goal_os_scheduler(goal, now_epoch_seconds)?;
+                goal.schedule.os_adapter.last_reconcile_result = Some(format!(
+                    "reconciled via {} ({})",
+                    resolved_adapter.as_str(),
+                    reconcile.install_command_preview
+                ));
+            } else {
+                goal.schedule.os_adapter.last_reconciled_epoch_seconds = Some(now_epoch_seconds);
+                goal.schedule.os_adapter.last_reconcile_result =
+                    Some("adapter enabled (awaiting schedule apply)".to_string());
+            }
+        } else {
+            goal.schedule.os_adapter.enabled = false;
+            goal.schedule.os_adapter.adapter = adapter.or(goal.schedule.os_adapter.adapter);
+            goal.schedule.os_adapter.adapter_job_id = None;
+            goal.schedule.os_adapter.descriptor_path = None;
+            goal.schedule.os_adapter.reconciliation_marker = None;
+            goal.schedule.os_adapter.last_reconciled_epoch_seconds = Some(now_epoch_seconds);
+            goal.schedule.os_adapter.last_reconcile_result = Some("adapter disabled".to_string());
+        }
+
+        goal.updated_at_epoch_seconds = now_epoch_seconds;
+        self.persist_to_disk()?;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "{} OS scheduler adapter for goal {}",
+            if enabled { "Enabled" } else { "Disabled" },
+            goal_id
+        ));
+        Ok(())
+    }
+
+    pub fn reconcile_os_scheduler_adapters(
+        &mut self,
+        now_epoch_seconds: u64,
+    ) -> Result<Vec<String>, String> {
+        let mut touched = false;
+        let mut reconciled_goal_ids = Vec::new();
+        let mut errors = Vec::new();
+
+        for goal in &mut self.document.active_goals {
+            if !goal.schedule.enabled || !goal.schedule.os_adapter.enabled {
+                continue;
+            }
+            match reconcile_goal_os_scheduler(goal, now_epoch_seconds) {
+                Ok(reconcile) => {
+                    goal.schedule.os_adapter.last_reconcile_result = Some(format!(
+                        "reconciled via {} ({})",
+                        goal.schedule
+                            .os_adapter
+                            .adapter
+                            .map(|kind| kind.as_str().to_string())
+                            .unwrap_or_else(|| "auto".to_string()),
+                        reconcile.install_command_preview
+                    ));
+                    goal.updated_at_epoch_seconds = now_epoch_seconds;
+                    touched = true;
+                    reconciled_goal_ids.push(goal.goal_id.clone());
+                }
+                Err(error) => {
+                    goal.schedule.os_adapter.last_reconciled_epoch_seconds =
+                        Some(now_epoch_seconds);
+                    goal.schedule.os_adapter.last_reconcile_result =
+                        Some(format!("reconcile failed: {error}"));
+                    goal.updated_at_epoch_seconds = now_epoch_seconds;
+                    touched = true;
+                    errors.push(format!("goal {}: {}", goal.goal_id, error));
+                }
+            }
+        }
+
+        if touched {
+            self.persist_to_disk()?;
+        }
+        if !reconciled_goal_ids.is_empty() {
+            self.last_action = Some(format!(
+                "Reconciled OS scheduler adapters for goals: {}",
+                reconciled_goal_ids.join(",")
+            ));
+            self.last_error = None;
+        }
+        if !errors.is_empty() {
+            self.last_error = Some(errors.join(" | "));
+        }
+        Ok(reconciled_goal_ids)
     }
 
     pub fn schedule_goal_run_now(
@@ -760,6 +897,9 @@ impl AutopilotGoalsState {
                 }
             }
             goal.updated_at_epoch_seconds = now_epoch_seconds;
+            if goal.schedule.os_adapter.enabled && goal.schedule.enabled {
+                reconcile_goal_os_scheduler(goal, now_epoch_seconds)?;
+            }
             goal.lifecycle_status
         };
         self.persist_to_disk()?;
@@ -1015,6 +1155,43 @@ fn default_goals_file_path() -> PathBuf {
         .join("autopilot-goals-v1.json")
 }
 
+fn os_schedule_spec_from_kind(kind: &GoalScheduleKind) -> OsSchedulerScheduleSpec {
+    match kind {
+        GoalScheduleKind::Manual => OsSchedulerScheduleSpec::Manual,
+        GoalScheduleKind::IntervalSeconds { seconds } => {
+            OsSchedulerScheduleSpec::IntervalSeconds { seconds: *seconds }
+        }
+        GoalScheduleKind::Cron {
+            expression,
+            timezone,
+        } => OsSchedulerScheduleSpec::Cron {
+            expression: expression.clone(),
+            timezone: timezone.clone(),
+        },
+    }
+}
+
+fn reconcile_goal_os_scheduler(
+    goal: &mut GoalRecord,
+    now_epoch_seconds: u64,
+) -> Result<OsSchedulerReconcileResult, String> {
+    let adapter = goal
+        .schedule
+        .os_adapter
+        .adapter
+        .or_else(preferred_adapter_for_host)
+        .ok_or_else(|| "No supported OS scheduler adapter available on this host".to_string())?;
+    let schedule = os_schedule_spec_from_kind(&goal.schedule.kind);
+    let reconcile = reconcile_os_scheduler_descriptor(&goal.goal_id, &schedule, adapter)?;
+    goal.schedule.os_adapter.adapter = Some(adapter);
+    goal.schedule.os_adapter.adapter_job_id = Some(reconcile.adapter_job_id.clone());
+    goal.schedule.os_adapter.descriptor_path =
+        Some(reconcile.descriptor_path.display().to_string());
+    goal.schedule.os_adapter.last_reconciled_epoch_seconds = Some(now_epoch_seconds);
+    goal.schedule.os_adapter.reconciliation_marker = Some(reconcile.reconciliation_marker.clone());
+    Ok(reconcile)
+}
+
 fn now_epoch_seconds() -> u64 {
     match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(duration) => duration.as_secs(),
@@ -1037,6 +1214,7 @@ mod tests {
     };
     use crate::spark_wallet::SparkPaneState;
     use crate::state::goal_conditions::GoalProgressSnapshot;
+    use crate::state::os_scheduler::OsSchedulerAdapterKind;
     use crate::state::swap_contract::{
         SwapAmount, SwapAmountUnit, SwapDirection, SwapExecutionRequest, SwapQuoteTerms,
     };
@@ -1787,6 +1965,82 @@ mod tests {
             goal.schedule
                 .next_run_epoch_seconds
                 .is_some_and(|next| next > 1_700_000_060)
+        );
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn set_goal_os_scheduler_adapter_disables_and_records_marker() {
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch time available")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "autopilot-goals-os-adapter-disable-{now_nanos}.json"
+        ));
+        let mut state = AutopilotGoalsState::load_from_path(path.clone());
+        state
+            .upsert_active_goal(sample_goal("goal-os-disable"))
+            .expect("upsert active goal should succeed");
+
+        state
+            .set_goal_os_scheduler_adapter(
+                "goal-os-disable",
+                false,
+                Some(OsSchedulerAdapterKind::Cron),
+                1_700_000_000,
+            )
+            .expect("disabling adapter should succeed");
+        let goal = state
+            .document
+            .active_goals
+            .iter()
+            .find(|goal| goal.goal_id == "goal-os-disable")
+            .expect("goal should exist");
+        assert!(!goal.schedule.os_adapter.enabled);
+        assert_eq!(
+            goal.schedule.os_adapter.adapter,
+            Some(OsSchedulerAdapterKind::Cron)
+        );
+        assert_eq!(
+            goal.schedule.os_adapter.last_reconciled_epoch_seconds,
+            Some(1_700_000_000)
+        );
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn set_goal_os_scheduler_adapter_rejects_unsupported_adapter() {
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch time available")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "autopilot-goals-os-adapter-unsupported-{now_nanos}.json"
+        ));
+        let mut state = AutopilotGoalsState::load_from_path(path.clone());
+        state
+            .upsert_active_goal(sample_goal("goal-os-unsupported"))
+            .expect("upsert active goal should succeed");
+
+        let unsupported_adapter = if cfg!(target_os = "macos") {
+            OsSchedulerAdapterKind::Systemd
+        } else {
+            OsSchedulerAdapterKind::Launchd
+        };
+        let error = state
+            .set_goal_os_scheduler_adapter(
+                "goal-os-unsupported",
+                true,
+                Some(unsupported_adapter),
+                1_700_000_000,
+            )
+            .expect_err("unsupported adapter should fail");
+        assert!(
+            error.contains("only available") || error.contains("not found"),
+            "unexpected error: {error}"
         );
 
         let _ = std::fs::remove_file(path);
