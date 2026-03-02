@@ -1,0 +1,33 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-057",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/packages/core/src/stores/document-store.ts + ~/code/vcad/packages/engine/src/evaluate.ts",
+  "expected_instance_id_pattern": "<partDefId>-<n>",
+  "expected_material_fallback_order": [
+    "instance_override",
+    "part_default",
+    "fallback_default"
+  ],
+  "expected_resolved_instance_ids": [
+    "arm-1",
+    "arm-2",
+    "base-1",
+    "pin-1"
+  ],
+  "expected_material_sources": {
+    "arm-1": "part_default",
+    "arm-2": "instance_override",
+    "base-1": "part_default",
+    "pin-1": "fallback_default"
+  },
+  "expected_effective_materials": {
+    "arm-1": "steel",
+    "arm-2": "anodized",
+    "base-1": "powder_coat",
+    "pin-1": "default"
+  },
+  "expected_unresolved_instance_ids": [
+    "orphan-1"
+  ]
+}
