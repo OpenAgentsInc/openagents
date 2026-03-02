@@ -166,7 +166,7 @@ Major gaps to close:
 75. [x] VCAD-PARITY-075: Drawing persistence parity in CAD document schema.
 76. [x] VCAD-PARITY-076: DXF export parity.
 77. [x] VCAD-PARITY-077: PDF export parity.
-78. [ ] VCAD-PARITY-078: Drafting parity checkpoint.
+78. [x] VCAD-PARITY-078: Drafting parity checkpoint.
 
 ### Phase G - IO + headless + AI parity (`VCAD-PARITY-079` to `VCAD-PARITY-092`)
 

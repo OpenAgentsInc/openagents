@@ -83,6 +83,7 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/drafting_persistence_parity_manifest.json"
     "crates/cad/parity/drafting_dxf_export_parity_manifest.json"
     "crates/cad/parity/drafting_pdf_export_parity_manifest.json"
+    "crates/cad/parity/drafting_checkpoint_parity_manifest.json"
     "crates/cad/parity/sketch_loft_parity_manifest.json"
     "crates/cad/parity/sketch_profile_validity_parity_manifest.json"
     "crates/cad/parity/sketch_revolve_parity_manifest.json"

@@ -13,6 +13,7 @@ pub mod chamfer_feature_graph_parity;
 pub mod ci_artifacts;
 pub mod core_modeling_checkpoint_parity;
 pub mod dashboard;
+pub mod drafting_checkpoint_parity;
 pub mod drafting_detail_parity;
 pub mod drafting_dimension_parity;
 pub mod drafting_drawing_mode_ui_parity;
