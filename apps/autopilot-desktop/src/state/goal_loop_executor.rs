@@ -26,6 +26,9 @@ pub enum GoalLoopStopReason {
     DispatchFailed {
         error: String,
     },
+    PolicyAbort {
+        reason: String,
+    },
     GoalMissing,
 }
 

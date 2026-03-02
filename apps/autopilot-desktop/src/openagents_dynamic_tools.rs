@@ -204,6 +204,7 @@ pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
                             "recover_startup",
                             "run_now",
                             "set_missed_policy",
+                            "set_kill_switch",
                             "toggle_os_adapter",
                             "reconcile_os_adapters"
                         ]
@@ -212,7 +213,9 @@ pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
                     "missed_run_policy": {
                         "type": "string",
                         "enum": ["catch_up", "skip", "single_replay"]
-                    }
+                    },
+                    "kill_switch_active": { "type": "boolean" },
+                    "kill_switch_reason": { "type": "string" }
                 },
                 "required": ["action"],
                 "additionalProperties": false
