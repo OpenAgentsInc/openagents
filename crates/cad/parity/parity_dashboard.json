@@ -39,7 +39,7 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 19,
+    "source_artifact_count": 20,
     "artifact_ids": [
       "fixtures_parity_fixture_corpus",
       "kernel_adapter_v2_manifest",
@@ -48,6 +48,7 @@
       "kernel_booleans_parity_manifest",
       "kernel_geom_parity_manifest",
       "kernel_math_parity_manifest",
+      "kernel_nurbs_parity_manifest",
       "kernel_precision_parity_manifest",
       "kernel_primitives_parity_manifest",
       "kernel_tessellate_parity_manifest",

@@ -1,0 +1,228 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-021",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "bspline_curve": {
+    "domain": [
+      0.0,
+      1.0
+    ],
+    "samples": [
+      {
+        "t": 0.0,
+        "point": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "t": 0.25,
+        "point": [
+          2.0,
+          3.0,
+          0.0
+        ]
+      },
+      {
+        "t": 0.5,
+        "point": [
+          4.0,
+          4.0,
+          0.0
+        ]
+      },
+      {
+        "t": 0.75,
+        "point": [
+          6.0,
+          3.0,
+          0.0
+        ]
+      },
+      {
+        "t": 1.0,
+        "point": [
+          8.0,
+          0.0,
+          0.0
+        ]
+      }
+    ],
+    "knot_insertion_max_drift": 6.280369834735101e-16,
+    "deterministic_signature": "70caab53821b81e7"
+  },
+  "nurbs_circle_curve": {
+    "domain": [
+      0.0,
+      1.0
+    ],
+    "samples": [
+      {
+        "t": 0.0,
+        "point": [
+          5.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "t": 0.25,
+        "point": [
+          0.0,
+          5.0,
+          0.0
+        ]
+      },
+      {
+        "t": 0.5,
+        "point": [
+          -5.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "t": 0.75,
+        "point": [
+          0.0,
+          -5.0,
+          0.0
+        ]
+      },
+      {
+        "t": 1.0,
+        "point": [
+          5.0,
+          0.0,
+          0.0
+        ]
+      }
+    ],
+    "knot_insertion_max_drift": null,
+    "deterministic_signature": "2c2b046542364752"
+  },
+  "bspline_surface": {
+    "domain_u": [
+      0.0,
+      1.0
+    ],
+    "domain_v": [
+      0.0,
+      1.0
+    ],
+    "samples": [
+      {
+        "u": 0.0,
+        "v": 0.0,
+        "point": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "u": 0.5,
+        "v": 0.0,
+        "point": [
+          5.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "u": 1.0,
+        "v": 0.5,
+        "point": [
+          10.0,
+          5.0,
+          0.0
+        ]
+      },
+      {
+        "u": 0.5,
+        "v": 0.5,
+        "point": [
+          5.0,
+          5.0,
+          0.0
+        ]
+      },
+      {
+        "u": 1.0,
+        "v": 1.0,
+        "point": [
+          10.0,
+          10.0,
+          0.0
+        ]
+      }
+    ],
+    "deterministic_signature": "86a85102237670b2"
+  },
+  "nurbs_surface": {
+    "domain_u": [
+      0.0,
+      1.0
+    ],
+    "domain_v": [
+      0.0,
+      1.0
+    ],
+    "samples": [
+      {
+        "u": 0.0,
+        "v": 0.0,
+        "point": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "u": 0.5,
+        "v": 0.0,
+        "point": [
+          5.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "u": 1.0,
+        "v": 0.5,
+        "point": [
+          10.0,
+          5.0,
+          0.0
+        ]
+      },
+      {
+        "u": 0.5,
+        "v": 0.5,
+        "point": [
+          5.0,
+          5.0,
+          0.0
+        ]
+      },
+      {
+        "u": 1.0,
+        "v": 1.0,
+        "point": [
+          10.0,
+          10.0,
+          0.0
+        ]
+      }
+    ],
+    "deterministic_signature": "86a85102237670b2"
+  },
+  "error_contracts": [
+    "invalid knot vectors map to CadError::InvalidParameter",
+    "NURBS weights must be finite and positive",
+    "curve and surface snapshots are deterministic for fixed samples"
+  ]
+}

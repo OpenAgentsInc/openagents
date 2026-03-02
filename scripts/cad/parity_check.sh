@@ -15,6 +15,7 @@ LANE_LABELS=(
     "kernel-booleans"
     "kernel-boolean-diagnostics"
     "kernel-boolean-brep"
+    "kernel-nurbs"
     "kernel-precision"
     "ci-artifact-manifest"
     "risk-register-workflow"
@@ -114,6 +115,9 @@ run_lane "kernel-boolean-diagnostics" \
 
 run_lane "kernel-boolean-brep" \
     "$ROOT_DIR/scripts/cad/parity-kernel-boolean-brep-ci.sh"
+
+run_lane "kernel-nurbs" \
+    "$ROOT_DIR/scripts/cad/parity-kernel-nurbs-ci.sh"
 
 run_lane "kernel-precision" \
     "$ROOT_DIR/scripts/cad/parity-kernel-precision-ci.sh"

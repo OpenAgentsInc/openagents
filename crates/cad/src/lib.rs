@@ -24,6 +24,7 @@ pub mod kernel;
 pub mod kernel_booleans;
 pub mod kernel_geom;
 pub mod kernel_math;
+pub mod kernel_nurbs;
 pub mod kernel_predicates;
 pub mod kernel_primitives;
 pub mod kernel_tessellate;
