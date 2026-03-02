@@ -144,7 +144,7 @@ Major gaps to close:
 56. [x] VCAD-PARITY-056: Add assembly schema (`PartDef`, `Instance`, `Joint`, ground ID).
 57. [x] VCAD-PARITY-057: Part definition and instance parity behavior.
 58. [x] VCAD-PARITY-058: Joint parity (Fixed/Revolute/Slider).
-59. [ ] VCAD-PARITY-059: Joint parity (Cylindrical/Ball).
+59. [x] VCAD-PARITY-059: Joint parity (Cylindrical/Ball).
 60. [ ] VCAD-PARITY-060: Joint limits/state parity semantics.
 61. [ ] VCAD-PARITY-061: Forward kinematics solver parity.
 62. [ ] VCAD-PARITY-062: Ground instance + deletion cleanup invariants.

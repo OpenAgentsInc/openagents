@@ -102,7 +102,7 @@ pub struct CadAssemblyJoint {
     pub state: f64,
 }
 
-/// Motion result for fixed/revolute/slider joint evaluation.
+/// Motion result for assembly joint evaluation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum CadJointMotion {
     Fixed {
@@ -118,35 +118,79 @@ pub enum CadJointMotion {
         axis: Vec3,
         offset_mm: f64,
     },
+    Cylindrical {
+        translation_mm: Vec3,
+        axis: Vec3,
+        angle_deg: f64,
+    },
+    Ball {
+        translation_mm: Vec3,
+        axis: Vec3,
+        angle_deg: f64,
+    },
 }
 
 impl CadAssemblyJoint {
-    pub fn solve_fixed_revolute_slider_motion(&self) -> CadResult<CadJointMotion> {
+    pub fn solve_motion(&self) -> CadJointMotion {
         let anchor_delta = vec3_sub(self.parent_anchor, self.child_anchor);
         match &self.kind {
-            CadJointKind::Fixed => Ok(CadJointMotion::Fixed {
-                translation_mm: anchor_delta,
-            }),
-            CadJointKind::Revolute { axis, .. } => Ok(CadJointMotion::Revolute {
-                translation_mm: anchor_delta,
-                axis: normalize_axis_or_z(*axis),
-                angle_deg: self.state,
-            }),
+            CadJointKind::Fixed => CadJointMotion::Fixed {
+                translation_mm: clean_vec3(anchor_delta),
+            },
+            CadJointKind::Revolute { axis, .. } => {
+                let normalized_axis = normalize_axis_or_z(*axis);
+                let rotated_child =
+                    axis_angle_rotate(normalized_axis, self.state, self.child_anchor);
+                CadJointMotion::Revolute {
+                    translation_mm: clean_vec3(vec3_sub(self.parent_anchor, rotated_child)),
+                    axis: clean_vec3(normalized_axis),
+                    angle_deg: self.state,
+                }
+            }
             CadJointKind::Slider { axis, .. } => {
                 let normalized_axis = normalize_axis_or_z(*axis);
                 let slider_offset = vec3_scale(normalized_axis, self.state);
-                Ok(CadJointMotion::Slider {
-                    translation_mm: vec3_add(anchor_delta, slider_offset),
-                    axis: normalized_axis,
+                CadJointMotion::Slider {
+                    translation_mm: clean_vec3(vec3_add(anchor_delta, slider_offset)),
+                    axis: clean_vec3(normalized_axis),
                     offset_mm: self.state,
+                }
+            }
+            CadJointKind::Cylindrical { axis } => {
+                let normalized_axis = normalize_axis_or_z(*axis);
+                let rotated_child =
+                    axis_angle_rotate(normalized_axis, self.state, self.child_anchor);
+                CadJointMotion::Cylindrical {
+                    translation_mm: clean_vec3(vec3_sub(self.parent_anchor, rotated_child)),
+                    axis: clean_vec3(normalized_axis),
+                    angle_deg: self.state,
+                }
+            }
+            CadJointKind::Ball => {
+                let z_axis = Vec3::z();
+                let rotated_child = axis_angle_rotate(z_axis, self.state, self.child_anchor);
+                CadJointMotion::Ball {
+                    translation_mm: clean_vec3(vec3_sub(self.parent_anchor, rotated_child)),
+                    axis: clean_vec3(z_axis),
+                    angle_deg: self.state,
+                }
+            }
+        }
+    }
+
+    pub fn solve_fixed_revolute_slider_motion(&self) -> CadResult<CadJointMotion> {
+        match self.solve_motion() {
+            motion @ CadJointMotion::Fixed { .. }
+            | motion @ CadJointMotion::Revolute { .. }
+            | motion @ CadJointMotion::Slider { .. } => Ok(motion),
+            CadJointMotion::Cylindrical { .. } | CadJointMotion::Ball { .. } => {
+                Err(CadError::InvalidPolicy {
+                    reason: format!(
+                        "joint {} is outside fixed/revolute/slider parity scope",
+                        self.id
+                    ),
                 })
             }
-            CadJointKind::Cylindrical { .. } | CadJointKind::Ball => Err(CadError::InvalidPolicy {
-                reason: format!(
-                    "joint {} is outside fixed/revolute/slider parity scope",
-                    self.id
-                ),
-            }),
         }
     }
 }
@@ -339,6 +383,10 @@ fn normalize_axis_or_z(axis: Vec3) -> Vec3 {
     axis.normalized().unwrap_or_else(Vec3::z)
 }
 
+fn deg_to_rad(value_deg: f64) -> f64 {
+    value_deg * std::f64::consts::PI / 180.0
+}
+
 fn vec3_add(left: Vec3, right: Vec3) -> Vec3 {
     Vec3::new(left.x + right.x, left.y + right.y, left.z + right.z)
 }
@@ -349,6 +397,30 @@ fn vec3_sub(left: Vec3, right: Vec3) -> Vec3 {
 
 fn vec3_scale(value: Vec3, scale: f64) -> Vec3 {
     Vec3::new(value.x * scale, value.y * scale, value.z * scale)
+}
+
+fn axis_angle_rotate(axis: Vec3, angle_deg: f64, value: Vec3) -> Vec3 {
+    let axis = normalize_axis_or_z(axis);
+    let angle = deg_to_rad(angle_deg);
+    let c = angle.cos();
+    let s = angle.sin();
+
+    let first = vec3_scale(value, c);
+    let second = vec3_scale(axis.cross(value), s);
+    let third = vec3_scale(axis, axis.dot(value) * (1.0 - c));
+    clean_vec3(vec3_add(vec3_add(first, second), third))
+}
+
+fn clean_vec3(value: Vec3) -> Vec3 {
+    Vec3::new(
+        clean_scalar(value.x),
+        clean_scalar(value.y),
+        clean_scalar(value.z),
+    )
+}
+
+fn clean_scalar(value: f64) -> f64 {
+    if value.abs() < 1e-12 { 0.0 } else { value }
 }
 
 #[cfg(test)]
@@ -610,13 +682,13 @@ mod tests {
             name: None,
             parent_instance_id: Some("base-1".to_string()),
             child_instance_id: "arm-1".to_string(),
-            parent_anchor: Vec3::new(10.0, 5.0, 5.0),
-            child_anchor: Vec3::new(0.0, 5.0, 5.0),
+            parent_anchor: Vec3::new(10.0, 0.0, 0.0),
+            child_anchor: Vec3::new(0.0, 5.0, 0.0),
             kind: CadJointKind::Revolute {
                 axis: Vec3::new(0.0, 0.0, 0.0),
                 limits: None,
             },
-            state: 45.0,
+            state: 90.0,
         };
 
         let motion = joint
@@ -625,9 +697,9 @@ mod tests {
         assert_eq!(
             motion,
             CadJointMotion::Revolute {
-                translation_mm: Vec3::new(10.0, 0.0, 0.0),
+                translation_mm: Vec3::new(15.0, 0.0, 0.0),
                 axis: Vec3::new(0.0, 0.0, 1.0),
-                angle_deg: 45.0,
+                angle_deg: 90.0,
             }
         );
     }
@@ -683,6 +755,56 @@ mod tests {
             error
                 .to_string()
                 .contains("outside fixed/revolute/slider parity scope")
+        );
+    }
+
+    #[test]
+    fn cylindrical_joint_motion_matches_vcad_rotation_path() {
+        let joint = CadAssemblyJoint {
+            id: "joint.cylindrical.002".to_string(),
+            name: None,
+            parent_instance_id: Some("base-1".to_string()),
+            child_instance_id: "arm-1".to_string(),
+            parent_anchor: Vec3::new(10.0, 0.0, 0.0),
+            child_anchor: Vec3::new(2.0, 0.0, 0.0),
+            kind: CadJointKind::Cylindrical {
+                axis: Vec3::new(0.0, 2.0, 0.0),
+            },
+            state: 90.0,
+        };
+
+        let motion = joint.solve_motion();
+        assert_eq!(
+            motion,
+            CadJointMotion::Cylindrical {
+                translation_mm: Vec3::new(10.0, 0.0, 2.0),
+                axis: Vec3::new(0.0, 1.0, 0.0),
+                angle_deg: 90.0,
+            }
+        );
+    }
+
+    #[test]
+    fn ball_joint_motion_uses_z_axis_rotation_semantics() {
+        let joint = CadAssemblyJoint {
+            id: "joint.ball.001".to_string(),
+            name: None,
+            parent_instance_id: Some("base-1".to_string()),
+            child_instance_id: "arm-1".to_string(),
+            parent_anchor: Vec3::new(3.0, 4.0, 0.0),
+            child_anchor: Vec3::new(1.0, 0.0, 0.0),
+            kind: CadJointKind::Ball,
+            state: 90.0,
+        };
+
+        let motion = joint.solve_motion();
+        assert_eq!(
+            motion,
+            CadJointMotion::Ball {
+                translation_mm: Vec3::new(3.0, 3.0, 0.0),
+                axis: Vec3::new(0.0, 0.0, 1.0),
+                angle_deg: 90.0,
+            }
         );
     }
 }
