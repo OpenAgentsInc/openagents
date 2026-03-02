@@ -1,0 +1,94 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-015",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "sample_counts": {
+    "cube": {
+      "topology": {
+        "vertex_count": 8,
+        "half_edge_count": 24,
+        "edge_count": 12,
+        "loop_count": 6,
+        "face_count": 6,
+        "shell_count": 1,
+        "solid_count": 1
+      },
+      "surface_count": 6
+    },
+    "cylinder": {
+      "topology": {
+        "vertex_count": 2,
+        "half_edge_count": 6,
+        "edge_count": 3,
+        "loop_count": 3,
+        "face_count": 3,
+        "shell_count": 1,
+        "solid_count": 1
+      },
+      "surface_count": 3
+    },
+    "sphere": {
+      "topology": {
+        "vertex_count": 3,
+        "half_edge_count": 4,
+        "edge_count": 2,
+        "loop_count": 1,
+        "face_count": 1,
+        "shell_count": 1,
+        "solid_count": 1
+      },
+      "surface_count": 1
+    },
+    "cone_pointed": {
+      "topology": {
+        "vertex_count": 2,
+        "half_edge_count": 4,
+        "edge_count": 2,
+        "loop_count": 2,
+        "face_count": 2,
+        "shell_count": 1,
+        "solid_count": 1
+      },
+      "surface_count": 2
+    },
+    "cone_frustum": {
+      "topology": {
+        "vertex_count": 2,
+        "half_edge_count": 6,
+        "edge_count": 3,
+        "loop_count": 3,
+        "face_count": 3,
+        "shell_count": 1,
+        "solid_count": 1
+      },
+      "surface_count": 3
+    },
+    "cone_equal_radii": {
+      "topology": {
+        "vertex_count": 2,
+        "half_edge_count": 6,
+        "edge_count": 3,
+        "loop_count": 3,
+        "face_count": 3,
+        "shell_count": 1,
+        "solid_count": 1
+      },
+      "surface_count": 3
+    }
+  },
+  "cone_equal_radii_routes_to_cylinder": true,
+  "constructor_contracts": [
+    "make_cube(sx, sy, sz) builds closed box BRep topology + planar surfaces",
+    "make_cylinder(radius, height, segments) builds lateral + 2 cap faces",
+    "make_sphere(radius, segments) builds single spherical face with seam contracts",
+    "make_cone(radius_bottom, radius_top, height, segments) supports pointed + frustum",
+    "make_cone with equal radii routes to cylinder parity constructor"
+  ],
+  "error_contracts": [
+    "non-finite primitive dimensions return CadError::InvalidPrimitive",
+    "positive dimensions must be greater than 0.001 mm",
+    "cone radius_top may be zero but may not be negative"
+  ]
+}

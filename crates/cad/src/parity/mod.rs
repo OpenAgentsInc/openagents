@@ -5,6 +5,7 @@ pub mod gap_matrix;
 pub mod kernel_adapter_v2;
 pub mod kernel_geom_parity;
 pub mod kernel_math_parity;
+pub mod kernel_primitives_parity;
 pub mod kernel_topology_parity;
 pub mod openagents_crawler;
 pub mod risk_register;
