@@ -160,6 +160,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let settings_inputs = crate::app_state::SettingsPaneInputs::from_state(&settings);
         let credentials = crate::app_state::CredentialsState::load_from_disk();
         let credentials_inputs = crate::app_state::CredentialsPaneInputs::from_state(&credentials);
+        let autopilot_goals = crate::state::autopilot_goals::AutopilotGoalsState::load_from_disk();
         let codex_lane_config = CodexLaneConfig::default();
         let codex_lane_worker = CodexLaneWorker::spawn(codex_lane_config.clone());
         let sa_lane_worker = SaLaneWorker::spawn();
@@ -257,6 +258,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             relay_security_simulation: crate::app_state::RelaySecuritySimulationPaneState::default(
             ),
             stable_sats_simulation: crate::app_state::StableSatsSimulationPaneState::default(),
+            autopilot_goals,
             sidebar: SidebarState::default(),
             next_pane_id: 1,
             next_z_index: 1,
