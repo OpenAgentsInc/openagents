@@ -1,10 +1,11 @@
 use super::primitives::evaluate_cut_hole_feature_with_boolean;
 use super::{
     BoxFeatureOp, CircularPatternFeatureOp, CutHoleFeatureOp, CylinderFeatureOp,
-    FilletPlaceholderFeatureOp, FilletPlaceholderKind, LinearPatternFeatureOp, SweepFeatureOp,
-    TransformFeatureOp, compose_transform_sequence, evaluate_box_feature,
-    evaluate_circular_pattern_feature, evaluate_cut_hole_feature, evaluate_cylinder_feature,
-    evaluate_fillet_placeholder_feature, evaluate_linear_pattern_feature, evaluate_sweep_feature,
+    FilletPlaceholderFeatureOp, FilletPlaceholderKind, LinearPatternFeatureOp, LoftFeatureOp,
+    LoftFeatureProfile, SweepFeatureOp, TransformFeatureOp, compose_transform_sequence,
+    evaluate_box_feature, evaluate_circular_pattern_feature, evaluate_cut_hole_feature,
+    evaluate_cylinder_feature, evaluate_fillet_placeholder_feature,
+    evaluate_linear_pattern_feature, evaluate_loft_feature, evaluate_sweep_feature,
     evaluate_transform_feature,
 };
 use crate::feature_graph::{FeatureGraph, FeatureNode};
@@ -903,6 +904,127 @@ fn sweep_feature_rejects_non_positive_scale() {
         .expect_err("non-positive scale should fail");
     assert!(matches!(error, CadError::InvalidParameter { .. }));
     assert!(error.to_string().contains("scale"));
+}
+
+fn loft_square_profile(profile_id: &str, z_mm: f64, size_mm: f64) -> LoftFeatureProfile {
+    LoftFeatureProfile {
+        profile_id: profile_id.to_string(),
+        vertices_mm: vec![
+            [0.0, 0.0, z_mm],
+            [size_mm, 0.0, z_mm],
+            [size_mm, size_mm, z_mm],
+            [0.0, size_mm, z_mm],
+        ],
+    }
+}
+
+#[test]
+fn loft_feature_supports_open_and_closed_options() {
+    let profiles = vec![
+        loft_square_profile("profile.a", 0.0, 20.0),
+        loft_square_profile("profile.b", 20.0, 15.0),
+        loft_square_profile("profile.c", 40.0, 10.0),
+    ];
+    let source_ids = vec![
+        "feature.profile.a".to_string(),
+        "feature.profile.b".to_string(),
+        "feature.profile.c".to_string(),
+    ];
+    let source_hashes = vec![
+        "hash.profile.a".to_string(),
+        "hash.profile.b".to_string(),
+        "hash.profile.c".to_string(),
+    ];
+
+    let open = evaluate_loft_feature(
+        &LoftFeatureOp {
+            feature_id: "feature.loft.open".to_string(),
+            source_feature_ids: source_ids.clone(),
+            profiles: profiles.clone(),
+            closed: false,
+        },
+        &source_hashes,
+    )
+    .expect("open loft should evaluate");
+    assert_eq!(open.profile_count, 3);
+    assert_eq!(open.vertices_per_profile, 4);
+    assert_eq!(open.transition_count, 2);
+    assert_eq!(open.lateral_patch_count, 8);
+    assert_eq!(open.cap_count, 2);
+
+    let closed = evaluate_loft_feature(
+        &LoftFeatureOp {
+            feature_id: "feature.loft.closed".to_string(),
+            source_feature_ids: source_ids,
+            profiles,
+            closed: true,
+        },
+        &source_hashes,
+    )
+    .expect("closed loft should evaluate");
+    assert_eq!(closed.transition_count, 3);
+    assert_eq!(closed.lateral_patch_count, 12);
+    assert_eq!(closed.cap_count, 0);
+    assert_ne!(open.geometry_hash, closed.geometry_hash);
+}
+
+#[test]
+fn loft_feature_is_deterministic_for_repeated_runs() {
+    let op = LoftFeatureOp {
+        feature_id: "feature.loft.main".to_string(),
+        source_feature_ids: vec![
+            "feature.profile.a".to_string(),
+            "feature.profile.b".to_string(),
+        ],
+        profiles: vec![
+            loft_square_profile("profile.a", 0.0, 20.0),
+            loft_square_profile("profile.b", 20.0, 10.0),
+        ],
+        closed: false,
+    };
+    let source_hashes = vec!["hash.profile.a".to_string(), "hash.profile.b".to_string()];
+    let first = evaluate_loft_feature(&op, &source_hashes).expect("first loft eval");
+    let second = evaluate_loft_feature(&op, &source_hashes).expect("second loft eval");
+    assert_eq!(first, second);
+}
+
+#[test]
+fn loft_feature_rejects_mismatched_profile_segment_counts() {
+    let op = LoftFeatureOp {
+        feature_id: "feature.loft.bad_segments".to_string(),
+        source_feature_ids: vec![
+            "feature.profile.a".to_string(),
+            "feature.profile.b".to_string(),
+        ],
+        profiles: vec![
+            loft_square_profile("profile.a", 0.0, 20.0),
+            LoftFeatureProfile {
+                profile_id: "profile.b".to_string(),
+                vertices_mm: vec![[0.0, 0.0, 20.0], [10.0, 0.0, 20.0], [5.0, 8.0, 20.0]],
+            },
+        ],
+        closed: false,
+    };
+    let error = evaluate_loft_feature(
+        &op,
+        &["hash.profile.a".to_string(), "hash.profile.b".to_string()],
+    )
+    .expect_err("mismatched segment counts should fail");
+    assert!(matches!(error, CadError::InvalidPrimitive { .. }));
+    assert!(error.to_string().contains("vertex count mismatch"));
+}
+
+#[test]
+fn loft_feature_rejects_too_few_profiles() {
+    let op = LoftFeatureOp {
+        feature_id: "feature.loft.too_few".to_string(),
+        source_feature_ids: vec!["feature.profile.a".to_string()],
+        profiles: vec![loft_square_profile("profile.a", 0.0, 20.0)],
+        closed: false,
+    };
+    let error = evaluate_loft_feature(&op, &["hash.profile.a".to_string()]).expect_err("must fail");
+    assert!(matches!(error, CadError::InvalidPrimitive { .. }));
+    assert!(error.to_string().contains("at least 2 profiles"));
 }
 
 #[test]

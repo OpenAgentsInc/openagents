@@ -29,6 +29,7 @@ LANE_LABELS=(
     "chamfer-feature-graph"
     "expanded-finishing"
     "sweep"
+    "loft"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -169,6 +170,9 @@ run_lane "expanded-finishing" \
 
 run_lane "sweep" \
     "$ROOT_DIR/scripts/cad/parity-sweep-ci.sh"
+
+run_lane "loft" \
+    "$ROOT_DIR/scripts/cad/parity-loft-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
