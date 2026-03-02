@@ -62,6 +62,7 @@ pub mod step_import_metadata;
 pub mod step_roundtrip;
 pub mod stl;
 pub mod tessellation;
+pub mod text_to_cad;
 pub mod topology_repair;
 pub mod validity;
 pub use error::{CadError, CadErrorCode, CadErrorEvent, CadResult};
