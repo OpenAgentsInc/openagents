@@ -428,7 +428,7 @@ pub fn paint_cad_demo_placeholder_pane(
             }
 
             if let Some(payload) = mesh_payload {
-                let selected_outline_active = selection.is_some() || hover.is_some();
+                let selected_outline_active = selection.is_some();
                 let camera_pose = if let Some(viewport_state) = variant_view {
                     CadCameraPose::from_variant(viewport_state, pane_state.projection_mode)
                 } else {
@@ -846,8 +846,8 @@ fn paint_cad_demo_basic_pane(
     );
 
     let active_variant_view = pane_state.variant_viewport(pane_state.active_variant_tile_index);
-    let selected_outline_active = active_variant_view
-        .is_some_and(|view| view.selected_ref.is_some() || view.hovered_ref.is_some());
+    let selected_outline_active =
+        active_variant_view.is_some_and(|view| view.selected_ref.is_some());
     let camera_pose = if let Some(viewport_state) = active_variant_view {
         CadCameraPose::from_variant(viewport_state, pane_state.projection_mode)
     } else {
@@ -1404,7 +1404,7 @@ fn cad_mesh_to_viewport_primitive(
             )
         })
         .collect::<Vec<_>>();
-    let show_edges = hidden_line_mode != CadHiddenLineMode::Shaded || selected_outline_active;
+    let show_edges = hidden_line_mode != CadHiddenLineMode::Shaded;
     let edges = if show_edges {
         payload
             .edges
@@ -1813,7 +1813,7 @@ mod tests {
             &payload,
             viewport,
             true,
-            CadHiddenLineMode::Shaded,
+            CadHiddenLineMode::ShadedEdges,
             default_camera_pose(),
         )
         .expect("selected projection should succeed");

@@ -340,6 +340,9 @@ pub fn handle_device_event(app: &mut App, _event_loop: &ActiveEventLoop, event: 
     let Some(state) = &mut app.state else {
         return;
     };
+    if !cad_three_d_mouse_enabled() {
+        return;
+    }
     let DeviceEvent::Motion { axis, value } = event else {
         return;
     };
@@ -362,6 +365,19 @@ pub fn handle_device_event(app: &mut App, _event_loop: &ActiveEventLoop, event: 
         state.cad_demo.three_d_mouse_status()
     ));
     state.window.request_redraw();
+}
+
+fn cad_three_d_mouse_enabled() -> bool {
+    static CAD_3D_MOUSE_ENABLED: OnceLock<bool> = OnceLock::new();
+    *CAD_3D_MOUSE_ENABLED.get_or_init(|| {
+        std::env::var("OPENAGENTS_CAD_ENABLE_3D_MOUSE")
+            .ok()
+            .map(|value| {
+                let normalized = value.trim().to_ascii_lowercase();
+                matches!(normalized.as_str(), "1" | "true" | "yes" | "on")
+            })
+            .unwrap_or(false)
+    })
 }
 
 pub fn handle_about_to_wait(app: &mut App, event_loop: &ActiveEventLoop) {
