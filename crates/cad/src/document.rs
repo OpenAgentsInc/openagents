@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::assembly::{CadAssemblyJoint, CadPartDef, CadPartInstance};
 use crate::{CadError, CadResult};
 
 /// Versioned CAD document schema version for Wave 1.
@@ -15,7 +16,7 @@ pub enum CadUnits {
 }
 
 /// Core CAD document schema.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CadDocument {
     pub schema_version: u32,
     pub document_id: String,
@@ -23,6 +24,14 @@ pub struct CadDocument {
     pub units: CadUnits,
     pub metadata: BTreeMap<String, String>,
     pub feature_ids: Vec<String>,
+    #[serde(rename = "partDefs", skip_serializing_if = "Option::is_none")]
+    pub part_defs: Option<BTreeMap<String, CadPartDef>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instances: Option<Vec<CadPartInstance>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub joints: Option<Vec<CadAssemblyJoint>>,
+    #[serde(rename = "groundInstanceId", skip_serializing_if = "Option::is_none")]
+    pub ground_instance_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub analysis_cache: Option<BTreeMap<String, String>>,
 }
@@ -37,6 +46,10 @@ impl CadDocument {
             units: CadUnits::Millimeter,
             metadata: BTreeMap::new(),
             feature_ids: Vec::new(),
+            part_defs: None,
+            instances: None,
+            joints: None,
+            ground_instance_id: None,
             analysis_cache: None,
         }
     }
@@ -66,6 +79,8 @@ impl CadDocument {
 #[cfg(test)]
 mod tests {
     use super::{CAD_DOCUMENT_SCHEMA_VERSION, CadDocument, CadUnits};
+    use crate::assembly::{CadAssemblyJoint, CadJointKind, CadPartDef, CadPartInstance};
+    use crate::kernel_math::Vec3;
     use std::collections::BTreeMap;
 
     fn golden(path: &str) -> String {
@@ -150,5 +165,76 @@ mod tests {
                 assert_eq!(parsed_document.units, CadUnits::Millimeter);
             }
         }
+    }
+
+    #[test]
+    fn assembly_fields_round_trip_is_deterministic() {
+        let mut document = CadDocument::new_empty("doc-assembly");
+        document.part_defs = Some(BTreeMap::from([
+            (
+                "base".to_string(),
+                CadPartDef {
+                    id: "base".to_string(),
+                    name: Some("Base Plate".to_string()),
+                    root: 1,
+                    default_material: Some("aluminum".to_string()),
+                },
+            ),
+            (
+                "arm".to_string(),
+                CadPartDef {
+                    id: "arm".to_string(),
+                    name: Some("Arm".to_string()),
+                    root: 2,
+                    default_material: None,
+                },
+            ),
+        ]));
+        document.instances = Some(vec![
+            CadPartInstance {
+                id: "base_inst".to_string(),
+                part_def_id: "base".to_string(),
+                name: Some("Base".to_string()),
+                transform: None,
+                material: None,
+            },
+            CadPartInstance {
+                id: "arm_inst".to_string(),
+                part_def_id: "arm".to_string(),
+                name: Some("Arm".to_string()),
+                transform: Some(crate::assembly::CadTransform3D {
+                    translation: Vec3::new(0.0, 0.0, 10.0),
+                    rotation: Vec3::new(0.0, 0.0, 0.0),
+                    scale: Vec3::new(1.0, 1.0, 1.0),
+                }),
+                material: Some("steel".to_string()),
+            },
+        ]);
+        document.joints = Some(vec![CadAssemblyJoint {
+            id: "joint.revolute.001".to_string(),
+            name: Some("Base-Arm".to_string()),
+            parent_instance_id: Some("base_inst".to_string()),
+            child_instance_id: "arm_inst".to_string(),
+            parent_anchor: Vec3::new(0.0, 0.0, 10.0),
+            child_anchor: Vec3::new(0.0, 0.0, 0.0),
+            kind: CadJointKind::Revolute {
+                axis: Vec3::new(0.0, 0.0, 1.0),
+                limits: Some((-90.0, 90.0)),
+            },
+            state: 0.0,
+        }]);
+        document.ground_instance_id = Some("base_inst".to_string());
+
+        let payload = document
+            .to_json()
+            .expect("assembly document serialization should succeed");
+        let parsed = CadDocument::from_json(&payload).expect("assembly parse should succeed");
+        assert_eq!(parsed, document);
+        assert!(payload.contains("\"partDefs\""));
+        assert!(payload.contains("\"partDefId\""));
+        assert!(payload.contains("\"parentInstanceId\""));
+        assert!(payload.contains("\"childInstanceId\""));
+        assert!(payload.contains("\"groundInstanceId\""));
+        assert!(payload.contains("\"defaultMaterial\""));
     }
 }

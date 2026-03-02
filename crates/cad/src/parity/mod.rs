@@ -1,3 +1,4 @@
+pub mod assembly_schema_parity;
 pub mod chamfer_feature_graph_parity;
 pub mod ci_artifacts;
 pub mod core_modeling_checkpoint_parity;

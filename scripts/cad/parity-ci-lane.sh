@@ -61,12 +61,14 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/sketch_fixture_equivalence_parity_manifest.json"
     "crates/cad/parity/sketch_undo_redo_parity_manifest.json"
     "crates/cad/parity/sketch_constraints_checkpoint_parity_manifest.json"
+    "crates/cad/parity/assembly_schema_parity_manifest.json"
     "crates/cad/parity/sketch_loft_parity_manifest.json"
     "crates/cad/parity/sketch_profile_validity_parity_manifest.json"
     "crates/cad/parity/sketch_revolve_parity_manifest.json"
     "crates/cad/parity/sketch_sweep_parity_manifest.json"
     "crates/cad/parity/fixtures/feature_op_hash_vcad_reference_corpus.json"
     "crates/cad/parity/fixtures/sketch_vcad_reference_corpus.json"
+    "crates/cad/parity/fixtures/assembly_schema_vcad_reference.json"
     "crates/cad/parity/fixtures/parity_fixture_corpus.json"
 )
 
