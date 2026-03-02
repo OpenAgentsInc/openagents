@@ -1,0 +1,36 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-088",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/text_to_cad_vcad_reference.json",
+  "reference_fixture_sha256": "ffc6305fccd363ebce26b43bb5a2319253a463ce991b1fbe55cab9d0e3ab40bc",
+  "reference_source": "~/code/vcad/docs/features/text-to-cad.md",
+  "reference_commit_match": true,
+  "model_profile_match": true,
+  "compact_contract_match": true,
+  "clarification_contract_match": true,
+  "deterministic_replay_match": true,
+  "snapshot": {
+    "default_model": "cad0",
+    "default_compact_hash": "4bf9456d89e474df",
+    "default_operation_count": 10,
+    "default_root_count": 1,
+    "default_generation_signature": "23d7776e9f481384",
+    "offline_model": "cad0-mini",
+    "offline_compact_hash": "afc01c1603a4701e",
+    "offline_operation_count": 6,
+    "offline_root_count": 1,
+    "offline_generation_signature": "08134c7a1ea41edc",
+    "ambiguous_code": "CAD0-AMBIGUOUS-PROMPT",
+    "ambiguous_question_count": 3
+  },
+  "deterministic_signature": "ccb5a2c058ead173",
+  "parity_contracts": [
+    "text-to-cad default profile emits cad0 prompt->compact-ir output",
+    "text-to-cad offline profile emits cad0-mini compact fallback",
+    "ambiguous prompts return deterministic clarification codes/questions",
+    "text-to-cad generation is deterministic across replay"
+  ]
+}
