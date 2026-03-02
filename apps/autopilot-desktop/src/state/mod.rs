@@ -8,3 +8,4 @@ pub mod job_inbox;
 pub mod operations;
 pub mod provider_runtime;
 pub mod swap_contract;
+pub mod swap_quote_adapter;

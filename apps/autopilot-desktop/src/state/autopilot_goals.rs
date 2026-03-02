@@ -12,6 +12,10 @@ use crate::state::goal_conditions::{
     ConditionEvaluation, GoalProgressSnapshot, evaluate_conditions,
 };
 use crate::state::swap_contract::{SwapExecutionRequest, SwapPolicy, SwapQuoteTerms};
+use crate::state::swap_quote_adapter::{
+    StablesatsQuoteClient, SwapQuoteAdapterOutcome, SwapQuoteAdapterRequest, SwapQuoteAuditReceipt,
+    build_swap_quote_audit_receipt, request_quote_with_fallback,
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum GoalObjective {
@@ -198,6 +202,8 @@ pub struct AutopilotGoalsDocumentV1 {
     pub active_goals: Vec<GoalRecord>,
     pub historical_goals: Vec<GoalRecord>,
     pub receipts: Vec<GoalExecutionReceipt>,
+    #[serde(default)]
+    pub swap_quote_audits: Vec<SwapQuoteAuditReceipt>,
 }
 
 impl Default for AutopilotGoalsDocumentV1 {
@@ -207,6 +213,7 @@ impl Default for AutopilotGoalsDocumentV1 {
             active_goals: Vec::new(),
             historical_goals: Vec::new(),
             receipts: Vec::new(),
+            swap_quote_audits: Vec::new(),
         }
     }
 }
@@ -468,6 +475,51 @@ impl AutopilotGoalsState {
         Ok(())
     }
 
+    pub fn record_swap_quote_audit(&mut self, audit: SwapQuoteAuditReceipt) -> Result<(), String> {
+        if audit.goal_id.trim().is_empty() {
+            return Err("Swap quote audit goal id cannot be empty".to_string());
+        }
+        if audit.request_id.trim().is_empty() {
+            return Err("Swap quote audit request id cannot be empty".to_string());
+        }
+        if audit.quote_id.trim().is_empty() {
+            return Err("Swap quote audit quote id cannot be empty".to_string());
+        }
+        if audit.expires_at_epoch_seconds <= audit.created_at_epoch_seconds {
+            return Err("Swap quote audit expiration must be after created_at".to_string());
+        }
+        if !self
+            .document
+            .active_goals
+            .iter()
+            .any(|goal| goal.goal_id == audit.goal_id)
+            && !self
+                .document
+                .historical_goals
+                .iter()
+                .any(|goal| goal.goal_id == audit.goal_id)
+        {
+            return Err(format!(
+                "Swap quote audit goal {} not found in active or historical goals",
+                audit.goal_id
+            ));
+        }
+
+        self.document.swap_quote_audits.push(audit.clone());
+        if self.document.swap_quote_audits.len() > 4_096 {
+            let remove_count = self.document.swap_quote_audits.len().saturating_sub(4_096);
+            self.document.swap_quote_audits.drain(0..remove_count);
+        }
+
+        self.persist_to_disk()?;
+        self.last_action = Some(format!(
+            "Recorded swap quote audit {} for goal {}",
+            audit.quote_id, audit.goal_id
+        ));
+        self.last_error = None;
+        Ok(())
+    }
+
     pub fn evaluate_active_goal_conditions(
         &self,
         goal_id: &str,
@@ -546,6 +598,28 @@ impl AutopilotGoalsState {
         goal.constraints
             .swap_policy
             .validate_quote(quote, now_epoch_seconds)
+    }
+
+    pub fn request_swap_quote_with_adapter<C: StablesatsQuoteClient>(
+        &mut self,
+        goal_id: &str,
+        request: &SwapQuoteAdapterRequest,
+        stablesats_client: &mut C,
+        fallback_quote: SwapQuoteTerms,
+    ) -> Result<SwapQuoteAdapterOutcome, String> {
+        if !self
+            .document
+            .active_goals
+            .iter()
+            .any(|goal| goal.goal_id == goal_id)
+        {
+            return Err(format!("Active goal {goal_id} not found"));
+        }
+
+        let outcome = request_quote_with_fallback(stablesats_client, request, fallback_quote);
+        let audit = build_swap_quote_audit_receipt(goal_id, request, &outcome);
+        self.record_swap_quote_audit(audit)?;
+        Ok(outcome)
     }
 
     pub fn file_path(&self) -> &PathBuf {
@@ -675,6 +749,10 @@ mod tests {
     use crate::state::goal_conditions::GoalProgressSnapshot;
     use crate::state::swap_contract::{
         SwapAmount, SwapAmountUnit, SwapDirection, SwapExecutionRequest, SwapQuoteTerms,
+    };
+    use crate::state::swap_quote_adapter::{
+        StablesatsQuoteClient, StablesatsQuoteFor, StablesatsQuoteResponse,
+        SwapQuoteAdapterRequest, SwapQuoteAuditReceipt, SwapQuoteProvider,
     };
 
     fn sample_goal(id: &str) -> GoalRecord {
@@ -1037,6 +1115,150 @@ mod tests {
             .validate_swap_quote_policy("goal-swap-quote", &quote, 500)
             .expect_err("expired quote should fail");
         assert!(expired_error.contains("expired"));
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn record_swap_quote_audit_persists_quote_metadata_for_replay() {
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch time available")
+            .as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("autopilot-goals-swap-audit-{now_nanos}.json"));
+        let mut state = AutopilotGoalsState::load_from_path(path.clone());
+        state
+            .upsert_active_goal(sample_goal("goal-swap-audit"))
+            .expect("upsert active goal should succeed");
+
+        state
+            .record_swap_quote_audit(SwapQuoteAuditReceipt {
+                audit_id: "swap-quote-audit-1".to_string(),
+                goal_id: "goal-swap-audit".to_string(),
+                request_id: "req-1".to_string(),
+                provider: SwapQuoteProvider::StablesatsQuoteService,
+                quote_id: "quote-1".to_string(),
+                direction: SwapDirection::BtcToUsd,
+                amount_in: SwapAmount {
+                    amount: 5_000,
+                    unit: SwapAmountUnit::Sats,
+                },
+                amount_out: SwapAmount {
+                    amount: 330,
+                    unit: SwapAmountUnit::Cents,
+                },
+                expires_at_epoch_seconds: 1_700_000_100,
+                immediate_execution: false,
+                executed: false,
+                accepted_via_adapter: false,
+                fallback_reason: None,
+                created_at_epoch_seconds: 1_700_000_000,
+            })
+            .expect("swap quote audit should persist");
+
+        let reloaded = AutopilotGoalsState::load_from_path(path.clone());
+        assert_eq!(reloaded.document.swap_quote_audits.len(), 1);
+        assert_eq!(reloaded.document.swap_quote_audits[0].quote_id, "quote-1");
+        assert_eq!(
+            reloaded.document.swap_quote_audits[0].expires_at_epoch_seconds,
+            1_700_000_100
+        );
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[derive(Default)]
+    struct GoalsTestStablesatsClient {
+        buy_quote: Option<Result<StablesatsQuoteResponse, String>>,
+    }
+
+    impl StablesatsQuoteClient for GoalsTestStablesatsClient {
+        fn get_quote_to_buy_usd(
+            &mut self,
+            _quote_for: StablesatsQuoteFor,
+            _immediate_execution: bool,
+        ) -> Result<StablesatsQuoteResponse, String> {
+            self.buy_quote
+                .clone()
+                .unwrap_or_else(|| Err("missing buy quote".to_string()))
+        }
+
+        fn get_quote_to_sell_usd(
+            &mut self,
+            _quote_for: StablesatsQuoteFor,
+            _immediate_execution: bool,
+        ) -> Result<StablesatsQuoteResponse, String> {
+            Err("unused in this test".to_string())
+        }
+
+        fn accept_quote(&mut self, _quote_id: &str) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn request_swap_quote_with_adapter_records_audit_and_fallback() {
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch time available")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "autopilot-goals-swap-adapter-request-{now_nanos}.json"
+        ));
+        let mut state = AutopilotGoalsState::load_from_path(path.clone());
+        state
+            .upsert_active_goal(sample_goal("goal-swap-adapter"))
+            .expect("upsert active goal should succeed");
+
+        let request = SwapQuoteAdapterRequest {
+            request_id: "req-swap-adapter".to_string(),
+            direction: SwapDirection::BtcToUsd,
+            amount: SwapAmount {
+                amount: 5_000,
+                unit: SwapAmountUnit::Sats,
+            },
+            immediate_execution: false,
+            now_epoch_seconds: 1_700_000_000,
+        };
+        let fallback_quote = SwapQuoteTerms {
+            quote_id: "fallback-quote-1".to_string(),
+            direction: SwapDirection::BtcToUsd,
+            amount_in: SwapAmount {
+                amount: 5_000,
+                unit: SwapAmountUnit::Sats,
+            },
+            amount_out: SwapAmount {
+                amount: 330,
+                unit: SwapAmountUnit::Cents,
+            },
+            expires_at_epoch_seconds: 1_700_000_100,
+            immediate_execution: false,
+            fee_sats: 0,
+            fee_bps: 0,
+            slippage_bps: 0,
+        };
+        let mut stablesats_client = GoalsTestStablesatsClient {
+            buy_quote: Some(Err("stablesats path unavailable".to_string())),
+        };
+
+        let outcome = state
+            .request_swap_quote_with_adapter(
+                "goal-swap-adapter",
+                &request,
+                &mut stablesats_client,
+                fallback_quote.clone(),
+            )
+            .expect("adapter call should complete with fallback");
+        assert_eq!(outcome.quote.quote_id, fallback_quote.quote_id);
+        assert_eq!(outcome.provider, SwapQuoteProvider::BlinkFallback);
+
+        let reloaded = AutopilotGoalsState::load_from_path(path.clone());
+        assert_eq!(reloaded.document.swap_quote_audits.len(), 1);
+        assert_eq!(
+            reloaded.document.swap_quote_audits[0].quote_id,
+            fallback_quote.quote_id
+        );
 
         let _ = std::fs::remove_file(path);
     }
