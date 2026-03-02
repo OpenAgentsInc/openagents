@@ -107,12 +107,28 @@ pub(super) fn drain_stable_sats_blink_worker_updates(state: &mut RenderState) ->
                 {
                     continue;
                 }
-                state.stable_sats_simulation.apply_live_snapshot(
+                let wallet_snapshots = snapshot
+                    .wallet_snapshots
+                    .iter()
+                    .map(|wallet| {
+                        (
+                            wallet.owner_id.clone(),
+                            wallet.btc_balance_sats,
+                            wallet.usd_balance_cents,
+                            wallet.source_ref.clone(),
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                let wallet_failures = snapshot
+                    .wallet_failures
+                    .iter()
+                    .map(|failure| (failure.owner_id.clone(), failure.error.clone()))
+                    .collect::<Vec<_>>();
+                state.stable_sats_simulation.apply_live_wallet_snapshots(
                     snapshot.now_epoch_seconds,
-                    snapshot.btc_balance_sats,
-                    snapshot.usd_balance_cents,
                     snapshot.price_usd_cents_per_btc,
-                    snapshot.source_ref.as_str(),
+                    wallet_snapshots.as_slice(),
+                    wallet_failures.as_slice(),
                 );
                 state.provider_runtime.last_result =
                     state.stable_sats_simulation.last_action.clone();

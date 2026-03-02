@@ -3963,7 +3963,11 @@ mod tests {
             state.agents[0].owner_kind,
             crate::app_state::StableSatsWalletOwnerKind::Operator
         );
-        assert!(state.agents[0].credential_key_name.starts_with("BLINK_API_KEY"));
+        assert!(
+            state.agents[0]
+                .credential_key_name
+                .starts_with("BLINK_API_KEY")
+        );
         assert_eq!(
             state.agents[1].owner_kind,
             crate::app_state::StableSatsWalletOwnerKind::SovereignAgent
@@ -3992,6 +3996,50 @@ mod tests {
                 .iter()
                 .all(|entry| entry.transfer_ref.starts_with("blink:live:transfer:"))
         );
+    }
+
+    #[test]
+    fn stablesats_live_wallet_snapshots_apply_partial_refresh_without_global_failure() {
+        let mut state = StableSatsSimulationPaneState::default();
+        state.set_mode(crate::app_state::StableSatsSimulationMode::RealBlink);
+        state.apply_live_wallet_snapshots(
+            1_761_921_260,
+            8_600_000,
+            &[
+                (
+                    "operator:autopilot".to_string(),
+                    1_500,
+                    80,
+                    "btc:op usd:op".to_string(),
+                ),
+                (
+                    "sa:wallet-1".to_string(),
+                    2_200,
+                    0,
+                    "btc:sa1 usd:sa1".to_string(),
+                ),
+            ],
+            &[(
+                "sa:wallet-2".to_string(),
+                "missing secure credential".to_string(),
+            )],
+        );
+
+        assert_eq!(state.load_state, crate::app_state::PaneLoadState::Ready);
+        assert_eq!(state.agents[0].btc_balance_sats, 1_500);
+        assert_eq!(state.agents[0].usd_balance_cents, 80);
+        assert_eq!(state.agents[1].btc_balance_sats, 2_200);
+        assert_eq!(
+            state.agents[2].last_switch_summary,
+            "refresh failed: missing secure credential"
+        );
+        assert!(
+            state
+                .last_error
+                .as_deref()
+                .is_some_and(|value| value.contains("1 wallet error"))
+        );
+        assert!(state.transfer_ledger.len() >= 2);
     }
 
     #[test]

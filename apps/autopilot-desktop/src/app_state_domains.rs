@@ -3636,100 +3636,155 @@ impl StableSatsSimulationPaneState {
         Ok(())
     }
 
-    pub fn apply_live_snapshot(
+    pub fn apply_live_wallet_snapshots(
         &mut self,
         now_epoch_seconds: u64,
-        btc_balance_sats: u64,
-        usd_balance_cents: u64,
         price_usd_cents_per_btc: u64,
-        source_ref: &str,
+        wallet_snapshots: &[(String, u64, u64, String)],
+        wallet_failures: &[(String, String)],
     ) {
+        if self.agents.len() < 3 {
+            self.agents = Self::default_real_wallets();
+        }
         let round = self.rounds_run.saturating_add(1);
-        let prev_btc = self.total_btc_balance_sats();
-        let prev_usd = self.total_usd_balance_cents();
-        let btc_delta = prev_btc.abs_diff(btc_balance_sats);
-        let usd_delta = prev_usd.abs_diff(usd_balance_cents);
-        let switched = btc_delta > 0 || usd_delta > 0;
-        let operator_index = self
-            .agents
-            .iter()
-            .position(|wallet| wallet.owner_kind == StableSatsWalletOwnerKind::Operator)
-            .unwrap_or(0);
-        let prior_switches = self
-            .agents
-            .get(operator_index)
-            .map(|agent| agent.switch_count)
-            .unwrap_or(0);
-        let next_switches = if switched {
-            prior_switches.saturating_add(1)
-        } else {
-            prior_switches
-        };
-        let last_switch_summary = if switched {
-            format!(
-                "delta btc={} sats usd={}",
-                btc_delta,
-                Self::format_usd_cents(usd_delta)
-            )
-        } else {
-            "no balance change".to_string()
-        };
+        let mut converted_sats_round = 0_u64;
+        let mut converted_usd_round = 0_u64;
+        let mut refreshed_wallets = 0_u32;
+        let mut failed_wallets = 0_u32;
 
         self.mode = StableSatsSimulationMode::RealBlink;
         self.live_refresh_pending = false;
         self.active_live_refresh_request_id = None;
         self.rounds_run = round;
         self.price_usd_cents_per_btc = price_usd_cents_per_btc.max(1);
-        self.total_converted_sats = self.total_converted_sats.saturating_add(btc_delta);
-        self.total_converted_usd_cents = self.total_converted_usd_cents.saturating_add(usd_delta);
         self.last_settlement_ref = Some(format!("blink:live:settlement:{round:04}"));
-        if self.agents.len() < 3 {
-            self.agents = Self::default_real_wallets();
-        }
-        if let Some(operator_wallet) = self.agents.get_mut(operator_index) {
-            operator_wallet.btc_balance_sats = btc_balance_sats;
-            operator_wallet.usd_balance_cents = usd_balance_cents;
-            operator_wallet.active_wallet = if usd_balance_cents > 0 {
-                StableSatsWalletMode::Usd
-            } else {
-                StableSatsWalletMode::Btc
-            };
-            operator_wallet.switch_count = next_switches;
-            operator_wallet.last_switch_summary = last_switch_summary;
-        }
 
-        if switched {
-            let (from_wallet, to_wallet, asset, amount) = if btc_balance_sats < prev_btc {
-                (
-                    "autopilot-user:BTC".to_string(),
-                    "autopilot-user:USD".to_string(),
-                    StableSatsTransferAsset::BtcSats,
-                    btc_delta,
-                )
-            } else {
-                (
-                    "autopilot-user:USD".to_string(),
-                    "autopilot-user:BTC".to_string(),
-                    StableSatsTransferAsset::UsdCents,
-                    usd_delta,
-                )
+        for (owner_id, btc_balance_sats, usd_balance_cents, source_ref) in wallet_snapshots {
+            let Some(wallet_index) = self
+                .agents
+                .iter()
+                .position(|wallet| wallet.owner_id == *owner_id)
+            else {
+                self.push_event(
+                    "BLINK-LEDGER",
+                    &format!("blink:live:unmapped:{round:04}:{owner_id}"),
+                    format!("received live snapshot for unmapped wallet owner_id={owner_id}"),
+                );
+                continue;
             };
-            self.push_transfer_ledger_entry(
-                now_epoch_seconds,
-                format!("blink:live:transfer:{round:04}:{now_epoch_seconds}"),
-                from_wallet,
-                to_wallet,
-                asset,
-                amount,
-                0,
-                StableSatsTransferStatus::Settled,
+
+            let wallet_name = self.agents[wallet_index].agent_name.clone();
+            let prev_btc = self.agents[wallet_index].btc_balance_sats;
+            let prev_usd = self.agents[wallet_index].usd_balance_cents;
+            let btc_delta = prev_btc.abs_diff(*btc_balance_sats);
+            let usd_delta = prev_usd.abs_diff(*usd_balance_cents);
+            let switched = btc_delta > 0 || usd_delta > 0;
+
+            {
+                let wallet = &mut self.agents[wallet_index];
+                wallet.btc_balance_sats = *btc_balance_sats;
+                wallet.usd_balance_cents = *usd_balance_cents;
+                wallet.active_wallet = if *usd_balance_cents > 0 && *btc_balance_sats == 0 {
+                    StableSatsWalletMode::Usd
+                } else if *btc_balance_sats > 0 && *usd_balance_cents == 0 {
+                    StableSatsWalletMode::Btc
+                } else {
+                    wallet.active_wallet
+                };
+                if switched {
+                    wallet.switch_count = wallet.switch_count.saturating_add(1);
+                    wallet.last_switch_summary = format!(
+                        "delta btc={} sats usd={}",
+                        btc_delta,
+                        Self::format_usd_cents(usd_delta)
+                    );
+                } else {
+                    wallet.last_switch_summary = "no balance change".to_string();
+                }
+            }
+
+            refreshed_wallets = refreshed_wallets.saturating_add(1);
+            converted_sats_round = converted_sats_round.saturating_add(btc_delta);
+            converted_usd_round = converted_usd_round.saturating_add(usd_delta);
+
+            let wallet_ref = format!("blink:live:wallet:{round:04}:{wallet_index:02}");
+            self.push_event(
+                "BLINK-LEDGER",
+                &wallet_ref,
                 format!(
-                    "live delta btc={} sats usd={}",
-                    btc_delta,
-                    Self::format_usd_cents(usd_delta)
+                    "{} balances btc={} sats usd={} ({})",
+                    wallet_name,
+                    btc_balance_sats,
+                    Self::format_usd_cents(*usd_balance_cents),
+                    source_ref
                 ),
             );
+
+            if switched {
+                let (from_wallet, to_wallet, asset, amount) = if *btc_balance_sats < prev_btc {
+                    (
+                        format!("{wallet_name}:BTC"),
+                        format!("{wallet_name}:USD"),
+                        StableSatsTransferAsset::BtcSats,
+                        btc_delta,
+                    )
+                } else {
+                    (
+                        format!("{wallet_name}:USD"),
+                        format!("{wallet_name}:BTC"),
+                        StableSatsTransferAsset::UsdCents,
+                        usd_delta,
+                    )
+                };
+                self.push_transfer_ledger_entry(
+                    now_epoch_seconds,
+                    format!("blink:live:transfer:{round:04}:{wallet_index:02}"),
+                    from_wallet,
+                    to_wallet,
+                    asset,
+                    amount,
+                    0,
+                    StableSatsTransferStatus::Settled,
+                    format!(
+                        "{} live delta btc={} sats usd={}",
+                        wallet_name,
+                        btc_delta,
+                        Self::format_usd_cents(usd_delta)
+                    ),
+                );
+            }
         }
+
+        for (owner_id, error) in wallet_failures {
+            failed_wallets = failed_wallets.saturating_add(1);
+            if let Some(wallet_index) = self
+                .agents
+                .iter()
+                .position(|wallet| wallet.owner_id == *owner_id)
+            {
+                let wallet_owner_id = self.agents[wallet_index].owner_id.clone();
+                let wallet_name = self.agents[wallet_index].agent_name.clone();
+                self.agents[wallet_index].last_switch_summary = format!("refresh failed: {error}");
+                self.push_event(
+                    "BLINK-LEDGER",
+                    &format!("blink:live:error:{round:04}:{wallet_owner_id}"),
+                    format!("{wallet_name} refresh failed: {error}"),
+                );
+            } else {
+                self.push_event(
+                    "BLINK-LEDGER",
+                    &format!("blink:live:error:{round:04}:{owner_id}"),
+                    format!("wallet refresh failed for unmapped owner_id={owner_id}: {error}"),
+                );
+            }
+        }
+
+        self.total_converted_sats = self
+            .total_converted_sats
+            .saturating_add(converted_sats_round);
+        self.total_converted_usd_cents = self
+            .total_converted_usd_cents
+            .saturating_add(converted_usd_round);
 
         self.price_history_usd_cents_per_btc
             .push(self.price_usd_cents_per_btc);
@@ -3740,34 +3795,27 @@ impl StableSatsSimulationPaneState {
                 .saturating_sub(18);
             self.price_history_usd_cents_per_btc.drain(0..overflow);
         }
-        self.converted_sats_history.push(btc_delta);
+        self.converted_sats_history.push(converted_sats_round);
         if self.converted_sats_history.len() > 18 {
             let overflow = self.converted_sats_history.len().saturating_sub(18);
             self.converted_sats_history.drain(0..overflow);
         }
 
         let price_ref = format!("blink:live:price:{round:04}:{now_epoch_seconds}");
+        let source_summary = wallet_snapshots
+            .iter()
+            .map(|(owner_id, _btc, _usd, _source_ref)| owner_id.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
         self.push_event(
             "BLINK-PRICE",
             &price_ref,
             format!(
-                "live BTC/USD {} from {}",
+                "live BTC/USD {} for [{}]",
                 Self::format_usd_cents(self.price_usd_cents_per_btc),
-                source_ref
+                source_summary
             ),
         );
-        if switched {
-            let swap_ref = format!("blink:live:delta:{round:04}:{now_epoch_seconds}");
-            self.push_event(
-                "BLINK-SWAP",
-                &swap_ref,
-                format!(
-                    "observed balance delta btc={} sats usd={}",
-                    btc_delta,
-                    Self::format_usd_cents(usd_delta)
-                ),
-            );
-        }
         let ledger_ref = self
             .last_settlement_ref
             .clone()
@@ -3776,20 +3824,58 @@ impl StableSatsSimulationPaneState {
             "BLINK-LEDGER",
             &ledger_ref,
             format!(
-                "live balances btc={} sats usd={} ({})",
-                btc_balance_sats,
-                Self::format_usd_cents(usd_balance_cents),
-                source_ref
+                "live refresh settled wallets={} failed={} aggregate_btc={} sats aggregate_usd={}",
+                refreshed_wallets,
+                failed_wallets,
+                self.total_btc_balance_sats(),
+                Self::format_usd_cents(self.total_usd_balance_cents()),
             ),
         );
 
-        self.load_state = PaneLoadState::Ready;
-        self.last_error = None;
+        self.load_state = if refreshed_wallets == 0 {
+            PaneLoadState::Error
+        } else {
+            PaneLoadState::Ready
+        };
+        self.last_error = if failed_wallets == 0 {
+            None
+        } else {
+            Some(format!(
+                "Live refresh completed with {} wallet error(s)",
+                failed_wallets
+            ))
+        };
         self.last_action = Some(format!(
-            "Round {round}: loaded live Blink operator wallet balances (btc={} sats, usd={})",
-            btc_balance_sats,
-            Self::format_usd_cents(usd_balance_cents)
+            "Round {round}: live refresh updated {} wallet(s) with {} failure(s)",
+            refreshed_wallets, failed_wallets
         ));
+    }
+
+    pub fn apply_live_snapshot(
+        &mut self,
+        now_epoch_seconds: u64,
+        btc_balance_sats: u64,
+        usd_balance_cents: u64,
+        price_usd_cents_per_btc: u64,
+        source_ref: &str,
+    ) {
+        let operator_owner_id = self
+            .agents
+            .iter()
+            .find(|wallet| wallet.owner_kind == StableSatsWalletOwnerKind::Operator)
+            .map(|wallet| wallet.owner_id.clone())
+            .unwrap_or_else(|| "operator:autopilot".to_string());
+        self.apply_live_wallet_snapshots(
+            now_epoch_seconds,
+            price_usd_cents_per_btc,
+            &[(
+                operator_owner_id,
+                btc_balance_sats,
+                usd_balance_cents,
+                source_ref.to_string(),
+            )],
+            &[],
+        );
     }
 
     pub fn reset(&mut self) {
