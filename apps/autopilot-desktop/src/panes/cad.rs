@@ -730,6 +730,31 @@ pub fn paint_cad_demo_placeholder_pane(
                     theme::text::MUTED,
                 ));
             }
+        } else if let Some((inspect_title, inspect_lines)) =
+            assembly_selection_inspect_lines(pane_state)
+        {
+            let inspector_origin = Point::new(
+                timeline_panel.origin.x + 6.0,
+                (timeline_panel.max_y() - 52.0).max(timeline_panel.origin.y + 14.0),
+            );
+            paint.scene.draw_text(paint.text.layout(
+                &format!("{inspect_title}:"),
+                inspector_origin,
+                9.0,
+                theme::text::SECONDARY,
+            ));
+            for (offset, line) in inspect_lines.iter().take(5).enumerate() {
+                let y = inspector_origin.y + 10.0 + offset as f32 * 9.0;
+                if y + 8.0 > timeline_panel.max_y() {
+                    break;
+                }
+                paint.scene.draw_text(paint.text.layout(
+                    line,
+                    Point::new(inspector_origin.x, y),
+                    8.0,
+                    theme::text::MUTED,
+                ));
+            }
         } else if pane_state.timeline_selected_index.is_some() {
             let inspector_origin = Point::new(
                 timeline_panel.origin.x + 6.0,
@@ -1255,6 +1280,77 @@ fn selection_inspect_lines(pane_state: &CadDemoPaneState) -> Option<(String, Vec
     }
 }
 
+fn assembly_selection_inspect_lines(
+    pane_state: &CadDemoPaneState,
+) -> Option<(String, Vec<String>)> {
+    if let Some(joint_id) = pane_state.assembly_ui_state.selected_joint_id.as_deref()
+        && let Some(joint) = pane_state
+            .assembly_schema
+            .joints
+            .iter()
+            .find(|joint| joint.id == joint_id)
+    {
+        let kind = match joint.kind {
+            openagents_cad::assembly::CadJointKind::Fixed => "Fixed",
+            openagents_cad::assembly::CadJointKind::Revolute { .. } => "Revolute",
+            openagents_cad::assembly::CadJointKind::Slider { .. } => "Slider",
+            openagents_cad::assembly::CadJointKind::Cylindrical { .. } => "Cylindrical",
+            openagents_cad::assembly::CadJointKind::Ball => "Ball",
+        };
+        let semantics = joint.resolve_state_semantics(joint.state);
+        let limits = semantics
+            .limits
+            .map(|(lower, upper)| format!("[{lower:.1}, {upper:.1}] {}", semantics.state_unit))
+            .unwrap_or_else(|| "none".to_string());
+        return Some((
+            "Assembly Joint".to_string(),
+            vec![
+                format!("Joint: {}", joint.id),
+                format!("Kind: {kind}"),
+                format!(
+                    "State: {:.3} {}",
+                    semantics.effective_state, semantics.state_unit
+                ),
+                format!("Limits: {limits}"),
+                format!(
+                    "Parent: {} Child: {}",
+                    joint.parent_instance_id.as_deref().unwrap_or("world"),
+                    joint.child_instance_id
+                ),
+            ],
+        ));
+    }
+
+    if let Some(instance_id) = pane_state.assembly_ui_state.selected_instance_id.as_deref()
+        && let Some(instance) = pane_state
+            .assembly_schema
+            .instances
+            .iter()
+            .find(|instance| instance.id == instance_id)
+    {
+        let transform = instance
+            .transform
+            .unwrap_or_else(openagents_cad::assembly::CadTransform3D::identity);
+        let is_ground =
+            pane_state.assembly_schema.ground_instance_id.as_deref() == Some(instance_id);
+        return Some((
+            "Assembly Instance".to_string(),
+            vec![
+                format!("Instance: {}", instance.id),
+                format!("PartDef: {}", instance.part_def_id),
+                format!("Name: {}", instance.name.as_deref().unwrap_or("-")),
+                format!(
+                    "T: ({:.1}, {:.1}, {:.1}) mm",
+                    transform.translation.x, transform.translation.y, transform.translation.z
+                ),
+                format!("Ground: {}", if is_ground { "yes" } else { "no" }),
+            ],
+        ));
+    }
+
+    None
+}
+
 fn parse_entity_index(entity_id: &str, prefix: &str) -> Option<usize> {
     let value = entity_id.strip_prefix(prefix)?.strip_prefix('.')?;
     value.parse::<usize>().ok()
@@ -1516,10 +1612,10 @@ fn styled_fill_color(base: [f32; 4], mode: CadHiddenLineMode) -> [f32; 4] {
 #[cfg(test)]
 mod tests {
     use super::{
-        CadCameraPose, cad_mesh_to_viewport_primitive, engineering_overlay_bounds,
-        engineering_overlay_lines, footer_summary_line, placeholder_layout,
-        selection_inspect_lines, tile_caption, truncate_with_ellipsis, variant_tile_bounds,
-        variant_tile_index_at_point,
+        CadCameraPose, assembly_selection_inspect_lines, cad_mesh_to_viewport_primitive,
+        engineering_overlay_bounds, engineering_overlay_lines, footer_summary_line,
+        placeholder_layout, selection_inspect_lines, tile_caption, truncate_with_ellipsis,
+        variant_tile_bounds, variant_tile_index_at_point,
     };
     use openagents_cad::analysis::{DENSITY_ALUMINUM_6061_KG_M3, estimate_body_properties};
     use openagents_cad::contracts::CadSelectionKind;
@@ -1969,6 +2065,45 @@ mod tests {
         assert_eq!(edge_lines.0, "Edge Inspect");
         assert!(edge_lines.1.iter().any(|line| line.contains("Length")));
         assert!(edge_lines.1.iter().any(|line| line.contains("Type")));
+    }
+
+    #[test]
+    fn assembly_selection_inspect_lines_show_instance_details() {
+        let mut state = CadDemoPaneState::default();
+        state
+            .select_assembly_instance("arm-1")
+            .expect("select known assembly instance");
+
+        let (title, lines) =
+            assembly_selection_inspect_lines(&state).expect("assembly instance inspect lines");
+        assert_eq!(title, "Assembly Instance");
+        assert!(lines.iter().any(|line| line.contains("Instance: arm-1")));
+        assert!(lines.iter().any(|line| line.contains("PartDef: arm")));
+        assert!(lines.iter().any(|line| line.contains("Ground: no")));
+    }
+
+    #[test]
+    fn assembly_selection_inspect_lines_show_joint_edit_state() {
+        let mut state = CadDemoPaneState::default();
+        state
+            .select_assembly_joint("joint.hinge")
+            .expect("select known assembly joint");
+        let semantics = state
+            .set_selected_assembly_joint_state(120.0)
+            .expect("joint state edit should succeed");
+        assert!(semantics.was_clamped);
+        assert_eq!(semantics.effective_state, 90.0);
+
+        let (title, lines) =
+            assembly_selection_inspect_lines(&state).expect("assembly joint inspect lines");
+        assert_eq!(title, "Assembly Joint");
+        assert!(lines.iter().any(|line| line.contains("Joint: joint.hinge")));
+        assert!(lines.iter().any(|line| line.contains("State: 90.000 deg")));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("Limits: [-90.0, 90.0] deg"))
+        );
     }
 
     #[test]

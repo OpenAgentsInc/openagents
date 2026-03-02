@@ -4306,6 +4306,45 @@ mod tests {
     }
 
     #[test]
+    fn cad_assembly_selection_and_editing_are_deterministic() {
+        let mut first = CadDemoPaneState::default();
+        let mut second = CadDemoPaneState::default();
+
+        for state in [&mut first, &mut second] {
+            state
+                .select_assembly_instance("arm-1")
+                .expect("instance selection should succeed");
+            state
+                .rename_selected_assembly_instance("Arm Segment".to_string())
+                .expect("instance rename should succeed");
+            state
+                .select_assembly_joint("joint.hinge")
+                .expect("joint selection should succeed");
+            let semantics = state
+                .set_selected_assembly_joint_state(120.0)
+                .expect("joint state edit should succeed");
+            assert!(semantics.was_clamped);
+            assert_eq!(semantics.effective_state, 90.0);
+        }
+
+        let first_name = first
+            .assembly_schema
+            .instances
+            .iter()
+            .find(|instance| instance.id == "arm-1")
+            .and_then(|instance| instance.name.clone());
+        let second_name = second
+            .assembly_schema
+            .instances
+            .iter()
+            .find(|instance| instance.id == "arm-1")
+            .and_then(|instance| instance.name.clone());
+        assert_eq!(first_name.as_deref(), Some("Arm Segment"));
+        assert_eq!(first_name, second_name);
+        assert_eq!(first.assembly_ui_state, second.assembly_ui_state);
+    }
+
+    #[test]
     fn cad_snap_modes_and_point_snapping_are_deterministic() {
         let mut first = CadDemoPaneState::default();
         let mut second = CadDemoPaneState::default();

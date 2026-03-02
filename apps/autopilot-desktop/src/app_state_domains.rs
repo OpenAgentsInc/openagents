@@ -507,6 +507,8 @@ pub struct CadDemoPaneState {
     pub timeline_selected_index: Option<usize>,
     pub timeline_scroll_offset: usize,
     pub selected_feature_params: Vec<(String, String)>,
+    pub assembly_schema: openagents_cad::assembly::CadAssemblySchema,
+    pub assembly_ui_state: openagents_cad::assembly::CadAssemblyUiState,
     pub dimensions: Vec<CadDimensionState>,
     pub dimension_edit: Option<CadDimensionEditState>,
     pub context_menu: CadContextMenuState,
@@ -1285,6 +1287,62 @@ impl Default for CadDemoPaneState {
                 max_mm: 20.0,
             },
         ];
+        let assembly_schema = openagents_cad::assembly::CadAssemblySchema {
+            part_defs: std::collections::BTreeMap::from([
+                (
+                    "base".to_string(),
+                    openagents_cad::assembly::CadPartDef {
+                        id: "base".to_string(),
+                        name: Some("Base".to_string()),
+                        root: 1,
+                        default_material: Some("aluminum".to_string()),
+                    },
+                ),
+                (
+                    "arm".to_string(),
+                    openagents_cad::assembly::CadPartDef {
+                        id: "arm".to_string(),
+                        name: Some("Arm".to_string()),
+                        root: 2,
+                        default_material: Some("steel".to_string()),
+                    },
+                ),
+            ]),
+            instances: vec![
+                openagents_cad::assembly::CadPartInstance {
+                    id: "base-1".to_string(),
+                    part_def_id: "base".to_string(),
+                    name: Some("Base".to_string()),
+                    transform: Some(openagents_cad::assembly::CadTransform3D::identity()),
+                    material: None,
+                },
+                openagents_cad::assembly::CadPartInstance {
+                    id: "arm-1".to_string(),
+                    part_def_id: "arm".to_string(),
+                    name: Some("Arm".to_string()),
+                    transform: Some(openagents_cad::assembly::CadTransform3D {
+                        translation: openagents_cad::kernel_math::Vec3::new(10.0, 0.0, 0.0),
+                        rotation: openagents_cad::kernel_math::Vec3::new(0.0, 0.0, 0.0),
+                        scale: openagents_cad::kernel_math::Vec3::new(1.0, 1.0, 1.0),
+                    }),
+                    material: None,
+                },
+            ],
+            joints: vec![openagents_cad::assembly::CadAssemblyJoint {
+                id: "joint.hinge".to_string(),
+                name: Some("Hinge".to_string()),
+                parent_instance_id: Some("base-1".to_string()),
+                child_instance_id: "arm-1".to_string(),
+                parent_anchor: openagents_cad::kernel_math::Vec3::new(0.0, 0.0, 0.0),
+                child_anchor: openagents_cad::kernel_math::Vec3::new(0.0, 0.0, 0.0),
+                kind: openagents_cad::assembly::CadJointKind::Revolute {
+                    axis: openagents_cad::kernel_math::Vec3::new(0.0, 0.0, 1.0),
+                    limits: Some((-90.0, 90.0)),
+                },
+                state: 0.0,
+            }],
+            ground_instance_id: Some("base-1".to_string()),
+        };
         let session_id = "cad.session.local".to_string();
         let document_id = "cad.doc.demo-rack".to_string();
         let document_created_event = openagents_cad::events::CadEvent::new_with_key(
@@ -1363,6 +1421,8 @@ impl Default for CadDemoPaneState {
             timeline_selected_index: None,
             timeline_scroll_offset: 0,
             selected_feature_params: Vec::new(),
+            assembly_schema,
+            assembly_ui_state: openagents_cad::assembly::CadAssemblyUiState::default(),
             dimensions,
             dimension_edit: None,
             context_menu: CadContextMenuState::default(),
@@ -1543,6 +1603,38 @@ impl CadDemoPaneState {
             .iter()
             .find(|dimension| dimension.dimension_id == dimension_id)
             .map(|dimension| dimension.value_mm)
+    }
+
+    pub fn select_assembly_instance(&mut self, instance_id: &str) -> Result<(), String> {
+        self.assembly_ui_state
+            .select_instance(&self.assembly_schema, instance_id)
+            .map_err(|error| error.to_string())
+    }
+
+    pub fn select_assembly_joint(&mut self, joint_id: &str) -> Result<(), String> {
+        self.assembly_ui_state
+            .select_joint(&self.assembly_schema, joint_id)
+            .map_err(|error| error.to_string())
+    }
+
+    pub fn rename_selected_assembly_instance(&mut self, name: String) -> Result<(), String> {
+        self.assembly_ui_state
+            .rename_selected_instance(&mut self.assembly_schema, name)
+            .map_err(|error| error.to_string())
+    }
+
+    pub fn set_selected_assembly_joint_state(
+        &mut self,
+        requested_state: f64,
+    ) -> Result<openagents_cad::assembly::CadJointStateSemantics, String> {
+        self.assembly_ui_state
+            .set_selected_joint_state(&mut self.assembly_schema, requested_state)
+            .map_err(|error| error.to_string())
+    }
+
+    pub fn sync_assembly_ui_selection(&mut self) {
+        self.assembly_ui_state
+            .sync_with_schema(&self.assembly_schema);
     }
 
     pub fn set_variant_analysis_snapshot(
