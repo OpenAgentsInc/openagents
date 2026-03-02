@@ -58,6 +58,17 @@ pub enum CadStepCheckerBackend {
     OpenCascadeCommand { program: String, args: Vec<String> },
 }
 
+/// Count STEP entity type occurrences (including complex-entity typed segments).
+pub fn collect_step_entity_type_counts(step_text: &str) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::<String, usize>::new();
+    for (_id, payload) in parse_step_entities(step_text) {
+        for entity_type in parse_step_entity_type_names(&payload) {
+            *counts.entry(entity_type).or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
 /// Run structural checker directly on STEP text.
 pub fn check_step_text_structural(step_text: &str, source: &str) -> CadStepCheckerReport {
     let entities = parse_step_entities(step_text);
@@ -80,16 +91,19 @@ pub fn check_step_text_structural(step_text: &str, source: &str) -> CadStepCheck
     let mut signed_volume_mm3 = 0.0f64;
 
     for (_id, payload) in entities {
-        if payload.starts_with("FACETED_BREP(") || payload.starts_with("MANIFOLD_SOLID_BREP(") {
+        let entity_types = parse_step_entity_type_names(&payload);
+        let has_type = |needle: &str| entity_types.iter().any(|entity_type| entity_type == needle);
+
+        if has_type("FACETED_BREP") || has_type("MANIFOLD_SOLID_BREP") {
             solid_count = solid_count.saturating_add(1);
         }
-        if payload.starts_with("CLOSED_SHELL(") {
+        if has_type("CLOSED_SHELL") || has_type("OPEN_SHELL") {
             shell_count = shell_count.saturating_add(1);
         }
-        if payload.starts_with("FACE(") {
+        if has_type("FACE") || has_type("ADVANCED_FACE") {
             face_count = face_count.saturating_add(1);
         }
-        if payload.starts_with("POLY_LOOP((") {
+        if has_type("POLY_LOOP") {
             poly_loop_count = poly_loop_count.saturating_add(1);
             if let Some(loop_refs) = parse_poly_loop_refs(&payload) {
                 if loop_refs.len() >= 3 {
@@ -173,8 +187,21 @@ pub fn check_step_text_structural(step_text: &str, source: &str) -> CadStepCheck
             message: format!(
                 "shell count is insufficient for solids: solids={solid_count} shells={shell_count}"
             ),
-            remediation_hint: "ensure each solid references a CLOSED_SHELL entity".to_string(),
+            remediation_hint: "ensure each solid references a CLOSED_SHELL or OPEN_SHELL entity"
+                .to_string(),
             count: (solid_count.saturating_sub(shell_count)).max(1) as u64,
+        });
+    }
+
+    if face_count == 0 {
+        diagnostics.push(CadStepCheckerDiagnostic {
+            code: "STEP_MISSING_FACE".to_string(),
+            severity: CadStepCheckerSeverity::Error,
+            message: "no face entities found (expected FACE or ADVANCED_FACE)".to_string(),
+            remediation_hint:
+                "export topology that includes FACE/ADVANCED_FACE entities before import"
+                    .to_string(),
+            count: 1,
         });
     }
 
@@ -301,13 +328,46 @@ fn parse_step_entities(step_text: &str) -> Vec<(u64, String)> {
     entities
 }
 
+fn parse_step_entity_type_names(payload: &str) -> Vec<String> {
+    let mut entity_types = Vec::<String>::new();
+    let bytes = payload.as_bytes();
+    let mut index = 0usize;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_' {
+            let start = index;
+            index += 1;
+            while index < bytes.len() {
+                let byte = bytes[index];
+                if byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_' {
+                    index += 1;
+                    continue;
+                }
+                break;
+            }
+            if index < bytes.len() && bytes[index] == b'(' {
+                let token = payload[start..index].trim();
+                if token.chars().any(|char| char.is_ascii_uppercase()) {
+                    entity_types.push(token.to_string());
+                }
+            }
+            continue;
+        }
+        index += 1;
+    }
+    entity_types.sort();
+    entity_types.dedup();
+    entity_types
+}
+
 fn parse_poly_loop_refs(payload: &str) -> Option<Vec<u64>> {
     let prefix = "POLY_LOOP((";
-    let suffix = "))";
-    if !payload.starts_with(prefix) || !payload.ends_with(suffix) {
-        return None;
-    }
-    let inner = &payload[prefix.len()..payload.len().saturating_sub(suffix.len())];
+    let start = payload.find(prefix)?;
+    let inner_start = start + prefix.len();
+    let inner_end = payload[inner_start..]
+        .find("))")
+        .map(|offset| inner_start + offset)?;
+    let inner = &payload[inner_start..inner_end];
     let mut refs = Vec::<u64>::new();
     for token in inner.split(',') {
         let token = token.trim();
@@ -387,7 +447,10 @@ fn tetra_signed_volume(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{CadStepCheckerBackend, check_step_file_with_backend, check_step_text_structural};
+    use super::{
+        CadStepCheckerBackend, check_step_file_with_backend, check_step_text_structural,
+        collect_step_entity_type_counts,
+    };
     use crate::export::export_step_from_mesh;
     use crate::mesh::{
         CadMeshBounds, CadMeshMaterialSlot, CadMeshPayload, CadMeshTopology, CadMeshVertex,
@@ -492,6 +555,71 @@ mod tests {
                 .iter()
                 .any(|diagnostic| diagnostic.code == "STEP_NON_MANIFOLD_EDGE")
         );
+    }
+
+    #[test]
+    fn structural_checker_counts_advanced_face_and_open_shell_entities() {
+        let payload = r#"
+#1=CARTESIAN_POINT('',(0.0,0.0,0.0));
+#2=CARTESIAN_POINT('',(10.0,0.0,0.0));
+#3=CARTESIAN_POINT('',(10.0,10.0,0.0));
+#4=CARTESIAN_POINT('',(0.0,10.0,0.0));
+#5=VERTEX_POINT('',#1);
+#6=VERTEX_POINT('',#2);
+#7=VERTEX_POINT('',#3);
+#8=VERTEX_POINT('',#4);
+#9=DIRECTION('',(0.0,0.0,1.0));
+#10=DIRECTION('',(1.0,0.0,0.0));
+#11=AXIS2_PLACEMENT_3D('',#1,#9,#10);
+#12=PLANE('',#11);
+#13=DIRECTION('',(1.0,0.0,0.0));
+#14=DIRECTION('',(0.0,1.0,0.0));
+#15=DIRECTION('',(-1.0,0.0,0.0));
+#16=DIRECTION('',(0.0,-1.0,0.0));
+#17=VECTOR('',#13,10.0);
+#18=VECTOR('',#14,10.0);
+#19=VECTOR('',#15,10.0);
+#20=VECTOR('',#16,10.0);
+#21=LINE('',#1,#17);
+#22=LINE('',#2,#18);
+#23=LINE('',#3,#19);
+#24=LINE('',#4,#20);
+#25=EDGE_CURVE('',#5,#6,#21,.T.);
+#26=EDGE_CURVE('',#6,#7,#22,.T.);
+#27=EDGE_CURVE('',#7,#8,#23,.T.);
+#28=EDGE_CURVE('',#8,#5,#24,.T.);
+#29=ORIENTED_EDGE('',*,*,#25,.T.);
+#30=ORIENTED_EDGE('',*,*,#26,.T.);
+#31=ORIENTED_EDGE('',*,*,#27,.T.);
+#32=ORIENTED_EDGE('',*,*,#28,.T.);
+#33=EDGE_LOOP('',(#29,#30,#31,#32));
+#34=FACE_OUTER_BOUND('',#33,.T.);
+#35=ADVANCED_FACE('',(#34),#12,.T.);
+#36=OPEN_SHELL('',(#35));
+#37=MANIFOLD_SOLID_BREP('SheetLike',#36);
+"#;
+        let report = check_step_text_structural(payload, "advanced-open-shell");
+        assert!(report.passed);
+        assert_eq!(report.solid_count, 1);
+        assert_eq!(report.shell_count, 1);
+        assert_eq!(report.face_count, 1);
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.severity != super::CadStepCheckerSeverity::Error)
+        );
+    }
+
+    #[test]
+    fn entity_type_counter_extracts_complex_entity_segments() {
+        let payload = r#"
+#1=(BOUNDED_SURFACE() B_SPLINE_SURFACE('',1,1,(),.UNSPECIFIED.,.F.,.F.,.F.) B_SPLINE_SURFACE_WITH_KNOTS('',(2,2),(2,2),(0.0,1.0),(0.0,1.0),.UNSPECIFIED.));
+"#;
+        let counts = collect_step_entity_type_counts(payload);
+        assert_eq!(counts.get("BOUNDED_SURFACE"), Some(&1));
+        assert_eq!(counts.get("B_SPLINE_SURFACE"), Some(&1));
+        assert_eq!(counts.get("B_SPLINE_SURFACE_WITH_KNOTS"), Some(&1));
     }
 
     #[test]
