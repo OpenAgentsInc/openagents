@@ -49,6 +49,7 @@ LANE_LABELS=(
     "sketch-profile-validity"
     "sketch-interaction"
     "sketch-undo-redo"
+    "sketch-fixture-equivalence"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -249,6 +250,9 @@ run_lane "sketch-interaction" \
 
 run_lane "sketch-undo-redo" \
     "$ROOT_DIR/scripts/cad/parity-sketch-undo-redo-ci.sh"
+
+run_lane "sketch-fixture-equivalence" \
+    "$ROOT_DIR/scripts/cad/parity-sketch-fixture-equivalence-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
