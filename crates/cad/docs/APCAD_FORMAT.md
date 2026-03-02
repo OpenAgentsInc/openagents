@@ -81,6 +81,7 @@ Top-level shape:
 3. Repeated serialization of equivalent payloads must produce identical JSON bytes.
 4. Optional `analysis_cache` is non-authoritative and may be omitted without invalidating document semantics.
 5. Optional `sketch` block stores deterministic sketch planes/entities keyed by stable IDs.
+6. Optional `drawing` block persists 2D drawing-mode state (`viewMode`, `viewDirection`, toggles, pan/zoom, detail views) with vcad-compatible camelCase keys.
 
 ## Sketch Model (Wave 2 Kickoff)
 

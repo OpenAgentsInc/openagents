@@ -1,0 +1,56 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-075",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_corpus_path": "crates/cad/parity/fixtures/drafting_persistence_vcad_reference.json",
+  "reference_corpus_sha256": "2ff793e270dea44151838b078c97b9ff386a36c15dbe91fc3412061cf61f8fef",
+  "reference_source": "packages/app/src/stores/drawing-store.ts + packages/docs/content/tutorials/app/08-drawings.mdx",
+  "reference_commit_match": true,
+  "document_field_names": [
+    "drawing"
+  ],
+  "drawing_field_names": [
+    "detailViews",
+    "nextDetailId",
+    "pan",
+    "showDimensions",
+    "showHiddenLines",
+    "viewDirection",
+    "viewMode",
+    "zoom"
+  ],
+  "drawing_pan_field_names": [
+    "x",
+    "y"
+  ],
+  "drawing_detail_field_names": [
+    "centerX",
+    "centerY",
+    "height",
+    "id",
+    "label",
+    "scale",
+    "width"
+  ],
+  "default_view_mode": "3d",
+  "default_view_direction": "front",
+  "default_show_hidden_lines": true,
+  "default_show_dimensions": true,
+  "default_zoom": 1.0,
+  "default_pan_x": 0.0,
+  "default_pan_y": 0.0,
+  "default_detail_count": 0,
+  "default_next_detail_id": 1,
+  "sample_detail_count": 1,
+  "schema_field_match": true,
+  "deterministic_replay_match": true,
+  "deterministic_signature": "0d72087c821e7d9f",
+  "parity_contracts": [
+    "cad document schema includes optional drawing payload",
+    "drawing payload persists vcad-compatible camelCase keys and enum values",
+    "drawing defaults persist as 3d/front with hidden-lines+dimensions enabled",
+    "drawing persistence fixtures replay deterministically"
+  ]
+}

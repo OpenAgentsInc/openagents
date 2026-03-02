@@ -15,6 +15,107 @@ pub enum CadUnits {
     Millimeter,
 }
 
+/// Drawing viewport mode persisted in the document schema.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum CadDrawingViewMode {
+    #[serde(rename = "3d")]
+    ThreeD,
+    #[serde(rename = "2d")]
+    TwoD,
+}
+
+impl Default for CadDrawingViewMode {
+    fn default() -> Self {
+        Self::ThreeD
+    }
+}
+
+/// Drawing projection direction persisted in the document schema.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum CadDrawingViewDirection {
+    #[serde(rename = "front")]
+    Front,
+    #[serde(rename = "back")]
+    Back,
+    #[serde(rename = "top")]
+    Top,
+    #[serde(rename = "bottom")]
+    Bottom,
+    #[serde(rename = "left")]
+    Left,
+    #[serde(rename = "right")]
+    Right,
+    #[serde(rename = "isometric")]
+    Isometric,
+}
+
+impl Default for CadDrawingViewDirection {
+    fn default() -> Self {
+        Self::Front
+    }
+}
+
+/// 2D pan offset in drawing coordinates.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CadDrawingPan {
+    pub x: f64,
+    pub y: f64,
+}
+
+impl Default for CadDrawingPan {
+    fn default() -> Self {
+        Self { x: 0.0, y: 0.0 }
+    }
+}
+
+/// Persisted definition for a drawing detail view.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CadDrawingDetailView {
+    pub id: String,
+    #[serde(rename = "centerX")]
+    pub center_x: f64,
+    #[serde(rename = "centerY")]
+    pub center_y: f64,
+    pub scale: f64,
+    pub width: f64,
+    pub height: f64,
+    pub label: String,
+}
+
+/// Drawing persistence payload stored in the CAD document schema.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CadDrawingState {
+    #[serde(rename = "viewMode")]
+    pub view_mode: CadDrawingViewMode,
+    #[serde(rename = "viewDirection")]
+    pub view_direction: CadDrawingViewDirection,
+    #[serde(rename = "showHiddenLines")]
+    pub show_hidden_lines: bool,
+    #[serde(rename = "showDimensions")]
+    pub show_dimensions: bool,
+    pub zoom: f64,
+    pub pan: CadDrawingPan,
+    #[serde(rename = "detailViews")]
+    pub detail_views: Vec<CadDrawingDetailView>,
+    #[serde(rename = "nextDetailId")]
+    pub next_detail_id: u64,
+}
+
+impl Default for CadDrawingState {
+    fn default() -> Self {
+        Self {
+            view_mode: CadDrawingViewMode::ThreeD,
+            view_direction: CadDrawingViewDirection::Front,
+            show_hidden_lines: true,
+            show_dimensions: true,
+            zoom: 1.0,
+            pan: CadDrawingPan::default(),
+            detail_views: Vec::new(),
+            next_detail_id: 1,
+        }
+    }
+}
+
 /// Core CAD document schema.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CadDocument {
@@ -33,6 +134,8 @@ pub struct CadDocument {
     #[serde(rename = "groundInstanceId", skip_serializing_if = "Option::is_none")]
     pub ground_instance_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub drawing: Option<CadDrawingState>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub analysis_cache: Option<BTreeMap<String, String>>,
 }
 
@@ -50,6 +153,7 @@ impl CadDocument {
             instances: None,
             joints: None,
             ground_instance_id: None,
+            drawing: None,
             analysis_cache: None,
         }
     }
@@ -78,7 +182,10 @@ impl CadDocument {
 
 #[cfg(test)]
 mod tests {
-    use super::{CAD_DOCUMENT_SCHEMA_VERSION, CadDocument, CadUnits};
+    use super::{
+        CAD_DOCUMENT_SCHEMA_VERSION, CadDocument, CadDrawingDetailView, CadDrawingPan,
+        CadDrawingState, CadDrawingViewDirection, CadDrawingViewMode, CadUnits,
+    };
     use crate::assembly::{CadAssemblyJoint, CadJointKind, CadPartDef, CadPartInstance};
     use crate::kernel_math::Vec3;
     use std::collections::BTreeMap;
@@ -236,5 +343,56 @@ mod tests {
         assert!(payload.contains("\"childInstanceId\""));
         assert!(payload.contains("\"groundInstanceId\""));
         assert!(payload.contains("\"defaultMaterial\""));
+    }
+
+    #[test]
+    fn drawing_state_defaults_match_vcad_contract() {
+        let drawing = CadDrawingState::default();
+        assert_eq!(drawing.view_mode, CadDrawingViewMode::ThreeD);
+        assert_eq!(drawing.view_direction, CadDrawingViewDirection::Front);
+        assert!(drawing.show_hidden_lines);
+        assert!(drawing.show_dimensions);
+        assert_eq!(drawing.zoom, 1.0);
+        assert_eq!(drawing.pan, CadDrawingPan { x: 0.0, y: 0.0 });
+        assert!(drawing.detail_views.is_empty());
+        assert_eq!(drawing.next_detail_id, 1);
+    }
+
+    #[test]
+    fn drawing_fields_round_trip_is_deterministic() {
+        let mut document = CadDocument::new_empty("doc-drawing");
+        document.drawing = Some(CadDrawingState {
+            view_mode: CadDrawingViewMode::TwoD,
+            view_direction: CadDrawingViewDirection::Isometric,
+            show_hidden_lines: false,
+            show_dimensions: false,
+            zoom: 2.25,
+            pan: CadDrawingPan { x: 14.0, y: -8.0 },
+            detail_views: vec![CadDrawingDetailView {
+                id: "detail-1".to_string(),
+                center_x: 25.0,
+                center_y: 10.0,
+                scale: 2.0,
+                width: 40.0,
+                height: 30.0,
+                label: "A".to_string(),
+            }],
+            next_detail_id: 2,
+        });
+
+        let payload = document
+            .to_json()
+            .expect("drawing document serialization should succeed");
+        let parsed = CadDocument::from_json(&payload).expect("drawing parse should succeed");
+        assert_eq!(parsed, document);
+        assert!(payload.contains("\"drawing\""));
+        assert!(payload.contains("\"viewMode\""));
+        assert!(payload.contains("\"viewDirection\""));
+        assert!(payload.contains("\"showHiddenLines\""));
+        assert!(payload.contains("\"showDimensions\""));
+        assert!(payload.contains("\"detailViews\""));
+        assert!(payload.contains("\"nextDetailId\""));
+        assert!(payload.contains("\"centerX\""));
+        assert!(payload.contains("\"centerY\""));
     }
 }
