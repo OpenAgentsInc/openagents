@@ -78,7 +78,7 @@ Major gaps to close:
 2. [x] VCAD-PARITY-002: Build `vcad` capability crawler (docs + crates + commands).
 3. [x] VCAD-PARITY-003: Build OpenAgents capability crawler for CAD surfaces.
 4. [x] VCAD-PARITY-004: Generate machine-readable gap matrix (`vcad` vs OpenAgents).
-5. [ ] VCAD-PARITY-005: Define parity scorecard and pass/fail thresholds.
+5. [x] VCAD-PARITY-005: Define parity scorecard and pass/fail thresholds.
 6. [ ] VCAD-PARITY-006: Create shared parity fixture corpus and seed data.
 7. [ ] VCAD-PARITY-007: Add `scripts/cad/parity_check.sh` orchestration command.
 8. [ ] VCAD-PARITY-008: Add CI lane for parity checks and artifact upload.
