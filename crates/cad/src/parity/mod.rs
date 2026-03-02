@@ -18,6 +18,7 @@ pub mod kernel_tessellate_parity;
 pub mod kernel_text_parity;
 pub mod kernel_topology_parity;
 pub mod openagents_crawler;
+pub mod pattern_parity;
 pub mod primitive_contracts_parity;
 pub mod risk_register;
 pub mod scorecard;

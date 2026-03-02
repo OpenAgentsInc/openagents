@@ -107,7 +107,7 @@ Major gaps to close:
 
 26. [x] VCAD-PARITY-026: Primitive parity (cube/cylinder/sphere/cone contracts).
 27. [x] VCAD-PARITY-027: Transform parity (translate/rotate/scale deterministic compose).
-28. [ ] VCAD-PARITY-028: Pattern parity (linear and circular pattern ops).
+28. [x] VCAD-PARITY-028: Pattern parity (linear and circular pattern ops).
 29. [ ] VCAD-PARITY-029: Production shell op parity in feature graph.
 30. [ ] VCAD-PARITY-030: Production fillet parity for planar-safe paths.
 31. [ ] VCAD-PARITY-031: Production chamfer parity paths and diagnostics.
