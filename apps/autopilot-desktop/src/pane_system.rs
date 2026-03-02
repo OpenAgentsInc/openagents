@@ -337,6 +337,13 @@ pub enum CadDemoPaneAction {
     ResetSession,
     BootstrapDemo,
     ResetCamera,
+    ToggleDrawingViewMode,
+    CycleDrawingViewDirection,
+    ToggleDrawingHiddenLines,
+    ToggleDrawingDimensions,
+    ResetDrawingView,
+    AddDrawingDetailView,
+    ClearDrawingDetailViews,
     ToggleProjectionMode,
     CycleSectionPlane,
     StepSectionPlaneOffset,
@@ -382,7 +389,7 @@ pub struct CadPaletteCommandSpec {
     pub action: CadDemoPaneAction,
 }
 
-const CAD_PALETTE_COMMAND_SPECS: [CadPaletteCommandSpec; 22] = [
+const CAD_PALETTE_COMMAND_SPECS: [CadPaletteCommandSpec; 29] = [
     CadPaletteCommandSpec {
         id: "cad.demo.bootstrap",
         label: "CAD: Bootstrap Demo",
@@ -424,6 +431,55 @@ const CAD_PALETTE_COMMAND_SPECS: [CadPaletteCommandSpec; 22] = [
         description: "Toggle CAD projection between orthographic and perspective",
         keybinding: Some("P"),
         action: CadDemoPaneAction::ToggleProjectionMode,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.drawing.toggle_mode",
+        label: "CAD: Toggle Drawing Mode",
+        description: "Toggle CAD viewport between 3D and 2D drawing mode",
+        keybinding: Some("2"),
+        action: CadDemoPaneAction::ToggleDrawingViewMode,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.drawing.cycle_direction",
+        label: "CAD: Cycle Drawing Direction",
+        description: "Cycle drawing direction (front/back/top/bottom/left/right/isometric)",
+        keybinding: None,
+        action: CadDemoPaneAction::CycleDrawingViewDirection,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.drawing.toggle_hidden_lines",
+        label: "CAD: Toggle Drawing Hidden Lines",
+        description: "Toggle hidden line visibility in 2D drawing mode",
+        keybinding: None,
+        action: CadDemoPaneAction::ToggleDrawingHiddenLines,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.drawing.toggle_dimensions",
+        label: "CAD: Toggle Drawing Dimensions",
+        description: "Toggle drawing dimensions overlay in 2D mode",
+        keybinding: None,
+        action: CadDemoPaneAction::ToggleDrawingDimensions,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.drawing.reset_view",
+        label: "CAD: Reset Drawing View",
+        description: "Reset 2D drawing zoom and pan",
+        keybinding: None,
+        action: CadDemoPaneAction::ResetDrawingView,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.drawing.add_detail",
+        label: "CAD: Add Drawing Detail View",
+        description: "Add a default detail view in 2D drawing mode",
+        keybinding: None,
+        action: CadDemoPaneAction::AddDrawingDetailView,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.drawing.clear_details",
+        label: "CAD: Clear Drawing Detail Views",
+        description: "Clear all 2D drawing detail views",
+        keybinding: None,
+        action: CadDemoPaneAction::ClearDrawingDetailViews,
     },
     CadPaletteCommandSpec {
         id: "cad.render.cycle_mode",
@@ -2306,10 +2362,95 @@ pub fn cad_demo_projection_mode_button_bounds(content_bounds: Bounds) -> Bounds 
     )
 }
 
-pub fn cad_demo_snap_grid_button_bounds(content_bounds: Bounds) -> Bounds {
-    let top_row_bottom = cad_demo_projection_mode_button_bounds(content_bounds)
+fn cad_demo_drawing_toolbar_top(content_bounds: Bounds) -> f32 {
+    cad_demo_projection_mode_button_bounds(content_bounds)
         .max_y()
-        .max(cad_demo_reset_camera_button_bounds(content_bounds).max_y());
+        .max(cad_demo_reset_camera_button_bounds(content_bounds).max_y())
+        + 6.0
+}
+
+pub fn cad_demo_drawing_mode_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        cad_demo_drawing_toolbar_top(content_bounds),
+        (content_bounds.size.width * 0.14).clamp(90.0, 150.0),
+        20.0,
+    )
+}
+
+pub fn cad_demo_drawing_direction_button_bounds(content_bounds: Bounds) -> Bounds {
+    let mode = cad_demo_drawing_mode_button_bounds(content_bounds);
+    let min_x = content_bounds.origin.x + CHAT_PAD;
+    let max_x = content_bounds.max_x() - CHAT_PAD;
+    let origin_x = (mode.max_x() + JOB_INBOX_BUTTON_GAP).max(min_x);
+    let desired_width = (content_bounds.size.width * 0.18).clamp(110.0, 190.0);
+    let width = desired_width.min((max_x - origin_x).max(50.0));
+    Bounds::new(origin_x, mode.origin.y, width, mode.size.height)
+}
+
+pub fn cad_demo_drawing_hidden_lines_button_bounds(content_bounds: Bounds) -> Bounds {
+    let direction = cad_demo_drawing_direction_button_bounds(content_bounds);
+    let min_x = content_bounds.origin.x + CHAT_PAD;
+    let max_x = content_bounds.max_x() - CHAT_PAD;
+    let origin_x = (direction.max_x() + JOB_INBOX_BUTTON_GAP).max(min_x);
+    let desired_width = (content_bounds.size.width * 0.14).clamp(96.0, 160.0);
+    let width = desired_width.min((max_x - origin_x).max(50.0));
+    Bounds::new(origin_x, direction.origin.y, width, direction.size.height)
+}
+
+pub fn cad_demo_drawing_dimensions_button_bounds(content_bounds: Bounds) -> Bounds {
+    let hidden = cad_demo_drawing_hidden_lines_button_bounds(content_bounds);
+    let min_x = content_bounds.origin.x + CHAT_PAD;
+    let max_x = content_bounds.max_x() - CHAT_PAD;
+    let origin_x = (hidden.max_x() + JOB_INBOX_BUTTON_GAP).max(min_x);
+    let desired_width = (content_bounds.size.width * 0.14).clamp(96.0, 160.0);
+    let width = desired_width.min((max_x - origin_x).max(50.0));
+    Bounds::new(origin_x, hidden.origin.y, width, hidden.size.height)
+}
+
+pub fn cad_demo_drawing_reset_view_button_bounds(content_bounds: Bounds) -> Bounds {
+    let dimensions = cad_demo_drawing_dimensions_button_bounds(content_bounds);
+    let min_x = content_bounds.origin.x + CHAT_PAD;
+    let max_x = content_bounds.max_x() - CHAT_PAD;
+    let origin_x = (dimensions.max_x() + JOB_INBOX_BUTTON_GAP).max(min_x);
+    let desired_width = (content_bounds.size.width * 0.14).clamp(96.0, 160.0);
+    let width = desired_width.min((max_x - origin_x).max(50.0));
+    Bounds::new(origin_x, dimensions.origin.y, width, dimensions.size.height)
+}
+
+pub fn cad_demo_drawing_add_detail_button_bounds(content_bounds: Bounds) -> Bounds {
+    let reset_view = cad_demo_drawing_reset_view_button_bounds(content_bounds);
+    let min_x = content_bounds.origin.x + CHAT_PAD;
+    let max_x = content_bounds.max_x() - CHAT_PAD;
+    let origin_x = (reset_view.max_x() + JOB_INBOX_BUTTON_GAP).max(min_x);
+    let desired_width = (content_bounds.size.width * 0.14).clamp(96.0, 160.0);
+    let width = desired_width.min((max_x - origin_x).max(50.0));
+    Bounds::new(origin_x, reset_view.origin.y, width, reset_view.size.height)
+}
+
+pub fn cad_demo_drawing_clear_details_button_bounds(content_bounds: Bounds) -> Bounds {
+    let add_detail = cad_demo_drawing_add_detail_button_bounds(content_bounds);
+    let min_x = content_bounds.origin.x + CHAT_PAD;
+    let max_x = content_bounds.max_x() - CHAT_PAD;
+    let origin_x = (add_detail.max_x() + JOB_INBOX_BUTTON_GAP).max(min_x);
+    let desired_width = (content_bounds.size.width * 0.14).clamp(96.0, 160.0);
+    let width = desired_width.min((max_x - origin_x).max(50.0));
+    Bounds::new(origin_x, add_detail.origin.y, width, add_detail.size.height)
+}
+
+fn cad_demo_drawing_controls_bottom(content_bounds: Bounds) -> f32 {
+    cad_demo_drawing_mode_button_bounds(content_bounds)
+        .max_y()
+        .max(cad_demo_drawing_direction_button_bounds(content_bounds).max_y())
+        .max(cad_demo_drawing_hidden_lines_button_bounds(content_bounds).max_y())
+        .max(cad_demo_drawing_dimensions_button_bounds(content_bounds).max_y())
+        .max(cad_demo_drawing_reset_view_button_bounds(content_bounds).max_y())
+        .max(cad_demo_drawing_add_detail_button_bounds(content_bounds).max_y())
+        .max(cad_demo_drawing_clear_details_button_bounds(content_bounds).max_y())
+}
+
+pub fn cad_demo_snap_grid_button_bounds(content_bounds: Bounds) -> Bounds {
+    let top_row_bottom = cad_demo_drawing_controls_bottom(content_bounds);
     Bounds::new(
         content_bounds.origin.x + CHAT_PAD,
         top_row_bottom + 6.0,
@@ -2408,6 +2549,13 @@ fn cad_demo_controls_bottom(content_bounds: Bounds) -> f32 {
         .max(cad_demo_hidden_line_mode_button_bounds(content_bounds).max_y())
         .max(cad_demo_reset_camera_button_bounds(content_bounds).max_y())
         .max(cad_demo_projection_mode_button_bounds(content_bounds).max_y())
+        .max(cad_demo_drawing_mode_button_bounds(content_bounds).max_y())
+        .max(cad_demo_drawing_direction_button_bounds(content_bounds).max_y())
+        .max(cad_demo_drawing_hidden_lines_button_bounds(content_bounds).max_y())
+        .max(cad_demo_drawing_dimensions_button_bounds(content_bounds).max_y())
+        .max(cad_demo_drawing_reset_view_button_bounds(content_bounds).max_y())
+        .max(cad_demo_drawing_add_detail_button_bounds(content_bounds).max_y())
+        .max(cad_demo_drawing_clear_details_button_bounds(content_bounds).max_y())
         .max(cad_demo_snap_grid_button_bounds(content_bounds).max_y())
         .max(cad_demo_snap_origin_button_bounds(content_bounds).max_y())
         .max(cad_demo_snap_endpoint_button_bounds(content_bounds).max_y())
@@ -3295,6 +3443,39 @@ fn pane_hit_action_for_pane(
                     CadDemoPaneAction::ToggleProjectionMode,
                 ));
             }
+            if cad_demo_drawing_mode_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CadDemo(
+                    CadDemoPaneAction::ToggleDrawingViewMode,
+                ));
+            }
+            if cad_demo_drawing_direction_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CadDemo(
+                    CadDemoPaneAction::CycleDrawingViewDirection,
+                ));
+            }
+            if cad_demo_drawing_hidden_lines_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CadDemo(
+                    CadDemoPaneAction::ToggleDrawingHiddenLines,
+                ));
+            }
+            if cad_demo_drawing_dimensions_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CadDemo(
+                    CadDemoPaneAction::ToggleDrawingDimensions,
+                ));
+            }
+            if cad_demo_drawing_reset_view_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CadDemo(CadDemoPaneAction::ResetDrawingView));
+            }
+            if cad_demo_drawing_add_detail_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CadDemo(
+                    CadDemoPaneAction::AddDrawingDetailView,
+                ));
+            }
+            if cad_demo_drawing_clear_details_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CadDemo(
+                    CadDemoPaneAction::ClearDrawingDetailViews,
+                ));
+            }
             if cad_demo_section_plane_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::CadDemo(CadDemoPaneAction::CycleSectionPlane));
             }
@@ -3659,14 +3840,17 @@ mod tests {
         alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
         alerts_recovery_row_bounds, cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
         cad_demo_cycle_variant_button_bounds, cad_demo_dimension_panel_bounds,
-        cad_demo_dimension_row_bounds, cad_demo_hidden_line_mode_button_bounds,
-        cad_demo_hotkey_profile_button_bounds, cad_demo_material_button_bounds,
-        cad_demo_projection_mode_button_bounds, cad_demo_reset_button_bounds,
-        cad_demo_reset_camera_button_bounds, cad_demo_section_offset_button_bounds,
-        cad_demo_section_plane_button_bounds, cad_demo_snap_endpoint_button_bounds,
-        cad_demo_snap_grid_button_bounds, cad_demo_snap_midpoint_button_bounds,
-        cad_demo_snap_origin_button_bounds, cad_demo_timeline_panel_bounds,
-        cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
+        cad_demo_dimension_row_bounds, cad_demo_drawing_add_detail_button_bounds,
+        cad_demo_drawing_clear_details_button_bounds, cad_demo_drawing_dimensions_button_bounds,
+        cad_demo_drawing_direction_button_bounds, cad_demo_drawing_hidden_lines_button_bounds,
+        cad_demo_drawing_mode_button_bounds, cad_demo_drawing_reset_view_button_bounds,
+        cad_demo_hidden_line_mode_button_bounds, cad_demo_hotkey_profile_button_bounds,
+        cad_demo_material_button_bounds, cad_demo_projection_mode_button_bounds,
+        cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
+        cad_demo_section_offset_button_bounds, cad_demo_section_plane_button_bounds,
+        cad_demo_snap_endpoint_button_bounds, cad_demo_snap_grid_button_bounds,
+        cad_demo_snap_midpoint_button_bounds, cad_demo_snap_origin_button_bounds,
+        cad_demo_timeline_panel_bounds, cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
         cad_demo_view_snap_front_button_bounds, cad_demo_view_snap_iso_button_bounds,
         cad_demo_view_snap_right_button_bounds, cad_demo_view_snap_top_button_bounds,
         cad_demo_warning_filter_code_button_bounds, cad_demo_warning_filter_severity_button_bounds,
@@ -4055,6 +4239,13 @@ mod tests {
         let hidden_line = cad_demo_hidden_line_mode_button_bounds(content);
         let reset_camera = cad_demo_reset_camera_button_bounds(content);
         let projection = cad_demo_projection_mode_button_bounds(content);
+        let drawing_mode = cad_demo_drawing_mode_button_bounds(content);
+        let drawing_direction = cad_demo_drawing_direction_button_bounds(content);
+        let drawing_hidden = cad_demo_drawing_hidden_lines_button_bounds(content);
+        let drawing_dimensions = cad_demo_drawing_dimensions_button_bounds(content);
+        let drawing_reset = cad_demo_drawing_reset_view_button_bounds(content);
+        let drawing_add_detail = cad_demo_drawing_add_detail_button_bounds(content);
+        let drawing_clear_details = cad_demo_drawing_clear_details_button_bounds(content);
         let snap_grid = cad_demo_snap_grid_button_bounds(content);
         let snap_origin = cad_demo_snap_origin_button_bounds(content);
         let snap_endpoint = cad_demo_snap_endpoint_button_bounds(content);
@@ -4068,6 +4259,13 @@ mod tests {
         assert!(content.contains(hidden_line.origin));
         assert!(content.contains(reset_camera.origin));
         assert!(content.contains(projection.origin));
+        assert!(content.contains(drawing_mode.origin));
+        assert!(content.contains(drawing_direction.origin));
+        assert!(content.contains(drawing_hidden.origin));
+        assert!(content.contains(drawing_dimensions.origin));
+        assert!(content.contains(drawing_reset.origin));
+        assert!(content.contains(drawing_add_detail.origin));
+        assert!(content.contains(drawing_clear_details.origin));
         assert!(content.contains(snap_grid.origin));
         assert!(content.contains(snap_origin.origin));
         assert!(content.contains(snap_endpoint.origin));
@@ -4081,6 +4279,13 @@ mod tests {
         assert!(hidden_line.max_y() <= content.max_y());
         assert!(reset_camera.max_y() <= content.max_y());
         assert!(projection.max_y() <= content.max_y());
+        assert!(drawing_mode.max_y() <= content.max_y());
+        assert!(drawing_direction.max_y() <= content.max_y());
+        assert!(drawing_hidden.max_y() <= content.max_y());
+        assert!(drawing_dimensions.max_y() <= content.max_y());
+        assert!(drawing_reset.max_y() <= content.max_y());
+        assert!(drawing_add_detail.max_y() <= content.max_y());
+        assert!(drawing_clear_details.max_y() <= content.max_y());
         assert!(snap_grid.max_y() <= content.max_y());
         assert!(snap_origin.max_y() <= content.max_y());
         assert!(snap_endpoint.max_y() <= content.max_y());
@@ -4093,6 +4298,14 @@ mod tests {
         assert!(reset.max_x() <= hidden_line.min_x() + 0.001);
         assert!(hidden_line.max_x() <= reset_camera.min_x() + 0.001);
         assert!(reset_camera.max_x() <= projection.min_x() + 0.001);
+        assert!(drawing_mode.origin.y >= projection.max_y() - 0.001);
+        assert!(drawing_mode.max_x() <= drawing_direction.min_x() + 0.001);
+        assert!(drawing_direction.max_x() <= drawing_hidden.min_x() + 0.001);
+        assert!(drawing_hidden.max_x() <= drawing_dimensions.min_x() + 0.001);
+        assert!(drawing_dimensions.max_x() <= drawing_reset.min_x() + 0.001);
+        assert!(drawing_reset.max_x() <= drawing_add_detail.min_x() + 0.001);
+        assert!(drawing_add_detail.max_x() <= drawing_clear_details.min_x() + 0.001);
+        assert!(snap_grid.origin.y >= drawing_mode.max_y() - 0.001);
         assert!(snap_grid.max_y() <= snap_origin.max_y() + 0.001);
         assert!(snap_grid.max_x() <= snap_origin.min_x() + 0.001);
         assert!(snap_origin.max_x() <= snap_endpoint.min_x() + 0.001);

@@ -491,6 +491,15 @@ pub struct CadDemoPaneState {
     pub hidden_line_mode: CadHiddenLineMode,
     pub snap_toggles: CadSnapToggles,
     pub projection_mode: CadProjectionMode,
+    pub drawing_view_mode: CadDrawingViewMode,
+    pub drawing_view_direction: CadDrawingViewDirection,
+    pub drawing_show_hidden_lines: bool,
+    pub drawing_show_dimensions: bool,
+    pub drawing_zoom: f32,
+    pub drawing_pan_x: f32,
+    pub drawing_pan_y: f32,
+    pub drawing_detail_views: Vec<CadDrawingDetailViewState>,
+    pub drawing_next_detail_id: u64,
     pub hotkey_profile: String,
     pub hotkeys: CadHotkeyBindings,
     pub three_d_mouse_mode: CadThreeDMouseMode,
@@ -867,6 +876,77 @@ impl CadProjectionMode {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CadDrawingViewMode {
+    ThreeD,
+    TwoD,
+}
+
+impl CadDrawingViewMode {
+    pub fn next(self) -> Self {
+        match self {
+            Self::ThreeD => Self::TwoD,
+            Self::TwoD => Self::ThreeD,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::ThreeD => "3d",
+            Self::TwoD => "2d",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CadDrawingViewDirection {
+    Front,
+    Back,
+    Top,
+    Bottom,
+    Left,
+    Right,
+    Isometric,
+}
+
+impl CadDrawingViewDirection {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Front => Self::Back,
+            Self::Back => Self::Top,
+            Self::Top => Self::Bottom,
+            Self::Bottom => Self::Left,
+            Self::Left => Self::Right,
+            Self::Right => Self::Isometric,
+            Self::Isometric => Self::Front,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Front => "front",
+            Self::Back => "back",
+            Self::Top => "top",
+            Self::Bottom => "bottom",
+            Self::Left => "left",
+            Self::Right => "right",
+            Self::Isometric => "isometric",
+        }
+    }
+
+    pub fn to_drafting_view_direction(self) -> openagents_cad::drafting::ViewDirection {
+        match self {
+            Self::Front => openagents_cad::drafting::ViewDirection::Front,
+            Self::Back => openagents_cad::drafting::ViewDirection::Back,
+            Self::Top => openagents_cad::drafting::ViewDirection::Top,
+            Self::Bottom => openagents_cad::drafting::ViewDirection::Bottom,
+            Self::Left => openagents_cad::drafting::ViewDirection::Left,
+            Self::Right => openagents_cad::drafting::ViewDirection::Right,
+            Self::Isometric => openagents_cad::drafting::ViewDirection::ISOMETRIC_STANDARD,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CadSectionAxis {
     X,
     Y,
@@ -1149,6 +1229,17 @@ pub struct CadDimensionEditState {
     pub last_error: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct CadDrawingDetailViewState {
+    pub detail_id: String,
+    pub label: String,
+    pub center_x: f32,
+    pub center_y: f32,
+    pub width: f32,
+    pub height: f32,
+    pub scale: f32,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CadContextMenuTargetKind {
     Body,
@@ -1404,6 +1495,15 @@ impl Default for CadDemoPaneState {
             hidden_line_mode: CadHiddenLineMode::Shaded,
             snap_toggles: CadSnapToggles::default(),
             projection_mode: CadProjectionMode::Orthographic,
+            drawing_view_mode: CadDrawingViewMode::ThreeD,
+            drawing_view_direction: CadDrawingViewDirection::Front,
+            drawing_show_hidden_lines: true,
+            drawing_show_dimensions: true,
+            drawing_zoom: 1.0,
+            drawing_pan_x: 0.0,
+            drawing_pan_y: 0.0,
+            drawing_detail_views: Vec::new(),
+            drawing_next_detail_id: 1,
             hotkey_profile: "default".to_string(),
             hotkeys: CadHotkeyBindings::default(),
             three_d_mouse_mode: CadThreeDMouseMode::Translate,
@@ -2101,6 +2201,69 @@ impl CadDemoPaneState {
 
     pub fn cycle_projection_mode(&mut self) {
         self.projection_mode = self.projection_mode.next();
+    }
+
+    pub fn toggle_drawing_view_mode(&mut self) -> CadDrawingViewMode {
+        self.drawing_view_mode = self.drawing_view_mode.next();
+        self.drawing_view_mode
+    }
+
+    pub fn cycle_drawing_view_direction(&mut self) -> CadDrawingViewDirection {
+        self.drawing_view_direction = self.drawing_view_direction.next();
+        self.reset_drawing_view();
+        self.drawing_view_direction
+    }
+
+    pub fn toggle_drawing_hidden_lines(&mut self) -> bool {
+        self.drawing_show_hidden_lines = !self.drawing_show_hidden_lines;
+        self.drawing_show_hidden_lines
+    }
+
+    pub fn toggle_drawing_dimensions(&mut self) -> bool {
+        self.drawing_show_dimensions = !self.drawing_show_dimensions;
+        self.drawing_show_dimensions
+    }
+
+    pub fn reset_drawing_view(&mut self) {
+        self.drawing_zoom = 1.0;
+        self.drawing_pan_x = 0.0;
+        self.drawing_pan_y = 0.0;
+    }
+
+    pub fn zoom_drawing_view_by_scroll(&mut self, scroll_dy: f32) {
+        let scale = (1.0 + (-scroll_dy * 0.002)).clamp(0.5, 1.5);
+        self.drawing_zoom = (self.drawing_zoom * scale).clamp(0.1, 10.0);
+    }
+
+    pub fn pan_drawing_view_by_drag(&mut self, drag_dx: f32, drag_dy: f32) {
+        self.drawing_pan_x = (self.drawing_pan_x + drag_dx).clamp(-10_000.0, 10_000.0);
+        self.drawing_pan_y = (self.drawing_pan_y + drag_dy).clamp(-10_000.0, 10_000.0);
+    }
+
+    pub fn add_drawing_detail_view(&mut self) -> CadDrawingDetailViewState {
+        let detail_id = format!("detail-{}", self.drawing_next_detail_id);
+        self.drawing_next_detail_id = self.drawing_next_detail_id.saturating_add(1);
+        let label =
+            char::from_u32(u32::from(b'A') + (self.drawing_detail_views.len().min(25) as u32))
+                .unwrap_or('A')
+                .to_string();
+        let detail = CadDrawingDetailViewState {
+            detail_id,
+            label,
+            center_x: 0.0,
+            center_y: 0.0,
+            width: 40.0,
+            height: 40.0,
+            scale: 2.0,
+        };
+        self.drawing_detail_views.push(detail.clone());
+        detail
+    }
+
+    pub fn clear_drawing_detail_views(&mut self) -> usize {
+        let count = self.drawing_detail_views.len();
+        self.drawing_detail_views.clear();
+        count
     }
 
     pub fn cycle_section_axis(&mut self) -> Option<CadSectionAxis> {

@@ -2908,16 +2908,17 @@ mod tests {
         ActivityFeedState, AgentNetworkSimulationPaneState, AlertDomain, AlertLifecycle,
         AlertsRecoveryState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole,
         CadBuildFailureClass, CadBuildSessionPhase, CadCameraViewSnap, CadContextMenuTargetKind,
-        CadDemoPaneState, CadDemoWarningState, CadHiddenLineMode, CadHotkeyAction,
-        CadProjectionMode, CadSectionAxis, CadSnapMode, CadThreeDMouseAxis, CadThreeDMouseMode,
-        CadThreeDMouseProfile, EarningsScoreboardState, JobHistoryState, JobHistoryStatus,
-        JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest,
-        JobInboxState, JobInboxValidation, JobLifecycleStage, NetworkRequestStatus,
-        NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderMode,
-        ProviderRuntimeState, RecoveryAlertRow, RelayConnectionRow, RelayConnectionStatus,
-        RelayConnectionsState, RelaySecuritySimulationPaneState, SettingsState, SparkPaneState,
-        StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
-        SyncHealthState, SyncRecoveryPhase, TreasuryExchangeSimulationPaneState,
+        CadDemoPaneState, CadDemoWarningState, CadDrawingViewDirection, CadDrawingViewMode,
+        CadHiddenLineMode, CadHotkeyAction, CadProjectionMode, CadSectionAxis, CadSnapMode,
+        CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile, EarningsScoreboardState,
+        JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange,
+        JobInboxDecision, JobInboxNetworkRequest, JobInboxState, JobInboxValidation,
+        JobLifecycleStage, NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState,
+        NostrSecretState, ProviderMode, ProviderRuntimeState, RecoveryAlertRow, RelayConnectionRow,
+        RelayConnectionStatus, RelayConnectionsState, RelaySecuritySimulationPaneState,
+        SettingsState, SparkPaneState, StableSatsSimulationPaneState, StarterJobRow,
+        StarterJobStatus, StarterJobsState, SyncHealthState, SyncRecoveryPhase,
+        TreasuryExchangeSimulationPaneState,
     };
 
     fn fixture_inbox_request(
@@ -4034,6 +4035,15 @@ mod tests {
         assert!(!state.snap_toggles.endpoint);
         assert!(!state.snap_toggles.midpoint);
         assert_eq!(state.projection_mode, CadProjectionMode::Orthographic);
+        assert_eq!(state.drawing_view_mode, CadDrawingViewMode::ThreeD);
+        assert_eq!(state.drawing_view_direction, CadDrawingViewDirection::Front);
+        assert!(state.drawing_show_hidden_lines);
+        assert!(state.drawing_show_dimensions);
+        assert_eq!(state.drawing_zoom, 1.0);
+        assert_eq!(state.drawing_pan_x, 0.0);
+        assert_eq!(state.drawing_pan_y, 0.0);
+        assert!(state.drawing_detail_views.is_empty());
+        assert_eq!(state.drawing_next_detail_id, 1);
         assert_eq!(state.hotkey_profile, "default");
         assert_eq!(state.hotkeys.snap_top, "t");
         assert_eq!(state.hotkeys.toggle_projection, "p");
@@ -4230,6 +4240,47 @@ mod tests {
         assert_eq!(first.projection_mode, CadProjectionMode::Orthographic);
         second.cycle_projection_mode();
         assert_eq!(second.projection_mode, CadProjectionMode::Perspective);
+    }
+
+    #[test]
+    fn cad_drawing_mode_state_transitions_are_deterministic() {
+        let mut first = CadDemoPaneState::default();
+        let mut second = CadDemoPaneState::default();
+
+        for state in [&mut first, &mut second] {
+            assert_eq!(state.toggle_drawing_view_mode(), CadDrawingViewMode::TwoD);
+            assert_eq!(
+                state.cycle_drawing_view_direction(),
+                CadDrawingViewDirection::Back
+            );
+            assert!(!state.toggle_drawing_hidden_lines());
+            assert!(!state.toggle_drawing_dimensions());
+            state.pan_drawing_view_by_drag(22.0, -14.0);
+            state.zoom_drawing_view_by_scroll(-280.0);
+            let detail = state.add_drawing_detail_view();
+            assert_eq!(detail.detail_id, "detail-1");
+            assert_eq!(detail.label, "A");
+            assert_eq!(state.drawing_detail_views.len(), 1);
+            let cleared = state.clear_drawing_detail_views();
+            assert_eq!(cleared, 1);
+            state.reset_drawing_view();
+        }
+
+        assert_eq!(first.drawing_view_mode, second.drawing_view_mode);
+        assert_eq!(first.drawing_view_direction, second.drawing_view_direction);
+        assert_eq!(
+            first.drawing_show_hidden_lines,
+            second.drawing_show_hidden_lines
+        );
+        assert_eq!(
+            first.drawing_show_dimensions,
+            second.drawing_show_dimensions
+        );
+        assert_eq!(first.drawing_zoom, second.drawing_zoom);
+        assert_eq!(first.drawing_pan_x, second.drawing_pan_x);
+        assert_eq!(first.drawing_pan_y, second.drawing_pan_y);
+        assert!(first.drawing_detail_views.is_empty());
+        assert_eq!(first.drawing_next_detail_id, 2);
     }
 
     #[test]

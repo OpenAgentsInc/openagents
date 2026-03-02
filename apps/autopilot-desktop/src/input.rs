@@ -53,22 +53,26 @@ use crate::pane_system::{
     StarterJobsPaneAction, SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction,
     cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
     cad_demo_cycle_variant_button_bounds, cad_demo_dimension_panel_bounds,
-    cad_demo_hidden_line_mode_button_bounds, cad_demo_hotkey_profile_button_bounds,
-    cad_demo_material_button_bounds, cad_demo_projection_mode_button_bounds,
-    cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
-    cad_demo_section_offset_button_bounds, cad_demo_section_plane_button_bounds,
-    cad_demo_snap_endpoint_button_bounds, cad_demo_snap_grid_button_bounds,
-    cad_demo_snap_midpoint_button_bounds, cad_demo_snap_origin_button_bounds,
-    cad_demo_timeline_panel_bounds, cad_demo_view_snap_front_button_bounds,
-    cad_demo_view_snap_iso_button_bounds, cad_demo_view_snap_right_button_bounds,
-    cad_demo_view_snap_top_button_bounds, cad_demo_warning_filter_code_button_bounds,
-    cad_demo_warning_filter_severity_button_bounds, cad_demo_warning_panel_bounds,
-    clamp_all_panes_to_window, dispatch_chat_input_event, dispatch_chat_scroll_event,
-    dispatch_create_invoice_input_event, dispatch_credentials_input_event,
-    dispatch_job_history_input_event, dispatch_network_requests_input_event,
-    dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
-    dispatch_settings_input_event, dispatch_spark_input_event, pane_content_bounds,
-    pane_indices_by_z_desc, pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
+    cad_demo_drawing_add_detail_button_bounds, cad_demo_drawing_clear_details_button_bounds,
+    cad_demo_drawing_dimensions_button_bounds, cad_demo_drawing_direction_button_bounds,
+    cad_demo_drawing_hidden_lines_button_bounds, cad_demo_drawing_mode_button_bounds,
+    cad_demo_drawing_reset_view_button_bounds, cad_demo_hidden_line_mode_button_bounds,
+    cad_demo_hotkey_profile_button_bounds, cad_demo_material_button_bounds,
+    cad_demo_projection_mode_button_bounds, cad_demo_reset_button_bounds,
+    cad_demo_reset_camera_button_bounds, cad_demo_section_offset_button_bounds,
+    cad_demo_section_plane_button_bounds, cad_demo_snap_endpoint_button_bounds,
+    cad_demo_snap_grid_button_bounds, cad_demo_snap_midpoint_button_bounds,
+    cad_demo_snap_origin_button_bounds, cad_demo_timeline_panel_bounds,
+    cad_demo_view_snap_front_button_bounds, cad_demo_view_snap_iso_button_bounds,
+    cad_demo_view_snap_right_button_bounds, cad_demo_view_snap_top_button_bounds,
+    cad_demo_warning_filter_code_button_bounds, cad_demo_warning_filter_severity_button_bounds,
+    cad_demo_warning_panel_bounds, clamp_all_panes_to_window, dispatch_chat_input_event,
+    dispatch_chat_scroll_event, dispatch_create_invoice_input_event,
+    dispatch_credentials_input_event, dispatch_job_history_input_event,
+    dispatch_network_requests_input_event, dispatch_pay_invoice_input_event,
+    dispatch_relay_connections_input_event, dispatch_settings_input_event,
+    dispatch_spark_input_event, pane_content_bounds, pane_indices_by_z_desc,
+    pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
 };
 use crate::panes::{cad as cad_pane, chat as chat_pane};
 use crate::render::{
@@ -745,6 +749,11 @@ fn cad_pick_at_point(state: &crate::app_state::RenderState, point: Point) -> Opt
 }
 
 fn update_cad_hover_target(state: &mut crate::app_state::RenderState, point: Point) -> bool {
+    if state.cad_demo.drawing_view_mode == crate::app_state::CadDrawingViewMode::TwoD {
+        return state
+            .cad_demo
+            .set_hovered_geometry_for_tile_focus(None, None);
+    }
     if state.cad_demo.context_menu.is_open {
         return state
             .cad_demo
@@ -786,7 +795,10 @@ fn handle_cad_selection_click(
     let InputEvent::MouseUp { button, .. } = event else {
         return false;
     };
-    if *button != MouseButton::Left || state.cad_demo.context_menu.is_open {
+    if *button != MouseButton::Left
+        || state.cad_demo.context_menu.is_open
+        || state.cad_demo.drawing_view_mode == crate::app_state::CadDrawingViewMode::TwoD
+    {
         return false;
     }
     if state.cad_demo.snap_toggles.grid
@@ -835,6 +847,9 @@ fn handle_cad_context_menu_click(
     point: Point,
     event: &InputEvent,
 ) -> bool {
+    if state.cad_demo.drawing_view_mode == crate::app_state::CadDrawingViewMode::TwoD {
+        return false;
+    }
     let InputEvent::MouseUp { button, .. } = event else {
         return false;
     };
@@ -928,7 +943,9 @@ fn handle_cad_snap_preview_click(
     let InputEvent::MouseUp { button, .. } = event else {
         return false;
     };
-    if *button != MouseButton::Left {
+    if *button != MouseButton::Left
+        || state.cad_demo.drawing_view_mode == crate::app_state::CadDrawingViewMode::TwoD
+    {
         return false;
     }
     if !state.cad_demo.snap_toggles.grid
@@ -1012,6 +1029,13 @@ fn cad_camera_target_pane_id(state: &crate::app_state::RenderState, point: Point
             || cad_demo_hidden_line_mode_button_bounds(content_bounds).contains(point)
             || cad_demo_reset_camera_button_bounds(content_bounds).contains(point)
             || cad_demo_projection_mode_button_bounds(content_bounds).contains(point)
+            || cad_demo_drawing_mode_button_bounds(content_bounds).contains(point)
+            || cad_demo_drawing_direction_button_bounds(content_bounds).contains(point)
+            || cad_demo_drawing_hidden_lines_button_bounds(content_bounds).contains(point)
+            || cad_demo_drawing_dimensions_button_bounds(content_bounds).contains(point)
+            || cad_demo_drawing_reset_view_button_bounds(content_bounds).contains(point)
+            || cad_demo_drawing_add_detail_button_bounds(content_bounds).contains(point)
+            || cad_demo_drawing_clear_details_button_bounds(content_bounds).contains(point)
             || cad_demo_section_plane_button_bounds(content_bounds).contains(point)
             || cad_demo_section_offset_button_bounds(content_bounds).contains(point)
             || cad_demo_material_button_bounds(content_bounds).contains(point)
@@ -1032,6 +1056,12 @@ fn cad_camera_target_pane_id(state: &crate::app_state::RenderState, point: Point
         {
             return None;
         }
+        if state.cad_demo.drawing_view_mode == crate::app_state::CadDrawingViewMode::TwoD {
+            if cad_pane::camera_interaction_bounds(content_bounds).contains(point) {
+                return Some(pane.id);
+            }
+            return None;
+        }
         if cad_pane::variant_tile_index_at_point(content_bounds, point).is_some() {
             return Some(pane.id);
         }
@@ -1049,7 +1079,13 @@ fn begin_cad_camera_drag(
         return false;
     }
     let mode = match button {
-        MouseButton::Left => CadCameraDragMode::Orbit,
+        MouseButton::Left => {
+            if state.cad_demo.drawing_view_mode == crate::app_state::CadDrawingViewMode::TwoD {
+                CadCameraDragMode::Pan
+            } else {
+                CadCameraDragMode::Orbit
+            }
+        }
         MouseButton::Right => CadCameraDragMode::Pan,
         _ => return false,
     };
@@ -1100,9 +1136,13 @@ fn update_cad_camera_drag(state: &mut crate::app_state::RenderState, point: Poin
     }
     let _ = state.cad_demo.set_active_variant_tile(drag.tile_index);
 
-    match drag.mode {
-        CadCameraDragMode::Orbit => state.cad_demo.orbit_camera_by_drag(delta_x, delta_y),
-        CadCameraDragMode::Pan => state.cad_demo.pan_camera_by_drag(delta_x, delta_y),
+    if state.cad_demo.drawing_view_mode == crate::app_state::CadDrawingViewMode::TwoD {
+        state.cad_demo.pan_drawing_view_by_drag(delta_x, -delta_y);
+    } else {
+        match drag.mode {
+            CadCameraDragMode::Orbit => state.cad_demo.orbit_camera_by_drag(delta_x, delta_y),
+            CadCameraDragMode::Pan => state.cad_demo.pan_camera_by_drag(delta_x, delta_y),
+        }
     }
     state.cad_camera_drag_state = Some(drag);
     true
@@ -1115,19 +1155,29 @@ fn finish_cad_camera_drag(state: &mut crate::app_state::RenderState) -> bool {
     if !drag.moved {
         return false;
     }
-    let mode_label = match drag.mode {
-        CadCameraDragMode::Orbit => "orbit",
-        CadCameraDragMode::Pan => "pan",
-    };
-    state.cad_demo.last_action = Some(format!(
-        "CAD camera {mode_label} tile={} -> zoom={:.2} pan=({:.0},{:.0}) orbit=({:.0},{:.0})",
-        drag.tile_index + 1,
-        state.cad_demo.camera_zoom,
-        state.cad_demo.camera_pan_x,
-        state.cad_demo.camera_pan_y,
-        state.cad_demo.camera_orbit_yaw_deg,
-        state.cad_demo.camera_orbit_pitch_deg
-    ));
+    if state.cad_demo.drawing_view_mode == crate::app_state::CadDrawingViewMode::TwoD {
+        state.cad_demo.last_action = Some(format!(
+            "CAD drawing pan tile={} -> zoom={:.2} pan=({:.0},{:.0})",
+            drag.tile_index + 1,
+            state.cad_demo.drawing_zoom,
+            state.cad_demo.drawing_pan_x,
+            state.cad_demo.drawing_pan_y,
+        ));
+    } else {
+        let mode_label = match drag.mode {
+            CadCameraDragMode::Orbit => "orbit",
+            CadCameraDragMode::Pan => "pan",
+        };
+        state.cad_demo.last_action = Some(format!(
+            "CAD camera {mode_label} tile={} -> zoom={:.2} pan=({:.0},{:.0}) orbit=({:.0},{:.0})",
+            drag.tile_index + 1,
+            state.cad_demo.camera_zoom,
+            state.cad_demo.camera_pan_x,
+            state.cad_demo.camera_pan_y,
+            state.cad_demo.camera_orbit_yaw_deg,
+            state.cad_demo.camera_orbit_pitch_deg
+        ));
+    }
     true
 }
 
@@ -1147,15 +1197,27 @@ fn apply_cad_camera_zoom(
         .and_then(|content| cad_pane::variant_tile_index_at_point(content, point))
         .unwrap_or(0);
     let _ = state.cad_demo.set_active_variant_tile(tile_index);
-    let previous = state.cad_demo.camera_zoom;
-    state.cad_demo.zoom_camera_by_scroll(scroll_dy);
-    if (previous - state.cad_demo.camera_zoom).abs() <= f32::EPSILON {
-        return false;
+    if state.cad_demo.drawing_view_mode == crate::app_state::CadDrawingViewMode::TwoD {
+        let previous = state.cad_demo.drawing_zoom;
+        state.cad_demo.zoom_drawing_view_by_scroll(scroll_dy);
+        if (previous - state.cad_demo.drawing_zoom).abs() <= f32::EPSILON {
+            return false;
+        }
+        state.cad_demo.last_action = Some(format!(
+            "CAD drawing zoom -> {:.2}",
+            state.cad_demo.drawing_zoom
+        ));
+    } else {
+        let previous = state.cad_demo.camera_zoom;
+        state.cad_demo.zoom_camera_by_scroll(scroll_dy);
+        if (previous - state.cad_demo.camera_zoom).abs() <= f32::EPSILON {
+            return false;
+        }
+        state.cad_demo.last_action = Some(format!(
+            "CAD camera zoom -> {:.2}",
+            state.cad_demo.camera_zoom
+        ));
     }
-    state.cad_demo.last_action = Some(format!(
-        "CAD camera zoom -> {:.2}",
-        state.cad_demo.camera_zoom
-    ));
     true
 }
 
