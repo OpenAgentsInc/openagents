@@ -70,6 +70,7 @@ Provide one deterministic orchestration entrypoint for the parity baseline lanes
 - text-to-cad training/eval hook parity fixture check
 - headless script harness parity fixture check
 - io/headless/ai checkpoint parity fixture check
+- viewport camera/gizmo parity fixture check
 - parity CI artifact manifest fixture check
 - parity risk register + blocker workflow check
 - baseline dashboard publication check

@@ -1,0 +1,156 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-093",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/viewport_camera_gizmo_vcad_reference.json",
+  "reference_fixture_sha256": "58a8eae8626896f5ec1725a374feb26862570be9a651bb2af003b6ac957c7f6f",
+  "reference_source": "~/code/vcad/docs/features/viewport-camera.md + ~/code/vcad/crates/termview/src/rasterize.rs + ~/code/vcad/crates/vcad-cli/src/input.rs",
+  "reference_commit_match": true,
+  "default_camera_match": true,
+  "orbit_pan_zoom_contract_match": true,
+  "pitch_clamp_contract_match": true,
+  "snap_views_match": true,
+  "gizmo_modes_match": true,
+  "grid_snap_increment_match": true,
+  "deterministic_replay_match": true,
+  "default_camera": {
+    "azimuth_deg": 45.0,
+    "elevation_deg": 30.0,
+    "distance": 100.0,
+    "target_mm": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "position_mm": [
+      61.237243569579455,
+      49.99999999999999,
+      61.23724356957946
+    ],
+    "fov_deg": 60.0
+  },
+  "interaction_snapshot": {
+    "orbit_camera": {
+      "azimuth_deg": 63.0,
+      "elevation_deg": 18.0,
+      "distance": 100.0,
+      "target_mm": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "position_mm": [
+        84.73975608908425,
+        30.901699437494738,
+        43.177062311338915
+      ],
+      "fov_deg": 60.0
+    },
+    "pan_target_mm": [
+      4.085914497655922,
+      4.0,
+      -8.01905871769531
+    ],
+    "distance_after_zoom_cycle": 100.0,
+    "pitch_after_max_up_deg": 89.0,
+    "pitch_after_max_down_deg": -89.0,
+    "reset_camera": {
+      "azimuth_deg": 45.0,
+      "elevation_deg": 30.0,
+      "distance": 100.0,
+      "target_mm": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "position_mm": [
+        61.237243569579455,
+        49.99999999999999,
+        61.23724356957946
+      ],
+      "fov_deg": 60.0
+    }
+  },
+  "snap_views": [
+    {
+      "view_id": "back",
+      "position_mm": [
+        0.0,
+        0.0,
+        -80.0
+      ]
+    },
+    {
+      "view_id": "bottom",
+      "position_mm": [
+        0.0,
+        -80.0,
+        0.0
+      ]
+    },
+    {
+      "view_id": "front",
+      "position_mm": [
+        0.0,
+        0.0,
+        80.0
+      ]
+    },
+    {
+      "view_id": "hero",
+      "position_mm": [
+        60.0,
+        45.0,
+        60.0
+      ]
+    },
+    {
+      "view_id": "iso",
+      "position_mm": [
+        50.0,
+        50.0,
+        50.0
+      ]
+    },
+    {
+      "view_id": "left",
+      "position_mm": [
+        -80.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "view_id": "right",
+      "position_mm": [
+        80.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "view_id": "top",
+      "position_mm": [
+        0.0,
+        80.0,
+        0.0
+      ]
+    }
+  ],
+  "gizmo_modes": [
+    "translate",
+    "rotate",
+    "scale"
+  ],
+  "grid_snap_increment_mm": 5.0,
+  "deterministic_signature": "b43f01f0281a9b88",
+  "parity_contracts": [
+    "default viewport camera baseline matches vcad orbit defaults (azimuth/elevation/distance/fov)",
+    "camera orbit, pan, zoom and reset semantics are deterministic and replay-stable",
+    "vertical orbit clamp matches vcad guard rails at [-89deg, 89deg]",
+    "orientation gizmo exposes vcad snap views (front/back/right/left/top/bottom/iso/hero)",
+    "transform gizmo mode set and 5mm grid snap increment remain parity-locked"
+  ]
+}

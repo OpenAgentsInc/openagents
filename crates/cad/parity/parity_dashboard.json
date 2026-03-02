@@ -39,7 +39,7 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 127,
+    "source_artifact_count": 129,
     "artifact_ids": [
       "assembly_acceptance_scenes_parity_manifest",
       "assembly_checkpoint_parity_manifest",
@@ -110,6 +110,7 @@
       "fixtures_text_to_cad_dataset_vcad_reference",
       "fixtures_text_to_cad_training_eval_vcad_reference",
       "fixtures_text_to_cad_vcad_reference",
+      "fixtures_viewport_camera_gizmo_vcad_reference",
       "glb_export_parity_manifest",
       "headless_script_harness_parity_manifest",
       "intent_modeling_parity_manifest",
@@ -167,7 +168,8 @@
       "vcad_capabilities_inventory",
       "vcad_eval_receipts_parity_manifest",
       "vcad_openagents_gap_matrix",
-      "vcad_reference_manifest"
+      "vcad_reference_manifest",
+      "viewport_camera_gizmo_parity_manifest"
     ]
   },
   "phase_status": "phase_g_io_headless_ai_checkpoint_complete",

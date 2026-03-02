@@ -5,7 +5,7 @@
   "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
   "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
   "parity_check_entrypoint": "scripts/cad/parity_check.sh",
-  "source_artifact_count": 127,
+  "source_artifact_count": 129,
   "artifacts": [
     {
       "artifact_id": "assembly_acceptance_scenes_parity_manifest",
@@ -422,6 +422,12 @@
       "bytes": 354
     },
     {
+      "artifact_id": "fixtures_viewport_camera_gizmo_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/viewport_camera_gizmo_vcad_reference.json",
+      "sha256": "58a8eae8626896f5ec1725a374feb26862570be9a651bb2af003b6ac957c7f6f",
+      "bytes": 1323
+    },
+    {
       "artifact_id": "glb_export_parity_manifest",
       "source_path": "crates/cad/parity/glb_export_parity_manifest.json",
       "sha256": "42b557a05e5edfe0d452bcd5a87844acc23e1bec2b80860384c66d36e308c693",
@@ -568,8 +574,8 @@
     {
       "artifact_id": "parity_dashboard",
       "source_path": "crates/cad/parity/parity_dashboard.json",
-      "sha256": "1652dd817ee226d9a51cfbe75b9314da8827054bfc334934609e952699b6eece",
-      "bytes": 7399
+      "sha256": "57e794efce0c570e8e6f50c981b3027833c8d8a6fa65940e4ab8c37fd2a5497a",
+      "bytes": 7501
     },
     {
       "artifact_id": "parity_risk_register",
@@ -768,6 +774,12 @@
       "source_path": "crates/cad/parity/vcad_reference_manifest.json",
       "sha256": "eecd767b906c78b13787a15cf0eaadc61e78e04a9b6fcdac905c7d7c3eef2dd5",
       "bytes": 2014
+    },
+    {
+      "artifact_id": "viewport_camera_gizmo_parity_manifest",
+      "source_path": "crates/cad/parity/viewport_camera_gizmo_parity_manifest.json",
+      "sha256": "7cb2da090b8b5ec27a8667f5e8ee399005d332c817a40cfda7f38e2f093a7c74",
+      "bytes": 3589
     }
   ]
 }
