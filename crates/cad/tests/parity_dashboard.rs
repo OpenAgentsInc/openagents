@@ -40,9 +40,9 @@ fn parity_dashboard_fixture_is_well_formed() {
     assert_eq!(dashboard.issue_id, PARITY_DASHBOARD_ISSUE_ID);
     assert_eq!(
         dashboard.phase_status,
-        "phase_g_headless_script_harness_complete"
+        "phase_g_io_headless_ai_checkpoint_complete"
     );
-    assert_eq!(dashboard.artifacts.source_artifact_count, 126);
+    assert_eq!(dashboard.artifacts.source_artifact_count, 127);
     assert!(dashboard.summary.overall_match_rate > 0.0);
 }
 
