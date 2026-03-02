@@ -59,6 +59,7 @@ Provide one deterministic orchestration entrypoint for the parity baseline lanes
 - STEP import entity parity fixture check
 - STEP export post-boolean parity fixture check
 - STL import/export parity fixture check
+- GLB export parity fixture check
 - parity CI artifact manifest fixture check
 - parity risk register + blocker workflow check
 - baseline dashboard publication check

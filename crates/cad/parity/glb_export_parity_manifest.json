@@ -1,0 +1,64 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-082",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_corpus_path": "crates/cad/parity/fixtures/glb_export_vcad_reference.json",
+  "reference_corpus_sha256": "1952be29cf98c9bf02400a4609e2ada30a95d367bfb72943e3ea0318c71b10eb",
+  "reference_source": "~/code/vcad/packages/core/src/utils/export-gltf.ts + ~/code/vcad/crates/vcad/src/export/gltf.rs",
+  "reference_commit_match": true,
+  "case_snapshots": [
+    {
+      "case_id": "invalid_mesh_contract",
+      "export_succeeds": false,
+      "error": "mesh payload is invalid: invalid primitive: mesh payload must include triangle indices",
+      "byte_count": 0,
+      "deterministic_hash": null,
+      "vertex_count": null,
+      "index_count": null,
+      "header_magic": null,
+      "version": null,
+      "json_chunk_type": null,
+      "bin_chunk_type": null,
+      "generator": null
+    },
+    {
+      "case_id": "mesh_export",
+      "export_succeeds": true,
+      "error": null,
+      "byte_count": 648,
+      "deterministic_hash": "09639ed6dc66a15f",
+      "vertex_count": 4,
+      "index_count": 12,
+      "header_magic": "glTF",
+      "version": 2,
+      "json_chunk_type": "JSON",
+      "bin_chunk_type": "BIN",
+      "generator": "vcad"
+    },
+    {
+      "case_id": "variant_mismatch",
+      "export_succeeds": false,
+      "error": "mesh variant_id mismatch: payload=variant.parity.glb requested=variant.mismatch",
+      "byte_count": 0,
+      "deterministic_hash": null,
+      "vertex_count": null,
+      "index_count": null,
+      "header_magic": null,
+      "version": null,
+      "json_chunk_type": null,
+      "bin_chunk_type": null,
+      "generator": null
+    }
+  ],
+  "glb_contract_match": true,
+  "deterministic_replay_match": true,
+  "deterministic_signature": "b0ad95c3c659a436",
+  "parity_contracts": [
+    "GLB export writes valid GLB 2.0 header and JSON/BIN chunk contracts",
+    "GLB export emits vcad-aligned glTF asset generator metadata",
+    "GLB export enforces mesh contract validation and variant-id matching",
+    "GLB export parity fixtures replay deterministically"
+  ]
+}

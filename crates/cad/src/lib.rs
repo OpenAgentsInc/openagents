@@ -19,6 +19,7 @@ pub mod feature_graph;
 pub mod features;
 pub mod finishing_ops;
 pub mod format;
+pub mod glb;
 pub mod hash;
 pub mod history;
 pub mod intent;
