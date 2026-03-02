@@ -24,6 +24,7 @@ LANE_LABELS=(
     "primitive-contracts"
     "transform"
     "pattern"
+    "shell-feature-graph"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -149,6 +150,9 @@ run_lane "transform" \
 
 run_lane "pattern" \
     "$ROOT_DIR/scripts/cad/parity-pattern-ci.sh"
+
+run_lane "shell-feature-graph" \
+    "$ROOT_DIR/scripts/cad/parity-shell-feature-graph-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

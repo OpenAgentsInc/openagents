@@ -39,7 +39,7 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 27,
+    "source_artifact_count": 28,
     "artifact_ids": [
       "fixtures_parity_fixture_corpus",
       "kernel_adapter_v2_manifest",
@@ -64,6 +64,7 @@
       "parity_scorecard",
       "pattern_parity_manifest",
       "primitive_contracts_parity_manifest",
+      "shell_feature_graph_parity_manifest",
       "transform_parity_manifest",
       "vcad_capabilities_inventory",
       "vcad_openagents_gap_matrix",
