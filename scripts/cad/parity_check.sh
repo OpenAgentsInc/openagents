@@ -46,6 +46,7 @@ LANE_LABELS=(
     "sketch-revolve"
     "sketch-sweep"
     "sketch-loft"
+    "sketch-profile-validity"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -237,6 +238,9 @@ run_lane "sketch-sweep" \
 
 run_lane "sketch-loft" \
     "$ROOT_DIR/scripts/cad/parity-sketch-loft-ci.sh"
+
+run_lane "sketch-profile-validity" \
+    "$ROOT_DIR/scripts/cad/parity-sketch-profile-validity-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

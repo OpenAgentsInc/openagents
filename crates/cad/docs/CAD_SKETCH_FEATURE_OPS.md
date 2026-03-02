@@ -30,6 +30,7 @@ Entry point:
 Behavior:
 
 - Validates feature/profile ids and operation-specific parameters.
+- Rejects invalid profile topology inputs (duplicate profile entity ids, degenerate lines, non-positive rectangle extents).
 - Validates sweep path ids and path-control parameters (`twist/scale`) for sketch sweep conversion.
 - Requires constraints to solve before conversion.
 - Computes deterministic profile bounds and profile hash.
