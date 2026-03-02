@@ -2,7 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::state::swap_contract::{SwapAmount, SwapAmountUnit, SwapDirection, SwapQuoteTerms};
+use crate::state::swap_contract::{
+    SwapAmount, SwapAmountUnit, SwapCommandProvenance, SwapDirection, SwapQuoteTerms,
+};
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum SwapQuoteProvider {
@@ -80,6 +82,8 @@ pub struct SwapQuoteAuditReceipt {
     pub accepted_via_adapter: bool,
     pub fallback_reason: Option<String>,
     pub created_at_epoch_seconds: u64,
+    #[serde(default)]
+    pub command_provenance: Option<SwapCommandProvenance>,
 }
 
 pub fn request_quote_with_fallback<C: StablesatsQuoteClient>(
@@ -132,6 +136,7 @@ pub fn build_swap_quote_audit_receipt(
         accepted_via_adapter: outcome.accepted_via_adapter,
         fallback_reason: outcome.fallback_reason.clone(),
         created_at_epoch_seconds: request.now_epoch_seconds,
+        command_provenance: None,
     }
 }
 

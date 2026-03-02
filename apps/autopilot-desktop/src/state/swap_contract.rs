@@ -110,6 +110,15 @@ pub enum SwapExecutionStatus {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct SwapCommandProvenance {
+    pub script_path: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    pub executed_at_epoch_seconds: u64,
+    pub parse_version: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct GoalSwapExecutionReceipt {
     pub receipt_id: String,
     pub goal_id: String,
@@ -123,6 +132,8 @@ pub struct GoalSwapExecutionReceipt {
     pub failure_reason: Option<String>,
     pub started_at_epoch_seconds: u64,
     pub finished_at_epoch_seconds: u64,
+    #[serde(default)]
+    pub command_provenance: Option<SwapCommandProvenance>,
 }
 
 impl SwapPolicy {

@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 
 use crate::app_state::{
     ActivityFeedFilter, AutopilotToolCallRequest, CadBuildFailureClass, PaneKind, RenderState,
+    SkillRegistryDiscoveredSkill,
 };
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 use crate::openagents_dynamic_tools::{
@@ -39,8 +40,8 @@ use crate::state::autopilot_goals::{
 };
 use crate::state::os_scheduler::{OsSchedulerAdapterKind, preferred_adapter_for_host};
 use crate::state::swap_contract::{
-    GoalSwapExecutionReceipt, SwapAmount, SwapAmountUnit, SwapDirection, SwapExecutionStatus,
-    SwapQuoteTerms,
+    GoalSwapExecutionReceipt, SwapAmount, SwapAmountUnit, SwapCommandProvenance, SwapDirection,
+    SwapExecutionStatus, SwapQuoteTerms,
 };
 use crate::state::swap_quote_adapter::{SwapQuoteAuditReceipt, SwapQuoteProvider};
 use crate::state::wallet_reconciliation::reconcile_wallet_events_for_goal;
@@ -372,6 +373,7 @@ struct ProviderControlArgs {
 const BLINK_SKILL_NAME: &str = "blink";
 const BLINK_SWAP_QUOTE_SCRIPT: &str = "swap_quote.js";
 const BLINK_SWAP_EXECUTE_SCRIPT: &str = "swap_execute.js";
+const BLINK_SWAP_PARSE_VERSION: &str = "blink.swap.v1";
 
 pub(super) fn execute_openagents_tool_request(
     state: &mut RenderState,
@@ -2043,6 +2045,12 @@ fn execute_swap_quote(state: &mut RenderState, args: &SwapQuoteArgs) -> ToolBrid
     if args.immediate_execution {
         script_args.push("--immediate".to_string());
     }
+    let command_provenance = SwapCommandProvenance {
+        script_path: script_path.display().to_string(),
+        args: script_args.clone(),
+        executed_at_epoch_seconds: now_epoch_seconds,
+        parse_version: BLINK_SWAP_PARSE_VERSION.to_string(),
+    };
 
     let script_response = match run_blink_swap_script_json(&script_path, &script_args) {
         Ok(value) => value,
@@ -2106,6 +2114,7 @@ fn execute_swap_quote(state: &mut RenderState, args: &SwapQuoteArgs) -> ToolBrid
         accepted_via_adapter: false,
         fallback_reason: None,
         created_at_epoch_seconds: now_epoch_seconds,
+        command_provenance: Some(command_provenance.clone()),
     };
     if let Err(error) = state.autopilot_goals.record_swap_quote_audit(audit.clone()) {
         return ToolBridgeResultEnvelope::error(
@@ -2155,8 +2164,10 @@ fn execute_swap_quote(state: &mut RenderState, args: &SwapQuoteArgs) -> ToolBrid
                 "slippage_bps": quote.slippage_bps,
             },
             "command_provenance": {
-                "script_path": script_path,
-                "args": script_args,
+                "script_path": command_provenance.script_path,
+                "args": command_provenance.args,
+                "executed_at_epoch_seconds": command_provenance.executed_at_epoch_seconds,
+                "parse_version": command_provenance.parse_version,
             },
             "events": [{
                 "event": "swap_quote_requested",
@@ -2247,6 +2258,12 @@ fn execute_swap_execute(
         script_args.push("--memo".to_string());
         script_args.push(memo.to_string());
     }
+    let mut command_provenance = SwapCommandProvenance {
+        script_path: script_path.display().to_string(),
+        args: script_args.clone(),
+        executed_at_epoch_seconds: now_epoch_seconds,
+        parse_version: BLINK_SWAP_PARSE_VERSION.to_string(),
+    };
 
     let script_response = match run_blink_swap_script_json(&script_path, &script_args) {
         Ok(value) => value,
@@ -2264,6 +2281,7 @@ fn execute_swap_execute(
                 failure_reason: Some(error.clone()),
                 started_at_epoch_seconds: audit.created_at_epoch_seconds,
                 finished_at_epoch_seconds: now_epoch_seconds,
+                command_provenance: Some(command_provenance.clone()),
             };
             let _ = state
                 .autopilot_goals
@@ -2326,9 +2344,21 @@ fn execute_swap_execute(
             );
         }
     };
+    if executed_quote.quote_id != quote_id {
+        return ToolBridgeResultEnvelope::error(
+            "OA-SWAP-EXECUTE-QUOTE-MISMATCH",
+            "Blink execution response quote id did not match requested quote id",
+            json!({
+                "goal_id": goal_id,
+                "quote_id": quote_id,
+                "executed_quote_id": executed_quote.quote_id,
+            }),
+        );
+    }
     let finished_at_epoch_seconds = parsed_execution
         .executed_at_epoch_seconds
         .unwrap_or(now_epoch_seconds);
+    command_provenance.executed_at_epoch_seconds = finished_at_epoch_seconds;
     let transaction_id = parsed_execution
         .execution
         .as_ref()
@@ -2352,6 +2382,7 @@ fn execute_swap_execute(
         failure_reason: failure_reason.clone(),
         started_at_epoch_seconds: audit.created_at_epoch_seconds,
         finished_at_epoch_seconds,
+        command_provenance: Some(command_provenance.clone()),
     };
     if let Err(error) = state
         .autopilot_goals
@@ -2433,8 +2464,10 @@ fn execute_swap_execute(
                 "expires_at_epoch_seconds": audit.expires_at_epoch_seconds,
             },
             "command_provenance": {
-                "script_path": script_path,
-                "args": script_args,
+                "script_path": command_provenance.script_path,
+                "args": command_provenance.args,
+                "executed_at_epoch_seconds": command_provenance.executed_at_epoch_seconds,
+                "parse_version": command_provenance.parse_version,
             },
             "events": events,
             "execution_receipt": receipt,
@@ -3182,30 +3215,33 @@ fn resolve_blink_swap_script_path(
     state: &RenderState,
     script_name: &str,
 ) -> Result<PathBuf, String> {
+    let cwd = std::env::current_dir().ok();
+    let candidates = blink_swap_script_candidates(
+        &state.skill_registry.discovered_skills,
+        state.skill_registry.repo_skills_root.as_deref(),
+        cwd.as_deref(),
+        script_name,
+    );
+    select_existing_blink_swap_script_path(candidates, script_name)
+}
+
+fn blink_swap_script_candidates(
+    discovered_skills: &[SkillRegistryDiscoveredSkill],
+    repo_skills_root: Option<&str>,
+    cwd: Option<&Path>,
+    script_name: &str,
+) -> BTreeSet<PathBuf> {
     let mut candidates = BTreeSet::<PathBuf>::new();
-    for skill in state
-        .skill_registry
-        .discovered_skills
+    for skill in discovered_skills
         .iter()
         .filter(|skill| skill.enabled && skill.name.eq_ignore_ascii_case(BLINK_SKILL_NAME))
     {
-        let skill_path = PathBuf::from(skill.path.trim());
-        let skill_root = if skill_path
-            .file_name()
-            .map(|file_name| file_name.to_string_lossy().eq_ignore_ascii_case("SKILL.md"))
-            .unwrap_or(false)
-        {
-            skill_path.parent().map(Path::to_path_buf)
-        } else if skill_path.is_dir() {
-            Some(skill_path)
-        } else {
-            skill_path.parent().map(Path::to_path_buf)
-        };
+        let skill_root = normalize_skill_root_path(skill.path.as_str());
         if let Some(skill_root) = skill_root {
             candidates.insert(skill_root.join("scripts").join(script_name));
         }
     }
-    if let Some(repo_skills_root) = state.skill_registry.repo_skills_root.as_ref() {
+    if let Some(repo_skills_root) = repo_skills_root {
         candidates.insert(
             PathBuf::from(repo_skills_root)
                 .join(BLINK_SKILL_NAME)
@@ -3213,7 +3249,7 @@ fn resolve_blink_swap_script_path(
                 .join(script_name),
         );
     }
-    if let Ok(cwd) = std::env::current_dir() {
+    if let Some(cwd) = cwd {
         candidates.insert(
             cwd.join("skills")
                 .join(BLINK_SKILL_NAME)
@@ -3221,7 +3257,28 @@ fn resolve_blink_swap_script_path(
                 .join(script_name),
         );
     }
+    candidates
+}
 
+fn normalize_skill_root_path(raw_skill_path: &str) -> Option<PathBuf> {
+    let skill_path = PathBuf::from(raw_skill_path.trim());
+    if skill_path
+        .file_name()
+        .map(|file_name| file_name.to_string_lossy().eq_ignore_ascii_case("SKILL.md"))
+        .unwrap_or(false)
+    {
+        return skill_path.parent().map(Path::to_path_buf);
+    }
+    if skill_path.is_dir() {
+        return Some(skill_path);
+    }
+    skill_path.parent().map(Path::to_path_buf)
+}
+
+fn select_existing_blink_swap_script_path(
+    candidates: BTreeSet<PathBuf>,
+    script_name: &str,
+) -> Result<PathBuf, String> {
     candidates
         .into_iter()
         .find(|candidate| candidate.is_file())
@@ -3544,7 +3601,8 @@ mod tests {
         cad_parse_retry_prompt, decode_tool_call_request, normalize_key, pane_action_to_hit_action,
         pane_kind_key, parse_blink_execution_payload_from_json, parse_blink_quote_terms_from_json,
         parse_bool_env_override, parse_goal_rollout_stage, parse_swap_direction, parse_swap_unit,
-        resolve_pane_kind, validate_direction_unit,
+        resolve_pane_kind, run_blink_swap_script_json, select_existing_blink_swap_script_path,
+        validate_direction_unit,
     };
     use crate::app_state::{
         AutopilotToolCallRequest, CadDemoPaneState, CadDemoWarningState, PaneKind,
@@ -3557,6 +3615,8 @@ mod tests {
     use crate::state::swap_contract::{SwapAmountUnit, SwapDirection};
     use codex_client::AppServerRequestId;
     use serde::Deserialize;
+    use std::collections::BTreeSet;
+    use std::path::PathBuf;
 
     fn request(tool: &str, arguments: &str) -> AutopilotToolCallRequest {
         AutopilotToolCallRequest {
@@ -3577,6 +3637,14 @@ mod tests {
     fn assert_error(result: Result<super::ToolBridgeRequest, ToolBridgeResultEnvelope>) -> String {
         let error = result.expect_err("expected decode failure");
         error.code
+    }
+
+    fn temp_js_path(test_name: &str) -> PathBuf {
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch time available")
+            .as_nanos();
+        std::env::temp_dir().join(format!("openagents-tool-bridge-{test_name}-{now_nanos}.js"))
     }
 
     #[test]
@@ -3955,5 +4023,85 @@ mod tests {
         let error = parse_blink_execution_payload_from_json(raw)
             .expect_err("non-execution event should be rejected");
         assert!(error.contains("Unexpected Blink execution event"));
+    }
+
+    #[test]
+    fn blink_script_selection_errors_when_no_candidate_exists() {
+        let error = select_existing_blink_swap_script_path(BTreeSet::new(), "swap_quote.js")
+            .expect_err("missing script should fail");
+        assert!(error.contains("Unable to locate Blink swap script"));
+    }
+
+    #[test]
+    fn blink_script_runner_reports_script_failure() {
+        let path = temp_js_path("script-failure");
+        std::fs::write(
+            &path,
+            r#"
+process.stderr.write("boom\n");
+process.exit(7);
+"#,
+        )
+        .expect("write script");
+
+        let error = run_blink_swap_script_json(&path, &[]).expect_err("script should fail");
+        assert!(error.contains("exit_code=7"));
+        assert!(error.contains("boom"));
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn blink_script_runner_rejects_non_json_stdout() {
+        let path = temp_js_path("non-json");
+        std::fs::write(&path, r#"console.log("not-json");"#).expect("write script");
+
+        let error = run_blink_swap_script_json(&path, &[]).expect_err("non-json should fail");
+        assert!(error.contains("non-JSON stdout"));
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn blink_quote_payload_parser_rejects_missing_required_fields() {
+        let raw = serde_json::json!({
+            "event": "swap_quote",
+            "quote": {
+                "direction": "BTC_TO_USD",
+                "amountIn": { "value": 2000, "unit": "sats" },
+                "amountOut": { "value": 130, "unit": "cents" },
+                "expiresAtEpochSeconds": 1_800_000_000_u64,
+                "immediateExecution": false,
+                "feeSats": 0,
+                "feeBps": 0,
+                "slippageBps": 0
+            }
+        });
+        let error =
+            parse_blink_quote_terms_from_json(raw).expect_err("missing quoteId should be rejected");
+        assert!(error.contains("Invalid Blink quote payload"));
+        assert!(error.contains("quoteId"));
+    }
+
+    #[test]
+    fn blink_execution_payload_parser_rejects_missing_status() {
+        let raw = serde_json::json!({
+            "event": "swap_execution",
+            "quote": {
+                "quoteId": "blink-swap-123",
+                "direction": "USD_TO_BTC",
+                "amountIn": { "value": 500, "unit": "cents" },
+                "amountOut": { "value": 7400, "unit": "sats" },
+                "expiresAtEpochSeconds": 1_800_000_000_u64,
+                "immediateExecution": false,
+                "feeSats": 0,
+                "feeBps": 0,
+                "slippageBps": 0
+            }
+        });
+        let error = parse_blink_execution_payload_from_json(raw)
+            .expect_err("missing status should be rejected");
+        assert!(error.contains("Invalid Blink execution payload"));
+        assert!(error.contains("status"));
     }
 }

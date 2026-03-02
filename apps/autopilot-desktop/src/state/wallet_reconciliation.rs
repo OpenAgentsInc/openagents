@@ -402,6 +402,7 @@ mod tests {
                 failure_reason: None,
                 started_at_epoch_seconds: 1_700_000_110,
                 finished_at_epoch_seconds: 1_700_000_111,
+                command_provenance: None,
             },
             GoalSwapExecutionReceipt {
                 receipt_id: "swap-2".to_string(),
@@ -422,6 +423,7 @@ mod tests {
                 failure_reason: None,
                 started_at_epoch_seconds: 1_700_000_130,
                 finished_at_epoch_seconds: 1_700_000_131,
+                command_provenance: None,
             },
         ];
 

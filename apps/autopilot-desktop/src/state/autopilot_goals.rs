@@ -2555,6 +2555,7 @@ mod tests {
                 accepted_via_adapter: false,
                 fallback_reason: None,
                 created_at_epoch_seconds: 1_700_000_000,
+                command_provenance: None,
             })
             .expect("swap quote audit should persist");
 
@@ -2602,6 +2603,7 @@ mod tests {
                 failure_reason: None,
                 started_at_epoch_seconds: 1_700_000_000,
                 finished_at_epoch_seconds: 1_700_000_030,
+                command_provenance: None,
             })
             .expect("swap execution receipt should persist");
 

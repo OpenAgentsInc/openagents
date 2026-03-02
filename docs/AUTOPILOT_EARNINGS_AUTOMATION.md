@@ -78,6 +78,7 @@ Execution behavior:
 
 - Executes through Blink infrastructure (`skills/blink/scripts/swap_execute.js`) and derives status from the real response.
 - Persists execution receipts linked to quote audits and goal ID.
+- Stores Blink command provenance on quote/execution receipts (`script_path`, args, execution timestamp, parse version).
 - Emits timeline events for settled/failed swaps.
 
 ## Safety Controls
