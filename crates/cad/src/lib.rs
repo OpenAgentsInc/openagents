@@ -39,6 +39,7 @@ pub mod kernel_text;
 pub mod kernel_topology;
 pub mod keys;
 pub mod materials;
+pub mod mcp_tools;
 pub mod measurement;
 pub mod mesh;
 pub mod params;
