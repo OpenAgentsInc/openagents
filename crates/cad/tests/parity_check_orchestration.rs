@@ -1,0 +1,32 @@
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+fn repo_root() -> PathBuf {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    manifest_dir
+        .parent()
+        .and_then(Path::parent)
+        .expect("crate should be in <repo>/crates/cad")
+        .to_path_buf()
+}
+
+#[test]
+fn parity_check_script_list_mode_includes_required_lanes() {
+    let script = repo_root().join("scripts/cad/parity_check.sh");
+    let output = Command::new("bash")
+        .arg(script.as_os_str())
+        .arg("--list")
+        .output()
+        .expect("parity_check --list should run");
+    assert!(
+        output.status.success(),
+        "parity_check --list failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert!(lines.contains(&"baseline-manifests"));
+    assert!(lines.contains(&"fixture-corpus-pipeline"));
+    assert!(lines.contains(&"parity-fixture-tests"));
+    assert!(lines.contains(&"rustfmt-check"));
+}

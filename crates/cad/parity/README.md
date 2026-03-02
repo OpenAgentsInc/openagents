@@ -22,4 +22,5 @@ scripts/cad/openagents-capability-crawler-ci.sh
 scripts/cad/parity-gap-matrix-ci.sh
 scripts/cad/parity-scorecard-ci.sh
 scripts/cad/parity-fixture-corpus-ci.sh
+scripts/cad/parity_check.sh
 ```

@@ -80,7 +80,7 @@ Major gaps to close:
 4. [x] VCAD-PARITY-004: Generate machine-readable gap matrix (`vcad` vs OpenAgents).
 5. [x] VCAD-PARITY-005: Define parity scorecard and pass/fail thresholds.
 6. [x] VCAD-PARITY-006: Create shared parity fixture corpus and seed data.
-7. [ ] VCAD-PARITY-007: Add `scripts/cad/parity_check.sh` orchestration command.
+7. [x] VCAD-PARITY-007: Add `scripts/cad/parity_check.sh` orchestration command.
 8. [ ] VCAD-PARITY-008: Add CI lane for parity checks and artifact upload.
 9. [ ] VCAD-PARITY-009: Add parity risk register and blocker workflow.
 10. [ ] VCAD-PARITY-010: Publish baseline parity dashboard in repo docs.
