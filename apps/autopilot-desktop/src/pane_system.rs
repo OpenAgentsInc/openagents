@@ -3468,21 +3468,45 @@ fn pane_hit_action_for_pane(
                     CadDemoPaneAction::CycleWarningCodeFilter,
                 ));
             }
-            for index in 0..4 {
+            let dimension_rows = state.cad_demo.dimensions.len().min(4);
+            for index in 0..dimension_rows {
                 if cad_demo_dimension_row_bounds(content_bounds, index).contains(point) {
                     return Some(PaneHitAction::CadDemo(
                         CadDemoPaneAction::StartDimensionEdit(index),
                     ));
                 }
             }
-            for index in 0..10 {
+            let visible_timeline_rows = state
+                .cad_demo
+                .timeline_rows
+                .len()
+                .saturating_sub(state.cad_demo.timeline_scroll_offset)
+                .min(10);
+            for index in 0..visible_timeline_rows {
                 if cad_demo_timeline_row_bounds(content_bounds, index).contains(point) {
                     return Some(PaneHitAction::CadDemo(
                         CadDemoPaneAction::SelectTimelineRow(index),
                     ));
                 }
             }
-            for index in 0..8 {
+            let warning_filter_severity = state.cad_demo.warning_filter_severity.as_str();
+            let warning_filter_code = state.cad_demo.warning_filter_code.as_str();
+            let visible_warnings = state
+                .cad_demo
+                .warnings
+                .iter()
+                .filter(|warning| {
+                    let severity_ok = warning_filter_severity == "all"
+                        || warning
+                            .severity
+                            .eq_ignore_ascii_case(warning_filter_severity);
+                    let code_ok = warning_filter_code == "all"
+                        || warning.code.eq_ignore_ascii_case(warning_filter_code);
+                    severity_ok && code_ok
+                })
+                .count()
+                .min(8);
+            for index in 0..visible_warnings {
                 if cad_demo_warning_row_bounds(content_bounds, index).contains(point) {
                     return Some(PaneHitAction::CadDemo(CadDemoPaneAction::SelectWarning(
                         index,
