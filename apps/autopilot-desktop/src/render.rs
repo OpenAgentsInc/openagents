@@ -26,7 +26,7 @@ use crate::pane_system::{
 };
 use crate::runtime_lanes::{
     AcCreditCommand, AcLaneSnapshot, AcLaneWorker, SaLaneSnapshot, SaLaneWorker,
-    SaLifecycleCommand, SklDiscoveryTrustCommand, SklLaneSnapshot, SklLaneWorker,
+    SaLifecycleCommand, SklLaneSnapshot, SklLaneWorker,
 };
 use crate::spark_wallet::SparkWalletCommand;
 
@@ -285,16 +285,6 @@ fn bootstrap_runtime_lanes(state: &mut RenderState) {
     });
     let _ = state.queue_sa_command(SaLifecycleCommand::ConfigureAgentSchedule {
         heartbeat_seconds: 30,
-    });
-
-    let _ = state.queue_skl_command(SklDiscoveryTrustCommand::PublishSkillManifest {
-        skill_slug: "summarize-text".to_string(),
-        version: "0.1.0".to_string(),
-    });
-    let _ = state.queue_skl_command(SklDiscoveryTrustCommand::PublishSkillVersionLog {
-        skill_slug: "summarize-text".to_string(),
-        version: "0.1.0".to_string(),
-        summary: "bootstrap manifest".to_string(),
     });
 
     let _ = state.queue_ac_command(AcCreditCommand::PublishCreditIntent {

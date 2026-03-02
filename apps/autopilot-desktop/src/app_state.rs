@@ -2913,9 +2913,9 @@ mod tests {
         CadThreeDMouseProfile, EarningsScoreboardState, JobHistoryState, JobHistoryStatus,
         JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest,
         JobInboxState, JobInboxValidation, JobLifecycleStage, NetworkRequestStatus,
-        NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderRuntimeState,
-        RecoveryAlertRow, RelayConnectionRow, RelayConnectionStatus, RelayConnectionsState,
-        RelaySecuritySimulationPaneState, SettingsState, SparkPaneState,
+        NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderMode,
+        ProviderRuntimeState, RecoveryAlertRow, RelayConnectionRow, RelayConnectionStatus,
+        RelayConnectionsState, RelaySecuritySimulationPaneState, SettingsState, SparkPaneState,
         StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
         SyncHealthState, SyncRecoveryPhase, TreasuryExchangeSimulationPaneState,
     };
@@ -3604,8 +3604,16 @@ mod tests {
 
     #[test]
     fn sync_health_detects_stale_cursor_and_rebootstrap() {
-        let provider = ProviderRuntimeState::default();
-        let relays = RelayConnectionsState::default();
+        let mut provider = ProviderRuntimeState::default();
+        provider.mode = ProviderMode::Online;
+        let mut relays = RelayConnectionsState::default();
+        relays.relays.push(RelayConnectionRow {
+            url: "wss://relay-a.example".to_string(),
+            status: RelayConnectionStatus::Connected,
+            latency_ms: Some(42),
+            last_seen_seconds_ago: Some(0),
+            last_error: None,
+        });
         let mut sync = SyncHealthState::default();
 
         sync.cursor_last_advanced_seconds_ago = sync.cursor_stale_after_seconds + 5;
@@ -3616,6 +3624,28 @@ mod tests {
         sync.rebootstrap();
         assert_eq!(sync.load_state, super::PaneLoadState::Ready);
         assert_eq!(sync.recovery_phase, SyncRecoveryPhase::Replaying);
+        assert_eq!(sync.cursor_last_advanced_seconds_ago, 0);
+    }
+
+    #[test]
+    fn sync_health_does_not_mark_stale_while_provider_is_offline() {
+        let provider = ProviderRuntimeState::default();
+        let mut relays = RelayConnectionsState::default();
+        relays.relays.push(RelayConnectionRow {
+            url: "wss://relay-a.example".to_string(),
+            status: RelayConnectionStatus::Connected,
+            latency_ms: Some(42),
+            last_seen_seconds_ago: Some(0),
+            last_error: None,
+        });
+        let mut sync = SyncHealthState::default();
+
+        sync.cursor_last_advanced_seconds_ago = sync.cursor_stale_after_seconds + 5;
+        sync.refresh_from_runtime(std::time::Instant::now(), &provider, &relays);
+
+        assert_eq!(sync.load_state, super::PaneLoadState::Ready);
+        assert_eq!(sync.recovery_phase, SyncRecoveryPhase::Idle);
+        assert_eq!(sync.last_error, None);
         assert_eq!(sync.cursor_last_advanced_seconds_ago, 0);
     }
 

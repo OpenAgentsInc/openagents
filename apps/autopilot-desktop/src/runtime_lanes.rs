@@ -325,6 +325,7 @@ pub enum SklDiscoveryTrustCommand {
         skill_slug: String,
         version: String,
     },
+    #[allow(dead_code)]
     PublishSkillVersionLog {
         skill_slug: String,
         version: String,

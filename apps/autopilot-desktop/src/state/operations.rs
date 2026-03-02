@@ -2,7 +2,7 @@
 
 use std::time::Instant;
 
-use crate::app_state::{PaneLoadState, PaneStatusAccess, ProviderRuntimeState};
+use crate::app_state::{PaneLoadState, PaneStatusAccess, ProviderMode, ProviderRuntimeState};
 use crate::runtime_lanes::RuntimeCommandResponse;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -219,21 +219,37 @@ impl SyncHealthState {
         } else {
             "resubscribing".to_string()
         };
-        if let Some(age) = provider_runtime.heartbeat_age_seconds(now) {
-            self.cursor_last_advanced_seconds_ago = age;
+        let monitor_staleness = connected_relays > 0
+            && matches!(
+                provider_runtime.mode,
+                ProviderMode::Online | ProviderMode::Degraded
+            );
+        if monitor_staleness {
+            if let Some(age) = provider_runtime.heartbeat_age_seconds(now) {
+                self.cursor_last_advanced_seconds_ago = age;
+            } else {
+                self.cursor_last_advanced_seconds_ago =
+                    self.cursor_last_advanced_seconds_ago.saturating_add(1);
+            }
         } else {
-            self.cursor_last_advanced_seconds_ago =
-                self.cursor_last_advanced_seconds_ago.saturating_add(1);
+            self.cursor_last_advanced_seconds_ago = 0;
         }
 
-        if self.cursor_is_stale() {
+        if monitor_staleness && self.cursor_is_stale() {
             self.recovery_phase = SyncRecoveryPhase::Reconnecting;
             let _ = self.pane_set_error("Cursor stalled beyond stale threshold");
-        } else if self.recovery_phase != SyncRecoveryPhase::Replaying {
-            self.recovery_phase = SyncRecoveryPhase::Ready;
-            *self.pane_load_state_mut() = PaneLoadState::Ready;
-            self.pane_clear_error();
+            return;
         }
+
+        if self.recovery_phase != SyncRecoveryPhase::Replaying {
+            self.recovery_phase = if monitor_staleness {
+                SyncRecoveryPhase::Ready
+            } else {
+                SyncRecoveryPhase::Idle
+            };
+        }
+        *self.pane_load_state_mut() = PaneLoadState::Ready;
+        self.pane_clear_error();
     }
 }
 
