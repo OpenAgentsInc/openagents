@@ -30,7 +30,9 @@ use crate::pane_system::{
 use crate::runtime_lanes::SaLifecycleCommand;
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
 use crate::spark_wallet::SparkWalletCommand;
-use crate::state::autopilot_goals::GoalMissedRunPolicy;
+use crate::state::autopilot_goals::{
+    GoalMissedRunPolicy, GoalRolloutHardeningChecklist, GoalRolloutRollbackPolicy, GoalRolloutStage,
+};
 use crate::state::os_scheduler::{OsSchedulerAdapterKind, preferred_adapter_for_host};
 use crate::state::swap_contract::{
     GoalSwapExecutionReceipt, SwapAmount, SwapAmountUnit, SwapDirection, SwapExecutionStatus,
@@ -303,6 +305,30 @@ struct GoalSchedulerToolArgs {
     kill_switch_active: Option<bool>,
     #[serde(default)]
     kill_switch_reason: Option<String>,
+    #[serde(default)]
+    rollout_enabled: Option<bool>,
+    #[serde(default)]
+    rollout_stage: Option<String>,
+    #[serde(default)]
+    rollout_cohorts: Option<Vec<String>>,
+    #[serde(default)]
+    max_false_success_rate_bps: Option<u32>,
+    #[serde(default)]
+    max_abort_rate_bps: Option<u32>,
+    #[serde(default)]
+    max_error_rate_bps: Option<u32>,
+    #[serde(default)]
+    max_avg_payout_confirm_latency_seconds: Option<u64>,
+    #[serde(default)]
+    hardening_authoritative_payout_gate_validated: Option<bool>,
+    #[serde(default)]
+    hardening_scheduler_recovery_drills_validated: Option<bool>,
+    #[serde(default)]
+    hardening_swap_risk_alerting_validated: Option<bool>,
+    #[serde(default)]
+    hardening_incident_runbook_validated: Option<bool>,
+    #[serde(default)]
+    hardening_test_matrix_gate_green: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -2321,6 +2347,9 @@ fn execute_goal_scheduler_tool(
                     .rev()
                     .find(|audit| audit.goal_id == goal.goal_id)
                     .cloned();
+                let rollout_gate = state.autopilot_goals.rollout_gate_decision();
+                let rollout_metrics = state.autopilot_goals.rollout_metrics_snapshot();
+                let rollout_health = state.autopilot_goals.rollout_health_report();
                 return ToolBridgeResultEnvelope::ok(
                     "OA-GOAL-SCHEDULER-STATUS-OK",
                     "Goal scheduler status read",
@@ -2367,6 +2396,12 @@ fn execute_goal_scheduler_tool(
                             "events": report.events,
                         })),
                         "latest_run_audit": latest_run_audit,
+                        "rollout": {
+                            "config": state.autopilot_goals.document.rollout_config.clone(),
+                            "gate": rollout_gate,
+                            "metrics": rollout_metrics,
+                            "health": rollout_health,
+                        },
                     }),
                 );
             }
@@ -2405,6 +2440,12 @@ fn execute_goal_scheduler_tool(
                     "queued_goals": queued,
                     "last_action": state.autopilot_goals.last_action,
                     "last_error": state.autopilot_goals.last_error,
+                    "rollout": {
+                        "config": state.autopilot_goals.document.rollout_config.clone(),
+                        "gate": state.autopilot_goals.rollout_gate_decision(),
+                        "metrics": state.autopilot_goals.rollout_metrics_snapshot(),
+                        "health": state.autopilot_goals.rollout_health_report(),
+                    },
                 }),
             )
         }
@@ -2556,6 +2597,113 @@ fn execute_goal_scheduler_tool(
                 ),
             }
         }
+        "set_rollout" => {
+            let stage = args
+                .rollout_stage
+                .as_deref()
+                .map(parse_goal_rollout_stage)
+                .transpose();
+            let stage = match stage {
+                Ok(value) => value,
+                Err(error) => {
+                    return ToolBridgeResultEnvelope::error(
+                        "OA-GOAL-SCHEDULER-INVALID-ROLLOUT-STAGE",
+                        error,
+                        json!({
+                            "rollout_stage": args.rollout_stage,
+                        }),
+                    );
+                }
+            };
+
+            let rollback_policy = if args.max_false_success_rate_bps.is_some()
+                || args.max_abort_rate_bps.is_some()
+                || args.max_error_rate_bps.is_some()
+                || args.max_avg_payout_confirm_latency_seconds.is_some()
+            {
+                let existing = state
+                    .autopilot_goals
+                    .document
+                    .rollout_config
+                    .rollback_policy
+                    .clone();
+                Some(GoalRolloutRollbackPolicy {
+                    max_false_success_rate_bps: args
+                        .max_false_success_rate_bps
+                        .unwrap_or(existing.max_false_success_rate_bps),
+                    max_abort_rate_bps: args
+                        .max_abort_rate_bps
+                        .unwrap_or(existing.max_abort_rate_bps),
+                    max_error_rate_bps: args
+                        .max_error_rate_bps
+                        .unwrap_or(existing.max_error_rate_bps),
+                    max_avg_payout_confirm_latency_seconds: args
+                        .max_avg_payout_confirm_latency_seconds
+                        .unwrap_or(existing.max_avg_payout_confirm_latency_seconds),
+                })
+            } else {
+                None
+            };
+
+            let hardening_checklist =
+                if args.hardening_authoritative_payout_gate_validated.is_some()
+                    || args.hardening_scheduler_recovery_drills_validated.is_some()
+                    || args.hardening_swap_risk_alerting_validated.is_some()
+                    || args.hardening_incident_runbook_validated.is_some()
+                    || args.hardening_test_matrix_gate_green.is_some()
+                {
+                    let existing = state
+                        .autopilot_goals
+                        .document
+                        .rollout_config
+                        .hardening_checklist
+                        .clone();
+                    Some(GoalRolloutHardeningChecklist {
+                        authoritative_payout_gate_validated: args
+                            .hardening_authoritative_payout_gate_validated
+                            .unwrap_or(existing.authoritative_payout_gate_validated),
+                        scheduler_recovery_drills_validated: args
+                            .hardening_scheduler_recovery_drills_validated
+                            .unwrap_or(existing.scheduler_recovery_drills_validated),
+                        swap_risk_alerting_validated: args
+                            .hardening_swap_risk_alerting_validated
+                            .unwrap_or(existing.swap_risk_alerting_validated),
+                        incident_runbook_validated: args
+                            .hardening_incident_runbook_validated
+                            .unwrap_or(existing.incident_runbook_validated),
+                        test_matrix_gate_green: args
+                            .hardening_test_matrix_gate_green
+                            .unwrap_or(existing.test_matrix_gate_green),
+                    })
+                } else {
+                    None
+                };
+
+            match state.autopilot_goals.update_rollout_config(
+                args.rollout_enabled,
+                stage,
+                args.rollout_cohorts.clone(),
+                rollback_policy,
+                hardening_checklist,
+                now_epoch_seconds,
+            ) {
+                Ok(()) => ToolBridgeResultEnvelope::ok(
+                    "OA-GOAL-SCHEDULER-ROLLOUT-OK",
+                    "Updated goal rollout configuration",
+                    json!({
+                        "rollout_config": state.autopilot_goals.document.rollout_config.clone(),
+                        "rollout_gate": state.autopilot_goals.rollout_gate_decision(),
+                        "rollout_metrics": state.autopilot_goals.rollout_metrics_snapshot(),
+                        "rollout_health": state.autopilot_goals.rollout_health_report(),
+                    }),
+                ),
+                Err(error) => ToolBridgeResultEnvelope::error(
+                    "OA-GOAL-SCHEDULER-ROLLOUT-FAILED",
+                    format!("Failed updating rollout configuration: {}", error),
+                    json!({ "error": error }),
+                ),
+            }
+        }
         "toggle_os_adapter" => {
             let Some(goal_id) = args
                 .goal_id
@@ -2641,7 +2789,7 @@ fn execute_goal_scheduler_tool(
         _ => ToolBridgeResultEnvelope::error(
             "OA-GOAL-SCHEDULER-ACTION-UNSUPPORTED",
             format!(
-                "Unsupported goal scheduler action '{}'. Allowed: status, recover_startup, run_now, set_missed_policy, set_kill_switch, toggle_os_adapter, reconcile_os_adapters",
+                "Unsupported goal scheduler action '{}'. Allowed: status, recover_startup, run_now, set_missed_policy, set_kill_switch, set_rollout, toggle_os_adapter, reconcile_os_adapters",
                 args.action
             ),
             json!({ "action": args.action }),
@@ -2799,6 +2947,19 @@ fn parse_goal_missed_run_policy(raw: &str) -> Option<GoalMissedRunPolicy> {
         "skip" => Some(GoalMissedRunPolicy::Skip),
         "single_replay" | "single" => Some(GoalMissedRunPolicy::SingleReplay),
         _ => None,
+    }
+}
+
+fn parse_goal_rollout_stage(raw: &str) -> Result<GoalRolloutStage, String> {
+    match normalize_key(raw).as_str() {
+        "disabled" => Ok(GoalRolloutStage::Disabled),
+        "internal_dogfood" | "internal" | "dogfood" => Ok(GoalRolloutStage::InternalDogfood),
+        "canary" => Ok(GoalRolloutStage::Canary),
+        "general_availability" | "ga" | "general" => Ok(GoalRolloutStage::GeneralAvailability),
+        _ => Err(
+            "rollout_stage must be disabled, internal_dogfood, canary, or general_availability"
+                .to_string(),
+        ),
     }
 }
 
@@ -3091,8 +3252,9 @@ mod tests {
         LEGACY_OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_SWAP_QUOTE,
         ToolBridgeResultEnvelope, build_fallback_quote, cad_action_from_key,
         cad_checkpoint_payload, cad_parse_retry_prompt, decode_tool_call_request, normalize_key,
-        pane_action_to_hit_action, pane_kind_key, parse_bool_env_override, parse_swap_direction,
-        parse_swap_unit, resolve_pane_kind, validate_direction_unit,
+        pane_action_to_hit_action, pane_kind_key, parse_bool_env_override,
+        parse_goal_rollout_stage, parse_swap_direction, parse_swap_unit, resolve_pane_kind,
+        validate_direction_unit,
     };
     use crate::app_state::{
         AutopilotToolCallRequest, CadDemoPaneState, CadDemoWarningState, PaneKind,
@@ -3101,6 +3263,7 @@ mod tests {
         CadDemoPaneAction, PaneHitAction, RelayConnectionsPaneAction, SettingsPaneAction,
     };
     use crate::spark_pane::SparkPaneAction;
+    use crate::state::autopilot_goals::GoalRolloutStage;
     use crate::state::swap_contract::{SwapAmountUnit, SwapDirection};
     use codex_client::AppServerRequestId;
     use serde::Deserialize;
@@ -3401,6 +3564,27 @@ mod tests {
         assert_eq!(parse_bool_env_override("No"), Some(false));
         assert_eq!(parse_bool_env_override("off"), Some(false));
         assert_eq!(parse_bool_env_override("unexpected"), None);
+    }
+
+    #[test]
+    fn parse_goal_rollout_stage_accepts_supported_values() {
+        assert_eq!(
+            parse_goal_rollout_stage("disabled").expect("disabled stage"),
+            GoalRolloutStage::Disabled
+        );
+        assert_eq!(
+            parse_goal_rollout_stage("internal_dogfood").expect("internal stage"),
+            GoalRolloutStage::InternalDogfood
+        );
+        assert_eq!(
+            parse_goal_rollout_stage("canary").expect("canary stage"),
+            GoalRolloutStage::Canary
+        );
+        assert_eq!(
+            parse_goal_rollout_stage("ga").expect("ga stage"),
+            GoalRolloutStage::GeneralAvailability
+        );
+        assert!(parse_goal_rollout_stage("invalid").is_err());
     }
 
     #[test]

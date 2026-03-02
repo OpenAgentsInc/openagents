@@ -510,7 +510,10 @@ mod tests {
             },
             fallback_quote(SwapDirection::BtcToUsd),
         );
-        assert_eq!(btc_to_usd.provider, SwapQuoteProvider::StablesatsQuoteService);
+        assert_eq!(
+            btc_to_usd.provider,
+            SwapQuoteProvider::StablesatsQuoteService
+        );
         assert_eq!(btc_to_usd.quote.direction, SwapDirection::BtcToUsd);
         assert_eq!(btc_to_usd.quote.amount_in.unit, SwapAmountUnit::Sats);
         assert_eq!(btc_to_usd.quote.amount_out.unit, SwapAmountUnit::Cents);
@@ -530,17 +533,17 @@ mod tests {
             },
             fallback_quote(SwapDirection::UsdToBtc),
         );
-        assert_eq!(usd_to_btc.provider, SwapQuoteProvider::StablesatsQuoteService);
+        assert_eq!(
+            usd_to_btc.provider,
+            SwapQuoteProvider::StablesatsQuoteService
+        );
         assert_eq!(usd_to_btc.quote.direction, SwapDirection::UsdToBtc);
         assert_eq!(usd_to_btc.quote.amount_in.unit, SwapAmountUnit::Cents);
         assert_eq!(usd_to_btc.quote.amount_out.unit, SwapAmountUnit::Sats);
         assert!(usd_to_btc.accepted_via_adapter);
         assert_eq!(
             client.accepted_quote_ids,
-            vec![
-                "quote-btc-usd-1".to_string(),
-                "quote-usd-btc-1".to_string()
-            ]
+            vec!["quote-btc-usd-1".to_string(), "quote-usd-btc-1".to_string()]
         );
     }
 }

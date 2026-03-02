@@ -544,6 +544,45 @@ fn run_autonomous_goal_loop(state: &mut crate::app_state::RenderState) -> bool {
         .balance
         .as_ref()
         .map_or(0, spark_total_balance_sats);
+    let rollout_gate = state.autopilot_goals.rollout_gate_decision();
+    if !rollout_gate.enabled {
+        let reason = format!("rollout gate blocked automation: {}", rollout_gate.reason);
+        if let Some(active_run) = state.goal_loop_executor.active_run.clone() {
+            if let Some(goal) = state
+                .autopilot_goals
+                .document
+                .active_goals
+                .iter()
+                .find(|goal| goal.goal_id == active_run.goal_id)
+                .cloned()
+            {
+                finalize_goal_loop_run(
+                    state,
+                    &active_run,
+                    &goal,
+                    GoalLifecycleStatus::Aborted,
+                    GoalLoopStopReason::PolicyAbort {
+                        reason: reason.clone(),
+                    },
+                    goal_loop_progress_snapshot(
+                        state,
+                        &active_run,
+                        now_epoch_seconds,
+                        wallet_total_sats,
+                    ),
+                    now_epoch_seconds,
+                    Some(reason.clone()),
+                    None,
+                );
+                return true;
+            }
+        }
+
+        if state.autopilot_goals.last_action.as_deref() != Some(reason.as_str()) {
+            state.autopilot_goals.last_action = Some(reason);
+        }
+        return false;
+    }
 
     if state.goal_loop_executor.active_run.is_none()
         && let Some(goal) = select_runnable_goal(&state.autopilot_goals.document.active_goals)
