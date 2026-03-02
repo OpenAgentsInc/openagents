@@ -632,6 +632,135 @@ impl CadSketchModel {
                         },
                     )?;
                 }
+                CadSketchEntity::Rectangle {
+                    id,
+                    plane_id,
+                    min_mm,
+                    max_mm,
+                    anchor_ids,
+                    ..
+                } => {
+                    validate_vec2_finite(*min_mm, "rectangle min_mm")?;
+                    validate_vec2_finite(*max_mm, "rectangle max_mm")?;
+                    if max_mm[0] <= min_mm[0] || max_mm[1] <= min_mm[1] {
+                        return Err(CadError::ParseFailed {
+                            reason: format!(
+                                "rectangle {id} requires max_mm strictly greater than min_mm"
+                            ),
+                        });
+                    }
+                    let corners = [
+                        [min_mm[0], min_mm[1]],
+                        [max_mm[0], min_mm[1]],
+                        [max_mm[0], max_mm[1]],
+                        [min_mm[0], max_mm[1]],
+                    ];
+                    insert_binding(
+                        &mut bindings,
+                        &anchor_ids[0],
+                        AnchorBinding {
+                            entity_id: id.clone(),
+                            plane_id: plane_id.clone(),
+                            role: AnchorRole::RectangleMinMin,
+                            position_mm: corners[0],
+                        },
+                    )?;
+                    insert_binding(
+                        &mut bindings,
+                        &anchor_ids[1],
+                        AnchorBinding {
+                            entity_id: id.clone(),
+                            plane_id: plane_id.clone(),
+                            role: AnchorRole::RectangleMaxMin,
+                            position_mm: corners[1],
+                        },
+                    )?;
+                    insert_binding(
+                        &mut bindings,
+                        &anchor_ids[2],
+                        AnchorBinding {
+                            entity_id: id.clone(),
+                            plane_id: plane_id.clone(),
+                            role: AnchorRole::RectangleMaxMax,
+                            position_mm: corners[2],
+                        },
+                    )?;
+                    insert_binding(
+                        &mut bindings,
+                        &anchor_ids[3],
+                        AnchorBinding {
+                            entity_id: id.clone(),
+                            plane_id: plane_id.clone(),
+                            role: AnchorRole::RectangleMinMax,
+                            position_mm: corners[3],
+                        },
+                    )?;
+                }
+                CadSketchEntity::Circle {
+                    id,
+                    plane_id,
+                    center_mm,
+                    radius_mm,
+                    anchor_ids,
+                    ..
+                } => {
+                    validate_vec2_finite(*center_mm, "circle center_mm")?;
+                    if !radius_mm.is_finite() || *radius_mm <= 0.0 {
+                        return Err(CadError::ParseFailed {
+                            reason: format!("circle {id} radius_mm must be finite and > 0"),
+                        });
+                    }
+                    insert_binding(
+                        &mut bindings,
+                        &anchor_ids[0],
+                        AnchorBinding {
+                            entity_id: id.clone(),
+                            plane_id: plane_id.clone(),
+                            role: AnchorRole::CircleCenter,
+                            position_mm: *center_mm,
+                        },
+                    )?;
+                    insert_binding(
+                        &mut bindings,
+                        &anchor_ids[1],
+                        AnchorBinding {
+                            entity_id: id.clone(),
+                            plane_id: plane_id.clone(),
+                            role: AnchorRole::CirclePerimeter,
+                            position_mm: [center_mm[0] + *radius_mm, center_mm[1]],
+                        },
+                    )?;
+                }
+                CadSketchEntity::Spline {
+                    id,
+                    plane_id,
+                    control_points_mm,
+                    anchor_ids,
+                    ..
+                } => {
+                    if control_points_mm.len() != anchor_ids.len() {
+                        return Err(CadError::ParseFailed {
+                            reason: format!(
+                                "spline {id} control_points_mm count must match anchor_ids count"
+                            ),
+                        });
+                    }
+                    for (index, (point, anchor_id)) in
+                        control_points_mm.iter().zip(anchor_ids.iter()).enumerate()
+                    {
+                        validate_vec2_finite(*point, "spline control_points_mm")?;
+                        insert_binding(
+                            &mut bindings,
+                            anchor_id,
+                            AnchorBinding {
+                                entity_id: id.clone(),
+                                plane_id: plane_id.clone(),
+                                role: AnchorRole::SplineControlPoint(index),
+                                position_mm: *point,
+                            },
+                        )?;
+                    }
+                }
                 CadSketchEntity::Point {
                     id,
                     plane_id,
@@ -743,6 +872,93 @@ impl CadSketchModel {
                     });
                 }
             },
+            Some(CadSketchEntity::Rectangle { min_mm, max_mm, .. }) => {
+                match binding.role {
+                    AnchorRole::RectangleMinMin => {
+                        *min_mm = position_mm;
+                    }
+                    AnchorRole::RectangleMaxMin => {
+                        max_mm[0] = position_mm[0];
+                        min_mm[1] = position_mm[1];
+                    }
+                    AnchorRole::RectangleMaxMax => {
+                        *max_mm = position_mm;
+                    }
+                    AnchorRole::RectangleMinMax => {
+                        min_mm[0] = position_mm[0];
+                        max_mm[1] = position_mm[1];
+                    }
+                    _ => {
+                        return Err(CadError::ParseFailed {
+                            reason: format!(
+                                "anchor role mismatch while updating rectangle {}",
+                                binding.entity_id
+                            ),
+                        });
+                    }
+                }
+                if max_mm[0] <= min_mm[0] || max_mm[1] <= min_mm[1] {
+                    return Err(CadError::ParseFailed {
+                        reason: format!(
+                            "rectangle {} update produced invalid min/max bounds",
+                            binding.entity_id
+                        ),
+                    });
+                }
+            }
+            Some(CadSketchEntity::Circle {
+                center_mm,
+                radius_mm,
+                ..
+            }) => match binding.role {
+                AnchorRole::CircleCenter => {
+                    *center_mm = position_mm;
+                }
+                AnchorRole::CirclePerimeter => {
+                    let vector = [position_mm[0] - center_mm[0], position_mm[1] - center_mm[1]];
+                    let radius = vector_length_mm(vector);
+                    if radius <= 0.000_001 {
+                        return Err(CadError::ParseFailed {
+                            reason: format!(
+                                "cannot place circle perimeter anchor on center for {}",
+                                binding.entity_id
+                            ),
+                        });
+                    }
+                    *radius_mm = radius;
+                }
+                _ => {
+                    return Err(CadError::ParseFailed {
+                        reason: format!(
+                            "anchor role mismatch while updating circle {}",
+                            binding.entity_id
+                        ),
+                    });
+                }
+            },
+            Some(CadSketchEntity::Spline {
+                control_points_mm, ..
+            }) => match binding.role {
+                AnchorRole::SplineControlPoint(index) => {
+                    if index >= control_points_mm.len() {
+                        return Err(CadError::ParseFailed {
+                            reason: format!(
+                                "spline {} missing control point index {}",
+                                binding.entity_id, index
+                            ),
+                        });
+                    }
+                    control_points_mm[index] = position_mm;
+                }
+                _ => {
+                    return Err(CadError::ParseFailed {
+                        reason: format!(
+                            "anchor role mismatch while updating spline {}",
+                            binding.entity_id
+                        ),
+                    });
+                }
+            },
             None => {
                 return Err(CadError::ParseFailed {
                     reason: format!("missing entity {} for anchor update", binding.entity_id),
@@ -845,6 +1061,13 @@ enum AnchorRole {
     ArcCenter,
     ArcStart,
     ArcEnd,
+    RectangleMinMin,
+    RectangleMaxMin,
+    RectangleMaxMax,
+    RectangleMinMax,
+    CircleCenter,
+    CirclePerimeter,
+    SplineControlPoint(usize),
     Point,
 }
 

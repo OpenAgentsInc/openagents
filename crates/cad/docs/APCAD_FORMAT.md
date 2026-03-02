@@ -87,7 +87,7 @@ Top-level shape:
 - `sketch.planes` is a deterministic map keyed by stable `plane_id`.
 - `sketch.entities` is a deterministic map keyed by stable `entity_id`.
 - `sketch.constraints` is a deterministic map keyed by stable `constraint_id`.
-- Entity payloads support `line`, `arc`, and `point`.
+- Entity payloads support `line`, `rectangle`, `circle`, `arc`, `spline`, and `point`.
 - Constraint payloads support `coincident`, `horizontal`, `vertical`, `tangent`, and `dimension`.
 - Every entity references an existing `plane_id` and explicit `anchor_ids`.
 - Every constraint references valid entities/anchors with strict kind matching.

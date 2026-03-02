@@ -36,6 +36,7 @@ LANE_LABELS=(
     "feature-op-hash"
     "modeling-edge-cases"
     "core-modeling-checkpoint"
+    "sketch-entity-set"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -197,6 +198,9 @@ run_lane "modeling-edge-cases" \
 
 run_lane "core-modeling-checkpoint" \
     "$ROOT_DIR/scripts/cad/parity-core-modeling-checkpoint-ci.sh"
+
+run_lane "sketch-entity-set" \
+    "$ROOT_DIR/scripts/cad/parity-sketch-entity-set-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

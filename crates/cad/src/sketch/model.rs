@@ -55,6 +55,30 @@ pub enum CadSketchEntity {
         anchor_ids: [String; 3],
         construction: bool,
     },
+    Rectangle {
+        id: String,
+        plane_id: String,
+        min_mm: [f64; 2],
+        max_mm: [f64; 2],
+        anchor_ids: [String; 4],
+        construction: bool,
+    },
+    Circle {
+        id: String,
+        plane_id: String,
+        center_mm: [f64; 2],
+        radius_mm: f64,
+        anchor_ids: [String; 2],
+        construction: bool,
+    },
+    Spline {
+        id: String,
+        plane_id: String,
+        control_points_mm: Vec<[f64; 2]>,
+        anchor_ids: Vec<String>,
+        closed: bool,
+        construction: bool,
+    },
     Point {
         id: String,
         plane_id: String,
@@ -69,6 +93,9 @@ impl CadSketchEntity {
         match self {
             Self::Line { id, .. } => id,
             Self::Arc { id, .. } => id,
+            Self::Rectangle { id, .. } => id,
+            Self::Circle { id, .. } => id,
+            Self::Spline { id, .. } => id,
             Self::Point { id, .. } => id,
         }
     }
@@ -77,6 +104,9 @@ impl CadSketchEntity {
         match self {
             Self::Line { plane_id, .. } => plane_id,
             Self::Arc { plane_id, .. } => plane_id,
+            Self::Rectangle { plane_id, .. } => plane_id,
+            Self::Circle { plane_id, .. } => plane_id,
+            Self::Spline { plane_id, .. } => plane_id,
             Self::Point { plane_id, .. } => plane_id,
         }
     }
@@ -85,6 +115,9 @@ impl CadSketchEntity {
         match self {
             Self::Line { anchor_ids, .. } => anchor_ids.iter().map(String::as_str).collect(),
             Self::Arc { anchor_ids, .. } => anchor_ids.iter().map(String::as_str).collect(),
+            Self::Rectangle { anchor_ids, .. } => anchor_ids.iter().map(String::as_str).collect(),
+            Self::Circle { anchor_ids, .. } => anchor_ids.iter().map(String::as_str).collect(),
+            Self::Spline { anchor_ids, .. } => anchor_ids.iter().map(String::as_str).collect(),
             Self::Point { anchor_id, .. } => vec![anchor_id.as_str()],
         }
     }
@@ -136,6 +169,64 @@ impl CadSketchEntity {
                     return Err(CadError::ParseFailed {
                         reason: format!("arc {} angle bounds must be finite", self.id()),
                     });
+                }
+            }
+            Self::Rectangle { min_mm, max_mm, .. } => {
+                validate_vec2_finite(*min_mm, "rectangle min_mm")?;
+                validate_vec2_finite(*max_mm, "rectangle max_mm")?;
+                if max_mm[0] <= min_mm[0] || max_mm[1] <= min_mm[1] {
+                    return Err(CadError::ParseFailed {
+                        reason: format!(
+                            "rectangle {} requires max_mm strictly greater than min_mm",
+                            self.id()
+                        ),
+                    });
+                }
+            }
+            Self::Circle {
+                center_mm,
+                radius_mm,
+                ..
+            } => {
+                validate_vec2_finite(*center_mm, "circle center_mm")?;
+                if !radius_mm.is_finite() || *radius_mm <= 0.0 {
+                    return Err(CadError::ParseFailed {
+                        reason: format!("circle {} radius_mm must be finite and > 0", self.id()),
+                    });
+                }
+            }
+            Self::Spline {
+                control_points_mm,
+                anchor_ids,
+                closed,
+                ..
+            } => {
+                if control_points_mm.len() < 2 {
+                    return Err(CadError::ParseFailed {
+                        reason: format!(
+                            "spline {} requires at least two control points",
+                            self.id()
+                        ),
+                    });
+                }
+                if *closed && control_points_mm.len() < 3 {
+                    return Err(CadError::ParseFailed {
+                        reason: format!(
+                            "closed spline {} requires at least three control points",
+                            self.id()
+                        ),
+                    });
+                }
+                if control_points_mm.len() != anchor_ids.len() {
+                    return Err(CadError::ParseFailed {
+                        reason: format!(
+                            "spline {} control_points_mm count must match anchor_ids count",
+                            self.id()
+                        ),
+                    });
+                }
+                for point in control_points_mm {
+                    validate_vec2_finite(*point, "spline control_points_mm")?;
                 }
             }
             Self::Point { position_mm, .. } => {

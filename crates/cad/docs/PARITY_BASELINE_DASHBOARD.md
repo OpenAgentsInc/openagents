@@ -8,14 +8,14 @@ Issue coverage: `VCAD-PARITY-010`
 | --- | --- |
 | vcad commit | `1b59e7948efcdb848d8dba6848785d57aa310e81` |
 | openagents commit (plan baseline) | `04faa5227f077c419f1c5c52ddebbb7552838fd4` |
-| phase status | `phase_c_core_modeling_complete` |
+| phase status | `phase_d_sketch_entity_set_complete` |
 | overall match rate | `0.072464` |
 | docs match rate | `0.038961` |
 | crates match rate | `0.122449` |
 | commands match rate | `0.083333` |
 | open risks | `24` |
 | open hard blockers (p0) | `16` |
-| CI source artifact count | `40` |
+| CI source artifact count | `41` |
 
 ## Profile Gates
 
@@ -61,6 +61,7 @@ Issue coverage: `VCAD-PARITY-010`
 - `pattern_parity_manifest`
 - `primitive_contracts_parity_manifest`
 - `shell_feature_graph_parity_manifest`
+- `sketch_entity_set_parity_manifest`
 - `sweep_parity_manifest`
 - `topology_repair_parity_manifest`
 - `transform_parity_manifest`
@@ -71,6 +72,6 @@ Issue coverage: `VCAD-PARITY-010`
 
 ## Next Actions
 
-- Execute VCAD-PARITY-041 through VCAD-PARITY-055 sequentially
+- Execute VCAD-PARITY-042 through VCAD-PARITY-055 sequentially
 - Keep phase_a_baseline_v1 profile passing in scorecard and risk register lanes
 - Refresh parity dashboard after each closed parity issue
