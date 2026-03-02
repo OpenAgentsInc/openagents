@@ -1,6 +1,6 @@
 use super::{
-    CadDimensionConstraintKind, CadSketchConstraint, CadSketchEntity, CadSketchModel,
-    CadSketchPlane, CadSketchPlanePreset, CadSketchSolveSeverity,
+    CadDimensionConstraintKind, CadSketchConstraint, CadSketchConstraintStatus, CadSketchEntity,
+    CadSketchModel, CadSketchPlane, CadSketchPlanePreset, CadSketchSolveSeverity,
 };
 use crate::kernel_primitives::{make_cube, make_cylinder};
 use crate::kernel_topology::{FaceId, Orientation};
@@ -1027,4 +1027,118 @@ fn lm_pipeline_emits_rank_deficient_warning_for_duplicate_unsolved_rows() {
             && entry.constraint_id == "lm.pipeline"
             && entry.severity == CadSketchSolveSeverity::Warning
     }));
+}
+
+#[test]
+fn sketch_status_reports_under_constrained_for_positive_dof() {
+    let mut model = CadSketchModel::default();
+    model
+        .insert_plane(primary_plane())
+        .expect("plane should insert");
+    model
+        .insert_entity(CadSketchEntity::Point {
+            id: "entity.point.a".to_string(),
+            plane_id: "plane.front".to_string(),
+            position_mm: [2.0, 3.0],
+            anchor_id: "anchor.point.a".to_string(),
+            construction: false,
+        })
+        .expect("point should insert");
+
+    let report = model
+        .constraint_status_report()
+        .expect("status report should build");
+    assert_eq!(report.degrees_of_freedom, 2);
+    assert_eq!(report.parameter_count, 2);
+    assert_eq!(report.constraint_equation_count, 0);
+    assert_eq!(report.status, CadSketchConstraintStatus::UnderConstrained);
+    assert!(
+        model
+            .is_under_constrained()
+            .expect("under-constrained check should evaluate")
+    );
+}
+
+#[test]
+fn sketch_status_reports_fully_constrained_for_zero_dof() {
+    let mut model = CadSketchModel::default();
+    model
+        .insert_plane(primary_plane())
+        .expect("plane should insert");
+    model
+        .insert_entity(CadSketchEntity::Point {
+            id: "entity.point.a".to_string(),
+            plane_id: "plane.front".to_string(),
+            position_mm: [2.0, 3.0],
+            anchor_id: "anchor.point.a".to_string(),
+            construction: false,
+        })
+        .expect("point should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Fixed {
+            id: "constraint.fixed.a".to_string(),
+            point_anchor_id: "anchor.point.a".to_string(),
+            target_mm: [2.0, 3.0],
+            tolerance_mm: Some(0.001),
+        })
+        .expect("fixed should insert");
+
+    let report = model
+        .constraint_status_report()
+        .expect("status report should build");
+    assert_eq!(report.degrees_of_freedom, 0);
+    assert_eq!(report.parameter_count, 2);
+    assert_eq!(report.constraint_equation_count, 2);
+    assert_eq!(report.status, CadSketchConstraintStatus::FullyConstrained);
+    assert!(
+        model
+            .is_fully_constrained()
+            .expect("fully-constrained check should evaluate")
+    );
+}
+
+#[test]
+fn sketch_status_reports_over_constrained_for_negative_dof() {
+    let mut model = CadSketchModel::default();
+    model
+        .insert_plane(primary_plane())
+        .expect("plane should insert");
+    model
+        .insert_entity(CadSketchEntity::Point {
+            id: "entity.point.a".to_string(),
+            plane_id: "plane.front".to_string(),
+            position_mm: [2.0, 3.0],
+            anchor_id: "anchor.point.a".to_string(),
+            construction: false,
+        })
+        .expect("point should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Fixed {
+            id: "constraint.fixed.a".to_string(),
+            point_anchor_id: "anchor.point.a".to_string(),
+            target_mm: [2.0, 3.0],
+            tolerance_mm: Some(0.001),
+        })
+        .expect("first fixed should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Fixed {
+            id: "constraint.fixed.b".to_string(),
+            point_anchor_id: "anchor.point.a".to_string(),
+            target_mm: [4.0, 5.0],
+            tolerance_mm: Some(0.001),
+        })
+        .expect("second fixed should insert");
+
+    let report = model
+        .constraint_status_report()
+        .expect("status report should build");
+    assert_eq!(report.degrees_of_freedom, -2);
+    assert_eq!(report.parameter_count, 2);
+    assert_eq!(report.constraint_equation_count, 4);
+    assert_eq!(report.status, CadSketchConstraintStatus::OverConstrained);
+    assert!(
+        model
+            .is_over_constrained()
+            .expect("over-constrained check should evaluate")
+    );
 }
