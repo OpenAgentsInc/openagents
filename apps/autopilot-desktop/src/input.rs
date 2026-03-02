@@ -403,6 +403,9 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     if reducers::drain_runtime_lane_updates(state) {
         changed = true;
     }
+    if reducers::run_cad_demo_action(state, CadDemoPaneAction::Noop) {
+        changed = true;
+    }
     if state.nostr_secret_state.expire(now) {
         changed = true;
     }
