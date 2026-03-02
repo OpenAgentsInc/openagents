@@ -1,0 +1,50 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-083",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_corpus_path": "crates/cad/parity/fixtures/cad_cli_scaffold_vcad_reference.json",
+  "reference_corpus_sha256": "e605f15e550e1a284d62cf6d5212c70c9dfd571369349f69b910045d03dd0438",
+  "reference_source": "~/code/vcad/crates/vcad-cli/src/main.rs + ~/code/vcad/docs/features/headless-api.md",
+  "reference_commit_match": true,
+  "app_name_match": true,
+  "reference_command_match": true,
+  "root_help_hash": "2b27829cddc5dcea",
+  "root_help_contract_match": true,
+  "command_snapshots": [
+    {
+      "command": "export",
+      "help_exit_code": 0,
+      "help_contains_command": true,
+      "help_hash": "f0071ba696f5a24b",
+      "stub_exit_code": 3,
+      "stub_error": "export command scaffold is present; implementation lands in VCAD-PARITY-084"
+    },
+    {
+      "command": "import",
+      "help_exit_code": 0,
+      "help_contains_command": true,
+      "help_hash": "84dfc41195d4537f",
+      "stub_exit_code": 3,
+      "stub_error": "import command scaffold is present; implementation lands in VCAD-PARITY-084"
+    },
+    {
+      "command": "info",
+      "help_exit_code": 0,
+      "help_contains_command": true,
+      "help_hash": "e8c5c35179918c2f",
+      "stub_exit_code": 3,
+      "stub_error": "info command scaffold is present; implementation lands in VCAD-PARITY-084"
+    }
+  ],
+  "command_surface_match": true,
+  "deterministic_replay_match": true,
+  "deterministic_signature": "0ae6e6bf45c8d820",
+  "parity_contracts": [
+    "openagents-cad-cli exposes scaffold command surface for export/import/info",
+    "CLI help surfaces are deterministic and list scaffolded command contracts",
+    "scaffold command handlers return stable stub diagnostics targeting VCAD-PARITY-084",
+    "cad cli scaffold parity fixtures replay deterministically"
+  ]
+}

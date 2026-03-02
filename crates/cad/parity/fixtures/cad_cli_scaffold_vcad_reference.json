@@ -1,0 +1,41 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-083",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/crates/vcad-cli/src/main.rs + ~/code/vcad/docs/features/headless-api.md",
+  "expected_app_name": "openagents-cad-cli",
+  "expected_reference_command": "vcad",
+  "expected_root_help_exit_code": 0,
+  "expected_root_help_contains": [
+    "USAGE:",
+    "COMMANDS:",
+    "export",
+    "import",
+    "info",
+    "VCAD-PARITY-083",
+    "VCAD-PARITY-084"
+  ],
+  "expected_command_expectations": [
+    {
+      "command": "export",
+      "help_exit_code": 0,
+      "help_contains_command": true,
+      "stub_exit_code": 3,
+      "stub_error": "export command scaffold is present; implementation lands in VCAD-PARITY-084"
+    },
+    {
+      "command": "import",
+      "help_exit_code": 0,
+      "help_contains_command": true,
+      "stub_exit_code": 3,
+      "stub_error": "import command scaffold is present; implementation lands in VCAD-PARITY-084"
+    },
+    {
+      "command": "info",
+      "help_exit_code": 0,
+      "help_contains_command": true,
+      "stub_exit_code": 3,
+      "stub_error": "info command scaffold is present; implementation lands in VCAD-PARITY-084"
+    }
+  ]
+}

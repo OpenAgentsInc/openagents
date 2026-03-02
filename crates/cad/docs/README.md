@@ -278,6 +278,8 @@ Everything currently in `crates/cad/docs/` is indexed below.
 - [`CAD_STEP_IMPORT.md`](./CAD_STEP_IMPORT.md)
 - [`CAD_STL_IO.md`](./CAD_STL_IO.md)
 - [`CAD_GLB_EXPORT.md`](./CAD_GLB_EXPORT.md)
+- [`CAD_CLI_SCAFFOLD.md`](./CAD_CLI_SCAFFOLD.md)
+- [`CAD_CLI_SCAFFOLD_PARITY.md`](./CAD_CLI_SCAFFOLD_PARITY.md)
 - [`CAD_STEP_CHECKER.md`](./CAD_STEP_CHECKER.md)
 
 ### Architecture Decisions
