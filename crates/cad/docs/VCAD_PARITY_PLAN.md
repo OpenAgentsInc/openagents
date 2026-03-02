@@ -157,7 +157,7 @@ Major gaps to close:
 
 67. [x] VCAD-PARITY-067: Drafting kernel scaffolding parity modules.
 68. [x] VCAD-PARITY-068: Orthographic/isometric projection parity.
-69. [ ] VCAD-PARITY-069: Hidden-line removal parity.
+69. [x] VCAD-PARITY-069: Hidden-line removal parity.
 70. [ ] VCAD-PARITY-070: Dimension parity (linear/angular/radial/ordinate).
 71. [ ] VCAD-PARITY-071: GD&T annotation parity.
 72. [ ] VCAD-PARITY-072: Section view parity.

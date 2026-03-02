@@ -197,6 +197,20 @@ pub struct ProjectedView {
 }
 
 impl ProjectedView {
+    pub fn new(view_direction: ViewDirection) -> Self {
+        Self {
+            edges: Vec::new(),
+            bounds: BoundingBox2D::empty(),
+            view_direction,
+        }
+    }
+
+    pub fn add_edge(&mut self, edge: ProjectedEdge) {
+        self.bounds.include_point(edge.start);
+        self.bounds.include_point(edge.end);
+        self.edges.push(edge);
+    }
+
     pub fn visible_edges(&self) -> impl Iterator<Item = &ProjectedEdge> {
         self.edges
             .iter()
