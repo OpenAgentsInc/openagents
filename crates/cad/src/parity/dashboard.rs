@@ -111,10 +111,31 @@ pub fn build_dashboard(
         .evaluations
         .iter()
         .any(|evaluation| evaluation.profile_id == "phase_a_baseline_v1" && evaluation.pass);
-    let phase_status = if baseline_scorecard_pass && baseline_risk_pass {
+    let has_phase_c_checkpoint = artifacts
+        .artifact_ids
+        .iter()
+        .any(|artifact_id| artifact_id == "core_modeling_checkpoint_parity_manifest");
+    let phase_status = if baseline_scorecard_pass && baseline_risk_pass && has_phase_c_checkpoint {
+        "phase_c_core_modeling_complete".to_string()
+    } else if baseline_scorecard_pass && baseline_risk_pass {
         "phase_a_baseline_complete".to_string()
     } else {
         "phase_a_baseline_at_risk".to_string()
+    };
+    let next_actions = if phase_status == "phase_c_core_modeling_complete" {
+        vec![
+            "Execute VCAD-PARITY-041 through VCAD-PARITY-055 sequentially".to_string(),
+            "Keep phase_a_baseline_v1 profile passing in scorecard and risk register lanes"
+                .to_string(),
+            "Refresh parity dashboard after each closed parity issue".to_string(),
+        ]
+    } else {
+        vec![
+            "Execute VCAD-PARITY-011 through VCAD-PARITY-025 sequentially".to_string(),
+            "Keep phase_a_baseline_v1 profile passing in scorecard and risk register lanes"
+                .to_string(),
+            "Refresh parity dashboard after each closed parity issue".to_string(),
+        ]
     };
 
     ParityDashboard {
@@ -131,12 +152,7 @@ pub fn build_dashboard(
         profile_status,
         artifacts,
         phase_status,
-        next_actions: vec![
-            "Execute VCAD-PARITY-011 through VCAD-PARITY-025 sequentially".to_string(),
-            "Keep phase_a_baseline_v1 profile passing in scorecard and risk register lanes"
-                .to_string(),
-            "Refresh parity dashboard after each closed parity issue".to_string(),
-        ],
+        next_actions,
     }
 }
 
@@ -244,11 +260,11 @@ mod tests {
                 source_artifact_count: 1,
                 artifact_ids: vec!["artifact".to_string()],
             },
-            phase_status: "phase_a_baseline_complete".to_string(),
+            phase_status: "phase_c_core_modeling_complete".to_string(),
             next_actions: vec!["x".to_string()],
         };
         let markdown = render_dashboard_markdown(&dashboard);
         assert!(markdown.contains("# Baseline Parity Dashboard"));
-        assert!(markdown.contains("phase_a_baseline_complete"));
+        assert!(markdown.contains("phase_c_core_modeling_complete"));
     }
 }

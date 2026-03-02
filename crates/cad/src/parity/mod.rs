@@ -1,5 +1,6 @@
 pub mod chamfer_feature_graph_parity;
 pub mod ci_artifacts;
+pub mod core_modeling_checkpoint_parity;
 pub mod dashboard;
 pub mod expanded_finishing_parity;
 pub mod feature_op_hash_parity;
