@@ -49,6 +49,7 @@ Current artifacts:
 - `sketch_plane_parity_manifest.json` (`VCAD-PARITY-042`)
 - `sketch_constraint_enum_parity_manifest.json` (`VCAD-PARITY-043`)
 - `sketch_iterative_lm_parity_manifest.json` (`VCAD-PARITY-044`)
+- `sketch_jacobian_residual_parity_manifest.json` (`VCAD-PARITY-045`)
 
 Regeneration/check command:
 
@@ -97,6 +98,7 @@ scripts/cad/parity-sketch-entity-set-ci.sh
 scripts/cad/parity-sketch-plane-ci.sh
 scripts/cad/parity-sketch-constraint-enum-ci.sh
 scripts/cad/parity-sketch-iterative-lm-ci.sh
+scripts/cad/parity-sketch-jacobian-residual-ci.sh
 scripts/cad/parity-blocker-workflow.sh
 scripts/cad/parity_check.sh
 scripts/cad/parity-ci-lane.sh

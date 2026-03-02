@@ -41,6 +41,8 @@ Provide one deterministic orchestration entrypoint for the parity baseline lanes
 - sketch entity set parity fixture check
 - sketch plane parity fixture check
 - sketch constraint enum parity fixture check
+- sketch iterative LM parity fixture check
+- sketch Jacobian/residual parity fixture check
 - parity CI artifact manifest fixture check
 - parity risk register + blocker workflow check
 - baseline dashboard publication check

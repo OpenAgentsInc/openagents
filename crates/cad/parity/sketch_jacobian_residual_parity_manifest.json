@@ -1,0 +1,45 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-045",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "vcad_reference_sources": [
+    "docs/features/sketch-mode.md (Solver Algorithm section)",
+    "crates/vcad-kernel-constraints/src/jacobian.rs (finite-difference Jacobian reference)",
+    "crates/vcad-kernel-constraints/src/residual.rs (constraint residual vector reference)"
+  ],
+  "pipeline_summary": {
+    "epsilon": 1e-8,
+    "residual_component_count": 4,
+    "parameter_count": 10,
+    "residual_l2_norm": 8.926061805549926,
+    "residual_max_abs": 6.54846187598099,
+    "residual_hash": "1387b8ffc3d1eccf",
+    "jacobian_nonzero_count": 20,
+    "jacobian_max_abs": 0.999999993922529,
+    "jacobian_rank": 4,
+    "jacobian_rank_deficient": false,
+    "jacobian_has_non_finite": false,
+    "jacobian_hash": "ed97a2fb8bbab30b",
+    "constraint_component_counts": {
+      "constraint.distance": 1,
+      "constraint.horizontal": 1,
+      "constraint.parallel": 1,
+      "constraint.point_on_line": 1
+    }
+  },
+  "rank_deficient_warning_observed": true,
+  "rank_case_diagnostic_codes": [
+    "SKETCH_LM_JACOBIAN_RANK_DEFICIENT"
+  ],
+  "sample_model_hash": "7aca0cdedf3035b3",
+  "rank_case_report_hash": "1c44405335af351b",
+  "deterministic_replay_match": true,
+  "deterministic_signature": "eda5d067077ab705",
+  "parity_contracts": [
+    "LM pipeline computes deterministic residual vector + finite-difference Jacobian summaries",
+    "pipeline exposes stable residual/jacobian hashes for replay-safe parity checks",
+    "rank-deficient unsolved systems emit deterministic SKETCH_LM_JACOBIAN_RANK_DEFICIENT diagnostics"
+  ]
+}

@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use super::common::{
     arc_point, distance_mm, tangent_residual_mm, validate_vec2_finite, vector_length_mm,
@@ -52,6 +53,24 @@ pub struct CadSketchLmConfig {
     pub max_lambda: f64,
 }
 
+/// Deterministic LM Jacobian/residual summary aligned to vcad pipeline semantics.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CadSketchLmPipelineSummary {
+    pub epsilon: f64,
+    pub residual_component_count: usize,
+    pub parameter_count: usize,
+    pub residual_l2_norm: f64,
+    pub residual_max_abs: f64,
+    pub residual_hash: String,
+    pub jacobian_nonzero_count: usize,
+    pub jacobian_max_abs: f64,
+    pub jacobian_rank: usize,
+    pub jacobian_rank_deficient: bool,
+    pub jacobian_has_non_finite: bool,
+    pub jacobian_hash: String,
+    pub constraint_component_counts: BTreeMap<String, usize>,
+}
+
 impl Default for CadSketchLmConfig {
     fn default() -> Self {
         Self {
@@ -74,6 +93,9 @@ const LM_LAMBDA_DECREASE: f64 = 0.1;
 const LM_MIN_LAMBDA: f64 = 1e-12;
 const LM_MAX_LAMBDA: f64 = 1e12;
 const LM_IMPROVEMENT_EPSILON: f64 = 1e-12;
+const LM_JACOBIAN_EPSILON: f64 = 1e-8;
+const LM_JACOBIAN_NONZERO_TOLERANCE: f64 = 1e-15;
+const LM_JACOBIAN_RANK_TOLERANCE: f64 = 1e-9;
 
 impl CadSketchModel {
     pub fn validate(&self) -> CadResult<()> {
@@ -357,6 +379,95 @@ impl CadSketchModel {
         Ok(())
     }
 
+    /// Build deterministic Jacobian/residual summary for the current sketch model.
+    pub fn lm_pipeline_summary(&self) -> CadResult<CadSketchLmPipelineSummary> {
+        self.validate()?;
+
+        let anchor_bindings = self.collect_anchor_bindings()?;
+        let parameter_anchor_order: Vec<String> = anchor_bindings.keys().cloned().collect();
+        let parameter_count = parameter_anchor_order.len().saturating_mul(2);
+
+        let (residual_components, constraint_component_counts) =
+            self.collect_lm_residual_vector()?;
+        let residual_component_count = residual_components.len();
+        let residual_l2_norm = residual_components
+            .iter()
+            .map(|value| value * value)
+            .sum::<f64>()
+            .sqrt();
+        let residual_max_abs = residual_components
+            .iter()
+            .map(|value| value.abs())
+            .fold(0.0, f64::max);
+        let residual_hash = short_sha256_f64_slice(&residual_components);
+
+        let mut jacobian = vec![vec![0.0; parameter_count]; residual_component_count];
+        if residual_component_count > 0 && parameter_count > 0 {
+            for column in 0..parameter_count {
+                let anchor_id = &parameter_anchor_order[column / 2];
+                let axis = column % 2;
+
+                let mut plus_model = self.clone();
+                plus_model.apply_anchor_parameter_delta(anchor_id, axis, LM_JACOBIAN_EPSILON)?;
+                let (residual_plus, _) = plus_model.collect_lm_residual_vector()?;
+
+                let mut minus_model = self.clone();
+                minus_model.apply_anchor_parameter_delta(anchor_id, axis, -LM_JACOBIAN_EPSILON)?;
+                let (residual_minus, _) = minus_model.collect_lm_residual_vector()?;
+
+                if residual_plus.len() != residual_component_count
+                    || residual_minus.len() != residual_component_count
+                {
+                    return Err(CadError::EvalFailed {
+                        reason: format!(
+                            "LM residual vector length changed during Jacobian evaluation for anchor {anchor_id}"
+                        ),
+                    });
+                }
+
+                for row in 0..residual_component_count {
+                    jacobian[row][column] =
+                        (residual_plus[row] - residual_minus[row]) / (2.0 * LM_JACOBIAN_EPSILON);
+                }
+            }
+        }
+
+        let mut jacobian_nonzero_count = 0usize;
+        let mut jacobian_max_abs = 0.0f64;
+        let mut jacobian_has_non_finite = false;
+        for row in &jacobian {
+            for value in row {
+                if !value.is_finite() {
+                    jacobian_has_non_finite = true;
+                }
+                let abs = value.abs();
+                if abs > LM_JACOBIAN_NONZERO_TOLERANCE {
+                    jacobian_nonzero_count = jacobian_nonzero_count.saturating_add(1);
+                }
+                jacobian_max_abs = jacobian_max_abs.max(abs);
+            }
+        }
+        let jacobian_rank = estimate_matrix_rank(&jacobian, LM_JACOBIAN_RANK_TOLERANCE);
+        let jacobian_rank_deficient = jacobian_rank < residual_component_count.min(parameter_count);
+        let jacobian_hash = short_sha256_f64_matrix(&jacobian);
+
+        Ok(CadSketchLmPipelineSummary {
+            epsilon: LM_JACOBIAN_EPSILON,
+            residual_component_count,
+            parameter_count,
+            residual_l2_norm,
+            residual_max_abs,
+            residual_hash,
+            jacobian_nonzero_count,
+            jacobian_max_abs,
+            jacobian_rank,
+            jacobian_rank_deficient,
+            jacobian_has_non_finite,
+            jacobian_hash,
+            constraint_component_counts,
+        })
+    }
+
     /// Deterministic iterative LM-style solver pass over sketch constraints.
     pub fn solve_constraints_deterministic(&mut self) -> CadResult<CadSketchSolveReport> {
         self.validate()?;
@@ -369,7 +480,8 @@ impl CadSketchModel {
 
         for iteration in 1..=config.max_iterations {
             let snapshot = self.clone();
-            let iteration_outcome = self.solve_constraints_iteration(lambda)?;
+            let iteration_outcome =
+                self.solve_constraints_iteration(lambda, config.residual_tolerance_mm)?;
             completed_iterations = iteration;
 
             let improved = iteration_outcome.lm_residual_norm + LM_IMPROVEMENT_EPSILON < best_norm;
@@ -397,7 +509,11 @@ impl CadSketchModel {
         Ok(report)
     }
 
-    fn solve_constraints_iteration(&mut self, lambda: f64) -> CadResult<LmIterationOutcome> {
+    fn solve_constraints_iteration(
+        &mut self,
+        lambda: f64,
+        residual_tolerance_mm: f64,
+    ) -> CadResult<LmIterationOutcome> {
         let step_scale = (1.0 / (1.0 + lambda)).clamp(0.0, 1.0);
         let mut diagnostics = Vec::<CadSketchSolveDiagnostic>::new();
         let mut constraint_status = BTreeMap::<String, String>::new();
@@ -496,6 +612,53 @@ impl CadSketchModel {
             }
             if let Some(diagnostic) = outcome.diagnostic {
                 diagnostics.push(diagnostic);
+            }
+        }
+
+        match self.lm_pipeline_summary() {
+            Ok(summary) => {
+                if summary.jacobian_has_non_finite || !summary.residual_l2_norm.is_finite() {
+                    diagnostics.push(CadSketchSolveDiagnostic {
+                        code: "SKETCH_LM_PIPELINE_NON_FINITE".to_string(),
+                        severity: CadSketchSolveSeverity::Error,
+                        constraint_id: "lm.pipeline".to_string(),
+                        message: "LM Jacobian/residual pipeline produced non-finite values"
+                            .to_string(),
+                        remediation_hint:
+                            "check sketch geometry for invalid/degenerate parameters and re-solve"
+                                .to_string(),
+                    });
+                }
+                if unsolved_constraints > 0
+                    && summary.jacobian_rank_deficient
+                    && summary.residual_l2_norm > residual_tolerance_mm
+                {
+                    diagnostics.push(CadSketchSolveDiagnostic {
+                        code: "SKETCH_LM_JACOBIAN_RANK_DEFICIENT".to_string(),
+                        severity: CadSketchSolveSeverity::Warning,
+                        constraint_id: "lm.pipeline".to_string(),
+                        message: format!(
+                            "LM Jacobian rank {} is below expected full rank for rows={} cols={}",
+                            summary.jacobian_rank,
+                            summary.residual_component_count,
+                            summary.parameter_count
+                        ),
+                        remediation_hint:
+                            "remove conflicting/redundant constraints or add driving dimensions"
+                                .to_string(),
+                    });
+                }
+            }
+            Err(error) => {
+                diagnostics.push(CadSketchSolveDiagnostic {
+                    code: "SKETCH_LM_PIPELINE_BUILD_FAILED".to_string(),
+                    severity: CadSketchSolveSeverity::Warning,
+                    constraint_id: "lm.pipeline".to_string(),
+                    message: format!("LM Jacobian/residual pipeline snapshot failed: {}", error),
+                    remediation_hint:
+                        "verify constraint references and geometric validity before solving"
+                            .to_string(),
+                })
             }
         }
 
@@ -1328,6 +1491,516 @@ impl CadSketchModel {
             }),
         }
     }
+
+    fn apply_anchor_parameter_delta(
+        &mut self,
+        anchor_id: &str,
+        axis: usize,
+        delta: f64,
+    ) -> CadResult<()> {
+        if axis > 1 {
+            return Err(CadError::ParseFailed {
+                reason: format!("invalid LM parameter axis {axis} for anchor {anchor_id}"),
+            });
+        }
+        let bindings = self.collect_anchor_bindings()?;
+        let binding = bindings
+            .get(anchor_id)
+            .ok_or_else(|| CadError::ParseFailed {
+                reason: format!("missing anchor {anchor_id} while perturbing LM parameter"),
+            })?;
+        let mut position_mm = binding.position_mm;
+        position_mm[axis] += delta;
+        self.apply_anchor_position(binding, position_mm)
+    }
+
+    fn collect_lm_residual_vector(&self) -> CadResult<(Vec<f64>, BTreeMap<String, usize>)> {
+        let anchor_bindings = self.collect_anchor_bindings()?;
+        let mut residual_components = Vec::<f64>::new();
+        let mut constraint_component_counts = BTreeMap::<String, usize>::new();
+        for (constraint_id, constraint) in &self.constraints {
+            let components = self.constraint_residual_components(constraint, &anchor_bindings)?;
+            constraint_component_counts.insert(constraint_id.clone(), components.len());
+            residual_components.extend(components);
+        }
+        Ok((residual_components, constraint_component_counts))
+    }
+
+    fn constraint_residual_components(
+        &self,
+        constraint: &CadSketchConstraint,
+        anchor_bindings: &BTreeMap<String, AnchorBinding>,
+    ) -> CadResult<Vec<f64>> {
+        let constraint_id = constraint.id();
+        match constraint {
+            CadSketchConstraint::Coincident {
+                first_anchor_id,
+                second_anchor_id,
+                ..
+            } => {
+                let first = anchor_position_for_constraint(
+                    anchor_bindings,
+                    first_anchor_id,
+                    constraint_id,
+                )?;
+                let second = anchor_position_for_constraint(
+                    anchor_bindings,
+                    second_anchor_id,
+                    constraint_id,
+                )?;
+                Ok(vec![first[0] - second[0], first[1] - second[1]])
+            }
+            CadSketchConstraint::PointOnLine {
+                point_anchor_id,
+                line_entity_id,
+                ..
+            } => {
+                let point = anchor_position_for_constraint(
+                    anchor_bindings,
+                    point_anchor_id,
+                    constraint_id,
+                )?;
+                let (start, end) = self.line_endpoints(line_entity_id)?;
+                Ok(vec![signed_distance_to_line(point, start, end)])
+            }
+            CadSketchConstraint::Parallel {
+                first_line_entity_id,
+                second_line_entity_id,
+                ..
+            } => {
+                let (first_start, first_end) = self.line_endpoints(first_line_entity_id)?;
+                let (second_start, second_end) = self.line_endpoints(second_line_entity_id)?;
+                let first_vector = [first_end[0] - first_start[0], first_end[1] - first_start[1]];
+                let second_vector = [
+                    second_end[0] - second_start[0],
+                    second_end[1] - second_start[1],
+                ];
+                let first_len = vector_length_mm(first_vector);
+                let second_len = vector_length_mm(second_vector);
+                if first_len < 1e-15 || second_len < 1e-15 {
+                    return Ok(vec![0.0]);
+                }
+                let cross = (first_vector[0] * second_vector[1]
+                    - first_vector[1] * second_vector[0])
+                    / (first_len * second_len);
+                Ok(vec![cross])
+            }
+            CadSketchConstraint::Perpendicular {
+                first_line_entity_id,
+                second_line_entity_id,
+                ..
+            } => {
+                let (first_start, first_end) = self.line_endpoints(first_line_entity_id)?;
+                let (second_start, second_end) = self.line_endpoints(second_line_entity_id)?;
+                let first_vector = [first_end[0] - first_start[0], first_end[1] - first_start[1]];
+                let second_vector = [
+                    second_end[0] - second_start[0],
+                    second_end[1] - second_start[1],
+                ];
+                let first_len = vector_length_mm(first_vector);
+                let second_len = vector_length_mm(second_vector);
+                if first_len < 1e-15 || second_len < 1e-15 {
+                    return Ok(vec![0.0]);
+                }
+                let dot = (first_vector[0] * second_vector[0] + first_vector[1] * second_vector[1])
+                    / (first_len * second_len);
+                Ok(vec![dot])
+            }
+            CadSketchConstraint::Horizontal { line_entity_id, .. } => {
+                let (start, end) = self.line_endpoints(line_entity_id)?;
+                Ok(vec![end[1] - start[1]])
+            }
+            CadSketchConstraint::Vertical { line_entity_id, .. } => {
+                let (start, end) = self.line_endpoints(line_entity_id)?;
+                Ok(vec![end[0] - start[0]])
+            }
+            CadSketchConstraint::Tangent {
+                line_entity_id,
+                arc_entity_id,
+                at_anchor_id,
+                ..
+            } => {
+                let (line_start, line_end) = self.line_endpoints(line_entity_id)?;
+                if let Some(anchor_id) = at_anchor_id {
+                    let tangent_point =
+                        anchor_position_for_constraint(anchor_bindings, anchor_id, constraint_id)?;
+                    let (center, _radius) = self.curve_center_radius(arc_entity_id)?;
+                    let line_vector = [line_end[0] - line_start[0], line_end[1] - line_start[1]];
+                    let radius_vector =
+                        [tangent_point[0] - center[0], tangent_point[1] - center[1]];
+                    let line_len = vector_length_mm(line_vector);
+                    let radius_len = vector_length_mm(radius_vector);
+                    if line_len < 1e-15 || radius_len < 1e-15 {
+                        return Ok(vec![0.0]);
+                    }
+                    let dot = (line_vector[0] * radius_vector[0]
+                        + line_vector[1] * radius_vector[1])
+                        / (line_len * radius_len);
+                    return Ok(vec![dot]);
+                }
+                let (center, radius) = self.curve_center_radius(arc_entity_id)?;
+                Ok(vec![tangent_residual_mm(
+                    line_start, line_end, center, radius, 0.0,
+                )?])
+            }
+            CadSketchConstraint::EqualLength {
+                first_line_entity_id,
+                second_line_entity_id,
+                ..
+            } => {
+                let (first_start, first_end) = self.line_endpoints(first_line_entity_id)?;
+                let (second_start, second_end) = self.line_endpoints(second_line_entity_id)?;
+                let first_len = vector_length_mm([
+                    first_end[0] - first_start[0],
+                    first_end[1] - first_start[1],
+                ]);
+                let second_len = vector_length_mm([
+                    second_end[0] - second_start[0],
+                    second_end[1] - second_start[1],
+                ]);
+                Ok(vec![first_len - second_len])
+            }
+            CadSketchConstraint::EqualRadius {
+                first_curve_entity_id,
+                second_curve_entity_id,
+                ..
+            } => {
+                let (_, first_radius) = self.curve_center_radius(first_curve_entity_id)?;
+                let (_, second_radius) = self.curve_center_radius(second_curve_entity_id)?;
+                Ok(vec![first_radius - second_radius])
+            }
+            CadSketchConstraint::Concentric {
+                first_curve_entity_id,
+                second_curve_entity_id,
+                ..
+            } => {
+                let (first_center, _) = self.curve_center_radius(first_curve_entity_id)?;
+                let (second_center, _) = self.curve_center_radius(second_curve_entity_id)?;
+                Ok(vec![
+                    first_center[0] - second_center[0],
+                    first_center[1] - second_center[1],
+                ])
+            }
+            CadSketchConstraint::Fixed {
+                point_anchor_id,
+                target_mm,
+                ..
+            } => {
+                let point = anchor_position_for_constraint(
+                    anchor_bindings,
+                    point_anchor_id,
+                    constraint_id,
+                )?;
+                Ok(vec![point[0] - target_mm[0], point[1] - target_mm[1]])
+            }
+            CadSketchConstraint::PointOnCircle {
+                point_anchor_id,
+                circle_entity_id,
+                ..
+            } => {
+                let point = anchor_position_for_constraint(
+                    anchor_bindings,
+                    point_anchor_id,
+                    constraint_id,
+                )?;
+                let (center, radius) = self.curve_center_radius(circle_entity_id)?;
+                Ok(vec![distance_mm(point, center) - radius])
+            }
+            CadSketchConstraint::LineThroughCenter {
+                line_entity_id,
+                circle_entity_id,
+                ..
+            } => {
+                let (line_start, line_end) = self.line_endpoints(line_entity_id)?;
+                let (center, _) = self.curve_center_radius(circle_entity_id)?;
+                Ok(vec![signed_distance_to_line(center, line_start, line_end)])
+            }
+            CadSketchConstraint::Midpoint {
+                midpoint_anchor_id,
+                line_entity_id,
+                ..
+            } => {
+                let point = anchor_position_for_constraint(
+                    anchor_bindings,
+                    midpoint_anchor_id,
+                    constraint_id,
+                )?;
+                let (line_start, line_end) = self.line_endpoints(line_entity_id)?;
+                let midpoint = [
+                    (line_start[0] + line_end[0]) / 2.0,
+                    (line_start[1] + line_end[1]) / 2.0,
+                ];
+                Ok(vec![point[0] - midpoint[0], point[1] - midpoint[1]])
+            }
+            CadSketchConstraint::Symmetric {
+                first_anchor_id,
+                second_anchor_id,
+                axis_line_entity_id,
+                ..
+            } => {
+                let first = anchor_position_for_constraint(
+                    anchor_bindings,
+                    first_anchor_id,
+                    constraint_id,
+                )?;
+                let second = anchor_position_for_constraint(
+                    anchor_bindings,
+                    second_anchor_id,
+                    constraint_id,
+                )?;
+                let (axis_start, axis_end) = self.line_endpoints(axis_line_entity_id)?;
+                let midpoint = [(first[0] + second[0]) / 2.0, (first[1] + second[1]) / 2.0];
+                let dist_to_axis = signed_distance_to_line(midpoint, axis_start, axis_end);
+                let axis_vector = [axis_end[0] - axis_start[0], axis_end[1] - axis_start[1]];
+                let axis_len = vector_length_mm(axis_vector);
+                if axis_len < 1e-15 {
+                    return Ok(vec![0.0, 0.0]);
+                }
+                let ab_vector = [second[0] - first[0], second[1] - first[1]];
+                let ab_len = vector_length_mm(ab_vector);
+                if ab_len < 1e-15 {
+                    return Ok(vec![dist_to_axis, 0.0]);
+                }
+                let perpendicular = (ab_vector[0] * axis_vector[0] + ab_vector[1] * axis_vector[1])
+                    / (ab_len * axis_len);
+                Ok(vec![dist_to_axis, perpendicular])
+            }
+            CadSketchConstraint::Distance {
+                first_anchor_id,
+                second_anchor_id,
+                target_mm,
+                ..
+            } => {
+                let first = anchor_position_for_constraint(
+                    anchor_bindings,
+                    first_anchor_id,
+                    constraint_id,
+                )?;
+                let second = anchor_position_for_constraint(
+                    anchor_bindings,
+                    second_anchor_id,
+                    constraint_id,
+                )?;
+                Ok(vec![distance_mm(first, second) - *target_mm])
+            }
+            CadSketchConstraint::PointLineDistance {
+                point_anchor_id,
+                line_entity_id,
+                target_mm,
+                ..
+            } => {
+                let point = anchor_position_for_constraint(
+                    anchor_bindings,
+                    point_anchor_id,
+                    constraint_id,
+                )?;
+                let (line_start, line_end) = self.line_endpoints(line_entity_id)?;
+                Ok(vec![
+                    signed_distance_to_line(point, line_start, line_end).abs() - *target_mm,
+                ])
+            }
+            CadSketchConstraint::Angle {
+                first_line_entity_id,
+                second_line_entity_id,
+                target_deg,
+                ..
+            } => {
+                let (first_start, first_end) = self.line_endpoints(first_line_entity_id)?;
+                let (second_start, second_end) = self.line_endpoints(second_line_entity_id)?;
+                let first_vector = [first_end[0] - first_start[0], first_end[1] - first_start[1]];
+                let second_vector = [
+                    second_end[0] - second_start[0],
+                    second_end[1] - second_start[1],
+                ];
+                let first_len = vector_length_mm(first_vector);
+                let second_len = vector_length_mm(second_vector);
+                if first_len < 1e-15 || second_len < 1e-15 {
+                    return Ok(vec![0.0]);
+                }
+                let cos_angle = (first_vector[0] * second_vector[0]
+                    + first_vector[1] * second_vector[1])
+                    / (first_len * second_len);
+                let sin_angle = (first_vector[0] * second_vector[1]
+                    - first_vector[1] * second_vector[0])
+                    / (first_len * second_len);
+                let actual_angle = sin_angle.atan2(cos_angle);
+                let target_angle = target_deg.to_radians();
+                Ok(vec![normalize_angle_delta_radians(
+                    actual_angle - target_angle,
+                )])
+            }
+            CadSketchConstraint::Radius {
+                curve_entity_id,
+                target_mm,
+                ..
+            } => {
+                let (_, radius) = self.curve_center_radius(curve_entity_id)?;
+                Ok(vec![radius - *target_mm])
+            }
+            CadSketchConstraint::Length {
+                line_entity_id,
+                target_mm,
+                ..
+            } => {
+                let (start, end) = self.line_endpoints(line_entity_id)?;
+                let length = vector_length_mm([end[0] - start[0], end[1] - start[1]]);
+                Ok(vec![length - *target_mm])
+            }
+            CadSketchConstraint::HorizontalDistance {
+                point_anchor_id,
+                target_mm,
+                ..
+            } => {
+                let point = anchor_position_for_constraint(
+                    anchor_bindings,
+                    point_anchor_id,
+                    constraint_id,
+                )?;
+                Ok(vec![point[0] - *target_mm])
+            }
+            CadSketchConstraint::VerticalDistance {
+                point_anchor_id,
+                target_mm,
+                ..
+            } => {
+                let point = anchor_position_for_constraint(
+                    anchor_bindings,
+                    point_anchor_id,
+                    constraint_id,
+                )?;
+                Ok(vec![point[1] - *target_mm])
+            }
+            CadSketchConstraint::Diameter {
+                circle_entity_id,
+                target_mm,
+                ..
+            } => {
+                let (_, radius) = self.curve_center_radius(circle_entity_id)?;
+                Ok(vec![2.0 * radius - *target_mm])
+            }
+            CadSketchConstraint::Dimension {
+                entity_id,
+                dimension_kind,
+                target_mm,
+                ..
+            } => match dimension_kind {
+                CadDimensionConstraintKind::Length => {
+                    let (start, end) = self.line_endpoints(entity_id)?;
+                    let length = vector_length_mm([end[0] - start[0], end[1] - start[1]]);
+                    Ok(vec![length - *target_mm])
+                }
+                CadDimensionConstraintKind::Radius => {
+                    let (_, radius) = self.curve_center_radius(entity_id)?;
+                    Ok(vec![radius - *target_mm])
+                }
+            },
+        }
+    }
+}
+
+fn anchor_position_for_constraint(
+    bindings: &BTreeMap<String, AnchorBinding>,
+    anchor_id: &str,
+    constraint_id: &str,
+) -> CadResult<[f64; 2]> {
+    bindings
+        .get(anchor_id)
+        .map(|binding| binding.position_mm)
+        .ok_or_else(|| CadError::ParseFailed {
+            reason: format!("constraint {constraint_id} references unknown anchor {anchor_id}"),
+        })
+}
+
+fn signed_distance_to_line(point: [f64; 2], start: [f64; 2], end: [f64; 2]) -> f64 {
+    let dx = end[0] - start[0];
+    let dy = end[1] - start[1];
+    let length = vector_length_mm([dx, dy]);
+    if length < 1e-15 {
+        return 0.0;
+    }
+    ((point[0] - start[0]) * dy - (point[1] - start[1]) * dx) / length
+}
+
+fn normalize_angle_delta_radians(mut delta: f64) -> f64 {
+    while delta > std::f64::consts::PI {
+        delta -= 2.0 * std::f64::consts::PI;
+    }
+    while delta < -std::f64::consts::PI {
+        delta += 2.0 * std::f64::consts::PI;
+    }
+    delta
+}
+
+fn estimate_matrix_rank(matrix: &[Vec<f64>], tolerance: f64) -> usize {
+    if matrix.is_empty() || matrix[0].is_empty() {
+        return 0;
+    }
+
+    let mut work = matrix.to_vec();
+    let row_count = work.len();
+    let column_count = work[0].len();
+    let mut rank = 0usize;
+    let mut pivot_column = 0usize;
+
+    while rank < row_count && pivot_column < column_count {
+        let mut pivot_row = rank;
+        let mut pivot_abs = work[pivot_row][pivot_column].abs();
+        for row in (rank + 1)..row_count {
+            let candidate_abs = work[row][pivot_column].abs();
+            if candidate_abs > pivot_abs {
+                pivot_abs = candidate_abs;
+                pivot_row = row;
+            }
+        }
+
+        if pivot_abs <= tolerance {
+            pivot_column += 1;
+            continue;
+        }
+
+        work.swap(rank, pivot_row);
+        let pivot = work[rank][pivot_column];
+        for row in (rank + 1)..row_count {
+            let factor = work[row][pivot_column] / pivot;
+            if factor.abs() <= tolerance {
+                continue;
+            }
+            for column in pivot_column..column_count {
+                work[row][column] -= factor * work[rank][column];
+            }
+        }
+        rank += 1;
+        pivot_column += 1;
+    }
+
+    rank
+}
+
+fn short_sha256_f64_slice(values: &[f64]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(values.len().to_le_bytes());
+    for value in values {
+        hasher.update(value.to_bits().to_le_bytes());
+    }
+    format!("{:x}", hasher.finalize())[..16].to_string()
+}
+
+fn short_sha256_f64_matrix(rows: &[Vec<f64>]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(rows.len().to_le_bytes());
+    hasher.update(
+        rows.first()
+            .map(|row| row.len())
+            .unwrap_or_default()
+            .to_le_bytes(),
+    );
+    for row in rows {
+        hasher.update(row.len().to_le_bytes());
+        for value in row {
+            hasher.update(value.to_bits().to_le_bytes());
+        }
+    }
+    format!("{:x}", hasher.finalize())[..16].to_string()
 }
 
 fn ensure_anchor_exists(
