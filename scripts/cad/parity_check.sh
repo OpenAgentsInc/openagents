@@ -70,6 +70,7 @@ LANE_LABELS=(
     "drafting-section"
     "drafting-detail"
     "drafting-drawing-mode-ui"
+    "drafting-persistence"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -333,6 +334,9 @@ run_lane "drafting-detail" \
 
 run_lane "drafting-drawing-mode-ui" \
     "$ROOT_DIR/scripts/cad/parity-drafting-drawing-mode-ui-ci.sh"
+
+run_lane "drafting-persistence" \
+    "$ROOT_DIR/scripts/cad/parity-drafting-persistence-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

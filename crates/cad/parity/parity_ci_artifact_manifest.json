@@ -5,7 +5,7 @@
   "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
   "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
   "parity_check_entrypoint": "scripts/cad/parity_check.sh",
-  "source_artifact_count": 93,
+  "source_artifact_count": 95,
   "artifacts": [
     {
       "artifact_id": "assembly_acceptance_scenes_parity_manifest",
@@ -120,6 +120,12 @@
       "source_path": "crates/cad/parity/drafting_kernel_scaffolding_parity_manifest.json",
       "sha256": "52a9c49ce4b69aaa3dd161d2358f113f3859615a6449816193ff93c2182a564b",
       "bytes": 2914
+    },
+    {
+      "artifact_id": "drafting_persistence_parity_manifest",
+      "source_path": "crates/cad/parity/drafting_persistence_parity_manifest.json",
+      "sha256": "63609b7346676aa928b599d2b0221f18eb7c73ccef043c52412fd34a668da7e3",
+      "bytes": 1780
     },
     {
       "artifact_id": "drafting_projection_parity_manifest",
@@ -246,6 +252,12 @@
       "source_path": "crates/cad/parity/fixtures/drafting_kernel_scaffolding_vcad_reference.json",
       "sha256": "df722ddaab6d441cf4447fd366a0853d94b23765b6e317db4023e5b6018ad5a8",
       "bytes": 1937
+    },
+    {
+      "artifact_id": "fixtures_drafting_persistence_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/drafting_persistence_vcad_reference.json",
+      "sha256": "2ff793e270dea44151838b078c97b9ff386a36c15dbe91fc3412061cf61f8fef",
+      "bytes": 935
     },
     {
       "artifact_id": "fixtures_drafting_projection_vcad_reference",
@@ -400,8 +412,8 @@
     {
       "artifact_id": "parity_dashboard",
       "source_path": "crates/cad/parity/parity_dashboard.json",
-      "sha256": "ac3ed12109e0c94a8c36b2e27673c7034beebf135634355c34f89d3b21e08bf9",
-      "bytes": 5782
+      "sha256": "72cbc92d57edd9dc6c6d2990ff9771d57d9e239a3ef1b8d93929cc95072dbae0",
+      "bytes": 5886
     },
     {
       "artifact_id": "parity_risk_register",
