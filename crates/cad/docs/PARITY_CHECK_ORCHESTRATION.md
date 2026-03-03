@@ -75,6 +75,7 @@ Provide one deterministic orchestration entrypoint for the parity baseline lanes
 - gpu acceleration parity fixture check
 - mesh upload/processing parity fixture check
 - direct BRep raytrace scaffolding parity fixture check
+- analytic ray intersections parity fixture check
 - parity CI artifact manifest fixture check
 - parity risk register + blocker workflow check
 - baseline dashboard publication check

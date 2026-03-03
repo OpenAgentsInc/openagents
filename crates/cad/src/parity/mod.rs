@@ -1,3 +1,4 @@
+pub mod analytic_ray_intersections_parity;
 pub mod assembly_acceptance_scenes_parity;
 pub mod assembly_checkpoint_parity;
 pub mod assembly_fk_parity;
