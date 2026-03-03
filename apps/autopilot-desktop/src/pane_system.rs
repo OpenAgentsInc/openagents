@@ -375,6 +375,7 @@ pub enum CadDemoPaneAction {
     SnapViewRight,
     SnapViewIsometric,
     CycleHiddenLineMode,
+    CycleSensorVisualizationMode,
     CycleWarningSeverityFilter,
     CycleWarningCodeFilter,
     SelectWarning(usize),
@@ -398,7 +399,7 @@ pub struct CadPaletteCommandSpec {
     pub action: CadDemoPaneAction,
 }
 
-const CAD_PALETTE_COMMAND_SPECS: [CadPaletteCommandSpec; 31] = [
+const CAD_PALETTE_COMMAND_SPECS: [CadPaletteCommandSpec; 32] = [
     CadPaletteCommandSpec {
         id: "cad.demo.bootstrap",
         label: "CAD: Bootstrap Demo",
@@ -510,6 +511,13 @@ const CAD_PALETTE_COMMAND_SPECS: [CadPaletteCommandSpec; 31] = [
         description: "Cycle CAD render mode (shaded, edges, wireframe)",
         keybinding: Some("V"),
         action: CadDemoPaneAction::CycleHiddenLineMode,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.render.cycle_sensor_mode",
+        label: "CAD: Cycle Sensor Overlay",
+        description: "Cycle sensor visualization mode (off, pressure, proximity, combined)",
+        keybinding: None,
+        action: CadDemoPaneAction::CycleSensorVisualizationMode,
     },
     CadPaletteCommandSpec {
         id: "cad.section.cycle_plane",
@@ -2699,6 +2707,16 @@ pub fn cad_demo_material_button_bounds(content_bounds: Bounds) -> Bounds {
     )
 }
 
+pub fn cad_demo_sensor_mode_button_bounds(content_bounds: Bounds) -> Bounds {
+    let material = cad_demo_material_button_bounds(content_bounds);
+    let min_x = content_bounds.origin.x + CHAT_PAD;
+    let max_x = content_bounds.max_x() - CHAT_PAD;
+    let origin_x = (material.max_x() + JOB_INBOX_BUTTON_GAP).max(min_x);
+    let desired_width = (content_bounds.size.width * 0.16).clamp(110.0, 180.0);
+    let width = desired_width.min((max_x - origin_x).max(44.0));
+    Bounds::new(origin_x, material.origin.y, width, material.size.height)
+}
+
 fn grid_like_snap_width(content_bounds: Bounds) -> f32 {
     (content_bounds.size.width * 0.16).clamp(92.0, 160.0)
 }
@@ -2727,6 +2745,7 @@ fn cad_demo_controls_bottom(content_bounds: Bounds) -> f32 {
         .max(cad_demo_section_plane_button_bounds(content_bounds).max_y())
         .max(cad_demo_section_offset_button_bounds(content_bounds).max_y())
         .max(cad_demo_material_button_bounds(content_bounds).max_y())
+        .max(cad_demo_sensor_mode_button_bounds(content_bounds).max_y())
 }
 
 pub fn cad_demo_view_cube_bounds(content_bounds: Bounds) -> Bounds {
@@ -3697,6 +3716,11 @@ fn pane_hit_action_for_pane(
                     CadDemoPaneAction::CycleMaterialPreset,
                 ));
             }
+            if cad_demo_sensor_mode_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CadDemo(
+                    CadDemoPaneAction::CycleSensorVisualizationMode,
+                ));
+            }
             if cad_demo_snap_grid_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::CadDemo(CadDemoPaneAction::ToggleSnapGrid));
             }
@@ -4075,24 +4099,24 @@ mod tests {
         alerts_recovery_resolve_button_bounds, alerts_recovery_row_bounds,
         cad_action_uses_dense_row_hot_zone, cad_demo_context_menu_bounds,
         cad_demo_context_menu_row_bounds, cad_demo_cycle_variant_button_bounds,
-        cad_demo_gripper_jaw_button_bounds,
         cad_demo_dimension_panel_bounds, cad_demo_dimension_row_bounds,
         cad_demo_drawing_add_detail_button_bounds, cad_demo_drawing_clear_details_button_bounds,
         cad_demo_drawing_dimensions_button_bounds, cad_demo_drawing_direction_button_bounds,
         cad_demo_drawing_hidden_lines_button_bounds, cad_demo_drawing_mode_button_bounds,
-        cad_demo_drawing_reset_view_button_bounds, cad_demo_hidden_line_mode_button_bounds,
-        cad_demo_hotkey_profile_button_bounds, cad_demo_material_button_bounds,
-        cad_demo_projection_mode_button_bounds, cad_demo_reset_button_bounds,
-        cad_demo_reset_camera_button_bounds, cad_demo_section_offset_button_bounds,
-        cad_demo_section_plane_button_bounds, cad_demo_snap_endpoint_button_bounds,
+        cad_demo_drawing_reset_view_button_bounds, cad_demo_gripper_jaw_button_bounds,
+        cad_demo_hidden_line_mode_button_bounds, cad_demo_hotkey_profile_button_bounds,
+        cad_demo_material_button_bounds, cad_demo_projection_mode_button_bounds,
+        cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
+        cad_demo_section_offset_button_bounds, cad_demo_section_plane_button_bounds,
+        cad_demo_sensor_mode_button_bounds, cad_demo_snap_endpoint_button_bounds,
         cad_demo_snap_grid_button_bounds, cad_demo_snap_midpoint_button_bounds,
         cad_demo_snap_origin_button_bounds, cad_demo_timeline_panel_bounds,
         cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
-        cad_demo_viewport_layout_button_bounds,
         cad_demo_view_snap_front_button_bounds, cad_demo_view_snap_iso_button_bounds,
         cad_demo_view_snap_right_button_bounds, cad_demo_view_snap_top_button_bounds,
-        cad_demo_warning_filter_code_button_bounds, cad_demo_warning_filter_severity_button_bounds,
-        cad_demo_warning_marker_bounds, cad_demo_warning_panel_bounds, cad_demo_warning_row_bounds,
+        cad_demo_viewport_layout_button_bounds, cad_demo_warning_filter_code_button_bounds,
+        cad_demo_warning_filter_severity_button_bounds, cad_demo_warning_marker_bounds,
+        cad_demo_warning_panel_bounds, cad_demo_warning_row_bounds,
         cad_palette_action_for_command_id, cad_palette_command_specs, chat_composer_input_bounds,
         chat_send_button_bounds, chat_transcript_bounds, codex_account_cancel_login_button_bounds,
         codex_account_login_button_bounds, codex_account_logout_button_bounds,
@@ -4523,6 +4547,7 @@ mod tests {
         let section_plane = cad_demo_section_plane_button_bounds(content);
         let section_offset = cad_demo_section_offset_button_bounds(content);
         let material = cad_demo_material_button_bounds(content);
+        let sensor_mode = cad_demo_sensor_mode_button_bounds(content);
         assert!(content.contains(cycle.origin));
         assert!(content.contains(jaw.origin));
         assert!(content.contains(reset.origin));
@@ -4545,6 +4570,7 @@ mod tests {
         assert!(content.contains(section_plane.origin));
         assert!(content.contains(section_offset.origin));
         assert!(content.contains(material.origin));
+        assert!(content.contains(sensor_mode.origin));
         assert!(cycle.max_y() <= content.max_y());
         assert!(jaw.max_y() <= content.max_y());
         assert!(reset.max_y() <= content.max_y());
@@ -4567,6 +4593,7 @@ mod tests {
         assert!(section_plane.max_y() <= content.max_y());
         assert!(section_offset.max_y() <= content.max_y());
         assert!(material.max_y() <= content.max_y());
+        assert!(sensor_mode.max_y() <= content.max_y());
         assert!(cycle.max_x() < jaw.min_x());
         assert!(jaw.max_x() < reset.min_x());
         assert!(reset.max_x() <= hidden_line.min_x() + 0.001);
@@ -4589,6 +4616,7 @@ mod tests {
         assert!(section_plane.origin.y >= hotkeys.max_y() - 0.001);
         assert!(section_plane.max_x() <= section_offset.min_x() + 0.001);
         assert!(section_offset.max_x() <= material.min_x() + 0.001);
+        assert!(material.max_x() <= sensor_mode.min_x() + 0.001);
         assert!(viewport_layout.max_x() <= content.max_x() + 0.001);
     }
 

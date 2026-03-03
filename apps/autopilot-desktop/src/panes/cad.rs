@@ -17,7 +17,8 @@ use wgpui::{
 
 use crate::app_state::{
     CadCameraViewSnap, CadDemoPaneState, CadDemoWarningState, CadDrawingViewMode,
-    CadHiddenLineMode, CadProjectionMode, CadVariantViewportState, CadViewportLayout,
+    CadHiddenLineMode, CadProjectionMode, CadSensorFeedbackReading, CadSensorVisualizationMode,
+    CadVariantViewportState, CadViewportLayout,
 };
 use crate::pane_renderer::paint_action_button;
 use crate::pane_system::{
@@ -31,10 +32,10 @@ use crate::pane_system::{
     cad_demo_hotkey_profile_button_bounds, cad_demo_material_button_bounds,
     cad_demo_projection_mode_button_bounds, cad_demo_reset_button_bounds,
     cad_demo_reset_camera_button_bounds, cad_demo_section_offset_button_bounds,
-    cad_demo_section_plane_button_bounds, cad_demo_snap_endpoint_button_bounds,
-    cad_demo_snap_grid_button_bounds, cad_demo_snap_midpoint_button_bounds,
-    cad_demo_snap_origin_button_bounds, cad_demo_timeline_panel_bounds,
-    cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
+    cad_demo_section_plane_button_bounds, cad_demo_sensor_mode_button_bounds,
+    cad_demo_snap_endpoint_button_bounds, cad_demo_snap_grid_button_bounds,
+    cad_demo_snap_midpoint_button_bounds, cad_demo_snap_origin_button_bounds,
+    cad_demo_timeline_panel_bounds, cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
     cad_demo_view_snap_front_button_bounds, cad_demo_view_snap_iso_button_bounds,
     cad_demo_view_snap_right_button_bounds, cad_demo_view_snap_top_button_bounds,
     cad_demo_viewport_layout_button_bounds, cad_demo_warning_filter_code_button_bounds,
@@ -52,6 +53,8 @@ const VARIANT_TILE_GAP: f32 = 8.0;
 const ENGINEERING_OVERLAY_WIDTH: f32 = 220.0;
 const ENGINEERING_OVERLAY_LINE_HEIGHT: f32 = 9.0;
 const ENGINEERING_OVERLAY_LINE_COUNT: usize = 6;
+const SENSOR_OVERLAY_WIDTH: f32 = 228.0;
+const SENSOR_OVERLAY_LINE_HEIGHT: f32 = 9.0;
 const CAD_CAMERA_MIN_ZOOM: f32 = 0.35;
 const CAD_CAMERA_MAX_ZOOM: f32 = 1.0;
 const CAD_PERSPECTIVE_FIT_EXPANSION: f32 = 1.22;
@@ -141,6 +144,7 @@ fn cad_demo_body_bounds(content_bounds: Bounds) -> Bounds {
     let section_plane_bounds = cad_demo_section_plane_button_bounds(content_bounds);
     let section_offset_bounds = cad_demo_section_offset_button_bounds(content_bounds);
     let material_bounds = cad_demo_material_button_bounds(content_bounds);
+    let sensor_mode_bounds = cad_demo_sensor_mode_button_bounds(content_bounds);
     let body_top = (cycle_bounds
         .max_y()
         .max(reset_bounds.max_y())
@@ -164,6 +168,7 @@ fn cad_demo_body_bounds(content_bounds: Bounds) -> Bounds {
         .max(section_plane_bounds.max_y())
         .max(section_offset_bounds.max_y())
         .max(material_bounds.max_y())
+        .max(sensor_mode_bounds.max_y())
         + 8.0)
         .min(content_bounds.max_y());
     Bounds::new(
@@ -189,6 +194,7 @@ fn cad_demo_basic_toolbar_bottom(content_bounds: Bounds) -> f32 {
         .max(cad_demo_drawing_reset_view_button_bounds(content_bounds).max_y())
         .max(cad_demo_drawing_add_detail_button_bounds(content_bounds).max_y())
         .max(cad_demo_drawing_clear_details_button_bounds(content_bounds).max_y())
+        .max(cad_demo_sensor_mode_button_bounds(content_bounds).max_y())
 }
 
 fn cad_demo_basic_viewport_bounds(content_bounds: Bounds) -> Bounds {
@@ -262,6 +268,7 @@ pub fn paint_cad_demo_placeholder_pane(
     let section_plane_bounds = cad_demo_section_plane_button_bounds(content_bounds);
     let section_offset_bounds = cad_demo_section_offset_button_bounds(content_bounds);
     let material_bounds = cad_demo_material_button_bounds(content_bounds);
+    let sensor_mode_bounds = cad_demo_sensor_mode_button_bounds(content_bounds);
     let warning_panel = cad_demo_warning_panel_bounds(content_bounds);
     let dimension_panel = cad_demo_dimension_panel_bounds(content_bounds);
     let timeline_panel = cad_demo_timeline_panel_bounds(content_bounds);
@@ -371,6 +378,11 @@ pub fn paint_cad_demo_placeholder_pane(
                 .as_deref()
                 .unwrap_or(openagents_cad::materials::DEFAULT_CAD_MATERIAL_ID)
         ),
+        paint,
+    );
+    paint_action_button(
+        sensor_mode_bounds,
+        &format!("Sensors: {}", pane_state.sensor_visualization_mode.label()),
         paint,
     );
     paint_action_button(
@@ -502,12 +514,14 @@ pub fn paint_cad_demo_placeholder_pane(
                     let fallback = CadVariantViewportState::for_variant(tile_label);
                     CadCameraPose::from_variant(&fallback, pane_state.projection_mode)
                 };
-                match cad_mesh_to_viewport_primitive(
+                match cad_mesh_to_viewport_primitive_with_sensor(
                     payload,
                     tile_bounds,
                     selected_outline_active,
                     pane_state.hidden_line_mode,
                     camera_pose,
+                    pane_state.sensor_visualization_mode,
+                    &pane_state.sensor_feedback_readings,
                 ) {
                     Ok(mesh) => {
                         paint.scene.push_clip(tile_bounds);
@@ -540,6 +554,7 @@ pub fn paint_cad_demo_placeholder_pane(
 
         paint.scene.push_clip(layout.viewport_bounds);
         paint_engineering_overlay(layout.viewport_bounds, pane_state, paint);
+        paint_sensor_feedback_overlay(layout.viewport_bounds, pane_state, paint);
         paint.scene.pop_clip();
 
         if let Some(tile_index) = pane_state.measurement_tile_index
@@ -933,6 +948,7 @@ fn paint_cad_demo_basic_pane(
     let drawing_reset_view_bounds = cad_demo_drawing_reset_view_button_bounds(content_bounds);
     let drawing_add_detail_bounds = cad_demo_drawing_add_detail_button_bounds(content_bounds);
     let drawing_clear_details_bounds = cad_demo_drawing_clear_details_button_bounds(content_bounds);
+    let sensor_mode_bounds = cad_demo_sensor_mode_button_bounds(content_bounds);
 
     paint_action_button(cycle_bounds, "Variant", paint);
     paint_action_button(
@@ -1002,6 +1018,11 @@ fn paint_cad_demo_basic_pane(
     paint_action_button(
         drawing_clear_details_bounds,
         &format!("Clear ({})", pane_state.drawing_detail_views.len()),
+        paint,
+    );
+    paint_action_button(
+        sensor_mode_bounds,
+        &format!("Sensors: {}", pane_state.sensor_visualization_mode.label()),
         paint,
     );
 
@@ -1090,12 +1111,14 @@ fn paint_basic_3d_viewport(
             let fallback = CadVariantViewportState::for_variant(&pane_state.active_variant_id);
             CadCameraPose::from_variant(&fallback, pane_state.projection_mode)
         };
-        return match cad_mesh_to_viewport_primitive(
+        let status = match cad_mesh_to_viewport_primitive_with_sensor(
             mesh_payload,
             viewport_bounds,
             selected_outline_active,
             pane_state.hidden_line_mode,
             camera_pose,
+            pane_state.sensor_visualization_mode,
+            &pane_state.sensor_feedback_readings,
         ) {
             Ok(mesh) => {
                 paint.scene.push_clip(viewport_bounds);
@@ -1104,6 +1127,7 @@ fn paint_basic_3d_viewport(
                     paint.scene.pop_clip();
                     "mesh draw skipped".to_string()
                 } else {
+                    paint_sensor_feedback_overlay(viewport_bounds, pane_state, paint);
                     paint.scene.pop_clip();
                     format!(
                         "{} | rev {}",
@@ -1113,6 +1137,7 @@ fn paint_basic_3d_viewport(
             }
             Err(error) => format!("mesh conversion failed: {error}"),
         };
+        return status;
     }
 
     let mut status = "quad layout showing 4 variants".to_string();
@@ -1158,12 +1183,14 @@ fn paint_basic_3d_viewport(
             let fallback = CadVariantViewportState::for_variant(&variant_id);
             CadCameraPose::from_variant(&fallback, pane_state.projection_mode)
         };
-        match cad_mesh_to_viewport_primitive(
+        match cad_mesh_to_viewport_primitive_with_sensor(
             mesh_payload,
             tile_bounds,
             selected_outline_active,
             pane_state.hidden_line_mode,
             camera_pose,
+            pane_state.sensor_visualization_mode,
+            &pane_state.sensor_feedback_readings,
         ) {
             Ok(mesh) => {
                 paint.scene.push_clip(tile_bounds);
@@ -1178,6 +1205,10 @@ fn paint_basic_3d_viewport(
             }
         }
     }
+
+    paint.scene.push_clip(viewport_bounds);
+    paint_sensor_feedback_overlay(viewport_bounds, pane_state, paint);
+    paint.scene.pop_clip();
 
     status
 }
@@ -1455,8 +1486,13 @@ fn footer_summary_line(pane_state: &CadDemoPaneState) -> String {
         .estimated_cost_usd
         .map(|value| format!("${value:.2}"))
         .unwrap_or_else(|| "$--".to_string());
+    let contact_count = pane_state
+        .sensor_feedback_readings
+        .iter()
+        .filter(|reading| reading.contact)
+        .count();
     let summary = format!(
-        "{} @ tile{} | rev {} | warn {} | {} z{:.2} | mode {}/{} z{:.2} | section {} | material {} | {} {} | snaps {} | hotkeys {}",
+        "{} @ tile{} | rev {} | warn {} | {} z{:.2} | mode {}/{} z{:.2} | sensors {} ({}) | section {} | material {} | {} {} | snaps {} | hotkeys {}",
         pane_state.active_variant_id,
         pane_state.active_variant_tile_index + 1,
         pane_state.document_revision,
@@ -1466,6 +1502,8 @@ fn footer_summary_line(pane_state: &CadDemoPaneState) -> String {
         pane_state.drawing_view_mode.label(),
         pane_state.drawing_view_direction.label(),
         pane_state.drawing_zoom,
+        pane_state.sensor_visualization_mode.label(),
+        contact_count,
         pane_state.section_summary(),
         material_id,
         mass_label,
@@ -1534,6 +1572,105 @@ fn paint_engineering_overlay(
     }
     for (index, line) in lines.iter().enumerate() {
         let y = title_origin.y + 10.0 + index as f32 * ENGINEERING_OVERLAY_LINE_HEIGHT;
+        if y + 8.0 > overlay_bounds.max_y() {
+            break;
+        }
+        paint.scene.draw_text(paint.text.layout(
+            line,
+            Point::new(overlay_bounds.origin.x + 6.0, y),
+            8.0,
+            theme::text::PRIMARY,
+        ));
+    }
+}
+
+fn sensor_feedback_overlay_lines(pane_state: &CadDemoPaneState) -> Vec<String> {
+    let mut lines = Vec::new();
+    lines.push(format!(
+        "Mode: {}",
+        pane_state.sensor_visualization_mode.label()
+    ));
+    if pane_state.sensor_feedback_readings.is_empty() {
+        lines.push("No synthetic sensor readings".to_string());
+        return lines;
+    }
+    let average_pressure = pane_state
+        .sensor_feedback_readings
+        .iter()
+        .map(|reading| reading.pressure_ratio)
+        .sum::<f64>()
+        / pane_state.sensor_feedback_readings.len() as f64;
+    let minimum_proximity = pane_state
+        .sensor_feedback_readings
+        .iter()
+        .map(|reading| reading.proximity_mm)
+        .fold(f64::INFINITY, f64::min);
+    let contacts = pane_state
+        .sensor_feedback_readings
+        .iter()
+        .filter(|reading| reading.contact)
+        .count();
+    lines.push(format!(
+        "Avg P={average_pressure:.2} Min prox={minimum_proximity:.2}mm Contacts={contacts}"
+    ));
+    for reading in pane_state.sensor_feedback_readings.iter().take(4) {
+        lines.push(format!(
+            "{} p={:.2} prox={:.2}mm {}",
+            reading.digit_id,
+            reading.pressure_ratio,
+            reading.proximity_mm,
+            if reading.contact { "contact" } else { "clear" },
+        ));
+    }
+    lines
+}
+
+fn sensor_feedback_overlay_bounds(viewport_bounds: Bounds, line_count: usize) -> Bounds {
+    let width = SENSOR_OVERLAY_WIDTH
+        .min((viewport_bounds.size.width - 8.0).max(40.0))
+        .max(96.0);
+    let max_height = (viewport_bounds.size.height - 8.0).max(22.0);
+    let height = (22.0 + line_count as f32 * SENSOR_OVERLAY_LINE_HEIGHT)
+        .min(max_height)
+        .max(22.0);
+    let origin_x = (viewport_bounds.max_x() - width - 4.0).max(viewport_bounds.origin.x + 2.0);
+    let origin_y = (viewport_bounds.max_y() - height - 4.0).max(viewport_bounds.origin.y + 2.0);
+    Bounds::new(origin_x, origin_y, width, height)
+}
+
+fn paint_sensor_feedback_overlay(
+    viewport_bounds: Bounds,
+    pane_state: &CadDemoPaneState,
+    paint: &mut PaintContext,
+) {
+    if pane_state.sensor_visualization_mode == CadSensorVisualizationMode::Off {
+        return;
+    }
+    let lines = sensor_feedback_overlay_lines(pane_state);
+    let overlay_bounds = sensor_feedback_overlay_bounds(viewport_bounds, lines.len());
+    if overlay_bounds.size.width <= 2.0 || overlay_bounds.size.height <= 2.0 {
+        return;
+    }
+    paint.scene.draw_quad(
+        Quad::new(overlay_bounds)
+            .with_background(Hsla::new(0.57, 0.42, 0.11, 0.90))
+            .with_corner_radius(4.0)
+            .with_border(theme::border::SUBTLE, 1.0),
+    );
+    let title_origin = Point::new(
+        overlay_bounds.origin.x + 6.0,
+        overlay_bounds.origin.y + 10.0,
+    );
+    if title_origin.y + 8.0 <= overlay_bounds.max_y() {
+        paint.scene.draw_text(paint.text.layout(
+            "Sensor Feedback",
+            title_origin,
+            8.0,
+            theme::text::SECONDARY,
+        ));
+    }
+    for (index, line) in lines.iter().enumerate() {
+        let y = title_origin.y + 10.0 + index as f32 * SENSOR_OVERLAY_LINE_HEIGHT;
         if y + 8.0 > overlay_bounds.max_y() {
             break;
         }
@@ -1808,6 +1945,26 @@ fn cad_mesh_to_viewport_primitive(
     hidden_line_mode: CadHiddenLineMode,
     camera_pose: CadCameraPose,
 ) -> Result<MeshPrimitive, String> {
+    cad_mesh_to_viewport_primitive_with_sensor(
+        payload,
+        viewport_bounds,
+        selected_outline_active,
+        hidden_line_mode,
+        camera_pose,
+        CadSensorVisualizationMode::Off,
+        &[],
+    )
+}
+
+fn cad_mesh_to_viewport_primitive_with_sensor(
+    payload: &CadMeshPayload,
+    viewport_bounds: Bounds,
+    selected_outline_active: bool,
+    hidden_line_mode: CadHiddenLineMode,
+    camera_pose: CadCameraPose,
+    sensor_mode: CadSensorVisualizationMode,
+    sensor_readings: &[CadSensorFeedbackReading],
+) -> Result<MeshPrimitive, String> {
     if payload.vertices.is_empty() {
         return Err("mesh payload has no vertices".to_string());
     }
@@ -1932,18 +2089,43 @@ fn cad_mesh_to_viewport_primitive(
         .iter()
         .map(|slot| (slot.slot, slot.base_color_rgba))
         .collect::<std::collections::BTreeMap<_, _>>();
+    let average_pressure = if sensor_readings.is_empty() {
+        0.0
+    } else {
+        (sensor_readings
+            .iter()
+            .map(|reading| reading.pressure_ratio)
+            .sum::<f64>()
+            / sensor_readings.len() as f64)
+            .clamp(0.0, 1.0) as f32
+    };
+    let nearest_proximity_mm = sensor_readings
+        .iter()
+        .map(|reading| reading.proximity_mm)
+        .fold(f64::INFINITY, f64::min);
+    let proximity_signal = if nearest_proximity_mm.is_finite() {
+        (1.0 / (1.0 + (nearest_proximity_mm / 2.2))).clamp(0.0, 1.0) as f32
+    } else {
+        0.0
+    };
 
     let vertices = payload
         .vertices
         .iter()
         .enumerate()
         .map(|(index, vertex)| {
-            let fill_color = styled_fill_color(
+            let base_color = styled_fill_color(
                 slot_to_color
                     .get(&vertex.material_slot)
                     .copied()
                     .unwrap_or([0.78, 0.80, 0.83, 1.0]),
                 hidden_line_mode,
+            );
+            let fill_color = apply_sensor_visualization_color(
+                base_color,
+                sensor_mode,
+                average_pressure,
+                proximity_signal,
             );
             project_vertex(
                 projected_positions[index],
@@ -1980,6 +2162,45 @@ fn cad_mesh_to_viewport_primitive(
         .validate()
         .map_err(|error| error.to_string())
         .map(|_| primitive)
+}
+
+fn apply_sensor_visualization_color(
+    base: [f32; 4],
+    mode: CadSensorVisualizationMode,
+    pressure_signal: f32,
+    proximity_signal: f32,
+) -> [f32; 4] {
+    let pressure = pressure_signal.clamp(0.0, 1.0);
+    let proximity = proximity_signal.clamp(0.0, 1.0);
+    match mode {
+        CadSensorVisualizationMode::Off => base,
+        CadSensorVisualizationMode::Pressure => [
+            (base[0] * (1.0 - pressure * 0.35) + pressure * 0.86).clamp(0.0, 1.0),
+            (base[1] * (1.0 - pressure * 0.30) + pressure * 0.30).clamp(0.0, 1.0),
+            (base[2] * (1.0 - pressure * 0.45) + pressure * 0.16).clamp(0.0, 1.0),
+            base[3],
+        ],
+        CadSensorVisualizationMode::Proximity => [
+            (base[0] * (1.0 - proximity * 0.35) + proximity * 0.10).clamp(0.0, 1.0),
+            (base[1] * (1.0 - proximity * 0.20) + proximity * 0.72).clamp(0.0, 1.0),
+            (base[2] * (1.0 - proximity * 0.10) + proximity * 0.94).clamp(0.0, 1.0),
+            base[3],
+        ],
+        CadSensorVisualizationMode::Combined => {
+            let blended = apply_sensor_visualization_color(
+                base,
+                CadSensorVisualizationMode::Pressure,
+                pressure,
+                0.0,
+            );
+            apply_sensor_visualization_color(
+                blended,
+                CadSensorVisualizationMode::Proximity,
+                0.0,
+                proximity * 0.8,
+            )
+        }
+    }
 }
 
 fn project_xy_for_mode(
@@ -2071,10 +2292,11 @@ fn styled_fill_color(base: [f32; 4], mode: CadHiddenLineMode) -> [f32; 4] {
 mod tests {
     use super::{
         CadCameraPose, assembly_selection_inspect_lines, cad_mesh_payload_to_drafting_mesh,
-        cad_mesh_to_viewport_primitive, drafting_projected_view_to_mesh,
-        engineering_overlay_bounds, engineering_overlay_lines, footer_summary_line,
-        placeholder_layout, selection_inspect_lines, tile_caption, truncate_with_ellipsis,
-        variant_tile_bounds, variant_tile_index_at_point,
+        cad_mesh_to_viewport_primitive, cad_mesh_to_viewport_primitive_with_sensor,
+        drafting_projected_view_to_mesh, engineering_overlay_bounds, engineering_overlay_lines,
+        footer_summary_line, placeholder_layout, selection_inspect_lines,
+        sensor_feedback_overlay_bounds, sensor_feedback_overlay_lines, tile_caption,
+        truncate_with_ellipsis, variant_tile_bounds, variant_tile_index_at_point,
     };
     use openagents_cad::analysis::{DENSITY_ALUMINUM_6061_KG_M3, estimate_body_properties};
     use openagents_cad::contracts::CadSelectionKind;
@@ -2091,6 +2313,7 @@ mod tests {
 
     use crate::app_state::{
         CadDemoPaneState, CadHiddenLineMode, CadProjectionMode, CadSectionAxis,
+        CadSensorFeedbackReading, CadSensorVisualizationMode,
     };
 
     fn default_camera_pose() -> CadCameraPose {
@@ -2190,6 +2413,40 @@ mod tests {
         state.analysis_snapshot.mass_kg = Some(2.10);
         let second = engineering_overlay_lines(&state);
         assert_ne!(first[2], second[2]);
+    }
+
+    #[test]
+    fn sensor_feedback_overlay_bounds_stay_within_viewport() {
+        let viewport = Bounds::new(16.0, 24.0, 320.0, 180.0);
+        let overlay = sensor_feedback_overlay_bounds(viewport, 5);
+        assert!(overlay.origin.x >= viewport.origin.x);
+        assert!(overlay.origin.y >= viewport.origin.y);
+        assert!(overlay.max_x() <= viewport.max_x() + 0.001);
+        assert!(overlay.max_y() <= viewport.max_y() + 0.001);
+    }
+
+    #[test]
+    fn sensor_feedback_overlay_lines_reflect_mode_and_digit_readings() {
+        let mut state = CadDemoPaneState::default();
+        state.sensor_visualization_mode = CadSensorVisualizationMode::Combined;
+        state.sensor_feedback_readings = vec![
+            CadSensorFeedbackReading {
+                digit_id: "index".to_string(),
+                pressure_ratio: 0.62,
+                proximity_mm: 0.88,
+                contact: true,
+            },
+            CadSensorFeedbackReading {
+                digit_id: "thumb".to_string(),
+                pressure_ratio: 0.57,
+                proximity_mm: 1.18,
+                contact: true,
+            },
+        ];
+        let lines = sensor_feedback_overlay_lines(&state);
+        assert!(lines[0].contains("combined"));
+        assert!(lines.iter().any(|line| line.contains("index p=0.62")));
+        assert!(lines.iter().any(|line| line.contains("thumb p=0.57")));
     }
 
     #[test]
@@ -2376,6 +2633,83 @@ mod tests {
             assert!(vertex.position[1] >= viewport.origin.y - 0.001);
             assert!(vertex.position[1] <= viewport.max_y() + 0.001);
         }
+    }
+
+    #[test]
+    fn sensor_visualization_mode_tints_mesh_deterministically() {
+        let viewport = Bounds::new(20.0, 20.0, 180.0, 120.0);
+        let payload = CadMeshPayload {
+            mesh_id: "mesh.sensor.tint".to_string(),
+            document_revision: 1,
+            variant_id: "variant.baseline".to_string(),
+            topology: CadMeshTopology::Triangles,
+            vertices: vec![
+                CadMeshVertex {
+                    position_mm: [0.0, 0.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [0.0, 0.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [10.0, 0.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [1.0, 0.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [10.0, 10.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [1.0, 1.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+            ],
+            triangle_indices: vec![0, 1, 2],
+            edges: Vec::new(),
+            material_slots: vec![CadMeshMaterialSlot::default()],
+            bounds: CadMeshBounds {
+                min_mm: [0.0, 0.0, 0.0],
+                max_mm: [10.0, 10.0, 0.0],
+            },
+        };
+        let readings = vec![CadSensorFeedbackReading {
+            digit_id: "index".to_string(),
+            pressure_ratio: 0.74,
+            proximity_mm: 0.86,
+            contact: true,
+        }];
+        let first = cad_mesh_to_viewport_primitive_with_sensor(
+            &payload,
+            viewport,
+            false,
+            CadHiddenLineMode::Shaded,
+            default_camera_pose(),
+            CadSensorVisualizationMode::Combined,
+            &readings,
+        )
+        .expect("sensor tinted projection should succeed");
+        let second = cad_mesh_to_viewport_primitive_with_sensor(
+            &payload,
+            viewport,
+            false,
+            CadHiddenLineMode::Shaded,
+            default_camera_pose(),
+            CadSensorVisualizationMode::Combined,
+            &readings,
+        )
+        .expect("sensor tinted projection should be deterministic");
+        let untinted = cad_mesh_to_viewport_primitive(
+            &payload,
+            viewport,
+            false,
+            CadHiddenLineMode::Shaded,
+            default_camera_pose(),
+        )
+        .expect("untinted projection should succeed");
+        assert_eq!(first, second);
+        assert_ne!(first.vertices[0].color, untinted.vertices[0].color);
     }
 
     #[test]
