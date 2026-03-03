@@ -39,7 +39,7 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 190,
+    "source_artifact_count": 192,
     "artifact_ids": [
       "analytic_ray_intersections_parity_manifest",
       "assembly_acceptance_scenes_parity_manifest",
@@ -144,6 +144,7 @@
       "fixtures_simulation_ui_controls_vcad_reference",
       "fixtures_sketch_vcad_reference_corpus",
       "fixtures_slicer_core_lane_vcad_reference",
+      "fixtures_slicer_gcode_lane_vcad_reference",
       "fixtures_step_export_post_boolean_vcad_reference",
       "fixtures_step_import_entity_vcad_reference",
       "fixtures_stl_import_export_vcad_reference",
@@ -214,6 +215,7 @@
       "sketch_sweep_parity_manifest",
       "sketch_undo_redo_parity_manifest",
       "slicer_core_lane_parity_manifest",
+      "slicer_gcode_lane_parity_manifest",
       "step_export_post_boolean_parity_manifest",
       "step_import_entity_parity_manifest",
       "stl_import_export_parity_manifest",
