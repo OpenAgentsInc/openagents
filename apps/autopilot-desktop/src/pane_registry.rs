@@ -667,7 +667,7 @@ const PANE_SPECS: [PaneSpec; 39] = [
         default_width: 1020.0,
         default_height: 620.0,
         singleton: true,
-        startup: false,
+        startup: true,
         command: Some(PaneCommandSpec {
             id: "pane.cad_demo",
             label: "CAD Demo",
@@ -772,14 +772,11 @@ mod tests {
     }
 
     #[test]
-    fn cad_demo_command_maps_to_singleton_non_startup_pane() {
+    fn cad_demo_command_maps_to_singleton_startup_pane() {
         let spec = pane_spec_by_command_id("pane.cad_demo")
             .expect("cad demo command should resolve to a pane spec");
         assert_eq!(spec.kind, PaneKind::CadDemo);
         assert!(spec.singleton, "cad demo pane must be singleton");
-        assert!(
-            !spec.startup,
-            "cad demo pane should not auto-open during startup"
-        );
+        assert!(spec.startup, "cad demo pane should auto-open during startup");
     }
 }
