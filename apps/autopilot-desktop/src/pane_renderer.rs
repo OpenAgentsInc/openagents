@@ -1,18 +1,18 @@
 use crate::app_state::{
     ActiveJobState, ActivityEventDomain, ActivityFeedFilter, ActivityFeedState,
     AgentNetworkSimulationPaneState, AgentProfileStatePaneState, AgentScheduleTickPaneState,
-    AlertSeverity, AlertsRecoveryState, AutopilotChatState, CadDemoPaneState, ChatPaneInputs,
-    CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState, CodexDiagnosticsPaneState,
-    CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState, CreateInvoicePaneInputs,
-    CredentialsPaneInputs, CredentialsState, CreditDeskPaneState, CreditSettlementLedgerPaneState,
-    DesktopPane, EarningsScoreboardState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
-    JobLifecycleStage, NetworkRequestStatus, NetworkRequestsPaneInputs, NetworkRequestsState,
-    NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs, ProviderBlocker,
-    ProviderRuntimeState, RelayConnectionsPaneInputs, RelayConnectionsState,
-    RelaySecuritySimulationPaneState, SettingsPaneInputs, SettingsState, SkillRegistryPaneState,
-    SkillTrustRevocationPaneState, SparkPaneInputs, StableSatsSimulationPaneState,
-    StarterJobStatus, StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
-    TreasuryExchangeSimulationPaneState,
+    AlertSeverity, AlertsRecoveryState, AutopilotChatState, CadDemoPaneState,
+    CalculatorPaneInputs, ChatPaneInputs, CodexAccountPaneState, CodexAppsPaneState,
+    CodexConfigPaneState, CodexDiagnosticsPaneState, CodexLabsPaneState, CodexMcpPaneState,
+    CodexModelsPaneState, CreateInvoicePaneInputs, CredentialsPaneInputs, CredentialsState,
+    CreditDeskPaneState, CreditSettlementLedgerPaneState, DesktopPane, EarningsScoreboardState,
+    JobHistoryPaneInputs, JobHistoryState, JobInboxState, JobLifecycleStage, NetworkRequestStatus,
+    NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
+    PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, RelayConnectionsPaneInputs,
+    RelayConnectionsState, RelaySecuritySimulationPaneState, SettingsPaneInputs, SettingsState,
+    SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs,
+    StableSatsSimulationPaneState, StarterJobStatus, StarterJobsState, SyncHealthState,
+    TrajectoryAuditPaneState, TreasuryExchangeSimulationPaneState,
 };
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
@@ -42,8 +42,8 @@ use crate::pane_system::{
     starter_jobs_row_bounds, starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
 };
 use crate::panes::{
-    agent as agent_pane, cad as cad_pane, chat as chat_pane, codex as codex_pane,
-    credit as credit_pane, relay_connections as relay_connections_pane,
+    agent as agent_pane, cad as cad_pane, calculator as calculator_pane, chat as chat_pane,
+    codex as codex_pane, credit as credit_pane, relay_connections as relay_connections_pane,
     simulation as simulation_pane, skill as skill_pane, wallet as wallet_pane,
 };
 use crate::spark_wallet::SparkPaneState;
@@ -109,6 +109,7 @@ impl PaneRenderer {
         credentials_inputs: &mut CredentialsPaneInputs,
         job_history_inputs: &mut JobHistoryPaneInputs,
         chat_inputs: &mut ChatPaneInputs,
+        calculator_inputs: &mut CalculatorPaneInputs,
         paint: &mut PaintContext,
     ) -> u32 {
         let mut indices: Vec<usize> = (0..panes.len()).collect();
@@ -141,6 +142,9 @@ impl PaneRenderer {
                 PaneKind::Empty => paint_empty_pane(content_bounds, paint),
                 PaneKind::AutopilotChat => {
                     paint_autopilot_chat_pane(content_bounds, autopilot_chat, chat_inputs, paint);
+                }
+                PaneKind::Calculator => {
+                    calculator_pane::paint(content_bounds, calculator_inputs, paint);
                 }
                 PaneKind::CodexAccount => {
                     codex_pane::paint_account_pane(content_bounds, codex_account, paint);

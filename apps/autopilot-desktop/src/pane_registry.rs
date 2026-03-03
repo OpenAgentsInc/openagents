@@ -80,7 +80,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 39] = [
+const PANE_SPECS: [PaneSpec; 40] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -662,6 +662,21 @@ const PANE_SPECS: [PaneSpec; 39] = [
         hotbar: None,
     },
     PaneSpec {
+        kind: PaneKind::Calculator,
+        title: "Calculator",
+        default_width: 440.0,
+        default_height: 260.0,
+        singleton: false,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.calculator",
+            label: "Calculator",
+            description: "Open a calculator pane for quick expression evaluation",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
         kind: PaneKind::CadDemo,
         title: "CAD Demo",
         default_width: 1020.0,
@@ -778,5 +793,14 @@ mod tests {
         assert_eq!(spec.kind, PaneKind::CadDemo);
         assert!(spec.singleton, "cad demo pane must be singleton");
         assert!(spec.startup, "cad demo pane should auto-open during startup");
+    }
+
+    #[test]
+    fn calculator_command_maps_to_non_singleton_pane() {
+        let spec = pane_spec_by_command_id("pane.calculator")
+            .expect("calculator command should resolve to a pane spec");
+        assert_eq!(spec.kind, PaneKind::Calculator);
+        assert!(!spec.singleton, "calculator pane should allow multiple instances");
+        assert!(!spec.startup, "calculator pane should not auto-open during startup");
     }
 }

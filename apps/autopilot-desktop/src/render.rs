@@ -212,6 +212,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             credentials_inputs,
             job_history_inputs: crate::app_state::JobHistoryPaneInputs::default(),
             chat_inputs: crate::app_state::ChatPaneInputs::default(),
+            calculator_inputs: crate::app_state::CalculatorPaneInputs::default(),
             autopilot_chat: crate::app_state::AutopilotChatState::default(),
             chat_transcript_selection_drag: None,
             codex_account: crate::app_state::CodexAccountPaneState::default(),
@@ -566,6 +567,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &mut state.credentials_inputs,
             &mut state.job_history_inputs,
             &mut state.chat_inputs,
+            &mut state.calculator_inputs,
             &mut paint,
         );
         paint.scene.set_layer(hotbar_layer);

@@ -90,6 +90,7 @@ pub enum PaneKind {
     TreasuryExchangeSimulation,
     RelaySecuritySimulation,
     StableSatsSimulation,
+    Calculator,
     CadDemo,
 }
 
@@ -291,6 +292,20 @@ impl Default for ChatPaneInputs {
     fn default() -> Self {
         Self {
             composer: TextInput::new().placeholder("Message Autopilot"),
+        }
+    }
+}
+
+pub struct CalculatorPaneInputs {
+    pub expression: TextInput,
+}
+
+impl Default for CalculatorPaneInputs {
+    fn default() -> Self {
+        Self {
+            expression: TextInput::new()
+                .placeholder("e.g. (8 + 2) * 3 - 4 / 2")
+                .mono(true),
         }
     }
 }
@@ -2780,6 +2795,7 @@ pub struct RenderState {
     pub credentials_inputs: CredentialsPaneInputs,
     pub job_history_inputs: JobHistoryPaneInputs,
     pub chat_inputs: ChatPaneInputs,
+    pub calculator_inputs: CalculatorPaneInputs,
     pub autopilot_chat: AutopilotChatState,
     pub chat_transcript_selection_drag: Option<ChatTranscriptSelectionDragState>,
     pub codex_account: CodexAccountPaneState,
