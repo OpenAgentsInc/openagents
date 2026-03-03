@@ -331,3 +331,319 @@ Start Phase 1 by adding `skills/cast/` and CAST references/scripts, then validat
 
 - `scripts/skills/validate_registry.sh`
 - relevant script smoke checks (non-broadcast by default)
+
+## 13. Sequential GitHub Issues
+
+This is the implementation-order issue backlog required to complete this plan across repo surfaces (`skills/`, `docs/`, `scripts/`, and optional app-layer follow-ons in `apps/autopilot-desktop`).
+
+## Issue 1: `CAST-01` Lock CAST Contract + Environment Contract
+
+Description:
+
+- Pin CAST app binary policy (version + expected artifact source + hash verification approach).
+- Finalize the required environment variable contract and run artifact layout for CAST operations.
+
+Relevant details:
+
+- Files:
+  - update this plan file with final lock values
+  - add `docs/charms/CAST_OPERATOR_RUNBOOK.md` (initial skeleton with env table)
+- Include explicit network policy defaults and override behavior.
+- Acceptance:
+  - contract pin and env contract are documented in one canonical place
+  - no unresolved TODOs on required env keys
+
+Depends on: none
+
+## Issue 2: `CAST-02` Create `skills/cast` Skill Skeleton and Registry Entry
+
+Description:
+
+- Add first-class CAST skill package with valid frontmatter and core workflow sections.
+- Register skill in `skills/README.md`.
+
+Relevant details:
+
+- Files:
+  - `skills/cast/SKILL.md`
+  - `skills/README.md`
+- Follow existing registry contract and metadata style from existing skills (`skills/mezo`, `skills/maestro`, `skills/charms`).
+- Acceptance:
+  - `scripts/skills/validate_registry.sh` passes
+  - `apps/autopilot-desktop/src/skills_registry.rs` local discovery can resolve `cast`
+
+Depends on: `CAST-01`
+
+## Issue 3: `CAST-03` Author CAST Reference Docs Under Skill
+
+Description:
+
+- Add CAST workflow references for maker lifecycle, cancellation/replacement, partial fills, and tx inspection.
+
+Relevant details:
+
+- Files:
+  - `skills/cast/references/order-lifecycle.md`
+  - `skills/cast/references/cancel-and-replace.md`
+  - `skills/cast/references/partial-fulfillment.md`
+  - `skills/cast/references/signing-and-broadcast.md`
+- Must encode invariants from CAST how-to (Scrolls address/nonce behavior, cancel signature format, remainder rules).
+- Acceptance:
+  - references are linked from `skills/cast/SKILL.md`
+  - each operation has command-level examples and failure hints
+
+Depends on: `CAST-02`
+
+## Issue 4: `CAST-04` Add CAST Prerequisite Checker Script
+
+Description:
+
+- Implement prereq script covering maker/taker/cancel/server modes.
+
+Relevant details:
+
+- Files:
+  - `skills/cast/scripts/check-cast-prereqs.sh`
+  - `skills/cast/SKILL.md` (wire command usage)
+- Validate command presence (`charms`, `bitcoin-cli`, `jq`, `curl`, `envsubst`, `scrolls-nonce`, `sign-txs`, `cancel-msg`) and Bitcoin RPC reachability where required.
+- Acceptance:
+  - script exits non-zero on missing deps
+  - script emits deterministic success labels per mode
+
+Depends on: `CAST-03`
+
+## Issue 5: `CAST-05` Add Scrolls Address/Nonce Derivation Helper
+
+Description:
+
+- Add deterministic helper to compute nonce via `scrolls-nonce` and resolve Scrolls address from API.
+
+Relevant details:
+
+- Files:
+  - `skills/cast/scripts/derive-scrolls-address.sh`
+  - `skills/cast/references/signing-and-broadcast.md`
+- Must emit machine-readable JSON output for downstream scripts.
+- Acceptance:
+  - output includes `funding_utxo_id`, `output_index`, `nonce`, `scrolls_address`
+  - fails clearly on API/network/parse errors
+
+Depends on: `CAST-04`
+
+## Issue 6: `CAST-06` Add CAST Spell Templates (Create/Cancel-Replace/Partial Fill)
+
+Description:
+
+- Add canonical parameterized templates for key CAST operations.
+
+Relevant details:
+
+- Files:
+  - `skills/cast/assets/create-ask-order.template.yaml`
+  - `skills/cast/assets/cancel-replace-order.template.yaml`
+  - `skills/cast/assets/partial-fulfill-order.template.yaml`
+- Template placeholders must be explicit and stable for deterministic renderers.
+- Acceptance:
+  - templates render via documented env/file inputs without manual edits
+  - no embedded secrets
+
+Depends on: `CAST-03`
+
+## Issue 7: `CAST-07` Implement Spell Check/Prove Wrappers
+
+Description:
+
+- Add wrappers for `charms spell check` and `charms spell prove`, including mock-prove and real-prove lanes.
+
+Relevant details:
+
+- Files:
+  - `skills/cast/scripts/cast-spell-check.sh`
+  - `skills/cast/scripts/cast-spell-prove.sh`
+  - `skills/cast/references/order-lifecycle.md`
+- Require validated inputs: spell file, app bin, prev txs, funding UTXO/value, change address, fee rate.
+- Acceptance:
+  - wrappers produce deterministic JSON artifacts
+  - mock and real modes are both supported and documented
+
+Depends on: `CAST-05`, `CAST-06`
+
+## Issue 8: `CAST-08` Implement Cancellation Signature Wrapper
+
+Description:
+
+- Add wrapper for generating and signing cancellation messages using `cancel-msg`.
+
+Relevant details:
+
+- Files:
+  - `skills/cast/scripts/cast-cancel-signature.sh`
+  - `skills/cast/references/cancel-and-replace.md`
+- Must support file-based key inputs and avoid secret echoing.
+- Acceptance:
+  - outputs signature hex suitable for spell private inputs
+  - enforces message format `{utxo_id} {outputs_hash}`
+
+Depends on: `CAST-07`
+
+## Issue 9: `CAST-09` Implement Signing/Broadcast/Inspection Wrappers
+
+Description:
+
+- Add wrappers for wallet signing, Scrolls signing, broadcast, and post-broadcast spell inspection.
+
+Relevant details:
+
+- Files:
+  - `skills/cast/scripts/cast-sign-and-broadcast.sh`
+  - `skills/cast/scripts/cast-show-spell.sh`
+  - `skills/cast/references/signing-and-broadcast.md`
+- Include dry-run mode and explicit confirmation gate for broadcast operations.
+- Acceptance:
+  - signs tx via `sign-txs` and Scrolls API path
+  - captures broadcast txid(s)
+  - verifies decode with `charms tx show-spell --json`
+
+Depends on: `CAST-07`, `CAST-08`
+
+## Issue 10: `CAST-10` Add Deterministic Artifact + Receipt Bundle Contract
+
+Description:
+
+- Define and implement stable run directory and receipt JSON schema for all CAST operations.
+
+Relevant details:
+
+- Files:
+  - `docs/charms/CAST_OPERATOR_RUNBOOK.md`
+  - `skills/cast/scripts/*.sh` (shared artifact write behavior)
+- Include hash/pointer fields for spell inputs and tx outputs.
+- Acceptance:
+  - each operation emits receipt with required fields from Section 8
+  - reruns on same inputs produce equivalent receipt structure
+
+Depends on: `CAST-09`
+
+## Issue 11: `CAST-11` Author CAST Operator Runbook + Failure Modes
+
+Description:
+
+- Publish operator-grade runbook and troubleshooting matrix for CAST workflows.
+
+Relevant details:
+
+- Files:
+  - `docs/charms/CAST_OPERATOR_RUNBOOK.md`
+  - `docs/charms/CAST_FAILURE_MODES.md`
+- Must include deterministic remediation for:
+  - RPC failures
+  - prove validation failures
+  - Scrolls signing failures
+  - mempool broadcast rejection
+  - stale/insufficient `prev_txs`
+- Acceptance:
+  - each failure class has clear triage steps and safe retry path
+
+Depends on: `CAST-10`
+
+## Issue 12: `CAST-12` Add CAST Test Matrix and Smoke Harness
+
+Description:
+
+- Add CAST validation matrix (positive + negative) and lightweight script smoke checks.
+
+Relevant details:
+
+- Files:
+  - `docs/charms/CAST_TEST_MATRIX.md`
+  - `skills/cast/scripts/smoke-cast.sh` (or equivalent)
+- Matrix must cover:
+  - create order
+  - cancel/replace
+  - partial fill
+  - wrong cancel signature
+  - wrong nonce/address
+  - stale or incomplete `prev_txs`
+  - fee or output invariant mismatch
+- Acceptance:
+  - smoke checks run without accidental broadcast by default
+  - matrix is executable by operator with explicit inputs
+
+Depends on: `CAST-11`
+
+## Issue 13: `CAST-13` Integrate CAST Validation Into Repo Gate Flow
+
+Description:
+
+- Ensure CAST skill and script checks are enforceable in existing lint/validation posture.
+
+Relevant details:
+
+- Files:
+  - `scripts/skills/validate_registry.sh` (no behavior change expected, verify compatibility)
+  - optional `scripts/lint/*` hook docs updates if a CAST smoke lane is added
+  - `docs/lint/LINT_POSTURE.md` (if new gate added)
+- Keep gate impact minimal and non-destructive.
+- Acceptance:
+  - CAST skill changes are covered by current registry validation
+  - any added smoke gate is opt-in for local iteration and safe in CI
+
+Depends on: `CAST-12`
+
+## Issue 14: `CAST-14` Optional App-Layer: CAST Command Presets in Desktop
+
+Description:
+
+- Add app-layer CAST task presets to help operators launch CAST workflows from desktop surfaces.
+
+Relevant details:
+
+- Candidate files:
+  - `apps/autopilot-desktop/src/pane_registry.rs`
+  - `apps/autopilot-desktop/src/pane_renderer.rs`
+  - `docs/PANES.md`
+- Keep logic as orchestration only; no CAST protocol logic in reusable crates.
+- Acceptance:
+  - CAST actions are discoverable in desktop command surfaces
+  - no ownership-boundary violations
+
+Depends on: `CAST-13`
+
+## Issue 15: `CAST-15` Optional App-Layer: Activity Feed + Wallet Trade Visibility
+
+Description:
+
+- Surface CAST operation receipts/trade events in activity/history UX.
+
+Relevant details:
+
+- Candidate files:
+  - `apps/autopilot-desktop/src/app_state.rs`
+  - `apps/autopilot-desktop/src/pane_renderer.rs`
+  - `docs/PANES.md`
+- Must preserve authoritative wallet-truth model from MVP.
+- Acceptance:
+  - CAST events appear with stable IDs and replay-safe ordering
+  - no payout success shown without authoritative wallet confirmation
+
+Depends on: `CAST-14`
+
+## Issue 16: `CAST-16` Release Readiness Checklist for CAST
+
+Description:
+
+- Add a CAST release checklist aligned with existing release and debug runbooks.
+
+Relevant details:
+
+- Files:
+  - `docs/charms/CAST_RELEASE_CHECKLIST.md`
+  - optional cross-link from `docs/CODEX_INTEGRATION_RELEASE_CHECKLIST.md` if desktop-surface changes land
+- Include minimum pre-release checks:
+  - skill registry validation
+  - CAST smoke matrix pass
+  - docs/runbook consistency check
+- Acceptance:
+  - one deterministic checklist for final promotion of CAST support
+
+Depends on: `CAST-13` (core), `CAST-15` (if optional app-layer issues are included)
