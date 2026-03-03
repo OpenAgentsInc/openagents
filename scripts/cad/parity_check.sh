@@ -123,6 +123,7 @@ LANE_LABELS=(
     "slicer-gcode-lane"
     "slicer-bambu-lane"
     "slicer-wasm-lane"
+    "embroidery-core-lane"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -545,6 +546,9 @@ run_lane "slicer-bambu-lane" \
 
 run_lane "slicer-wasm-lane" \
     "$ROOT_DIR/scripts/cad/parity-slicer-wasm-lane-ci.sh"
+
+run_lane "embroidery-core-lane" \
+    "$ROOT_DIR/scripts/cad/parity-embroidery-core-lane-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

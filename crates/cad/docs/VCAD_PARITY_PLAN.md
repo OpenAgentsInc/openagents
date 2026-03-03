@@ -228,7 +228,7 @@ Major gaps to close:
 125. [x] VCAD-PARITY-125: Slicer G-code lane parity.
 126. [x] VCAD-PARITY-126: Slicer Bambu lane parity.
 127. [x] VCAD-PARITY-127: Slicer WASM lane parity.
-128. [ ] VCAD-PARITY-128: Embroidery core lane parity.
+128. [x] VCAD-PARITY-128: Embroidery core lane parity.
 129. [ ] VCAD-PARITY-129: Embroidery DST/PES lane parity.
 130. [ ] VCAD-PARITY-130: CAM/stocksim lane parity.
 
