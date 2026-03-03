@@ -356,10 +356,208 @@ fn tessellate_feature_node(
             let z0 = (base_thickness_mm - chamfer_mm).max(0.0);
             let z1 = base_thickness_mm;
             let edge_band = chamfer_mm.max(0.6);
-            builder.add_box([-half_w, half_d - edge_band, z0], [half_w, half_d, z1], 1, 6);
-            builder.add_box([-half_w, -half_d, z0], [half_w, -half_d + edge_band, z1], 1, 6);
-            builder.add_box([-half_w, -half_d, z0], [-half_w + edge_band, half_d, z1], 1, 6);
-            builder.add_box([half_w - edge_band, -half_d, z0], [half_w, half_d, z1], 1, 6);
+            builder.add_box(
+                [-half_w, half_d - edge_band, z0],
+                [half_w, half_d, z1],
+                1,
+                6,
+            );
+            builder.add_box(
+                [-half_w, -half_d, z0],
+                [half_w, -half_d + edge_band, z1],
+                1,
+                6,
+            );
+            builder.add_box(
+                [-half_w, -half_d, z0],
+                [-half_w + edge_band, half_d, z1],
+                1,
+                6,
+            );
+            builder.add_box(
+                [half_w - edge_band, -half_d, z0],
+                [half_w, half_d, z1],
+                1,
+                6,
+            );
+            Ok(())
+        }
+        "gripper.flexure.left.v1" | "gripper.flexure.right.v1" => {
+            let gripper = GripperVariantProfile::from_variant(
+                node.params
+                    .get("variant")
+                    .map(String::as_str)
+                    .unwrap_or("variant.baseline"),
+            );
+            let jaw_open_mm = node_param_f32(node, "jaw_open_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(gripper.jaw_open_mm);
+            let finger_length_mm = node_param_f32(node, "finger_length_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(gripper.finger_length_mm);
+            let finger_thickness_mm = node_param_f32(node, "finger_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(gripper.finger_thickness_mm);
+            let base_thickness_mm = node_param_f32(node, "base_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(gripper.base_thickness_mm);
+            let compliant_joint_count = node_param_u32(node, "compliant_joint_count")
+                .map(|value| value.clamp(1, 8) as usize)
+                .unwrap_or(2);
+            let flexure_thickness_mm = node_param_f32(node, "flexure_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(1.2)
+                .clamp(0.4, 4.0);
+            let finger_height_mm = (finger_thickness_mm * 2.4).max(10.0);
+            let side_sign = if node.operation_key == "gripper.flexure.left.v1" {
+                1.0
+            } else {
+                -1.0
+            };
+            let finger_center_y = side_sign * ((jaw_open_mm * 0.5) + (finger_thickness_mm * 0.5));
+            let inner_face_y = finger_center_y - (side_sign * (finger_thickness_mm * 0.5));
+            let flexure_span_x = (finger_length_mm * 0.66).max(8.0);
+            let start_x = -flexure_span_x * 0.5;
+            let step_x = flexure_span_x / (compliant_joint_count as f32 + 1.0);
+            let flexure_depth =
+                (flexure_thickness_mm * 1.6).clamp(0.6, finger_thickness_mm.max(0.8));
+            let flexure_center_y = inner_face_y
+                - (side_sign * ((flexure_depth * 0.5) + (flexure_thickness_mm * 0.12)));
+            let z_base = base_thickness_mm + (finger_height_mm * 0.28);
+            let z_peak = z_base + (flexure_thickness_mm * 1.8).max(0.8);
+
+            for index in 0..compliant_joint_count {
+                let x_center = start_x + ((index + 1) as f32 * step_x);
+                let wave = (((index as f32) * 0.35) + jitter).sin() * flexure_thickness_mm * 0.08;
+                builder.add_box(
+                    [
+                        x_center - (flexure_thickness_mm * 0.65),
+                        flexure_center_y - (flexure_depth * 0.5),
+                        z_base + wave,
+                    ],
+                    [
+                        x_center + (flexure_thickness_mm * 0.65),
+                        flexure_center_y + (flexure_depth * 0.5),
+                        z_peak + wave,
+                    ],
+                    1,
+                    6,
+                );
+            }
+            builder.add_box(
+                [
+                    start_x,
+                    flexure_center_y - (flexure_thickness_mm * 0.22),
+                    z_base + jitter * 0.05,
+                ],
+                [
+                    -start_x,
+                    flexure_center_y + (flexure_thickness_mm * 0.22),
+                    z_base + flexure_thickness_mm,
+                ],
+                1,
+                6,
+            );
+            Ok(())
+        }
+        "gripper.compliant_pads.v1" => {
+            let gripper = GripperVariantProfile::from_variant(
+                node.params
+                    .get("variant")
+                    .map(String::as_str)
+                    .unwrap_or("variant.baseline"),
+            );
+            let jaw_open_mm = node_param_f32(node, "jaw_open_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(gripper.jaw_open_mm);
+            let finger_length_mm = node_param_f32(node, "finger_length_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(gripper.finger_length_mm);
+            let finger_height_mm = node_param_f32(node, "finger_height_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or((gripper.finger_thickness_mm * 2.4).max(10.0));
+            let finger_thickness_mm = node_param_f32(node, "finger_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(gripper.finger_thickness_mm);
+            let base_thickness_mm = node_param_f32(node, "base_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(gripper.base_thickness_mm);
+            let flexure_thickness_mm = node_param_f32(node, "flexure_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(1.2)
+                .clamp(0.4, 4.0);
+            let pad_depth = (flexure_thickness_mm * 1.8).clamp(0.8, finger_thickness_mm * 0.9);
+            let pad_length = (finger_length_mm * 0.42).clamp(10.0, finger_length_mm * 0.8);
+            let pad_height = (finger_height_mm * 0.30).clamp(2.0, finger_height_mm * 0.8);
+            let pad_z0 = base_thickness_mm + (finger_height_mm * 0.24);
+            let pad_z1 = pad_z0 + pad_height;
+            let y_inset = flexure_thickness_mm * 0.15;
+            for side_sign in [1.0_f32, -1.0_f32] {
+                let finger_center_y =
+                    side_sign * ((jaw_open_mm * 0.5) + (finger_thickness_mm * 0.5));
+                let inner_face_y = finger_center_y - (side_sign * (finger_thickness_mm * 0.5));
+                let pad_center_y = inner_face_y - (side_sign * ((pad_depth * 0.5) + y_inset));
+                builder.add_box(
+                    [
+                        -pad_length * 0.5,
+                        pad_center_y - (pad_depth * 0.5),
+                        pad_z0 + jitter * 0.04,
+                    ],
+                    [pad_length * 0.5, pad_center_y + (pad_depth * 0.5), pad_z1],
+                    1,
+                    6,
+                );
+            }
+            Ok(())
+        }
+        "gripper.single_drive_linkage.v1" => {
+            if !node_param_bool(node, "single_servo_drive").unwrap_or(true) {
+                return Ok(());
+            }
+            let gripper = GripperVariantProfile::from_variant(
+                node.params
+                    .get("variant")
+                    .map(String::as_str)
+                    .unwrap_or("variant.baseline"),
+            );
+            let jaw_open_mm = node_param_f32(node, "jaw_open_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(gripper.jaw_open_mm);
+            let base_width_mm = node_param_f32(node, "base_width_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(gripper.base_width_mm);
+            let base_thickness_mm = node_param_f32(node, "base_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(gripper.base_thickness_mm);
+            let rod_half_x = (base_width_mm * 0.24).max(8.0);
+            let rod_half_y = (jaw_open_mm * 0.38).max(6.0);
+            let rod_thickness = (base_thickness_mm * 0.22).clamp(1.4, 4.0);
+            let z0 = base_thickness_mm + (rod_thickness * 0.8) + (jitter * 0.1);
+            let z1 = z0 + rod_thickness;
+            builder.add_box(
+                [-rod_half_x, -rod_half_y, z0],
+                [rod_half_x, rod_half_y, z1],
+                1,
+                6,
+            );
+            for side_sign in [-1.0_f32, 1.0_f32] {
+                let x_center = side_sign * (rod_half_x * 0.72);
+                builder.add_box(
+                    [x_center - 1.2, -rod_half_y, z1],
+                    [x_center + 1.2, rod_half_y, z1 + (rod_thickness * 1.5)],
+                    1,
+                    6,
+                );
+            }
+            let hub_radius = (rod_thickness * 1.1).max(1.2);
+            builder.add_cylinder_z(
+                [0.0, 0.0, base_thickness_mm + rod_thickness],
+                hub_radius,
+                rod_thickness * 1.8,
+                14,
+                1,
+                4,
+            );
             Ok(())
         }
         other => Err(CadError::EvalFailed {
@@ -377,6 +575,15 @@ fn node_param_f32(node: &FeatureNode, key: &str) -> Option<f32> {
 
 fn node_param_u32(node: &FeatureNode, key: &str) -> Option<u32> {
     node.params.get(key)?.parse::<u32>().ok()
+}
+
+fn node_param_bool(node: &FeatureNode, key: &str) -> Option<bool> {
+    let value = node.params.get(key)?.trim().to_ascii_lowercase();
+    match value.as_str() {
+        "1" | "true" | "yes" | "on" => Some(true),
+        "0" | "false" | "no" | "off" => Some(false),
+        _ => None,
+    }
 }
 
 fn material_slots() -> Vec<CadMeshMaterialSlot> {
@@ -787,6 +994,13 @@ mod tests {
     use std::collections::BTreeMap;
 
     fn gripper_graph_for_variant(variant_id: &str) -> FeatureGraph {
+        gripper_graph_for_variant_with_underactuation(variant_id, false)
+    }
+
+    fn gripper_graph_for_variant_with_underactuation(
+        variant_id: &str,
+        underactuated: bool,
+    ) -> FeatureGraph {
         let mut jaw_open_mm: f64 = 42.0;
         let mut finger_length_mm: f64 = 65.0;
         let mut finger_thickness_mm: f64 = 8.0;
@@ -850,45 +1064,126 @@ mod tests {
         edge_params.insert("base_depth_mm".to_string(), "52.0".to_string());
         edge_params.insert("base_thickness_mm".to_string(), "8.0".to_string());
 
-        FeatureGraph {
-            nodes: vec![
+        let mut nodes = vec![
+            FeatureNode {
+                id: "feature.gripper.base".to_string(),
+                name: "gripper_base".to_string(),
+                operation_key: "gripper.base_plate.v1".to_string(),
+                depends_on: Vec::new(),
+                params: base_params,
+            },
+            FeatureNode {
+                id: "feature.gripper.finger.left".to_string(),
+                name: "gripper_finger_left".to_string(),
+                operation_key: "gripper.finger.left.v1".to_string(),
+                depends_on: vec!["feature.gripper.base".to_string()],
+                params: left_finger_params.clone(),
+            },
+            FeatureNode {
+                id: "feature.gripper.finger.right".to_string(),
+                name: "gripper_finger_right".to_string(),
+                operation_key: "gripper.finger.right.v1".to_string(),
+                depends_on: vec!["feature.gripper.base".to_string()],
+                params: right_finger_params.clone(),
+            },
+            FeatureNode {
+                id: "feature.gripper.servo_mount_holes".to_string(),
+                name: "gripper_servo_mount_holes".to_string(),
+                operation_key: "gripper.servo_mount_holes.v1".to_string(),
+                depends_on: vec!["feature.gripper.base".to_string()],
+                params: hole_params,
+            },
+            FeatureNode {
+                id: "feature.gripper.edge_marker".to_string(),
+                name: "gripper_edge_marker".to_string(),
+                operation_key: "gripper.edge_marker.v1".to_string(),
+                depends_on: vec!["feature.gripper.base".to_string()],
+                params: edge_params,
+            },
+        ];
+
+        if underactuated {
+            let mut flexure_left = BTreeMap::new();
+            flexure_left.insert("variant".to_string(), variant_id.to_string());
+            flexure_left.insert("jaw_open_mm".to_string(), format!("{jaw_open_mm:.4}"));
+            flexure_left.insert(
+                "finger_length_mm".to_string(),
+                format!("{finger_length_mm:.4}"),
+            );
+            flexure_left.insert(
+                "finger_thickness_mm".to_string(),
+                format!("{finger_thickness_mm:.4}"),
+            );
+            flexure_left.insert("base_thickness_mm".to_string(), "8.0".to_string());
+            flexure_left.insert("compliant_joint_count".to_string(), "3".to_string());
+            flexure_left.insert("flexure_thickness_mm".to_string(), "1.2".to_string());
+            let flexure_right = flexure_left.clone();
+
+            let mut compliant_pads = BTreeMap::new();
+            compliant_pads.insert("variant".to_string(), variant_id.to_string());
+            compliant_pads.insert("jaw_open_mm".to_string(), format!("{jaw_open_mm:.4}"));
+            compliant_pads.insert(
+                "finger_length_mm".to_string(),
+                format!("{finger_length_mm:.4}"),
+            );
+            compliant_pads.insert(
+                "finger_height_mm".to_string(),
+                format!("{:.4}", (finger_thickness_mm * 2.4).max(10.0)),
+            );
+            compliant_pads.insert(
+                "finger_thickness_mm".to_string(),
+                format!("{finger_thickness_mm:.4}"),
+            );
+            compliant_pads.insert("base_thickness_mm".to_string(), "8.0".to_string());
+            compliant_pads.insert("flexure_thickness_mm".to_string(), "1.2".to_string());
+
+            let mut linkage = BTreeMap::new();
+            linkage.insert("variant".to_string(), variant_id.to_string());
+            linkage.insert("single_servo_drive".to_string(), "1".to_string());
+            linkage.insert("jaw_open_mm".to_string(), format!("{jaw_open_mm:.4}"));
+            linkage.insert("base_width_mm".to_string(), "78.0".to_string());
+            linkage.insert("base_thickness_mm".to_string(), "8.0".to_string());
+
+            nodes.extend([
                 FeatureNode {
-                    id: "feature.gripper.base".to_string(),
-                    name: "gripper_base".to_string(),
-                    operation_key: "gripper.base_plate.v1".to_string(),
-                    depends_on: Vec::new(),
-                    params: base_params,
+                    id: "feature.gripper.flexure.left".to_string(),
+                    name: "gripper_flexure_left".to_string(),
+                    operation_key: "gripper.flexure.left.v1".to_string(),
+                    depends_on: vec!["feature.gripper.finger.left".to_string()],
+                    params: flexure_left,
                 },
                 FeatureNode {
-                    id: "feature.gripper.finger.left".to_string(),
-                    name: "gripper_finger_left".to_string(),
-                    operation_key: "gripper.finger.left.v1".to_string(),
-                    depends_on: vec!["feature.gripper.base".to_string()],
-                    params: left_finger_params,
+                    id: "feature.gripper.flexure.right".to_string(),
+                    name: "gripper_flexure_right".to_string(),
+                    operation_key: "gripper.flexure.right.v1".to_string(),
+                    depends_on: vec!["feature.gripper.finger.right".to_string()],
+                    params: flexure_right,
                 },
                 FeatureNode {
-                    id: "feature.gripper.finger.right".to_string(),
-                    name: "gripper_finger_right".to_string(),
-                    operation_key: "gripper.finger.right.v1".to_string(),
-                    depends_on: vec!["feature.gripper.base".to_string()],
-                    params: right_finger_params,
+                    id: "feature.gripper.compliant_pads".to_string(),
+                    name: "gripper_compliant_pads".to_string(),
+                    operation_key: "gripper.compliant_pads.v1".to_string(),
+                    depends_on: vec![
+                        "feature.gripper.finger.left".to_string(),
+                        "feature.gripper.finger.right".to_string(),
+                    ],
+                    params: compliant_pads,
                 },
                 FeatureNode {
-                    id: "feature.gripper.servo_mount_holes".to_string(),
-                    name: "gripper_servo_mount_holes".to_string(),
-                    operation_key: "gripper.servo_mount_holes.v1".to_string(),
-                    depends_on: vec!["feature.gripper.base".to_string()],
-                    params: hole_params,
+                    id: "feature.gripper.single_drive_linkage".to_string(),
+                    name: "gripper_single_drive_linkage".to_string(),
+                    operation_key: "gripper.single_drive_linkage.v1".to_string(),
+                    depends_on: vec![
+                        "feature.gripper.base".to_string(),
+                        "feature.gripper.flexure.left".to_string(),
+                        "feature.gripper.flexure.right".to_string(),
+                    ],
+                    params: linkage,
                 },
-                FeatureNode {
-                    id: "feature.gripper.edge_marker".to_string(),
-                    name: "gripper_edge_marker".to_string(),
-                    operation_key: "gripper.edge_marker.v1".to_string(),
-                    depends_on: vec!["feature.gripper.base".to_string()],
-                    params: edge_params,
-                },
-            ],
+            ]);
         }
+
+        FeatureGraph { nodes }
     }
 
     #[test]
@@ -897,10 +1192,12 @@ mod tests {
         let rebuild = evaluate_feature_graph_deterministic(&graph)
             .expect("deterministic rebuild should succeed");
 
-        let (mesh_a, receipt_a) = tessellate_rebuild_result(&graph, &rebuild, 7, "variant.baseline")
-            .expect("first tessellation should succeed");
-        let (mesh_b, receipt_b) = tessellate_rebuild_result(&graph, &rebuild, 7, "variant.baseline")
-            .expect("second tessellation should succeed");
+        let (mesh_a, receipt_a) =
+            tessellate_rebuild_result(&graph, &rebuild, 7, "variant.baseline")
+                .expect("first tessellation should succeed");
+        let (mesh_b, receipt_b) =
+            tessellate_rebuild_result(&graph, &rebuild, 7, "variant.baseline")
+                .expect("second tessellation should succeed");
 
         assert_eq!(receipt_a.mesh_hash, receipt_b.mesh_hash);
         assert_eq!(receipt_a.rebuild_hash, receipt_b.rebuild_hash);
@@ -921,13 +1218,9 @@ mod tests {
         let long_reach_rebuild = evaluate_feature_graph_deterministic(&long_reach_graph)
             .expect("long-reach rebuild should succeed");
 
-        let (baseline_mesh, baseline_receipt) = tessellate_rebuild_result(
-            &baseline_graph,
-            &baseline_rebuild,
-            11,
-            "variant.baseline",
-        )
-        .expect("baseline tessellation should succeed");
+        let (baseline_mesh, baseline_receipt) =
+            tessellate_rebuild_result(&baseline_graph, &baseline_rebuild, 11, "variant.baseline")
+                .expect("baseline tessellation should succeed");
         let (long_reach_mesh, long_reach_receipt) = tessellate_rebuild_result(
             &long_reach_graph,
             &long_reach_rebuild,
@@ -938,8 +1231,7 @@ mod tests {
 
         assert_ne!(baseline_receipt.mesh_hash, long_reach_receipt.mesh_hash);
         let baseline_span_x = baseline_mesh.bounds.max_mm[0] - baseline_mesh.bounds.min_mm[0];
-        let long_reach_span_x =
-            long_reach_mesh.bounds.max_mm[0] - long_reach_mesh.bounds.min_mm[0];
+        let long_reach_span_x = long_reach_mesh.bounds.max_mm[0] - long_reach_mesh.bounds.min_mm[0];
         assert!(
             long_reach_span_x > baseline_span_x,
             "long-reach variant should increase total X envelope span"
@@ -980,5 +1272,54 @@ mod tests {
             tessellate_rebuild_result(&wide_graph, &wide_rebuild, 21, "variant.baseline")
                 .expect("wide tessellation should succeed");
         assert_ne!(tight_receipt.mesh_hash, wide_receipt.mesh_hash);
+    }
+
+    #[test]
+    fn underactuated_gripper_ops_change_mesh_hash() {
+        let baseline_graph =
+            gripper_graph_for_variant_with_underactuation("variant.baseline", false);
+        let underactuated_graph =
+            gripper_graph_for_variant_with_underactuation("variant.baseline", true);
+        let baseline_rebuild = evaluate_feature_graph_deterministic(&baseline_graph)
+            .expect("baseline rebuild should succeed");
+        let underactuated_rebuild = evaluate_feature_graph_deterministic(&underactuated_graph)
+            .expect("underactuated rebuild should succeed");
+        let (_, baseline_receipt) =
+            tessellate_rebuild_result(&baseline_graph, &baseline_rebuild, 31, "variant.baseline")
+                .expect("baseline tessellation should succeed");
+        let (underactuated_mesh, underactuated_receipt) = tessellate_rebuild_result(
+            &underactuated_graph,
+            &underactuated_rebuild,
+            31,
+            "variant.baseline",
+        )
+        .expect("underactuated tessellation should succeed");
+
+        assert_ne!(baseline_receipt.mesh_hash, underactuated_receipt.mesh_hash);
+        assert!(
+            underactuated_mesh.vertices.len() > 0,
+            "underactuated mesh should produce vertices"
+        );
+        assert!(
+            underactuated_mesh.edges.len() > 0,
+            "underactuated mesh should produce edge segments"
+        );
+    }
+
+    #[test]
+    fn underactuated_gripper_tessellation_is_deterministic() {
+        let graph = gripper_graph_for_variant_with_underactuation("variant.baseline", true);
+        let rebuild = evaluate_feature_graph_deterministic(&graph)
+            .expect("underactuated rebuild should succeed");
+        let (mesh_a, receipt_a) =
+            tessellate_rebuild_result(&graph, &rebuild, 33, "variant.baseline")
+                .expect("underactuated tessellation A should succeed");
+        let (mesh_b, receipt_b) =
+            tessellate_rebuild_result(&graph, &rebuild, 33, "variant.baseline")
+                .expect("underactuated tessellation B should succeed");
+
+        assert_eq!(receipt_a.mesh_hash, receipt_b.mesh_hash);
+        assert_eq!(mesh_a.triangle_indices, mesh_b.triangle_indices);
+        assert_eq!(mesh_a.edges, mesh_b.edges);
     }
 }

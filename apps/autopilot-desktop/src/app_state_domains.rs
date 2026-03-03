@@ -544,6 +544,9 @@ pub struct CadDemoPaneState {
     pub projection_mode: CadProjectionMode,
     pub viewport_layout: CadViewportLayout,
     pub gripper_jaw_open: bool,
+    pub grasp_simulation_seed: u64,
+    pub grasp_simulation_samples: Vec<CadGraspSimulationSample>,
+    pub grasp_simulation_last_updated_revision: u64,
     pub drawing_view_mode: CadDrawingViewMode,
     pub drawing_view_direction: CadDrawingViewDirection,
     pub drawing_show_hidden_lines: bool,
@@ -575,6 +578,32 @@ pub struct CadDemoPaneState {
     pub dimension_edit: Option<CadDimensionEditState>,
     pub context_menu: CadContextMenuState,
     pub cad_events: Vec<openagents_cad::events::CadEvent>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CadGraspObjectShape {
+    Sphere,
+    Cube,
+    Capsule,
+}
+
+impl CadGraspObjectShape {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Sphere => "sphere",
+            Self::Cube => "cube",
+            Self::Capsule => "capsule",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct CadGraspSimulationSample {
+    pub shape: CadGraspObjectShape,
+    pub closure_mm: f64,
+    pub contact_points: u8,
+    pub compliance_deflection_mm: f64,
+    pub adaptation_score: f64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1663,6 +1692,9 @@ impl Default for CadDemoPaneState {
             projection_mode: CadProjectionMode::Orthographic,
             viewport_layout: CadViewportLayout::Single,
             gripper_jaw_open: false,
+            grasp_simulation_seed: 20_260_303,
+            grasp_simulation_samples: Vec::new(),
+            grasp_simulation_last_updated_revision: 0,
             drawing_view_mode: CadDrawingViewMode::ThreeD,
             drawing_view_direction: CadDrawingViewDirection::Front,
             drawing_show_hidden_lines: true,
@@ -1707,7 +1739,10 @@ fn current_epoch_millis() -> u64 {
 }
 
 impl CadDemoPaneState {
-    fn default_analysis_for_variant(&self, variant_id: &str) -> openagents_cad::contracts::CadAnalysis {
+    fn default_analysis_for_variant(
+        &self,
+        variant_id: &str,
+    ) -> openagents_cad::contracts::CadAnalysis {
         openagents_cad::contracts::CadAnalysis {
             document_revision: self.document_revision,
             variant_id: variant_id.to_string(),
@@ -1727,7 +1762,10 @@ impl CadDemoPaneState {
     }
 
     pub fn active_dispatch_state(&self) -> Option<&openagents_cad::dispatch::CadDispatchState> {
-        let session_id = self.active_chat_session_id.as_ref().unwrap_or(&self.session_id);
+        let session_id = self
+            .active_chat_session_id
+            .as_ref()
+            .unwrap_or(&self.session_id);
         self.dispatch_sessions.get(session_id)
     }
 
@@ -1761,7 +1799,10 @@ impl CadDemoPaneState {
         }
     }
 
-    fn align_dimensions_for_profile(&mut self, profile: openagents_cad::dispatch::CadDesignProfile) {
+    fn align_dimensions_for_profile(
+        &mut self,
+        profile: openagents_cad::dispatch::CadDesignProfile,
+    ) {
         let preferred_ids = Self::profile_dimension_ids(profile);
         let mut reordered = Vec::with_capacity(self.dimensions.len());
         for dimension_id in preferred_ids {
@@ -1797,12 +1838,18 @@ impl CadDemoPaneState {
     pub fn visible_dimension_slots(&self) -> Vec<(usize, &CadDimensionState)> {
         self.visible_dimension_indices()
             .into_iter()
-            .filter_map(|index| self.dimensions.get(index).map(|dimension| (index, dimension)))
+            .filter_map(|index| {
+                self.dimensions
+                    .get(index)
+                    .map(|dimension| (index, dimension))
+            })
             .collect()
     }
 
     pub fn dimension_index_for_visible_row(&self, visible_row_index: usize) -> Option<usize> {
-        self.visible_dimension_indices().get(visible_row_index).copied()
+        self.visible_dimension_indices()
+            .get(visible_row_index)
+            .copied()
     }
 
     pub fn ensure_variant_family_for_profile(
