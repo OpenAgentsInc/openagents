@@ -298,61 +298,136 @@ fn apply_post_dispatch_side_effects(
 ) {
     match intent {
         CadIntent::Export(export_intent) => {
-            match run_step_export_from_active_mesh(&state.cad_demo, &export_intent.variant_id) {
-                Ok(artifact) => {
-                    state.cad_demo.last_error = None;
-                    state.cad_demo.last_action = Some(format!(
-                        "CAD STEP export ready -> {} ({} bytes, hash {})",
-                        artifact.receipt.file_name,
-                        artifact.receipt.byte_count,
-                        artifact.receipt.deterministic_hash
-                    ));
-                    emit_cad_event(
-                        state,
-                        CadEventKind::ExportCompleted,
-                        state_revision,
-                        Some(export_intent.variant_id.clone()),
-                        Some(format!(
-                            "chat-export:{}:{}:{}",
-                            thread_id,
-                            artifact.receipt.file_name,
-                            artifact.receipt.deterministic_hash
-                        )),
-                        "CAD STEP export completed".to_string(),
-                        format!(
-                            "thread={} session={} variant={} file={} bytes={} hash={}",
-                            thread_id,
-                            state.cad_demo.session_id,
-                            export_intent.variant_id,
+            let active_profile = state.cad_demo.active_design_profile();
+            if matches!(
+                active_profile,
+                openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
+                    | openagents_cad::dispatch::CadDesignProfile::HumanoidHandV1
+            ) {
+                match run_hand_assembly_export_package_from_active_mesh(
+                    &state.cad_demo,
+                    &export_intent.variant_id,
+                ) {
+                    Ok(package) => {
+                        state.cad_demo.last_error = None;
+                        state.cad_demo.last_action = Some(format!(
+                            "CAD hand package ready -> {}, {}, {} (hash {})",
+                            package.receipt.step_file_name,
+                            package.receipt.stl_file_name,
+                            package.receipt.bom_file_name,
+                            package.receipt.package_hash
+                        ));
+                        emit_cad_event(
+                            state,
+                            CadEventKind::ExportCompleted,
+                            state_revision,
+                            Some(export_intent.variant_id.clone()),
+                            Some(format!(
+                                "chat-export-package:{}:{}:{}",
+                                thread_id,
+                                package.receipt.step_file_name,
+                                package.receipt.package_hash
+                            )),
+                            "CAD hand assembly package export completed".to_string(),
+                            format!(
+                                "thread={} session={} variant={} profile={} step={} stl={} bom={} bytes={} hash={}",
+                                thread_id,
+                                state.cad_demo.session_id,
+                                export_intent.variant_id,
+                                package.receipt.design_profile,
+                                package.receipt.step_file_name,
+                                package.receipt.stl_file_name,
+                                package.receipt.bom_file_name,
+                                package.receipt.total_byte_count,
+                                package.receipt.package_hash
+                            ),
+                        );
+                    }
+                    Err(error) => {
+                        state.cad_demo.last_error =
+                            Some(format!("CAD hand package export failed: {error}"));
+                        state.cad_demo.last_action = Some(
+                            "CAD hand package export rejected: inspect error and retry".to_string(),
+                        );
+                        emit_cad_event(
+                            state,
+                            CadEventKind::ExportFailed,
+                            state_revision,
+                            Some(export_intent.variant_id.clone()),
+                            Some(format!(
+                                "chat-export-package-failed:{}:{}:{}",
+                                thread_id, export_intent.variant_id, state_revision
+                            )),
+                            "CAD hand assembly package export failed".to_string(),
+                            format!(
+                                "thread={} session={} variant={} error={} remediation={}",
+                                thread_id,
+                                state.cad_demo.session_id,
+                                export_intent.variant_id,
+                                error,
+                                error.remediation_hint()
+                            ),
+                        );
+                    }
+                }
+            } else {
+                match run_step_export_from_active_mesh(&state.cad_demo, &export_intent.variant_id) {
+                    Ok(artifact) => {
+                        state.cad_demo.last_error = None;
+                        state.cad_demo.last_action = Some(format!(
+                            "CAD STEP export ready -> {} ({} bytes, hash {})",
                             artifact.receipt.file_name,
                             artifact.receipt.byte_count,
                             artifact.receipt.deterministic_hash
-                        ),
-                    );
-                }
-                Err(error) => {
-                    state.cad_demo.last_error = Some(format!("CAD STEP export failed: {error}"));
-                    state.cad_demo.last_action =
-                        Some("CAD STEP export rejected: inspect error and retry".to_string());
-                    emit_cad_event(
-                        state,
-                        CadEventKind::ExportFailed,
-                        state_revision,
-                        Some(export_intent.variant_id.clone()),
-                        Some(format!(
-                            "chat-export-failed:{}:{}:{}",
-                            thread_id, export_intent.variant_id, state_revision
-                        )),
-                        "CAD STEP export failed".to_string(),
-                        format!(
-                            "thread={} session={} variant={} error={} remediation={}",
-                            thread_id,
-                            state.cad_demo.session_id,
-                            export_intent.variant_id,
-                            error,
-                            error.remediation_hint()
-                        ),
-                    );
+                        ));
+                        emit_cad_event(
+                            state,
+                            CadEventKind::ExportCompleted,
+                            state_revision,
+                            Some(export_intent.variant_id.clone()),
+                            Some(format!(
+                                "chat-export:{}:{}:{}",
+                                thread_id,
+                                artifact.receipt.file_name,
+                                artifact.receipt.deterministic_hash
+                            )),
+                            "CAD STEP export completed".to_string(),
+                            format!(
+                                "thread={} session={} variant={} file={} bytes={} hash={}",
+                                thread_id,
+                                state.cad_demo.session_id,
+                                export_intent.variant_id,
+                                artifact.receipt.file_name,
+                                artifact.receipt.byte_count,
+                                artifact.receipt.deterministic_hash
+                            ),
+                        );
+                    }
+                    Err(error) => {
+                        state.cad_demo.last_error =
+                            Some(format!("CAD STEP export failed: {error}"));
+                        state.cad_demo.last_action =
+                            Some("CAD STEP export rejected: inspect error and retry".to_string());
+                        emit_cad_event(
+                            state,
+                            CadEventKind::ExportFailed,
+                            state_revision,
+                            Some(export_intent.variant_id.clone()),
+                            Some(format!(
+                                "chat-export-failed:{}:{}:{}",
+                                thread_id, export_intent.variant_id, state_revision
+                            )),
+                            "CAD STEP export failed".to_string(),
+                            format!(
+                                "thread={} session={} variant={} error={} remediation={}",
+                                thread_id,
+                                state.cad_demo.session_id,
+                                export_intent.variant_id,
+                                error,
+                                error.remediation_hint()
+                            ),
+                        );
+                    }
                 }
             }
         }
@@ -597,6 +672,109 @@ fn run_step_export_from_active_mesh(
         variant_id,
         mesh,
     )
+}
+
+fn run_hand_assembly_export_package_from_active_mesh(
+    state: &CadDemoPaneState,
+    variant_id: &str,
+) -> openagents_cad::CadResult<openagents_cad::export::CadHandAssemblyExportArtifact> {
+    let mesh = state.last_good_mesh_payload.as_ref().ok_or_else(|| {
+        openagents_cad::CadError::ExportFailed {
+            format: "assembly-package".to_string(),
+            reason: "no mesh payload available; rebuild before export".to_string(),
+        }
+    })?;
+    let options = hand_assembly_export_options(state, variant_id);
+    openagents_cad::export::export_hand_assembly_package_from_mesh(
+        &state.document_id,
+        state.document_revision,
+        variant_id,
+        mesh,
+        &options,
+    )
+}
+
+fn hand_assembly_export_options(
+    state: &CadDemoPaneState,
+    variant_id: &str,
+) -> openagents_cad::export::CadHandAssemblyPackageOptions {
+    let design_profile = state.active_design_profile();
+    let dispatch_state = state.active_dispatch_state();
+    let finger_count = dispatch_state
+        .and_then(|dispatch| dispatch.finger_count)
+        .unwrap_or_else(|| match design_profile {
+            openagents_cad::dispatch::CadDesignProfile::HumanoidHandV1 => 5,
+            openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb => 3,
+            _ => 2,
+        });
+    let servo_integration_enabled = dispatch_state
+        .map(|dispatch| dispatch.servo_integration_enabled)
+        .unwrap_or(false);
+    let single_servo_drive = dispatch_state
+        .map(|dispatch| dispatch.single_servo_drive)
+        .unwrap_or(true);
+    let servo_motor_count = if servo_integration_enabled {
+        if single_servo_drive {
+            1
+        } else {
+            finger_count.max(1)
+        }
+    } else {
+        0
+    };
+    let has_force_sensor_mounts = state
+        .timeline_rows
+        .iter()
+        .any(|row| row.feature_id.starts_with("feature.hand3.sensor_pad."));
+    let has_proximity_sensor_mounts = state
+        .timeline_rows
+        .iter()
+        .any(|row| row.feature_id.starts_with("feature.hand3.proximity_port."));
+    let include_control_board_mount = state
+        .timeline_rows
+        .iter()
+        .any(|row| row.feature_id == "feature.hand3.control_board_mount");
+    let assembly_name = match design_profile {
+        openagents_cad::dispatch::CadDesignProfile::HumanoidHandV1 => "humanoid_hand_v1",
+        openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb => "three_finger_thumb",
+        _ => "hand_assembly",
+    };
+    let design_profile_label = match design_profile {
+        openagents_cad::dispatch::CadDesignProfile::HumanoidHandV1 => "humanoid_hand_v1",
+        openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb => "three_finger_thumb",
+        openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated => {
+            "parallel_jaw_gripper_underactuated"
+        }
+        openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper => "parallel_jaw_gripper",
+        openagents_cad::dispatch::CadDesignProfile::Rack => "rack",
+    };
+    let material_id = state
+        .variant_materials
+        .get(variant_id)
+        .cloned()
+        .unwrap_or_else(|| openagents_cad::materials::DEFAULT_CAD_MATERIAL_ID.to_string());
+    openagents_cad::export::CadHandAssemblyPackageOptions {
+        assembly_name: assembly_name.to_string(),
+        design_profile: design_profile_label.to_string(),
+        finger_count,
+        servo_motor_count,
+        force_sensor_count: if has_force_sensor_mounts {
+            finger_count
+        } else {
+            0
+        },
+        proximity_sensor_count: if has_proximity_sensor_mounts {
+            finger_count
+        } else {
+            0
+        },
+        include_control_board_mount,
+        print_fit_mm: state.dimension_value_mm("print_fit_mm").unwrap_or(0.15),
+        print_clearance_mm: state
+            .dimension_value_mm("print_clearance_mm")
+            .unwrap_or(0.35),
+        material_id,
+    }
 }
 
 pub(super) fn run_cad_demo_action(state: &mut RenderState, action: CadDemoPaneAction) -> bool {
@@ -1110,50 +1288,49 @@ fn toggle_gripper_jaw_animation(state: &mut CadDemoPaneState) -> bool {
     let (target_mm, open_state, trigger, pose_preset) = if is_hand_pose_profile {
         let pinch_target_mm = (baseline_target_mm - 6.0).clamp(jaw_min_mm, jaw_max_mm);
         let tripod_target_mm = (baseline_target_mm + 8.0).clamp(jaw_min_mm, jaw_max_mm);
-        let (target, is_open, trigger, pose, thumb_angle_deg) =
-            if profile == openagents_cad::dispatch::CadDesignProfile::HumanoidHandV1 {
-                let current_pose = state
-                    .active_dispatch_state()
-                    .and_then(|dispatch| dispatch.pose_preset.as_deref())
-                    .unwrap_or("open");
-                if current_pose == "precision" {
-                    (
-                        tripod_target_mm,
-                        true,
-                        "hand5-pose-open",
-                        "open",
-                        (openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_THUMB_BASE_ANGLE_DEG
-                            - 6.0),
-                    )
-                } else {
-                    (
-                        pinch_target_mm,
-                        false,
-                        "hand5-pose-precision",
-                        "precision",
-                        (openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_THUMB_BASE_ANGLE_DEG
-                            + 8.0),
-                    )
-                }
-            } else if state.gripper_jaw_open {
-                (
-                    pinch_target_mm,
-                    false,
-                    "hand3-pose-pinch",
-                    "pinch",
-                    (openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_THUMB_BASE_ANGLE_DEG
-                        + 8.0),
-                )
-            } else {
+        let (target, is_open, trigger, pose, thumb_angle_deg) = if profile
+            == openagents_cad::dispatch::CadDesignProfile::HumanoidHandV1
+        {
+            let current_pose = state
+                .active_dispatch_state()
+                .and_then(|dispatch| dispatch.pose_preset.as_deref())
+                .unwrap_or("open");
+            if current_pose == "precision" {
                 (
                     tripod_target_mm,
                     true,
-                    "hand3-pose-tripod",
-                    "tripod",
+                    "hand5-pose-open",
+                    "open",
                     (openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_THUMB_BASE_ANGLE_DEG
                         - 6.0),
                 )
-            };
+            } else {
+                (
+                    pinch_target_mm,
+                    false,
+                    "hand5-pose-precision",
+                    "precision",
+                    (openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_THUMB_BASE_ANGLE_DEG
+                        + 8.0),
+                )
+            }
+        } else if state.gripper_jaw_open {
+            (
+                pinch_target_mm,
+                false,
+                "hand3-pose-pinch",
+                "pinch",
+                (openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_THUMB_BASE_ANGLE_DEG + 8.0),
+            )
+        } else {
+            (
+                tripod_target_mm,
+                true,
+                "hand3-pose-tripod",
+                "tripod",
+                (openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_THUMB_BASE_ANGLE_DEG - 6.0),
+            )
+        };
         if let Some(thumb_dimension) = state
             .dimensions
             .iter_mut()
@@ -2830,17 +3007,22 @@ fn build_three_finger_thumb_feature_graph(state: &CadDemoPaneState) -> FeatureGr
         state.active_design_profile(),
         openagents_cad::dispatch::CadDesignProfile::HumanoidHandV1
     );
-    let finger_count = gripper
-        .finger_count
-        .max(openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_FINGER_COUNT.max(
-            if is_humanoid_hand { 5 } else { 3 },
-        ));
+    let finger_count =
+        gripper.finger_count.max(
+            openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_FINGER_COUNT
+                .max(if is_humanoid_hand { 5 } else { 3 }),
+        );
     let spacing_denominator = finger_count.saturating_sub(1).max(1) as f64;
     let finger_spacing_mm = (gripper.jaw_open_mm / spacing_denominator).clamp(8.0, 24.0);
     let finger_height_mm = (gripper.finger_thickness_mm * 2.4).max(10.0);
     let pose_preset = gripper.pose_preset.as_str();
     let digit_layout = if is_humanoid_hand {
-        vec![(-3_i8, "index"), (-1_i8, "middle"), (1_i8, "ring"), (3_i8, "pinky")]
+        vec![
+            (-3_i8, "index"),
+            (-1_i8, "middle"),
+            (1_i8, "ring"),
+            (3_i8, "pinky"),
+        ]
     } else {
         vec![(-1_i8, "index"), (0_i8, "middle"), (1_i8, "ring")]
     };
@@ -4964,7 +5146,7 @@ mod tests {
         activity_row_from_cad_event, analysis_snapshot_from_mesh, apply_cad_demo_action,
         apply_rebuild_response, drain_worker_responses_from_pane, enqueue_rebuild_cycle,
         parallel_jaw_gripper_bootstrap_state, rebuild_trigger_for_chat_intent,
-        run_step_export_from_active_mesh,
+        run_hand_assembly_export_package_from_active_mesh, run_step_export_from_active_mesh,
     };
     use crate::app_state::{
         ActivityEventDomain, CadBuildFailureClass, CadBuildSessionPhase, CadDemoPaneState,
@@ -7426,6 +7608,49 @@ mod tests {
         assert_eq!(artifact.receipt.document_id, state.document_id);
         assert!(artifact.receipt.byte_count > 0);
         assert!(!artifact.receipt.deterministic_hash.is_empty());
+    }
+
+    #[test]
+    fn hand_assembly_export_package_succeeds_after_humanoid_rebuild() {
+        let mut state = CadDemoPaneState::default();
+        let prompt = "Generate a complete 5-finger humanoid robotic hand with all motors, tendons, sensors, electronics, and mounting arm interface.";
+        let intent = match translate_chat_to_cad_intent(prompt) {
+            CadIntentTranslationOutcome::Intent(intent) => intent,
+            other => panic!("expected translated CAD intent, got {other:?}"),
+        };
+        state
+            .apply_chat_intent_for_thread("thread-humanoid-export", &intent)
+            .expect("humanoid intent should apply");
+        enqueue_rebuild_cycle(&mut state, "test-humanoid-hand-package-export")
+            .expect("humanoid rebuild should queue");
+        wait_for_receipt(&mut state);
+
+        let package = run_hand_assembly_export_package_from_active_mesh(
+            &state,
+            &state.active_variant_id.clone(),
+        )
+        .expect("humanoid hand package export should succeed");
+        assert_eq!(package.receipt.variant_id, state.active_variant_id);
+        assert!(
+            package.receipt.bom_file_name.ends_with(".bom.json"),
+            "package should include deterministic bom filename"
+        );
+        assert!(package.receipt.stl_file_name.ends_with(".stl"));
+        assert!(package.receipt.step_file_name.ends_with(".step"));
+        assert!(!package.receipt.package_hash.is_empty());
+
+        let bom_json: Value =
+            serde_json::from_slice(&package.bom_bytes).expect("bom should deserialize");
+        assert_eq!(
+            bom_json.get("design_profile"),
+            Some(&json!("humanoid_hand_v1"))
+        );
+        assert!(
+            bom_json
+                .get("items")
+                .and_then(|value| value.as_array())
+                .is_some_and(|items| items.len() >= 10)
+        );
     }
 
     #[test]

@@ -609,7 +609,34 @@ Relevant details:
 
 Depends on: `CAST-13`
 
-## Issue 15: `CAST-15` Optional App-Layer: Activity Feed + Wallet Trade Visibility
+## Issue 15: `CAST-15` App-Layer: Dedicated CAST Pane (View + Controls)
+
+Description:
+
+- Add a first-class desktop pane for CAST operations so users can see state and control key CAST workflows without leaving the app.
+
+Relevant details:
+
+- Candidate files:
+  - `apps/autopilot-desktop/src/pane_registry.rs`
+  - `apps/autopilot-desktop/src/pane_renderer.rs`
+  - `apps/autopilot-desktop/src/pane_system.rs`
+  - `apps/autopilot-desktop/src/input.rs`
+  - `docs/PANES.md`
+- Pane should support at minimum:
+  - prereq/status visibility (tooling + dependency health)
+  - operation launcher controls (check, prove, sign, inspect; broadcast behind explicit confirmation)
+  - recent CAST run/receipt summary
+  - clear state machine (`loading`, `ready`, `error`) and source badge semantics aligned with existing pane patterns
+- Keep CAST protocol/business logic out of reusable crates; app layer should orchestrate scripts/runtime commands only.
+- Acceptance:
+  - pane appears in command palette and behaves as singleton
+  - core CAST controls are visible and actionable from UI
+  - no ownership-boundary violations
+
+Depends on: `CAST-13`
+
+## Issue 16: `CAST-16` Optional App-Layer: Activity Feed + Wallet Trade Visibility
 
 Description:
 
@@ -626,9 +653,9 @@ Relevant details:
   - CAST events appear with stable IDs and replay-safe ordering
   - no payout success shown without authoritative wallet confirmation
 
-Depends on: `CAST-14`
+Depends on: `CAST-15`
 
-## Issue 16: `CAST-16` Release Readiness Checklist for CAST
+## Issue 17: `CAST-17` Release Readiness Checklist for CAST
 
 Description:
 
@@ -646,4 +673,4 @@ Relevant details:
 - Acceptance:
   - one deterministic checklist for final promotion of CAST support
 
-Depends on: `CAST-13` (core), `CAST-15` (if optional app-layer issues are included)
+Depends on: `CAST-13` (core), `CAST-16` (if optional app-layer issues are included)

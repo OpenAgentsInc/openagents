@@ -9,6 +9,7 @@ use crate::kernel_booleans::{
     BooleanPipelineConfig, BooleanPipelineOutcome, KernelBooleanOp, run_staged_boolean_pipeline,
 };
 use crate::kernel_primitives::{BRepSolid, make_cube};
+use crate::parity::reference_table_parity::canonicalize_scorecard_path;
 use crate::parity::scorecard::ParityScorecard;
 use crate::{CadError, CadResult};
 
@@ -128,7 +129,7 @@ pub fn build_step_export_post_boolean_parity_manifest(
         issue_id: PARITY_STEP_EXPORT_POST_BOOLEAN_ISSUE_ID.to_string(),
         vcad_commit: scorecard.vcad_commit.clone(),
         openagents_commit: scorecard.openagents_commit.clone(),
-        generated_from_scorecard: scorecard_path.to_string(),
+        generated_from_scorecard: canonicalize_scorecard_path(scorecard_path),
         reference_corpus_path: STEP_EXPORT_POST_BOOLEAN_REFERENCE_CORPUS_PATH.to_string(),
         reference_corpus_sha256,
         reference_source: corpus.source,

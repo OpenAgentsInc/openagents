@@ -970,8 +970,16 @@ fn tessellate_feature_node(
             );
             let wall = housing_wall_mm.max(0.8);
             builder.add_box(
-                [x_center - half_l - wall, y_center - half_w - wall, z_mid - half_h - wall],
-                [x_center + half_l + wall, y_center + half_w + wall, z_mid + half_h + wall],
+                [
+                    x_center - half_l - wall,
+                    y_center - half_w - wall,
+                    z_mid - half_h - wall,
+                ],
+                [
+                    x_center + half_l + wall,
+                    y_center + half_w + wall,
+                    z_mid + half_h + wall,
+                ],
                 1,
                 6,
             );
@@ -1078,7 +1086,11 @@ fn tessellate_feature_node(
             let z_low = base_thickness_mm + (servo_width_mm * 0.22) + jitter * 0.03;
             let z_high = z_low + stage_height;
             builder.add_cylinder_z(
-                [x_center - (radius * 0.32), y_center, z_low + (stage_height * 0.5)],
+                [
+                    x_center - (radius * 0.32),
+                    y_center,
+                    z_low + (stage_height * 0.5),
+                ],
                 radius,
                 stage_height,
                 14,
@@ -1086,7 +1098,11 @@ fn tessellate_feature_node(
                 6,
             );
             builder.add_cylinder_z(
-                [x_center + (radius * 0.44), y_center, z_low + (stage_height * 0.5)],
+                [
+                    x_center + (radius * 0.44),
+                    y_center,
+                    z_low + (stage_height * 0.5),
+                ],
                 (radius / ratio_scale).max(0.8),
                 stage_height * 0.9,
                 12,
@@ -1096,8 +1112,16 @@ fn tessellate_feature_node(
             let housing_half_x = (radius * 1.2).max(2.4);
             let housing_half_y = (radius * 0.85).max(2.0);
             builder.add_box(
-                [x_center - housing_half_x, y_center - housing_half_y, z_low - 0.6],
-                [x_center + housing_half_x, y_center + housing_half_y, z_high + 0.6],
+                [
+                    x_center - housing_half_x,
+                    y_center - housing_half_y,
+                    z_low - 0.6,
+                ],
+                [
+                    x_center + housing_half_x,
+                    y_center + housing_half_y,
+                    z_high + 0.6,
+                ],
                 0,
                 4,
             );
@@ -1150,14 +1174,20 @@ fn tessellate_feature_node(
                 base_depth_mm * 0.36
             };
             let travel_norm = ((joint_max_deg - joint_min_deg).abs() / 90.0).clamp(0.0, 2.0);
-            let z_base =
-                base_thickness_mm + (wiring_clearance_mm * 1.4) + (travel_norm * 0.35) + jitter * 0.02;
+            let z_base = base_thickness_mm
+                + (wiring_clearance_mm * 1.4)
+                + (travel_norm * 0.35)
+                + jitter * 0.02;
             let half = (wiring_diameter_mm * 0.5 * compact_scale).max(0.35);
             let bend = (bend_radius_mm * compact_scale).max(0.8);
 
             builder.add_box(
                 [x_center - half, y_start - half, z_base],
-                [x_center + half, y_start + bend + half, z_base + wiring_diameter_mm],
+                [
+                    x_center + half,
+                    y_start + bend + half,
+                    z_base + wiring_diameter_mm,
+                ],
                 0,
                 4,
             );
@@ -2223,7 +2253,10 @@ mod tests {
                         ("servo_envelope_width_mm".to_string(), "12.0".to_string()),
                         ("servo_envelope_height_mm".to_string(), "24.0".to_string()),
                         ("servo_shaft_axis_offset_mm".to_string(), "5.0".to_string()),
-                        ("servo_mount_pattern_pitch_mm".to_string(), "16.0".to_string()),
+                        (
+                            "servo_mount_pattern_pitch_mm".to_string(),
+                            "16.0".to_string(),
+                        ),
                         ("servo_bracket_thickness_mm".to_string(), "2.6".to_string()),
                         ("compact_layout".to_string(), "1".to_string()),
                     ]),
@@ -2264,7 +2297,10 @@ mod tests {
                         ("base_depth_mm".to_string(), "58.0".to_string()),
                         ("base_thickness_mm".to_string(), "8.0".to_string()),
                         ("finger_spacing_mm".to_string(), "12.0".to_string()),
-                        ("servo_mount_pattern_pitch_mm".to_string(), "16.0".to_string()),
+                        (
+                            "servo_mount_pattern_pitch_mm".to_string(),
+                            "16.0".to_string(),
+                        ),
                         ("servo_standoff_diameter_mm".to_string(), "4.2".to_string()),
                         ("servo_bracket_thickness_mm".to_string(), "2.6".to_string()),
                         ("compact_layout".to_string(), "1".to_string()),
@@ -2331,7 +2367,10 @@ mod tests {
                         ("base_depth_mm".to_string(), "58.0".to_string()),
                         ("base_thickness_mm".to_string(), "8.0".to_string()),
                         ("finger_spacing_mm".to_string(), "12.0".to_string()),
-                        ("force_sensor_pad_diameter_mm".to_string(), "6.4".to_string()),
+                        (
+                            "force_sensor_pad_diameter_mm".to_string(),
+                            "6.4".to_string(),
+                        ),
                         ("electrical_clearance_mm".to_string(), "2.2".to_string()),
                         ("compact_layout".to_string(), "1".to_string()),
                     ]),
@@ -2368,9 +2407,18 @@ mod tests {
                     ("base_width_mm".to_string(), "90.0".to_string()),
                     ("base_depth_mm".to_string(), "58.0".to_string()),
                     ("base_thickness_mm".to_string(), "8.0".to_string()),
-                    ("control_board_mount_width_mm".to_string(), "34.0".to_string()),
-                    ("control_board_mount_depth_mm".to_string(), "24.0".to_string()),
-                    ("control_board_mount_height_mm".to_string(), "6.0".to_string()),
+                    (
+                        "control_board_mount_width_mm".to_string(),
+                        "34.0".to_string(),
+                    ),
+                    (
+                        "control_board_mount_depth_mm".to_string(),
+                        "24.0".to_string(),
+                    ),
+                    (
+                        "control_board_mount_height_mm".to_string(),
+                        "6.0".to_string(),
+                    ),
                     ("electrical_clearance_mm".to_string(), "2.2".to_string()),
                     ("compact_layout".to_string(), "1".to_string()),
                 ]),
@@ -2385,8 +2433,14 @@ mod tests {
                     ("base_width_mm".to_string(), "90.0".to_string()),
                     ("base_depth_mm".to_string(), "58.0".to_string()),
                     ("base_thickness_mm".to_string(), "8.0".to_string()),
-                    ("control_board_mount_width_mm".to_string(), "34.0".to_string()),
-                    ("control_board_mount_depth_mm".to_string(), "24.0".to_string()),
+                    (
+                        "control_board_mount_width_mm".to_string(),
+                        "34.0".to_string(),
+                    ),
+                    (
+                        "control_board_mount_depth_mm".to_string(),
+                        "24.0".to_string(),
+                    ),
                     ("modular_mount_slot_pitch_mm".to_string(), "8.0".to_string()),
                     ("modular_mount_slot_count".to_string(), "4".to_string()),
                     ("electrical_clearance_mm".to_string(), "2.2".to_string()),
@@ -2466,7 +2520,10 @@ mod tests {
                     ("servo_envelope_width_mm".to_string(), "12.0".to_string()),
                     ("servo_envelope_height_mm".to_string(), "24.0".to_string()),
                     ("servo_shaft_axis_offset_mm".to_string(), "5.0".to_string()),
-                    ("servo_mount_pattern_pitch_mm".to_string(), "16.0".to_string()),
+                    (
+                        "servo_mount_pattern_pitch_mm".to_string(),
+                        "16.0".to_string(),
+                    ),
                     ("servo_bracket_thickness_mm".to_string(), "2.6".to_string()),
                     ("compact_layout".to_string(), "1".to_string()),
                 ]),
@@ -2504,7 +2561,10 @@ mod tests {
                     ("base_depth_mm".to_string(), "58.0".to_string()),
                     ("base_thickness_mm".to_string(), "8.0".to_string()),
                     ("finger_spacing_mm".to_string(), "10.0".to_string()),
-                    ("servo_mount_pattern_pitch_mm".to_string(), "16.0".to_string()),
+                    (
+                        "servo_mount_pattern_pitch_mm".to_string(),
+                        "16.0".to_string(),
+                    ),
                     ("servo_standoff_diameter_mm".to_string(), "4.2".to_string()),
                     ("servo_bracket_thickness_mm".to_string(), "2.6".to_string()),
                     ("compact_layout".to_string(), "1".to_string()),
@@ -2570,7 +2630,10 @@ mod tests {
                     ("base_depth_mm".to_string(), "58.0".to_string()),
                     ("base_thickness_mm".to_string(), "8.0".to_string()),
                     ("finger_spacing_mm".to_string(), "10.0".to_string()),
-                    ("force_sensor_pad_diameter_mm".to_string(), "6.4".to_string()),
+                    (
+                        "force_sensor_pad_diameter_mm".to_string(),
+                        "6.4".to_string(),
+                    ),
                     ("electrical_clearance_mm".to_string(), "2.2".to_string()),
                     ("compact_layout".to_string(), "1".to_string()),
                 ]),
@@ -2588,7 +2651,10 @@ mod tests {
                     ("base_depth_mm".to_string(), "58.0".to_string()),
                     ("base_thickness_mm".to_string(), "8.0".to_string()),
                     ("finger_spacing_mm".to_string(), "10.0".to_string()),
-                    ("proximity_sensor_port_diameter_mm".to_string(), "4.0".to_string()),
+                    (
+                        "proximity_sensor_port_diameter_mm".to_string(),
+                        "4.0".to_string(),
+                    ),
                     ("electrical_clearance_mm".to_string(), "2.2".to_string()),
                     ("compact_layout".to_string(), "1".to_string()),
                 ]),
@@ -2609,7 +2675,10 @@ mod tests {
                 ("base_width_mm".to_string(), "90.0".to_string()),
                 ("base_depth_mm".to_string(), "58.0".to_string()),
                 ("base_thickness_mm".to_string(), "8.0".to_string()),
-                ("servo_mount_pattern_pitch_mm".to_string(), "16.0".to_string()),
+                (
+                    "servo_mount_pattern_pitch_mm".to_string(),
+                    "16.0".to_string(),
+                ),
                 ("servo_standoff_diameter_mm".to_string(), "4.2".to_string()),
                 ("electrical_clearance_mm".to_string(), "2.2".to_string()),
             ]),
@@ -2798,15 +2867,11 @@ mod tests {
             three_finger_thumb_graph("variant.baseline", 1.6, "tripod", true, 28.0, 4.5);
         let compact_rebuild = evaluate_feature_graph_deterministic(&compact_graph)
             .expect("compact servo rebuild should pass");
-        let long_rebuild =
-            evaluate_feature_graph_deterministic(&long_graph).expect("long servo rebuild should pass");
-        let (_, compact_receipt) = tessellate_rebuild_result(
-            &compact_graph,
-            &compact_rebuild,
-            47,
-            "variant.baseline",
-        )
-        .expect("compact servo tessellation should succeed");
+        let long_rebuild = evaluate_feature_graph_deterministic(&long_graph)
+            .expect("long servo rebuild should pass");
+        let (_, compact_receipt) =
+            tessellate_rebuild_result(&compact_graph, &compact_rebuild, 47, "variant.baseline")
+                .expect("compact servo tessellation should succeed");
         let (_, long_receipt) =
             tessellate_rebuild_result(&long_graph, &long_rebuild, 47, "variant.baseline")
                 .expect("long servo tessellation should succeed");
@@ -2823,13 +2888,9 @@ mod tests {
             .expect("low ratio rebuild should pass");
         let high_ratio_rebuild = evaluate_feature_graph_deterministic(&high_ratio_graph)
             .expect("high ratio rebuild should pass");
-        let (_, low_ratio_receipt) = tessellate_rebuild_result(
-            &low_ratio_graph,
-            &low_ratio_rebuild,
-            49,
-            "variant.baseline",
-        )
-        .expect("low ratio tessellation should succeed");
+        let (_, low_ratio_receipt) =
+            tessellate_rebuild_result(&low_ratio_graph, &low_ratio_rebuild, 49, "variant.baseline")
+                .expect("low ratio tessellation should succeed");
         let (_, high_ratio_receipt) = tessellate_rebuild_result(
             &high_ratio_graph,
             &high_ratio_rebuild,
@@ -2843,12 +2904,14 @@ mod tests {
     #[test]
     fn humanoid_hand_tessellation_is_deterministic_for_identical_inputs() {
         let graph = humanoid_hand_graph("variant.baseline", "precision", true);
-        let rebuild =
-            evaluate_feature_graph_deterministic(&graph).expect("humanoid hand rebuild should pass");
-        let (mesh_a, receipt_a) = tessellate_rebuild_result(&graph, &rebuild, 53, "variant.baseline")
-            .expect("humanoid tessellation A should succeed");
-        let (mesh_b, receipt_b) = tessellate_rebuild_result(&graph, &rebuild, 53, "variant.baseline")
-            .expect("humanoid tessellation B should succeed");
+        let rebuild = evaluate_feature_graph_deterministic(&graph)
+            .expect("humanoid hand rebuild should pass");
+        let (mesh_a, receipt_a) =
+            tessellate_rebuild_result(&graph, &rebuild, 53, "variant.baseline")
+                .expect("humanoid tessellation A should succeed");
+        let (mesh_b, receipt_b) =
+            tessellate_rebuild_result(&graph, &rebuild, 53, "variant.baseline")
+                .expect("humanoid tessellation B should succeed");
         assert_eq!(receipt_a.mesh_hash, receipt_b.mesh_hash);
         assert_eq!(mesh_a.triangle_indices, mesh_b.triangle_indices);
         assert_eq!(mesh_a.edges, mesh_b.edges);
@@ -2865,23 +2928,31 @@ mod tests {
             .find(|node| node.id == "feature.hand3.arm_interface")
             .expect("arm interface node A")
             .params
-            .insert("servo_mount_pattern_pitch_mm".to_string(), "14.0".to_string());
+            .insert(
+                "servo_mount_pattern_pitch_mm".to_string(),
+                "14.0".to_string(),
+            );
         graph_b
             .nodes
             .iter_mut()
             .find(|node| node.id == "feature.hand3.arm_interface")
             .expect("arm interface node B")
             .params
-            .insert("servo_mount_pattern_pitch_mm".to_string(), "22.0".to_string());
+            .insert(
+                "servo_mount_pattern_pitch_mm".to_string(),
+                "22.0".to_string(),
+            );
 
         let rebuild_a =
             evaluate_feature_graph_deterministic(&graph_a).expect("arm interface rebuild A");
         let rebuild_b =
             evaluate_feature_graph_deterministic(&graph_b).expect("arm interface rebuild B");
-        let (_, receipt_a) = tessellate_rebuild_result(&graph_a, &rebuild_a, 57, "variant.baseline")
-            .expect("arm interface tessellation A");
-        let (_, receipt_b) = tessellate_rebuild_result(&graph_b, &rebuild_b, 57, "variant.baseline")
-            .expect("arm interface tessellation B");
+        let (_, receipt_a) =
+            tessellate_rebuild_result(&graph_a, &rebuild_a, 57, "variant.baseline")
+                .expect("arm interface tessellation A");
+        let (_, receipt_b) =
+            tessellate_rebuild_result(&graph_b, &rebuild_b, 57, "variant.baseline")
+                .expect("arm interface tessellation B");
         assert_ne!(receipt_a.mesh_hash, receipt_b.mesh_hash);
     }
 }

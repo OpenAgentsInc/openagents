@@ -23,7 +23,10 @@ pub fn paint(content_bounds: Bounds, inputs: &mut CalculatorPaneInputs, paint: &
 
     let expression = inputs.expression.get_value();
     let (result_label, result_color) = if expression.trim().is_empty() {
-        ("Enter an expression to calculate.".to_string(), theme::text::MUTED)
+        (
+            "Enter an expression to calculate.".to_string(),
+            theme::text::MUTED,
+        )
     } else {
         match evaluate_expression(expression) {
             Ok(value) => (format_result(value), theme::text::PRIMARY),
