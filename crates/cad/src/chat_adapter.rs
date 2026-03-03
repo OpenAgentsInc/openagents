@@ -224,6 +224,11 @@ fn translate_parallel_jaw_gripper_prompt(lower: &str) -> Option<CadIntent> {
         "parallel jaw",
         "robot hand",
         "robotic hand",
+        "humanoid hand",
+        "5-finger",
+        "5 finger",
+        "five-finger",
+        "five finger",
         "finger joint",
         "opposable thumb",
         "fingertip",
@@ -486,6 +491,39 @@ fn translate_parallel_jaw_gripper_prompt(lower: &str) -> Option<CadIntent> {
         spec.opposable_thumb = true;
         spec.underactuated_mode = true;
         spec.compliant_joint_count = spec.compliant_joint_count.max(3);
+    }
+    let requests_humanoid_full_hand = [
+        "humanoid hand",
+        "5-finger",
+        "5 finger",
+        "five-finger",
+        "five finger",
+        "full hand",
+        "fully functioning",
+        "complete hand assembly",
+        "arm interface",
+        "mounting arm",
+    ]
+    .iter()
+    .any(|token| lower.contains(token));
+    if requests_humanoid_full_hand {
+        spec.finger_count = 5;
+        spec.opposable_thumb = true;
+        spec.underactuated_mode = true;
+        spec.compliant_joint_count = spec.compliant_joint_count.max(4);
+        spec.single_servo_drive = false;
+        spec.servo_integration_enabled = true;
+        spec.compact_servo_layout =
+            spec.compact_servo_layout || lower.contains("compact") || lower.contains("low-cost");
+        spec.pose_preset = if lower.contains("tripod") {
+            "tripod".to_string()
+        } else if lower.contains("pinch") {
+            "pinch".to_string()
+        } else if lower.contains("open") {
+            "open".to_string()
+        } else {
+            "precision".to_string()
+        };
     }
 
     Some(CadIntent::CreateParallelJawGripperSpec(spec))
@@ -995,6 +1033,23 @@ mod tests {
                 assert!(spec.underactuated_mode);
                 assert!(spec.opposable_thumb);
                 assert!(spec.finger_count >= 3);
+            }
+            other => panic!("unexpected outcome: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn adapter_translates_full_humanoid_hand_prompt_into_profile_spec() {
+        let outcome = translate_chat_to_cad_intent(
+            "Generate a complete 5-finger humanoid robotic hand with all motors, tendons, sensors, electronics, and mounting arm interface.",
+        );
+        match outcome {
+            CadIntentTranslationOutcome::Intent(CadIntent::CreateParallelJawGripperSpec(spec)) => {
+                assert_eq!(spec.finger_count, 5);
+                assert!(spec.opposable_thumb);
+                assert!(spec.underactuated_mode);
+                assert!(spec.servo_integration_enabled);
+                assert_eq!(spec.pose_preset, "precision".to_string());
             }
             other => panic!("unexpected outcome: {other:?}"),
         }

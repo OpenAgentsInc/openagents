@@ -2117,6 +2117,42 @@ impl CadDemoPaneState {
                 "modular_mount_slot_count",
                 "electrical_clearance_mm",
             ],
+            openagents_cad::dispatch::CadDesignProfile::HumanoidHandV1 => &[
+                "jaw_open_mm",
+                "finger_length_mm",
+                "finger_thickness_mm",
+                "base_width_mm",
+                "base_depth_mm",
+                "finger_count",
+                "thumb_base_angle_deg",
+                "tendon_channel_diameter_mm",
+                "joint_min_deg",
+                "joint_max_deg",
+                "tendon_route_clearance_mm",
+                "tendon_bend_radius_mm",
+                "servo_envelope_length_mm",
+                "servo_envelope_width_mm",
+                "servo_envelope_height_mm",
+                "servo_shaft_axis_offset_mm",
+                "servo_mount_pattern_pitch_mm",
+                "servo_bracket_thickness_mm",
+                "servo_housing_wall_mm",
+                "servo_standoff_diameter_mm",
+                "gearbox_ratio",
+                "gearbox_stage_diameter_mm",
+                "gearbox_stage_length_mm",
+                "wiring_channel_diameter_mm",
+                "wiring_bend_radius_mm",
+                "wiring_clearance_mm",
+                "force_sensor_pad_diameter_mm",
+                "proximity_sensor_port_diameter_mm",
+                "control_board_mount_width_mm",
+                "control_board_mount_depth_mm",
+                "control_board_mount_height_mm",
+                "modular_mount_slot_pitch_mm",
+                "modular_mount_slot_count",
+                "electrical_clearance_mm",
+            ],
         }
     }
 
@@ -2201,6 +2237,12 @@ impl CadDemoPaneState {
                 "variant.pinch".to_string(),
                 "variant.tripod".to_string(),
                 "variant.wide-thumb".to_string(),
+            ],
+            openagents_cad::dispatch::CadDesignProfile::HumanoidHandV1 => vec![
+                "variant.baseline".to_string(),
+                "variant.precision".to_string(),
+                "variant.power".to_string(),
+                "variant.wide-spread".to_string(),
             ],
         };
         if self.variant_ids == target {
@@ -2854,6 +2896,7 @@ impl CadDemoPaneState {
         if matches!(
             profile,
             openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
+                | openagents_cad::dispatch::CadDesignProfile::HumanoidHandV1
         ) {
             if self.sensor_visualization_mode == CadSensorVisualizationMode::Off {
                 self.sensor_visualization_mode = CadSensorVisualizationMode::Combined;

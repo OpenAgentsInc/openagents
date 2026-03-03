@@ -280,8 +280,17 @@ pub fn paint_cad_demo_placeholder_pane(
         if matches!(
             pane_state.active_design_profile(),
             openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
+                | openagents_cad::dispatch::CadDesignProfile::HumanoidHandV1
         ) {
-            if pane_state.gripper_jaw_open {
+            if pane_state.active_design_profile()
+                == openagents_cad::dispatch::CadDesignProfile::HumanoidHandV1
+            {
+                if pane_state.gripper_jaw_open {
+                    "Pose: Precision"
+                } else {
+                    "Pose: Open"
+                }
+            } else if pane_state.gripper_jaw_open {
                 "Pose: Pinch"
             } else {
                 "Pose: Tripod"
@@ -956,8 +965,17 @@ fn paint_cad_demo_basic_pane(
         if matches!(
             pane_state.active_design_profile(),
             openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
+                | openagents_cad::dispatch::CadDesignProfile::HumanoidHandV1
         ) {
-            if pane_state.gripper_jaw_open {
+            if pane_state.active_design_profile()
+                == openagents_cad::dispatch::CadDesignProfile::HumanoidHandV1
+            {
+                if pane_state.gripper_jaw_open {
+                    "Pose: Precision"
+                } else {
+                    "Pose: Open"
+                }
+            } else if pane_state.gripper_jaw_open {
                 "Pose: Pinch"
             } else {
                 "Pose: Tripod"
