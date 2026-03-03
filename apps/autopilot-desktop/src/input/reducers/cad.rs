@@ -1953,6 +1953,14 @@ struct GripperVariantDimensions {
     wiring_channel_diameter_mm: f64,
     wiring_bend_radius_mm: f64,
     wiring_clearance_mm: f64,
+    force_sensor_pad_diameter_mm: f64,
+    proximity_sensor_port_diameter_mm: f64,
+    control_board_mount_width_mm: f64,
+    control_board_mount_depth_mm: f64,
+    control_board_mount_height_mm: f64,
+    modular_mount_slot_pitch_mm: f64,
+    modular_mount_slot_count: u8,
+    electrical_clearance_mm: f64,
     pose_preset: String,
 }
 
@@ -2163,6 +2171,64 @@ impl GripperVariantDimensions {
         let wiring_clearance_mm = dispatch
             .and_then(|value| value.parameter_values.get("wiring_clearance_mm").copied())
             .unwrap_or_else(|| dimension_value_mm(state, "wiring_clearance_mm", 1.2));
+        let force_sensor_pad_diameter_mm = dispatch
+            .and_then(|value| {
+                value
+                    .parameter_values
+                    .get("force_sensor_pad_diameter_mm")
+                    .copied()
+            })
+            .unwrap_or_else(|| dimension_value_mm(state, "force_sensor_pad_diameter_mm", 6.4));
+        let proximity_sensor_port_diameter_mm = dispatch
+            .and_then(|value| {
+                value
+                    .parameter_values
+                    .get("proximity_sensor_port_diameter_mm")
+                    .copied()
+            })
+            .unwrap_or_else(|| {
+                dimension_value_mm(state, "proximity_sensor_port_diameter_mm", 4.0)
+            });
+        let control_board_mount_width_mm = dispatch
+            .and_then(|value| {
+                value
+                    .parameter_values
+                    .get("control_board_mount_width_mm")
+                    .copied()
+            })
+            .unwrap_or_else(|| dimension_value_mm(state, "control_board_mount_width_mm", 34.0));
+        let control_board_mount_depth_mm = dispatch
+            .and_then(|value| {
+                value
+                    .parameter_values
+                    .get("control_board_mount_depth_mm")
+                    .copied()
+            })
+            .unwrap_or_else(|| dimension_value_mm(state, "control_board_mount_depth_mm", 24.0));
+        let control_board_mount_height_mm = dispatch
+            .and_then(|value| {
+                value
+                    .parameter_values
+                    .get("control_board_mount_height_mm")
+                    .copied()
+            })
+            .unwrap_or_else(|| dimension_value_mm(state, "control_board_mount_height_mm", 6.0));
+        let modular_mount_slot_pitch_mm = dispatch
+            .and_then(|value| {
+                value
+                    .parameter_values
+                    .get("modular_mount_slot_pitch_mm")
+                    .copied()
+            })
+            .unwrap_or_else(|| dimension_value_mm(state, "modular_mount_slot_pitch_mm", 8.0));
+        let modular_mount_slot_count = dispatch
+            .and_then(|value| value.parameter_values.get("modular_mount_slot_count").copied())
+            .unwrap_or_else(|| dimension_value_mm(state, "modular_mount_slot_count", 4.0))
+            .round()
+            .clamp(2.0, 10.0) as u8;
+        let electrical_clearance_mm = dispatch
+            .and_then(|value| value.parameter_values.get("electrical_clearance_mm").copied())
+            .unwrap_or_else(|| dimension_value_mm(state, "electrical_clearance_mm", 2.2));
         let pose_preset = dispatch
             .and_then(|value| value.pose_preset.clone())
             .unwrap_or_else(|| {
@@ -2246,6 +2312,14 @@ impl GripperVariantDimensions {
             wiring_channel_diameter_mm,
             wiring_bend_radius_mm,
             wiring_clearance_mm,
+            force_sensor_pad_diameter_mm,
+            proximity_sensor_port_diameter_mm,
+            control_board_mount_width_mm,
+            control_board_mount_depth_mm,
+            control_board_mount_height_mm,
+            modular_mount_slot_pitch_mm,
+            modular_mount_slot_count,
+            electrical_clearance_mm,
             pose_preset,
         }
     }
@@ -2296,6 +2370,9 @@ impl GripperVariantDimensions {
             value.gearbox_stage_diameter_mm = (value.gearbox_stage_diameter_mm - 0.6).max(5.0);
             value.gearbox_stage_length_mm = (value.gearbox_stage_length_mm - 1.1).max(6.0);
             value.wiring_clearance_mm = (value.wiring_clearance_mm - 0.1).max(0.2);
+            value.control_board_mount_width_mm = (value.control_board_mount_width_mm - 2.0).max(10.0);
+            value.control_board_mount_depth_mm = (value.control_board_mount_depth_mm - 1.0).max(8.0);
+            value.modular_mount_slot_pitch_mm = (value.modular_mount_slot_pitch_mm - 0.3).max(3.0);
         }
         value
     }
@@ -3134,7 +3211,159 @@ fn build_three_finger_thumb_feature_graph(state: &CadDemoPaneState) -> FeatureGr
                     ("compact_layout".to_string(), compact_layout.clone()),
                 ]),
             });
+            nodes.push(FeatureNode {
+                id: format!("feature.hand3.sensor_pad.{digit_name}"),
+                name: format!("hand3_force_sensor_pad_{digit_name}"),
+                operation_key: "hand3.sensor.pad.v1".to_string(),
+                depends_on: vec![parent_feature_id.to_string()],
+                params: BTreeMap::from([
+                    ("variant".to_string(), state.active_variant_id.clone()),
+                    ("digit".to_string(), digit_name.to_string()),
+                    ("digit_slot".to_string(), digit_slot.to_string()),
+                    (
+                        "base_width_mm".to_string(),
+                        format!("{:.3}", gripper.base_width_mm),
+                    ),
+                    (
+                        "base_depth_mm".to_string(),
+                        format!("{:.3}", gripper.base_depth_mm),
+                    ),
+                    (
+                        "base_thickness_mm".to_string(),
+                        format!("{:.3}", gripper.base_thickness_mm),
+                    ),
+                    (
+                        "finger_spacing_mm".to_string(),
+                        format!("{:.3}", finger_spacing_mm),
+                    ),
+                    (
+                        "force_sensor_pad_diameter_mm".to_string(),
+                        format!("{:.3}", gripper.force_sensor_pad_diameter_mm),
+                    ),
+                    (
+                        "electrical_clearance_mm".to_string(),
+                        format!("{:.3}", gripper.electrical_clearance_mm),
+                    ),
+                    ("compact_layout".to_string(), compact_layout.clone()),
+                ]),
+            });
+            nodes.push(FeatureNode {
+                id: format!("feature.hand3.proximity_port.{digit_name}"),
+                name: format!("hand3_proximity_sensor_port_{digit_name}"),
+                operation_key: "hand3.sensor.proximity_port.v1".to_string(),
+                depends_on: vec![parent_feature_id.to_string()],
+                params: BTreeMap::from([
+                    ("variant".to_string(), state.active_variant_id.clone()),
+                    ("digit".to_string(), digit_name.to_string()),
+                    ("digit_slot".to_string(), digit_slot.to_string()),
+                    (
+                        "base_width_mm".to_string(),
+                        format!("{:.3}", gripper.base_width_mm),
+                    ),
+                    (
+                        "base_depth_mm".to_string(),
+                        format!("{:.3}", gripper.base_depth_mm),
+                    ),
+                    (
+                        "base_thickness_mm".to_string(),
+                        format!("{:.3}", gripper.base_thickness_mm),
+                    ),
+                    (
+                        "finger_spacing_mm".to_string(),
+                        format!("{:.3}", finger_spacing_mm),
+                    ),
+                    (
+                        "proximity_sensor_port_diameter_mm".to_string(),
+                        format!("{:.3}", gripper.proximity_sensor_port_diameter_mm),
+                    ),
+                    (
+                        "electrical_clearance_mm".to_string(),
+                        format!("{:.3}", gripper.electrical_clearance_mm),
+                    ),
+                    ("compact_layout".to_string(), compact_layout.clone()),
+                ]),
+            });
         }
+        nodes.push(FeatureNode {
+            id: "feature.hand3.control_board_mount".to_string(),
+            name: "hand3_control_board_mount".to_string(),
+            operation_key: "hand3.electronics.board_mount.v1".to_string(),
+            depends_on: vec!["feature.hand3.base".to_string()],
+            params: BTreeMap::from([
+                ("variant".to_string(), state.active_variant_id.clone()),
+                (
+                    "base_width_mm".to_string(),
+                    format!("{:.3}", gripper.base_width_mm),
+                ),
+                (
+                    "base_depth_mm".to_string(),
+                    format!("{:.3}", gripper.base_depth_mm),
+                ),
+                (
+                    "base_thickness_mm".to_string(),
+                    format!("{:.3}", gripper.base_thickness_mm),
+                ),
+                (
+                    "control_board_mount_width_mm".to_string(),
+                    format!("{:.3}", gripper.control_board_mount_width_mm),
+                ),
+                (
+                    "control_board_mount_depth_mm".to_string(),
+                    format!("{:.3}", gripper.control_board_mount_depth_mm),
+                ),
+                (
+                    "control_board_mount_height_mm".to_string(),
+                    format!("{:.3}", gripper.control_board_mount_height_mm),
+                ),
+                (
+                    "electrical_clearance_mm".to_string(),
+                    format!("{:.3}", gripper.electrical_clearance_mm),
+                ),
+                ("compact_layout".to_string(), compact_layout.clone()),
+            ]),
+        });
+        nodes.push(FeatureNode {
+            id: "feature.hand3.modular_mount_slots".to_string(),
+            name: "hand3_modular_mount_slots".to_string(),
+            operation_key: "hand3.electronics.mount_slots.v1".to_string(),
+            depends_on: vec!["feature.hand3.control_board_mount".to_string()],
+            params: BTreeMap::from([
+                ("variant".to_string(), state.active_variant_id.clone()),
+                (
+                    "base_width_mm".to_string(),
+                    format!("{:.3}", gripper.base_width_mm),
+                ),
+                (
+                    "base_depth_mm".to_string(),
+                    format!("{:.3}", gripper.base_depth_mm),
+                ),
+                (
+                    "base_thickness_mm".to_string(),
+                    format!("{:.3}", gripper.base_thickness_mm),
+                ),
+                (
+                    "control_board_mount_width_mm".to_string(),
+                    format!("{:.3}", gripper.control_board_mount_width_mm),
+                ),
+                (
+                    "control_board_mount_depth_mm".to_string(),
+                    format!("{:.3}", gripper.control_board_mount_depth_mm),
+                ),
+                (
+                    "modular_mount_slot_pitch_mm".to_string(),
+                    format!("{:.3}", gripper.modular_mount_slot_pitch_mm),
+                ),
+                (
+                    "modular_mount_slot_count".to_string(),
+                    gripper.modular_mount_slot_count.to_string(),
+                ),
+                (
+                    "electrical_clearance_mm".to_string(),
+                    format!("{:.3}", gripper.electrical_clearance_mm),
+                ),
+                ("compact_layout".to_string(), compact_layout.clone()),
+            ]),
+        });
     }
 
     nodes.push(FeatureNode {
@@ -3706,6 +3935,56 @@ fn append_gripper_printability_warnings(
                 deep_link: Some("cad://feature/feature.hand3.servo_housing.middle".to_string()),
                 feature_id: "feature.hand3.servo_housing.middle".to_string(),
                 entity_id: "hand3.housing.jaw_interference".to_string(),
+            });
+        }
+
+        let sensor_spacing_margin_mm = ((gripper.jaw_open_mm / 2.0)
+            - (gripper.force_sensor_pad_diameter_mm
+                + gripper.proximity_sensor_port_diameter_mm
+                + (gripper.electrical_clearance_mm * 2.0)))
+            .min(gripper.finger_thickness_mm - gripper.force_sensor_pad_diameter_mm * 0.45);
+        if sensor_spacing_margin_mm < 0.0 {
+            warnings.push(CadDemoWarningState {
+                warning_id: format!("warning.custom.{}", warnings.len()),
+                code: "CAD-WARN-SENSOR-MOUNT-OVERLAP".to_string(),
+                severity: "warning".to_string(),
+                message: format!(
+                    "Sensor pad/port overlap risk detected (margin {:.2} mm)",
+                    sensor_spacing_margin_mm
+                ),
+                remediation_hint:
+                    "Reduce force_sensor_pad_diameter_mm / proximity_sensor_port_diameter_mm or increase jaw_open_mm and electrical_clearance_mm"
+                        .to_string(),
+                semantic_refs: vec!["hand3_force_sensor_pad".to_string(), "hand3_proximity_sensor_port".to_string()],
+                deep_link: Some("cad://feature/feature.hand3.sensor_pad.index".to_string()),
+                feature_id: "feature.hand3.sensor_pad.index".to_string(),
+                entity_id: "hand3.sensor.mount_overlap".to_string(),
+            });
+        }
+
+        let board_width_margin_mm = (gripper.base_width_mm * 0.82)
+            - (gripper.control_board_mount_width_mm + (gripper.electrical_clearance_mm * 2.0));
+        let board_depth_margin_mm = (gripper.base_depth_mm * 0.82)
+            - (gripper.control_board_mount_depth_mm + (gripper.electrical_clearance_mm * 2.0));
+        let slot_span_mm = (gripper.modular_mount_slot_count.saturating_sub(1) as f64)
+            * gripper.modular_mount_slot_pitch_mm;
+        let slot_margin_mm = gripper.control_board_mount_width_mm - slot_span_mm;
+        if board_width_margin_mm < 0.0 || board_depth_margin_mm < 0.0 || slot_margin_mm < 0.0 {
+            warnings.push(CadDemoWarningState {
+                warning_id: format!("warning.custom.{}", warnings.len()),
+                code: "CAD-WARN-ELECTRICAL-CLEARANCE".to_string(),
+                severity: "critical".to_string(),
+                message: format!(
+                    "Electrical reserve is insufficient (board margins w={:.2} mm d={:.2} mm, slot margin {:.2} mm)",
+                    board_width_margin_mm, board_depth_margin_mm, slot_margin_mm
+                ),
+                remediation_hint:
+                    "Shrink board mount footprint, increase base dimensions, or reduce modular mount slot span"
+                        .to_string(),
+                semantic_refs: vec!["hand3_control_board_mount".to_string(), "hand3_modular_mount_slots".to_string()],
+                deep_link: Some("cad://feature/feature.hand3.control_board_mount".to_string()),
+                feature_id: "feature.hand3.control_board_mount".to_string(),
+                entity_id: "hand3.electrical.clearance".to_string(),
             });
         }
     }
@@ -6464,6 +6743,101 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(warning_codes.contains(&"CAD-WARN-WIRING-JOINT-INTERFERENCE".to_string()));
         assert!(warning_codes.contains(&"CAD-WARN-HOUSING-JAW-INTERFERENCE".to_string()));
+    }
+
+    #[test]
+    fn sensor_and_electronics_prompt_creates_mount_geometry_with_modular_metadata() {
+        let mut state = CadDemoPaneState::default();
+        let prompt = "Incorporate force sensors on fingertips, proximity sensors, and a control board mount. Ensure the design is modular for easy upgrades.";
+        let intent = match translate_chat_to_cad_intent(prompt) {
+            CadIntentTranslationOutcome::Intent(intent) => intent,
+            other => panic!("expected translated CAD intent, got {other:?}"),
+        };
+        state
+            .apply_chat_intent_for_thread("thread-sensor-electronics", &intent)
+            .expect("sensor/electronics intent should apply");
+        enqueue_rebuild_cycle(&mut state, "test-sensor-electronics-geometry")
+            .expect("sensor/electronics rebuild should queue");
+        wait_for_receipt(&mut state);
+
+        assert!(
+            state
+                .timeline_rows
+                .iter()
+                .any(|row| row.feature_id == "feature.hand3.sensor_pad.index")
+        );
+        assert!(
+            state
+                .timeline_rows
+                .iter()
+                .any(|row| row.feature_id == "feature.hand3.proximity_port.thumb")
+        );
+        assert!(
+            state
+                .timeline_rows
+                .iter()
+                .any(|row| row.feature_id == "feature.hand3.control_board_mount")
+        );
+        let modular_row = state
+            .timeline_rows
+            .iter()
+            .find(|row| row.feature_id == "feature.hand3.modular_mount_slots")
+            .expect("modular mount row should exist");
+        assert!(
+            modular_row
+                .params
+                .iter()
+                .any(|(key, _)| key == "modular_mount_slot_count")
+        );
+
+        let warning_codes = state
+            .warnings
+            .iter()
+            .map(|warning| warning.code.as_str())
+            .collect::<Vec<_>>();
+        assert!(!warning_codes.contains(&"CAD-WARN-SENSOR-MOUNT-OVERLAP"));
+        assert!(!warning_codes.contains(&"CAD-WARN-ELECTRICAL-CLEARANCE"));
+    }
+
+    #[test]
+    fn sensor_electronics_clearance_warnings_emit_for_overlap_and_space_reserve_failures() {
+        let mut state = CadDemoPaneState::default();
+        let prompt = "Incorporate force sensors on fingertips, proximity sensors, and a control board mount. Ensure the design is modular for easy upgrades.";
+        let intent = match translate_chat_to_cad_intent(prompt) {
+            CadIntentTranslationOutcome::Intent(intent) => intent,
+            other => panic!("expected translated CAD intent, got {other:?}"),
+        };
+        state
+            .apply_chat_intent_for_thread("thread-sensor-electronics-invalid", &intent)
+            .expect("sensor/electronics intent should apply");
+        let set_dim = |state: &mut CadDemoPaneState, id: &str, value_mm: f64| {
+            let dimension = state
+                .dimensions
+                .iter_mut()
+                .find(|entry| entry.dimension_id == id)
+                .unwrap_or_else(|| panic!("dimension {id} should exist"));
+            dimension.value_mm = value_mm;
+        };
+        set_dim(&mut state, "force_sensor_pad_diameter_mm", 12.0);
+        set_dim(&mut state, "proximity_sensor_port_diameter_mm", 10.0);
+        set_dim(&mut state, "electrical_clearance_mm", 5.0);
+        set_dim(&mut state, "control_board_mount_width_mm", 84.0);
+        set_dim(&mut state, "control_board_mount_depth_mm", 60.0);
+        set_dim(&mut state, "modular_mount_slot_pitch_mm", 11.0);
+        set_dim(&mut state, "modular_mount_slot_count", 10.0);
+        set_dim(&mut state, "jaw_open_mm", 12.0);
+
+        enqueue_rebuild_cycle(&mut state, "test-sensor-electronics-invalid-clearance")
+            .expect("invalid sensor/electronics rebuild should queue");
+        wait_for_receipt(&mut state);
+
+        let warning_codes = state
+            .warnings
+            .iter()
+            .map(|warning| warning.code.clone())
+            .collect::<Vec<_>>();
+        assert!(warning_codes.contains(&"CAD-WARN-SENSOR-MOUNT-OVERLAP".to_string()));
+        assert!(warning_codes.contains(&"CAD-WARN-ELECTRICAL-CLEARANCE".to_string()));
     }
 
     #[test]

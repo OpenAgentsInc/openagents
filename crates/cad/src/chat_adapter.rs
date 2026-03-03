@@ -214,6 +214,7 @@ fn translate_parallel_jaw_gripper_prompt(lower: &str) -> Option<CadIntent> {
         "evolve",
         "add",
         "integrate",
+        "incorporate",
     ]
     .iter()
     .any(|verb| lower.contains(verb));
@@ -225,6 +226,10 @@ fn translate_parallel_jaw_gripper_prompt(lower: &str) -> Option<CadIntent> {
         "robotic hand",
         "finger joint",
         "opposable thumb",
+        "fingertip",
+        "fingertips",
+        "sensor",
+        "control board",
     ]
     .iter()
     .any(|token| lower.contains(token));
@@ -392,6 +397,33 @@ fn translate_parallel_jaw_gripper_prompt(lower: &str) -> Option<CadIntent> {
         spec.servo_standoff_diameter_mm = PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_STANDOFF_DIAMETER_MM;
         spec.compact_servo_layout =
             lower.contains("compact") || lower.contains("low-cost") || lower.contains("low cost");
+    }
+    let requests_sensor_electronics = [
+        "force sensor",
+        "fingertip sensor",
+        "proximity sensor",
+        "control board",
+        "electronics mount",
+        "sensor feedback",
+        "modular",
+    ]
+    .iter()
+    .any(|token| lower.contains(token));
+    if requests_sensor_electronics {
+        spec.servo_integration_enabled = true;
+        spec.finger_count = spec.finger_count.max(3);
+        spec.opposable_thumb = true;
+        spec.underactuated_mode = true;
+        spec.compliant_joint_count = spec.compliant_joint_count.max(3);
+        spec.tendon_channel_diameter_mm = spec
+            .tendon_channel_diameter_mm
+            .max(PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_CHANNEL_DIAMETER_MM);
+        spec.tendon_route_clearance_mm = spec
+            .tendon_route_clearance_mm
+            .max(PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_ROUTE_CLEARANCE_MM);
+        spec.tendon_bend_radius_mm = spec
+            .tendon_bend_radius_mm
+            .max(PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_BEND_RADIUS_MM);
     }
     if let Some(value) = extract_servo_envelope_length_mm(lower) {
         spec.servo_integration_enabled = true;
@@ -947,6 +979,22 @@ mod tests {
                 assert!(spec.servo_envelope_width_mm > 0.0);
                 assert!(spec.servo_envelope_height_mm > 0.0);
                 assert!(spec.servo_mount_pattern_pitch_mm > 0.0);
+            }
+            other => panic!("unexpected outcome: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn adapter_translates_sensor_electronics_prompt_into_hand_profile_spec() {
+        let outcome = translate_chat_to_cad_intent(
+            "Incorporate force sensors on fingertips, proximity sensors, and a control board mount. Ensure the design is modular for easy upgrades.",
+        );
+        match outcome {
+            CadIntentTranslationOutcome::Intent(CadIntent::CreateParallelJawGripperSpec(spec)) => {
+                assert!(spec.servo_integration_enabled);
+                assert!(spec.underactuated_mode);
+                assert!(spec.opposable_thumb);
+                assert!(spec.finger_count >= 3);
             }
             other => panic!("unexpected outcome: {other:?}"),
         }

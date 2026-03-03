@@ -1851,6 +1851,14 @@ fn cad_gripper_parameter_summary(
         "wiring_channel_diameter_mm",
         "wiring_bend_radius_mm",
         "wiring_clearance_mm",
+        "force_sensor_pad_diameter_mm",
+        "proximity_sensor_port_diameter_mm",
+        "control_board_mount_width_mm",
+        "control_board_mount_depth_mm",
+        "control_board_mount_height_mm",
+        "modular_mount_slot_pitch_mm",
+        "modular_mount_slot_count",
+        "electrical_clearance_mm",
     ];
     let mut summary = serde_json::Map::new();
     for key in keys {
@@ -1971,6 +1979,62 @@ fn cad_gripper_parameter_summary(
         }
         if let Some(value) = dispatch.parameter_values.get("wiring_clearance_mm").copied() {
             summary.insert("wiring_clearance_mm".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch
+            .parameter_values
+            .get("force_sensor_pad_diameter_mm")
+            .copied()
+        {
+            summary.insert("force_sensor_pad_diameter_mm".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch
+            .parameter_values
+            .get("proximity_sensor_port_diameter_mm")
+            .copied()
+        {
+            summary.insert("proximity_sensor_port_diameter_mm".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch
+            .parameter_values
+            .get("control_board_mount_width_mm")
+            .copied()
+        {
+            summary.insert("control_board_mount_width_mm".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch
+            .parameter_values
+            .get("control_board_mount_depth_mm")
+            .copied()
+        {
+            summary.insert("control_board_mount_depth_mm".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch
+            .parameter_values
+            .get("control_board_mount_height_mm")
+            .copied()
+        {
+            summary.insert("control_board_mount_height_mm".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch
+            .parameter_values
+            .get("modular_mount_slot_pitch_mm")
+            .copied()
+        {
+            summary.insert("modular_mount_slot_pitch_mm".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch
+            .parameter_values
+            .get("modular_mount_slot_count")
+            .copied()
+        {
+            summary.insert("modular_mount_slot_count".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch
+            .parameter_values
+            .get("electrical_clearance_mm")
+            .copied()
+        {
+            summary.insert("electrical_clearance_mm".to_string(), json!(value));
         }
     }
     Value::Object(summary)
