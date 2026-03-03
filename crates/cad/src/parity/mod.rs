@@ -17,6 +17,7 @@ pub mod ci_artifacts;
 pub mod compact_ir_parity;
 pub mod core_modeling_checkpoint_parity;
 pub mod dashboard;
+pub mod direct_brep_raytrace_scaffolding_parity;
 pub mod drafting_checkpoint_parity;
 pub mod drafting_detail_parity;
 pub mod drafting_dimension_parity;

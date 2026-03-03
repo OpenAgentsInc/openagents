@@ -1,0 +1,97 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-097",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/direct_brep_raytrace_scaffolding_vcad_reference.json",
+  "reference_fixture_sha256": "b2670f816b42292ba706ea5da7cbdccb5bae436459153127c85aec0dbab7b730",
+  "reference_source": "~/code/vcad/crates/vcad-kernel-raytrace/src/lib.rs + ~/code/vcad/crates/vcad-kernel-raytrace/src/ray.rs + ~/code/vcad/crates/vcad-kernel-raytrace/src/cpu.rs + ~/code/vcad/crates/vcad-kernel-raytrace/src/intersect/mod.rs + ~/code/vcad/docs/features/ray-tracing.md",
+  "reference_commit_match": true,
+  "module_graph_match": true,
+  "public_exports_match": true,
+  "intersection_registry_match": true,
+  "gpu_feature_gate_match": true,
+  "cpu_renderer_contract_match": true,
+  "ray_contract_match": true,
+  "no_tessellation_contract_match": true,
+  "deterministic_replay_match": true,
+  "modules": [
+    {
+      "module_id": "bvh",
+      "public_module": true,
+      "feature_gate": null
+    },
+    {
+      "module_id": "cpu",
+      "public_module": true,
+      "feature_gate": null
+    },
+    {
+      "module_id": "gpu",
+      "public_module": true,
+      "feature_gate": "gpu"
+    },
+    {
+      "module_id": "intersect",
+      "public_module": true,
+      "feature_gate": null
+    },
+    {
+      "module_id": "ray",
+      "public_module": false,
+      "feature_gate": null
+    },
+    {
+      "module_id": "trim",
+      "public_module": true,
+      "feature_gate": null
+    }
+  ],
+  "public_exports": [
+    "Bvh",
+    "CpuRenderer",
+    "Ray",
+    "RayHit",
+    "render_scene"
+  ],
+  "intersection_submodules": [
+    "bilinear",
+    "bspline",
+    "cone",
+    "cylinder",
+    "plane",
+    "sphere",
+    "torus"
+  ],
+  "gpu_feature_gate": "gpu",
+  "cpu_renderer_defaults": {
+    "background_rgba": [
+      30,
+      32,
+      40,
+      255
+    ],
+    "default_material_rgb": [
+      0.6,
+      0.7,
+      0.8
+    ],
+    "output_channels": 4
+  },
+  "ray_aabb_contract": {
+    "returns_entry_exit_pair": true,
+    "clamps_entry_to_zero": true,
+    "rejects_behind_box": true,
+    "supports_axis_aligned_infinite_reciprocals": true
+  },
+  "no_tessellation_required": true,
+  "deterministic_signature": "ec043f8bad2db4d4",
+  "parity_contracts": [
+    "raytrace crate exposes a direct-BRep module graph: bvh/cpu/intersect/ray/trim with gpu feature gate",
+    "public API exports Bvh, CpuRenderer, render_scene, Ray, and RayHit at crate root",
+    "intersection registry scaffolds analytic and bspline dispatch modules for ray-surface entrypoints",
+    "CPU renderer defaults remain deterministic: RGBA output, dark background, and stable material color",
+    "ray contract keeps slab AABB behavior (entry/exit, clamp-to-zero, axis-aligned safety) without tessellation"
+  ]
+}
