@@ -964,6 +964,15 @@ pub fn active_pane_id(state: &RenderState) -> Option<u64> {
         .map(|pane| pane.id)
 }
 
+fn cad_action_uses_dense_row_hot_zone(action: CadDemoPaneAction) -> bool {
+    matches!(
+        action,
+        CadDemoPaneAction::StartDimensionEdit(_)
+            | CadDemoPaneAction::SelectTimelineRow(_)
+            | CadDemoPaneAction::SelectWarning(_)
+    )
+}
+
 pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon {
     if let Some(mode) = state.pane_drag_mode {
         return match mode {
@@ -1106,7 +1115,12 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::CadDemo => {}
         }
 
-        if pane_hit_action_for_pane(state, pane, point).is_some() {
+        if let Some(action) = pane_hit_action_for_pane(state, pane, point) {
+            if let PaneHitAction::CadDemo(cad_action) = action
+                && cad_action_uses_dense_row_hot_zone(cad_action)
+            {
+                return CursorIcon::Default;
+            }
             return CursorIcon::Pointer;
         }
 
@@ -3977,19 +3991,20 @@ mod tests {
         agent_schedule_manual_tick_button_bounds, agent_schedule_toggle_os_scheduler_button_bounds,
         alerts_recovery_ack_button_bounds, alerts_recovery_recover_button_bounds,
         alerts_recovery_resolve_button_bounds, alerts_recovery_row_bounds,
-        cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
-        cad_demo_cycle_variant_button_bounds, cad_demo_dimension_panel_bounds,
-        cad_demo_dimension_row_bounds, cad_demo_drawing_add_detail_button_bounds,
-        cad_demo_drawing_clear_details_button_bounds, cad_demo_drawing_dimensions_button_bounds,
-        cad_demo_drawing_direction_button_bounds, cad_demo_drawing_hidden_lines_button_bounds,
-        cad_demo_drawing_mode_button_bounds, cad_demo_drawing_reset_view_button_bounds,
-        cad_demo_hidden_line_mode_button_bounds, cad_demo_hotkey_profile_button_bounds,
-        cad_demo_material_button_bounds, cad_demo_projection_mode_button_bounds,
-        cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
-        cad_demo_section_offset_button_bounds, cad_demo_section_plane_button_bounds,
-        cad_demo_snap_endpoint_button_bounds, cad_demo_snap_grid_button_bounds,
-        cad_demo_snap_midpoint_button_bounds, cad_demo_snap_origin_button_bounds,
-        cad_demo_timeline_panel_bounds, cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
+        cad_action_uses_dense_row_hot_zone, cad_demo_context_menu_bounds,
+        cad_demo_context_menu_row_bounds, cad_demo_cycle_variant_button_bounds,
+        cad_demo_dimension_panel_bounds, cad_demo_dimension_row_bounds,
+        cad_demo_drawing_add_detail_button_bounds, cad_demo_drawing_clear_details_button_bounds,
+        cad_demo_drawing_dimensions_button_bounds, cad_demo_drawing_direction_button_bounds,
+        cad_demo_drawing_hidden_lines_button_bounds, cad_demo_drawing_mode_button_bounds,
+        cad_demo_drawing_reset_view_button_bounds, cad_demo_hidden_line_mode_button_bounds,
+        cad_demo_hotkey_profile_button_bounds, cad_demo_material_button_bounds,
+        cad_demo_projection_mode_button_bounds, cad_demo_reset_button_bounds,
+        cad_demo_reset_camera_button_bounds, cad_demo_section_offset_button_bounds,
+        cad_demo_section_plane_button_bounds, cad_demo_snap_endpoint_button_bounds,
+        cad_demo_snap_grid_button_bounds, cad_demo_snap_midpoint_button_bounds,
+        cad_demo_snap_origin_button_bounds, cad_demo_timeline_panel_bounds,
+        cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
         cad_demo_view_snap_front_button_bounds, cad_demo_view_snap_iso_button_bounds,
         cad_demo_view_snap_right_button_bounds, cad_demo_view_snap_top_button_bounds,
         cad_demo_warning_filter_code_button_bounds, cad_demo_warning_filter_severity_button_bounds,
@@ -4075,6 +4090,25 @@ mod tests {
             );
         }
         assert_eq!(cad_palette_action_for_command_id("cad.unknown"), None);
+    }
+
+    #[test]
+    fn cad_dense_row_actions_are_not_pointer_hotspots() {
+        assert!(cad_action_uses_dense_row_hot_zone(
+            super::CadDemoPaneAction::StartDimensionEdit(0)
+        ));
+        assert!(cad_action_uses_dense_row_hot_zone(
+            super::CadDemoPaneAction::SelectTimelineRow(0)
+        ));
+        assert!(cad_action_uses_dense_row_hot_zone(
+            super::CadDemoPaneAction::SelectWarning(0)
+        ));
+        assert!(!cad_action_uses_dense_row_hot_zone(
+            super::CadDemoPaneAction::SelectWarningMarker(0)
+        ));
+        assert!(!cad_action_uses_dense_row_hot_zone(
+            super::CadDemoPaneAction::CycleVariant
+        ));
     }
 
     #[test]
