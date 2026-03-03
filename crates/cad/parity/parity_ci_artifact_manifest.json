@@ -5,7 +5,7 @@
   "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
   "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
   "parity_check_entrypoint": "scripts/cad/parity_check.sh",
-  "source_artifact_count": 178,
+  "source_artifact_count": 180,
   "artifacts": [
     {
       "artifact_id": "analytic_ray_intersections_parity_manifest",
@@ -230,6 +230,12 @@
       "bytes": 2624
     },
     {
+      "artifact_id": "ecad_symbols_lane_parity_manifest",
+      "source_path": "crates/cad/parity/ecad_symbols_lane_parity_manifest.json",
+      "sha256": "75a2899b3d9fa7647a1cc798a361c6480809002839e19ab4c043ce179bf36362",
+      "bytes": 1853
+    },
+    {
       "artifact_id": "expanded_finishing_parity_manifest",
       "source_path": "crates/cad/parity/expanded_finishing_parity_manifest.json",
       "sha256": "8e3e5f4c114c912d67593120949a38e4755f6a2bf00d0ff2749b1b2c9be20c65",
@@ -444,6 +450,12 @@
       "source_path": "crates/cad/parity/fixtures/drafting_section_vcad_reference.json",
       "sha256": "f5225ffb7ff6f76e8d863a5eb401fb0831ad29b62d92c2ca2f33dcbeede56044",
       "bytes": 1653
+    },
+    {
+      "artifact_id": "fixtures_ecad_symbols_lane_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/ecad_symbols_lane_vcad_reference.json",
+      "sha256": "27124c96d6343d3a8189d7c64b77813a63f4c0f6792830ed566b791381375c7f",
+      "bytes": 978
     },
     {
       "artifact_id": "fixtures_feature_op_hash_vcad_reference_corpus",
@@ -796,8 +808,8 @@
     {
       "artifact_id": "parity_dashboard",
       "source_path": "crates/cad/parity/parity_dashboard.json",
-      "sha256": "35eca61a922270a1feecdd3ecdcdb2ad06a07372a87a48de79a107605ffce4a4",
-      "bytes": 10018
+      "sha256": "637a69201eb40570a8cf5a96de08b672344cb37efd168f63dab45085c467bf0b",
+      "bytes": 10112
     },
     {
       "artifact_id": "parity_risk_register",

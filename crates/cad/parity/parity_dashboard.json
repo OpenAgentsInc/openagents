@@ -39,7 +39,7 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 178,
+    "source_artifact_count": 180,
     "artifact_ids": [
       "analytic_ray_intersections_parity_manifest",
       "assembly_acceptance_scenes_parity_manifest",
@@ -78,6 +78,7 @@
       "drafting_persistence_parity_manifest",
       "drafting_projection_parity_manifest",
       "drafting_section_parity_manifest",
+      "ecad_symbols_lane_parity_manifest",
       "expanded_finishing_parity_manifest",
       "feature_op_hash_parity_manifest",
       "fillet_feature_graph_parity_manifest",
@@ -114,6 +115,7 @@
       "fixtures_drafting_persistence_vcad_reference",
       "fixtures_drafting_projection_vcad_reference",
       "fixtures_drafting_section_vcad_reference",
+      "fixtures_ecad_symbols_lane_vcad_reference",
       "fixtures_feature_op_hash_vcad_reference_corpus",
       "fixtures_glb_export_vcad_reference",
       "fixtures_gpu_acceleration_vcad_reference",

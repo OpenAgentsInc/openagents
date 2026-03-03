@@ -189,6 +189,8 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/fixtures/presence_cursor_selection_vcad_reference.json"
     "crates/cad/parity/branch_fork_workflow_parity_manifest.json"
     "crates/cad/parity/fixtures/branch_fork_workflow_vcad_reference.json"
+    "crates/cad/parity/ecad_symbols_lane_parity_manifest.json"
+    "crates/cad/parity/fixtures/ecad_symbols_lane_vcad_reference.json"
     "crates/cad/parity/fixtures/parity_fixture_corpus.json"
 )
 
