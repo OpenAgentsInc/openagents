@@ -219,6 +219,35 @@ impl SparkWallet {
         Ok(response.payment_request)
     }
 
+    pub async fn create_bolt11_invoice(
+        &self,
+        amount_sats: u64,
+        description: Option<String>,
+        expiry_seconds: Option<u32>,
+    ) -> Result<String, SparkError> {
+        if amount_sats == 0 {
+            return Err(SparkError::InvalidPaymentRequest(
+                "amount must be greater than zero".to_string(),
+            ));
+        }
+
+        let response = self
+            .sdk
+            .receive_payment(ReceivePaymentRequest {
+                payment_method: ReceivePaymentMethod::Bolt11Invoice {
+                    description: description
+                        .filter(|value| !value.trim().is_empty())
+                        .unwrap_or_else(|| "openagents-spark-invoice".to_string()),
+                    amount_sats: Some(amount_sats),
+                    expiry_secs: expiry_seconds,
+                },
+            })
+            .await
+            .map_err(|error| SparkError::Wallet(error.to_string()))?;
+
+        Ok(response.payment_request)
+    }
+
     pub async fn send_payment_simple(
         &self,
         payment_request: &str,

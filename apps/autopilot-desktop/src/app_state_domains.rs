@@ -234,6 +234,13 @@ pub struct AgentProfileStatePaneState {
     pub profile_name: String,
     pub profile_about: String,
     pub goals_summary: String,
+    pub selected_goal_id: Option<String>,
+    pub selected_goal_status: String,
+    pub selected_goal_attempts: u32,
+    pub selected_goal_selected_skills: String,
+    pub selected_goal_receipt_summary: String,
+    pub treasury_wallet_projection_count: usize,
+    pub treasury_wallet_projection_summary: String,
     pub profile_event_id: Option<String>,
     pub state_event_id: Option<String>,
     pub goals_event_id: Option<String>,
@@ -248,6 +255,13 @@ impl Default for AgentProfileStatePaneState {
             profile_name: "Autopilot".to_string(),
             profile_about: "Desktop sovereign agent runtime".to_string(),
             goals_summary: "Earn sats and complete queued jobs".to_string(),
+            selected_goal_id: None,
+            selected_goal_status: "n/a".to_string(),
+            selected_goal_attempts: 0,
+            selected_goal_selected_skills: "n/a".to_string(),
+            selected_goal_receipt_summary: "n/a".to_string(),
+            treasury_wallet_projection_count: 0,
+            treasury_wallet_projection_summary: "n/a".to_string(),
             profile_event_id: None,
             state_event_id: None,
             goals_event_id: None,
@@ -260,6 +274,22 @@ pub struct AgentScheduleTickPaneState {
     pub last_error: Option<String>,
     pub last_action: Option<String>,
     pub heartbeat_seconds: u64,
+    pub selected_goal_id: Option<String>,
+    pub scheduler_mode: String,
+    pub next_goal_run_epoch_seconds: Option<u64>,
+    pub last_goal_run_epoch_seconds: Option<u64>,
+    pub missed_run_policy: String,
+    pub pending_catchup_runs: u32,
+    pub last_recovery_epoch_seconds: Option<u64>,
+    pub cron_expression: String,
+    pub cron_timezone: String,
+    pub cron_next_run_preview_epoch_seconds: Option<u64>,
+    pub cron_parse_error: Option<String>,
+    pub os_scheduler_enabled: bool,
+    pub os_scheduler_adapter: String,
+    pub os_scheduler_descriptor_path: Option<String>,
+    pub os_scheduler_last_reconciled_epoch_seconds: Option<u64>,
+    pub os_scheduler_last_reconcile_result: Option<String>,
     pub next_tick_reason: String,
     pub last_tick_outcome: String,
     pub schedule_event_id: Option<String>,
@@ -274,6 +304,22 @@ impl Default for AgentScheduleTickPaneState {
             last_error: None,
             last_action: Some("Waiting for SA schedule/tick snapshot".to_string()),
             heartbeat_seconds: 30,
+            selected_goal_id: None,
+            scheduler_mode: "manual".to_string(),
+            next_goal_run_epoch_seconds: None,
+            last_goal_run_epoch_seconds: None,
+            missed_run_policy: "single_replay".to_string(),
+            pending_catchup_runs: 0,
+            last_recovery_epoch_seconds: None,
+            cron_expression: "*/15 * * * *".to_string(),
+            cron_timezone: "UTC".to_string(),
+            cron_next_run_preview_epoch_seconds: None,
+            cron_parse_error: None,
+            os_scheduler_enabled: false,
+            os_scheduler_adapter: "auto".to_string(),
+            os_scheduler_descriptor_path: None,
+            os_scheduler_last_reconciled_epoch_seconds: None,
+            os_scheduler_last_reconcile_result: None,
             next_tick_reason: "manual.operator".to_string(),
             last_tick_outcome: "n/a".to_string(),
             schedule_event_id: None,
@@ -290,6 +336,8 @@ pub struct TrajectoryAuditPaneState {
     pub active_session_id: Option<String>,
     pub verified_hash: Option<String>,
     pub step_filter: String,
+    pub treasury_event_ref: Option<String>,
+    pub treasury_event_summary: Option<String>,
 }
 
 impl Default for TrajectoryAuditPaneState {
@@ -301,6 +349,8 @@ impl Default for TrajectoryAuditPaneState {
             active_session_id: None,
             verified_hash: None,
             step_filter: "all".to_string(),
+            treasury_event_ref: None,
+            treasury_event_summary: None,
         }
     }
 }
@@ -3369,9 +3419,43 @@ impl StableSatsWalletMode {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StableSatsWalletOwnerKind {
+    Operator,
+    SovereignAgent,
+}
+
+impl StableSatsWalletOwnerKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Operator => "operator",
+            Self::SovereignAgent => "sovereign_agent",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StableSatsSimulationMode {
+    Demo,
+    RealBlink,
+}
+
+impl StableSatsSimulationMode {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Demo => "demo",
+            Self::RealBlink => "real",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StableSatsAgentWalletState {
     pub agent_name: String,
+    pub owner_kind: StableSatsWalletOwnerKind,
+    pub owner_id: String,
+    pub credential_key_name: String,
+    pub credential_url_name: Option<String>,
     pub btc_balance_sats: u64,
     pub usd_balance_cents: u64,
     pub active_wallet: StableSatsWalletMode,
@@ -3379,10 +3463,119 @@ pub struct StableSatsAgentWalletState {
     pub last_switch_summary: String,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StableSatsTransferAsset {
+    BtcSats,
+    UsdCents,
+}
+
+impl StableSatsTransferAsset {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::BtcSats => "BTC",
+            Self::UsdCents => "USD",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StableSatsTransferStatus {
+    Settled,
+    Failed,
+}
+
+impl StableSatsTransferStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Settled => "settled",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StableSatsTreasuryOperationKind {
+    Refresh,
+    SwapQuote,
+    SwapExecute,
+    TransferBtc,
+    TransferUsd,
+    Convert,
+}
+
+impl StableSatsTreasuryOperationKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Refresh => "refresh",
+            Self::SwapQuote => "swap_quote",
+            Self::SwapExecute => "swap_execute",
+            Self::TransferBtc => "transfer_btc",
+            Self::TransferUsd => "transfer_usd",
+            Self::Convert => "convert",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StableSatsTreasuryOperationStatus {
+    Queued,
+    Running,
+    Settled,
+    Failed,
+    Cancelled,
+}
+
+impl StableSatsTreasuryOperationStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Queued => "queued",
+            Self::Running => "running",
+            Self::Settled => "settled",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StableSatsTreasuryOperationEntry {
+    pub seq: u64,
+    pub request_id: u64,
+    pub kind: StableSatsTreasuryOperationKind,
+    pub status: StableSatsTreasuryOperationStatus,
+    pub detail: String,
+    pub created_at_epoch_seconds: u64,
+    pub updated_at_epoch_seconds: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct StableSatsTreasuryReceipt {
+    pub seq: u64,
+    pub request_id: u64,
+    pub kind: StableSatsTreasuryOperationKind,
+    pub payload: serde_json::Value,
+    pub occurred_at_epoch_seconds: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StableSatsTransferLedgerEntry {
+    pub seq: u64,
+    pub transfer_ref: String,
+    pub from_wallet: String,
+    pub to_wallet: String,
+    pub asset: StableSatsTransferAsset,
+    pub amount: u64,
+    pub effective_fee: u64,
+    pub status: StableSatsTransferStatus,
+    pub summary: String,
+    pub occurred_at_epoch_seconds: u64,
+}
+
 pub struct StableSatsSimulationPaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
     pub last_action: Option<String>,
+    pub mode: StableSatsSimulationMode,
     pub rounds_run: u32,
     pub price_usd_cents_per_btc: u64,
     pub total_converted_sats: u64,
@@ -3393,9 +3586,18 @@ pub struct StableSatsSimulationPaneState {
     pub converted_sats_history: Vec<u64>,
     pub auto_run_enabled: bool,
     pub auto_run_interval: Duration,
+    pub live_refresh_pending: bool,
+    pub active_live_refresh_request_id: Option<u64>,
+    pub transfer_ledger: Vec<StableSatsTransferLedgerEntry>,
+    pub treasury_operations: Vec<StableSatsTreasuryOperationEntry>,
+    pub treasury_receipts: Vec<StableSatsTreasuryReceipt>,
     pub events: Vec<AgentNetworkSimulationEvent>,
     next_seq: u64,
+    next_transfer_seq: u64,
+    next_operation_seq: u64,
+    next_receipt_seq: u64,
     auto_run_last_tick: Option<Instant>,
+    next_live_refresh_request_id: u64,
 }
 
 impl Default for StableSatsSimulationPaneState {
@@ -3406,6 +3608,7 @@ impl Default for StableSatsSimulationPaneState {
             last_action: Some(
                 "Run simulation to model StableSats wallet switches (BTC <-> USD)".to_string(),
             ),
+            mode: StableSatsSimulationMode::Demo,
             rounds_run: 0,
             price_usd_cents_per_btc: Self::BASE_PRICE_USD_CENTS_PER_BTC,
             total_converted_sats: 0,
@@ -3416,9 +3619,18 @@ impl Default for StableSatsSimulationPaneState {
             converted_sats_history: Vec::new(),
             auto_run_enabled: false,
             auto_run_interval: Duration::from_millis(120),
+            live_refresh_pending: false,
+            active_live_refresh_request_id: None,
+            transfer_ledger: Vec::new(),
+            treasury_operations: Vec::new(),
+            treasury_receipts: Vec::new(),
             events: Vec::new(),
             next_seq: 1,
+            next_transfer_seq: 1,
+            next_operation_seq: 1,
+            next_receipt_seq: 1,
             auto_run_last_tick: None,
+            next_live_refresh_request_id: 1,
         }
     }
 }
@@ -3432,6 +3644,10 @@ impl StableSatsSimulationPaneState {
         vec![
             StableSatsAgentWalletState {
                 agent_name: "agent-alpha".to_string(),
+                owner_kind: StableSatsWalletOwnerKind::SovereignAgent,
+                owner_id: "sa:agent-alpha".to_string(),
+                credential_key_name: "BLINK_API_KEY_SA_ALPHA".to_string(),
+                credential_url_name: Some("BLINK_API_URL_SA_ALPHA".to_string()),
                 btc_balance_sats: 260_000,
                 usd_balance_cents: 42_000,
                 active_wallet: StableSatsWalletMode::Btc,
@@ -3440,6 +3656,10 @@ impl StableSatsSimulationPaneState {
             },
             StableSatsAgentWalletState {
                 agent_name: "agent-beta".to_string(),
+                owner_kind: StableSatsWalletOwnerKind::SovereignAgent,
+                owner_id: "sa:agent-beta".to_string(),
+                credential_key_name: "BLINK_API_KEY_SA_BETA".to_string(),
+                credential_url_name: Some("BLINK_API_URL_SA_BETA".to_string()),
                 btc_balance_sats: 180_000,
                 usd_balance_cents: 64_000,
                 active_wallet: StableSatsWalletMode::Usd,
@@ -3448,6 +3668,10 @@ impl StableSatsSimulationPaneState {
             },
             StableSatsAgentWalletState {
                 agent_name: "agent-gamma".to_string(),
+                owner_kind: StableSatsWalletOwnerKind::SovereignAgent,
+                owner_id: "sa:agent-gamma".to_string(),
+                credential_key_name: "BLINK_API_KEY_SA_GAMMA".to_string(),
+                credential_url_name: Some("BLINK_API_URL_SA_GAMMA".to_string()),
                 btc_balance_sats: 120_000,
                 usd_balance_cents: 36_000,
                 active_wallet: StableSatsWalletMode::Btc,
@@ -3466,6 +3690,115 @@ impl StableSatsSimulationPaneState {
             .iter()
             .map(|agent| agent.usd_balance_cents)
             .sum()
+    }
+
+    pub fn has_settled_live_refresh(&self) -> bool {
+        self.treasury_operations.iter().any(|entry| {
+            entry.kind == StableSatsTreasuryOperationKind::Refresh
+                && entry.status == StableSatsTreasuryOperationStatus::Settled
+        })
+    }
+
+    pub fn set_mode(&mut self, mode: StableSatsSimulationMode) {
+        if self.mode == mode {
+            return;
+        }
+        self.mode = mode;
+        self.load_state = PaneLoadState::Ready;
+        self.auto_run_enabled = false;
+        self.auto_run_last_tick = None;
+        self.last_error = None;
+        self.rounds_run = 0;
+        self.price_usd_cents_per_btc = Self::BASE_PRICE_USD_CENTS_PER_BTC;
+        self.total_converted_sats = 0;
+        self.total_converted_usd_cents = 0;
+        self.last_settlement_ref = None;
+        self.price_history_usd_cents_per_btc.clear();
+        self.converted_sats_history.clear();
+        self.live_refresh_pending = false;
+        self.active_live_refresh_request_id = None;
+        self.transfer_ledger.clear();
+        self.treasury_operations.clear();
+        self.treasury_receipts.clear();
+        self.events.clear();
+        self.next_seq = 1;
+        self.next_transfer_seq = 1;
+        self.next_operation_seq = 1;
+        self.next_receipt_seq = 1;
+        self.next_live_refresh_request_id = 1;
+        match mode {
+            StableSatsSimulationMode::Demo => {
+                self.agents = Self::default_agents();
+                self.last_action = Some("StableSats mode switched to demo simulation".to_string());
+            }
+            StableSatsSimulationMode::RealBlink => {
+                self.agents = Self::default_real_wallets();
+                self.last_action =
+                    Some("StableSats mode switched to real Blink integration".to_string());
+            }
+        }
+    }
+
+    pub fn begin_live_refresh(&mut self) -> Result<u64, String> {
+        if self.mode != StableSatsSimulationMode::RealBlink {
+            return Err("Live refresh requires StableSats real mode".to_string());
+        }
+        if self.live_refresh_pending {
+            return Err("Live Blink refresh already in progress".to_string());
+        }
+        let request_id = self.reserve_worker_request_id();
+        self.live_refresh_pending = true;
+        self.active_live_refresh_request_id = Some(request_id);
+        self.load_state = PaneLoadState::Loading;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Refreshing live Blink balances (request #{request_id})"
+        ));
+        let now_epoch_seconds = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |duration| duration.as_secs());
+        self.record_treasury_operation_queued(
+            request_id,
+            StableSatsTreasuryOperationKind::Refresh,
+            now_epoch_seconds,
+            "live wallet refresh queued".to_string(),
+        );
+        self.record_treasury_operation_running(
+            request_id,
+            StableSatsTreasuryOperationKind::Refresh,
+            now_epoch_seconds,
+            "live wallet refresh running".to_string(),
+        );
+        Ok(request_id)
+    }
+
+    pub fn finish_live_refresh(&mut self, request_id: u64) -> bool {
+        if self.active_live_refresh_request_id != Some(request_id) {
+            return false;
+        }
+        self.live_refresh_pending = false;
+        self.active_live_refresh_request_id = None;
+        true
+    }
+
+    pub fn fail_live_refresh(&mut self, request_id: u64, error: String) -> bool {
+        if !self.finish_live_refresh(request_id) {
+            return false;
+        }
+        self.load_state = PaneLoadState::Error;
+        self.last_error = Some(error.clone());
+        self.last_action = Some(format!("Live Blink refresh failed: {error}"));
+        let now_epoch_seconds = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |duration| duration.as_secs());
+        self.record_treasury_operation_finished(
+            request_id,
+            StableSatsTreasuryOperationKind::Refresh,
+            StableSatsTreasuryOperationStatus::Failed,
+            now_epoch_seconds,
+            format!("live wallet refresh failed: {error}"),
+        );
+        true
     }
 
     pub fn run_round(&mut self, now_epoch_seconds: u64) -> Result<(), String> {
@@ -3495,6 +3828,13 @@ impl StableSatsSimulationPaneState {
         for index in 0..self.agents.len() {
             let index_u64 = index as u64;
             let event_ref = format!("sim:blink:swap:{round:04}:{index:02}");
+            let mut transfer_record: Option<(
+                String,
+                String,
+                StableSatsTransferAsset,
+                u64,
+                String,
+            )> = None;
             let event_summary = {
                 let agent = &mut self.agents[index];
                 match agent.active_wallet {
@@ -3522,6 +3862,21 @@ impl StableSatsSimulationPaneState {
                             converted_sats_round = converted_sats_round.saturating_add(switch_sats);
                             converted_usd_round = converted_usd_round.saturating_add(credited_usd);
                             agents_switched = agents_switched.saturating_add(1);
+                            let from_wallet = format!("{}:BTC", agent.agent_name);
+                            let to_wallet = format!("{}:USD", agent.agent_name);
+                            let summary = format!(
+                                "{} switched {} sats to {}",
+                                agent.agent_name,
+                                switch_sats,
+                                Self::format_usd_cents(credited_usd)
+                            );
+                            transfer_record = Some((
+                                from_wallet,
+                                to_wallet,
+                                StableSatsTransferAsset::BtcSats,
+                                switch_sats,
+                                summary.clone(),
+                            ));
                             Some(format!(
                                 "{} switched {} sats to {}",
                                 agent.agent_name,
@@ -3555,6 +3910,21 @@ impl StableSatsSimulationPaneState {
                                 converted_sats_round.saturating_add(credited_sats);
                             converted_usd_round = converted_usd_round.saturating_add(switch_usd);
                             agents_switched = agents_switched.saturating_add(1);
+                            let from_wallet = format!("{}:USD", agent.agent_name);
+                            let to_wallet = format!("{}:BTC", agent.agent_name);
+                            let summary = format!(
+                                "{} switched {} to {} sats",
+                                agent.agent_name,
+                                Self::format_usd_cents(switch_usd),
+                                credited_sats
+                            );
+                            transfer_record = Some((
+                                from_wallet,
+                                to_wallet,
+                                StableSatsTransferAsset::UsdCents,
+                                switch_usd,
+                                summary.clone(),
+                            ));
                             Some(format!(
                                 "{} switched {} to {} sats",
                                 agent.agent_name,
@@ -3565,6 +3935,19 @@ impl StableSatsSimulationPaneState {
                     }
                 }
             };
+            if let Some((from_wallet, to_wallet, asset, amount, summary)) = transfer_record {
+                self.push_transfer_ledger_entry(
+                    now_epoch_seconds,
+                    format!("sim:blink:transfer:{round:04}:{index:02}"),
+                    from_wallet,
+                    to_wallet,
+                    asset,
+                    amount,
+                    0,
+                    StableSatsTransferStatus::Settled,
+                    summary,
+                );
+            }
 
             if let Some(summary) = event_summary {
                 self.push_event("BLINK-SWAP", &event_ref, summary);
@@ -3615,22 +3998,276 @@ impl StableSatsSimulationPaneState {
         Ok(())
     }
 
+    pub fn apply_live_wallet_snapshots(
+        &mut self,
+        now_epoch_seconds: u64,
+        price_usd_cents_per_btc: u64,
+        wallet_snapshots: &[(String, u64, u64, String)],
+        wallet_failures: &[(String, String)],
+    ) {
+        if self.agents.is_empty() {
+            self.agents = Self::default_real_wallets();
+        }
+        let round = self.rounds_run.saturating_add(1);
+        let mut converted_sats_round = 0_u64;
+        let mut converted_usd_round = 0_u64;
+        let mut refreshed_wallets = 0_u32;
+        let mut failed_wallets = 0_u32;
+
+        self.mode = StableSatsSimulationMode::RealBlink;
+        self.live_refresh_pending = false;
+        self.active_live_refresh_request_id = None;
+        self.rounds_run = round;
+        self.price_usd_cents_per_btc = price_usd_cents_per_btc.max(1);
+        self.last_settlement_ref = Some(format!("blink:live:settlement:{round:04}"));
+
+        for (owner_id, btc_balance_sats, usd_balance_cents, source_ref) in wallet_snapshots {
+            let Some(wallet_index) = self
+                .agents
+                .iter()
+                .position(|wallet| wallet.owner_id == *owner_id)
+            else {
+                self.push_event(
+                    "BLINK-LEDGER",
+                    &format!("blink:live:unmapped:{round:04}:{owner_id}"),
+                    format!("received live snapshot for unmapped wallet owner_id={owner_id}"),
+                );
+                continue;
+            };
+
+            let wallet_name = self.agents[wallet_index].agent_name.clone();
+            let prev_btc = self.agents[wallet_index].btc_balance_sats;
+            let prev_usd = self.agents[wallet_index].usd_balance_cents;
+            let btc_delta = prev_btc.abs_diff(*btc_balance_sats);
+            let usd_delta = prev_usd.abs_diff(*usd_balance_cents);
+            let switched = btc_delta > 0 || usd_delta > 0;
+
+            {
+                let wallet = &mut self.agents[wallet_index];
+                wallet.btc_balance_sats = *btc_balance_sats;
+                wallet.usd_balance_cents = *usd_balance_cents;
+                wallet.active_wallet = if *usd_balance_cents > 0 && *btc_balance_sats == 0 {
+                    StableSatsWalletMode::Usd
+                } else if *btc_balance_sats > 0 && *usd_balance_cents == 0 {
+                    StableSatsWalletMode::Btc
+                } else {
+                    wallet.active_wallet
+                };
+                if switched {
+                    wallet.switch_count = wallet.switch_count.saturating_add(1);
+                    wallet.last_switch_summary = format!(
+                        "delta btc={} sats usd={}",
+                        btc_delta,
+                        Self::format_usd_cents(usd_delta)
+                    );
+                } else {
+                    wallet.last_switch_summary = "no balance change".to_string();
+                }
+            }
+
+            refreshed_wallets = refreshed_wallets.saturating_add(1);
+            converted_sats_round = converted_sats_round.saturating_add(btc_delta);
+            converted_usd_round = converted_usd_round.saturating_add(usd_delta);
+
+            let wallet_ref = format!("blink:live:wallet:{round:04}:{wallet_index:02}");
+            self.push_event(
+                "BLINK-LEDGER",
+                &wallet_ref,
+                format!(
+                    "{} balances btc={} sats usd={} ({})",
+                    wallet_name,
+                    btc_balance_sats,
+                    Self::format_usd_cents(*usd_balance_cents),
+                    source_ref
+                ),
+            );
+
+            if switched {
+                let (from_wallet, to_wallet, asset, amount) = if *btc_balance_sats < prev_btc {
+                    (
+                        format!("{wallet_name}:BTC"),
+                        format!("{wallet_name}:USD"),
+                        StableSatsTransferAsset::BtcSats,
+                        btc_delta,
+                    )
+                } else {
+                    (
+                        format!("{wallet_name}:USD"),
+                        format!("{wallet_name}:BTC"),
+                        StableSatsTransferAsset::UsdCents,
+                        usd_delta,
+                    )
+                };
+                self.push_transfer_ledger_entry(
+                    now_epoch_seconds,
+                    format!("blink:live:transfer:{round:04}:{wallet_index:02}"),
+                    from_wallet,
+                    to_wallet,
+                    asset,
+                    amount,
+                    0,
+                    StableSatsTransferStatus::Settled,
+                    format!(
+                        "{} live delta btc={} sats usd={}",
+                        wallet_name,
+                        btc_delta,
+                        Self::format_usd_cents(usd_delta)
+                    ),
+                );
+            }
+        }
+
+        for (owner_id, error) in wallet_failures {
+            failed_wallets = failed_wallets.saturating_add(1);
+            if let Some(wallet_index) = self
+                .agents
+                .iter()
+                .position(|wallet| wallet.owner_id == *owner_id)
+            {
+                let wallet_owner_id = self.agents[wallet_index].owner_id.clone();
+                let wallet_name = self.agents[wallet_index].agent_name.clone();
+                self.agents[wallet_index].last_switch_summary = format!("refresh failed: {error}");
+                self.push_event(
+                    "BLINK-LEDGER",
+                    &format!("blink:live:error:{round:04}:{wallet_owner_id}"),
+                    format!("{wallet_name} refresh failed: {error}"),
+                );
+            } else {
+                self.push_event(
+                    "BLINK-LEDGER",
+                    &format!("blink:live:error:{round:04}:{owner_id}"),
+                    format!("wallet refresh failed for unmapped owner_id={owner_id}: {error}"),
+                );
+            }
+        }
+
+        self.total_converted_sats = self
+            .total_converted_sats
+            .saturating_add(converted_sats_round);
+        self.total_converted_usd_cents = self
+            .total_converted_usd_cents
+            .saturating_add(converted_usd_round);
+
+        self.price_history_usd_cents_per_btc
+            .push(self.price_usd_cents_per_btc);
+        if self.price_history_usd_cents_per_btc.len() > 18 {
+            let overflow = self
+                .price_history_usd_cents_per_btc
+                .len()
+                .saturating_sub(18);
+            self.price_history_usd_cents_per_btc.drain(0..overflow);
+        }
+        self.converted_sats_history.push(converted_sats_round);
+        if self.converted_sats_history.len() > 18 {
+            let overflow = self.converted_sats_history.len().saturating_sub(18);
+            self.converted_sats_history.drain(0..overflow);
+        }
+
+        let price_ref = format!("blink:live:price:{round:04}:{now_epoch_seconds}");
+        let source_summary = wallet_snapshots
+            .iter()
+            .map(|(owner_id, _btc, _usd, _source_ref)| owner_id.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        self.push_event(
+            "BLINK-PRICE",
+            &price_ref,
+            format!(
+                "live BTC/USD {} for [{}]",
+                Self::format_usd_cents(self.price_usd_cents_per_btc),
+                source_summary
+            ),
+        );
+        let ledger_ref = self
+            .last_settlement_ref
+            .clone()
+            .unwrap_or_else(|| "blink:live:settlement".to_string());
+        self.push_event(
+            "BLINK-LEDGER",
+            &ledger_ref,
+            format!(
+                "live refresh settled wallets={} failed={} aggregate_btc={} sats aggregate_usd={}",
+                refreshed_wallets,
+                failed_wallets,
+                self.total_btc_balance_sats(),
+                Self::format_usd_cents(self.total_usd_balance_cents()),
+            ),
+        );
+
+        self.load_state = if refreshed_wallets == 0 {
+            PaneLoadState::Error
+        } else {
+            PaneLoadState::Ready
+        };
+        self.last_error = if failed_wallets == 0 {
+            None
+        } else {
+            Some(format!(
+                "Live refresh completed with {} wallet error(s)",
+                failed_wallets
+            ))
+        };
+        self.last_action = Some(format!(
+            "Round {round}: live refresh updated {} wallet(s) with {} failure(s)",
+            refreshed_wallets, failed_wallets
+        ));
+    }
+
+    pub fn apply_live_snapshot(
+        &mut self,
+        now_epoch_seconds: u64,
+        btc_balance_sats: u64,
+        usd_balance_cents: u64,
+        price_usd_cents_per_btc: u64,
+        source_ref: &str,
+    ) {
+        let operator_owner_id = self
+            .agents
+            .iter()
+            .find(|wallet| wallet.owner_kind == StableSatsWalletOwnerKind::Operator)
+            .map(|wallet| wallet.owner_id.clone())
+            .unwrap_or_else(|| "operator:autopilot".to_string());
+        self.apply_live_wallet_snapshots(
+            now_epoch_seconds,
+            price_usd_cents_per_btc,
+            &[(
+                operator_owner_id,
+                btc_balance_sats,
+                usd_balance_cents,
+                source_ref.to_string(),
+            )],
+            &[],
+        );
+    }
+
     pub fn reset(&mut self) {
         self.load_state = PaneLoadState::Ready;
         self.last_error = None;
-        self.last_action = Some("StableSats simulation reset".to_string());
+        self.last_action = Some(format!("StableSats {} mode reset", self.mode.label()));
         self.rounds_run = 0;
         self.price_usd_cents_per_btc = Self::BASE_PRICE_USD_CENTS_PER_BTC;
         self.total_converted_sats = 0;
         self.total_converted_usd_cents = 0;
         self.last_settlement_ref = None;
-        self.agents = Self::default_agents();
+        self.agents = match self.mode {
+            StableSatsSimulationMode::Demo => Self::default_agents(),
+            StableSatsSimulationMode::RealBlink => Self::default_real_wallets(),
+        };
         self.price_history_usd_cents_per_btc.clear();
         self.converted_sats_history.clear();
         self.auto_run_enabled = false;
+        self.live_refresh_pending = false;
+        self.active_live_refresh_request_id = None;
+        self.transfer_ledger.clear();
+        self.treasury_operations.clear();
+        self.treasury_receipts.clear();
         self.events.clear();
         self.next_seq = 1;
+        self.next_transfer_seq = 1;
+        self.next_operation_seq = 1;
+        self.next_receipt_seq = 1;
         self.auto_run_last_tick = None;
+        self.next_live_refresh_request_id = 1;
     }
 
     pub fn start_auto_run(&mut self, now: Instant) {
@@ -3647,6 +4284,9 @@ impl StableSatsSimulationPaneState {
     }
 
     pub fn should_run_auto_round(&self, now: Instant) -> bool {
+        if self.mode == StableSatsSimulationMode::RealBlink {
+            return false;
+        }
         if !self.auto_run_enabled {
             return false;
         }
@@ -3687,6 +4327,222 @@ impl StableSatsSimulationPaneState {
         if self.events.len() > 24 {
             let overflow = self.events.len().saturating_sub(24);
             self.events.drain(0..overflow);
+        }
+    }
+
+    fn default_real_wallets() -> Vec<StableSatsAgentWalletState> {
+        vec![StableSatsAgentWalletState {
+            agent_name: "autopilot-user".to_string(),
+            owner_kind: StableSatsWalletOwnerKind::Operator,
+            owner_id: "operator:autopilot".to_string(),
+            credential_key_name: "BLINK_API_KEY".to_string(),
+            credential_url_name: Some("BLINK_API_URL".to_string()),
+            btc_balance_sats: 0,
+            usd_balance_cents: 0,
+            active_wallet: StableSatsWalletMode::Btc,
+            switch_count: 0,
+            last_switch_summary: "awaiting live refresh".to_string(),
+        }]
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn push_transfer_ledger_entry(
+        &mut self,
+        now_epoch_seconds: u64,
+        transfer_ref: String,
+        from_wallet: String,
+        to_wallet: String,
+        asset: StableSatsTransferAsset,
+        amount: u64,
+        effective_fee: u64,
+        status: StableSatsTransferStatus,
+        summary: String,
+    ) {
+        self.transfer_ledger.push(StableSatsTransferLedgerEntry {
+            seq: self.next_transfer_seq,
+            transfer_ref: transfer_ref.clone(),
+            from_wallet,
+            to_wallet,
+            asset,
+            amount,
+            effective_fee,
+            status,
+            summary: summary.clone(),
+            occurred_at_epoch_seconds: now_epoch_seconds,
+        });
+        self.next_transfer_seq = self.next_transfer_seq.saturating_add(1);
+        if self.transfer_ledger.len() > 48 {
+            let overflow = self.transfer_ledger.len().saturating_sub(48);
+            self.transfer_ledger.drain(0..overflow);
+        }
+        self.push_event("BLINK-XFER", transfer_ref.as_str(), summary);
+    }
+
+    pub fn apply_wallet_balance(
+        &mut self,
+        owner_id: &str,
+        btc_balance_sats: u64,
+        usd_balance_cents: u64,
+        summary: String,
+    ) {
+        if let Some(wallet_index) = self
+            .agents
+            .iter()
+            .position(|wallet| wallet.owner_id == owner_id)
+        {
+            let wallet = &mut self.agents[wallet_index];
+            wallet.btc_balance_sats = btc_balance_sats;
+            wallet.usd_balance_cents = usd_balance_cents;
+            wallet.last_switch_summary = summary;
+        }
+    }
+
+    pub fn record_external_transfer(
+        &mut self,
+        now_epoch_seconds: u64,
+        transfer_ref: String,
+        from_wallet: String,
+        to_wallet: String,
+        asset: StableSatsTransferAsset,
+        amount: u64,
+        effective_fee: u64,
+        status: StableSatsTransferStatus,
+        summary: String,
+    ) {
+        self.push_transfer_ledger_entry(
+            now_epoch_seconds,
+            transfer_ref,
+            from_wallet,
+            to_wallet,
+            asset,
+            amount,
+            effective_fee,
+            status,
+            summary,
+        );
+    }
+
+    pub fn record_runtime_event(&mut self, protocol: &str, event_ref: String, summary: String) {
+        self.push_event(protocol, event_ref.as_str(), summary);
+    }
+
+    pub fn reserve_worker_request_id(&mut self) -> u64 {
+        let request_id = self.next_live_refresh_request_id;
+        self.next_live_refresh_request_id = self.next_live_refresh_request_id.saturating_add(1);
+        request_id
+    }
+
+    pub fn record_treasury_operation_queued(
+        &mut self,
+        request_id: u64,
+        kind: StableSatsTreasuryOperationKind,
+        now_epoch_seconds: u64,
+        detail: String,
+    ) {
+        self.treasury_operations
+            .push(StableSatsTreasuryOperationEntry {
+                seq: self.next_operation_seq,
+                request_id,
+                kind,
+                status: StableSatsTreasuryOperationStatus::Queued,
+                detail,
+                created_at_epoch_seconds: now_epoch_seconds,
+                updated_at_epoch_seconds: now_epoch_seconds,
+            });
+        self.next_operation_seq = self.next_operation_seq.saturating_add(1);
+        self.trim_treasury_operations();
+    }
+
+    pub fn record_treasury_operation_running(
+        &mut self,
+        request_id: u64,
+        kind: StableSatsTreasuryOperationKind,
+        now_epoch_seconds: u64,
+        detail: String,
+    ) {
+        if let Some(entry) = self
+            .treasury_operations
+            .iter_mut()
+            .rev()
+            .find(|entry| entry.request_id == request_id && entry.kind == kind)
+        {
+            entry.status = StableSatsTreasuryOperationStatus::Running;
+            entry.detail = detail;
+            entry.updated_at_epoch_seconds = now_epoch_seconds;
+        } else {
+            self.treasury_operations
+                .push(StableSatsTreasuryOperationEntry {
+                    seq: self.next_operation_seq,
+                    request_id,
+                    kind,
+                    status: StableSatsTreasuryOperationStatus::Running,
+                    detail,
+                    created_at_epoch_seconds: now_epoch_seconds,
+                    updated_at_epoch_seconds: now_epoch_seconds,
+                });
+            self.next_operation_seq = self.next_operation_seq.saturating_add(1);
+            self.trim_treasury_operations();
+        }
+    }
+
+    pub fn record_treasury_operation_finished(
+        &mut self,
+        request_id: u64,
+        kind: StableSatsTreasuryOperationKind,
+        status: StableSatsTreasuryOperationStatus,
+        now_epoch_seconds: u64,
+        detail: String,
+    ) {
+        if let Some(entry) = self
+            .treasury_operations
+            .iter_mut()
+            .rev()
+            .find(|entry| entry.request_id == request_id && entry.kind == kind)
+        {
+            entry.status = status;
+            entry.detail = detail;
+            entry.updated_at_epoch_seconds = now_epoch_seconds;
+        } else {
+            self.treasury_operations
+                .push(StableSatsTreasuryOperationEntry {
+                    seq: self.next_operation_seq,
+                    request_id,
+                    kind,
+                    status,
+                    detail,
+                    created_at_epoch_seconds: now_epoch_seconds,
+                    updated_at_epoch_seconds: now_epoch_seconds,
+                });
+            self.next_operation_seq = self.next_operation_seq.saturating_add(1);
+            self.trim_treasury_operations();
+        }
+    }
+
+    fn trim_treasury_operations(&mut self) {
+        if self.treasury_operations.len() > 96 {
+            let overflow = self.treasury_operations.len().saturating_sub(96);
+            self.treasury_operations.drain(0..overflow);
+        }
+    }
+
+    pub fn record_treasury_receipt(
+        &mut self,
+        request_id: u64,
+        kind: StableSatsTreasuryOperationKind,
+        now_epoch_seconds: u64,
+        payload: serde_json::Value,
+    ) {
+        self.treasury_receipts.push(StableSatsTreasuryReceipt {
+            seq: self.next_receipt_seq,
+            request_id,
+            kind,
+            payload,
+            occurred_at_epoch_seconds: now_epoch_seconds,
+        });
+        self.next_receipt_seq = self.next_receipt_seq.saturating_add(1);
+        if self.treasury_receipts.len() > 128 {
+            let overflow = self.treasury_receipts.len().saturating_sub(128);
+            self.treasury_receipts.drain(0..overflow);
         }
     }
 }

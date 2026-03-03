@@ -506,12 +506,50 @@ impl StarterJobsState {
         self.jobs.iter().find(|job| job.job_id == selected)
     }
 
-    pub fn complete_selected(&mut self) -> Result<(String, u64, String), String> {
+    pub fn start_selected_execution(&mut self) -> Result<(String, u64), String> {
         let selected = self
             .selected_job_id
             .as_deref()
             .ok_or_else(|| "Select a starter job first".to_string())?
             .to_string();
+        let (job_id, payout_sats) = {
+            let Some(job) = self.jobs.iter_mut().find(|job| job.job_id == selected) else {
+                return Err(self.pane_set_error("Selected starter job no longer exists"));
+            };
+            if !job.eligible {
+                return Err(self.pane_set_error("Starter job is not eligible yet"));
+            }
+            if job.status == StarterJobStatus::Completed {
+                return Err(self.pane_set_error("Starter job already completed"));
+            }
+
+            job.status = StarterJobStatus::Running;
+            job.payout_pointer = None;
+            (job.job_id.clone(), job.payout_sats)
+        };
+        self.pane_set_ready(format!("Starter quest execution started for {}", job_id));
+        Ok((job_id, payout_sats))
+    }
+
+    pub fn complete_selected_with_payment(
+        &mut self,
+        payment_pointer: &str,
+    ) -> Result<(String, u64, String), String> {
+        let selected = self
+            .selected_job_id
+            .as_deref()
+            .ok_or_else(|| "Select a starter job first".to_string())?
+            .to_string();
+        let payment_pointer = payment_pointer.trim();
+        if payment_pointer.is_empty() {
+            return Err(self.pane_set_error("Wallet payment pointer is required"));
+        }
+        if payment_pointer.starts_with("pay:") || payment_pointer.starts_with("pay-req-") {
+            return Err(self.pane_set_error(
+                "Synthetic payment pointer is not allowed for starter payout settlement",
+            ));
+        }
+
         let (job_id, payout_sats, payout_pointer) = {
             let Some(job) = self.jobs.iter_mut().find(|job| job.job_id == selected) else {
                 return Err(self.pane_set_error("Selected starter job no longer exists"));
@@ -519,17 +557,22 @@ impl StarterJobsState {
             if !job.eligible {
                 return Err(self.pane_set_error("Starter job is not eligible yet"));
             }
+            if job.status != StarterJobStatus::Running {
+                return Err(
+                    self.pane_set_error("Starter job must be running before payout settlement")
+                );
+            }
 
-            job.status = StarterJobStatus::Queued;
-            job.status = StarterJobStatus::Running;
-            let payout_pointer = format!("pay:{}", job.job_id);
             job.status = StarterJobStatus::Completed;
-            job.payout_pointer = Some(payout_pointer.clone());
-            (job.job_id.clone(), job.payout_sats, payout_pointer)
+            job.payout_pointer = Some(payment_pointer.to_string());
+            (
+                job.job_id.clone(),
+                job.payout_sats,
+                payment_pointer.to_string(),
+            )
         };
-
         self.pane_set_ready(format!(
-            "Completed starter job {} ({} sats)",
+            "Completed starter quest {} with wallet-confirmed payout ({} sats)",
             job_id, payout_sats
         ));
         Ok((job_id, payout_sats, payout_pointer))

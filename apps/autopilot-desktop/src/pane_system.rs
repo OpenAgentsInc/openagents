@@ -259,6 +259,10 @@ pub enum AgentProfileStatePaneAction {
     PublishProfile,
     PublishState,
     UpdateGoals,
+    CreateGoal,
+    StartGoal,
+    AbortGoal,
+    InspectGoalReceipt,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -266,6 +270,7 @@ pub enum AgentScheduleTickPaneAction {
     ApplySchedule,
     PublishManualTick,
     InspectLastResult,
+    ToggleOsSchedulerAdapter,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -328,6 +333,8 @@ pub enum RelaySecuritySimulationPaneAction {
 pub enum StableSatsSimulationPaneAction {
     RunRound,
     Reset,
+    SetModeDemo,
+    SetModeReal,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2017,6 +2024,46 @@ pub fn agent_profile_update_goals_button_bounds(content_bounds: Bounds) -> Bound
     )
 }
 
+pub fn agent_profile_create_goal_button_bounds(content_bounds: Bounds) -> Bounds {
+    let publish = agent_profile_publish_profile_button_bounds(content_bounds);
+    Bounds::new(
+        publish.origin.x,
+        publish.max_y() + JOB_INBOX_BUTTON_GAP,
+        publish.size.width,
+        publish.size.height,
+    )
+}
+
+pub fn agent_profile_start_goal_button_bounds(content_bounds: Bounds) -> Bounds {
+    let create = agent_profile_create_goal_button_bounds(content_bounds);
+    Bounds::new(
+        create.max_x() + JOB_INBOX_BUTTON_GAP,
+        create.origin.y,
+        create.size.width,
+        create.size.height,
+    )
+}
+
+pub fn agent_profile_abort_goal_button_bounds(content_bounds: Bounds) -> Bounds {
+    let start = agent_profile_start_goal_button_bounds(content_bounds);
+    Bounds::new(
+        start.max_x() + JOB_INBOX_BUTTON_GAP,
+        start.origin.y,
+        start.size.width,
+        start.size.height,
+    )
+}
+
+pub fn agent_profile_receipt_button_bounds(content_bounds: Bounds) -> Bounds {
+    let abort = agent_profile_abort_goal_button_bounds(content_bounds);
+    Bounds::new(
+        abort.max_x() + JOB_INBOX_BUTTON_GAP,
+        abort.origin.y,
+        abort.size.width,
+        abort.size.height,
+    )
+}
+
 pub fn agent_schedule_apply_button_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         content_bounds.origin.x + CHAT_PAD,
@@ -2043,6 +2090,16 @@ pub fn agent_schedule_inspect_button_bounds(content_bounds: Bounds) -> Bounds {
         tick.origin.y,
         tick.size.width,
         tick.size.height,
+    )
+}
+
+pub fn agent_schedule_toggle_os_scheduler_button_bounds(content_bounds: Bounds) -> Bounds {
+    let inspect = agent_schedule_inspect_button_bounds(content_bounds);
+    Bounds::new(
+        inspect.max_x() + JOB_INBOX_BUTTON_GAP,
+        inspect.origin.y,
+        inspect.size.width,
+        inspect.size.height,
     )
 }
 
@@ -2300,6 +2357,26 @@ pub fn stable_sats_simulation_reset_button_bounds(content_bounds: Bounds) -> Bou
         run.origin.y,
         (content_bounds.size.width * 0.22).clamp(140.0, 220.0),
         run.size.height,
+    )
+}
+
+pub fn stable_sats_simulation_mode_demo_button_bounds(content_bounds: Bounds) -> Bounds {
+    let reset = stable_sats_simulation_reset_button_bounds(content_bounds);
+    Bounds::new(
+        reset.max_x() + JOB_INBOX_BUTTON_GAP,
+        reset.origin.y,
+        (content_bounds.size.width * 0.14).clamp(88.0, 132.0),
+        reset.size.height,
+    )
+}
+
+pub fn stable_sats_simulation_mode_real_button_bounds(content_bounds: Bounds) -> Bounds {
+    let demo = stable_sats_simulation_mode_demo_button_bounds(content_bounds);
+    Bounds::new(
+        demo.max_x() + JOB_INBOX_BUTTON_GAP,
+        demo.origin.y,
+        (content_bounds.size.width * 0.14).clamp(88.0, 132.0),
+        demo.size.height,
     )
 }
 
@@ -3247,6 +3324,26 @@ fn pane_hit_action_for_pane(
                     AgentProfileStatePaneAction::UpdateGoals,
                 ));
             }
+            if agent_profile_create_goal_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AgentProfileState(
+                    AgentProfileStatePaneAction::CreateGoal,
+                ));
+            }
+            if agent_profile_start_goal_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AgentProfileState(
+                    AgentProfileStatePaneAction::StartGoal,
+                ));
+            }
+            if agent_profile_abort_goal_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AgentProfileState(
+                    AgentProfileStatePaneAction::AbortGoal,
+                ));
+            }
+            if agent_profile_receipt_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AgentProfileState(
+                    AgentProfileStatePaneAction::InspectGoalReceipt,
+                ));
+            }
             None
         }
         PaneKind::AgentScheduleTick => {
@@ -3263,6 +3360,11 @@ fn pane_hit_action_for_pane(
             if agent_schedule_inspect_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::AgentScheduleTick(
                     AgentScheduleTickPaneAction::InspectLastResult,
+                ));
+            }
+            if agent_schedule_toggle_os_scheduler_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AgentScheduleTick(
+                    AgentScheduleTickPaneAction::ToggleOsSchedulerAdapter,
                 ));
             }
             None
@@ -3426,6 +3528,16 @@ fn pane_hit_action_for_pane(
                     StableSatsSimulationPaneAction::Reset,
                 ));
             }
+            if stable_sats_simulation_mode_demo_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::StableSatsSimulation(
+                    StableSatsSimulationPaneAction::SetModeDemo,
+                ));
+            }
+            if stable_sats_simulation_mode_real_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::StableSatsSimulation(
+                    StableSatsSimulationPaneAction::SetModeReal,
+                ));
+            }
             None
         }
         PaneKind::CadDemo => {
@@ -3537,21 +3649,45 @@ fn pane_hit_action_for_pane(
                     CadDemoPaneAction::CycleWarningCodeFilter,
                 ));
             }
-            for index in 0..4 {
+            let dimension_rows = state.cad_demo.dimensions.len().min(4);
+            for index in 0..dimension_rows {
                 if cad_demo_dimension_row_bounds(content_bounds, index).contains(point) {
                     return Some(PaneHitAction::CadDemo(
                         CadDemoPaneAction::StartDimensionEdit(index),
                     ));
                 }
             }
-            for index in 0..10 {
+            let visible_timeline_rows = state
+                .cad_demo
+                .timeline_rows
+                .len()
+                .saturating_sub(state.cad_demo.timeline_scroll_offset)
+                .min(10);
+            for index in 0..visible_timeline_rows {
                 if cad_demo_timeline_row_bounds(content_bounds, index).contains(point) {
                     return Some(PaneHitAction::CadDemo(
                         CadDemoPaneAction::SelectTimelineRow(index),
                     ));
                 }
             }
-            for index in 0..8 {
+            let warning_filter_severity = state.cad_demo.warning_filter_severity.as_str();
+            let warning_filter_code = state.cad_demo.warning_filter_code.as_str();
+            let visible_warnings = state
+                .cad_demo
+                .warnings
+                .iter()
+                .filter(|warning| {
+                    let severity_ok = warning_filter_severity == "all"
+                        || warning
+                            .severity
+                            .eq_ignore_ascii_case(warning_filter_severity);
+                    let code_ok = warning_filter_code == "all"
+                        || warning.code.eq_ignore_ascii_case(warning_filter_code);
+                    severity_ok && code_ok
+                })
+                .count()
+                .min(8);
+            for index in 0..visible_warnings {
                 if cad_demo_warning_row_bounds(content_bounds, index).contains(point) {
                     return Some(PaneHitAction::CadDemo(CadDemoPaneAction::SelectWarning(
                         index,
@@ -3833,12 +3969,15 @@ mod tests {
     use super::{
         PaneDescriptor, active_job_abort_button_bounds, active_job_advance_button_bounds,
         activity_feed_filter_button_bounds, activity_feed_refresh_button_bounds,
-        activity_feed_row_bounds, agent_profile_publish_profile_button_bounds,
-        agent_profile_publish_state_button_bounds, agent_profile_update_goals_button_bounds,
+        activity_feed_row_bounds, agent_profile_abort_goal_button_bounds,
+        agent_profile_create_goal_button_bounds, agent_profile_publish_profile_button_bounds,
+        agent_profile_publish_state_button_bounds, agent_profile_receipt_button_bounds,
+        agent_profile_start_goal_button_bounds, agent_profile_update_goals_button_bounds,
         agent_schedule_apply_button_bounds, agent_schedule_inspect_button_bounds,
-        agent_schedule_manual_tick_button_bounds, alerts_recovery_ack_button_bounds,
-        alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
-        alerts_recovery_row_bounds, cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
+        agent_schedule_manual_tick_button_bounds, agent_schedule_toggle_os_scheduler_button_bounds,
+        alerts_recovery_ack_button_bounds, alerts_recovery_recover_button_bounds,
+        alerts_recovery_resolve_button_bounds, alerts_recovery_row_bounds,
+        cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
         cad_demo_cycle_variant_button_bounds, cad_demo_dimension_panel_bounds,
         cad_demo_dimension_row_bounds, cad_demo_drawing_add_detail_button_bounds,
         cad_demo_drawing_clear_details_button_bounds, cad_demo_drawing_dimensions_button_bounds,
@@ -4182,14 +4321,24 @@ mod tests {
         let profile = agent_profile_publish_profile_button_bounds(content);
         let state = agent_profile_publish_state_button_bounds(content);
         let goals = agent_profile_update_goals_button_bounds(content);
+        let create_goal = agent_profile_create_goal_button_bounds(content);
+        let start_goal = agent_profile_start_goal_button_bounds(content);
+        let abort_goal = agent_profile_abort_goal_button_bounds(content);
+        let inspect_receipt = agent_profile_receipt_button_bounds(content);
         assert!(profile.max_x() < state.min_x());
         assert!(state.max_x() < goals.min_x());
+        assert!(profile.max_y() < create_goal.min_y());
+        assert!(create_goal.max_x() < start_goal.min_x());
+        assert!(start_goal.max_x() < abort_goal.min_x());
+        assert!(abort_goal.max_x() < inspect_receipt.min_x());
 
         let apply = agent_schedule_apply_button_bounds(content);
         let tick = agent_schedule_manual_tick_button_bounds(content);
         let inspect = agent_schedule_inspect_button_bounds(content);
+        let toggle_os = agent_schedule_toggle_os_scheduler_button_bounds(content);
         assert!(apply.max_x() < tick.min_x());
         assert!(tick.max_x() < inspect.min_x());
+        assert!(inspect.max_x() < toggle_os.min_x());
     }
 
     #[test]

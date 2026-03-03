@@ -11,6 +11,7 @@ This directory is the project-owned Agent Skills registry.
 | [autopilot-pane-control](./autopilot-pane-control/SKILL.md) | OpenAgents desktop pane and CAD control for Codex via `openagents.*` tool calls. |
 | [charms](./charms/SKILL.md) | Charms workflows for Bitcoin app contracts, spell proving, and UTXO asset operations. |
 | [l402](./l402/SKILL.md) | L402 agent commerce workflows with lnd, lnget, scoped macaroons, aperture, and MCP. |
+| [maestro](./maestro/SKILL.md) | Maestro Symphony blockchain query operations for OpenAgents agents, including tip freshness checks and address/UTXO/runes queries against deployed Symphony endpoints. |
 | [mezo](./mezo/SKILL.md) | Mezo integration workflows for apps, autonomous agents, and Mezo Earn operations. |
 | [moneydevkit](./moneydevkit/SKILL.md) | Money Dev Kit workflows for Lightning checkout and agent wallets. |
 | [neutronpay](./neutronpay/SKILL.md) | Neutronpay MCP and SDK workflows for Lightning, stablecoin, and fiat payments. |

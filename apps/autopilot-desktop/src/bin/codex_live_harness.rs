@@ -12,6 +12,7 @@ mod openagents_dynamic_tools;
 
 use std::future::Future;
 use std::path::PathBuf;
+use std::process::Command as ProcessCommand;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -61,6 +62,80 @@ const LEGACY_NOTIFICATION_OPT_OUT_METHODS: &[&str] = &[
 ];
 const LEGACY_OPENAGENTS_TOOL_CAD_INTENT: &str = "openagents.cad.intent";
 const LEGACY_OPENAGENTS_TOOL_CAD_ACTION: &str = "openagents.cad.action";
+const BLINK_KEYCHAIN_SERVICE: &str = "com.openagents.autopilot.credentials";
+const BLINK_KEYCHAIN_ACCOUNT_API_KEY: &str = "BLINK_API_KEY";
+const BLINK_KEYCHAIN_ACCOUNT_API_URL: &str = "BLINK_API_URL";
+
+#[derive(Clone, Debug)]
+struct BlinkSwapProbeArgs {
+    direction: String,
+    amount: u64,
+    unit: Option<String>,
+    execute_live: bool,
+    require_execute_success: bool,
+    memo: Option<String>,
+}
+
+impl Default for BlinkSwapProbeArgs {
+    fn default() -> Self {
+        Self {
+            direction: "btc-to-usd".to_string(),
+            amount: 1,
+            unit: None,
+            execute_live: false,
+            require_execute_success: false,
+            memo: Some("openagents-codex-live-harness".to_string()),
+        }
+    }
+}
+
+impl BlinkSwapProbeArgs {
+    fn normalized_direction(&self) -> Result<&'static str> {
+        normalize_blink_direction(self.direction.as_str()).ok_or_else(|| {
+            anyhow!(
+                "invalid --blink-swap-direction '{}'; expected btc-to-usd or usd-to-btc",
+                self.direction
+            )
+        })
+    }
+
+    fn resolved_unit(&self) -> Result<&'static str> {
+        match self.unit.as_deref() {
+            Some(raw) => normalize_blink_unit(raw).ok_or_else(|| {
+                anyhow!(
+                    "invalid --blink-swap-unit '{}'; expected sats or cents",
+                    raw
+                )
+            }),
+            None => match self.normalized_direction()? {
+                "btc-to-usd" => Ok("sats"),
+                "usd-to-btc" => Ok("cents"),
+                _ => unreachable!(),
+            },
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct BlinkStableSatsSaProbeArgs {
+    rounds: u32,
+    convert_btc_sats: u64,
+    convert_usd_cents: u64,
+    require_success: bool,
+    memo_prefix: Option<String>,
+}
+
+impl Default for BlinkStableSatsSaProbeArgs {
+    fn default() -> Self {
+        Self {
+            rounds: 1,
+            convert_btc_sats: 6_000,
+            convert_usd_cents: 50,
+            require_success: true,
+            memo_prefix: Some("openagents-stablesats-sa-live-harness".to_string()),
+        }
+    }
+}
 
 #[derive(Debug)]
 struct HarnessArgs {
@@ -78,6 +153,8 @@ struct HarnessArgs {
     include_openagents_dynamic_tools: bool,
     require_cad_tool_call: bool,
     fail_on_echo: bool,
+    blink_swap_probe: Option<BlinkSwapProbeArgs>,
+    blink_stablesats_sa_probe: Option<BlinkStableSatsSaProbeArgs>,
 }
 
 impl Default for HarnessArgs {
@@ -97,6 +174,8 @@ impl Default for HarnessArgs {
             include_openagents_dynamic_tools: true,
             require_cad_tool_call: false,
             fail_on_echo: true,
+            blink_swap_probe: None,
+            blink_stablesats_sa_probe: None,
         }
     }
 }
@@ -189,6 +268,127 @@ impl HarnessArgs {
                 }
                 "--require-cad-tool-call" => args.require_cad_tool_call = true,
                 "--allow-echo-replies" => args.fail_on_echo = false,
+                "--blink-swap-live" => {
+                    let _ = args
+                        .blink_swap_probe
+                        .get_or_insert_with(BlinkSwapProbeArgs::default);
+                }
+                "--blink-swap-direction" => {
+                    let value = input
+                        .next()
+                        .ok_or_else(|| anyhow!("missing value for --blink-swap-direction"))?;
+                    let probe = args
+                        .blink_swap_probe
+                        .get_or_insert_with(BlinkSwapProbeArgs::default);
+                    probe.direction = value;
+                }
+                "--blink-swap-amount" => {
+                    let value = input
+                        .next()
+                        .ok_or_else(|| anyhow!("missing value for --blink-swap-amount"))?;
+                    let parsed = value.parse::<u64>().map_err(|error| {
+                        anyhow!("invalid --blink-swap-amount '{}': {error}", value)
+                    })?;
+                    if parsed == 0 {
+                        bail!("--blink-swap-amount must be greater than 0");
+                    }
+                    let probe = args
+                        .blink_swap_probe
+                        .get_or_insert_with(BlinkSwapProbeArgs::default);
+                    probe.amount = parsed;
+                }
+                "--blink-swap-unit" => {
+                    let value = input
+                        .next()
+                        .ok_or_else(|| anyhow!("missing value for --blink-swap-unit"))?;
+                    let probe = args
+                        .blink_swap_probe
+                        .get_or_insert_with(BlinkSwapProbeArgs::default);
+                    probe.unit = Some(value);
+                }
+                "--blink-swap-execute-live" => {
+                    let probe = args
+                        .blink_swap_probe
+                        .get_or_insert_with(BlinkSwapProbeArgs::default);
+                    probe.execute_live = true;
+                }
+                "--blink-swap-require-success" => {
+                    let probe = args
+                        .blink_swap_probe
+                        .get_or_insert_with(BlinkSwapProbeArgs::default);
+                    probe.require_execute_success = true;
+                }
+                "--blink-swap-memo" => {
+                    let value = input
+                        .next()
+                        .ok_or_else(|| anyhow!("missing value for --blink-swap-memo"))?;
+                    let probe = args
+                        .blink_swap_probe
+                        .get_or_insert_with(BlinkSwapProbeArgs::default);
+                    probe.memo = Some(value);
+                }
+                "--blink-stablesats-sa-live" => {
+                    let _ = args
+                        .blink_stablesats_sa_probe
+                        .get_or_insert_with(BlinkStableSatsSaProbeArgs::default);
+                }
+                "--blink-stablesats-sa-rounds" => {
+                    let value = input
+                        .next()
+                        .ok_or_else(|| anyhow!("missing value for --blink-stablesats-sa-rounds"))?;
+                    let parsed = value.parse::<u32>().map_err(|error| {
+                        anyhow!("invalid --blink-stablesats-sa-rounds '{}': {error}", value)
+                    })?;
+                    let probe = args
+                        .blink_stablesats_sa_probe
+                        .get_or_insert_with(BlinkStableSatsSaProbeArgs::default);
+                    probe.rounds = parsed;
+                }
+                "--blink-stablesats-sa-convert-btc-sats" => {
+                    let value = input.next().ok_or_else(|| {
+                        anyhow!("missing value for --blink-stablesats-sa-convert-btc-sats")
+                    })?;
+                    let parsed = value.parse::<u64>().map_err(|error| {
+                        anyhow!(
+                            "invalid --blink-stablesats-sa-convert-btc-sats '{}': {error}",
+                            value
+                        )
+                    })?;
+                    let probe = args
+                        .blink_stablesats_sa_probe
+                        .get_or_insert_with(BlinkStableSatsSaProbeArgs::default);
+                    probe.convert_btc_sats = parsed;
+                }
+                "--blink-stablesats-sa-convert-usd-cents" => {
+                    let value = input.next().ok_or_else(|| {
+                        anyhow!("missing value for --blink-stablesats-sa-convert-usd-cents")
+                    })?;
+                    let parsed = value.parse::<u64>().map_err(|error| {
+                        anyhow!(
+                            "invalid --blink-stablesats-sa-convert-usd-cents '{}': {error}",
+                            value
+                        )
+                    })?;
+                    let probe = args
+                        .blink_stablesats_sa_probe
+                        .get_or_insert_with(BlinkStableSatsSaProbeArgs::default);
+                    probe.convert_usd_cents = parsed;
+                }
+                "--blink-stablesats-sa-require-success" => {
+                    let probe = args
+                        .blink_stablesats_sa_probe
+                        .get_or_insert_with(BlinkStableSatsSaProbeArgs::default);
+                    probe.require_success = true;
+                }
+                "--blink-stablesats-sa-memo-prefix" => {
+                    let value = input.next().ok_or_else(|| {
+                        anyhow!("missing value for --blink-stablesats-sa-memo-prefix")
+                    })?;
+                    let probe = args
+                        .blink_stablesats_sa_probe
+                        .get_or_insert_with(BlinkStableSatsSaProbeArgs::default);
+                    probe.memo_prefix = Some(value);
+                }
                 "--help" | "-h" => {
                     print_usage();
                     std::process::exit(0);
@@ -203,6 +403,24 @@ impl HarnessArgs {
             bail!(
                 "--require-cad-tool-call requires OpenAgents dynamic tools (omit --disable-openagents-dynamic-tools)"
             );
+        }
+        if let Some(probe) = args.blink_swap_probe.as_ref() {
+            let _ = probe.normalized_direction()?;
+            let _ = probe.resolved_unit()?;
+            if probe.require_execute_success && !probe.execute_live {
+                bail!("--blink-swap-require-success requires --blink-swap-execute-live");
+            }
+        }
+        if let Some(probe) = args.blink_stablesats_sa_probe.as_ref() {
+            if probe.rounds == 0 {
+                bail!("--blink-stablesats-sa-rounds must be greater than 0");
+            }
+            if probe.convert_btc_sats == 0 {
+                bail!("--blink-stablesats-sa-convert-btc-sats must be greater than 0");
+            }
+            if probe.convert_usd_cents == 0 {
+                bail!("--blink-stablesats-sa-convert-usd-cents must be greater than 0");
+            }
         }
 
         Ok(args)
@@ -259,6 +477,31 @@ async fn run(args: HarnessArgs) -> Result<()> {
         args.require_cad_tool_call,
         args.fail_on_echo
     );
+    if let Some(probe) = args.blink_swap_probe.as_ref() {
+        println!(
+            "blink_swap_probe=true direction={} amount={} unit={} execute_live={} require_execute_success={} memo={}",
+            probe.normalized_direction()?,
+            probe.amount,
+            probe.resolved_unit()?,
+            probe.execute_live,
+            probe.require_execute_success,
+            probe.memo.as_deref().unwrap_or("<none>")
+        );
+    } else {
+        println!("blink_swap_probe=false");
+    }
+    if let Some(probe) = args.blink_stablesats_sa_probe.as_ref() {
+        println!(
+            "blink_stablesats_sa_probe=true rounds={} convert_btc_sats={} convert_usd_cents={} require_success={} memo_prefix={}",
+            probe.rounds,
+            probe.convert_btc_sats,
+            probe.convert_usd_cents,
+            probe.require_success,
+            probe.memo_prefix.as_deref().unwrap_or("<none>")
+        );
+    } else {
+        println!("blink_stablesats_sa_probe=false");
+    }
     if args.include_openagents_dynamic_tools {
         println!(
             "openagents_dynamic_tools_count={}",
@@ -266,6 +509,15 @@ async fn run(args: HarnessArgs) -> Result<()> {
         );
     }
     println!();
+
+    if let Some(probe) = args.blink_swap_probe.as_ref() {
+        run_blink_swap_live_probe(args.cwd.as_path(), probe)?;
+        println!();
+    }
+    if let Some(probe) = args.blink_stablesats_sa_probe.as_ref() {
+        run_blink_stablesats_sa_live_probe(args.cwd.as_path(), probe)?;
+        println!();
+    }
 
     let (client, mut channels) = AppServerClient::spawn(AppServerConfig {
         cwd: Some(args.cwd.clone()),
@@ -1901,6 +2153,946 @@ fn find_remote_skill(
         .cloned()
 }
 
+fn normalize_blink_direction(raw: &str) -> Option<&'static str> {
+    let normalized = raw.trim().to_ascii_lowercase().replace('_', "-");
+    match normalized.as_str() {
+        "btc-to-usd" | "sell-btc" | "buy-usd" => Some("btc-to-usd"),
+        "usd-to-btc" | "sell-usd" | "buy-btc" => Some("usd-to-btc"),
+        _ => None,
+    }
+}
+
+fn normalize_blink_unit(raw: &str) -> Option<&'static str> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "sats" | "sat" | "satoshi" => Some("sats"),
+        "cents" | "cent" | "usd-cents" => Some("cents"),
+        _ => None,
+    }
+}
+
+fn read_keychain_secret(account: &str) -> Option<String> {
+    let output = ProcessCommand::new("security")
+        .args([
+            "find-generic-password",
+            "-s",
+            BLINK_KEYCHAIN_SERVICE,
+            "-a",
+            account,
+            "-w",
+        ])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if value.is_empty() { None } else { Some(value) }
+}
+
+fn read_env_or_keychain(account: &str) -> Option<String> {
+    std::env::var(account)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| read_keychain_secret(account))
+}
+
+fn resolve_blink_env() -> Result<Vec<(String, String)>> {
+    resolve_blink_env_for_accounts(
+        &[BLINK_KEYCHAIN_ACCOUNT_API_KEY],
+        &[BLINK_KEYCHAIN_ACCOUNT_API_URL],
+    )
+}
+
+fn resolve_blink_env_for_accounts(
+    api_key_accounts: &[&str],
+    api_url_accounts: &[&str],
+) -> Result<Vec<(String, String)>> {
+    let api_key = api_key_accounts
+        .iter()
+        .find_map(|account| read_env_or_keychain(account))
+        .ok_or_else(|| {
+        anyhow!(
+            "Blink API key missing from environment and keychain service '{}' for accounts [{}]",
+            BLINK_KEYCHAIN_SERVICE,
+            api_key_accounts.join(", ")
+        )
+    })?;
+
+    let api_url = api_url_accounts
+        .iter()
+        .find_map(|account| read_env_or_keychain(account));
+
+    let mut env = vec![("BLINK_API_KEY".to_string(), api_key)];
+    if let Some(api_url) = api_url {
+        env.push(("BLINK_API_URL".to_string(), api_url));
+    }
+    Ok(env)
+}
+
+#[derive(Debug)]
+struct ScriptRunOutput {
+    success: bool,
+    exit_code: Option<i32>,
+    stdout: String,
+    stderr: String,
+}
+
+fn run_node_script(
+    script_path: &std::path::Path,
+    args: &[String],
+    env: &[(String, String)],
+) -> Result<ScriptRunOutput> {
+    let mut command = ProcessCommand::new("node");
+    command.arg(script_path);
+    command.args(args);
+    for (key, value) in env {
+        command.env(key, value);
+    }
+    let output = command
+        .output()
+        .with_context(|| format!("failed to execute node script {}", script_path.display()))?;
+    Ok(ScriptRunOutput {
+        success: output.status.success(),
+        exit_code: output.status.code(),
+        stdout: String::from_utf8_lossy(&output.stdout).trim().to_string(),
+        stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+    })
+}
+
+fn parse_script_json(output: &ScriptRunOutput, script_label: &str) -> Result<Value> {
+    if !output.success {
+        bail!(
+            "{} failed (exit_code={:?}) stderr='{}' stdout='{}'",
+            script_label,
+            output.exit_code,
+            summarize_text_for_log(output.stderr.as_str(), 240),
+            summarize_text_for_log(output.stdout.as_str(), 240),
+        );
+    }
+    if output.stdout.trim().is_empty() {
+        bail!("{script_label} returned empty stdout");
+    }
+    serde_json::from_str::<Value>(&output.stdout).with_context(|| {
+        format!(
+            "{} returned non-JSON stdout: {}",
+            script_label,
+            summarize_text_for_log(output.stdout.as_str(), 240)
+        )
+    })
+}
+
+#[derive(Clone, Debug)]
+struct BlinkScriptPaths {
+    balance: PathBuf,
+    create_invoice: PathBuf,
+    create_invoice_usd: PathBuf,
+    swap_execute: PathBuf,
+    swap_quote: PathBuf,
+}
+
+impl BlinkScriptPaths {
+    fn resolve(cwd: &std::path::Path) -> Result<Self> {
+        let scripts_root = cwd.join("skills").join("blink").join("scripts");
+        let paths = Self {
+            balance: scripts_root.join("balance.js"),
+            create_invoice: scripts_root.join("create_invoice.js"),
+            create_invoice_usd: scripts_root.join("create_invoice_usd.js"),
+            swap_execute: scripts_root.join("swap_execute.js"),
+            swap_quote: scripts_root.join("swap_quote.js"),
+        };
+        for required in [
+            paths.balance.as_path(),
+            paths.create_invoice.as_path(),
+            paths.create_invoice_usd.as_path(),
+            paths.swap_execute.as_path(),
+            paths.swap_quote.as_path(),
+        ] {
+            if !required.is_file() {
+                bail!("Blink script missing: {}", required.display());
+            }
+        }
+        Ok(paths)
+    }
+}
+
+#[derive(Clone, Debug)]
+struct BlinkWalletRuntime {
+    owner: &'static str,
+    env: Vec<(String, String)>,
+}
+
+#[derive(Clone, Debug)]
+struct BlinkWalletBalances {
+    owner: &'static str,
+    btc_wallet_id: String,
+    usd_wallet_id: String,
+    btc_balance_sats: u64,
+    usd_balance_cents: u64,
+}
+
+#[derive(Clone, Debug)]
+struct BlinkSwapExecutionResult {
+    status: String,
+    quote_id: String,
+    quote_amount_in: u64,
+    quote_amount_out: u64,
+    script_btc_delta_sats: i64,
+    script_usd_delta_cents: i64,
+    transaction_id: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BlinkTransferAsset {
+    BtcSats,
+    UsdCents,
+}
+
+impl BlinkTransferAsset {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::BtcSats => "btc_sats",
+            Self::UsdCents => "usd_cents",
+        }
+    }
+
+    const fn unit_label(self) -> &'static str {
+        match self {
+            Self::BtcSats => "sats",
+            Self::UsdCents => "cents",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct StableSatsFundingDeficit {
+    owner: &'static str,
+    asset: BlinkTransferAsset,
+    required: u64,
+    available: u64,
+    shortfall: u64,
+}
+
+#[derive(Clone, Debug)]
+struct BlinkFundingInvoice {
+    owner: String,
+    asset: BlinkTransferAsset,
+    amount_requested: u64,
+    payment_request: String,
+    payment_hash: String,
+    invoice_sats: u64,
+}
+
+fn parse_u64_like(value: &Value) -> Option<u64> {
+    value
+        .as_u64()
+        .or_else(|| value.as_i64().and_then(|raw| u64::try_from(raw).ok()))
+        .or_else(|| {
+            value
+                .as_str()
+                .and_then(|raw| raw.trim().parse::<u64>().ok())
+        })
+}
+
+fn parse_i64_like(value: &Value) -> Option<i64> {
+    value
+        .as_i64()
+        .or_else(|| value.as_u64().and_then(|raw| i64::try_from(raw).ok()))
+        .or_else(|| {
+            value
+                .as_str()
+                .and_then(|raw| raw.trim().parse::<i64>().ok())
+        })
+}
+
+fn value_u64_at(value: &Value, pointer: &str, label: &str) -> Result<u64> {
+    value
+        .pointer(pointer)
+        .and_then(parse_u64_like)
+        .ok_or_else(|| anyhow!("missing numeric field {label} at {pointer}"))
+}
+
+fn value_i64_at(value: &Value, pointer: &str, label: &str) -> Result<i64> {
+    value
+        .pointer(pointer)
+        .and_then(parse_i64_like)
+        .ok_or_else(|| anyhow!("missing signed numeric field {label} at {pointer}"))
+}
+
+fn value_string_at(value: &Value, pointer: &str, label: &str) -> Result<String> {
+    value
+        .pointer(pointer)
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+        .ok_or_else(|| anyhow!("missing string field {label} at {pointer}"))
+}
+
+fn parse_wallet_balance_payload(
+    owner: &'static str,
+    payload: &Value,
+) -> Result<BlinkWalletBalances> {
+    Ok(BlinkWalletBalances {
+        owner,
+        btc_wallet_id: value_string_at(payload, "/btcWalletId", "btc_wallet_id")?,
+        usd_wallet_id: value_string_at(payload, "/usdWalletId", "usd_wallet_id")?,
+        btc_balance_sats: value_u64_at(payload, "/btcBalanceSats", "btc_balance_sats")?,
+        usd_balance_cents: value_u64_at(payload, "/usdBalanceCents", "usd_balance_cents")?,
+    })
+}
+
+fn stable_sats_funding_requirements(probe: &BlinkStableSatsSaProbeArgs) -> (u64, u64) {
+    let rounds = u64::from(probe.rounds);
+    // Conservative buffers absorb spread and occasional routing costs.
+    let operator_btc_required = rounds
+        .saturating_mul(probe.convert_btc_sats)
+        .saturating_add(rounds.saturating_mul(120));
+    let operator_usd_required = rounds
+        .saturating_mul(probe.convert_usd_cents)
+        .saturating_add(rounds.saturating_mul(20));
+    (operator_btc_required, operator_usd_required)
+}
+
+fn stable_sats_funding_deficits(
+    probe: &BlinkStableSatsSaProbeArgs,
+    balances: &std::collections::BTreeMap<String, BlinkWalletBalances>,
+) -> Result<Vec<StableSatsFundingDeficit>> {
+    let operator = lookup_balances(balances, "operator")?;
+    let (operator_btc_required, operator_usd_required) = stable_sats_funding_requirements(probe);
+
+    let mut deficits = Vec::new();
+    if operator.btc_balance_sats < operator_btc_required {
+        deficits.push(StableSatsFundingDeficit {
+            owner: "operator",
+            asset: BlinkTransferAsset::BtcSats,
+            required: operator_btc_required,
+            available: operator.btc_balance_sats,
+            shortfall: operator_btc_required.saturating_sub(operator.btc_balance_sats),
+        });
+    }
+    if operator.usd_balance_cents < operator_usd_required {
+        deficits.push(StableSatsFundingDeficit {
+            owner: "operator",
+            asset: BlinkTransferAsset::UsdCents,
+            required: operator_usd_required,
+            available: operator.usd_balance_cents,
+            shortfall: operator_usd_required.saturating_sub(operator.usd_balance_cents),
+        });
+    }
+
+    Ok(deficits)
+}
+
+fn load_wallet_balances(
+    owner: &'static str,
+    env: &[(String, String)],
+    script_paths: &BlinkScriptPaths,
+) -> Result<BlinkWalletBalances> {
+    let output = run_node_script(script_paths.balance.as_path(), &[], env)?;
+    let payload = parse_script_json(&output, "blink balance")?;
+    parse_wallet_balance_payload(owner, &payload)
+}
+
+fn load_all_wallet_balances(
+    wallets: &[BlinkWalletRuntime],
+    script_paths: &BlinkScriptPaths,
+) -> Result<std::collections::BTreeMap<String, BlinkWalletBalances>> {
+    let mut balances = std::collections::BTreeMap::new();
+    for wallet in wallets {
+        let snapshot = load_wallet_balances(wallet.owner, wallet.env.as_slice(), script_paths)?;
+        balances.insert(wallet.owner.to_string(), snapshot);
+    }
+    Ok(balances)
+}
+
+fn signed_delta_u64(after: u64, before: u64) -> i64 {
+    let delta = i128::from(after) - i128::from(before);
+    delta.clamp(i128::from(i64::MIN), i128::from(i64::MAX)) as i64
+}
+
+fn wallet_deltas(before: &BlinkWalletBalances, after: &BlinkWalletBalances) -> (i64, i64) {
+    (
+        signed_delta_u64(after.btc_balance_sats, before.btc_balance_sats),
+        signed_delta_u64(after.usd_balance_cents, before.usd_balance_cents),
+    )
+}
+
+fn compute_effective_swap_spread_units(
+    direction: &str,
+    quote_amount_out: u64,
+    observed_btc_delta_sats: i64,
+    observed_usd_delta_cents: i64,
+) -> Result<i64> {
+    let quoted = i64::try_from(quote_amount_out)
+        .map_err(|_| anyhow!("quote amount out exceeds i64 range: {}", quote_amount_out))?;
+    match normalize_blink_direction(direction) {
+        Some("btc-to-usd") => Ok(quoted.saturating_sub(observed_usd_delta_cents)),
+        Some("usd-to-btc") => Ok(quoted.saturating_sub(observed_btc_delta_sats)),
+        _ => bail!(
+            "unsupported swap direction for spread computation: {}",
+            direction
+        ),
+    }
+}
+
+fn lookup_balances<'a>(
+    balances: &'a std::collections::BTreeMap<String, BlinkWalletBalances>,
+    owner: &str,
+) -> Result<&'a BlinkWalletBalances> {
+    balances
+        .get(owner)
+        .ok_or_else(|| anyhow!("missing balances for owner '{}'", owner))
+}
+
+fn aggregate_wallet_balances(
+    balances: &std::collections::BTreeMap<String, BlinkWalletBalances>,
+) -> (u64, u64) {
+    balances.values().fold((0_u64, 0_u64), |(btc, usd), entry| {
+        (
+            btc.saturating_add(entry.btc_balance_sats),
+            usd.saturating_add(entry.usd_balance_cents),
+        )
+    })
+}
+
+fn balances_map_to_json(
+    balances: &std::collections::BTreeMap<String, BlinkWalletBalances>,
+) -> serde_json::Value {
+    let mut wallet_map = serde_json::Map::new();
+    for (owner, entry) in balances {
+        wallet_map.insert(
+            owner.clone(),
+            serde_json::json!({
+                "owner": entry.owner,
+                "btc_wallet_id": entry.btc_wallet_id,
+                "usd_wallet_id": entry.usd_wallet_id,
+                "btc_balance_sats": entry.btc_balance_sats,
+                "usd_balance_cents": entry.usd_balance_cents,
+                "usd_balance_formatted": format!("${}.{:02}", entry.usd_balance_cents / 100, entry.usd_balance_cents % 100),
+            }),
+        );
+    }
+    serde_json::Value::Object(wallet_map)
+}
+
+fn create_wallet_funding_invoice(
+    script_paths: &BlinkScriptPaths,
+    wallet_env: &[(String, String)],
+    owner: &str,
+    asset: BlinkTransferAsset,
+    amount: u64,
+    memo: Option<&str>,
+) -> Result<BlinkFundingInvoice> {
+    let invoice_script = match asset {
+        BlinkTransferAsset::BtcSats => script_paths.create_invoice.as_path(),
+        BlinkTransferAsset::UsdCents => script_paths.create_invoice_usd.as_path(),
+    };
+    let mut create_args = vec![amount.to_string(), "--no-subscribe".to_string()];
+    if let Some(memo) = memo.filter(|raw| !raw.trim().is_empty()) {
+        create_args.push(memo.to_string());
+    }
+    let create_output = run_node_script(invoice_script, create_args.as_slice(), wallet_env)?;
+    let create_json = parse_script_json(&create_output, "blink funding invoice")?;
+    let create_event = create_json
+        .get("event")
+        .and_then(Value::as_str)
+        .unwrap_or("<missing>");
+    if !create_event.eq_ignore_ascii_case("invoice_created") {
+        bail!(
+            "blink funding invoice returned unexpected event '{}' for owner={}",
+            create_event,
+            owner
+        );
+    }
+
+    Ok(BlinkFundingInvoice {
+        owner: owner.to_string(),
+        asset,
+        amount_requested: amount,
+        payment_request: value_string_at(&create_json, "/paymentRequest", "payment_request")?,
+        payment_hash: value_string_at(&create_json, "/paymentHash", "payment_hash")?,
+        invoice_sats: value_u64_at(&create_json, "/satoshis", "invoice_sats")?,
+    })
+}
+
+fn run_wallet_swap_execute(
+    script_paths: &BlinkScriptPaths,
+    wallet_env: &[(String, String)],
+    direction: &str,
+    amount: u64,
+    unit: &str,
+    memo: Option<&str>,
+) -> Result<BlinkSwapExecutionResult> {
+    let mut args = vec![
+        direction.to_string(),
+        amount.to_string(),
+        "--unit".to_string(),
+        unit.to_string(),
+    ];
+    if let Some(memo) = memo.filter(|raw| !raw.trim().is_empty()) {
+        args.push("--memo".to_string());
+        args.push(memo.to_string());
+    }
+    let output = run_node_script(
+        script_paths.swap_execute.as_path(),
+        args.as_slice(),
+        wallet_env,
+    )?;
+    let payload = parse_script_json(&output, "blink swap execute")?;
+    let event = payload
+        .get("event")
+        .and_then(Value::as_str)
+        .unwrap_or("<missing>");
+    if !event.eq_ignore_ascii_case("swap_execution") {
+        bail!("blink swap execute returned unexpected event '{}'", event);
+    }
+    Ok(BlinkSwapExecutionResult {
+        status: value_string_at(&payload, "/status", "swap_status")?,
+        quote_id: value_string_at(&payload, "/quote/quoteId", "swap_quote_id")?,
+        quote_amount_in: value_u64_at(&payload, "/quote/amountIn/value", "swap_quote_amount_in")?,
+        quote_amount_out: value_u64_at(
+            &payload,
+            "/quote/amountOut/value",
+            "swap_quote_amount_out",
+        )?,
+        script_btc_delta_sats: value_i64_at(
+            &payload,
+            "/balanceDelta/btcDeltaSats",
+            "swap_btc_delta_sats",
+        )?,
+        script_usd_delta_cents: value_i64_at(
+            &payload,
+            "/balanceDelta/usdDeltaCents",
+            "swap_usd_delta_cents",
+        )?,
+        transaction_id: payload
+            .pointer("/execution/transactionId")
+            .and_then(Value::as_str)
+            .map(ToString::to_string),
+    })
+}
+
+fn run_blink_stablesats_sa_live_probe(
+    cwd: &std::path::Path,
+    probe: &BlinkStableSatsSaProbeArgs,
+) -> Result<()> {
+    println!("blink_stablesats_sa_probe start");
+    let script_paths = BlinkScriptPaths::resolve(cwd)?;
+    let wallets = vec![BlinkWalletRuntime {
+        owner: "operator",
+        env: resolve_blink_env()?,
+    }];
+    let memo_prefix = probe
+        .memo_prefix
+        .as_deref()
+        .filter(|raw| !raw.trim().is_empty())
+        .unwrap_or("openagents-stablesats-sa-live-harness");
+
+    let mut balances = load_all_wallet_balances(wallets.as_slice(), &script_paths)?;
+    let initial_balances = balances.clone();
+    let funding_deficits = stable_sats_funding_deficits(probe, &balances)?;
+    if !funding_deficits.is_empty() {
+        let (operator_btc_required, operator_usd_required) =
+            stable_sats_funding_requirements(probe);
+        let mut funding_invoices = Vec::new();
+        let mut funding_invoice_errors = Vec::new();
+        for deficit in funding_deficits.as_slice() {
+            let Some(wallet) = wallets.iter().find(|wallet| wallet.owner == deficit.owner) else {
+                funding_invoice_errors.push(serde_json::json!({
+                    "owner": deficit.owner,
+                    "asset": deficit.asset.label(),
+                    "error": "wallet runtime entry not found",
+                }));
+                continue;
+            };
+            match create_wallet_funding_invoice(
+                &script_paths,
+                wallet.env.as_slice(),
+                deficit.owner,
+                deficit.asset,
+                deficit.shortfall,
+                Some(&format!(
+                    "{memo_prefix}:funding:{}:{}",
+                    deficit.owner,
+                    deficit.asset.label()
+                )),
+            ) {
+                Ok(invoice) => {
+                    funding_invoices.push(serde_json::json!({
+                        "owner": invoice.owner,
+                        "asset": invoice.asset.label(),
+                        "amount_requested": invoice.amount_requested,
+                        "invoice_sats": invoice.invoice_sats,
+                        "payment_hash": invoice.payment_hash,
+                        "payment_request": invoice.payment_request,
+                    }));
+                }
+                Err(error) => {
+                    funding_invoice_errors.push(serde_json::json!({
+                        "owner": deficit.owner,
+                        "asset": deficit.asset.label(),
+                        "amount_requested": deficit.shortfall,
+                        "error": error.to_string(),
+                    }));
+                }
+            }
+        }
+        let report = serde_json::json!({
+            "event": "blink_stablesats_sa_demo",
+            "status": "funding_required",
+            "rounds": probe.rounds,
+            "required_minimums": {
+                "operator_btc_sats": operator_btc_required,
+                "operator_usd_cents": operator_usd_required,
+            },
+            "deficits": funding_deficits
+                .iter()
+                .map(|deficit| serde_json::json!({
+                    "owner": deficit.owner,
+                    "asset": deficit.asset.label(),
+                    "unit": deficit.asset.unit_label(),
+                    "required": deficit.required,
+                    "available": deficit.available,
+                    "shortfall": deficit.shortfall,
+                }))
+                .collect::<Vec<_>>(),
+            "funding_invoices": funding_invoices,
+            "funding_invoice_errors": funding_invoice_errors,
+        });
+        println!(
+            "blink_stablesats_sa_probe funding_required={}",
+            serde_json::to_string_pretty(&report)
+                .context("failed to serialize stablesats sa funding report")?
+        );
+        bail!(
+            "insufficient balances for stablesats sa probe: {} wallet deficit(s)",
+            funding_deficits.len()
+        );
+    }
+
+    let mut swap_events = Vec::new();
+    let mut swap_effective_spread_total_sats = 0_i64;
+    let mut swap_effective_spread_total_cents = 0_i64;
+
+    for round in 1..=probe.rounds {
+        println!("blink_stablesats_sa_probe round={} start", round);
+
+        let operator_before = lookup_balances(&balances, "operator")?.clone();
+        let operator_swap = run_wallet_swap_execute(
+            &script_paths,
+            wallets[0].env.as_slice(),
+            "btc-to-usd",
+            probe.convert_btc_sats,
+            "sats",
+            Some(&format!(
+                "{memo_prefix}:round-{round:02}:operator-btc-to-usd"
+            )),
+        )?;
+        if probe.require_success && !operator_swap.status.eq_ignore_ascii_case("SUCCESS") {
+            bail!(
+                "operator btc-to-usd status={} (require_success=true)",
+                operator_swap.status
+            );
+        }
+        balances = load_all_wallet_balances(wallets.as_slice(), &script_paths)?;
+        let operator_after = lookup_balances(&balances, "operator")?.clone();
+        let (observed_btc_delta, observed_usd_delta) =
+            wallet_deltas(&operator_before, &operator_after);
+        if probe.require_success
+            && (observed_btc_delta != operator_swap.script_btc_delta_sats
+                || observed_usd_delta != operator_swap.script_usd_delta_cents)
+        {
+            bail!(
+                "operator btc-to-usd post-balance delta mismatch script=({},{}) observed=({},{})",
+                operator_swap.script_btc_delta_sats,
+                operator_swap.script_usd_delta_cents,
+                observed_btc_delta,
+                observed_usd_delta
+            );
+        }
+        let effective_spread_units = compute_effective_swap_spread_units(
+            "btc-to-usd",
+            operator_swap.quote_amount_out,
+            observed_btc_delta,
+            observed_usd_delta,
+        )?;
+        swap_effective_spread_total_cents =
+            swap_effective_spread_total_cents.saturating_add(effective_spread_units);
+        swap_events.push(serde_json::json!({
+            "round": round,
+            "owner": "operator",
+            "direction": "btc-to-usd",
+            "amount_requested": probe.convert_btc_sats,
+            "unit": "sats",
+            "status": operator_swap.status,
+            "quote_id": operator_swap.quote_id,
+            "quote_amount_in": operator_swap.quote_amount_in,
+            "quote_amount_out": operator_swap.quote_amount_out,
+            "script_btc_delta_sats": operator_swap.script_btc_delta_sats,
+            "script_usd_delta_cents": operator_swap.script_usd_delta_cents,
+            "observed_btc_delta_sats": observed_btc_delta,
+            "observed_usd_delta_cents": observed_usd_delta,
+            "effective_spread_cents": effective_spread_units,
+            "transaction_id": operator_swap.transaction_id,
+        }));
+
+        let operator_before = lookup_balances(&balances, "operator")?.clone();
+        if operator_before.usd_balance_cents < probe.convert_usd_cents {
+            bail!(
+                "operator USD balance {} cents below round {} requirement {} cents for usd-to-btc step",
+                operator_before.usd_balance_cents,
+                round,
+                probe.convert_usd_cents
+            );
+        }
+        let operator_usd_swap = run_wallet_swap_execute(
+            &script_paths,
+            wallets[0].env.as_slice(),
+            "usd-to-btc",
+            probe.convert_usd_cents,
+            "cents",
+            Some(&format!(
+                "{memo_prefix}:round-{round:02}:operator-usd-to-btc"
+            )),
+        )?;
+        if probe.require_success && !operator_usd_swap.status.eq_ignore_ascii_case("SUCCESS") {
+            bail!(
+                "operator usd-to-btc status={} (require_success=true)",
+                operator_usd_swap.status
+            );
+        }
+        balances = load_all_wallet_balances(wallets.as_slice(), &script_paths)?;
+        let operator_after = lookup_balances(&balances, "operator")?.clone();
+        let (observed_btc_delta, observed_usd_delta) =
+            wallet_deltas(&operator_before, &operator_after);
+        if probe.require_success
+            && (observed_btc_delta != operator_usd_swap.script_btc_delta_sats
+                || observed_usd_delta != operator_usd_swap.script_usd_delta_cents)
+        {
+            bail!(
+                "operator usd-to-btc post-balance delta mismatch script=({},{}) observed=({},{})",
+                operator_usd_swap.script_btc_delta_sats,
+                operator_usd_swap.script_usd_delta_cents,
+                observed_btc_delta,
+                observed_usd_delta
+            );
+        }
+        let effective_spread_units = compute_effective_swap_spread_units(
+            "usd-to-btc",
+            operator_usd_swap.quote_amount_out,
+            observed_btc_delta,
+            observed_usd_delta,
+        )?;
+        swap_effective_spread_total_sats =
+            swap_effective_spread_total_sats.saturating_add(effective_spread_units);
+        swap_events.push(serde_json::json!({
+            "round": round,
+            "owner": "operator",
+            "direction": "usd-to-btc",
+            "amount_requested": probe.convert_usd_cents,
+            "unit": "cents",
+            "status": operator_usd_swap.status,
+            "quote_id": operator_usd_swap.quote_id,
+            "quote_amount_in": operator_usd_swap.quote_amount_in,
+            "quote_amount_out": operator_usd_swap.quote_amount_out,
+            "script_btc_delta_sats": operator_usd_swap.script_btc_delta_sats,
+            "script_usd_delta_cents": operator_usd_swap.script_usd_delta_cents,
+            "observed_btc_delta_sats": observed_btc_delta,
+            "observed_usd_delta_cents": observed_usd_delta,
+            "effective_spread_sats": effective_spread_units,
+            "transaction_id": operator_usd_swap.transaction_id,
+        }));
+    }
+
+    let final_balances = balances;
+    let (initial_total_btc_sats, initial_total_usd_cents) =
+        aggregate_wallet_balances(&initial_balances);
+    let (final_total_btc_sats, final_total_usd_cents) = aggregate_wallet_balances(&final_balances);
+
+    let report = serde_json::json!({
+        "event": "blink_stablesats_sa_demo",
+        "status": "completed",
+        "rounds": probe.rounds,
+        "wallet_mode": "single_wallet",
+        "configuration": {
+            "convert_btc_sats": probe.convert_btc_sats,
+            "convert_usd_cents": probe.convert_usd_cents,
+            "require_success": probe.require_success,
+            "memo_prefix": memo_prefix,
+        },
+        "balances": {
+            "initial": balances_map_to_json(&initial_balances),
+            "final": balances_map_to_json(&final_balances),
+            "aggregate": {
+                "initial_total_btc_sats": initial_total_btc_sats,
+                "initial_total_usd_cents": initial_total_usd_cents,
+                "final_total_btc_sats": final_total_btc_sats,
+                "final_total_usd_cents": final_total_usd_cents,
+                "delta_btc_sats": signed_delta_u64(final_total_btc_sats, initial_total_btc_sats),
+                "delta_usd_cents": signed_delta_u64(final_total_usd_cents, initial_total_usd_cents),
+            },
+        },
+        "operations": {
+            "swaps": swap_events,
+        },
+        "fees_and_spread": {
+            "swap_effective_spread_total_sats": swap_effective_spread_total_sats,
+            "swap_effective_spread_total_cents": swap_effective_spread_total_cents,
+        },
+    });
+    println!(
+        "blink_stablesats_sa_probe report={}",
+        serde_json::to_string_pretty(&report)
+            .context("failed to serialize blink stablesats sa report")?
+    );
+    Ok(())
+}
+
+fn run_blink_swap_live_probe(cwd: &std::path::Path, probe: &BlinkSwapProbeArgs) -> Result<()> {
+    let direction = probe.normalized_direction()?;
+    let unit = probe.resolved_unit()?;
+    let scripts = BlinkScriptPaths::resolve(cwd)?;
+    let quote_script = scripts.swap_quote.clone();
+    let execute_script = scripts.swap_execute.clone();
+
+    let blink_env = resolve_blink_env()?;
+    println!(
+        "blink_swap_probe quote script={} direction={} amount={} unit={}",
+        quote_script.display(),
+        direction,
+        probe.amount,
+        unit
+    );
+    let quote_args = vec![
+        direction.to_string(),
+        probe.amount.to_string(),
+        "--unit".to_string(),
+        unit.to_string(),
+        "--ttl-seconds".to_string(),
+        "45".to_string(),
+    ];
+    let quote_output = run_node_script(
+        quote_script.as_path(),
+        quote_args.as_slice(),
+        blink_env.as_slice(),
+    )?;
+    let quote_json = parse_script_json(&quote_output, "blink swap quote")?;
+    let quote_event = quote_json
+        .get("event")
+        .and_then(Value::as_str)
+        .unwrap_or("<missing>");
+    if !quote_event.eq_ignore_ascii_case("swap_quote") {
+        bail!(
+            "blink swap quote returned unexpected event '{}'",
+            quote_event
+        );
+    }
+    let quote_id = quote_json
+        .pointer("/quote/quoteId")
+        .and_then(Value::as_str)
+        .unwrap_or("<missing>");
+    let amount_in = quote_json
+        .pointer("/quote/amountIn/value")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let amount_out = quote_json
+        .pointer("/quote/amountOut/value")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    println!(
+        "blink_swap_probe quote_ok quote_id={} amount_in={} amount_out={}",
+        quote_id, amount_in, amount_out
+    );
+
+    if !probe.execute_live {
+        println!("blink_swap_probe execute skipped (--blink-swap-execute-live not set)");
+        return Ok(());
+    }
+
+    let mut execute_args = vec![
+        direction.to_string(),
+        probe.amount.to_string(),
+        "--unit".to_string(),
+        unit.to_string(),
+    ];
+    if let Some(memo) = probe
+        .memo
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        execute_args.push("--memo".to_string());
+        execute_args.push(memo.to_string());
+    }
+    println!(
+        "blink_swap_probe execute script={} direction={} amount={} unit={}",
+        execute_script.display(),
+        direction,
+        probe.amount,
+        unit
+    );
+    let execute_output = run_node_script(
+        execute_script.as_path(),
+        execute_args.as_slice(),
+        blink_env.as_slice(),
+    )?;
+
+    if execute_output.success {
+        let execute_json = parse_script_json(&execute_output, "blink swap execute")?;
+        let execute_event = execute_json
+            .get("event")
+            .and_then(Value::as_str)
+            .unwrap_or("<missing>");
+        if !execute_event.eq_ignore_ascii_case("swap_execution") {
+            bail!(
+                "blink swap execute returned unexpected event '{}'",
+                execute_event
+            );
+        }
+        let status = execute_json
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("<missing>");
+        println!(
+            "blink_swap_probe execute_ok status={} tx={}",
+            status,
+            execute_json
+                .pointer("/execution/transactionId")
+                .and_then(Value::as_str)
+                .unwrap_or("<none>")
+        );
+        if probe.require_execute_success && !status.eq_ignore_ascii_case("SUCCESS") {
+            bail!(
+                "blink swap execute status was '{}' but --blink-swap-require-success is set",
+                status
+            );
+        }
+        return Ok(());
+    }
+
+    let failure_text = if !execute_output.stderr.is_empty() {
+        execute_output.stderr.as_str()
+    } else {
+        execute_output.stdout.as_str()
+    };
+    println!(
+        "blink_swap_probe execute_live_failure exit_code={:?} details={}",
+        execute_output.exit_code,
+        summarize_text_for_log(failure_text, 240)
+    );
+    if probe.require_execute_success {
+        bail!(
+            "blink swap execute failed but --blink-swap-require-success is set: {}",
+            summarize_text_for_log(failure_text, 240)
+        );
+    }
+    if !(failure_text.contains("Swap failed") || failure_text.contains("INVALID_INPUT")) {
+        bail!(
+            "blink swap execute failed with unexpected error: {}",
+            summarize_text_for_log(failure_text, 240)
+        );
+    }
+    Ok(())
+}
+
 fn usage_text() -> String {
     [
         "Usage:",
@@ -1921,6 +3113,19 @@ fn usage_text() -> String {
         "  --disable-openagents-dynamic-tools  Do not attach OpenAgents dynamic tools on thread/start",
         "  --require-cad-tool-call   Fail unless post-send captures CAD item/tool/call request",
         "  --allow-echo-replies      Do not fail when assistant reply exactly matches prompt",
+        "  --blink-swap-live         Run live Blink BTC<->USD swap quote probe (real network)",
+        "  --blink-swap-direction <d>  Swap direction: btc-to-usd or usd-to-btc (default: btc-to-usd)",
+        "  --blink-swap-amount <n>   Probe swap amount (default: 1)",
+        "  --blink-swap-unit <u>     Probe unit: sats or cents (default derives from direction)",
+        "  --blink-swap-execute-live Attempt real Blink settlement after quote probe",
+        "  --blink-swap-require-success  Fail unless execute status is SUCCESS",
+        "  --blink-swap-memo <text>  Optional memo for execute probe",
+        "  --blink-stablesats-sa-live  Run real single-wallet StableSats conversion scenario",
+        "  --blink-stablesats-sa-rounds <n>  Number of scenario rounds (default: 1)",
+        "  --blink-stablesats-sa-convert-btc-sats <n>  BTC->USD convert size per round (default: 6000)",
+        "  --blink-stablesats-sa-convert-usd-cents <n>  USD->BTC convert size per round (default: 50)",
+        "  --blink-stablesats-sa-require-success  Fail if any swap step is non-SUCCESS (default: true)",
+        "  --blink-stablesats-sa-memo-prefix <text>  Memo prefix used for scenario swaps",
         "  --help                    Show this help",
     ]
     .join("\n")
@@ -1994,5 +3199,100 @@ mod tests {
         let by_id = find_remote_skill(Some(&remote), "hazelnut-2")
             .expect("expected to find remote skill by id");
         assert_eq!(by_id.name, "other");
+    }
+
+    #[test]
+    fn normalizes_blink_swap_direction_and_unit_aliases() {
+        assert_eq!(normalize_blink_direction("btc_to_usd"), Some("btc-to-usd"));
+        assert_eq!(normalize_blink_direction("buy-btc"), Some("usd-to-btc"));
+        assert_eq!(normalize_blink_unit("sat"), Some("sats"));
+        assert_eq!(normalize_blink_unit("usd-cents"), Some("cents"));
+        assert_eq!(normalize_blink_unit("bogus"), None);
+    }
+
+    #[test]
+    fn parses_wallet_balance_payload_contract() {
+        let payload = serde_json::json!({
+            "btcWalletId": "btc-wallet-123",
+            "usdWalletId": "usd-wallet-abc",
+            "btcBalanceSats": "4200",
+            "usdBalanceCents": 875
+        });
+        let parsed = parse_wallet_balance_payload("operator", &payload)
+            .expect("wallet payload should parse");
+        assert_eq!(parsed.owner, "operator");
+        assert_eq!(parsed.btc_wallet_id, "btc-wallet-123");
+        assert_eq!(parsed.usd_wallet_id, "usd-wallet-abc");
+        assert_eq!(parsed.btc_balance_sats, 4200);
+        assert_eq!(parsed.usd_balance_cents, 875);
+    }
+
+    fn sample_balances(
+        operator_btc_sats: u64,
+        operator_usd_cents: u64,
+    ) -> std::collections::BTreeMap<String, BlinkWalletBalances> {
+        let mut balances = std::collections::BTreeMap::new();
+        balances.insert(
+            "operator".to_string(),
+            BlinkWalletBalances {
+                owner: "operator",
+                btc_wallet_id: "operator-btc".to_string(),
+                usd_wallet_id: "operator-usd".to_string(),
+                btc_balance_sats: operator_btc_sats,
+                usd_balance_cents: operator_usd_cents,
+            },
+        );
+        balances
+    }
+
+    #[test]
+    fn stablesats_funding_deficits_report_shortfalls_for_operator_wallet() {
+        let probe = BlinkStableSatsSaProbeArgs {
+            rounds: 2,
+            convert_btc_sats: 6_000,
+            convert_usd_cents: 50,
+            require_success: true,
+            memo_prefix: None,
+        };
+        let balances = sample_balances(10_000, 80);
+        let deficits =
+            stable_sats_funding_deficits(&probe, &balances).expect("deficits should compute");
+        assert_eq!(deficits.len(), 2);
+        assert_eq!(deficits[0].owner, "operator");
+        assert_eq!(deficits[0].asset, BlinkTransferAsset::BtcSats);
+        assert_eq!(deficits[0].required, 12_240);
+        assert_eq!(deficits[0].available, 10_000);
+        assert_eq!(deficits[0].shortfall, 2_240);
+        assert_eq!(deficits[1].owner, "operator");
+        assert_eq!(deficits[1].asset, BlinkTransferAsset::UsdCents);
+        assert_eq!(deficits[1].required, 140);
+        assert_eq!(deficits[1].available, 80);
+        assert_eq!(deficits[1].shortfall, 60);
+    }
+
+    #[test]
+    fn stablesats_funding_deficits_empty_when_balances_cover_plan() {
+        let probe = BlinkStableSatsSaProbeArgs {
+            rounds: 1,
+            convert_btc_sats: 6_000,
+            convert_usd_cents: 50,
+            require_success: true,
+            memo_prefix: None,
+        };
+        let balances = sample_balances(6_120, 70);
+        let deficits =
+            stable_sats_funding_deficits(&probe, &balances).expect("deficits should compute");
+        assert!(deficits.is_empty());
+    }
+
+    #[test]
+    fn computes_effective_swap_spread_by_direction() {
+        let btc_to_usd = compute_effective_swap_spread_units("btc-to-usd", 78, -500, 77)
+            .expect("btc-to-usd spread should compute");
+        assert_eq!(btc_to_usd, 1);
+
+        let usd_to_btc = compute_effective_swap_spread_units("usd-to-btc", 121, 120, -90)
+            .expect("usd-to-btc spread should compute");
+        assert_eq!(usd_to_btc, 1);
     }
 }

@@ -8,11 +8,13 @@ use crate::pane_renderer::{
     paint_state_summary,
 };
 use crate::pane_system::{
+    agent_profile_abort_goal_button_bounds, agent_profile_create_goal_button_bounds,
     agent_profile_publish_profile_button_bounds, agent_profile_publish_state_button_bounds,
+    agent_profile_receipt_button_bounds, agent_profile_start_goal_button_bounds,
     agent_profile_update_goals_button_bounds, agent_schedule_apply_button_bounds,
     agent_schedule_inspect_button_bounds, agent_schedule_manual_tick_button_bounds,
-    trajectory_filter_button_bounds, trajectory_open_session_button_bounds,
-    trajectory_verify_button_bounds,
+    agent_schedule_toggle_os_scheduler_button_bounds, trajectory_filter_button_bounds,
+    trajectory_open_session_button_bounds, trajectory_verify_button_bounds,
 };
 
 pub fn paint_agent_profile_state_pane(
@@ -25,15 +27,23 @@ pub fn paint_agent_profile_state_pane(
     let publish_profile = agent_profile_publish_profile_button_bounds(content_bounds);
     let publish_state = agent_profile_publish_state_button_bounds(content_bounds);
     let update_goals = agent_profile_update_goals_button_bounds(content_bounds);
+    let create_goal = agent_profile_create_goal_button_bounds(content_bounds);
+    let start_goal = agent_profile_start_goal_button_bounds(content_bounds);
+    let abort_goal = agent_profile_abort_goal_button_bounds(content_bounds);
+    let inspect_receipt = agent_profile_receipt_button_bounds(content_bounds);
 
     paint_action_button(publish_profile, "Publish Profile", paint);
     paint_action_button(publish_state, "Publish State", paint);
     paint_action_button(update_goals, "Update Goals", paint);
+    paint_action_button(create_goal, "Create Goal", paint);
+    paint_action_button(start_goal, "Start Goal", paint);
+    paint_action_button(abort_goal, "Abort Goal", paint);
+    paint_action_button(inspect_receipt, "Inspect Receipt", paint);
 
     let mut y = paint_state_summary(
         paint,
         content_bounds.origin.x + 12.0,
-        publish_profile.max_y() + 12.0,
+        create_goal.max_y() + 12.0,
         pane_state.load_state,
         &format!("State: {}", pane_state.load_state.label()),
         pane_state.last_action.as_deref(),
@@ -60,6 +70,55 @@ pub fn paint_agent_profile_state_pane(
         y,
         "Goals",
         &pane_state.goals_summary,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Selected goal",
+        pane_state.selected_goal_id.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Goal status",
+        &pane_state.selected_goal_status,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Goal attempts",
+        &pane_state.selected_goal_attempts.to_string(),
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Selected skills",
+        &pane_state.selected_goal_selected_skills,
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Last receipt",
+        &pane_state.selected_goal_receipt_summary,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Treasury wallets",
+        &pane_state.treasury_wallet_projection_count.to_string(),
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Treasury projection",
+        &pane_state.treasury_wallet_projection_summary,
     );
     y = paint_label_line(
         paint,
@@ -94,10 +153,20 @@ pub fn paint_agent_schedule_tick_pane(
     let apply_schedule = agent_schedule_apply_button_bounds(content_bounds);
     let manual_tick = agent_schedule_manual_tick_button_bounds(content_bounds);
     let inspect = agent_schedule_inspect_button_bounds(content_bounds);
+    let toggle_os_scheduler = agent_schedule_toggle_os_scheduler_button_bounds(content_bounds);
 
     paint_action_button(apply_schedule, "Apply Schedule", paint);
     paint_action_button(manual_tick, "Manual Tick", paint);
     paint_action_button(inspect, "Inspect Result", paint);
+    paint_action_button(
+        toggle_os_scheduler,
+        if pane_state.os_scheduler_enabled {
+            "Disable OS Scheduler"
+        } else {
+            "Enable OS Scheduler"
+        },
+        paint,
+    );
 
     let mut y = paint_state_summary(
         paint,
@@ -109,6 +178,143 @@ pub fn paint_agent_schedule_tick_pane(
         pane_state.last_error.as_deref(),
     );
 
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Selected goal",
+        pane_state.selected_goal_id.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Scheduler mode",
+        &pane_state.scheduler_mode,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Next goal run (epoch)",
+        &pane_state
+            .next_goal_run_epoch_seconds
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "n/a".to_string()),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Last goal run (epoch)",
+        &pane_state
+            .last_goal_run_epoch_seconds
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "n/a".to_string()),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Missed-run policy",
+        &pane_state.missed_run_policy,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Pending catch-up runs",
+        &pane_state.pending_catchup_runs.to_string(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Last recovery (epoch)",
+        &pane_state
+            .last_recovery_epoch_seconds
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "n/a".to_string()),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Cron expression",
+        &pane_state.cron_expression,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Cron timezone",
+        &pane_state.cron_timezone,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Cron next preview (epoch)",
+        &pane_state
+            .cron_next_run_preview_epoch_seconds
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "n/a".to_string()),
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Cron parse status",
+        pane_state.cron_parse_error.as_deref().unwrap_or("ok"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "OS scheduler opt-in",
+        if pane_state.os_scheduler_enabled {
+            "enabled"
+        } else {
+            "disabled"
+        },
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "OS scheduler adapter",
+        &pane_state.os_scheduler_adapter,
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "OS scheduler descriptor",
+        pane_state
+            .os_scheduler_descriptor_path
+            .as_deref()
+            .unwrap_or("n/a"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "OS scheduler last reconcile",
+        &pane_state
+            .os_scheduler_last_reconciled_epoch_seconds
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "n/a".to_string()),
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "OS scheduler status",
+        pane_state
+            .os_scheduler_last_reconcile_result
+            .as_deref()
+            .unwrap_or("n/a"),
+    );
     y = paint_label_line(
         paint,
         content_bounds.origin.x + 12.0,
@@ -191,6 +397,23 @@ pub fn paint_trajectory_audit_pane(
         y,
         "Step filter",
         &pane_state.step_filter,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Treasury ref",
+        pane_state.treasury_event_ref.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Treasury event",
+        pane_state
+            .treasury_event_summary
+            .as_deref()
+            .unwrap_or("n/a"),
     );
     let _ = paint_label_line(
         paint,

@@ -1084,6 +1084,11 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     .autopilot_chat
                     .record_turn_timeline_event(format!("turn started: {turn_id}"));
                 state.autopilot_chat.mark_turn_started(turn_id);
+                if let Some(active_turn_id) = state.autopilot_chat.active_turn_id.clone() {
+                    state
+                        .goal_loop_executor
+                        .bind_attempt_turn_id(active_turn_id.as_str());
+                }
             }
         }
         CodexLaneNotification::ItemStarted {
@@ -1535,6 +1540,19 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
 
                 let envelope =
                     super::super::tool_bridge::execute_openagents_tool_request(state, &pending);
+                let recorded_at_epoch_seconds = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|duration| duration.as_secs())
+                    .unwrap_or(0);
+                state.goal_loop_executor.record_tool_invocation(
+                    format!("{:?}", pending.request_id).as_str(),
+                    pending.call_id.as_str(),
+                    pending.tool.as_str(),
+                    envelope.code.as_str(),
+                    envelope.success,
+                    envelope.message.as_str(),
+                    recorded_at_epoch_seconds,
+                );
                 if is_cad_intent_tool {
                     state.cad_demo.record_agent_build_tool_result(
                         &envelope.code,

@@ -23,6 +23,7 @@ use crate::{
         CodexLaneWorker,
     },
     spark_wallet::{SparkPaneState, SparkWalletCommand, SparkWalletWorker},
+    stablesats_blink_worker::StableSatsBlinkWorker,
 };
 
 #[path = "app_state_domains.rs"]
@@ -372,6 +373,7 @@ pub struct AutopilotTurnMetadata {
     pub is_cad_turn: bool,
     pub classifier_reason: String,
     pub submitted_at_epoch_ms: u64,
+    pub selected_skill_names: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -901,13 +903,22 @@ impl AutopilotChatState {
         is_cad_turn: bool,
         classifier_reason: impl Into<String>,
         submitted_at_epoch_ms: u64,
+        selected_skill_names: Vec<String>,
     ) {
+        let mut selected_skill_names = selected_skill_names
+            .into_iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        selected_skill_names.sort();
+        selected_skill_names.dedup();
         let metadata = AutopilotTurnMetadata {
             submission_seq: self.next_turn_submission_seq,
             thread_id: thread_id.to_string(),
             is_cad_turn,
             classifier_reason: classifier_reason.into(),
             submitted_at_epoch_ms,
+            selected_skill_names,
         };
         self.next_turn_submission_seq = self.next_turn_submission_seq.saturating_add(1);
         self.last_submitted_turn_metadata = Some(metadata.clone());
@@ -915,6 +926,22 @@ impl AutopilotChatState {
         if self.pending_turn_metadata.len() > 64 {
             let overflow = self.pending_turn_metadata.len().saturating_sub(64);
             self.pending_turn_metadata.drain(0..overflow);
+        }
+    }
+
+    pub fn set_last_pending_turn_selected_skills(&mut self, selected_skill_names: Vec<String>) {
+        let mut selected_skill_names = selected_skill_names
+            .into_iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        selected_skill_names.sort();
+        selected_skill_names.dedup();
+        if let Some(last) = self.pending_turn_metadata.back_mut() {
+            last.selected_skill_names = selected_skill_names.clone();
+        }
+        if let Some(last) = self.last_submitted_turn_metadata.as_mut() {
+            last.selected_skill_names = selected_skill_names;
         }
     }
 
@@ -2214,7 +2241,6 @@ impl ActiveJobState {
             }
         }
         if next_stage == JobLifecycleStage::Paid {
-            job.payment_id = Some(format!("pay-{}", job.request_id));
             if job.ac_settlement_event_id.is_none() {
                 job.ac_settlement_event_id = Some(format!("ac:39244:{}", job.request_id));
             }
@@ -2442,6 +2468,33 @@ impl JobHistoryState {
         let completed = self
             .reference_epoch_seconds
             .saturating_add(self.rows.len() as u64 * 17);
+        let payment_pointer = job
+            .payment_id
+            .clone()
+            .or_else(|| job.invoice_id.clone())
+            .unwrap_or_else(|| format!("pending:{}", job.request_id));
+        let authoritative_settlement = !payment_pointer.is_empty()
+            && !payment_pointer.starts_with("pending:")
+            && !payment_pointer.starts_with("pay:")
+            && !payment_pointer.starts_with("inv-")
+            && !payment_pointer.starts_with("pay-req-");
+        let converted_to_failed =
+            status == JobHistoryStatus::Succeeded && !authoritative_settlement;
+        let settled_success = status == JobHistoryStatus::Succeeded && authoritative_settlement;
+        let status = if settled_success {
+            JobHistoryStatus::Succeeded
+        } else if converted_to_failed {
+            JobHistoryStatus::Failed
+        } else {
+            status
+        };
+        let failure_reason = if settled_success {
+            None
+        } else if converted_to_failed && job.failure_reason.is_none() {
+            Some("payment settlement not wallet-confirmed".to_string())
+        } else {
+            job.failure_reason.clone()
+        };
         self.upsert_row(JobHistoryReceiptRow {
             job_id: job.job_id.clone(),
             status,
@@ -2454,18 +2507,14 @@ impl JobHistoryState {
             ac_envelope_event_id: job.ac_envelope_event_id.clone(),
             ac_settlement_event_id: job.ac_settlement_event_id.clone(),
             ac_default_event_id: job.ac_default_event_id.clone(),
-            payout_sats: if status == JobHistoryStatus::Succeeded {
+            payout_sats: if settled_success {
                 job.quoted_price_sats
             } else {
                 0
             },
             result_hash: format!("sha256:{}-{}", job.request_id, job.stage.label()),
-            payment_pointer: job
-                .payment_id
-                .clone()
-                .or_else(|| job.invoice_id.clone())
-                .unwrap_or_else(|| format!("pending:{}", job.request_id)),
-            failure_reason: job.failure_reason.clone(),
+            payment_pointer,
+            failure_reason,
         });
         self.page = 0;
         self.last_error = None;
@@ -2706,6 +2755,7 @@ pub struct RenderState {
     pub nostr_secret_state: NostrSecretState,
     pub spark_wallet: SparkPaneState,
     pub spark_worker: SparkWalletWorker,
+    pub stable_sats_blink_worker: StableSatsBlinkWorker,
     pub spark_inputs: SparkPaneInputs,
     pub pay_invoice_inputs: PayInvoicePaneInputs,
     pub create_invoice_inputs: CreateInvoicePaneInputs,
@@ -2763,6 +2813,9 @@ pub struct RenderState {
     pub treasury_exchange_simulation: TreasuryExchangeSimulationPaneState,
     pub relay_security_simulation: RelaySecuritySimulationPaneState,
     pub stable_sats_simulation: StableSatsSimulationPaneState,
+    pub autopilot_goals: crate::state::autopilot_goals::AutopilotGoalsState,
+    pub goal_loop_executor: crate::state::goal_loop_executor::GoalLoopExecutorState,
+    pub goal_restart_recovery_ran: bool,
     pub sidebar: SidebarState,
     pub next_pane_id: u64,
     pub next_z_index: i32,
@@ -3094,7 +3147,13 @@ mod tests {
         let mut chat = AutopilotChatState::default();
         chat.ensure_thread("thread-1".to_string());
         chat.submit_prompt("design a rack".to_string());
-        chat.record_turn_submission_metadata("thread-1", true, "keyword-pair:design+rack", 1000);
+        chat.record_turn_submission_metadata(
+            "thread-1",
+            true,
+            "keyword-pair:design+rack",
+            1000,
+            Vec::new(),
+        );
 
         let pending = chat
             .active_turn_metadata()
@@ -3112,14 +3171,43 @@ mod tests {
     }
 
     #[test]
+    fn chat_state_updates_pending_turn_selected_skills_for_audit_capture() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-1".to_string());
+        chat.submit_prompt("earn bitcoin".to_string());
+        chat.record_turn_submission_metadata("thread-1", false, "no-cad-signals", 1000, Vec::new());
+
+        chat.set_last_pending_turn_selected_skills(vec![
+            "blink".to_string(),
+            "l402".to_string(),
+            "blink".to_string(),
+        ]);
+
+        let pending = chat
+            .pending_turn_metadata
+            .back()
+            .expect("pending metadata should remain queued");
+        assert_eq!(
+            pending.selected_skill_names,
+            vec!["blink".to_string(), "l402".to_string()]
+        );
+    }
+
+    #[test]
     fn chat_state_binds_turn_metadata_in_submission_order() {
         let mut chat = AutopilotChatState::default();
         chat.ensure_thread("thread-1".to_string());
 
         chat.submit_prompt("summarize commits".to_string());
-        chat.record_turn_submission_metadata("thread-1", false, "no-cad-signals", 1010);
+        chat.record_turn_submission_metadata("thread-1", false, "no-cad-signals", 1010, Vec::new());
         chat.submit_prompt("design wall mount bracket".to_string());
-        chat.record_turn_submission_metadata("thread-1", true, "keyword-pair:design+bracket", 1020);
+        chat.record_turn_submission_metadata(
+            "thread-1",
+            true,
+            "keyword-pair:design+bracket",
+            1020,
+            Vec::new(),
+        );
 
         chat.mark_turn_started("turn-a".to_string());
         chat.mark_turn_started("turn-b".to_string());
@@ -3142,7 +3230,13 @@ mod tests {
         let mut chat = AutopilotChatState::default();
         chat.ensure_thread("thread-1".to_string());
         chat.submit_prompt("design fixture".to_string());
-        chat.record_turn_submission_metadata("thread-1", true, "keyword-pair:design+fixture", 1200);
+        chat.record_turn_submission_metadata(
+            "thread-1",
+            true,
+            "keyword-pair:design+fixture",
+            1200,
+            Vec::new(),
+        );
         assert_eq!(chat.pending_turn_metadata.len(), 1);
 
         chat.mark_pending_turn_dispatch_failed("queue failed");
@@ -3518,6 +3612,49 @@ mod tests {
     }
 
     #[test]
+    fn job_history_rejects_unconfirmed_success_settlement_from_active_job() {
+        let mut inbox = seed_job_inbox(vec![fixture_inbox_request(
+            "req-unconfirmed",
+            "summarize.text",
+            1500,
+            300,
+            JobInboxValidation::Valid,
+        )]);
+        assert!(inbox.select_by_index(0));
+        let request = inbox
+            .selected_request()
+            .expect("request should exist")
+            .clone();
+        let mut active = ActiveJobState::default();
+        active.start_from_request(&request);
+        active
+            .advance_stage()
+            .expect("accepted->running should succeed");
+        active
+            .advance_stage()
+            .expect("running->delivered should succeed");
+        active
+            .advance_stage()
+            .expect("delivered->paid should succeed");
+        let job = active.job.as_ref().expect("active job exists");
+        assert!(job.payment_id.is_none());
+
+        let mut history = JobHistoryState::default();
+        history.record_from_active_job(job, JobHistoryStatus::Succeeded);
+        let row = history
+            .rows
+            .first()
+            .expect("history row should be recorded");
+        assert_eq!(row.status, JobHistoryStatus::Failed);
+        assert_eq!(row.payout_sats, 0);
+        assert!(
+            row.failure_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("not wallet-confirmed"))
+        );
+    }
+
+    #[test]
     fn job_history_filters_search_status_and_time() {
         let mut history = seed_job_history(vec![
             fixture_history_row(
@@ -3793,6 +3930,13 @@ mod tests {
                 .iter()
                 .any(|event| event.protocol == "BLINK-LEDGER")
         );
+        assert!(!state.transfer_ledger.is_empty());
+        assert!(
+            state
+                .transfer_ledger
+                .iter()
+                .all(|entry| entry.status == crate::app_state::StableSatsTransferStatus::Settled)
+        );
 
         let next_modes: Vec<_> = state
             .agents
@@ -3808,10 +3952,113 @@ mod tests {
         assert!(state.last_settlement_ref.is_none());
         assert!(state.price_history_usd_cents_per_btc.is_empty());
         assert!(state.converted_sats_history.is_empty());
+        assert!(state.transfer_ledger.is_empty());
     }
 
     #[test]
-    fn starter_jobs_complete_selected_sets_payout_pointer() {
+    fn stablesats_real_mode_initializes_single_wallet_topology() {
+        let mut state = StableSatsSimulationPaneState::default();
+        state.set_mode(crate::app_state::StableSatsSimulationMode::RealBlink);
+        assert_eq!(state.agents.len(), 1);
+        assert_eq!(
+            state.agents[0].owner_kind,
+            crate::app_state::StableSatsWalletOwnerKind::Operator
+        );
+        assert!(
+            state.agents[0]
+                .credential_key_name
+                .starts_with("BLINK_API_KEY")
+        );
+    }
+
+    #[test]
+    fn stablesats_live_snapshot_updates_operator_wallet_and_ledger() {
+        let mut state = StableSatsSimulationPaneState::default();
+        state.set_mode(crate::app_state::StableSatsSimulationMode::RealBlink);
+        state.apply_live_snapshot(1_761_921_200, 2_000, 250, 8_500_000, "btc:op usd:op");
+        assert_eq!(state.agents.len(), 1);
+        assert_eq!(state.agents[0].agent_name, "autopilot-user");
+        assert_eq!(state.agents[0].btc_balance_sats, 2_000);
+        assert_eq!(state.agents[0].usd_balance_cents, 250);
+        assert!(!state.transfer_ledger.is_empty());
+        assert!(
+            state
+                .transfer_ledger
+                .iter()
+                .all(|entry| entry.transfer_ref.starts_with("blink:live:transfer:"))
+        );
+    }
+
+    #[test]
+    fn stablesats_live_wallet_snapshots_apply_partial_refresh_without_global_failure() {
+        let mut state = StableSatsSimulationPaneState::default();
+        state.set_mode(crate::app_state::StableSatsSimulationMode::RealBlink);
+        state.apply_live_wallet_snapshots(
+            1_761_921_260,
+            8_600_000,
+            &[(
+                "operator:autopilot".to_string(),
+                1_500,
+                80,
+                "btc:op usd:op".to_string(),
+            )],
+            &[(
+                "operator:autopilot".to_string(),
+                "missing secure credential".to_string(),
+            )],
+        );
+
+        assert_eq!(state.load_state, crate::app_state::PaneLoadState::Ready);
+        assert_eq!(state.agents[0].btc_balance_sats, 1_500);
+        assert_eq!(state.agents[0].usd_balance_cents, 80);
+        assert_eq!(
+            state.agents[0].last_switch_summary,
+            "refresh failed: missing secure credential"
+        );
+        assert!(
+            state
+                .last_error
+                .as_deref()
+                .is_some_and(|value| value.contains("1 wallet error"))
+        );
+        assert!(!state.transfer_ledger.is_empty());
+    }
+
+    #[test]
+    fn stablesats_treasury_operation_log_tracks_refresh_lifecycle() {
+        let mut state = StableSatsSimulationPaneState::default();
+        state.set_mode(crate::app_state::StableSatsSimulationMode::RealBlink);
+        let request_id = state
+            .begin_live_refresh()
+            .expect("real mode refresh should start");
+        let running_entry = state
+            .treasury_operations
+            .iter()
+            .find(|entry| entry.request_id == request_id)
+            .expect("refresh operation should be recorded");
+        assert_eq!(
+            running_entry.kind,
+            crate::app_state::StableSatsTreasuryOperationKind::Refresh
+        );
+        assert_eq!(
+            running_entry.status,
+            crate::app_state::StableSatsTreasuryOperationStatus::Running
+        );
+
+        assert!(state.fail_live_refresh(request_id, "timeout".to_string()));
+        let finished_entry = state
+            .treasury_operations
+            .iter()
+            .find(|entry| entry.request_id == request_id)
+            .expect("refresh operation should remain recorded");
+        assert_eq!(
+            finished_entry.status,
+            crate::app_state::StableSatsTreasuryOperationStatus::Failed
+        );
+    }
+
+    #[test]
+    fn starter_jobs_complete_selected_requires_wallet_pointer() {
         let mut starter_jobs = StarterJobsState::default();
         starter_jobs.jobs.push(fixture_starter_job(
             "job-starter-001",
@@ -3820,9 +4067,12 @@ mod tests {
             StarterJobStatus::Queued,
         ));
         starter_jobs.select_by_index(0);
-        let (job_id, _payout, pointer) = starter_jobs
-            .complete_selected()
-            .expect("eligible starter job should complete");
+        let (job_id, _payout) = starter_jobs
+            .start_selected_execution()
+            .expect("eligible starter job should start");
+        let (_job_id, _payout, pointer) = starter_jobs
+            .complete_selected_with_payment("wallet:payment:starter-001")
+            .expect("wallet-confirmed payout should complete");
         let job = starter_jobs
             .jobs
             .iter()

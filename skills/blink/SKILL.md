@@ -106,6 +106,12 @@ source ~/.profile && node {baseDir}/scripts/pay_invoice.js lnbc1000n1... --walle
 
 # Get current BTC/USD price
 node {baseDir}/scripts/price.js
+
+# Quote BTC -> USD internal swap (dry-run)
+node {baseDir}/scripts/swap_quote.js btc-to-usd 5000
+
+# Execute USD -> BTC internal swap
+node {baseDir}/scripts/swap_execute.js usd-to-btc 500 --unit cents
 ```
 
 ## Core Commands
@@ -260,6 +266,44 @@ source ~/.profile && node {baseDir}/scripts/account_info.js
 
 Shows account level, spending limits (withdrawal, internal send, convert), default wallet, and wallet summary with **pre-computed USD estimates** for BTC balances. Limits are denominated in USD cents with a rolling 24-hour window.
 
+### Quote Internal BTC <-> USD Swap
+```bash
+source ~/.profile && node {baseDir}/scripts/swap_quote.js <direction> <amount> [--unit sats|cents] [--ttl-seconds N] [--immediate]
+```
+
+Builds a deterministic quote-like receipt for internal wallet conversion.
+
+- `direction` — `btc-to-usd` or `usd-to-btc`
+- `amount` — positive integer amount (unit inferred by direction unless `--unit` is set)
+- `--unit sats|cents` — optional override for input unit
+- `--ttl-seconds N` — quote validity window in seconds (default: 60)
+- `--immediate` — mark intent for immediate execution mode in quote receipt
+
+Uses Blink's conversion estimation path for pricing and records:
+- pre-swap balances
+- quote id / expiry metadata
+- amount in/out terms
+- execution path (`intraLedgerPaymentSend` or `intraLedgerUsdPaymentSend`)
+
+### Execute Internal BTC <-> USD Swap
+```bash
+source ~/.profile && node {baseDir}/scripts/swap_execute.js <direction> <amount> [--unit sats|cents] [--ttl-seconds N] [--immediate] [--dry-run] [--memo "text"]
+```
+
+Executes a wallet-native internal conversion between your BTC and USD wallets.
+
+- `--dry-run` — returns an execution receipt without performing the mutation
+- `--memo "text"` — optional memo attached to the internal transfer
+
+Execution receipts include quote terms, pre/post balances, balance deltas, and final status.
+
+Fee/settlement interpretation:
+- `quote.feeSats`, `quote.feeBps`, and `quote.slippageBps` are currently returned as zero in live runs.
+- You can still see a small quote-to-settlement spread (often 1 sat or 1 cent) due to integer rounding between sats and cents.
+- Always compute effective cost from `quote.amountOut` versus `balanceDelta` instead of relying only on explicit fee fields.
+
+For deeper behavior details and formulas, see [swap-operations](references/swap-operations.md).
+
 ## Realtime Subscriptions
 
 Blink supports GraphQL subscriptions over WebSocket using the `graphql-transport-ws` protocol. Node 20 requires the `--experimental-websocket` flag.
@@ -297,6 +341,9 @@ Streams account updates in real time. Each event is output as a JSON line (NDJSO
 | Currency list | `query currencyList` | **None (public)** |
 | Realtime price | `query realtimePrice` | **None (public)** |
 | Account info | `query me` + `currencyConversionEstimation` | Read |
+| Swap quote (BTC <-> USD) | `query currencyConversionEstimation` | Read |
+| Swap execute BTC -> USD | `mutation intraLedgerPaymentSend` | Write |
+| Swap execute USD -> BTC | `mutation intraLedgerUsdPaymentSend` | Write |
 | Subscribe invoice | `subscription lnInvoicePaymentStatus` | Read |
 | Subscribe updates | `subscription myUpdates` | Read |
 
@@ -454,6 +501,60 @@ Second JSON (when payment resolves):
 }
 ```
 
+### Swap quote output example
+```json
+{
+  "event": "swap_quote",
+  "dryRun": true,
+  "direction": "BTC_TO_USD",
+  "preBalance": {
+    "btcWalletId": "btc_wallet_id",
+    "usdWalletId": "usd_wallet_id",
+    "btcBalanceSats": 250000,
+    "usdBalanceCents": 150000
+  },
+  "quote": {
+    "quoteId": "blink-swap-1740000000-424242",
+    "amountIn": { "value": 5000, "unit": "sats" },
+    "amountOut": { "value": 340, "unit": "cents" },
+    "expiresAtEpochSeconds": 1740000060,
+    "immediateExecution": false,
+    "executionPath": "blink:intraLedgerPaymentSend"
+  }
+}
+```
+
+### Swap execution output example
+```json
+{
+  "event": "swap_execution",
+  "dryRun": false,
+  "direction": "USD_TO_BTC",
+  "status": "SUCCESS",
+  "succeeded": true,
+  "preBalance": {
+    "btcBalanceSats": 250000,
+    "usdBalanceCents": 150000
+  },
+  "postBalance": {
+    "btcBalanceSats": 253650,
+    "usdBalanceCents": 149500
+  },
+  "balanceDelta": {
+    "btcDeltaSats": 3650,
+    "usdDeltaCents": -500
+  },
+  "quote": {
+    "quoteId": "blink-swap-1740000015-556677",
+    "executionPath": "blink:intraLedgerUsdPaymentSend"
+  },
+  "execution": {
+    "path": "blink:intraLedgerUsdPaymentSend",
+    "transactionId": "tx_abc123"
+  }
+}
+```
+
 ## Typical Agent Workflows
 
 ### Receive a payment (recommended — auto-subscribe + QR image)
@@ -538,6 +639,24 @@ node {baseDir}/scripts/price.js --usd 5.00
 # → 7350 sats
 ```
 
+### Swap BTC to USD (quote then execute)
+```bash
+# 1. Build quote and inspect terms
+node {baseDir}/scripts/swap_quote.js btc-to-usd 10000
+
+# 2. Execute the swap
+node {baseDir}/scripts/swap_execute.js btc-to-usd 10000
+```
+
+### Swap USD to BTC (dry-run then execute)
+```bash
+# 1. Dry-run execution receipt without moving funds
+node {baseDir}/scripts/swap_execute.js usd-to-btc 500 --unit cents --dry-run
+
+# 2. Real execution
+node {baseDir}/scripts/swap_execute.js usd-to-btc 500 --unit cents
+```
+
 ### Check price history
 ```bash
 # Get BTC price over the last 24 hours
@@ -561,6 +680,7 @@ node {baseDir}/scripts/price.js --history ONE_MONTH
 - [blink-api-and-auth](references/blink-api-and-auth.md): API endpoints, authentication, scopes, staging/testnet configuration, and error handling.
 - [payment-operations](references/payment-operations.md): send workflows, BTC vs USD wallet selection, fee probing, and safety guardrails.
 - [invoice-lifecycle](references/invoice-lifecycle.md): invoice creation, two-phase output parsing, monitoring strategies, QR generation, and expiration handling.
+- [swap-operations](references/swap-operations.md): wallet-native BTC<->USD conversion flows, quote/execution receipts, and fallback behavior.
 
 ## Files
 
@@ -576,5 +696,7 @@ node {baseDir}/scripts/price.js --history ONE_MONTH
 - `{baseDir}/scripts/transactions.js` — List transaction history
 - `{baseDir}/scripts/price.js` — Get BTC/USD exchange rate
 - `{baseDir}/scripts/account_info.js` — Show account info and limits
+- `{baseDir}/scripts/swap_quote.js` — Build BTC<->USD swap quote receipts (dry-run)
+- `{baseDir}/scripts/swap_execute.js` — Execute BTC<->USD wallet-native swaps (or dry-run receipts)
 - `{baseDir}/scripts/subscribe_invoice.js` — Subscribe to invoice payment status (standalone)
 - `{baseDir}/scripts/subscribe_updates.js` — Subscribe to realtime account updates

@@ -9,6 +9,14 @@ pub(crate) const OPENAGENTS_TOOL_PANE_SET_INPUT: &str = "openagents_pane_set_inp
 pub(crate) const OPENAGENTS_TOOL_PANE_ACTION: &str = "openagents_pane_action";
 pub(crate) const OPENAGENTS_TOOL_CAD_INTENT: &str = "openagents_cad_intent";
 pub(crate) const OPENAGENTS_TOOL_CAD_ACTION: &str = "openagents_cad_action";
+pub(crate) const OPENAGENTS_TOOL_SWAP_QUOTE: &str = "openagents_swap_quote";
+pub(crate) const OPENAGENTS_TOOL_SWAP_EXECUTE: &str = "openagents_swap_execute";
+pub(crate) const OPENAGENTS_TOOL_TREASURY_TRANSFER: &str = "openagents_treasury_transfer";
+pub(crate) const OPENAGENTS_TOOL_TREASURY_CONVERT: &str = "openagents_treasury_convert";
+pub(crate) const OPENAGENTS_TOOL_TREASURY_RECEIPT: &str = "openagents_treasury_receipt";
+pub(crate) const OPENAGENTS_TOOL_GOAL_SCHEDULER: &str = "openagents_goal_scheduler";
+pub(crate) const OPENAGENTS_TOOL_WALLET_CHECK: &str = "openagents_wallet_check";
+pub(crate) const OPENAGENTS_TOOL_PROVIDER_CONTROL: &str = "openagents_provider_control";
 
 pub(crate) const OPENAGENTS_DYNAMIC_TOOL_NAMES: &[&str] = &[
     OPENAGENTS_TOOL_PANE_LIST,
@@ -19,6 +27,14 @@ pub(crate) const OPENAGENTS_DYNAMIC_TOOL_NAMES: &[&str] = &[
     OPENAGENTS_TOOL_PANE_ACTION,
     OPENAGENTS_TOOL_CAD_INTENT,
     OPENAGENTS_TOOL_CAD_ACTION,
+    OPENAGENTS_TOOL_SWAP_QUOTE,
+    OPENAGENTS_TOOL_SWAP_EXECUTE,
+    OPENAGENTS_TOOL_TREASURY_TRANSFER,
+    OPENAGENTS_TOOL_TREASURY_CONVERT,
+    OPENAGENTS_TOOL_TREASURY_RECEIPT,
+    OPENAGENTS_TOOL_GOAL_SCHEDULER,
+    OPENAGENTS_TOOL_WALLET_CHECK,
+    OPENAGENTS_TOOL_PROVIDER_CONTROL,
 ];
 
 pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
@@ -125,12 +141,184 @@ pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
                 "additionalProperties": false
             }),
         },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_SWAP_QUOTE.to_string(),
+            description: "Request a controlled BTC<->USD swap quote for an autonomous goal run."
+                .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "goal_id": { "type": "string" },
+                    "request_id": { "type": "string" },
+                    "direction": { "type": "string", "enum": ["btc_to_usd", "usd_to_btc"] },
+                    "amount": { "type": "integer", "minimum": 1 },
+                    "unit": { "type": "string", "enum": ["sats", "cents"] },
+                    "immediate_execution": { "type": "boolean" },
+                    "quote_ttl_seconds": { "type": "integer", "minimum": 1 }
+                },
+                "required": ["goal_id", "request_id", "direction", "amount", "unit"],
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_SWAP_EXECUTE.to_string(),
+            description:
+                "Record controlled swap settlement/failure for a quoted autonomous goal swap."
+                    .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "goal_id": { "type": "string" },
+                    "quote_id": { "type": "string" },
+                    "memo": { "type": "string" }
+                },
+                "required": ["goal_id", "quote_id"],
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_TREASURY_TRANSFER.to_string(),
+            description: "Queue a real Blink BTC/USD wallet-to-wallet transfer across StableSats topology."
+                .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "from_owner_id": { "type": "string" },
+                    "to_owner_id": { "type": "string" },
+                    "asset": { "type": "string", "enum": ["btc_sats", "usd_cents"] },
+                    "amount": { "type": "integer", "minimum": 1 },
+                    "memo": { "type": "string" }
+                },
+                "required": ["from_owner_id", "to_owner_id", "asset", "amount"],
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_TREASURY_CONVERT.to_string(),
+            description: "Queue a real Blink BTC<->USD conversion for a specific wallet owner."
+                .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "owner_id": { "type": "string" },
+                    "direction": { "type": "string", "enum": ["btc-to-usd", "usd-to-btc"] },
+                    "amount": { "type": "integer", "minimum": 1 },
+                    "unit": { "type": "string", "enum": ["sats", "cents"] },
+                    "memo": { "type": "string" }
+                },
+                "required": ["owner_id", "direction", "amount", "unit"],
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_TREASURY_RECEIPT.to_string(),
+            description: "Fetch machine-parseable treasury receipt/status for an async worker request."
+                .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "worker_request_id": { "type": "integer", "minimum": 1 }
+                },
+                "required": ["worker_request_id"],
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_GOAL_SCHEDULER.to_string(),
+            description:
+                "Run allowlisted goal scheduler operations (status, recovery, run-now, policy, rollout, OS adapter reconcile)."
+                    .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": [
+                            "status",
+                            "recover_startup",
+                            "run_now",
+                            "set_missed_policy",
+                            "set_kill_switch",
+                            "set_rollout",
+                            "toggle_os_adapter",
+                            "reconcile_os_adapters"
+                        ]
+                    },
+                    "goal_id": { "type": "string" },
+                    "missed_run_policy": {
+                        "type": "string",
+                        "enum": ["catch_up", "skip", "single_replay"]
+                    },
+                    "kill_switch_active": { "type": "boolean" },
+                    "kill_switch_reason": { "type": "string" },
+                    "rollout_enabled": { "type": "boolean" },
+                    "rollout_stage": {
+                        "type": "string",
+                        "enum": [
+                            "disabled",
+                            "internal_dogfood",
+                            "canary",
+                            "general_availability"
+                        ]
+                    },
+                    "rollout_cohorts": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                    },
+                    "max_false_success_rate_bps": { "type": "integer", "minimum": 0, "maximum": 10000 },
+                    "max_abort_rate_bps": { "type": "integer", "minimum": 0, "maximum": 10000 },
+                    "max_error_rate_bps": { "type": "integer", "minimum": 0, "maximum": 10000 },
+                    "max_avg_payout_confirm_latency_seconds": { "type": "integer", "minimum": 1 },
+                    "hardening_authoritative_payout_gate_validated": { "type": "boolean" },
+                    "hardening_scheduler_recovery_drills_validated": { "type": "boolean" },
+                    "hardening_swap_risk_alerting_validated": { "type": "boolean" },
+                    "hardening_incident_runbook_validated": { "type": "boolean" },
+                    "hardening_test_matrix_gate_green": { "type": "boolean" }
+                },
+                "required": ["action"],
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_WALLET_CHECK.to_string(),
+            description:
+                "Read-only wallet status check with optional bounded recent payment summary."
+                    .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "window_seconds": { "type": "integer", "minimum": 60 },
+                    "include_payments": { "type": "boolean" }
+                },
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_PROVIDER_CONTROL.to_string(),
+            description:
+                "Controlled provider runtime actions (status, set online/offline, queue wallet refresh)."
+                    .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["status", "set_online", "set_offline", "refresh_wallet"]
+                    }
+                },
+                "required": ["action"],
+                "additionalProperties": false
+            }),
+        },
     ]
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{OPENAGENTS_DYNAMIC_TOOL_NAMES, openagents_dynamic_tool_specs};
+    use super::{
+        OPENAGENTS_DYNAMIC_TOOL_NAMES, OPENAGENTS_TOOL_SWAP_EXECUTE, OPENAGENTS_TOOL_SWAP_QUOTE,
+        openagents_dynamic_tool_specs,
+    };
     use std::collections::HashSet;
 
     fn matches_server_name_pattern(name: &str) -> bool {
@@ -159,5 +347,43 @@ mod tests {
                 "tool name should match server pattern: {name}"
             );
         }
+    }
+
+    #[test]
+    fn swap_tool_schemas_do_not_allow_injected_quote_or_status_fields() {
+        let specs = openagents_dynamic_tool_specs();
+        let quote_spec = specs
+            .iter()
+            .find(|spec| spec.name == OPENAGENTS_TOOL_SWAP_QUOTE)
+            .expect("swap quote spec should exist");
+        let execute_spec = specs
+            .iter()
+            .find(|spec| spec.name == OPENAGENTS_TOOL_SWAP_EXECUTE)
+            .expect("swap execute spec should exist");
+
+        assert!(
+            quote_spec
+                .input_schema
+                .pointer("/properties/stablesats_quote")
+                .is_none()
+        );
+        assert!(
+            quote_spec
+                .input_schema
+                .pointer("/properties/stablesats_error")
+                .is_none()
+        );
+        assert!(
+            quote_spec
+                .input_schema
+                .pointer("/properties/fallback_quote_id")
+                .is_none()
+        );
+        assert!(
+            execute_spec
+                .input_schema
+                .pointer("/properties/status")
+                .is_none()
+        );
     }
 }
