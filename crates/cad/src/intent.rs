@@ -61,6 +61,10 @@ pub const PARALLEL_JAW_GRIPPER_DEFAULT_BASE_THICKNESS_MM: f64 = 8.0;
 pub const PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_MOUNT_HOLE_DIAMETER_MM: f64 = 2.9;
 pub const PARALLEL_JAW_GRIPPER_DEFAULT_PRINT_FIT_MM: f64 = 0.15;
 pub const PARALLEL_JAW_GRIPPER_DEFAULT_PRINT_CLEARANCE_MM: f64 = 0.35;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_UNDERACTUATED_MODE: bool = false;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_COMPLIANT_JOINT_COUNT: u8 = 0;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_FLEXURE_THICKNESS_MM: f64 = 1.4;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_SINGLE_SERVO_DRIVE: bool = true;
 pub const PARALLEL_JAW_GRIPPER_MIN_JAW_OPEN_MM: f64 = 8.0;
 pub const PARALLEL_JAW_GRIPPER_MAX_JAW_OPEN_MM: f64 = 140.0;
 pub const PARALLEL_JAW_GRIPPER_MIN_FINGER_LENGTH_MM: f64 = 25.0;
@@ -79,6 +83,10 @@ pub const PARALLEL_JAW_GRIPPER_MIN_PRINT_FIT_MM: f64 = 0.05;
 pub const PARALLEL_JAW_GRIPPER_MAX_PRINT_FIT_MM: f64 = 0.4;
 pub const PARALLEL_JAW_GRIPPER_MIN_PRINT_CLEARANCE_MM: f64 = 0.1;
 pub const PARALLEL_JAW_GRIPPER_MAX_PRINT_CLEARANCE_MM: f64 = 0.8;
+pub const PARALLEL_JAW_GRIPPER_MIN_COMPLIANT_JOINT_COUNT: u8 = 0;
+pub const PARALLEL_JAW_GRIPPER_MAX_COMPLIANT_JOINT_COUNT: u8 = 6;
+pub const PARALLEL_JAW_GRIPPER_MIN_FLEXURE_THICKNESS_MM: f64 = 0.8;
+pub const PARALLEL_JAW_GRIPPER_MAX_FLEXURE_THICKNESS_MM: f64 = 4.0;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -92,6 +100,50 @@ pub struct CreateParallelJawGripperSpecIntent {
     pub servo_mount_hole_diameter_mm: f64,
     pub print_fit_mm: f64,
     pub print_clearance_mm: f64,
+    #[serde(default = "default_underactuated_mode")]
+    pub underactuated_mode: bool,
+    #[serde(default = "default_compliant_joint_count")]
+    pub compliant_joint_count: u8,
+    #[serde(default = "default_flexure_thickness_mm")]
+    pub flexure_thickness_mm: f64,
+    #[serde(default = "default_single_servo_drive")]
+    pub single_servo_drive: bool,
+}
+
+impl Default for CreateParallelJawGripperSpecIntent {
+    fn default() -> Self {
+        Self {
+            jaw_open_mm: PARALLEL_JAW_GRIPPER_DEFAULT_JAW_OPEN_MM,
+            finger_length_mm: PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_LENGTH_MM,
+            finger_thickness_mm: PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_THICKNESS_MM,
+            base_width_mm: PARALLEL_JAW_GRIPPER_DEFAULT_BASE_WIDTH_MM,
+            base_depth_mm: PARALLEL_JAW_GRIPPER_DEFAULT_BASE_DEPTH_MM,
+            base_thickness_mm: PARALLEL_JAW_GRIPPER_DEFAULT_BASE_THICKNESS_MM,
+            servo_mount_hole_diameter_mm: PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_MOUNT_HOLE_DIAMETER_MM,
+            print_fit_mm: PARALLEL_JAW_GRIPPER_DEFAULT_PRINT_FIT_MM,
+            print_clearance_mm: PARALLEL_JAW_GRIPPER_DEFAULT_PRINT_CLEARANCE_MM,
+            underactuated_mode: PARALLEL_JAW_GRIPPER_DEFAULT_UNDERACTUATED_MODE,
+            compliant_joint_count: PARALLEL_JAW_GRIPPER_DEFAULT_COMPLIANT_JOINT_COUNT,
+            flexure_thickness_mm: PARALLEL_JAW_GRIPPER_DEFAULT_FLEXURE_THICKNESS_MM,
+            single_servo_drive: PARALLEL_JAW_GRIPPER_DEFAULT_SINGLE_SERVO_DRIVE,
+        }
+    }
+}
+
+const fn default_underactuated_mode() -> bool {
+    PARALLEL_JAW_GRIPPER_DEFAULT_UNDERACTUATED_MODE
+}
+
+const fn default_compliant_joint_count() -> u8 {
+    PARALLEL_JAW_GRIPPER_DEFAULT_COMPLIANT_JOINT_COUNT
+}
+
+const fn default_flexure_thickness_mm() -> f64 {
+    PARALLEL_JAW_GRIPPER_DEFAULT_FLEXURE_THICKNESS_MM
+}
+
+const fn default_single_servo_drive() -> bool {
+    PARALLEL_JAW_GRIPPER_DEFAULT_SINGLE_SERVO_DRIVE
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -213,6 +265,12 @@ pub fn cad_intent_json_schema() -> Value {
             "servo_mount_hole_diameter_mm",
             "print_fit_mm",
             "print_clearance_mm"
+          ],
+          "optional": [
+            "underactuated_mode",
+            "compliant_joint_count",
+            "flexure_thickness_mm",
+            "single_servo_drive"
           ]
         },
         "GenerateVariants": {"required": ["count", "objective_set"]},
@@ -368,6 +426,27 @@ pub fn validate_cad_intent(intent: &CadIntent) -> Result<(), CadIntentValidation
                 PARALLEL_JAW_GRIPPER_MIN_PRINT_CLEARANCE_MM,
                 PARALLEL_JAW_GRIPPER_MAX_PRINT_CLEARANCE_MM,
             )?;
+            if payload.compliant_joint_count < PARALLEL_JAW_GRIPPER_MIN_COMPLIANT_JOINT_COUNT
+                || payload.compliant_joint_count > PARALLEL_JAW_GRIPPER_MAX_COMPLIANT_JOINT_COUNT
+            {
+                return Err(CadIntentValidationError::new(
+                    "CAD-INTENT-INVALID-RANGE",
+                    Some("CreateParallelJawGripperSpec".to_string()),
+                    Some("compliant_joint_count".to_string()),
+                    format!(
+                        "compliant_joint_count must be in range [{}, {}]",
+                        PARALLEL_JAW_GRIPPER_MIN_COMPLIANT_JOINT_COUNT,
+                        PARALLEL_JAW_GRIPPER_MAX_COMPLIANT_JOINT_COUNT
+                    ),
+                ));
+            }
+            validate_finite_range(
+                "CreateParallelJawGripperSpec",
+                "flexure_thickness_mm",
+                payload.flexure_thickness_mm,
+                PARALLEL_JAW_GRIPPER_MIN_FLEXURE_THICKNESS_MM,
+                PARALLEL_JAW_GRIPPER_MAX_FLEXURE_THICKNESS_MM,
+            )?;
             if payload.print_clearance_mm <= payload.print_fit_mm {
                 return Err(CadIntentValidationError::new(
                     "CAD-INTENT-INVALID-RANGE",
@@ -375,6 +454,24 @@ pub fn validate_cad_intent(intent: &CadIntent) -> Result<(), CadIntentValidation
                     Some("print_clearance_mm".to_string()),
                     "print_clearance_mm must be greater than print_fit_mm",
                 ));
+            }
+            if payload.underactuated_mode {
+                if payload.compliant_joint_count == 0 {
+                    return Err(CadIntentValidationError::new(
+                        "CAD-INTENT-INVALID-RANGE",
+                        Some("CreateParallelJawGripperSpec".to_string()),
+                        Some("compliant_joint_count".to_string()),
+                        "underactuated_mode requires compliant_joint_count >= 1",
+                    ));
+                }
+                if !payload.single_servo_drive {
+                    return Err(CadIntentValidationError::new(
+                        "CAD-INTENT-INVALID-FIELD",
+                        Some("CreateParallelJawGripperSpec".to_string()),
+                        Some("single_servo_drive".to_string()),
+                        "underactuated_mode requires single_servo_drive=true",
+                    ));
+                }
             }
         }
         CadIntent::GenerateVariants(payload) => {
@@ -581,6 +678,40 @@ mod tests {
             CadIntent::CreateParallelJawGripperSpec(spec) => {
                 assert!((spec.jaw_open_mm - 42.0).abs() < f64::EPSILON);
                 assert!((spec.print_fit_mm - 0.15).abs() < f64::EPSILON);
+                assert!(!spec.underactuated_mode);
+                assert_eq!(spec.compliant_joint_count, 0);
+                assert!((spec.flexure_thickness_mm - 1.4).abs() < f64::EPSILON);
+                assert!(spec.single_servo_drive);
+            }
+            other => panic!("unexpected intent variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_and_validate_underactuated_parallel_jaw_gripper_spec() {
+        let payload = r#"{
+            "intent":"CreateParallelJawGripperSpec",
+            "jaw_open_mm":36.0,
+            "finger_length_mm":66.0,
+            "finger_thickness_mm":7.0,
+            "base_width_mm":78.0,
+            "base_depth_mm":52.0,
+            "base_thickness_mm":8.0,
+            "servo_mount_hole_diameter_mm":2.9,
+            "print_fit_mm":0.15,
+            "print_clearance_mm":0.35,
+            "underactuated_mode":true,
+            "compliant_joint_count":3,
+            "flexure_thickness_mm":1.2,
+            "single_servo_drive":true
+        }"#;
+        let parsed = parse_cad_intent_json(payload).expect("underactuated payload should parse");
+        match parsed {
+            CadIntent::CreateParallelJawGripperSpec(spec) => {
+                assert!(spec.underactuated_mode);
+                assert_eq!(spec.compliant_joint_count, 3);
+                assert!((spec.flexure_thickness_mm - 1.2).abs() < f64::EPSILON);
+                assert!(spec.single_servo_drive);
             }
             other => panic!("unexpected intent variant: {other:?}"),
         }
@@ -608,6 +739,30 @@ mod tests {
             Some("CreateParallelJawGripperSpec")
         );
         assert_eq!(error.field.as_deref(), Some("print_clearance_mm"));
+    }
+
+    #[test]
+    fn parse_rejects_invalid_underactuated_single_servo_contract() {
+        let payload = r#"{
+            "intent":"CreateParallelJawGripperSpec",
+            "jaw_open_mm":42.0,
+            "finger_length_mm":65.0,
+            "finger_thickness_mm":8.0,
+            "base_width_mm":78.0,
+            "base_depth_mm":52.0,
+            "base_thickness_mm":8.0,
+            "servo_mount_hole_diameter_mm":2.9,
+            "print_fit_mm":0.15,
+            "print_clearance_mm":0.35,
+            "underactuated_mode":true,
+            "compliant_joint_count":2,
+            "flexure_thickness_mm":1.2,
+            "single_servo_drive":false
+        }"#;
+        let error = parse_cad_intent_json(payload)
+            .expect_err("underactuated mode without single-servo assumption should fail");
+        assert_eq!(error.code, "CAD-INTENT-INVALID-FIELD");
+        assert_eq!(error.field.as_deref(), Some("single_servo_drive"));
     }
 
     #[test]

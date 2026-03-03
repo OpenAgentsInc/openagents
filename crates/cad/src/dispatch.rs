@@ -12,6 +12,7 @@ use crate::{CadError, CadResult};
 pub enum CadDesignProfile {
     Rack,
     ParallelJawGripper,
+    ParallelJawGripperUnderactuated,
 }
 
 impl Default for CadDesignProfile {
@@ -49,6 +50,10 @@ pub struct CadDispatchState {
     pub exported_format: Option<String>,
     pub generated_variant_count: Option<u8>,
     pub generated_objective_set: Option<String>,
+    pub underactuated_mode: bool,
+    pub compliant_joint_count: Option<u8>,
+    pub flexure_thickness_mm: Option<f64>,
+    pub single_servo_drive: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -82,8 +87,20 @@ pub fn dispatch_cad_intent(
         }
         CadIntent::CreateParallelJawGripperSpec(payload) => {
             state.document_created = true;
-            state.design_profile = CadDesignProfile::ParallelJawGripper;
-            state.objective = Some("parallel-jaw-gripper".to_string());
+            state.design_profile = if payload.underactuated_mode {
+                CadDesignProfile::ParallelJawGripperUnderactuated
+            } else {
+                CadDesignProfile::ParallelJawGripper
+            };
+            state.objective = Some(if payload.underactuated_mode {
+                "parallel-jaw-gripper-underactuated".to_string()
+            } else {
+                "parallel-jaw-gripper".to_string()
+            });
+            state.underactuated_mode = payload.underactuated_mode;
+            state.single_servo_drive = payload.single_servo_drive;
+            state.compliant_joint_count = Some(payload.compliant_joint_count);
+            state.flexure_thickness_mm = Some(payload.flexure_thickness_mm);
             state
                 .parameter_values
                 .insert("jaw_open_mm".to_string(), payload.jaw_open_mm);
@@ -112,6 +129,22 @@ pub fn dispatch_cad_intent(
             state
                 .parameter_values
                 .insert("print_clearance_mm".to_string(), payload.print_clearance_mm);
+            state.parameter_values.insert(
+                "underactuated_mode".to_string(),
+                if payload.underactuated_mode { 1.0 } else { 0.0 },
+            );
+            state.parameter_values.insert(
+                "single_servo_drive".to_string(),
+                if payload.single_servo_drive { 1.0 } else { 0.0 },
+            );
+            state.parameter_values.insert(
+                "compliant_joint_count".to_string(),
+                payload.compliant_joint_count as f64,
+            );
+            state.parameter_values.insert(
+                "flexure_thickness_mm".to_string(),
+                payload.flexure_thickness_mm,
+            );
             CadTypedCommand::CreateParallelJawGripperSpec(payload.clone())
         }
         CadIntent::GenerateVariants(payload) => {
@@ -242,6 +275,10 @@ mod tests {
                 servo_mount_hole_diameter_mm: 2.9,
                 print_fit_mm: 0.15,
                 print_clearance_mm: 0.35,
+                underactuated_mode: false,
+                compliant_joint_count: 0,
+                flexure_thickness_mm: 1.4,
+                single_servo_drive: true,
             }),
             CadIntent::GenerateVariants(GenerateVariantsIntent {
                 count: 4,
@@ -304,6 +341,10 @@ mod tests {
                 servo_mount_hole_diameter_mm: 2.9,
                 print_fit_mm: 0.15,
                 print_clearance_mm: 0.35,
+                underactuated_mode: false,
+                compliant_joint_count: 0,
+                flexure_thickness_mm: 1.4,
+                single_servo_drive: true,
             }),
             &mut state,
         )
@@ -317,6 +358,50 @@ mod tests {
         assert_eq!(
             state.parameter_values.get("print_fit_mm").copied(),
             Some(0.15)
+        );
+        assert_eq!(state.underactuated_mode, false);
+        assert_eq!(state.single_servo_drive, true);
+        assert_eq!(state.compliant_joint_count, Some(0));
+        assert_eq!(state.flexure_thickness_mm, Some(1.4));
+    }
+
+    #[test]
+    fn underactuated_parallel_jaw_spec_sets_underactuated_profile_state() {
+        let mut state = CadDispatchState::default();
+        let receipt = dispatch_cad_intent(
+            &CadIntent::CreateParallelJawGripperSpec(CreateParallelJawGripperSpecIntent {
+                jaw_open_mm: 36.0,
+                finger_length_mm: 66.0,
+                finger_thickness_mm: 7.5,
+                base_width_mm: 82.0,
+                base_depth_mm: 54.0,
+                base_thickness_mm: 8.5,
+                servo_mount_hole_diameter_mm: 2.9,
+                print_fit_mm: 0.15,
+                print_clearance_mm: 0.35,
+                underactuated_mode: true,
+                compliant_joint_count: 3,
+                flexure_thickness_mm: 1.2,
+                single_servo_drive: true,
+            }),
+            &mut state,
+        )
+        .expect("underactuated gripper spec should dispatch");
+        assert_eq!(
+            receipt.design_profile,
+            super::CadDesignProfile::ParallelJawGripperUnderactuated
+        );
+        assert_eq!(
+            state.design_profile,
+            super::CadDesignProfile::ParallelJawGripperUnderactuated
+        );
+        assert_eq!(state.underactuated_mode, true);
+        assert_eq!(state.single_servo_drive, true);
+        assert_eq!(state.compliant_joint_count, Some(3));
+        assert_eq!(state.flexure_thickness_mm, Some(1.2));
+        assert_eq!(
+            state.parameter_values.get("underactuated_mode").copied(),
+            Some(1.0)
         );
     }
 

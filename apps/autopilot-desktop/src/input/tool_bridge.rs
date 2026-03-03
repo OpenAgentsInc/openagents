@@ -1742,8 +1742,12 @@ fn cad_checkpoint_payload(
             "max_deflection_mm": analysis.max_deflection_mm,
             "center_of_gravity_mm": analysis.center_of_gravity_mm,
         },
-        "gripper_parameters": if design_profile == openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper {
-            cad_gripper_parameter_summary(cad_demo)
+        "gripper_parameters": if matches!(
+            design_profile,
+            openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper
+                | openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated
+        ) {
+            cad_gripper_parameter_summary(cad_demo, design_profile)
         } else {
             json!({})
         },
@@ -1762,10 +1766,16 @@ fn cad_design_profile_label(profile: openagents_cad::dispatch::CadDesignProfile)
     match profile {
         openagents_cad::dispatch::CadDesignProfile::Rack => "rack",
         openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper => "parallel_jaw_gripper",
+        openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated => {
+            "parallel_jaw_gripper_underactuated"
+        }
     }
 }
 
-fn cad_gripper_parameter_summary(cad_demo: &crate::app_state::CadDemoPaneState) -> Value {
+fn cad_gripper_parameter_summary(
+    cad_demo: &crate::app_state::CadDemoPaneState,
+    design_profile: openagents_cad::dispatch::CadDesignProfile,
+) -> Value {
     let keys = [
         "jaw_open_mm",
         "finger_length_mm",
@@ -1776,11 +1786,34 @@ fn cad_gripper_parameter_summary(cad_demo: &crate::app_state::CadDemoPaneState) 
         "servo_mount_hole_diameter_mm",
         "print_fit_mm",
         "print_clearance_mm",
+        "compliant_joint_count",
+        "flexure_thickness_mm",
     ];
     let mut summary = serde_json::Map::new();
     for key in keys {
         if let Some(value) = cad_demo.dimension_value_mm(key) {
             summary.insert(key.to_string(), json!(value));
+        }
+    }
+    let underactuated_mode = cad_demo
+        .active_dispatch_state()
+        .map(|dispatch| dispatch.underactuated_mode)
+        .unwrap_or(matches!(
+            design_profile,
+            openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated
+        ));
+    summary.insert("underactuated_mode".to_string(), json!(underactuated_mode));
+    let single_servo_drive = cad_demo
+        .active_dispatch_state()
+        .map(|dispatch| dispatch.single_servo_drive)
+        .unwrap_or(true);
+    summary.insert("single_servo_drive".to_string(), json!(single_servo_drive));
+    if let Some(dispatch) = cad_demo.active_dispatch_state() {
+        if let Some(value) = dispatch.compliant_joint_count {
+            summary.insert("compliant_joint_count".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch.flexure_thickness_mm {
+            summary.insert("flexure_thickness_mm".to_string(), json!(value));
         }
     }
     Value::Object(summary)
@@ -4576,6 +4609,54 @@ mod tests {
         assert_eq!(
             quad_payload.pointer("/context/viewport_layout"),
             Some(&serde_json::json!("quad"))
+        );
+    }
+
+    #[test]
+    fn cad_checkpoint_payload_exposes_underactuation_state_and_parameters() {
+        let mut cad_demo = CadDemoPaneState::default();
+        cad_demo
+            .apply_chat_intent_for_thread(
+                "thread-underactuated",
+                &openagents_cad::intent::CadIntent::CreateParallelJawGripperSpec(
+                    openagents_cad::intent::CreateParallelJawGripperSpecIntent {
+                        jaw_open_mm: 36.0,
+                        finger_length_mm: 66.0,
+                        finger_thickness_mm: 7.5,
+                        base_width_mm: 82.0,
+                        base_depth_mm: 54.0,
+                        base_thickness_mm: 8.5,
+                        servo_mount_hole_diameter_mm: 2.9,
+                        print_fit_mm: 0.15,
+                        print_clearance_mm: 0.35,
+                        underactuated_mode: true,
+                        compliant_joint_count: 3,
+                        flexure_thickness_mm: 1.2,
+                        single_servo_drive: true,
+                    },
+                ),
+            )
+            .expect("underactuated intent should apply");
+        let payload = cad_checkpoint_payload(&cad_demo, Some("thread-underactuated"), "test-source");
+        assert_eq!(
+            payload.pointer("/design_profile"),
+            Some(&serde_json::json!("parallel_jaw_gripper_underactuated"))
+        );
+        assert_eq!(
+            payload.pointer("/gripper_parameters/underactuated_mode"),
+            Some(&serde_json::json!(true))
+        );
+        assert_eq!(
+            payload.pointer("/gripper_parameters/compliant_joint_count"),
+            Some(&serde_json::json!(3))
+        );
+        assert_eq!(
+            payload.pointer("/gripper_parameters/flexure_thickness_mm"),
+            Some(&serde_json::json!(1.2))
+        );
+        assert_eq!(
+            payload.pointer("/gripper_parameters/single_servo_drive"),
+            Some(&serde_json::json!(true))
         );
     }
 

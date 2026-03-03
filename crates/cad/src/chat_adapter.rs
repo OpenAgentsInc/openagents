@@ -1,12 +1,11 @@
 use crate::intent::{
     AdjustParameterIntent, CadAdjustOperation, CadIntent, CadIntentValidationError,
     CompareVariantsIntent, CreateParallelJawGripperSpecIntent, CreateRackSpecIntent, ExportIntent,
-    PARALLEL_JAW_GRIPPER_DEFAULT_BASE_DEPTH_MM, PARALLEL_JAW_GRIPPER_DEFAULT_BASE_THICKNESS_MM,
-    PARALLEL_JAW_GRIPPER_DEFAULT_BASE_WIDTH_MM, PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_LENGTH_MM,
-    PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_THICKNESS_MM, PARALLEL_JAW_GRIPPER_DEFAULT_JAW_OPEN_MM,
-    PARALLEL_JAW_GRIPPER_DEFAULT_PRINT_CLEARANCE_MM, PARALLEL_JAW_GRIPPER_DEFAULT_PRINT_FIT_MM,
-    PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_MOUNT_HOLE_DIAMETER_MM, SelectIntent, SetMaterialIntent,
-    SetObjectiveIntent, parse_cad_intent_json,
+    PARALLEL_JAW_GRIPPER_DEFAULT_COMPLIANT_JOINT_COUNT,
+    PARALLEL_JAW_GRIPPER_DEFAULT_FLEXURE_THICKNESS_MM,
+    PARALLEL_JAW_GRIPPER_MAX_COMPLIANT_JOINT_COUNT,
+    PARALLEL_JAW_GRIPPER_MAX_FLEXURE_THICKNESS_MM, PARALLEL_JAW_GRIPPER_MIN_FLEXURE_THICKNESS_MM,
+    SelectIntent, SetMaterialIntent, SetObjectiveIntent, parse_cad_intent_json,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -169,7 +168,9 @@ fn translate_rack_design_prompt(lower: &str) -> Option<CadIntent> {
 }
 
 fn translate_parallel_jaw_gripper_prompt(lower: &str) -> Option<CadIntent> {
-    let has_design_verb = ["design", "build", "create", "model", "draft", "generate"]
+    let has_design_verb = [
+        "design", "build", "create", "model", "draft", "generate", "modify", "evolve",
+    ]
         .iter()
         .any(|verb| lower.contains(verb));
     let has_gripper_target = [
@@ -185,17 +186,7 @@ fn translate_parallel_jaw_gripper_prompt(lower: &str) -> Option<CadIntent> {
         return None;
     }
 
-    let mut spec = CreateParallelJawGripperSpecIntent {
-        jaw_open_mm: PARALLEL_JAW_GRIPPER_DEFAULT_JAW_OPEN_MM,
-        finger_length_mm: PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_LENGTH_MM,
-        finger_thickness_mm: PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_THICKNESS_MM,
-        base_width_mm: PARALLEL_JAW_GRIPPER_DEFAULT_BASE_WIDTH_MM,
-        base_depth_mm: PARALLEL_JAW_GRIPPER_DEFAULT_BASE_DEPTH_MM,
-        base_thickness_mm: PARALLEL_JAW_GRIPPER_DEFAULT_BASE_THICKNESS_MM,
-        servo_mount_hole_diameter_mm: PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_MOUNT_HOLE_DIAMETER_MM,
-        print_fit_mm: PARALLEL_JAW_GRIPPER_DEFAULT_PRINT_FIT_MM,
-        print_clearance_mm: PARALLEL_JAW_GRIPPER_DEFAULT_PRINT_CLEARANCE_MM,
-    };
+    let mut spec = CreateParallelJawGripperSpecIntent::default();
 
     if lower.contains("wide") || lower.contains("large jaw") {
         spec.jaw_open_mm = 64.0;
@@ -220,6 +211,41 @@ fn translate_parallel_jaw_gripper_prompt(lower: &str) -> Option<CadIntent> {
     } else if lower.contains("loose fit") {
         spec.print_fit_mm = 0.2;
         spec.print_clearance_mm = 0.4;
+    }
+    let requests_underactuated = [
+        "underactuated",
+        "compliant",
+        "openhand",
+        "adaptive grasp",
+        "single servo",
+        "single-drive",
+        "single drive",
+        "flexure",
+    ]
+    .iter()
+    .any(|token| lower.contains(token));
+    if requests_underactuated {
+        spec.underactuated_mode = true;
+        spec.compliant_joint_count = PARALLEL_JAW_GRIPPER_DEFAULT_COMPLIANT_JOINT_COUNT.max(3);
+        spec.flexure_thickness_mm = PARALLEL_JAW_GRIPPER_DEFAULT_FLEXURE_THICKNESS_MM;
+        spec.single_servo_drive = true;
+    }
+    if lower.contains("dual servo")
+        || lower.contains("multi servo")
+        || lower.contains("independent servos")
+    {
+        spec.single_servo_drive = false;
+    }
+    if let Some(count) = extract_compliant_joint_count(lower) {
+        spec.underactuated_mode = true;
+        spec.compliant_joint_count = count.min(PARALLEL_JAW_GRIPPER_MAX_COMPLIANT_JOINT_COUNT);
+    }
+    if let Some(flexure_mm) = extract_flexure_thickness_mm(lower) {
+        spec.underactuated_mode = true;
+        spec.flexure_thickness_mm = flexure_mm.clamp(
+            PARALLEL_JAW_GRIPPER_MIN_FLEXURE_THICKNESS_MM,
+            PARALLEL_JAW_GRIPPER_MAX_FLEXURE_THICKNESS_MM,
+        );
     }
 
     Some(CadIntent::CreateParallelJawGripperSpec(spec))
@@ -303,6 +329,54 @@ fn extract_percent_value(input: &str) -> Option<f64> {
         }
         if !digits.is_empty() {
             digits.clear();
+        }
+    }
+    None
+}
+
+fn extract_compliant_joint_count(lower: &str) -> Option<u8> {
+    for token in lower.split_whitespace() {
+        if let Ok(value) = token.parse::<u8>() {
+            if value > 0 {
+                return Some(value);
+            }
+        }
+    }
+    None
+}
+
+fn extract_flexure_thickness_mm(lower: &str) -> Option<f64> {
+    if let Some(index) = lower.find("flexure thickness") {
+        let tail = &lower[index + "flexure thickness".len()..];
+        if let Some(value) = extract_first_numeric_token(tail) {
+            return Some(value);
+        }
+    }
+    let flexure_index = lower.find("flexure")?;
+    let tail = &lower[flexure_index..];
+    for raw in tail.split_whitespace() {
+        if !raw.contains("mm") {
+            continue;
+        }
+        let cleaned = raw.trim_matches(|ch: char| !ch.is_ascii_digit() && ch != '.');
+        if cleaned.is_empty() {
+            continue;
+        }
+        if let Ok(value) = cleaned.parse::<f64>() {
+            return Some(value);
+        }
+    }
+    None
+}
+
+fn extract_first_numeric_token(input: &str) -> Option<f64> {
+    for raw in input.split_whitespace() {
+        let cleaned = raw.trim_matches(|ch: char| !ch.is_ascii_digit() && ch != '.');
+        if cleaned.is_empty() {
+            continue;
+        }
+        if let Ok(value) = cleaned.parse::<f64>() {
+            return Some(value);
         }
     }
     None
@@ -434,6 +508,22 @@ mod tests {
                 assert!((spec.jaw_open_mm - 42.0).abs() < f64::EPSILON);
                 assert!((spec.print_fit_mm - 0.15).abs() < f64::EPSILON);
                 assert!((spec.print_clearance_mm - 0.35).abs() < f64::EPSILON);
+            }
+            other => panic!("unexpected outcome: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn adapter_translates_underactuated_compliance_prompt_into_typed_spec() {
+        let outcome = translate_chat_to_cad_intent(
+            "Modify the gripper to be underactuated with compliant flexure joints and a single servo drive; use 3 compliant joints and 1.3mm flexure thickness.",
+        );
+        match outcome {
+            CadIntentTranslationOutcome::Intent(CadIntent::CreateParallelJawGripperSpec(spec)) => {
+                assert!(spec.underactuated_mode);
+                assert_eq!(spec.compliant_joint_count, 3);
+                assert!(spec.single_servo_drive);
+                assert!((spec.flexure_thickness_mm - 1.3).abs() < f64::EPSILON);
             }
             other => panic!("unexpected outcome: {other:?}"),
         }
