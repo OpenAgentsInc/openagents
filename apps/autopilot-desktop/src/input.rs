@@ -53,12 +53,12 @@ use crate::pane_system::{
     SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StableSatsSimulationPaneAction,
     StarterJobsPaneAction, SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction,
     cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds, clamp_all_panes_to_window,
-    dispatch_chat_input_event, dispatch_chat_scroll_event,
-    dispatch_create_invoice_input_event, dispatch_credentials_input_event,
-    dispatch_job_history_input_event, dispatch_network_requests_input_event,
-    dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
-    dispatch_settings_input_event, dispatch_spark_input_event, pane_content_bounds,
-    pane_indices_by_z_desc, pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
+    dispatch_chat_input_event, dispatch_chat_scroll_event, dispatch_create_invoice_input_event,
+    dispatch_credentials_input_event, dispatch_job_history_input_event,
+    dispatch_network_requests_input_event, dispatch_pay_invoice_input_event,
+    dispatch_relay_connections_input_event, dispatch_settings_input_event,
+    dispatch_spark_input_event, pane_content_bounds, pane_indices_by_z_desc,
+    pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
 };
 use crate::panes::{cad as cad_pane, chat as chat_pane};
 use crate::render::{
@@ -2737,9 +2737,10 @@ mod tests {
         TurnSkillAttachment, TurnSkillSource, assemble_chat_turn_input,
         build_create_invoice_command, build_pay_invoice_command, build_spark_command_for_action,
         cad_hotkey_action_matrix, cad_pick_kind_label, cad_pick_kind_to_selection_kind,
-        cad_policy_skill_candidates_for_turn, cad_turn_approval_policy, should_open_command_palette,
+        cad_policy_skill_candidates_for_turn, cad_turn_approval_policy,
         is_command_palette_shortcut, is_toggle_fullscreen_shortcut, parse_positive_amount_str,
-        resolve_turn_skill_by_name, resolve_turn_skill_by_path, validate_lightning_payment_request,
+        resolve_turn_skill_by_name, resolve_turn_skill_by_path, should_open_command_palette,
+        validate_lightning_payment_request,
     };
     use crate::app_state::SkillRegistryDiscoveredSkill;
     use crate::pane_system::cad_palette_command_specs;

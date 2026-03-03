@@ -2201,12 +2201,27 @@ impl CadDemoPaneState {
         self.sync_active_variant_viewport_from_global();
     }
 
+    fn normalize_orbit_angle_deg(angle_deg: f32) -> f32 {
+        let wrapped = angle_deg.rem_euclid(360.0);
+        if wrapped >= 180.0 {
+            wrapped - 360.0
+        } else {
+            wrapped
+        }
+    }
+
+    fn shortest_orbit_angle_delta_deg(lhs: f32, rhs: f32) -> f32 {
+        Self::normalize_orbit_angle_deg(lhs - rhs).abs()
+    }
+
     pub fn orbit_camera_by_drag(&mut self, drag_dx: f32, drag_dy: f32) {
         const ORBIT_SENSITIVITY_DEG_PER_PX: f32 = 0.28;
-        self.camera_orbit_yaw_deg += drag_dx * ORBIT_SENSITIVITY_DEG_PER_PX;
-        self.camera_orbit_pitch_deg = (self.camera_orbit_pitch_deg
-            - drag_dy * ORBIT_SENSITIVITY_DEG_PER_PX)
-            .clamp(-89.0, 89.0);
+        self.camera_orbit_yaw_deg = Self::normalize_orbit_angle_deg(
+            self.camera_orbit_yaw_deg + drag_dx * ORBIT_SENSITIVITY_DEG_PER_PX,
+        );
+        self.camera_orbit_pitch_deg = Self::normalize_orbit_angle_deg(
+            self.camera_orbit_pitch_deg - drag_dy * ORBIT_SENSITIVITY_DEG_PER_PX,
+        );
         self.sync_active_variant_viewport_from_global();
     }
 
@@ -2218,9 +2233,12 @@ impl CadDemoPaneState {
     }
 
     pub fn zoom_camera_by_scroll(&mut self, scroll_dy: f32) {
+        const CAD_CAMERA_MIN_ZOOM: f32 = 0.35;
+        const CAD_CAMERA_MAX_ZOOM: f32 = 1.0;
         // Negative wheel deltas (scroll up on most devices) zoom in.
         let scale = (1.0 + (-scroll_dy * 0.0018)).clamp(0.75, 1.35);
-        self.camera_zoom = (self.camera_zoom * scale).clamp(0.35, 4.0);
+        self.camera_zoom =
+            (self.camera_zoom * scale).clamp(CAD_CAMERA_MIN_ZOOM, CAD_CAMERA_MAX_ZOOM);
         self.sync_active_variant_viewport_from_global();
     }
 
@@ -2244,8 +2262,10 @@ impl CadDemoPaneState {
         .into_iter()
         .find(|snap| {
             let (yaw, pitch) = snap.orbit_degrees();
-            (self.camera_orbit_yaw_deg - yaw).abs() <= SNAP_TOLERANCE_DEG
-                && (self.camera_orbit_pitch_deg - pitch).abs() <= SNAP_TOLERANCE_DEG
+            Self::shortest_orbit_angle_delta_deg(self.camera_orbit_yaw_deg, yaw)
+                <= SNAP_TOLERANCE_DEG
+                && Self::shortest_orbit_angle_delta_deg(self.camera_orbit_pitch_deg, pitch)
+                    <= SNAP_TOLERANCE_DEG
         })
     }
 

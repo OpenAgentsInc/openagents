@@ -4449,11 +4449,12 @@ mod tests {
         assert_eq!(first.camera_pan_x, second.camera_pan_x);
         assert_eq!(first.camera_pan_y, second.camera_pan_y);
         assert_eq!(first.camera_zoom, second.camera_zoom);
-        assert!(first.camera_orbit_pitch_deg <= 89.0);
-        assert!(first.camera_orbit_pitch_deg >= -89.0);
+        assert!(first.camera_orbit_pitch_deg < 180.0);
+        assert!(first.camera_orbit_pitch_deg >= -180.0);
+        assert!((first.camera_orbit_pitch_deg + 6.0).abs() <= 0.001);
         assert!(first.camera_pan_x <= 800.0);
         assert!(first.camera_pan_y >= -800.0);
-        assert!(first.camera_zoom <= 4.0);
+        assert!(first.camera_zoom <= 1.0);
         assert!(first.camera_zoom >= 0.35);
     }
 
@@ -4712,6 +4713,7 @@ mod tests {
 
         state.cycle_three_d_mouse_profile();
         assert_eq!(state.three_d_mouse_profile, CadThreeDMouseProfile::Fast);
+        state.camera_zoom = 0.7;
         let zoom_before = state.camera_zoom;
         assert!(state.apply_three_d_mouse_motion(2, -0.35));
         assert!(state.camera_zoom > zoom_before);
