@@ -16,15 +16,13 @@ Validate CAST scripts and workflows with deterministic positive and negative sce
 - Expect success receipt files.
 
 2. Cancel and replace order
-- Render `cancel-replace-order.template.yaml`
-- Render `cancel-replace-order.private-inputs.template.yaml`
+- Migrate `/Users/christopherdavid/code/charms/cast-releases/docs/howto/02-cancel-and-replace-order.yaml` with `cast-migrate-howto-v11.sh`
 - Generate cancellation signature with `cast-cancel-signature.sh`
 - Run check + mock prove
 - Expect signature accepted at configured cancel input index.
 
 3. Partial fulfillment
-- Render `partial-fulfill-order.template.yaml`
-- Render `partial-fulfill-order.private-inputs.template.yaml`
+- Migrate `/Users/christopherdavid/code/charms/cast-releases/docs/howto/03-partial-fulfill.yaml` with `cast-migrate-howto-v11.sh`
 - Run check + mock prove
 - Verify remainder invariants in rendered spell and decode output.
 
@@ -45,6 +43,10 @@ Validate CAST scripts and workflows with deterministic positive and negative sce
 4. Invalid fee or output invariants
 - Set impossible fee/output values
 - Expect check/prove rejection.
+
+5. Missing CAST private inputs
+- Omit `--private-inputs-file` for CAST spell
+- Expect failure with explicit hint about required private inputs keyed by CAST app identity.
 
 ## Smoke Harness
 

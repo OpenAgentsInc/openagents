@@ -13,6 +13,14 @@ Use this guide to run CAST stages continuously from CLI with deterministic recei
 
 Each iteration writes stage receipts and an `autotrade_loop` summary receipt.
 
+Required env for `check`/`prove` stages:
+
+- `CAST_AUTOTRADE_SPELL_FILE`
+- `CAST_AUTOTRADE_PRIVATE_INPUTS_FILE`
+- `CAST_APP_BIN`
+- `CAST_PREV_TXS_FILE`
+- `CAST_CHANGE_ADDRESS`
+
 ## One Iteration (Recommended First)
 
 ```bash

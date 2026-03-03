@@ -56,6 +56,23 @@ Template rendering keys (for `skills/cast/assets/*.template.yaml`):
 - `CAST_ORDER_SCROLLS_DEST`, `CAST_REPLACEMENT_SCROLLS_DEST`, `CAST_TAKER_RECEIVE_DEST`, `CAST_ORDER_MAKER_DEST`, `CAST_FEE_DEST`
 - `tx.coins[*].dest` values must be hex destination bytes (derive via `charms util dest --addr <address>`)
 
+## Legacy Howto Migration (v9 -> v11)
+
+`/Users/christopherdavid/code/charms/cast-releases/docs/howto/*` still uses legacy spell shape (`version: 9`).
+Use the migration helper before running check/prove on Charms v11:
+
+```bash
+skills/cast/scripts/cast-migrate-howto-v11.sh \
+  --input /Users/christopherdavid/code/charms/cast-releases/docs/howto/03-partial-fulfill.yaml \
+  --output-spell ./rendered/03-partial-fulfill.v11.yaml \
+  --output-private-inputs ./rendered/03-partial-fulfill.private.v11.yaml
+```
+
+Notes:
+
+- CAST runtime params must be in the separate private-inputs file, keyed by full app identity.
+- For prove, BTC value must cover outputs and fees. Ensure a funding UTXO is present in `tx.ins` and its parent tx is in `CAST_PREV_TXS_FILE`.
+
 ## Artifacts Directory
 
 Per-run shape:

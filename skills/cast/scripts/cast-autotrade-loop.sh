@@ -35,12 +35,12 @@ Options:
 
 Required env (for check/prove stages):
   CAST_AUTOTRADE_SPELL_FILE
+  CAST_AUTOTRADE_PRIVATE_INPUTS_FILE
   CAST_APP_BIN
   CAST_PREV_TXS_FILE
   CAST_CHANGE_ADDRESS
 
 Optional env:
-  CAST_AUTOTRADE_PRIVATE_INPUTS_FILE
   CAST_AUTOTRADE_TX_JSON             # when skipping prove or overriding prove output
   CAST_AUTOTRADE_TX_HEX              # when inspect stage should decode explicit tx
   CAST_CHAIN                         # defaults to bitcoin for inspect
@@ -167,11 +167,29 @@ if [[ "${#stages[@]}" -eq 0 ]]; then
     exit 1
 fi
 
-require_env_for_prove() {
-    local key="$1"
-    local value="${!key:-}"
-    if [[ -z "$value" ]]; then
-        printf 'Missing required env: %s\n' "$key" >&2
+require_env_keys() {
+    local stage="$1"
+    shift
+    local missing=()
+    local key=""
+    for key in "$@"; do
+        if [[ -z "${!key:-}" ]]; then
+            missing+=("$key")
+        fi
+    done
+    if [[ "${#missing[@]}" -gt 0 ]]; then
+        printf 'Missing required env for %s stage: %s\n' "$stage" "${missing[*]}" >&2
+        return 1
+    fi
+    return 0
+}
+
+require_file_path() {
+    local stage="$1"
+    local key="$2"
+    local path="$3"
+    if [[ ! -f "$path" ]]; then
+        printf 'Missing required file for %s stage: %s=%s\n' "$stage" "$key" "$path" >&2
         return 1
     fi
     return 0
@@ -213,22 +231,28 @@ run_iteration() {
 
         case "$stage" in
         check)
-            if ! require_env_for_prove "CAST_AUTOTRADE_SPELL_FILE" ||
-                ! require_env_for_prove "CAST_APP_BIN" ||
-                ! require_env_for_prove "CAST_PREV_TXS_FILE"; then
+            if ! require_env_keys "check" \
+                "CAST_AUTOTRADE_SPELL_FILE" \
+                "CAST_AUTOTRADE_PRIVATE_INPUTS_FILE" \
+                "CAST_APP_BIN" \
+                "CAST_PREV_TXS_FILE"; then
                 stage_ok=0
                 stage_error="missing required env for check stage"
+            elif ! require_file_path "check" "CAST_AUTOTRADE_SPELL_FILE" "${CAST_AUTOTRADE_SPELL_FILE}" ||
+                ! require_file_path "check" "CAST_AUTOTRADE_PRIVATE_INPUTS_FILE" "${CAST_AUTOTRADE_PRIVATE_INPUTS_FILE}" ||
+                ! require_file_path "check" "CAST_APP_BIN" "${CAST_APP_BIN}" ||
+                ! require_file_path "check" "CAST_PREV_TXS_FILE" "${CAST_PREV_TXS_FILE}"; then
+                stage_ok=0
+                stage_error="missing required file input for check stage"
             else
                 cmd=(
                     "${SCRIPT_DIR}/cast-spell-check.sh"
                     --spell "${CAST_AUTOTRADE_SPELL_FILE}"
                     --app-bin "${CAST_APP_BIN}"
                     --prev-txs-file "${CAST_PREV_TXS_FILE}"
+                    --private-inputs-file "${CAST_AUTOTRADE_PRIVATE_INPUTS_FILE}"
                     --receipt-file "$stage_receipt"
                 )
-                if [[ -n "${CAST_AUTOTRADE_PRIVATE_INPUTS_FILE:-}" ]]; then
-                    cmd+=(--private-inputs-file "${CAST_AUTOTRADE_PRIVATE_INPUTS_FILE}")
-                fi
                 if ! "${cmd[@]}" >/dev/null; then
                     stage_ok=0
                     stage_error="cast-spell-check stage failed"
@@ -236,25 +260,31 @@ run_iteration() {
             fi
             ;;
         prove)
-            if ! require_env_for_prove "CAST_AUTOTRADE_SPELL_FILE" ||
-                ! require_env_for_prove "CAST_APP_BIN" ||
-                ! require_env_for_prove "CAST_PREV_TXS_FILE" ||
-                ! require_env_for_prove "CAST_CHANGE_ADDRESS"; then
+            if ! require_env_keys "prove" \
+                "CAST_AUTOTRADE_SPELL_FILE" \
+                "CAST_AUTOTRADE_PRIVATE_INPUTS_FILE" \
+                "CAST_APP_BIN" \
+                "CAST_PREV_TXS_FILE" \
+                "CAST_CHANGE_ADDRESS"; then
                 stage_ok=0
                 stage_error="missing required env for prove stage"
+            elif ! require_file_path "prove" "CAST_AUTOTRADE_SPELL_FILE" "${CAST_AUTOTRADE_SPELL_FILE}" ||
+                ! require_file_path "prove" "CAST_AUTOTRADE_PRIVATE_INPUTS_FILE" "${CAST_AUTOTRADE_PRIVATE_INPUTS_FILE}" ||
+                ! require_file_path "prove" "CAST_APP_BIN" "${CAST_APP_BIN}" ||
+                ! require_file_path "prove" "CAST_PREV_TXS_FILE" "${CAST_PREV_TXS_FILE}"; then
+                stage_ok=0
+                stage_error="missing required file input for prove stage"
             else
                 cmd=(
                     "${SCRIPT_DIR}/cast-spell-prove.sh"
                     --spell "${CAST_AUTOTRADE_SPELL_FILE}"
                     --app-bin "${CAST_APP_BIN}"
                     --prev-txs-file "${CAST_PREV_TXS_FILE}"
+                    --private-inputs-file "${CAST_AUTOTRADE_PRIVATE_INPUTS_FILE}"
                     --change-address "${CAST_CHANGE_ADDRESS}"
                     --output-file "$prove_output"
                     --receipt-file "$stage_receipt"
                 )
-                if [[ -n "${CAST_AUTOTRADE_PRIVATE_INPUTS_FILE:-}" ]]; then
-                    cmd+=(--private-inputs-file "${CAST_AUTOTRADE_PRIVATE_INPUTS_FILE}")
-                fi
                 if [[ "$mock_prove" -eq 1 ]]; then
                     cmd+=(--mock)
                 fi

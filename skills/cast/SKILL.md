@@ -29,7 +29,7 @@ Required commands:
 
 Required artifacts/services:
 
-- CAST app binary (`charms-cast-v11.0.1.wasm` or latest v11-compatible build)
+- CAST app binary (`charms-cast-v0.2.0.wasm` or latest v11-compatible CAST build)
 - Operator-signed `fulfill` params payload
 - Scrolls API base URL
 - `prev_txs` ancestry data for all spell inputs
@@ -72,18 +72,30 @@ skills/cast/scripts/derive-scrolls-address.sh \
   --output-index 0 \
   --scrolls-base-url "${CAST_SCROLLS_BASE_URL}"
 
+# Migrate legacy CAST howto spell to v11 (split private inputs + convert coin dests)
+skills/cast/scripts/cast-migrate-howto-v11.sh \
+  --input /Users/christopherdavid/code/charms/cast-releases/docs/howto/03-partial-fulfill.yaml \
+  --output-spell ./rendered/03-partial-fulfill.v11.yaml \
+  --output-private-inputs ./rendered/03-partial-fulfill.private.v11.yaml
+
 # Check + prove
 skills/cast/scripts/cast-spell-check.sh \
   --spell ./rendered/create-order.yaml \
-  --private-inputs-file ./rendered/create-order.private-inputs.yaml
+  --private-inputs-file ./rendered/create-order.private-inputs.yaml \
+  --app-bin "${CAST_APP_BIN}" \
+  --prev-txs-file "${CAST_PREV_TXS_FILE}"
 skills/cast/scripts/cast-spell-prove.sh \
   --spell ./rendered/create-order.yaml \
   --private-inputs-file ./rendered/create-order.private-inputs.yaml \
+  --app-bin "${CAST_APP_BIN}" \
+  --prev-txs-file "${CAST_PREV_TXS_FILE}" \
   --change-address "bc1q..." \
   --mock
 skills/cast/scripts/cast-spell-prove.sh \
   --spell ./rendered/create-order.yaml \
   --private-inputs-file ./rendered/create-order.private-inputs.yaml \
+  --app-bin "${CAST_APP_BIN}" \
+  --prev-txs-file "${CAST_PREV_TXS_FILE}" \
   --change-address "bc1q..."
 
 # Sign + inspect

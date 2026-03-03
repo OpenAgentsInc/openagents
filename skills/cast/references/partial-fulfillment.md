@@ -15,10 +15,14 @@ skills/cast/scripts/check-cast-prereqs.sh taker
 ```bash
 skills/cast/scripts/cast-spell-check.sh \
   --spell ./rendered/partial-fulfill-order.yaml \
-  --private-inputs-file ./rendered/partial-fulfill-order.private-inputs.yaml
+  --private-inputs-file ./rendered/partial-fulfill-order.private-inputs.yaml \
+  --app-bin "${CAST_APP_BIN}" \
+  --prev-txs-file "${CAST_PREV_TXS_FILE}"
 skills/cast/scripts/cast-spell-prove.sh \
   --spell ./rendered/partial-fulfill-order.yaml \
   --private-inputs-file ./rendered/partial-fulfill-order.private-inputs.yaml \
+  --app-bin "${CAST_APP_BIN}" \
+  --prev-txs-file "${CAST_PREV_TXS_FILE}" \
   --change-address "bc1q..." \
   --mock
 ```

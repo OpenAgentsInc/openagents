@@ -65,6 +65,33 @@ cast_verify_app_bin_hash() {
     return 0
 }
 
+cast_print_spell_failure_hints() {
+    local log_file="$1"
+    local cast_app_identity="${CAST_APP_IDENTITY:-b/0000000000000000000000000000000000000000000000000000000000000000/a471d3fcc436ae7cbc0e0c82a68cdc8e003ee21ef819e1acf834e11c43ce47d8}"
+
+    if [[ ! -f "$log_file" ]]; then
+        return 0
+    fi
+
+    if grep -qiE 'deserialization error:.*invalid type: null, expected map|app contract failed' "$log_file"; then
+        printf '%s\n' \
+            "Hint: CAST runtime inputs appear missing or malformed." \
+            "Provide --private-inputs-file with key '${cast_app_identity}' containing params (and edit_orders.cancel for cancel/replace)." >&2
+    fi
+
+    if grep -qi 'spell inputs must have sufficient value to cover outputs and fees' "$log_file"; then
+        printf '%s\n' \
+            "Hint: spell BTC value is insufficient for outputs/fees." \
+            "Include a funding input UTXO in tx.ins and include its parent transaction in --prev-txs." >&2
+    fi
+
+    if grep -qi 'missing field tx' "$log_file"; then
+        printf '%s\n' \
+            "Hint: spell is not in Charms v11 format." \
+            "Use version: 11 with tx.ins / tx.outs / tx.coins and app_public_inputs; pass private data via --private-inputs." >&2
+    fi
+}
+
 cast_write_receipt() {
     local operation="$1"
     local payload="$2"
