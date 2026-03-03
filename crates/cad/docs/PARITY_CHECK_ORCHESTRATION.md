@@ -83,6 +83,7 @@ Provide one deterministic orchestration entrypoint for the parity baseline lanes
 - raytrace UI toggle/fallback parity fixture check
 - rendering/raytrace checkpoint parity fixture check
 - physics crate integration parity fixture check
+- collision shape generation parity fixture check
 - parity CI artifact manifest fixture check
 - parity risk register + blocker workflow check
 - baseline dashboard publication check

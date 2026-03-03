@@ -5,7 +5,7 @@
   "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
   "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
   "parity_check_entrypoint": "scripts/cad/parity_check.sh",
-  "source_artifact_count": 152,
+  "source_artifact_count": 154,
   "artifacts": [
     {
       "artifact_id": "analytic_ray_intersections_parity_manifest",
@@ -108,6 +108,12 @@
       "source_path": "crates/cad/parity/chamfer_feature_graph_parity_manifest.json",
       "sha256": "9f71a23725de08ba6dbffa74631dedddedf56b1c2d0d765f7d838aa9bf68ec9f",
       "bytes": 1676
+    },
+    {
+      "artifact_id": "collision_shape_generation_parity_manifest",
+      "source_path": "crates/cad/parity/collision_shape_generation_parity_manifest.json",
+      "sha256": "bc55effa566f7d324e3c44af40828089062590141a26cd9601cc9bfb94a63d2d",
+      "bytes": 1914
     },
     {
       "artifact_id": "compact_ir_parity_manifest",
@@ -306,6 +312,12 @@
       "source_path": "crates/cad/parity/fixtures/cad_mcp_tools_vcad_reference.json",
       "sha256": "f016fb85e25bb83d3129f537c506ab29425dc22d405e9dd745de064418e5d34f",
       "bytes": 757
+    },
+    {
+      "artifact_id": "fixtures_collision_shape_generation_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/collision_shape_generation_vcad_reference.json",
+      "sha256": "e3d0cde3b8720184060171f69a7f4a92c0d19ca18adaf6e4d4619ea439997af3",
+      "bytes": 1018
     },
     {
       "artifact_id": "fixtures_compact_ir_vcad_reference",
@@ -670,8 +682,8 @@
     {
       "artifact_id": "parity_dashboard",
       "source_path": "crates/cad/parity/parity_dashboard.json",
-      "sha256": "545b7cbefc34ce0df31094028651a5d9d0e9ca4192c854bcbd641cd162a3053d",
-      "bytes": 8694
+      "sha256": "502adaa9d8fe102f2a88273c5b378cedc6f1b2becd84a36cc2b8b36a06bca4ae",
+      "bytes": 8806
     },
     {
       "artifact_id": "parity_risk_register",
