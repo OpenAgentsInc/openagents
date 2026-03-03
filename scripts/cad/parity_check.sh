@@ -112,6 +112,7 @@ LANE_LABELS=(
     "urdf-export-fixtures"
     "crdt-lane-architecture"
     "collaborative-document-sync"
+    "presence-cursor-selection"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -501,6 +502,9 @@ run_lane "crdt-lane-architecture" \
 
 run_lane "collaborative-document-sync" \
     "$ROOT_DIR/scripts/cad/parity-collaborative-document-sync-ci.sh"
+
+run_lane "presence-cursor-selection" \
+    "$ROOT_DIR/scripts/cad/parity-presence-cursor-selection-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

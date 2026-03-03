@@ -5,7 +5,7 @@
   "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
   "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
   "parity_check_entrypoint": "scripts/cad/parity_check.sh",
-  "source_artifact_count": 174,
+  "source_artifact_count": 176,
   "artifacts": [
     {
       "artifact_id": "analytic_ray_intersections_parity_manifest",
@@ -500,6 +500,12 @@
       "bytes": 1096
     },
     {
+      "artifact_id": "fixtures_presence_cursor_selection_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/presence_cursor_selection_vcad_reference.json",
+      "sha256": "65642c5f53948038acc91d36c1015650f254a088056b8792c351f1ee1e794109",
+      "bytes": 1008
+    },
+    {
       "artifact_id": "fixtures_raytrace_face_pick_vcad_reference",
       "source_path": "crates/cad/parity/fixtures/raytrace_face_pick_vcad_reference.json",
       "sha256": "0e21b1d3ca74396bfe1bb6a039980c38ae27fcb6f7714b1a0d9889cf42fbedb7",
@@ -778,8 +784,8 @@
     {
       "artifact_id": "parity_dashboard",
       "source_path": "crates/cad/parity/parity_dashboard.json",
-      "sha256": "9e971f1f583065a1b78126b7d7e67126567e5d870fffe9304bc3de63dce7f788",
-      "bytes": 9808
+      "sha256": "a418432566ad7fbd300d9573531df87b9ae1ace460a11a4803b6ea37653a8536",
+      "bytes": 9918
     },
     {
       "artifact_id": "parity_risk_register",
@@ -804,6 +810,12 @@
       "source_path": "crates/cad/parity/physics_crate_integration_parity_manifest.json",
       "sha256": "1358a811a3791a287fa6331d7af61066a70d3cfb0d0195bd4b175fd6f10b0bd3",
       "bytes": 2042
+    },
+    {
+      "artifact_id": "presence_cursor_selection_parity_manifest",
+      "source_path": "crates/cad/parity/presence_cursor_selection_parity_manifest.json",
+      "sha256": "923ce398626d307430ada2b365736b5ca9caf2fb436b76fa7404d481a8c4ba4a",
+      "bytes": 1907
     },
     {
       "artifact_id": "primitive_contracts_parity_manifest",

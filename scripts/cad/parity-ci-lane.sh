@@ -185,6 +185,8 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/fixtures/crdt_lane_architecture_vcad_reference.json"
     "crates/cad/parity/collaborative_document_sync_parity_manifest.json"
     "crates/cad/parity/fixtures/collaborative_document_sync_vcad_reference.json"
+    "crates/cad/parity/presence_cursor_selection_parity_manifest.json"
+    "crates/cad/parity/fixtures/presence_cursor_selection_vcad_reference.json"
     "crates/cad/parity/fixtures/parity_fixture_corpus.json"
 )
 
