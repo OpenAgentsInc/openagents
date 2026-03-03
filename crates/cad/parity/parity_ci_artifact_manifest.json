@@ -5,8 +5,14 @@
   "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
   "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
   "parity_check_entrypoint": "scripts/cad/parity_check.sh",
-  "source_artifact_count": 137,
+  "source_artifact_count": 139,
   "artifacts": [
+    {
+      "artifact_id": "analytic_ray_intersections_parity_manifest",
+      "source_path": "crates/cad/parity/analytic_ray_intersections_parity_manifest.json",
+      "sha256": "0bfb96b25534787fde2c7a701a9b243cd153bc3cbd50ae919c5ee739cc1ecc55",
+      "bytes": 4767
+    },
     {
       "artifact_id": "assembly_acceptance_scenes_parity_manifest",
       "source_path": "crates/cad/parity/assembly_acceptance_scenes_parity_manifest.json",
@@ -204,6 +210,12 @@
       "source_path": "crates/cad/parity/fillet_feature_graph_parity_manifest.json",
       "sha256": "b3970c83313251853aff7e7ff9e866afc4bbb44072be3f3b30518b120412788a",
       "bytes": 1618
+    },
+    {
+      "artifact_id": "fixtures_analytic_ray_intersections_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/analytic_ray_intersections_vcad_reference.json",
+      "sha256": "a12f8266325b1ba234b6fec751bc8a741805ec2243a821d212b6bc30cc795fcc",
+      "bytes": 2771
     },
     {
       "artifact_id": "fixtures_assembly_acceptance_scenes_vcad_reference",
@@ -616,8 +628,8 @@
     {
       "artifact_id": "parity_dashboard",
       "source_path": "crates/cad/parity/parity_dashboard.json",
-      "sha256": "c02fce39ff87077064fc5791da0cc8b1163ca6a3592f5f33d0a45eeed690a3ca",
-      "bytes": 7903
+      "sha256": "3e9eb61d6780db317c2e16dcb85f86e8dbc1726369f46ec581453685c13ea514",
+      "bytes": 8015
     },
     {
       "artifact_id": "parity_risk_register",

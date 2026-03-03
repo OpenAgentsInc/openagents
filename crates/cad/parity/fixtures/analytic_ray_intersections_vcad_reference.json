@@ -1,0 +1,100 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-098",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/crates/vcad-kernel-raytrace/src/intersect/plane.rs + ~/code/vcad/crates/vcad-kernel-raytrace/src/intersect/cylinder.rs + ~/code/vcad/crates/vcad-kernel-raytrace/src/intersect/sphere.rs + ~/code/vcad/crates/vcad-kernel-raytrace/src/intersect/cone.rs + ~/code/vcad/crates/vcad-kernel-raytrace/src/intersect/torus.rs",
+  "expected_samples": [
+    {
+      "case_id": "cone_through_axis",
+      "surface": "cone",
+      "hit_count": 2,
+      "t_values": [15.0, 25.0],
+      "uv_values": [[3.141592654, 7.071067812], [0.0, 7.071067812]]
+    },
+    {
+      "case_id": "cone_wrong_nappe",
+      "surface": "cone",
+      "hit_count": 0,
+      "t_values": [],
+      "uv_values": []
+    },
+    {
+      "case_id": "cylinder_parallel_axis",
+      "surface": "cylinder",
+      "hit_count": 0,
+      "t_values": [],
+      "uv_values": []
+    },
+    {
+      "case_id": "cylinder_tangent",
+      "surface": "cylinder",
+      "hit_count": 2,
+      "t_values": [10.0, 10.0],
+      "uv_values": [[0.0, 0.0], [0.0, 0.0]]
+    },
+    {
+      "case_id": "cylinder_through_center",
+      "surface": "cylinder",
+      "hit_count": 2,
+      "t_values": [5.0, 15.0],
+      "uv_values": [[3.141592654, 0.0], [0.0, 0.0]]
+    },
+    {
+      "case_id": "plane_behind_miss",
+      "surface": "plane",
+      "hit_count": 0,
+      "t_values": [],
+      "uv_values": []
+    },
+    {
+      "case_id": "plane_parallel_miss",
+      "surface": "plane",
+      "hit_count": 0,
+      "t_values": [],
+      "uv_values": []
+    },
+    {
+      "case_id": "plane_perpendicular_hit",
+      "surface": "plane",
+      "hit_count": 1,
+      "t_values": [5.0],
+      "uv_values": [[0.0, 0.0]]
+    },
+    {
+      "case_id": "sphere_from_inside",
+      "surface": "sphere",
+      "hit_count": 1,
+      "t_values": [5.0],
+      "uv_values": [[0.0, 0.0]]
+    },
+    {
+      "case_id": "sphere_tangent",
+      "surface": "sphere",
+      "hit_count": 2,
+      "t_values": [10.0, 10.0],
+      "uv_values": [[0.0, 0.0], [0.0, 0.0]]
+    },
+    {
+      "case_id": "sphere_through_center",
+      "surface": "sphere",
+      "hit_count": 2,
+      "t_values": [5.0, 15.0],
+      "uv_values": [[3.141592654, 0.0], [0.0, 0.0]]
+    },
+    {
+      "case_id": "torus_miss",
+      "surface": "torus",
+      "hit_count": 0,
+      "t_values": [],
+      "uv_values": []
+    },
+    {
+      "case_id": "torus_through_center",
+      "surface": "torus",
+      "hit_count": 4,
+      "t_values": [7.0, 13.0, 27.0, 33.0],
+      "uv_values": [[3.141592654, 0.0], [3.141592654, 3.141592654], [0.0, 3.141592654], [0.0, 0.0]]
+    }
+  ],
+  "expected_surfaces": ["cone", "cylinder", "plane", "sphere", "torus"]
+}
