@@ -121,6 +121,7 @@ LANE_LABELS=(
     "ecad-simulation-lane"
     "slicer-core-lane"
     "slicer-gcode-lane"
+    "slicer-bambu-lane"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -537,6 +538,9 @@ run_lane "slicer-core-lane" \
 
 run_lane "slicer-gcode-lane" \
     "$ROOT_DIR/scripts/cad/parity-slicer-gcode-lane-ci.sh"
+
+run_lane "slicer-bambu-lane" \
+    "$ROOT_DIR/scripts/cad/parity-slicer-bambu-lane-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
