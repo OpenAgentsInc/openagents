@@ -1,0 +1,43 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-120",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/ecad_schematic_lane_vcad_reference.json",
+  "reference_fixture_sha256": "00d6dde192f16d7c7135663791cfd5d2cb288693a7acbd5932bc51f7d0aadf4d",
+  "reference_source": "~/code/vcad/crates/vcad-ecad-schematic/src/lib.rs",
+  "reference_issue_match": true,
+  "reference_commit_match": true,
+  "row_set_match": true,
+  "contract_set_match": true,
+  "deterministic_replay_match": true,
+  "rows": [
+    {
+      "capability": "CAD ECAD Schematic Lane Parity",
+      "case_id": "capability_scope",
+      "issue_id": "VCAD-PARITY-120"
+    },
+    {
+      "case_id": "phase_scope",
+      "lane_label": "ecad-schematic-lane",
+      "phase": "Phase J - Full workspace parity lanes"
+    },
+    {
+      "case_id": "reference_source",
+      "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+      "vcad_source": "~/code/vcad/crates/vcad-ecad-schematic/src/lib.rs"
+    }
+  ],
+  "contracts": [
+    "CAD ECAD Schematic Lane Parity parity contracts are aligned to vcad reference behavior",
+    "CI parity artifacts include ecad_schematic_lane manifest and vcad fixture evidence",
+    "Phase J - Full workspace parity lanes parity lane remains deterministic across replay"
+  ],
+  "deterministic_signature": "2272b09ebc573476",
+  "parity_contracts": [
+    "CAD ECAD Schematic Lane Parity parity contracts are aligned to vcad reference behavior",
+    "CI parity artifacts include ecad_schematic_lane manifest and vcad fixture evidence",
+    "Phase J - Full workspace parity lanes parity lane remains deterministic across replay"
+  ]
+}

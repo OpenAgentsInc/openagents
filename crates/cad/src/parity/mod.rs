@@ -37,6 +37,7 @@ pub mod drafting_pdf_export_parity;
 pub mod drafting_persistence_parity;
 pub mod drafting_projection_parity;
 pub mod drafting_section_parity;
+pub mod ecad_schematic_lane_parity;
 pub mod ecad_symbols_lane_parity;
 pub mod expanded_finishing_parity;
 pub mod feature_op_hash_parity;
