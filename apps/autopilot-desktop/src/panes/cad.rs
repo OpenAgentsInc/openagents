@@ -50,6 +50,9 @@ const VARIANT_TILE_GAP: f32 = 8.0;
 const ENGINEERING_OVERLAY_WIDTH: f32 = 220.0;
 const ENGINEERING_OVERLAY_LINE_HEIGHT: f32 = 9.0;
 const ENGINEERING_OVERLAY_LINE_COUNT: usize = 6;
+const CAD_CAMERA_MIN_ZOOM: f32 = 0.35;
+const CAD_CAMERA_MAX_ZOOM: f32 = 1.0;
+const CAD_PERSPECTIVE_FIT_EXPANSION: f32 = 1.22;
 
 fn legacy_cad_pane_enabled() -> bool {
     std::env::var_os("OPENAGENTS_CAD_USE_LEGACY_PANE").is_some()
@@ -1719,15 +1722,28 @@ fn cad_mesh_to_viewport_primitive(
     let model_height = (max_y - min_y).abs().max(1.0);
     let available_width = (viewport_bounds.size.width - VIEWPORT_MESH_PAD * 2.0).max(1.0);
     let available_height = (viewport_bounds.size.height - VIEWPORT_MESH_PAD * 2.0).max(1.0);
-    let fit_scale = (available_width / model_width)
-        .min(available_height / model_height)
+    let bounds_extent_x = (payload.bounds.max_mm[0] - payload.bounds.min_mm[0]).abs();
+    let bounds_extent_y = (payload.bounds.max_mm[1] - payload.bounds.min_mm[1]).abs();
+    let bounds_extent_z = (payload.bounds.max_mm[2] - payload.bounds.min_mm[2]).abs();
+    let bounds_diameter = (bounds_extent_x * bounds_extent_x
+        + bounds_extent_y * bounds_extent_y
+        + bounds_extent_z * bounds_extent_z)
+        .sqrt()
+        .max(1.0);
+    let fit_diameter = if camera_pose.projection_mode == CadProjectionMode::Perspective {
+        bounds_diameter * CAD_PERSPECTIVE_FIT_EXPANSION
+    } else {
+        bounds_diameter
+    };
+    let fit_scale = (available_width / fit_diameter)
+        .min(available_height / fit_diameter)
         .max(0.0001);
     let zoom = if camera_pose.zoom.is_finite() {
         camera_pose.zoom
     } else {
         1.0
     }
-    .clamp(0.15, 6.0);
+    .clamp(CAD_CAMERA_MIN_ZOOM, CAD_CAMERA_MAX_ZOOM);
     let pan_x = if camera_pose.pan_x.is_finite() {
         camera_pose.pan_x
     } else {
@@ -1929,6 +1945,30 @@ mod tests {
             orbit_yaw_deg: 26.0,
             orbit_pitch_deg: 18.0,
         }
+    }
+
+    fn projected_extents(mesh: &wgpui::MeshPrimitive) -> (f32, f32, f32, f32) {
+        let min_x = mesh
+            .vertices
+            .iter()
+            .map(|vertex| vertex.position[0])
+            .fold(f32::INFINITY, f32::min);
+        let max_x = mesh
+            .vertices
+            .iter()
+            .map(|vertex| vertex.position[0])
+            .fold(f32::NEG_INFINITY, f32::max);
+        let min_y = mesh
+            .vertices
+            .iter()
+            .map(|vertex| vertex.position[1])
+            .fold(f32::INFINITY, f32::min);
+        let max_y = mesh
+            .vertices
+            .iter()
+            .map(|vertex| vertex.position[1])
+            .fold(f32::NEG_INFINITY, f32::max);
+        (min_x, max_x, min_y, max_y)
     }
 
     #[test]
@@ -2194,6 +2234,156 @@ mod tests {
         )
         .expect_err("empty payload should fail");
         assert_eq!(error, "mesh payload has no vertices");
+    }
+
+    #[test]
+    fn mesh_projection_clamps_zoom_to_stay_within_viewport_fit() {
+        let viewport = Bounds::new(5.0, 7.0, 240.0, 160.0);
+        let payload = CadMeshPayload {
+            mesh_id: "mesh.zoom.clamp".to_string(),
+            document_revision: 1,
+            variant_id: "variant.baseline".to_string(),
+            topology: CadMeshTopology::Triangles,
+            vertices: vec![
+                CadMeshVertex {
+                    position_mm: [-40.0, -30.0, -20.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [0.0, 0.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [40.0, -30.0, -20.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [1.0, 0.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [40.0, 30.0, 20.0],
+                    normal: [0.0, 1.0, 0.0],
+                    uv: [1.0, 1.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [-40.0, 30.0, 20.0],
+                    normal: [0.0, 1.0, 0.0],
+                    uv: [0.0, 1.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+            ],
+            triangle_indices: vec![0, 1, 2, 0, 2, 3],
+            edges: vec![CadMeshEdgeSegment {
+                start_vertex: 0,
+                end_vertex: 1,
+                flags: 0,
+            }],
+            material_slots: vec![CadMeshMaterialSlot::default()],
+            bounds: CadMeshBounds {
+                min_mm: [-40.0, -30.0, -20.0],
+                max_mm: [40.0, 30.0, 20.0],
+            },
+        };
+
+        let zoomed = cad_mesh_to_viewport_primitive(
+            &payload,
+            viewport,
+            false,
+            CadHiddenLineMode::Shaded,
+            CadCameraPose {
+                zoom: 3.5,
+                ..default_camera_pose()
+            },
+        )
+        .expect("zoomed projection should still succeed");
+
+        for vertex in &zoomed.vertices {
+            assert!(vertex.position[0] >= viewport.origin.x - 0.001);
+            assert!(vertex.position[0] <= viewport.max_x() + 0.001);
+            assert!(vertex.position[1] >= viewport.origin.y - 0.001);
+            assert!(vertex.position[1] <= viewport.max_y() + 0.001);
+        }
+    }
+
+    #[test]
+    fn mesh_projection_uses_orientation_stable_fit_scale() {
+        let viewport = Bounds::new(0.0, 0.0, 220.0, 140.0);
+        let payload = CadMeshPayload {
+            mesh_id: "mesh.fit.stable".to_string(),
+            document_revision: 1,
+            variant_id: "variant.baseline".to_string(),
+            topology: CadMeshTopology::Triangles,
+            vertices: vec![
+                CadMeshVertex {
+                    position_mm: [-60.0, -10.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [0.0, 0.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [60.0, -10.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [1.0, 0.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [60.0, 10.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [1.0, 1.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+                CadMeshVertex {
+                    position_mm: [-60.0, 10.0, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [0.0, 1.0],
+                    material_slot: 0,
+                    flags: 0,
+                },
+            ],
+            triangle_indices: vec![0, 1, 2, 0, 2, 3],
+            edges: Vec::new(),
+            material_slots: vec![CadMeshMaterialSlot::default()],
+            bounds: CadMeshBounds {
+                min_mm: [-60.0, -10.0, 0.0],
+                max_mm: [60.0, 10.0, 0.0],
+            },
+        };
+
+        let yaw_0 = cad_mesh_to_viewport_primitive(
+            &payload,
+            viewport,
+            false,
+            CadHiddenLineMode::Shaded,
+            CadCameraPose {
+                orbit_yaw_deg: 0.0,
+                orbit_pitch_deg: 0.0,
+                ..default_camera_pose()
+            },
+        )
+        .expect("yaw=0 projection should succeed");
+        let yaw_90 = cad_mesh_to_viewport_primitive(
+            &payload,
+            viewport,
+            false,
+            CadHiddenLineMode::Shaded,
+            CadCameraPose {
+                orbit_yaw_deg: 90.0,
+                orbit_pitch_deg: 0.0,
+                ..default_camera_pose()
+            },
+        )
+        .expect("yaw=90 projection should succeed");
+
+        let (min_x0, max_x0, min_y0, max_y0) = projected_extents(&yaw_0);
+        let (min_x90, max_x90, min_y90, max_y90) = projected_extents(&yaw_90);
+        let longest_0 = (max_x0 - min_x0).max(max_y0 - min_y0);
+        let longest_90 = (max_x90 - min_x90).max(max_y90 - min_y90);
+        assert!((longest_0 - longest_90).abs() <= 0.5);
     }
 
     #[test]
