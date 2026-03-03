@@ -3,17 +3,41 @@ use crate::intent::{
     CompareVariantsIntent, CreateParallelJawGripperSpecIntent, CreateRackSpecIntent, ExportIntent,
     PARALLEL_JAW_GRIPPER_DEFAULT_COMPLIANT_JOINT_COUNT, PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_COUNT,
     PARALLEL_JAW_GRIPPER_DEFAULT_FLEXURE_THICKNESS_MM, PARALLEL_JAW_GRIPPER_DEFAULT_POSE_PRESET,
+    PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_BRACKET_THICKNESS_MM,
+    PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_ENVELOPE_HEIGHT_MM,
+    PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_ENVELOPE_LENGTH_MM,
+    PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_ENVELOPE_WIDTH_MM,
+    PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_HOUSING_WALL_MM,
+    PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_MOUNT_PATTERN_PITCH_MM,
+    PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_SHAFT_AXIS_OFFSET_MM,
+    PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_STANDOFF_DIAMETER_MM,
     PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_BEND_RADIUS_MM,
     PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_CHANNEL_DIAMETER_MM,
     PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_ROUTE_CLEARANCE_MM,
     PARALLEL_JAW_GRIPPER_DEFAULT_THUMB_BASE_ANGLE_DEG,
     PARALLEL_JAW_GRIPPER_MAX_COMPLIANT_JOINT_COUNT, PARALLEL_JAW_GRIPPER_MAX_FLEXURE_THICKNESS_MM,
     PARALLEL_JAW_GRIPPER_MAX_JOINT_MAX_DEG, PARALLEL_JAW_GRIPPER_MAX_JOINT_MIN_DEG,
+    PARALLEL_JAW_GRIPPER_MAX_SERVO_BRACKET_THICKNESS_MM,
+    PARALLEL_JAW_GRIPPER_MAX_SERVO_ENVELOPE_HEIGHT_MM,
+    PARALLEL_JAW_GRIPPER_MAX_SERVO_ENVELOPE_LENGTH_MM,
+    PARALLEL_JAW_GRIPPER_MAX_SERVO_ENVELOPE_WIDTH_MM,
+    PARALLEL_JAW_GRIPPER_MAX_SERVO_HOUSING_WALL_MM,
+    PARALLEL_JAW_GRIPPER_MAX_SERVO_MOUNT_PATTERN_PITCH_MM,
+    PARALLEL_JAW_GRIPPER_MAX_SERVO_SHAFT_AXIS_OFFSET_MM,
+    PARALLEL_JAW_GRIPPER_MAX_SERVO_STANDOFF_DIAMETER_MM,
     PARALLEL_JAW_GRIPPER_MAX_TENDON_BEND_RADIUS_MM,
     PARALLEL_JAW_GRIPPER_MAX_TENDON_CHANNEL_DIAMETER_MM,
     PARALLEL_JAW_GRIPPER_MAX_TENDON_ROUTE_CLEARANCE_MM,
     PARALLEL_JAW_GRIPPER_MIN_FLEXURE_THICKNESS_MM, PARALLEL_JAW_GRIPPER_MIN_JOINT_MAX_DEG,
     PARALLEL_JAW_GRIPPER_MIN_JOINT_MIN_DEG, PARALLEL_JAW_GRIPPER_MIN_TENDON_BEND_RADIUS_MM,
+    PARALLEL_JAW_GRIPPER_MIN_SERVO_BRACKET_THICKNESS_MM,
+    PARALLEL_JAW_GRIPPER_MIN_SERVO_ENVELOPE_HEIGHT_MM,
+    PARALLEL_JAW_GRIPPER_MIN_SERVO_ENVELOPE_LENGTH_MM,
+    PARALLEL_JAW_GRIPPER_MIN_SERVO_ENVELOPE_WIDTH_MM,
+    PARALLEL_JAW_GRIPPER_MIN_SERVO_HOUSING_WALL_MM,
+    PARALLEL_JAW_GRIPPER_MIN_SERVO_MOUNT_PATTERN_PITCH_MM,
+    PARALLEL_JAW_GRIPPER_MIN_SERVO_SHAFT_AXIS_OFFSET_MM,
+    PARALLEL_JAW_GRIPPER_MIN_SERVO_STANDOFF_DIAMETER_MM,
     PARALLEL_JAW_GRIPPER_MIN_TENDON_CHANNEL_DIAMETER_MM,
     PARALLEL_JAW_GRIPPER_MIN_TENDON_ROUTE_CLEARANCE_MM, SelectIntent, SetMaterialIntent,
     SetObjectiveIntent, parse_cad_intent_json,
@@ -180,7 +204,16 @@ fn translate_rack_design_prompt(lower: &str) -> Option<CadIntent> {
 
 fn translate_parallel_jaw_gripper_prompt(lower: &str) -> Option<CadIntent> {
     let has_design_verb = [
-        "design", "build", "create", "model", "draft", "generate", "modify", "evolve",
+        "design",
+        "build",
+        "create",
+        "model",
+        "draft",
+        "generate",
+        "modify",
+        "evolve",
+        "add",
+        "integrate",
     ]
     .iter()
     .any(|verb| lower.contains(verb));
@@ -190,6 +223,8 @@ fn translate_parallel_jaw_gripper_prompt(lower: &str) -> Option<CadIntent> {
         "parallel jaw",
         "robot hand",
         "robotic hand",
+        "finger joint",
+        "opposable thumb",
     ]
     .iter()
     .any(|token| lower.contains(token));
@@ -327,6 +362,98 @@ fn translate_parallel_jaw_gripper_prompt(lower: &str) -> Option<CadIntent> {
         spec.pose_preset = "tripod".to_string();
     } else if lower.contains("pinch") {
         spec.pose_preset = "pinch".to_string();
+    }
+    let requests_motor_integration = [
+        "servo",
+        "motor",
+        "actuation system",
+        "gearbox housing",
+        "motor mount",
+        "wiring path",
+        "compact layout",
+    ]
+    .iter()
+    .any(|token| lower.contains(token));
+    if requests_motor_integration {
+        spec.servo_integration_enabled = true;
+        spec.finger_count = spec.finger_count.max(3);
+        spec.opposable_thumb = true;
+        spec.underactuated_mode = true;
+        spec.compliant_joint_count = spec.compliant_joint_count.max(3);
+        spec.servo_envelope_length_mm = PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_ENVELOPE_LENGTH_MM;
+        spec.servo_envelope_width_mm = PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_ENVELOPE_WIDTH_MM;
+        spec.servo_envelope_height_mm = PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_ENVELOPE_HEIGHT_MM;
+        spec.servo_shaft_axis_offset_mm = PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_SHAFT_AXIS_OFFSET_MM;
+        spec.servo_mount_pattern_pitch_mm =
+            PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_MOUNT_PATTERN_PITCH_MM;
+        spec.servo_bracket_thickness_mm =
+            PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_BRACKET_THICKNESS_MM;
+        spec.servo_housing_wall_mm = PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_HOUSING_WALL_MM;
+        spec.servo_standoff_diameter_mm = PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_STANDOFF_DIAMETER_MM;
+        spec.compact_servo_layout =
+            lower.contains("compact") || lower.contains("low-cost") || lower.contains("low cost");
+    }
+    if let Some(value) = extract_servo_envelope_length_mm(lower) {
+        spec.servo_integration_enabled = true;
+        spec.servo_envelope_length_mm = value.clamp(
+            PARALLEL_JAW_GRIPPER_MIN_SERVO_ENVELOPE_LENGTH_MM,
+            PARALLEL_JAW_GRIPPER_MAX_SERVO_ENVELOPE_LENGTH_MM,
+        );
+    }
+    if let Some(value) = extract_servo_envelope_width_mm(lower) {
+        spec.servo_integration_enabled = true;
+        spec.servo_envelope_width_mm = value.clamp(
+            PARALLEL_JAW_GRIPPER_MIN_SERVO_ENVELOPE_WIDTH_MM,
+            PARALLEL_JAW_GRIPPER_MAX_SERVO_ENVELOPE_WIDTH_MM,
+        );
+    }
+    if let Some(value) = extract_servo_envelope_height_mm(lower) {
+        spec.servo_integration_enabled = true;
+        spec.servo_envelope_height_mm = value.clamp(
+            PARALLEL_JAW_GRIPPER_MIN_SERVO_ENVELOPE_HEIGHT_MM,
+            PARALLEL_JAW_GRIPPER_MAX_SERVO_ENVELOPE_HEIGHT_MM,
+        );
+    }
+    if let Some(value) = extract_servo_shaft_axis_offset_mm(lower) {
+        spec.servo_integration_enabled = true;
+        spec.servo_shaft_axis_offset_mm = value.clamp(
+            PARALLEL_JAW_GRIPPER_MIN_SERVO_SHAFT_AXIS_OFFSET_MM,
+            PARALLEL_JAW_GRIPPER_MAX_SERVO_SHAFT_AXIS_OFFSET_MM,
+        );
+    }
+    if let Some(value) = extract_servo_mount_pattern_pitch_mm(lower) {
+        spec.servo_integration_enabled = true;
+        spec.servo_mount_pattern_pitch_mm = value.clamp(
+            PARALLEL_JAW_GRIPPER_MIN_SERVO_MOUNT_PATTERN_PITCH_MM,
+            PARALLEL_JAW_GRIPPER_MAX_SERVO_MOUNT_PATTERN_PITCH_MM,
+        );
+    }
+    if let Some(value) = extract_servo_bracket_thickness_mm(lower) {
+        spec.servo_integration_enabled = true;
+        spec.servo_bracket_thickness_mm = value.clamp(
+            PARALLEL_JAW_GRIPPER_MIN_SERVO_BRACKET_THICKNESS_MM,
+            PARALLEL_JAW_GRIPPER_MAX_SERVO_BRACKET_THICKNESS_MM,
+        );
+    }
+    if let Some(value) = extract_servo_housing_wall_mm(lower) {
+        spec.servo_integration_enabled = true;
+        spec.servo_housing_wall_mm = value.clamp(
+            PARALLEL_JAW_GRIPPER_MIN_SERVO_HOUSING_WALL_MM,
+            PARALLEL_JAW_GRIPPER_MAX_SERVO_HOUSING_WALL_MM,
+        );
+    }
+    if let Some(value) = extract_servo_standoff_diameter_mm(lower) {
+        spec.servo_integration_enabled = true;
+        spec.servo_standoff_diameter_mm = value.clamp(
+            PARALLEL_JAW_GRIPPER_MIN_SERVO_STANDOFF_DIAMETER_MM,
+            PARALLEL_JAW_GRIPPER_MAX_SERVO_STANDOFF_DIAMETER_MM,
+        );
+    }
+    if spec.servo_integration_enabled {
+        spec.finger_count = spec.finger_count.max(3);
+        spec.opposable_thumb = true;
+        spec.underactuated_mode = true;
+        spec.compliant_joint_count = spec.compliant_joint_count.max(3);
     }
 
     Some(CadIntent::CreateParallelJawGripperSpec(spec))
@@ -540,6 +667,77 @@ fn extract_tendon_bend_radius_mm(lower: &str) -> Option<f64> {
     None
 }
 
+fn extract_servo_envelope_length_mm(lower: &str) -> Option<f64> {
+    if let Some(index) = lower.find("servo length") {
+        return extract_first_numeric_token(&lower[index + "servo length".len()..]);
+    }
+    if let Some(index) = lower.find("motor length") {
+        return extract_first_numeric_token(&lower[index + "motor length".len()..]);
+    }
+    None
+}
+
+fn extract_servo_envelope_width_mm(lower: &str) -> Option<f64> {
+    if let Some(index) = lower.find("servo width") {
+        return extract_first_numeric_token(&lower[index + "servo width".len()..]);
+    }
+    if let Some(index) = lower.find("motor width") {
+        return extract_first_numeric_token(&lower[index + "motor width".len()..]);
+    }
+    None
+}
+
+fn extract_servo_envelope_height_mm(lower: &str) -> Option<f64> {
+    if let Some(index) = lower.find("servo height") {
+        return extract_first_numeric_token(&lower[index + "servo height".len()..]);
+    }
+    if let Some(index) = lower.find("motor height") {
+        return extract_first_numeric_token(&lower[index + "motor height".len()..]);
+    }
+    None
+}
+
+fn extract_servo_shaft_axis_offset_mm(lower: &str) -> Option<f64> {
+    if let Some(index) = lower.find("shaft offset") {
+        return extract_first_numeric_token(&lower[index + "shaft offset".len()..]);
+    }
+    if let Some(index) = lower.find("shaft axis offset") {
+        return extract_first_numeric_token(&lower[index + "shaft axis offset".len()..]);
+    }
+    None
+}
+
+fn extract_servo_mount_pattern_pitch_mm(lower: &str) -> Option<f64> {
+    if let Some(index) = lower.find("mount pattern") {
+        return extract_first_numeric_token(&lower[index + "mount pattern".len()..]);
+    }
+    if let Some(index) = lower.find("pattern pitch") {
+        return extract_first_numeric_token(&lower[index + "pattern pitch".len()..]);
+    }
+    None
+}
+
+fn extract_servo_bracket_thickness_mm(lower: &str) -> Option<f64> {
+    if let Some(index) = lower.find("bracket thickness") {
+        return extract_first_numeric_token(&lower[index + "bracket thickness".len()..]);
+    }
+    None
+}
+
+fn extract_servo_housing_wall_mm(lower: &str) -> Option<f64> {
+    if let Some(index) = lower.find("housing wall") {
+        return extract_first_numeric_token(&lower[index + "housing wall".len()..]);
+    }
+    None
+}
+
+fn extract_servo_standoff_diameter_mm(lower: &str) -> Option<f64> {
+    if let Some(index) = lower.find("standoff diameter") {
+        return extract_first_numeric_token(&lower[index + "standoff diameter".len()..]);
+    }
+    None
+}
+
 fn extract_numeric_tokens(input: &str) -> Vec<f64> {
     input
         .split_whitespace()
@@ -731,6 +929,24 @@ mod tests {
                     spec.tendon_channel_diameter_mm
                         >= PARALLEL_JAW_GRIPPER_MIN_TENDON_CHANNEL_DIAMETER_MM
                 );
+            }
+            other => panic!("unexpected outcome: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn adapter_translates_motor_integration_prompt_into_servo_schema_fields() {
+        let outcome = translate_chat_to_cad_intent(
+            "Add servo motors to each finger joint, including wiring paths and gearbox housings. Optimize for compact layout and low-cost 3D printing.",
+        );
+        match outcome {
+            CadIntentTranslationOutcome::Intent(CadIntent::CreateParallelJawGripperSpec(spec)) => {
+                assert!(spec.servo_integration_enabled);
+                assert!(spec.compact_servo_layout);
+                assert!(spec.servo_envelope_length_mm > 0.0);
+                assert!(spec.servo_envelope_width_mm > 0.0);
+                assert!(spec.servo_envelope_height_mm > 0.0);
+                assert!(spec.servo_mount_pattern_pitch_mm > 0.0);
             }
             other => panic!("unexpected outcome: {other:?}"),
         }

@@ -63,6 +63,16 @@ pub struct CadDispatchState {
     pub joint_max_deg: Option<f64>,
     pub tendon_route_clearance_mm: Option<f64>,
     pub tendon_bend_radius_mm: Option<f64>,
+    pub servo_integration_enabled: bool,
+    pub compact_servo_layout: bool,
+    pub servo_envelope_length_mm: Option<f64>,
+    pub servo_envelope_width_mm: Option<f64>,
+    pub servo_envelope_height_mm: Option<f64>,
+    pub servo_shaft_axis_offset_mm: Option<f64>,
+    pub servo_mount_pattern_pitch_mm: Option<f64>,
+    pub servo_bracket_thickness_mm: Option<f64>,
+    pub servo_housing_wall_mm: Option<f64>,
+    pub servo_standoff_diameter_mm: Option<f64>,
     pub pose_preset: Option<String>,
 }
 
@@ -98,6 +108,7 @@ pub fn dispatch_cad_intent(
         CadIntent::CreateParallelJawGripperSpec(payload) => {
             state.document_created = true;
             let is_three_finger_thumb = payload.finger_count >= 3 && payload.opposable_thumb;
+            let is_servo_integrated_hand = is_three_finger_thumb && payload.servo_integration_enabled;
             state.design_profile = if is_three_finger_thumb {
                 CadDesignProfile::ThreeFingerThumb
             } else if payload.underactuated_mode {
@@ -105,7 +116,11 @@ pub fn dispatch_cad_intent(
             } else {
                 CadDesignProfile::ParallelJawGripper
             };
-            state.objective = Some(if is_three_finger_thumb {
+            state.objective = Some(if is_servo_integrated_hand && payload.compact_servo_layout {
+                "three-finger-thumb-servo-compact".to_string()
+            } else if is_servo_integrated_hand {
+                "three-finger-thumb-servo-integration".to_string()
+            } else if is_three_finger_thumb {
                 "three-finger-thumb-hand".to_string()
             } else if payload.underactuated_mode {
                 "parallel-jaw-gripper-underactuated".to_string()
@@ -124,6 +139,16 @@ pub fn dispatch_cad_intent(
             state.joint_max_deg = Some(payload.joint_max_deg);
             state.tendon_route_clearance_mm = Some(payload.tendon_route_clearance_mm);
             state.tendon_bend_radius_mm = Some(payload.tendon_bend_radius_mm);
+            state.servo_integration_enabled = payload.servo_integration_enabled;
+            state.compact_servo_layout = payload.compact_servo_layout;
+            state.servo_envelope_length_mm = Some(payload.servo_envelope_length_mm);
+            state.servo_envelope_width_mm = Some(payload.servo_envelope_width_mm);
+            state.servo_envelope_height_mm = Some(payload.servo_envelope_height_mm);
+            state.servo_shaft_axis_offset_mm = Some(payload.servo_shaft_axis_offset_mm);
+            state.servo_mount_pattern_pitch_mm = Some(payload.servo_mount_pattern_pitch_mm);
+            state.servo_bracket_thickness_mm = Some(payload.servo_bracket_thickness_mm);
+            state.servo_housing_wall_mm = Some(payload.servo_housing_wall_mm);
+            state.servo_standoff_diameter_mm = Some(payload.servo_standoff_diameter_mm);
             state.pose_preset = Some(payload.pose_preset.clone());
             state
                 .parameter_values
@@ -198,6 +223,50 @@ pub fn dispatch_cad_intent(
             state.parameter_values.insert(
                 "tendon_bend_radius_mm".to_string(),
                 payload.tendon_bend_radius_mm,
+            );
+            state.parameter_values.insert(
+                "servo_integration_enabled".to_string(),
+                if payload.servo_integration_enabled {
+                    1.0
+                } else {
+                    0.0
+                },
+            );
+            state.parameter_values.insert(
+                "compact_servo_layout".to_string(),
+                if payload.compact_servo_layout { 1.0 } else { 0.0 },
+            );
+            state.parameter_values.insert(
+                "servo_envelope_length_mm".to_string(),
+                payload.servo_envelope_length_mm,
+            );
+            state.parameter_values.insert(
+                "servo_envelope_width_mm".to_string(),
+                payload.servo_envelope_width_mm,
+            );
+            state.parameter_values.insert(
+                "servo_envelope_height_mm".to_string(),
+                payload.servo_envelope_height_mm,
+            );
+            state.parameter_values.insert(
+                "servo_shaft_axis_offset_mm".to_string(),
+                payload.servo_shaft_axis_offset_mm,
+            );
+            state.parameter_values.insert(
+                "servo_mount_pattern_pitch_mm".to_string(),
+                payload.servo_mount_pattern_pitch_mm,
+            );
+            state.parameter_values.insert(
+                "servo_bracket_thickness_mm".to_string(),
+                payload.servo_bracket_thickness_mm,
+            );
+            state.parameter_values.insert(
+                "servo_housing_wall_mm".to_string(),
+                payload.servo_housing_wall_mm,
+            );
+            state.parameter_values.insert(
+                "servo_standoff_diameter_mm".to_string(),
+                payload.servo_standoff_diameter_mm,
             );
             CadTypedCommand::CreateParallelJawGripperSpec(payload.clone())
         }
@@ -341,6 +410,16 @@ mod tests {
                 joint_max_deg: 82.0,
                 tendon_route_clearance_mm: 1.4,
                 tendon_bend_radius_mm: 3.2,
+                servo_integration_enabled: false,
+                compact_servo_layout: false,
+                servo_envelope_length_mm: 23.0,
+                servo_envelope_width_mm: 12.0,
+                servo_envelope_height_mm: 24.0,
+                servo_shaft_axis_offset_mm: 5.0,
+                servo_mount_pattern_pitch_mm: 16.0,
+                servo_bracket_thickness_mm: 2.6,
+                servo_housing_wall_mm: 2.0,
+                servo_standoff_diameter_mm: 4.2,
                 pose_preset: "open".to_string(),
             }),
             CadIntent::GenerateVariants(GenerateVariantsIntent {
@@ -416,6 +495,16 @@ mod tests {
                 joint_max_deg: 82.0,
                 tendon_route_clearance_mm: 1.4,
                 tendon_bend_radius_mm: 3.2,
+                servo_integration_enabled: false,
+                compact_servo_layout: false,
+                servo_envelope_length_mm: 23.0,
+                servo_envelope_width_mm: 12.0,
+                servo_envelope_height_mm: 24.0,
+                servo_shaft_axis_offset_mm: 5.0,
+                servo_mount_pattern_pitch_mm: 16.0,
+                servo_bracket_thickness_mm: 2.6,
+                servo_housing_wall_mm: 2.0,
+                servo_standoff_diameter_mm: 4.2,
                 pose_preset: "open".to_string(),
             }),
             &mut state,
@@ -469,6 +558,16 @@ mod tests {
                 joint_max_deg: 82.0,
                 tendon_route_clearance_mm: 1.4,
                 tendon_bend_radius_mm: 3.2,
+                servo_integration_enabled: false,
+                compact_servo_layout: false,
+                servo_envelope_length_mm: 23.0,
+                servo_envelope_width_mm: 12.0,
+                servo_envelope_height_mm: 24.0,
+                servo_shaft_axis_offset_mm: 5.0,
+                servo_mount_pattern_pitch_mm: 16.0,
+                servo_bracket_thickness_mm: 2.6,
+                servo_housing_wall_mm: 2.0,
+                servo_standoff_diameter_mm: 4.2,
                 pose_preset: "open".to_string(),
             }),
             &mut state,
@@ -518,6 +617,16 @@ mod tests {
                 joint_max_deg: 88.0,
                 tendon_route_clearance_mm: 1.6,
                 tendon_bend_radius_mm: 3.8,
+                servo_integration_enabled: true,
+                compact_servo_layout: true,
+                servo_envelope_length_mm: 23.0,
+                servo_envelope_width_mm: 12.0,
+                servo_envelope_height_mm: 24.0,
+                servo_shaft_axis_offset_mm: 5.0,
+                servo_mount_pattern_pitch_mm: 16.0,
+                servo_bracket_thickness_mm: 2.6,
+                servo_housing_wall_mm: 2.0,
+                servo_standoff_diameter_mm: 4.2,
                 pose_preset: "tripod".to_string(),
             }),
             &mut state,
@@ -539,6 +648,12 @@ mod tests {
         assert_eq!(state.joint_max_deg, Some(88.0));
         assert_eq!(state.tendon_route_clearance_mm, Some(1.6));
         assert_eq!(state.tendon_bend_radius_mm, Some(3.8));
+        assert!(state.servo_integration_enabled);
+        assert!(state.compact_servo_layout);
+        assert_eq!(
+            state.objective.as_deref(),
+            Some("three-finger-thumb-servo-compact")
+        );
         assert_eq!(state.pose_preset.as_deref(), Some("tripod"));
         assert_eq!(
             state.parameter_values.get("finger_count").copied(),

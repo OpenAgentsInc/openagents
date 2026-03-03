@@ -1623,6 +1623,78 @@ impl Default for CadDemoPaneState {
                 min_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_TENDON_BEND_RADIUS_MM,
                 max_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_TENDON_BEND_RADIUS_MM,
             },
+            CadDimensionState {
+                dimension_id: "servo_envelope_length_mm".to_string(),
+                label: "Servo Len".to_string(),
+                value_mm:
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_ENVELOPE_LENGTH_MM,
+                min_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_SERVO_ENVELOPE_LENGTH_MM,
+                max_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_SERVO_ENVELOPE_LENGTH_MM,
+            },
+            CadDimensionState {
+                dimension_id: "servo_envelope_width_mm".to_string(),
+                label: "Servo Wid".to_string(),
+                value_mm:
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_ENVELOPE_WIDTH_MM,
+                min_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_SERVO_ENVELOPE_WIDTH_MM,
+                max_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_SERVO_ENVELOPE_WIDTH_MM,
+            },
+            CadDimensionState {
+                dimension_id: "servo_envelope_height_mm".to_string(),
+                label: "Servo Hgt".to_string(),
+                value_mm:
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_ENVELOPE_HEIGHT_MM,
+                min_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_SERVO_ENVELOPE_HEIGHT_MM,
+                max_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_SERVO_ENVELOPE_HEIGHT_MM,
+            },
+            CadDimensionState {
+                dimension_id: "servo_shaft_axis_offset_mm".to_string(),
+                label: "Shaft Off".to_string(),
+                value_mm:
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_SHAFT_AXIS_OFFSET_MM,
+                min_mm:
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_SERVO_SHAFT_AXIS_OFFSET_MM,
+                max_mm:
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_SERVO_SHAFT_AXIS_OFFSET_MM,
+            },
+            CadDimensionState {
+                dimension_id: "servo_mount_pattern_pitch_mm".to_string(),
+                label: "Mount Pitch".to_string(),
+                value_mm:
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_MOUNT_PATTERN_PITCH_MM,
+                min_mm:
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_SERVO_MOUNT_PATTERN_PITCH_MM,
+                max_mm:
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_SERVO_MOUNT_PATTERN_PITCH_MM,
+            },
+            CadDimensionState {
+                dimension_id: "servo_bracket_thickness_mm".to_string(),
+                label: "Bracket Thk".to_string(),
+                value_mm:
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_BRACKET_THICKNESS_MM,
+                min_mm:
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_SERVO_BRACKET_THICKNESS_MM,
+                max_mm:
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_SERVO_BRACKET_THICKNESS_MM,
+            },
+            CadDimensionState {
+                dimension_id: "servo_housing_wall_mm".to_string(),
+                label: "Housing Wall".to_string(),
+                value_mm:
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_HOUSING_WALL_MM,
+                min_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_SERVO_HOUSING_WALL_MM,
+                max_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_SERVO_HOUSING_WALL_MM,
+            },
+            CadDimensionState {
+                dimension_id: "servo_standoff_diameter_mm".to_string(),
+                label: "Standoff Dia".to_string(),
+                value_mm:
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_STANDOFF_DIAMETER_MM,
+                min_mm:
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_SERVO_STANDOFF_DIAMETER_MM,
+                max_mm:
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_SERVO_STANDOFF_DIAMETER_MM,
+            },
         ];
         let assembly_schema = openagents_cad::assembly::CadAssemblySchema {
             part_defs: std::collections::BTreeMap::from([
@@ -1871,6 +1943,14 @@ impl CadDemoPaneState {
                 "joint_max_deg",
                 "tendon_route_clearance_mm",
                 "tendon_bend_radius_mm",
+                "servo_envelope_length_mm",
+                "servo_envelope_width_mm",
+                "servo_envelope_height_mm",
+                "servo_shaft_axis_offset_mm",
+                "servo_mount_pattern_pitch_mm",
+                "servo_bracket_thickness_mm",
+                "servo_housing_wall_mm",
+                "servo_standoff_diameter_mm",
             ],
         }
     }
@@ -2143,6 +2223,32 @@ impl CadDemoPaneState {
             spec.tendon_route_clearance_mm,
         );
         self.set_dimension_value_mm_if_present("tendon_bend_radius_mm", spec.tendon_bend_radius_mm);
+        self.set_dimension_value_mm_if_present(
+            "servo_envelope_length_mm",
+            spec.servo_envelope_length_mm,
+        );
+        self.set_dimension_value_mm_if_present("servo_envelope_width_mm", spec.servo_envelope_width_mm);
+        self.set_dimension_value_mm_if_present(
+            "servo_envelope_height_mm",
+            spec.servo_envelope_height_mm,
+        );
+        self.set_dimension_value_mm_if_present(
+            "servo_shaft_axis_offset_mm",
+            spec.servo_shaft_axis_offset_mm,
+        );
+        self.set_dimension_value_mm_if_present(
+            "servo_mount_pattern_pitch_mm",
+            spec.servo_mount_pattern_pitch_mm,
+        );
+        self.set_dimension_value_mm_if_present(
+            "servo_bracket_thickness_mm",
+            spec.servo_bracket_thickness_mm,
+        );
+        self.set_dimension_value_mm_if_present("servo_housing_wall_mm", spec.servo_housing_wall_mm);
+        self.set_dimension_value_mm_if_present(
+            "servo_standoff_diameter_mm",
+            spec.servo_standoff_diameter_mm,
+        );
     }
 
     pub fn begin_dimension_edit(&mut self, index: usize) -> bool {

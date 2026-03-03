@@ -854,6 +854,182 @@ fn tessellate_feature_node(
             builder.add_circle_edge_loop([x_center, y1, z0], channel_half, 12, 4, 0);
             Ok(())
         }
+        "hand3.servo.mount.v1" => {
+            let digit_slot = node
+                .params
+                .get("digit_slot")
+                .and_then(|value| value.parse::<i32>().ok())
+                .unwrap_or(0) as f32;
+            let base_width_mm = node_param_f32(node, "base_width_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(90.0);
+            let base_depth_mm = node_param_f32(node, "base_depth_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(58.0);
+            let base_thickness_mm = node_param_f32(node, "base_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(8.0);
+            let finger_spacing_mm = node_param_f32(node, "finger_spacing_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(12.0);
+            let servo_length_mm = node_param_f32(node, "servo_envelope_length_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(23.0);
+            let servo_width_mm = node_param_f32(node, "servo_envelope_width_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(12.0);
+            let bracket_thickness_mm = node_param_f32(node, "servo_bracket_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(2.6);
+            let shaft_axis_offset_mm = node_param_f32(node, "servo_shaft_axis_offset_mm")
+                .filter(|value| *value >= 0.0)
+                .unwrap_or(5.0);
+            let compact_layout = node_param_bool(node, "compact_layout").unwrap_or(false);
+            let compact_scale = if compact_layout { 0.85 } else { 1.0 };
+            let x_center = if digit_slot <= -1.5 {
+                -base_width_mm * 0.34
+            } else {
+                digit_slot * finger_spacing_mm
+            };
+            let y_center = if digit_slot <= -1.5 {
+                -base_depth_mm * 0.06
+            } else {
+                base_depth_mm * 0.16
+            };
+            let half_l = (servo_length_mm * 0.5 * compact_scale).max(4.0);
+            let half_w = (servo_width_mm * 0.5 * compact_scale).max(3.0);
+            let z0 = base_thickness_mm + shaft_axis_offset_mm * 0.3 + jitter * 0.03;
+            let z1 = z0 + bracket_thickness_mm.max(1.0);
+            builder.add_box(
+                [x_center - half_l, y_center - half_w, z0],
+                [x_center + half_l, y_center + half_w, z1],
+                1,
+                6,
+            );
+            builder.add_cylinder_z(
+                [x_center, y_center, z1 + (bracket_thickness_mm * 0.5)],
+                (servo_width_mm * 0.18).max(1.0),
+                bracket_thickness_mm.max(1.0),
+                12,
+                1,
+                4,
+            );
+            Ok(())
+        }
+        "hand3.servo.housing.v1" => {
+            let digit_slot = node
+                .params
+                .get("digit_slot")
+                .and_then(|value| value.parse::<i32>().ok())
+                .unwrap_or(0) as f32;
+            let base_width_mm = node_param_f32(node, "base_width_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(90.0);
+            let base_depth_mm = node_param_f32(node, "base_depth_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(58.0);
+            let base_thickness_mm = node_param_f32(node, "base_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(8.0);
+            let finger_spacing_mm = node_param_f32(node, "finger_spacing_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(12.0);
+            let servo_length_mm = node_param_f32(node, "servo_envelope_length_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(23.0);
+            let servo_width_mm = node_param_f32(node, "servo_envelope_width_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(12.0);
+            let servo_height_mm = node_param_f32(node, "servo_envelope_height_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(24.0);
+            let housing_wall_mm = node_param_f32(node, "servo_housing_wall_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(2.0);
+            let compact_layout = node_param_bool(node, "compact_layout").unwrap_or(false);
+            let compact_scale = if compact_layout { 0.88 } else { 1.0 };
+            let x_center = if digit_slot <= -1.5 {
+                -base_width_mm * 0.34
+            } else {
+                digit_slot * finger_spacing_mm
+            };
+            let y_center = if digit_slot <= -1.5 {
+                -base_depth_mm * 0.06
+            } else {
+                base_depth_mm * 0.16
+            };
+            let half_l = (servo_length_mm * 0.5 * compact_scale).max(4.0);
+            let half_w = (servo_width_mm * 0.5 * compact_scale).max(3.0);
+            let half_h = (servo_height_mm * 0.5 * compact_scale).max(4.0);
+            let z_mid = base_thickness_mm + half_h + housing_wall_mm + jitter * 0.04;
+            builder.add_box(
+                [x_center - half_l, y_center - half_w, z_mid - half_h],
+                [x_center + half_l, y_center + half_w, z_mid + half_h],
+                0,
+                4,
+            );
+            let wall = housing_wall_mm.max(0.8);
+            builder.add_box(
+                [x_center - half_l - wall, y_center - half_w - wall, z_mid - half_h - wall],
+                [x_center + half_l + wall, y_center + half_w + wall, z_mid + half_h + wall],
+                1,
+                6,
+            );
+            Ok(())
+        }
+        "hand3.servo.standoff.v1" => {
+            let digit_slot = node
+                .params
+                .get("digit_slot")
+                .and_then(|value| value.parse::<i32>().ok())
+                .unwrap_or(0) as f32;
+            let base_width_mm = node_param_f32(node, "base_width_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(90.0);
+            let base_depth_mm = node_param_f32(node, "base_depth_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(58.0);
+            let base_thickness_mm = node_param_f32(node, "base_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(8.0);
+            let finger_spacing_mm = node_param_f32(node, "finger_spacing_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(12.0);
+            let pitch_mm = node_param_f32(node, "servo_mount_pattern_pitch_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(16.0);
+            let standoff_diameter_mm = node_param_f32(node, "servo_standoff_diameter_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(4.2);
+            let bracket_thickness_mm = node_param_f32(node, "servo_bracket_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(2.6);
+            let compact_layout = node_param_bool(node, "compact_layout").unwrap_or(false);
+            let compact_scale = if compact_layout { 0.92 } else { 1.0 };
+            let x_center = if digit_slot <= -1.5 {
+                -base_width_mm * 0.34
+            } else {
+                digit_slot * finger_spacing_mm
+            };
+            let y_center = if digit_slot <= -1.5 {
+                -base_depth_mm * 0.06
+            } else {
+                base_depth_mm * 0.16
+            };
+            let pitch_half = (pitch_mm * 0.5 * compact_scale).max(3.0);
+            let radius = (standoff_diameter_mm * 0.5 * compact_scale).max(0.9);
+            let height = (bracket_thickness_mm * 1.6).max(1.8);
+            let z = base_thickness_mm + (height * 0.5) + jitter * 0.03;
+            for (dx, dy) in [
+                (-pitch_half, -pitch_half),
+                (pitch_half, -pitch_half),
+                (-pitch_half, pitch_half),
+                (pitch_half, pitch_half),
+            ] {
+                builder.add_cylinder_z([x_center + dx, y_center + dy, z], radius, height, 10, 1, 4);
+            }
+            Ok(())
+        }
         "hand3.edge_marker.v1" => {
             let base_width_mm = node_param_f32(node, "base_width_mm")
                 .filter(|value| *value > 0.0)
@@ -1510,6 +1686,8 @@ mod tests {
         variant_id: &str,
         tendon_channel_diameter_mm: f64,
         pose_preset: &str,
+        servo_integration_enabled: bool,
+        servo_envelope_length_mm: f64,
     ) -> FeatureGraph {
         let mut nodes = vec![
             FeatureNode {
@@ -1623,6 +1801,83 @@ mod tests {
                 ("base_thickness_mm".to_string(), "8.0".to_string()),
             ]),
         });
+        if servo_integration_enabled {
+            for (digit_slot, digit_name, parent_feature_id) in [
+                (-1_i32, "index", "feature.hand3.finger.index"),
+                (0_i32, "middle", "feature.hand3.finger.middle"),
+                (1_i32, "ring", "feature.hand3.finger.ring"),
+                (-2_i32, "thumb", "feature.hand3.thumb"),
+            ] {
+                let mount_feature_id = format!("feature.hand3.servo_mount.{digit_name}");
+                nodes.push(FeatureNode {
+                    id: mount_feature_id.clone(),
+                    name: format!("hand3_servo_mount_{digit_name}"),
+                    operation_key: "hand3.servo.mount.v1".to_string(),
+                    depends_on: vec![parent_feature_id.to_string()],
+                    params: BTreeMap::from([
+                        ("variant".to_string(), variant_id.to_string()),
+                        ("digit".to_string(), digit_name.to_string()),
+                        ("digit_slot".to_string(), digit_slot.to_string()),
+                        ("base_width_mm".to_string(), "90.0".to_string()),
+                        ("base_depth_mm".to_string(), "58.0".to_string()),
+                        ("base_thickness_mm".to_string(), "8.0".to_string()),
+                        ("finger_spacing_mm".to_string(), "12.0".to_string()),
+                        (
+                            "servo_envelope_length_mm".to_string(),
+                            format!("{servo_envelope_length_mm:.3}"),
+                        ),
+                        ("servo_envelope_width_mm".to_string(), "12.0".to_string()),
+                        ("servo_envelope_height_mm".to_string(), "24.0".to_string()),
+                        ("servo_shaft_axis_offset_mm".to_string(), "5.0".to_string()),
+                        ("servo_mount_pattern_pitch_mm".to_string(), "16.0".to_string()),
+                        ("servo_bracket_thickness_mm".to_string(), "2.6".to_string()),
+                        ("compact_layout".to_string(), "1".to_string()),
+                    ]),
+                });
+                nodes.push(FeatureNode {
+                    id: format!("feature.hand3.servo_housing.{digit_name}"),
+                    name: format!("hand3_servo_housing_{digit_name}"),
+                    operation_key: "hand3.servo.housing.v1".to_string(),
+                    depends_on: vec![mount_feature_id.clone()],
+                    params: BTreeMap::from([
+                        ("variant".to_string(), variant_id.to_string()),
+                        ("digit".to_string(), digit_name.to_string()),
+                        ("digit_slot".to_string(), digit_slot.to_string()),
+                        ("base_width_mm".to_string(), "90.0".to_string()),
+                        ("base_depth_mm".to_string(), "58.0".to_string()),
+                        ("base_thickness_mm".to_string(), "8.0".to_string()),
+                        ("finger_spacing_mm".to_string(), "12.0".to_string()),
+                        (
+                            "servo_envelope_length_mm".to_string(),
+                            format!("{servo_envelope_length_mm:.3}"),
+                        ),
+                        ("servo_envelope_width_mm".to_string(), "12.0".to_string()),
+                        ("servo_envelope_height_mm".to_string(), "24.0".to_string()),
+                        ("servo_housing_wall_mm".to_string(), "2.0".to_string()),
+                        ("compact_layout".to_string(), "1".to_string()),
+                    ]),
+                });
+                nodes.push(FeatureNode {
+                    id: format!("feature.hand3.servo_standoff.{digit_name}"),
+                    name: format!("hand3_servo_standoff_{digit_name}"),
+                    operation_key: "hand3.servo.standoff.v1".to_string(),
+                    depends_on: vec![mount_feature_id],
+                    params: BTreeMap::from([
+                        ("variant".to_string(), variant_id.to_string()),
+                        ("digit".to_string(), digit_name.to_string()),
+                        ("digit_slot".to_string(), digit_slot.to_string()),
+                        ("base_width_mm".to_string(), "90.0".to_string()),
+                        ("base_depth_mm".to_string(), "58.0".to_string()),
+                        ("base_thickness_mm".to_string(), "8.0".to_string()),
+                        ("finger_spacing_mm".to_string(), "12.0".to_string()),
+                        ("servo_mount_pattern_pitch_mm".to_string(), "16.0".to_string()),
+                        ("servo_standoff_diameter_mm".to_string(), "4.2".to_string()),
+                        ("servo_bracket_thickness_mm".to_string(), "2.6".to_string()),
+                        ("compact_layout".to_string(), "1".to_string()),
+                    ]),
+                });
+            }
+        }
         FeatureGraph { nodes }
     }
 
@@ -1765,7 +2020,7 @@ mod tests {
 
     #[test]
     fn three_finger_thumb_tessellation_is_deterministic_for_identical_inputs() {
-        let graph = three_finger_thumb_graph("variant.baseline", 1.6, "tripod");
+        let graph = three_finger_thumb_graph("variant.baseline", 1.6, "tripod", false, 23.0);
         let rebuild =
             evaluate_feature_graph_deterministic(&graph).expect("three-finger rebuild should pass");
         let (mesh_a, receipt_a) =
@@ -1782,8 +2037,8 @@ mod tests {
 
     #[test]
     fn three_finger_thumb_tendon_channel_diameter_changes_mesh_hash() {
-        let narrow_graph = three_finger_thumb_graph("variant.baseline", 1.0, "pinch");
-        let wide_graph = three_finger_thumb_graph("variant.baseline", 2.4, "pinch");
+        let narrow_graph = three_finger_thumb_graph("variant.baseline", 1.0, "pinch", false, 23.0);
+        let wide_graph = three_finger_thumb_graph("variant.baseline", 2.4, "pinch", false, 23.0);
         let narrow_rebuild = evaluate_feature_graph_deterministic(&narrow_graph)
             .expect("narrow tendon rebuild should pass");
         let wide_rebuild = evaluate_feature_graph_deterministic(&wide_graph)
@@ -1795,5 +2050,27 @@ mod tests {
             tessellate_rebuild_result(&wide_graph, &wide_rebuild, 43, "variant.baseline")
                 .expect("wide tendon tessellation should succeed");
         assert_ne!(narrow_receipt.mesh_hash, wide_receipt.mesh_hash);
+    }
+
+    #[test]
+    fn three_finger_thumb_servo_envelope_changes_mesh_hash() {
+        let compact_graph =
+            three_finger_thumb_graph("variant.baseline", 1.6, "tripod", true, 20.0);
+        let long_graph = three_finger_thumb_graph("variant.baseline", 1.6, "tripod", true, 28.0);
+        let compact_rebuild = evaluate_feature_graph_deterministic(&compact_graph)
+            .expect("compact servo rebuild should pass");
+        let long_rebuild =
+            evaluate_feature_graph_deterministic(&long_graph).expect("long servo rebuild should pass");
+        let (_, compact_receipt) = tessellate_rebuild_result(
+            &compact_graph,
+            &compact_rebuild,
+            47,
+            "variant.baseline",
+        )
+        .expect("compact servo tessellation should succeed");
+        let (_, long_receipt) =
+            tessellate_rebuild_result(&long_graph, &long_rebuild, 47, "variant.baseline")
+                .expect("long servo tessellation should succeed");
+        assert_ne!(compact_receipt.mesh_hash, long_receipt.mesh_hash);
     }
 }
