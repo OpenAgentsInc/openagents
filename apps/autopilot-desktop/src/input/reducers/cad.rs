@@ -1947,6 +1947,12 @@ struct GripperVariantDimensions {
     servo_bracket_thickness_mm: f64,
     servo_housing_wall_mm: f64,
     servo_standoff_diameter_mm: f64,
+    gearbox_ratio: f64,
+    gearbox_stage_diameter_mm: f64,
+    gearbox_stage_length_mm: f64,
+    wiring_channel_diameter_mm: f64,
+    wiring_bend_radius_mm: f64,
+    wiring_clearance_mm: f64,
     pose_preset: String,
 }
 
@@ -2139,6 +2145,24 @@ impl GripperVariantDimensions {
                     openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_STANDOFF_DIAMETER_MM,
                 )
             });
+        let gearbox_ratio = dispatch
+            .and_then(|value| value.parameter_values.get("gearbox_ratio").copied())
+            .unwrap_or_else(|| dimension_value_mm(state, "gearbox_ratio", 4.5));
+        let gearbox_stage_diameter_mm = dispatch
+            .and_then(|value| value.parameter_values.get("gearbox_stage_diameter_mm").copied())
+            .unwrap_or_else(|| dimension_value_mm(state, "gearbox_stage_diameter_mm", 11.0));
+        let gearbox_stage_length_mm = dispatch
+            .and_then(|value| value.parameter_values.get("gearbox_stage_length_mm").copied())
+            .unwrap_or_else(|| dimension_value_mm(state, "gearbox_stage_length_mm", 14.0));
+        let wiring_channel_diameter_mm = dispatch
+            .and_then(|value| value.parameter_values.get("wiring_channel_diameter_mm").copied())
+            .unwrap_or_else(|| dimension_value_mm(state, "wiring_channel_diameter_mm", 1.8));
+        let wiring_bend_radius_mm = dispatch
+            .and_then(|value| value.parameter_values.get("wiring_bend_radius_mm").copied())
+            .unwrap_or_else(|| dimension_value_mm(state, "wiring_bend_radius_mm", 2.6));
+        let wiring_clearance_mm = dispatch
+            .and_then(|value| value.parameter_values.get("wiring_clearance_mm").copied())
+            .unwrap_or_else(|| dimension_value_mm(state, "wiring_clearance_mm", 1.2));
         let pose_preset = dispatch
             .and_then(|value| value.pose_preset.clone())
             .unwrap_or_else(|| {
@@ -2216,6 +2240,12 @@ impl GripperVariantDimensions {
             servo_bracket_thickness_mm,
             servo_housing_wall_mm,
             servo_standoff_diameter_mm,
+            gearbox_ratio,
+            gearbox_stage_diameter_mm,
+            gearbox_stage_length_mm,
+            wiring_channel_diameter_mm,
+            wiring_bend_radius_mm,
+            wiring_clearance_mm,
             pose_preset,
         }
     }
@@ -2263,6 +2293,9 @@ impl GripperVariantDimensions {
         if value.compact_servo_layout {
             value.servo_envelope_length_mm = (value.servo_envelope_length_mm - 2.0).max(8.0);
             value.servo_envelope_width_mm = (value.servo_envelope_width_mm - 1.0).max(6.0);
+            value.gearbox_stage_diameter_mm = (value.gearbox_stage_diameter_mm - 0.6).max(5.0);
+            value.gearbox_stage_length_mm = (value.gearbox_stage_length_mm - 1.1).max(6.0);
+            value.wiring_clearance_mm = (value.wiring_clearance_mm - 0.1).max(0.2);
         }
         value
     }
@@ -2993,6 +3026,114 @@ fn build_three_finger_thumb_feature_graph(state: &CadDemoPaneState) -> FeatureGr
                     ("compact_layout".to_string(), compact_layout.clone()),
                 ]),
             });
+            let gearbox_feature_id = format!("feature.hand3.gearbox.{digit_name}");
+            nodes.push(FeatureNode {
+                id: gearbox_feature_id.clone(),
+                name: format!("hand3_gearbox_stage_{digit_name}"),
+                operation_key: "hand3.gearbox.stage.v1".to_string(),
+                depends_on: vec![format!("feature.hand3.servo_housing.{digit_name}")],
+                params: BTreeMap::from([
+                    ("variant".to_string(), state.active_variant_id.clone()),
+                    ("digit".to_string(), digit_name.to_string()),
+                    ("digit_slot".to_string(), digit_slot.to_string()),
+                    (
+                        "base_width_mm".to_string(),
+                        format!("{:.3}", gripper.base_width_mm),
+                    ),
+                    (
+                        "base_depth_mm".to_string(),
+                        format!("{:.3}", gripper.base_depth_mm),
+                    ),
+                    (
+                        "base_thickness_mm".to_string(),
+                        format!("{:.3}", gripper.base_thickness_mm),
+                    ),
+                    (
+                        "finger_spacing_mm".to_string(),
+                        format!("{:.3}", finger_spacing_mm),
+                    ),
+                    (
+                        "gearbox_ratio".to_string(),
+                        format!("{:.3}", gripper.gearbox_ratio),
+                    ),
+                    (
+                        "gearbox_stage_diameter_mm".to_string(),
+                        format!("{:.3}", gripper.gearbox_stage_diameter_mm),
+                    ),
+                    (
+                        "gearbox_stage_length_mm".to_string(),
+                        format!("{:.3}", gripper.gearbox_stage_length_mm),
+                    ),
+                    (
+                        "servo_envelope_width_mm".to_string(),
+                        format!("{:.3}", gripper.servo_envelope_width_mm),
+                    ),
+                    ("compact_layout".to_string(), compact_layout.clone()),
+                ]),
+            });
+            nodes.push(FeatureNode {
+                id: format!("feature.hand3.wiring.{digit_name}"),
+                name: format!("hand3_wiring_channel_{digit_name}"),
+                operation_key: "hand3.wiring.channel.v1".to_string(),
+                depends_on: vec![
+                    gearbox_feature_id,
+                    format!("feature.hand3.tendon.{digit_name}"),
+                ],
+                params: BTreeMap::from([
+                    ("variant".to_string(), state.active_variant_id.clone()),
+                    ("digit".to_string(), digit_name.to_string()),
+                    ("digit_slot".to_string(), digit_slot.to_string()),
+                    (
+                        "base_width_mm".to_string(),
+                        format!("{:.3}", gripper.base_width_mm),
+                    ),
+                    (
+                        "base_depth_mm".to_string(),
+                        format!("{:.3}", gripper.base_depth_mm),
+                    ),
+                    (
+                        "base_thickness_mm".to_string(),
+                        format!("{:.3}", gripper.base_thickness_mm),
+                    ),
+                    (
+                        "finger_spacing_mm".to_string(),
+                        format!("{:.3}", finger_spacing_mm),
+                    ),
+                    (
+                        "wiring_channel_diameter_mm".to_string(),
+                        format!("{:.3}", gripper.wiring_channel_diameter_mm),
+                    ),
+                    (
+                        "wiring_bend_radius_mm".to_string(),
+                        format!("{:.3}", gripper.wiring_bend_radius_mm),
+                    ),
+                    (
+                        "wiring_clearance_mm".to_string(),
+                        format!("{:.3}", gripper.wiring_clearance_mm),
+                    ),
+                    (
+                        "joint_min_deg".to_string(),
+                        format!("{:.3}", gripper.joint_min_deg),
+                    ),
+                    (
+                        "joint_max_deg".to_string(),
+                        format!("{:.3}", gripper.joint_max_deg),
+                    ),
+                    (
+                        "servo_envelope_width_mm".to_string(),
+                        format!("{:.3}", gripper.servo_envelope_width_mm),
+                    ),
+                    (
+                        "servo_housing_wall_mm".to_string(),
+                        format!("{:.3}", gripper.servo_housing_wall_mm),
+                    ),
+                    (
+                        "jaw_open_mm".to_string(),
+                        format!("{:.3}", gripper.jaw_open_mm),
+                    ),
+                    ("compact_layout".to_string(), compact_layout.clone()),
+                ]),
+            });
         }
     }
 
@@ -3520,6 +3661,53 @@ fn append_gripper_printability_warnings(
             feature_id: "feature.hand3.servo_housing.index".to_string(),
             entity_id: "hand3.servo.housing".to_string(),
         });
+    }
+    if is_three_finger && gripper.servo_integration_enabled {
+        let joint_span_deg = (gripper.joint_max_deg - gripper.joint_min_deg).max(0.0);
+        let routing_sweep_load_mm = (joint_span_deg / 180.0).clamp(0.0, 1.0);
+        let wiring_joint_margin_mm = gripper.wiring_bend_radius_mm
+            - ((gripper.wiring_channel_diameter_mm * 0.7) + routing_sweep_load_mm);
+        if wiring_joint_margin_mm < 0.0 {
+            warnings.push(CadDemoWarningState {
+                warning_id: format!("warning.custom.{}", warnings.len()),
+                code: "CAD-WARN-WIRING-JOINT-INTERFERENCE".to_string(),
+                severity: "critical".to_string(),
+                message: format!(
+                    "Wiring path collides with joint sweep (margin {:.2} mm)",
+                    wiring_joint_margin_mm
+                ),
+                remediation_hint:
+                    "Increase wiring_bend_radius_mm or reduce wiring_channel_diameter_mm to clear joint motion"
+                        .to_string(),
+                semantic_refs: vec!["hand3_wiring_channel".to_string()],
+                deep_link: Some("cad://feature/feature.hand3.wiring.index".to_string()),
+                feature_id: "feature.hand3.wiring.index".to_string(),
+                entity_id: "hand3.wiring.joint_interference".to_string(),
+            });
+        }
+
+        let required_jaw_clearance_mm = gripper.servo_envelope_width_mm
+            + (gripper.servo_housing_wall_mm * 2.0)
+            + (gripper.wiring_clearance_mm * 4.0);
+        let housing_jaw_margin_mm = gripper.jaw_open_mm - required_jaw_clearance_mm;
+        if housing_jaw_margin_mm < 0.0 {
+            warnings.push(CadDemoWarningState {
+                warning_id: format!("warning.custom.{}", warnings.len()),
+                code: "CAD-WARN-HOUSING-JAW-INTERFERENCE".to_string(),
+                severity: "critical".to_string(),
+                message: format!(
+                    "Housing + wiring envelope exceeds jaw opening by {:.2} mm",
+                    housing_jaw_margin_mm.abs()
+                ),
+                remediation_hint:
+                    "Increase jaw_open_mm or reduce servo_envelope_width_mm / wiring_clearance_mm"
+                        .to_string(),
+                semantic_refs: vec!["hand3_servo_housing".to_string(), "hand3_wiring_channel".to_string()],
+                deep_link: Some("cad://feature/feature.hand3.servo_housing.middle".to_string()),
+                feature_id: "feature.hand3.servo_housing.middle".to_string(),
+                entity_id: "hand3.housing.jaw_interference".to_string(),
+            });
+        }
     }
 }
 
@@ -6146,6 +6334,25 @@ mod tests {
                 .iter()
                 .any(|row| row.feature_id == "feature.hand3.servo_standoff.middle")
         );
+        assert!(
+            state
+                .timeline_rows
+                .iter()
+                .any(|row| row.feature_id == "feature.hand3.gearbox.index")
+        );
+        assert!(
+            state
+                .timeline_rows
+                .iter()
+                .any(|row| row.feature_id == "feature.hand3.wiring.thumb")
+        );
+        let warning_codes = state
+            .warnings
+            .iter()
+            .map(|warning| warning.code.as_str())
+            .collect::<Vec<_>>();
+        assert!(!warning_codes.contains(&"CAD-WARN-WIRING-JOINT-INTERFERENCE"));
+        assert!(!warning_codes.contains(&"CAD-WARN-HOUSING-JAW-INTERFERENCE"));
         let dispatch = state
             .active_dispatch_state()
             .expect("active dispatch should exist");
@@ -6220,6 +6427,43 @@ mod tests {
         assert_eq!(baseline_receipt_a.vertex_count, baseline_receipt_b.vertex_count);
         assert_eq!(baseline_receipt_a.triangle_count, baseline_receipt_b.triangle_count);
         assert_eq!(baseline_receipt_a.edge_count, baseline_receipt_b.edge_count);
+    }
+
+    #[test]
+    fn gearbox_and_wiring_interference_warnings_emit_for_invalid_clearance() {
+        let mut state = CadDemoPaneState::default();
+        let prompt = "Add servo motors to each finger joint, including wiring paths and gearbox housings. Optimize for compact layout and low-cost 3D printing.";
+        let intent = match translate_chat_to_cad_intent(prompt) {
+            CadIntentTranslationOutcome::Intent(intent) => intent,
+            other => panic!("expected translated CAD intent, got {other:?}"),
+        };
+        state
+            .apply_chat_intent_for_thread("thread-gearbox-wiring-invalid", &intent)
+            .expect("servo integration intent should apply");
+        let set_dim = |state: &mut CadDemoPaneState, id: &str, value_mm: f64| {
+            let dimension = state
+                .dimensions
+                .iter_mut()
+                .find(|entry| entry.dimension_id == id)
+                .unwrap_or_else(|| panic!("dimension {id} should exist"));
+            dimension.value_mm = value_mm;
+        };
+        set_dim(&mut state, "wiring_channel_diameter_mm", 3.4);
+        set_dim(&mut state, "wiring_bend_radius_mm", 1.2);
+        set_dim(&mut state, "wiring_clearance_mm", 3.0);
+        set_dim(&mut state, "jaw_open_mm", 12.0);
+
+        enqueue_rebuild_cycle(&mut state, "test-gearbox-wiring-invalid-clearance")
+            .expect("invalid wiring rebuild should queue");
+        wait_for_receipt(&mut state);
+
+        let warning_codes = state
+            .warnings
+            .iter()
+            .map(|warning| warning.code.clone())
+            .collect::<Vec<_>>();
+        assert!(warning_codes.contains(&"CAD-WARN-WIRING-JOINT-INTERFERENCE".to_string()));
+        assert!(warning_codes.contains(&"CAD-WARN-HOUSING-JAW-INTERFERENCE".to_string()));
     }
 
     #[test]

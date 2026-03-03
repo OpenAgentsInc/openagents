@@ -1030,6 +1030,155 @@ fn tessellate_feature_node(
             }
             Ok(())
         }
+        "hand3.gearbox.stage.v1" => {
+            let digit_slot = node
+                .params
+                .get("digit_slot")
+                .and_then(|value| value.parse::<i32>().ok())
+                .unwrap_or(0) as f32;
+            let base_width_mm = node_param_f32(node, "base_width_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(90.0);
+            let base_depth_mm = node_param_f32(node, "base_depth_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(58.0);
+            let base_thickness_mm = node_param_f32(node, "base_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(8.0);
+            let finger_spacing_mm = node_param_f32(node, "finger_spacing_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(12.0);
+            let gearbox_ratio = node_param_f32(node, "gearbox_ratio")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(4.5);
+            let stage_diameter_mm = node_param_f32(node, "gearbox_stage_diameter_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(11.0);
+            let stage_length_mm = node_param_f32(node, "gearbox_stage_length_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(14.0);
+            let servo_width_mm = node_param_f32(node, "servo_envelope_width_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(12.0);
+            let compact_layout = node_param_bool(node, "compact_layout").unwrap_or(false);
+            let compact_scale = if compact_layout { 0.9 } else { 1.0 };
+            let x_center = if digit_slot <= -1.5 {
+                -base_width_mm * 0.34
+            } else {
+                digit_slot * finger_spacing_mm
+            };
+            let y_center = if digit_slot <= -1.5 {
+                -base_depth_mm * 0.04
+            } else {
+                base_depth_mm * 0.24
+            };
+            let ratio_scale = (gearbox_ratio / 4.5).clamp(0.5, 2.5);
+            let radius = (stage_diameter_mm * 0.5 * compact_scale).max(1.2);
+            let stage_height = (stage_length_mm * 0.38 * compact_scale).max(2.0);
+            let z_low = base_thickness_mm + (servo_width_mm * 0.22) + jitter * 0.03;
+            let z_high = z_low + stage_height;
+            builder.add_cylinder_z(
+                [x_center - (radius * 0.32), y_center, z_low + (stage_height * 0.5)],
+                radius,
+                stage_height,
+                14,
+                1,
+                6,
+            );
+            builder.add_cylinder_z(
+                [x_center + (radius * 0.44), y_center, z_low + (stage_height * 0.5)],
+                (radius / ratio_scale).max(0.8),
+                stage_height * 0.9,
+                12,
+                1,
+                6,
+            );
+            let housing_half_x = (radius * 1.2).max(2.4);
+            let housing_half_y = (radius * 0.85).max(2.0);
+            builder.add_box(
+                [x_center - housing_half_x, y_center - housing_half_y, z_low - 0.6],
+                [x_center + housing_half_x, y_center + housing_half_y, z_high + 0.6],
+                0,
+                4,
+            );
+            Ok(())
+        }
+        "hand3.wiring.channel.v1" => {
+            let digit_slot = node
+                .params
+                .get("digit_slot")
+                .and_then(|value| value.parse::<i32>().ok())
+                .unwrap_or(0) as f32;
+            let base_width_mm = node_param_f32(node, "base_width_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(90.0);
+            let base_depth_mm = node_param_f32(node, "base_depth_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(58.0);
+            let base_thickness_mm = node_param_f32(node, "base_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(8.0);
+            let finger_spacing_mm = node_param_f32(node, "finger_spacing_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(12.0);
+            let wiring_diameter_mm = node_param_f32(node, "wiring_channel_diameter_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(1.8);
+            let bend_radius_mm = node_param_f32(node, "wiring_bend_radius_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(2.6);
+            let wiring_clearance_mm = node_param_f32(node, "wiring_clearance_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(1.2);
+            let joint_min_deg = node_param_f32(node, "joint_min_deg").unwrap_or(14.0);
+            let joint_max_deg = node_param_f32(node, "joint_max_deg").unwrap_or(86.0);
+            let compact_layout = node_param_bool(node, "compact_layout").unwrap_or(false);
+            let compact_scale = if compact_layout { 0.92 } else { 1.0 };
+            let x_center = if digit_slot <= -1.5 {
+                -base_width_mm * 0.34
+            } else {
+                digit_slot * finger_spacing_mm
+            };
+            let y_start = if digit_slot <= -1.5 {
+                -base_depth_mm * 0.06
+            } else {
+                base_depth_mm * 0.18
+            };
+            let y_joint = if digit_slot <= -1.5 {
+                base_depth_mm * 0.08
+            } else {
+                base_depth_mm * 0.36
+            };
+            let travel_norm = ((joint_max_deg - joint_min_deg).abs() / 90.0).clamp(0.0, 2.0);
+            let z_base =
+                base_thickness_mm + (wiring_clearance_mm * 1.4) + (travel_norm * 0.35) + jitter * 0.02;
+            let half = (wiring_diameter_mm * 0.5 * compact_scale).max(0.35);
+            let bend = (bend_radius_mm * compact_scale).max(0.8);
+
+            builder.add_box(
+                [x_center - half, y_start - half, z_base],
+                [x_center + half, y_start + bend + half, z_base + wiring_diameter_mm],
+                0,
+                4,
+            );
+            builder.add_cylinder_z(
+                [x_center, y_start + bend, z_base + half],
+                half,
+                wiring_diameter_mm.max(0.8),
+                10,
+                0,
+                4,
+            );
+            builder.add_box(
+                [x_center - half, y_start + bend - half, z_base],
+                [x_center + half, y_joint + half, z_base + wiring_diameter_mm],
+                0,
+                4,
+            );
+            builder.add_circle_edge_loop([x_center, y_start, z_base], half, 12, 4, 0);
+            builder.add_circle_edge_loop([x_center, y_joint, z_base], half, 12, 4, 0);
+            Ok(())
+        }
         "hand3.edge_marker.v1" => {
             let base_width_mm = node_param_f32(node, "base_width_mm")
                 .filter(|value| *value > 0.0)
@@ -1688,6 +1837,7 @@ mod tests {
         pose_preset: &str,
         servo_integration_enabled: bool,
         servo_envelope_length_mm: f64,
+        gearbox_ratio: f64,
     ) -> FeatureGraph {
         let mut nodes = vec![
             FeatureNode {
@@ -1876,6 +2026,54 @@ mod tests {
                         ("compact_layout".to_string(), "1".to_string()),
                     ]),
                 });
+                let gearbox_feature_id = format!("feature.hand3.gearbox.{digit_name}");
+                nodes.push(FeatureNode {
+                    id: gearbox_feature_id.clone(),
+                    name: format!("hand3_gearbox_{digit_name}"),
+                    operation_key: "hand3.gearbox.stage.v1".to_string(),
+                    depends_on: vec![format!("feature.hand3.servo_housing.{digit_name}")],
+                    params: BTreeMap::from([
+                        ("variant".to_string(), variant_id.to_string()),
+                        ("digit".to_string(), digit_name.to_string()),
+                        ("digit_slot".to_string(), digit_slot.to_string()),
+                        ("base_width_mm".to_string(), "90.0".to_string()),
+                        ("base_depth_mm".to_string(), "58.0".to_string()),
+                        ("base_thickness_mm".to_string(), "8.0".to_string()),
+                        ("finger_spacing_mm".to_string(), "12.0".to_string()),
+                        ("gearbox_ratio".to_string(), format!("{gearbox_ratio:.3}")),
+                        ("gearbox_stage_diameter_mm".to_string(), "11.0".to_string()),
+                        ("gearbox_stage_length_mm".to_string(), "14.0".to_string()),
+                        ("servo_envelope_width_mm".to_string(), "12.0".to_string()),
+                        ("compact_layout".to_string(), "1".to_string()),
+                    ]),
+                });
+                nodes.push(FeatureNode {
+                    id: format!("feature.hand3.wiring.{digit_name}"),
+                    name: format!("hand3_wiring_{digit_name}"),
+                    operation_key: "hand3.wiring.channel.v1".to_string(),
+                    depends_on: vec![
+                        gearbox_feature_id,
+                        format!("feature.hand3.tendon.{digit_name}"),
+                    ],
+                    params: BTreeMap::from([
+                        ("variant".to_string(), variant_id.to_string()),
+                        ("digit".to_string(), digit_name.to_string()),
+                        ("digit_slot".to_string(), digit_slot.to_string()),
+                        ("base_width_mm".to_string(), "90.0".to_string()),
+                        ("base_depth_mm".to_string(), "58.0".to_string()),
+                        ("base_thickness_mm".to_string(), "8.0".to_string()),
+                        ("finger_spacing_mm".to_string(), "12.0".to_string()),
+                        ("wiring_channel_diameter_mm".to_string(), "1.8".to_string()),
+                        ("wiring_bend_radius_mm".to_string(), "2.6".to_string()),
+                        ("wiring_clearance_mm".to_string(), "1.2".to_string()),
+                        ("joint_min_deg".to_string(), "14.0".to_string()),
+                        ("joint_max_deg".to_string(), "86.0".to_string()),
+                        ("servo_envelope_width_mm".to_string(), "12.0".to_string()),
+                        ("servo_housing_wall_mm".to_string(), "2.0".to_string()),
+                        ("jaw_open_mm".to_string(), "34.0".to_string()),
+                        ("compact_layout".to_string(), "1".to_string()),
+                    ]),
+                });
             }
         }
         FeatureGraph { nodes }
@@ -2020,7 +2218,7 @@ mod tests {
 
     #[test]
     fn three_finger_thumb_tessellation_is_deterministic_for_identical_inputs() {
-        let graph = three_finger_thumb_graph("variant.baseline", 1.6, "tripod", false, 23.0);
+        let graph = three_finger_thumb_graph("variant.baseline", 1.6, "tripod", false, 23.0, 4.5);
         let rebuild =
             evaluate_feature_graph_deterministic(&graph).expect("three-finger rebuild should pass");
         let (mesh_a, receipt_a) =
@@ -2037,8 +2235,10 @@ mod tests {
 
     #[test]
     fn three_finger_thumb_tendon_channel_diameter_changes_mesh_hash() {
-        let narrow_graph = three_finger_thumb_graph("variant.baseline", 1.0, "pinch", false, 23.0);
-        let wide_graph = three_finger_thumb_graph("variant.baseline", 2.4, "pinch", false, 23.0);
+        let narrow_graph =
+            three_finger_thumb_graph("variant.baseline", 1.0, "pinch", false, 23.0, 4.5);
+        let wide_graph =
+            three_finger_thumb_graph("variant.baseline", 2.4, "pinch", false, 23.0, 4.5);
         let narrow_rebuild = evaluate_feature_graph_deterministic(&narrow_graph)
             .expect("narrow tendon rebuild should pass");
         let wide_rebuild = evaluate_feature_graph_deterministic(&wide_graph)
@@ -2055,8 +2255,9 @@ mod tests {
     #[test]
     fn three_finger_thumb_servo_envelope_changes_mesh_hash() {
         let compact_graph =
-            three_finger_thumb_graph("variant.baseline", 1.6, "tripod", true, 20.0);
-        let long_graph = three_finger_thumb_graph("variant.baseline", 1.6, "tripod", true, 28.0);
+            three_finger_thumb_graph("variant.baseline", 1.6, "tripod", true, 20.0, 4.5);
+        let long_graph =
+            three_finger_thumb_graph("variant.baseline", 1.6, "tripod", true, 28.0, 4.5);
         let compact_rebuild = evaluate_feature_graph_deterministic(&compact_graph)
             .expect("compact servo rebuild should pass");
         let long_rebuild =
@@ -2072,5 +2273,32 @@ mod tests {
             tessellate_rebuild_result(&long_graph, &long_rebuild, 47, "variant.baseline")
                 .expect("long servo tessellation should succeed");
         assert_ne!(compact_receipt.mesh_hash, long_receipt.mesh_hash);
+    }
+
+    #[test]
+    fn three_finger_thumb_gearbox_ratio_changes_mesh_hash() {
+        let low_ratio_graph =
+            three_finger_thumb_graph("variant.baseline", 1.6, "tripod", true, 23.0, 3.2);
+        let high_ratio_graph =
+            three_finger_thumb_graph("variant.baseline", 1.6, "tripod", true, 23.0, 7.8);
+        let low_ratio_rebuild = evaluate_feature_graph_deterministic(&low_ratio_graph)
+            .expect("low ratio rebuild should pass");
+        let high_ratio_rebuild = evaluate_feature_graph_deterministic(&high_ratio_graph)
+            .expect("high ratio rebuild should pass");
+        let (_, low_ratio_receipt) = tessellate_rebuild_result(
+            &low_ratio_graph,
+            &low_ratio_rebuild,
+            49,
+            "variant.baseline",
+        )
+        .expect("low ratio tessellation should succeed");
+        let (_, high_ratio_receipt) = tessellate_rebuild_result(
+            &high_ratio_graph,
+            &high_ratio_rebuild,
+            49,
+            "variant.baseline",
+        )
+        .expect("high ratio tessellation should succeed");
+        assert_ne!(low_ratio_receipt.mesh_hash, high_ratio_receipt.mesh_hash);
     }
 }

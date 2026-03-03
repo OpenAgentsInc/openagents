@@ -1695,6 +1695,48 @@ impl Default for CadDemoPaneState {
                 max_mm:
                     openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_SERVO_STANDOFF_DIAMETER_MM,
             },
+            CadDimensionState {
+                dimension_id: "gearbox_ratio".to_string(),
+                label: "Gear Ratio".to_string(),
+                value_mm: 4.5,
+                min_mm: 1.0,
+                max_mm: 14.0,
+            },
+            CadDimensionState {
+                dimension_id: "gearbox_stage_diameter_mm".to_string(),
+                label: "Gear Dia".to_string(),
+                value_mm: 11.0,
+                min_mm: 6.0,
+                max_mm: 30.0,
+            },
+            CadDimensionState {
+                dimension_id: "gearbox_stage_length_mm".to_string(),
+                label: "Gear Len".to_string(),
+                value_mm: 14.0,
+                min_mm: 6.0,
+                max_mm: 42.0,
+            },
+            CadDimensionState {
+                dimension_id: "wiring_channel_diameter_mm".to_string(),
+                label: "Wire Dia".to_string(),
+                value_mm: 1.8,
+                min_mm: 0.8,
+                max_mm: 8.0,
+            },
+            CadDimensionState {
+                dimension_id: "wiring_bend_radius_mm".to_string(),
+                label: "Wire Bend".to_string(),
+                value_mm: 2.6,
+                min_mm: 0.8,
+                max_mm: 16.0,
+            },
+            CadDimensionState {
+                dimension_id: "wiring_clearance_mm".to_string(),
+                label: "Wire Clear".to_string(),
+                value_mm: 1.2,
+                min_mm: 0.2,
+                max_mm: 6.0,
+            },
         ];
         let assembly_schema = openagents_cad::assembly::CadAssemblySchema {
             part_defs: std::collections::BTreeMap::from([
@@ -1951,6 +1993,12 @@ impl CadDemoPaneState {
                 "servo_bracket_thickness_mm",
                 "servo_housing_wall_mm",
                 "servo_standoff_diameter_mm",
+                "gearbox_ratio",
+                "gearbox_stage_diameter_mm",
+                "gearbox_stage_length_mm",
+                "wiring_channel_diameter_mm",
+                "wiring_bend_radius_mm",
+                "wiring_clearance_mm",
             ],
         }
     }
