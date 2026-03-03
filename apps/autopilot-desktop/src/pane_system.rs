@@ -341,6 +341,7 @@ pub enum StableSatsSimulationPaneAction {
 pub enum CadDemoPaneAction {
     Noop,
     CycleVariant,
+    ToggleGripperJawAnimation,
     ToggleViewportLayout,
     ResetSession,
     BootstrapDemo,
@@ -397,13 +398,20 @@ pub struct CadPaletteCommandSpec {
     pub action: CadDemoPaneAction,
 }
 
-const CAD_PALETTE_COMMAND_SPECS: [CadPaletteCommandSpec; 30] = [
+const CAD_PALETTE_COMMAND_SPECS: [CadPaletteCommandSpec; 31] = [
     CadPaletteCommandSpec {
         id: "cad.demo.bootstrap",
         label: "CAD: Bootstrap Demo",
         description: "Reset CAD demo session to deterministic baseline and queue rebuild",
         keybinding: Some("B"),
         action: CadDemoPaneAction::BootstrapDemo,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.gripper.toggle_jaw",
+        label: "CAD: Toggle Gripper Jaw",
+        description: "Toggle gripper jaw open/close animation step and queue rebuild",
+        keybinding: Some("J"),
+        action: CadDemoPaneAction::ToggleGripperJawAnimation,
     },
     CadPaletteCommandSpec {
         id: "cad.view.snap_top",
@@ -2402,73 +2410,116 @@ pub fn stable_sats_simulation_mode_real_button_bounds(content_bounds: Bounds) ->
     )
 }
 
-pub fn cad_demo_cycle_variant_button_bounds(content_bounds: Bounds) -> Bounds {
-    Bounds::new(
-        content_bounds.origin.x + CHAT_PAD,
-        content_bounds.origin.y + CHAT_PAD,
+struct CadDemoTopRowLayout {
+    cycle: Bounds,
+    jaw: Bounds,
+    reset: Bounds,
+    hidden_line: Bounds,
+    reset_camera: Bounds,
+    projection: Bounds,
+    viewport_layout: Bounds,
+}
+
+fn cad_demo_top_row_layout(content_bounds: Bounds) -> CadDemoTopRowLayout {
+    let min_x = content_bounds.origin.x + CHAT_PAD;
+    let max_x = content_bounds.max_x() - CHAT_PAD;
+    let top = content_bounds.origin.y + CHAT_PAD;
+    let gap = JOB_INBOX_BUTTON_GAP;
+    let button_height = JOB_INBOX_BUTTON_HEIGHT;
+
+    let desired = [
         (content_bounds.size.width * 0.24).clamp(150.0, 220.0),
-        JOB_INBOX_BUTTON_HEIGHT,
-    )
+        (content_bounds.size.width * 0.16).clamp(102.0, 170.0),
+        (content_bounds.size.width * 0.18).clamp(120.0, 190.0),
+        (content_bounds.size.width * 0.22).clamp(140.0, 220.0),
+        (content_bounds.size.width * 0.18).clamp(120.0, 180.0),
+        (content_bounds.size.width * 0.2).clamp(130.0, 210.0),
+        (content_bounds.size.width * 0.16).clamp(98.0, 170.0),
+    ];
+    let min_widths = [120.0, 90.0, 100.0, 100.0, 90.0, 90.0, 80.0];
+
+    let gaps_total = gap * (desired.len().saturating_sub(1) as f32);
+    let available = (max_x - min_x - gaps_total).max(0.0);
+    let min_sum: f32 = min_widths.iter().sum();
+    let mut widths = [0.0f32; 7];
+
+    if available > 0.0 {
+        if available < min_sum {
+            let scale = available / min_sum;
+            for (slot, min_width) in widths.iter_mut().zip(min_widths.into_iter()) {
+                *slot = min_width * scale;
+            }
+        } else {
+            widths = desired;
+            let mut overflow = widths.iter().sum::<f32>() - available;
+            if overflow > 0.0 {
+                for index in (0..widths.len()).rev() {
+                    let reducible = (widths[index] - min_widths[index]).max(0.0);
+                    let cut = reducible.min(overflow);
+                    widths[index] -= cut;
+                    overflow -= cut;
+                    if overflow <= 0.0 {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    let mut cursor_x = min_x;
+    let mut place = |width: f32| {
+        let origin_x = cursor_x.min(max_x);
+        let clamped_width = width.min((max_x - origin_x).max(0.0));
+        let bounds = Bounds::new(origin_x, top, clamped_width, button_height);
+        cursor_x = origin_x + clamped_width + gap;
+        bounds
+    };
+
+    let cycle = place(widths[0]);
+    let jaw = place(widths[1]);
+    let reset = place(widths[2]);
+    let hidden_line = place(widths[3]);
+    let reset_camera = place(widths[4]);
+    let projection = place(widths[5]);
+    let viewport_layout = place(widths[6]);
+
+    CadDemoTopRowLayout {
+        cycle,
+        jaw,
+        reset,
+        hidden_line,
+        reset_camera,
+        projection,
+        viewport_layout,
+    }
+}
+
+pub fn cad_demo_cycle_variant_button_bounds(content_bounds: Bounds) -> Bounds {
+    cad_demo_top_row_layout(content_bounds).cycle
+}
+
+pub fn cad_demo_gripper_jaw_button_bounds(content_bounds: Bounds) -> Bounds {
+    cad_demo_top_row_layout(content_bounds).jaw
 }
 
 pub fn cad_demo_reset_button_bounds(content_bounds: Bounds) -> Bounds {
-    let cycle = cad_demo_cycle_variant_button_bounds(content_bounds);
-    Bounds::new(
-        cycle.max_x() + JOB_INBOX_BUTTON_GAP,
-        cycle.origin.y,
-        (content_bounds.size.width * 0.18).clamp(120.0, 190.0),
-        cycle.size.height,
-    )
+    cad_demo_top_row_layout(content_bounds).reset
 }
 
 pub fn cad_demo_hidden_line_mode_button_bounds(content_bounds: Bounds) -> Bounds {
-    let reset = cad_demo_reset_button_bounds(content_bounds);
-    let desired_width = (content_bounds.size.width * 0.22).clamp(140.0, 220.0);
-    let min_x = content_bounds.origin.x + CHAT_PAD;
-    let max_x = content_bounds.max_x() - CHAT_PAD;
-    let origin_x = (reset.max_x() + JOB_INBOX_BUTTON_GAP).max(min_x);
-    let width = desired_width.min((max_x - origin_x).max(40.0));
-    Bounds::new(origin_x, reset.origin.y, width, reset.size.height)
+    cad_demo_top_row_layout(content_bounds).hidden_line
 }
 
 pub fn cad_demo_reset_camera_button_bounds(content_bounds: Bounds) -> Bounds {
-    let hidden_line = cad_demo_hidden_line_mode_button_bounds(content_bounds);
-    let desired_width = (content_bounds.size.width * 0.18).clamp(120.0, 180.0);
-    let min_x = content_bounds.origin.x + CHAT_PAD;
-    let max_x = content_bounds.max_x() - CHAT_PAD;
-    let origin_x = (hidden_line.max_x() + JOB_INBOX_BUTTON_GAP).max(min_x);
-    let width = desired_width.min((max_x - origin_x).max(40.0));
-    Bounds::new(
-        origin_x,
-        hidden_line.origin.y,
-        width,
-        hidden_line.size.height,
-    )
+    cad_demo_top_row_layout(content_bounds).reset_camera
 }
 
 pub fn cad_demo_projection_mode_button_bounds(content_bounds: Bounds) -> Bounds {
-    let reset_camera = cad_demo_reset_camera_button_bounds(content_bounds);
-    let desired_width = (content_bounds.size.width * 0.2).clamp(130.0, 210.0);
-    let min_x = content_bounds.origin.x + CHAT_PAD;
-    let max_x = content_bounds.max_x() - CHAT_PAD;
-    let origin_x = (reset_camera.max_x() + JOB_INBOX_BUTTON_GAP).max(min_x);
-    let width = desired_width.min((max_x - origin_x).max(40.0));
-    Bounds::new(
-        origin_x,
-        reset_camera.origin.y,
-        width,
-        reset_camera.size.height,
-    )
+    cad_demo_top_row_layout(content_bounds).projection
 }
 
 pub fn cad_demo_viewport_layout_button_bounds(content_bounds: Bounds) -> Bounds {
-    let projection = cad_demo_projection_mode_button_bounds(content_bounds);
-    let desired_width = (content_bounds.size.width * 0.16).clamp(98.0, 170.0);
-    let min_x = content_bounds.origin.x + CHAT_PAD;
-    let max_x = content_bounds.max_x() - CHAT_PAD;
-    let origin_x = (projection.max_x() + JOB_INBOX_BUTTON_GAP).max(min_x);
-    let width = desired_width.min((max_x - origin_x).max(40.0));
-    Bounds::new(origin_x, projection.origin.y, width, projection.size.height)
+    cad_demo_top_row_layout(content_bounds).viewport_layout
 }
 
 fn cad_demo_drawing_toolbar_top(content_bounds: Bounds) -> f32 {
@@ -2655,6 +2706,7 @@ fn grid_like_snap_width(content_bounds: Bounds) -> f32 {
 fn cad_demo_controls_bottom(content_bounds: Bounds) -> f32 {
     cad_demo_cycle_variant_button_bounds(content_bounds)
         .max_y()
+        .max(cad_demo_gripper_jaw_button_bounds(content_bounds).max_y())
         .max(cad_demo_reset_button_bounds(content_bounds).max_y())
         .max(cad_demo_hidden_line_mode_button_bounds(content_bounds).max_y())
         .max(cad_demo_reset_camera_button_bounds(content_bounds).max_y())
@@ -3578,6 +3630,11 @@ fn pane_hit_action_for_pane(
             if cad_demo_cycle_variant_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::CadDemo(CadDemoPaneAction::CycleVariant));
             }
+            if cad_demo_gripper_jaw_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CadDemo(
+                    CadDemoPaneAction::ToggleGripperJawAnimation,
+                ));
+            }
             if cad_demo_reset_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::CadDemo(CadDemoPaneAction::BootstrapDemo));
             }
@@ -4018,6 +4075,7 @@ mod tests {
         alerts_recovery_resolve_button_bounds, alerts_recovery_row_bounds,
         cad_action_uses_dense_row_hot_zone, cad_demo_context_menu_bounds,
         cad_demo_context_menu_row_bounds, cad_demo_cycle_variant_button_bounds,
+        cad_demo_gripper_jaw_button_bounds,
         cad_demo_dimension_panel_bounds, cad_demo_dimension_row_bounds,
         cad_demo_drawing_add_detail_button_bounds, cad_demo_drawing_clear_details_button_bounds,
         cad_demo_drawing_dimensions_button_bounds, cad_demo_drawing_direction_button_bounds,
@@ -4444,6 +4502,7 @@ mod tests {
     fn cad_demo_controls_are_ordered_and_inside_content() {
         let content = Bounds::new(0.0, 0.0, 820.0, 360.0);
         let cycle = cad_demo_cycle_variant_button_bounds(content);
+        let jaw = cad_demo_gripper_jaw_button_bounds(content);
         let reset = cad_demo_reset_button_bounds(content);
         let hidden_line = cad_demo_hidden_line_mode_button_bounds(content);
         let reset_camera = cad_demo_reset_camera_button_bounds(content);
@@ -4465,6 +4524,7 @@ mod tests {
         let section_offset = cad_demo_section_offset_button_bounds(content);
         let material = cad_demo_material_button_bounds(content);
         assert!(content.contains(cycle.origin));
+        assert!(content.contains(jaw.origin));
         assert!(content.contains(reset.origin));
         assert!(content.contains(hidden_line.origin));
         assert!(content.contains(reset_camera.origin));
@@ -4486,6 +4546,7 @@ mod tests {
         assert!(content.contains(section_offset.origin));
         assert!(content.contains(material.origin));
         assert!(cycle.max_y() <= content.max_y());
+        assert!(jaw.max_y() <= content.max_y());
         assert!(reset.max_y() <= content.max_y());
         assert!(hidden_line.max_y() <= content.max_y());
         assert!(reset_camera.max_y() <= content.max_y());
@@ -4506,7 +4567,8 @@ mod tests {
         assert!(section_plane.max_y() <= content.max_y());
         assert!(section_offset.max_y() <= content.max_y());
         assert!(material.max_y() <= content.max_y());
-        assert!(cycle.max_x() < reset.min_x());
+        assert!(cycle.max_x() < jaw.min_x());
+        assert!(jaw.max_x() < reset.min_x());
         assert!(reset.max_x() <= hidden_line.min_x() + 0.001);
         assert!(hidden_line.max_x() <= reset_camera.min_x() + 0.001);
         assert!(reset_camera.max_x() <= projection.min_x() + 0.001);

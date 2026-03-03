@@ -1401,6 +1401,9 @@ fn pane_action_to_hit_action(
         PaneKind::CadDemo => match action {
             "bootstrap" => Ok(PaneHitAction::CadDemo(CadDemoPaneAction::BootstrapDemo)),
             "cycle_variant" => Ok(PaneHitAction::CadDemo(CadDemoPaneAction::CycleVariant)),
+            "toggle_gripper_jaw" | "animate_jaw" => Ok(PaneHitAction::CadDemo(
+                CadDemoPaneAction::ToggleGripperJawAnimation,
+            )),
             "toggle_viewport_layout" | "toggle_layout" => Ok(PaneHitAction::CadDemo(
                 CadDemoPaneAction::ToggleViewportLayout,
             )),
@@ -4020,6 +4023,7 @@ fn cad_action_from_key(
         "bootstrap" | "bootstrap_demo" => CadDemoPaneAction::BootstrapDemo,
         "reset_session" => CadDemoPaneAction::ResetSession,
         "cycle_variant" => CadDemoPaneAction::CycleVariant,
+        "toggle_gripper_jaw" | "animate_jaw" => CadDemoPaneAction::ToggleGripperJawAnimation,
         "toggle_viewport_layout" | "toggle_layout" => CadDemoPaneAction::ToggleViewportLayout,
         "reset_camera" => CadDemoPaneAction::ResetCamera,
         "toggle_drawing_mode" => CadDemoPaneAction::ToggleDrawingViewMode,
@@ -4381,6 +4385,10 @@ mod tests {
         assert_eq!(
             cad_action_from_key("toggle_viewport_layout", None).expect("toggle layout action"),
             CadDemoPaneAction::ToggleViewportLayout
+        );
+        assert_eq!(
+            cad_action_from_key("toggle_gripper_jaw", None).expect("toggle jaw action"),
+            CadDemoPaneAction::ToggleGripperJawAnimation
         );
         assert_eq!(
             cad_action_from_key("status", None).expect("status action"),

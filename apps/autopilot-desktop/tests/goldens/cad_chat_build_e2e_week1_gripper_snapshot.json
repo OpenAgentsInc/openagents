@@ -3,12 +3,12 @@
     "active_variant_id": "variant.stiff-finger",
     "analysis": {
       "document_revision": 5,
-      "estimated_cost_usd": 154.27320086160378,
-      "mass_kg": 0.3184035857956393,
+      "estimated_cost_usd": 167.08504474807637,
+      "mass_kg": 0.3207213643861097,
       "material_id": "ti-6al-4v",
-      "max_deflection_mm": 0.00004327645113795836,
+      "max_deflection_mm": 0.00004328026987316354,
       "variant_id": "variant.stiff-finger",
-      "volume_mm3": 71874.39859946711
+      "volume_mm3": 72397.5991842234
     },
     "final_state_revision": 5,
     "last_error": null,
@@ -19,14 +19,14 @@
         "cache_misses": 5,
         "document_revision": 1,
         "duration_ms": 22,
-        "edge_count": 104,
+        "edge_count": 226,
         "event_id": "cad.session.chat.thread-cad-chat-e2e-week1-gripper:1:1",
         "feature_count": 5,
-        "mesh_hash": "612e8b1d8066e80f",
-        "rebuild_hash": "82919d04d1410440",
-        "triangle_count": 164,
+        "mesh_hash": "d325ac753ec49958",
+        "rebuild_hash": "3bc68ed107b9e827",
+        "triangle_count": 156,
         "variant_id": "variant.baseline",
-        "vertex_count": 96
+        "vertex_count": 176
       },
       {
         "cache_evictions": 0,
@@ -34,14 +34,14 @@
         "cache_misses": 5,
         "document_revision": 2,
         "duration_ms": 22,
-        "edge_count": 104,
+        "edge_count": 226,
         "event_id": "cad.session.chat.thread-cad-chat-e2e-week1-gripper:2:2",
         "feature_count": 5,
-        "mesh_hash": "d2a09570e601080a",
-        "rebuild_hash": "82919d04d1410440",
-        "triangle_count": 164,
+        "mesh_hash": "78ee741a6901daed",
+        "rebuild_hash": "3bc68ed107b9e827",
+        "triangle_count": 156,
         "variant_id": "variant.baseline",
-        "vertex_count": 96
+        "vertex_count": 176
       },
       {
         "cache_evictions": 0,
@@ -49,14 +49,14 @@
         "cache_misses": 5,
         "document_revision": 3,
         "duration_ms": 22,
-        "edge_count": 104,
+        "edge_count": 226,
         "event_id": "cad.session.chat.thread-cad-chat-e2e-week1-gripper:3:3",
         "feature_count": 5,
-        "mesh_hash": "4ede6b91009752d8",
-        "rebuild_hash": "0e0edc3646939a8b",
-        "triangle_count": 164,
+        "mesh_hash": "3c1c56e6da8aefa6",
+        "rebuild_hash": "d9dce0f070750bcf",
+        "triangle_count": 156,
         "variant_id": "variant.wide-jaw",
-        "vertex_count": 96
+        "vertex_count": 176
       },
       {
         "cache_evictions": 0,
@@ -64,14 +64,14 @@
         "cache_misses": 0,
         "document_revision": 3,
         "duration_ms": 19,
-        "edge_count": 104,
+        "edge_count": 226,
         "event_id": "cad.session.chat.thread-cad-chat-e2e-week1-gripper:3:4",
         "feature_count": 5,
-        "mesh_hash": "4ede6b91009752d8",
-        "rebuild_hash": "0e0edc3646939a8b",
-        "triangle_count": 164,
+        "mesh_hash": "3c1c56e6da8aefa6",
+        "rebuild_hash": "d9dce0f070750bcf",
+        "triangle_count": 156,
         "variant_id": "variant.wide-jaw",
-        "vertex_count": 96
+        "vertex_count": 176
       },
       {
         "cache_evictions": 0,
@@ -79,14 +79,14 @@
         "cache_misses": 5,
         "document_revision": 4,
         "duration_ms": 22,
-        "edge_count": 104,
+        "edge_count": 226,
         "event_id": "cad.session.chat.thread-cad-chat-e2e-week1-gripper:4:5",
         "feature_count": 5,
-        "mesh_hash": "1b6cc79527281ee8",
-        "rebuild_hash": "857a8605ede0c000",
-        "triangle_count": 164,
+        "mesh_hash": "5447d110d92e8822",
+        "rebuild_hash": "2ecc232629a3f1ac",
+        "triangle_count": 156,
         "variant_id": "variant.long-reach",
-        "vertex_count": 96
+        "vertex_count": 176
       },
       {
         "cache_evictions": 0,
@@ -94,14 +94,14 @@
         "cache_misses": 0,
         "document_revision": 4,
         "duration_ms": 19,
-        "edge_count": 104,
+        "edge_count": 226,
         "event_id": "cad.session.chat.thread-cad-chat-e2e-week1-gripper:4:6",
         "feature_count": 5,
-        "mesh_hash": "1b6cc79527281ee8",
-        "rebuild_hash": "857a8605ede0c000",
-        "triangle_count": 164,
+        "mesh_hash": "5447d110d92e8822",
+        "rebuild_hash": "2ecc232629a3f1ac",
+        "triangle_count": 156,
         "variant_id": "variant.long-reach",
-        "vertex_count": 96
+        "vertex_count": 176
       },
       {
         "cache_evictions": 0,
@@ -109,14 +109,14 @@
         "cache_misses": 5,
         "document_revision": 5,
         "duration_ms": 22,
-        "edge_count": 104,
+        "edge_count": 226,
         "event_id": "cad.session.chat.thread-cad-chat-e2e-week1-gripper:5:7",
         "feature_count": 5,
-        "mesh_hash": "6ca3899f7ba08973",
-        "rebuild_hash": "358a5b7f348c64da",
-        "triangle_count": 164,
+        "mesh_hash": "5037f1409dbec7d6",
+        "rebuild_hash": "eb37132971a33e06",
+        "triangle_count": 156,
         "variant_id": "variant.stiff-finger",
-        "vertex_count": 96
+        "vertex_count": 176
       },
       {
         "cache_evictions": 0,
@@ -124,14 +124,14 @@
         "cache_misses": 0,
         "document_revision": 5,
         "duration_ms": 19,
-        "edge_count": 104,
+        "edge_count": 226,
         "event_id": "cad.session.chat.thread-cad-chat-e2e-week1-gripper:5:8",
         "feature_count": 5,
-        "mesh_hash": "6ca3899f7ba08973",
-        "rebuild_hash": "358a5b7f348c64da",
-        "triangle_count": 164,
+        "mesh_hash": "5037f1409dbec7d6",
+        "rebuild_hash": "eb37132971a33e06",
+        "triangle_count": 156,
         "variant_id": "variant.stiff-finger",
-        "vertex_count": 96
+        "vertex_count": 176
       }
     ],
     "timing": {
@@ -170,12 +170,12 @@
             {
               "label": "rebuild",
               "tone": "info",
-              "value": "trigger=ai-intent:createparalleljawgripperspec result=ok hash=82919d04d1410440 mesh=612e8b1d8066e80f duration_ms=22"
+              "value": "trigger=ai-intent:createparalleljawgripperspec result=ok hash=3bc68ed107b9e827 mesh=d325ac753ec49958 duration_ms=22"
             },
             {
               "label": "event",
               "tone": "muted",
-              "value": "cad.build.rebuild.result trigger=ai-intent:createparalleljawgripperspec result=ok hash=82919d0..."
+              "value": "cad.build.rebuild.result trigger=ai-intent:createparalleljawgripperspec result=ok hash=3bc68ed..."
             },
             {
               "label": "event",
@@ -223,12 +223,12 @@
             {
               "label": "rebuild",
               "tone": "info",
-              "value": "trigger=ai-intent:setmaterial result=ok hash=82919d04d1410440 mesh=d2a09570e601080a duration_ms=22"
+              "value": "trigger=ai-intent:setmaterial result=ok hash=3bc68ed107b9e827 mesh=78ee741a6901daed duration_ms=22"
             },
             {
               "label": "event",
               "tone": "muted",
-              "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=82919d04d1410440 mesh=d2..."
+              "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=3bc68ed107b9e827 mesh=78..."
             },
             {
               "label": "event",
@@ -261,21 +261,21 @@
         "active_variant_id": "variant.wide-jaw",
         "count": 1,
         "has_mesh_payload": true,
-        "last_good_mesh_id": "mesh.variant-wide-jaw.0e0edc3646939a8b",
+        "last_good_mesh_id": "mesh.variant-wide-jaw.d9dce0f070750bcf",
         "last_receipt": {
           "cache_evictions": 0,
           "cache_hits": 0,
           "cache_misses": 5,
           "document_revision": 3,
           "duration_ms": 22,
-          "edge_count": 104,
+          "edge_count": 226,
           "event_id": "cad.session.chat.thread-cad-chat-e2e-week1-gripper:3:3",
           "feature_count": 5,
-          "mesh_hash": "4ede6b91009752d8",
-          "rebuild_hash": "0e0edc3646939a8b",
-          "triangle_count": 164,
+          "mesh_hash": "3c1c56e6da8aefa6",
+          "rebuild_hash": "d9dce0f070750bcf",
+          "triangle_count": 156,
           "variant_id": "variant.wide-jaw",
-          "vertex_count": 96
+          "vertex_count": 176
         },
         "pending_rebuild_request_id": null,
         "state_revision": 3,
@@ -307,12 +307,12 @@
             {
               "label": "rebuild",
               "tone": "info",
-              "value": "trigger=ai-intent:setmaterial result=ok hash=0e0edc3646939a8b mesh=4ede6b91009752d8 duration_ms=19"
+              "value": "trigger=ai-intent:setmaterial result=ok hash=d9dce0f070750bcf mesh=3c1c56e6da8aefa6 duration_ms=19"
             },
             {
               "label": "event",
               "tone": "muted",
-              "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=0e0edc3646939a8b mesh=4e..."
+              "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=d9dce0f070750bcf mesh=3c..."
             },
             {
               "label": "event",
@@ -345,21 +345,21 @@
         "active_variant_id": "variant.long-reach",
         "count": 1,
         "has_mesh_payload": true,
-        "last_good_mesh_id": "mesh.variant-long-reach.857a8605ede0c000",
+        "last_good_mesh_id": "mesh.variant-long-reach.2ecc232629a3f1ac",
         "last_receipt": {
           "cache_evictions": 0,
           "cache_hits": 0,
           "cache_misses": 5,
           "document_revision": 4,
           "duration_ms": 22,
-          "edge_count": 104,
+          "edge_count": 226,
           "event_id": "cad.session.chat.thread-cad-chat-e2e-week1-gripper:4:5",
           "feature_count": 5,
-          "mesh_hash": "1b6cc79527281ee8",
-          "rebuild_hash": "857a8605ede0c000",
-          "triangle_count": 164,
+          "mesh_hash": "5447d110d92e8822",
+          "rebuild_hash": "2ecc232629a3f1ac",
+          "triangle_count": 156,
           "variant_id": "variant.long-reach",
-          "vertex_count": 96
+          "vertex_count": 176
         },
         "pending_rebuild_request_id": null,
         "state_revision": 4,
@@ -391,12 +391,12 @@
             {
               "label": "rebuild",
               "tone": "info",
-              "value": "trigger=ai-intent:setmaterial result=ok hash=857a8605ede0c000 mesh=1b6cc79527281ee8 duration_ms=19"
+              "value": "trigger=ai-intent:setmaterial result=ok hash=2ecc232629a3f1ac mesh=5447d110d92e8822 duration_ms=19"
             },
             {
               "label": "event",
               "tone": "muted",
-              "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=857a8605ede0c000 mesh=1b..."
+              "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=2ecc232629a3f1ac mesh=54..."
             },
             {
               "label": "event",
@@ -429,21 +429,21 @@
         "active_variant_id": "variant.stiff-finger",
         "count": 1,
         "has_mesh_payload": true,
-        "last_good_mesh_id": "mesh.variant-stiff-finger.358a5b7f348c64da",
+        "last_good_mesh_id": "mesh.variant-stiff-finger.eb37132971a33e06",
         "last_receipt": {
           "cache_evictions": 0,
           "cache_hits": 0,
           "cache_misses": 5,
           "document_revision": 5,
           "duration_ms": 22,
-          "edge_count": 104,
+          "edge_count": 226,
           "event_id": "cad.session.chat.thread-cad-chat-e2e-week1-gripper:5:7",
           "feature_count": 5,
-          "mesh_hash": "6ca3899f7ba08973",
-          "rebuild_hash": "358a5b7f348c64da",
-          "triangle_count": 164,
+          "mesh_hash": "5037f1409dbec7d6",
+          "rebuild_hash": "eb37132971a33e06",
+          "triangle_count": 156,
           "variant_id": "variant.stiff-finger",
-          "vertex_count": 96
+          "vertex_count": 176
         },
         "pending_rebuild_request_id": null,
         "state_revision": 5,
@@ -475,12 +475,12 @@
             {
               "label": "rebuild",
               "tone": "info",
-              "value": "trigger=ai-intent:setmaterial result=ok hash=358a5b7f348c64da mesh=6ca3899f7ba08973 duration_ms=19"
+              "value": "trigger=ai-intent:setmaterial result=ok hash=eb37132971a33e06 mesh=5037f1409dbec7d6 duration_ms=19"
             },
             {
               "label": "event",
               "tone": "muted",
-              "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=358a5b7f348c64da mesh=6c..."
+              "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=eb37132971a33e06 mesh=50..."
             },
             {
               "label": "event",
@@ -590,12 +590,12 @@
           {
             "label": "rebuild",
             "tone": "info",
-            "value": "trigger=ai-intent:createparalleljawgripperspec result=ok hash=82919d04d1410440 mesh=612e8b1d8066e80f duration_ms=22"
+            "value": "trigger=ai-intent:createparalleljawgripperspec result=ok hash=3bc68ed107b9e827 mesh=d325ac753ec49958 duration_ms=22"
           },
           {
             "label": "event",
             "tone": "muted",
-            "value": "cad.build.rebuild.result trigger=ai-intent:createparalleljawgripperspec result=ok hash=82919d0..."
+            "value": "cad.build.rebuild.result trigger=ai-intent:createparalleljawgripperspec result=ok hash=3bc68ed..."
           },
           {
             "label": "event",
@@ -637,12 +637,12 @@
           {
             "label": "rebuild",
             "tone": "info",
-            "value": "trigger=ai-intent:setmaterial result=ok hash=82919d04d1410440 mesh=d2a09570e601080a duration_ms=22"
+            "value": "trigger=ai-intent:setmaterial result=ok hash=3bc68ed107b9e827 mesh=78ee741a6901daed duration_ms=22"
           },
           {
             "label": "event",
             "tone": "muted",
-            "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=82919d04d1410440 mesh=d2..."
+            "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=3bc68ed107b9e827 mesh=78..."
           },
           {
             "label": "event",
@@ -684,12 +684,12 @@
           {
             "label": "rebuild",
             "tone": "info",
-            "value": "trigger=ai-intent:setmaterial result=ok hash=0e0edc3646939a8b mesh=4ede6b91009752d8 duration_ms=19"
+            "value": "trigger=ai-intent:setmaterial result=ok hash=d9dce0f070750bcf mesh=3c1c56e6da8aefa6 duration_ms=19"
           },
           {
             "label": "event",
             "tone": "muted",
-            "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=0e0edc3646939a8b mesh=4e..."
+            "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=d9dce0f070750bcf mesh=3c..."
           },
           {
             "label": "event",
@@ -731,12 +731,12 @@
           {
             "label": "rebuild",
             "tone": "info",
-            "value": "trigger=ai-intent:setmaterial result=ok hash=857a8605ede0c000 mesh=1b6cc79527281ee8 duration_ms=19"
+            "value": "trigger=ai-intent:setmaterial result=ok hash=2ecc232629a3f1ac mesh=5447d110d92e8822 duration_ms=19"
           },
           {
             "label": "event",
             "tone": "muted",
-            "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=857a8605ede0c000 mesh=1b..."
+            "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=2ecc232629a3f1ac mesh=54..."
           },
           {
             "label": "event",
@@ -778,12 +778,12 @@
           {
             "label": "rebuild",
             "tone": "info",
-            "value": "trigger=ai-intent:setmaterial result=ok hash=358a5b7f348c64da mesh=6ca3899f7ba08973 duration_ms=19"
+            "value": "trigger=ai-intent:setmaterial result=ok hash=eb37132971a33e06 mesh=5037f1409dbec7d6 duration_ms=19"
           },
           {
             "label": "event",
             "tone": "muted",
-            "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=358a5b7f348c64da mesh=6c..."
+            "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=eb37132971a33e06 mesh=50..."
           },
           {
             "label": "event",
