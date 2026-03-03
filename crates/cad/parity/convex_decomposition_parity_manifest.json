@@ -1,0 +1,43 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-107",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/convex_decomposition_vcad_reference.json",
+  "reference_fixture_sha256": "fd967725525a8656b0e3b242c4fdea38836bbf1616640f32b4d2907facf2dd97",
+  "reference_source": "~/code/vcad/crates/vcad-kernel-physics/src/colliders.rs",
+  "reference_issue_match": true,
+  "reference_commit_match": true,
+  "row_set_match": true,
+  "contract_set_match": true,
+  "deterministic_replay_match": true,
+  "rows": [
+    {
+      "capability": "CAD Convex Decomposition Parity",
+      "case_id": "capability_scope",
+      "issue_id": "VCAD-PARITY-107"
+    },
+    {
+      "case_id": "phase_scope",
+      "lane_label": "convex-decomposition",
+      "phase": "Phase I - Physics + URDF parity"
+    },
+    {
+      "case_id": "reference_source",
+      "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+      "vcad_source": "~/code/vcad/crates/vcad-kernel-physics/src/colliders.rs"
+    }
+  ],
+  "contracts": [
+    "CAD Convex Decomposition Parity parity contracts are aligned to vcad reference behavior",
+    "CI parity artifacts include convex_decomposition manifest and vcad fixture evidence",
+    "Phase I - Physics + URDF parity parity lane remains deterministic across replay"
+  ],
+  "deterministic_signature": "939e005656a707e6",
+  "parity_contracts": [
+    "CAD Convex Decomposition Parity parity contracts are aligned to vcad reference behavior",
+    "CI parity artifacts include convex_decomposition manifest and vcad fixture evidence",
+    "Phase I - Physics + URDF parity parity lane remains deterministic across replay"
+  ]
+}

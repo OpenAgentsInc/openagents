@@ -5,7 +5,7 @@
   "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
   "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
   "parity_check_entrypoint": "scripts/cad/parity_check.sh",
-  "source_artifact_count": 154,
+  "source_artifact_count": 156,
   "artifacts": [
     {
       "artifact_id": "analytic_ray_intersections_parity_manifest",
@@ -120,6 +120,12 @@
       "source_path": "crates/cad/parity/compact_ir_parity_manifest.json",
       "sha256": "4d023ac4a6e2b68c21c05242efcbe9d96daac5e7bc0618c9a13ea2825c5a40a6",
       "bytes": 1653
+    },
+    {
+      "artifact_id": "convex_decomposition_parity_manifest",
+      "source_path": "crates/cad/parity/convex_decomposition_parity_manifest.json",
+      "sha256": "6a2fabb3499310c1b73a3f8703eb772e626b19f24dd77d09a235422ea561830d",
+      "bytes": 1872
     },
     {
       "artifact_id": "core_modeling_checkpoint_parity_manifest",
@@ -324,6 +330,12 @@
       "source_path": "crates/cad/parity/fixtures/compact_ir_vcad_reference.json",
       "sha256": "e2e2127fd27049a4962ea304ba24030f79b978a0965cb2c2242c789161d3ed64",
       "bytes": 547
+    },
+    {
+      "artifact_id": "fixtures_convex_decomposition_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/convex_decomposition_vcad_reference.json",
+      "sha256": "fd967725525a8656b0e3b242c4fdea38836bbf1616640f32b4d2907facf2dd97",
+      "bytes": 994
     },
     {
       "artifact_id": "fixtures_direct_brep_raytrace_scaffolding_vcad_reference",
@@ -682,8 +694,8 @@
     {
       "artifact_id": "parity_dashboard",
       "source_path": "crates/cad/parity/parity_dashboard.json",
-      "sha256": "502adaa9d8fe102f2a88273c5b378cedc6f1b2becd84a36cc2b8b36a06bca4ae",
-      "bytes": 8806
+      "sha256": "4a90f28cfe27742d1064998006e5d7291bc805ed56365003b5fc7a0e17925d6e",
+      "bytes": 8906
     },
     {
       "artifact_id": "parity_risk_register",

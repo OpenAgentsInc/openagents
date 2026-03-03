@@ -102,6 +102,7 @@ LANE_LABELS=(
     "rendering-raytrace-checkpoint"
     "physics-crate-integration"
     "collision-shape-generation"
+    "convex-decomposition"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -461,6 +462,9 @@ run_lane "physics-crate-integration" \
 
 run_lane "collision-shape-generation" \
     "$ROOT_DIR/scripts/cad/parity-collision-shape-generation-ci.sh"
+
+run_lane "convex-decomposition" \
+    "$ROOT_DIR/scripts/cad/parity-convex-decomposition-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

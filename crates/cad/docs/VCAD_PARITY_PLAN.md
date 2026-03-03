@@ -204,7 +204,7 @@ Major gaps to close:
 
 105. [x] VCAD-PARITY-105: Physics crate integration parity (`rapier` lane).
 106. [x] VCAD-PARITY-106: Collision shape generation parity (primitive/convex/trimesh).
-107. [ ] VCAD-PARITY-107: Convex decomposition parity lane.
+107. [x] VCAD-PARITY-107: Convex decomposition parity lane.
 108. [ ] VCAD-PARITY-108: Joint-to-physics mapping parity.
 109. [ ] VCAD-PARITY-109: Simulation `step/reset` API parity.
 110. [ ] VCAD-PARITY-110: Simulation UI controls parity (play/pause/step/record).
