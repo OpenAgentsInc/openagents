@@ -72,12 +72,38 @@ if ! cast_verify_app_bin_hash "$app_bin"; then
     exit 1
 fi
 
-prev_txs="$(tr -d '\n' < "$prev_txs_file")"
-if [[ -z "$prev_txs" ]]; then
+prev_txs_lines=()
+while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line//$'\r'/}"
+    if [[ "$line" =~ ^[[:space:]]*$ ]]; then
+        continue
+    fi
+    prev_txs_lines+=("$line")
+done < "$prev_txs_file"
+if [[ "${#prev_txs_lines[@]}" -eq 0 ]]; then
     printf 'prev_txs file is empty: %s\n' "$prev_txs_file" >&2
     exit 1
 fi
-prev_txs_hash="$(printf '%s' "$prev_txs" | shasum -a 256 | awk '{print $1}')"
+if [[ "${#prev_txs_lines[@]}" -eq 1 && "${prev_txs_lines[0]}" == *,* ]]; then
+    IFS=',' read -r -a prev_txs_items <<<"${prev_txs_lines[0]}"
+else
+    prev_txs_items=("${prev_txs_lines[@]}")
+fi
+
+prev_txs_values=()
+for item in "${prev_txs_items[@]}"; do
+    trimmed="$(printf '%s' "$item" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    if [[ -n "$trimmed" ]]; then
+        prev_txs_values+=("$trimmed")
+    fi
+done
+if [[ "${#prev_txs_values[@]}" -eq 0 ]]; then
+    printf 'prev_txs file has no usable entries: %s\n' "$prev_txs_file" >&2
+    exit 1
+fi
+prev_txs_joined="$(printf '%s,' "${prev_txs_values[@]}")"
+prev_txs_joined="${prev_txs_joined%,}"
+prev_txs_hash="$(printf '%s' "$prev_txs_joined" | shasum -a 256 | awk '{print $1}')"
 spell_hash="$(cast_file_sha256 "$spell")"
 app_bin_hash="$(cast_file_sha256 "$app_bin")"
 private_inputs_hash=""
@@ -85,7 +111,10 @@ if [[ -n "$private_inputs_file" ]]; then
     private_inputs_hash="$(cast_file_sha256 "$private_inputs_file")"
 fi
 
-cmd=(charms spell check --spell "$spell" --app-bins "$app_bin" --prev-txs "$prev_txs")
+cmd=(charms spell check --spell "$spell" --app-bins "$app_bin")
+for prev_tx in "${prev_txs_values[@]}"; do
+    cmd+=(--prev-txs "$prev_tx")
+done
 if [[ -n "$private_inputs_file" ]]; then
     cmd+=(--private-inputs "$private_inputs_file")
 fi

@@ -33,6 +33,9 @@ Required artifacts/services:
 - Operator-signed `fulfill` params payload
 - Scrolls API base URL
 - `prev_txs` ancestry data for all spell inputs
+- fee funding input UTXO for maker flows (`CAST_FUNDING_UTXO`)
+- v11 spell file (`version: 11`, `tx.*`, `app_public_inputs`)
+- separate private-inputs file passed via `--private-inputs`
 
 ## Workflow
 
@@ -54,6 +57,7 @@ Required artifacts/services:
 - prefer file-backed inputs over inline shell literals
 - use dry-run first for mutation steps
 - persist artifacts and receipts for every run
+- encode `tx.coins[*].dest` as hex destination bytes (derive via `charms util dest --addr ...`)
 
 ## Quick Commands
 
@@ -65,12 +69,21 @@ skills/cast/scripts/check-cast-prereqs.sh maker
 skills/cast/scripts/derive-scrolls-address.sh \
   --funding-utxo "<txid:vout>" \
   --output-index 0 \
-  --scrolls-base-url "https://scrolls-v9.charms.dev/main"
+  --scrolls-base-url "${CAST_SCROLLS_BASE_URL}"
 
 # Check + prove
-skills/cast/scripts/cast-spell-check.sh --spell ./rendered/create-order.yaml
-skills/cast/scripts/cast-spell-prove.sh --spell ./rendered/create-order.yaml --mock
-skills/cast/scripts/cast-spell-prove.sh --spell ./rendered/create-order.yaml
+skills/cast/scripts/cast-spell-check.sh \
+  --spell ./rendered/create-order.yaml \
+  --private-inputs-file ./rendered/create-order.private-inputs.yaml
+skills/cast/scripts/cast-spell-prove.sh \
+  --spell ./rendered/create-order.yaml \
+  --private-inputs-file ./rendered/create-order.private-inputs.yaml \
+  --change-address "bc1q..." \
+  --mock
+skills/cast/scripts/cast-spell-prove.sh \
+  --spell ./rendered/create-order.yaml \
+  --private-inputs-file ./rendered/create-order.private-inputs.yaml \
+  --change-address "bc1q..."
 
 # Sign + inspect
 skills/cast/scripts/cast-sign-and-broadcast.sh --tx-json ./proofs/tx_to_sign.json --dry-run

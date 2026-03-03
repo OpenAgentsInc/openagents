@@ -4,6 +4,7 @@ source "$(dirname "$0")/_lib_receipts.sh"
 
 spell=""
 cancel_utxo=""
+message_override=""
 xprv_file="${CAST_CANCEL_XPRV_FILE:-}"
 derivation_path="${CAST_CANCEL_DERIVATION_PATH:-}"
 receipt_file=""
@@ -16,6 +17,10 @@ while [[ $# -gt 0 ]]; do
         ;;
     --cancel-utxo)
         cancel_utxo="${2:-}"
+        shift 2
+        ;;
+    --message)
+        message_override="${2:-}"
         shift 2
         ;;
     --xprv-file)
@@ -31,7 +36,7 @@ while [[ $# -gt 0 ]]; do
         shift 2
         ;;
     -h | --help)
-        printf 'Usage: %s --spell <spell.yaml> --cancel-utxo <txid:vout> --xprv-file <path> --path <derivation-path> [--receipt-file <path>]\n' "$0"
+        printf 'Usage: %s --spell <spell.yaml> --cancel-utxo <txid:vout> --xprv-file <path> --path <derivation-path> [--message "<utxo_id outputs_hash>"] [--receipt-file <path>]\n' "$0"
         exit 0
         ;;
     *)
@@ -70,10 +75,22 @@ if [[ -z "$xprv" ]]; then
     exit 1
 fi
 
-message="$(cancel-msg message "$spell" "$cancel_utxo" | tr -d '\r\n')"
-if [[ -z "$message" ]]; then
-    printf 'Failed to generate cancellation message.\n' >&2
-    exit 1
+if [[ -n "$message_override" ]]; then
+    message="$message_override"
+else
+    message_file="$(mktemp)"
+    message_err_file="$(mktemp)"
+    if ! cancel-msg message "$spell" "$cancel_utxo" >"$message_file" 2>"$message_err_file"; then
+        cat "$message_err_file" >&2
+        printf 'Failed to derive cancellation message from spell.\n' >&2
+        printf 'If your cancel-msg build does not support Charms v11 spell format, pass --message "<utxo_id outputs_hash>" explicitly.\n' >&2
+        exit 1
+    fi
+    message="$(tr -d '\r\n' < "$message_file")"
+    if [[ -z "$message" ]]; then
+        printf 'Failed to generate cancellation message.\n' >&2
+        exit 1
+    fi
 fi
 
 read -r message_utxo outputs_hash trailing <<<"$message"
@@ -90,9 +107,25 @@ if ! [[ "$outputs_hash" =~ ^[0-9a-fA-F]{64}$ ]]; then
     exit 1
 fi
 
-signature="$(cancel-msg sign "$message" --xprv "$xprv" --path "$derivation_path" | tr -d '\r\n')"
+sign_output_file="$(mktemp)"
+if ! cancel-msg sign --xprv "$xprv" --path "$derivation_path" "$message" >"$sign_output_file" 2>&1; then
+    cat "$sign_output_file" >&2
+    printf 'Failed to generate cancellation signature.\n' >&2
+    exit 1
+fi
+
+signature="$(awk '/^Signature \(hex\): /{print $3}' "$sign_output_file" | tail -n 1)"
+if [[ -z "$signature" ]]; then
+    signature="$(grep -Eo '[0-9a-fA-F]{130}' "$sign_output_file" | tail -n 1 || true)"
+fi
 if [[ -z "$signature" ]]; then
     printf 'Failed to generate cancellation signature.\n' >&2
+    exit 1
+fi
+if ! [[ "$signature" =~ ^[0-9a-fA-F]{130}$ ]]; then
+    printf 'Cancellation signature must be 65-byte compact signature hex (130 chars).\n' >&2
+    printf 'Raw cancel-msg output:\n' >&2
+    cat "$sign_output_file" >&2
     exit 1
 fi
 
