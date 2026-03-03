@@ -35,7 +35,7 @@ use winit::window::Fullscreen;
 
 use crate::app_state::{
     ActivityEventDomain, ActivityEventRow, AlertDomain, App, CadCameraDragMode, CadCameraDragState,
-    CadHotkeyAction, ChatTranscriptPressState, JobInboxNetworkRequest, JobInboxValidation,
+    CadHotkeyAction, ChatTranscriptSelectionDragState, JobInboxNetworkRequest, JobInboxValidation,
     NetworkRequestSubmission, PaneKind, ProviderMode,
 };
 use crate::hotbar::{
@@ -91,8 +91,6 @@ mod shortcuts;
 mod tool_bridge;
 use actions::*;
 use shortcuts::*;
-
-const CHAT_MESSAGE_LONG_PRESS_MS: u64 = 450;
 
 pub(crate) fn bootstrap_startup_cad_mesh(state: &mut crate::app_state::RenderState) {
     let _ = reducers::bootstrap_startup_parallel_jaw_gripper(state);
@@ -1419,6 +1417,7 @@ fn dispatch_mouse_move(state: &mut crate::app_state::RenderState, point: Point) 
     if state.cad_camera_drag_state.is_none() {
         handled |= update_cad_hover_target(state, point);
     }
+    handled |= update_chat_transcript_selection_drag(state, point);
     let event = InputEvent::MouseMove {
         x: point.x,
         y: point.y,
@@ -1443,7 +1442,7 @@ fn dispatch_mouse_down(
     if handle_sidebar_mouse_down(state, point, button) {
         return true;
     }
-    begin_chat_transcript_long_press(state, point, button);
+    let mut handled = begin_chat_transcript_selection_drag(state, point, button);
 
     // Sidebar "Go Online" button (when panel is open).
     if button == MouseButton::Left && state.sidebar.is_open {
@@ -1465,7 +1464,6 @@ fn dispatch_mouse_down(
         }
     }
 
-    let mut handled = false;
     if state.hotbar_bounds.contains(point) {
         handled |= state
             .hotbar
@@ -1495,7 +1493,7 @@ fn dispatch_mouse_up(
     point: Point,
     event: &InputEvent,
 ) -> bool {
-    let mut handled = handle_chat_transcript_long_press_release(state, point);
+    let mut handled = finish_chat_transcript_selection_drag(state, point);
     let camera_drag_consumed_click = finish_cad_camera_drag(state);
     handled |= camera_drag_consumed_click;
     handled |= handle_sidebar_mouse_up(state, point, event);
@@ -2009,51 +2007,100 @@ fn apply_cad_camera_zoom(
     true
 }
 
-fn begin_chat_transcript_long_press(
+fn begin_chat_transcript_selection_drag(
     state: &mut crate::app_state::RenderState,
     point: Point,
     button: MouseButton,
-) {
-    state.chat_transcript_press = None;
+) -> bool {
+    let had_active_selection = state.chat_transcript_selection_drag.is_some()
+        || state.autopilot_chat.transcript_selection.is_some();
+    state.chat_transcript_selection_drag = None;
+    state.autopilot_chat.clear_transcript_selection();
     if button != MouseButton::Left {
-        return;
+        return had_active_selection;
     }
 
-    let Some(message_id) = chat_pane::transcript_message_id_at_point(state, point) else {
-        return;
+    let Some((message_id, byte_offset)) =
+        chat_pane::transcript_message_byte_offset_at_point(state, point)
+    else {
+        return had_active_selection;
     };
-    state.chat_transcript_press = Some(ChatTranscriptPressState {
+    state.chat_transcript_selection_drag = Some(ChatTranscriptSelectionDragState {
         message_id,
-        started_at: std::time::Instant::now(),
+        anchor_byte_offset: byte_offset,
     });
+    state.autopilot_chat.transcript_selection =
+        Some(crate::app_state::ChatTranscriptSelectionState {
+            message_id,
+            start_byte_offset: byte_offset,
+            end_byte_offset: byte_offset,
+        });
+    true
 }
 
-fn handle_chat_transcript_long_press_release(
+fn update_chat_transcript_selection_drag(
     state: &mut crate::app_state::RenderState,
     point: Point,
 ) -> bool {
-    let Some(press) = state.chat_transcript_press.take() else {
+    let Some(drag) = state.chat_transcript_selection_drag else {
         return false;
     };
 
-    let now = std::time::Instant::now();
-    if now.duration_since(press.started_at)
-        < std::time::Duration::from_millis(CHAT_MESSAGE_LONG_PRESS_MS)
-    {
-        return false;
-    }
-
-    let Some(released_message_id) = chat_pane::transcript_message_id_at_point(state, point) else {
-        return false;
-    };
-    if released_message_id != press.message_id {
-        return false;
-    }
-
-    let Some(message_text) = chat_pane::transcript_message_copy_text_by_id(state, press.message_id)
+    let Some((message_id, byte_offset)) =
+        chat_pane::transcript_message_byte_offset_at_point(state, point)
     else {
         return false;
     };
+    if message_id != drag.message_id {
+        return false;
+    }
+
+    state.autopilot_chat.transcript_selection =
+        Some(crate::app_state::ChatTranscriptSelectionState {
+            message_id,
+            start_byte_offset: drag.anchor_byte_offset.min(byte_offset),
+            end_byte_offset: drag.anchor_byte_offset.max(byte_offset),
+        });
+    true
+}
+
+fn finish_chat_transcript_selection_drag(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+) -> bool {
+    let Some(drag) = state.chat_transcript_selection_drag.take() else {
+        return false;
+    };
+
+    if let Some((message_id, byte_offset)) =
+        chat_pane::transcript_message_byte_offset_at_point(state, point)
+        && message_id == drag.message_id
+    {
+        state.autopilot_chat.transcript_selection =
+            Some(crate::app_state::ChatTranscriptSelectionState {
+                message_id,
+                start_byte_offset: drag.anchor_byte_offset.min(byte_offset),
+                end_byte_offset: drag.anchor_byte_offset.max(byte_offset),
+            });
+    };
+
+    let now = std::time::Instant::now();
+    let Some(selection) = state.autopilot_chat.transcript_selection else {
+        return true;
+    };
+    if selection.end_byte_offset <= selection.start_byte_offset {
+        state.autopilot_chat.clear_transcript_selection();
+        return true;
+    }
+
+    let Some(message_text) = chat_pane::transcript_selection_text(state, selection) else {
+        state.autopilot_chat.clear_transcript_selection();
+        return true;
+    };
+    if message_text.trim().is_empty() {
+        state.autopilot_chat.clear_transcript_selection();
+        return true;
+    }
 
     let notice = match copy_to_clipboard(&message_text) {
         Ok(()) => "Copied message to clipboard".to_string(),
