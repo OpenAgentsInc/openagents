@@ -15,7 +15,7 @@ Issue coverage: `VCAD-PARITY-010`
 | commands match rate | `0.083333` |
 | open risks | `24` |
 | open hard blockers (p0) | `16` |
-| CI source artifact count | `208` |
+| CI source artifact count | `210` |
 
 ## Profile Gates
 
@@ -130,6 +130,7 @@ Issue coverage: `VCAD-PARITY-010`
 - `fixtures_mcp_simulation_tools_vcad_reference`
 - `fixtures_mesh_upload_processing_vcad_reference`
 - `fixtures_parity_fixture_corpus`
+- `fixtures_performance_scorecard_thresholds_vcad_reference`
 - `fixtures_physics_crate_integration_vcad_reference`
 - `fixtures_presence_cursor_selection_vcad_reference`
 - `fixtures_raytrace_face_pick_vcad_reference`
@@ -188,6 +189,7 @@ Issue coverage: `VCAD-PARITY-010`
 - `parity_risk_register`
 - `parity_scorecard`
 - `pattern_parity_manifest`
+- `performance_scorecard_thresholds_parity_manifest`
 - `physics_crate_integration_parity_manifest`
 - `presence_cursor_selection_parity_manifest`
 - `primitive_contracts_parity_manifest`

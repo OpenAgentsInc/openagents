@@ -129,6 +129,7 @@ LANE_LABELS=(
     "license-compliance-audit"
     "security-posture-review"
     "deterministic-replay-all-fixtures"
+    "performance-scorecard-thresholds"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -569,6 +570,9 @@ run_lane "security-posture-review" \
 
 run_lane "deterministic-replay-all-fixtures" \
     "$ROOT_DIR/scripts/cad/parity-deterministic-replay-all-fixtures-ci.sh"
+
+run_lane "performance-scorecard-thresholds" \
+    "$ROOT_DIR/scripts/cad/parity-performance-scorecard-thresholds-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
