@@ -51,10 +51,10 @@ const FOOTER_RESERVED: f32 = 18.0;
 const VIEWPORT_MESH_PAD: f32 = 12.0;
 const VARIANT_TILE_GAP: f32 = 8.0;
 const ENGINEERING_OVERLAY_WIDTH: f32 = 220.0;
-const ENGINEERING_OVERLAY_LINE_HEIGHT: f32 = 9.0;
+const ENGINEERING_OVERLAY_LINE_HEIGHT: f32 = 10.0;
 const ENGINEERING_OVERLAY_LINE_COUNT: usize = 6;
 const SENSOR_OVERLAY_WIDTH: f32 = 228.0;
-const SENSOR_OVERLAY_LINE_HEIGHT: f32 = 9.0;
+const SENSOR_OVERLAY_LINE_HEIGHT: f32 = 10.0;
 const CAD_CAMERA_MIN_ZOOM: f32 = 0.35;
 const CAD_CAMERA_MAX_ZOOM: f32 = 1.0;
 const CAD_PERSPECTIVE_FIT_EXPANSION: f32 = 1.22;
@@ -492,16 +492,16 @@ pub fn paint_cad_demo_placeholder_pane(
             paint.scene.draw_text(paint.text.layout(
                 &tile_caption(tile_index, is_active, selection, hover),
                 tile_label_origin,
-                8.0,
+                9.0,
                 theme::text::MUTED,
             ));
             let tile_variant_origin =
                 Point::new(tile_bounds.origin.x + 6.0, tile_bounds.origin.y + 20.0);
-            if tile_variant_origin.y + 8.0 <= tile_bounds.max_y() {
+            if tile_variant_origin.y + 9.0 <= tile_bounds.max_y() {
                 paint.scene.draw_text(paint.text.layout(
                     tile_label,
                     tile_variant_origin,
-                    8.0,
+                    9.0,
                     theme::text::SECONDARY,
                 ));
             }
@@ -543,7 +543,7 @@ pub fn paint_cad_demo_placeholder_pane(
             layout.viewport_bounds.origin.x + 8.0,
             (layout.viewport_bounds.origin.y + 10.0).min(layout.viewport_bounds.max_y()),
         );
-        if viewport_label.y + 9.0 <= content_bounds.max_y() {
+        if viewport_label.y + 10.0 <= content_bounds.max_y() {
             paint.scene.draw_text(paint.text.layout(
                 &viewport_status,
                 viewport_label,
@@ -631,7 +631,7 @@ pub fn paint_cad_demo_placeholder_pane(
         paint.scene.draw_text(paint.text.layout(
             "Warnings",
             Point::new(warning_panel.origin.x + 6.0, warning_panel.origin.y + 10.0),
-            9.0,
+            10.0,
             theme::text::SECONDARY,
         ));
         let visible_warning_indices = visible_warning_indices(pane_state);
@@ -651,16 +651,16 @@ pub fn paint_cad_demo_placeholder_pane(
             let row_text = format!("[{}] {}", warning.severity, warning.code);
             paint.scene.draw_text(paint.text.layout(
                 &row_text,
-                Point::new(row_bounds.origin.x + 4.0, row_bounds.origin.y + 9.0),
-                9.0,
+                Point::new(row_bounds.origin.x + 4.0, row_bounds.origin.y + 10.0),
+                10.0,
                 warning_color(warning),
             ));
             let detail_y = row_bounds.origin.y + 18.0;
-            if detail_y + 8.0 <= warning_panel.max_y() {
+            if detail_y + 9.0 <= warning_panel.max_y() {
                 paint.scene.draw_text(paint.text.layout(
                     &warning.message,
                     Point::new(row_bounds.origin.x + 4.0, detail_y),
-                    8.0,
+                    9.0,
                     theme::text::MUTED,
                 ));
             }
@@ -682,7 +682,7 @@ pub fn paint_cad_demo_placeholder_pane(
                 dimension_panel.origin.x + 6.0,
                 dimension_panel.origin.y + 10.0,
             ),
-            9.0,
+            10.0,
             theme::text::SECONDARY,
         ));
 
@@ -720,7 +720,7 @@ pub fn paint_cad_demo_placeholder_pane(
             paint.scene.draw_text(paint.text.layout(
                 &format!("{prefix}{}: {value_text} mm", dimension.label),
                 Point::new(row_bounds.origin.x + 4.0, row_bounds.origin.y + 10.0),
-                8.5,
+                9.5,
                 if is_editing {
                     theme::text::PRIMARY
                 } else {
@@ -736,11 +736,11 @@ pub fn paint_cad_demo_placeholder_pane(
                 dimension_panel.origin.x + 6.0,
                 (dimension_panel.max_y() - 8.0).max(dimension_panel.origin.y + 12.0),
             );
-            if error_origin.y + 8.0 <= dimension_panel.max_y() {
+            if error_origin.y + 9.0 <= dimension_panel.max_y() {
                 paint.scene.draw_text(paint.text.layout(
                     error,
                     error_origin,
-                    7.5,
+                    8.5,
                     theme::status::ERROR,
                 ));
             }
@@ -788,8 +788,8 @@ pub fn paint_cad_demo_placeholder_pane(
                     "{} [{}] {} ({})",
                     row.feature_name, row.status_badge, row.op_type, row.provenance
                 ),
-                Point::new(row_bounds.origin.x + 4.0, row_bounds.origin.y + 9.0),
-                9.0,
+                Point::new(row_bounds.origin.x + 4.0, row_bounds.origin.y + 10.0),
+                10.0,
                 timeline_row_color(row),
             ));
         }
@@ -802,18 +802,18 @@ pub fn paint_cad_demo_placeholder_pane(
             paint.scene.draw_text(paint.text.layout(
                 &format!("{inspect_title}:"),
                 inspector_origin,
-                9.0,
+                10.0,
                 theme::text::SECONDARY,
             ));
             for (offset, line) in inspect_lines.iter().take(5).enumerate() {
-                let y = inspector_origin.y + 10.0 + offset as f32 * 9.0;
-                if y + 8.0 > timeline_panel.max_y() {
+                let y = inspector_origin.y + 10.0 + offset as f32 * 10.0;
+                if y + 9.0 > timeline_panel.max_y() {
                     break;
                 }
                 paint.scene.draw_text(paint.text.layout(
                     line,
                     Point::new(inspector_origin.x, y),
-                    8.0,
+                    9.0,
                     theme::text::MUTED,
                 ));
             }
@@ -827,18 +827,18 @@ pub fn paint_cad_demo_placeholder_pane(
             paint.scene.draw_text(paint.text.layout(
                 &format!("{inspect_title}:"),
                 inspector_origin,
-                9.0,
+                10.0,
                 theme::text::SECONDARY,
             ));
             for (offset, line) in inspect_lines.iter().take(5).enumerate() {
-                let y = inspector_origin.y + 10.0 + offset as f32 * 9.0;
-                if y + 8.0 > timeline_panel.max_y() {
+                let y = inspector_origin.y + 10.0 + offset as f32 * 10.0;
+                if y + 9.0 > timeline_panel.max_y() {
                     break;
                 }
                 paint.scene.draw_text(paint.text.layout(
                     line,
                     Point::new(inspector_origin.x, y),
-                    8.0,
+                    9.0,
                     theme::text::MUTED,
                 ));
             }
@@ -850,7 +850,7 @@ pub fn paint_cad_demo_placeholder_pane(
             paint.scene.draw_text(paint.text.layout(
                 "Params:",
                 inspector_origin,
-                9.0,
+                10.0,
                 theme::text::SECONDARY,
             ));
             for (offset, (name, value)) in pane_state
@@ -859,14 +859,14 @@ pub fn paint_cad_demo_placeholder_pane(
                 .take(2)
                 .enumerate()
             {
-                let y = inspector_origin.y + 10.0 + offset as f32 * 9.0;
-                if y + 8.0 > timeline_panel.max_y() {
+                let y = inspector_origin.y + 10.0 + offset as f32 * 10.0;
+                if y + 9.0 > timeline_panel.max_y() {
                     break;
                 }
                 paint.scene.draw_text(paint.text.layout(
                     &format!("{name}={value}"),
                     Point::new(inspector_origin.x, y),
-                    8.0,
+                    9.0,
                     theme::text::MUTED,
                 ));
             }
@@ -893,7 +893,7 @@ pub fn paint_cad_demo_placeholder_pane(
                 pane_state.context_menu.target_kind.label().to_ascii_uppercase()
             ),
             Point::new(menu_bounds.origin.x + 6.0, menu_bounds.origin.y + 10.0),
-            8.0,
+            9.0,
             theme::text::MUTED,
         ));
         for (index, item) in pane_state.context_menu.items.iter().enumerate() {
@@ -909,7 +909,7 @@ pub fn paint_cad_demo_placeholder_pane(
             paint.scene.draw_text(paint.text.layout(
                 item.label.as_str(),
                 Point::new(row_bounds.origin.x + 5.0, row_bounds.origin.y + 10.0),
-                8.5,
+                9.5,
                 theme::text::PRIMARY,
             ));
         }
@@ -921,7 +921,7 @@ pub fn paint_cad_demo_placeholder_pane(
         paint.scene.draw_text(paint.text.layout(
             &summary,
             layout.footer_origin,
-            9.0,
+            10.0,
             theme::text::MUTED,
         ));
     }
@@ -1054,7 +1054,7 @@ fn paint_cad_demo_basic_pane(
             viewport_bounds.origin.x + 8.0,
             viewport_bounds.origin.y + 12.0,
         ),
-        10.0,
+        11.0,
         theme::text::SECONDARY,
     ));
     paint.scene.draw_text(paint.text.layout(
@@ -1063,7 +1063,7 @@ fn paint_cad_demo_basic_pane(
             viewport_bounds.origin.x + 8.0,
             viewport_bounds.origin.y + 24.0,
         ),
-        9.0,
+        10.0,
         theme::text::MUTED,
     ));
 
@@ -1071,7 +1071,7 @@ fn paint_cad_demo_basic_pane(
     paint.scene.draw_text(paint.text.layout(
         &footer_summary_line(pane_state),
         Point::new(content_bounds.origin.x + 10.0, footer_y),
-        9.0,
+        10.0,
         theme::text::MUTED,
     ));
 
@@ -1168,7 +1168,7 @@ fn paint_basic_3d_viewport(
         paint.scene.draw_text(paint.text.layout(
             &variant_id,
             Point::new(tile_bounds.origin.x + 6.0, tile_bounds.origin.y + 10.0),
-            8.0,
+            9.0,
             if is_active {
                 theme::text::PRIMARY
             } else {
@@ -1256,7 +1256,7 @@ fn paint_drawing_mode_viewport(
             viewport_bounds.origin.x + 8.0,
             viewport_bounds.max_y() - 20.0,
         );
-        if dim_origin.y + 8.0 <= viewport_bounds.max_y() {
+        if dim_origin.y + 9.0 <= viewport_bounds.max_y() {
             paint.scene.draw_text(paint.text.layout(
                 &format!(
                     "Dims W={:.1} H={:.1}",
@@ -1264,7 +1264,7 @@ fn paint_drawing_mode_viewport(
                     projected.bounds.height()
                 ),
                 dim_origin,
-                8.0,
+                9.0,
                 theme::text::SECONDARY,
             ));
         }
@@ -1272,7 +1272,7 @@ fn paint_drawing_mode_viewport(
     if !pane_state.drawing_detail_views.is_empty() {
         for (index, detail) in pane_state.drawing_detail_views.iter().take(4).enumerate() {
             let y = viewport_bounds.origin.y + 10.0 + index as f32 * 10.0;
-            if y + 8.0 > viewport_bounds.max_y() {
+            if y + 9.0 > viewport_bounds.max_y() {
                 break;
             }
             paint.scene.draw_text(paint.text.layout(
@@ -1281,7 +1281,7 @@ fn paint_drawing_mode_viewport(
                     (viewport_bounds.max_x() - 110.0).max(viewport_bounds.origin.x + 6.0),
                     y,
                 ),
-                8.0,
+                9.0,
                 theme::text::MUTED,
             ));
         }
@@ -1562,23 +1562,23 @@ fn paint_engineering_overlay(
         overlay_bounds.origin.x + 6.0,
         overlay_bounds.origin.y + 10.0,
     );
-    if title_origin.y + 8.0 <= overlay_bounds.max_y() {
+    if title_origin.y + 9.0 <= overlay_bounds.max_y() {
         paint.scene.draw_text(paint.text.layout(
             "Engineering",
             title_origin,
-            8.0,
+            9.0,
             theme::text::SECONDARY,
         ));
     }
     for (index, line) in lines.iter().enumerate() {
         let y = title_origin.y + 10.0 + index as f32 * ENGINEERING_OVERLAY_LINE_HEIGHT;
-        if y + 8.0 > overlay_bounds.max_y() {
+        if y + 9.0 > overlay_bounds.max_y() {
             break;
         }
         paint.scene.draw_text(paint.text.layout(
             line,
             Point::new(overlay_bounds.origin.x + 6.0, y),
-            8.0,
+            9.0,
             theme::text::PRIMARY,
         ));
     }
@@ -1661,23 +1661,23 @@ fn paint_sensor_feedback_overlay(
         overlay_bounds.origin.x + 6.0,
         overlay_bounds.origin.y + 10.0,
     );
-    if title_origin.y + 8.0 <= overlay_bounds.max_y() {
+    if title_origin.y + 9.0 <= overlay_bounds.max_y() {
         paint.scene.draw_text(paint.text.layout(
             "Sensor Feedback",
             title_origin,
-            8.0,
+            9.0,
             theme::text::SECONDARY,
         ));
     }
     for (index, line) in lines.iter().enumerate() {
         let y = title_origin.y + 10.0 + index as f32 * SENSOR_OVERLAY_LINE_HEIGHT;
-        if y + 8.0 > overlay_bounds.max_y() {
+        if y + 9.0 > overlay_bounds.max_y() {
             break;
         }
         paint.scene.draw_text(paint.text.layout(
             line,
             Point::new(overlay_bounds.origin.x + 6.0, y),
-            8.0,
+            9.0,
             theme::text::PRIMARY,
         ));
     }
@@ -1699,11 +1699,11 @@ fn paint_view_cube_overlay(
             .with_border(theme::border::SUBTLE, 1.0),
     );
     let label_origin = Point::new(cube_bounds.origin.x + 6.0, cube_bounds.origin.y + 10.0);
-    if label_origin.y + 8.0 <= cube_bounds.max_y() {
+    if label_origin.y + 9.0 <= cube_bounds.max_y() {
         paint.scene.draw_text(paint.text.layout(
             "View Cube",
             label_origin,
-            8.0,
+            9.0,
             theme::text::MUTED,
         ));
     }
@@ -1757,7 +1757,7 @@ fn paint_view_snap_button(bounds: Bounds, label: &str, active: bool, paint: &mut
     paint.scene.draw_text(paint.text.layout(
         label,
         text_origin,
-        8.0,
+        9.0,
         if active {
             theme::text::PRIMARY
         } else {
