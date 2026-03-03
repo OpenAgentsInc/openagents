@@ -2,7 +2,7 @@ use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
 use crate::input::{Key, NamedKey};
 use crate::text::FontStyle;
-use crate::{Bounds, Hsla, InputEvent, MouseButton, Point, Quad, theme};
+use crate::{theme, Bounds, Hsla, InputEvent, MouseButton, Point, Quad};
 
 type TextInputChangeHandler = Box<dyn FnMut(&str) + 'static>;
 type TextInputSubmitHandler = Box<dyn FnMut(&str) + 'static>;
@@ -389,32 +389,80 @@ impl TextInput {
         }
     }
 
-    /// Get character index at a specific (x, y) position for multiline text
-    fn char_index_at_xy(&self, x: f32, y: f32, text_start_x: f32, text_start_y: f32) -> usize {
+    fn visible_line_capacity(&self, bounds: Bounds, line_height: f32) -> usize {
+        let inner_height = (bounds.size.height - self.padding.1 * 2.0).max(line_height);
+        ((inner_height / line_height).floor() as usize).max(1)
+    }
+
+    fn visible_line_window(
+        &self,
+        bounds: Bounds,
+        line_count: usize,
+        keep_cursor_visible: bool,
+    ) -> (usize, usize) {
         let line_height = self.font_size * 1.4;
-        let relative_y = (y - text_start_y).max(0.0);
-        let line_index = (relative_y / line_height) as usize;
-
-        let lines: Vec<&str> = self.value.split('\n').collect();
-        let target_line = line_index.min(lines.len().saturating_sub(1));
-
-        // Calculate byte offset to the start of target line
-        let mut byte_offset = 0;
-        for (i, line) in lines.iter().enumerate() {
-            if i == target_line {
-                break;
-            }
-            byte_offset += line.len() + 1; // +1 for the newline
+        let visible_capacity = self.visible_line_capacity(bounds, line_height);
+        if line_count <= visible_capacity {
+            return (0, line_count);
         }
 
-        // Calculate column within the line
-        let relative_x = (x - text_start_x).max(0.0);
+        let max_start = line_count.saturating_sub(visible_capacity);
+        let start = if keep_cursor_visible {
+            let cursor_line = self.cursor_line().min(line_count.saturating_sub(1));
+            cursor_line
+                .saturating_sub(visible_capacity.saturating_sub(1))
+                .min(max_start)
+        } else {
+            0
+        };
+        let end = (start + visible_capacity).min(line_count);
+        (start, end)
+    }
+
+    fn text_clip_bounds(&self, bounds: Bounds) -> Bounds {
+        Bounds::new(
+            bounds.origin.x + self.padding.0,
+            bounds.origin.y + self.padding.1,
+            (bounds.size.width - self.padding.0 * 2.0).max(0.0),
+            (bounds.size.height - self.padding.1 * 2.0).max(0.0),
+        )
+    }
+
+    fn byte_offset_for_char_index(text: &str, char_index: usize) -> usize {
+        text.char_indices()
+            .nth(char_index)
+            .map_or(text.len(), |(byte_index, _)| byte_index)
+    }
+
+    /// Get character index at a specific (x, y) position for multiline text
+    fn char_index_at_xy(&self, x: f32, y: f32, bounds: Bounds) -> usize {
+        if self.value.is_empty() {
+            return 0;
+        }
+
+        let line_height = self.font_size * 1.4;
+        let ranges = self.visual_line_ranges();
+        if ranges.is_empty() {
+            return 0;
+        }
+        let line_count = ranges.len();
+        let (first_line, end_line) = self.visible_line_window(bounds, line_count, self.focused);
+        let visible_lines = end_line.saturating_sub(first_line).max(1);
+
+        let base_line_top = self.base_line_top(bounds, line_height, line_count.max(1));
+        let relative_y = (y - base_line_top).max(0.0);
+        let line_in_view = (relative_y / line_height).floor() as usize;
+        let line_index = (first_line + line_in_view.min(visible_lines.saturating_sub(1)))
+            .min(line_count.saturating_sub(1));
+        let (line_start, line_end) = ranges[line_index];
+        let line = &self.value[line_start..line_end];
+
+        let relative_x = (x - (bounds.origin.x + self.padding.0)).max(0.0);
         let char_width = self.font_size * 0.6;
         let col = (relative_x / char_width).round() as usize;
-        let line_len = lines.get(target_line).map_or(0, |l| l.len());
-        let col = col.min(line_len);
-
-        (byte_offset + col).min(self.value.len())
+        let col = col.min(line.chars().count());
+        let byte_offset = Self::byte_offset_for_char_index(line, col);
+        (line_start + byte_offset).min(self.value.len())
     }
 }
 
@@ -459,7 +507,14 @@ impl Component for TextInput {
         // Render each visual line (with wrapping)
         if !display_text.is_empty() {
             let visual_lines = self.wrap_text(display_text);
-            let base_line_top = self.base_line_top(bounds, line_height, visual_lines.len().max(1));
+            let line_count = visual_lines.len().max(1);
+            let keep_cursor_visible = self.focused && *display_text == self.value;
+            let (first_line, end_line) =
+                self.visible_line_window(bounds, line_count, keep_cursor_visible);
+            let base_line_top = self.base_line_top(bounds, line_height, line_count);
+            let text_clip = self.text_clip_bounds(bounds);
+
+            cx.scene.push_clip(text_clip);
 
             if *display_text == self.value
                 && let Some((sel_start, sel_end)) = self.get_selection()
@@ -467,6 +522,9 @@ impl Component for TextInput {
                 let ranges = self.visual_line_ranges();
                 let selection_color = Hsla::from_hex(0x2A2A2A);
                 for (i, (line_start, line_end)) in ranges.iter().enumerate() {
+                    if i < first_line || i >= end_line {
+                        continue;
+                    }
                     let overlap_start = sel_start.max(*line_start);
                     let overlap_end = sel_end.min(*line_end);
                     if overlap_start < overlap_end {
@@ -475,7 +533,7 @@ impl Component for TextInput {
                         let sel_x = text_x + col_start as f32 * self.font_size * 0.6;
                         let sel_width =
                             (col_end.saturating_sub(col_start)) as f32 * self.font_size * 0.6;
-                        let sel_y = base_line_top + line_height * i as f32;
+                        let sel_y = base_line_top + line_height * (i - first_line) as f32;
                         cx.scene.draw_quad(
                             Quad::new(Bounds::new(sel_x, sel_y, sel_width, line_height))
                                 .with_background(selection_color),
@@ -484,8 +542,9 @@ impl Component for TextInput {
                 }
             }
 
-            for (i, line) in visual_lines.iter().enumerate() {
-                let line_y = base_line_top + line_height * i as f32 + self.font_size * 0.15;
+            for (visible_index, line) in visual_lines[first_line..end_line].iter().enumerate() {
+                let line_y =
+                    base_line_top + line_height * visible_index as f32 + self.font_size * 0.15;
                 if !line.is_empty() {
                     let text_run = if self.mono {
                         cx.text.layout_styled_mono(
@@ -506,6 +565,7 @@ impl Component for TextInput {
                     cx.scene.draw_text(text_run);
                 }
             }
+            cx.scene.pop_clip();
         }
 
         if self.focused {
@@ -518,12 +578,18 @@ impl Component for TextInput {
                 let cursor_col = self.cursor_visual_col();
                 let cursor_x = text_x + cursor_col as f32 * self.font_size * 0.6;
                 let visual_lines = self.wrap_text(&self.value);
-                let base_line_top =
-                    self.base_line_top(bounds, line_height, visual_lines.len().max(1));
-                let cursor_y = base_line_top + line_height * cursor_line as f32;
+                let line_count = visual_lines.len().max(1);
+                let (first_line, end_line) = self.visible_line_window(bounds, line_count, true);
+                if cursor_line < first_line || cursor_line >= end_line {
+                    return;
+                }
+                let base_line_top = self.base_line_top(bounds, line_height, line_count);
+                let cursor_y = base_line_top + line_height * (cursor_line - first_line) as f32;
                 let cursor_offset_y = -2.0;
                 let cursor_height = line_height;
 
+                let text_clip = self.text_clip_bounds(bounds);
+                cx.scene.push_clip(text_clip);
                 cx.scene.draw_quad(
                     Quad::new(Bounds::new(
                         cursor_x,
@@ -533,6 +599,7 @@ impl Component for TextInput {
                     ))
                     .with_background(self.cursor_color),
                 );
+                cx.scene.pop_clip();
             }
         }
     }
@@ -554,12 +621,8 @@ impl Component for TextInput {
                     if clicked_inside {
                         self.focused = true;
                         self.reset_cursor_blink();
-
-                        let text_x = bounds.origin.x + self.padding.0;
-                        let line_height = self.font_size * 1.4;
-                        let line_count = self.wrap_text(&self.value).len().max(1);
-                        let text_y = self.base_line_top(bounds, line_height, line_count);
-                        self.cursor_pos = self.char_index_at_xy(*x, *y, text_x, text_y);
+                        self.max_width = Some(bounds.size.width);
+                        self.cursor_pos = self.char_index_at_xy(*x, *y, bounds);
 
                         if let Some(id) = self.id {
                             cx.set_focus(id);
@@ -811,5 +874,21 @@ mod tests {
         assert!(width.is_none());
         assert!(height.is_some());
         assert!(height.unwrap() > 0.0);
+    }
+
+    #[test]
+    fn test_visible_line_window_tracks_cursor_for_overflow_text() {
+        let mut input = TextInput::new().value("abcdefghijklmnopqrstuvwxyz");
+        input.set_max_width(24.0);
+        input.focus();
+        input.cursor_pos = input.value.len();
+
+        let bounds = Bounds::new(0.0, 0.0, 24.0, 20.0);
+        let line_count = input.wrap_text(&input.value).len();
+        assert!(line_count > 1);
+
+        let (start, end) = input.visible_line_window(bounds, line_count, true);
+        let cursor_line = input.cursor_line();
+        assert!(cursor_line >= start && cursor_line < end);
     }
 }
