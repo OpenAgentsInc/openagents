@@ -119,6 +119,7 @@ LANE_LABELS=(
     "ecad-pcb-lane"
     "ecad-export-lane"
     "ecad-simulation-lane"
+    "slicer-core-lane"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -529,6 +530,9 @@ run_lane "ecad-export-lane" \
 
 run_lane "ecad-simulation-lane" \
     "$ROOT_DIR/scripts/cad/parity-ecad-simulation-lane-ci.sh"
+
+run_lane "slicer-core-lane" \
+    "$ROOT_DIR/scripts/cad/parity-slicer-core-lane-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
