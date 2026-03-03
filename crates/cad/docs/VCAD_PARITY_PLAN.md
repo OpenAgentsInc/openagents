@@ -202,7 +202,7 @@ Major gaps to close:
 
 ### Phase I - Physics + URDF parity (`VCAD-PARITY-105` to `VCAD-PARITY-114`)
 
-105. [ ] VCAD-PARITY-105: Physics crate integration parity (`rapier` lane).
+105. [x] VCAD-PARITY-105: Physics crate integration parity (`rapier` lane).
 106. [ ] VCAD-PARITY-106: Collision shape generation parity (primitive/convex/trimesh).
 107. [ ] VCAD-PARITY-107: Convex decomposition parity lane.
 108. [ ] VCAD-PARITY-108: Joint-to-physics mapping parity.

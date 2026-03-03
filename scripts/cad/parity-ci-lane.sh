@@ -110,6 +110,7 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/raytrace_face_pick_parity_manifest.json"
     "crates/cad/parity/raytrace_ui_toggle_fallback_parity_manifest.json"
     "crates/cad/parity/rendering_raytrace_checkpoint_parity_manifest.json"
+    "crates/cad/parity/physics_crate_integration_parity_manifest.json"
     "crates/cad/parity/sketch_loft_parity_manifest.json"
     "crates/cad/parity/sketch_profile_validity_parity_manifest.json"
     "crates/cad/parity/sketch_revolve_parity_manifest.json"
@@ -161,6 +162,7 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/fixtures/raytrace_quality_mode_vcad_reference.json"
     "crates/cad/parity/fixtures/raytrace_face_pick_vcad_reference.json"
     "crates/cad/parity/fixtures/raytrace_ui_toggle_fallback_vcad_reference.json"
+    "crates/cad/parity/fixtures/physics_crate_integration_vcad_reference.json"
     "crates/cad/parity/fixtures/parity_fixture_corpus.json"
 )
 

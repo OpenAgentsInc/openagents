@@ -1,0 +1,30 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-105",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/crates/vcad-kernel-physics/src/lib.rs + ~/code/vcad/crates/vcad-kernel-physics/src/world.rs + ~/code/vcad/crates/vcad-sim/src/lib.rs",
+  "expected_rows": [
+    {
+      "case_id": "physics_crate_exports",
+      "crate": "vcad-kernel-physics",
+      "exports": ["PhysicsWorld", "JointState", "Action", "Observation", "RobotEnv"]
+    },
+    {
+      "case_id": "integration_lane",
+      "simulation_crate": "vcad-sim",
+      "single_pipeline": "SimPipeline",
+      "batch_pipeline": "BatchSimPipeline"
+    },
+    {
+      "case_id": "engine_backend",
+      "backend": "phyz",
+      "gravity_mps2": [0.0, 0.0, -9.81],
+      "default_dt_seconds": 0.004166667
+    }
+  ],
+  "expected_contracts": [
+    "physics crate integration parity uses vcad-kernel-physics as the reference authority",
+    "simulation integration parity keeps vcad-sim single and batch pipeline contracts",
+    "physics integration parity artifacts are deterministic across replay"
+  ]
+}
