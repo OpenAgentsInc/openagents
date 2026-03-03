@@ -616,6 +616,19 @@ pub(super) fn run_cad_demo_action(state: &mut RenderState, action: CadDemoPaneAc
     changed
 }
 
+pub(super) fn bootstrap_startup_parallel_jaw_gripper(state: &mut RenderState) -> bool {
+    if state.cad_demo.last_good_mesh_payload.is_some()
+        || state.cad_demo.pending_rebuild_request_id.is_some()
+    {
+        return false;
+    }
+
+    state.cad_demo = parallel_jaw_gripper_bootstrap_state();
+    emit_cad_event_for_action(state, CadDemoPaneAction::BootstrapDemo);
+    sync_cad_build_progress_to_chat(state);
+    true
+}
+
 fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction) -> bool {
     match action {
         CadDemoPaneAction::Noop => false,
@@ -1039,6 +1052,32 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
             }
         },
     }
+}
+
+fn parallel_jaw_gripper_bootstrap_state() -> CadDemoPaneState {
+    let mut bootstrap = CadDemoPaneState::default();
+    let session_id = bootstrap.session_id.clone();
+    bootstrap.dispatch_sessions.insert(
+        session_id,
+        openagents_cad::dispatch::CadDispatchState {
+            document_created: true,
+            design_profile: openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper,
+            objective: Some("parallel-jaw-gripper".to_string()),
+            ..openagents_cad::dispatch::CadDispatchState::default()
+        },
+    );
+    bootstrap.ensure_variant_family_for_profile(
+        openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper,
+    );
+    bootstrap.document_id = "cad.doc.demo-gripper".to_string();
+    bootstrap.cad_events.clear();
+    bootstrap.last_action =
+        Some("CAD demo bootstrapped to parallel-jaw gripper baseline".to_string());
+    if let Err(error) = enqueue_rebuild_cycle(&mut bootstrap, "bootstrap-demo-gripper") {
+        bootstrap.load_state = PaneLoadState::Error;
+        bootstrap.last_error = Some(error);
+    }
+    bootstrap
 }
 
 fn bootstrap_cad_demo_state(state: &mut CadDemoPaneState) -> bool {
@@ -2764,6 +2803,7 @@ mod tests {
     use super::{
         activity_row_from_cad_event, analysis_snapshot_from_mesh, apply_cad_demo_action,
         apply_rebuild_response, drain_worker_responses_from_pane, enqueue_rebuild_cycle,
+        parallel_jaw_gripper_bootstrap_state,
         rebuild_trigger_for_chat_intent, run_step_export_from_active_mesh,
     };
     use crate::app_state::{
@@ -4291,6 +4331,29 @@ mod tests {
             first_signature, reset_signature,
             "legacy reset action must remain equivalent to bootstrap"
         );
+    }
+
+    #[test]
+    fn startup_parallel_jaw_bootstrap_targets_gripper_profile() {
+        let mut state = parallel_jaw_gripper_bootstrap_state();
+        assert_eq!(state.document_id, "cad.doc.demo-gripper");
+        assert_eq!(
+            state.active_design_profile(),
+            openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper
+        );
+        assert_eq!(
+            state.variant_ids,
+            vec![
+                "variant.baseline".to_string(),
+                "variant.wide-jaw".to_string(),
+                "variant.long-reach".to_string(),
+                "variant.stiff-finger".to_string(),
+            ]
+        );
+        assert_eq!(state.pending_rebuild_request_id, Some(1));
+        assert_eq!(state.load_state, crate::app_state::PaneLoadState::Loading);
+        wait_for_receipt(&mut state);
+        assert!(state.last_good_mesh_payload.is_some());
     }
 
     #[test]

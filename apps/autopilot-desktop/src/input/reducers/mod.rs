@@ -741,6 +741,10 @@ pub(super) fn run_cad_demo_action(state: &mut RenderState, action: CadDemoPaneAc
     cad::run_cad_demo_action(state, action)
 }
 
+pub(super) fn bootstrap_startup_parallel_jaw_gripper(state: &mut RenderState) -> bool {
+    cad::bootstrap_startup_parallel_jaw_gripper(state)
+}
+
 pub(super) fn apply_chat_prompt_to_cad_session(
     state: &mut RenderState,
     thread_id: &str,
