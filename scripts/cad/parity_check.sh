@@ -131,6 +131,7 @@ LANE_LABELS=(
     "deterministic-replay-all-fixtures"
     "performance-scorecard-thresholds"
     "release-gates-runbooks"
+    "final-parity-certification-report"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -577,6 +578,9 @@ run_lane "performance-scorecard-thresholds" \
 
 run_lane "release-gates-runbooks" \
     "$ROOT_DIR/scripts/cad/parity-release-gates-runbooks-ci.sh"
+
+run_lane "final-parity-certification-report" \
+    "$ROOT_DIR/scripts/cad/parity-final-parity-certification-report-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

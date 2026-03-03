@@ -49,6 +49,7 @@ pub mod embroidery_dst_pes_lane_parity;
 pub mod expanded_finishing_parity;
 pub mod feature_op_hash_parity;
 pub mod fillet_feature_graph_parity;
+pub mod final_parity_certification_report_parity;
 pub mod fixture_corpus;
 pub mod gap_matrix;
 pub mod glb_export_parity;

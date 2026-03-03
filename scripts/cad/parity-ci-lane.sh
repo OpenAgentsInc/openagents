@@ -223,6 +223,8 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/fixtures/performance_scorecard_thresholds_vcad_reference.json"
     "crates/cad/parity/release_gates_runbooks_parity_manifest.json"
     "crates/cad/parity/fixtures/release_gates_runbooks_vcad_reference.json"
+    "crates/cad/parity/final_parity_certification_report_parity_manifest.json"
+    "crates/cad/parity/fixtures/final_parity_certification_report_vcad_reference.json"
     "crates/cad/parity/fixtures/parity_fixture_corpus.json"
 )
 
