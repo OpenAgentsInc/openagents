@@ -191,7 +191,7 @@ Major gaps to close:
 94. [x] VCAD-PARITY-094: Render mode parity (standard/wire/hidden-line variants).
 95. [x] VCAD-PARITY-095: GPU acceleration lane parity in rendering backend.
 96. [x] VCAD-PARITY-096: Mesh upload + processing parity contracts.
-97. [ ] VCAD-PARITY-097: Direct BRep raytrace module scaffolding.
+97. [x] VCAD-PARITY-097: Direct BRep raytrace module scaffolding.
 98. [ ] VCAD-PARITY-098: Analytic ray intersections parity set.
 99. [ ] VCAD-PARITY-099: Trimmed-surface ray hit parity handling.
 100. [ ] VCAD-PARITY-100: BVH build/traverse parity for raytrace.
