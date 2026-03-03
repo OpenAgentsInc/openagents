@@ -1593,6 +1593,36 @@ impl Default for CadDemoPaneState {
                 min_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_TENDON_CHANNEL_DIAMETER_MM,
                 max_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_TENDON_CHANNEL_DIAMETER_MM,
             },
+            CadDimensionState {
+                dimension_id: "joint_min_deg".to_string(),
+                label: "Joint Min".to_string(),
+                value_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_JOINT_MIN_DEG,
+                min_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_JOINT_MIN_DEG,
+                max_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_JOINT_MIN_DEG,
+            },
+            CadDimensionState {
+                dimension_id: "joint_max_deg".to_string(),
+                label: "Joint Max".to_string(),
+                value_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_JOINT_MAX_DEG,
+                min_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_JOINT_MAX_DEG,
+                max_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_JOINT_MAX_DEG,
+            },
+            CadDimensionState {
+                dimension_id: "tendon_route_clearance_mm".to_string(),
+                label: "Route Clear".to_string(),
+                value_mm:
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_ROUTE_CLEARANCE_MM,
+                min_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_TENDON_ROUTE_CLEARANCE_MM,
+                max_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_TENDON_ROUTE_CLEARANCE_MM,
+            },
+            CadDimensionState {
+                dimension_id: "tendon_bend_radius_mm".to_string(),
+                label: "Bend Radius".to_string(),
+                value_mm:
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_BEND_RADIUS_MM,
+                min_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_TENDON_BEND_RADIUS_MM,
+                max_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_TENDON_BEND_RADIUS_MM,
+            },
         ];
         let assembly_schema = openagents_cad::assembly::CadAssemblySchema {
             part_defs: std::collections::BTreeMap::from([
@@ -1837,6 +1867,10 @@ impl CadDemoPaneState {
                 "finger_count",
                 "thumb_base_angle_deg",
                 "tendon_channel_diameter_mm",
+                "joint_min_deg",
+                "joint_max_deg",
+                "tendon_route_clearance_mm",
+                "tendon_bend_radius_mm",
             ],
         }
     }
@@ -2102,6 +2136,13 @@ impl CadDemoPaneState {
             "tendon_channel_diameter_mm",
             spec.tendon_channel_diameter_mm,
         );
+        self.set_dimension_value_mm_if_present("joint_min_deg", spec.joint_min_deg);
+        self.set_dimension_value_mm_if_present("joint_max_deg", spec.joint_max_deg);
+        self.set_dimension_value_mm_if_present(
+            "tendon_route_clearance_mm",
+            spec.tendon_route_clearance_mm,
+        );
+        self.set_dimension_value_mm_if_present("tendon_bend_radius_mm", spec.tendon_bend_radius_mm);
     }
 
     pub fn begin_dimension_edit(&mut self, index: usize) -> bool {

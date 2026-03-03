@@ -1389,12 +1389,13 @@ fn apply_completed_rebuild(
         .cloned()
         .or_else(|| state.analysis_snapshot.material_id.clone())
         .unwrap_or_else(|| DEFAULT_CAD_MATERIAL_ID.to_string());
-    let analysis = analysis_snapshot_from_mesh(
+    let mut analysis = analysis_snapshot_from_mesh(
         completed.document_revision,
         &receipt.variant_id,
         &completed.mesh_payload,
         &material_id,
     );
+    append_three_finger_kinematic_metadata(state, &receipt.variant_id, &mut analysis.snapshot);
     state.set_variant_analysis_snapshot(&receipt.variant_id, analysis.snapshot);
     if let Some(error) = analysis.error {
         state.last_error = Some(format!(
@@ -1932,6 +1933,10 @@ struct GripperVariantDimensions {
     opposable_thumb: bool,
     thumb_base_angle_deg: f64,
     tendon_channel_diameter_mm: f64,
+    joint_min_deg: f64,
+    joint_max_deg: f64,
+    tendon_route_clearance_mm: f64,
+    tendon_bend_radius_mm: f64,
     pose_preset: String,
 }
 
@@ -2010,6 +2015,42 @@ impl GripperVariantDimensions {
                     openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_CHANNEL_DIAMETER_MM,
                 )
             });
+        let joint_min_deg = dispatch
+            .and_then(|value| value.joint_min_deg)
+            .unwrap_or_else(|| {
+                dimension_value_mm(
+                    state,
+                    "joint_min_deg",
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_JOINT_MIN_DEG,
+                )
+            });
+        let joint_max_deg = dispatch
+            .and_then(|value| value.joint_max_deg)
+            .unwrap_or_else(|| {
+                dimension_value_mm(
+                    state,
+                    "joint_max_deg",
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_JOINT_MAX_DEG,
+                )
+            });
+        let tendon_route_clearance_mm = dispatch
+            .and_then(|value| value.tendon_route_clearance_mm)
+            .unwrap_or_else(|| {
+                dimension_value_mm(
+                    state,
+                    "tendon_route_clearance_mm",
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_ROUTE_CLEARANCE_MM,
+                )
+            });
+        let tendon_bend_radius_mm = dispatch
+            .and_then(|value| value.tendon_bend_radius_mm)
+            .unwrap_or_else(|| {
+                dimension_value_mm(
+                    state,
+                    "tendon_bend_radius_mm",
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_BEND_RADIUS_MM,
+                )
+            });
         let pose_preset = dispatch
             .and_then(|value| value.pose_preset.clone())
             .unwrap_or_else(|| {
@@ -2073,6 +2114,10 @@ impl GripperVariantDimensions {
             opposable_thumb,
             thumb_base_angle_deg,
             tendon_channel_diameter_mm,
+            joint_min_deg,
+            joint_max_deg,
+            tendon_route_clearance_mm,
+            tendon_bend_radius_mm,
             pose_preset,
         }
     }
@@ -2098,17 +2143,22 @@ impl GripperVariantDimensions {
             "variant.pinch" => {
                 value.jaw_open_mm -= 6.0;
                 value.thumb_base_angle_deg += 9.0;
+                value.joint_min_deg += 2.0;
+                value.joint_max_deg -= 6.0;
                 value.pose_preset = "pinch".to_string();
             }
             "variant.tripod" => {
                 value.jaw_open_mm += 4.0;
                 value.thumb_base_angle_deg -= 5.0;
+                value.joint_min_deg += 1.0;
+                value.joint_max_deg -= 4.0;
                 value.pose_preset = "tripod".to_string();
             }
             "variant.wide-thumb" => {
                 value.base_width_mm += 12.0;
                 value.jaw_open_mm += 3.0;
                 value.thumb_base_angle_deg += 3.0;
+                value.tendon_route_clearance_mm += 0.2;
             }
             _ => {}
         }
@@ -2586,6 +2636,14 @@ fn build_three_finger_thumb_feature_graph(state: &CadDemoPaneState) -> FeatureGr
                     format!("{:.3}", finger_spacing_mm),
                 ),
                 (
+                    "joint_min_deg".to_string(),
+                    format!("{:.3}", gripper.joint_min_deg),
+                ),
+                (
+                    "joint_max_deg".to_string(),
+                    format!("{:.3}", gripper.joint_max_deg),
+                ),
+                (
                     "jaw_open_mm".to_string(),
                     format!("{:.3}", gripper.jaw_open_mm),
                 ),
@@ -2624,6 +2682,14 @@ fn build_three_finger_thumb_feature_graph(state: &CadDemoPaneState) -> FeatureGr
                 (
                     "channel_diameter_mm".to_string(),
                     format!("{:.3}", gripper.tendon_channel_diameter_mm),
+                ),
+                (
+                    "route_clearance_mm".to_string(),
+                    format!("{:.3}", gripper.tendon_route_clearance_mm),
+                ),
+                (
+                    "bend_radius_mm".to_string(),
+                    format!("{:.3}", gripper.tendon_bend_radius_mm),
                 ),
                 ("pose_preset".to_string(), pose_preset.to_string()),
             ]),
@@ -2667,6 +2733,14 @@ fn build_three_finger_thumb_feature_graph(state: &CadDemoPaneState) -> FeatureGr
                     "channel_diameter_mm".to_string(),
                     format!("{:.3}", gripper.tendon_channel_diameter_mm),
                 ),
+                (
+                    "route_clearance_mm".to_string(),
+                    format!("{:.3}", gripper.tendon_route_clearance_mm),
+                ),
+                (
+                    "bend_radius_mm".to_string(),
+                    format!("{:.3}", gripper.tendon_bend_radius_mm),
+                ),
                 ("pose_preset".to_string(), pose_preset.to_string()),
             ]),
         });
@@ -2698,6 +2772,136 @@ fn build_three_finger_thumb_feature_graph(state: &CadDemoPaneState) -> FeatureGr
 
 fn dimension_value_mm(state: &CadDemoPaneState, dimension_id: &str, fallback: f64) -> f64 {
     state.dimension_value_mm(dimension_id).unwrap_or(fallback)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ThreeFingerKinematicDiagnostics {
+    joint_min_deg: f64,
+    joint_max_deg: f64,
+    travel_span_deg: f64,
+    nominal_pose_deg: f64,
+    finger_spacing_mm: f64,
+    route_clearance_margin_mm: f64,
+    bend_radius_margin_mm: f64,
+    joint_range_violation: bool,
+    travel_limit_violation: bool,
+    routing_collision: bool,
+    nominal_self_intersection: bool,
+}
+
+fn compute_three_finger_kinematic_diagnostics(
+    gripper: &GripperVariantDimensions,
+) -> ThreeFingerKinematicDiagnostics {
+    let finger_count = gripper
+        .finger_count
+        .max(openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_FINGER_COUNT.max(3));
+    let spacing_denominator = finger_count.saturating_sub(1).max(1) as f64;
+    let finger_spacing_mm = (gripper.jaw_open_mm / spacing_denominator).clamp(8.0, 24.0);
+    let travel_span_deg = (gripper.joint_max_deg - gripper.joint_min_deg).max(0.0);
+    let nominal_pose_deg = match gripper.pose_preset.as_str() {
+        "pinch" => gripper.joint_min_deg + (travel_span_deg * 0.68),
+        "tripod" => gripper.joint_min_deg + (travel_span_deg * 0.48),
+        _ => gripper.joint_min_deg + (travel_span_deg * 0.40),
+    };
+    let route_clearance_margin_mm =
+        gripper.tendon_route_clearance_mm - ((gripper.tendon_channel_diameter_mm * 0.55) + 0.25);
+    let bend_radius_margin_mm =
+        gripper.tendon_bend_radius_mm - (gripper.tendon_channel_diameter_mm * 1.35);
+    let joint_range_violation = travel_span_deg < 5.0;
+    let travel_limit_violation =
+        nominal_pose_deg < gripper.joint_min_deg || nominal_pose_deg > gripper.joint_max_deg;
+    let routing_collision = route_clearance_margin_mm < 0.0
+        || bend_radius_margin_mm < 0.0
+        || (gripper.pose_preset == "pinch" && finger_spacing_mm < 9.5);
+    let nominal_self_intersection = joint_range_violation
+        || travel_limit_violation
+        || (routing_collision && finger_spacing_mm < 11.5);
+
+    ThreeFingerKinematicDiagnostics {
+        joint_min_deg: gripper.joint_min_deg,
+        joint_max_deg: gripper.joint_max_deg,
+        travel_span_deg,
+        nominal_pose_deg,
+        finger_spacing_mm,
+        route_clearance_margin_mm,
+        bend_radius_margin_mm,
+        joint_range_violation,
+        travel_limit_violation,
+        routing_collision,
+        nominal_self_intersection,
+    }
+}
+
+fn append_three_finger_kinematic_metadata(
+    state: &CadDemoPaneState,
+    variant_id: &str,
+    analysis: &mut openagents_cad::contracts::CadAnalysis,
+) {
+    if !matches!(
+        state.active_design_profile(),
+        openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
+    ) {
+        return;
+    }
+    let gripper = GripperVariantDimensions::from_state(state).with_variant_deltas(variant_id);
+    let diagnostics = compute_three_finger_kinematic_diagnostics(&gripper);
+    analysis.estimator_metadata.extend(BTreeMap::from([
+        (
+            "kinematic.profile".to_string(),
+            "three_finger_thumb".to_string(),
+        ),
+        (
+            "kinematic.joint_min_deg".to_string(),
+            format!("{:.3}", diagnostics.joint_min_deg),
+        ),
+        (
+            "kinematic.joint_max_deg".to_string(),
+            format!("{:.3}", diagnostics.joint_max_deg),
+        ),
+        (
+            "kinematic.travel_span_deg".to_string(),
+            format!("{:.3}", diagnostics.travel_span_deg),
+        ),
+        (
+            "kinematic.nominal_pose_deg".to_string(),
+            format!("{:.3}", diagnostics.nominal_pose_deg),
+        ),
+        (
+            "kinematic.finger_spacing_mm".to_string(),
+            format!("{:.3}", diagnostics.finger_spacing_mm),
+        ),
+        (
+            "kinematic.route_clearance_margin_mm".to_string(),
+            format!("{:.3}", diagnostics.route_clearance_margin_mm),
+        ),
+        (
+            "kinematic.bend_radius_margin_mm".to_string(),
+            format!("{:.3}", diagnostics.bend_radius_margin_mm),
+        ),
+        (
+            "kinematic.joint_range_violation".to_string(),
+            diagnostics.joint_range_violation.to_string(),
+        ),
+        (
+            "kinematic.travel_limit_violation".to_string(),
+            diagnostics.travel_limit_violation.to_string(),
+        ),
+        (
+            "kinematic.routing_collision".to_string(),
+            diagnostics.routing_collision.to_string(),
+        ),
+        (
+            "kinematic.nominal_self_intersection".to_string(),
+            diagnostics.nominal_self_intersection.to_string(),
+        ),
+        (
+            "kinematic.nominal_range_valid".to_string(),
+            (!diagnostics.nominal_self_intersection
+                && !diagnostics.travel_limit_violation
+                && !diagnostics.joint_range_violation)
+                .to_string(),
+        ),
+    ]));
 }
 
 fn refresh_gripper_grasp_simulation(state: &mut CadDemoPaneState) {
@@ -2830,6 +3034,12 @@ fn build_profile_warning_set(
             | openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
     ) {
         append_gripper_printability_warnings(state, variant_id, &mut warnings);
+    }
+    if matches!(
+        state.active_design_profile(),
+        openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
+    ) {
+        append_three_finger_kinematic_warnings(state, variant_id, &mut warnings);
     }
     warnings
 }
@@ -3043,6 +3253,89 @@ fn append_gripper_printability_warnings(
             deep_link: Some("cad://feature/feature.hand3.tendon.index".to_string()),
             feature_id: "feature.hand3.tendon.index".to_string(),
             entity_id: "hand3.tendon.channel".to_string(),
+        });
+    }
+}
+
+fn append_three_finger_kinematic_warnings(
+    state: &CadDemoPaneState,
+    variant_id: &str,
+    warnings: &mut Vec<CadDemoWarningState>,
+) {
+    let gripper = GripperVariantDimensions::from_state(state).with_variant_deltas(variant_id);
+    let diagnostics = compute_three_finger_kinematic_diagnostics(&gripper);
+
+    if diagnostics.joint_range_violation {
+        warnings.push(CadDemoWarningState {
+            warning_id: format!("warning.custom.{}", warnings.len()),
+            code: "CAD-WARN-KINEMATIC-JOINT-RANGE".to_string(),
+            severity: "critical".to_string(),
+            message: format!(
+                "Joint range [{:.1}, {:.1}] deg is invalid; travel span {:.1} deg is below 5 deg",
+                diagnostics.joint_min_deg, diagnostics.joint_max_deg, diagnostics.travel_span_deg
+            ),
+            remediation_hint:
+                "Increase joint_max_deg or decrease joint_min_deg to allow travel span > 5 deg"
+                    .to_string(),
+            semantic_refs: vec!["hand3_joint_limits".to_string()],
+            deep_link: Some("cad://feature/feature.hand3.finger.middle".to_string()),
+            feature_id: "feature.hand3.finger.middle".to_string(),
+            entity_id: "hand3.kinematics.joint_range".to_string(),
+        });
+    }
+
+    if diagnostics.travel_limit_violation {
+        warnings.push(CadDemoWarningState {
+            warning_id: format!("warning.custom.{}", warnings.len()),
+            code: "CAD-WARN-KINEMATIC-TRAVEL-LIMIT".to_string(),
+            severity: "warning".to_string(),
+            message: format!(
+                "Nominal pose {:.1} deg exceeds joint limits [{:.1}, {:.1}]",
+                diagnostics.nominal_pose_deg, diagnostics.joint_min_deg, diagnostics.joint_max_deg
+            ),
+            remediation_hint:
+                "Adjust joint limits or pose preset so nominal pose remains within travel range"
+                    .to_string(),
+            semantic_refs: vec!["hand3_travel_limit".to_string()],
+            deep_link: Some("cad://feature/feature.hand3.finger.index".to_string()),
+            feature_id: "feature.hand3.finger.index".to_string(),
+            entity_id: "hand3.kinematics.travel_limit".to_string(),
+        });
+    }
+
+    if diagnostics.routing_collision {
+        warnings.push(CadDemoWarningState {
+            warning_id: format!("warning.custom.{}", warnings.len()),
+            code: "CAD-WARN-TENDON-ROUTING-COLLISION".to_string(),
+            severity: "critical".to_string(),
+            message: format!(
+                "Tendon routing collision predicted (clearance margin {:.2} mm, bend margin {:.2} mm)",
+                diagnostics.route_clearance_margin_mm, diagnostics.bend_radius_margin_mm
+            ),
+            remediation_hint: "Increase tendon_route_clearance_mm and tendon_bend_radius_mm or widen finger spacing".to_string(),
+            semantic_refs: vec!["hand3_tendon_routing".to_string()],
+            deep_link: Some("cad://feature/feature.hand3.tendon.index".to_string()),
+            feature_id: "feature.hand3.tendon.index".to_string(),
+            entity_id: "hand3.kinematics.routing".to_string(),
+        });
+    }
+
+    if diagnostics.nominal_self_intersection {
+        warnings.push(CadDemoWarningState {
+            warning_id: format!("warning.custom.{}", warnings.len()),
+            code: "CAD-WARN-HAND-SELF-INTERSECTION".to_string(),
+            severity: "critical".to_string(),
+            message: format!(
+                "Nominal pose predicts self-intersection at spacing {:.2} mm",
+                diagnostics.finger_spacing_mm
+            ),
+            remediation_hint:
+                "Use wider jaw spacing, relax pinch pose, or increase tendon routing clearance"
+                    .to_string(),
+            semantic_refs: vec!["hand3_nominal_pose".to_string()],
+            deep_link: Some("cad://feature/feature.hand3.thumb".to_string()),
+            feature_id: "feature.hand3.thumb".to_string(),
+            entity_id: "hand3.kinematics.self_intersection".to_string(),
         });
     }
 }
@@ -5158,6 +5451,10 @@ mod tests {
                         opposable_thumb: false,
                         thumb_base_angle_deg: 42.0,
                         tendon_channel_diameter_mm: 1.8,
+                        joint_min_deg: 12.0,
+                        joint_max_deg: 82.0,
+                        tendon_route_clearance_mm: 1.4,
+                        tendon_bend_radius_mm: 3.2,
                         pose_preset: "open".to_string(),
                     },
                 ),
@@ -5215,6 +5512,10 @@ mod tests {
                         opposable_thumb: false,
                         thumb_base_angle_deg: 42.0,
                         tendon_channel_diameter_mm: 1.8,
+                        joint_min_deg: 12.0,
+                        joint_max_deg: 82.0,
+                        tendon_route_clearance_mm: 1.4,
+                        tendon_bend_radius_mm: 3.2,
                         pose_preset: "open".to_string(),
                     },
                 ),
@@ -5317,6 +5618,10 @@ mod tests {
                         opposable_thumb: true,
                         thumb_base_angle_deg: 48.0,
                         tendon_channel_diameter_mm: 1.6,
+                        joint_min_deg: 15.0,
+                        joint_max_deg: 88.0,
+                        tendon_route_clearance_mm: 1.6,
+                        tendon_bend_radius_mm: 3.6,
                         pose_preset: "open".to_string(),
                     },
                 ),
@@ -5366,6 +5671,126 @@ mod tests {
         );
         assert_ne!(baseline_hash, tripod_hash);
         assert_ne!(tripod_hash, pinch_hash);
+    }
+
+    #[test]
+    fn invalid_three_finger_kinematic_constraints_emit_deterministic_warnings() {
+        let mut state = CadDemoPaneState::default();
+        state
+            .apply_chat_intent_for_thread(
+                "thread-three-finger-invalid-kinematics",
+                &openagents_cad::intent::CadIntent::CreateParallelJawGripperSpec(
+                    openagents_cad::intent::CreateParallelJawGripperSpecIntent {
+                        jaw_open_mm: 28.0,
+                        finger_length_mm: 68.0,
+                        finger_thickness_mm: 7.0,
+                        base_width_mm: 86.0,
+                        base_depth_mm: 56.0,
+                        base_thickness_mm: 8.0,
+                        servo_mount_hole_diameter_mm: 2.9,
+                        print_fit_mm: 0.15,
+                        print_clearance_mm: 0.35,
+                        underactuated_mode: true,
+                        compliant_joint_count: 3,
+                        flexure_thickness_mm: 1.2,
+                        single_servo_drive: true,
+                        finger_count: 3,
+                        opposable_thumb: true,
+                        thumb_base_angle_deg: 48.0,
+                        tendon_channel_diameter_mm: 1.8,
+                        joint_min_deg: 40.0,
+                        joint_max_deg: 44.0,
+                        tendon_route_clearance_mm: 0.2,
+                        tendon_bend_radius_mm: 1.0,
+                        pose_preset: "pinch".to_string(),
+                    },
+                ),
+            )
+            .expect("invalid kinematic intent should apply");
+        enqueue_rebuild_cycle(&mut state, "test-three-finger-invalid-kinematics-a")
+            .expect("first invalid rebuild should queue");
+        wait_for_receipt(&mut state);
+        let warning_codes_a = state
+            .warnings
+            .iter()
+            .map(|warning| warning.code.clone())
+            .collect::<Vec<_>>();
+        assert!(warning_codes_a.contains(&"CAD-WARN-KINEMATIC-JOINT-RANGE".to_string()));
+        assert!(warning_codes_a.contains(&"CAD-WARN-TENDON-ROUTING-COLLISION".to_string()));
+
+        enqueue_rebuild_cycle(&mut state, "test-three-finger-invalid-kinematics-b")
+            .expect("second invalid rebuild should queue");
+        wait_for_receipt(&mut state);
+        let warning_codes_b = state
+            .warnings
+            .iter()
+            .map(|warning| warning.code.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(warning_codes_a, warning_codes_b);
+    }
+
+    #[test]
+    fn valid_three_finger_kinematic_range_has_no_nominal_self_intersection() {
+        let mut state = CadDemoPaneState::default();
+        state
+            .apply_chat_intent_for_thread(
+                "thread-three-finger-valid-kinematics",
+                &openagents_cad::intent::CadIntent::CreateParallelJawGripperSpec(
+                    openagents_cad::intent::CreateParallelJawGripperSpecIntent {
+                        jaw_open_mm: 36.0,
+                        finger_length_mm: 72.0,
+                        finger_thickness_mm: 7.5,
+                        base_width_mm: 92.0,
+                        base_depth_mm: 58.0,
+                        base_thickness_mm: 8.0,
+                        servo_mount_hole_diameter_mm: 2.9,
+                        print_fit_mm: 0.15,
+                        print_clearance_mm: 0.35,
+                        underactuated_mode: true,
+                        compliant_joint_count: 3,
+                        flexure_thickness_mm: 1.2,
+                        single_servo_drive: true,
+                        finger_count: 3,
+                        opposable_thumb: true,
+                        thumb_base_angle_deg: 44.0,
+                        tendon_channel_diameter_mm: 1.6,
+                        joint_min_deg: 14.0,
+                        joint_max_deg: 86.0,
+                        tendon_route_clearance_mm: 1.8,
+                        tendon_bend_radius_mm: 3.8,
+                        pose_preset: "tripod".to_string(),
+                    },
+                ),
+            )
+            .expect("valid kinematic intent should apply");
+        enqueue_rebuild_cycle(&mut state, "test-three-finger-valid-kinematics")
+            .expect("valid rebuild should queue");
+        wait_for_receipt(&mut state);
+
+        let warning_codes = state
+            .warnings
+            .iter()
+            .map(|warning| warning.code.clone())
+            .collect::<Vec<_>>();
+        assert!(!warning_codes.contains(&"CAD-WARN-HAND-SELF-INTERSECTION".to_string()));
+        assert!(!warning_codes.contains(&"CAD-WARN-TENDON-ROUTING-COLLISION".to_string()));
+
+        assert_eq!(
+            state
+                .analysis_snapshot
+                .estimator_metadata
+                .get("kinematic.nominal_self_intersection")
+                .map(String::as_str),
+            Some("false")
+        );
+        assert_eq!(
+            state
+                .analysis_snapshot
+                .estimator_metadata
+                .get("kinematic.nominal_range_valid")
+                .map(String::as_str),
+            Some("true")
+        );
     }
 
     #[test]

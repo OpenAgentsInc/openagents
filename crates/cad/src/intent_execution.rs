@@ -193,7 +193,7 @@ fn intent_preview(intent: &CadIntent) -> String {
             payload.units, payload.material, payload.airflow, payload.mount_type
         ),
         CadIntent::CreateParallelJawGripperSpec(payload) => format!(
-            "jaw_open_mm={}, finger_length_mm={}, finger_thickness_mm={}, base_width_mm={}, base_depth_mm={}, base_thickness_mm={}, servo_mount_hole_diameter_mm={}, print_fit_mm={}, print_clearance_mm={}, underactuated_mode={}, compliant_joint_count={}, flexure_thickness_mm={}, single_servo_drive={}, finger_count={}, opposable_thumb={}, thumb_base_angle_deg={}, tendon_channel_diameter_mm={}, pose_preset={}",
+            "jaw_open_mm={}, finger_length_mm={}, finger_thickness_mm={}, base_width_mm={}, base_depth_mm={}, base_thickness_mm={}, servo_mount_hole_diameter_mm={}, print_fit_mm={}, print_clearance_mm={}, underactuated_mode={}, compliant_joint_count={}, flexure_thickness_mm={}, single_servo_drive={}, finger_count={}, opposable_thumb={}, thumb_base_angle_deg={}, tendon_channel_diameter_mm={}, joint_min_deg={}, joint_max_deg={}, tendon_route_clearance_mm={}, tendon_bend_radius_mm={}, pose_preset={}",
             payload.jaw_open_mm,
             payload.finger_length_mm,
             payload.finger_thickness_mm,
@@ -211,6 +211,10 @@ fn intent_preview(intent: &CadIntent) -> String {
             payload.opposable_thumb,
             payload.thumb_base_angle_deg,
             payload.tendon_channel_diameter_mm,
+            payload.joint_min_deg,
+            payload.joint_max_deg,
+            payload.tendon_route_clearance_mm,
+            payload.tendon_bend_radius_mm,
             payload.pose_preset
         ),
         CadIntent::GenerateVariants(payload) => {

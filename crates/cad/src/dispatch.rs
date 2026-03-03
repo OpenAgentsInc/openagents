@@ -59,6 +59,10 @@ pub struct CadDispatchState {
     pub opposable_thumb: bool,
     pub thumb_base_angle_deg: Option<f64>,
     pub tendon_channel_diameter_mm: Option<f64>,
+    pub joint_min_deg: Option<f64>,
+    pub joint_max_deg: Option<f64>,
+    pub tendon_route_clearance_mm: Option<f64>,
+    pub tendon_bend_radius_mm: Option<f64>,
     pub pose_preset: Option<String>,
 }
 
@@ -116,6 +120,10 @@ pub fn dispatch_cad_intent(
             state.opposable_thumb = payload.opposable_thumb;
             state.thumb_base_angle_deg = Some(payload.thumb_base_angle_deg);
             state.tendon_channel_diameter_mm = Some(payload.tendon_channel_diameter_mm);
+            state.joint_min_deg = Some(payload.joint_min_deg);
+            state.joint_max_deg = Some(payload.joint_max_deg);
+            state.tendon_route_clearance_mm = Some(payload.tendon_route_clearance_mm);
+            state.tendon_bend_radius_mm = Some(payload.tendon_bend_radius_mm);
             state.pose_preset = Some(payload.pose_preset.clone());
             state
                 .parameter_values
@@ -176,6 +184,20 @@ pub fn dispatch_cad_intent(
             state.parameter_values.insert(
                 "tendon_channel_diameter_mm".to_string(),
                 payload.tendon_channel_diameter_mm,
+            );
+            state
+                .parameter_values
+                .insert("joint_min_deg".to_string(), payload.joint_min_deg);
+            state
+                .parameter_values
+                .insert("joint_max_deg".to_string(), payload.joint_max_deg);
+            state.parameter_values.insert(
+                "tendon_route_clearance_mm".to_string(),
+                payload.tendon_route_clearance_mm,
+            );
+            state.parameter_values.insert(
+                "tendon_bend_radius_mm".to_string(),
+                payload.tendon_bend_radius_mm,
             );
             CadTypedCommand::CreateParallelJawGripperSpec(payload.clone())
         }
@@ -315,6 +337,10 @@ mod tests {
                 opposable_thumb: false,
                 thumb_base_angle_deg: 42.0,
                 tendon_channel_diameter_mm: 1.8,
+                joint_min_deg: 12.0,
+                joint_max_deg: 82.0,
+                tendon_route_clearance_mm: 1.4,
+                tendon_bend_radius_mm: 3.2,
                 pose_preset: "open".to_string(),
             }),
             CadIntent::GenerateVariants(GenerateVariantsIntent {
@@ -386,6 +412,10 @@ mod tests {
                 opposable_thumb: false,
                 thumb_base_angle_deg: 42.0,
                 tendon_channel_diameter_mm: 1.8,
+                joint_min_deg: 12.0,
+                joint_max_deg: 82.0,
+                tendon_route_clearance_mm: 1.4,
+                tendon_bend_radius_mm: 3.2,
                 pose_preset: "open".to_string(),
             }),
             &mut state,
@@ -435,6 +465,10 @@ mod tests {
                 opposable_thumb: false,
                 thumb_base_angle_deg: 42.0,
                 tendon_channel_diameter_mm: 1.8,
+                joint_min_deg: 12.0,
+                joint_max_deg: 82.0,
+                tendon_route_clearance_mm: 1.4,
+                tendon_bend_radius_mm: 3.2,
                 pose_preset: "open".to_string(),
             }),
             &mut state,
@@ -480,6 +514,10 @@ mod tests {
                 opposable_thumb: true,
                 thumb_base_angle_deg: 48.0,
                 tendon_channel_diameter_mm: 1.6,
+                joint_min_deg: 15.0,
+                joint_max_deg: 88.0,
+                tendon_route_clearance_mm: 1.6,
+                tendon_bend_radius_mm: 3.8,
                 pose_preset: "tripod".to_string(),
             }),
             &mut state,
@@ -497,6 +535,10 @@ mod tests {
         assert!(state.opposable_thumb);
         assert_eq!(state.thumb_base_angle_deg, Some(48.0));
         assert_eq!(state.tendon_channel_diameter_mm, Some(1.6));
+        assert_eq!(state.joint_min_deg, Some(15.0));
+        assert_eq!(state.joint_max_deg, Some(88.0));
+        assert_eq!(state.tendon_route_clearance_mm, Some(1.6));
+        assert_eq!(state.tendon_bend_radius_mm, Some(3.8));
         assert_eq!(state.pose_preset.as_deref(), Some("tripod"));
         assert_eq!(
             state.parameter_values.get("finger_count").copied(),

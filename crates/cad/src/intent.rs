@@ -69,6 +69,10 @@ pub const PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_COUNT: u8 = 2;
 pub const PARALLEL_JAW_GRIPPER_DEFAULT_OPPOSABLE_THUMB: bool = false;
 pub const PARALLEL_JAW_GRIPPER_DEFAULT_THUMB_BASE_ANGLE_DEG: f64 = 42.0;
 pub const PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_CHANNEL_DIAMETER_MM: f64 = 1.8;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_JOINT_MIN_DEG: f64 = 12.0;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_JOINT_MAX_DEG: f64 = 82.0;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_ROUTE_CLEARANCE_MM: f64 = 1.4;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_BEND_RADIUS_MM: f64 = 3.2;
 pub const PARALLEL_JAW_GRIPPER_DEFAULT_POSE_PRESET: &str = "open";
 pub const PARALLEL_JAW_GRIPPER_MIN_JAW_OPEN_MM: f64 = 8.0;
 pub const PARALLEL_JAW_GRIPPER_MAX_JAW_OPEN_MM: f64 = 140.0;
@@ -98,6 +102,14 @@ pub const PARALLEL_JAW_GRIPPER_MIN_THUMB_BASE_ANGLE_DEG: f64 = 20.0;
 pub const PARALLEL_JAW_GRIPPER_MAX_THUMB_BASE_ANGLE_DEG: f64 = 80.0;
 pub const PARALLEL_JAW_GRIPPER_MIN_TENDON_CHANNEL_DIAMETER_MM: f64 = 0.6;
 pub const PARALLEL_JAW_GRIPPER_MAX_TENDON_CHANNEL_DIAMETER_MM: f64 = 4.0;
+pub const PARALLEL_JAW_GRIPPER_MIN_JOINT_MIN_DEG: f64 = -10.0;
+pub const PARALLEL_JAW_GRIPPER_MAX_JOINT_MIN_DEG: f64 = 75.0;
+pub const PARALLEL_JAW_GRIPPER_MIN_JOINT_MAX_DEG: f64 = 15.0;
+pub const PARALLEL_JAW_GRIPPER_MAX_JOINT_MAX_DEG: f64 = 130.0;
+pub const PARALLEL_JAW_GRIPPER_MIN_TENDON_ROUTE_CLEARANCE_MM: f64 = 0.2;
+pub const PARALLEL_JAW_GRIPPER_MAX_TENDON_ROUTE_CLEARANCE_MM: f64 = 6.0;
+pub const PARALLEL_JAW_GRIPPER_MIN_TENDON_BEND_RADIUS_MM: f64 = 0.8;
+pub const PARALLEL_JAW_GRIPPER_MAX_TENDON_BEND_RADIUS_MM: f64 = 14.0;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -127,6 +139,14 @@ pub struct CreateParallelJawGripperSpecIntent {
     pub thumb_base_angle_deg: f64,
     #[serde(default = "default_tendon_channel_diameter_mm")]
     pub tendon_channel_diameter_mm: f64,
+    #[serde(default = "default_joint_min_deg")]
+    pub joint_min_deg: f64,
+    #[serde(default = "default_joint_max_deg")]
+    pub joint_max_deg: f64,
+    #[serde(default = "default_tendon_route_clearance_mm")]
+    pub tendon_route_clearance_mm: f64,
+    #[serde(default = "default_tendon_bend_radius_mm")]
+    pub tendon_bend_radius_mm: f64,
     #[serde(default = "default_pose_preset")]
     pub pose_preset: String,
 }
@@ -151,6 +171,10 @@ impl Default for CreateParallelJawGripperSpecIntent {
             opposable_thumb: PARALLEL_JAW_GRIPPER_DEFAULT_OPPOSABLE_THUMB,
             thumb_base_angle_deg: PARALLEL_JAW_GRIPPER_DEFAULT_THUMB_BASE_ANGLE_DEG,
             tendon_channel_diameter_mm: PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_CHANNEL_DIAMETER_MM,
+            joint_min_deg: PARALLEL_JAW_GRIPPER_DEFAULT_JOINT_MIN_DEG,
+            joint_max_deg: PARALLEL_JAW_GRIPPER_DEFAULT_JOINT_MAX_DEG,
+            tendon_route_clearance_mm: PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_ROUTE_CLEARANCE_MM,
+            tendon_bend_radius_mm: PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_BEND_RADIUS_MM,
             pose_preset: PARALLEL_JAW_GRIPPER_DEFAULT_POSE_PRESET.to_string(),
         }
     }
@@ -186,6 +210,22 @@ const fn default_thumb_base_angle_deg() -> f64 {
 
 const fn default_tendon_channel_diameter_mm() -> f64 {
     PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_CHANNEL_DIAMETER_MM
+}
+
+const fn default_joint_min_deg() -> f64 {
+    PARALLEL_JAW_GRIPPER_DEFAULT_JOINT_MIN_DEG
+}
+
+const fn default_joint_max_deg() -> f64 {
+    PARALLEL_JAW_GRIPPER_DEFAULT_JOINT_MAX_DEG
+}
+
+const fn default_tendon_route_clearance_mm() -> f64 {
+    PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_ROUTE_CLEARANCE_MM
+}
+
+const fn default_tendon_bend_radius_mm() -> f64 {
+    PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_BEND_RADIUS_MM
 }
 
 fn default_pose_preset() -> String {
@@ -321,6 +361,10 @@ pub fn cad_intent_json_schema() -> Value {
             "opposable_thumb",
             "thumb_base_angle_deg",
             "tendon_channel_diameter_mm",
+            "joint_min_deg",
+            "joint_max_deg",
+            "tendon_route_clearance_mm",
+            "tendon_bend_radius_mm",
             "pose_preset"
           ]
         },
@@ -525,6 +569,34 @@ pub fn validate_cad_intent(intent: &CadIntent) -> Result<(), CadIntentValidation
                 payload.tendon_channel_diameter_mm,
                 PARALLEL_JAW_GRIPPER_MIN_TENDON_CHANNEL_DIAMETER_MM,
                 PARALLEL_JAW_GRIPPER_MAX_TENDON_CHANNEL_DIAMETER_MM,
+            )?;
+            validate_finite_range(
+                "CreateParallelJawGripperSpec",
+                "joint_min_deg",
+                payload.joint_min_deg,
+                PARALLEL_JAW_GRIPPER_MIN_JOINT_MIN_DEG,
+                PARALLEL_JAW_GRIPPER_MAX_JOINT_MIN_DEG,
+            )?;
+            validate_finite_range(
+                "CreateParallelJawGripperSpec",
+                "joint_max_deg",
+                payload.joint_max_deg,
+                PARALLEL_JAW_GRIPPER_MIN_JOINT_MAX_DEG,
+                PARALLEL_JAW_GRIPPER_MAX_JOINT_MAX_DEG,
+            )?;
+            validate_finite_range(
+                "CreateParallelJawGripperSpec",
+                "tendon_route_clearance_mm",
+                payload.tendon_route_clearance_mm,
+                PARALLEL_JAW_GRIPPER_MIN_TENDON_ROUTE_CLEARANCE_MM,
+                PARALLEL_JAW_GRIPPER_MAX_TENDON_ROUTE_CLEARANCE_MM,
+            )?;
+            validate_finite_range(
+                "CreateParallelJawGripperSpec",
+                "tendon_bend_radius_mm",
+                payload.tendon_bend_radius_mm,
+                PARALLEL_JAW_GRIPPER_MIN_TENDON_BEND_RADIUS_MM,
+                PARALLEL_JAW_GRIPPER_MAX_TENDON_BEND_RADIUS_MM,
             )?;
             validate_non_empty(
                 "CreateParallelJawGripperSpec",

@@ -3,12 +3,19 @@ use crate::intent::{
     CompareVariantsIntent, CreateParallelJawGripperSpecIntent, CreateRackSpecIntent, ExportIntent,
     PARALLEL_JAW_GRIPPER_DEFAULT_COMPLIANT_JOINT_COUNT, PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_COUNT,
     PARALLEL_JAW_GRIPPER_DEFAULT_FLEXURE_THICKNESS_MM, PARALLEL_JAW_GRIPPER_DEFAULT_POSE_PRESET,
+    PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_BEND_RADIUS_MM,
     PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_CHANNEL_DIAMETER_MM,
+    PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_ROUTE_CLEARANCE_MM,
     PARALLEL_JAW_GRIPPER_DEFAULT_THUMB_BASE_ANGLE_DEG,
     PARALLEL_JAW_GRIPPER_MAX_COMPLIANT_JOINT_COUNT, PARALLEL_JAW_GRIPPER_MAX_FLEXURE_THICKNESS_MM,
+    PARALLEL_JAW_GRIPPER_MAX_JOINT_MAX_DEG, PARALLEL_JAW_GRIPPER_MAX_JOINT_MIN_DEG,
+    PARALLEL_JAW_GRIPPER_MAX_TENDON_BEND_RADIUS_MM,
     PARALLEL_JAW_GRIPPER_MAX_TENDON_CHANNEL_DIAMETER_MM,
-    PARALLEL_JAW_GRIPPER_MIN_FLEXURE_THICKNESS_MM,
-    PARALLEL_JAW_GRIPPER_MIN_TENDON_CHANNEL_DIAMETER_MM, SelectIntent, SetMaterialIntent,
+    PARALLEL_JAW_GRIPPER_MAX_TENDON_ROUTE_CLEARANCE_MM,
+    PARALLEL_JAW_GRIPPER_MIN_FLEXURE_THICKNESS_MM, PARALLEL_JAW_GRIPPER_MIN_JOINT_MAX_DEG,
+    PARALLEL_JAW_GRIPPER_MIN_JOINT_MIN_DEG, PARALLEL_JAW_GRIPPER_MIN_TENDON_BEND_RADIUS_MM,
+    PARALLEL_JAW_GRIPPER_MIN_TENDON_CHANNEL_DIAMETER_MM,
+    PARALLEL_JAW_GRIPPER_MIN_TENDON_ROUTE_CLEARANCE_MM, SelectIntent, SetMaterialIntent,
     SetObjectiveIntent, parse_cad_intent_json,
 };
 
@@ -274,6 +281,8 @@ fn translate_parallel_jaw_gripper_prompt(lower: &str) -> Option<CadIntent> {
         spec.compliant_joint_count = spec.compliant_joint_count.max(3);
         spec.thumb_base_angle_deg = PARALLEL_JAW_GRIPPER_DEFAULT_THUMB_BASE_ANGLE_DEG;
         spec.tendon_channel_diameter_mm = PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_CHANNEL_DIAMETER_MM;
+        spec.tendon_route_clearance_mm = PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_ROUTE_CLEARANCE_MM;
+        spec.tendon_bend_radius_mm = PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_BEND_RADIUS_MM;
         spec.pose_preset = if lower.contains("tripod") {
             "tripod".to_string()
         } else if lower.contains("pinch") {
@@ -296,6 +305,22 @@ fn translate_parallel_jaw_gripper_prompt(lower: &str) -> Option<CadIntent> {
         spec.tendon_channel_diameter_mm = channel_mm.clamp(
             PARALLEL_JAW_GRIPPER_MIN_TENDON_CHANNEL_DIAMETER_MM,
             PARALLEL_JAW_GRIPPER_MAX_TENDON_CHANNEL_DIAMETER_MM,
+        );
+    }
+    if let Some((joint_min_deg, joint_max_deg)) = extract_joint_range_deg(lower) {
+        spec.joint_min_deg = joint_min_deg;
+        spec.joint_max_deg = joint_max_deg.max(joint_min_deg + 5.0);
+    }
+    if let Some(clearance_mm) = extract_tendon_route_clearance_mm(lower) {
+        spec.tendon_route_clearance_mm = clearance_mm.clamp(
+            PARALLEL_JAW_GRIPPER_MIN_TENDON_ROUTE_CLEARANCE_MM,
+            PARALLEL_JAW_GRIPPER_MAX_TENDON_ROUTE_CLEARANCE_MM,
+        );
+    }
+    if let Some(radius_mm) = extract_tendon_bend_radius_mm(lower) {
+        spec.tendon_bend_radius_mm = radius_mm.clamp(
+            PARALLEL_JAW_GRIPPER_MIN_TENDON_BEND_RADIUS_MM,
+            PARALLEL_JAW_GRIPPER_MAX_TENDON_BEND_RADIUS_MM,
         );
     }
     if lower.contains("tripod") {
@@ -462,6 +487,70 @@ fn extract_tendon_channel_diameter_mm(lower: &str) -> Option<f64> {
         return extract_first_numeric_token(&lower[index + "channel diameter".len()..]);
     }
     None
+}
+
+fn extract_joint_range_deg(lower: &str) -> Option<(f64, f64)> {
+    if let Some(index) = lower.find("joint range") {
+        let tail = &lower[index + "joint range".len()..];
+        let numbers = extract_numeric_tokens(tail);
+        if numbers.len() >= 2 {
+            let min_value = numbers[0].clamp(
+                PARALLEL_JAW_GRIPPER_MIN_JOINT_MIN_DEG,
+                PARALLEL_JAW_GRIPPER_MAX_JOINT_MIN_DEG,
+            );
+            let max_value = numbers[1].clamp(
+                PARALLEL_JAW_GRIPPER_MIN_JOINT_MAX_DEG,
+                PARALLEL_JAW_GRIPPER_MAX_JOINT_MAX_DEG,
+            );
+            return Some((min_value, max_value));
+        }
+    }
+    if let Some(index) = lower.find("travel range") {
+        let tail = &lower[index + "travel range".len()..];
+        let numbers = extract_numeric_tokens(tail);
+        if numbers.len() >= 2 {
+            let min_value = numbers[0].clamp(
+                PARALLEL_JAW_GRIPPER_MIN_JOINT_MIN_DEG,
+                PARALLEL_JAW_GRIPPER_MAX_JOINT_MIN_DEG,
+            );
+            let max_value = numbers[1].clamp(
+                PARALLEL_JAW_GRIPPER_MIN_JOINT_MAX_DEG,
+                PARALLEL_JAW_GRIPPER_MAX_JOINT_MAX_DEG,
+            );
+            return Some((min_value, max_value));
+        }
+    }
+    None
+}
+
+fn extract_tendon_route_clearance_mm(lower: &str) -> Option<f64> {
+    if let Some(index) = lower.find("routing clearance") {
+        return extract_first_numeric_token(&lower[index + "routing clearance".len()..]);
+    }
+    if let Some(index) = lower.find("route clearance") {
+        return extract_first_numeric_token(&lower[index + "route clearance".len()..]);
+    }
+    None
+}
+
+fn extract_tendon_bend_radius_mm(lower: &str) -> Option<f64> {
+    if let Some(index) = lower.find("bend radius") {
+        return extract_first_numeric_token(&lower[index + "bend radius".len()..]);
+    }
+    None
+}
+
+fn extract_numeric_tokens(input: &str) -> Vec<f64> {
+    input
+        .split_whitespace()
+        .filter_map(|raw| {
+            let cleaned = raw.trim_matches(|ch: char| !ch.is_ascii_digit() && ch != '.');
+            if cleaned.is_empty() {
+                return None;
+            }
+            cleaned.parse::<f64>().ok()
+        })
+        .collect()
 }
 
 fn extract_first_numeric_token(input: &str) -> Option<f64> {
