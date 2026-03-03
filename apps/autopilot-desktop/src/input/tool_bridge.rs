@@ -1829,6 +1829,7 @@ fn cad_checkpoint_payload(
             openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper
                 | openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated
                 | openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
+                | openagents_cad::dispatch::CadDesignProfile::HumanoidHandV1
         ) {
             cad_gripper_parameter_summary(cad_demo, design_profile)
         } else {
@@ -1853,6 +1854,7 @@ fn cad_design_profile_label(profile: openagents_cad::dispatch::CadDesignProfile)
             "parallel_jaw_gripper_underactuated"
         }
         openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb => "three_finger_thumb",
+        openagents_cad::dispatch::CadDesignProfile::HumanoidHandV1 => "humanoid_hand_v1",
     }
 }
 
@@ -1915,6 +1917,7 @@ fn cad_gripper_parameter_summary(
             design_profile,
             openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated
                 | openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
+                | openagents_cad::dispatch::CadDesignProfile::HumanoidHandV1
         ));
     summary.insert("underactuated_mode".to_string(), json!(underactuated_mode));
     let single_servo_drive = cad_demo
@@ -1928,6 +1931,7 @@ fn cad_gripper_parameter_summary(
         .unwrap_or(matches!(
             design_profile,
             openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
+                | openagents_cad::dispatch::CadDesignProfile::HumanoidHandV1
         ));
     summary.insert("opposable_thumb".to_string(), json!(opposable_thumb));
     let servo_integration_enabled = cad_demo

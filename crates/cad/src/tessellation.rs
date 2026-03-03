@@ -1360,6 +1360,69 @@ fn tessellate_feature_node(
             }
             Ok(())
         }
+        "hand3.arm_interface.mount.v1" => {
+            let base_width_mm = node_param_f32(node, "base_width_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(90.0);
+            let base_depth_mm = node_param_f32(node, "base_depth_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(58.0);
+            let base_thickness_mm = node_param_f32(node, "base_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(8.0);
+            let mount_pitch_mm = node_param_f32(node, "servo_mount_pattern_pitch_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(16.0);
+            let standoff_diameter_mm = node_param_f32(node, "servo_standoff_diameter_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(4.2);
+            let electrical_clearance_mm = node_param_f32(node, "electrical_clearance_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(2.2);
+
+            let mount_width = (base_width_mm * 0.44).max(22.0);
+            let mount_depth = (base_depth_mm * 0.28).max(12.0);
+            let mount_height = (base_thickness_mm + electrical_clearance_mm * 0.75).max(6.0);
+            let y_min = -base_depth_mm * 0.68;
+            let y_max = y_min + mount_depth;
+            let z_min = base_thickness_mm * 0.18 + jitter * 0.03;
+            let z_max = z_min + mount_height;
+
+            builder.add_box(
+                [-mount_width * 0.5, y_min, z_min],
+                [mount_width * 0.5, y_max, z_max],
+                1,
+                6,
+            );
+
+            let mount_radius = (standoff_diameter_mm * 0.5).max(0.9);
+            let pitch_half = (mount_pitch_mm * 0.5).max(4.0);
+            let y_center = (y_min + y_max) * 0.5;
+            let z_center = z_min + mount_height * 0.48;
+            for x_center in [-pitch_half, pitch_half] {
+                builder.add_cylinder_z(
+                    [x_center, y_center, z_center],
+                    mount_radius,
+                    mount_height * 0.82,
+                    12,
+                    1,
+                    4,
+                );
+            }
+
+            let rib_half_x = (mount_width * 0.22).max(4.0);
+            let rib_y_min = y_max - (mount_depth * 0.18);
+            let rib_y_max = y_max + (mount_depth * 0.22);
+            let rib_z_min = z_max - (mount_height * 0.55);
+            let rib_z_max = z_max + (mount_height * 0.12);
+            builder.add_box(
+                [-rib_half_x, rib_y_min, rib_z_min],
+                [rib_half_x, rib_y_max, rib_z_max],
+                1,
+                6,
+            );
+            Ok(())
+        }
         "hand3.edge_marker.v1" => {
             let base_width_mm = node_param_f32(node, "base_width_mm")
                 .filter(|value| *value > 0.0)
@@ -2334,6 +2397,226 @@ mod tests {
         FeatureGraph { nodes }
     }
 
+    fn humanoid_hand_graph(
+        variant_id: &str,
+        pose_preset: &str,
+        servo_integration_enabled: bool,
+    ) -> FeatureGraph {
+        let mut graph = three_finger_thumb_graph(
+            variant_id,
+            1.8,
+            pose_preset,
+            servo_integration_enabled,
+            24.0,
+            5.6,
+        );
+
+        graph.nodes.push(FeatureNode {
+            id: "feature.hand3.finger.pinky".to_string(),
+            name: "hand5_finger_pinky".to_string(),
+            operation_key: "hand3.finger.digit.v1".to_string(),
+            depends_on: vec!["feature.hand3.base".to_string()],
+            params: BTreeMap::from([
+                ("variant".to_string(), variant_id.to_string()),
+                ("digit_slot".to_string(), "3".to_string()),
+                ("finger_length_mm".to_string(), "66.0".to_string()),
+                ("finger_thickness_mm".to_string(), "6.8".to_string()),
+                ("finger_height_mm".to_string(), "16.2".to_string()),
+                ("base_depth_mm".to_string(), "58.0".to_string()),
+                ("base_thickness_mm".to_string(), "8.0".to_string()),
+                ("finger_spacing_mm".to_string(), "10.0".to_string()),
+                ("jaw_open_mm".to_string(), "36.0".to_string()),
+                ("pose_preset".to_string(), pose_preset.to_string()),
+            ]),
+        });
+        graph.nodes.push(FeatureNode {
+            id: "feature.hand3.tendon.pinky".to_string(),
+            name: "hand5_tendon_pinky".to_string(),
+            operation_key: "hand3.tendon.channel.v1".to_string(),
+            depends_on: vec!["feature.hand3.finger.pinky".to_string()],
+            params: BTreeMap::from([
+                ("variant".to_string(), variant_id.to_string()),
+                ("digit".to_string(), "pinky".to_string()),
+                ("digit_slot".to_string(), "3".to_string()),
+                ("finger_length_mm".to_string(), "66.0".to_string()),
+                ("finger_thickness_mm".to_string(), "6.8".to_string()),
+                ("base_thickness_mm".to_string(), "8.0".to_string()),
+                ("base_depth_mm".to_string(), "58.0".to_string()),
+                ("finger_spacing_mm".to_string(), "10.0".to_string()),
+                ("channel_diameter_mm".to_string(), "1.8".to_string()),
+                ("pose_preset".to_string(), pose_preset.to_string()),
+            ]),
+        });
+
+        if servo_integration_enabled {
+            graph.nodes.push(FeatureNode {
+                id: "feature.hand3.servo_mount.pinky".to_string(),
+                name: "hand5_servo_mount_pinky".to_string(),
+                operation_key: "hand3.servo.mount.v1".to_string(),
+                depends_on: vec!["feature.hand3.finger.pinky".to_string()],
+                params: BTreeMap::from([
+                    ("variant".to_string(), variant_id.to_string()),
+                    ("digit".to_string(), "pinky".to_string()),
+                    ("digit_slot".to_string(), "3".to_string()),
+                    ("base_width_mm".to_string(), "90.0".to_string()),
+                    ("base_depth_mm".to_string(), "58.0".to_string()),
+                    ("base_thickness_mm".to_string(), "8.0".to_string()),
+                    ("finger_spacing_mm".to_string(), "10.0".to_string()),
+                    ("servo_envelope_length_mm".to_string(), "24.0".to_string()),
+                    ("servo_envelope_width_mm".to_string(), "12.0".to_string()),
+                    ("servo_envelope_height_mm".to_string(), "24.0".to_string()),
+                    ("servo_shaft_axis_offset_mm".to_string(), "5.0".to_string()),
+                    ("servo_mount_pattern_pitch_mm".to_string(), "16.0".to_string()),
+                    ("servo_bracket_thickness_mm".to_string(), "2.6".to_string()),
+                    ("compact_layout".to_string(), "1".to_string()),
+                ]),
+            });
+            graph.nodes.push(FeatureNode {
+                id: "feature.hand3.servo_housing.pinky".to_string(),
+                name: "hand5_servo_housing_pinky".to_string(),
+                operation_key: "hand3.servo.housing.v1".to_string(),
+                depends_on: vec!["feature.hand3.servo_mount.pinky".to_string()],
+                params: BTreeMap::from([
+                    ("variant".to_string(), variant_id.to_string()),
+                    ("digit".to_string(), "pinky".to_string()),
+                    ("digit_slot".to_string(), "3".to_string()),
+                    ("base_width_mm".to_string(), "90.0".to_string()),
+                    ("base_depth_mm".to_string(), "58.0".to_string()),
+                    ("base_thickness_mm".to_string(), "8.0".to_string()),
+                    ("finger_spacing_mm".to_string(), "10.0".to_string()),
+                    ("servo_envelope_length_mm".to_string(), "24.0".to_string()),
+                    ("servo_envelope_width_mm".to_string(), "12.0".to_string()),
+                    ("servo_envelope_height_mm".to_string(), "24.0".to_string()),
+                    ("servo_housing_wall_mm".to_string(), "2.0".to_string()),
+                    ("compact_layout".to_string(), "1".to_string()),
+                ]),
+            });
+            graph.nodes.push(FeatureNode {
+                id: "feature.hand3.servo_standoff.pinky".to_string(),
+                name: "hand5_servo_standoff_pinky".to_string(),
+                operation_key: "hand3.servo.standoff.v1".to_string(),
+                depends_on: vec!["feature.hand3.servo_mount.pinky".to_string()],
+                params: BTreeMap::from([
+                    ("variant".to_string(), variant_id.to_string()),
+                    ("digit".to_string(), "pinky".to_string()),
+                    ("digit_slot".to_string(), "3".to_string()),
+                    ("base_width_mm".to_string(), "90.0".to_string()),
+                    ("base_depth_mm".to_string(), "58.0".to_string()),
+                    ("base_thickness_mm".to_string(), "8.0".to_string()),
+                    ("finger_spacing_mm".to_string(), "10.0".to_string()),
+                    ("servo_mount_pattern_pitch_mm".to_string(), "16.0".to_string()),
+                    ("servo_standoff_diameter_mm".to_string(), "4.2".to_string()),
+                    ("servo_bracket_thickness_mm".to_string(), "2.6".to_string()),
+                    ("compact_layout".to_string(), "1".to_string()),
+                ]),
+            });
+            graph.nodes.push(FeatureNode {
+                id: "feature.hand3.gearbox.pinky".to_string(),
+                name: "hand5_gearbox_pinky".to_string(),
+                operation_key: "hand3.gearbox.stage.v1".to_string(),
+                depends_on: vec!["feature.hand3.servo_housing.pinky".to_string()],
+                params: BTreeMap::from([
+                    ("variant".to_string(), variant_id.to_string()),
+                    ("digit".to_string(), "pinky".to_string()),
+                    ("digit_slot".to_string(), "3".to_string()),
+                    ("base_width_mm".to_string(), "90.0".to_string()),
+                    ("base_depth_mm".to_string(), "58.0".to_string()),
+                    ("base_thickness_mm".to_string(), "8.0".to_string()),
+                    ("finger_spacing_mm".to_string(), "10.0".to_string()),
+                    ("gearbox_ratio".to_string(), "5.6".to_string()),
+                    ("gearbox_stage_diameter_mm".to_string(), "11.0".to_string()),
+                    ("gearbox_stage_length_mm".to_string(), "14.0".to_string()),
+                    ("servo_envelope_width_mm".to_string(), "12.0".to_string()),
+                    ("compact_layout".to_string(), "1".to_string()),
+                ]),
+            });
+            graph.nodes.push(FeatureNode {
+                id: "feature.hand3.wiring.pinky".to_string(),
+                name: "hand5_wiring_pinky".to_string(),
+                operation_key: "hand3.wiring.channel.v1".to_string(),
+                depends_on: vec![
+                    "feature.hand3.gearbox.pinky".to_string(),
+                    "feature.hand3.tendon.pinky".to_string(),
+                ],
+                params: BTreeMap::from([
+                    ("variant".to_string(), variant_id.to_string()),
+                    ("digit".to_string(), "pinky".to_string()),
+                    ("digit_slot".to_string(), "3".to_string()),
+                    ("base_width_mm".to_string(), "90.0".to_string()),
+                    ("base_depth_mm".to_string(), "58.0".to_string()),
+                    ("base_thickness_mm".to_string(), "8.0".to_string()),
+                    ("finger_spacing_mm".to_string(), "10.0".to_string()),
+                    ("wiring_channel_diameter_mm".to_string(), "1.8".to_string()),
+                    ("wiring_bend_radius_mm".to_string(), "2.6".to_string()),
+                    ("wiring_clearance_mm".to_string(), "1.2".to_string()),
+                    ("joint_min_deg".to_string(), "14.0".to_string()),
+                    ("joint_max_deg".to_string(), "86.0".to_string()),
+                    ("servo_envelope_width_mm".to_string(), "12.0".to_string()),
+                    ("servo_housing_wall_mm".to_string(), "2.0".to_string()),
+                    ("jaw_open_mm".to_string(), "36.0".to_string()),
+                    ("compact_layout".to_string(), "1".to_string()),
+                ]),
+            });
+            graph.nodes.push(FeatureNode {
+                id: "feature.hand3.sensor_pad.pinky".to_string(),
+                name: "hand5_sensor_pad_pinky".to_string(),
+                operation_key: "hand3.sensor.pad.v1".to_string(),
+                depends_on: vec!["feature.hand3.finger.pinky".to_string()],
+                params: BTreeMap::from([
+                    ("variant".to_string(), variant_id.to_string()),
+                    ("digit".to_string(), "pinky".to_string()),
+                    ("digit_slot".to_string(), "3".to_string()),
+                    ("base_width_mm".to_string(), "90.0".to_string()),
+                    ("base_depth_mm".to_string(), "58.0".to_string()),
+                    ("base_thickness_mm".to_string(), "8.0".to_string()),
+                    ("finger_spacing_mm".to_string(), "10.0".to_string()),
+                    ("force_sensor_pad_diameter_mm".to_string(), "6.4".to_string()),
+                    ("electrical_clearance_mm".to_string(), "2.2".to_string()),
+                    ("compact_layout".to_string(), "1".to_string()),
+                ]),
+            });
+            graph.nodes.push(FeatureNode {
+                id: "feature.hand3.proximity_port.pinky".to_string(),
+                name: "hand5_proximity_pinky".to_string(),
+                operation_key: "hand3.sensor.proximity_port.v1".to_string(),
+                depends_on: vec!["feature.hand3.finger.pinky".to_string()],
+                params: BTreeMap::from([
+                    ("variant".to_string(), variant_id.to_string()),
+                    ("digit".to_string(), "pinky".to_string()),
+                    ("digit_slot".to_string(), "3".to_string()),
+                    ("base_width_mm".to_string(), "90.0".to_string()),
+                    ("base_depth_mm".to_string(), "58.0".to_string()),
+                    ("base_thickness_mm".to_string(), "8.0".to_string()),
+                    ("finger_spacing_mm".to_string(), "10.0".to_string()),
+                    ("proximity_sensor_port_diameter_mm".to_string(), "4.0".to_string()),
+                    ("electrical_clearance_mm".to_string(), "2.2".to_string()),
+                    ("compact_layout".to_string(), "1".to_string()),
+                ]),
+            });
+        }
+
+        graph.nodes.push(FeatureNode {
+            id: "feature.hand3.arm_interface".to_string(),
+            name: "hand5_arm_interface_mount".to_string(),
+            operation_key: "hand3.arm_interface.mount.v1".to_string(),
+            depends_on: if servo_integration_enabled {
+                vec!["feature.hand3.modular_mount_slots".to_string()]
+            } else {
+                vec!["feature.hand3.base".to_string()]
+            },
+            params: BTreeMap::from([
+                ("variant".to_string(), variant_id.to_string()),
+                ("base_width_mm".to_string(), "90.0".to_string()),
+                ("base_depth_mm".to_string(), "58.0".to_string()),
+                ("base_thickness_mm".to_string(), "8.0".to_string()),
+                ("servo_mount_pattern_pitch_mm".to_string(), "16.0".to_string()),
+                ("servo_standoff_diameter_mm".to_string(), "4.2".to_string()),
+                ("electrical_clearance_mm".to_string(), "2.2".to_string()),
+            ]),
+        });
+        graph
+    }
+
     #[test]
     fn gripper_tessellation_is_deterministic_for_identical_inputs() {
         let graph = gripper_graph_for_variant("variant.baseline");
@@ -2555,5 +2838,50 @@ mod tests {
         )
         .expect("high ratio tessellation should succeed");
         assert_ne!(low_ratio_receipt.mesh_hash, high_ratio_receipt.mesh_hash);
+    }
+
+    #[test]
+    fn humanoid_hand_tessellation_is_deterministic_for_identical_inputs() {
+        let graph = humanoid_hand_graph("variant.baseline", "precision", true);
+        let rebuild =
+            evaluate_feature_graph_deterministic(&graph).expect("humanoid hand rebuild should pass");
+        let (mesh_a, receipt_a) = tessellate_rebuild_result(&graph, &rebuild, 53, "variant.baseline")
+            .expect("humanoid tessellation A should succeed");
+        let (mesh_b, receipt_b) = tessellate_rebuild_result(&graph, &rebuild, 53, "variant.baseline")
+            .expect("humanoid tessellation B should succeed");
+        assert_eq!(receipt_a.mesh_hash, receipt_b.mesh_hash);
+        assert_eq!(mesh_a.triangle_indices, mesh_b.triangle_indices);
+        assert_eq!(mesh_a.edges, mesh_b.edges);
+        assert!(mesh_a.vertices.len() > 0);
+    }
+
+    #[test]
+    fn humanoid_hand_arm_interface_parameters_change_mesh_hash() {
+        let mut graph_a = humanoid_hand_graph("variant.baseline", "precision", true);
+        let mut graph_b = humanoid_hand_graph("variant.baseline", "precision", true);
+        graph_a
+            .nodes
+            .iter_mut()
+            .find(|node| node.id == "feature.hand3.arm_interface")
+            .expect("arm interface node A")
+            .params
+            .insert("servo_mount_pattern_pitch_mm".to_string(), "14.0".to_string());
+        graph_b
+            .nodes
+            .iter_mut()
+            .find(|node| node.id == "feature.hand3.arm_interface")
+            .expect("arm interface node B")
+            .params
+            .insert("servo_mount_pattern_pitch_mm".to_string(), "22.0".to_string());
+
+        let rebuild_a =
+            evaluate_feature_graph_deterministic(&graph_a).expect("arm interface rebuild A");
+        let rebuild_b =
+            evaluate_feature_graph_deterministic(&graph_b).expect("arm interface rebuild B");
+        let (_, receipt_a) = tessellate_rebuild_result(&graph_a, &rebuild_a, 57, "variant.baseline")
+            .expect("arm interface tessellation A");
+        let (_, receipt_b) = tessellate_rebuild_result(&graph_b, &rebuild_b, 57, "variant.baseline")
+            .expect("arm interface tessellation B");
+        assert_ne!(receipt_a.mesh_hash, receipt_b.mesh_hash);
     }
 }
