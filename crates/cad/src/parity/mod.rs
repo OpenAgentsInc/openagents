@@ -72,6 +72,7 @@ pub mod kernel_step_parity;
 pub mod kernel_tessellate_parity;
 pub mod kernel_text_parity;
 pub mod kernel_topology_parity;
+pub mod license_compliance_audit_parity;
 pub mod loft_parity;
 pub mod material_assignment_parity;
 pub mod mcp_simulation_tools_parity;
