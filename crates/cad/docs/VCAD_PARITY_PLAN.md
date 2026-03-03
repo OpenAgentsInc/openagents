@@ -236,7 +236,7 @@ Major gaps to close:
 
 131. [x] VCAD-PARITY-131: License/compliance parity audit across all adopted lanes.
 132. [x] VCAD-PARITY-132: Security posture parity (dependency + build script review).
-133. [ ] VCAD-PARITY-133: Deterministic replay parity across all capability fixtures.
+133. [x] VCAD-PARITY-133: Deterministic replay parity across all capability fixtures.
 134. [ ] VCAD-PARITY-134: Performance parity scorecard reaches target thresholds.
 135. [ ] VCAD-PARITY-135: Release gates and runbooks updated for parity maintenance.
 136. [ ] VCAD-PARITY-136: Final parity certification report (`100%` both tiers).

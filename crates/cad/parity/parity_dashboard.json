@@ -39,7 +39,7 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 206,
+    "source_artifact_count": 208,
     "artifact_ids": [
       "analytic_ray_intersections_parity_manifest",
       "assembly_acceptance_scenes_parity_manifest",
@@ -66,6 +66,7 @@
       "convex_decomposition_parity_manifest",
       "core_modeling_checkpoint_parity_manifest",
       "crdt_lane_architecture_parity_manifest",
+      "deterministic_replay_all_fixtures_parity_manifest",
       "direct_brep_raytrace_scaffolding_parity_manifest",
       "drafting_checkpoint_parity_manifest",
       "drafting_detail_parity_manifest",
@@ -111,6 +112,7 @@
       "fixtures_compact_ir_vcad_reference",
       "fixtures_convex_decomposition_vcad_reference",
       "fixtures_crdt_lane_architecture_vcad_reference",
+      "fixtures_deterministic_replay_all_fixtures_vcad_reference",
       "fixtures_direct_brep_raytrace_scaffolding_vcad_reference",
       "fixtures_drafting_detail_vcad_reference",
       "fixtures_drafting_dimension_vcad_reference",

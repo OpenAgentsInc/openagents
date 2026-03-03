@@ -15,7 +15,7 @@ Issue coverage: `VCAD-PARITY-010`
 | commands match rate | `0.083333` |
 | open risks | `24` |
 | open hard blockers (p0) | `16` |
-| CI source artifact count | `206` |
+| CI source artifact count | `208` |
 
 ## Profile Gates
 
@@ -53,6 +53,7 @@ Issue coverage: `VCAD-PARITY-010`
 - `convex_decomposition_parity_manifest`
 - `core_modeling_checkpoint_parity_manifest`
 - `crdt_lane_architecture_parity_manifest`
+- `deterministic_replay_all_fixtures_parity_manifest`
 - `direct_brep_raytrace_scaffolding_parity_manifest`
 - `drafting_checkpoint_parity_manifest`
 - `drafting_detail_parity_manifest`
@@ -98,6 +99,7 @@ Issue coverage: `VCAD-PARITY-010`
 - `fixtures_compact_ir_vcad_reference`
 - `fixtures_convex_decomposition_vcad_reference`
 - `fixtures_crdt_lane_architecture_vcad_reference`
+- `fixtures_deterministic_replay_all_fixtures_vcad_reference`
 - `fixtures_direct_brep_raytrace_scaffolding_vcad_reference`
 - `fixtures_drafting_detail_vcad_reference`
 - `fixtures_drafting_dimension_vcad_reference`

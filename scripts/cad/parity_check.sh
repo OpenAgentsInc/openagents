@@ -128,6 +128,7 @@ LANE_LABELS=(
     "cam-stocksim-lane"
     "license-compliance-audit"
     "security-posture-review"
+    "deterministic-replay-all-fixtures"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -565,6 +566,9 @@ run_lane "license-compliance-audit" \
 
 run_lane "security-posture-review" \
     "$ROOT_DIR/scripts/cad/parity-security-posture-review-ci.sh"
+
+run_lane "deterministic-replay-all-fixtures" \
+    "$ROOT_DIR/scripts/cad/parity-deterministic-replay-all-fixtures-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

@@ -25,6 +25,7 @@ pub mod convex_decomposition_parity;
 pub mod core_modeling_checkpoint_parity;
 pub mod crdt_lane_architecture_parity;
 pub mod dashboard;
+pub mod deterministic_replay_all_fixtures_parity;
 pub mod direct_brep_raytrace_scaffolding_parity;
 pub mod drafting_checkpoint_parity;
 pub mod drafting_detail_parity;
