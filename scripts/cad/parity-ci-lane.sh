@@ -106,6 +106,7 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/analytic_ray_intersections_parity_manifest.json"
     "crates/cad/parity/trimmed_surface_ray_hit_parity_manifest.json"
     "crates/cad/parity/bvh_build_traverse_parity_manifest.json"
+    "crates/cad/parity/raytrace_quality_mode_parity_manifest.json"
     "crates/cad/parity/sketch_loft_parity_manifest.json"
     "crates/cad/parity/sketch_profile_validity_parity_manifest.json"
     "crates/cad/parity/sketch_revolve_parity_manifest.json"
@@ -154,6 +155,7 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/fixtures/analytic_ray_intersections_vcad_reference.json"
     "crates/cad/parity/fixtures/trimmed_surface_ray_hit_vcad_reference.json"
     "crates/cad/parity/fixtures/bvh_build_traverse_vcad_reference.json"
+    "crates/cad/parity/fixtures/raytrace_quality_mode_vcad_reference.json"
     "crates/cad/parity/fixtures/parity_fixture_corpus.json"
 )
 
