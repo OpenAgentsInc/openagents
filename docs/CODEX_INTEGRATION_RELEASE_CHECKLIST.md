@@ -57,6 +57,7 @@ Use this checklist before cutting a desktop release that includes Codex integrat
 - `docs/codex/CODEX_PANE_CAD_TOOLING.md`
 - `docs/codex/CAD_CHAT_BUILD_IMPLEMENTATION.md`
 - `docs/codex/CAD_CHAT_BUILD_RELEASE_RUNBOOK.md`
+- `docs/charms/CAST_RELEASE_CHECKLIST.md` (when CAST pane/workflow changes are included)
 
 ## Release Script Integration
 

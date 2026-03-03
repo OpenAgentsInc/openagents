@@ -89,6 +89,10 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - SA trajectory pane for session/step verification and replay-safe audit visibility.
   - Actions: open session context, cycle step filter, verify trajectory hash.
   - Explicit pane state machine: `loading`, `ready`, `error`.
+- `CAST Control`
+  - Charms CAST operations pane for status, check/prove/sign/inspect controls, and broadcast safety gating.
+  - Actions: refresh status, run check, run prove, run sign/broadcast path, run spell inspection, toggle broadcast armed state.
+  - Explicit pane state machine: `loading`, `ready`, `error`.
 - `Agent Skill Registry`
   - SKL discovery pane for manifest/version/search tracking (`33400`, `33401`, optional `6390`).
   - Actions: discover skills, inspect manifest, install selected skill version.
@@ -139,6 +143,8 @@ Badge semantics:
   - Values are local app/device state only.
 - `source: runtime+wallet`
   - Values combine runtime telemetry and wallet totals.
+- `source: runtime+local`
+  - Values combine runtime snapshots and local operator state.
 - `source: runtime+wallet+local`
   - Values aggregate multiple lanes plus local app events.
 
@@ -169,6 +175,7 @@ Current pane badge mapping:
 - `Agent Profile and State`: `source: runtime`
 - `Agent Schedule and Tick`: `source: runtime`
 - `Trajectory Audit`: `source: runtime`
+- `CAST Control`: `source: runtime+local`
 - `Agent Skill Registry`: `source: runtime`
 - `Skill Trust and Revocation`: `source: runtime`
 - `Credit Desk`: `source: runtime`
@@ -208,6 +215,7 @@ Current pane badge mapping:
   - `Agent Profile and State` -> opens `Agent Profile and State`.
   - `Agent Schedule and Tick` -> opens `Agent Schedule and Tick`.
   - `Trajectory Audit` -> opens `Trajectory Audit`.
+  - `CAST Control` -> opens `CAST Control`.
   - `Agent Skill Registry` -> opens `Agent Skill Registry`.
   - `Skill Trust and Revocation` -> opens `Skill Trust and Revocation`.
   - `Credit Desk` -> opens `Credit Desk`.
@@ -219,7 +227,7 @@ Current pane badge mapping:
 
 ## Behavior Notes
 
-- Chat, Codex Account, Codex Models, Codex Config, Codex MCP, Codex Apps, Codex Labs, Codex Diagnostics, Go Online, Provider Status, Relay Connections, Sync Health, Network Requests, Starter Jobs, Activity Feed, Alerts and Recovery, Settings, Earnings Scoreboard, Job Inbox, Active Job, Job History, Agent Profile and State, Agent Schedule and Tick, Trajectory Audit, Agent Skill Registry, Skill Trust and Revocation, Credit Desk, Credit Settlement Ledger, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
+- Chat, Codex Account, Codex Models, Codex Config, Codex MCP, Codex Apps, Codex Labs, Codex Diagnostics, Go Online, Provider Status, Relay Connections, Sync Health, Network Requests, Starter Jobs, Activity Feed, Alerts and Recovery, Settings, Earnings Scoreboard, Job Inbox, Active Job, Job History, Agent Profile and State, Agent Schedule and Tick, Trajectory Audit, CAST Control, Agent Skill Registry, Skill Trust and Revocation, Credit Desk, Credit Settlement Ledger, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
 - Wallet worker updates are shared across wallet-related panes.
 - When a new invoice is created in the wallet pane, that invoice is prefilled into send/payment request inputs.
 

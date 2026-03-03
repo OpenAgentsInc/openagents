@@ -405,6 +405,36 @@ impl Default for SkillRegistryPaneState {
     }
 }
 
+pub struct CastControlPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub source: String,
+    pub prereq_status: String,
+    pub last_operation: Option<String>,
+    pub last_receipt_path: Option<String>,
+    pub last_txid: Option<String>,
+    pub broadcast_armed: bool,
+    pub run_count: u64,
+}
+
+impl Default for CastControlPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for CAST controls".to_string()),
+            source: "runtime+local".to_string(),
+            prereq_status: "unknown".to_string(),
+            last_operation: None,
+            last_receipt_path: None,
+            last_txid: None,
+            broadcast_armed: false,
+            run_count: 0,
+        }
+    }
+}
+
 pub struct SkillTrustRevocationPaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,

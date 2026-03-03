@@ -1,0 +1,85 @@
+---
+name: cast
+description: Charms CAST DEX workflows for order creation, cancellation/replacement, partial fulfillment, signing, and Bitcoin transaction verification.
+metadata:
+  oa:
+    project: cast
+    identifier: cast
+    version: "0.1.0"
+    expires_at_unix: 1798761600
+    capabilities:
+      - http:outbound
+      - filesystem:read
+      - process:spawn
+---
+
+# Cast
+
+## Overview
+
+Use this skill when a task requires executable CAST DEX operations on Bitcoin with Charms, including order lifecycle management, Scrolls nonce/address derivation, cancellation signatures, partial fills, signing, and transaction verification.
+
+## Environment
+
+Required commands:
+
+- `bash`, `curl`, `jq`, `envsubst`
+- `charms`, `bitcoin-cli`
+- `scrolls-nonce`, `sign-txs`, `cancel-msg`
+
+Required artifacts/services:
+
+- CAST app binary (`charms-cast-v0.2.0.wasm` by default in this repo plan)
+- Operator-signed `fulfill` params payload
+- Scrolls API base URL
+- `prev_txs` ancestry data for all spell inputs
+
+## Workflow
+
+1. Run preflight checks for your path:
+- `scripts/check-cast-prereqs.sh maker`
+- `scripts/check-cast-prereqs.sh taker`
+- `scripts/check-cast-prereqs.sh cancel`
+- `scripts/check-cast-prereqs.sh server`
+
+2. Follow [order-lifecycle](references/order-lifecycle.md) for create/check/prove flow.
+
+3. For maker edits, follow [cancel-and-replace](references/cancel-and-replace.md).
+
+4. For taker fills, follow [partial-fulfillment](references/partial-fulfillment.md).
+
+5. For signing and broadcast controls, follow [signing-and-broadcast](references/signing-and-broadcast.md).
+
+6. Keep operations deterministic:
+- prefer file-backed inputs over inline shell literals
+- use dry-run first for mutation steps
+- persist artifacts and receipts for every run
+
+## Quick Commands
+
+```bash
+# Preflight
+skills/cast/scripts/check-cast-prereqs.sh maker
+
+# Derive Scrolls nonce + address
+skills/cast/scripts/derive-scrolls-address.sh \
+  --funding-utxo "<txid:vout>" \
+  --output-index 0 \
+  --scrolls-base-url "https://scrolls-v9.charms.dev/main"
+
+# Check + prove
+skills/cast/scripts/cast-spell-check.sh --spell ./rendered/create-order.yaml
+skills/cast/scripts/cast-spell-prove.sh --spell ./rendered/create-order.yaml --mock
+skills/cast/scripts/cast-spell-prove.sh --spell ./rendered/create-order.yaml
+
+# Sign + inspect
+skills/cast/scripts/cast-sign-and-broadcast.sh --tx-json ./proofs/tx_to_sign.json --dry-run
+skills/cast/scripts/cast-show-spell.sh --tx "<spell_tx_hex>"
+```
+
+## References
+
+- [order-lifecycle](references/order-lifecycle.md)
+- [cancel-and-replace](references/cancel-and-replace.md)
+- [partial-fulfillment](references/partial-fulfillment.md)
+- [signing-and-broadcast](references/signing-and-broadcast.md)

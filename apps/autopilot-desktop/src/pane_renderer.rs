@@ -2,11 +2,11 @@ use crate::app_state::{
     ActiveJobState, ActivityEventDomain, ActivityFeedFilter, ActivityFeedState,
     AgentNetworkSimulationPaneState, AgentProfileStatePaneState, AgentScheduleTickPaneState,
     AlertSeverity, AlertsRecoveryState, AutopilotChatState, CadDemoPaneState, CalculatorPaneInputs,
-    ChatPaneInputs, CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState,
-    CodexDiagnosticsPaneState, CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState,
-    CreateInvoicePaneInputs, CredentialsPaneInputs, CredentialsState, CreditDeskPaneState,
-    CreditSettlementLedgerPaneState, DesktopPane, EarningsScoreboardState, JobHistoryPaneInputs,
-    JobHistoryState, JobInboxState, JobLifecycleStage, NetworkRequestStatus,
+    CastControlPaneState, ChatPaneInputs, CodexAccountPaneState, CodexAppsPaneState,
+    CodexConfigPaneState, CodexDiagnosticsPaneState, CodexLabsPaneState, CodexMcpPaneState,
+    CodexModelsPaneState, CreateInvoicePaneInputs, CredentialsPaneInputs, CredentialsState,
+    CreditDeskPaneState, CreditSettlementLedgerPaneState, DesktopPane, EarningsScoreboardState,
+    JobHistoryPaneInputs, JobHistoryState, JobInboxState, JobLifecycleStage, NetworkRequestStatus,
     NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
     PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, RelayConnectionsPaneInputs,
     RelayConnectionsState, RelaySecuritySimulationPaneState, SettingsPaneInputs, SettingsState,
@@ -42,9 +42,10 @@ use crate::pane_system::{
     starter_jobs_row_bounds, starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
 };
 use crate::panes::{
-    agent as agent_pane, cad as cad_pane, calculator as calculator_pane, chat as chat_pane,
-    codex as codex_pane, credit as credit_pane, relay_connections as relay_connections_pane,
-    simulation as simulation_pane, skill as skill_pane, wallet as wallet_pane,
+    agent as agent_pane, cad as cad_pane, calculator as calculator_pane, cast as cast_pane,
+    chat as chat_pane, codex as codex_pane, credit as credit_pane,
+    relay_connections as relay_connections_pane, simulation as simulation_pane,
+    skill as skill_pane, wallet as wallet_pane,
 };
 use crate::spark_wallet::SparkPaneState;
 use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
@@ -90,6 +91,7 @@ impl PaneRenderer {
         agent_profile_state: &AgentProfileStatePaneState,
         agent_schedule_tick: &AgentScheduleTickPaneState,
         trajectory_audit: &TrajectoryAuditPaneState,
+        cast_control: &CastControlPaneState,
         skill_registry: &SkillRegistryPaneState,
         skill_trust_revocation: &SkillTrustRevocationPaneState,
         credit_desk: &CreditDeskPaneState,
@@ -257,6 +259,9 @@ impl PaneRenderer {
                         trajectory_audit,
                         paint,
                     );
+                }
+                PaneKind::CastControl => {
+                    cast_pane::paint_cast_control_pane(content_bounds, cast_control, paint);
                 }
                 PaneKind::SkillRegistry => {
                     skill_pane::paint_skill_registry_pane(content_bounds, skill_registry, paint);

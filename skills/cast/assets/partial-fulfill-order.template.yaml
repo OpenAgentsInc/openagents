@@ -1,0 +1,58 @@
+version: 9
+
+apps:
+  $CAST: ${CAST_APP_IDENTITY}
+  $ASSET: ${CAST_ASSET_APP_IDENTITY}
+
+private_inputs:
+  $CAST:
+    params:
+      - fulfill:
+          app: ${CAST_APP_IDENTITY}
+          fee_config:
+            taker_fee: ${CAST_TAKER_FEE_BPS}
+            matcher_fee: ${CAST_MATCHER_FEE_BPS}
+            fee_address: ${CAST_FEE_ADDRESS}
+          min_value: ${CAST_MIN_VALUE_SATS}
+      - ${CAST_OPERATOR_SIGNATURE}
+
+ins:
+  - utxo_id: ${CAST_ORDER_UTXO}
+    charms:
+      $ASSET: ${CAST_ORDER_ASSET_QUANTITY}
+      $CAST:
+        maker: ${CAST_ORDER_MAKER_ADDRESS}
+        exec_type:
+          partial: {}
+        side: ask
+        price: [${CAST_PRICE_NUMERATOR}, ${CAST_PRICE_DENOMINATOR}]
+        amount: ${CAST_ORDER_AMOUNT_SATS}
+        quantity: ${CAST_ORDER_ASSET_QUANTITY}
+        asset:
+          token: ${CAST_ASSET_APP_IDENTITY}
+  - utxo_id: ${CAST_TAKER_FUNDING_UTXO}
+
+outs:
+  - address: ${CAST_TAKER_RECEIVE_ADDRESS}
+    coin: 300
+    charms:
+      $ASSET: ${CAST_FILL_ASSET_QUANTITY}
+  - address: ${CAST_ORDER_SCROLLS_ADDRESS}
+    coin: 300
+    charms:
+      $ASSET: ${CAST_REMAINDER_ASSET_QUANTITY}
+      $CAST:
+        maker: ${CAST_ORDER_MAKER_ADDRESS}
+        exec_type:
+          partial:
+            from: ${CAST_ORDER_UTXO}
+        side: ask
+        price: [${CAST_PRICE_NUMERATOR}, ${CAST_PRICE_DENOMINATOR}]
+        amount: ${CAST_REMAINDER_AMOUNT_SATS}
+        quantity: ${CAST_REMAINDER_ASSET_QUANTITY}
+        asset:
+          token: ${CAST_ASSET_APP_IDENTITY}
+  - address: ${CAST_ORDER_MAKER_ADDRESS}
+    coin: ${CAST_MAKER_PAYOUT_COIN}
+  - address: ${CAST_FEE_ADDRESS}
+    coin: ${CAST_TOTAL_FEE_COIN}
