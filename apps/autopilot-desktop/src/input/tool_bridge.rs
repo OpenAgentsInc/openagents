@@ -1,3 +1,7 @@
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
 use codex_client::{DynamicToolCallOutputContentItem, DynamicToolCallResponse};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -5,12 +9,16 @@ use serde_json::{Value, json};
 
 use crate::app_state::{
     ActivityFeedFilter, AutopilotToolCallRequest, CadBuildFailureClass, PaneKind, RenderState,
+    SkillRegistryDiscoveredSkill,
 };
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 use crate::openagents_dynamic_tools::{
     OPENAGENTS_DYNAMIC_TOOL_NAMES, OPENAGENTS_TOOL_CAD_ACTION, OPENAGENTS_TOOL_CAD_INTENT,
-    OPENAGENTS_TOOL_PANE_ACTION, OPENAGENTS_TOOL_PANE_CLOSE, OPENAGENTS_TOOL_PANE_FOCUS,
-    OPENAGENTS_TOOL_PANE_LIST, OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_PANE_SET_INPUT,
+    OPENAGENTS_TOOL_GOAL_SCHEDULER, OPENAGENTS_TOOL_PANE_ACTION, OPENAGENTS_TOOL_PANE_CLOSE,
+    OPENAGENTS_TOOL_PANE_FOCUS, OPENAGENTS_TOOL_PANE_LIST, OPENAGENTS_TOOL_PANE_OPEN,
+    OPENAGENTS_TOOL_PANE_SET_INPUT, OPENAGENTS_TOOL_PROVIDER_CONTROL, OPENAGENTS_TOOL_SWAP_EXECUTE,
+    OPENAGENTS_TOOL_SWAP_QUOTE, OPENAGENTS_TOOL_TREASURY_CONVERT, OPENAGENTS_TOOL_TREASURY_RECEIPT,
+    OPENAGENTS_TOOL_TREASURY_TRANSFER, OPENAGENTS_TOOL_WALLET_CHECK,
 };
 use crate::pane_registry::{pane_spec, pane_spec_by_command_id, pane_specs};
 use crate::pane_system::{
@@ -25,7 +33,19 @@ use crate::pane_system::{
     SkillTrustRevocationPaneAction, StableSatsSimulationPaneAction, StarterJobsPaneAction,
     SyncHealthPaneAction, TrajectoryAuditPaneAction, TreasuryExchangeSimulationPaneAction,
 };
+use crate::runtime_lanes::SaLifecycleCommand;
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
+use crate::spark_wallet::SparkWalletCommand;
+use crate::state::autopilot_goals::{
+    GoalMissedRunPolicy, GoalRolloutHardeningChecklist, GoalRolloutRollbackPolicy, GoalRolloutStage,
+};
+use crate::state::os_scheduler::{OsSchedulerAdapterKind, preferred_adapter_for_host};
+use crate::state::swap_contract::{
+    SwapAmount, SwapAmountUnit, SwapCommandProvenance, SwapDirection, SwapExecutionStatus,
+    SwapQuoteTerms,
+};
+use crate::state::swap_quote_adapter::SwapQuoteProvider;
+use crate::state::wallet_reconciliation::reconcile_wallet_events_for_goal;
 
 const LEGACY_OPENAGENTS_TOOL_PANE_LIST: &str = "openagents.pane.list";
 const LEGACY_OPENAGENTS_TOOL_PANE_OPEN: &str = "openagents.pane.open";
@@ -35,6 +55,14 @@ const LEGACY_OPENAGENTS_TOOL_PANE_SET_INPUT: &str = "openagents.pane.set_input";
 const LEGACY_OPENAGENTS_TOOL_PANE_ACTION: &str = "openagents.pane.action";
 const LEGACY_OPENAGENTS_TOOL_CAD_INTENT: &str = "openagents.cad.intent";
 const LEGACY_OPENAGENTS_TOOL_CAD_ACTION: &str = "openagents.cad.action";
+const LEGACY_OPENAGENTS_TOOL_SWAP_QUOTE: &str = "openagents.swap.quote";
+const LEGACY_OPENAGENTS_TOOL_SWAP_EXECUTE: &str = "openagents.swap.execute";
+const LEGACY_OPENAGENTS_TOOL_TREASURY_TRANSFER: &str = "openagents.treasury.transfer";
+const LEGACY_OPENAGENTS_TOOL_TREASURY_CONVERT: &str = "openagents.treasury.convert";
+const LEGACY_OPENAGENTS_TOOL_TREASURY_RECEIPT: &str = "openagents.treasury.receipt";
+const LEGACY_OPENAGENTS_TOOL_GOAL_SCHEDULER: &str = "openagents.goal.scheduler";
+const LEGACY_OPENAGENTS_TOOL_WALLET_CHECK: &str = "openagents.wallet.check";
+const LEGACY_OPENAGENTS_TOOL_PROVIDER_CONTROL: &str = "openagents.provider.control";
 const LEGACY_OPENAGENTS_TOOL_NAMES: &[&str] = &[
     LEGACY_OPENAGENTS_TOOL_PANE_LIST,
     LEGACY_OPENAGENTS_TOOL_PANE_OPEN,
@@ -44,6 +72,14 @@ const LEGACY_OPENAGENTS_TOOL_NAMES: &[&str] = &[
     LEGACY_OPENAGENTS_TOOL_PANE_ACTION,
     LEGACY_OPENAGENTS_TOOL_CAD_INTENT,
     LEGACY_OPENAGENTS_TOOL_CAD_ACTION,
+    LEGACY_OPENAGENTS_TOOL_SWAP_QUOTE,
+    LEGACY_OPENAGENTS_TOOL_SWAP_EXECUTE,
+    LEGACY_OPENAGENTS_TOOL_TREASURY_TRANSFER,
+    LEGACY_OPENAGENTS_TOOL_TREASURY_CONVERT,
+    LEGACY_OPENAGENTS_TOOL_TREASURY_RECEIPT,
+    LEGACY_OPENAGENTS_TOOL_GOAL_SCHEDULER,
+    LEGACY_OPENAGENTS_TOOL_WALLET_CHECK,
+    LEGACY_OPENAGENTS_TOOL_PROVIDER_CONTROL,
 ];
 pub(super) const OPENAGENTS_TOOL_PREFIXES: &[&str] = &["openagents_", "openagents."];
 pub(super) const OPENAGENTS_TOOL_NAMES: &[&str] = OPENAGENTS_DYNAMIC_TOOL_NAMES;
@@ -220,6 +256,162 @@ struct CadActionArgs {
     index: Option<usize>,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+struct SwapQuoteArgs {
+    goal_id: String,
+    request_id: String,
+    direction: String,
+    amount: u64,
+    unit: String,
+    #[serde(default)]
+    immediate_execution: bool,
+    #[serde(default)]
+    quote_ttl_seconds: Option<u64>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct SwapExecuteArgs {
+    goal_id: String,
+    quote_id: String,
+    #[serde(default)]
+    memo: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct TreasuryTransferArgs {
+    from_owner_id: String,
+    to_owner_id: String,
+    asset: String,
+    amount: u64,
+    #[serde(default)]
+    memo: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct TreasuryConvertArgs {
+    owner_id: String,
+    direction: String,
+    amount: u64,
+    unit: String,
+    #[serde(default)]
+    memo: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct TreasuryReceiptArgs {
+    worker_request_id: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct BlinkSwapQuoteEnvelope {
+    event: String,
+    quote: BlinkSwapQuoteTerms,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct BlinkSwapExecutionEnvelope {
+    event: String,
+    status: String,
+    quote: BlinkSwapQuoteTerms,
+    #[serde(default, rename = "executedAtEpochSeconds")]
+    executed_at_epoch_seconds: Option<u64>,
+    #[serde(default)]
+    execution: Option<BlinkSwapExecutionMetadata>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct BlinkSwapExecutionMetadata {
+    #[serde(default, rename = "transactionId")]
+    transaction_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct BlinkSwapQuoteTerms {
+    #[serde(rename = "quoteId")]
+    quote_id: String,
+    direction: String,
+    #[serde(rename = "amountIn")]
+    amount_in: BlinkSwapAmount,
+    #[serde(rename = "amountOut")]
+    amount_out: BlinkSwapAmount,
+    #[serde(rename = "expiresAtEpochSeconds")]
+    expires_at_epoch_seconds: u64,
+    #[serde(rename = "immediateExecution")]
+    immediate_execution: bool,
+    #[serde(rename = "feeSats")]
+    fee_sats: u64,
+    #[serde(rename = "feeBps")]
+    fee_bps: u32,
+    #[serde(rename = "slippageBps")]
+    slippage_bps: u32,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct BlinkSwapAmount {
+    value: u64,
+    unit: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct GoalSchedulerToolArgs {
+    action: String,
+    #[serde(default)]
+    goal_id: Option<String>,
+    #[serde(default)]
+    missed_run_policy: Option<String>,
+    #[serde(default)]
+    kill_switch_active: Option<bool>,
+    #[serde(default)]
+    kill_switch_reason: Option<String>,
+    #[serde(default)]
+    rollout_enabled: Option<bool>,
+    #[serde(default)]
+    rollout_stage: Option<String>,
+    #[serde(default)]
+    rollout_cohorts: Option<Vec<String>>,
+    #[serde(default)]
+    max_false_success_rate_bps: Option<u32>,
+    #[serde(default)]
+    max_abort_rate_bps: Option<u32>,
+    #[serde(default)]
+    max_error_rate_bps: Option<u32>,
+    #[serde(default)]
+    max_avg_payout_confirm_latency_seconds: Option<u64>,
+    #[serde(default)]
+    hardening_authoritative_payout_gate_validated: Option<bool>,
+    #[serde(default)]
+    hardening_scheduler_recovery_drills_validated: Option<bool>,
+    #[serde(default)]
+    hardening_swap_risk_alerting_validated: Option<bool>,
+    #[serde(default)]
+    hardening_incident_runbook_validated: Option<bool>,
+    #[serde(default)]
+    hardening_test_matrix_gate_green: Option<bool>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct WalletCheckArgs {
+    #[serde(default)]
+    window_seconds: Option<u64>,
+    #[serde(default)]
+    include_payments: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct ProviderControlArgs {
+    action: String,
+}
+
+const BLINK_SKILL_NAME: &str = "blink";
+const BLINK_SWAP_QUOTE_SCRIPT: &str = "swap_quote.js";
+const BLINK_SWAP_EXECUTE_SCRIPT: &str = "swap_execute.js";
+const BLINK_BALANCE_SCRIPT: &str = "balance.js";
+const BLINK_CREATE_INVOICE_SCRIPT: &str = "create_invoice.js";
+const BLINK_CREATE_INVOICE_USD_SCRIPT: &str = "create_invoice_usd.js";
+const BLINK_FEE_PROBE_SCRIPT: &str = "fee_probe.js";
+const BLINK_PAY_INVOICE_SCRIPT: &str = "pay_invoice.js";
+const BLINK_SWAP_PARSE_VERSION: &str = "blink.swap.v1";
+
 pub(super) fn execute_openagents_tool_request(
     state: &mut RenderState,
     request: &AutopilotToolCallRequest,
@@ -228,6 +420,10 @@ pub(super) fn execute_openagents_tool_request(
         Ok(value) => value,
         Err(error) => return error,
     };
+
+    if let Some(policy_error) = enforce_active_goal_command_scope(state, decoded.tool.as_str()) {
+        return policy_error;
+    }
 
     match decoded.tool.as_str() {
         OPENAGENTS_TOOL_PANE_LIST | LEGACY_OPENAGENTS_TOOL_PANE_LIST => execute_pane_list(state),
@@ -280,6 +476,62 @@ pub(super) fn execute_openagents_tool_request(
             };
             execute_cad_action(state, &args)
         }
+        OPENAGENTS_TOOL_SWAP_QUOTE | LEGACY_OPENAGENTS_TOOL_SWAP_QUOTE => {
+            let args = match decoded.decode_arguments::<SwapQuoteArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_swap_quote(state, &args)
+        }
+        OPENAGENTS_TOOL_SWAP_EXECUTE | LEGACY_OPENAGENTS_TOOL_SWAP_EXECUTE => {
+            let args = match decoded.decode_arguments::<SwapExecuteArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_swap_execute(state, &args)
+        }
+        OPENAGENTS_TOOL_TREASURY_TRANSFER | LEGACY_OPENAGENTS_TOOL_TREASURY_TRANSFER => {
+            let args = match decoded.decode_arguments::<TreasuryTransferArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_treasury_transfer(state, &args)
+        }
+        OPENAGENTS_TOOL_TREASURY_CONVERT | LEGACY_OPENAGENTS_TOOL_TREASURY_CONVERT => {
+            let args = match decoded.decode_arguments::<TreasuryConvertArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_treasury_convert(state, &args)
+        }
+        OPENAGENTS_TOOL_TREASURY_RECEIPT | LEGACY_OPENAGENTS_TOOL_TREASURY_RECEIPT => {
+            let args = match decoded.decode_arguments::<TreasuryReceiptArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_treasury_receipt(state, &args)
+        }
+        OPENAGENTS_TOOL_GOAL_SCHEDULER | LEGACY_OPENAGENTS_TOOL_GOAL_SCHEDULER => {
+            let args = match decoded.decode_arguments::<GoalSchedulerToolArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_goal_scheduler_tool(state, &args)
+        }
+        OPENAGENTS_TOOL_WALLET_CHECK | LEGACY_OPENAGENTS_TOOL_WALLET_CHECK => {
+            let args = match decoded.decode_arguments::<WalletCheckArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_wallet_check_tool(state, &args)
+        }
+        OPENAGENTS_TOOL_PROVIDER_CONTROL | LEGACY_OPENAGENTS_TOOL_PROVIDER_CONTROL => {
+            let args = match decoded.decode_arguments::<ProviderControlArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_provider_control_tool(state, &args)
+        }
         _ => ToolBridgeResultEnvelope::error(
             "OA-TOOL-NOT-IMPLEMENTED",
             format!("Tool '{}' is parsed but not yet implemented", decoded.tool),
@@ -308,6 +560,60 @@ pub(super) fn is_openagents_cad_intent_tool(tool: &str) -> bool {
     let trimmed = tool.trim();
     trimmed.eq_ignore_ascii_case(OPENAGENTS_TOOL_CAD_INTENT)
         || trimmed.eq_ignore_ascii_case(LEGACY_OPENAGENTS_TOOL_CAD_INTENT)
+}
+
+fn enforce_active_goal_command_scope(
+    state: &RenderState,
+    tool_name: &str,
+) -> Option<ToolBridgeResultEnvelope> {
+    let active_run = state.goal_loop_executor.active_run.as_ref()?;
+    let goal = state
+        .autopilot_goals
+        .document
+        .active_goals
+        .iter()
+        .find(|goal| goal.goal_id == active_run.goal_id)?;
+    let policy = &goal.constraints.autonomy_policy;
+
+    if policy.kill_switch_active {
+        return Some(ToolBridgeResultEnvelope::error(
+            "OA-GOAL-POLICY-KILL-SWITCH",
+            "Goal kill switch is engaged; tool command denied",
+            json!({
+                "goal_id": goal.goal_id,
+                "tool": tool_name,
+                "kill_switch_reason": policy.kill_switch_reason,
+            }),
+        ));
+    }
+
+    let allowlist = policy
+        .allowed_command_prefixes
+        .iter()
+        .map(|prefix| normalize_key(prefix))
+        .filter(|prefix| !prefix.is_empty())
+        .collect::<Vec<_>>();
+    if allowlist.is_empty() {
+        return None;
+    }
+
+    let normalized_tool = normalize_key(tool_name);
+    if allowlist
+        .iter()
+        .any(|prefix| normalized_tool.starts_with(prefix))
+    {
+        None
+    } else {
+        Some(ToolBridgeResultEnvelope::error(
+            "OA-GOAL-POLICY-COMMAND-DENIED",
+            "Tool command denied by goal command scope policy",
+            json!({
+                "goal_id": goal.goal_id,
+                "tool": tool_name,
+                "allowed_command_prefixes": policy.allowed_command_prefixes,
+            }),
+        ))
+    }
 }
 
 fn execute_pane_list(state: &RenderState) -> ToolBridgeResultEnvelope {
@@ -946,6 +1252,18 @@ fn pane_action_to_hit_action(
             "update_goals" => Ok(PaneHitAction::AgentProfileState(
                 AgentProfileStatePaneAction::UpdateGoals,
             )),
+            "create_goal" => Ok(PaneHitAction::AgentProfileState(
+                AgentProfileStatePaneAction::CreateGoal,
+            )),
+            "start_goal" => Ok(PaneHitAction::AgentProfileState(
+                AgentProfileStatePaneAction::StartGoal,
+            )),
+            "abort_goal" => Ok(PaneHitAction::AgentProfileState(
+                AgentProfileStatePaneAction::AbortGoal,
+            )),
+            "inspect_goal_receipt" => Ok(PaneHitAction::AgentProfileState(
+                AgentProfileStatePaneAction::InspectGoalReceipt,
+            )),
             _ => unsupported(),
         },
         PaneKind::AgentScheduleTick => match action {
@@ -957,6 +1275,9 @@ fn pane_action_to_hit_action(
             )),
             "inspect_last_result" => Ok(PaneHitAction::AgentScheduleTick(
                 AgentScheduleTickPaneAction::InspectLastResult,
+            )),
+            "toggle_os_scheduler_adapter" => Ok(PaneHitAction::AgentScheduleTick(
+                AgentScheduleTickPaneAction::ToggleOsSchedulerAdapter,
             )),
             _ => unsupported(),
         },
@@ -1062,6 +1383,12 @@ fn pane_action_to_hit_action(
             )),
             "reset" => Ok(PaneHitAction::StableSatsSimulation(
                 StableSatsSimulationPaneAction::Reset,
+            )),
+            "set_mode_demo" => Ok(PaneHitAction::StableSatsSimulation(
+                StableSatsSimulationPaneAction::SetModeDemo,
+            )),
+            "set_mode_real" => Ok(PaneHitAction::StableSatsSimulation(
+                StableSatsSimulationPaneAction::SetModeReal,
             )),
             _ => unsupported(),
         },
@@ -1708,6 +2035,1922 @@ fn execute_cad_action(state: &mut RenderState, args: &CadActionArgs) -> ToolBrid
     )
 }
 
+fn execute_swap_quote(state: &mut RenderState, args: &SwapQuoteArgs) -> ToolBridgeResultEnvelope {
+    if args.goal_id.trim().is_empty() {
+        return ToolBridgeResultEnvelope::error(
+            "OA-SWAP-QUOTE-MISSING-GOAL",
+            "goal_id is required",
+            json!({ "goal_id": args.goal_id }),
+        );
+    }
+    if args.request_id.trim().is_empty() {
+        return ToolBridgeResultEnvelope::error(
+            "OA-SWAP-QUOTE-MISSING-REQUEST",
+            "request_id is required",
+            json!({ "request_id": args.request_id }),
+        );
+    }
+
+    let direction = match parse_swap_direction(&args.direction) {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+    let unit = match parse_swap_unit(&args.unit) {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+    if let Some(error) = validate_direction_unit(direction, unit) {
+        return error;
+    }
+
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    let quote_ttl_seconds = args.quote_ttl_seconds.unwrap_or(60).max(1);
+    let goal_id = args.goal_id.trim();
+    let request_id = args.request_id.trim();
+
+    let (daily_converted_sats, daily_converted_cents) = state
+        .autopilot_goals
+        .document
+        .swap_execution_receipts
+        .iter()
+        .filter(|receipt| receipt.goal_id == goal_id)
+        .fold((0_u64, 0_u64), |(sats, cents), receipt| {
+            match receipt.amount_in.unit {
+                SwapAmountUnit::Sats => (sats.saturating_add(receipt.amount_in.amount), cents),
+                SwapAmountUnit::Cents => (sats, cents.saturating_add(receipt.amount_in.amount)),
+            }
+        });
+
+    let policy_request = crate::state::swap_contract::SwapExecutionRequest {
+        request_id: request_id.to_string(),
+        direction,
+        amount: SwapAmount {
+            amount: args.amount,
+            unit,
+        },
+        quote_ttl_seconds,
+        immediate_execution: args.immediate_execution,
+        max_fee_sats_override: None,
+        max_slippage_bps_override: None,
+    };
+    if let Err(error) = state.autopilot_goals.validate_swap_request_policy(
+        goal_id,
+        &policy_request,
+        daily_converted_sats,
+        daily_converted_cents,
+    ) {
+        return ToolBridgeResultEnvelope::error(
+            "OA-SWAP-QUOTE-POLICY-REJECTED",
+            format!("Swap quote policy rejected request: {error}"),
+            json!({
+                "goal_id": goal_id,
+                "request_id": request_id,
+            }),
+        );
+    }
+
+    let script_path = match resolve_blink_swap_script_path(state, BLINK_SWAP_QUOTE_SCRIPT) {
+        Ok(path) => path,
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-SWAP-QUOTE-BLINK-SCRIPT-MISSING",
+                error,
+                json!({
+                    "goal_id": goal_id,
+                    "request_id": request_id,
+                    "script": BLINK_SWAP_QUOTE_SCRIPT,
+                }),
+            );
+        }
+    };
+
+    let mut script_args = vec![
+        swap_direction_script_value(direction).to_string(),
+        args.amount.to_string(),
+        "--unit".to_string(),
+        swap_unit_script_value(unit).to_string(),
+        "--ttl-seconds".to_string(),
+        quote_ttl_seconds.to_string(),
+    ];
+    if args.immediate_execution {
+        script_args.push("--immediate".to_string());
+    }
+    let command_provenance = SwapCommandProvenance {
+        script_path: script_path.display().to_string(),
+        args: script_args.clone(),
+        executed_at_epoch_seconds: now_epoch_seconds,
+        parse_version: BLINK_SWAP_PARSE_VERSION.to_string(),
+    };
+    let worker_request_id = state.stable_sats_simulation.reserve_worker_request_id();
+    state
+        .stable_sats_simulation
+        .record_treasury_operation_queued(
+            worker_request_id,
+            crate::app_state::StableSatsTreasuryOperationKind::SwapQuote,
+            now_epoch_seconds,
+            format!("queued swap quote goal={} request={}", goal_id, request_id),
+        );
+    let env_overrides = resolve_swap_runtime_env_overrides(state);
+    let worker_request = crate::stablesats_blink_worker::StableSatsBlinkSwapQuoteRequest {
+        request_id: worker_request_id,
+        now_epoch_seconds,
+        goal_id: goal_id.to_string(),
+        adapter_request_id: request_id.to_string(),
+        script_path,
+        script_args: script_args.clone(),
+        env_overrides,
+    };
+    if let Err(error) = state
+        .stable_sats_blink_worker
+        .enqueue_swap_quote(worker_request)
+    {
+        state
+            .stable_sats_simulation
+            .record_treasury_operation_finished(
+                worker_request_id,
+                crate::app_state::StableSatsTreasuryOperationKind::SwapQuote,
+                crate::app_state::StableSatsTreasuryOperationStatus::Failed,
+                now_epoch_seconds,
+                format!("swap quote enqueue failed: {error}"),
+            );
+        return ToolBridgeResultEnvelope::error(
+            "OA-SWAP-QUOTE-WORKER-UNAVAILABLE",
+            format!("Swap quote worker unavailable: {error}"),
+            json!({
+                "goal_id": goal_id,
+                "request_id": request_id,
+                "worker_request_id": worker_request_id,
+            }),
+        );
+    }
+    state.autopilot_chat.record_turn_timeline_event(format!(
+        "swap quote queued goal={} request={} worker_request={}",
+        goal_id, request_id, worker_request_id
+    ));
+    ToolBridgeResultEnvelope::ok(
+        "OA-SWAP-QUOTE-QUEUED",
+        "Swap quote queued on off-thread treasury worker",
+        json!({
+            "goal_id": goal_id,
+            "request_id": request_id,
+            "worker_request_id": worker_request_id,
+            "status": "queued",
+            "async": true,
+            "provider": "blink_infrastructure",
+            "command_provenance": {
+                "script_path": command_provenance.script_path,
+                "args": command_provenance.args,
+                "executed_at_epoch_seconds": command_provenance.executed_at_epoch_seconds,
+                "parse_version": command_provenance.parse_version,
+            },
+        }),
+    )
+}
+
+fn execute_swap_execute(
+    state: &mut RenderState,
+    args: &SwapExecuteArgs,
+) -> ToolBridgeResultEnvelope {
+    if args.goal_id.trim().is_empty() {
+        return ToolBridgeResultEnvelope::error(
+            "OA-SWAP-EXECUTE-MISSING-GOAL",
+            "goal_id is required",
+            json!({ "goal_id": args.goal_id }),
+        );
+    }
+    if args.quote_id.trim().is_empty() {
+        return ToolBridgeResultEnvelope::error(
+            "OA-SWAP-EXECUTE-MISSING-QUOTE",
+            "quote_id is required",
+            json!({ "quote_id": args.quote_id }),
+        );
+    }
+
+    let goal_id = args.goal_id.trim();
+    let quote_id = args.quote_id.trim();
+
+    let audit = state
+        .autopilot_goals
+        .document
+        .swap_quote_audits
+        .iter()
+        .rev()
+        .find(|entry| entry.goal_id == goal_id && entry.quote_id == quote_id)
+        .cloned();
+    let Some(audit) = audit else {
+        return ToolBridgeResultEnvelope::error(
+            "OA-SWAP-EXECUTE-QUOTE-NOT-FOUND",
+            format!(
+                "No swap quote audit found for goal '{}' and quote '{}'",
+                goal_id, quote_id
+            ),
+            json!({
+                "goal_id": goal_id,
+                "quote_id": quote_id,
+            }),
+        );
+    };
+
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    let script_path = match resolve_blink_swap_script_path(state, BLINK_SWAP_EXECUTE_SCRIPT) {
+        Ok(path) => path,
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-SWAP-EXECUTE-BLINK-SCRIPT-MISSING",
+                error,
+                json!({
+                    "goal_id": goal_id,
+                    "quote_id": quote_id,
+                    "script": BLINK_SWAP_EXECUTE_SCRIPT,
+                }),
+            );
+        }
+    };
+
+    let direction = swap_direction_script_value(audit.direction).to_string();
+    let mut script_args = vec![
+        direction,
+        audit.amount_in.amount.to_string(),
+        "--unit".to_string(),
+        swap_unit_script_value(audit.amount_in.unit).to_string(),
+    ];
+    if let Some(memo) = args
+        .memo
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        script_args.push("--memo".to_string());
+        script_args.push(memo.to_string());
+    }
+    let mut command_provenance = SwapCommandProvenance {
+        script_path: script_path.display().to_string(),
+        args: script_args.clone(),
+        executed_at_epoch_seconds: now_epoch_seconds,
+        parse_version: BLINK_SWAP_PARSE_VERSION.to_string(),
+    };
+    let worker_request_id = state.stable_sats_simulation.reserve_worker_request_id();
+    state
+        .stable_sats_simulation
+        .record_treasury_operation_queued(
+            worker_request_id,
+            crate::app_state::StableSatsTreasuryOperationKind::SwapExecute,
+            now_epoch_seconds,
+            format!("queued swap execute goal={} quote={}", goal_id, quote_id),
+        );
+    let env_overrides = resolve_swap_runtime_env_overrides(state);
+    let worker_request = crate::stablesats_blink_worker::StableSatsBlinkSwapExecuteRequest {
+        request_id: worker_request_id,
+        now_epoch_seconds,
+        goal_id: goal_id.to_string(),
+        quote_id: quote_id.to_string(),
+        script_path,
+        script_args: script_args.clone(),
+        env_overrides,
+    };
+    if let Err(error) = state
+        .stable_sats_blink_worker
+        .enqueue_swap_execute(worker_request)
+    {
+        state
+            .stable_sats_simulation
+            .record_treasury_operation_finished(
+                worker_request_id,
+                crate::app_state::StableSatsTreasuryOperationKind::SwapExecute,
+                crate::app_state::StableSatsTreasuryOperationStatus::Failed,
+                now_epoch_seconds,
+                format!("swap execute enqueue failed: {error}"),
+            );
+        return ToolBridgeResultEnvelope::error(
+            "OA-SWAP-EXECUTE-WORKER-UNAVAILABLE",
+            format!("Swap execute worker unavailable: {error}"),
+            json!({
+                "goal_id": goal_id,
+                "quote_id": quote_id,
+                "worker_request_id": worker_request_id,
+            }),
+        );
+    }
+    command_provenance.executed_at_epoch_seconds = now_epoch_seconds;
+    state.autopilot_chat.record_turn_timeline_event(format!(
+        "swap execute queued goal={} quote={} worker_request={}",
+        goal_id, quote_id, worker_request_id
+    ));
+    ToolBridgeResultEnvelope::ok(
+        "OA-SWAP-EXECUTE-QUEUED",
+        "Swap execution queued on off-thread treasury worker",
+        json!({
+            "goal_id": goal_id,
+            "quote_id": quote_id,
+            "worker_request_id": worker_request_id,
+            "status": "queued",
+            "async": true,
+            "audit": {
+                "provider": match audit.provider {
+                    SwapQuoteProvider::BlinkInfrastructure => "blink_infrastructure",
+                    SwapQuoteProvider::StablesatsQuoteService => "stablesats_quote_service",
+                    SwapQuoteProvider::BlinkFallback => "blink_fallback",
+                },
+                "direction": format!("{:?}", audit.direction),
+                "amount_in": {
+                    "amount": audit.amount_in.amount,
+                    "unit": match audit.amount_in.unit {
+                        SwapAmountUnit::Sats => "sats",
+                        SwapAmountUnit::Cents => "cents",
+                    },
+                },
+                "amount_out": {
+                    "amount": audit.amount_out.amount,
+                    "unit": match audit.amount_out.unit {
+                        SwapAmountUnit::Sats => "sats",
+                        SwapAmountUnit::Cents => "cents",
+                    },
+                },
+                "expires_at_epoch_seconds": audit.expires_at_epoch_seconds,
+            },
+            "command_provenance": {
+                "script_path": command_provenance.script_path,
+                "args": command_provenance.args,
+                "executed_at_epoch_seconds": command_provenance.executed_at_epoch_seconds,
+                "parse_version": command_provenance.parse_version,
+            },
+        }),
+    )
+}
+
+fn execute_treasury_transfer(
+    state: &mut RenderState,
+    args: &TreasuryTransferArgs,
+) -> ToolBridgeResultEnvelope {
+    if state.stable_sats_simulation.mode != crate::app_state::StableSatsSimulationMode::RealBlink {
+        return ToolBridgeResultEnvelope::error(
+            "OA-TREASURY-TRANSFER-REAL-MODE-REQUIRED",
+            "StableSats treasury transfer requires real mode",
+            json!({
+                "mode": state.stable_sats_simulation.mode.label(),
+            }),
+        );
+    }
+    let from_owner_id = args.from_owner_id.trim();
+    if from_owner_id.is_empty() {
+        return ToolBridgeResultEnvelope::error(
+            "OA-TREASURY-TRANSFER-MISSING-FROM",
+            "from_owner_id is required",
+            json!({ "from_owner_id": args.from_owner_id }),
+        );
+    }
+    let to_owner_id = args.to_owner_id.trim();
+    if to_owner_id.is_empty() {
+        return ToolBridgeResultEnvelope::error(
+            "OA-TREASURY-TRANSFER-MISSING-TO",
+            "to_owner_id is required",
+            json!({ "to_owner_id": args.to_owner_id }),
+        );
+    }
+    if from_owner_id == to_owner_id {
+        return ToolBridgeResultEnvelope::error(
+            "OA-TREASURY-TRANSFER-SAME-OWNER",
+            "from_owner_id and to_owner_id must be different wallets",
+            json!({
+                "from_owner_id": from_owner_id,
+                "to_owner_id": to_owner_id,
+            }),
+        );
+    }
+
+    let asset = match parse_treasury_transfer_asset(args.asset.as_str()) {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+    let from_wallet = match resolve_stablesats_wallet_by_owner(
+        state,
+        from_owner_id,
+        "OA-TREASURY-TRANSFER-FROM-NOT-FOUND",
+    ) {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+    let to_wallet = match resolve_stablesats_wallet_by_owner(
+        state,
+        to_owner_id,
+        "OA-TREASURY-TRANSFER-TO-NOT-FOUND",
+    ) {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+
+    let source_env_overrides = match resolve_wallet_blink_env_overrides(state, &from_wallet) {
+        Ok(value) => value,
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-TREASURY-TRANSFER-FROM-CREDENTIAL-ERROR",
+                error,
+                json!({
+                    "owner_id": from_owner_id,
+                    "wallet_name": from_wallet.agent_name,
+                    "credential_key_name": from_wallet.credential_key_name,
+                    "credential_url_name": from_wallet.credential_url_name,
+                }),
+            );
+        }
+    };
+    let destination_env_overrides = match resolve_wallet_blink_env_overrides(state, &to_wallet) {
+        Ok(value) => value,
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-TREASURY-TRANSFER-TO-CREDENTIAL-ERROR",
+                error,
+                json!({
+                    "owner_id": to_owner_id,
+                    "wallet_name": to_wallet.agent_name,
+                    "credential_key_name": to_wallet.credential_key_name,
+                    "credential_url_name": to_wallet.credential_url_name,
+                }),
+            );
+        }
+    };
+
+    let balance_script_path = match resolve_blink_swap_script_path(state, BLINK_BALANCE_SCRIPT) {
+        Ok(path) => path,
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-TREASURY-TRANSFER-BLINK-SCRIPT-MISSING",
+                error,
+                json!({ "script": BLINK_BALANCE_SCRIPT }),
+            );
+        }
+    };
+    let create_invoice_script_path =
+        match resolve_blink_swap_script_path(state, BLINK_CREATE_INVOICE_SCRIPT) {
+            Ok(path) => path,
+            Err(error) => {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-TREASURY-TRANSFER-BLINK-SCRIPT-MISSING",
+                    error,
+                    json!({ "script": BLINK_CREATE_INVOICE_SCRIPT }),
+                );
+            }
+        };
+    let create_invoice_usd_script_path =
+        match resolve_blink_swap_script_path(state, BLINK_CREATE_INVOICE_USD_SCRIPT) {
+            Ok(path) => path,
+            Err(error) => {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-TREASURY-TRANSFER-BLINK-SCRIPT-MISSING",
+                    error,
+                    json!({ "script": BLINK_CREATE_INVOICE_USD_SCRIPT }),
+                );
+            }
+        };
+    let fee_probe_script_path = match resolve_blink_swap_script_path(state, BLINK_FEE_PROBE_SCRIPT)
+    {
+        Ok(path) => path,
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-TREASURY-TRANSFER-BLINK-SCRIPT-MISSING",
+                error,
+                json!({ "script": BLINK_FEE_PROBE_SCRIPT }),
+            );
+        }
+    };
+    let pay_invoice_script_path =
+        match resolve_blink_swap_script_path(state, BLINK_PAY_INVOICE_SCRIPT) {
+            Ok(path) => path,
+            Err(error) => {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-TREASURY-TRANSFER-BLINK-SCRIPT-MISSING",
+                    error,
+                    json!({ "script": BLINK_PAY_INVOICE_SCRIPT }),
+                );
+            }
+        };
+
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    let worker_request_id = state.stable_sats_simulation.reserve_worker_request_id();
+    let operation_kind = match asset {
+        crate::stablesats_blink_worker::StableSatsBlinkTransferAsset::BtcSats => {
+            crate::app_state::StableSatsTreasuryOperationKind::TransferBtc
+        }
+        crate::stablesats_blink_worker::StableSatsBlinkTransferAsset::UsdCents => {
+            crate::app_state::StableSatsTreasuryOperationKind::TransferUsd
+        }
+    };
+    state
+        .stable_sats_simulation
+        .record_treasury_operation_queued(
+            worker_request_id,
+            operation_kind,
+            now_epoch_seconds,
+            format!(
+                "queued treasury transfer {} {} {} -> {}",
+                args.amount,
+                asset.label(),
+                from_owner_id,
+                to_owner_id
+            ),
+        );
+    let request = crate::stablesats_blink_worker::StableSatsBlinkTransferRequest {
+        request_id: worker_request_id,
+        now_epoch_seconds,
+        from_owner_id: from_owner_id.to_string(),
+        from_wallet_name: from_wallet.agent_name.clone(),
+        to_owner_id: to_owner_id.to_string(),
+        to_wallet_name: to_wallet.agent_name.clone(),
+        asset,
+        amount: args.amount,
+        memo: args
+            .memo
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
+        source_env_overrides,
+        destination_env_overrides,
+        balance_script_path,
+        create_invoice_script_path,
+        create_invoice_usd_script_path,
+        fee_probe_script_path,
+        pay_invoice_script_path,
+    };
+    if let Err(error) = state.stable_sats_blink_worker.enqueue_transfer(request) {
+        state
+            .stable_sats_simulation
+            .record_treasury_operation_finished(
+                worker_request_id,
+                operation_kind,
+                crate::app_state::StableSatsTreasuryOperationStatus::Failed,
+                now_epoch_seconds,
+                format!("treasury transfer enqueue failed: {error}"),
+            );
+        return ToolBridgeResultEnvelope::error(
+            "OA-TREASURY-TRANSFER-WORKER-UNAVAILABLE",
+            format!("Treasury transfer worker unavailable: {error}"),
+            json!({
+                "worker_request_id": worker_request_id,
+                "from_owner_id": from_owner_id,
+                "to_owner_id": to_owner_id,
+                "asset": asset.label(),
+                "amount": args.amount,
+            }),
+        );
+    }
+    state.autopilot_chat.record_turn_timeline_event(format!(
+        "treasury transfer queued from={} to={} asset={} amount={} worker_request={}",
+        from_owner_id,
+        to_owner_id,
+        asset.label(),
+        args.amount,
+        worker_request_id
+    ));
+    ToolBridgeResultEnvelope::ok(
+        "OA-TREASURY-TRANSFER-QUEUED",
+        "Treasury transfer queued on off-thread worker",
+        json!({
+            "worker_request_id": worker_request_id,
+            "status": "queued",
+            "async": true,
+            "provider": "blink_infrastructure",
+            "from_owner_id": from_owner_id,
+            "from_wallet_name": from_wallet.agent_name,
+            "to_owner_id": to_owner_id,
+            "to_wallet_name": to_wallet.agent_name,
+            "asset": asset.label(),
+            "amount": args.amount,
+        }),
+    )
+}
+
+fn execute_treasury_convert(
+    state: &mut RenderState,
+    args: &TreasuryConvertArgs,
+) -> ToolBridgeResultEnvelope {
+    if state.stable_sats_simulation.mode != crate::app_state::StableSatsSimulationMode::RealBlink {
+        return ToolBridgeResultEnvelope::error(
+            "OA-TREASURY-CONVERT-REAL-MODE-REQUIRED",
+            "StableSats treasury convert requires real mode",
+            json!({
+                "mode": state.stable_sats_simulation.mode.label(),
+            }),
+        );
+    }
+    let owner_id = args.owner_id.trim();
+    if owner_id.is_empty() {
+        return ToolBridgeResultEnvelope::error(
+            "OA-TREASURY-CONVERT-MISSING-OWNER",
+            "owner_id is required",
+            json!({ "owner_id": args.owner_id }),
+        );
+    }
+    let direction = match parse_swap_direction(args.direction.as_str()) {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+    let unit = match parse_swap_unit(args.unit.as_str()) {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+    if let Some(error) = validate_direction_unit(direction, unit) {
+        return error;
+    }
+
+    let wallet = match resolve_stablesats_wallet_by_owner(
+        state,
+        owner_id,
+        "OA-TREASURY-CONVERT-OWNER-NOT-FOUND",
+    ) {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+    let env_overrides = match resolve_wallet_blink_env_overrides(state, &wallet) {
+        Ok(value) => value,
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-TREASURY-CONVERT-CREDENTIAL-ERROR",
+                error,
+                json!({
+                    "owner_id": owner_id,
+                    "wallet_name": wallet.agent_name,
+                    "credential_key_name": wallet.credential_key_name,
+                    "credential_url_name": wallet.credential_url_name,
+                }),
+            );
+        }
+    };
+    let swap_quote_script_path =
+        match resolve_blink_swap_script_path(state, BLINK_SWAP_QUOTE_SCRIPT) {
+            Ok(path) => path,
+            Err(error) => {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-TREASURY-CONVERT-BLINK-SCRIPT-MISSING",
+                    error,
+                    json!({ "script": BLINK_SWAP_QUOTE_SCRIPT }),
+                );
+            }
+        };
+    let swap_execute_script_path =
+        match resolve_blink_swap_script_path(state, BLINK_SWAP_EXECUTE_SCRIPT) {
+            Ok(path) => path,
+            Err(error) => {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-TREASURY-CONVERT-BLINK-SCRIPT-MISSING",
+                    error,
+                    json!({ "script": BLINK_SWAP_EXECUTE_SCRIPT }),
+                );
+            }
+        };
+
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    let worker_request_id = state.stable_sats_simulation.reserve_worker_request_id();
+    state
+        .stable_sats_simulation
+        .record_treasury_operation_queued(
+            worker_request_id,
+            crate::app_state::StableSatsTreasuryOperationKind::Convert,
+            now_epoch_seconds,
+            format!(
+                "queued treasury convert owner={} direction={} amount={} {}",
+                owner_id,
+                swap_direction_script_value(direction),
+                args.amount,
+                swap_unit_script_value(unit)
+            ),
+        );
+    let request = crate::stablesats_blink_worker::StableSatsBlinkConvertRequest {
+        request_id: worker_request_id,
+        now_epoch_seconds,
+        owner_id: owner_id.to_string(),
+        wallet_name: wallet.agent_name.clone(),
+        direction: swap_direction_script_value(direction).to_string(),
+        amount: args.amount,
+        unit: swap_unit_script_value(unit).to_string(),
+        memo: args
+            .memo
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
+        env_overrides,
+        swap_execute_script_path,
+        swap_quote_script_path,
+    };
+    if let Err(error) = state.stable_sats_blink_worker.enqueue_convert(request) {
+        state
+            .stable_sats_simulation
+            .record_treasury_operation_finished(
+                worker_request_id,
+                crate::app_state::StableSatsTreasuryOperationKind::Convert,
+                crate::app_state::StableSatsTreasuryOperationStatus::Failed,
+                now_epoch_seconds,
+                format!("treasury convert enqueue failed: {error}"),
+            );
+        return ToolBridgeResultEnvelope::error(
+            "OA-TREASURY-CONVERT-WORKER-UNAVAILABLE",
+            format!("Treasury convert worker unavailable: {error}"),
+            json!({
+                "worker_request_id": worker_request_id,
+                "owner_id": owner_id,
+                "direction": swap_direction_script_value(direction),
+                "amount": args.amount,
+                "unit": swap_unit_script_value(unit),
+            }),
+        );
+    }
+    state.autopilot_chat.record_turn_timeline_event(format!(
+        "treasury convert queued owner={} direction={} amount={} {} worker_request={}",
+        owner_id,
+        swap_direction_script_value(direction),
+        args.amount,
+        swap_unit_script_value(unit),
+        worker_request_id
+    ));
+    ToolBridgeResultEnvelope::ok(
+        "OA-TREASURY-CONVERT-QUEUED",
+        "Treasury convert queued on off-thread worker",
+        json!({
+            "worker_request_id": worker_request_id,
+            "status": "queued",
+            "async": true,
+            "provider": "blink_infrastructure",
+            "owner_id": owner_id,
+            "wallet_name": wallet.agent_name,
+            "direction": swap_direction_script_value(direction),
+            "amount": args.amount,
+            "unit": swap_unit_script_value(unit),
+        }),
+    )
+}
+
+fn execute_treasury_receipt(
+    state: &RenderState,
+    args: &TreasuryReceiptArgs,
+) -> ToolBridgeResultEnvelope {
+    if let Some(receipt) = state
+        .stable_sats_simulation
+        .treasury_receipts
+        .iter()
+        .rev()
+        .find(|entry| entry.request_id == args.worker_request_id)
+    {
+        return ToolBridgeResultEnvelope::ok(
+            "OA-TREASURY-RECEIPT-FOUND",
+            "Treasury receipt resolved",
+            json!({
+                "worker_request_id": args.worker_request_id,
+                "status": "completed",
+                "kind": receipt.kind.label(),
+                "occurred_at_epoch_seconds": receipt.occurred_at_epoch_seconds,
+                "receipt": receipt.payload,
+            }),
+        );
+    }
+
+    if let Some(operation) = state
+        .stable_sats_simulation
+        .treasury_operations
+        .iter()
+        .rev()
+        .find(|entry| entry.request_id == args.worker_request_id)
+    {
+        return ToolBridgeResultEnvelope::ok(
+            "OA-TREASURY-RECEIPT-PENDING",
+            "Treasury operation is known but has no receipt payload yet",
+            json!({
+                "worker_request_id": args.worker_request_id,
+                "status": operation.status.label(),
+                "kind": operation.kind.label(),
+                "detail": operation.detail,
+                "updated_at_epoch_seconds": operation.updated_at_epoch_seconds,
+            }),
+        );
+    }
+
+    ToolBridgeResultEnvelope::error(
+        "OA-TREASURY-RECEIPT-NOT-FOUND",
+        format!(
+            "No treasury operation or receipt found for worker request {}",
+            args.worker_request_id
+        ),
+        json!({
+            "worker_request_id": args.worker_request_id,
+            "known_operation_count": state.stable_sats_simulation.treasury_operations.len(),
+            "known_receipt_count": state.stable_sats_simulation.treasury_receipts.len(),
+        }),
+    )
+}
+
+fn execute_goal_scheduler_tool(
+    state: &mut RenderState,
+    args: &GoalSchedulerToolArgs,
+) -> ToolBridgeResultEnvelope {
+    let action = normalize_key(&args.action);
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+
+    match action.as_str() {
+        "status" => {
+            if let Some(goal_id) = args.goal_id.as_deref() {
+                let Some(goal) = state
+                    .autopilot_goals
+                    .document
+                    .active_goals
+                    .iter()
+                    .find(|goal| goal.goal_id == goal_id)
+                else {
+                    return ToolBridgeResultEnvelope::error(
+                        "OA-GOAL-SCHEDULER-GOAL-NOT-FOUND",
+                        format!("Goal '{}' not found", goal_id),
+                        json!({ "goal_id": goal_id }),
+                    );
+                };
+                let reconciliation = state
+                    .goal_loop_executor
+                    .active_run
+                    .as_ref()
+                    .filter(|run| run.goal_id == goal.goal_id)
+                    .map(|run| {
+                        let wallet_total_sats = state
+                            .spark_wallet
+                            .balance
+                            .as_ref()
+                            .map_or(0, spark_total_balance_sats);
+                        reconcile_wallet_events_for_goal(
+                            run.started_at_epoch_seconds,
+                            run.initial_wallet_sats,
+                            wallet_total_sats,
+                            goal.goal_id.as_str(),
+                            &state.job_history,
+                            &state.spark_wallet,
+                            &state.autopilot_goals.document.swap_execution_receipts,
+                        )
+                    });
+                let latest_run_audit = state
+                    .autopilot_goals
+                    .document
+                    .run_audit_receipts
+                    .iter()
+                    .rev()
+                    .find(|audit| audit.goal_id == goal.goal_id)
+                    .cloned();
+                let rollout_gate = state.autopilot_goals.rollout_gate_decision();
+                let rollout_metrics = state.autopilot_goals.rollout_metrics_snapshot();
+                let rollout_health = state.autopilot_goals.rollout_health_report();
+                return ToolBridgeResultEnvelope::ok(
+                    "OA-GOAL-SCHEDULER-STATUS-OK",
+                    "Goal scheduler status read",
+                    json!({
+                        "goal_id": goal.goal_id,
+                        "lifecycle_status": format!("{:?}", goal.lifecycle_status),
+                        "policy": goal.constraints.policy_snapshot(),
+                        "schedule": {
+                            "enabled": goal.schedule.enabled,
+                            "kind": format!("{:?}", goal.schedule.kind),
+                            "next_run_epoch_seconds": goal.schedule.next_run_epoch_seconds,
+                            "last_run_epoch_seconds": goal.schedule.last_run_epoch_seconds,
+                            "missed_run_policy": format!("{:?}", goal.schedule.missed_run_policy),
+                            "pending_catchup_runs": goal.schedule.pending_catchup_runs,
+                            "last_recovery_epoch_seconds": goal.schedule.last_recovery_epoch_seconds,
+                            "os_adapter": {
+                                "enabled": goal.schedule.os_adapter.enabled,
+                                "adapter": goal
+                                    .schedule
+                                    .os_adapter
+                                    .adapter
+                                    .map(|kind| kind.as_str().to_string()),
+                                "descriptor_path": goal.schedule.os_adapter.descriptor_path,
+                                "last_reconciled_epoch_seconds": goal
+                                    .schedule
+                                    .os_adapter
+                                    .last_reconciled_epoch_seconds,
+                                "last_reconcile_result": goal
+                                    .schedule
+                                    .os_adapter
+                                    .last_reconcile_result,
+                            },
+                        },
+                        "reconciliation": reconciliation.as_ref().map(|report| json!({
+                            "wallet_delta_sats_raw": report.wallet_delta_sats_raw,
+                            "wallet_delta_excluding_swaps_sats": report.wallet_delta_excluding_swaps_sats,
+                            "earned_wallet_delta_sats": report.earned_wallet_delta_sats,
+                            "swap_converted_out_sats": report.swap_converted_out_sats,
+                            "swap_converted_in_sats": report.swap_converted_in_sats,
+                            "swap_fee_sats": report.swap_fee_sats,
+                            "non_swap_spend_sats": report.non_swap_spend_sats,
+                            "unattributed_receive_sats": report.unattributed_receive_sats,
+                            "total_swap_cents": report.total_swap_cents,
+                            "events": report.events,
+                        })),
+                        "latest_run_audit": latest_run_audit,
+                        "rollout": {
+                            "config": state.autopilot_goals.document.rollout_config.clone(),
+                            "gate": rollout_gate,
+                            "metrics": rollout_metrics,
+                            "health": rollout_health,
+                        },
+                    }),
+                );
+            }
+
+            let active = state.autopilot_goals.document.active_goals.len();
+            let running = state
+                .autopilot_goals
+                .document
+                .active_goals
+                .iter()
+                .filter(|goal| {
+                    matches!(
+                        goal.lifecycle_status,
+                        crate::state::autopilot_goals::GoalLifecycleStatus::Running
+                    )
+                })
+                .count();
+            let queued = state
+                .autopilot_goals
+                .document
+                .active_goals
+                .iter()
+                .filter(|goal| {
+                    matches!(
+                        goal.lifecycle_status,
+                        crate::state::autopilot_goals::GoalLifecycleStatus::Queued
+                    )
+                })
+                .count();
+            ToolBridgeResultEnvelope::ok(
+                "OA-GOAL-SCHEDULER-STATUS-OK",
+                "Goal scheduler summary read",
+                json!({
+                    "active_goals": active,
+                    "running_goals": running,
+                    "queued_goals": queued,
+                    "last_action": state.autopilot_goals.last_action,
+                    "last_error": state.autopilot_goals.last_error,
+                    "rollout": {
+                        "config": state.autopilot_goals.document.rollout_config.clone(),
+                        "gate": state.autopilot_goals.rollout_gate_decision(),
+                        "metrics": state.autopilot_goals.rollout_metrics_snapshot(),
+                        "health": state.autopilot_goals.rollout_health_report(),
+                    },
+                }),
+            )
+        }
+        "recover_startup" => match state
+            .autopilot_goals
+            .recover_after_restart(now_epoch_seconds)
+        {
+            Ok(report) => {
+                state.goal_restart_recovery_ran = true;
+                let _ = state
+                    .autopilot_goals
+                    .reconcile_os_scheduler_adapters(now_epoch_seconds);
+                ToolBridgeResultEnvelope::ok(
+                    "OA-GOAL-SCHEDULER-RECOVER-OK",
+                    "Executed startup goal recovery sequence",
+                    json!({
+                        "recovered_running_goals": report.recovered_running_goals,
+                        "replay_queued_goals": report.replay_queued_goals,
+                        "skipped_goals": report.skipped_goals,
+                        "catchup_backlog": report.catchup_backlog,
+                    }),
+                )
+            }
+            Err(error) => ToolBridgeResultEnvelope::error(
+                "OA-GOAL-SCHEDULER-RECOVER-FAILED",
+                format!("Goal restart recovery failed: {}", error),
+                json!({ "error": error }),
+            ),
+        },
+        "run_now" => {
+            let Some(goal_id) = args
+                .goal_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            else {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-GOAL-SCHEDULER-MISSING-GOAL",
+                    "run_now requires a non-empty goal_id",
+                    json!({ "action": args.action }),
+                );
+            };
+            match state
+                .autopilot_goals
+                .schedule_goal_run_now(goal_id, now_epoch_seconds)
+            {
+                Ok(()) => ToolBridgeResultEnvelope::ok(
+                    "OA-GOAL-SCHEDULER-RUN-NOW-OK",
+                    "Scheduled immediate goal run",
+                    json!({ "goal_id": goal_id, "scheduled_at_epoch_seconds": now_epoch_seconds }),
+                ),
+                Err(error) => ToolBridgeResultEnvelope::error(
+                    "OA-GOAL-SCHEDULER-RUN-NOW-FAILED",
+                    format!("Failed to schedule immediate run: {}", error),
+                    json!({ "goal_id": goal_id, "error": error }),
+                ),
+            }
+        }
+        "set_missed_policy" => {
+            let Some(goal_id) = args
+                .goal_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            else {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-GOAL-SCHEDULER-MISSING-GOAL",
+                    "set_missed_policy requires a non-empty goal_id",
+                    json!({ "action": args.action }),
+                );
+            };
+            let Some(policy_raw) = args.missed_run_policy.as_deref() else {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-GOAL-SCHEDULER-MISSING-POLICY",
+                    "set_missed_policy requires missed_run_policy",
+                    json!({ "goal_id": goal_id }),
+                );
+            };
+            let Some(policy) = parse_goal_missed_run_policy(policy_raw) else {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-GOAL-SCHEDULER-INVALID-POLICY",
+                    "missed_run_policy must be catch_up, skip, or single_replay",
+                    json!({ "goal_id": goal_id, "missed_run_policy": policy_raw }),
+                );
+            };
+            match state.autopilot_goals.set_goal_missed_run_policy(
+                goal_id,
+                policy,
+                now_epoch_seconds,
+            ) {
+                Ok(()) => ToolBridgeResultEnvelope::ok(
+                    "OA-GOAL-SCHEDULER-POLICY-OK",
+                    "Updated missed-run policy",
+                    json!({
+                        "goal_id": goal_id,
+                        "missed_run_policy": policy_raw,
+                    }),
+                ),
+                Err(error) => ToolBridgeResultEnvelope::error(
+                    "OA-GOAL-SCHEDULER-POLICY-FAILED",
+                    format!("Failed to set missed-run policy: {}", error),
+                    json!({ "goal_id": goal_id, "error": error }),
+                ),
+            }
+        }
+        "set_kill_switch" => {
+            let Some(goal_id) = args
+                .goal_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            else {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-GOAL-SCHEDULER-MISSING-GOAL",
+                    "set_kill_switch requires a non-empty goal_id",
+                    json!({ "action": args.action }),
+                );
+            };
+            let Some(active) = args.kill_switch_active else {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-GOAL-SCHEDULER-MISSING-KILL-SWITCH",
+                    "set_kill_switch requires kill_switch_active=true|false",
+                    json!({ "goal_id": goal_id }),
+                );
+            };
+            match state.autopilot_goals.set_goal_kill_switch(
+                goal_id,
+                active,
+                args.kill_switch_reason.as_deref(),
+                now_epoch_seconds,
+            ) {
+                Ok(()) => ToolBridgeResultEnvelope::ok(
+                    "OA-GOAL-SCHEDULER-KILL-SWITCH-OK",
+                    if active {
+                        "Enabled goal kill switch"
+                    } else {
+                        "Disabled goal kill switch"
+                    },
+                    json!({
+                        "goal_id": goal_id,
+                        "kill_switch_active": active,
+                        "kill_switch_reason": args.kill_switch_reason.clone(),
+                    }),
+                ),
+                Err(error) => ToolBridgeResultEnvelope::error(
+                    "OA-GOAL-SCHEDULER-KILL-SWITCH-FAILED",
+                    format!("Failed updating goal kill switch: {}", error),
+                    json!({ "goal_id": goal_id, "error": error }),
+                ),
+            }
+        }
+        "set_rollout" => {
+            let stage = args
+                .rollout_stage
+                .as_deref()
+                .map(parse_goal_rollout_stage)
+                .transpose();
+            let stage = match stage {
+                Ok(value) => value,
+                Err(error) => {
+                    return ToolBridgeResultEnvelope::error(
+                        "OA-GOAL-SCHEDULER-INVALID-ROLLOUT-STAGE",
+                        error,
+                        json!({
+                            "rollout_stage": args.rollout_stage,
+                        }),
+                    );
+                }
+            };
+
+            let rollback_policy = if args.max_false_success_rate_bps.is_some()
+                || args.max_abort_rate_bps.is_some()
+                || args.max_error_rate_bps.is_some()
+                || args.max_avg_payout_confirm_latency_seconds.is_some()
+            {
+                let existing = state
+                    .autopilot_goals
+                    .document
+                    .rollout_config
+                    .rollback_policy
+                    .clone();
+                Some(GoalRolloutRollbackPolicy {
+                    max_false_success_rate_bps: args
+                        .max_false_success_rate_bps
+                        .unwrap_or(existing.max_false_success_rate_bps),
+                    max_abort_rate_bps: args
+                        .max_abort_rate_bps
+                        .unwrap_or(existing.max_abort_rate_bps),
+                    max_error_rate_bps: args
+                        .max_error_rate_bps
+                        .unwrap_or(existing.max_error_rate_bps),
+                    max_avg_payout_confirm_latency_seconds: args
+                        .max_avg_payout_confirm_latency_seconds
+                        .unwrap_or(existing.max_avg_payout_confirm_latency_seconds),
+                })
+            } else {
+                None
+            };
+
+            let hardening_checklist =
+                if args.hardening_authoritative_payout_gate_validated.is_some()
+                    || args.hardening_scheduler_recovery_drills_validated.is_some()
+                    || args.hardening_swap_risk_alerting_validated.is_some()
+                    || args.hardening_incident_runbook_validated.is_some()
+                    || args.hardening_test_matrix_gate_green.is_some()
+                {
+                    let existing = state
+                        .autopilot_goals
+                        .document
+                        .rollout_config
+                        .hardening_checklist
+                        .clone();
+                    Some(GoalRolloutHardeningChecklist {
+                        authoritative_payout_gate_validated: args
+                            .hardening_authoritative_payout_gate_validated
+                            .unwrap_or(existing.authoritative_payout_gate_validated),
+                        scheduler_recovery_drills_validated: args
+                            .hardening_scheduler_recovery_drills_validated
+                            .unwrap_or(existing.scheduler_recovery_drills_validated),
+                        swap_risk_alerting_validated: args
+                            .hardening_swap_risk_alerting_validated
+                            .unwrap_or(existing.swap_risk_alerting_validated),
+                        incident_runbook_validated: args
+                            .hardening_incident_runbook_validated
+                            .unwrap_or(existing.incident_runbook_validated),
+                        test_matrix_gate_green: args
+                            .hardening_test_matrix_gate_green
+                            .unwrap_or(existing.test_matrix_gate_green),
+                    })
+                } else {
+                    None
+                };
+
+            match state.autopilot_goals.update_rollout_config(
+                args.rollout_enabled,
+                stage,
+                args.rollout_cohorts.clone(),
+                rollback_policy,
+                hardening_checklist,
+                now_epoch_seconds,
+            ) {
+                Ok(()) => ToolBridgeResultEnvelope::ok(
+                    "OA-GOAL-SCHEDULER-ROLLOUT-OK",
+                    "Updated goal rollout configuration",
+                    json!({
+                        "rollout_config": state.autopilot_goals.document.rollout_config.clone(),
+                        "rollout_gate": state.autopilot_goals.rollout_gate_decision(),
+                        "rollout_metrics": state.autopilot_goals.rollout_metrics_snapshot(),
+                        "rollout_health": state.autopilot_goals.rollout_health_report(),
+                    }),
+                ),
+                Err(error) => ToolBridgeResultEnvelope::error(
+                    "OA-GOAL-SCHEDULER-ROLLOUT-FAILED",
+                    format!("Failed updating rollout configuration: {}", error),
+                    json!({ "error": error }),
+                ),
+            }
+        }
+        "toggle_os_adapter" => {
+            let Some(goal_id) = args
+                .goal_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            else {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-GOAL-SCHEDULER-MISSING-GOAL",
+                    "toggle_os_adapter requires a non-empty goal_id",
+                    json!({ "action": args.action }),
+                );
+            };
+            let goal = state
+                .autopilot_goals
+                .document
+                .active_goals
+                .iter()
+                .find(|goal| goal.goal_id == goal_id);
+            let Some(goal) = goal else {
+                return ToolBridgeResultEnvelope::error(
+                    "OA-GOAL-SCHEDULER-GOAL-NOT-FOUND",
+                    format!("Goal '{}' not found", goal_id),
+                    json!({ "goal_id": goal_id }),
+                );
+            };
+            let enable = !goal.schedule.os_adapter.enabled;
+            let adapter = if enable {
+                goal.schedule
+                    .os_adapter
+                    .adapter
+                    .or_else(preferred_adapter_for_host)
+                    .or(Some(OsSchedulerAdapterKind::Cron))
+            } else {
+                goal.schedule
+                    .os_adapter
+                    .adapter
+                    .or(Some(OsSchedulerAdapterKind::Cron))
+            };
+            match state.autopilot_goals.set_goal_os_scheduler_adapter(
+                goal_id,
+                enable,
+                adapter,
+                now_epoch_seconds,
+            ) {
+                Ok(()) => ToolBridgeResultEnvelope::ok(
+                    "OA-GOAL-SCHEDULER-OS-ADAPTER-OK",
+                    if enable {
+                        "Enabled OS scheduler adapter"
+                    } else {
+                        "Disabled OS scheduler adapter"
+                    },
+                    json!({
+                        "goal_id": goal_id,
+                        "enabled": enable,
+                        "adapter": adapter.map(|kind| kind.as_str().to_string()),
+                    }),
+                ),
+                Err(error) => ToolBridgeResultEnvelope::error(
+                    "OA-GOAL-SCHEDULER-OS-ADAPTER-FAILED",
+                    format!("Failed to toggle OS scheduler adapter: {}", error),
+                    json!({ "goal_id": goal_id, "error": error }),
+                ),
+            }
+        }
+        "reconcile_os_adapters" => match state
+            .autopilot_goals
+            .reconcile_os_scheduler_adapters(now_epoch_seconds)
+        {
+            Ok(reconciled_goal_ids) => ToolBridgeResultEnvelope::ok(
+                "OA-GOAL-SCHEDULER-RECONCILE-OK",
+                "Reconciled enabled OS scheduler adapters",
+                json!({
+                    "reconciled_goal_ids": reconciled_goal_ids,
+                }),
+            ),
+            Err(error) => ToolBridgeResultEnvelope::error(
+                "OA-GOAL-SCHEDULER-RECONCILE-FAILED",
+                format!("OS scheduler reconcile failed: {}", error),
+                json!({ "error": error }),
+            ),
+        },
+        _ => ToolBridgeResultEnvelope::error(
+            "OA-GOAL-SCHEDULER-ACTION-UNSUPPORTED",
+            format!(
+                "Unsupported goal scheduler action '{}'. Allowed: status, recover_startup, run_now, set_missed_policy, set_kill_switch, set_rollout, toggle_os_adapter, reconcile_os_adapters",
+                args.action
+            ),
+            json!({ "action": args.action }),
+        ),
+    }
+}
+
+fn execute_wallet_check_tool(
+    state: &RenderState,
+    args: &WalletCheckArgs,
+) -> ToolBridgeResultEnvelope {
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    let window_seconds = args.window_seconds.unwrap_or(86_400).clamp(60, 2_592_000);
+    let cutoff = now_epoch_seconds.saturating_sub(window_seconds);
+
+    let payments = state
+        .spark_wallet
+        .recent_payments
+        .iter()
+        .filter(|payment| {
+            payment.timestamp >= cutoff && payment.status.eq_ignore_ascii_case("succeeded")
+        })
+        .collect::<Vec<_>>();
+    let sent_sats = payments
+        .iter()
+        .filter(|payment| payment.direction.eq_ignore_ascii_case("send"))
+        .fold(0u64, |acc, payment| {
+            acc.saturating_add(payment.amount_sats.max(0) as u64)
+        });
+    let received_sats = payments
+        .iter()
+        .filter(|payment| payment.direction.eq_ignore_ascii_case("receive"))
+        .fold(0u64, |acc, payment| {
+            acc.saturating_add(payment.amount_sats.max(0) as u64)
+        });
+
+    let payment_rows = if args.include_payments {
+        payments
+            .iter()
+            .take(50)
+            .map(|payment| {
+                json!({
+                    "id": payment.id,
+                    "direction": payment.direction,
+                    "status": payment.status,
+                    "amount_sats": payment.amount_sats,
+                    "timestamp": payment.timestamp,
+                })
+            })
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+
+    ToolBridgeResultEnvelope::ok(
+        "OA-WALLET-CHECK-OK",
+        "Read wallet status and bounded payment summary",
+        json!({
+            "network": format!("{:?}", state.spark_wallet.network),
+            "network_status_present": state.spark_wallet.network_status.is_some(),
+            "balance_sats": state
+                .spark_wallet
+                .balance
+                .as_ref()
+                .map(spark_total_balance_sats),
+            "window_seconds": window_seconds,
+            "payment_summary": {
+                "count": payments.len(),
+                "sent_sats": sent_sats,
+                "received_sats": received_sats,
+            },
+            "payments": payment_rows,
+            "last_error": state.spark_wallet.last_error,
+            "last_action": state.spark_wallet.last_action,
+        }),
+    )
+}
+
+fn execute_provider_control_tool(
+    state: &mut RenderState,
+    args: &ProviderControlArgs,
+) -> ToolBridgeResultEnvelope {
+    let action = normalize_key(&args.action);
+    match action.as_str() {
+        "status" => ToolBridgeResultEnvelope::ok(
+            "OA-PROVIDER-CONTROL-STATUS-OK",
+            "Read provider runtime status",
+            json!({
+                "mode": state.provider_runtime.mode.label(),
+                "degraded_reason_code": state.provider_runtime.degraded_reason_code,
+                "queue_depth": state.provider_runtime.queue_depth,
+                "runner_online": matches!(state.provider_runtime.mode, crate::app_state::ProviderMode::Online),
+                "heartbeat_seconds": state.sa_lane.heartbeat_seconds,
+                "last_result": state.provider_runtime.last_result,
+                "last_error_detail": state.provider_runtime.last_error_detail,
+            }),
+        ),
+        "set_online" | "set_offline" => {
+            let online = action == "set_online";
+            if online {
+                let _ = state.spark_worker.enqueue(SparkWalletCommand::Refresh);
+            }
+            match state.queue_sa_command(SaLifecycleCommand::SetRunnerOnline { online }) {
+                Ok(command_seq) => ToolBridgeResultEnvelope::ok(
+                    "OA-PROVIDER-CONTROL-SET-ONLINE-QUEUED",
+                    if online {
+                        "Queued provider online transition"
+                    } else {
+                        "Queued provider offline transition"
+                    },
+                    json!({
+                        "online": online,
+                        "command_seq": command_seq,
+                    }),
+                ),
+                Err(error) => ToolBridgeResultEnvelope::error(
+                    "OA-PROVIDER-CONTROL-SET-ONLINE-FAILED",
+                    format!("Failed queuing provider state transition: {}", error),
+                    json!({
+                        "online": online,
+                        "error": error,
+                    }),
+                ),
+            }
+        }
+        "refresh_wallet" => match state.spark_worker.enqueue(SparkWalletCommand::Refresh) {
+            Ok(()) => ToolBridgeResultEnvelope::ok(
+                "OA-PROVIDER-CONTROL-WALLET-REFRESH-QUEUED",
+                "Queued wallet refresh",
+                json!({ "queued": true }),
+            ),
+            Err(error) => ToolBridgeResultEnvelope::error(
+                "OA-PROVIDER-CONTROL-WALLET-REFRESH-FAILED",
+                format!("Failed queuing wallet refresh: {}", error),
+                json!({ "queued": false, "error": error }),
+            ),
+        },
+        _ => ToolBridgeResultEnvelope::error(
+            "OA-PROVIDER-CONTROL-ACTION-UNSUPPORTED",
+            format!(
+                "Unsupported provider control action '{}'. Allowed: status, set_online, set_offline, refresh_wallet",
+                args.action
+            ),
+            json!({ "action": args.action }),
+        ),
+    }
+}
+
+fn parse_treasury_transfer_asset(
+    raw: &str,
+) -> Result<crate::stablesats_blink_worker::StableSatsBlinkTransferAsset, ToolBridgeResultEnvelope>
+{
+    match normalize_key(raw).as_str() {
+        "btc_sats" | "btc" | "sats" | "sat" => {
+            Ok(crate::stablesats_blink_worker::StableSatsBlinkTransferAsset::BtcSats)
+        }
+        "usd_cents" | "usd" | "cents" | "cent" => {
+            Ok(crate::stablesats_blink_worker::StableSatsBlinkTransferAsset::UsdCents)
+        }
+        _ => Err(ToolBridgeResultEnvelope::error(
+            "OA-TREASURY-TRANSFER-INVALID-ASSET",
+            format!("Unsupported treasury transfer asset '{}'", raw),
+            json!({
+                "asset": raw,
+                "supported": ["btc_sats", "usd_cents"],
+            }),
+        )),
+    }
+}
+
+fn resolve_stablesats_wallet_by_owner(
+    state: &RenderState,
+    owner_id: &str,
+    error_code: &str,
+) -> Result<crate::app_state::StableSatsAgentWalletState, ToolBridgeResultEnvelope> {
+    state
+        .stable_sats_simulation
+        .agents
+        .iter()
+        .find(|wallet| wallet.owner_id == owner_id)
+        .cloned()
+        .ok_or_else(|| {
+            ToolBridgeResultEnvelope::error(
+                error_code,
+                format!("StableSats wallet owner '{}' not configured", owner_id),
+                json!({
+                    "owner_id": owner_id,
+                    "known_owner_ids": state
+                        .stable_sats_simulation
+                        .agents
+                        .iter()
+                        .map(|wallet| wallet.owner_id.clone())
+                        .collect::<Vec<_>>(),
+                }),
+            )
+        })
+}
+
+fn ensure_wallet_credential_slot_enabled(
+    entries: &[crate::credentials::CredentialRecord],
+    credential_name: &str,
+) -> Result<(), String> {
+    let normalized = crate::credentials::normalize_env_var_name(credential_name);
+    let Some(entry) = entries.iter().find(|entry| entry.name == normalized) else {
+        return Err(format!(
+            "Credential slot {} is missing from credential manager",
+            normalized
+        ));
+    };
+    if !entry.enabled {
+        return Err(format!("Credential slot {} is disabled", normalized));
+    }
+    Ok(())
+}
+
+fn has_enabled_credential_slot(
+    entries: &[crate::credentials::CredentialRecord],
+    credential_name: &str,
+) -> bool {
+    let normalized = crate::credentials::normalize_env_var_name(credential_name);
+    entries
+        .iter()
+        .any(|entry| entry.name == normalized && entry.enabled)
+}
+
+fn resolve_wallet_blink_env_overrides(
+    state: &RenderState,
+    wallet: &crate::app_state::StableSatsAgentWalletState,
+) -> Result<Vec<(String, String)>, String> {
+    let entries = state.credentials.entries.as_slice();
+    ensure_wallet_credential_slot_enabled(entries, wallet.credential_key_name.as_str())?;
+
+    let api_key = state
+        .credentials
+        .read_secure_value(wallet.credential_key_name.as_str())
+        .map_err(|error| {
+            format!(
+                "{} secure credential read failed for {}: {error}",
+                wallet.agent_name, wallet.credential_key_name
+            )
+        })?
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            format!(
+                "{} missing secure value for {}",
+                wallet.agent_name, wallet.credential_key_name
+            )
+        })?;
+    let mut env_overrides = vec![("BLINK_API_KEY".to_string(), api_key)];
+
+    if let Some(url_name) = wallet.credential_url_name.as_deref()
+        && has_enabled_credential_slot(entries, url_name)
+        && let Some(url) = state
+            .credentials
+            .read_secure_value(url_name)
+            .map_err(|error| {
+                format!(
+                    "{} secure credential read failed for {}: {error}",
+                    wallet.agent_name, url_name
+                )
+            })?
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+    {
+        env_overrides.push(("BLINK_API_URL".to_string(), url));
+    }
+
+    Ok(env_overrides)
+}
+
+fn parse_goal_missed_run_policy(raw: &str) -> Option<GoalMissedRunPolicy> {
+    match normalize_key(raw).as_str() {
+        "catch_up" | "catchup" => Some(GoalMissedRunPolicy::CatchUp),
+        "skip" => Some(GoalMissedRunPolicy::Skip),
+        "single_replay" | "single" => Some(GoalMissedRunPolicy::SingleReplay),
+        _ => None,
+    }
+}
+
+fn parse_goal_rollout_stage(raw: &str) -> Result<GoalRolloutStage, String> {
+    match normalize_key(raw).as_str() {
+        "disabled" => Ok(GoalRolloutStage::Disabled),
+        "internal_dogfood" | "internal" | "dogfood" => Ok(GoalRolloutStage::InternalDogfood),
+        "canary" => Ok(GoalRolloutStage::Canary),
+        "general_availability" | "ga" | "general" => Ok(GoalRolloutStage::GeneralAvailability),
+        _ => Err(
+            "rollout_stage must be disabled, internal_dogfood, canary, or general_availability"
+                .to_string(),
+        ),
+    }
+}
+
+fn parse_swap_direction(direction: &str) -> Result<SwapDirection, ToolBridgeResultEnvelope> {
+    match normalize_key(direction).as_str() {
+        "btc_to_usd" | "sell_btc" | "buy_usd" => Ok(SwapDirection::BtcToUsd),
+        "usd_to_btc" | "sell_usd" | "buy_btc" => Ok(SwapDirection::UsdToBtc),
+        _ => Err(ToolBridgeResultEnvelope::error(
+            "OA-SWAP-QUOTE-INVALID-DIRECTION",
+            format!("Unsupported swap direction '{}'", direction),
+            json!({
+                "direction": direction,
+                "supported": ["btc_to_usd", "usd_to_btc"],
+            }),
+        )),
+    }
+}
+
+fn parse_swap_unit(unit: &str) -> Result<SwapAmountUnit, ToolBridgeResultEnvelope> {
+    match normalize_key(unit).as_str() {
+        "sats" | "sat" => Ok(SwapAmountUnit::Sats),
+        "cents" | "cent" | "usd_cents" => Ok(SwapAmountUnit::Cents),
+        _ => Err(ToolBridgeResultEnvelope::error(
+            "OA-SWAP-QUOTE-INVALID-UNIT",
+            format!("Unsupported swap unit '{}'", unit),
+            json!({
+                "unit": unit,
+                "supported": ["sats", "cents"],
+            }),
+        )),
+    }
+}
+
+fn validate_direction_unit(
+    direction: SwapDirection,
+    unit: SwapAmountUnit,
+) -> Option<ToolBridgeResultEnvelope> {
+    match (direction, unit) {
+        (SwapDirection::BtcToUsd, SwapAmountUnit::Sats)
+        | (SwapDirection::UsdToBtc, SwapAmountUnit::Cents) => None,
+        _ => Some(ToolBridgeResultEnvelope::error(
+            "OA-SWAP-QUOTE-UNIT-MISMATCH",
+            "For controlled tool path, BTC->USD requires sats and USD->BTC requires cents",
+            json!({
+                "direction": format!("{:?}", direction),
+                "unit": match unit {
+                    SwapAmountUnit::Sats => "sats",
+                    SwapAmountUnit::Cents => "cents",
+                },
+            }),
+        )),
+    }
+}
+
+fn swap_direction_script_value(direction: SwapDirection) -> &'static str {
+    match direction {
+        SwapDirection::BtcToUsd => "btc-to-usd",
+        SwapDirection::UsdToBtc => "usd-to-btc",
+    }
+}
+
+fn swap_unit_script_value(unit: SwapAmountUnit) -> &'static str {
+    match unit {
+        SwapAmountUnit::Sats => "sats",
+        SwapAmountUnit::Cents => "cents",
+    }
+}
+
+fn resolve_blink_swap_script_path(
+    state: &RenderState,
+    script_name: &str,
+) -> Result<PathBuf, String> {
+    let cwd = std::env::current_dir().ok();
+    let candidates = blink_swap_script_candidates(
+        &state.skill_registry.discovered_skills,
+        state.skill_registry.repo_skills_root.as_deref(),
+        cwd.as_deref(),
+        script_name,
+    );
+    select_existing_blink_swap_script_path(candidates, script_name)
+}
+
+fn resolve_swap_runtime_env_overrides(state: &RenderState) -> Vec<(String, String)> {
+    if let Some(operator_wallet) =
+        state.stable_sats_simulation.agents.iter().find(|wallet| {
+            wallet.owner_kind == crate::app_state::StableSatsWalletOwnerKind::Operator
+        })
+    {
+        let mut overrides = Vec::<(String, String)>::new();
+        if let Ok(Some(api_key)) = state
+            .credentials
+            .read_secure_value(operator_wallet.credential_key_name.as_str())
+        {
+            let trimmed = api_key.trim();
+            if !trimmed.is_empty() {
+                overrides.push(("BLINK_API_KEY".to_string(), trimmed.to_string()));
+            }
+        }
+        if let Some(url_name) = operator_wallet.credential_url_name.as_deref()
+            && let Ok(Some(api_url)) = state.credentials.read_secure_value(url_name)
+        {
+            let trimmed = api_url.trim();
+            if !trimmed.is_empty() {
+                overrides.push(("BLINK_API_URL".to_string(), trimmed.to_string()));
+            }
+        }
+        if !overrides.is_empty() {
+            return overrides;
+        }
+    }
+
+    let scope = crate::credentials::CREDENTIAL_SCOPE_SKILLS
+        | crate::credentials::CREDENTIAL_SCOPE_CODEX
+        | crate::credentials::CREDENTIAL_SCOPE_GLOBAL;
+    state
+        .credentials
+        .resolve_env_for_scope(scope)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|(name, value)| {
+            !value.trim().is_empty()
+                && (name.eq_ignore_ascii_case("BLINK_API_KEY")
+                    || name.eq_ignore_ascii_case("BLINK_API_URL"))
+        })
+        .collect()
+}
+
+fn blink_swap_script_candidates(
+    discovered_skills: &[SkillRegistryDiscoveredSkill],
+    repo_skills_root: Option<&str>,
+    cwd: Option<&Path>,
+    script_name: &str,
+) -> BTreeSet<PathBuf> {
+    let mut candidates = BTreeSet::<PathBuf>::new();
+    for skill in discovered_skills
+        .iter()
+        .filter(|skill| skill.enabled && skill.name.eq_ignore_ascii_case(BLINK_SKILL_NAME))
+    {
+        let skill_root = normalize_skill_root_path(skill.path.as_str());
+        if let Some(skill_root) = skill_root {
+            candidates.insert(skill_root.join("scripts").join(script_name));
+        }
+    }
+    if let Some(repo_skills_root) = repo_skills_root {
+        candidates.insert(
+            PathBuf::from(repo_skills_root)
+                .join(BLINK_SKILL_NAME)
+                .join("scripts")
+                .join(script_name),
+        );
+    }
+    if let Some(cwd) = cwd {
+        candidates.insert(
+            cwd.join("skills")
+                .join(BLINK_SKILL_NAME)
+                .join("scripts")
+                .join(script_name),
+        );
+    }
+    candidates
+}
+
+fn normalize_skill_root_path(raw_skill_path: &str) -> Option<PathBuf> {
+    let skill_path = PathBuf::from(raw_skill_path.trim());
+    if skill_path
+        .file_name()
+        .map(|file_name| file_name.to_string_lossy().eq_ignore_ascii_case("SKILL.md"))
+        .unwrap_or(false)
+    {
+        return skill_path.parent().map(Path::to_path_buf);
+    }
+    if skill_path.is_dir() {
+        return Some(skill_path);
+    }
+    skill_path.parent().map(Path::to_path_buf)
+}
+
+fn select_existing_blink_swap_script_path(
+    candidates: BTreeSet<PathBuf>,
+    script_name: &str,
+) -> Result<PathBuf, String> {
+    candidates
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+        .ok_or_else(|| {
+            format!(
+                "Unable to locate Blink swap script '{}'. Ensure skills/blink is discovered and available.",
+                script_name
+            )
+        })
+}
+
+fn run_blink_swap_script_json(
+    script_path: &Path,
+    args: &[String],
+) -> Result<serde_json::Value, String> {
+    let mut command = Command::new("node");
+    command.arg(script_path);
+    command.args(args);
+    let output = command.output().map_err(|error| {
+        format!(
+            "Failed launching node for Blink script {}: {error}",
+            script_path.display()
+        )
+    })?;
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if !output.status.success() {
+        let status = output.status.code().map_or_else(
+            || "signal".to_string(),
+            |value| format!("exit_code={value}"),
+        );
+        let details = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            "no output".to_string()
+        };
+        return Err(format!(
+            "Blink script {} failed ({status}): {details}",
+            script_path.display()
+        ));
+    }
+    if stdout.is_empty() {
+        return Err(format!(
+            "Blink script {} returned empty stdout",
+            script_path.display()
+        ));
+    }
+    serde_json::from_str::<serde_json::Value>(&stdout).map_err(|error| {
+        format!(
+            "Blink script {} returned non-JSON stdout: {error}",
+            script_path.display()
+        )
+    })
+}
+
+fn parse_blink_swap_direction(raw: &str) -> Result<SwapDirection, String> {
+    match normalize_key(raw).as_str() {
+        "btc_to_usd" => Ok(SwapDirection::BtcToUsd),
+        "usd_to_btc" => Ok(SwapDirection::UsdToBtc),
+        _ => Err(format!("Unsupported Blink swap direction '{raw}'")),
+    }
+}
+
+fn parse_blink_swap_unit(raw: &str) -> Result<SwapAmountUnit, String> {
+    match normalize_key(raw).as_str() {
+        "sats" | "sat" => Ok(SwapAmountUnit::Sats),
+        "cents" | "cent" => Ok(SwapAmountUnit::Cents),
+        _ => Err(format!("Unsupported Blink swap unit '{raw}'")),
+    }
+}
+
+fn map_blink_quote_terms(quote: BlinkSwapQuoteTerms) -> Result<SwapQuoteTerms, String> {
+    let direction = parse_blink_swap_direction(&quote.direction)?;
+    let amount_in_unit = parse_blink_swap_unit(&quote.amount_in.unit)?;
+    let amount_out_unit = parse_blink_swap_unit(&quote.amount_out.unit)?;
+    Ok(SwapQuoteTerms {
+        quote_id: quote.quote_id,
+        direction,
+        amount_in: SwapAmount {
+            amount: quote.amount_in.value,
+            unit: amount_in_unit,
+        },
+        amount_out: SwapAmount {
+            amount: quote.amount_out.value,
+            unit: amount_out_unit,
+        },
+        expires_at_epoch_seconds: quote.expires_at_epoch_seconds,
+        immediate_execution: quote.immediate_execution,
+        fee_sats: quote.fee_sats,
+        fee_bps: quote.fee_bps,
+        slippage_bps: quote.slippage_bps,
+    })
+}
+
+fn parse_blink_quote_terms_from_json(raw: serde_json::Value) -> Result<SwapQuoteTerms, String> {
+    let envelope = serde_json::from_value::<BlinkSwapQuoteEnvelope>(raw)
+        .map_err(|error| format!("Invalid Blink quote payload: {error}"))?;
+    if !envelope.event.eq_ignore_ascii_case("swap_quote") {
+        return Err(format!("Unexpected Blink quote event '{}'", envelope.event));
+    }
+    map_blink_quote_terms(envelope.quote)
+}
+
+fn parse_blink_execution_payload_from_json(
+    raw: serde_json::Value,
+) -> Result<BlinkSwapExecutionEnvelope, String> {
+    let envelope = serde_json::from_value::<BlinkSwapExecutionEnvelope>(raw)
+        .map_err(|error| format!("Invalid Blink execution payload: {error}"))?;
+    if !envelope.event.eq_ignore_ascii_case("swap_execution") {
+        return Err(format!(
+            "Unexpected Blink execution event '{}'",
+            envelope.event
+        ));
+    }
+    Ok(envelope)
+}
+
+fn map_blink_execution_status(status: &str) -> Result<SwapExecutionStatus, String> {
+    match status.trim().to_ascii_uppercase().as_str() {
+        "SUCCESS" => Ok(SwapExecutionStatus::Success),
+        "FAILURE" => Ok(SwapExecutionStatus::Failure),
+        "PENDING" => Ok(SwapExecutionStatus::Pending),
+        "ALREADY_PAID" => Ok(SwapExecutionStatus::AlreadyPaid),
+        value => Err(format!("Unsupported Blink execution status '{value}'")),
+    }
+}
+
 fn cad_action_from_key(
     action: &str,
     index: Option<usize>,
@@ -1903,10 +4146,15 @@ fn normalize_key(value: &str) -> String {
 mod tests {
     use super::{
         CAD_CHECKPOINT_SCHEMA_VERSION, CAD_TOOL_RESPONSE_SCHEMA_VERSION,
-        LEGACY_OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_PANE_OPEN, ToolBridgeResultEnvelope,
-        cad_action_from_key, cad_checkpoint_payload, cad_parse_retry_prompt,
-        decode_tool_call_request, normalize_key, pane_action_to_hit_action, pane_kind_key,
-        parse_bool_env_override, resolve_pane_kind,
+        LEGACY_OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_SWAP_QUOTE,
+        OPENAGENTS_TOOL_TREASURY_CONVERT, OPENAGENTS_TOOL_TREASURY_RECEIPT,
+        OPENAGENTS_TOOL_TREASURY_TRANSFER, ToolBridgeResultEnvelope, cad_action_from_key,
+        cad_checkpoint_payload, cad_parse_retry_prompt, decode_tool_call_request, normalize_key,
+        pane_action_to_hit_action, pane_kind_key, parse_blink_execution_payload_from_json,
+        parse_blink_quote_terms_from_json, parse_bool_env_override, parse_goal_rollout_stage,
+        parse_swap_direction, parse_swap_unit, parse_treasury_transfer_asset, resolve_pane_kind,
+        run_blink_swap_script_json, select_existing_blink_swap_script_path,
+        validate_direction_unit,
     };
     use crate::app_state::{
         AutopilotToolCallRequest, CadDemoPaneState, CadDemoWarningState, PaneKind,
@@ -1915,8 +4163,12 @@ mod tests {
         CadDemoPaneAction, PaneHitAction, RelayConnectionsPaneAction, SettingsPaneAction,
     };
     use crate::spark_pane::SparkPaneAction;
+    use crate::state::autopilot_goals::GoalRolloutStage;
+    use crate::state::swap_contract::{SwapAmountUnit, SwapDirection};
     use codex_client::AppServerRequestId;
     use serde::Deserialize;
+    use std::collections::BTreeSet;
+    use std::path::PathBuf;
 
     fn request(tool: &str, arguments: &str) -> AutopilotToolCallRequest {
         AutopilotToolCallRequest {
@@ -1937,6 +4189,14 @@ mod tests {
     fn assert_error(result: Result<super::ToolBridgeRequest, ToolBridgeResultEnvelope>) -> String {
         let error = result.expect_err("expected decode failure");
         error.code
+    }
+
+    fn temp_js_path(test_name: &str) -> PathBuf {
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch time available")
+            .as_nanos();
+        std::env::temp_dir().join(format!("openagents-tool-bridge-{test_name}-{now_nanos}.js"))
     }
 
     #[test]
@@ -2214,5 +4474,223 @@ mod tests {
         assert_eq!(parse_bool_env_override("No"), Some(false));
         assert_eq!(parse_bool_env_override("off"), Some(false));
         assert_eq!(parse_bool_env_override("unexpected"), None);
+    }
+
+    #[test]
+    fn parse_goal_rollout_stage_accepts_supported_values() {
+        assert_eq!(
+            parse_goal_rollout_stage("disabled").expect("disabled stage"),
+            GoalRolloutStage::Disabled
+        );
+        assert_eq!(
+            parse_goal_rollout_stage("internal_dogfood").expect("internal stage"),
+            GoalRolloutStage::InternalDogfood
+        );
+        assert_eq!(
+            parse_goal_rollout_stage("canary").expect("canary stage"),
+            GoalRolloutStage::Canary
+        );
+        assert_eq!(
+            parse_goal_rollout_stage("ga").expect("ga stage"),
+            GoalRolloutStage::GeneralAvailability
+        );
+        assert!(parse_goal_rollout_stage("invalid").is_err());
+    }
+
+    #[test]
+    fn swap_quote_tool_is_allowlisted_and_machine_parseable() {
+        let decoded = decode_tool_call_request(&request(
+            OPENAGENTS_TOOL_SWAP_QUOTE,
+            r#"{"goal_id":"goal-swap-quote","request_id":"req-1","direction":"btc_to_usd","amount":2000,"unit":"sats"}"#,
+        ))
+        .expect("swap quote tool should decode");
+        assert_eq!(decoded.tool, OPENAGENTS_TOOL_SWAP_QUOTE);
+    }
+
+    #[test]
+    fn treasury_tools_are_allowlisted_and_machine_parseable() {
+        let transfer = decode_tool_call_request(&request(
+            OPENAGENTS_TOOL_TREASURY_TRANSFER,
+            r#"{"from_owner_id":"operator:autopilot","to_owner_id":"sa:wallet-1","asset":"btc_sats","amount":1500}"#,
+        ))
+        .expect("treasury transfer should decode");
+        assert_eq!(transfer.tool, OPENAGENTS_TOOL_TREASURY_TRANSFER);
+
+        let convert = decode_tool_call_request(&request(
+            OPENAGENTS_TOOL_TREASURY_CONVERT,
+            r#"{"owner_id":"operator:autopilot","direction":"btc-to-usd","amount":2200,"unit":"sats"}"#,
+        ))
+        .expect("treasury convert should decode");
+        assert_eq!(convert.tool, OPENAGENTS_TOOL_TREASURY_CONVERT);
+
+        let receipt = decode_tool_call_request(&request(
+            OPENAGENTS_TOOL_TREASURY_RECEIPT,
+            r#"{"worker_request_id":12}"#,
+        ))
+        .expect("treasury receipt should decode");
+        assert_eq!(receipt.tool, OPENAGENTS_TOOL_TREASURY_RECEIPT);
+    }
+
+    #[test]
+    fn treasury_transfer_asset_parser_accepts_supported_values() {
+        assert_eq!(
+            parse_treasury_transfer_asset("btc_sats").expect("btc asset"),
+            crate::stablesats_blink_worker::StableSatsBlinkTransferAsset::BtcSats
+        );
+        assert_eq!(
+            parse_treasury_transfer_asset("usd_cents").expect("usd asset"),
+            crate::stablesats_blink_worker::StableSatsBlinkTransferAsset::UsdCents
+        );
+        assert!(parse_treasury_transfer_asset("invalid").is_err());
+    }
+
+    #[test]
+    fn swap_direction_and_unit_parsing_is_deterministic() {
+        assert_eq!(
+            parse_swap_direction("btc_to_usd").expect("direction"),
+            SwapDirection::BtcToUsd
+        );
+        assert_eq!(
+            parse_swap_direction("usd-to-btc").expect("direction"),
+            SwapDirection::UsdToBtc
+        );
+        assert_eq!(parse_swap_unit("sats").expect("unit"), SwapAmountUnit::Sats);
+        assert_eq!(
+            parse_swap_unit("cents").expect("unit"),
+            SwapAmountUnit::Cents
+        );
+        assert!(parse_swap_direction("invalid").is_err());
+        assert!(parse_swap_unit("invalid").is_err());
+
+        assert!(validate_direction_unit(SwapDirection::BtcToUsd, SwapAmountUnit::Sats).is_none());
+        assert!(validate_direction_unit(SwapDirection::UsdToBtc, SwapAmountUnit::Cents).is_none());
+        assert!(validate_direction_unit(SwapDirection::BtcToUsd, SwapAmountUnit::Cents).is_some());
+    }
+
+    #[test]
+    fn blink_quote_payload_parsing_maps_swap_terms() {
+        let raw = serde_json::json!({
+            "event": "swap_quote",
+            "quote": {
+                "quoteId": "blink-swap-123",
+                "direction": "BTC_TO_USD",
+                "amountIn": { "value": 2000, "unit": "sats" },
+                "amountOut": { "value": 130, "unit": "cents" },
+                "expiresAtEpochSeconds": 1_800_000_000_u64,
+                "immediateExecution": false,
+                "feeSats": 0,
+                "feeBps": 0,
+                "slippageBps": 0
+            }
+        });
+        let quote = parse_blink_quote_terms_from_json(raw).expect("quote parse should succeed");
+        assert_eq!(quote.quote_id, "blink-swap-123");
+        assert_eq!(quote.direction, SwapDirection::BtcToUsd);
+        assert_eq!(quote.amount_in.amount, 2_000);
+        assert_eq!(quote.amount_in.unit, SwapAmountUnit::Sats);
+        assert_eq!(quote.amount_out.amount, 130);
+        assert_eq!(quote.amount_out.unit, SwapAmountUnit::Cents);
+    }
+
+    #[test]
+    fn blink_execution_payload_parser_rejects_wrong_event() {
+        let raw = serde_json::json!({
+            "event": "not_swap_execution",
+            "status": "SUCCESS",
+            "quote": {
+                "quoteId": "blink-swap-123",
+                "direction": "USD_TO_BTC",
+                "amountIn": { "value": 500, "unit": "cents" },
+                "amountOut": { "value": 7400, "unit": "sats" },
+                "expiresAtEpochSeconds": 1_800_000_000_u64,
+                "immediateExecution": false,
+                "feeSats": 0,
+                "feeBps": 0,
+                "slippageBps": 0
+            }
+        });
+        let error = parse_blink_execution_payload_from_json(raw)
+            .expect_err("non-execution event should be rejected");
+        assert!(error.contains("Unexpected Blink execution event"));
+    }
+
+    #[test]
+    fn blink_script_selection_errors_when_no_candidate_exists() {
+        let error = select_existing_blink_swap_script_path(BTreeSet::new(), "swap_quote.js")
+            .expect_err("missing script should fail");
+        assert!(error.contains("Unable to locate Blink swap script"));
+    }
+
+    #[test]
+    fn blink_script_runner_reports_script_failure() {
+        let path = temp_js_path("script-failure");
+        std::fs::write(
+            &path,
+            r#"
+process.stderr.write("boom\n");
+process.exit(7);
+"#,
+        )
+        .expect("write script");
+
+        let error = run_blink_swap_script_json(&path, &[]).expect_err("script should fail");
+        assert!(error.contains("exit_code=7"));
+        assert!(error.contains("boom"));
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn blink_script_runner_rejects_non_json_stdout() {
+        let path = temp_js_path("non-json");
+        std::fs::write(&path, r#"console.log("not-json");"#).expect("write script");
+
+        let error = run_blink_swap_script_json(&path, &[]).expect_err("non-json should fail");
+        assert!(error.contains("non-JSON stdout"));
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn blink_quote_payload_parser_rejects_missing_required_fields() {
+        let raw = serde_json::json!({
+            "event": "swap_quote",
+            "quote": {
+                "direction": "BTC_TO_USD",
+                "amountIn": { "value": 2000, "unit": "sats" },
+                "amountOut": { "value": 130, "unit": "cents" },
+                "expiresAtEpochSeconds": 1_800_000_000_u64,
+                "immediateExecution": false,
+                "feeSats": 0,
+                "feeBps": 0,
+                "slippageBps": 0
+            }
+        });
+        let error =
+            parse_blink_quote_terms_from_json(raw).expect_err("missing quoteId should be rejected");
+        assert!(error.contains("Invalid Blink quote payload"));
+        assert!(error.contains("quoteId"));
+    }
+
+    #[test]
+    fn blink_execution_payload_parser_rejects_missing_status() {
+        let raw = serde_json::json!({
+            "event": "swap_execution",
+            "quote": {
+                "quoteId": "blink-swap-123",
+                "direction": "USD_TO_BTC",
+                "amountIn": { "value": 500, "unit": "cents" },
+                "amountOut": { "value": 7400, "unit": "sats" },
+                "expiresAtEpochSeconds": 1_800_000_000_u64,
+                "immediateExecution": false,
+                "feeSats": 0,
+                "feeBps": 0,
+                "slippageBps": 0
+            }
+        });
+        let error = parse_blink_execution_payload_from_json(raw)
+            .expect_err("missing status should be rejected");
+        assert!(error.contains("Invalid Blink execution payload"));
+        assert!(error.contains("status"));
     }
 }

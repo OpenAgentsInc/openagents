@@ -19,6 +19,7 @@ mod skill_autoload;
 mod skills_registry;
 mod spark_pane;
 mod spark_wallet;
+mod stablesats_blink_worker;
 mod state;
 
 use anyhow::{Context, Result};

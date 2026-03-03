@@ -42,6 +42,7 @@ use crate::hotbar::{
     HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_SPARK_WALLET, activate_hotbar_slot,
     hotbar_slot_for_key, process_hotbar_clicks,
 };
+use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 use crate::pane_registry::pane_spec_by_command_id;
 use crate::pane_system::{
     ActivityFeedPaneAction, AgentNetworkSimulationPaneAction, AlertsRecoveryPaneAction,
@@ -51,28 +52,13 @@ use crate::pane_system::{
     PaneHitAction, PaneInput, RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction,
     SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StableSatsSimulationPaneAction,
     StarterJobsPaneAction, SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction,
-    cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
-    cad_demo_cycle_variant_button_bounds, cad_demo_dimension_panel_bounds,
-    cad_demo_drawing_add_detail_button_bounds, cad_demo_drawing_clear_details_button_bounds,
-    cad_demo_drawing_dimensions_button_bounds, cad_demo_drawing_direction_button_bounds,
-    cad_demo_drawing_hidden_lines_button_bounds, cad_demo_drawing_mode_button_bounds,
-    cad_demo_drawing_reset_view_button_bounds, cad_demo_hidden_line_mode_button_bounds,
-    cad_demo_hotkey_profile_button_bounds, cad_demo_material_button_bounds,
-    cad_demo_projection_mode_button_bounds, cad_demo_reset_button_bounds,
-    cad_demo_reset_camera_button_bounds, cad_demo_section_offset_button_bounds,
-    cad_demo_section_plane_button_bounds, cad_demo_snap_endpoint_button_bounds,
-    cad_demo_snap_grid_button_bounds, cad_demo_snap_midpoint_button_bounds,
-    cad_demo_snap_origin_button_bounds, cad_demo_timeline_panel_bounds,
-    cad_demo_view_snap_front_button_bounds, cad_demo_view_snap_iso_button_bounds,
-    cad_demo_view_snap_right_button_bounds, cad_demo_view_snap_top_button_bounds,
-    cad_demo_warning_filter_code_button_bounds, cad_demo_warning_filter_severity_button_bounds,
-    cad_demo_warning_panel_bounds, clamp_all_panes_to_window, dispatch_chat_input_event,
-    dispatch_chat_scroll_event, dispatch_create_invoice_input_event,
-    dispatch_credentials_input_event, dispatch_job_history_input_event,
-    dispatch_network_requests_input_event, dispatch_pay_invoice_input_event,
-    dispatch_relay_connections_input_event, dispatch_settings_input_event,
-    dispatch_spark_input_event, pane_content_bounds, pane_indices_by_z_desc,
-    pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
+    cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds, clamp_all_panes_to_window,
+    dispatch_chat_input_event, dispatch_chat_scroll_event,
+    dispatch_create_invoice_input_event, dispatch_credentials_input_event,
+    dispatch_job_history_input_event, dispatch_network_requests_input_event,
+    dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
+    dispatch_settings_input_event, dispatch_spark_input_event, pane_content_bounds,
+    pane_indices_by_z_desc, pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
 };
 use crate::panes::{cad as cad_pane, chat as chat_pane};
 use crate::render::{
@@ -85,6 +71,18 @@ use crate::runtime_lanes::{
 };
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
 use crate::spark_wallet::SparkWalletCommand;
+use crate::state::autopilot_goals::{
+    GoalAttemptAuditReceipt, GoalExecutionReceipt, GoalLifecycleEvent, GoalLifecycleStatus,
+    GoalPayoutEvidence, GoalRunAuditReceipt, GoalToolInvocationAudit,
+};
+use crate::state::goal_conditions::{ConditionEvaluation, GoalProgressSnapshot};
+use crate::state::goal_loop_executor::{
+    ActiveGoalLoopRun, GoalLoopPhase, GoalLoopStopReason, retry_backoff_seconds,
+    select_runnable_goal,
+};
+use crate::state::wallet_reconciliation::{
+    WalletLedgerEventKind, reconcile_wallet_events_for_goal,
+};
 
 mod actions;
 mod cad_turn_classifier;
@@ -420,10 +418,25 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     if reducers::drain_spark_worker_updates(state) {
         changed = true;
     }
+    if reducers::drain_stable_sats_blink_worker_updates(state) {
+        changed = true;
+    }
     if reducers::drain_runtime_lane_updates(state) {
         changed = true;
     }
     if reducers::run_cad_demo_action(state, CadDemoPaneAction::Noop) {
+        changed = true;
+    }
+    if run_goal_restart_recovery(state) {
+        changed = true;
+    }
+    if run_goal_interval_scheduler(state) {
+        changed = true;
+    }
+    if run_autonomous_goal_loop(state) {
+        changed = true;
+    }
+    if reducers::refresh_goal_profile_state(state) {
         changed = true;
     }
     if state.nostr_secret_state.expire(now) {
@@ -448,6 +461,836 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     refresh_sync_health(state);
     mirror_ui_errors_to_console(state);
     changed
+}
+
+fn run_goal_restart_recovery(state: &mut crate::app_state::RenderState) -> bool {
+    if state.goal_restart_recovery_ran {
+        return false;
+    }
+    state.goal_restart_recovery_ran = true;
+
+    let now_epoch_seconds = current_epoch_seconds();
+    match state
+        .autopilot_goals
+        .recover_after_restart(now_epoch_seconds)
+    {
+        Ok(report) => {
+            let _ = state
+                .autopilot_goals
+                .reconcile_os_scheduler_adapters(now_epoch_seconds);
+            let recovered = report.recovered_running_goals.len();
+            let replay = report.replay_queued_goals.len();
+            let skipped = report.skipped_goals.len();
+            if recovered == 0 && replay == 0 && skipped == 0 {
+                return false;
+            }
+            state.autopilot_chat.record_turn_timeline_event(format!(
+                "goal restart recovery recovered_running={} replay={} skipped={}",
+                recovered, replay, skipped
+            ));
+            for (goal_id, missed_runs) in report.catchup_backlog {
+                state.autopilot_chat.record_turn_timeline_event(format!(
+                    "goal restart catchup goal={} missed_runs={}",
+                    goal_id, missed_runs
+                ));
+            }
+            true
+        }
+        Err(error) => {
+            state.autopilot_goals.last_error = Some(error.clone());
+            state
+                .autopilot_chat
+                .record_turn_timeline_event(format!("goal restart recovery error: {}", error));
+            true
+        }
+    }
+}
+
+fn run_goal_interval_scheduler(state: &mut crate::app_state::RenderState) -> bool {
+    let now_epoch_seconds = current_epoch_seconds();
+    match state.autopilot_goals.run_scheduler_tick(now_epoch_seconds) {
+        Ok(triggered_goal_ids) => {
+            if triggered_goal_ids.is_empty() {
+                return false;
+            }
+            state.autopilot_chat.record_turn_timeline_event(format!(
+                "goal interval scheduler triggered: {}",
+                triggered_goal_ids.join(",")
+            ));
+            true
+        }
+        Err(error) => {
+            state.autopilot_goals.last_error = Some(error.clone());
+            state
+                .autopilot_chat
+                .record_turn_timeline_event(format!("goal interval scheduler error: {}", error));
+            true
+        }
+    }
+}
+
+fn run_autonomous_goal_loop(state: &mut crate::app_state::RenderState) -> bool {
+    let now_epoch_seconds = current_epoch_seconds();
+    let wallet_total_sats = state
+        .spark_wallet
+        .balance
+        .as_ref()
+        .map_or(0, spark_total_balance_sats);
+    let rollout_gate = state.autopilot_goals.rollout_gate_decision();
+    if !rollout_gate.enabled {
+        let reason = format!("rollout gate blocked automation: {}", rollout_gate.reason);
+        if let Some(active_run) = state.goal_loop_executor.active_run.clone() {
+            if let Some(goal) = state
+                .autopilot_goals
+                .document
+                .active_goals
+                .iter()
+                .find(|goal| goal.goal_id == active_run.goal_id)
+                .cloned()
+            {
+                finalize_goal_loop_run(
+                    state,
+                    &active_run,
+                    &goal,
+                    GoalLifecycleStatus::Aborted,
+                    GoalLoopStopReason::PolicyAbort {
+                        reason: reason.clone(),
+                    },
+                    goal_loop_progress_snapshot(
+                        state,
+                        &active_run,
+                        now_epoch_seconds,
+                        wallet_total_sats,
+                    ),
+                    now_epoch_seconds,
+                    Some(reason.clone()),
+                    None,
+                );
+                return true;
+            }
+        }
+
+        if state.autopilot_goals.last_action.as_deref() != Some(reason.as_str()) {
+            state.autopilot_goals.last_action = Some(reason);
+        }
+        return false;
+    }
+
+    if state.goal_loop_executor.active_run.is_none()
+        && let Some(goal) = select_runnable_goal(&state.autopilot_goals.document.active_goals)
+    {
+        let goal_id = goal.goal_id.clone();
+        if goal.lifecycle_status == GoalLifecycleStatus::Queued
+            && let Err(error) = state
+                .autopilot_goals
+                .transition_goal(&goal_id, GoalLifecycleEvent::StartRun)
+        {
+            state.autopilot_chat.record_turn_timeline_event(format!(
+                "goal loop start failed goal={goal_id} error={error}"
+            ));
+            state.autopilot_goals.last_error = Some(error);
+            return true;
+        }
+        let recovered_from_restart =
+            match state.autopilot_goals.consume_recovery_replay_flag(&goal_id) {
+                Ok(value) => value,
+                Err(error) => {
+                    state.autopilot_goals.last_error = Some(error.clone());
+                    state.autopilot_chat.record_turn_timeline_event(format!(
+                        "goal loop recovery flag consume error goal={} error={}",
+                        goal_id, error
+                    ));
+                    false
+                }
+            };
+        if !state.goal_loop_executor.begin_run(
+            &goal_id,
+            now_epoch_seconds,
+            wallet_total_sats,
+            recovered_from_restart,
+        ) {
+            state.autopilot_chat.record_turn_timeline_event(format!(
+                "goal loop start suppressed goal={} reason=active_run_exists",
+                goal_id
+            ));
+            return false;
+        }
+        state.autopilot_chat.record_turn_timeline_event(format!(
+            "goal loop started goal={} recovered={}",
+            goal_id, recovered_from_restart
+        ));
+        return true;
+    }
+
+    let Some(active_run) = state.goal_loop_executor.active_run.clone() else {
+        return false;
+    };
+
+    let goal_id = active_run.goal_id.clone();
+    let Some(goal) = state
+        .autopilot_goals
+        .document
+        .active_goals
+        .iter()
+        .find(|goal| goal.goal_id == goal_id)
+        .cloned()
+    else {
+        state.goal_loop_executor.complete_run(
+            now_epoch_seconds,
+            GoalLifecycleStatus::Failed,
+            GoalLoopStopReason::GoalMissing,
+        );
+        state
+            .autopilot_chat
+            .record_turn_timeline_event(format!("goal loop stopped goal={goal_id} reason=missing"));
+        return true;
+    };
+
+    if goal.constraints.autonomy_policy.kill_switch_active {
+        let reason = goal
+            .constraints
+            .autonomy_policy
+            .kill_switch_reason
+            .clone()
+            .unwrap_or_else(|| "kill switch engaged".to_string());
+        finalize_goal_loop_run(
+            state,
+            &active_run,
+            &goal,
+            GoalLifecycleStatus::Aborted,
+            GoalLoopStopReason::PolicyAbort {
+                reason: reason.clone(),
+            },
+            goal_loop_progress_snapshot(state, &active_run, now_epoch_seconds, wallet_total_sats),
+            now_epoch_seconds,
+            Some(reason),
+            None,
+        );
+        return true;
+    }
+
+    let progress =
+        goal_loop_progress_snapshot(state, &active_run, now_epoch_seconds, wallet_total_sats);
+    let evaluation = match state
+        .autopilot_goals
+        .evaluate_active_goal_conditions(&goal_id, &progress)
+    {
+        Ok(value) => value,
+        Err(error) => {
+            let stop_reason = GoalLoopStopReason::ConditionStop {
+                reasons: vec![error.clone()],
+            };
+            finalize_goal_loop_run(
+                state,
+                &active_run,
+                &goal,
+                GoalLifecycleStatus::Failed,
+                stop_reason,
+                progress,
+                now_epoch_seconds,
+                Some(error),
+                None,
+            );
+            return true;
+        }
+    };
+    state.goal_loop_executor.record_condition_evaluation(
+        evaluation.goal_complete,
+        evaluation.should_continue,
+        &evaluation.completion_reasons,
+        &evaluation.stop_reasons,
+    );
+
+    if evaluation.goal_complete {
+        finalize_goal_loop_run(
+            state,
+            &active_run,
+            &goal,
+            GoalLifecycleStatus::Succeeded,
+            GoalLoopStopReason::GoalComplete,
+            progress,
+            now_epoch_seconds,
+            Some("goal conditions satisfied".to_string()),
+            Some(evaluation.clone()),
+        );
+        return true;
+    }
+
+    if !evaluation.should_continue {
+        let reason_text = evaluation.stop_reasons.join(" | ");
+        let stop_reason = GoalLoopStopReason::ConditionStop {
+            reasons: evaluation.stop_reasons.clone(),
+        };
+        finalize_goal_loop_run(
+            state,
+            &active_run,
+            &goal,
+            GoalLifecycleStatus::Failed,
+            stop_reason,
+            progress,
+            now_epoch_seconds,
+            Some(reason_text),
+            Some(evaluation.clone()),
+        );
+        return true;
+    }
+
+    let turn_in_flight = state.autopilot_chat.active_turn_id.is_some()
+        || !state.autopilot_chat.pending_turn_metadata.is_empty()
+        || matches!(
+            state.autopilot_chat.last_turn_status.as_deref(),
+            Some("inProgress")
+        );
+    if turn_in_flight {
+        if let Some(run) = state.goal_loop_executor.active_run.as_mut() {
+            run.phase = GoalLoopPhase::WaitingForTurnResult;
+        }
+        return false;
+    }
+
+    if active_run.phase == GoalLoopPhase::WaitingForTurnResult {
+        match state.autopilot_chat.last_turn_status.as_deref() {
+            Some("failed") => {
+                let error = state
+                    .autopilot_chat
+                    .last_error
+                    .clone()
+                    .unwrap_or_else(|| "codex turn failed".to_string());
+                state.goal_loop_executor.mark_attempt_finished(
+                    now_epoch_seconds,
+                    "failed",
+                    Some(error.clone()),
+                );
+                state.autopilot_chat.set_turn_status(None);
+                let retries_used = state.goal_loop_executor.increment_retries();
+                if retries_used > goal.retry_policy.max_retries {
+                    let stop_reason = GoalLoopStopReason::RetryLimitExceeded {
+                        retries_used,
+                        max_retries: goal.retry_policy.max_retries,
+                        last_error: error.clone(),
+                    };
+                    finalize_goal_loop_run(
+                        state,
+                        &active_run,
+                        &goal,
+                        GoalLifecycleStatus::Failed,
+                        stop_reason,
+                        progress,
+                        now_epoch_seconds,
+                        Some(error),
+                        Some(evaluation.clone()),
+                    );
+                    return true;
+                }
+                let backoff_seconds = retry_backoff_seconds(&goal.retry_policy, retries_used);
+                let resume_at = now_epoch_seconds.saturating_add(backoff_seconds);
+                state.goal_loop_executor.mark_backoff(resume_at);
+                state.autopilot_chat.record_turn_timeline_event(format!(
+                    "goal loop retry scheduled goal={} retries={}/{} backoff={}s",
+                    goal_id, retries_used, goal.retry_policy.max_retries, backoff_seconds
+                ));
+                return true;
+            }
+            Some("completed") => {
+                state.goal_loop_executor.mark_attempt_finished(
+                    now_epoch_seconds,
+                    "completed",
+                    None,
+                );
+                state.autopilot_chat.set_turn_status(None);
+                state.goal_loop_executor.mark_dispatching();
+            }
+            _ => {}
+        }
+    }
+
+    if let Some(run) = state.goal_loop_executor.active_run.as_ref()
+        && run.phase == GoalLoopPhase::Backoff
+    {
+        let resume_at = run.backoff_until_epoch_seconds.unwrap_or(now_epoch_seconds);
+        if now_epoch_seconds < resume_at {
+            return false;
+        }
+        state.goal_loop_executor.mark_dispatching();
+    }
+
+    if state.autopilot_chat.active_thread_id.is_none() {
+        let _ = run_chat_new_thread_action(state);
+        if let Some(run) = state.goal_loop_executor.active_run.as_mut() {
+            run.phase = GoalLoopPhase::WaitingForThread;
+        }
+        state
+            .autopilot_chat
+            .record_turn_timeline_event(format!("goal loop waiting for thread goal={goal_id}"));
+        return true;
+    }
+
+    let can_dispatch = state
+        .goal_loop_executor
+        .active_run
+        .as_ref()
+        .is_some_and(|run| {
+            matches!(
+                run.phase,
+                GoalLoopPhase::DispatchingTurn | GoalLoopPhase::WaitingForThread
+            )
+        });
+    if !can_dispatch {
+        return false;
+    }
+
+    let prompt = goal_loop_prompt_for_goal(&goal);
+    let pending_before = state.autopilot_chat.pending_turn_metadata.len();
+    state.chat_inputs.composer.set_value(prompt);
+    let _ = run_chat_submit_action(state);
+    let pending_after = state.autopilot_chat.pending_turn_metadata.len();
+
+    if pending_after > pending_before && state.autopilot_chat.last_error.is_none() {
+        let selected_skills = state
+            .autopilot_chat
+            .pending_turn_metadata
+            .back()
+            .map(|metadata| metadata.selected_skill_names.clone())
+            .unwrap_or_default();
+        state.goal_loop_executor.mark_attempt_submitted(
+            now_epoch_seconds,
+            state.autopilot_chat.active_thread_id.clone(),
+            selected_skills,
+        );
+        if let Some(run) = state.goal_loop_executor.active_run.as_ref() {
+            let attempt_index = run.attempts.len();
+            state.autopilot_chat.record_turn_timeline_event(format!(
+                "goal loop dispatched turn goal={} attempt={}",
+                goal_id, attempt_index
+            ));
+        }
+        return true;
+    }
+
+    let error = state
+        .autopilot_chat
+        .last_error
+        .clone()
+        .unwrap_or_else(|| "goal loop turn dispatch failed".to_string());
+    let retries_used = state.goal_loop_executor.increment_retries();
+    if retries_used > goal.retry_policy.max_retries {
+        let stop_reason = GoalLoopStopReason::DispatchFailed {
+            error: error.clone(),
+        };
+        finalize_goal_loop_run(
+            state,
+            &active_run,
+            &goal,
+            GoalLifecycleStatus::Failed,
+            stop_reason,
+            progress,
+            now_epoch_seconds,
+            Some(error),
+            Some(evaluation),
+        );
+        return true;
+    }
+
+    let backoff_seconds = retry_backoff_seconds(&goal.retry_policy, retries_used);
+    let resume_at = now_epoch_seconds.saturating_add(backoff_seconds);
+    state.goal_loop_executor.mark_backoff(resume_at);
+    state.autopilot_chat.record_turn_timeline_event(format!(
+        "goal loop dispatch retry goal={} retries={}/{} backoff={}s",
+        goal_id, retries_used, goal.retry_policy.max_retries, backoff_seconds
+    ));
+    true
+}
+
+fn goal_loop_progress_snapshot(
+    state: &crate::app_state::RenderState,
+    active_run: &ActiveGoalLoopRun,
+    now_epoch_seconds: u64,
+    wallet_total_sats: u64,
+) -> GoalProgressSnapshot {
+    let (jobs_completed, successes, errors) = state
+        .job_history
+        .rows
+        .iter()
+        .filter(|row| row.completed_at_epoch_seconds >= active_run.started_at_epoch_seconds)
+        .fold((0u32, 0u32, 0u32), |(jobs, success, failure), row| {
+            let jobs = jobs.saturating_add(1);
+            match row.status {
+                crate::app_state::JobHistoryStatus::Succeeded => {
+                    (jobs, success.saturating_add(1), failure)
+                }
+                crate::app_state::JobHistoryStatus::Failed => {
+                    (jobs, success, failure.saturating_add(1))
+                }
+            }
+        });
+
+    let reconciliation = reconcile_wallet_events_for_goal(
+        active_run.started_at_epoch_seconds,
+        active_run.initial_wallet_sats,
+        wallet_total_sats,
+        active_run.goal_id.as_str(),
+        &state.job_history,
+        &state.spark_wallet,
+        &state.autopilot_goals.document.swap_execution_receipts,
+    );
+    let mut external_signals = std::collections::BTreeMap::new();
+    external_signals.insert(
+        "recon.wallet_delta_raw_sats".to_string(),
+        reconciliation.wallet_delta_sats_raw.to_string(),
+    );
+    external_signals.insert(
+        "recon.wallet_delta_excluding_swaps_sats".to_string(),
+        reconciliation.wallet_delta_excluding_swaps_sats.to_string(),
+    );
+    external_signals.insert(
+        "recon.earned_wallet_delta_sats".to_string(),
+        reconciliation.earned_wallet_delta_sats.to_string(),
+    );
+    external_signals.insert(
+        "recon.swap_fee_sats".to_string(),
+        reconciliation.swap_fee_sats.to_string(),
+    );
+    external_signals.insert(
+        "recon.swap_converted_out_sats".to_string(),
+        reconciliation.swap_converted_out_sats.to_string(),
+    );
+    external_signals.insert(
+        "recon.swap_converted_in_sats".to_string(),
+        reconciliation.swap_converted_in_sats.to_string(),
+    );
+    external_signals.insert(
+        "recon.events".to_string(),
+        reconciliation.events.len().to_string(),
+    );
+
+    GoalProgressSnapshot {
+        started_at_epoch_seconds: active_run.started_at_epoch_seconds,
+        now_epoch_seconds,
+        attempt_count: active_run.attempts.len() as u32,
+        wallet_delta_sats: reconciliation.wallet_delta_excluding_swaps_sats,
+        earned_wallet_delta_sats: reconciliation.earned_wallet_delta_sats,
+        jobs_completed,
+        successes,
+        errors,
+        total_spend_sats: reconciliation.non_swap_spend_sats,
+        total_swap_cents: reconciliation.total_swap_cents,
+        external_signals,
+    }
+}
+
+fn goal_loop_prompt_for_goal(goal: &crate::state::autopilot_goals::GoalRecord) -> String {
+    let mut prompt = match &goal.objective {
+        crate::state::autopilot_goals::GoalObjective::EarnBitcoin {
+            min_wallet_delta_sats,
+            note,
+        } => {
+            let mut prompt = format!(
+                "Autonomously execute the next highest-confidence paid work action to move wallet delta toward +{} sats. Use available OpenAgents tools and emit progress receipts.",
+                min_wallet_delta_sats
+            );
+            if let Some(note) = note.as_deref()
+                && !note.trim().is_empty()
+            {
+                prompt.push_str(" Goal note: ");
+                prompt.push_str(note.trim());
+            }
+            prompt
+        }
+        crate::state::autopilot_goals::GoalObjective::SwapBtcToUsd { sell_sats, note } => {
+            let mut prompt = format!(
+                "Request and execute a BTC to stablesat USD swap for {} sats with policy-safe limits, then report settlement evidence.",
+                sell_sats
+            );
+            if let Some(note) = note.as_deref()
+                && !note.trim().is_empty()
+            {
+                prompt.push_str(" Goal note: ");
+                prompt.push_str(note.trim());
+            }
+            prompt
+        }
+        crate::state::autopilot_goals::GoalObjective::SwapUsdToBtc { sell_cents, note } => {
+            let mut prompt = format!(
+                "Request and execute a stablesat USD to BTC swap for {} cents with policy-safe limits, then report settlement evidence.",
+                sell_cents
+            );
+            if let Some(note) = note.as_deref()
+                && !note.trim().is_empty()
+            {
+                prompt.push_str(" Goal note: ");
+                prompt.push_str(note.trim());
+            }
+            prompt
+        }
+        crate::state::autopilot_goals::GoalObjective::Custom { instruction } => {
+            instruction.trim().to_string()
+        }
+    };
+
+    if !goal
+        .constraints
+        .autonomy_policy
+        .allowed_command_prefixes
+        .is_empty()
+    {
+        prompt.push_str(" Allowed command prefixes: ");
+        prompt.push_str(
+            &goal
+                .constraints
+                .autonomy_policy
+                .allowed_command_prefixes
+                .join(", "),
+        );
+        prompt.push('.');
+    }
+    if !goal
+        .constraints
+        .autonomy_policy
+        .allowed_file_roots
+        .is_empty()
+    {
+        prompt.push_str(" File scope roots: ");
+        prompt.push_str(
+            &goal
+                .constraints
+                .autonomy_policy
+                .allowed_file_roots
+                .join(", "),
+        );
+        prompt.push('.');
+    }
+    prompt
+}
+
+fn finalize_goal_loop_run(
+    state: &mut crate::app_state::RenderState,
+    active_run: &ActiveGoalLoopRun,
+    goal: &crate::state::autopilot_goals::GoalRecord,
+    lifecycle_status: GoalLifecycleStatus,
+    stop_reason: GoalLoopStopReason,
+    progress: GoalProgressSnapshot,
+    now_epoch_seconds: u64,
+    notes: Option<String>,
+    condition_evaluation: Option<ConditionEvaluation>,
+) {
+    let goal_id = active_run.goal_id.clone();
+    let run_snapshot = state
+        .goal_loop_executor
+        .active_run
+        .as_ref()
+        .cloned()
+        .unwrap_or_else(|| active_run.clone());
+    let transition_result = match lifecycle_status {
+        GoalLifecycleStatus::Succeeded => state.autopilot_goals.transition_goal(
+            &goal_id,
+            GoalLifecycleEvent::Succeed {
+                reason: notes.clone(),
+            },
+        ),
+        GoalLifecycleStatus::Failed => state.autopilot_goals.transition_goal(
+            &goal_id,
+            GoalLifecycleEvent::Fail {
+                reason: notes
+                    .clone()
+                    .unwrap_or_else(|| "goal loop stopped".to_string()),
+            },
+        ),
+        GoalLifecycleStatus::Aborted => state.autopilot_goals.transition_goal(
+            &goal_id,
+            GoalLifecycleEvent::Abort {
+                reason: notes
+                    .clone()
+                    .unwrap_or_else(|| "goal loop aborted".to_string()),
+            },
+        ),
+        _ => Ok(crate::state::autopilot_goals::GoalStateTransition {
+            goal_id: goal_id.clone(),
+            from: GoalLifecycleStatus::Running,
+            to: lifecycle_status,
+            event: GoalLifecycleEvent::Fail {
+                reason: "unexpected terminal transition".to_string(),
+            },
+            attempt_count: progress.attempt_count,
+            reason: notes.clone(),
+            transitioned_at_epoch_seconds: now_epoch_seconds,
+        }),
+    };
+
+    if let Err(error) = transition_result {
+        state.autopilot_goals.last_error = Some(error.clone());
+        state.autopilot_chat.record_turn_timeline_event(format!(
+            "goal loop transition error goal={} status={:?} error={}",
+            goal_id, lifecycle_status, error
+        ));
+    }
+
+    let receipt_id = format!("goal-loop-receipt-{}-{}", goal_id, now_epoch_seconds);
+    let receipt = GoalExecutionReceipt {
+        receipt_id: receipt_id.clone(),
+        goal_id: goal_id.clone(),
+        attempt_index: progress.attempt_count,
+        started_at_epoch_seconds: run_snapshot.started_at_epoch_seconds,
+        finished_at_epoch_seconds: now_epoch_seconds,
+        lifecycle_status,
+        wallet_delta_sats: progress.wallet_delta_sats,
+        jobs_completed: progress.jobs_completed,
+        successes: progress.successes,
+        errors: progress.errors,
+        notes: notes.clone(),
+        recovered_from_restart: run_snapshot.recovered_from_restart,
+        policy_snapshot: goal.constraints.policy_snapshot(),
+    };
+    if let Err(error) = state.autopilot_goals.record_receipt(receipt) {
+        state.autopilot_goals.last_error = Some(error);
+    }
+
+    let reconciliation = reconcile_wallet_events_for_goal(
+        run_snapshot.started_at_epoch_seconds,
+        run_snapshot.initial_wallet_sats,
+        state
+            .spark_wallet
+            .balance
+            .as_ref()
+            .map_or(0, spark_total_balance_sats),
+        goal_id.as_str(),
+        &state.job_history,
+        &state.spark_wallet,
+        &state.autopilot_goals.document.swap_execution_receipts,
+    );
+    let payout_evidence = reconciliation
+        .events
+        .iter()
+        .filter(|event| event.kind == WalletLedgerEventKind::EarnPayout)
+        .filter_map(|event| {
+            let Some(job_id) = event.job_id.clone() else {
+                return None;
+            };
+            let Some(payment_pointer) = event.payment_pointer.clone() else {
+                return None;
+            };
+            Some(GoalPayoutEvidence {
+                event_id: event.event_id.clone(),
+                occurred_at_epoch_seconds: event.occurred_at_epoch_seconds,
+                job_id,
+                payment_pointer,
+                payout_sats: event.sats_delta.max(0) as u64,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let swap_quote_evidence = state
+        .autopilot_goals
+        .document
+        .swap_quote_audits
+        .iter()
+        .filter(|audit| {
+            audit.goal_id == goal_id
+                && audit.created_at_epoch_seconds >= run_snapshot.started_at_epoch_seconds
+                && audit.created_at_epoch_seconds <= now_epoch_seconds
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    let swap_execution_evidence = state
+        .autopilot_goals
+        .document
+        .swap_execution_receipts
+        .iter()
+        .filter(|receipt| {
+            receipt.goal_id == goal_id
+                && receipt.finished_at_epoch_seconds >= run_snapshot.started_at_epoch_seconds
+                && receipt.finished_at_epoch_seconds <= now_epoch_seconds
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+
+    let attempts = run_snapshot
+        .attempts
+        .iter()
+        .map(|attempt| GoalAttemptAuditReceipt {
+            attempt_index: attempt.attempt_index,
+            submitted_at_epoch_seconds: attempt.submitted_at_epoch_seconds,
+            finished_at_epoch_seconds: attempt.finished_at_epoch_seconds,
+            thread_id: attempt.thread_id.clone(),
+            turn_id: attempt.turn_id.clone(),
+            selected_skills: attempt.selected_skills.clone(),
+            turn_status: attempt.turn_status.clone(),
+            error: attempt.error.clone(),
+            condition_goal_complete: attempt.condition_goal_complete,
+            condition_should_continue: attempt.condition_should_continue,
+            condition_completion_reasons: attempt.condition_completion_reasons.clone(),
+            condition_stop_reasons: attempt.condition_stop_reasons.clone(),
+            tool_invocations: attempt
+                .tool_invocations
+                .iter()
+                .map(|tool| GoalToolInvocationAudit {
+                    request_id: tool.request_id.clone(),
+                    call_id: tool.call_id.clone(),
+                    tool_name: tool.tool_name.clone(),
+                    response_code: tool.response_code.clone(),
+                    success: tool.success,
+                    response_message: tool.response_message.clone(),
+                    recorded_at_epoch_seconds: tool.recorded_at_epoch_seconds,
+                })
+                .collect::<Vec<_>>(),
+        })
+        .collect::<Vec<_>>();
+    let mut selected_skills = attempts
+        .iter()
+        .flat_map(|attempt| attempt.selected_skills.clone())
+        .collect::<Vec<_>>();
+    selected_skills.sort();
+    selected_skills.dedup();
+    let terminal_status_reason = notes
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| format!("{:?}", stop_reason));
+    let run_audit = GoalRunAuditReceipt {
+        audit_id: format!("goal-run-audit-{}-{}", goal_id, now_epoch_seconds),
+        receipt_id,
+        goal_id: goal_id.clone(),
+        run_id: run_snapshot.run_id.clone(),
+        started_at_epoch_seconds: run_snapshot.started_at_epoch_seconds,
+        finished_at_epoch_seconds: now_epoch_seconds,
+        lifecycle_status,
+        terminal_status_reason,
+        selected_skills,
+        attempts,
+        condition_goal_complete: condition_evaluation
+            .as_ref()
+            .map(|value| value.goal_complete),
+        condition_should_continue: condition_evaluation
+            .as_ref()
+            .map(|value| value.should_continue),
+        condition_completion_reasons: condition_evaluation
+            .as_ref()
+            .map(|value| value.completion_reasons.clone())
+            .unwrap_or_default(),
+        condition_stop_reasons: condition_evaluation
+            .as_ref()
+            .map(|value| value.stop_reasons.clone())
+            .unwrap_or_default(),
+        payout_evidence,
+        swap_quote_evidence,
+        swap_execution_evidence,
+    };
+    if let Err(error) = state.autopilot_goals.record_run_audit_receipt(run_audit) {
+        state.autopilot_goals.last_error = Some(error);
+    }
+
+    state
+        .goal_loop_executor
+        .complete_run(now_epoch_seconds, lifecycle_status, stop_reason.clone());
+    state.autopilot_chat.record_turn_timeline_event(format!(
+        "goal loop terminal goal={} status={:?} reason={:?}",
+        goal_id, lifecycle_status, stop_reason
+    ));
+}
+
+fn current_epoch_seconds() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0)
 }
 
 fn mirror_ui_error(channel: &'static str, value: Option<&str>) {
@@ -749,11 +1592,6 @@ fn cad_pick_at_point(state: &crate::app_state::RenderState, point: Point) -> Opt
 }
 
 fn update_cad_hover_target(state: &mut crate::app_state::RenderState, point: Point) -> bool {
-    if state.cad_demo.drawing_view_mode == crate::app_state::CadDrawingViewMode::TwoD {
-        return state
-            .cad_demo
-            .set_hovered_geometry_for_tile_focus(None, None);
-    }
     if state.cad_demo.context_menu.is_open {
         return state
             .cad_demo
@@ -795,10 +1633,7 @@ fn handle_cad_selection_click(
     let InputEvent::MouseUp { button, .. } = event else {
         return false;
     };
-    if *button != MouseButton::Left
-        || state.cad_demo.context_menu.is_open
-        || state.cad_demo.drawing_view_mode == crate::app_state::CadDrawingViewMode::TwoD
-    {
+    if *button != MouseButton::Left || state.cad_demo.context_menu.is_open {
         return false;
     }
     if state.cad_demo.snap_toggles.grid
@@ -847,9 +1682,6 @@ fn handle_cad_context_menu_click(
     point: Point,
     event: &InputEvent,
 ) -> bool {
-    if state.cad_demo.drawing_view_mode == crate::app_state::CadDrawingViewMode::TwoD {
-        return false;
-    }
     let InputEvent::MouseUp { button, .. } = event else {
         return false;
     };
@@ -943,9 +1775,7 @@ fn handle_cad_snap_preview_click(
     let InputEvent::MouseUp { button, .. } = event else {
         return false;
     };
-    if *button != MouseButton::Left
-        || state.cad_demo.drawing_view_mode == crate::app_state::CadDrawingViewMode::TwoD
-    {
+    if *button != MouseButton::Left {
         return false;
     }
     if !state.cad_demo.snap_toggles.grid
@@ -1007,8 +1837,11 @@ fn cad_camera_target_pane_id(state: &crate::app_state::RenderState, point: Point
     let pane_order = pane_indices_by_z_desc(state);
     for pane_idx in pane_order {
         let pane = &state.panes[pane_idx];
-        if pane.kind != PaneKind::CadDemo || !pane.bounds.contains(point) {
+        if !pane.bounds.contains(point) {
             continue;
+        }
+        if pane.kind != PaneKind::CadDemo {
+            return None;
         }
         let content_bounds = pane_content_bounds(pane.bounds);
         if !content_bounds.contains(point) {
@@ -1024,42 +1857,7 @@ fn cad_camera_target_pane_id(state: &crate::app_state::RenderState, point: Point
                 return None;
             }
         }
-        if cad_demo_cycle_variant_button_bounds(content_bounds).contains(point)
-            || cad_demo_reset_button_bounds(content_bounds).contains(point)
-            || cad_demo_hidden_line_mode_button_bounds(content_bounds).contains(point)
-            || cad_demo_reset_camera_button_bounds(content_bounds).contains(point)
-            || cad_demo_projection_mode_button_bounds(content_bounds).contains(point)
-            || cad_demo_drawing_mode_button_bounds(content_bounds).contains(point)
-            || cad_demo_drawing_direction_button_bounds(content_bounds).contains(point)
-            || cad_demo_drawing_hidden_lines_button_bounds(content_bounds).contains(point)
-            || cad_demo_drawing_dimensions_button_bounds(content_bounds).contains(point)
-            || cad_demo_drawing_reset_view_button_bounds(content_bounds).contains(point)
-            || cad_demo_drawing_add_detail_button_bounds(content_bounds).contains(point)
-            || cad_demo_drawing_clear_details_button_bounds(content_bounds).contains(point)
-            || cad_demo_section_plane_button_bounds(content_bounds).contains(point)
-            || cad_demo_section_offset_button_bounds(content_bounds).contains(point)
-            || cad_demo_material_button_bounds(content_bounds).contains(point)
-            || cad_demo_snap_grid_button_bounds(content_bounds).contains(point)
-            || cad_demo_snap_origin_button_bounds(content_bounds).contains(point)
-            || cad_demo_snap_endpoint_button_bounds(content_bounds).contains(point)
-            || cad_demo_snap_midpoint_button_bounds(content_bounds).contains(point)
-            || cad_demo_hotkey_profile_button_bounds(content_bounds).contains(point)
-            || cad_demo_view_snap_top_button_bounds(content_bounds).contains(point)
-            || cad_demo_view_snap_front_button_bounds(content_bounds).contains(point)
-            || cad_demo_view_snap_right_button_bounds(content_bounds).contains(point)
-            || cad_demo_view_snap_iso_button_bounds(content_bounds).contains(point)
-            || cad_demo_warning_filter_severity_button_bounds(content_bounds).contains(point)
-            || cad_demo_warning_filter_code_button_bounds(content_bounds).contains(point)
-            || cad_demo_warning_panel_bounds(content_bounds).contains(point)
-            || cad_demo_dimension_panel_bounds(content_bounds).contains(point)
-            || cad_demo_timeline_panel_bounds(content_bounds).contains(point)
-        {
-            return None;
-        }
-        if state.cad_demo.drawing_view_mode == crate::app_state::CadDrawingViewMode::TwoD {
-            if cad_pane::camera_interaction_bounds(content_bounds).contains(point) {
-                return Some(pane.id);
-            }
+        if topmost_pane_hit_action_in_order(state, point, &[pane_idx]).is_some() {
             return None;
         }
         if cad_pane::variant_tile_index_at_point(content_bounds, point).is_some() {
@@ -1079,13 +1877,7 @@ fn begin_cad_camera_drag(
         return false;
     }
     let mode = match button {
-        MouseButton::Left => {
-            if state.cad_demo.drawing_view_mode == crate::app_state::CadDrawingViewMode::TwoD {
-                CadCameraDragMode::Pan
-            } else {
-                CadCameraDragMode::Orbit
-            }
-        }
+        MouseButton::Left => CadCameraDragMode::Orbit,
         MouseButton::Right => CadCameraDragMode::Pan,
         _ => return false,
     };
@@ -1136,13 +1928,9 @@ fn update_cad_camera_drag(state: &mut crate::app_state::RenderState, point: Poin
     }
     let _ = state.cad_demo.set_active_variant_tile(drag.tile_index);
 
-    if state.cad_demo.drawing_view_mode == crate::app_state::CadDrawingViewMode::TwoD {
-        state.cad_demo.pan_drawing_view_by_drag(delta_x, -delta_y);
-    } else {
-        match drag.mode {
-            CadCameraDragMode::Orbit => state.cad_demo.orbit_camera_by_drag(delta_x, delta_y),
-            CadCameraDragMode::Pan => state.cad_demo.pan_camera_by_drag(delta_x, delta_y),
-        }
+    match drag.mode {
+        CadCameraDragMode::Orbit => state.cad_demo.orbit_camera_by_drag(delta_x, delta_y),
+        CadCameraDragMode::Pan => state.cad_demo.pan_camera_by_drag(delta_x, delta_y),
     }
     state.cad_camera_drag_state = Some(drag);
     true
@@ -1155,29 +1943,19 @@ fn finish_cad_camera_drag(state: &mut crate::app_state::RenderState) -> bool {
     if !drag.moved {
         return false;
     }
-    if state.cad_demo.drawing_view_mode == crate::app_state::CadDrawingViewMode::TwoD {
-        state.cad_demo.last_action = Some(format!(
-            "CAD drawing pan tile={} -> zoom={:.2} pan=({:.0},{:.0})",
-            drag.tile_index + 1,
-            state.cad_demo.drawing_zoom,
-            state.cad_demo.drawing_pan_x,
-            state.cad_demo.drawing_pan_y,
-        ));
-    } else {
-        let mode_label = match drag.mode {
-            CadCameraDragMode::Orbit => "orbit",
-            CadCameraDragMode::Pan => "pan",
-        };
-        state.cad_demo.last_action = Some(format!(
-            "CAD camera {mode_label} tile={} -> zoom={:.2} pan=({:.0},{:.0}) orbit=({:.0},{:.0})",
-            drag.tile_index + 1,
-            state.cad_demo.camera_zoom,
-            state.cad_demo.camera_pan_x,
-            state.cad_demo.camera_pan_y,
-            state.cad_demo.camera_orbit_yaw_deg,
-            state.cad_demo.camera_orbit_pitch_deg
-        ));
-    }
+    let mode_label = match drag.mode {
+        CadCameraDragMode::Orbit => "orbit",
+        CadCameraDragMode::Pan => "pan",
+    };
+    state.cad_demo.last_action = Some(format!(
+        "CAD camera {mode_label} tile={} -> zoom={:.2} pan=({:.0},{:.0}) orbit=({:.0},{:.0})",
+        drag.tile_index + 1,
+        state.cad_demo.camera_zoom,
+        state.cad_demo.camera_pan_x,
+        state.cad_demo.camera_pan_y,
+        state.cad_demo.camera_orbit_yaw_deg,
+        state.cad_demo.camera_orbit_pitch_deg
+    ));
     true
 }
 
@@ -1197,27 +1975,15 @@ fn apply_cad_camera_zoom(
         .and_then(|content| cad_pane::variant_tile_index_at_point(content, point))
         .unwrap_or(0);
     let _ = state.cad_demo.set_active_variant_tile(tile_index);
-    if state.cad_demo.drawing_view_mode == crate::app_state::CadDrawingViewMode::TwoD {
-        let previous = state.cad_demo.drawing_zoom;
-        state.cad_demo.zoom_drawing_view_by_scroll(scroll_dy);
-        if (previous - state.cad_demo.drawing_zoom).abs() <= f32::EPSILON {
-            return false;
-        }
-        state.cad_demo.last_action = Some(format!(
-            "CAD drawing zoom -> {:.2}",
-            state.cad_demo.drawing_zoom
-        ));
-    } else {
-        let previous = state.cad_demo.camera_zoom;
-        state.cad_demo.zoom_camera_by_scroll(scroll_dy);
-        if (previous - state.cad_demo.camera_zoom).abs() <= f32::EPSILON {
-            return false;
-        }
-        state.cad_demo.last_action = Some(format!(
-            "CAD camera zoom -> {:.2}",
-            state.cad_demo.camera_zoom
-        ));
+    let previous = state.cad_demo.camera_zoom;
+    state.cad_demo.zoom_camera_by_scroll(scroll_dy);
+    if (previous - state.cad_demo.camera_zoom).abs() <= f32::EPSILON {
+        return false;
     }
+    state.cad_demo.last_action = Some(format!(
+        "CAD camera zoom -> {:.2}",
+        state.cad_demo.camera_zoom
+    ));
     true
 }
 
@@ -2258,6 +3024,67 @@ mod tests {
         assert!(matches!(
             &input[1],
             UserInput::Skill { name, .. } if name == "mezo"
+        ));
+        assert!(matches!(
+            &input[2],
+            UserInput::Skill { name, .. } if name == "pane-control"
+        ));
+    }
+
+    #[test]
+    fn assemble_chat_turn_input_prefers_user_selected_over_goal_auto_selected_duplicate() {
+        let (input, last_error) = assemble_chat_turn_input(
+            "run automation".to_string(),
+            vec![
+                TurnSkillAttachment {
+                    name: "blink".to_string(),
+                    path: "/repo/skills/blink/SKILL.md".to_string(),
+                    enabled: true,
+                    source: TurnSkillSource::GoalAutoSelected,
+                },
+                TurnSkillAttachment {
+                    name: "blink".to_string(),
+                    path: "/repo/skills/blink/SKILL.md".to_string(),
+                    enabled: true,
+                    source: TurnSkillSource::UserSelected,
+                },
+            ],
+        );
+
+        assert!(last_error.is_none());
+        assert_eq!(input.len(), 2);
+        assert!(matches!(
+            &input[1],
+            UserInput::Skill { name, path }
+                if name == "blink" && path == &PathBuf::from("/repo/skills/blink/SKILL.md")
+        ));
+    }
+
+    #[test]
+    fn assemble_chat_turn_input_orders_goal_auto_selected_before_policy_required() {
+        let (input, last_error) = assemble_chat_turn_input(
+            "run automation".to_string(),
+            vec![
+                TurnSkillAttachment {
+                    name: "pane-control".to_string(),
+                    path: "/repo/skills/pane-control/SKILL.md".to_string(),
+                    enabled: true,
+                    source: TurnSkillSource::PolicyRequired,
+                },
+                TurnSkillAttachment {
+                    name: "blink".to_string(),
+                    path: "/repo/skills/blink/SKILL.md".to_string(),
+                    enabled: true,
+                    source: TurnSkillSource::GoalAutoSelected,
+                },
+            ],
+        );
+
+        assert!(last_error.is_none());
+        assert_eq!(input.len(), 3);
+        assert!(matches!(
+            &input[1],
+            UserInput::Skill { name, .. } if name == "blink"
         ));
         assert!(matches!(
             &input[2],

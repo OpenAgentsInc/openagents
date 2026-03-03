@@ -1,0 +1,22 @@
+{
+  "timestamp_utc": "20260302T210934Z",
+  "project": "openagentsgemini",
+  "region": "us-central1",
+  "zone": "us-central1-a",
+  "environment": "prod",
+  "vm": "symphony-mainnet-1",
+  "service_status": "active",
+  "health_checks": {
+    "service_active": true,
+    "tip_ok": true,
+    "api_sample_ok": true,
+    "error_log_scan_ok": true
+  },
+  "tip": {
+    "symphony_height": 411189,
+    "bitcoind_height": 939051,
+    "lag_blocks": 527862
+  },
+  "sample_address": "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
+  "error_log_count_last_30m": 0
+}

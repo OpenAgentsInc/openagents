@@ -21,7 +21,7 @@ pub struct CredentialTemplate {
     pub scopes: u8,
 }
 
-pub const CREDENTIAL_TEMPLATES: [CredentialTemplate; 7] = [
+pub const CREDENTIAL_TEMPLATES: [CredentialTemplate; 11] = [
     CredentialTemplate {
         name: "OPENAI_API_KEY",
         secret: true,
@@ -54,6 +54,26 @@ pub const CREDENTIAL_TEMPLATES: [CredentialTemplate; 7] = [
     },
     CredentialTemplate {
         name: "BLINK_API_URL",
+        secret: false,
+        scopes: CREDENTIAL_SCOPE_SKILLS | CREDENTIAL_SCOPE_CODEX | CREDENTIAL_SCOPE_GLOBAL,
+    },
+    CredentialTemplate {
+        name: "BLINK_API_KEY_SA_1",
+        secret: true,
+        scopes: CREDENTIAL_SCOPE_SKILLS | CREDENTIAL_SCOPE_CODEX | CREDENTIAL_SCOPE_GLOBAL,
+    },
+    CredentialTemplate {
+        name: "BLINK_API_URL_SA_1",
+        secret: false,
+        scopes: CREDENTIAL_SCOPE_SKILLS | CREDENTIAL_SCOPE_CODEX | CREDENTIAL_SCOPE_GLOBAL,
+    },
+    CredentialTemplate {
+        name: "BLINK_API_KEY_SA_2",
+        secret: true,
+        scopes: CREDENTIAL_SCOPE_SKILLS | CREDENTIAL_SCOPE_CODEX | CREDENTIAL_SCOPE_GLOBAL,
+    },
+    CredentialTemplate {
+        name: "BLINK_API_URL_SA_2",
         secret: false,
         scopes: CREDENTIAL_SCOPE_SKILLS | CREDENTIAL_SCOPE_CODEX | CREDENTIAL_SCOPE_GLOBAL,
     },
@@ -182,6 +202,26 @@ impl CredentialRepository {
                     ))
                 }
             }
+        }
+    }
+
+    pub fn read_value_secure(&self, name: &str) -> Result<Option<String>, String> {
+        let normalized = normalize_env_var_name(name);
+        let entry = keyring_entry(normalized.as_str())?;
+        match entry.get_password() {
+            Ok(value) => {
+                let trimmed = value.trim().to_string();
+                if trimmed.is_empty() {
+                    Ok(None)
+                } else {
+                    Ok(Some(trimmed))
+                }
+            }
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(error) => Err(format!(
+                "Failed to read credential {} from secure storage: {error}",
+                normalized
+            )),
         }
     }
 

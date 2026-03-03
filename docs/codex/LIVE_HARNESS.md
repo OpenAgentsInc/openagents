@@ -69,6 +69,13 @@ The harness currently probes these app-server methods:
 - Additional execution/review probes:
   - `command/exec`
   - `review/start`
+- Optional live Blink swap probe (real network, no mocks):
+  - `skills/blink/scripts/swap_quote.js`
+  - `skills/blink/scripts/swap_execute.js` (when `--blink-swap-execute-live`)
+- Optional StableSats+SA single-wallet live scenario (real network, no mocks):
+  - one-wallet `balance.js` snapshots
+  - wallet-native BTC<->USD swaps via `swap_execute.js`
+  - before/after balance verification and effective spread reporting
 - Experimental probes (default on, disable with `--skip-experimental`):
   - `fuzzyFileSearch/sessionStart`
   - `fuzzyFileSearch/sessionUpdate`
@@ -137,6 +144,33 @@ cargo run -p autopilot-desktop --bin codex-live-harness -- \
   --prompt "Use the blink skill to summarize available payment operations and first command to check balance."
 ```
 
+Run live Blink swap quote + execute probe:
+
+```bash
+cargo run -p autopilot-desktop --bin codex-live-harness -- \
+  --cwd /Users/christopherdavid/code/openagents \
+  --skip-experimental \
+  --skip-thread-mutations \
+  --blink-swap-live \
+  --blink-swap-direction btc-to-usd \
+  --blink-swap-amount 10 \
+  --blink-swap-unit sats \
+  --blink-swap-execute-live
+```
+
+Run StableSats+SA live single-wallet scenario:
+
+```bash
+cargo run -p autopilot-desktop --bin codex-live-harness -- \
+  --cwd /Users/christopherdavid/code/openagents \
+  --skip-experimental \
+  --skip-thread-mutations \
+  --blink-stablesats-sa-live \
+  --blink-stablesats-sa-rounds 1 \
+  --blink-stablesats-sa-convert-btc-sats 6000 \
+  --blink-stablesats-sa-convert-usd-cents 50
+```
+
 Override model explicitly:
 
 ```bash
@@ -144,6 +178,100 @@ cargo run -p autopilot-desktop --bin codex-live-harness -- \
   --cwd /Users/christopherdavid/code/openagents \
   --model gpt-5.3-codex
 ```
+
+## Spark Funding Flow (For Live Blink Payments)
+
+Use `spark-wallet-cli` to verify Spark funds and to fund Spark before paying fresh Blink invoices.
+
+Binary location:
+
+- `apps/autopilot-desktop/src/bin/spark_wallet_cli.rs`
+- `cargo run -p autopilot-desktop --bin spark-wallet-cli -- ...`
+
+Check Spark balance and connectivity:
+
+```bash
+set -a; source .env.local; set +a
+cargo run -p autopilot-desktop --bin spark-wallet-cli -- \
+  --network mainnet status
+```
+
+Generate Spark funding targets:
+
+```bash
+# Spark transfer address
+cargo run -p autopilot-desktop --bin spark-wallet-cli -- \
+  --network mainnet spark-address
+
+# Lightning-like Spark invoice for funding
+cargo run -p autopilot-desktop --bin spark-wallet-cli -- \
+  --network mainnet create-invoice 2000 --description "fund-spark-wallet" --expiry-seconds 3600
+
+# On-chain BTC funding address
+cargo run -p autopilot-desktop --bin spark-wallet-cli -- \
+  --network mainnet bitcoin-address
+```
+
+Regenerate a fresh Blink BTC invoice and pay it from Spark:
+
+```bash
+set -a; source .env.local; set +a
+node skills/blink/scripts/create_invoice.js 100 --no-subscribe "spark-funding-test" | tee /tmp/blink_btc_invoice.out
+INVOICE=$(sed '/^Subscription skipped/d' /tmp/blink_btc_invoice.out | jq -r '.paymentRequest')
+
+cargo run -p autopilot-desktop --bin spark-wallet-cli -- \
+  --network mainnet pay-invoice "$INVOICE"
+```
+
+Check settlement status on Blink:
+
+```bash
+HASH=$(sed '/^Subscription skipped/d' /tmp/blink_btc_invoice.out | jq -r '.paymentHash')
+node skills/blink/scripts/check_invoice.js "$HASH"
+```
+
+Notes:
+
+- Blink USD invoices expire in about 5 minutes; regenerate right before payment.
+- If Spark payment returns `insufficient funds`, fund Spark first using one of the targets above.
+
+## StableSats+SA Wallet Topology
+
+The live single-wallet scenario uses:
+
+- `operator`: `BLINK_API_KEY` (and optional `BLINK_API_URL`)
+
+Credential resolution order per variable:
+
+1. Process environment variable.
+2. macOS keychain entry (`com.openagents.autopilot.credentials`) using that variable name as account.
+
+Limitations:
+
+- Operator wallet must be a real Blink account with both BTC and USD wallets enabled.
+- Scenario steps send real payments and perform real conversions; there is no stub path.
+
+## StableSats+SA Fee And Spread Semantics
+
+The scenario report includes:
+
+- `swap_effective_spread_total_sats|cents`: quote output minus observed settlement delta per direction.
+
+Typical live behavior (as of March 2, 2026):
+
+- Swap explicit fee fields are `0`, but settlement can differ by 1 unit (rounding spread).
+
+## StableSats+SA Troubleshooting
+
+- Missing wallet credentials:
+  - Verify `BLINK_API_KEY` (and optional `BLINK_API_URL`).
+- Insufficient balances:
+  - Harness preflight emits a `funding_required` report with operator BTC/USD shortfall and generated invoices.
+  - Fund each emitted invoice, then rerun the scenario.
+- Contract mismatch failures:
+  - If `--blink-stablesats-sa-require-success` is on, the harness fails when script-reported deltas do not match observed post-balance deltas.
+- Node/runtime issues:
+  - Confirm `node` is installed and runnable from PATH.
 
 ## Flags
 
@@ -161,6 +289,19 @@ cargo run -p autopilot-desktop --bin codex-live-harness -- \
 - `--skip-experimental`: skip experimental probe group
 - `--skip-thread-mutations`: skip thread mutation probes
 - `--allow-echo-replies`: disable harness failure when assistant echoes prompt exactly
+- `--blink-swap-live`: run a live Blink quote probe from `skills/blink/scripts/swap_quote.js`
+- `--blink-swap-direction <btc-to-usd|usd-to-btc>`: swap direction for live probe
+- `--blink-swap-amount <n>`: probe amount (`>0`)
+- `--blink-swap-unit <sats|cents>`: probe unit (default derives from direction)
+- `--blink-swap-execute-live`: run real execute attempt from `skills/blink/scripts/swap_execute.js`
+- `--blink-swap-require-success`: fail unless execute returns `SUCCESS`
+- `--blink-swap-memo <text>`: optional memo for execute probe
+- `--blink-stablesats-sa-live`: run real single-wallet StableSats+SA conversion scenario
+- `--blink-stablesats-sa-rounds <n>`: number of scenario rounds (default `1`)
+- `--blink-stablesats-sa-convert-btc-sats <n>`: BTC->USD swap size per round (default `6000`)
+- `--blink-stablesats-sa-convert-usd-cents <n>`: USD->BTC swap size per round (default `50`)
+- `--blink-stablesats-sa-require-success`: fail on any non-`SUCCESS` step (default enabled)
+- `--blink-stablesats-sa-memo-prefix <text>`: memo prefix for swap operations
 
 ## Output Format
 

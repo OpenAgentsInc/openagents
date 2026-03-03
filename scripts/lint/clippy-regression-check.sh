@@ -44,6 +44,11 @@ if ! "$ROOT_DIR/scripts/lint/codex-protocol-parity-gate.sh"; then
     exit 1
 fi
 
+if ! "$ROOT_DIR/scripts/lint/autopilot-earnings-epic-test-gate.sh"; then
+    printf 'Autopilot earnings epic test matrix gate failed.\n' >&2
+    exit 1
+fi
+
 if ! "$ROOT_DIR/scripts/lint/clippy-warning-budget-check.sh"; then
     printf 'Clippy warning budget gate failed.\n' >&2
     exit 1
