@@ -115,6 +115,7 @@ LANE_LABELS=(
     "presence-cursor-selection"
     "branch-fork-workflow"
     "ecad-symbols-lane"
+    "ecad-schematic-lane"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -513,6 +514,9 @@ run_lane "branch-fork-workflow" \
 
 run_lane "ecad-symbols-lane" \
     "$ROOT_DIR/scripts/cad/parity-ecad-symbols-lane-ci.sh"
+
+run_lane "ecad-schematic-lane" \
+    "$ROOT_DIR/scripts/cad/parity-ecad-schematic-lane-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

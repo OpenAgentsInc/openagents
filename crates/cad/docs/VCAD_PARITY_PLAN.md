@@ -220,7 +220,7 @@ Major gaps to close:
 117. [x] VCAD-PARITY-117: Presence/cursor/selection collaboration parity.
 118. [x] VCAD-PARITY-118: Branch/fork workflow parity.
 119. [x] VCAD-PARITY-119: ECAD symbols lane parity.
-120. [ ] VCAD-PARITY-120: ECAD schematic lane parity.
+120. [x] VCAD-PARITY-120: ECAD schematic lane parity.
 121. [ ] VCAD-PARITY-121: ECAD PCB lane parity.
 122. [ ] VCAD-PARITY-122: ECAD export lane parity.
 123. [ ] VCAD-PARITY-123: ECAD simulation lane parity.
