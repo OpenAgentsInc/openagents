@@ -111,6 +111,7 @@ LANE_LABELS=(
     "urdf-import"
     "urdf-export-fixtures"
     "crdt-lane-architecture"
+    "collaborative-document-sync"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -497,6 +498,9 @@ run_lane "urdf-export-fixtures" \
 
 run_lane "crdt-lane-architecture" \
     "$ROOT_DIR/scripts/cad/parity-crdt-lane-architecture-ci.sh"
+
+run_lane "collaborative-document-sync" \
+    "$ROOT_DIR/scripts/cad/parity-collaborative-document-sync-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
