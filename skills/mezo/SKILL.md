@@ -37,7 +37,7 @@ Execute this workflow when the user needs practical Mezo integration work, not g
 2. Configure network and toolchain from [network-and-env](references/network-and-env.md):
 - Set correct chain (`31611` testnet or `31612` mainnet).
 - Apply Hardhat/Foundry configuration.
-- Verify RPC health and chain id with `scripts/check-rpc.sh`.
+- Verify RPC health and chain id with `scripts/check-rpc.sh` or full preflight with `scripts/preflight.sh`.
 
 3. Implement wallet connection path from [passport-and-wallet](references/passport-and-wallet.md):
 - If app needs BTC-native + EVM wallet options, use Mezo Passport.
@@ -70,6 +70,10 @@ scripts/check-rpc.sh https://rpc.test.mezo.org 31611
 
 # Mainnet provider check
 scripts/check-rpc.sh https://rpc-http.mezo.boar.network 31612
+
+# Preflight with signer + RPC failover
+scripts/preflight.sh testnet ~/.config/openagents/mezo-agent.env
+scripts/preflight.sh mainnet ~/.config/openagents/mezo-agent.env
 ```
 
 ## Reference Files
