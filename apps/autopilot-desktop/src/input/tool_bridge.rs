@@ -1617,6 +1617,45 @@ fn cad_warning_counts(cad_demo: &crate::app_state::CadDemoPaneState) -> (Value, 
     (json!(by_severity), json!(by_code))
 }
 
+fn metadata_bool(metadata: &std::collections::BTreeMap<String, String>, key: &str) -> Option<bool> {
+    metadata.get(key).and_then(|value| match value.as_str() {
+        "true" | "1" => Some(true),
+        "false" | "0" => Some(false),
+        _ => None,
+    })
+}
+
+fn metadata_f64(metadata: &std::collections::BTreeMap<String, String>, key: &str) -> Option<f64> {
+    metadata
+        .get(key)
+        .and_then(|value| value.parse::<f64>().ok())
+}
+
+fn cad_kinematic_checkpoint(cad_demo: &crate::app_state::CadDemoPaneState) -> Value {
+    let metadata = &cad_demo.analysis_snapshot.estimator_metadata;
+    let profile = metadata
+        .get("kinematic.profile")
+        .cloned()
+        .unwrap_or_else(|| "none".to_string());
+    json!({
+        "profile": profile,
+        "joint_limits_deg": {
+            "min": metadata_f64(metadata, "kinematic.joint_min_deg"),
+            "max": metadata_f64(metadata, "kinematic.joint_max_deg"),
+            "span": metadata_f64(metadata, "kinematic.travel_span_deg"),
+        },
+        "nominal_pose_deg": metadata_f64(metadata, "kinematic.nominal_pose_deg"),
+        "finger_spacing_mm": metadata_f64(metadata, "kinematic.finger_spacing_mm"),
+        "route_clearance_margin_mm": metadata_f64(metadata, "kinematic.route_clearance_margin_mm"),
+        "bend_radius_margin_mm": metadata_f64(metadata, "kinematic.bend_radius_margin_mm"),
+        "joint_range_violation": metadata_bool(metadata, "kinematic.joint_range_violation").unwrap_or(false),
+        "travel_limit_violation": metadata_bool(metadata, "kinematic.travel_limit_violation").unwrap_or(false),
+        "routing_collision": metadata_bool(metadata, "kinematic.routing_collision").unwrap_or(false),
+        "nominal_self_intersection": metadata_bool(metadata, "kinematic.nominal_self_intersection").unwrap_or(false),
+        "nominal_range_valid": metadata_bool(metadata, "kinematic.nominal_range_valid").unwrap_or(true),
+    })
+}
+
 fn cad_build_session_checkpoint(cad_demo: &crate::app_state::CadDemoPaneState) -> Value {
     if cad_demo.build_session.phase != crate::app_state::CadBuildSessionPhase::Idle {
         return json!({
@@ -1742,6 +1781,7 @@ fn cad_checkpoint_payload(
             "max_deflection_mm": analysis.max_deflection_mm,
             "center_of_gravity_mm": analysis.center_of_gravity_mm,
         },
+        "kinematics": cad_kinematic_checkpoint(cad_demo),
         "gripper_parameters": if matches!(
             design_profile,
             openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper
@@ -1793,6 +1833,10 @@ fn cad_gripper_parameter_summary(
         "finger_count",
         "thumb_base_angle_deg",
         "tendon_channel_diameter_mm",
+        "joint_min_deg",
+        "joint_max_deg",
+        "tendon_route_clearance_mm",
+        "tendon_bend_radius_mm",
     ];
     let mut summary = serde_json::Map::new();
     for key in keys {
@@ -1834,6 +1878,18 @@ fn cad_gripper_parameter_summary(
         }
         if let Some(value) = dispatch.flexure_thickness_mm {
             summary.insert("flexure_thickness_mm".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch.joint_min_deg {
+            summary.insert("joint_min_deg".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch.joint_max_deg {
+            summary.insert("joint_max_deg".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch.tendon_route_clearance_mm {
+            summary.insert("tendon_route_clearance_mm".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch.tendon_bend_radius_mm {
+            summary.insert("tendon_bend_radius_mm".to_string(), json!(value));
         }
     }
     Value::Object(summary)
@@ -4534,6 +4590,7 @@ mod tests {
                 .pointer("/analysis/material_id")
                 .is_some_and(|value| !value.is_null())
         );
+        assert!(payload.pointer("/kinematics/profile").is_some());
         assert!(
             payload
                 .pointer("/failure_metrics/intent_parse_failures")
@@ -4657,6 +4714,10 @@ mod tests {
                         opposable_thumb: false,
                         thumb_base_angle_deg: 42.0,
                         tendon_channel_diameter_mm: 1.8,
+                        joint_min_deg: 12.0,
+                        joint_max_deg: 82.0,
+                        tendon_route_clearance_mm: 1.4,
+                        tendon_bend_radius_mm: 3.2,
                         pose_preset: "open".to_string(),
                     },
                 ),
@@ -4682,6 +4743,71 @@ mod tests {
         );
         assert_eq!(
             payload.pointer("/gripper_parameters/single_servo_drive"),
+            Some(&serde_json::json!(true))
+        );
+    }
+
+    #[test]
+    fn cad_checkpoint_payload_exposes_kinematic_diagnostics() {
+        let mut cad_demo = CadDemoPaneState::default();
+        cad_demo
+            .analysis_snapshot
+            .estimator_metadata
+            .extend(std::collections::BTreeMap::from([
+                (
+                    "kinematic.profile".to_string(),
+                    "three_finger_thumb".to_string(),
+                ),
+                ("kinematic.joint_min_deg".to_string(), "14.000".to_string()),
+                ("kinematic.joint_max_deg".to_string(), "86.000".to_string()),
+                (
+                    "kinematic.travel_span_deg".to_string(),
+                    "72.000".to_string(),
+                ),
+                (
+                    "kinematic.nominal_pose_deg".to_string(),
+                    "48.500".to_string(),
+                ),
+                (
+                    "kinematic.finger_spacing_mm".to_string(),
+                    "17.200".to_string(),
+                ),
+                (
+                    "kinematic.route_clearance_margin_mm".to_string(),
+                    "0.820".to_string(),
+                ),
+                (
+                    "kinematic.bend_radius_margin_mm".to_string(),
+                    "1.640".to_string(),
+                ),
+                (
+                    "kinematic.nominal_self_intersection".to_string(),
+                    "false".to_string(),
+                ),
+                (
+                    "kinematic.nominal_range_valid".to_string(),
+                    "true".to_string(),
+                ),
+            ]));
+        let payload = cad_checkpoint_payload(&cad_demo, Some("thread-kinematics"), "test-source");
+        assert_eq!(
+            payload.pointer("/kinematics/profile"),
+            Some(&serde_json::json!("three_finger_thumb"))
+        );
+        assert_eq!(
+            payload.pointer("/kinematics/joint_limits_deg/min"),
+            Some(&serde_json::json!(14.0))
+        );
+        assert_eq!(
+            payload.pointer("/kinematics/joint_limits_deg/max"),
+            Some(&serde_json::json!(86.0))
+        );
+        assert_eq!(
+            payload.pointer("/kinematics/routing_collision"),
+            Some(&serde_json::json!(false))
+        );
+        assert_eq!(
+            payload.pointer("/kinematics/nominal_range_valid"),
             Some(&serde_json::json!(true))
         );
     }
