@@ -106,6 +106,7 @@ LANE_LABELS=(
     "joint-physics-mapping"
     "simulation-step-reset-api"
     "simulation-ui-controls"
+    "gym-style-api"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -477,6 +478,9 @@ run_lane "simulation-step-reset-api" \
 
 run_lane "simulation-ui-controls" \
     "$ROOT_DIR/scripts/cad/parity-simulation-ui-controls-ci.sh"
+
+run_lane "gym-style-api" \
+    "$ROOT_DIR/scripts/cad/parity-gym-style-api-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

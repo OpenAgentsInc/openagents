@@ -1,0 +1,43 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-111",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/gym_style_api_vcad_reference.json",
+  "reference_fixture_sha256": "f10e8da1da14e5d6629b7219de16d93d072a1a8bd47ffa14f9d9c3d465942738",
+  "reference_source": "~/code/vcad/crates/vcad-gym/src/lib.rs + ~/code/vcad/crates/vcad-gym/src/env.rs",
+  "reference_issue_match": true,
+  "reference_commit_match": true,
+  "row_set_match": true,
+  "contract_set_match": true,
+  "deterministic_replay_match": true,
+  "rows": [
+    {
+      "capability": "CAD Gym Style API Parity",
+      "case_id": "capability_scope",
+      "issue_id": "VCAD-PARITY-111"
+    },
+    {
+      "case_id": "phase_scope",
+      "lane_label": "gym-style-api",
+      "phase": "Phase I - Physics + URDF parity"
+    },
+    {
+      "case_id": "reference_source",
+      "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+      "vcad_source": "~/code/vcad/crates/vcad-gym/src/lib.rs + ~/code/vcad/crates/vcad-gym/src/env.rs"
+    }
+  ],
+  "contracts": [
+    "CAD Gym Style API Parity parity contracts are aligned to vcad reference behavior",
+    "CI parity artifacts include gym_style_api manifest and vcad fixture evidence",
+    "Phase I - Physics + URDF parity parity lane remains deterministic across replay"
+  ],
+  "deterministic_signature": "4579e070a4334993",
+  "parity_contracts": [
+    "CAD Gym Style API Parity parity contracts are aligned to vcad reference behavior",
+    "CI parity artifacts include gym_style_api manifest and vcad fixture evidence",
+    "Phase I - Physics + URDF parity parity lane remains deterministic across replay"
+  ]
+}

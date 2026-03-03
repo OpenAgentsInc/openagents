@@ -173,6 +173,8 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/fixtures/simulation_step_reset_api_vcad_reference.json"
     "crates/cad/parity/simulation_ui_controls_parity_manifest.json"
     "crates/cad/parity/fixtures/simulation_ui_controls_vcad_reference.json"
+    "crates/cad/parity/gym_style_api_parity_manifest.json"
+    "crates/cad/parity/fixtures/gym_style_api_vcad_reference.json"
     "crates/cad/parity/fixtures/parity_fixture_corpus.json"
 )
 
