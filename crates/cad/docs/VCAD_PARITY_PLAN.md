@@ -215,7 +215,7 @@ Major gaps to close:
 
 ### Phase J - Full workspace parity lanes (`VCAD-PARITY-115` to `VCAD-PARITY-130`)
 
-115. [ ] VCAD-PARITY-115: CRDT lane parity architecture (`vcad-crdt` equivalent).
+115. [x] VCAD-PARITY-115: CRDT lane parity architecture (`vcad-crdt` equivalent).
 116. [ ] VCAD-PARITY-116: Collaborative document sync parity implementation.
 117. [ ] VCAD-PARITY-117: Presence/cursor/selection collaboration parity.
 118. [ ] VCAD-PARITY-118: Branch/fork workflow parity.
