@@ -305,6 +305,9 @@ run_iteration() {
                     --tx-json "$tx_json"
                     --receipt-file "$stage_receipt"
                 )
+                if [[ -n "${CAST_PREV_TXS_FILE:-}" ]]; then
+                    cmd+=(--prev-txs-file "${CAST_PREV_TXS_FILE}")
+                fi
                 if [[ "$broadcast" -eq 1 ]]; then
                     cmd+=(--yes-broadcast)
                 else
