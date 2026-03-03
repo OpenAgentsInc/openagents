@@ -56,6 +56,7 @@ pub mod kernel_text_parity;
 pub mod kernel_topology_parity;
 pub mod loft_parity;
 pub mod material_assignment_parity;
+pub mod mesh_upload_processing_parity;
 pub mod modeling_edge_case_parity;
 pub mod openagents_crawler;
 pub mod pattern_parity;

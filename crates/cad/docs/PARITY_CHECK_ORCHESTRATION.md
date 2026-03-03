@@ -73,6 +73,7 @@ Provide one deterministic orchestration entrypoint for the parity baseline lanes
 - viewport camera/gizmo parity fixture check
 - render mode parity fixture check
 - gpu acceleration parity fixture check
+- mesh upload/processing parity fixture check
 - parity CI artifact manifest fixture check
 - parity risk register + blocker workflow check
 - baseline dashboard publication check

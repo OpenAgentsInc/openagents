@@ -39,7 +39,7 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 133,
+    "source_artifact_count": 135,
     "artifact_ids": [
       "assembly_acceptance_scenes_parity_manifest",
       "assembly_checkpoint_parity_manifest",
@@ -103,6 +103,7 @@
       "fixtures_gpu_acceleration_vcad_reference",
       "fixtures_headless_script_harness_vcad_reference",
       "fixtures_intent_modeling_vcad_reference",
+      "fixtures_mesh_upload_processing_vcad_reference",
       "fixtures_parity_fixture_corpus",
       "fixtures_render_mode_vcad_reference",
       "fixtures_sketch_vcad_reference_corpus",
@@ -135,6 +136,7 @@
       "kernel_topology_parity_manifest",
       "loft_parity_manifest",
       "material_assignment_parity_manifest",
+      "mesh_upload_processing_parity_manifest",
       "modeling_edge_case_parity_manifest",
       "openagents_capabilities_inventory",
       "openagents_start_manifest",

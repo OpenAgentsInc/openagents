@@ -5,7 +5,7 @@
   "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
   "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
   "parity_check_entrypoint": "scripts/cad/parity_check.sh",
-  "source_artifact_count": 133,
+  "source_artifact_count": 135,
   "artifacts": [
     {
       "artifact_id": "assembly_acceptance_scenes_parity_manifest",
@@ -380,6 +380,12 @@
       "bytes": 433
     },
     {
+      "artifact_id": "fixtures_mesh_upload_processing_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/mesh_upload_processing_vcad_reference.json",
+      "sha256": "964a5b5f76c3b2640a6f635205394c04eda9bc4b7738be430888fb98921ec56d",
+      "bytes": 1712
+    },
+    {
       "artifact_id": "fixtures_parity_fixture_corpus",
       "source_path": "crates/cad/parity/fixtures/parity_fixture_corpus.json",
       "sha256": "3d59ec81dc5944df543ae51dede9d9dc32f006427bf87886634e723bfcde98d7",
@@ -572,6 +578,12 @@
       "bytes": 1570
     },
     {
+      "artifact_id": "mesh_upload_processing_parity_manifest",
+      "source_path": "crates/cad/parity/mesh_upload_processing_parity_manifest.json",
+      "sha256": "a87091fb7915c771d140595478af9f556e74a2ca694dd0655dab224405e8a2f9",
+      "bytes": 2978
+    },
+    {
       "artifact_id": "modeling_edge_case_parity_manifest",
       "source_path": "crates/cad/parity/modeling_edge_case_parity_manifest.json",
       "sha256": "a8acfdcc753ffe80015cd40bf1247e9144a192787e8e14f605380ff301e52212",
@@ -592,8 +604,8 @@
     {
       "artifact_id": "parity_dashboard",
       "source_path": "crates/cad/parity/parity_dashboard.json",
-      "sha256": "cbaab600f6918190349a81156bbe4f93d7a382efdb5ec3019e7cdebca7c871d9",
-      "bytes": 7675
+      "sha256": "8204220b217a75649ccc6e9afdf3985e46eaaa6c198ee4d0917dea26f2613ea1",
+      "bytes": 7779
     },
     {
       "artifact_id": "parity_risk_register",

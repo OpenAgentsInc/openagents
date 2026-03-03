@@ -91,6 +91,7 @@ LANE_LABELS=(
     "viewport-camera-gizmo"
     "render-mode"
     "gpu-acceleration"
+    "mesh-upload-processing"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -417,6 +418,9 @@ run_lane "render-mode" \
 
 run_lane "gpu-acceleration" \
     "$ROOT_DIR/scripts/cad/parity-gpu-acceleration-ci.sh"
+
+run_lane "mesh-upload-processing" \
+    "$ROOT_DIR/scripts/cad/parity-mesh-upload-processing-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
