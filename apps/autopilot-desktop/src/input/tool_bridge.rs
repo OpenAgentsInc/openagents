@@ -1845,6 +1845,12 @@ fn cad_gripper_parameter_summary(
         "servo_bracket_thickness_mm",
         "servo_housing_wall_mm",
         "servo_standoff_diameter_mm",
+        "gearbox_ratio",
+        "gearbox_stage_diameter_mm",
+        "gearbox_stage_length_mm",
+        "wiring_channel_diameter_mm",
+        "wiring_bend_radius_mm",
+        "wiring_clearance_mm",
     ];
     let mut summary = serde_json::Map::new();
     for key in keys {
@@ -1935,6 +1941,36 @@ fn cad_gripper_parameter_summary(
         }
         if let Some(value) = dispatch.servo_standoff_diameter_mm {
             summary.insert("servo_standoff_diameter_mm".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch.parameter_values.get("gearbox_ratio").copied() {
+            summary.insert("gearbox_ratio".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch
+            .parameter_values
+            .get("gearbox_stage_diameter_mm")
+            .copied()
+        {
+            summary.insert("gearbox_stage_diameter_mm".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch
+            .parameter_values
+            .get("gearbox_stage_length_mm")
+            .copied()
+        {
+            summary.insert("gearbox_stage_length_mm".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch
+            .parameter_values
+            .get("wiring_channel_diameter_mm")
+            .copied()
+        {
+            summary.insert("wiring_channel_diameter_mm".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch.parameter_values.get("wiring_bend_radius_mm").copied() {
+            summary.insert("wiring_bend_radius_mm".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch.parameter_values.get("wiring_clearance_mm").copied() {
+            summary.insert("wiring_clearance_mm".to_string(), json!(value));
         }
     }
     Value::Object(summary)
