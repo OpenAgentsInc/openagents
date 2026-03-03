@@ -18,6 +18,7 @@ pub mod chamfer_feature_graph_parity;
 pub mod ci_artifacts;
 pub mod collision_shape_generation_parity;
 pub mod compact_ir_parity;
+pub mod convex_decomposition_parity;
 pub mod core_modeling_checkpoint_parity;
 pub mod dashboard;
 pub mod direct_brep_raytrace_scaffolding_parity;

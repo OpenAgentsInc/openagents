@@ -165,6 +165,8 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/fixtures/physics_crate_integration_vcad_reference.json"
     "crates/cad/parity/collision_shape_generation_parity_manifest.json"
     "crates/cad/parity/fixtures/collision_shape_generation_vcad_reference.json"
+    "crates/cad/parity/convex_decomposition_parity_manifest.json"
+    "crates/cad/parity/fixtures/convex_decomposition_vcad_reference.json"
     "crates/cad/parity/fixtures/parity_fixture_corpus.json"
 )
 
