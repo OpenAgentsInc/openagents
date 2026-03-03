@@ -5,7 +5,7 @@
   "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
   "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
   "parity_check_entrypoint": "scripts/cad/parity_check.sh",
-  "source_artifact_count": 166,
+  "source_artifact_count": 168,
   "artifacts": [
     {
       "artifact_id": "analytic_ray_intersections_parity_manifest",
@@ -560,6 +560,12 @@
       "bytes": 1377
     },
     {
+      "artifact_id": "fixtures_urdf_import_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/urdf_import_vcad_reference.json",
+      "sha256": "751cf728ea04635b9e1e49c38d94e423703ca51c56f40ff3f5fcca6ded68ae58",
+      "bytes": 932
+    },
+    {
       "artifact_id": "fixtures_viewport_camera_gizmo_vcad_reference",
       "source_path": "crates/cad/parity/fixtures/viewport_camera_gizmo_vcad_reference.json",
       "sha256": "58a8eae8626896f5ec1725a374feb26862570be9a651bb2af003b6ac957c7f6f",
@@ -742,8 +748,8 @@
     {
       "artifact_id": "parity_dashboard",
       "source_path": "crates/cad/parity/parity_dashboard.json",
-      "sha256": "263702e5001a68becd209c884c9c08b0cd48b3530b4712f5b9bd24856bdc56d1",
-      "bytes": 9408
+      "sha256": "f7a92c09e69fa831bf7a9e2e1e07b7afb34e238c4588b31f9abcfcee9bd2415a",
+      "bytes": 9490
     },
     {
       "artifact_id": "parity_risk_register",
@@ -972,6 +978,12 @@
       "source_path": "crates/cad/parity/trimmed_surface_ray_hit_parity_manifest.json",
       "sha256": "72057918d9ac8a4a49c1808fbb5a0bccdf9ba22e0709ff3357342ec59a2e1701",
       "bytes": 2703
+    },
+    {
+      "artifact_id": "urdf_import_parity_manifest",
+      "source_path": "crates/cad/parity/urdf_import_parity_manifest.json",
+      "sha256": "ac1b78fb85eb85c08e94feb09286d6111a348f98525d92d70a57c762617db19a",
+      "bytes": 1783
     },
     {
       "artifact_id": "vcad_capabilities_inventory",
