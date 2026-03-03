@@ -1837,6 +1837,18 @@ fn dispatch_mouse_scroll(
     handled
 }
 
+fn cad_hit_action_blocks_camera_zoom(action: &PaneHitAction) -> bool {
+    !matches!(
+        action,
+        PaneHitAction::CadDemo(
+            CadDemoPaneAction::StartDimensionEdit(_)
+                | CadDemoPaneAction::SelectTimelineRow(_)
+                | CadDemoPaneAction::SelectWarning(_)
+                | CadDemoPaneAction::SelectWarningMarker(_)
+        )
+    )
+}
+
 fn cad_camera_target_pane_id(state: &crate::app_state::RenderState, point: Point) -> Option<u64> {
     let pane_order = pane_indices_by_z_desc(state);
     for pane_idx in pane_order {
@@ -1861,7 +1873,9 @@ fn cad_camera_target_pane_id(state: &crate::app_state::RenderState, point: Point
                 return None;
             }
         }
-        if topmost_pane_hit_action_in_order(state, point, &[pane_idx]).is_some() {
+        if let Some((_, action)) = topmost_pane_hit_action_in_order(state, point, &[pane_idx])
+            && cad_hit_action_blocks_camera_zoom(&action)
+        {
             return None;
         }
         if cad_pane::variant_tile_index_at_point(content_bounds, point).is_some() {
@@ -2736,11 +2750,11 @@ mod tests {
     use super::{
         TurnSkillAttachment, TurnSkillSource, assemble_chat_turn_input,
         build_create_invoice_command, build_pay_invoice_command, build_spark_command_for_action,
-        cad_hotkey_action_matrix, cad_pick_kind_label, cad_pick_kind_to_selection_kind,
-        cad_policy_skill_candidates_for_turn, cad_turn_approval_policy,
-        is_command_palette_shortcut, is_toggle_fullscreen_shortcut, parse_positive_amount_str,
-        resolve_turn_skill_by_name, resolve_turn_skill_by_path, should_open_command_palette,
-        validate_lightning_payment_request,
+        cad_hit_action_blocks_camera_zoom, cad_hotkey_action_matrix, cad_pick_kind_label,
+        cad_pick_kind_to_selection_kind, cad_policy_skill_candidates_for_turn,
+        cad_turn_approval_policy, is_command_palette_shortcut, is_toggle_fullscreen_shortcut,
+        parse_positive_amount_str, resolve_turn_skill_by_name, resolve_turn_skill_by_path,
+        should_open_command_palette, validate_lightning_payment_request,
     };
     use crate::app_state::SkillRegistryDiscoveredSkill;
     use crate::pane_system::cad_palette_command_specs;
@@ -2881,6 +2895,24 @@ mod tests {
         assert!(should_open_command_palette(&key, mods, false, false));
         assert!(!should_open_command_palette(&key, mods, false, true));
         assert!(!should_open_command_palette(&key, mods, true, false));
+    }
+
+    #[test]
+    fn cad_zoom_hit_policy_allows_dense_row_targets() {
+        use crate::pane_system::{CadDemoPaneAction, PaneHitAction};
+
+        assert!(!cad_hit_action_blocks_camera_zoom(&PaneHitAction::CadDemo(
+            CadDemoPaneAction::StartDimensionEdit(0)
+        )));
+        assert!(!cad_hit_action_blocks_camera_zoom(&PaneHitAction::CadDemo(
+            CadDemoPaneAction::SelectTimelineRow(0)
+        )));
+        assert!(!cad_hit_action_blocks_camera_zoom(&PaneHitAction::CadDemo(
+            CadDemoPaneAction::SelectWarning(0)
+        )));
+        assert!(cad_hit_action_blocks_camera_zoom(&PaneHitAction::CadDemo(
+            CadDemoPaneAction::CycleVariant
+        )));
     }
 
     #[test]
