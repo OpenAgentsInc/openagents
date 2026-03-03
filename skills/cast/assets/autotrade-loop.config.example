@@ -5,7 +5,7 @@
 # Required for check/prove stages:
 export CAST_AUTOTRADE_SPELL_FILE="rendered/cancel-replace-order.yaml"
 export CAST_AUTOTRADE_PRIVATE_INPUTS_FILE="rendered/cancel-replace-order.private-inputs.yaml"
-export CAST_APP_BIN="/absolute/path/to/charms-cast-v11.0.1.wasm"
+export CAST_APP_BIN="/absolute/path/to/charms-cast-v0.2.0.wasm"
 export CAST_PREV_TXS_FILE="/absolute/path/to/prev_txs_phase2.txt"
 export CAST_CHANGE_ADDRESS="bc1q..."
 

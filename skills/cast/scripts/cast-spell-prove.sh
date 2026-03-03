@@ -189,8 +189,11 @@ fi
 command_output_file="$(mktemp)"
 command_stderr_file="$(mktemp)"
 if ! "${cmd[@]}" >"$command_output_file" 2>"$command_stderr_file"; then
+    command_log_file="$(mktemp)"
+    cat "$command_stderr_file" "$command_output_file" >"$command_log_file"
     cat "$command_stderr_file" >&2
     cat "$command_output_file" >&2
+    cast_print_spell_failure_hints "$command_log_file"
     exit 1
 fi
 if [[ -s "$command_stderr_file" ]]; then

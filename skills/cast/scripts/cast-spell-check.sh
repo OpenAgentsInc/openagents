@@ -122,6 +122,7 @@ fi
 output_file="$(mktemp)"
 if ! "${cmd[@]}" >"$output_file" 2>&1; then
     cat "$output_file" >&2
+    cast_print_spell_failure_hints "$output_file"
     exit 1
 fi
 

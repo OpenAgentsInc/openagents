@@ -20,34 +20,49 @@ Use this guide for maker order creation and the standard check/prove loop.
 skills/cast/scripts/check-cast-prereqs.sh maker
 ```
 
-2. Validate spell structure before proof generation:
+2. If starting from legacy CAST howto spells (`version: 9`), migrate first:
+
+```bash
+skills/cast/scripts/cast-migrate-howto-v11.sh \
+  --input /Users/christopherdavid/code/charms/cast-releases/docs/howto/03-partial-fulfill.yaml \
+  --output-spell ./rendered/03-partial-fulfill.v11.yaml \
+  --output-private-inputs ./rendered/03-partial-fulfill.private.v11.yaml
+```
+
+3. Validate spell structure before proof generation:
 
 ```bash
 skills/cast/scripts/cast-spell-check.sh \
   --spell ./rendered/create-ask-order.yaml \
-  --private-inputs-file ./rendered/create-ask-order.private-inputs.yaml
+  --private-inputs-file ./rendered/create-ask-order.private-inputs.yaml \
+  --app-bin "${CAST_APP_BIN}" \
+  --prev-txs-file "${CAST_PREV_TXS_FILE}"
 ```
 
-3. Run mock prove first:
+4. Run mock prove first:
 
 ```bash
 skills/cast/scripts/cast-spell-prove.sh \
   --spell ./rendered/create-ask-order.yaml \
   --private-inputs-file ./rendered/create-ask-order.private-inputs.yaml \
+  --app-bin "${CAST_APP_BIN}" \
+  --prev-txs-file "${CAST_PREV_TXS_FILE}" \
   --change-address "bc1q..." \
   --mock
 ```
 
-4. Generate real proof artifacts:
+5. Generate real proof artifacts:
 
 ```bash
 skills/cast/scripts/cast-spell-prove.sh \
   --spell ./rendered/create-ask-order.yaml \
   --private-inputs-file ./rendered/create-ask-order.private-inputs.yaml \
+  --app-bin "${CAST_APP_BIN}" \
+  --prev-txs-file "${CAST_PREV_TXS_FILE}" \
   --change-address "bc1q..."
 ```
 
-5. Optional sign/dry-run broadcast lane:
+6. Optional sign/dry-run broadcast lane:
 
 ```bash
 skills/cast/scripts/cast-sign-and-broadcast.sh --tx-json ./run/latest/proofs/prove.json --dry-run
