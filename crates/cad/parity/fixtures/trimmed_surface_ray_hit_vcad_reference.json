@@ -1,0 +1,59 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-099",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/crates/vcad-kernel-raytrace/src/trim.rs + ~/code/vcad/crates/vcad-kernel-raytrace/src/bvh.rs",
+  "expected_samples": [
+    {
+      "case_id": "hit_hole_rejected",
+      "t": 6.0,
+      "uv": [5.0, 5.0],
+      "inside_outer": true,
+      "inside_hole": true,
+      "accepted": false
+    },
+    {
+      "case_id": "hit_inner_valid_high",
+      "t": 8.0,
+      "uv": [8.0, 8.0],
+      "inside_outer": true,
+      "inside_hole": false,
+      "accepted": true
+    },
+    {
+      "case_id": "hit_inner_valid_low",
+      "t": 4.0,
+      "uv": [2.0, 2.0],
+      "inside_outer": true,
+      "inside_hole": false,
+      "accepted": true
+    },
+    {
+      "case_id": "hit_outside_rejected",
+      "t": 10.0,
+      "uv": [12.0, 5.0],
+      "inside_outer": false,
+      "inside_hole": false,
+      "accepted": false
+    }
+  ],
+  "expected_concave_checks": [
+    {
+      "case_id": "concave_inside_leg",
+      "point": [0.5, 1.5],
+      "inside": true
+    },
+    {
+      "case_id": "concave_inside_main",
+      "point": [0.5, 0.5],
+      "inside": true
+    },
+    {
+      "case_id": "concave_notch_rejected",
+      "point": [1.5, 1.5],
+      "inside": false
+    }
+  ],
+  "expected_closest_hit_t": 4.0,
+  "expected_winding_nonzero_rule": true
+}

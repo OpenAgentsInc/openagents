@@ -94,6 +94,7 @@ LANE_LABELS=(
     "mesh-upload-processing"
     "direct-brep-raytrace-scaffolding"
     "analytic-ray-intersections"
+    "trimmed-surface-ray-hit"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -429,6 +430,9 @@ run_lane "direct-brep-raytrace-scaffolding" \
 
 run_lane "analytic-ray-intersections" \
     "$ROOT_DIR/scripts/cad/parity-analytic-ray-intersections-ci.sh"
+
+run_lane "trimmed-surface-ray-hit" \
+    "$ROOT_DIR/scripts/cad/parity-trimmed-surface-ray-hit-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

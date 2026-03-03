@@ -66,6 +66,7 @@ fn parity_check_script_list_mode_includes_required_lanes() {
     assert!(lines.contains(&"mesh-upload-processing"));
     assert!(lines.contains(&"direct-brep-raytrace-scaffolding"));
     assert!(lines.contains(&"analytic-ray-intersections"));
+    assert!(lines.contains(&"trimmed-surface-ray-hit"));
     assert!(lines.contains(&"ci-artifact-manifest"));
     assert!(lines.contains(&"risk-register-workflow"));
     assert!(lines.contains(&"baseline-dashboard"));

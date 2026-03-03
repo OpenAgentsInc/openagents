@@ -1,0 +1,100 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-099",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/trimmed_surface_ray_hit_vcad_reference.json",
+  "reference_fixture_sha256": "a1f74dfee6b7ca157cc1e2badac959f46d9b5ad158717bd49785a55d4932f00e",
+  "reference_source": "~/code/vcad/crates/vcad-kernel-raytrace/src/trim.rs + ~/code/vcad/crates/vcad-kernel-raytrace/src/bvh.rs",
+  "reference_commit_match": true,
+  "sample_set_match": true,
+  "concave_behavior_match": true,
+  "outer_inner_loop_filter_match": true,
+  "hole_rejection_match": true,
+  "closest_hit_filter_match": true,
+  "winding_rule_match": true,
+  "deterministic_replay_match": true,
+  "samples": [
+    {
+      "case_id": "hit_hole_rejected",
+      "t": 6.0,
+      "uv": [
+        5.0,
+        5.0
+      ],
+      "inside_outer": true,
+      "inside_hole": true,
+      "accepted": false
+    },
+    {
+      "case_id": "hit_inner_valid_high",
+      "t": 8.0,
+      "uv": [
+        8.0,
+        8.0
+      ],
+      "inside_outer": true,
+      "inside_hole": false,
+      "accepted": true
+    },
+    {
+      "case_id": "hit_inner_valid_low",
+      "t": 4.0,
+      "uv": [
+        2.0,
+        2.0
+      ],
+      "inside_outer": true,
+      "inside_hole": false,
+      "accepted": true
+    },
+    {
+      "case_id": "hit_outside_rejected",
+      "t": 10.0,
+      "uv": [
+        12.0,
+        5.0
+      ],
+      "inside_outer": false,
+      "inside_hole": false,
+      "accepted": false
+    }
+  ],
+  "concave_checks": [
+    {
+      "case_id": "concave_inside_leg",
+      "point": [
+        0.5,
+        1.5
+      ],
+      "inside": true
+    },
+    {
+      "case_id": "concave_inside_main",
+      "point": [
+        0.5,
+        0.5
+      ],
+      "inside": true
+    },
+    {
+      "case_id": "concave_notch_rejected",
+      "point": [
+        1.5,
+        1.5
+      ],
+      "inside": false
+    }
+  ],
+  "closest_hit_t": 4.0,
+  "winding_nonzero_rule_holds": true,
+  "deterministic_signature": "757155474a0c8e1b",
+  "parity_contracts": [
+    "point_in_face accepts hits inside outer loop and rejects hits outside boundary",
+    "inner trim loops behave as holes and reject hits that would otherwise pass outer loop",
+    "point_in_polygon uses winding-number semantics and supports concave polygons",
+    "ray hit filtering keeps only accepted trimmed hits before closest-hit selection",
+    "closest trimmed hit is selected deterministically by minimum positive t among accepted hits"
+  ]
+}
