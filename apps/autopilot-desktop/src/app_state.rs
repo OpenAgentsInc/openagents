@@ -124,9 +124,16 @@ pub struct CadCameraDragState {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct ChatTranscriptPressState {
+pub struct ChatTranscriptSelectionDragState {
     pub message_id: u64,
-    pub started_at: Instant,
+    pub anchor_byte_offset: usize,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ChatTranscriptSelectionState {
+    pub message_id: u64,
+    pub start_byte_offset: usize,
+    pub end_byte_offset: usize,
 }
 
 pub struct DesktopPane {
@@ -502,6 +509,7 @@ pub struct AutopilotChatState {
     pub thread_rename_counter: u64,
     pub transcript_scroll_offset: f32,
     pub transcript_follow_tail: bool,
+    pub transcript_selection: Option<ChatTranscriptSelectionState>,
     pub last_error: Option<String>,
     pub copy_notice: Option<String>,
     pub copy_notice_until: Option<Instant>,
@@ -556,6 +564,7 @@ impl Default for AutopilotChatState {
             thread_rename_counter: 1,
             transcript_scroll_offset: 0.0,
             transcript_follow_tail: true,
+            transcript_selection: None,
             last_error: None,
             copy_notice: None,
             copy_notice_until: None,
@@ -594,6 +603,10 @@ impl AutopilotChatState {
     pub fn reset_transcript_scroll(&mut self) {
         self.transcript_scroll_offset = 0.0;
         self.transcript_follow_tail = true;
+    }
+
+    pub fn clear_transcript_selection(&mut self) {
+        self.transcript_selection = None;
     }
 
     pub fn transcript_effective_scroll_offset(&self, max_scroll: f32) -> f32 {
@@ -855,11 +868,13 @@ impl AutopilotChatState {
         self.turn_plan.clear();
         self.turn_diff = None;
         self.turn_timeline.clear();
+        self.transcript_selection = None;
         self.last_error = None;
     }
 
     pub fn submit_prompt(&mut self, prompt: String) {
         self.last_error = None;
+        self.transcript_selection = None;
         let trimmed = prompt.trim();
         if trimmed.is_empty() {
             self.last_error = Some("Prompt cannot be empty".to_string());
@@ -2766,7 +2781,7 @@ pub struct RenderState {
     pub job_history_inputs: JobHistoryPaneInputs,
     pub chat_inputs: ChatPaneInputs,
     pub autopilot_chat: AutopilotChatState,
-    pub chat_transcript_press: Option<ChatTranscriptPressState>,
+    pub chat_transcript_selection_drag: Option<ChatTranscriptSelectionDragState>,
     pub codex_account: CodexAccountPaneState,
     pub codex_models: CodexModelsPaneState,
     pub codex_config: CodexConfigPaneState,

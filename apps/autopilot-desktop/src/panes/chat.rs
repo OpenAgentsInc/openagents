@@ -3,7 +3,8 @@ use wgpui::{Bounds, Component, InputEvent, PaintContext, Point, Quad, theme};
 
 use crate::app_state::{
     AutopilotChatState, AutopilotMessage, AutopilotMessageStatus, AutopilotProgressBlock,
-    AutopilotProgressRow, AutopilotRole, ChatPaneInputs, PaneKind, RenderState,
+    AutopilotProgressRow, AutopilotRole, ChatPaneInputs, ChatTranscriptSelectionState, PaneKind,
+    RenderState,
 };
 use crate::pane_renderer::paint_action_button;
 use crate::pane_system::{
@@ -20,6 +21,13 @@ const CHAT_PROGRESS_BLOCK_GAP: f32 = 4.0;
 const CHAT_ACTIVITY_HEADER_LINE_HEIGHT: f32 = 12.0;
 const CHAT_ACTIVITY_ROW_LINE_HEIGHT: f32 = 12.0;
 const CHAT_ACTIVITY_MAX_ROWS: usize = 14;
+
+#[derive(Clone, Copy, Debug)]
+struct WrappedTranscriptLine {
+    start_byte_offset: usize,
+    end_byte_offset: usize,
+    char_count: usize,
+}
 
 fn transcript_scroll_clip_bounds(content_bounds: Bounds) -> Bounds {
     let transcript_bounds = chat_transcript_bounds(content_bounds);
@@ -234,6 +242,87 @@ fn message_display_content(message: &AutopilotMessage) -> String {
     }
 }
 
+fn transcript_mono_char_width(text_system: &mut wgpui::TextSystem) -> f32 {
+    text_system
+        .measure_styled_mono(
+            "M",
+            CHAT_MARKDOWN_FONT_SIZE,
+            wgpui::text::FontStyle::normal(),
+        )
+        .max(1.0)
+}
+
+fn wrap_transcript_text_lines(text: &str, max_chars_per_line: usize) -> Vec<WrappedTranscriptLine> {
+    if text.is_empty() {
+        return vec![WrappedTranscriptLine {
+            start_byte_offset: 0,
+            end_byte_offset: 0,
+            char_count: 0,
+        }];
+    }
+
+    let max_chars_per_line = max_chars_per_line.max(1);
+    let mut lines = Vec::new();
+    let mut line_start = 0usize;
+    let mut line_chars = 0usize;
+
+    for (byte_offset, ch) in text.char_indices() {
+        if ch == '\n' {
+            lines.push(WrappedTranscriptLine {
+                start_byte_offset: line_start,
+                end_byte_offset: byte_offset,
+                char_count: line_chars,
+            });
+            line_start = byte_offset + ch.len_utf8();
+            line_chars = 0;
+            continue;
+        }
+
+        if line_chars >= max_chars_per_line {
+            lines.push(WrappedTranscriptLine {
+                start_byte_offset: line_start,
+                end_byte_offset: byte_offset,
+                char_count: line_chars,
+            });
+            line_start = byte_offset;
+            line_chars = 0;
+        }
+
+        line_chars = line_chars.saturating_add(1);
+    }
+
+    lines.push(WrappedTranscriptLine {
+        start_byte_offset: line_start,
+        end_byte_offset: text.len(),
+        char_count: line_chars,
+    });
+    if text.ends_with('\n') {
+        lines.push(WrappedTranscriptLine {
+            start_byte_offset: text.len(),
+            end_byte_offset: text.len(),
+            char_count: 0,
+        });
+    }
+    lines
+}
+
+fn byte_offset_for_char_index(text: &str, char_index: usize) -> usize {
+    if char_index == 0 {
+        return 0;
+    }
+    text.char_indices()
+        .nth(char_index)
+        .map_or(text.len(), |(index, _)| index)
+}
+
+fn clamp_to_char_boundary(text: &str, mut byte_offset: usize) -> usize {
+    byte_offset = byte_offset.min(text.len());
+    while byte_offset > 0 && !text.is_char_boundary(byte_offset) {
+        byte_offset -= 1;
+    }
+    byte_offset
+}
+
 fn transcript_message_layouts(
     state: &mut RenderState,
     content_bounds: Bounds,
@@ -290,16 +379,46 @@ fn top_chat_content_bounds(state: &RenderState) -> Option<Bounds> {
         .map(|pane| pane_content_bounds(pane.bounds))
 }
 
-pub fn transcript_message_id_at_point(state: &mut RenderState, point: Point) -> Option<u64> {
+pub fn transcript_message_byte_offset_at_point(
+    state: &mut RenderState,
+    point: Point,
+) -> Option<(u64, usize)> {
     let content_bounds = top_chat_content_bounds(state)?;
     let clip = transcript_scroll_clip_bounds(content_bounds);
     if !clip.contains(point) {
         return None;
     }
-    transcript_message_layouts(state, content_bounds)
+
+    let (message_id, message_bounds) = transcript_message_layouts(state, content_bounds)
         .into_iter()
-        .find(|(_, bounds)| bounds.contains(point))
-        .map(|(id, _)| id)
+        .find(|(_, bounds)| bounds.contains(point))?;
+    let message_text = transcript_message_copy_text_by_id(state, message_id)?;
+    if message_text.is_empty() {
+        return Some((message_id, 0));
+    }
+
+    let markdown_width = markdown_body_width(clip);
+    let char_width = transcript_mono_char_width(&mut state.text_system);
+    let max_chars_per_line = (markdown_width / char_width).floor().max(1.0) as usize;
+    let wrapped_lines = wrap_transcript_text_lines(&message_text, max_chars_per_line);
+    if wrapped_lines.is_empty() {
+        return Some((message_id, 0));
+    }
+
+    let message_text_origin_y = message_bounds.origin.y + CHAT_TRANSCRIPT_LINE_HEIGHT;
+    let relative_y = (point.y - message_text_origin_y).max(0.0);
+    let line_index = (relative_y / CHAT_TRANSCRIPT_LINE_HEIGHT).floor() as usize;
+    let line_index = line_index.min(wrapped_lines.len().saturating_sub(1));
+    let line = wrapped_lines[line_index];
+
+    let relative_x = (point.x - clip.origin.x).max(0.0);
+    let char_index = (relative_x / char_width).floor() as usize;
+    let char_index = char_index.min(line.char_count);
+
+    let line_text = &message_text[line.start_byte_offset..line.end_byte_offset];
+    let local_byte_offset = byte_offset_for_char_index(line_text, char_index);
+    let byte_offset = (line.start_byte_offset + local_byte_offset).min(message_text.len());
+    Some((message_id, byte_offset))
 }
 
 pub fn transcript_message_copy_text_by_id(state: &RenderState, message_id: u64) -> Option<String> {
@@ -309,6 +428,72 @@ pub fn transcript_message_copy_text_by_id(state: &RenderState, message_id: u64) 
         .iter()
         .find(|message| message.id == message_id)
         .map(|message| sanitize_chat_text(&message_display_content(message)))
+}
+
+pub fn transcript_selection_text(
+    state: &RenderState,
+    selection: ChatTranscriptSelectionState,
+) -> Option<String> {
+    let message_text = transcript_message_copy_text_by_id(state, selection.message_id)?;
+    let start = clamp_to_char_boundary(&message_text, selection.start_byte_offset);
+    let end = clamp_to_char_boundary(&message_text, selection.end_byte_offset);
+    if end <= start {
+        return None;
+    }
+    Some(message_text[start..end].to_string())
+}
+
+fn paint_message_selection_highlight(
+    message_text: &str,
+    selection: ChatTranscriptSelectionState,
+    text_origin: Point,
+    markdown_width: f32,
+    paint: &mut PaintContext,
+) {
+    let start = clamp_to_char_boundary(message_text, selection.start_byte_offset);
+    let end = clamp_to_char_boundary(message_text, selection.end_byte_offset);
+    if end <= start {
+        return;
+    }
+
+    let char_width = transcript_mono_char_width(paint.text);
+    let max_chars_per_line = (markdown_width / char_width).floor().max(1.0) as usize;
+    let wrapped_lines = wrap_transcript_text_lines(message_text, max_chars_per_line);
+    let highlight_color = theme::accent::PRIMARY.with_alpha(0.24);
+
+    for (line_index, line) in wrapped_lines.into_iter().enumerate() {
+        if line.end_byte_offset <= start || line.start_byte_offset >= end {
+            continue;
+        }
+
+        let selection_start = start.max(line.start_byte_offset);
+        let selection_end = end.min(line.end_byte_offset);
+        if selection_end <= selection_start {
+            continue;
+        }
+
+        let prefix = &message_text[line.start_byte_offset..selection_start];
+        let selected = &message_text[selection_start..selection_end];
+        let start_chars = prefix.chars().count() as f32;
+        let selected_chars = selected.chars().count() as f32;
+        if selected_chars <= 0.0 {
+            continue;
+        }
+
+        let highlight_x = text_origin.x + start_chars * char_width;
+        let highlight_y = text_origin.y + line_index as f32 * CHAT_TRANSCRIPT_LINE_HEIGHT + 1.0;
+        let highlight_width = selected_chars * char_width;
+        let highlight_height = (CHAT_TRANSCRIPT_LINE_HEIGHT - 2.0).max(1.0);
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(
+                highlight_x,
+                highlight_y,
+                highlight_width,
+                highlight_height,
+            ))
+            .with_background(highlight_color),
+        );
+    }
 }
 
 pub fn paint(
@@ -352,6 +537,7 @@ pub fn paint(
     }
 
     for message in &autopilot_chat.messages {
+        let message_text_origin_y = y + CHAT_TRANSCRIPT_LINE_HEIGHT;
         let status = match message.status {
             AutopilotMessageStatus::Queued => "thinking",
             AutopilotMessageStatus::Running => "running",
@@ -383,6 +569,17 @@ pub fn paint(
         y += CHAT_TRANSCRIPT_LINE_HEIGHT;
 
         let markdown_source = message_markdown_source(message);
+        if let Some(selection) = autopilot_chat.transcript_selection
+            && selection.message_id == message.id
+        {
+            paint_message_selection_highlight(
+                &markdown_source,
+                selection,
+                Point::new(transcript_scroll_clip.origin.x, message_text_origin_y),
+                markdown_width,
+                paint,
+            );
+        }
         let markdown_document = markdown_parser.parse(&markdown_source);
         let markdown_height = markdown_renderer
             .render(
@@ -553,8 +750,9 @@ fn sanitize_chat_text(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        chat_tool_activity_lines, is_tool_activity_event, message_progress_height,
-        progress_status_color, sanitize_chat_text,
+        byte_offset_for_char_index, chat_tool_activity_lines, clamp_to_char_boundary,
+        is_tool_activity_event, message_progress_height, progress_status_color, sanitize_chat_text,
+        wrap_transcript_text_lines,
     };
     use crate::app_state::{
         AutopilotChatState, AutopilotMessage, AutopilotMessageStatus, AutopilotProgressBlock,
@@ -593,6 +791,32 @@ mod tests {
         let raw = "ok\u{1b}[31m red\u{1b}[0m\tline\r\nnext\u{7}";
         let sanitized = sanitize_chat_text(raw);
         assert_eq!(sanitized, "ok red\tline\nnext");
+    }
+
+    #[test]
+    fn wrap_transcript_text_lines_preserves_offsets_for_newlines_and_wraps() {
+        let text = "abcd\nefghi";
+        let lines = wrap_transcript_text_lines(text, 3);
+        let ranges = lines
+            .into_iter()
+            .map(|line| (line.start_byte_offset, line.end_byte_offset))
+            .collect::<Vec<_>>();
+        assert_eq!(ranges, vec![(0, 3), (3, 4), (5, 8), (8, 10)]);
+        assert_eq!(&text[0..3], "abc");
+        assert_eq!(&text[3..4], "d");
+        assert_eq!(&text[5..8], "efg");
+        assert_eq!(&text[8..10], "hi");
+    }
+
+    #[test]
+    fn byte_offset_helpers_respect_utf8_boundaries() {
+        let text = "AéB";
+        assert_eq!(byte_offset_for_char_index(text, 0), 0);
+        assert_eq!(byte_offset_for_char_index(text, 1), 1);
+        assert_eq!(byte_offset_for_char_index(text, 2), 3);
+        assert_eq!(byte_offset_for_char_index(text, 3), 4);
+        assert_eq!(clamp_to_char_boundary(text, 2), 1);
+        assert_eq!(clamp_to_char_boundary(text, 3), 3);
     }
 
     #[test]
