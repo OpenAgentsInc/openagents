@@ -101,6 +101,7 @@ LANE_LABELS=(
     "raytrace-ui-toggle-fallback"
     "rendering-raytrace-checkpoint"
     "physics-crate-integration"
+    "collision-shape-generation"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -457,6 +458,9 @@ run_lane "rendering-raytrace-checkpoint" \
 
 run_lane "physics-crate-integration" \
     "$ROOT_DIR/scripts/cad/parity-physics-crate-integration-ci.sh"
+
+run_lane "collision-shape-generation" \
+    "$ROOT_DIR/scripts/cad/parity-collision-shape-generation-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

@@ -16,6 +16,7 @@ pub mod cad_cli_scaffold_parity;
 pub mod cad_mcp_tools_parity;
 pub mod chamfer_feature_graph_parity;
 pub mod ci_artifacts;
+pub mod collision_shape_generation_parity;
 pub mod compact_ir_parity;
 pub mod core_modeling_checkpoint_parity;
 pub mod dashboard;

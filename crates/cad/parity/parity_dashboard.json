@@ -39,7 +39,7 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 152,
+    "source_artifact_count": 154,
     "artifact_ids": [
       "analytic_ray_intersections_parity_manifest",
       "assembly_acceptance_scenes_parity_manifest",
@@ -58,6 +58,7 @@
       "cad_cli_scaffold_parity_manifest",
       "cad_mcp_tools_parity_manifest",
       "chamfer_feature_graph_parity_manifest",
+      "collision_shape_generation_parity_manifest",
       "compact_ir_parity_manifest",
       "core_modeling_checkpoint_parity_manifest",
       "direct_brep_raytrace_scaffolding_parity_manifest",
@@ -91,6 +92,7 @@
       "fixtures_cad_cli_commands_vcad_reference",
       "fixtures_cad_cli_scaffold_vcad_reference",
       "fixtures_cad_mcp_tools_vcad_reference",
+      "fixtures_collision_shape_generation_vcad_reference",
       "fixtures_compact_ir_vcad_reference",
       "fixtures_direct_brep_raytrace_scaffolding_vcad_reference",
       "fixtures_drafting_detail_vcad_reference",
