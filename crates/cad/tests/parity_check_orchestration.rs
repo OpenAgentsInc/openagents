@@ -95,6 +95,7 @@ fn parity_check_script_list_mode_includes_required_lanes() {
     assert!(lines.contains(&"slicer-gcode-lane"));
     assert!(lines.contains(&"slicer-bambu-lane"));
     assert!(lines.contains(&"slicer-wasm-lane"));
+    assert!(lines.contains(&"embroidery-core-lane"));
     assert!(lines.contains(&"ci-artifact-manifest"));
     assert!(lines.contains(&"risk-register-workflow"));
     assert!(lines.contains(&"baseline-dashboard"));
