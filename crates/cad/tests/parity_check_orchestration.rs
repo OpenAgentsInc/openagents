@@ -82,6 +82,7 @@ fn parity_check_script_list_mode_includes_required_lanes() {
     assert!(lines.contains(&"mcp-simulation-tools"));
     assert!(lines.contains(&"urdf-import"));
     assert!(lines.contains(&"urdf-export-fixtures"));
+    assert!(lines.contains(&"crdt-lane-architecture"));
     assert!(lines.contains(&"ci-artifact-manifest"));
     assert!(lines.contains(&"risk-register-workflow"));
     assert!(lines.contains(&"baseline-dashboard"));

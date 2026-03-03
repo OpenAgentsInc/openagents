@@ -110,6 +110,7 @@ LANE_LABELS=(
     "mcp-simulation-tools"
     "urdf-import"
     "urdf-export-fixtures"
+    "crdt-lane-architecture"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -493,6 +494,9 @@ run_lane "urdf-import" \
 
 run_lane "urdf-export-fixtures" \
     "$ROOT_DIR/scripts/cad/parity-urdf-export-fixtures-ci.sh"
+
+run_lane "crdt-lane-architecture" \
+    "$ROOT_DIR/scripts/cad/parity-crdt-lane-architecture-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

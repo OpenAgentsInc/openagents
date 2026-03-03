@@ -181,6 +181,8 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/fixtures/urdf_import_vcad_reference.json"
     "crates/cad/parity/urdf_export_fixtures_parity_manifest.json"
     "crates/cad/parity/fixtures/urdf_export_fixtures_vcad_reference.json"
+    "crates/cad/parity/crdt_lane_architecture_parity_manifest.json"
+    "crates/cad/parity/fixtures/crdt_lane_architecture_vcad_reference.json"
     "crates/cad/parity/fixtures/parity_fixture_corpus.json"
 )
 
