@@ -65,7 +65,7 @@ use crate::panes::{cad as cad_pane, chat as chat_pane};
 use crate::provider_nip90_lane::ProviderNip90LaneCommand;
 use crate::render::{
     logical_size, render_frame, sidebar_go_online_button_bounds, sidebar_handle_bounds,
-    wallet_balance_chip_bounds,
+    wallet_balance_sats_label_bounds,
 };
 use crate::runtime_lanes::{
     AcCreditCommand, RuntimeCommandErrorClass, RuntimeCommandResponse, RuntimeCommandStatus,
@@ -407,7 +407,8 @@ pub fn handle_about_to_wait(app: &mut App, event_loop: &ActiveEventLoop) {
     let should_redraw = changed
         || state.hotbar.is_flashing()
         || provider_animating
-        || state.autopilot_chat.has_pending_messages();
+        || state.autopilot_chat.has_pending_messages()
+        || any_text_input_focused(state);
     if should_redraw {
         state.window.request_redraw();
     }
@@ -1471,8 +1472,8 @@ fn dispatch_mouse_down(
     }
 
     if button == MouseButton::Left {
-        let wallet_bounds = wallet_balance_chip_bounds(state);
-        if wallet_bounds.size.width > 0.0 && wallet_bounds.contains(point) {
+        let wallet_label_bounds = wallet_balance_sats_label_bounds(state);
+        if wallet_label_bounds.size.width > 0.0 && wallet_label_bounds.contains(point) {
             PaneController::create_for_kind(state, crate::app_state::PaneKind::SparkWallet);
             queue_spark_command(state, SparkWalletCommand::Refresh);
             return true;
@@ -2202,7 +2203,10 @@ fn handle_sidebar_mouse_down(
     state.sidebar.is_pressed = true;
     state.sidebar.is_dragging = false;
     state.sidebar.drag_start_x = point.x;
-    state.sidebar.drag_start_width = state.sidebar.width;
+    let logical = logical_size(&state.config, state.scale_factor);
+    let min_sidebar_width = 220.0;
+    let max_sidebar_width = (logical.width * 0.5).max(min_sidebar_width);
+    state.sidebar.drag_start_width = state.sidebar.width.max(min_sidebar_width).min(max_sidebar_width);
     true
 }
 
@@ -2215,28 +2219,7 @@ fn handle_sidebar_mouse_move(state: &mut crate::app_state::RenderState, point: P
         handled = true;
     }
 
-    if !state.sidebar.is_pressed {
-        return handled;
-    }
-
-    let dx = point.x - state.sidebar.drag_start_x;
-    let logical = logical_size(&state.config, state.scale_factor);
-
-    // Start a drag only after a small horizontal threshold, and only when open.
-    if !state.sidebar.is_dragging {
-        if dx.abs() < 3.0 || !state.sidebar.is_open {
-            return handled;
-        }
-        state.sidebar.is_dragging = true;
-    }
-
-    let min_sidebar_width = 220.0;
-    let max_sidebar_width = (logical.width * 0.5).max(min_sidebar_width);
-    let mut new_width = state.sidebar.drag_start_width - dx;
-    new_width = new_width.max(min_sidebar_width).min(max_sidebar_width);
-    state.sidebar.width = new_width;
-    clamp_all_panes_to_window(state);
-    true
+    handled
 }
 
 fn handle_sidebar_mouse_up(
