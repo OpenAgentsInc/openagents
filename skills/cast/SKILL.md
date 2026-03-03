@@ -29,7 +29,7 @@ Required commands:
 
 Required artifacts/services:
 
-- CAST app binary (`charms-cast-v0.2.0.wasm` by default in this repo plan)
+- CAST app binary (`charms-cast-v11.0.1.wasm` or latest v11-compatible build)
 - Operator-signed `fulfill` params payload
 - Scrolls API base URL
 - `prev_txs` ancestry data for all spell inputs
@@ -52,8 +52,9 @@ Required artifacts/services:
 4. For taker fills, follow [partial-fulfillment](references/partial-fulfillment.md).
 
 5. For signing and broadcast controls, follow [signing-and-broadcast](references/signing-and-broadcast.md).
+6. For repeated autonomous execution, follow [autotrade-loop](references/autotrade-loop.md).
 
-6. Keep operations deterministic:
+7. Keep operations deterministic:
 - prefer file-backed inputs over inline shell literals
 - use dry-run first for mutation steps
 - persist artifacts and receipts for every run
@@ -88,6 +89,18 @@ skills/cast/scripts/cast-spell-prove.sh \
 # Sign + inspect
 skills/cast/scripts/cast-sign-and-broadcast.sh --tx-json ./proofs/tx_to_sign.json --dry-run
 skills/cast/scripts/cast-show-spell.sh --tx "<spell_tx_hex>"
+
+# Run one automated iteration (safe defaults: mock prove + dry-run sign)
+skills/cast/scripts/cast-autotrade-loop.sh \
+  --config skills/cast/assets/autotrade-loop.config.example \
+  --once
+
+# Run continuous loop (explicitly controlled)
+skills/cast/scripts/cast-autotrade-loop.sh \
+  --config /absolute/path/to/autotrade.env \
+  --interval-seconds 45 \
+  --max-iterations 0 \
+  --continue-on-error
 ```
 
 ## References
@@ -96,3 +109,4 @@ skills/cast/scripts/cast-show-spell.sh --tx "<spell_tx_hex>"
 - [cancel-and-replace](references/cancel-and-replace.md)
 - [partial-fulfillment](references/partial-fulfillment.md)
 - [signing-and-broadcast](references/signing-and-broadcast.md)
+- [autotrade-loop](references/autotrade-loop.md)
