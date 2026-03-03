@@ -109,6 +109,7 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/raytrace_quality_mode_parity_manifest.json"
     "crates/cad/parity/raytrace_face_pick_parity_manifest.json"
     "crates/cad/parity/raytrace_ui_toggle_fallback_parity_manifest.json"
+    "crates/cad/parity/rendering_raytrace_checkpoint_parity_manifest.json"
     "crates/cad/parity/sketch_loft_parity_manifest.json"
     "crates/cad/parity/sketch_profile_validity_parity_manifest.json"
     "crates/cad/parity/sketch_revolve_parity_manifest.json"

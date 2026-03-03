@@ -39,7 +39,7 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 149,
+    "source_artifact_count": 150,
     "artifact_ids": [
       "analytic_ray_intersections_parity_manifest",
       "assembly_acceptance_scenes_parity_manifest",
@@ -159,6 +159,7 @@
       "raytrace_quality_mode_parity_manifest",
       "raytrace_ui_toggle_fallback_parity_manifest",
       "render_mode_parity_manifest",
+      "rendering_raytrace_checkpoint_parity_manifest",
       "shell_feature_graph_parity_manifest",
       "sketch_constraint_enum_parity_manifest",
       "sketch_constraint_status_parity_manifest",

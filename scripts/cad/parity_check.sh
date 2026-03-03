@@ -99,6 +99,7 @@ LANE_LABELS=(
     "raytrace-quality-mode"
     "raytrace-face-pick"
     "raytrace-ui-toggle-fallback"
+    "rendering-raytrace-checkpoint"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -449,6 +450,9 @@ run_lane "raytrace-face-pick" \
 
 run_lane "raytrace-ui-toggle-fallback" \
     "$ROOT_DIR/scripts/cad/parity-raytrace-ui-toggle-fallback-ci.sh"
+
+run_lane "rendering-raytrace-checkpoint" \
+    "$ROOT_DIR/scripts/cad/parity-rendering-raytrace-checkpoint-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
