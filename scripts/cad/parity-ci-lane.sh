@@ -193,6 +193,8 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/fixtures/ecad_symbols_lane_vcad_reference.json"
     "crates/cad/parity/ecad_schematic_lane_parity_manifest.json"
     "crates/cad/parity/fixtures/ecad_schematic_lane_vcad_reference.json"
+    "crates/cad/parity/ecad_pcb_lane_parity_manifest.json"
+    "crates/cad/parity/fixtures/ecad_pcb_lane_vcad_reference.json"
     "crates/cad/parity/fixtures/parity_fixture_corpus.json"
 )
 
