@@ -438,7 +438,7 @@ pub fn paint_cad_demo_placeholder_pane(
         paint.scene.draw_quad(
             Quad::new(layout.viewport_bounds)
                 .with_background(theme::bg::ELEVATED)
-                .with_corner_radius(4.0),
+                .with_corner_radius(6.0),
         );
 
         let base_mesh_payload = pane_state.last_good_mesh_payload.as_ref();
@@ -489,7 +489,7 @@ pub fn paint_cad_demo_placeholder_pane(
 
             let mut tile_quad = Quad::new(tile_bounds)
                 .with_background(theme::bg::SURFACE)
-                .with_corner_radius(4.0)
+                .with_corner_radius(6.0)
                 .with_border(theme::border::SUBTLE, 1.0);
             if is_active {
                 tile_quad = tile_quad.with_border(theme::text::PRIMARY, 1.0);
@@ -634,7 +634,7 @@ pub fn paint_cad_demo_placeholder_pane(
         paint.scene.draw_quad(
             Quad::new(warning_panel)
                 .with_background(theme::bg::SURFACE)
-                .with_corner_radius(4.0)
+                .with_corner_radius(6.0)
                 .with_border(theme::border::SUBTLE, 1.0),
         );
         paint.scene.draw_text(paint.text.layout(
@@ -682,7 +682,7 @@ pub fn paint_cad_demo_placeholder_pane(
         paint.scene.draw_quad(
             Quad::new(dimension_panel)
                 .with_background(theme::bg::SURFACE)
-                .with_corner_radius(4.0)
+                .with_corner_radius(6.0)
                 .with_border(theme::border::SUBTLE, 1.0),
         );
         paint.scene.draw_text(paint.text.layout(
@@ -762,7 +762,7 @@ pub fn paint_cad_demo_placeholder_pane(
         paint.scene.draw_quad(
             Quad::new(timeline_panel)
                 .with_background(theme::bg::SURFACE)
-                .with_corner_radius(4.0)
+                .with_corner_radius(6.0)
                 .with_border(theme::border::SUBTLE, 1.0),
         );
         paint.scene.draw_text(paint.text.layout(
@@ -1048,7 +1048,7 @@ fn paint_cad_demo_basic_pane(
     paint.scene.draw_quad(
         Quad::new(viewport_bounds)
             .with_background(theme::bg::ELEVATED)
-            .with_corner_radius(4.0)
+            .with_corner_radius(6.0)
             .with_border(theme::border::SUBTLE, 1.0),
     );
 
@@ -1573,7 +1573,7 @@ fn paint_engineering_overlay(
     paint.scene.draw_quad(
         Quad::new(overlay_bounds)
             .with_background(Hsla::new(0.0, 0.0, 0.10, 0.92))
-            .with_corner_radius(4.0)
+            .with_corner_radius(6.0)
             .with_border(theme::border::SUBTLE, 1.0),
     );
     let title_origin = Point::new(
@@ -1713,7 +1713,7 @@ fn paint_view_cube_overlay(
     paint.scene.draw_quad(
         Quad::new(cube_bounds)
             .with_background(theme::bg::SURFACE)
-            .with_corner_radius(4.0)
+            .with_corner_radius(6.0)
             .with_border(theme::border::SUBTLE, 1.0),
     );
     let label_origin = Point::new(cube_bounds.origin.x + 6.0, cube_bounds.origin.y + 10.0);
