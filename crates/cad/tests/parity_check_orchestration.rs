@@ -79,6 +79,7 @@ fn parity_check_script_list_mode_includes_required_lanes() {
     assert!(lines.contains(&"simulation-step-reset-api"));
     assert!(lines.contains(&"simulation-ui-controls"));
     assert!(lines.contains(&"gym-style-api"));
+    assert!(lines.contains(&"mcp-simulation-tools"));
     assert!(lines.contains(&"ci-artifact-manifest"));
     assert!(lines.contains(&"risk-register-workflow"));
     assert!(lines.contains(&"baseline-dashboard"));
