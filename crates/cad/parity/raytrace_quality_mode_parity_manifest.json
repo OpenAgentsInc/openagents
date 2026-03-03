@@ -1,0 +1,163 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-101",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/raytrace_quality_mode_vcad_reference.json",
+  "reference_fixture_sha256": "a6fc52b9318ad9c6d3ca9cf937a1a35677eedaf8ee4d0926b01d1932215f7a26",
+  "reference_source": "~/code/vcad/packages/core/src/stores/ui-store.ts + ~/code/vcad/packages/app/src/components/RayTracedViewport.tsx + ~/code/vcad/docs/features/ray-tracing.md",
+  "reference_commit_match": true,
+  "default_quality_match": true,
+  "quality_mode_set_match": true,
+  "quality_scale_table_match": true,
+  "interaction_override_match": true,
+  "sample_set_match": true,
+  "cap_enforcement_match": true,
+  "deterministic_replay_match": true,
+  "default_quality": "draft",
+  "quality_modes": [
+    "draft",
+    "standard",
+    "high"
+  ],
+  "quality_scales": [
+    {
+      "quality": "draft",
+      "scale": 0.5,
+      "max_pixels": 307200
+    },
+    {
+      "quality": "standard",
+      "scale": 1.0,
+      "max_pixels": 921600
+    },
+    {
+      "quality": "high",
+      "scale": 2.0,
+      "max_pixels": 2073600
+    }
+  ],
+  "interaction_policy": {
+    "interacting_frame_threshold": 1,
+    "interacting_effective_quality": "draft"
+  },
+  "samples": [
+    {
+      "case_id": "draft_idle_1280x720",
+      "requested_quality": "draft",
+      "frame_index": 8,
+      "viewport": [
+        1280,
+        720
+      ],
+      "effective_quality": "draft",
+      "max_pixels": 307200,
+      "render_size": [
+        640,
+        360
+      ],
+      "total_pixels": 230400,
+      "cap_scale_factor": 1.0,
+      "cap_applied": false
+    },
+    {
+      "case_id": "high_idle_1920x1080",
+      "requested_quality": "high",
+      "frame_index": 8,
+      "viewport": [
+        1920,
+        1080
+      ],
+      "effective_quality": "high",
+      "max_pixels": 2073600,
+      "render_size": [
+        1920,
+        1080
+      ],
+      "total_pixels": 2073600,
+      "cap_scale_factor": 0.5,
+      "cap_applied": true
+    },
+    {
+      "case_id": "high_idle_3440x1440",
+      "requested_quality": "high",
+      "frame_index": 8,
+      "viewport": [
+        3440,
+        1440
+      ],
+      "effective_quality": "high",
+      "max_pixels": 2073600,
+      "render_size": [
+        2225,
+        931
+      ],
+      "total_pixels": 2071475,
+      "cap_scale_factor": 0.32349832,
+      "cap_applied": true
+    },
+    {
+      "case_id": "high_interacting_1920x1080",
+      "requested_quality": "high",
+      "frame_index": 1,
+      "viewport": [
+        1920,
+        1080
+      ],
+      "effective_quality": "draft",
+      "max_pixels": 307200,
+      "render_size": [
+        739,
+        415
+      ],
+      "total_pixels": 306685,
+      "cap_scale_factor": 0.19245009,
+      "cap_applied": true
+    },
+    {
+      "case_id": "standard_idle_1280x720",
+      "requested_quality": "standard",
+      "frame_index": 8,
+      "viewport": [
+        1280,
+        720
+      ],
+      "effective_quality": "standard",
+      "max_pixels": 921600,
+      "render_size": [
+        1280,
+        720
+      ],
+      "total_pixels": 921600,
+      "cap_scale_factor": 1.0,
+      "cap_applied": false
+    },
+    {
+      "case_id": "standard_interacting_1280x720",
+      "requested_quality": "standard",
+      "frame_index": 1,
+      "viewport": [
+        1280,
+        720
+      ],
+      "effective_quality": "draft",
+      "max_pixels": 307200,
+      "render_size": [
+        739,
+        415
+      ],
+      "total_pixels": 306685,
+      "cap_scale_factor": 0.577350269,
+      "cap_applied": true
+    }
+  ],
+  "deterministic_signature": "2253e3b1ee75c16b",
+  "parity_contracts": [
+    "raytrace quality enum remains draft/standard/high with deterministic ordering",
+    "quality scales remain draft=0.5x, standard=1.0x, high=2.0x",
+    "quality pixel caps remain draft=640x480, standard=1280x720, high=1920x1080",
+    "camera interaction (frame<=1) forces effective draft budget regardless of selected quality",
+    "render resolution is floor(viewport*selected_scale) then downscaled to enforce effective max pixel budget"
+  ]
+}

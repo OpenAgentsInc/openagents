@@ -1,0 +1,67 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-097",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/crates/vcad-kernel-raytrace/src/lib.rs + ~/code/vcad/crates/vcad-kernel-raytrace/src/ray.rs + ~/code/vcad/crates/vcad-kernel-raytrace/src/cpu.rs + ~/code/vcad/crates/vcad-kernel-raytrace/src/intersect/mod.rs + ~/code/vcad/docs/features/ray-tracing.md",
+  "expected_modules": [
+    {
+      "module_id": "bvh",
+      "public_module": true,
+      "feature_gate": null
+    },
+    {
+      "module_id": "cpu",
+      "public_module": true,
+      "feature_gate": null
+    },
+    {
+      "module_id": "gpu",
+      "public_module": true,
+      "feature_gate": "gpu"
+    },
+    {
+      "module_id": "intersect",
+      "public_module": true,
+      "feature_gate": null
+    },
+    {
+      "module_id": "ray",
+      "public_module": false,
+      "feature_gate": null
+    },
+    {
+      "module_id": "trim",
+      "public_module": true,
+      "feature_gate": null
+    }
+  ],
+  "expected_public_exports": [
+    "Bvh",
+    "CpuRenderer",
+    "Ray",
+    "RayHit",
+    "render_scene"
+  ],
+  "expected_intersection_submodules": [
+    "bilinear",
+    "bspline",
+    "cone",
+    "cylinder",
+    "plane",
+    "sphere",
+    "torus"
+  ],
+  "expected_gpu_feature_gate": "gpu",
+  "expected_cpu_renderer_defaults": {
+    "background_rgba": [30, 32, 40, 255],
+    "default_material_rgb": [0.6, 0.7, 0.8],
+    "output_channels": 4
+  },
+  "expected_ray_aabb_contract": {
+    "returns_entry_exit_pair": true,
+    "clamps_entry_to_zero": true,
+    "rejects_behind_box": true,
+    "supports_axis_aligned_infinite_reciprocals": true
+  },
+  "expected_no_tessellation_required": true
+}

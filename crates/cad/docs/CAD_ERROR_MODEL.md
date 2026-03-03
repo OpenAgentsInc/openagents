@@ -22,7 +22,9 @@ This document defines the `openagents-cad` error taxonomy and result conventions
 - `EvalFailed { reason }`
 - `QueryFailed { reason }`
 - `ExportFailed { format, reason }`
+- `BooleanDiagnostic { diagnostic_code, stage, severity, reason, retryable }`
 - `InvalidPrimitive { reason }`
+- `InvalidParameter { name, reason }`
 - `InvalidPolicy { reason }`
 - `Serialization { reason }`
 - `InvalidFeatureGraph { reason }`

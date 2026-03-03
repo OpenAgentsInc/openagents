@@ -1,0 +1,64 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-039",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "coincident_snapshot": {
+    "relation": "coincident",
+    "outcome": "BrepReconstruction",
+    "overlap_extents_mm": [
+      10.0,
+      10.0,
+      10.0
+    ],
+    "diagnostic_codes": [],
+    "mapped_error_codes": [],
+    "stage_sequence": [
+      "AabbFilter",
+      "SurfaceSurfaceIntersection",
+      "Classification",
+      "Reconstruction"
+    ],
+    "deterministic_signature": "bd7bc3ad51434825"
+  },
+  "tangent_snapshot": {
+    "relation": "tangent",
+    "outcome": "EmptyResult",
+    "overlap_extents_mm": [
+      0.0,
+      10.0,
+      10.0
+    ],
+    "diagnostic_codes": [
+      "RECONSTRUCTION_UNAVAILABLE",
+      "INTERSECTION_EMPTY"
+    ],
+    "mapped_error_codes": [
+      "BooleanDiagnostic",
+      "BooleanDiagnostic"
+    ],
+    "stage_sequence": [
+      "AabbFilter",
+      "SurfaceSurfaceIntersection",
+      "Classification",
+      "Reconstruction"
+    ],
+    "deterministic_signature": "dbc08a096d528803"
+  },
+  "seam_snapshot": {
+    "cylinder_seam_edge_count": 1,
+    "cylinder_degenerate_edge_count": 2,
+    "sphere_seam_edge_count": 2,
+    "sphere_degenerate_edge_count": 0,
+    "seam_contract_match": true
+  },
+  "deterministic_replay_match": true,
+  "deterministic_signature": "d8649aa06dcb2678",
+  "parity_contracts": [
+    "coincident operand modeling case emits deterministic staged boolean outcome and diagnostics",
+    "tangent contact modeling case emits deterministic empty-intersection diagnostics",
+    "primitive seam topology contracts remain stable for cylinder/sphere seam edges",
+    "coincident/tangent/seam edge-case fixtures replay deterministically"
+  ]
+}

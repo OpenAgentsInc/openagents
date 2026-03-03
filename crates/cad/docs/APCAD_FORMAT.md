@@ -81,13 +81,14 @@ Top-level shape:
 3. Repeated serialization of equivalent payloads must produce identical JSON bytes.
 4. Optional `analysis_cache` is non-authoritative and may be omitted without invalidating document semantics.
 5. Optional `sketch` block stores deterministic sketch planes/entities keyed by stable IDs.
+6. Optional `drawing` block persists 2D drawing-mode state (`viewMode`, `viewDirection`, toggles, pan/zoom, detail views) with vcad-compatible camelCase keys.
 
 ## Sketch Model (Wave 2 Kickoff)
 
 - `sketch.planes` is a deterministic map keyed by stable `plane_id`.
 - `sketch.entities` is a deterministic map keyed by stable `entity_id`.
 - `sketch.constraints` is a deterministic map keyed by stable `constraint_id`.
-- Entity payloads support `line`, `arc`, and `point`.
+- Entity payloads support `line`, `rectangle`, `circle`, `arc`, `spline`, and `point`.
 - Constraint payloads support `coincident`, `horizontal`, `vertical`, `tangent`, and `dimension`.
 - Every entity references an existing `plane_id` and explicit `anchor_ids`.
 - Every constraint references valid entities/anchors with strict kind matching.

@@ -1,0 +1,43 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-108",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/joint_physics_mapping_vcad_reference.json",
+  "reference_fixture_sha256": "6369b8f79badc20f67a9cf937afcb9158acd34754587b9e4a8b3cf9abfe3a087",
+  "reference_source": "~/code/vcad/crates/vcad-kernel-physics/src/joints.rs + ~/code/vcad/crates/vcad-kernel-physics/src/world.rs",
+  "reference_issue_match": true,
+  "reference_commit_match": true,
+  "row_set_match": true,
+  "contract_set_match": true,
+  "deterministic_replay_match": true,
+  "rows": [
+    {
+      "capability": "CAD Joint Physics Mapping Parity",
+      "case_id": "capability_scope",
+      "issue_id": "VCAD-PARITY-108"
+    },
+    {
+      "case_id": "phase_scope",
+      "lane_label": "joint-physics-mapping",
+      "phase": "Phase I - Physics + URDF parity"
+    },
+    {
+      "case_id": "reference_source",
+      "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+      "vcad_source": "~/code/vcad/crates/vcad-kernel-physics/src/joints.rs + ~/code/vcad/crates/vcad-kernel-physics/src/world.rs"
+    }
+  ],
+  "contracts": [
+    "CAD Joint Physics Mapping Parity parity contracts are aligned to vcad reference behavior",
+    "CI parity artifacts include joint_physics_mapping manifest and vcad fixture evidence",
+    "Phase I - Physics + URDF parity parity lane remains deterministic across replay"
+  ],
+  "deterministic_signature": "18efc06293496dee",
+  "parity_contracts": [
+    "CAD Joint Physics Mapping Parity parity contracts are aligned to vcad reference behavior",
+    "CI parity artifacts include joint_physics_mapping manifest and vcad fixture evidence",
+    "Phase I - Physics + URDF parity parity lane remains deterministic across replay"
+  ]
+}

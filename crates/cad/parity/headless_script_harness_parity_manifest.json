@@ -1,0 +1,71 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-091",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/headless_script_harness_vcad_reference.json",
+  "reference_fixture_sha256": "551deca83f19ea079486acbbf695903e2e45b1d53248073f5dd6eda103cabd1f",
+  "reference_source": "~/code/vcad/docs/features/headless-api.md + ~/code/vcad/packages/docs/content/tutorials/cli/04-scripting.mdx",
+  "reference_commit_match": true,
+  "cli_workflow_match": true,
+  "mcp_workflow_match": true,
+  "fail_fast_contract_match": true,
+  "deterministic_replay_match": true,
+  "cli_workflow_snapshot": {
+    "script_id": "headless-cli-workflow",
+    "halted": false,
+    "executed_steps": 4,
+    "failed_steps": 0,
+    "skipped_steps": 0,
+    "report_signature": "441ca3647baf7d70",
+    "step_statuses": [
+      "ok",
+      "ok",
+      "ok",
+      "ok"
+    ],
+    "cli_exit_codes": [
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "mcp_workflow_snapshot": {
+    "script_id": "headless-mcp-workflow",
+    "halted": false,
+    "executed_steps": 3,
+    "failed_steps": 0,
+    "skipped_steps": 0,
+    "report_signature": "fcef6a93951bb3fb",
+    "step_statuses": [
+      "ok",
+      "ok",
+      "ok"
+    ],
+    "cli_exit_codes": []
+  },
+  "fail_fast_snapshot": {
+    "script_id": "headless-fail-fast-workflow",
+    "halted": true,
+    "executed_steps": 1,
+    "failed_steps": 1,
+    "skipped_steps": 1,
+    "report_signature": "14fef0f9ec83234f",
+    "step_statuses": [
+      "failed",
+      "skipped"
+    ],
+    "cli_exit_codes": [
+      1
+    ]
+  },
+  "deterministic_signature": "a48537c6c84149a0",
+  "parity_contracts": [
+    "headless CLI workflow script executes deterministic import/info/export command chains",
+    "headless MCP workflow script executes deterministic create/inspect/export chains",
+    "headless script harness enforces fail-fast semantics and skips trailing steps after failure",
+    "headless workflow reports are deterministic across replay"
+  ]
+}

@@ -1,0 +1,97 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-065",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/packages/core/src/stores/document-store.ts + ~/code/vcad/docs/features/assembly-joints.md",
+  "expected_case_snapshots": [
+    {
+      "case_id": "cyclic_joint_acceptance_scene",
+      "accepted": false,
+      "grounded_instance_id": null,
+      "invalid_ground_instance_id": null,
+      "contains_joint_cycle": true,
+      "instance_ids": [
+        "a-1",
+        "b-1"
+      ],
+      "joint_ids": [
+        "joint.a_to_b",
+        "joint.b_to_a"
+      ],
+      "missing_part_def_instance_ids": [],
+      "missing_joint_child_instance_ids": [],
+      "missing_joint_parent_instance_ids": [],
+      "fk_resolved_instance_ids": []
+    },
+    {
+      "case_id": "invalid_reference_acceptance_scene",
+      "accepted": false,
+      "grounded_instance_id": "missing-ground",
+      "invalid_ground_instance_id": "missing-ground",
+      "contains_joint_cycle": false,
+      "instance_ids": [
+        "base-1",
+        "orphan-1"
+      ],
+      "joint_ids": [
+        "joint.missing_refs"
+      ],
+      "missing_part_def_instance_ids": [
+        "orphan-1"
+      ],
+      "missing_joint_child_instance_ids": [
+        "missing-child"
+      ],
+      "missing_joint_parent_instance_ids": [
+        "missing-parent"
+      ],
+      "fk_resolved_instance_ids": [
+        "base-1",
+        "orphan-1"
+      ]
+    },
+    {
+      "case_id": "robot_arm_acceptance_scene",
+      "accepted": true,
+      "grounded_instance_id": "base-1",
+      "invalid_ground_instance_id": null,
+      "contains_joint_cycle": false,
+      "instance_ids": [
+        "arm-1",
+        "base-1",
+        "tool-1"
+      ],
+      "joint_ids": [
+        "joint.arm_tool",
+        "joint.base_arm"
+      ],
+      "missing_part_def_instance_ids": [],
+      "missing_joint_child_instance_ids": [],
+      "missing_joint_parent_instance_ids": [],
+      "fk_resolved_instance_ids": [
+        "arm-1",
+        "base-1",
+        "tool-1"
+      ]
+    },
+    {
+      "case_id": "world_grounded_slider_acceptance_scene",
+      "accepted": true,
+      "grounded_instance_id": null,
+      "invalid_ground_instance_id": null,
+      "contains_joint_cycle": false,
+      "instance_ids": [
+        "carriage-1"
+      ],
+      "joint_ids": [
+        "joint.world_slider"
+      ],
+      "missing_part_def_instance_ids": [],
+      "missing_joint_child_instance_ids": [],
+      "missing_joint_parent_instance_ids": [],
+      "fk_resolved_instance_ids": [
+        "carriage-1"
+      ]
+    }
+  ]
+}

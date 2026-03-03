@@ -1,0 +1,28 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-109",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/crates/vcad-kernel-physics/src/simulation.rs + ~/code/vcad/crates/vcad-kernel-physics/src/api.rs",
+  "expected_rows": [
+    {
+      "case_id": "capability_scope",
+      "issue_id": "VCAD-PARITY-109",
+      "capability": "CAD Simulation Step Reset API Parity"
+    },
+    {
+      "case_id": "phase_scope",
+      "phase": "Phase I - Physics + URDF parity",
+      "lane_label": "simulation-step-reset-api"
+    },
+    {
+      "case_id": "reference_source",
+      "vcad_source": "~/code/vcad/crates/vcad-kernel-physics/src/simulation.rs + ~/code/vcad/crates/vcad-kernel-physics/src/api.rs",
+      "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81"
+    }
+  ],
+  "expected_contracts": [
+    "CAD Simulation Step Reset API Parity parity contracts are aligned to vcad reference behavior",
+    "Phase I - Physics + URDF parity parity lane remains deterministic across replay",
+    "CI parity artifacts include simulation_step_reset_api manifest and vcad fixture evidence"
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-093",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/docs/features/viewport-camera.md + ~/code/vcad/crates/termview/src/rasterize.rs + ~/code/vcad/crates/vcad-cli/src/input.rs",
+  "expected_default_camera": {
+    "azimuth_deg": 45.0,
+    "elevation_deg": 30.0,
+    "distance": 100.0,
+    "target_mm": [0.0, 0.0, 0.0],
+    "fov_deg": 60.0
+  },
+  "expected_pitch_clamp_deg": [-89.0, 89.0],
+  "expected_zoom_factors": {
+    "zoom_in": 0.8,
+    "zoom_out": 1.25
+  },
+  "expected_snap_views": [
+    {
+      "view_id": "back",
+      "position_mm": [0.0, 0.0, -80.0]
+    },
+    {
+      "view_id": "bottom",
+      "position_mm": [0.0, -80.0, 0.0]
+    },
+    {
+      "view_id": "front",
+      "position_mm": [0.0, 0.0, 80.0]
+    },
+    {
+      "view_id": "hero",
+      "position_mm": [60.0, 45.0, 60.0]
+    },
+    {
+      "view_id": "iso",
+      "position_mm": [50.0, 50.0, 50.0]
+    },
+    {
+      "view_id": "left",
+      "position_mm": [-80.0, 0.0, 0.0]
+    },
+    {
+      "view_id": "right",
+      "position_mm": [80.0, 0.0, 0.0]
+    },
+    {
+      "view_id": "top",
+      "position_mm": [0.0, 80.0, 0.0]
+    }
+  ],
+  "expected_gizmo_modes": [
+    "translate",
+    "rotate",
+    "scale"
+  ],
+  "expected_grid_snap_increment_mm": 5.0
+}

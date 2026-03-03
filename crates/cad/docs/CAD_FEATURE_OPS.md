@@ -32,6 +32,18 @@ This document tracks feature-op contracts built on the CAD kernel adapter path.
   - stable `pattern_index` assignment (`start_index + offset`)
   - deterministic per-instance geometry hashes and aggregate pattern hash
   - structured validation failures for zero direction, non-integer count, and invalid spacing
+- `SweepFeatureOp` (`crates/cad/src/features.rs`)
+  - deterministic sweep path sampling with path/twist/scale controls
+  - parameter bindings (`twist_angle_rad`, `scale_start`, `scale_end` as `unitless`)
+  - vcad-aligned path segment defaults (`path_segments=0` -> 32 samples baseline)
+  - deterministic per-station hashes and aggregate sweep geometry hash
+  - structured validation failures for zero-length paths, invalid scales, and invalid segments
+- `LoftFeatureOp` (`crates/cad/src/features.rs`)
+  - deterministic multi-profile loft contracts (`>=2` profiles, uniform vertex counts)
+  - supports open (`closed=false`) and closed tube (`closed=true`) transition semantics
+  - deterministic lateral/cap topology count summaries in eval result receipts
+  - deterministic geometry hash over source hashes, profile vertices, and `closed` mode
+  - structured validation failures for too-few profiles, mismatched profile vertex counts, and malformed IDs
 - `FilletPlaceholderFeatureOp` (`crates/cad/src/features.rs`)
   - no-op marker contract for fillet/chamfer graph compatibility
   - serializes to feature graph node with operation key `fillet.placeholder.v1`
@@ -42,6 +54,7 @@ This document tracks feature-op contracts built on the CAD kernel adapter path.
 
 - `crates/cad/tests/goldens/feature_box_geometry_hashes.json`
 - `crates/cad/tests/goldens/feature_cylinder_geometry_hashes.json`
+- `crates/cad/parity/fixtures/feature_op_hash_vcad_reference_corpus.json`
 
 ## Reviewer Verification
 

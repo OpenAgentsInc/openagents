@@ -11,6 +11,7 @@ For full CAD quality gate sequencing (including this checker lane), see:
 Validate exported STEP files with machine-readable diagnostics and fail fast on:
 - invalid solids
 - missing shells
+- missing faces
 - non-manifold/open edges
 - round-trip bbox/volume tolerance regressions
 
@@ -39,6 +40,7 @@ Checker reports follow `CadStepCheckerReport` (JSON):
 Stable diagnostic codes:
 - `STEP_INVALID_SOLID`
 - `STEP_MISSING_SHELL`
+- `STEP_MISSING_FACE`
 - `STEP_NON_MANIFOLD_EDGE`
 - `STEP_POLY_LOOP_PARSE_FAILED`
 - `STEP_POLY_LOOP_TOO_SHORT`

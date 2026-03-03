@@ -1,0 +1,146 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-084",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_corpus_path": "crates/cad/parity/fixtures/cad_cli_commands_vcad_reference.json",
+  "reference_corpus_sha256": "b6dfac9e1006e7e62e49492b7bcbb77c62a5f5be2633e6a7cfe718ea3aa2b0a1",
+  "reference_source": "~/code/vcad/crates/vcad-cli/src/main.rs + ~/code/vcad/docs/features/{headless-api.md,import-export.md}",
+  "reference_commit_match": true,
+  "case_snapshots": [
+    {
+      "case_id": "export_glb",
+      "command": "export",
+      "exit_code": 0,
+      "stdout": "Exported GLB to $REPO_ROOT/target/cad-cli-commands-parity/export_output.glb",
+      "stderr": "",
+      "stdout_hash": "a605decf19fda748",
+      "output_hash": "09639ed6dc66a15f",
+      "output_byte_count": 648,
+      "imported_vertex_count": null,
+      "imported_triangle_count": null,
+      "imported_feature_count": null
+    },
+    {
+      "case_id": "export_step",
+      "command": "export",
+      "exit_code": 0,
+      "stdout": "Exported STEP to $REPO_ROOT/target/cad-cli-commands-parity/export_output.step",
+      "stderr": "",
+      "stdout_hash": "75f43230b1af013a",
+      "output_hash": "317893da2963d55f",
+      "output_byte_count": 2463,
+      "imported_vertex_count": null,
+      "imported_triangle_count": null,
+      "imported_feature_count": null
+    },
+    {
+      "case_id": "export_stl",
+      "command": "export",
+      "exit_code": 0,
+      "stdout": "Exported STL to $REPO_ROOT/target/cad-cli-commands-parity/export_output.stl",
+      "stderr": "",
+      "stdout_hash": "e2db29fe9b94f680",
+      "output_hash": "868acd3a4eaf17bc",
+      "output_byte_count": 284,
+      "imported_vertex_count": null,
+      "imported_triangle_count": null,
+      "imported_feature_count": null
+    },
+    {
+      "case_id": "import_step",
+      "command": "import",
+      "exit_code": 0,
+      "stdout": "Imported STEP to $REPO_ROOT/target/cad-cli-commands-parity/import_step_output.json",
+      "stderr": "",
+      "stdout_hash": "4cbae889eddf4277",
+      "output_hash": "c653ea386da58c94",
+      "output_byte_count": 335,
+      "imported_vertex_count": null,
+      "imported_triangle_count": null,
+      "imported_feature_count": 1
+    },
+    {
+      "case_id": "import_stl",
+      "command": "import",
+      "exit_code": 0,
+      "stdout": "Imported STL to $REPO_ROOT/target/cad-cli-commands-parity/import_stl_output.json",
+      "stderr": "",
+      "stdout_hash": "99d9f5b7da5083af",
+      "output_hash": "c41c515ebae3eda6",
+      "output_byte_count": 1665,
+      "imported_vertex_count": 4,
+      "imported_triangle_count": 4,
+      "imported_feature_count": null
+    },
+    {
+      "case_id": "info_mesh",
+      "command": "info",
+      "exit_code": 0,
+      "stdout": "openagents cad mesh: $REPO_ROOT/target/cad-cli-commands-parity/mesh_input.json\n  mesh id: mesh.parity.cli.commands\n  variant: variant.parity.cli.commands\n  vertices: 4\n  triangles: 4\n  materials: 1",
+      "stderr": "",
+      "stdout_hash": "764c30a20d992e5b",
+      "output_hash": null,
+      "output_byte_count": 0,
+      "imported_vertex_count": null,
+      "imported_triangle_count": null,
+      "imported_feature_count": null
+    }
+  ],
+  "case_contract_snapshots": [
+    {
+      "case_id": "export_glb",
+      "command_match": true,
+      "exit_code_match": true,
+      "stdout_marker_match": true,
+      "stderr_marker_match": true
+    },
+    {
+      "case_id": "export_step",
+      "command_match": true,
+      "exit_code_match": true,
+      "stdout_marker_match": true,
+      "stderr_marker_match": true
+    },
+    {
+      "case_id": "export_stl",
+      "command_match": true,
+      "exit_code_match": true,
+      "stdout_marker_match": true,
+      "stderr_marker_match": true
+    },
+    {
+      "case_id": "import_step",
+      "command_match": true,
+      "exit_code_match": true,
+      "stdout_marker_match": true,
+      "stderr_marker_match": true
+    },
+    {
+      "case_id": "import_stl",
+      "command_match": true,
+      "exit_code_match": true,
+      "stdout_marker_match": true,
+      "stderr_marker_match": true
+    },
+    {
+      "case_id": "info_mesh",
+      "command_match": true,
+      "exit_code_match": true,
+      "stdout_marker_match": true,
+      "stderr_marker_match": true
+    }
+  ],
+  "import_stl_counts_match": true,
+  "import_step_feature_count_match": true,
+  "command_parity_match": true,
+  "deterministic_replay_match": true,
+  "deterministic_signature": "25c1a12585188aab",
+  "parity_contracts": [
+    "openagents-cad-cli export supports STL, GLB, and STEP outputs",
+    "openagents-cad-cli import supports STL mesh JSON and STEP document JSON",
+    "openagents-cad-cli info reports mesh/document/step summary contracts",
+    "cad cli command parity fixtures replay deterministically"
+  ]
+}

@@ -1,0 +1,182 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-042",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "vcad_reference_sources": [
+    "docs/features/sketch-mode.md (Sketch Planes)",
+    "crates/vcad-cli/src/tui/sketch_mode.rs (plane axis presets + custom plane basis)"
+  ],
+  "supported_standard_planes": [
+    "xy",
+    "xz",
+    "yz"
+  ],
+  "preset_planes": [
+    {
+      "preset": "xy",
+      "plane_id": "plane.xy",
+      "name": "XY",
+      "origin_mm": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "x_axis": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "y_axis": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "preset": "xz",
+      "plane_id": "plane.xz",
+      "name": "XZ",
+      "origin_mm": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "normal": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "x_axis": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "y_axis": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "preset": "yz",
+      "plane_id": "plane.yz",
+      "name": "YZ",
+      "origin_mm": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "normal": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "x_axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "y_axis": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  ],
+  "planar_face_selection_cases": [
+    {
+      "case_id": "cube.face.1",
+      "face_ref": "face.1",
+      "orientation": "forward",
+      "plane_id": "plane.face.1",
+      "origin_mm": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "x_axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "y_axis": [
+        1.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "case_id": "cube.face.1.reversed",
+      "face_ref": "face.1",
+      "orientation": "reversed",
+      "plane_id": "plane.face.1",
+      "origin_mm": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "normal": [
+        -0.0,
+        -0.0,
+        1.0
+      ],
+      "x_axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "y_axis": [
+        -1.0,
+        -0.0,
+        -0.0
+      ]
+    },
+    {
+      "case_id": "cube.face.2",
+      "face_ref": "face.2",
+      "orientation": "forward",
+      "plane_id": "plane.face.2",
+      "origin_mm": [
+        0.0,
+        0.0,
+        10.0
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "x_axis": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "y_axis": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    }
+  ],
+  "non_planar_face_rejection": "parse failed: sketch plane face_ref face.1 must reference a planar face, found Cylinder",
+  "deterministic_replay_match": true,
+  "deterministic_signature": "d820ddf7a8806a2e",
+  "parity_contracts": [
+    "sketch plane presets support XY, XZ, and YZ with origin-centered vcad-compatible bases",
+    "planar face selection resolves plane basis from BRep face surface records",
+    "reversed planar face orientation flips sketch plane normal to match face orientation",
+    "non-planar faces are rejected with deterministic parse diagnostics"
+  ]
+}

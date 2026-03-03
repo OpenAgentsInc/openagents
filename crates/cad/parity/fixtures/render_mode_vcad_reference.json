@@ -1,0 +1,80 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-094",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/packages/core/src/stores/ui-store.ts + ~/code/vcad/packages/app/src/stores/drawing-store.ts + crates/cad/docs/PLAN.md",
+  "expected_defaults": {
+    "render_mode": "standard",
+    "view_mode": "3d",
+    "show_wireframe": false,
+    "show_hidden_lines": true
+  },
+  "expected_wireframe_toggle": [
+    true,
+    false
+  ],
+  "expected_hidden_line_toggle": [
+    false,
+    true
+  ],
+  "expected_variant_profiles": [
+    {
+      "variant_id": "standard",
+      "render_mode": "standard",
+      "view_mode": "3d",
+      "show_wireframe": false,
+      "show_hidden_lines": false,
+      "face_fill_enabled": true,
+      "edge_overlay_enabled": false,
+      "occluded_edges_dashed": false
+    },
+    {
+      "variant_id": "wire",
+      "render_mode": "standard",
+      "view_mode": "3d",
+      "show_wireframe": true,
+      "show_hidden_lines": false,
+      "face_fill_enabled": false,
+      "edge_overlay_enabled": true,
+      "occluded_edges_dashed": false
+    },
+    {
+      "variant_id": "hidden-line",
+      "render_mode": "standard",
+      "view_mode": "2d",
+      "show_wireframe": false,
+      "show_hidden_lines": true,
+      "face_fill_enabled": false,
+      "edge_overlay_enabled": true,
+      "occluded_edges_dashed": true
+    }
+  ],
+  "expected_cycle_sequence": [
+    "standard",
+    "wire",
+    "hidden-line",
+    "standard"
+  ],
+  "expected_aliases": [
+    {
+      "token": "standard",
+      "resolved_variant_id": "standard"
+    },
+    {
+      "token": "wire",
+      "resolved_variant_id": "wire"
+    },
+    {
+      "token": "wireframe",
+      "resolved_variant_id": "wire"
+    },
+    {
+      "token": "hidden-line",
+      "resolved_variant_id": "hidden-line"
+    },
+    {
+      "token": "hidden_line",
+      "resolved_variant_id": "hidden-line"
+    }
+  ]
+}

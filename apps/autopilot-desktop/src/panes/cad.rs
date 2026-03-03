@@ -2,6 +2,13 @@ use openagents_cad::analysis::{
     DENSITY_ALUMINUM_6061_KG_M3, edge_properties, estimate_body_properties, face_properties,
 };
 use openagents_cad::contracts::CadSelectionKind;
+use openagents_cad::drafting::hidden_line::{
+    DraftingTriangleMesh, project_mesh as project_drafting_mesh,
+};
+use openagents_cad::drafting::{
+    ProjectedView as DraftingProjectedView, Visibility as DraftingVisibility,
+};
+use openagents_cad::kernel_math::Point3;
 use openagents_cad::mesh::CadMeshPayload;
 use wgpui::{
     Bounds, Hsla, MESH_EDGE_FLAG_SELECTED, MESH_EDGE_FLAG_SILHOUETTE, MeshEdge, MeshPrimitive,
@@ -9,21 +16,24 @@ use wgpui::{
 };
 
 use crate::app_state::{
-    CadCameraViewSnap, CadDemoPaneState, CadDemoWarningState, CadHiddenLineMode, CadProjectionMode,
-    CadVariantViewportState,
+    CadCameraViewSnap, CadDemoPaneState, CadDemoWarningState, CadDrawingViewMode,
+    CadHiddenLineMode, CadProjectionMode, CadVariantViewportState,
 };
 use crate::pane_renderer::paint_action_button;
 use crate::pane_system::{
     cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
     cad_demo_cycle_variant_button_bounds, cad_demo_dimension_panel_bounds,
-    cad_demo_dimension_row_bounds, cad_demo_hidden_line_mode_button_bounds,
-    cad_demo_hotkey_profile_button_bounds, cad_demo_material_button_bounds,
-    cad_demo_projection_mode_button_bounds, cad_demo_reset_button_bounds,
-    cad_demo_reset_camera_button_bounds, cad_demo_section_offset_button_bounds,
-    cad_demo_section_plane_button_bounds, cad_demo_snap_endpoint_button_bounds,
-    cad_demo_snap_grid_button_bounds, cad_demo_snap_midpoint_button_bounds,
-    cad_demo_snap_origin_button_bounds, cad_demo_timeline_panel_bounds,
-    cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
+    cad_demo_dimension_row_bounds, cad_demo_drawing_add_detail_button_bounds,
+    cad_demo_drawing_clear_details_button_bounds, cad_demo_drawing_dimensions_button_bounds,
+    cad_demo_drawing_direction_button_bounds, cad_demo_drawing_hidden_lines_button_bounds,
+    cad_demo_drawing_mode_button_bounds, cad_demo_drawing_reset_view_button_bounds,
+    cad_demo_hidden_line_mode_button_bounds, cad_demo_hotkey_profile_button_bounds,
+    cad_demo_material_button_bounds, cad_demo_projection_mode_button_bounds,
+    cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
+    cad_demo_section_offset_button_bounds, cad_demo_section_plane_button_bounds,
+    cad_demo_snap_endpoint_button_bounds, cad_demo_snap_grid_button_bounds,
+    cad_demo_snap_midpoint_button_bounds, cad_demo_snap_origin_button_bounds,
+    cad_demo_timeline_panel_bounds, cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
     cad_demo_view_snap_front_button_bounds, cad_demo_view_snap_iso_button_bounds,
     cad_demo_view_snap_right_button_bounds, cad_demo_view_snap_top_button_bounds,
     cad_demo_warning_filter_code_button_bounds, cad_demo_warning_filter_severity_button_bounds,
@@ -109,6 +119,13 @@ fn cad_demo_body_bounds(content_bounds: Bounds) -> Bounds {
     let hidden_line_bounds = cad_demo_hidden_line_mode_button_bounds(content_bounds);
     let reset_camera_bounds = cad_demo_reset_camera_button_bounds(content_bounds);
     let projection_bounds = cad_demo_projection_mode_button_bounds(content_bounds);
+    let drawing_mode_bounds = cad_demo_drawing_mode_button_bounds(content_bounds);
+    let drawing_direction_bounds = cad_demo_drawing_direction_button_bounds(content_bounds);
+    let drawing_hidden_bounds = cad_demo_drawing_hidden_lines_button_bounds(content_bounds);
+    let drawing_dimensions_bounds = cad_demo_drawing_dimensions_button_bounds(content_bounds);
+    let drawing_reset_bounds = cad_demo_drawing_reset_view_button_bounds(content_bounds);
+    let drawing_add_detail_bounds = cad_demo_drawing_add_detail_button_bounds(content_bounds);
+    let drawing_clear_details_bounds = cad_demo_drawing_clear_details_button_bounds(content_bounds);
     let snap_grid_bounds = cad_demo_snap_grid_button_bounds(content_bounds);
     let snap_origin_bounds = cad_demo_snap_origin_button_bounds(content_bounds);
     let snap_endpoint_bounds = cad_demo_snap_endpoint_button_bounds(content_bounds);
@@ -123,6 +140,13 @@ fn cad_demo_body_bounds(content_bounds: Bounds) -> Bounds {
         .max(hidden_line_bounds.max_y())
         .max(reset_camera_bounds.max_y())
         .max(projection_bounds.max_y())
+        .max(drawing_mode_bounds.max_y())
+        .max(drawing_direction_bounds.max_y())
+        .max(drawing_hidden_bounds.max_y())
+        .max(drawing_dimensions_bounds.max_y())
+        .max(drawing_reset_bounds.max_y())
+        .max(drawing_add_detail_bounds.max_y())
+        .max(drawing_clear_details_bounds.max_y())
         .max(snap_grid_bounds.max_y())
         .max(snap_origin_bounds.max_y())
         .max(snap_endpoint_bounds.max_y())
@@ -147,6 +171,13 @@ fn cad_demo_basic_toolbar_bottom(content_bounds: Bounds) -> f32 {
         .max(cad_demo_reset_button_bounds(content_bounds).max_y())
         .max(cad_demo_reset_camera_button_bounds(content_bounds).max_y())
         .max(cad_demo_projection_mode_button_bounds(content_bounds).max_y())
+        .max(cad_demo_drawing_mode_button_bounds(content_bounds).max_y())
+        .max(cad_demo_drawing_direction_button_bounds(content_bounds).max_y())
+        .max(cad_demo_drawing_hidden_lines_button_bounds(content_bounds).max_y())
+        .max(cad_demo_drawing_dimensions_button_bounds(content_bounds).max_y())
+        .max(cad_demo_drawing_reset_view_button_bounds(content_bounds).max_y())
+        .max(cad_demo_drawing_add_detail_button_bounds(content_bounds).max_y())
+        .max(cad_demo_drawing_clear_details_button_bounds(content_bounds).max_y())
 }
 
 fn cad_demo_basic_viewport_bounds(content_bounds: Bounds) -> Bounds {
@@ -730,6 +761,31 @@ pub fn paint_cad_demo_placeholder_pane(
                     theme::text::MUTED,
                 ));
             }
+        } else if let Some((inspect_title, inspect_lines)) =
+            assembly_selection_inspect_lines(pane_state)
+        {
+            let inspector_origin = Point::new(
+                timeline_panel.origin.x + 6.0,
+                (timeline_panel.max_y() - 52.0).max(timeline_panel.origin.y + 14.0),
+            );
+            paint.scene.draw_text(paint.text.layout(
+                &format!("{inspect_title}:"),
+                inspector_origin,
+                9.0,
+                theme::text::SECONDARY,
+            ));
+            for (offset, line) in inspect_lines.iter().take(5).enumerate() {
+                let y = inspector_origin.y + 10.0 + offset as f32 * 9.0;
+                if y + 8.0 > timeline_panel.max_y() {
+                    break;
+                }
+                paint.scene.draw_text(paint.text.layout(
+                    line,
+                    Point::new(inspector_origin.x, y),
+                    8.0,
+                    theme::text::MUTED,
+                ));
+            }
         } else if pane_state.timeline_selected_index.is_some() {
             let inspector_origin = Point::new(
                 timeline_panel.origin.x + 6.0,
@@ -827,6 +883,13 @@ fn paint_cad_demo_basic_pane(
     let reset_bounds = cad_demo_reset_button_bounds(content_bounds);
     let reset_camera_bounds = cad_demo_reset_camera_button_bounds(content_bounds);
     let projection_bounds = cad_demo_projection_mode_button_bounds(content_bounds);
+    let drawing_mode_bounds = cad_demo_drawing_mode_button_bounds(content_bounds);
+    let drawing_direction_bounds = cad_demo_drawing_direction_button_bounds(content_bounds);
+    let drawing_hidden_lines_bounds = cad_demo_drawing_hidden_lines_button_bounds(content_bounds);
+    let drawing_dimensions_bounds = cad_demo_drawing_dimensions_button_bounds(content_bounds);
+    let drawing_reset_view_bounds = cad_demo_drawing_reset_view_button_bounds(content_bounds);
+    let drawing_add_detail_bounds = cad_demo_drawing_add_detail_button_bounds(content_bounds);
+    let drawing_clear_details_bounds = cad_demo_drawing_clear_details_button_bounds(content_bounds);
 
     paint_action_button(cycle_bounds, "Variant", paint);
     paint_action_button(reset_bounds, "Open CAD", paint);
@@ -834,6 +897,45 @@ fn paint_cad_demo_basic_pane(
     paint_action_button(
         projection_bounds,
         &format!("Projection: {}", pane_state.projection_mode.label()),
+        paint,
+    );
+    paint_action_button(
+        drawing_mode_bounds,
+        if pane_state.drawing_view_mode == CadDrawingViewMode::TwoD {
+            "Mode: 2D"
+        } else {
+            "Mode: 3D"
+        },
+        paint,
+    );
+    paint_action_button(
+        drawing_direction_bounds,
+        &format!("Direction: {}", pane_state.drawing_view_direction.label()),
+        paint,
+    );
+    paint_action_button(
+        drawing_hidden_lines_bounds,
+        if pane_state.drawing_show_hidden_lines {
+            "Hidden: On"
+        } else {
+            "Hidden: Off"
+        },
+        paint,
+    );
+    paint_action_button(
+        drawing_dimensions_bounds,
+        if pane_state.drawing_show_dimensions {
+            "Dims: On"
+        } else {
+            "Dims: Off"
+        },
+        paint,
+    );
+    paint_action_button(drawing_reset_view_bounds, "Reset 2D", paint);
+    paint_action_button(drawing_add_detail_bounds, "Detail +", paint);
+    paint_action_button(
+        drawing_clear_details_bounds,
+        &format!("Clear ({})", pane_state.drawing_detail_views.len()),
         paint,
     );
 
@@ -845,46 +947,53 @@ fn paint_cad_demo_basic_pane(
             .with_border(theme::border::SUBTLE, 1.0),
     );
 
-    let active_variant_view = pane_state.variant_viewport(pane_state.active_variant_tile_index);
-    let selected_outline_active =
-        active_variant_view.is_some_and(|view| view.selected_ref.is_some());
-    let camera_pose = if let Some(viewport_state) = active_variant_view {
-        CadCameraPose::from_variant(viewport_state, pane_state.projection_mode)
-    } else {
-        let fallback = CadVariantViewportState::for_variant(&pane_state.active_variant_id);
-        CadCameraPose::from_variant(&fallback, pane_state.projection_mode)
-    };
-
     let mut status = format!(
         "{} | rev {}",
         pane_state.active_variant_id, pane_state.document_revision
     );
-    if let Some(mesh_payload) = pane_state.last_good_mesh_payload.as_ref() {
-        match cad_mesh_to_viewport_primitive(
-            mesh_payload,
-            viewport_bounds,
-            selected_outline_active,
-            pane_state.hidden_line_mode,
-            camera_pose,
-        ) {
-            Ok(mesh) => {
-                paint.scene.push_clip(viewport_bounds);
-                if let Err(error) = paint.scene.draw_mesh(mesh) {
-                    let _ = error;
-                    status = "mesh draw skipped".to_string();
-                }
-                paint.scene.pop_clip();
-            }
-            Err(error) => {
-                status = format!("mesh conversion failed: {}", error);
-            }
-        }
+    if pane_state.drawing_view_mode == CadDrawingViewMode::TwoD {
+        status = paint_drawing_mode_viewport(viewport_bounds, pane_state, paint);
     } else {
-        status = "waiting for CAD mesh payload".to_string();
+        let active_variant_view = pane_state.variant_viewport(pane_state.active_variant_tile_index);
+        let selected_outline_active =
+            active_variant_view.is_some_and(|view| view.selected_ref.is_some());
+        let camera_pose = if let Some(viewport_state) = active_variant_view {
+            CadCameraPose::from_variant(viewport_state, pane_state.projection_mode)
+        } else {
+            let fallback = CadVariantViewportState::for_variant(&pane_state.active_variant_id);
+            CadCameraPose::from_variant(&fallback, pane_state.projection_mode)
+        };
+        if let Some(mesh_payload) = pane_state.last_good_mesh_payload.as_ref() {
+            match cad_mesh_to_viewport_primitive(
+                mesh_payload,
+                viewport_bounds,
+                selected_outline_active,
+                pane_state.hidden_line_mode,
+                camera_pose,
+            ) {
+                Ok(mesh) => {
+                    paint.scene.push_clip(viewport_bounds);
+                    if let Err(error) = paint.scene.draw_mesh(mesh) {
+                        let _ = error;
+                        status = "mesh draw skipped".to_string();
+                    }
+                    paint.scene.pop_clip();
+                }
+                Err(error) => {
+                    status = format!("mesh conversion failed: {}", error);
+                }
+            }
+        } else {
+            status = "waiting for CAD mesh payload".to_string();
+        }
     }
 
     paint.scene.draw_text(paint.text.layout(
-        "CAD",
+        if pane_state.drawing_view_mode == CadDrawingViewMode::TwoD {
+            "CAD Drawing"
+        } else {
+            "CAD"
+        },
         Point::new(
             viewport_bounds.origin.x + 8.0,
             viewport_bounds.origin.y + 12.0,
@@ -911,6 +1020,204 @@ fn paint_cad_demo_basic_pane(
     ));
 
     paint.scene.pop_clip();
+}
+
+fn paint_drawing_mode_viewport(
+    viewport_bounds: Bounds,
+    pane_state: &CadDemoPaneState,
+    paint: &mut PaintContext,
+) -> String {
+    let Some(payload) = pane_state.last_good_mesh_payload.as_ref() else {
+        return "drawing mode waiting for CAD mesh payload".to_string();
+    };
+    let Some(mesh) = cad_mesh_payload_to_drafting_mesh(payload) else {
+        return "drawing mode mesh conversion failed".to_string();
+    };
+
+    let mut projected = project_drafting_mesh(
+        &mesh,
+        pane_state
+            .drawing_view_direction
+            .to_drafting_view_direction(),
+    );
+    if !pane_state.drawing_show_hidden_lines {
+        projected
+            .edges
+            .retain(|edge| edge.visibility == DraftingVisibility::Visible);
+    }
+
+    if projected.edges.is_empty() {
+        return "drawing mode has no projected edges".to_string();
+    }
+
+    let mesh = match drafting_projected_view_to_mesh(viewport_bounds, pane_state, &projected) {
+        Ok(mesh) => mesh,
+        Err(error) => return error,
+    };
+
+    paint.scene.push_clip(viewport_bounds);
+    if paint.scene.draw_mesh(mesh).is_err() {
+        paint.scene.pop_clip();
+        return "drawing mode mesh draw skipped".to_string();
+    }
+    if pane_state.drawing_show_dimensions {
+        let dim_origin = Point::new(
+            viewport_bounds.origin.x + 8.0,
+            viewport_bounds.max_y() - 20.0,
+        );
+        if dim_origin.y + 8.0 <= viewport_bounds.max_y() {
+            paint.scene.draw_text(paint.text.layout(
+                &format!(
+                    "Dims W={:.1} H={:.1}",
+                    projected.bounds.width(),
+                    projected.bounds.height()
+                ),
+                dim_origin,
+                8.0,
+                theme::text::SECONDARY,
+            ));
+        }
+    }
+    if !pane_state.drawing_detail_views.is_empty() {
+        for (index, detail) in pane_state.drawing_detail_views.iter().take(4).enumerate() {
+            let y = viewport_bounds.origin.y + 10.0 + index as f32 * 10.0;
+            if y + 8.0 > viewport_bounds.max_y() {
+                break;
+            }
+            paint.scene.draw_text(paint.text.layout(
+                &format!("Detail {} x{:.1}", detail.label, detail.scale),
+                Point::new(
+                    (viewport_bounds.max_x() - 110.0).max(viewport_bounds.origin.x + 6.0),
+                    y,
+                ),
+                8.0,
+                theme::text::MUTED,
+            ));
+        }
+    }
+    paint.scene.pop_clip();
+
+    let hidden_count = projected
+        .edges
+        .iter()
+        .filter(|edge| edge.visibility == DraftingVisibility::Hidden)
+        .count();
+    format!(
+        "2d {} edges={} hidden={} zoom={:.2} details={}",
+        pane_state.drawing_view_direction.label(),
+        projected.edges.len(),
+        hidden_count,
+        pane_state.drawing_zoom,
+        pane_state.drawing_detail_views.len(),
+    )
+}
+
+fn cad_mesh_payload_to_drafting_mesh(payload: &CadMeshPayload) -> Option<DraftingTriangleMesh> {
+    if payload.vertices.is_empty() || payload.triangle_indices.is_empty() {
+        return None;
+    }
+    if !payload.triangle_indices.len().is_multiple_of(3) {
+        return None;
+    }
+    let vertices = payload
+        .vertices
+        .iter()
+        .map(|vertex| {
+            Point3::new(
+                f64::from(vertex.position_mm[0]),
+                f64::from(vertex.position_mm[1]),
+                f64::from(vertex.position_mm[2]),
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut triangles = Vec::with_capacity(payload.triangle_indices.len() / 3);
+    let vertex_len = vertices.len();
+    for triangle in payload.triangle_indices.chunks_exact(3) {
+        let i0 = triangle[0] as usize;
+        let i1 = triangle[1] as usize;
+        let i2 = triangle[2] as usize;
+        if i0 >= vertex_len || i1 >= vertex_len || i2 >= vertex_len {
+            return None;
+        }
+        triangles.push([i0, i1, i2]);
+    }
+    Some(DraftingTriangleMesh {
+        vertices,
+        triangles,
+    })
+}
+
+fn drafting_projected_view_to_mesh(
+    viewport_bounds: Bounds,
+    pane_state: &CadDemoPaneState,
+    view: &DraftingProjectedView,
+) -> Result<MeshPrimitive, String> {
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for edge in &view.edges {
+        min_x = min_x.min(edge.start.x.min(edge.end.x));
+        min_y = min_y.min(edge.start.y.min(edge.end.y));
+        max_x = max_x.max(edge.start.x.max(edge.end.x));
+        max_y = max_y.max(edge.start.y.max(edge.end.y));
+    }
+    if !min_x.is_finite() || !min_y.is_finite() || !max_x.is_finite() || !max_y.is_finite() {
+        return Err("drawing mode bounds are invalid".to_string());
+    }
+    let width = (max_x - min_x).max(1e-6);
+    let height = (max_y - min_y).max(1e-6);
+    let center_x = (min_x + max_x) * 0.5;
+    let center_y = (min_y + max_y) * 0.5;
+
+    let pad = 10.0f64;
+    let scale_x = (f64::from(viewport_bounds.size.width) - pad * 2.0).max(1.0) / width;
+    let scale_y = (f64::from(viewport_bounds.size.height) - pad * 2.0).max(1.0) / height;
+    let scale = scale_x.min(scale_y).max(1e-6) * f64::from(pane_state.drawing_zoom.max(0.1));
+
+    let viewport_center_x = f64::from(
+        viewport_bounds.origin.x + viewport_bounds.size.width * 0.5 + pane_state.drawing_pan_x,
+    );
+    let viewport_center_y = f64::from(
+        viewport_bounds.origin.y + viewport_bounds.size.height * 0.5 - pane_state.drawing_pan_y,
+    );
+
+    let mut vertices = Vec::with_capacity(view.edges.len() * 2);
+    let mut edges = Vec::with_capacity(view.edges.len());
+    for edge in &view.edges {
+        let start_index = vertices.len() as u32;
+        let color = if edge.visibility == DraftingVisibility::Hidden {
+            [0.45, 0.48, 0.52, 0.72]
+        } else {
+            [0.84, 0.88, 0.92, 1.0]
+        };
+        for point in [edge.start, edge.end] {
+            let px = viewport_center_x + (point.x - center_x) * scale;
+            let py = viewport_center_y - (point.y - center_y) * scale;
+            vertices.push(MeshVertex::new(
+                [px as f32, py as f32, 0.0],
+                [0.0, 0.0, 1.0],
+                color,
+            ));
+        }
+        let mut flags = 0;
+        if edge.visibility == DraftingVisibility::Visible {
+            flags |= MESH_EDGE_FLAG_SILHOUETTE;
+        }
+        edges.push(MeshEdge::new(start_index, start_index + 1).with_flags(flags));
+    }
+
+    let indices = if vertices.len() >= 3 {
+        vec![0, 1, 2]
+    } else if vertices.len() == 2 {
+        vec![0, 1, 1]
+    } else if vertices.len() == 1 {
+        vec![0, 0, 0]
+    } else {
+        return Err("drawing mode produced no vertices".to_string());
+    };
+
+    Ok(MeshPrimitive::new(vertices, indices).with_edges(edges))
 }
 
 fn engineering_overlay_lines(
@@ -989,13 +1296,16 @@ fn footer_summary_line(pane_state: &CadDemoPaneState) -> String {
         .map(|value| format!("${value:.2}"))
         .unwrap_or_else(|| "$--".to_string());
     let summary = format!(
-        "{} @ tile{} | rev {} | warn {} | {} z{:.2} | section {} | material {} | {} {} | snaps {} | hotkeys {}",
+        "{} @ tile{} | rev {} | warn {} | {} z{:.2} | mode {}/{} z{:.2} | section {} | material {} | {} {} | snaps {} | hotkeys {}",
         pane_state.active_variant_id,
         pane_state.active_variant_tile_index + 1,
         pane_state.document_revision,
         pane_state.warnings.len(),
         pane_state.projection_mode.label(),
         pane_state.camera_zoom,
+        pane_state.drawing_view_mode.label(),
+        pane_state.drawing_view_direction.label(),
+        pane_state.drawing_zoom,
         pane_state.section_summary(),
         material_id,
         mass_label,
@@ -1253,6 +1563,77 @@ fn selection_inspect_lines(pane_state: &CadDemoPaneState) -> Option<(String, Vec
             ))
         }
     }
+}
+
+fn assembly_selection_inspect_lines(
+    pane_state: &CadDemoPaneState,
+) -> Option<(String, Vec<String>)> {
+    if let Some(joint_id) = pane_state.assembly_ui_state.selected_joint_id.as_deref()
+        && let Some(joint) = pane_state
+            .assembly_schema
+            .joints
+            .iter()
+            .find(|joint| joint.id == joint_id)
+    {
+        let kind = match joint.kind {
+            openagents_cad::assembly::CadJointKind::Fixed => "Fixed",
+            openagents_cad::assembly::CadJointKind::Revolute { .. } => "Revolute",
+            openagents_cad::assembly::CadJointKind::Slider { .. } => "Slider",
+            openagents_cad::assembly::CadJointKind::Cylindrical { .. } => "Cylindrical",
+            openagents_cad::assembly::CadJointKind::Ball => "Ball",
+        };
+        let semantics = joint.resolve_state_semantics(joint.state);
+        let limits = semantics
+            .limits
+            .map(|(lower, upper)| format!("[{lower:.1}, {upper:.1}] {}", semantics.state_unit))
+            .unwrap_or_else(|| "none".to_string());
+        return Some((
+            "Assembly Joint".to_string(),
+            vec![
+                format!("Joint: {}", joint.id),
+                format!("Kind: {kind}"),
+                format!(
+                    "State: {:.3} {}",
+                    semantics.effective_state, semantics.state_unit
+                ),
+                format!("Limits: {limits}"),
+                format!(
+                    "Parent: {} Child: {}",
+                    joint.parent_instance_id.as_deref().unwrap_or("world"),
+                    joint.child_instance_id
+                ),
+            ],
+        ));
+    }
+
+    if let Some(instance_id) = pane_state.assembly_ui_state.selected_instance_id.as_deref()
+        && let Some(instance) = pane_state
+            .assembly_schema
+            .instances
+            .iter()
+            .find(|instance| instance.id == instance_id)
+    {
+        let transform = instance
+            .transform
+            .unwrap_or_else(openagents_cad::assembly::CadTransform3D::identity);
+        let is_ground =
+            pane_state.assembly_schema.ground_instance_id.as_deref() == Some(instance_id);
+        return Some((
+            "Assembly Instance".to_string(),
+            vec![
+                format!("Instance: {}", instance.id),
+                format!("PartDef: {}", instance.part_def_id),
+                format!("Name: {}", instance.name.as_deref().unwrap_or("-")),
+                format!(
+                    "T: ({:.1}, {:.1}, {:.1}) mm",
+                    transform.translation.x, transform.translation.y, transform.translation.z
+                ),
+                format!("Ground: {}", if is_ground { "yes" } else { "no" }),
+            ],
+        ));
+    }
+
+    None
 }
 
 fn parse_entity_index(entity_id: &str, prefix: &str) -> Option<usize> {
@@ -1516,13 +1897,19 @@ fn styled_fill_color(base: [f32; 4], mode: CadHiddenLineMode) -> [f32; 4] {
 #[cfg(test)]
 mod tests {
     use super::{
-        CadCameraPose, cad_mesh_to_viewport_primitive, engineering_overlay_bounds,
-        engineering_overlay_lines, footer_summary_line, placeholder_layout,
-        selection_inspect_lines, tile_caption, truncate_with_ellipsis, variant_tile_bounds,
-        variant_tile_index_at_point,
+        CadCameraPose, assembly_selection_inspect_lines, cad_mesh_payload_to_drafting_mesh,
+        cad_mesh_to_viewport_primitive, drafting_projected_view_to_mesh,
+        engineering_overlay_bounds, engineering_overlay_lines, footer_summary_line,
+        placeholder_layout, selection_inspect_lines, tile_caption, truncate_with_ellipsis,
+        variant_tile_bounds, variant_tile_index_at_point,
     };
     use openagents_cad::analysis::{DENSITY_ALUMINUM_6061_KG_M3, estimate_body_properties};
     use openagents_cad::contracts::CadSelectionKind;
+    use openagents_cad::drafting::{
+        EdgeType as DraftingEdgeType, Point2D as DraftingPoint2D,
+        ProjectedEdge as DraftingProjectedEdge, ProjectedView as DraftingProjectedView,
+        ViewDirection as DraftingViewDirection, Visibility as DraftingVisibility,
+    };
     use openagents_cad::mesh::{
         CadMeshBounds, CadMeshEdgeSegment, CadMeshMaterialSlot, CadMeshPayload, CadMeshTopology,
         CadMeshVertex,
@@ -1627,6 +2014,7 @@ mod tests {
         let summary = footer_summary_line(&state);
         assert!(summary.contains("variant.baseline"));
         assert!(summary.contains("rev 42"));
+        assert!(summary.contains("mode 3d/front"));
         assert!(summary.contains("material al-6061-t6"));
         assert!(summary.contains("2.731kg"));
         assert!(summary.contains("$128.44"));
@@ -1673,6 +2061,48 @@ mod tests {
         );
         assert_eq!(hit_first, Some(0));
         assert_eq!(hit_fourth, Some(3));
+    }
+
+    #[test]
+    fn cad_mesh_payload_to_drafting_mesh_rejects_invalid_indices() {
+        let mut payload = CadMeshPayload::default();
+        payload.vertices = vec![CadMeshVertex::default()];
+        payload.triangle_indices = vec![0, 1, 2];
+        assert!(cad_mesh_payload_to_drafting_mesh(&payload).is_none());
+    }
+
+    #[test]
+    fn drafting_projected_view_to_mesh_is_deterministic() {
+        let viewport = Bounds::new(10.0, 20.0, 280.0, 160.0);
+        let mut state = CadDemoPaneState::default();
+        state.drawing_zoom = 1.25;
+        state.drawing_pan_x = 14.0;
+        state.drawing_pan_y = -8.0;
+
+        let mut view = DraftingProjectedView::new(DraftingViewDirection::Front);
+        view.add_edge(DraftingProjectedEdge::new(
+            DraftingPoint2D::new(-20.0, -10.0),
+            DraftingPoint2D::new(20.0, -10.0),
+            DraftingVisibility::Visible,
+            DraftingEdgeType::Sharp,
+            0.0,
+        ));
+        view.add_edge(DraftingProjectedEdge::new(
+            DraftingPoint2D::new(20.0, -10.0),
+            DraftingPoint2D::new(20.0, 15.0),
+            DraftingVisibility::Hidden,
+            DraftingEdgeType::Silhouette,
+            0.0,
+        ));
+
+        let first = drafting_projected_view_to_mesh(viewport, &state, &view)
+            .expect("projection mapping should succeed");
+        let second = drafting_projected_view_to_mesh(viewport, &state, &view)
+            .expect("projection mapping should remain deterministic");
+        assert_eq!(first, second);
+        assert_eq!(first.edges.len(), 2);
+        assert_eq!(first.indices.len(), 3);
+        assert!(!first.vertices.is_empty());
     }
 
     #[test]
@@ -1969,6 +2399,45 @@ mod tests {
         assert_eq!(edge_lines.0, "Edge Inspect");
         assert!(edge_lines.1.iter().any(|line| line.contains("Length")));
         assert!(edge_lines.1.iter().any(|line| line.contains("Type")));
+    }
+
+    #[test]
+    fn assembly_selection_inspect_lines_show_instance_details() {
+        let mut state = CadDemoPaneState::default();
+        state
+            .select_assembly_instance("arm-1")
+            .expect("select known assembly instance");
+
+        let (title, lines) =
+            assembly_selection_inspect_lines(&state).expect("assembly instance inspect lines");
+        assert_eq!(title, "Assembly Instance");
+        assert!(lines.iter().any(|line| line.contains("Instance: arm-1")));
+        assert!(lines.iter().any(|line| line.contains("PartDef: arm")));
+        assert!(lines.iter().any(|line| line.contains("Ground: no")));
+    }
+
+    #[test]
+    fn assembly_selection_inspect_lines_show_joint_edit_state() {
+        let mut state = CadDemoPaneState::default();
+        state
+            .select_assembly_joint("joint.hinge")
+            .expect("select known assembly joint");
+        let semantics = state
+            .set_selected_assembly_joint_state(120.0)
+            .expect("joint state edit should succeed");
+        assert!(semantics.was_clamped);
+        assert_eq!(semantics.effective_state, 90.0);
+
+        let (title, lines) =
+            assembly_selection_inspect_lines(&state).expect("assembly joint inspect lines");
+        assert_eq!(title, "Assembly Joint");
+        assert!(lines.iter().any(|line| line.contains("Joint: joint.hinge")));
+        assert!(lines.iter().any(|line| line.contains("State: 90.000 deg")));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("Limits: [-90.0, 90.0] deg"))
+        );
     }
 
     #[test]

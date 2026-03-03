@@ -1,0 +1,1295 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-008",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "parity_check_entrypoint": "scripts/cad/parity_check.sh",
+  "source_artifact_count": 214,
+  "artifacts": [
+    {
+      "artifact_id": "analytic_ray_intersections_parity_manifest",
+      "source_path": "crates/cad/parity/analytic_ray_intersections_parity_manifest.json",
+      "sha256": "0bfb96b25534787fde2c7a701a9b243cd153bc3cbd50ae919c5ee739cc1ecc55",
+      "bytes": 4767
+    },
+    {
+      "artifact_id": "assembly_acceptance_scenes_parity_manifest",
+      "source_path": "crates/cad/parity/assembly_acceptance_scenes_parity_manifest.json",
+      "sha256": "5b11e6c86c8ef0d19802c041ffeff46bbea6241718178799b3ff4375654a11ee",
+      "bytes": 3511
+    },
+    {
+      "artifact_id": "assembly_checkpoint_parity_manifest",
+      "source_path": "crates/cad/parity/assembly_checkpoint_parity_manifest.json",
+      "sha256": "0bdb5b3f9b1203dc8519ba2276fee868a03c9c7ce719b08c15290c5ed5b6c107",
+      "bytes": 2114
+    },
+    {
+      "artifact_id": "assembly_fk_parity_manifest",
+      "source_path": "crates/cad/parity/assembly_fk_parity_manifest.json",
+      "sha256": "e472e7800013fb78c2c3e299f3d545ee16b8ff540349ef481890014cdece56ae",
+      "bytes": 3666
+    },
+    {
+      "artifact_id": "assembly_ground_delete_parity_manifest",
+      "source_path": "crates/cad/parity/assembly_ground_delete_parity_manifest.json",
+      "sha256": "f91dc09189eafa365910e0e4e6d4b63333bb6a0a6b31b756f2d600fdd0081824",
+      "bytes": 2602
+    },
+    {
+      "artifact_id": "assembly_joint_cb_parity_manifest",
+      "source_path": "crates/cad/parity/assembly_joint_cb_parity_manifest.json",
+      "sha256": "678e9815a826992d8117603d5443bd6c3d6130f3ae0502fe6106ef514d968c47",
+      "bytes": 2078
+    },
+    {
+      "artifact_id": "assembly_joint_frs_parity_manifest",
+      "source_path": "crates/cad/parity/assembly_joint_frs_parity_manifest.json",
+      "sha256": "daef2b611a4ca57d7581851265a53bd878a03854b6e21b1f6874263357c7b842",
+      "bytes": 2495
+    },
+    {
+      "artifact_id": "assembly_joint_limits_state_parity_manifest",
+      "source_path": "crates/cad/parity/assembly_joint_limits_state_parity_manifest.json",
+      "sha256": "63d672e92b11377aada4486c168ec31c0d1029b55ab329ae863d1c504b5702e7",
+      "bytes": 3131
+    },
+    {
+      "artifact_id": "assembly_part_instance_parity_manifest",
+      "source_path": "crates/cad/parity/assembly_part_instance_parity_manifest.json",
+      "sha256": "82d7c2c9aace12fc3aec3818f62b9ef5438da1f6ce51a4f7f781d8a2a11ba65f",
+      "bytes": 2071
+    },
+    {
+      "artifact_id": "assembly_schema_parity_manifest",
+      "source_path": "crates/cad/parity/assembly_schema_parity_manifest.json",
+      "sha256": "3e8173754d738e5ef9eaccf118ecf3b2f0a73c624a0f82c99cb459ad9683da1b",
+      "bytes": 1870
+    },
+    {
+      "artifact_id": "assembly_serialization_replay_parity_manifest",
+      "source_path": "crates/cad/parity/assembly_serialization_replay_parity_manifest.json",
+      "sha256": "8ed775f8683f20ec0477a96601b91c4ed6d15b6d47806b5ac6b637e846fa1897",
+      "bytes": 4446
+    },
+    {
+      "artifact_id": "assembly_ui_selection_edit_parity_manifest",
+      "source_path": "crates/cad/parity/assembly_ui_selection_edit_parity_manifest.json",
+      "sha256": "0db9c1b69369fc39439a03e62576c9d87d2fe8d696a974bdb7575cf39ee57b38",
+      "bytes": 3105
+    },
+    {
+      "artifact_id": "branch_fork_workflow_parity_manifest",
+      "source_path": "crates/cad/parity/branch_fork_workflow_parity_manifest.json",
+      "sha256": "caf066e2ff0a2032a8f0679fd8ee4ffa13733baacd80a3ef18324f6a5b2e8aa2",
+      "bytes": 1880
+    },
+    {
+      "artifact_id": "bvh_build_traverse_parity_manifest",
+      "source_path": "crates/cad/parity/bvh_build_traverse_parity_manifest.json",
+      "sha256": "3f6a3c21cc69bf6dcf70125472f1289b73e28c156da6c21e66ca8ed15b7a495e",
+      "bytes": 1726
+    },
+    {
+      "artifact_id": "cad_cli_commands_parity_manifest",
+      "source_path": "crates/cad/parity/cad_cli_commands_parity_manifest.json",
+      "sha256": "a19df9045bc872163bd171f0c682c6b601e07238a5de4caec352e47f8b4fd14c",
+      "bytes": 4994
+    },
+    {
+      "artifact_id": "cad_cli_scaffold_parity_manifest",
+      "source_path": "crates/cad/parity/cad_cli_scaffold_parity_manifest.json",
+      "sha256": "5dd2625e7a450960d0b832d451f47511175247037be1f2b5f0041ede214afd99",
+      "bytes": 2067
+    },
+    {
+      "artifact_id": "cad_mcp_tools_parity_manifest",
+      "source_path": "crates/cad/parity/cad_mcp_tools_parity_manifest.json",
+      "sha256": "59d30bc6c0cc4e7007fb97e615cc4a7da3dd7695b01e471482ea829146241c85",
+      "bytes": 1841
+    },
+    {
+      "artifact_id": "cam_stocksim_lane_parity_manifest",
+      "source_path": "crates/cad/parity/cam_stocksim_lane_parity_manifest.json",
+      "sha256": "33c79b65897e5f237231adbc6f97ae5e18b058e16990d87f2bf6ad853505e2b1",
+      "bytes": 1853
+    },
+    {
+      "artifact_id": "chamfer_feature_graph_parity_manifest",
+      "source_path": "crates/cad/parity/chamfer_feature_graph_parity_manifest.json",
+      "sha256": "9f71a23725de08ba6dbffa74631dedddedf56b1c2d0d765f7d838aa9bf68ec9f",
+      "bytes": 1676
+    },
+    {
+      "artifact_id": "collaborative_document_sync_parity_manifest",
+      "source_path": "crates/cad/parity/collaborative_document_sync_parity_manifest.json",
+      "sha256": "59b8ae9fda6025ebc2a4587457bf2e7b86966f1214d57a589618f3507da3b6bc",
+      "bytes": 1931
+    },
+    {
+      "artifact_id": "collision_shape_generation_parity_manifest",
+      "source_path": "crates/cad/parity/collision_shape_generation_parity_manifest.json",
+      "sha256": "bc55effa566f7d324e3c44af40828089062590141a26cd9601cc9bfb94a63d2d",
+      "bytes": 1914
+    },
+    {
+      "artifact_id": "compact_ir_parity_manifest",
+      "source_path": "crates/cad/parity/compact_ir_parity_manifest.json",
+      "sha256": "4d023ac4a6e2b68c21c05242efcbe9d96daac5e7bc0618c9a13ea2825c5a40a6",
+      "bytes": 1653
+    },
+    {
+      "artifact_id": "convex_decomposition_parity_manifest",
+      "source_path": "crates/cad/parity/convex_decomposition_parity_manifest.json",
+      "sha256": "6a2fabb3499310c1b73a3f8703eb772e626b19f24dd77d09a235422ea561830d",
+      "bytes": 1872
+    },
+    {
+      "artifact_id": "core_modeling_checkpoint_parity_manifest",
+      "source_path": "crates/cad/parity/core_modeling_checkpoint_parity_manifest.json",
+      "sha256": "7065721e67e9fd332aa0e8d40bc094d066ac25a71339237834988034e6e31b30",
+      "bytes": 2469
+    },
+    {
+      "artifact_id": "crdt_lane_architecture_parity_manifest",
+      "source_path": "crates/cad/parity/crdt_lane_architecture_parity_manifest.json",
+      "sha256": "ef6a28df016d4593b59b929df4c1de2c138c25bcc5b74e2f58e65f23239bdfca",
+      "bytes": 1872
+    },
+    {
+      "artifact_id": "deterministic_replay_all_fixtures_parity_manifest",
+      "source_path": "crates/cad/parity/deterministic_replay_all_fixtures_parity_manifest.json",
+      "sha256": "43c75bb74574a94216faba404b942603f6c3aed07f46bab17a55d2a396c8536e",
+      "bytes": 1998
+    },
+    {
+      "artifact_id": "direct_brep_raytrace_scaffolding_parity_manifest",
+      "source_path": "crates/cad/parity/direct_brep_raytrace_scaffolding_parity_manifest.json",
+      "sha256": "106e45389b5df4057ed7e989be887f6694498008ff666f35fd97ab9a92bd22bf",
+      "bytes": 3001
+    },
+    {
+      "artifact_id": "drafting_checkpoint_parity_manifest",
+      "source_path": "crates/cad/parity/drafting_checkpoint_parity_manifest.json",
+      "sha256": "e8916b1b115ab2263903b4e642e6a16b86da255c07b01f925e4cb53d35978ecc",
+      "bytes": 2203
+    },
+    {
+      "artifact_id": "drafting_detail_parity_manifest",
+      "source_path": "crates/cad/parity/drafting_detail_parity_manifest.json",
+      "sha256": "bab1318a3a7802bba4226a5413a10a36f138b3c57d1ce21bff078cd1eed4bfd7",
+      "bytes": 1788
+    },
+    {
+      "artifact_id": "drafting_dimension_parity_manifest",
+      "source_path": "crates/cad/parity/drafting_dimension_parity_manifest.json",
+      "sha256": "b060c7254dfc43741af41d4caad0297268f8f104a12c6de6ee478102975a88e1",
+      "bytes": 2699
+    },
+    {
+      "artifact_id": "drafting_drawing_mode_ui_parity_manifest",
+      "source_path": "crates/cad/parity/drafting_drawing_mode_ui_parity_manifest.json",
+      "sha256": "6f8d8e97669a935ec8339630eafea72d4db4e3159cea190ff492ae1d2c882e58",
+      "bytes": 4137
+    },
+    {
+      "artifact_id": "drafting_dxf_export_parity_manifest",
+      "source_path": "crates/cad/parity/drafting_dxf_export_parity_manifest.json",
+      "sha256": "85e37b63fa84982a866339ac2ee4536d66e60ed97d067888a79af938b893c1c3",
+      "bytes": 2131
+    },
+    {
+      "artifact_id": "drafting_gdt_parity_manifest",
+      "source_path": "crates/cad/parity/drafting_gdt_parity_manifest.json",
+      "sha256": "3b8169ed707c8fbb5355bff586915adc86d48f3b44a8c69fb3d487fb57a1edd3",
+      "bytes": 3662
+    },
+    {
+      "artifact_id": "drafting_hidden_line_parity_manifest",
+      "source_path": "crates/cad/parity/drafting_hidden_line_parity_manifest.json",
+      "sha256": "194d1294f6309151bac29c34dd3bd65d72b94ff03a0d988717239a533a7a14b5",
+      "bytes": 2037
+    },
+    {
+      "artifact_id": "drafting_kernel_scaffolding_parity_manifest",
+      "source_path": "crates/cad/parity/drafting_kernel_scaffolding_parity_manifest.json",
+      "sha256": "52a9c49ce4b69aaa3dd161d2358f113f3859615a6449816193ff93c2182a564b",
+      "bytes": 2914
+    },
+    {
+      "artifact_id": "drafting_pdf_export_parity_manifest",
+      "source_path": "crates/cad/parity/drafting_pdf_export_parity_manifest.json",
+      "sha256": "142457a5bd98e04d4db45d78915dc3b3e2d03eed85323bbd8ddffb60f7904f1e",
+      "bytes": 1815
+    },
+    {
+      "artifact_id": "drafting_persistence_parity_manifest",
+      "source_path": "crates/cad/parity/drafting_persistence_parity_manifest.json",
+      "sha256": "63609b7346676aa928b599d2b0221f18eb7c73ccef043c52412fd34a668da7e3",
+      "bytes": 1780
+    },
+    {
+      "artifact_id": "drafting_projection_parity_manifest",
+      "source_path": "crates/cad/parity/drafting_projection_parity_manifest.json",
+      "sha256": "141f37a4ec3cdecef1056dd65f380faac12f22374bdaf314b9e398a5b2cd05b6",
+      "bytes": 3580
+    },
+    {
+      "artifact_id": "drafting_section_parity_manifest",
+      "source_path": "crates/cad/parity/drafting_section_parity_manifest.json",
+      "sha256": "b3b49c787d7761440d5bb5b54959bd8ab69bf6dffdce7d0511d3c95037be82b9",
+      "bytes": 2624
+    },
+    {
+      "artifact_id": "ecad_export_lane_parity_manifest",
+      "source_path": "crates/cad/parity/ecad_export_lane_parity_manifest.json",
+      "sha256": "91cdcdb77ac3a59fbe0fc0061df4ad7c6370e51a38a615dff4b89feb0967f424",
+      "bytes": 1844
+    },
+    {
+      "artifact_id": "ecad_pcb_lane_parity_manifest",
+      "source_path": "crates/cad/parity/ecad_pcb_lane_parity_manifest.json",
+      "sha256": "8b11d546a48f581b27f77c3ab4c05552b357fdb61a035305d6fa27aa9c414cd6",
+      "bytes": 1817
+    },
+    {
+      "artifact_id": "ecad_schematic_lane_parity_manifest",
+      "source_path": "crates/cad/parity/ecad_schematic_lane_parity_manifest.json",
+      "sha256": "7cf59750004c00f6ce7cfe763cfe686b1c2113b5b70cf037490acb96c35df438",
+      "bytes": 1871
+    },
+    {
+      "artifact_id": "ecad_simulation_lane_parity_manifest",
+      "source_path": "crates/cad/parity/ecad_simulation_lane_parity_manifest.json",
+      "sha256": "9d4a9fc304d65111c49cb5546aa205cba7058da535f74147836f556ece747156",
+      "bytes": 1880
+    },
+    {
+      "artifact_id": "ecad_symbols_lane_parity_manifest",
+      "source_path": "crates/cad/parity/ecad_symbols_lane_parity_manifest.json",
+      "sha256": "75a2899b3d9fa7647a1cc798a361c6480809002839e19ab4c043ce179bf36362",
+      "bytes": 1853
+    },
+    {
+      "artifact_id": "embroidery_core_lane_parity_manifest",
+      "source_path": "crates/cad/parity/embroidery_core_lane_parity_manifest.json",
+      "sha256": "f301f1139ff316eaa5b806caef9e00ff5a908aedba6e791d4144cf3899c0becd",
+      "bytes": 1880
+    },
+    {
+      "artifact_id": "embroidery_dst_pes_lane_parity_manifest",
+      "source_path": "crates/cad/parity/embroidery_dst_pes_lane_parity_manifest.json",
+      "sha256": "ec1fafbbd29055973198bc56947dcf6e8ddc33df0465dbdb7899ca8ba748e165",
+      "bytes": 1897
+    },
+    {
+      "artifact_id": "expanded_finishing_parity_manifest",
+      "source_path": "crates/cad/parity/expanded_finishing_parity_manifest.json",
+      "sha256": "8e3e5f4c114c912d67593120949a38e4755f6a2bf00d0ff2749b1b2c9be20c65",
+      "bytes": 1667
+    },
+    {
+      "artifact_id": "feature_op_hash_parity_manifest",
+      "source_path": "crates/cad/parity/feature_op_hash_parity_manifest.json",
+      "sha256": "aa56535cb65efec21a6729e3fee393684f711e183d86037d7d7a1e0364046621",
+      "bytes": 3286
+    },
+    {
+      "artifact_id": "fillet_feature_graph_parity_manifest",
+      "source_path": "crates/cad/parity/fillet_feature_graph_parity_manifest.json",
+      "sha256": "b3970c83313251853aff7e7ff9e866afc4bbb44072be3f3b30518b120412788a",
+      "bytes": 1618
+    },
+    {
+      "artifact_id": "final_parity_certification_report_parity_manifest",
+      "source_path": "crates/cad/parity/final_parity_certification_report_parity_manifest.json",
+      "sha256": "eb0098fef5cd10bb6d6fdfbdda8acab14edfc9ca8a73b7cfed77a6b704b41889",
+      "bytes": 1959
+    },
+    {
+      "artifact_id": "fixtures_analytic_ray_intersections_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/analytic_ray_intersections_vcad_reference.json",
+      "sha256": "a12f8266325b1ba234b6fec751bc8a741805ec2243a821d212b6bc30cc795fcc",
+      "bytes": 2771
+    },
+    {
+      "artifact_id": "fixtures_assembly_acceptance_scenes_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/assembly_acceptance_scenes_vcad_reference.json",
+      "sha256": "2a9cae29d2396121baf97508a75434eb584c413b72298957134a5ad6d050b026",
+      "bytes": 2581
+    },
+    {
+      "artifact_id": "fixtures_assembly_fk_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/assembly_fk_vcad_reference.json",
+      "sha256": "698b8bd4ba61ef9c25213304c43ce1e274116b4d52eafa3f16a7c74f96d0ecc1",
+      "bytes": 2819
+    },
+    {
+      "artifact_id": "fixtures_assembly_ground_delete_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/assembly_ground_delete_vcad_reference.json",
+      "sha256": "8a096b1c70f4fe2b021ad44a229c0f36c4554e415329668b0988fbfd23d6269c",
+      "bytes": 1752
+    },
+    {
+      "artifact_id": "fixtures_assembly_joint_cb_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/assembly_joint_cb_vcad_reference.json",
+      "sha256": "cb2ac9b8385107bdbadbb63708189a3a472d58a9fa250a1c8e3739d4657a19a7",
+      "bytes": 412
+    },
+    {
+      "artifact_id": "fixtures_assembly_joint_frs_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/assembly_joint_frs_vcad_reference.json",
+      "sha256": "0dff899a2910fb44a7c96cd42fb29273e68a7814f05adb5d3ede1af93e69c2d7",
+      "bytes": 495
+    },
+    {
+      "artifact_id": "fixtures_assembly_joint_limits_state_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/assembly_joint_limits_state_vcad_reference.json",
+      "sha256": "4e33712eac8c6e654838932f6b81f1da37aef1e0e0f36045c22d52011e220b26",
+      "bytes": 640
+    },
+    {
+      "artifact_id": "fixtures_assembly_part_instance_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/assembly_part_instance_vcad_reference.json",
+      "sha256": "d9a2e91b2ac4896067c9f1d934fe4598844c6b0c36daa8bd5799ff17d50c6dbf",
+      "bytes": 862
+    },
+    {
+      "artifact_id": "fixtures_assembly_schema_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/assembly_schema_vcad_reference.json",
+      "sha256": "1ef4b9f87f0ca7ea0a60bcae1315951082256a4b89dc9e290041082e77bd3a4f",
+      "bytes": 846
+    },
+    {
+      "artifact_id": "fixtures_assembly_serialization_replay_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/assembly_serialization_replay_vcad_reference.json",
+      "sha256": "673d8509ea321c776eb5f4f4482e6f200ad5c669d06f90fff990c76347c11852",
+      "bytes": 3519
+    },
+    {
+      "artifact_id": "fixtures_assembly_ui_selection_edit_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/assembly_ui_selection_edit_vcad_reference.json",
+      "sha256": "741469a2cca55db862e81bee864551719626bc022d0b08ce3cb06a5a7a01a092",
+      "bytes": 2240
+    },
+    {
+      "artifact_id": "fixtures_branch_fork_workflow_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/branch_fork_workflow_vcad_reference.json",
+      "sha256": "e0e024d0fbdb7a3bc8192204db213ee7fcf4e4987566826e7cbe0cfe56814f04",
+      "bytes": 996
+    },
+    {
+      "artifact_id": "fixtures_bvh_build_traverse_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/bvh_build_traverse_vcad_reference.json",
+      "sha256": "000176182d952858025cd41e42d117db8815b66187de7ce5390a7bc33b79083e",
+      "bytes": 621
+    },
+    {
+      "artifact_id": "fixtures_cad_cli_commands_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/cad_cli_commands_vcad_reference.json",
+      "sha256": "b6dfac9e1006e7e62e49492b7bcbb77c62a5f5be2633e6a7cfe718ea3aa2b0a1",
+      "bytes": 1381
+    },
+    {
+      "artifact_id": "fixtures_cad_cli_scaffold_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/cad_cli_scaffold_vcad_reference.json",
+      "sha256": "e605f15e550e1a284d62cf6d5212c70c9dfd571369349f69b910045d03dd0438",
+      "bytes": 1223
+    },
+    {
+      "artifact_id": "fixtures_cad_mcp_tools_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/cad_mcp_tools_vcad_reference.json",
+      "sha256": "f016fb85e25bb83d3129f537c506ab29425dc22d405e9dd745de064418e5d34f",
+      "bytes": 757
+    },
+    {
+      "artifact_id": "fixtures_cam_stocksim_lane_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/cam_stocksim_lane_vcad_reference.json",
+      "sha256": "14770ce54fcd52e841055b795b357a008e648dea80122ac8d9da40ade080bbb4",
+      "bytes": 978
+    },
+    {
+      "artifact_id": "fixtures_collaborative_document_sync_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/collaborative_document_sync_vcad_reference.json",
+      "sha256": "fe8e438a5099c25f99daa0d0f3f31e9b9776bcb9a814bee3c4c02ad8c7d6e2ae",
+      "bytes": 1026
+    },
+    {
+      "artifact_id": "fixtures_collision_shape_generation_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/collision_shape_generation_vcad_reference.json",
+      "sha256": "e3d0cde3b8720184060171f69a7f4a92c0d19ca18adaf6e4d4619ea439997af3",
+      "bytes": 1018
+    },
+    {
+      "artifact_id": "fixtures_compact_ir_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/compact_ir_vcad_reference.json",
+      "sha256": "e2e2127fd27049a4962ea304ba24030f79b978a0965cb2c2242c789161d3ed64",
+      "bytes": 547
+    },
+    {
+      "artifact_id": "fixtures_convex_decomposition_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/convex_decomposition_vcad_reference.json",
+      "sha256": "fd967725525a8656b0e3b242c4fdea38836bbf1616640f32b4d2907facf2dd97",
+      "bytes": 994
+    },
+    {
+      "artifact_id": "fixtures_crdt_lane_architecture_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/crdt_lane_architecture_vcad_reference.json",
+      "sha256": "88dc27644676d5348886596f677167ffa0d76e837e2c7a244d58caa83dcb5f7f",
+      "bytes": 982
+    },
+    {
+      "artifact_id": "fixtures_deterministic_replay_all_fixtures_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/deterministic_replay_all_fixtures_vcad_reference.json",
+      "sha256": "a28fbb0dffa0a9e224a8b8d84e62a07901251bc08ba405faf45e94548f678c8c",
+      "bytes": 1076
+    },
+    {
+      "artifact_id": "fixtures_direct_brep_raytrace_scaffolding_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/direct_brep_raytrace_scaffolding_vcad_reference.json",
+      "sha256": "b2670f816b42292ba706ea5da7cbdccb5bae436459153127c85aec0dbab7b730",
+      "bytes": 1695
+    },
+    {
+      "artifact_id": "fixtures_drafting_detail_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/drafting_detail_vcad_reference.json",
+      "sha256": "5b8ffda5600d041213efe27ae52e3837cb4581f7e573481b5958134a079a2993",
+      "bytes": 970
+    },
+    {
+      "artifact_id": "fixtures_drafting_dimension_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/drafting_dimension_vcad_reference.json",
+      "sha256": "bf855898003bdee5c712cb5ffdf5f2d72003337db47cd40b0b5c2e6345d646e5",
+      "bytes": 1818
+    },
+    {
+      "artifact_id": "fixtures_drafting_drawing_mode_ui_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/drafting_drawing_mode_ui_vcad_reference.json",
+      "sha256": "5d7d6bceb68204269408793a2ef275421d0b58f8e5834d3d54294d92e965d7f9",
+      "bytes": 3192
+    },
+    {
+      "artifact_id": "fixtures_drafting_dxf_export_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/drafting_dxf_export_vcad_reference.json",
+      "sha256": "cee6df8a5b08edec7c038b4caae4b0aeb1ee6becc6a373b230f66f992555e6a3",
+      "bytes": 1281
+    },
+    {
+      "artifact_id": "fixtures_drafting_gdt_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/drafting_gdt_vcad_reference.json",
+      "sha256": "7c224023e4627b174e79cde6a1d04a8602fd538e87e04d8e923e767762565293",
+      "bytes": 2733
+    },
+    {
+      "artifact_id": "fixtures_drafting_hidden_line_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/drafting_hidden_line_vcad_reference.json",
+      "sha256": "532a2efb032ed12f3c7a4168306c5bb2265ec419b3ad3726d644fdd50c8fb502",
+      "bytes": 1078
+    },
+    {
+      "artifact_id": "fixtures_drafting_kernel_scaffolding_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/drafting_kernel_scaffolding_vcad_reference.json",
+      "sha256": "df722ddaab6d441cf4447fd366a0853d94b23765b6e317db4023e5b6018ad5a8",
+      "bytes": 1937
+    },
+    {
+      "artifact_id": "fixtures_drafting_pdf_export_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/drafting_pdf_export_vcad_reference.json",
+      "sha256": "6ced4a518b1b0173162a6995ad6f2db7a84a7b6da9b8f24f952265d8562c75b0",
+      "bytes": 956
+    },
+    {
+      "artifact_id": "fixtures_drafting_persistence_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/drafting_persistence_vcad_reference.json",
+      "sha256": "2ff793e270dea44151838b078c97b9ff386a36c15dbe91fc3412061cf61f8fef",
+      "bytes": 935
+    },
+    {
+      "artifact_id": "fixtures_drafting_projection_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/drafting_projection_vcad_reference.json",
+      "sha256": "59247793541362a2ecca48ad98abfca8f795cd4116cfeee298f31664defc4ec6",
+      "bytes": 1342
+    },
+    {
+      "artifact_id": "fixtures_drafting_section_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/drafting_section_vcad_reference.json",
+      "sha256": "f5225ffb7ff6f76e8d863a5eb401fb0831ad29b62d92c2ca2f33dcbeede56044",
+      "bytes": 1653
+    },
+    {
+      "artifact_id": "fixtures_ecad_export_lane_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/ecad_export_lane_vcad_reference.json",
+      "sha256": "a573e5208ffd6b80e0805c05ad94a5019e9029db2e6450e9dca71f0b38e2e599",
+      "bytes": 972
+    },
+    {
+      "artifact_id": "fixtures_ecad_pcb_lane_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/ecad_pcb_lane_vcad_reference.json",
+      "sha256": "98a7ce3a736e05c06a85d97b0db7971175222d4acc130487402dfedda085a9bf",
+      "bytes": 954
+    },
+    {
+      "artifact_id": "fixtures_ecad_schematic_lane_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/ecad_schematic_lane_vcad_reference.json",
+      "sha256": "00d6dde192f16d7c7135663791cfd5d2cb288693a7acbd5932bc51f7d0aadf4d",
+      "bytes": 990
+    },
+    {
+      "artifact_id": "fixtures_ecad_simulation_lane_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/ecad_simulation_lane_vcad_reference.json",
+      "sha256": "95c546be36dafee89e506626f4e9684057eeafbbaed9f9d58cfba5836abd5b35",
+      "bytes": 996
+    },
+    {
+      "artifact_id": "fixtures_ecad_symbols_lane_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/ecad_symbols_lane_vcad_reference.json",
+      "sha256": "27124c96d6343d3a8189d7c64b77813a63f4c0f6792830ed566b791381375c7f",
+      "bytes": 978
+    },
+    {
+      "artifact_id": "fixtures_embroidery_core_lane_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/embroidery_core_lane_vcad_reference.json",
+      "sha256": "4dfe481a3e0f4a4fcd598d9ad3810cc175e72d75651ab7fbabc89ea0352f394b",
+      "bytes": 996
+    },
+    {
+      "artifact_id": "fixtures_embroidery_dst_pes_lane_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/embroidery_dst_pes_lane_vcad_reference.json",
+      "sha256": "5a1b1b448f4e6d882579b34d423ee0b2339f57233f232264818a33c7e36c97b1",
+      "bytes": 1004
+    },
+    {
+      "artifact_id": "fixtures_feature_op_hash_vcad_reference_corpus",
+      "source_path": "crates/cad/parity/fixtures/feature_op_hash_vcad_reference_corpus.json",
+      "sha256": "8430d20c58751a9d70af921fdb8734a44f892bdaca926727041ac97379ace6a3",
+      "bytes": 5054
+    },
+    {
+      "artifact_id": "fixtures_final_parity_certification_report_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/final_parity_certification_report_vcad_reference.json",
+      "sha256": "6d2750344b32230062b65946d09b3d71f9a43ca60d1243c3b6f19d076bc2fef4",
+      "bytes": 1044
+    },
+    {
+      "artifact_id": "fixtures_glb_export_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/glb_export_vcad_reference.json",
+      "sha256": "1952be29cf98c9bf02400a4609e2ada30a95d367bfb72943e3ea0318c71b10eb",
+      "bytes": 1152
+    },
+    {
+      "artifact_id": "fixtures_gpu_acceleration_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/gpu_acceleration_vcad_reference.json",
+      "sha256": "6a1d21c19beaaedc57c57dbe27eca7171a2ba6490ccd60c9ea9ccb8df905b915",
+      "bytes": 1780
+    },
+    {
+      "artifact_id": "fixtures_gym_style_api_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/gym_style_api_vcad_reference.json",
+      "sha256": "f10e8da1da14e5d6629b7219de16d93d072a1a8bd47ffa14f9d9c3d465942738",
+      "bytes": 1014
+    },
+    {
+      "artifact_id": "fixtures_headless_script_harness_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/headless_script_harness_vcad_reference.json",
+      "sha256": "551deca83f19ea079486acbbf695903e2e45b1d53248073f5dd6eda103cabd1f",
+      "bytes": 601
+    },
+    {
+      "artifact_id": "fixtures_intent_modeling_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/intent_modeling_vcad_reference.json",
+      "sha256": "1c24801ebd7d14b6a23e3f2d6829ccf3f38dc390514949dba489d266be0481bf",
+      "bytes": 433
+    },
+    {
+      "artifact_id": "fixtures_joint_physics_mapping_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/joint_physics_mapping_vcad_reference.json",
+      "sha256": "6369b8f79badc20f67a9cf937afcb9158acd34754587b9e4a8b3cf9abfe3a087",
+      "bytes": 1100
+    },
+    {
+      "artifact_id": "fixtures_license_compliance_audit_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/license_compliance_audit_vcad_reference.json",
+      "sha256": "10461fa0cf01d8e2b696016365a80967cdc903c633283d7cbb191feddb93d52c",
+      "bytes": 1000
+    },
+    {
+      "artifact_id": "fixtures_mcp_simulation_tools_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/mcp_simulation_tools_vcad_reference.json",
+      "sha256": "20fecc61ae25923ae0c1c69d30149811095dfaf53a863367dce92526bb1266b2",
+      "bytes": 986
+    },
+    {
+      "artifact_id": "fixtures_mesh_upload_processing_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/mesh_upload_processing_vcad_reference.json",
+      "sha256": "964a5b5f76c3b2640a6f635205394c04eda9bc4b7738be430888fb98921ec56d",
+      "bytes": 1712
+    },
+    {
+      "artifact_id": "fixtures_parity_fixture_corpus",
+      "source_path": "crates/cad/parity/fixtures/parity_fixture_corpus.json",
+      "sha256": "3d59ec81dc5944df543ae51dede9d9dc32f006427bf87886634e723bfcde98d7",
+      "bytes": 12386
+    },
+    {
+      "artifact_id": "fixtures_performance_scorecard_thresholds_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/performance_scorecard_thresholds_vcad_reference.json",
+      "sha256": "61c1eb9fb4fd36fb3742628e8fb659d5369ed7113179f205737b8f55fe656c44",
+      "bytes": 1042
+    },
+    {
+      "artifact_id": "fixtures_physics_crate_integration_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/physics_crate_integration_vcad_reference.json",
+      "sha256": "059a5b6cd4c63f6cf4bf85f1ff8868ceb6b974709cd0e43db85246c4ce0a9df0",
+      "bytes": 1096
+    },
+    {
+      "artifact_id": "fixtures_presence_cursor_selection_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/presence_cursor_selection_vcad_reference.json",
+      "sha256": "65642c5f53948038acc91d36c1015650f254a088056b8792c351f1ee1e794109",
+      "bytes": 1008
+    },
+    {
+      "artifact_id": "fixtures_raytrace_face_pick_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/raytrace_face_pick_vcad_reference.json",
+      "sha256": "0e21b1d3ca74396bfe1bb6a039980c38ae27fcb6f7714b1a0d9889cf42fbedb7",
+      "bytes": 1867
+    },
+    {
+      "artifact_id": "fixtures_raytrace_quality_mode_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/raytrace_quality_mode_vcad_reference.json",
+      "sha256": "a6fc52b9318ad9c6d3ca9cf937a1a35677eedaf8ee4d0926b01d1932215f7a26",
+      "bytes": 2865
+    },
+    {
+      "artifact_id": "fixtures_raytrace_ui_toggle_fallback_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/raytrace_ui_toggle_fallback_vcad_reference.json",
+      "sha256": "1517e6cdb32e6df07cd38f4a7d4143661d34d23daf18f2d70f0e61b5f44fb097",
+      "bytes": 3988
+    },
+    {
+      "artifact_id": "fixtures_release_gates_runbooks_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/release_gates_runbooks_vcad_reference.json",
+      "sha256": "33f17dae4029a3e6bec6b9e4b7866a1933d9eff3aa57cc6821f9b6091a0147d1",
+      "bytes": 1016
+    },
+    {
+      "artifact_id": "fixtures_render_mode_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/render_mode_vcad_reference.json",
+      "sha256": "a35e3a0951881cf7f09e6049af33152e2d476c4cb72901c5a89d09cc92ef75c2",
+      "bytes": 1913
+    },
+    {
+      "artifact_id": "fixtures_security_posture_review_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/security_posture_review_vcad_reference.json",
+      "sha256": "a6d7ca13a752c340e34e2a03028787f88edaff93a6349144b65f04378fb69655",
+      "bytes": 1038
+    },
+    {
+      "artifact_id": "fixtures_simulation_step_reset_api_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/simulation_step_reset_api_vcad_reference.json",
+      "sha256": "340ea216ac8a78ee0f3a2a846eeffe1db18b1a66036a89e39ae8ed316d749327",
+      "bytes": 1120
+    },
+    {
+      "artifact_id": "fixtures_simulation_ui_controls_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/simulation_ui_controls_vcad_reference.json",
+      "sha256": "0e8b0958038a9cffc65537599ae4fb4976355a2bf51d0aa10045a87bdcfaf1e7",
+      "bytes": 1092
+    },
+    {
+      "artifact_id": "fixtures_sketch_vcad_reference_corpus",
+      "source_path": "crates/cad/parity/fixtures/sketch_vcad_reference_corpus.json",
+      "sha256": "103d61abb15ee29f1aba70c63a9986c602562bb2c58a29148e03dd01afeea4aa",
+      "bytes": 3690
+    },
+    {
+      "artifact_id": "fixtures_slicer_bambu_lane_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/slicer_bambu_lane_vcad_reference.json",
+      "sha256": "17a56dd7171661dcaceb367573ed5b18b86e1cc0c5190f620d41bf1d98a5474c",
+      "bytes": 978
+    },
+    {
+      "artifact_id": "fixtures_slicer_core_lane_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/slicer_core_lane_vcad_reference.json",
+      "sha256": "1da1f93b54a65627443802ff57501ef63ccae28d1039d3984840c97e86d5fe87",
+      "bytes": 972
+    },
+    {
+      "artifact_id": "fixtures_slicer_gcode_lane_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/slicer_gcode_lane_vcad_reference.json",
+      "sha256": "418504fd579bc1146b976cfdb3105934eb7a7a0639abcb7d39a3ab7ab5acb5e9",
+      "bytes": 978
+    },
+    {
+      "artifact_id": "fixtures_slicer_wasm_lane_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/slicer_wasm_lane_vcad_reference.json",
+      "sha256": "a2bc39f4ae6a1d5ef799105b88e9ad17f06f7bf6b199f0aa84584c1313c6a3f3",
+      "bytes": 972
+    },
+    {
+      "artifact_id": "fixtures_step_export_post_boolean_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/step_export_post_boolean_vcad_reference.json",
+      "sha256": "dd1fa00e36941e00b87ccba89a933b8f7860bf1840e5eaa4b61ff034674fcb4f",
+      "bytes": 1135
+    },
+    {
+      "artifact_id": "fixtures_step_import_entity_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/step_import_entity_vcad_reference.json",
+      "sha256": "c019c77c40757ccb88d74d91f6388b2bdd60e3557d01e0558b9aa6cfb72e4b41",
+      "bytes": 3124
+    },
+    {
+      "artifact_id": "fixtures_stl_import_export_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/stl_import_export_vcad_reference.json",
+      "sha256": "e9a026daa8d8602a73572e7e8f1a01b5b24536c44570e94456aa8573d28d53c6",
+      "bytes": 1063
+    },
+    {
+      "artifact_id": "fixtures_text_to_cad_dataset_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/text_to_cad_dataset_vcad_reference.json",
+      "sha256": "8bf90e7b32d808dd771dcbab557d8ad1c37b0a6fa1cc6f74c4ee0096d3ae9eb8",
+      "bytes": 324
+    },
+    {
+      "artifact_id": "fixtures_text_to_cad_training_eval_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/text_to_cad_training_eval_vcad_reference.json",
+      "sha256": "413663110ca55e54cf132133e31e770696216dc6f82e18322e8586e1f9235036",
+      "bytes": 396
+    },
+    {
+      "artifact_id": "fixtures_text_to_cad_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/text_to_cad_vcad_reference.json",
+      "sha256": "ffc6305fccd363ebce26b43bb5a2319253a463ce991b1fbe55cab9d0e3ab40bc",
+      "bytes": 354
+    },
+    {
+      "artifact_id": "fixtures_trimmed_surface_ray_hit_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/trimmed_surface_ray_hit_vcad_reference.json",
+      "sha256": "a1f74dfee6b7ca157cc1e2badac959f46d9b5ad158717bd49785a55d4932f00e",
+      "bytes": 1377
+    },
+    {
+      "artifact_id": "fixtures_urdf_export_fixtures_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/urdf_export_fixtures_vcad_reference.json",
+      "sha256": "610cf06c27325cfc5bd3044bfbc4d40a3ff7df089616b4bbfbc661bf8d2648c0",
+      "bytes": 1060
+    },
+    {
+      "artifact_id": "fixtures_urdf_import_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/urdf_import_vcad_reference.json",
+      "sha256": "751cf728ea04635b9e1e49c38d94e423703ca51c56f40ff3f5fcca6ded68ae58",
+      "bytes": 932
+    },
+    {
+      "artifact_id": "fixtures_viewport_camera_gizmo_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/viewport_camera_gizmo_vcad_reference.json",
+      "sha256": "58a8eae8626896f5ec1725a374feb26862570be9a651bb2af003b6ac957c7f6f",
+      "bytes": 1323
+    },
+    {
+      "artifact_id": "glb_export_parity_manifest",
+      "source_path": "crates/cad/parity/glb_export_parity_manifest.json",
+      "sha256": "42b557a05e5edfe0d452bcd5a87844acc23e1bec2b80860384c66d36e308c693",
+      "bytes": 2317
+    },
+    {
+      "artifact_id": "gpu_acceleration_parity_manifest",
+      "source_path": "crates/cad/parity/gpu_acceleration_parity_manifest.json",
+      "sha256": "7f991a801a739957a5597aee194d8cae14bae85224bd6feec8757d4b2eb4ecd4",
+      "bytes": 2866
+    },
+    {
+      "artifact_id": "gym_style_api_parity_manifest",
+      "source_path": "crates/cad/parity/gym_style_api_parity_manifest.json",
+      "sha256": "e42c69c1f844a35acf718b71970a3fdc510494e8b8c6b6919f26cac340610a35",
+      "bytes": 1871
+    },
+    {
+      "artifact_id": "headless_script_harness_parity_manifest",
+      "source_path": "crates/cad/parity/headless_script_harness_parity_manifest.json",
+      "sha256": "d118663f838ee037d284e9350d1d1515f5e9fee0e4206e9742df3f4466521698",
+      "bytes": 2198
+    },
+    {
+      "artifact_id": "intent_modeling_parity_manifest",
+      "source_path": "crates/cad/parity/intent_modeling_parity_manifest.json",
+      "sha256": "eeda41db1f1f97c279fb45838f58ac82cf4d77232d31a0a5fb25cb55100791c0",
+      "bytes": 1758
+    },
+    {
+      "artifact_id": "io_headless_ai_checkpoint_parity_manifest",
+      "source_path": "crates/cad/parity/io_headless_ai_checkpoint_parity_manifest.json",
+      "sha256": "51b640df030e7222825a134e66fe43c49cc432bbee491d351d2e82e0e1ca2d9f",
+      "bytes": 2409
+    },
+    {
+      "artifact_id": "joint_physics_mapping_parity_manifest",
+      "source_path": "crates/cad/parity/joint_physics_mapping_parity_manifest.json",
+      "sha256": "603f967f4ec6e6571ec58c8390c95d7d563eb184e5301cce7c2bbefbfc72b91e",
+      "bytes": 1981
+    },
+    {
+      "artifact_id": "kernel_adapter_v2_manifest",
+      "source_path": "crates/cad/parity/kernel_adapter_v2_manifest.json",
+      "sha256": "a7eb7f7d8d3e44a58bf03449bbb7a71dd6045ec2b589238ab91c0e91cf7ee99e",
+      "bytes": 1056
+    },
+    {
+      "artifact_id": "kernel_boolean_brep_parity_manifest",
+      "source_path": "crates/cad/parity/kernel_boolean_brep_parity_manifest.json",
+      "sha256": "f109fe0492dabdef1d6da26b98809617c2805196e1ced00a7aa2a7605ddce0ad",
+      "bytes": 1603
+    },
+    {
+      "artifact_id": "kernel_boolean_diagnostics_parity_manifest",
+      "source_path": "crates/cad/parity/kernel_boolean_diagnostics_parity_manifest.json",
+      "sha256": "e40250601c25f45f711570f870d15cbee5a020f0ef88018c2328faceac955e06",
+      "bytes": 1424
+    },
+    {
+      "artifact_id": "kernel_booleans_parity_manifest",
+      "source_path": "crates/cad/parity/kernel_booleans_parity_manifest.json",
+      "sha256": "3039f2b226b57fc8ddd824cd8173aa6b3ce3a3b13badc2a9b6a39edc798f78c4",
+      "bytes": 1833
+    },
+    {
+      "artifact_id": "kernel_fillet_parity_manifest",
+      "source_path": "crates/cad/parity/kernel_fillet_parity_manifest.json",
+      "sha256": "33163dfa2d66dbb025806de616c8696182be0bd7383a3ce3279d359c4c53537a",
+      "bytes": 2227
+    },
+    {
+      "artifact_id": "kernel_geom_parity_manifest",
+      "source_path": "crates/cad/parity/kernel_geom_parity_manifest.json",
+      "sha256": "b554b100e7072bd2b7178cc4575bb1b16992a43e39befaaad7709c7f1222fb60",
+      "bytes": 869
+    },
+    {
+      "artifact_id": "kernel_math_parity_manifest",
+      "source_path": "crates/cad/parity/kernel_math_parity_manifest.json",
+      "sha256": "b6a2e27ab1a9fd76c2845d36a3c008a172ac51ed55f2860bf87be6b149b8b672",
+      "bytes": 1115
+    },
+    {
+      "artifact_id": "kernel_nurbs_parity_manifest",
+      "source_path": "crates/cad/parity/kernel_nurbs_parity_manifest.json",
+      "sha256": "7551f41e42ae0f313a74a6b7e601d21c1cbd7fe7cdab2641eba23d4b31440340",
+      "bytes": 3630
+    },
+    {
+      "artifact_id": "kernel_precision_parity_manifest",
+      "source_path": "crates/cad/parity/kernel_precision_parity_manifest.json",
+      "sha256": "1f15cf1ab81889fdd2c17aa50b157b0a71c43add66f225201a0182a6ba98b40b",
+      "bytes": 1486
+    },
+    {
+      "artifact_id": "kernel_primitives_parity_manifest",
+      "source_path": "crates/cad/parity/kernel_primitives_parity_manifest.json",
+      "sha256": "689fedb3054b88d1a41c2e7abc288caf43c2a3cf53188563782e7a8f49ce6c91",
+      "bytes": 2611
+    },
+    {
+      "artifact_id": "kernel_shell_parity_manifest",
+      "source_path": "crates/cad/parity/kernel_shell_parity_manifest.json",
+      "sha256": "30691b14fd8888406a6782167d939b0ea4e937fe1c59a7d93c9975b5029eab36",
+      "bytes": 1616
+    },
+    {
+      "artifact_id": "kernel_step_parity_manifest",
+      "source_path": "crates/cad/parity/kernel_step_parity_manifest.json",
+      "sha256": "11fb75222a97a391c0d56ce01024f5f11d45311aa8ed1be545a41dfb56e92316",
+      "bytes": 1166
+    },
+    {
+      "artifact_id": "kernel_tessellate_parity_manifest",
+      "source_path": "crates/cad/parity/kernel_tessellate_parity_manifest.json",
+      "sha256": "23adfceb3c08c8c8d82d5f8a4fe1a6464848e070fd6dcaadf2fade186a2772b9",
+      "bytes": 1967
+    },
+    {
+      "artifact_id": "kernel_text_parity_manifest",
+      "source_path": "crates/cad/parity/kernel_text_parity_manifest.json",
+      "sha256": "20c3457913698f0af723016bfc5ca791fe936c9818e4841f307f759d258c5110",
+      "bytes": 1378
+    },
+    {
+      "artifact_id": "kernel_topology_parity_manifest",
+      "source_path": "crates/cad/parity/kernel_topology_parity_manifest.json",
+      "sha256": "0f984ab42ac5f417f85b0d21fd8bb57a0aa4bb0cbb336b36f50820983ceff6fa",
+      "bytes": 990
+    },
+    {
+      "artifact_id": "license_compliance_audit_parity_manifest",
+      "source_path": "crates/cad/parity/license_compliance_audit_parity_manifest.json",
+      "sha256": "f64973ac06b599612113e82686273f4aa13cc714407631661e423378bab81a9f",
+      "bytes": 1895
+    },
+    {
+      "artifact_id": "loft_parity_manifest",
+      "source_path": "crates/cad/parity/loft_parity_manifest.json",
+      "sha256": "f61f8923deddcea0c17a4d9c2d50c84a226c97185d3d9430ba725560174aad64",
+      "bytes": 1763
+    },
+    {
+      "artifact_id": "material_assignment_parity_manifest",
+      "source_path": "crates/cad/parity/material_assignment_parity_manifest.json",
+      "sha256": "a2ea7f167b419436562e5950793937121883aa304706203a24b5a0153c98a7e6",
+      "bytes": 1570
+    },
+    {
+      "artifact_id": "mcp_simulation_tools_parity_manifest",
+      "source_path": "crates/cad/parity/mcp_simulation_tools_parity_manifest.json",
+      "sha256": "e496029618fd3ca7884a060ce5e00a82ce209c4fdba1851b2dca8946127607ae",
+      "bytes": 1864
+    },
+    {
+      "artifact_id": "mesh_upload_processing_parity_manifest",
+      "source_path": "crates/cad/parity/mesh_upload_processing_parity_manifest.json",
+      "sha256": "a87091fb7915c771d140595478af9f556e74a2ca694dd0655dab224405e8a2f9",
+      "bytes": 2978
+    },
+    {
+      "artifact_id": "modeling_edge_case_parity_manifest",
+      "source_path": "crates/cad/parity/modeling_edge_case_parity_manifest.json",
+      "sha256": "a8acfdcc753ffe80015cd40bf1247e9144a192787e8e14f605380ff301e52212",
+      "bytes": 1904
+    },
+    {
+      "artifact_id": "openagents_capabilities_inventory",
+      "source_path": "crates/cad/parity/openagents_capabilities_inventory.json",
+      "sha256": "fe1adafb14ba6ba2874302c355f78375ab0c0b9054a0bdde35c1a6446be2e17b",
+      "bytes": 21545
+    },
+    {
+      "artifact_id": "openagents_start_manifest",
+      "source_path": "crates/cad/parity/openagents_start_manifest.json",
+      "sha256": "f353d0632c85f994dcd66d63e2226b382a166dbc66e873493ac141709a1dadfd",
+      "bytes": 1409
+    },
+    {
+      "artifact_id": "parity_dashboard",
+      "source_path": "crates/cad/parity/parity_dashboard.json",
+      "sha256": "8a7b9f2e1198ad0b5253f9f2ca680a0f76120baf8d22785ae6a52cec463d73bf",
+      "bytes": 11854
+    },
+    {
+      "artifact_id": "parity_risk_register",
+      "source_path": "crates/cad/parity/parity_risk_register.json",
+      "sha256": "49accf4f2507d93bd8663ec419b3f61c65f07081f9d84e593752765733b79d3f",
+      "bytes": 16793
+    },
+    {
+      "artifact_id": "parity_scorecard",
+      "source_path": "crates/cad/parity/parity_scorecard.json",
+      "sha256": "8fea53a5ed277e597f55c93bfcbdab8adb514ff791e99bbed051299a38ead7d0",
+      "bytes": 1445
+    },
+    {
+      "artifact_id": "pattern_parity_manifest",
+      "source_path": "crates/cad/parity/pattern_parity_manifest.json",
+      "sha256": "e492e726e380d53c6e4cd1adea5aff683b69298fe5a192e5f8edbc639a638f3d",
+      "bytes": 2004
+    },
+    {
+      "artifact_id": "performance_scorecard_thresholds_parity_manifest",
+      "source_path": "crates/cad/parity/performance_scorecard_thresholds_parity_manifest.json",
+      "sha256": "ed0b232e321120a8d7e816d6d561ac510eb5faeae9467ce893ae3372e61f2cb2",
+      "bytes": 1961
+    },
+    {
+      "artifact_id": "physics_crate_integration_parity_manifest",
+      "source_path": "crates/cad/parity/physics_crate_integration_parity_manifest.json",
+      "sha256": "1358a811a3791a287fa6331d7af61066a70d3cfb0d0195bd4b175fd6f10b0bd3",
+      "bytes": 2042
+    },
+    {
+      "artifact_id": "presence_cursor_selection_parity_manifest",
+      "source_path": "crates/cad/parity/presence_cursor_selection_parity_manifest.json",
+      "sha256": "923ce398626d307430ada2b365736b5ca9caf2fb436b76fa7404d481a8c4ba4a",
+      "bytes": 1907
+    },
+    {
+      "artifact_id": "primitive_contracts_parity_manifest",
+      "source_path": "crates/cad/parity/primitive_contracts_parity_manifest.json",
+      "sha256": "16a3abb0596f65d73d9447e1de5254bd12583cecaea8d8dfd1558a9274507136",
+      "bytes": 2063
+    },
+    {
+      "artifact_id": "raytrace_face_pick_parity_manifest",
+      "source_path": "crates/cad/parity/raytrace_face_pick_parity_manifest.json",
+      "sha256": "37ceffbcd962f0aba8b15bef17363486819b93c3c01a79406a92dd7d61fc05e8",
+      "bytes": 3533
+    },
+    {
+      "artifact_id": "raytrace_quality_mode_parity_manifest",
+      "source_path": "crates/cad/parity/raytrace_quality_mode_parity_manifest.json",
+      "sha256": "6dba13b4fa84ae6dc806d9a1f704a8742132d418ba505584a66b8fa42e4a611a",
+      "bytes": 4307
+    },
+    {
+      "artifact_id": "raytrace_ui_toggle_fallback_parity_manifest",
+      "source_path": "crates/cad/parity/raytrace_ui_toggle_fallback_parity_manifest.json",
+      "sha256": "51a68c6176687d51fa71826ce381bc5f70d6a68cfbac41fddaec9339691a7559",
+      "bytes": 5204
+    },
+    {
+      "artifact_id": "release_gates_runbooks_parity_manifest",
+      "source_path": "crates/cad/parity/release_gates_runbooks_parity_manifest.json",
+      "sha256": "896b8d77021a6bf6994adfb0672fcfad06c7f051bf180e2f73a1c67314c9d68c",
+      "bytes": 1905
+    },
+    {
+      "artifact_id": "render_mode_parity_manifest",
+      "source_path": "crates/cad/parity/render_mode_parity_manifest.json",
+      "sha256": "410411f12bfaf5969916b862bfbfacc812be2fa6e53c8a6c88f59c641c275299",
+      "bytes": 3671
+    },
+    {
+      "artifact_id": "rendering_raytrace_checkpoint_parity_manifest",
+      "source_path": "crates/cad/parity/rendering_raytrace_checkpoint_parity_manifest.json",
+      "sha256": "2b1bfa7278265632f5c9892af428c88a986ac01f20e088040a29b83db99491cf",
+      "bytes": 2249
+    },
+    {
+      "artifact_id": "security_posture_review_parity_manifest",
+      "source_path": "crates/cad/parity/security_posture_review_parity_manifest.json",
+      "sha256": "5bbed61f41537bd061d53a3ae4a38c4ef0b09fa02bf2d4c53596efc9265e8db1",
+      "bytes": 1930
+    },
+    {
+      "artifact_id": "shell_feature_graph_parity_manifest",
+      "source_path": "crates/cad/parity/shell_feature_graph_parity_manifest.json",
+      "sha256": "3bbf070054011f69c4a7a581a7dbac040eb0cd9159043986eb6e526b2aed61bd",
+      "bytes": 1731
+    },
+    {
+      "artifact_id": "simulation_step_reset_api_parity_manifest",
+      "source_path": "crates/cad/parity/simulation_step_reset_api_parity_manifest.json",
+      "sha256": "7867c6569f413d9df92b78c216e58aeb6b0c2503da4bc2555f51d4e1abea41cd",
+      "bytes": 2013
+    },
+    {
+      "artifact_id": "simulation_ui_controls_parity_manifest",
+      "source_path": "crates/cad/parity/simulation_ui_controls_parity_manifest.json",
+      "sha256": "3913e41b509789d17220a48daaa9da187679b41f0faf9cd88cbe1568925ca447",
+      "bytes": 1976
+    },
+    {
+      "artifact_id": "sketch_constraint_enum_parity_manifest",
+      "source_path": "crates/cad/parity/sketch_constraint_enum_parity_manifest.json",
+      "sha256": "54136f1765b3ea8827b9270e4e031fe04f7d075175783fb4da9220025ed0a94b",
+      "bytes": 5127
+    },
+    {
+      "artifact_id": "sketch_constraint_status_parity_manifest",
+      "source_path": "crates/cad/parity/sketch_constraint_status_parity_manifest.json",
+      "sha256": "e800194f2d558741a1b3e1453df7b59e30e4608fd24304d9e31962730069fb90",
+      "bytes": 1987
+    },
+    {
+      "artifact_id": "sketch_constraints_checkpoint_parity_manifest",
+      "source_path": "crates/cad/parity/sketch_constraints_checkpoint_parity_manifest.json",
+      "sha256": "f53f5a0db69914f13cdfd2638658a8bc2a80634cb8f45b04cd94534c73007d4a",
+      "bytes": 2533
+    },
+    {
+      "artifact_id": "sketch_entity_set_parity_manifest",
+      "source_path": "crates/cad/parity/sketch_entity_set_parity_manifest.json",
+      "sha256": "cefc82af7f428a207bb78360f8dc1f9303bf3e2b0bd657fee44b416888e7901b",
+      "bytes": 2059
+    },
+    {
+      "artifact_id": "sketch_extrude_parity_manifest",
+      "source_path": "crates/cad/parity/sketch_extrude_parity_manifest.json",
+      "sha256": "6cbc3232d0deff28feea4965a29e3583a9c6316fabd6f4fb21f8b69dbf22f6a2",
+      "bytes": 1699
+    },
+    {
+      "artifact_id": "sketch_fixture_equivalence_parity_manifest",
+      "source_path": "crates/cad/parity/sketch_fixture_equivalence_parity_manifest.json",
+      "sha256": "f2ac52b474dc9576e3106b2347d139568d9913203382cb492676ede4caa1aa58",
+      "bytes": 6217
+    },
+    {
+      "artifact_id": "sketch_interaction_parity_manifest",
+      "source_path": "crates/cad/parity/sketch_interaction_parity_manifest.json",
+      "sha256": "e6ac9d74bfd22057f41f5dc437e5030e3b4b6f8b378b319c337a704e56a3b859",
+      "bytes": 6731
+    },
+    {
+      "artifact_id": "sketch_iterative_lm_parity_manifest",
+      "source_path": "crates/cad/parity/sketch_iterative_lm_parity_manifest.json",
+      "sha256": "106c86f6b772bff228445d340d869e5217f44d19e1095341e811c14f21b81d0f",
+      "bytes": 2119
+    },
+    {
+      "artifact_id": "sketch_jacobian_residual_parity_manifest",
+      "source_path": "crates/cad/parity/sketch_jacobian_residual_parity_manifest.json",
+      "sha256": "39346fe490e15d2a17d627a623ca318129cef5655d8a823ca641a0bee18c83b3",
+      "bytes": 1831
+    },
+    {
+      "artifact_id": "sketch_loft_parity_manifest",
+      "source_path": "crates/cad/parity/sketch_loft_parity_manifest.json",
+      "sha256": "c72ad587ad9c73b1505888b10c7f63e61f76b9380c328c8d744ad12bcd1f4a6f",
+      "bytes": 2319
+    },
+    {
+      "artifact_id": "sketch_plane_parity_manifest",
+      "source_path": "crates/cad/parity/sketch_plane_parity_manifest.json",
+      "sha256": "89851f1cf19326b365af75c860b883e1e5afb923cf46ce8a98a5b8e1f92f805e",
+      "bytes": 3446
+    },
+    {
+      "artifact_id": "sketch_profile_validity_parity_manifest",
+      "source_path": "crates/cad/parity/sketch_profile_validity_parity_manifest.json",
+      "sha256": "1662c8ee784747f3ec46a47bf8a08a1274a22ee32d1db8a3407576ddaf037ac6",
+      "bytes": 1832
+    },
+    {
+      "artifact_id": "sketch_revolve_parity_manifest",
+      "source_path": "crates/cad/parity/sketch_revolve_parity_manifest.json",
+      "sha256": "c0d8ff9f3a89d29a1c58dbfea65d7c727d87dc8b383cf4c6d25b383c99d71b59",
+      "bytes": 1952
+    },
+    {
+      "artifact_id": "sketch_sweep_parity_manifest",
+      "source_path": "crates/cad/parity/sketch_sweep_parity_manifest.json",
+      "sha256": "22886ee048a76151d716439b73154fe8628b9c0c217e5b21aa6c1e222fffe7a7",
+      "bytes": 2189
+    },
+    {
+      "artifact_id": "sketch_undo_redo_parity_manifest",
+      "source_path": "crates/cad/parity/sketch_undo_redo_parity_manifest.json",
+      "sha256": "a24a8c7b0a769ba8e2451129c547c50b62c2ee2c070d9e946bc843b5a3fb4089",
+      "bytes": 6798
+    },
+    {
+      "artifact_id": "slicer_bambu_lane_parity_manifest",
+      "source_path": "crates/cad/parity/slicer_bambu_lane_parity_manifest.json",
+      "sha256": "e3336fe9a51c8591bfe15f4947487cbdc2888cda486ca65ac59f0ea6dcf16086",
+      "bytes": 1853
+    },
+    {
+      "artifact_id": "slicer_core_lane_parity_manifest",
+      "source_path": "crates/cad/parity/slicer_core_lane_parity_manifest.json",
+      "sha256": "cc6dfc83ebcf6a1b11249e5de5f03258b900332b1d65e0f1b0de7fc9b39955dc",
+      "bytes": 1844
+    },
+    {
+      "artifact_id": "slicer_gcode_lane_parity_manifest",
+      "source_path": "crates/cad/parity/slicer_gcode_lane_parity_manifest.json",
+      "sha256": "45f4935b38c523957451bb50029cdffa11b71140e838dcf3095aa2623aed9e0d",
+      "bytes": 1853
+    },
+    {
+      "artifact_id": "slicer_wasm_lane_parity_manifest",
+      "source_path": "crates/cad/parity/slicer_wasm_lane_parity_manifest.json",
+      "sha256": "e78ebcea665536bbba70129e210380c45f091949b38bff979a19be6f127961cf",
+      "bytes": 1844
+    },
+    {
+      "artifact_id": "step_export_post_boolean_parity_manifest",
+      "source_path": "crates/cad/parity/step_export_post_boolean_parity_manifest.json",
+      "sha256": "85ee662c24ccfee6412316ed6a897b0a3590ede51ba44abc150206d87a584811",
+      "bytes": 2335
+    },
+    {
+      "artifact_id": "step_import_entity_parity_manifest",
+      "source_path": "crates/cad/parity/step_import_entity_parity_manifest.json",
+      "sha256": "7316d1624be89e579fb513f5306f8c109acddfb4c8d7b90ccbe48e63a3674c2f",
+      "bytes": 4044
+    },
+    {
+      "artifact_id": "stl_import_export_parity_manifest",
+      "source_path": "crates/cad/parity/stl_import_export_parity_manifest.json",
+      "sha256": "4a01b910cdcd1e980513ba4c4d9f5bd7a18adfcdca6936baf0e6a7de6126fc97",
+      "bytes": 2214
+    },
+    {
+      "artifact_id": "sweep_parity_manifest",
+      "source_path": "crates/cad/parity/sweep_parity_manifest.json",
+      "sha256": "d04a492c78ff054a42fe6483cda7b60e1d5b66e4aefe50103fded9a69e298024",
+      "bytes": 1807
+    },
+    {
+      "artifact_id": "text_to_cad_dataset_parity_manifest",
+      "source_path": "crates/cad/parity/text_to_cad_dataset_parity_manifest.json",
+      "sha256": "33a34310a9479e79e0deb3d85baa5e3ca3e1748dd248f59d2ada728256d15851",
+      "bytes": 1496
+    },
+    {
+      "artifact_id": "text_to_cad_parity_manifest",
+      "source_path": "crates/cad/parity/text_to_cad_parity_manifest.json",
+      "sha256": "45b597e12027e473fba746a3149822d2d88c47ae9cd3b40c7ae2dcda618b46a5",
+      "bytes": 1586
+    },
+    {
+      "artifact_id": "text_to_cad_training_eval_parity_manifest",
+      "source_path": "crates/cad/parity/text_to_cad_training_eval_parity_manifest.json",
+      "sha256": "5d36cbaa7112c65be4fbfc852895a5d14025f3ed5c786913d5c9342701d4ec9c",
+      "bytes": 1473
+    },
+    {
+      "artifact_id": "topology_repair_parity_manifest",
+      "source_path": "crates/cad/parity/topology_repair_parity_manifest.json",
+      "sha256": "62878c877ca13ae65f8101292f0aebb5b112b87f3d68b44cd3e3cc701b449973",
+      "bytes": 2118
+    },
+    {
+      "artifact_id": "transform_parity_manifest",
+      "source_path": "crates/cad/parity/transform_parity_manifest.json",
+      "sha256": "c5e1dae23404739dd1d11281a9b832a5cbda053b30164b7c5b515d6f5e2f2f8a",
+      "bytes": 2950
+    },
+    {
+      "artifact_id": "trimmed_surface_ray_hit_parity_manifest",
+      "source_path": "crates/cad/parity/trimmed_surface_ray_hit_parity_manifest.json",
+      "sha256": "72057918d9ac8a4a49c1808fbb5a0bccdf9ba22e0709ff3357342ec59a2e1701",
+      "bytes": 2703
+    },
+    {
+      "artifact_id": "urdf_export_fixtures_parity_manifest",
+      "source_path": "crates/cad/parity/urdf_export_fixtures_parity_manifest.json",
+      "sha256": "63ea3e37442bada3d0b652cdd35eb57931d9e76a8050ebd3c82cb98e3479dbdb",
+      "bytes": 1938
+    },
+    {
+      "artifact_id": "urdf_import_parity_manifest",
+      "source_path": "crates/cad/parity/urdf_import_parity_manifest.json",
+      "sha256": "ac1b78fb85eb85c08e94feb09286d6111a348f98525d92d70a57c762617db19a",
+      "bytes": 1783
+    },
+    {
+      "artifact_id": "vcad_capabilities_inventory",
+      "source_path": "crates/cad/parity/vcad_capabilities_inventory.json",
+      "sha256": "9f567298cce40c73c2710adb1f098d7a85d97a3195045fe0850dd04964282b5e",
+      "bytes": 29903
+    },
+    {
+      "artifact_id": "vcad_eval_receipts_parity_manifest",
+      "source_path": "crates/cad/parity/vcad_eval_receipts_parity_manifest.json",
+      "sha256": "2f53948556e48977403ee669218165d487d78a6ad8f7dd70309e603a52ce5707",
+      "bytes": 2811
+    },
+    {
+      "artifact_id": "vcad_openagents_gap_matrix",
+      "source_path": "crates/cad/parity/vcad_openagents_gap_matrix.json",
+      "sha256": "c924e0ea422ab8025816e8c4211150d9c0064ab03a0a36e59af9ee5657309797",
+      "bytes": 46627
+    },
+    {
+      "artifact_id": "vcad_reference_manifest",
+      "source_path": "crates/cad/parity/vcad_reference_manifest.json",
+      "sha256": "eecd767b906c78b13787a15cf0eaadc61e78e04a9b6fcdac905c7d7c3eef2dd5",
+      "bytes": 2014
+    },
+    {
+      "artifact_id": "viewport_camera_gizmo_parity_manifest",
+      "source_path": "crates/cad/parity/viewport_camera_gizmo_parity_manifest.json",
+      "sha256": "7cb2da090b8b5ec27a8667f5e8ee399005d332c817a40cfda7f38e2f093a7c74",
+      "bytes": 3589
+    }
+  ]
+}

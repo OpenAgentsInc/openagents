@@ -1,0 +1,75 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-041",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "vcad_reference_sources": [
+    "docs/features/sketch-mode.md (Drawing Tools)",
+    "crates/vcad-kernel-sketch/src/profile.rs (SketchProfile::rectangle/circle)"
+  ],
+  "supported_entity_kinds": [
+    "line",
+    "rectangle",
+    "circle",
+    "arc",
+    "spline"
+  ],
+  "kind_counts": {
+    "arc": 1,
+    "circle": 1,
+    "line": 1,
+    "rectangle": 1,
+    "spline": 1
+  },
+  "entity_kind_summaries": [
+    {
+      "entity_id": "entity.arc.001",
+      "kind": "arc",
+      "anchor_count": 3,
+      "profile_closed_loop": false,
+      "warning_codes": [
+        "CAD-WARN-NON-MANIFOLD"
+      ]
+    },
+    {
+      "entity_id": "entity.circle.001",
+      "kind": "circle",
+      "anchor_count": 2,
+      "profile_closed_loop": true,
+      "warning_codes": []
+    },
+    {
+      "entity_id": "entity.line.001",
+      "kind": "line",
+      "anchor_count": 2,
+      "profile_closed_loop": false,
+      "warning_codes": [
+        "CAD-WARN-NON-MANIFOLD"
+      ]
+    },
+    {
+      "entity_id": "entity.rectangle.001",
+      "kind": "rectangle",
+      "anchor_count": 4,
+      "profile_closed_loop": true,
+      "warning_codes": []
+    },
+    {
+      "entity_id": "entity.spline.001",
+      "kind": "spline",
+      "anchor_count": 4,
+      "profile_closed_loop": true,
+      "warning_codes": []
+    }
+  ],
+  "sample_model_hash": "c9736c5b54d9f546",
+  "deterministic_replay_match": true,
+  "deterministic_signature": "0374ecd62b313a8a",
+  "parity_contracts": [
+    "sketch entity schema includes line, rectangle, circle, arc, and spline kinds",
+    "rectangle/circle/closed-spline entities map to closed profile conversion semantics",
+    "line/arc entities preserve open-profile warning semantics",
+    "sample sketch entity corpus replays deterministically"
+  ]
+}

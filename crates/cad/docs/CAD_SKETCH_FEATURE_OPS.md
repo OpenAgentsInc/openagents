@@ -6,6 +6,8 @@ operations for:
 - `extrude`
 - `cut`
 - `revolve`
+- `sweep`
+- `loft`
 
 Implementation:
 
@@ -16,6 +18,8 @@ Implementation:
 - `sketch.extrude.v1`
 - `sketch.cut.v1`
 - `sketch.revolve.v1`
+- `sketch.sweep.v1`
+- `sketch.loft.v1`
 
 ## Conversion Contract
 
@@ -26,6 +30,8 @@ Entry point:
 Behavior:
 
 - Validates feature/profile ids and operation-specific parameters.
+- Rejects invalid profile topology inputs (duplicate profile entity ids, degenerate lines, non-positive rectangle extents).
+- Validates sweep path ids and path-control parameters (`twist/scale`) for sketch sweep conversion.
 - Requires constraints to solve before conversion.
 - Computes deterministic profile bounds and profile hash.
 - Emits deterministic `FeatureNode` payload with canonical params.
@@ -46,11 +52,13 @@ Behavior:
 MVP warning mapping used during conversion:
 
 - Open loop on `extrude`/`cut` -> `CAD-WARN-NON-MANIFOLD`
+- Open loop on `sweep` -> `CAD-WARN-NON-MANIFOLD`
+- Open loop on `loft` -> `CAD-WARN-NON-MANIFOLD`
 - Partial `revolve` angle (< 360) -> `CAD-WARN-SLIVER-FACE` advisory
 
 ## Tests
 
-- Constrained profile conversion generates deterministic extrude/cut/revolve nodes.
+- Constrained profile conversion generates deterministic extrude/cut/revolve/sweep/loft nodes.
 - Reordered profile entity ids keep stable profile hash.
 - Open profiles emit conversion warnings.
 - Sketch feature history entries preserve warning snapshots across undo/redo.

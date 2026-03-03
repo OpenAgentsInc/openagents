@@ -1,0 +1,65 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-102",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/crates/vcad-kernel-wasm/src/lib.rs::RayTracer::pick",
+  "expected_error_samples": [
+    {
+      "case_id": "invalid_camera_len",
+      "error": "camera, target, and up must each have 3 components"
+    },
+    {
+      "case_id": "invalid_target_len",
+      "error": "camera, target, and up must each have 3 components"
+    },
+    {
+      "case_id": "invalid_up_len",
+      "error": "camera, target, and up must each have 3 components"
+    },
+    {
+      "case_id": "scene_not_uploaded",
+      "error": "No solid uploaded. Call uploadSolid() first."
+    }
+  ],
+  "expected_pick_samples": [
+    {
+      "case_id": "bottom_right_pixel",
+      "camera": [10.0, 8.0, 6.0],
+      "target": [0.0, 0.0, 0.0],
+      "up": [0.0, 0.0, 1.0],
+      "width": 1920,
+      "height": 1080,
+      "fov_radians": 0.785398163,
+      "pixel": [1919, 1079],
+      "ndc": [0.999479167, -0.999074074],
+      "ray_direction": [-0.786815276, 0.090702267, -0.610487363],
+      "face_index": -1
+    },
+    {
+      "case_id": "center_pixel",
+      "camera": [0.0, 0.0, 5.0],
+      "target": [0.0, 0.0, 0.0],
+      "up": [0.0, 1.0, 0.0],
+      "width": 800,
+      "height": 600,
+      "fov_radians": 1.047197551,
+      "pixel": [399, 299],
+      "ndc": [-0.00125, 0.001666667],
+      "ray_direction": [-0.00096225, 0.00096225, -0.999999074],
+      "face_index": -1
+    },
+    {
+      "case_id": "top_left_pixel",
+      "camera": [10.0, 8.0, 6.0],
+      "target": [0.0, 0.0, 0.0],
+      "up": [0.0, 0.0, 1.0],
+      "width": 1920,
+      "height": 1080,
+      "fov_radians": 0.785398163,
+      "pixel": [0, 0],
+      "ndc": [-0.999479167, 0.999074074],
+      "ray_direction": [-0.293730604, -0.955138971, -0.037840165],
+      "face_index": -1
+    }
+  ]
+}

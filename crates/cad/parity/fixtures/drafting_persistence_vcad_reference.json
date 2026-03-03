@@ -1,0 +1,42 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-075",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "packages/app/src/stores/drawing-store.ts + packages/docs/content/tutorials/app/08-drawings.mdx",
+  "scalar_tolerance": 1e-9,
+  "document_field_names": [
+    "drawing"
+  ],
+  "drawing_field_names": [
+    "detailViews",
+    "nextDetailId",
+    "pan",
+    "showDimensions",
+    "showHiddenLines",
+    "viewDirection",
+    "viewMode",
+    "zoom"
+  ],
+  "drawing_pan_field_names": [
+    "x",
+    "y"
+  ],
+  "drawing_detail_field_names": [
+    "centerX",
+    "centerY",
+    "height",
+    "id",
+    "label",
+    "scale",
+    "width"
+  ],
+  "default_view_mode": "3d",
+  "default_view_direction": "front",
+  "default_show_hidden_lines": true,
+  "default_show_dimensions": true,
+  "default_zoom": 1.0,
+  "default_pan_x": 0.0,
+  "default_pan_y": 0.0,
+  "default_detail_count": 0,
+  "default_next_detail_id": 1
+}

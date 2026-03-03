@@ -37,6 +37,10 @@ pub enum CadHistoryCommand {
         profile_id: String,
         feature_id: String,
     },
+    ApplySketchInteraction {
+        shortcut_id: String,
+        command_codes: Vec<String>,
+    },
 }
 
 impl CadHistoryCommand {
@@ -474,5 +478,74 @@ mod tests {
         }
         assert_eq!(redo.snapshot, after);
         assert_eq!(redo.snapshot.warnings[0].code, CadWarningCode::SliverFace);
+    }
+
+    #[test]
+    fn sketch_interaction_history_entries_preserve_shortcut_payload_through_replay() {
+        let mut history =
+            CadHistoryStack::new("cad.session.sketch.interaction", 8).expect("history init");
+
+        let before = snapshot(
+            20,
+            "hash-sketch-interaction-before",
+            "sketch.face",
+            CadWarningCode::SliverFace,
+        );
+        let after = snapshot(
+            21,
+            "hash-sketch-interaction-after",
+            "sketch.face",
+            CadWarningCode::FilletFailed,
+        );
+
+        history.push_transition(
+            CadHistoryCommand::ApplySketchInteraction {
+                shortcut_id: "sketch.constraint.horizontal".to_string(),
+                command_codes: vec![
+                    "SKETCH-CMD-APPLY-horizontal".to_string(),
+                    "SKETCH-CMD-RUN-SOLVER".to_string(),
+                ],
+            },
+            before.clone(),
+            after.clone(),
+        );
+
+        let undo = history.undo().expect("undo should exist");
+        match undo.command {
+            CadHistoryCommand::ApplySketchInteraction {
+                shortcut_id,
+                command_codes,
+            } => {
+                assert_eq!(shortcut_id, "sketch.constraint.horizontal");
+                assert_eq!(
+                    command_codes,
+                    vec![
+                        "SKETCH-CMD-APPLY-horizontal".to_string(),
+                        "SKETCH-CMD-RUN-SOLVER".to_string(),
+                    ]
+                );
+            }
+            _ => panic!("undo command should remain ApplySketchInteraction"),
+        }
+        assert_eq!(undo.snapshot, before);
+
+        let redo = history.redo().expect("redo should exist");
+        match redo.command {
+            CadHistoryCommand::ApplySketchInteraction {
+                shortcut_id,
+                command_codes,
+            } => {
+                assert_eq!(shortcut_id, "sketch.constraint.horizontal");
+                assert_eq!(
+                    command_codes,
+                    vec![
+                        "SKETCH-CMD-APPLY-horizontal".to_string(),
+                        "SKETCH-CMD-RUN-SOLVER".to_string(),
+                    ]
+                );
+            }
+            _ => panic!("redo command should remain ApplySketchInteraction"),
+        }
+        assert_eq!(redo.snapshot, after);
     }
 }

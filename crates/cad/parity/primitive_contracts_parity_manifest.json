@@ -1,0 +1,64 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-026",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "routing_counts": {
+    "box_calls": 1,
+    "cylinder_calls": 1,
+    "sphere_calls": 1,
+    "cone_calls": 2
+  },
+  "cube_snapshot": {
+    "kind": "cube",
+    "solid_handle": "cube:cc3a8df0c138"
+  },
+  "cylinder_snapshot": {
+    "kind": "cylinder",
+    "solid_handle": "cylinder:ad780fb16d48"
+  },
+  "sphere_snapshot": {
+    "kind": "sphere",
+    "solid_handle": "sphere:505bb89c8fa0"
+  },
+  "cone_pointed_snapshot": {
+    "kind": "cone_pointed",
+    "solid_handle": "cone:abed2b19bfe7"
+  },
+  "cone_frustum_snapshot": {
+    "kind": "cone_frustum",
+    "solid_handle": "cone:0d2d31d82a16"
+  },
+  "deterministic_replay_match": true,
+  "bridge_receipts": [
+    {
+      "operation": "primitive.sphere",
+      "engine_id": "openagents-kernel-v2",
+      "deterministic": true,
+      "diagnostics": [
+        "tolerance_mm=0.001000",
+        "capability_count=4"
+      ]
+    },
+    {
+      "operation": "primitive.cone",
+      "engine_id": "openagents-kernel-v2",
+      "deterministic": true,
+      "diagnostics": [
+        "tolerance_mm=0.001000",
+        "capability_count=4"
+      ]
+    }
+  ],
+  "invalid_sphere_error": "invalid primitive: sphere radius must be greater than tolerance 0.000001 mm",
+  "invalid_cone_error": "invalid primitive: cone radius_top must be finite and >= 0",
+  "deterministic_signature": "bc27145acabef590",
+  "parity_contracts": [
+    "PrimitiveSpec now supports cube/cylinder/sphere/cone parity contracts",
+    "build_primitive routes each primitive to deterministic kernel adapter calls",
+    "v2 adapter bridge emits deterministic receipts for sphere and cone operations",
+    "invalid primitive dimensions map to stable CadError::InvalidPrimitive semantics",
+    "primitive routing replay is deterministic across repeated runs"
+  ]
+}

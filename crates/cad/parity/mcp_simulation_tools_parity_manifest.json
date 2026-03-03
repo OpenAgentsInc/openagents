@@ -1,0 +1,43 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-112",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/mcp_simulation_tools_vcad_reference.json",
+  "reference_fixture_sha256": "20fecc61ae25923ae0c1c69d30149811095dfaf53a863367dce92526bb1266b2",
+  "reference_source": "~/code/vcad/crates/vcad-mcp/src/simulation_tools.rs",
+  "reference_issue_match": true,
+  "reference_commit_match": true,
+  "row_set_match": true,
+  "contract_set_match": true,
+  "deterministic_replay_match": true,
+  "rows": [
+    {
+      "capability": "CAD MCP Simulation Tools Parity",
+      "case_id": "capability_scope",
+      "issue_id": "VCAD-PARITY-112"
+    },
+    {
+      "case_id": "phase_scope",
+      "lane_label": "mcp-simulation-tools",
+      "phase": "Phase I - Physics + URDF parity"
+    },
+    {
+      "case_id": "reference_source",
+      "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+      "vcad_source": "~/code/vcad/crates/vcad-mcp/src/simulation_tools.rs"
+    }
+  ],
+  "contracts": [
+    "CAD MCP Simulation Tools Parity parity contracts are aligned to vcad reference behavior",
+    "CI parity artifacts include mcp_simulation_tools manifest and vcad fixture evidence",
+    "Phase I - Physics + URDF parity parity lane remains deterministic across replay"
+  ],
+  "deterministic_signature": "28f027fee7e9564f",
+  "parity_contracts": [
+    "CAD MCP Simulation Tools Parity parity contracts are aligned to vcad reference behavior",
+    "CI parity artifacts include mcp_simulation_tools manifest and vcad fixture evidence",
+    "Phase I - Physics + URDF parity parity lane remains deterministic across replay"
+  ]
+}

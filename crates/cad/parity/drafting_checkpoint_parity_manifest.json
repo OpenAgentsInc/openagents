@@ -1,0 +1,59 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-078",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "plan_path": "crates/cad/docs/VCAD_PARITY_PLAN.md",
+  "required_issue_ids": [
+    "VCAD-PARITY-067",
+    "VCAD-PARITY-068",
+    "VCAD-PARITY-069",
+    "VCAD-PARITY-070",
+    "VCAD-PARITY-071",
+    "VCAD-PARITY-072",
+    "VCAD-PARITY-073",
+    "VCAD-PARITY-074",
+    "VCAD-PARITY-075",
+    "VCAD-PARITY-076",
+    "VCAD-PARITY-077"
+  ],
+  "validated_issue_ids": [
+    "VCAD-PARITY-067",
+    "VCAD-PARITY-068",
+    "VCAD-PARITY-069",
+    "VCAD-PARITY-070",
+    "VCAD-PARITY-071",
+    "VCAD-PARITY-072",
+    "VCAD-PARITY-073",
+    "VCAD-PARITY-074",
+    "VCAD-PARITY-075",
+    "VCAD-PARITY-076",
+    "VCAD-PARITY-077"
+  ],
+  "missing_issue_ids": [],
+  "mismatched_issue_ids": [],
+  "checked_manifest_paths": [
+    "crates/cad/parity/drafting_detail_parity_manifest.json",
+    "crates/cad/parity/drafting_dimension_parity_manifest.json",
+    "crates/cad/parity/drafting_drawing_mode_ui_parity_manifest.json",
+    "crates/cad/parity/drafting_dxf_export_parity_manifest.json",
+    "crates/cad/parity/drafting_gdt_parity_manifest.json",
+    "crates/cad/parity/drafting_hidden_line_parity_manifest.json",
+    "crates/cad/parity/drafting_kernel_scaffolding_parity_manifest.json",
+    "crates/cad/parity/drafting_pdf_export_parity_manifest.json",
+    "crates/cad/parity/drafting_persistence_parity_manifest.json",
+    "crates/cad/parity/drafting_projection_parity_manifest.json",
+    "crates/cad/parity/drafting_section_parity_manifest.json"
+  ],
+  "plan_items_checked": true,
+  "parity_completion_percent": 100.0,
+  "checkpoint_pass": true,
+  "deterministic_signature": "b6a0d6179711e28c",
+  "parity_contracts": [
+    "phase-f drafting checkpoint validates all VCAD-PARITY-067..077 manifests",
+    "each phase-f drafting manifest issue_id must match its expected VCAD-PARITY issue",
+    "phase-f plan entries must be checked before checkpoint pass",
+    "phase-f parity completion must be exactly 100.0%"
+  ]
+}

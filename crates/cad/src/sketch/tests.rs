@@ -1,7 +1,9 @@
 use super::{
-    CadDimensionConstraintKind, CadSketchConstraint, CadSketchEntity, CadSketchModel,
-    CadSketchPlane, CadSketchSolveSeverity,
+    CadDimensionConstraintKind, CadSketchConstraint, CadSketchConstraintStatus, CadSketchEntity,
+    CadSketchModel, CadSketchPlane, CadSketchPlanePreset, CadSketchSolveSeverity,
 };
+use crate::kernel_primitives::{make_cube, make_cylinder};
+use crate::kernel_topology::{FaceId, Orientation};
 
 fn primary_plane() -> CadSketchPlane {
     CadSketchPlane {
@@ -12,6 +14,74 @@ fn primary_plane() -> CadSketchPlane {
         x_axis: [1.0, 0.0, 0.0],
         y_axis: [0.0, 1.0, 0.0],
     }
+}
+
+#[test]
+fn sketch_plane_presets_match_vcad_axes() {
+    let xy = CadSketchPlane::from_preset(CadSketchPlanePreset::Xy);
+    assert_eq!(xy.id, "plane.xy");
+    assert_eq!(xy.name, "XY");
+    assert_eq!(xy.origin_mm, [0.0, 0.0, 0.0]);
+    assert_eq!(xy.normal, [0.0, 0.0, 1.0]);
+    assert_eq!(xy.x_axis, [1.0, 0.0, 0.0]);
+    assert_eq!(xy.y_axis, [0.0, 1.0, 0.0]);
+
+    let xz = CadSketchPlane::xz();
+    assert_eq!(xz.id, "plane.xz");
+    assert_eq!(xz.name, "XZ");
+    assert_eq!(xz.origin_mm, [0.0, 0.0, 0.0]);
+    assert_eq!(xz.normal, [0.0, -1.0, 0.0]);
+    assert_eq!(xz.x_axis, [1.0, 0.0, 0.0]);
+    assert_eq!(xz.y_axis, [0.0, 0.0, 1.0]);
+
+    let yz = CadSketchPlane::yz();
+    assert_eq!(yz.id, "plane.yz");
+    assert_eq!(yz.name, "YZ");
+    assert_eq!(yz.origin_mm, [0.0, 0.0, 0.0]);
+    assert_eq!(yz.normal, [1.0, 0.0, 0.0]);
+    assert_eq!(yz.x_axis, [0.0, 1.0, 0.0]);
+    assert_eq!(yz.y_axis, [0.0, 0.0, 1.0]);
+}
+
+#[test]
+fn sketch_plane_from_planar_face_extracts_plane_basis() {
+    let cube = make_cube(40.0, 20.0, 10.0).expect("cube should build");
+    let face_plane =
+        CadSketchPlane::from_planar_face(&cube, "face.1").expect("face.1 should be planar");
+    assert_eq!(face_plane.id, "plane.face.1");
+    assert_eq!(face_plane.name, "Face 1");
+    assert_eq!(face_plane.origin_mm, [0.0, 0.0, 0.0]);
+    assert_eq!(face_plane.normal, [0.0, 0.0, -1.0]);
+    assert_eq!(face_plane.x_axis, [0.0, 1.0, 0.0]);
+    assert_eq!(face_plane.y_axis, [1.0, 0.0, 0.0]);
+}
+
+#[test]
+fn sketch_plane_from_planar_face_reversed_orientation_flips_normal() {
+    let mut cube = make_cube(40.0, 20.0, 10.0).expect("cube should build");
+    cube.topology
+        .faces
+        .get_mut(&FaceId(1))
+        .expect("cube should contain face.1")
+        .orientation = Orientation::Reversed;
+
+    let face_plane =
+        CadSketchPlane::from_planar_face(&cube, "face.1").expect("face.1 should be planar");
+    assert_eq!(face_plane.normal, [0.0, 0.0, 1.0]);
+    assert_eq!(face_plane.x_axis, [0.0, 1.0, 0.0]);
+    assert_eq!(face_plane.y_axis, [-1.0, 0.0, 0.0]);
+}
+
+#[test]
+fn sketch_plane_from_planar_face_rejects_non_planar_face() {
+    let cylinder = make_cylinder(8.0, 12.0, 24).expect("cylinder should build");
+    let error = CadSketchPlane::from_planar_face(&cylinder, "face.1")
+        .expect_err("cylinder lateral face should not be planar");
+    let message = error.to_string();
+    assert!(
+        message.contains("must reference a planar face"),
+        "error should identify non-planar face: {message}"
+    );
 }
 
 #[test]
@@ -224,21 +294,28 @@ fn constraint_solver_solves_common_mvp_constraints_deterministically() {
             id: "constraint.tangent.001".to_string(),
             line_entity_id: "entity.line.tangent".to_string(),
             arc_entity_id: "entity.arc.tangent".to_string(),
+            at_anchor_id: None,
             tolerance_mm: Some(0.001),
         })
         .expect("tangent constraint should insert");
 
+    let replay_seed = model.clone();
     let report_first = model
         .solve_constraints_deterministic()
         .expect("solver should run");
     assert!(report_first.passed, "common scenario should solve");
+    assert!(
+        report_first.iteration_count > 1,
+        "iterative LM parity should perform multi-iteration solve for coupled constraints"
+    );
     assert_eq!(report_first.unsolved_constraints, 0);
     assert_eq!(report_first.solved_constraints, 6);
     assert!(report_first.diagnostics.is_empty());
 
     let report_json_first =
         serde_json::to_string(&report_first).expect("solver report should serialize");
-    let report_second = model
+    let mut replay_model = replay_seed;
+    let report_second = replay_model
         .solve_constraints_deterministic()
         .expect("solver should stay deterministic across repeated runs");
     let report_json_second =
@@ -339,6 +416,7 @@ fn tangent_constraint_reports_diagnostic_when_unsolved() {
             id: "constraint.tangent.unsolved".to_string(),
             line_entity_id: "entity.line.diag".to_string(),
             arc_entity_id: "entity.arc.unsolved".to_string(),
+            at_anchor_id: None,
             tolerance_mm: Some(0.001),
         })
         .expect("constraint should insert");
@@ -383,5 +461,684 @@ fn constraint_validation_rejects_unknown_entity_references() {
     assert!(
         result.is_err(),
         "constraint must fail when referencing unknown entity"
+    );
+}
+
+#[test]
+fn sketch_model_supports_rectangle_circle_and_spline_entities() {
+    let mut model = CadSketchModel::default();
+    model
+        .insert_plane(primary_plane())
+        .expect("plane should insert");
+
+    model
+        .insert_entity(CadSketchEntity::Rectangle {
+            id: "entity.rect.001".to_string(),
+            plane_id: "plane.front".to_string(),
+            min_mm: [0.0, 0.0],
+            max_mm: [40.0, 20.0],
+            anchor_ids: [
+                "anchor.rect.00".to_string(),
+                "anchor.rect.10".to_string(),
+                "anchor.rect.11".to_string(),
+                "anchor.rect.01".to_string(),
+            ],
+            construction: false,
+        })
+        .expect("rectangle should insert");
+    model
+        .insert_entity(CadSketchEntity::Circle {
+            id: "entity.circle.001".to_string(),
+            plane_id: "plane.front".to_string(),
+            center_mm: [60.0, 30.0],
+            radius_mm: 12.0,
+            anchor_ids: [
+                "anchor.circle.center".to_string(),
+                "anchor.circle.radius".to_string(),
+            ],
+            construction: false,
+        })
+        .expect("circle should insert");
+    model
+        .insert_entity(CadSketchEntity::Spline {
+            id: "entity.spline.001".to_string(),
+            plane_id: "plane.front".to_string(),
+            control_points_mm: vec![[80.0, 0.0], [90.0, 10.0], [100.0, 0.0], [110.0, 8.0]],
+            anchor_ids: vec![
+                "anchor.spline.0".to_string(),
+                "anchor.spline.1".to_string(),
+                "anchor.spline.2".to_string(),
+                "anchor.spline.3".to_string(),
+            ],
+            closed: false,
+            construction: false,
+        })
+        .expect("spline should insert");
+
+    let roundtrip_json = serde_json::to_string(&model).expect("model should serialize");
+    let parsed: CadSketchModel =
+        serde_json::from_str(&roundtrip_json).expect("model should deserialize");
+    assert_eq!(model, parsed, "entity roundtrip must stay deterministic");
+}
+
+#[test]
+fn spline_validation_rejects_anchor_point_count_mismatch() {
+    let mut model = CadSketchModel::default();
+    model
+        .insert_plane(primary_plane())
+        .expect("plane should insert");
+
+    let result = model.insert_entity(CadSketchEntity::Spline {
+        id: "entity.spline.bad".to_string(),
+        plane_id: "plane.front".to_string(),
+        control_points_mm: vec![[0.0, 0.0], [10.0, 10.0], [20.0, 0.0]],
+        anchor_ids: vec!["anchor.bad.0".to_string(), "anchor.bad.1".to_string()],
+        closed: false,
+        construction: true,
+    });
+    assert!(
+        result.is_err(),
+        "spline must reject mismatched control point and anchor counts"
+    );
+}
+
+#[test]
+fn sketch_model_validates_full_constraint_enum_set() {
+    let mut model = CadSketchModel::default();
+    model
+        .insert_plane(primary_plane())
+        .expect("plane should insert");
+
+    model
+        .insert_entity(CadSketchEntity::Line {
+            id: "entity.line.a".to_string(),
+            plane_id: "plane.front".to_string(),
+            start_mm: [0.0, 0.0],
+            end_mm: [20.0, 0.0],
+            anchor_ids: [
+                "anchor.line.a.start".to_string(),
+                "anchor.line.a.end".to_string(),
+            ],
+            construction: false,
+        })
+        .expect("line a should insert");
+    model
+        .insert_entity(CadSketchEntity::Line {
+            id: "entity.line.b".to_string(),
+            plane_id: "plane.front".to_string(),
+            start_mm: [0.0, 10.0],
+            end_mm: [20.0, 10.0],
+            anchor_ids: [
+                "anchor.line.b.start".to_string(),
+                "anchor.line.b.end".to_string(),
+            ],
+            construction: false,
+        })
+        .expect("line b should insert");
+    model
+        .insert_entity(CadSketchEntity::Line {
+            id: "entity.line.c".to_string(),
+            plane_id: "plane.front".to_string(),
+            start_mm: [10.0, -10.0],
+            end_mm: [10.0, 20.0],
+            anchor_ids: [
+                "anchor.line.c.start".to_string(),
+                "anchor.line.c.end".to_string(),
+            ],
+            construction: false,
+        })
+        .expect("line c should insert");
+    model
+        .insert_entity(CadSketchEntity::Arc {
+            id: "entity.arc.a".to_string(),
+            plane_id: "plane.front".to_string(),
+            center_mm: [40.0, 0.0],
+            radius_mm: 5.0,
+            start_deg: 0.0,
+            end_deg: 180.0,
+            anchor_ids: [
+                "anchor.arc.a.center".to_string(),
+                "anchor.arc.a.start".to_string(),
+                "anchor.arc.a.end".to_string(),
+            ],
+            construction: false,
+        })
+        .expect("arc a should insert");
+    model
+        .insert_entity(CadSketchEntity::Circle {
+            id: "entity.circle.a".to_string(),
+            plane_id: "plane.front".to_string(),
+            center_mm: [40.0, 12.0],
+            radius_mm: 5.0,
+            anchor_ids: [
+                "anchor.circle.a.center".to_string(),
+                "anchor.circle.a.radius".to_string(),
+            ],
+            construction: false,
+        })
+        .expect("circle a should insert");
+    model
+        .insert_entity(CadSketchEntity::Point {
+            id: "entity.point.a".to_string(),
+            plane_id: "plane.front".to_string(),
+            position_mm: [5.0, 5.0],
+            anchor_id: "anchor.point.a".to_string(),
+            construction: false,
+        })
+        .expect("point a should insert");
+    model
+        .insert_entity(CadSketchEntity::Point {
+            id: "entity.point.b".to_string(),
+            plane_id: "plane.front".to_string(),
+            position_mm: [15.0, 5.0],
+            anchor_id: "anchor.point.b".to_string(),
+            construction: false,
+        })
+        .expect("point b should insert");
+
+    model
+        .insert_constraint(CadSketchConstraint::Coincident {
+            id: "constraint.enum.coincident".to_string(),
+            first_anchor_id: "anchor.point.a".to_string(),
+            second_anchor_id: "anchor.line.a.start".to_string(),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("coincident should insert");
+    model
+        .insert_constraint(CadSketchConstraint::PointOnLine {
+            id: "constraint.enum.point_on_line".to_string(),
+            point_anchor_id: "anchor.point.b".to_string(),
+            line_entity_id: "entity.line.a".to_string(),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("point_on_line should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Parallel {
+            id: "constraint.enum.parallel".to_string(),
+            first_line_entity_id: "entity.line.a".to_string(),
+            second_line_entity_id: "entity.line.b".to_string(),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("parallel should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Perpendicular {
+            id: "constraint.enum.perpendicular".to_string(),
+            first_line_entity_id: "entity.line.a".to_string(),
+            second_line_entity_id: "entity.line.c".to_string(),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("perpendicular should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Horizontal {
+            id: "constraint.enum.horizontal".to_string(),
+            line_entity_id: "entity.line.a".to_string(),
+        })
+        .expect("horizontal should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Vertical {
+            id: "constraint.enum.vertical".to_string(),
+            line_entity_id: "entity.line.c".to_string(),
+        })
+        .expect("vertical should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Tangent {
+            id: "constraint.enum.tangent".to_string(),
+            line_entity_id: "entity.line.b".to_string(),
+            arc_entity_id: "entity.arc.a".to_string(),
+            at_anchor_id: Some("anchor.arc.a.start".to_string()),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("tangent should insert");
+    model
+        .insert_constraint(CadSketchConstraint::EqualLength {
+            id: "constraint.enum.equal_length".to_string(),
+            first_line_entity_id: "entity.line.a".to_string(),
+            second_line_entity_id: "entity.line.b".to_string(),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("equal_length should insert");
+    model
+        .insert_constraint(CadSketchConstraint::EqualRadius {
+            id: "constraint.enum.equal_radius".to_string(),
+            first_curve_entity_id: "entity.arc.a".to_string(),
+            second_curve_entity_id: "entity.circle.a".to_string(),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("equal_radius should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Concentric {
+            id: "constraint.enum.concentric".to_string(),
+            first_curve_entity_id: "entity.arc.a".to_string(),
+            second_curve_entity_id: "entity.circle.a".to_string(),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("concentric should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Fixed {
+            id: "constraint.enum.fixed".to_string(),
+            point_anchor_id: "anchor.point.a".to_string(),
+            target_mm: [5.0, 5.0],
+            tolerance_mm: Some(0.01),
+        })
+        .expect("fixed should insert");
+    model
+        .insert_constraint(CadSketchConstraint::PointOnCircle {
+            id: "constraint.enum.point_on_circle".to_string(),
+            point_anchor_id: "anchor.point.b".to_string(),
+            circle_entity_id: "entity.circle.a".to_string(),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("point_on_circle should insert");
+    model
+        .insert_constraint(CadSketchConstraint::LineThroughCenter {
+            id: "constraint.enum.line_through_center".to_string(),
+            line_entity_id: "entity.line.c".to_string(),
+            circle_entity_id: "entity.circle.a".to_string(),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("line_through_center should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Midpoint {
+            id: "constraint.enum.midpoint".to_string(),
+            midpoint_anchor_id: "anchor.point.a".to_string(),
+            line_entity_id: "entity.line.b".to_string(),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("midpoint should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Symmetric {
+            id: "constraint.enum.symmetric".to_string(),
+            first_anchor_id: "anchor.point.a".to_string(),
+            second_anchor_id: "anchor.point.b".to_string(),
+            axis_line_entity_id: "entity.line.c".to_string(),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("symmetric should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Distance {
+            id: "constraint.enum.distance".to_string(),
+            first_anchor_id: "anchor.point.a".to_string(),
+            second_anchor_id: "anchor.point.b".to_string(),
+            target_mm: 10.0,
+            tolerance_mm: Some(0.01),
+        })
+        .expect("distance should insert");
+    model
+        .insert_constraint(CadSketchConstraint::PointLineDistance {
+            id: "constraint.enum.point_line_distance".to_string(),
+            point_anchor_id: "anchor.point.b".to_string(),
+            line_entity_id: "entity.line.c".to_string(),
+            target_mm: 5.0,
+            tolerance_mm: Some(0.01),
+        })
+        .expect("point_line_distance should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Angle {
+            id: "constraint.enum.angle".to_string(),
+            first_line_entity_id: "entity.line.a".to_string(),
+            second_line_entity_id: "entity.line.c".to_string(),
+            target_deg: 90.0,
+            tolerance_deg: Some(0.01),
+        })
+        .expect("angle should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Radius {
+            id: "constraint.enum.radius".to_string(),
+            curve_entity_id: "entity.circle.a".to_string(),
+            target_mm: 5.0,
+            tolerance_mm: Some(0.01),
+        })
+        .expect("radius should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Length {
+            id: "constraint.enum.length".to_string(),
+            line_entity_id: "entity.line.a".to_string(),
+            target_mm: 20.0,
+            tolerance_mm: Some(0.01),
+        })
+        .expect("length should insert");
+    model
+        .insert_constraint(CadSketchConstraint::HorizontalDistance {
+            id: "constraint.enum.horizontal_distance".to_string(),
+            point_anchor_id: "anchor.point.a".to_string(),
+            target_mm: 5.0,
+            tolerance_mm: Some(0.01),
+        })
+        .expect("horizontal_distance should insert");
+    model
+        .insert_constraint(CadSketchConstraint::VerticalDistance {
+            id: "constraint.enum.vertical_distance".to_string(),
+            point_anchor_id: "anchor.point.a".to_string(),
+            target_mm: 5.0,
+            tolerance_mm: Some(0.01),
+        })
+        .expect("vertical_distance should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Diameter {
+            id: "constraint.enum.diameter".to_string(),
+            circle_entity_id: "entity.circle.a".to_string(),
+            target_mm: 10.0,
+            tolerance_mm: Some(0.01),
+        })
+        .expect("diameter should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Dimension {
+            id: "constraint.enum.dimension.legacy".to_string(),
+            entity_id: "entity.line.b".to_string(),
+            dimension_kind: CadDimensionConstraintKind::Length,
+            target_mm: 20.0,
+            tolerance_mm: Some(0.01),
+        })
+        .expect("legacy dimension should insert");
+
+    model
+        .validate()
+        .expect("full constraint enum should validate");
+}
+
+#[test]
+fn unsupported_constraint_kinds_emit_deterministic_warning_diagnostic() {
+    let mut model = CadSketchModel::default();
+    model
+        .insert_plane(primary_plane())
+        .expect("plane should insert");
+    model
+        .insert_entity(CadSketchEntity::Line {
+            id: "entity.line.a".to_string(),
+            plane_id: "plane.front".to_string(),
+            start_mm: [0.0, 0.0],
+            end_mm: [20.0, 0.0],
+            anchor_ids: [
+                "anchor.line.a.start".to_string(),
+                "anchor.line.a.end".to_string(),
+            ],
+            construction: false,
+        })
+        .expect("line should insert");
+    model
+        .insert_entity(CadSketchEntity::Point {
+            id: "entity.point.a".to_string(),
+            plane_id: "plane.front".to_string(),
+            position_mm: [5.0, 5.0],
+            anchor_id: "anchor.point.a".to_string(),
+            construction: false,
+        })
+        .expect("point should insert");
+    model
+        .insert_constraint(CadSketchConstraint::PointOnLine {
+            id: "constraint.point_on_line".to_string(),
+            point_anchor_id: "anchor.point.a".to_string(),
+            line_entity_id: "entity.line.a".to_string(),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("point_on_line should insert");
+
+    let report = model
+        .solve_constraints_deterministic()
+        .expect("solver should run");
+    assert!(
+        !report.passed,
+        "unsupported constraints should keep solve incomplete"
+    );
+    assert_eq!(report.solved_constraints, 0);
+    assert_eq!(report.unsolved_constraints, 1);
+    assert_eq!(
+        report.constraint_status.get("constraint.point_on_line"),
+        Some(&"unsolved".to_string())
+    );
+    assert!(report.diagnostics.iter().any(|entry| {
+        entry.code == "SKETCH_CONSTRAINT_KIND_NOT_IMPLEMENTED"
+            && entry.constraint_id == "constraint.point_on_line"
+            && entry.severity == CadSketchSolveSeverity::Warning
+            && entry.message.contains("point_on_line")
+    }));
+}
+
+#[test]
+fn lm_pipeline_summary_is_deterministic_for_fixed_model_state() {
+    let mut model = CadSketchModel::default();
+    model
+        .insert_plane(primary_plane())
+        .expect("plane should insert");
+    model
+        .insert_entity(CadSketchEntity::Line {
+            id: "entity.line.a".to_string(),
+            plane_id: "plane.front".to_string(),
+            start_mm: [0.0, 0.0],
+            end_mm: [20.0, 5.0],
+            anchor_ids: [
+                "anchor.line.a.start".to_string(),
+                "anchor.line.a.end".to_string(),
+            ],
+            construction: false,
+        })
+        .expect("line should insert");
+    model
+        .insert_entity(CadSketchEntity::Point {
+            id: "entity.point.a".to_string(),
+            plane_id: "plane.front".to_string(),
+            position_mm: [5.0, 8.0],
+            anchor_id: "anchor.point.a".to_string(),
+            construction: false,
+        })
+        .expect("point should insert");
+
+    model
+        .insert_constraint(CadSketchConstraint::Horizontal {
+            id: "constraint.horizontal".to_string(),
+            line_entity_id: "entity.line.a".to_string(),
+        })
+        .expect("horizontal should insert");
+    model
+        .insert_constraint(CadSketchConstraint::PointOnLine {
+            id: "constraint.point_on_line".to_string(),
+            point_anchor_id: "anchor.point.a".to_string(),
+            line_entity_id: "entity.line.a".to_string(),
+            tolerance_mm: Some(0.01),
+        })
+        .expect("point_on_line should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Distance {
+            id: "constraint.distance".to_string(),
+            first_anchor_id: "anchor.line.a.start".to_string(),
+            second_anchor_id: "anchor.point.a".to_string(),
+            target_mm: 6.0,
+            tolerance_mm: Some(0.01),
+        })
+        .expect("distance should insert");
+
+    let first = model
+        .lm_pipeline_summary()
+        .expect("LM pipeline summary should build");
+    let second = model
+        .lm_pipeline_summary()
+        .expect("LM pipeline summary replay should build");
+
+    assert_eq!(first, second, "LM summary must be replay deterministic");
+    assert_eq!(first.residual_component_count, 3);
+    assert_eq!(first.parameter_count, 6);
+    assert_eq!(
+        first
+            .constraint_component_counts
+            .get("constraint.point_on_line"),
+        Some(&1)
+    );
+    assert!(first.jacobian_nonzero_count > 0);
+    assert_eq!(first.residual_hash.len(), 16);
+    assert_eq!(first.jacobian_hash.len(), 16);
+}
+
+#[test]
+fn lm_pipeline_emits_rank_deficient_warning_for_duplicate_unsolved_rows() {
+    let mut model = CadSketchModel::default();
+    model
+        .insert_plane(primary_plane())
+        .expect("plane should insert");
+    model
+        .insert_entity(CadSketchEntity::Line {
+            id: "entity.line.a".to_string(),
+            plane_id: "plane.front".to_string(),
+            start_mm: [0.0, 0.0],
+            end_mm: [5.0, 0.0],
+            anchor_ids: [
+                "anchor.line.a.start".to_string(),
+                "anchor.line.a.end".to_string(),
+            ],
+            construction: false,
+        })
+        .expect("line should insert");
+    model
+        .insert_entity(CadSketchEntity::Point {
+            id: "entity.point.a".to_string(),
+            plane_id: "plane.front".to_string(),
+            position_mm: [5.0, 8.0],
+            anchor_id: "anchor.point.a".to_string(),
+            construction: false,
+        })
+        .expect("point should insert");
+
+    model
+        .insert_constraint(CadSketchConstraint::PointOnLine {
+            id: "constraint.point_on_line.a".to_string(),
+            point_anchor_id: "anchor.point.a".to_string(),
+            line_entity_id: "entity.line.a".to_string(),
+            tolerance_mm: Some(0.001),
+        })
+        .expect("first point_on_line constraint should insert");
+    model
+        .insert_constraint(CadSketchConstraint::PointOnLine {
+            id: "constraint.point_on_line.b".to_string(),
+            point_anchor_id: "anchor.point.a".to_string(),
+            line_entity_id: "entity.line.a".to_string(),
+            tolerance_mm: Some(0.001),
+        })
+        .expect("second point_on_line constraint should insert");
+
+    let report = model
+        .solve_constraints_deterministic()
+        .expect("solver should run");
+    assert!(
+        !report.passed,
+        "unsupported duplicate rows should keep solve incomplete"
+    );
+    assert!(report.unsolved_constraints > 0);
+    assert!(report.diagnostics.iter().any(|entry| {
+        entry.code == "SKETCH_LM_JACOBIAN_RANK_DEFICIENT"
+            && entry.constraint_id == "lm.pipeline"
+            && entry.severity == CadSketchSolveSeverity::Warning
+    }));
+}
+
+#[test]
+fn sketch_status_reports_under_constrained_for_positive_dof() {
+    let mut model = CadSketchModel::default();
+    model
+        .insert_plane(primary_plane())
+        .expect("plane should insert");
+    model
+        .insert_entity(CadSketchEntity::Point {
+            id: "entity.point.a".to_string(),
+            plane_id: "plane.front".to_string(),
+            position_mm: [2.0, 3.0],
+            anchor_id: "anchor.point.a".to_string(),
+            construction: false,
+        })
+        .expect("point should insert");
+
+    let report = model
+        .constraint_status_report()
+        .expect("status report should build");
+    assert_eq!(report.degrees_of_freedom, 2);
+    assert_eq!(report.parameter_count, 2);
+    assert_eq!(report.constraint_equation_count, 0);
+    assert_eq!(report.status, CadSketchConstraintStatus::UnderConstrained);
+    assert!(
+        model
+            .is_under_constrained()
+            .expect("under-constrained check should evaluate")
+    );
+}
+
+#[test]
+fn sketch_status_reports_fully_constrained_for_zero_dof() {
+    let mut model = CadSketchModel::default();
+    model
+        .insert_plane(primary_plane())
+        .expect("plane should insert");
+    model
+        .insert_entity(CadSketchEntity::Point {
+            id: "entity.point.a".to_string(),
+            plane_id: "plane.front".to_string(),
+            position_mm: [2.0, 3.0],
+            anchor_id: "anchor.point.a".to_string(),
+            construction: false,
+        })
+        .expect("point should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Fixed {
+            id: "constraint.fixed.a".to_string(),
+            point_anchor_id: "anchor.point.a".to_string(),
+            target_mm: [2.0, 3.0],
+            tolerance_mm: Some(0.001),
+        })
+        .expect("fixed should insert");
+
+    let report = model
+        .constraint_status_report()
+        .expect("status report should build");
+    assert_eq!(report.degrees_of_freedom, 0);
+    assert_eq!(report.parameter_count, 2);
+    assert_eq!(report.constraint_equation_count, 2);
+    assert_eq!(report.status, CadSketchConstraintStatus::FullyConstrained);
+    assert!(
+        model
+            .is_fully_constrained()
+            .expect("fully-constrained check should evaluate")
+    );
+}
+
+#[test]
+fn sketch_status_reports_over_constrained_for_negative_dof() {
+    let mut model = CadSketchModel::default();
+    model
+        .insert_plane(primary_plane())
+        .expect("plane should insert");
+    model
+        .insert_entity(CadSketchEntity::Point {
+            id: "entity.point.a".to_string(),
+            plane_id: "plane.front".to_string(),
+            position_mm: [2.0, 3.0],
+            anchor_id: "anchor.point.a".to_string(),
+            construction: false,
+        })
+        .expect("point should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Fixed {
+            id: "constraint.fixed.a".to_string(),
+            point_anchor_id: "anchor.point.a".to_string(),
+            target_mm: [2.0, 3.0],
+            tolerance_mm: Some(0.001),
+        })
+        .expect("first fixed should insert");
+    model
+        .insert_constraint(CadSketchConstraint::Fixed {
+            id: "constraint.fixed.b".to_string(),
+            point_anchor_id: "anchor.point.a".to_string(),
+            target_mm: [4.0, 5.0],
+            tolerance_mm: Some(0.001),
+        })
+        .expect("second fixed should insert");
+
+    let report = model
+        .constraint_status_report()
+        .expect("status report should build");
+    assert_eq!(report.degrees_of_freedom, -2);
+    assert_eq!(report.parameter_count, 2);
+    assert_eq!(report.constraint_equation_count, 4);
+    assert_eq!(report.status, CadSketchConstraintStatus::OverConstrained);
+    assert!(
+        model
+            .is_over_constrained()
+            .expect("over-constrained check should evaluate")
     );
 }

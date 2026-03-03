@@ -1,0 +1,85 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-063",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/packages/core/src/stores/document-store.ts",
+  "expected_case_snapshots": [
+    {
+      "case_id": "instance_select_and_rename",
+      "selected_instance_id": "arm-1",
+      "selected_joint_id": null,
+      "schema_instance_ids": [
+        "arm-1",
+        "base-1"
+      ],
+      "schema_joint_ids": [
+        "joint.hinge"
+      ],
+      "arm_instance_name": "Arm Segment",
+      "joint_state_deg": "0.000000",
+      "was_clamped": false,
+      "error": null
+    },
+    {
+      "case_id": "joint_select_and_clamp_state",
+      "selected_instance_id": null,
+      "selected_joint_id": "joint.hinge",
+      "schema_instance_ids": [
+        "arm-1",
+        "base-1"
+      ],
+      "schema_joint_ids": [
+        "joint.hinge"
+      ],
+      "arm_instance_name": "Arm",
+      "joint_state_deg": "90.000000",
+      "was_clamped": true,
+      "error": null
+    },
+    {
+      "case_id": "rename_without_selection_error",
+      "selected_instance_id": null,
+      "selected_joint_id": null,
+      "schema_instance_ids": [
+        "arm-1",
+        "base-1"
+      ],
+      "schema_joint_ids": [
+        "joint.hinge"
+      ],
+      "arm_instance_name": "Arm",
+      "joint_state_deg": "0.000000",
+      "was_clamped": false,
+      "error": "invalid parameter ui.selected_instance_id: no selected assembly instance"
+    },
+    {
+      "case_id": "select_unknown_instance_error",
+      "selected_instance_id": null,
+      "selected_joint_id": null,
+      "schema_instance_ids": [
+        "arm-1",
+        "base-1"
+      ],
+      "schema_joint_ids": [
+        "joint.hinge"
+      ],
+      "arm_instance_name": "Arm",
+      "joint_state_deg": "0.000000",
+      "was_clamped": false,
+      "error": "invalid parameter instance.id: unknown instance: missing"
+    },
+    {
+      "case_id": "sync_after_delete_clears_selection",
+      "selected_instance_id": null,
+      "selected_joint_id": null,
+      "schema_instance_ids": [
+        "base-1"
+      ],
+      "schema_joint_ids": [],
+      "arm_instance_name": null,
+      "joint_state_deg": null,
+      "was_clamped": false,
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-115",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/crdt_lane_architecture_vcad_reference.json",
+  "reference_fixture_sha256": "88dc27644676d5348886596f677167ffa0d76e837e2c7a244d58caa83dcb5f7f",
+  "reference_source": "~/code/vcad/crates/vcad-crdt/src/lib.rs",
+  "reference_issue_match": true,
+  "reference_commit_match": true,
+  "row_set_match": true,
+  "contract_set_match": true,
+  "deterministic_replay_match": true,
+  "rows": [
+    {
+      "capability": "CAD CRDT Lane Architecture Parity",
+      "case_id": "capability_scope",
+      "issue_id": "VCAD-PARITY-115"
+    },
+    {
+      "case_id": "phase_scope",
+      "lane_label": "crdt-lane-architecture",
+      "phase": "Phase J - Full workspace parity lanes"
+    },
+    {
+      "case_id": "reference_source",
+      "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+      "vcad_source": "~/code/vcad/crates/vcad-crdt/src/lib.rs"
+    }
+  ],
+  "contracts": [
+    "CAD CRDT Lane Architecture Parity parity contracts are aligned to vcad reference behavior",
+    "CI parity artifacts include crdt_lane_architecture manifest and vcad fixture evidence",
+    "Phase J - Full workspace parity lanes parity lane remains deterministic across replay"
+  ],
+  "deterministic_signature": "b4caa787b5147007",
+  "parity_contracts": [
+    "CAD CRDT Lane Architecture Parity parity contracts are aligned to vcad reference behavior",
+    "CI parity artifacts include crdt_lane_architecture manifest and vcad fixture evidence",
+    "Phase J - Full workspace parity lanes parity lane remains deterministic across replay"
+  ]
+}

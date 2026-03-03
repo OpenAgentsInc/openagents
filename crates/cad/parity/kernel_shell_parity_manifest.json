@@ -1,0 +1,49 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-024",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "closed_cube_analytical_counts": {
+    "vertex_count": 16,
+    "half_edge_count": 48,
+    "edge_count": 24,
+    "loop_count": 12,
+    "face_count": 12,
+    "shell_count": 1,
+    "solid_count": 1
+  },
+  "open_cube_analytical_counts": {
+    "vertex_count": 16,
+    "half_edge_count": 60,
+    "edge_count": 28,
+    "loop_count": 15,
+    "face_count": 15,
+    "shell_count": 1,
+    "solid_count": 1
+  },
+  "fallback_cylinder_counts": {
+    "vertex_count": 196,
+    "half_edge_count": 768,
+    "edge_count": 256,
+    "loop_count": 256,
+    "face_count": 256,
+    "shell_count": 1,
+    "solid_count": 1
+  },
+  "shell_mesh_snapshot": {
+    "input_vertex_count": 24,
+    "input_triangle_count": 12,
+    "output_vertex_count": 48,
+    "output_triangle_count": 24
+  },
+  "collapse_error": "surface collapsed: offset 6.0000 collapses minimum body span 10.0000",
+  "deterministic_signature": "21ec5d2188f95ff9",
+  "parity_contracts": [
+    "shell_brep_analytical supports planar-face solids with deterministic closed/open-face counts",
+    "shell_brep falls back to mesh shelling for non-planar primitives",
+    "shell_mesh doubles triangle and vertex counts with reversed inner winding",
+    "collapse conditions emit ShellError::SurfaceCollapse diagnostics",
+    "invalid thickness maps to CadError::InvalidParameter"
+  ]
+}

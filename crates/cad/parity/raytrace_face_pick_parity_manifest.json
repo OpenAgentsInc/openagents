@@ -1,0 +1,151 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-102",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/raytrace_face_pick_vcad_reference.json",
+  "reference_fixture_sha256": "0e21b1d3ca74396bfe1bb6a039980c38ae27fcb6f7714b1a0d9889cf42fbedb7",
+  "reference_source": "~/code/vcad/crates/vcad-kernel-wasm/src/lib.rs::RayTracer::pick",
+  "reference_commit_match": true,
+  "input_validation_match": true,
+  "scene_guard_match": true,
+  "sample_set_match": true,
+  "stub_background_match": true,
+  "ndc_mapping_match": true,
+  "ray_direction_normalized_match": true,
+  "deterministic_replay_match": true,
+  "error_samples": [
+    {
+      "case_id": "invalid_camera_len",
+      "error": "camera, target, and up must each have 3 components"
+    },
+    {
+      "case_id": "invalid_target_len",
+      "error": "camera, target, and up must each have 3 components"
+    },
+    {
+      "case_id": "invalid_up_len",
+      "error": "camera, target, and up must each have 3 components"
+    },
+    {
+      "case_id": "scene_not_uploaded",
+      "error": "No solid uploaded. Call uploadSolid() first."
+    }
+  ],
+  "pick_samples": [
+    {
+      "case_id": "bottom_right_pixel",
+      "camera": [
+        10.0,
+        8.0,
+        6.0
+      ],
+      "target": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "width": 1920,
+      "height": 1080,
+      "fov_radians": 0.785398163,
+      "pixel": [
+        1919,
+        1079
+      ],
+      "ndc": [
+        0.999479167,
+        -0.999074074
+      ],
+      "ray_direction": [
+        -0.786815276,
+        0.090702267,
+        -0.610487363
+      ],
+      "face_index": -1
+    },
+    {
+      "case_id": "center_pixel",
+      "camera": [
+        0.0,
+        0.0,
+        5.0
+      ],
+      "target": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "up": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "width": 800,
+      "height": 600,
+      "fov_radians": 1.047197551,
+      "pixel": [
+        399,
+        299
+      ],
+      "ndc": [
+        -0.00125,
+        0.001666667
+      ],
+      "ray_direction": [
+        -0.00096225,
+        0.00096225,
+        -0.999999074
+      ],
+      "face_index": -1
+    },
+    {
+      "case_id": "top_left_pixel",
+      "camera": [
+        10.0,
+        8.0,
+        6.0
+      ],
+      "target": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "width": 1920,
+      "height": 1080,
+      "fov_radians": 0.785398163,
+      "pixel": [
+        0,
+        0
+      ],
+      "ndc": [
+        -0.999479167,
+        0.999074074
+      ],
+      "ray_direction": [
+        -0.293730604,
+        -0.955138971,
+        -0.037840165
+      ],
+      "face_index": -1
+    }
+  ],
+  "deterministic_signature": "28414d816e714ecf",
+  "parity_contracts": [
+    "pick validates camera/target/up vectors are each length 3 and returns explicit error on mismatch",
+    "pick returns explicit guard error when no solid is uploaded",
+    "pixel-to-NDC mapping uses pixel-center offset (+0.5) and top-left origin",
+    "ray direction uses forward/right/up basis and remains normalized",
+    "current vcad wasm baseline returns -1 (background) for all picks while CPU face-pick path is TODO"
+  ]
+}

@@ -1,9 +1,11 @@
 use super::primitives::evaluate_cut_hole_feature_with_boolean;
 use super::{
-    BoxFeatureOp, CutHoleFeatureOp, CylinderFeatureOp, FilletPlaceholderFeatureOp,
-    FilletPlaceholderKind, LinearPatternFeatureOp, TransformFeatureOp, compose_transform_sequence,
-    evaluate_box_feature, evaluate_cut_hole_feature, evaluate_cylinder_feature,
-    evaluate_fillet_placeholder_feature, evaluate_linear_pattern_feature,
+    BoxFeatureOp, CircularPatternFeatureOp, CutHoleFeatureOp, CylinderFeatureOp,
+    FilletPlaceholderFeatureOp, FilletPlaceholderKind, LinearPatternFeatureOp, LoftFeatureOp,
+    LoftFeatureProfile, SweepFeatureOp, TransformFeatureOp, compose_transform_sequence,
+    evaluate_box_feature, evaluate_circular_pattern_feature, evaluate_cut_hole_feature,
+    evaluate_cylinder_feature, evaluate_fillet_placeholder_feature,
+    evaluate_linear_pattern_feature, evaluate_loft_feature, evaluate_sweep_feature,
     evaluate_transform_feature,
 };
 use crate::feature_graph::{FeatureGraph, FeatureNode};
@@ -600,6 +602,429 @@ fn linear_pattern_preserves_prefix_indices_when_count_increases() {
         &expanded.instances[..baseline.instances.len()],
         baseline.instances.as_slice()
     );
+}
+
+#[test]
+fn circular_pattern_positions_are_stable_and_match_quadrants() {
+    let mut params = ParameterStore::default();
+    params
+        .set(
+            "bolt_count",
+            ScalarValue {
+                value: 4.0,
+                unit: ScalarUnit::Unitless,
+            },
+        )
+        .expect("count should set");
+    params
+        .set(
+            "bolt_span_deg",
+            ScalarValue {
+                value: 360.0,
+                unit: ScalarUnit::Unitless,
+            },
+        )
+        .expect("span should set");
+    params
+        .set(
+            "bolt_radius_mm",
+            ScalarValue {
+                value: 10.0,
+                unit: ScalarUnit::Millimeter,
+            },
+        )
+        .expect("radius should set");
+
+    let op = CircularPatternFeatureOp {
+        feature_id: "feature.bolt_circle".to_string(),
+        source_feature_id: "feature.hole".to_string(),
+        count_param: "bolt_count".to_string(),
+        angle_deg_param: "bolt_span_deg".to_string(),
+        radius_param: "bolt_radius_mm".to_string(),
+        axis_origin_mm: [0.0, 0.0, 0.0],
+        axis_direction_xyz: [0.0, 0.0, 1.0],
+        start_index: 50,
+    };
+
+    let first =
+        evaluate_circular_pattern_feature(&op, &params, "hash-hole").expect("eval should pass");
+    let second =
+        evaluate_circular_pattern_feature(&op, &params, "hash-hole").expect("eval should pass");
+    assert_eq!(first, second);
+    assert_eq!(first.instances.len(), 4);
+    assert_eq!(first.instances[0].pattern_index, 50);
+    assert_eq!(first.instances[1].pattern_index, 51);
+    assert_eq!(first.instances[2].pattern_index, 52);
+    assert_eq!(first.instances[3].pattern_index, 53);
+
+    let expected = [
+        [0.0, 10.0, 0.0],
+        [-10.0, 0.0, 0.0],
+        [0.0, -10.0, 0.0],
+        [10.0, 0.0, 0.0],
+    ];
+    for (instance, expected_center) in first.instances.iter().zip(expected.iter()) {
+        assert!(
+            (instance.center_mm[0] - expected_center[0]).abs() < 1e-9
+                && (instance.center_mm[1] - expected_center[1]).abs() < 1e-9
+                && (instance.center_mm[2] - expected_center[2]).abs() < 1e-9,
+            "center mismatch: {:?} vs {:?}",
+            instance.center_mm,
+            expected_center
+        );
+    }
+}
+
+#[test]
+fn circular_pattern_rejects_non_integer_count() {
+    let mut params = ParameterStore::default();
+    params
+        .set(
+            "bolt_count",
+            ScalarValue {
+                value: 3.5,
+                unit: ScalarUnit::Unitless,
+            },
+        )
+        .expect("count should set");
+    params
+        .set(
+            "bolt_span_deg",
+            ScalarValue {
+                value: 360.0,
+                unit: ScalarUnit::Unitless,
+            },
+        )
+        .expect("span should set");
+    params
+        .set(
+            "bolt_radius_mm",
+            ScalarValue {
+                value: 10.0,
+                unit: ScalarUnit::Millimeter,
+            },
+        )
+        .expect("radius should set");
+    let op = CircularPatternFeatureOp {
+        feature_id: "feature.bolt_circle".to_string(),
+        source_feature_id: "feature.hole".to_string(),
+        count_param: "bolt_count".to_string(),
+        angle_deg_param: "bolt_span_deg".to_string(),
+        radius_param: "bolt_radius_mm".to_string(),
+        axis_origin_mm: [0.0, 0.0, 0.0],
+        axis_direction_xyz: [0.0, 0.0, 1.0],
+        start_index: 0,
+    };
+    let error = evaluate_circular_pattern_feature(&op, &params, "hash-hole")
+        .expect_err("fractional count must be rejected");
+    assert!(matches!(error, CadError::InvalidParameter { .. }));
+}
+
+#[test]
+fn circular_pattern_rejects_zero_axis_direction() {
+    let mut params = ParameterStore::default();
+    params
+        .set(
+            "bolt_count",
+            ScalarValue {
+                value: 4.0,
+                unit: ScalarUnit::Unitless,
+            },
+        )
+        .expect("count should set");
+    params
+        .set(
+            "bolt_span_deg",
+            ScalarValue {
+                value: 360.0,
+                unit: ScalarUnit::Unitless,
+            },
+        )
+        .expect("span should set");
+    params
+        .set(
+            "bolt_radius_mm",
+            ScalarValue {
+                value: 10.0,
+                unit: ScalarUnit::Millimeter,
+            },
+        )
+        .expect("radius should set");
+    let op = CircularPatternFeatureOp {
+        feature_id: "feature.bolt_circle".to_string(),
+        source_feature_id: "feature.hole".to_string(),
+        count_param: "bolt_count".to_string(),
+        angle_deg_param: "bolt_span_deg".to_string(),
+        radius_param: "bolt_radius_mm".to_string(),
+        axis_origin_mm: [0.0, 0.0, 0.0],
+        axis_direction_xyz: [0.0, 0.0, 0.0],
+        start_index: 0,
+    };
+    let error = evaluate_circular_pattern_feature(&op, &params, "hash-hole")
+        .expect_err("zero axis must be rejected");
+    assert!(matches!(error, CadError::InvalidPrimitive { .. }));
+}
+
+#[test]
+fn circular_pattern_rejects_negative_radius() {
+    let mut params = ParameterStore::default();
+    params
+        .set(
+            "bolt_count",
+            ScalarValue {
+                value: 4.0,
+                unit: ScalarUnit::Unitless,
+            },
+        )
+        .expect("count should set");
+    params
+        .set(
+            "bolt_span_deg",
+            ScalarValue {
+                value: 360.0,
+                unit: ScalarUnit::Unitless,
+            },
+        )
+        .expect("span should set");
+    params
+        .set(
+            "bolt_radius_mm",
+            ScalarValue {
+                value: -1.0,
+                unit: ScalarUnit::Millimeter,
+            },
+        )
+        .expect("radius should set");
+    let op = CircularPatternFeatureOp {
+        feature_id: "feature.bolt_circle".to_string(),
+        source_feature_id: "feature.hole".to_string(),
+        count_param: "bolt_count".to_string(),
+        angle_deg_param: "bolt_span_deg".to_string(),
+        radius_param: "bolt_radius_mm".to_string(),
+        axis_origin_mm: [0.0, 0.0, 0.0],
+        axis_direction_xyz: [0.0, 0.0, 1.0],
+        start_index: 0,
+    };
+    let error = evaluate_circular_pattern_feature(&op, &params, "hash-hole")
+        .expect_err("negative radius must be rejected");
+    assert!(matches!(error, CadError::InvalidParameter { .. }));
+}
+
+fn sweep_params(twist_rad: f64, scale_start: f64, scale_end: f64) -> ParameterStore {
+    let mut params = ParameterStore::default();
+    params
+        .set(
+            "sweep_twist_rad",
+            ScalarValue {
+                value: twist_rad,
+                unit: ScalarUnit::Unitless,
+            },
+        )
+        .expect("twist should set");
+    params
+        .set(
+            "sweep_scale_start",
+            ScalarValue {
+                value: scale_start,
+                unit: ScalarUnit::Unitless,
+            },
+        )
+        .expect("scale start should set");
+    params
+        .set(
+            "sweep_scale_end",
+            ScalarValue {
+                value: scale_end,
+                unit: ScalarUnit::Unitless,
+            },
+        )
+        .expect("scale end should set");
+    params
+}
+
+#[test]
+fn sweep_feature_evaluates_path_twist_and_scale_controls() {
+    let op = SweepFeatureOp {
+        feature_id: "feature.sweep.main".to_string(),
+        source_feature_id: "feature.profile.base".to_string(),
+        path_points_mm: vec![[0.0, 0.0, 0.0], [0.0, 0.0, 60.0], [30.0, 0.0, 60.0]],
+        twist_angle_param: "sweep_twist_rad".to_string(),
+        scale_start_param: "sweep_scale_start".to_string(),
+        scale_end_param: "sweep_scale_end".to_string(),
+        path_segments: 0,
+    };
+    let params = sweep_params(std::f64::consts::PI, 1.0, 0.5);
+    let first = evaluate_sweep_feature(&op, &params, "hash-profile").expect("sweep should eval");
+    let second = evaluate_sweep_feature(&op, &params, "hash-profile").expect("sweep should eval");
+
+    assert_eq!(first, second, "sweep evaluation must be deterministic");
+    assert_eq!(first.segment_count, 32, "path_segments=0 uses vcad default");
+    assert_eq!(first.stations.len(), 33);
+    assert_eq!(first.path_length_mm, 90.0);
+
+    let start = first.stations.first().expect("start station");
+    let end = first.stations.last().expect("end station");
+    assert_eq!(start.center_mm, [0.0, 0.0, 0.0]);
+    assert_eq!(end.center_mm, [30.0, 0.0, 60.0]);
+    assert_eq!(start.scale, 1.0);
+    assert_eq!(end.scale, 0.5);
+    assert_eq!(start.twist_angle_rad, 0.0);
+    assert!((end.twist_angle_rad - std::f64::consts::PI).abs() < 1e-12);
+}
+
+#[test]
+fn sweep_feature_rejects_zero_length_path() {
+    let op = SweepFeatureOp {
+        feature_id: "feature.sweep.zero".to_string(),
+        source_feature_id: "feature.profile.base".to_string(),
+        path_points_mm: vec![[10.0, 20.0, 30.0], [10.0, 20.0, 30.0]],
+        twist_angle_param: "sweep_twist_rad".to_string(),
+        scale_start_param: "sweep_scale_start".to_string(),
+        scale_end_param: "sweep_scale_end".to_string(),
+        path_segments: 16,
+    };
+    let error = evaluate_sweep_feature(&op, &sweep_params(0.0, 1.0, 1.0), "hash-profile")
+        .expect_err("zero-length path must fail");
+    assert!(matches!(error, CadError::InvalidPrimitive { .. }));
+    assert!(error.to_string().contains("zero length"));
+}
+
+#[test]
+fn sweep_feature_rejects_non_positive_scale() {
+    let op = SweepFeatureOp {
+        feature_id: "feature.sweep.invalid_scale".to_string(),
+        source_feature_id: "feature.profile.base".to_string(),
+        path_points_mm: vec![[0.0, 0.0, 0.0], [0.0, 10.0, 0.0]],
+        twist_angle_param: "sweep_twist_rad".to_string(),
+        scale_start_param: "sweep_scale_start".to_string(),
+        scale_end_param: "sweep_scale_end".to_string(),
+        path_segments: 8,
+    };
+    let error = evaluate_sweep_feature(&op, &sweep_params(0.0, 1.0, 0.0), "hash-profile")
+        .expect_err("non-positive scale should fail");
+    assert!(matches!(error, CadError::InvalidParameter { .. }));
+    assert!(error.to_string().contains("scale"));
+}
+
+fn loft_square_profile(profile_id: &str, z_mm: f64, size_mm: f64) -> LoftFeatureProfile {
+    LoftFeatureProfile {
+        profile_id: profile_id.to_string(),
+        vertices_mm: vec![
+            [0.0, 0.0, z_mm],
+            [size_mm, 0.0, z_mm],
+            [size_mm, size_mm, z_mm],
+            [0.0, size_mm, z_mm],
+        ],
+    }
+}
+
+#[test]
+fn loft_feature_supports_open_and_closed_options() {
+    let profiles = vec![
+        loft_square_profile("profile.a", 0.0, 20.0),
+        loft_square_profile("profile.b", 20.0, 15.0),
+        loft_square_profile("profile.c", 40.0, 10.0),
+    ];
+    let source_ids = vec![
+        "feature.profile.a".to_string(),
+        "feature.profile.b".to_string(),
+        "feature.profile.c".to_string(),
+    ];
+    let source_hashes = vec![
+        "hash.profile.a".to_string(),
+        "hash.profile.b".to_string(),
+        "hash.profile.c".to_string(),
+    ];
+
+    let open = evaluate_loft_feature(
+        &LoftFeatureOp {
+            feature_id: "feature.loft.open".to_string(),
+            source_feature_ids: source_ids.clone(),
+            profiles: profiles.clone(),
+            closed: false,
+        },
+        &source_hashes,
+    )
+    .expect("open loft should evaluate");
+    assert_eq!(open.profile_count, 3);
+    assert_eq!(open.vertices_per_profile, 4);
+    assert_eq!(open.transition_count, 2);
+    assert_eq!(open.lateral_patch_count, 8);
+    assert_eq!(open.cap_count, 2);
+
+    let closed = evaluate_loft_feature(
+        &LoftFeatureOp {
+            feature_id: "feature.loft.closed".to_string(),
+            source_feature_ids: source_ids,
+            profiles,
+            closed: true,
+        },
+        &source_hashes,
+    )
+    .expect("closed loft should evaluate");
+    assert_eq!(closed.transition_count, 3);
+    assert_eq!(closed.lateral_patch_count, 12);
+    assert_eq!(closed.cap_count, 0);
+    assert_ne!(open.geometry_hash, closed.geometry_hash);
+}
+
+#[test]
+fn loft_feature_is_deterministic_for_repeated_runs() {
+    let op = LoftFeatureOp {
+        feature_id: "feature.loft.main".to_string(),
+        source_feature_ids: vec![
+            "feature.profile.a".to_string(),
+            "feature.profile.b".to_string(),
+        ],
+        profiles: vec![
+            loft_square_profile("profile.a", 0.0, 20.0),
+            loft_square_profile("profile.b", 20.0, 10.0),
+        ],
+        closed: false,
+    };
+    let source_hashes = vec!["hash.profile.a".to_string(), "hash.profile.b".to_string()];
+    let first = evaluate_loft_feature(&op, &source_hashes).expect("first loft eval");
+    let second = evaluate_loft_feature(&op, &source_hashes).expect("second loft eval");
+    assert_eq!(first, second);
+}
+
+#[test]
+fn loft_feature_rejects_mismatched_profile_segment_counts() {
+    let op = LoftFeatureOp {
+        feature_id: "feature.loft.bad_segments".to_string(),
+        source_feature_ids: vec![
+            "feature.profile.a".to_string(),
+            "feature.profile.b".to_string(),
+        ],
+        profiles: vec![
+            loft_square_profile("profile.a", 0.0, 20.0),
+            LoftFeatureProfile {
+                profile_id: "profile.b".to_string(),
+                vertices_mm: vec![[0.0, 0.0, 20.0], [10.0, 0.0, 20.0], [5.0, 8.0, 20.0]],
+            },
+        ],
+        closed: false,
+    };
+    let error = evaluate_loft_feature(
+        &op,
+        &["hash.profile.a".to_string(), "hash.profile.b".to_string()],
+    )
+    .expect_err("mismatched segment counts should fail");
+    assert!(matches!(error, CadError::InvalidPrimitive { .. }));
+    assert!(error.to_string().contains("vertex count mismatch"));
+}
+
+#[test]
+fn loft_feature_rejects_too_few_profiles() {
+    let op = LoftFeatureOp {
+        feature_id: "feature.loft.too_few".to_string(),
+        source_feature_ids: vec!["feature.profile.a".to_string()],
+        profiles: vec![loft_square_profile("profile.a", 0.0, 20.0)],
+        closed: false,
+    };
+    let error = evaluate_loft_feature(&op, &["hash.profile.a".to_string()]).expect_err("must fail");
+    assert!(matches!(error, CadError::InvalidPrimitive { .. }));
+    assert!(error.to_string().contains("at least 2 profiles"));
 }
 
 #[test]

@@ -1,0 +1,486 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-009",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_fixture_corpus": "/home/christopherdavid/code/openagents/crates/cad/parity/fixtures/parity_fixture_corpus.json",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "workflow": {
+    "hard_blocker_priority": "p0",
+    "profiles": [
+      {
+        "profile_id": "phase_a_baseline_v1",
+        "description": "Program baseline gate: ensure hard blockers are tracked and bounded.",
+        "max_open_hard_blockers": 24,
+        "max_open_total": 32
+      },
+      {
+        "profile_id": "parity_complete_v1",
+        "description": "Final parity signoff: no open blockers and no open risks.",
+        "max_open_hard_blockers": 0,
+        "max_open_total": 0
+      }
+    ],
+    "evaluations": [
+      {
+        "profile_id": "phase_a_baseline_v1",
+        "open_hard_blockers": 16,
+        "open_total": 24,
+        "pass": true
+      },
+      {
+        "profile_id": "parity_complete_v1",
+        "open_hard_blockers": 16,
+        "open_total": 24,
+        "pass": false
+      }
+    ]
+  },
+  "risks": [
+    {
+      "risk_id": "risk.001",
+      "fixture_id": "commands.missing.01",
+      "surface": "commands",
+      "priority": "p0",
+      "severity": "critical",
+      "status": "open",
+      "blocker_state": "open_blocker",
+      "reference_key": "boolean",
+      "openagents_key": null,
+      "description": "Missing parity capability for boolean (commands)",
+      "mitigation": "prioritize command-surface parity implementation and replay fixtures",
+      "owner_lane": "crates/cad",
+      "evidence_refs": [
+        "crates/cad/parity/fixtures/parity_fixture_corpus.json",
+        "crates/cad/parity/parity_scorecard.json"
+      ]
+    },
+    {
+      "risk_id": "risk.002",
+      "fixture_id": "commands.missing.02",
+      "surface": "commands",
+      "priority": "p0",
+      "severity": "critical",
+      "status": "open",
+      "blocker_state": "open_blocker",
+      "reference_key": "import",
+      "openagents_key": null,
+      "description": "Missing parity capability for import (commands)",
+      "mitigation": "prioritize command-surface parity implementation and replay fixtures",
+      "owner_lane": "crates/cad",
+      "evidence_refs": [
+        "crates/cad/parity/fixtures/parity_fixture_corpus.json",
+        "crates/cad/parity/parity_scorecard.json"
+      ]
+    },
+    {
+      "risk_id": "risk.003",
+      "fixture_id": "commands.missing.03",
+      "surface": "commands",
+      "priority": "p0",
+      "severity": "critical",
+      "status": "open",
+      "blocker_state": "open_blocker",
+      "reference_key": "import-urdf",
+      "openagents_key": null,
+      "description": "Missing parity capability for import-urdf (commands)",
+      "mitigation": "prioritize command-surface parity implementation and replay fixtures",
+      "owner_lane": "crates/cad",
+      "evidence_refs": [
+        "crates/cad/parity/fixtures/parity_fixture_corpus.json",
+        "crates/cad/parity/parity_scorecard.json"
+      ]
+    },
+    {
+      "risk_id": "risk.004",
+      "fixture_id": "commands.missing.04",
+      "surface": "commands",
+      "priority": "p0",
+      "severity": "critical",
+      "status": "open",
+      "blocker_state": "open_blocker",
+      "reference_key": "info",
+      "openagents_key": null,
+      "description": "Missing parity capability for info (commands)",
+      "mitigation": "prioritize command-surface parity implementation and replay fixtures",
+      "owner_lane": "crates/cad",
+      "evidence_refs": [
+        "crates/cad/parity/fixtures/parity_fixture_corpus.json",
+        "crates/cad/parity/parity_scorecard.json"
+      ]
+    },
+    {
+      "risk_id": "risk.005",
+      "fixture_id": "commands.missing.05",
+      "surface": "commands",
+      "priority": "p0",
+      "severity": "critical",
+      "status": "open",
+      "blocker_state": "open_blocker",
+      "reference_key": "new",
+      "openagents_key": null,
+      "description": "Missing parity capability for new (commands)",
+      "mitigation": "prioritize command-surface parity implementation and replay fixtures",
+      "owner_lane": "crates/cad",
+      "evidence_refs": [
+        "crates/cad/parity/fixtures/parity_fixture_corpus.json",
+        "crates/cad/parity/parity_scorecard.json"
+      ]
+    },
+    {
+      "risk_id": "risk.006",
+      "fixture_id": "commands.missing.06",
+      "surface": "commands",
+      "priority": "p0",
+      "severity": "critical",
+      "status": "open",
+      "blocker_state": "open_blocker",
+      "reference_key": "print-server",
+      "openagents_key": null,
+      "description": "Missing parity capability for print-server (commands)",
+      "mitigation": "prioritize command-surface parity implementation and replay fixtures",
+      "owner_lane": "crates/cad",
+      "evidence_refs": [
+        "crates/cad/parity/fixtures/parity_fixture_corpus.json",
+        "crates/cad/parity/parity_scorecard.json"
+      ]
+    },
+    {
+      "risk_id": "risk.007",
+      "fixture_id": "commands.missing.07",
+      "surface": "commands",
+      "priority": "p0",
+      "severity": "critical",
+      "status": "open",
+      "blocker_state": "open_blocker",
+      "reference_key": "render",
+      "openagents_key": null,
+      "description": "Missing parity capability for render (commands)",
+      "mitigation": "prioritize command-surface parity implementation and replay fixtures",
+      "owner_lane": "crates/cad",
+      "evidence_refs": [
+        "crates/cad/parity/fixtures/parity_fixture_corpus.json",
+        "crates/cad/parity/parity_scorecard.json"
+      ]
+    },
+    {
+      "risk_id": "risk.008",
+      "fixture_id": "commands.missing.08",
+      "surface": "commands",
+      "priority": "p0",
+      "severity": "critical",
+      "status": "open",
+      "blocker_state": "open_blocker",
+      "reference_key": "repl",
+      "openagents_key": null,
+      "description": "Missing parity capability for repl (commands)",
+      "mitigation": "prioritize command-surface parity implementation and replay fixtures",
+      "owner_lane": "crates/cad",
+      "evidence_refs": [
+        "crates/cad/parity/fixtures/parity_fixture_corpus.json",
+        "crates/cad/parity/parity_scorecard.json"
+      ]
+    },
+    {
+      "risk_id": "risk.009",
+      "fixture_id": "crates.missing.01",
+      "surface": "crates",
+      "priority": "p1",
+      "severity": "high",
+      "status": "open",
+      "blocker_state": "open_risk",
+      "reference_key": "stepperoni",
+      "openagents_key": null,
+      "description": "Missing parity capability for stepperoni (crates)",
+      "mitigation": "add crate-level parity adapters and integration fixtures",
+      "owner_lane": "crates/cad",
+      "evidence_refs": [
+        "crates/cad/parity/fixtures/parity_fixture_corpus.json",
+        "crates/cad/parity/parity_scorecard.json"
+      ]
+    },
+    {
+      "risk_id": "risk.010",
+      "fixture_id": "crates.missing.02",
+      "surface": "crates",
+      "priority": "p1",
+      "severity": "high",
+      "status": "open",
+      "blocker_state": "open_risk",
+      "reference_key": "termview",
+      "openagents_key": null,
+      "description": "Missing parity capability for termview (crates)",
+      "mitigation": "add crate-level parity adapters and integration fixtures",
+      "owner_lane": "crates/cad",
+      "evidence_refs": [
+        "crates/cad/parity/fixtures/parity_fixture_corpus.json",
+        "crates/cad/parity/parity_scorecard.json"
+      ]
+    },
+    {
+      "risk_id": "risk.011",
+      "fixture_id": "crates.missing.03",
+      "surface": "crates",
+      "priority": "p1",
+      "severity": "high",
+      "status": "open",
+      "blocker_state": "open_risk",
+      "reference_key": "vcad",
+      "openagents_key": null,
+      "description": "Missing parity capability for vcad (crates)",
+      "mitigation": "add crate-level parity adapters and integration fixtures",
+      "owner_lane": "crates/cad",
+      "evidence_refs": [
+        "crates/cad/parity/fixtures/parity_fixture_corpus.json",
+        "crates/cad/parity/parity_scorecard.json"
+      ]
+    },
+    {
+      "risk_id": "risk.012",
+      "fixture_id": "crates.missing.04",
+      "surface": "crates",
+      "priority": "p1",
+      "severity": "high",
+      "status": "open",
+      "blocker_state": "open_risk",
+      "reference_key": "vcad-app",
+      "openagents_key": null,
+      "description": "Missing parity capability for vcad-app (crates)",
+      "mitigation": "add crate-level parity adapters and integration fixtures",
+      "owner_lane": "crates/cad",
+      "evidence_refs": [
+        "crates/cad/parity/fixtures/parity_fixture_corpus.json",
+        "crates/cad/parity/parity_scorecard.json"
+      ]
+    },
+    {
+      "risk_id": "risk.013",
+      "fixture_id": "crates.missing.05",
+      "surface": "crates",
+      "priority": "p1",
+      "severity": "high",
+      "status": "open",
+      "blocker_state": "open_risk",
+      "reference_key": "vcad-cli",
+      "openagents_key": null,
+      "description": "Missing parity capability for vcad-cli (crates)",
+      "mitigation": "add crate-level parity adapters and integration fixtures",
+      "owner_lane": "crates/cad",
+      "evidence_refs": [
+        "crates/cad/parity/fixtures/parity_fixture_corpus.json",
+        "crates/cad/parity/parity_scorecard.json"
+      ]
+    },
+    {
+      "risk_id": "risk.014",
+      "fixture_id": "crates.missing.06",
+      "surface": "crates",
+      "priority": "p1",
+      "severity": "high",
+      "status": "open",
+      "blocker_state": "open_risk",
+      "reference_key": "vcad-crdt",
+      "openagents_key": null,
+      "description": "Missing parity capability for vcad-crdt (crates)",
+      "mitigation": "add crate-level parity adapters and integration fixtures",
+      "owner_lane": "crates/cad",
+      "evidence_refs": [
+        "crates/cad/parity/fixtures/parity_fixture_corpus.json",
+        "crates/cad/parity/parity_scorecard.json"
+      ]
+    },
+    {
+      "risk_id": "risk.015",
+      "fixture_id": "crates.missing.07",
+      "surface": "crates",
+      "priority": "p1",
+      "severity": "high",
+      "status": "open",
+      "blocker_state": "open_risk",
+      "reference_key": "vcad-ecad-pcb",
+      "openagents_key": null,
+      "description": "Missing parity capability for vcad-ecad-pcb (crates)",
+      "mitigation": "add crate-level parity adapters and integration fixtures",
+      "owner_lane": "crates/cad",
+      "evidence_refs": [
+        "crates/cad/parity/fixtures/parity_fixture_corpus.json",
+        "crates/cad/parity/parity_scorecard.json"
+      ]
+    },
+    {
+      "risk_id": "risk.016",
+      "fixture_id": "crates.missing.08",
+      "surface": "crates",
+      "priority": "p1",
+      "severity": "high",
+      "status": "open",
+      "blocker_state": "open_risk",
+      "reference_key": "vcad-ecad-schematic",
+      "openagents_key": null,
+      "description": "Missing parity capability for vcad-ecad-schematic (crates)",
+      "mitigation": "add crate-level parity adapters and integration fixtures",
+      "owner_lane": "crates/cad",
+      "evidence_refs": [
+        "crates/cad/parity/fixtures/parity_fixture_corpus.json",
+        "crates/cad/parity/parity_scorecard.json"
+      ]
+    },
+    {
+      "risk_id": "risk.017",
+      "fixture_id": "docs.missing.01",
+      "surface": "docs",
+      "priority": "p0",
+      "severity": "critical",
+      "status": "open",
+      "blocker_state": "open_blocker",
+      "reference_key": "10-second-robot",
+      "openagents_key": null,
+      "description": "Missing parity capability for 10-second-robot (docs)",
+      "mitigation": "close documentation capability gaps with deterministic contract coverage",
+      "owner_lane": "crates/cad",
+      "evidence_refs": [
+        "crates/cad/parity/fixtures/parity_fixture_corpus.json",
+        "crates/cad/parity/parity_scorecard.json"
+      ]
+    },
+    {
+      "risk_id": "risk.018",
+      "fixture_id": "docs.missing.02",
+      "surface": "docs",
+      "priority": "p0",
+      "severity": "critical",
+      "status": "open",
+      "blocker_state": "open_blocker",
+      "reference_key": "2d-drafting",
+      "openagents_key": null,
+      "description": "Missing parity capability for 2d-drafting (docs)",
+      "mitigation": "close documentation capability gaps with deterministic contract coverage",
+      "owner_lane": "crates/cad",
+      "evidence_refs": [
+        "crates/cad/parity/fixtures/parity_fixture_corpus.json",
+        "crates/cad/parity/parity_scorecard.json"
+      ]
+    },
+    {
+      "risk_id": "risk.019",
+      "fixture_id": "docs.missing.03",
+      "surface": "docs",
+      "priority": "p0",
+      "severity": "critical",
+      "status": "open",
+      "blocker_state": "open_blocker",
+      "reference_key": "2d-drafting",
+      "openagents_key": null,
+      "description": "Missing parity capability for 2d-drafting (docs)",
+      "mitigation": "close documentation capability gaps with deterministic contract coverage",
+      "owner_lane": "crates/cad",
+      "evidence_refs": [
+        "crates/cad/parity/fixtures/parity_fixture_corpus.json",
+        "crates/cad/parity/parity_scorecard.json"
+      ]
+    },
+    {
+      "risk_id": "risk.020",
+      "fixture_id": "docs.missing.04",
+      "surface": "docs",
+      "priority": "p0",
+      "severity": "critical",
+      "status": "open",
+      "blocker_state": "open_blocker",
+      "reference_key": "ai-co-designer",
+      "openagents_key": null,
+      "description": "Missing parity capability for ai-co-designer (docs)",
+      "mitigation": "close documentation capability gaps with deterministic contract coverage",
+      "owner_lane": "crates/cad",
+      "evidence_refs": [
+        "crates/cad/parity/fixtures/parity_fixture_corpus.json",
+        "crates/cad/parity/parity_scorecard.json"
+      ]
+    },
+    {
+      "risk_id": "risk.021",
+      "fixture_id": "docs.missing.05",
+      "surface": "docs",
+      "priority": "p0",
+      "severity": "critical",
+      "status": "open",
+      "blocker_state": "open_blocker",
+      "reference_key": "assembly-joints",
+      "openagents_key": null,
+      "description": "Missing parity capability for assembly-joints (docs)",
+      "mitigation": "close documentation capability gaps with deterministic contract coverage",
+      "owner_lane": "crates/cad",
+      "evidence_refs": [
+        "crates/cad/parity/fixtures/parity_fixture_corpus.json",
+        "crates/cad/parity/parity_scorecard.json"
+      ]
+    },
+    {
+      "risk_id": "risk.022",
+      "fixture_id": "docs.missing.06",
+      "surface": "docs",
+      "priority": "p0",
+      "severity": "critical",
+      "status": "open",
+      "blocker_state": "open_blocker",
+      "reference_key": "assembly-joints",
+      "openagents_key": null,
+      "description": "Missing parity capability for assembly-joints (docs)",
+      "mitigation": "close documentation capability gaps with deterministic contract coverage",
+      "owner_lane": "crates/cad",
+      "evidence_refs": [
+        "crates/cad/parity/fixtures/parity_fixture_corpus.json",
+        "crates/cad/parity/parity_scorecard.json"
+      ]
+    },
+    {
+      "risk_id": "risk.023",
+      "fixture_id": "docs.missing.07",
+      "surface": "docs",
+      "priority": "p0",
+      "severity": "critical",
+      "status": "open",
+      "blocker_state": "open_blocker",
+      "reference_key": "boolean-operations",
+      "openagents_key": null,
+      "description": "Missing parity capability for boolean-operations (docs)",
+      "mitigation": "close documentation capability gaps with deterministic contract coverage",
+      "owner_lane": "crates/cad",
+      "evidence_refs": [
+        "crates/cad/parity/fixtures/parity_fixture_corpus.json",
+        "crates/cad/parity/parity_scorecard.json"
+      ]
+    },
+    {
+      "risk_id": "risk.024",
+      "fixture_id": "docs.missing.08",
+      "surface": "docs",
+      "priority": "p0",
+      "severity": "critical",
+      "status": "open",
+      "blocker_state": "open_blocker",
+      "reference_key": "boolean-operations",
+      "openagents_key": null,
+      "description": "Missing parity capability for boolean-operations (docs)",
+      "mitigation": "close documentation capability gaps with deterministic contract coverage",
+      "owner_lane": "crates/cad",
+      "evidence_refs": [
+        "crates/cad/parity/fixtures/parity_fixture_corpus.json",
+        "crates/cad/parity/parity_scorecard.json"
+      ]
+    }
+  ],
+  "summary": {
+    "open_total": 24,
+    "open_hard_blockers": 16,
+    "by_priority": {
+      "p0": 16,
+      "p1": 8
+    },
+    "by_surface": {
+      "commands": 8,
+      "crates": 8,
+      "docs": 8
+    }
+  }
+}

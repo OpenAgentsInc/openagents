@@ -1,0 +1,124 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-094",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/render_mode_vcad_reference.json",
+  "reference_fixture_sha256": "a35e3a0951881cf7f09e6049af33152e2d476c4cb72901c5a89d09cc92ef75c2",
+  "reference_source": "~/code/vcad/packages/core/src/stores/ui-store.ts + ~/code/vcad/packages/app/src/stores/drawing-store.ts + crates/cad/docs/PLAN.md",
+  "reference_commit_match": true,
+  "default_state_match": true,
+  "wireframe_toggle_match": true,
+  "hidden_line_toggle_match": true,
+  "variant_profiles_match": true,
+  "cycle_sequence_match": true,
+  "alias_resolution_match": true,
+  "deterministic_replay_match": true,
+  "default_state": {
+    "render_mode": "standard",
+    "view_mode": "3d",
+    "show_wireframe": false,
+    "show_hidden_lines": true
+  },
+  "toggle_snapshots": [
+    {
+      "step_id": "wireframe_toggle_on",
+      "show_wireframe": true,
+      "show_hidden_lines": true
+    },
+    {
+      "step_id": "wireframe_toggle_off",
+      "show_wireframe": false,
+      "show_hidden_lines": true
+    },
+    {
+      "step_id": "hidden_line_toggle_off",
+      "show_wireframe": false,
+      "show_hidden_lines": false
+    },
+    {
+      "step_id": "hidden_line_toggle_on",
+      "show_wireframe": false,
+      "show_hidden_lines": true
+    }
+  ],
+  "variant_profiles": [
+    {
+      "variant_id": "hidden-line",
+      "render_mode": "standard",
+      "view_mode": "2d",
+      "show_wireframe": false,
+      "show_hidden_lines": true,
+      "face_fill_enabled": false,
+      "edge_overlay_enabled": true,
+      "occluded_edges_dashed": true
+    },
+    {
+      "variant_id": "standard",
+      "render_mode": "standard",
+      "view_mode": "3d",
+      "show_wireframe": false,
+      "show_hidden_lines": false,
+      "face_fill_enabled": true,
+      "edge_overlay_enabled": false,
+      "occluded_edges_dashed": false
+    },
+    {
+      "variant_id": "wire",
+      "render_mode": "standard",
+      "view_mode": "3d",
+      "show_wireframe": true,
+      "show_hidden_lines": false,
+      "face_fill_enabled": false,
+      "edge_overlay_enabled": true,
+      "occluded_edges_dashed": false
+    }
+  ],
+  "cycle_sequence": [
+    "standard",
+    "wire",
+    "hidden-line",
+    "standard"
+  ],
+  "alias_resolutions": [
+    {
+      "token": "hidden-line",
+      "recognized": true,
+      "resolved_variant_id": "hidden-line"
+    },
+    {
+      "token": "hidden_line",
+      "recognized": true,
+      "resolved_variant_id": "hidden-line"
+    },
+    {
+      "token": "standard",
+      "recognized": true,
+      "resolved_variant_id": "standard"
+    },
+    {
+      "token": "unknown",
+      "recognized": false,
+      "resolved_variant_id": "standard"
+    },
+    {
+      "token": "wire",
+      "recognized": true,
+      "resolved_variant_id": "wire"
+    },
+    {
+      "token": "wireframe",
+      "recognized": true,
+      "resolved_variant_id": "wire"
+    }
+  ],
+  "deterministic_signature": "1ee40a035eccba5c",
+  "parity_contracts": [
+    "default render state mirrors vcad standard mode defaults (standard pipeline, wireframe off)",
+    "wireframe toggle semantics match vcad ui-store behavior (false->true->false)",
+    "hidden-line toggle semantics match vcad drawing-store behavior (true->false->true)",
+    "render variants standard/wire/hidden-line map to deterministic style profiles",
+    "variant alias parsing and mode cycling are deterministic across replay"
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-022",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "sample_text": "OpenAgents 90",
+  "left_alignment": {
+    "profile_count": 17,
+    "hole_profile_count": 5,
+    "min_x": 0.0,
+    "max_x": 84.15000000000002,
+    "min_y": 0.0,
+    "max_y": 10.0,
+    "deterministic_signature": "dba91e942f8e981f"
+  },
+  "center_alignment": {
+    "profile_count": 17,
+    "hole_profile_count": 5,
+    "min_x": -42.07500000000001,
+    "max_x": 42.074999999999996,
+    "min_y": 0.0,
+    "max_y": 10.0,
+    "deterministic_signature": "1f3bdd55f28d57a1"
+  },
+  "right_alignment": {
+    "profile_count": 17,
+    "hole_profile_count": 5,
+    "min_x": -84.15000000000002,
+    "max_x": -3.197442310920451e-14,
+    "min_y": 0.0,
+    "max_y": 10.0,
+    "deterministic_signature": "0b9a638a609293de"
+  },
+  "multiline_bounds_mm": [
+    38.4,
+    24.0
+  ],
+  "parity_contracts": [
+    "text_to_profiles is deterministic for fixed text/layout/font inputs",
+    "alignment offsets shift profile x-range while preserving profile counts",
+    "invalid text layout inputs map to CadError::InvalidParameter",
+    "multiline bounds use line_spacing scaling"
+  ]
+}

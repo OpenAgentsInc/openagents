@@ -1,0 +1,206 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-043",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "vcad_reference_sources": [
+    "docs/features/sketch-mode.md (Constraint Types table)",
+    "crates/vcad-kernel-constraints/src/constraint.rs (Constraint enum)"
+  ],
+  "supported_geometric_kinds": [
+    "coincident",
+    "point_on_line",
+    "parallel",
+    "perpendicular",
+    "horizontal",
+    "vertical",
+    "tangent",
+    "equal_length",
+    "equal_radius",
+    "concentric",
+    "fixed",
+    "point_on_circle",
+    "line_through_center",
+    "midpoint",
+    "symmetric"
+  ],
+  "supported_dimensional_kinds": [
+    "distance",
+    "point_line_distance",
+    "angle",
+    "radius",
+    "length",
+    "horizontal_distance",
+    "vertical_distance",
+    "diameter"
+  ],
+  "legacy_kinds": [
+    "dimension"
+  ],
+  "constraint_kind_summaries": [
+    {
+      "kind": "angle",
+      "category": "dimensional",
+      "schema_supported": true,
+      "solver_supported": false
+    },
+    {
+      "kind": "coincident",
+      "category": "geometric",
+      "schema_supported": true,
+      "solver_supported": true
+    },
+    {
+      "kind": "concentric",
+      "category": "geometric",
+      "schema_supported": true,
+      "solver_supported": false
+    },
+    {
+      "kind": "diameter",
+      "category": "dimensional",
+      "schema_supported": true,
+      "solver_supported": false
+    },
+    {
+      "kind": "dimension",
+      "category": "legacy",
+      "schema_supported": true,
+      "solver_supported": true
+    },
+    {
+      "kind": "distance",
+      "category": "dimensional",
+      "schema_supported": true,
+      "solver_supported": false
+    },
+    {
+      "kind": "equal_length",
+      "category": "geometric",
+      "schema_supported": true,
+      "solver_supported": false
+    },
+    {
+      "kind": "equal_radius",
+      "category": "geometric",
+      "schema_supported": true,
+      "solver_supported": false
+    },
+    {
+      "kind": "fixed",
+      "category": "geometric",
+      "schema_supported": true,
+      "solver_supported": false
+    },
+    {
+      "kind": "horizontal",
+      "category": "geometric",
+      "schema_supported": true,
+      "solver_supported": true
+    },
+    {
+      "kind": "horizontal_distance",
+      "category": "dimensional",
+      "schema_supported": true,
+      "solver_supported": false
+    },
+    {
+      "kind": "length",
+      "category": "dimensional",
+      "schema_supported": true,
+      "solver_supported": true
+    },
+    {
+      "kind": "line_through_center",
+      "category": "geometric",
+      "schema_supported": true,
+      "solver_supported": false
+    },
+    {
+      "kind": "midpoint",
+      "category": "geometric",
+      "schema_supported": true,
+      "solver_supported": false
+    },
+    {
+      "kind": "parallel",
+      "category": "geometric",
+      "schema_supported": true,
+      "solver_supported": false
+    },
+    {
+      "kind": "perpendicular",
+      "category": "geometric",
+      "schema_supported": true,
+      "solver_supported": false
+    },
+    {
+      "kind": "point_line_distance",
+      "category": "dimensional",
+      "schema_supported": true,
+      "solver_supported": false
+    },
+    {
+      "kind": "point_on_circle",
+      "category": "geometric",
+      "schema_supported": true,
+      "solver_supported": false
+    },
+    {
+      "kind": "point_on_line",
+      "category": "geometric",
+      "schema_supported": true,
+      "solver_supported": false
+    },
+    {
+      "kind": "radius",
+      "category": "dimensional",
+      "schema_supported": true,
+      "solver_supported": true
+    },
+    {
+      "kind": "symmetric",
+      "category": "geometric",
+      "schema_supported": true,
+      "solver_supported": false
+    },
+    {
+      "kind": "tangent",
+      "category": "geometric",
+      "schema_supported": true,
+      "solver_supported": true
+    },
+    {
+      "kind": "vertical",
+      "category": "geometric",
+      "schema_supported": true,
+      "solver_supported": true
+    },
+    {
+      "kind": "vertical_distance",
+      "category": "dimensional",
+      "schema_supported": true,
+      "solver_supported": false
+    }
+  ],
+  "solver_summary": {
+    "solved_constraints": 7,
+    "unsolved_constraints": 17,
+    "unsupported_kind_warning_count": 17,
+    "warning_codes": [
+      "SKETCH_CONSTRAINT_KIND_NOT_IMPLEMENTED",
+      "SKETCH_LM_JACOBIAN_RANK_DEFICIENT"
+    ]
+  },
+  "sample_model_hash": "ce8cfa777746258f",
+  "solve_report_hash": "060e6df525126f63",
+  "deterministic_replay_match": true,
+  "deterministic_signature": "e5e262316afcbd86",
+  "parity_contracts": [
+    "sketch constraint schema exposes full geometric + dimensional enum parity surface",
+    "model-level validation enforces anchor/entity reference integrity for all constraint kinds",
+    "deterministic solver reports unsupported kinds with stable warning diagnostics",
+    "constraint enum sample corpus replays deterministically"
+  ]
+}

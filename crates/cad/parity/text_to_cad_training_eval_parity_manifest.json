@@ -1,0 +1,33 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-090",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/text_to_cad_training_eval_vcad_reference.json",
+  "reference_fixture_sha256": "413663110ca55e54cf132133e31e770696216dc6f82e18322e8586e1f9235036",
+  "reference_source": "~/code/vcad/docs/features/text-to-cad.md",
+  "reference_commit_match": true,
+  "gate_contract_match": true,
+  "split_contract_match": true,
+  "deterministic_replay_match": true,
+  "snapshot": {
+    "dataset_hash": "ed097f50c5486602",
+    "gated_code": "CAD0-TRAINING-HOOKS-GATED",
+    "gated_env": "OPENAGENTS_CAD_ENABLE_TRAINING_HOOKS",
+    "eval_ratio_percent": 20,
+    "train_sample_count": 11,
+    "eval_sample_count": 1,
+    "total_split_sample_count": 12,
+    "train_payload_hash": "5d324ba763893ed1",
+    "eval_payload_hash": "3ec7f17f8eea4b0f",
+    "record_ndjson_hash": "5bc02cad4534855c"
+  },
+  "deterministic_signature": "b2867dcca6d9f402",
+  "parity_contracts": [
+    "training/eval hooks are gated by explicit operator control",
+    "enabled hook path produces deterministic train/eval sample splits",
+    "hook record export emits deterministic ndjson payloads",
+    "training/eval hook snapshot is deterministic across replay"
+  ]
+}

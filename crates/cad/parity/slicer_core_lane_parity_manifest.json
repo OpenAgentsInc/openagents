@@ -1,0 +1,43 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-124",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/slicer_core_lane_vcad_reference.json",
+  "reference_fixture_sha256": "1da1f93b54a65627443802ff57501ef63ccae28d1039d3984840c97e86d5fe87",
+  "reference_source": "~/code/vcad/crates/vcad-slicer-core/src/lib.rs",
+  "reference_issue_match": true,
+  "reference_commit_match": true,
+  "row_set_match": true,
+  "contract_set_match": true,
+  "deterministic_replay_match": true,
+  "rows": [
+    {
+      "capability": "CAD Slicer Core Lane Parity",
+      "case_id": "capability_scope",
+      "issue_id": "VCAD-PARITY-124"
+    },
+    {
+      "case_id": "phase_scope",
+      "lane_label": "slicer-core-lane",
+      "phase": "Phase J - Full workspace parity lanes"
+    },
+    {
+      "case_id": "reference_source",
+      "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+      "vcad_source": "~/code/vcad/crates/vcad-slicer-core/src/lib.rs"
+    }
+  ],
+  "contracts": [
+    "CAD Slicer Core Lane Parity parity contracts are aligned to vcad reference behavior",
+    "CI parity artifacts include slicer_core_lane manifest and vcad fixture evidence",
+    "Phase J - Full workspace parity lanes parity lane remains deterministic across replay"
+  ],
+  "deterministic_signature": "76c6b3d4f581a646",
+  "parity_contracts": [
+    "CAD Slicer Core Lane Parity parity contracts are aligned to vcad reference behavior",
+    "CI parity artifacts include slicer_core_lane manifest and vcad fixture evidence",
+    "Phase J - Full workspace parity lanes parity lane remains deterministic across replay"
+  ]
+}

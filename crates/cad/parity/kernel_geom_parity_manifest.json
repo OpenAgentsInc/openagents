@@ -1,0 +1,48 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-014",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "supported_surface_kinds": [
+    "Plane",
+    "Cylinder",
+    "Cone",
+    "Sphere",
+    "Torus",
+    "Bilinear"
+  ],
+  "sample_evaluations": {
+    "plane_point": [
+      2.0,
+      3.0,
+      0.0
+    ],
+    "cylinder_point": [
+      2.0,
+      0.0,
+      1.0
+    ],
+    "cone_point": [
+      0.6081301065260175,
+      0.0,
+      3.0
+    ],
+    "sphere_point": [
+      5.0,
+      0.0,
+      0.0
+    ],
+    "torus_point": [
+      7.0,
+      0.0,
+      0.0
+    ],
+    "bilinear_point": [
+      0.5,
+      0.5,
+      0.25
+    ]
+  },
+  "geometry_store_surface_count": 6
+}

@@ -1,0 +1,89 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-058",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_corpus_path": "crates/cad/parity/fixtures/assembly_joint_frs_vcad_reference.json",
+  "reference_corpus_sha256": "0dff899a2910fb44a7c96cd42fb29273e68a7814f05adb5d3ede1af93e69c2d7",
+  "reference_source": "~/code/vcad/docs/features/assembly-joints.md + ~/code/vcad/packages/engine/src/kinematics.ts",
+  "reference_commit_match": true,
+  "supported_joint_types": [
+    "Fixed",
+    "Revolute",
+    "Slider"
+  ],
+  "case_snapshots": [
+    {
+      "case_id": "fixed.anchor_delta",
+      "joint_type": "Fixed",
+      "translation_mm": [
+        "10.000000",
+        "0.000000",
+        "0.000000"
+      ],
+      "axis": null,
+      "angle_deg": null,
+      "offset_mm": null
+    },
+    {
+      "case_id": "revolute.axis_normalized",
+      "joint_type": "Revolute",
+      "translation_mm": [
+        "6.464466",
+        "0.000000",
+        "1.464466"
+      ],
+      "axis": [
+        "0.000000",
+        "1.000000",
+        "0.000000"
+      ],
+      "angle_deg": "45.000000",
+      "offset_mm": null
+    },
+    {
+      "case_id": "revolute.zero_axis_fallback",
+      "joint_type": "Revolute",
+      "translation_mm": [
+        "15.000000",
+        "5.000000",
+        "0.000000"
+      ],
+      "axis": [
+        "0.000000",
+        "0.000000",
+        "1.000000"
+      ],
+      "angle_deg": "90.000000",
+      "offset_mm": null
+    },
+    {
+      "case_id": "slider.translation_offset",
+      "joint_type": "Slider",
+      "translation_mm": [
+        "17.500000",
+        "0.000000",
+        "0.000000"
+      ],
+      "axis": [
+        "1.000000",
+        "0.000000",
+        "0.000000"
+      ],
+      "angle_deg": null,
+      "offset_mm": "12.500000"
+    }
+  ],
+  "axis_zero_fallback_applied": true,
+  "unsupported_joint_scope_guard": true,
+  "behavior_match": true,
+  "deterministic_replay_match": true,
+  "deterministic_signature": "be723ad9de0d9513",
+  "parity_contracts": [
+    "fixed joints preserve anchor-delta translation semantics",
+    "revolute joints normalize axes and fallback to +Z for zero-length axis",
+    "slider joints apply linear offset along normalized axis",
+    "cylindrical/ball joints are explicitly out-of-scope for the fixed/revolute/slider parity lane"
+  ]
+}

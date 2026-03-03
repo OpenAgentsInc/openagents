@@ -1,0 +1,28 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-085",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/packages/mcp/src/tools/{create.ts,export.ts,inspect.ts} + ~/code/vcad/docs/features/headless-api.md",
+  "expected_tool_names": [
+    "create_cad_document",
+    "export_cad",
+    "inspect_cad"
+  ],
+  "expected_export_formats": [
+    {
+      "format": "glb",
+      "min_bytes": 12
+    },
+    {
+      "format": "stl",
+      "min_bytes": 84
+    }
+  ],
+  "expected_create_min_nodes": 2,
+  "expected_create_root_count": 1,
+  "expected_inspect_parts": 1,
+  "expected_inspect_min_volume_mm3": 900.0,
+  "expected_inspect_max_volume_mm3": 1100.0,
+  "expected_inspect_min_triangles": 12,
+  "expected_mass_present": true
+}

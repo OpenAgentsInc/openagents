@@ -1,0 +1,54 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-044",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "vcad_reference_sources": [
+    "docs/features/sketch-mode.md (Constraint Solver section)",
+    "crates/vcad-kernel-constraints/src/solver.rs (Levenberg-Marquardt iterative solver)"
+  ],
+  "lm_config": {
+    "max_iterations": 100,
+    "residual_tolerance_mm": 1e-6,
+    "initial_lambda": 0.001,
+    "lambda_increase": 10.0,
+    "lambda_decrease": 0.1,
+    "min_lambda": 1e-12,
+    "max_lambda": 1000000000000.0
+  },
+  "scenario_id": "coupled_constraint_profile_v1",
+  "report_snapshot": {
+    "passed": true,
+    "iteration_count": 19,
+    "solved_constraints": 6,
+    "unsolved_constraints": 0,
+    "constraint_status": {
+      "constraint.dimension.length.001": "solved",
+      "constraint.dimension.radius.001": "solved",
+      "constraint.horizontal.001": "solved",
+      "constraint.tangent.001": "solved",
+      "constraint.vertical.001": "solved",
+      "constraint.zz.coincident.001": "solved"
+    },
+    "residuals_mm": {
+      "constraint.dimension.length.001": 0.00005919279617572215,
+      "constraint.dimension.radius.001": 3.9956044339817254e-7,
+      "constraint.horizontal.001": 5.993394708164734e-7,
+      "constraint.tangent.001": 0.0,
+      "constraint.vertical.001": 4.994505538036265e-7,
+      "constraint.zz.coincident.001": 0.00006123894126977789
+    },
+    "diagnostics": []
+  },
+  "report_hash": "53578d24e2651d93",
+  "solved_model_hash": "3596174256e3bd30",
+  "multi_iteration_observed": true,
+  "deterministic_replay_match": true,
+  "deterministic_signature": "7067ab5de5f1c3ce",
+  "parity_contracts": [
+    "sketch solver runs iterative LM-style passes with damping instead of fixed one-pass execution",
+    "coupled constraint scenario requires >1 deterministic iteration for convergence",
+    "replay from identical seed yields byte-identical solve report and solved sketch model"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-111",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/crates/vcad-gym/src/lib.rs + ~/code/vcad/crates/vcad-gym/src/env.rs",
+  "expected_rows": [
+    {
+      "case_id": "capability_scope",
+      "issue_id": "VCAD-PARITY-111",
+      "capability": "CAD Gym Style API Parity"
+    },
+    {
+      "case_id": "phase_scope",
+      "phase": "Phase I - Physics + URDF parity",
+      "lane_label": "gym-style-api"
+    },
+    {
+      "case_id": "reference_source",
+      "vcad_source": "~/code/vcad/crates/vcad-gym/src/lib.rs + ~/code/vcad/crates/vcad-gym/src/env.rs",
+      "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81"
+    }
+  ],
+  "expected_contracts": [
+    "CAD Gym Style API Parity parity contracts are aligned to vcad reference behavior",
+    "Phase I - Physics + URDF parity parity lane remains deterministic across replay",
+    "CI parity artifacts include gym_style_api manifest and vcad fixture evidence"
+  ]
+}

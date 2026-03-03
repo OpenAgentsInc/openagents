@@ -1,0 +1,43 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-114",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/urdf_export_fixtures_vcad_reference.json",
+  "reference_fixture_sha256": "610cf06c27325cfc5bd3044bfbc4d40a3ff7df089616b4bbfbc661bf8d2648c0",
+  "reference_source": "~/code/vcad/crates/vcad-urdf/src/export.rs + ~/code/vcad/crates/vcad-urdf/tests/fixtures",
+  "reference_issue_match": true,
+  "reference_commit_match": true,
+  "row_set_match": true,
+  "contract_set_match": true,
+  "deterministic_replay_match": true,
+  "rows": [
+    {
+      "capability": "CAD URDF Export Fixtures Parity",
+      "case_id": "capability_scope",
+      "issue_id": "VCAD-PARITY-114"
+    },
+    {
+      "case_id": "phase_scope",
+      "lane_label": "urdf-export-fixtures",
+      "phase": "Phase I - Physics + URDF parity"
+    },
+    {
+      "case_id": "reference_source",
+      "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+      "vcad_source": "~/code/vcad/crates/vcad-urdf/src/export.rs + ~/code/vcad/crates/vcad-urdf/tests/fixtures"
+    }
+  ],
+  "contracts": [
+    "CAD URDF Export Fixtures Parity parity contracts are aligned to vcad reference behavior",
+    "CI parity artifacts include urdf_export_fixtures manifest and vcad fixture evidence",
+    "Phase I - Physics + URDF parity parity lane remains deterministic across replay"
+  ],
+  "deterministic_signature": "097bfb83a8f11ea2",
+  "parity_contracts": [
+    "CAD URDF Export Fixtures Parity parity contracts are aligned to vcad reference behavior",
+    "CI parity artifacts include urdf_export_fixtures manifest and vcad fixture evidence",
+    "Phase I - Physics + URDF parity parity lane remains deterministic across replay"
+  ]
+}
