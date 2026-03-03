@@ -655,6 +655,7 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
             ));
             true
         }
+        CadDemoPaneAction::ToggleGripperJawAnimation => toggle_gripper_jaw_animation(state),
         CadDemoPaneAction::ToggleViewportLayout => {
             let layout = state.toggle_viewport_layout();
             state.last_action = Some(format!("CAD viewport layout -> {}", layout.label()));
@@ -1052,6 +1053,55 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
             }
         },
     }
+}
+
+fn toggle_gripper_jaw_animation(state: &mut CadDemoPaneState) -> bool {
+    if state.active_design_profile() != openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper
+    {
+        state.last_error = Some(
+            "gripper jaw animation requires parallel-jaw gripper design profile".to_string(),
+        );
+        state.last_action = Some("CAD gripper jaw animation ignored for non-gripper profile".to_string());
+        return true;
+    }
+
+    let Some(jaw_dimension) = state
+        .dimensions
+        .iter_mut()
+        .find(|dimension| dimension.dimension_id == "jaw_open_mm")
+    else {
+        state.last_error = Some("jaw_open_mm dimension missing from CAD state".to_string());
+        state.last_action = Some("CAD gripper jaw animation failed: missing jaw dimension".to_string());
+        return true;
+    };
+
+    let closed_target_mm = openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_JAW_OPEN_MM
+        .clamp(jaw_dimension.min_mm, jaw_dimension.max_mm);
+    let open_target_mm = (closed_target_mm + 22.0)
+        .clamp(jaw_dimension.min_mm, jaw_dimension.max_mm)
+        .max(closed_target_mm);
+    let (target_mm, open_state, trigger) = if state.gripper_jaw_open {
+        (closed_target_mm, false, "gripper-jaw-close")
+    } else {
+        (open_target_mm, true, "gripper-jaw-open")
+    };
+    let previous_mm = jaw_dimension.value_mm;
+    jaw_dimension.value_mm = target_mm;
+    state.gripper_jaw_open = open_state;
+    state.document_revision = state.document_revision.saturating_add(1);
+    if let Err(error) = enqueue_rebuild_cycle(state, trigger) {
+        state.load_state = PaneLoadState::Error;
+        state.last_error = Some(error);
+    } else {
+        state.last_error = None;
+    }
+    state.last_action = Some(format!(
+        "CAD gripper jaw {} ({:.1}mm -> {:.1}mm)",
+        if open_state { "opened" } else { "closed" },
+        previous_mm,
+        target_mm
+    ));
+    true
 }
 
 fn parallel_jaw_gripper_bootstrap_state() -> CadDemoPaneState {
@@ -1569,6 +1619,7 @@ fn emit_cad_event_for_action(state: &mut RenderState, action: CadDemoPaneAction)
             );
         }
         CadDemoPaneAction::CycleMaterialPreset
+        | CadDemoPaneAction::ToggleGripperJawAnimation
         | CadDemoPaneAction::ToggleViewportLayout
         | CadDemoPaneAction::CycleSectionPlane
         | CadDemoPaneAction::StepSectionPlaneOffset
@@ -1929,6 +1980,15 @@ fn build_parallel_jaw_gripper_feature_graph(state: &CadDemoPaneState) -> Feature
                     (
                         "print_clearance_mm".to_string(),
                         format!("{:.3}", gripper.print_clearance_mm),
+                    ),
+                    (
+                        "servo_mount_hole_diameter_mm".to_string(),
+                        format!(
+                            "{:.3}",
+                            gripper.servo_mount_hole_diameter_mm.max(
+                                openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_SERVO_MOUNT_HOLE_DIAMETER_MM
+                            )
+                        ),
                     ),
                 ]),
             },
@@ -4285,6 +4345,38 @@ mod tests {
         assert_eq!(state.load_state, crate::app_state::PaneLoadState::Loading);
         assert!(state.pending_rebuild_request_id.is_some());
         assert!(state.last_rebuild_receipt.is_none());
+    }
+
+    #[test]
+    fn toggle_gripper_jaw_animation_updates_dimension_and_queues_rebuild() {
+        let mut state = parallel_jaw_gripper_bootstrap_state();
+        wait_for_receipt(&mut state);
+        let baseline_jaw = state
+            .dimension_value_mm("jaw_open_mm")
+            .expect("gripper state should expose jaw dimension");
+        assert!(!state.gripper_jaw_open);
+
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::ToggleGripperJawAnimation
+        ));
+        let opened_jaw = state
+            .dimension_value_mm("jaw_open_mm")
+            .expect("jaw dimension should remain available");
+        assert!(state.gripper_jaw_open);
+        assert!(opened_jaw > baseline_jaw);
+        assert_eq!(state.load_state, crate::app_state::PaneLoadState::Loading);
+        wait_for_receipt(&mut state);
+
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::ToggleGripperJawAnimation
+        ));
+        let closed_jaw = state
+            .dimension_value_mm("jaw_open_mm")
+            .expect("jaw dimension should remain available");
+        assert!(!state.gripper_jaw_open);
+        assert!(closed_jaw <= opened_jaw);
     }
 
     #[test]

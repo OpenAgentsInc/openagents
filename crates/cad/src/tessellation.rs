@@ -223,13 +223,21 @@ fn tessellate_feature_node(
             let base_thickness_mm = node_param_f32(node, "base_thickness_mm")
                 .filter(|value| *value > 0.0)
                 .unwrap_or(gripper.base_thickness_mm);
-            let min = [
-                -base_width_mm * 0.5,
-                -base_depth_mm * 0.5,
+            let hole_diameter_mm = node_param_f32(node, "servo_mount_hole_diameter_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(gripper.servo_mount_hole_diameter_mm);
+            let hole_half_mm = (hole_diameter_mm * 0.5).max(0.6);
+            let x_offset_mm = (base_width_mm * 0.22).max(8.0);
+            builder.add_plate_with_dual_holes(
+                base_width_mm,
+                base_depth_mm,
+                base_thickness_mm,
+                x_offset_mm,
+                hole_half_mm,
+                0,
+                1,
                 0.0 + jitter * 0.2,
-            ];
-            let max = [base_width_mm * 0.5, base_depth_mm * 0.5, base_thickness_mm];
-            builder.add_box(min, max, 0, 1);
+            );
             Ok(())
         }
         "gripper.finger.left.v1" | "gripper.finger.right.v1" => {
@@ -291,9 +299,24 @@ fn tessellate_feature_node(
                 .unwrap_or(gripper.servo_mount_hole_diameter_mm);
             let radius = (hole_diameter_mm * 0.5).max(0.6);
             let x_offset = (base_width_mm * 0.22).max(8.0);
-            let centers = [[-x_offset, 0.0, base_thickness_mm * 0.5], [x_offset, 0.0, base_thickness_mm * 0.5]];
-            for center in centers {
-                builder.add_cylinder_z(center, radius, base_thickness_mm, 16, 1, 4);
+            let top_z = base_thickness_mm + jitter * 0.1;
+            let bottom_z = 0.0 + jitter * 0.1;
+            for center_x in [-x_offset, x_offset] {
+                builder.add_circle_edge_loop([center_x, 0.0, top_z], radius, 16, 4, 1);
+                builder.add_circle_edge_loop([center_x, 0.0, bottom_z], radius, 16, 4, 1);
+                let top_vertex = builder.push_vertex(
+                    [center_x + radius, 0.0, top_z],
+                    [1.0, 0.0, 0.0],
+                    [0.0, 0.0],
+                    1,
+                );
+                let bottom_vertex = builder.push_vertex(
+                    [center_x + radius, 0.0, bottom_z],
+                    [1.0, 0.0, 0.0],
+                    [0.0, 0.0],
+                    1,
+                );
+                builder.push_edge(bottom_vertex, top_vertex, 4);
             }
             Ok(())
         }
@@ -327,6 +350,16 @@ fn tessellate_feature_node(
             for (a, b) in [(0, 1), (1, 2), (2, 3), (3, 0)] {
                 builder.push_edge(v[a], v[b], 8);
             }
+            let chamfer_mm = (base_thickness_mm * 0.18).clamp(0.4, 2.8);
+            let half_w = base_width_mm * 0.5;
+            let half_d = base_depth_mm * 0.5;
+            let z0 = (base_thickness_mm - chamfer_mm).max(0.0);
+            let z1 = base_thickness_mm;
+            let edge_band = chamfer_mm.max(0.6);
+            builder.add_box([-half_w, half_d - edge_band, z0], [half_w, half_d, z1], 1, 6);
+            builder.add_box([-half_w, -half_d, z0], [half_w, -half_d + edge_band, z1], 1, 6);
+            builder.add_box([-half_w, -half_d, z0], [-half_w + edge_band, half_d, z1], 1, 6);
+            builder.add_box([half_w - edge_band, -half_d, z0], [half_w, half_d, z1], 1, 6);
             Ok(())
         }
         other => Err(CadError::EvalFailed {
@@ -618,6 +651,95 @@ impl TessellationBuilder {
         }
     }
 
+    fn add_circle_edge_loop(
+        &mut self,
+        center: [f32; 3],
+        radius_mm: f32,
+        segments: usize,
+        edge_flags: u32,
+        material_slot: u16,
+    ) {
+        if segments < 3 || radius_mm <= f32::EPSILON {
+            return;
+        }
+        let mut indices = Vec::<u32>::with_capacity(segments);
+        for segment in 0..segments {
+            let t = (segment as f32 / segments as f32) * std::f32::consts::TAU;
+            let (sin, cos) = t.sin_cos();
+            indices.push(self.push_vertex(
+                [
+                    center[0] + (cos * radius_mm),
+                    center[1] + (sin * radius_mm),
+                    center[2],
+                ],
+                [0.0, 0.0, 1.0],
+                [0.0, 0.0],
+                material_slot,
+            ));
+        }
+        for segment in 0..segments {
+            let next = (segment + 1) % segments;
+            self.push_edge(indices[segment], indices[next], edge_flags);
+        }
+    }
+
+    fn add_plate_with_dual_holes(
+        &mut self,
+        width_mm: f32,
+        depth_mm: f32,
+        thickness_mm: f32,
+        hole_offset_x_mm: f32,
+        hole_half_mm: f32,
+        material_slot: u16,
+        edge_flags: u32,
+        z_base: f32,
+    ) {
+        let half_w = width_mm * 0.5;
+        let half_d = depth_mm * 0.5;
+        let c0 = -hole_offset_x_mm;
+        let c1 = hole_offset_x_mm;
+        let hole_margin = 0.8;
+        let hole_half = hole_half_mm.max(0.6);
+        let z0 = z_base;
+        let z1 = z_base + thickness_mm;
+
+        // Fallback when holes cannot be represented without degeneracy.
+        if c0 - hole_half <= -half_w + hole_margin
+            || c1 + hole_half >= half_w - hole_margin
+            || hole_half >= half_d - hole_margin
+        {
+            self.add_box(
+                [-half_w, -half_d, z0],
+                [half_w, half_d, z1],
+                material_slot,
+                edge_flags,
+            );
+            return;
+        }
+
+        // Construct the plate by union of rectangular slabs around two through-holes.
+        let mut add_slab = |min_x: f32, min_y: f32, max_x: f32, max_y: f32| {
+            if max_x - min_x <= 0.05 || max_y - min_y <= 0.05 {
+                return;
+            }
+            self.add_box(
+                [min_x, min_y, z0],
+                [max_x, max_y, z1],
+                material_slot,
+                edge_flags,
+            );
+        };
+
+        add_slab(-half_w, -half_d, c0 - hole_half, half_d);
+        add_slab(c0 + hole_half, -half_d, c1 - hole_half, half_d);
+        add_slab(c1 + hole_half, -half_d, half_w, half_d);
+
+        add_slab(c0 - hole_half, hole_half, c0 + hole_half, half_d);
+        add_slab(c0 - hole_half, -half_d, c0 + hole_half, -hole_half);
+        add_slab(c1 - hole_half, hole_half, c1 + hole_half, half_d);
+        add_slab(c1 - hole_half, -half_d, c1 + hole_half, -hole_half);
+    }
+
     fn bounds(&self) -> Option<CadMeshBounds> {
         let mut iter = self.vertices.iter();
         let first = iter.next()?;
@@ -687,6 +809,10 @@ mod tests {
         base_params.insert("base_width_mm".to_string(), "78.0".to_string());
         base_params.insert("base_depth_mm".to_string(), "52.0".to_string());
         base_params.insert("base_thickness_mm".to_string(), "8.0".to_string());
+        base_params.insert(
+            "servo_mount_hole_diameter_mm".to_string(),
+            "2.9".to_string(),
+        );
         base_params.insert("print_fit_mm".to_string(), "0.15".to_string());
         base_params.insert("print_clearance_mm".to_string(), "0.35".to_string());
 
@@ -818,5 +944,41 @@ mod tests {
             long_reach_span_x > baseline_span_x,
             "long-reach variant should increase total X envelope span"
         );
+    }
+
+    #[test]
+    fn gripper_base_hole_diameter_changes_mesh_hash() {
+        let mut tight_graph = gripper_graph_for_variant("variant.baseline");
+        let mut wide_graph = gripper_graph_for_variant("variant.baseline");
+        let base_tight = tight_graph
+            .nodes
+            .iter_mut()
+            .find(|node| node.id == "feature.gripper.base")
+            .expect("base node present");
+        base_tight.params.insert(
+            "servo_mount_hole_diameter_mm".to_string(),
+            "2.6".to_string(),
+        );
+        let base_wide = wide_graph
+            .nodes
+            .iter_mut()
+            .find(|node| node.id == "feature.gripper.base")
+            .expect("base node present");
+        base_wide.params.insert(
+            "servo_mount_hole_diameter_mm".to_string(),
+            "4.0".to_string(),
+        );
+
+        let tight_rebuild = evaluate_feature_graph_deterministic(&tight_graph)
+            .expect("tight rebuild should succeed");
+        let wide_rebuild =
+            evaluate_feature_graph_deterministic(&wide_graph).expect("wide rebuild should succeed");
+        let (_, tight_receipt) =
+            tessellate_rebuild_result(&tight_graph, &tight_rebuild, 21, "variant.baseline")
+                .expect("tight tessellation should succeed");
+        let (_, wide_receipt) =
+            tessellate_rebuild_result(&wide_graph, &wide_rebuild, 21, "variant.baseline")
+                .expect("wide tessellation should succeed");
+        assert_ne!(tight_receipt.mesh_hash, wide_receipt.mesh_hash);
     }
 }

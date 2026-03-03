@@ -27,6 +27,7 @@ use crate::pane_system::{
     cad_demo_drawing_clear_details_button_bounds, cad_demo_drawing_dimensions_button_bounds,
     cad_demo_drawing_direction_button_bounds, cad_demo_drawing_hidden_lines_button_bounds,
     cad_demo_drawing_mode_button_bounds, cad_demo_drawing_reset_view_button_bounds,
+    cad_demo_gripper_jaw_button_bounds,
     cad_demo_hidden_line_mode_button_bounds, cad_demo_hotkey_profile_button_bounds,
     cad_demo_material_button_bounds, cad_demo_projection_mode_button_bounds,
     cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
@@ -119,6 +120,7 @@ pub fn placeholder_layout(content_bounds: Bounds) -> CadDemoPlaceholderLayout {
 
 fn cad_demo_body_bounds(content_bounds: Bounds) -> Bounds {
     let cycle_bounds = cad_demo_cycle_variant_button_bounds(content_bounds);
+    let jaw_bounds = cad_demo_gripper_jaw_button_bounds(content_bounds);
     let reset_bounds = cad_demo_reset_button_bounds(content_bounds);
     let hidden_line_bounds = cad_demo_hidden_line_mode_button_bounds(content_bounds);
     let reset_camera_bounds = cad_demo_reset_camera_button_bounds(content_bounds);
@@ -142,6 +144,7 @@ fn cad_demo_body_bounds(content_bounds: Bounds) -> Bounds {
     let body_top = (cycle_bounds
         .max_y()
         .max(reset_bounds.max_y())
+        .max(jaw_bounds.max_y())
         .max(hidden_line_bounds.max_y())
         .max(reset_camera_bounds.max_y())
         .max(projection_bounds.max_y())
@@ -174,6 +177,7 @@ fn cad_demo_body_bounds(content_bounds: Bounds) -> Bounds {
 fn cad_demo_basic_toolbar_bottom(content_bounds: Bounds) -> f32 {
     cad_demo_cycle_variant_button_bounds(content_bounds)
         .max_y()
+        .max(cad_demo_gripper_jaw_button_bounds(content_bounds).max_y())
         .max(cad_demo_reset_button_bounds(content_bounds).max_y())
         .max(cad_demo_reset_camera_button_bounds(content_bounds).max_y())
         .max(cad_demo_projection_mode_button_bounds(content_bounds).max_y())
@@ -244,6 +248,7 @@ pub fn paint_cad_demo_placeholder_pane(
     }
     paint.scene.push_clip(content_bounds);
     let cycle_bounds = cad_demo_cycle_variant_button_bounds(content_bounds);
+    let jaw_bounds = cad_demo_gripper_jaw_button_bounds(content_bounds);
     let reset_bounds = cad_demo_reset_button_bounds(content_bounds);
     let hidden_line_bounds = cad_demo_hidden_line_mode_button_bounds(content_bounds);
     let reset_camera_bounds = cad_demo_reset_camera_button_bounds(content_bounds);
@@ -263,6 +268,15 @@ pub fn paint_cad_demo_placeholder_pane(
     let severity_filter_bounds = cad_demo_warning_filter_severity_button_bounds(content_bounds);
     let code_filter_bounds = cad_demo_warning_filter_code_button_bounds(content_bounds);
     paint_action_button(cycle_bounds, "Cycle Variant", paint);
+    paint_action_button(
+        jaw_bounds,
+        if pane_state.gripper_jaw_open {
+            "Jaw: Close"
+        } else {
+            "Jaw: Open"
+        },
+        paint,
+    );
     paint_action_button(reset_bounds, "Bootstrap Demo", paint);
     paint_action_button(
         hidden_line_bounds,
@@ -898,6 +912,7 @@ fn paint_cad_demo_basic_pane(
     paint.scene.push_clip(content_bounds);
 
     let cycle_bounds = cad_demo_cycle_variant_button_bounds(content_bounds);
+    let jaw_bounds = cad_demo_gripper_jaw_button_bounds(content_bounds);
     let reset_bounds = cad_demo_reset_button_bounds(content_bounds);
     let reset_camera_bounds = cad_demo_reset_camera_button_bounds(content_bounds);
     let projection_bounds = cad_demo_projection_mode_button_bounds(content_bounds);
@@ -911,6 +926,15 @@ fn paint_cad_demo_basic_pane(
     let drawing_clear_details_bounds = cad_demo_drawing_clear_details_button_bounds(content_bounds);
 
     paint_action_button(cycle_bounds, "Variant", paint);
+    paint_action_button(
+        jaw_bounds,
+        if pane_state.gripper_jaw_open {
+            "Jaw: Close"
+        } else {
+            "Jaw: Open"
+        },
+        paint,
+    );
     paint_action_button(reset_bounds, "Open CAD", paint);
     paint_action_button(reset_camera_bounds, "Reset Camera", paint);
     paint_action_button(
