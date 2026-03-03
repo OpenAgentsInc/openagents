@@ -1837,6 +1837,14 @@ fn cad_gripper_parameter_summary(
         "joint_max_deg",
         "tendon_route_clearance_mm",
         "tendon_bend_radius_mm",
+        "servo_envelope_length_mm",
+        "servo_envelope_width_mm",
+        "servo_envelope_height_mm",
+        "servo_shaft_axis_offset_mm",
+        "servo_mount_pattern_pitch_mm",
+        "servo_bracket_thickness_mm",
+        "servo_housing_wall_mm",
+        "servo_standoff_diameter_mm",
     ];
     let mut summary = serde_json::Map::new();
     for key in keys {
@@ -1866,6 +1874,19 @@ fn cad_gripper_parameter_summary(
             openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
         ));
     summary.insert("opposable_thumb".to_string(), json!(opposable_thumb));
+    let servo_integration_enabled = cad_demo
+        .active_dispatch_state()
+        .map(|dispatch| dispatch.servo_integration_enabled)
+        .unwrap_or(false);
+    let compact_servo_layout = cad_demo
+        .active_dispatch_state()
+        .map(|dispatch| dispatch.compact_servo_layout)
+        .unwrap_or(false);
+    summary.insert(
+        "servo_integration_enabled".to_string(),
+        json!(servo_integration_enabled),
+    );
+    summary.insert("compact_servo_layout".to_string(), json!(compact_servo_layout));
     if let Some(pose_preset) = cad_demo
         .active_dispatch_state()
         .and_then(|dispatch| dispatch.pose_preset.as_deref())
@@ -1890,6 +1911,30 @@ fn cad_gripper_parameter_summary(
         }
         if let Some(value) = dispatch.tendon_bend_radius_mm {
             summary.insert("tendon_bend_radius_mm".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch.servo_envelope_length_mm {
+            summary.insert("servo_envelope_length_mm".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch.servo_envelope_width_mm {
+            summary.insert("servo_envelope_width_mm".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch.servo_envelope_height_mm {
+            summary.insert("servo_envelope_height_mm".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch.servo_shaft_axis_offset_mm {
+            summary.insert("servo_shaft_axis_offset_mm".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch.servo_mount_pattern_pitch_mm {
+            summary.insert("servo_mount_pattern_pitch_mm".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch.servo_bracket_thickness_mm {
+            summary.insert("servo_bracket_thickness_mm".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch.servo_housing_wall_mm {
+            summary.insert("servo_housing_wall_mm".to_string(), json!(value));
+        }
+        if let Some(value) = dispatch.servo_standoff_diameter_mm {
+            summary.insert("servo_standoff_diameter_mm".to_string(), json!(value));
         }
     }
     Value::Object(summary)
@@ -4718,6 +4763,16 @@ mod tests {
                         joint_max_deg: 82.0,
                         tendon_route_clearance_mm: 1.4,
                         tendon_bend_radius_mm: 3.2,
+                        servo_integration_enabled: false,
+                        compact_servo_layout: false,
+                        servo_envelope_length_mm: 23.0,
+                        servo_envelope_width_mm: 12.0,
+                        servo_envelope_height_mm: 24.0,
+                        servo_shaft_axis_offset_mm: 5.0,
+                        servo_mount_pattern_pitch_mm: 16.0,
+                        servo_bracket_thickness_mm: 2.6,
+                        servo_housing_wall_mm: 2.0,
+                        servo_standoff_diameter_mm: 4.2,
                         pose_preset: "open".to_string(),
                     },
                 ),

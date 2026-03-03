@@ -1937,6 +1937,16 @@ struct GripperVariantDimensions {
     joint_max_deg: f64,
     tendon_route_clearance_mm: f64,
     tendon_bend_radius_mm: f64,
+    servo_integration_enabled: bool,
+    compact_servo_layout: bool,
+    servo_envelope_length_mm: f64,
+    servo_envelope_width_mm: f64,
+    servo_envelope_height_mm: f64,
+    servo_shaft_axis_offset_mm: f64,
+    servo_mount_pattern_pitch_mm: f64,
+    servo_bracket_thickness_mm: f64,
+    servo_housing_wall_mm: f64,
+    servo_standoff_diameter_mm: f64,
     pose_preset: String,
 }
 
@@ -2051,6 +2061,84 @@ impl GripperVariantDimensions {
                     openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_BEND_RADIUS_MM,
                 )
             });
+        let servo_integration_enabled = dispatch
+            .map(|value| value.servo_integration_enabled)
+            .unwrap_or(false);
+        let compact_servo_layout = dispatch
+            .map(|value| value.compact_servo_layout)
+            .unwrap_or(false);
+        let servo_envelope_length_mm = dispatch
+            .and_then(|value| value.servo_envelope_length_mm)
+            .unwrap_or_else(|| {
+                dimension_value_mm(
+                    state,
+                    "servo_envelope_length_mm",
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_ENVELOPE_LENGTH_MM,
+                )
+            });
+        let servo_envelope_width_mm = dispatch
+            .and_then(|value| value.servo_envelope_width_mm)
+            .unwrap_or_else(|| {
+                dimension_value_mm(
+                    state,
+                    "servo_envelope_width_mm",
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_ENVELOPE_WIDTH_MM,
+                )
+            });
+        let servo_envelope_height_mm = dispatch
+            .and_then(|value| value.servo_envelope_height_mm)
+            .unwrap_or_else(|| {
+                dimension_value_mm(
+                    state,
+                    "servo_envelope_height_mm",
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_ENVELOPE_HEIGHT_MM,
+                )
+            });
+        let servo_shaft_axis_offset_mm = dispatch
+            .and_then(|value| value.servo_shaft_axis_offset_mm)
+            .unwrap_or_else(|| {
+                dimension_value_mm(
+                    state,
+                    "servo_shaft_axis_offset_mm",
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_SHAFT_AXIS_OFFSET_MM,
+                )
+            });
+        let servo_mount_pattern_pitch_mm = dispatch
+            .and_then(|value| value.servo_mount_pattern_pitch_mm)
+            .unwrap_or_else(|| {
+                dimension_value_mm(
+                    state,
+                    "servo_mount_pattern_pitch_mm",
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_MOUNT_PATTERN_PITCH_MM,
+                )
+            });
+        let servo_bracket_thickness_mm = dispatch
+            .and_then(|value| value.servo_bracket_thickness_mm)
+            .unwrap_or_else(|| {
+                dimension_value_mm(
+                    state,
+                    "servo_bracket_thickness_mm",
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_BRACKET_THICKNESS_MM,
+                )
+            });
+        let servo_housing_wall_mm = dispatch
+            .and_then(|value| value.servo_housing_wall_mm)
+            .unwrap_or_else(|| {
+                dimension_value_mm(
+                    state,
+                    "servo_housing_wall_mm",
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_HOUSING_WALL_MM,
+                )
+            });
+        let servo_standoff_diameter_mm = dispatch
+            .and_then(|value| value.servo_standoff_diameter_mm)
+            .unwrap_or_else(|| {
+                dimension_value_mm(
+                    state,
+                    "servo_standoff_diameter_mm",
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_STANDOFF_DIAMETER_MM,
+                )
+            });
         let pose_preset = dispatch
             .and_then(|value| value.pose_preset.clone())
             .unwrap_or_else(|| {
@@ -2118,6 +2206,16 @@ impl GripperVariantDimensions {
             joint_max_deg,
             tendon_route_clearance_mm,
             tendon_bend_radius_mm,
+            servo_integration_enabled,
+            compact_servo_layout,
+            servo_envelope_length_mm,
+            servo_envelope_width_mm,
+            servo_envelope_height_mm,
+            servo_shaft_axis_offset_mm,
+            servo_mount_pattern_pitch_mm,
+            servo_bracket_thickness_mm,
+            servo_housing_wall_mm,
+            servo_standoff_diameter_mm,
             pose_preset,
         }
     }
@@ -2161,6 +2259,10 @@ impl GripperVariantDimensions {
                 value.tendon_route_clearance_mm += 0.2;
             }
             _ => {}
+        }
+        if value.compact_servo_layout {
+            value.servo_envelope_length_mm = (value.servo_envelope_length_mm - 2.0).max(8.0);
+            value.servo_envelope_width_mm = (value.servo_envelope_width_mm - 1.0).max(6.0);
         }
         value
     }
@@ -2746,6 +2848,154 @@ fn build_three_finger_thumb_feature_graph(state: &CadDemoPaneState) -> FeatureGr
         });
     }
 
+    if gripper.servo_integration_enabled {
+        let compact_layout = if gripper.compact_servo_layout { "1" } else { "0" }.to_string();
+        for (digit_slot, digit_name, parent_feature_id) in [
+            (-1_i8, "index", "feature.hand3.finger.index"),
+            (0_i8, "middle", "feature.hand3.finger.middle"),
+            (1_i8, "ring", "feature.hand3.finger.ring"),
+            (-2_i8, "thumb", "feature.hand3.thumb"),
+        ] {
+            let mount_feature_id = format!("feature.hand3.servo_mount.{digit_name}");
+            nodes.push(FeatureNode {
+                id: mount_feature_id.clone(),
+                name: format!("hand3_servo_mount_{digit_name}"),
+                operation_key: "hand3.servo.mount.v1".to_string(),
+                depends_on: vec![parent_feature_id.to_string()],
+                params: BTreeMap::from([
+                    ("variant".to_string(), state.active_variant_id.clone()),
+                    ("digit".to_string(), digit_name.to_string()),
+                    ("digit_slot".to_string(), digit_slot.to_string()),
+                    (
+                        "base_width_mm".to_string(),
+                        format!("{:.3}", gripper.base_width_mm),
+                    ),
+                    (
+                        "base_depth_mm".to_string(),
+                        format!("{:.3}", gripper.base_depth_mm),
+                    ),
+                    (
+                        "base_thickness_mm".to_string(),
+                        format!("{:.3}", gripper.base_thickness_mm),
+                    ),
+                    (
+                        "finger_spacing_mm".to_string(),
+                        format!("{:.3}", finger_spacing_mm),
+                    ),
+                    (
+                        "servo_envelope_length_mm".to_string(),
+                        format!("{:.3}", gripper.servo_envelope_length_mm),
+                    ),
+                    (
+                        "servo_envelope_width_mm".to_string(),
+                        format!("{:.3}", gripper.servo_envelope_width_mm),
+                    ),
+                    (
+                        "servo_envelope_height_mm".to_string(),
+                        format!("{:.3}", gripper.servo_envelope_height_mm),
+                    ),
+                    (
+                        "servo_shaft_axis_offset_mm".to_string(),
+                        format!("{:.3}", gripper.servo_shaft_axis_offset_mm),
+                    ),
+                    (
+                        "servo_mount_pattern_pitch_mm".to_string(),
+                        format!("{:.3}", gripper.servo_mount_pattern_pitch_mm),
+                    ),
+                    (
+                        "servo_bracket_thickness_mm".to_string(),
+                        format!("{:.3}", gripper.servo_bracket_thickness_mm),
+                    ),
+                    ("compact_layout".to_string(), compact_layout.clone()),
+                ]),
+            });
+            nodes.push(FeatureNode {
+                id: format!("feature.hand3.servo_housing.{digit_name}"),
+                name: format!("hand3_servo_housing_{digit_name}"),
+                operation_key: "hand3.servo.housing.v1".to_string(),
+                depends_on: vec![mount_feature_id.clone()],
+                params: BTreeMap::from([
+                    ("variant".to_string(), state.active_variant_id.clone()),
+                    ("digit".to_string(), digit_name.to_string()),
+                    ("digit_slot".to_string(), digit_slot.to_string()),
+                    (
+                        "base_width_mm".to_string(),
+                        format!("{:.3}", gripper.base_width_mm),
+                    ),
+                    (
+                        "base_depth_mm".to_string(),
+                        format!("{:.3}", gripper.base_depth_mm),
+                    ),
+                    (
+                        "base_thickness_mm".to_string(),
+                        format!("{:.3}", gripper.base_thickness_mm),
+                    ),
+                    (
+                        "finger_spacing_mm".to_string(),
+                        format!("{:.3}", finger_spacing_mm),
+                    ),
+                    (
+                        "servo_envelope_length_mm".to_string(),
+                        format!("{:.3}", gripper.servo_envelope_length_mm),
+                    ),
+                    (
+                        "servo_envelope_width_mm".to_string(),
+                        format!("{:.3}", gripper.servo_envelope_width_mm),
+                    ),
+                    (
+                        "servo_envelope_height_mm".to_string(),
+                        format!("{:.3}", gripper.servo_envelope_height_mm),
+                    ),
+                    (
+                        "servo_housing_wall_mm".to_string(),
+                        format!("{:.3}", gripper.servo_housing_wall_mm),
+                    ),
+                    ("compact_layout".to_string(), compact_layout.clone()),
+                ]),
+            });
+            nodes.push(FeatureNode {
+                id: format!("feature.hand3.servo_standoff.{digit_name}"),
+                name: format!("hand3_servo_standoff_{digit_name}"),
+                operation_key: "hand3.servo.standoff.v1".to_string(),
+                depends_on: vec![mount_feature_id],
+                params: BTreeMap::from([
+                    ("variant".to_string(), state.active_variant_id.clone()),
+                    ("digit".to_string(), digit_name.to_string()),
+                    ("digit_slot".to_string(), digit_slot.to_string()),
+                    (
+                        "base_width_mm".to_string(),
+                        format!("{:.3}", gripper.base_width_mm),
+                    ),
+                    (
+                        "base_depth_mm".to_string(),
+                        format!("{:.3}", gripper.base_depth_mm),
+                    ),
+                    (
+                        "base_thickness_mm".to_string(),
+                        format!("{:.3}", gripper.base_thickness_mm),
+                    ),
+                    (
+                        "finger_spacing_mm".to_string(),
+                        format!("{:.3}", finger_spacing_mm),
+                    ),
+                    (
+                        "servo_mount_pattern_pitch_mm".to_string(),
+                        format!("{:.3}", gripper.servo_mount_pattern_pitch_mm),
+                    ),
+                    (
+                        "servo_standoff_diameter_mm".to_string(),
+                        format!("{:.3}", gripper.servo_standoff_diameter_mm),
+                    ),
+                    (
+                        "servo_bracket_thickness_mm".to_string(),
+                        format!("{:.3}", gripper.servo_bracket_thickness_mm),
+                    ),
+                    ("compact_layout".to_string(), compact_layout.clone()),
+                ]),
+            });
+        }
+    }
+
     nodes.push(FeatureNode {
         id: "feature.hand3.edge_marker".to_string(),
         name: "hand3_edge_marker".to_string(),
@@ -3253,6 +3503,22 @@ fn append_gripper_printability_warnings(
             deep_link: Some("cad://feature/feature.hand3.tendon.index".to_string()),
             feature_id: "feature.hand3.tendon.index".to_string(),
             entity_id: "hand3.tendon.channel".to_string(),
+        });
+    }
+    if is_three_finger && gripper.servo_integration_enabled && gripper.servo_housing_wall_mm < 1.4 {
+        warnings.push(CadDemoWarningState {
+            warning_id: format!("warning.custom.{}", warnings.len()),
+            code: "CAD-WARN-SERVO-HOUSING-WALL".to_string(),
+            severity: "warning".to_string(),
+            message: format!(
+                "Servo housing wall {:.2} mm is below 1.4 mm printability target",
+                gripper.servo_housing_wall_mm
+            ),
+            remediation_hint: "Increase servo_housing_wall_mm to at least 1.4 mm".to_string(),
+            semantic_refs: vec!["hand3_servo_housing".to_string()],
+            deep_link: Some("cad://feature/feature.hand3.servo_housing.index".to_string()),
+            feature_id: "feature.hand3.servo_housing.index".to_string(),
+            entity_id: "hand3.servo.housing".to_string(),
         });
     }
 }
@@ -5455,6 +5721,16 @@ mod tests {
                         joint_max_deg: 82.0,
                         tendon_route_clearance_mm: 1.4,
                         tendon_bend_radius_mm: 3.2,
+                        servo_integration_enabled: false,
+                        compact_servo_layout: false,
+                        servo_envelope_length_mm: 23.0,
+                        servo_envelope_width_mm: 12.0,
+                        servo_envelope_height_mm: 24.0,
+                        servo_shaft_axis_offset_mm: 5.0,
+                        servo_mount_pattern_pitch_mm: 16.0,
+                        servo_bracket_thickness_mm: 2.6,
+                        servo_housing_wall_mm: 2.0,
+                        servo_standoff_diameter_mm: 4.2,
                         pose_preset: "open".to_string(),
                     },
                 ),
@@ -5516,6 +5792,16 @@ mod tests {
                         joint_max_deg: 82.0,
                         tendon_route_clearance_mm: 1.4,
                         tendon_bend_radius_mm: 3.2,
+                        servo_integration_enabled: false,
+                        compact_servo_layout: false,
+                        servo_envelope_length_mm: 23.0,
+                        servo_envelope_width_mm: 12.0,
+                        servo_envelope_height_mm: 24.0,
+                        servo_shaft_axis_offset_mm: 5.0,
+                        servo_mount_pattern_pitch_mm: 16.0,
+                        servo_bracket_thickness_mm: 2.6,
+                        servo_housing_wall_mm: 2.0,
+                        servo_standoff_diameter_mm: 4.2,
                         pose_preset: "open".to_string(),
                     },
                 ),
@@ -5622,6 +5908,16 @@ mod tests {
                         joint_max_deg: 88.0,
                         tendon_route_clearance_mm: 1.6,
                         tendon_bend_radius_mm: 3.6,
+                        servo_integration_enabled: false,
+                        compact_servo_layout: false,
+                        servo_envelope_length_mm: 23.0,
+                        servo_envelope_width_mm: 12.0,
+                        servo_envelope_height_mm: 24.0,
+                        servo_shaft_axis_offset_mm: 5.0,
+                        servo_mount_pattern_pitch_mm: 16.0,
+                        servo_bracket_thickness_mm: 2.6,
+                        servo_housing_wall_mm: 2.0,
+                        servo_standoff_diameter_mm: 4.2,
                         pose_preset: "open".to_string(),
                     },
                 ),
@@ -5702,6 +5998,16 @@ mod tests {
                         joint_max_deg: 44.0,
                         tendon_route_clearance_mm: 0.2,
                         tendon_bend_radius_mm: 1.0,
+                        servo_integration_enabled: false,
+                        compact_servo_layout: false,
+                        servo_envelope_length_mm: 23.0,
+                        servo_envelope_width_mm: 12.0,
+                        servo_envelope_height_mm: 24.0,
+                        servo_shaft_axis_offset_mm: 5.0,
+                        servo_mount_pattern_pitch_mm: 16.0,
+                        servo_bracket_thickness_mm: 2.6,
+                        servo_housing_wall_mm: 2.0,
+                        servo_standoff_diameter_mm: 4.2,
                         pose_preset: "pinch".to_string(),
                     },
                 ),
@@ -5758,6 +6064,16 @@ mod tests {
                         joint_max_deg: 86.0,
                         tendon_route_clearance_mm: 1.8,
                         tendon_bend_radius_mm: 3.8,
+                        servo_integration_enabled: false,
+                        compact_servo_layout: false,
+                        servo_envelope_length_mm: 23.0,
+                        servo_envelope_width_mm: 12.0,
+                        servo_envelope_height_mm: 24.0,
+                        servo_shaft_axis_offset_mm: 5.0,
+                        servo_mount_pattern_pitch_mm: 16.0,
+                        servo_bracket_thickness_mm: 2.6,
+                        servo_housing_wall_mm: 2.0,
+                        servo_standoff_diameter_mm: 4.2,
                         pose_preset: "tripod".to_string(),
                     },
                 ),
@@ -5791,6 +6107,119 @@ mod tests {
                 .map(String::as_str),
             Some("true")
         );
+    }
+
+    #[test]
+    fn motor_integration_prompt_creates_servo_mount_housing_geometry() {
+        let mut state = CadDemoPaneState::default();
+        let prompt = "Add servo motors to each finger joint, including wiring paths and gearbox housings. Optimize for compact layout and low-cost 3D printing.";
+        let intent = match translate_chat_to_cad_intent(prompt) {
+            CadIntentTranslationOutcome::Intent(intent) => intent,
+            other => panic!("expected translated CAD intent, got {other:?}"),
+        };
+        state
+            .apply_chat_intent_for_thread("thread-servo-integration", &intent)
+            .expect("servo integration intent should apply");
+        enqueue_rebuild_cycle(&mut state, "test-servo-integration-geometry")
+            .expect("servo integration rebuild should queue");
+        wait_for_receipt(&mut state);
+
+        assert_eq!(
+            state.active_design_profile(),
+            openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
+        );
+        assert!(
+            state
+                .timeline_rows
+                .iter()
+                .any(|row| row.feature_id == "feature.hand3.servo_mount.index")
+        );
+        assert!(
+            state
+                .timeline_rows
+                .iter()
+                .any(|row| row.feature_id == "feature.hand3.servo_housing.thumb")
+        );
+        assert!(
+            state
+                .timeline_rows
+                .iter()
+                .any(|row| row.feature_id == "feature.hand3.servo_standoff.middle")
+        );
+        let dispatch = state
+            .active_dispatch_state()
+            .expect("active dispatch should exist");
+        assert!(dispatch.servo_integration_enabled);
+        assert!(dispatch.compact_servo_layout);
+    }
+
+    #[test]
+    fn motor_integration_rebuild_hash_is_stable_after_variant_cycles() {
+        let mut state = CadDemoPaneState::default();
+        state
+            .apply_chat_intent_for_thread(
+                "thread-servo-variant-cycle",
+                &openagents_cad::intent::CadIntent::CreateParallelJawGripperSpec(
+                    openagents_cad::intent::CreateParallelJawGripperSpecIntent {
+                        jaw_open_mm: 34.0,
+                        finger_length_mm: 68.0,
+                        finger_thickness_mm: 7.0,
+                        base_width_mm: 90.0,
+                        base_depth_mm: 58.0,
+                        base_thickness_mm: 8.0,
+                        servo_mount_hole_diameter_mm: 2.9,
+                        print_fit_mm: 0.15,
+                        print_clearance_mm: 0.35,
+                        underactuated_mode: true,
+                        compliant_joint_count: 3,
+                        flexure_thickness_mm: 1.2,
+                        single_servo_drive: true,
+                        finger_count: 3,
+                        opposable_thumb: true,
+                        thumb_base_angle_deg: 46.0,
+                        tendon_channel_diameter_mm: 1.8,
+                        joint_min_deg: 14.0,
+                        joint_max_deg: 86.0,
+                        tendon_route_clearance_mm: 1.7,
+                        tendon_bend_radius_mm: 3.8,
+                        servo_integration_enabled: true,
+                        compact_servo_layout: true,
+                        servo_envelope_length_mm: 23.0,
+                        servo_envelope_width_mm: 12.0,
+                        servo_envelope_height_mm: 24.0,
+                        servo_shaft_axis_offset_mm: 5.0,
+                        servo_mount_pattern_pitch_mm: 16.0,
+                        servo_bracket_thickness_mm: 2.6,
+                        servo_housing_wall_mm: 2.0,
+                        servo_standoff_diameter_mm: 4.2,
+                        pose_preset: "tripod".to_string(),
+                    },
+                ),
+            )
+            .expect("servo-cycle intent should apply");
+        enqueue_rebuild_cycle(&mut state, "test-servo-cycle-baseline")
+            .expect("baseline rebuild should queue");
+        wait_for_receipt(&mut state);
+        let baseline_receipt_a = state
+            .last_rebuild_receipt
+            .as_ref()
+            .cloned()
+            .expect("baseline receipt should exist");
+
+        for _ in 0..4 {
+            assert!(apply_cad_demo_action(&mut state, CadDemoPaneAction::CycleVariant));
+            wait_for_receipt(&mut state);
+        }
+        assert_eq!(state.active_variant_id, "variant.baseline");
+        let baseline_receipt_b = state
+            .last_rebuild_receipt
+            .as_ref()
+            .cloned()
+            .expect("cycled baseline receipt should exist");
+        assert_eq!(baseline_receipt_a.feature_count, baseline_receipt_b.feature_count);
+        assert_eq!(baseline_receipt_a.vertex_count, baseline_receipt_b.vertex_count);
+        assert_eq!(baseline_receipt_a.triangle_count, baseline_receipt_b.triangle_count);
+        assert_eq!(baseline_receipt_a.edge_count, baseline_receipt_b.edge_count);
     }
 
     #[test]

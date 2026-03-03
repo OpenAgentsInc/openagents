@@ -73,6 +73,16 @@ pub const PARALLEL_JAW_GRIPPER_DEFAULT_JOINT_MIN_DEG: f64 = 12.0;
 pub const PARALLEL_JAW_GRIPPER_DEFAULT_JOINT_MAX_DEG: f64 = 82.0;
 pub const PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_ROUTE_CLEARANCE_MM: f64 = 1.4;
 pub const PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_BEND_RADIUS_MM: f64 = 3.2;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_INTEGRATION_ENABLED: bool = false;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_COMPACT_SERVO_LAYOUT: bool = false;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_ENVELOPE_LENGTH_MM: f64 = 23.0;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_ENVELOPE_WIDTH_MM: f64 = 12.0;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_ENVELOPE_HEIGHT_MM: f64 = 24.0;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_SHAFT_AXIS_OFFSET_MM: f64 = 5.0;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_MOUNT_PATTERN_PITCH_MM: f64 = 16.0;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_BRACKET_THICKNESS_MM: f64 = 2.6;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_HOUSING_WALL_MM: f64 = 2.0;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_STANDOFF_DIAMETER_MM: f64 = 4.2;
 pub const PARALLEL_JAW_GRIPPER_DEFAULT_POSE_PRESET: &str = "open";
 pub const PARALLEL_JAW_GRIPPER_MIN_JAW_OPEN_MM: f64 = 8.0;
 pub const PARALLEL_JAW_GRIPPER_MAX_JAW_OPEN_MM: f64 = 140.0;
@@ -110,6 +120,22 @@ pub const PARALLEL_JAW_GRIPPER_MIN_TENDON_ROUTE_CLEARANCE_MM: f64 = 0.2;
 pub const PARALLEL_JAW_GRIPPER_MAX_TENDON_ROUTE_CLEARANCE_MM: f64 = 6.0;
 pub const PARALLEL_JAW_GRIPPER_MIN_TENDON_BEND_RADIUS_MM: f64 = 0.8;
 pub const PARALLEL_JAW_GRIPPER_MAX_TENDON_BEND_RADIUS_MM: f64 = 14.0;
+pub const PARALLEL_JAW_GRIPPER_MIN_SERVO_ENVELOPE_LENGTH_MM: f64 = 8.0;
+pub const PARALLEL_JAW_GRIPPER_MAX_SERVO_ENVELOPE_LENGTH_MM: f64 = 60.0;
+pub const PARALLEL_JAW_GRIPPER_MIN_SERVO_ENVELOPE_WIDTH_MM: f64 = 6.0;
+pub const PARALLEL_JAW_GRIPPER_MAX_SERVO_ENVELOPE_WIDTH_MM: f64 = 40.0;
+pub const PARALLEL_JAW_GRIPPER_MIN_SERVO_ENVELOPE_HEIGHT_MM: f64 = 8.0;
+pub const PARALLEL_JAW_GRIPPER_MAX_SERVO_ENVELOPE_HEIGHT_MM: f64 = 50.0;
+pub const PARALLEL_JAW_GRIPPER_MIN_SERVO_SHAFT_AXIS_OFFSET_MM: f64 = 0.0;
+pub const PARALLEL_JAW_GRIPPER_MAX_SERVO_SHAFT_AXIS_OFFSET_MM: f64 = 20.0;
+pub const PARALLEL_JAW_GRIPPER_MIN_SERVO_MOUNT_PATTERN_PITCH_MM: f64 = 6.0;
+pub const PARALLEL_JAW_GRIPPER_MAX_SERVO_MOUNT_PATTERN_PITCH_MM: f64 = 40.0;
+pub const PARALLEL_JAW_GRIPPER_MIN_SERVO_BRACKET_THICKNESS_MM: f64 = 1.0;
+pub const PARALLEL_JAW_GRIPPER_MAX_SERVO_BRACKET_THICKNESS_MM: f64 = 8.0;
+pub const PARALLEL_JAW_GRIPPER_MIN_SERVO_HOUSING_WALL_MM: f64 = 1.0;
+pub const PARALLEL_JAW_GRIPPER_MAX_SERVO_HOUSING_WALL_MM: f64 = 6.0;
+pub const PARALLEL_JAW_GRIPPER_MIN_SERVO_STANDOFF_DIAMETER_MM: f64 = 2.0;
+pub const PARALLEL_JAW_GRIPPER_MAX_SERVO_STANDOFF_DIAMETER_MM: f64 = 12.0;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -147,6 +173,26 @@ pub struct CreateParallelJawGripperSpecIntent {
     pub tendon_route_clearance_mm: f64,
     #[serde(default = "default_tendon_bend_radius_mm")]
     pub tendon_bend_radius_mm: f64,
+    #[serde(default = "default_servo_integration_enabled")]
+    pub servo_integration_enabled: bool,
+    #[serde(default = "default_compact_servo_layout")]
+    pub compact_servo_layout: bool,
+    #[serde(default = "default_servo_envelope_length_mm")]
+    pub servo_envelope_length_mm: f64,
+    #[serde(default = "default_servo_envelope_width_mm")]
+    pub servo_envelope_width_mm: f64,
+    #[serde(default = "default_servo_envelope_height_mm")]
+    pub servo_envelope_height_mm: f64,
+    #[serde(default = "default_servo_shaft_axis_offset_mm")]
+    pub servo_shaft_axis_offset_mm: f64,
+    #[serde(default = "default_servo_mount_pattern_pitch_mm")]
+    pub servo_mount_pattern_pitch_mm: f64,
+    #[serde(default = "default_servo_bracket_thickness_mm")]
+    pub servo_bracket_thickness_mm: f64,
+    #[serde(default = "default_servo_housing_wall_mm")]
+    pub servo_housing_wall_mm: f64,
+    #[serde(default = "default_servo_standoff_diameter_mm")]
+    pub servo_standoff_diameter_mm: f64,
     #[serde(default = "default_pose_preset")]
     pub pose_preset: String,
 }
@@ -175,6 +221,16 @@ impl Default for CreateParallelJawGripperSpecIntent {
             joint_max_deg: PARALLEL_JAW_GRIPPER_DEFAULT_JOINT_MAX_DEG,
             tendon_route_clearance_mm: PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_ROUTE_CLEARANCE_MM,
             tendon_bend_radius_mm: PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_BEND_RADIUS_MM,
+            servo_integration_enabled: PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_INTEGRATION_ENABLED,
+            compact_servo_layout: PARALLEL_JAW_GRIPPER_DEFAULT_COMPACT_SERVO_LAYOUT,
+            servo_envelope_length_mm: PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_ENVELOPE_LENGTH_MM,
+            servo_envelope_width_mm: PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_ENVELOPE_WIDTH_MM,
+            servo_envelope_height_mm: PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_ENVELOPE_HEIGHT_MM,
+            servo_shaft_axis_offset_mm: PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_SHAFT_AXIS_OFFSET_MM,
+            servo_mount_pattern_pitch_mm: PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_MOUNT_PATTERN_PITCH_MM,
+            servo_bracket_thickness_mm: PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_BRACKET_THICKNESS_MM,
+            servo_housing_wall_mm: PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_HOUSING_WALL_MM,
+            servo_standoff_diameter_mm: PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_STANDOFF_DIAMETER_MM,
             pose_preset: PARALLEL_JAW_GRIPPER_DEFAULT_POSE_PRESET.to_string(),
         }
     }
@@ -226,6 +282,46 @@ const fn default_tendon_route_clearance_mm() -> f64 {
 
 const fn default_tendon_bend_radius_mm() -> f64 {
     PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_BEND_RADIUS_MM
+}
+
+const fn default_servo_integration_enabled() -> bool {
+    PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_INTEGRATION_ENABLED
+}
+
+const fn default_compact_servo_layout() -> bool {
+    PARALLEL_JAW_GRIPPER_DEFAULT_COMPACT_SERVO_LAYOUT
+}
+
+const fn default_servo_envelope_length_mm() -> f64 {
+    PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_ENVELOPE_LENGTH_MM
+}
+
+const fn default_servo_envelope_width_mm() -> f64 {
+    PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_ENVELOPE_WIDTH_MM
+}
+
+const fn default_servo_envelope_height_mm() -> f64 {
+    PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_ENVELOPE_HEIGHT_MM
+}
+
+const fn default_servo_shaft_axis_offset_mm() -> f64 {
+    PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_SHAFT_AXIS_OFFSET_MM
+}
+
+const fn default_servo_mount_pattern_pitch_mm() -> f64 {
+    PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_MOUNT_PATTERN_PITCH_MM
+}
+
+const fn default_servo_bracket_thickness_mm() -> f64 {
+    PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_BRACKET_THICKNESS_MM
+}
+
+const fn default_servo_housing_wall_mm() -> f64 {
+    PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_HOUSING_WALL_MM
+}
+
+const fn default_servo_standoff_diameter_mm() -> f64 {
+    PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_STANDOFF_DIAMETER_MM
 }
 
 fn default_pose_preset() -> String {
@@ -365,6 +461,16 @@ pub fn cad_intent_json_schema() -> Value {
             "joint_max_deg",
             "tendon_route_clearance_mm",
             "tendon_bend_radius_mm",
+            "servo_integration_enabled",
+            "compact_servo_layout",
+            "servo_envelope_length_mm",
+            "servo_envelope_width_mm",
+            "servo_envelope_height_mm",
+            "servo_shaft_axis_offset_mm",
+            "servo_mount_pattern_pitch_mm",
+            "servo_bracket_thickness_mm",
+            "servo_housing_wall_mm",
+            "servo_standoff_diameter_mm",
             "pose_preset"
           ]
         },
@@ -597,6 +703,62 @@ pub fn validate_cad_intent(intent: &CadIntent) -> Result<(), CadIntentValidation
                 payload.tendon_bend_radius_mm,
                 PARALLEL_JAW_GRIPPER_MIN_TENDON_BEND_RADIUS_MM,
                 PARALLEL_JAW_GRIPPER_MAX_TENDON_BEND_RADIUS_MM,
+            )?;
+            validate_finite_range(
+                "CreateParallelJawGripperSpec",
+                "servo_envelope_length_mm",
+                payload.servo_envelope_length_mm,
+                PARALLEL_JAW_GRIPPER_MIN_SERVO_ENVELOPE_LENGTH_MM,
+                PARALLEL_JAW_GRIPPER_MAX_SERVO_ENVELOPE_LENGTH_MM,
+            )?;
+            validate_finite_range(
+                "CreateParallelJawGripperSpec",
+                "servo_envelope_width_mm",
+                payload.servo_envelope_width_mm,
+                PARALLEL_JAW_GRIPPER_MIN_SERVO_ENVELOPE_WIDTH_MM,
+                PARALLEL_JAW_GRIPPER_MAX_SERVO_ENVELOPE_WIDTH_MM,
+            )?;
+            validate_finite_range(
+                "CreateParallelJawGripperSpec",
+                "servo_envelope_height_mm",
+                payload.servo_envelope_height_mm,
+                PARALLEL_JAW_GRIPPER_MIN_SERVO_ENVELOPE_HEIGHT_MM,
+                PARALLEL_JAW_GRIPPER_MAX_SERVO_ENVELOPE_HEIGHT_MM,
+            )?;
+            validate_finite_range(
+                "CreateParallelJawGripperSpec",
+                "servo_shaft_axis_offset_mm",
+                payload.servo_shaft_axis_offset_mm,
+                PARALLEL_JAW_GRIPPER_MIN_SERVO_SHAFT_AXIS_OFFSET_MM,
+                PARALLEL_JAW_GRIPPER_MAX_SERVO_SHAFT_AXIS_OFFSET_MM,
+            )?;
+            validate_finite_range(
+                "CreateParallelJawGripperSpec",
+                "servo_mount_pattern_pitch_mm",
+                payload.servo_mount_pattern_pitch_mm,
+                PARALLEL_JAW_GRIPPER_MIN_SERVO_MOUNT_PATTERN_PITCH_MM,
+                PARALLEL_JAW_GRIPPER_MAX_SERVO_MOUNT_PATTERN_PITCH_MM,
+            )?;
+            validate_finite_range(
+                "CreateParallelJawGripperSpec",
+                "servo_bracket_thickness_mm",
+                payload.servo_bracket_thickness_mm,
+                PARALLEL_JAW_GRIPPER_MIN_SERVO_BRACKET_THICKNESS_MM,
+                PARALLEL_JAW_GRIPPER_MAX_SERVO_BRACKET_THICKNESS_MM,
+            )?;
+            validate_finite_range(
+                "CreateParallelJawGripperSpec",
+                "servo_housing_wall_mm",
+                payload.servo_housing_wall_mm,
+                PARALLEL_JAW_GRIPPER_MIN_SERVO_HOUSING_WALL_MM,
+                PARALLEL_JAW_GRIPPER_MAX_SERVO_HOUSING_WALL_MM,
+            )?;
+            validate_finite_range(
+                "CreateParallelJawGripperSpec",
+                "servo_standoff_diameter_mm",
+                payload.servo_standoff_diameter_mm,
+                PARALLEL_JAW_GRIPPER_MIN_SERVO_STANDOFF_DIAMETER_MM,
+                PARALLEL_JAW_GRIPPER_MAX_SERVO_STANDOFF_DIAMETER_MM,
             )?;
             validate_non_empty(
                 "CreateParallelJawGripperSpec",
