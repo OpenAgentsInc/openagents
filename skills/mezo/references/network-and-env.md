@@ -58,6 +58,10 @@ Swap to mainnet with `chain_id = 31612` and a chosen mainnet RPC endpoint.
 ```bash
 scripts/check-rpc.sh <rpc_url> <expected_chain_id>
 ```
+Or run full signer/RPC preflight with failover:
+```bash
+scripts/preflight.sh <testnet|mainnet> ~/.config/openagents/mezo-agent.env
+```
 2. Confirm signer wallet network.
 3. Deploy contract.
 4. Confirm tx + contract on correct explorer.
