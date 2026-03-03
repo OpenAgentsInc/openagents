@@ -198,7 +198,7 @@ Major gaps to close:
 101. [x] VCAD-PARITY-101: Raytrace quality mode parity (`draft/standard/high`).
 102. [x] VCAD-PARITY-102: Raytrace face-pick parity.
 103. [x] VCAD-PARITY-103: Raytrace UI toggle + fallback parity.
-104. [ ] VCAD-PARITY-104: Rendering/raytrace parity checkpoint.
+104. [x] VCAD-PARITY-104: Rendering/raytrace parity checkpoint.
 
 ### Phase I - Physics + URDF parity (`VCAD-PARITY-105` to `VCAD-PARITY-114`)
 

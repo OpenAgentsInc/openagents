@@ -68,6 +68,7 @@ pub mod raytrace_face_pick_parity;
 pub mod raytrace_quality_mode_parity;
 pub mod raytrace_ui_toggle_fallback_parity;
 pub mod render_mode_parity;
+pub mod rendering_raytrace_checkpoint_parity;
 pub mod risk_register;
 pub mod scorecard;
 pub mod shell_feature_graph_parity;

@@ -15,7 +15,7 @@ Issue coverage: `VCAD-PARITY-010`
 | commands match rate | `0.083333` |
 | open risks | `24` |
 | open hard blockers (p0) | `16` |
-| CI source artifact count | `149` |
+| CI source artifact count | `150` |
 
 ## Profile Gates
 
@@ -146,6 +146,7 @@ Issue coverage: `VCAD-PARITY-010`
 - `raytrace_quality_mode_parity_manifest`
 - `raytrace_ui_toggle_fallback_parity_manifest`
 - `render_mode_parity_manifest`
+- `rendering_raytrace_checkpoint_parity_manifest`
 - `shell_feature_graph_parity_manifest`
 - `sketch_constraint_enum_parity_manifest`
 - `sketch_constraint_status_parity_manifest`
