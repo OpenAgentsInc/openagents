@@ -1,0 +1,57 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-096",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/crates/vcad-kernel-wasm/src/lib.rs (processGeometryGpu/computeCreasedNormalsGpu/decimateMeshGpu) + ~/code/vcad/crates/vcad-kernel-gpu/src/normals.rs + ~/code/vcad/crates/vcad-kernel-gpu/src/decimate.rs",
+  "expected_upload_samples": [
+    {
+      "case_id": "index_out_of_bounds",
+      "accepted": false,
+      "vertex_count": 0,
+      "triangle_count": 0,
+      "error": "index 9 out of bounds for 6 vertices"
+    },
+    {
+      "case_id": "invalid_index_stride",
+      "accepted": false,
+      "vertex_count": 0,
+      "triangle_count": 0,
+      "error": "indices length must be divisible by 3"
+    },
+    {
+      "case_id": "invalid_position_stride",
+      "accepted": false,
+      "vertex_count": 0,
+      "triangle_count": 0,
+      "error": "positions length must be divisible by 3"
+    },
+    {
+      "case_id": "valid_mesh",
+      "accepted": true,
+      "vertex_count": 6,
+      "triangle_count": 8,
+      "error": null
+    }
+  ],
+  "expected_processing_samples": [
+    {
+      "case_id": "process_with_lod",
+      "generate_lod": true,
+      "result_count": 3,
+      "lod_ratios": [1.0, 0.5, 0.25],
+      "positions_len_per_level": [18, 18, 18],
+      "indices_len_per_level": [24, 12, 6],
+      "normals_len_per_level": [18, 18, 18]
+    },
+    {
+      "case_id": "process_without_lod",
+      "generate_lod": false,
+      "result_count": 1,
+      "lod_ratios": [1.0],
+      "positions_len_per_level": [18],
+      "indices_len_per_level": [24],
+      "normals_len_per_level": [18]
+    }
+  ],
+  "expected_fallback_error_message": "GPU feature not enabled"
+}
