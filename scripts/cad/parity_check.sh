@@ -96,6 +96,7 @@ LANE_LABELS=(
     "analytic-ray-intersections"
     "trimmed-surface-ray-hit"
     "bvh-build-traverse"
+    "raytrace-quality-mode"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -437,6 +438,9 @@ run_lane "trimmed-surface-ray-hit" \
 
 run_lane "bvh-build-traverse" \
     "$ROOT_DIR/scripts/cad/parity-bvh-build-traverse-ci.sh"
+
+run_lane "raytrace-quality-mode" \
+    "$ROOT_DIR/scripts/cad/parity-raytrace-quality-mode-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

@@ -195,7 +195,7 @@ Major gaps to close:
 98. [x] VCAD-PARITY-098: Analytic ray intersections parity set.
 99. [x] VCAD-PARITY-099: Trimmed-surface ray hit parity handling.
 100. [x] VCAD-PARITY-100: BVH build/traverse parity for raytrace.
-101. [ ] VCAD-PARITY-101: Raytrace quality mode parity (`draft/standard/high`).
+101. [x] VCAD-PARITY-101: Raytrace quality mode parity (`draft/standard/high`).
 102. [ ] VCAD-PARITY-102: Raytrace face-pick parity.
 103. [ ] VCAD-PARITY-103: Raytrace UI toggle + fallback parity.
 104. [ ] VCAD-PARITY-104: Rendering/raytrace parity checkpoint.

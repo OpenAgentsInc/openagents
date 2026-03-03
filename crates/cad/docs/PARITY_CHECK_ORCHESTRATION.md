@@ -78,6 +78,7 @@ Provide one deterministic orchestration entrypoint for the parity baseline lanes
 - analytic ray intersections parity fixture check
 - trimmed-surface ray hit parity fixture check
 - BVH build/traverse parity fixture check
+- raytrace quality mode parity fixture check
 - parity CI artifact manifest fixture check
 - parity risk register + blocker workflow check
 - baseline dashboard publication check
