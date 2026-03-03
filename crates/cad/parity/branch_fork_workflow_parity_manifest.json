@@ -1,0 +1,43 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-118",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/branch_fork_workflow_vcad_reference.json",
+  "reference_fixture_sha256": "e0e024d0fbdb7a3bc8192204db213ee7fcf4e4987566826e7cbe0cfe56814f04",
+  "reference_source": "~/code/vcad/crates/vcad-workspace/src/branching.rs",
+  "reference_issue_match": true,
+  "reference_commit_match": true,
+  "row_set_match": true,
+  "contract_set_match": true,
+  "deterministic_replay_match": true,
+  "rows": [
+    {
+      "capability": "CAD Branch Fork Workflow Parity",
+      "case_id": "capability_scope",
+      "issue_id": "VCAD-PARITY-118"
+    },
+    {
+      "case_id": "phase_scope",
+      "lane_label": "branch-fork-workflow",
+      "phase": "Phase J - Full workspace parity lanes"
+    },
+    {
+      "case_id": "reference_source",
+      "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+      "vcad_source": "~/code/vcad/crates/vcad-workspace/src/branching.rs"
+    }
+  ],
+  "contracts": [
+    "CAD Branch Fork Workflow Parity parity contracts are aligned to vcad reference behavior",
+    "CI parity artifacts include branch_fork_workflow manifest and vcad fixture evidence",
+    "Phase J - Full workspace parity lanes parity lane remains deterministic across replay"
+  ],
+  "deterministic_signature": "2464ba050e500df3",
+  "parity_contracts": [
+    "CAD Branch Fork Workflow Parity parity contracts are aligned to vcad reference behavior",
+    "CI parity artifacts include branch_fork_workflow manifest and vcad fixture evidence",
+    "Phase J - Full workspace parity lanes parity lane remains deterministic across replay"
+  ]
+}

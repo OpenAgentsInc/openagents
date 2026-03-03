@@ -39,7 +39,7 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 176,
+    "source_artifact_count": 178,
     "artifact_ids": [
       "analytic_ray_intersections_parity_manifest",
       "assembly_acceptance_scenes_parity_manifest",
@@ -53,6 +53,7 @@
       "assembly_schema_parity_manifest",
       "assembly_serialization_replay_parity_manifest",
       "assembly_ui_selection_edit_parity_manifest",
+      "branch_fork_workflow_parity_manifest",
       "bvh_build_traverse_parity_manifest",
       "cad_cli_commands_parity_manifest",
       "cad_cli_scaffold_parity_manifest",
@@ -91,6 +92,7 @@
       "fixtures_assembly_schema_vcad_reference",
       "fixtures_assembly_serialization_replay_vcad_reference",
       "fixtures_assembly_ui_selection_edit_vcad_reference",
+      "fixtures_branch_fork_workflow_vcad_reference",
       "fixtures_bvh_build_traverse_vcad_reference",
       "fixtures_cad_cli_commands_vcad_reference",
       "fixtures_cad_cli_scaffold_vcad_reference",

@@ -15,7 +15,7 @@ Issue coverage: `VCAD-PARITY-010`
 | commands match rate | `0.083333` |
 | open risks | `24` |
 | open hard blockers (p0) | `16` |
-| CI source artifact count | `176` |
+| CI source artifact count | `178` |
 
 ## Profile Gates
 
@@ -40,6 +40,7 @@ Issue coverage: `VCAD-PARITY-010`
 - `assembly_schema_parity_manifest`
 - `assembly_serialization_replay_parity_manifest`
 - `assembly_ui_selection_edit_parity_manifest`
+- `branch_fork_workflow_parity_manifest`
 - `bvh_build_traverse_parity_manifest`
 - `cad_cli_commands_parity_manifest`
 - `cad_cli_scaffold_parity_manifest`
@@ -78,6 +79,7 @@ Issue coverage: `VCAD-PARITY-010`
 - `fixtures_assembly_schema_vcad_reference`
 - `fixtures_assembly_serialization_replay_vcad_reference`
 - `fixtures_assembly_ui_selection_edit_vcad_reference`
+- `fixtures_branch_fork_workflow_vcad_reference`
 - `fixtures_bvh_build_traverse_vcad_reference`
 - `fixtures_cad_cli_commands_vcad_reference`
 - `fixtures_cad_cli_scaffold_vcad_reference`

@@ -10,6 +10,7 @@ pub mod assembly_part_instance_parity;
 pub mod assembly_schema_parity;
 pub mod assembly_serialization_replay_parity;
 pub mod assembly_ui_selection_edit_parity;
+pub mod branch_fork_workflow_parity;
 pub mod bvh_build_traverse_parity;
 pub mod cad_cli_commands_parity;
 pub mod cad_cli_scaffold_parity;

@@ -113,6 +113,7 @@ LANE_LABELS=(
     "crdt-lane-architecture"
     "collaborative-document-sync"
     "presence-cursor-selection"
+    "branch-fork-workflow"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -505,6 +506,9 @@ run_lane "collaborative-document-sync" \
 
 run_lane "presence-cursor-selection" \
     "$ROOT_DIR/scripts/cad/parity-presence-cursor-selection-ci.sh"
+
+run_lane "branch-fork-workflow" \
+    "$ROOT_DIR/scripts/cad/parity-branch-fork-workflow-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
