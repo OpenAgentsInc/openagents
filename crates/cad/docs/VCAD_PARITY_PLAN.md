@@ -223,7 +223,7 @@ Major gaps to close:
 120. [x] VCAD-PARITY-120: ECAD schematic lane parity.
 121. [x] VCAD-PARITY-121: ECAD PCB lane parity.
 122. [x] VCAD-PARITY-122: ECAD export lane parity.
-123. [ ] VCAD-PARITY-123: ECAD simulation lane parity.
+123. [x] VCAD-PARITY-123: ECAD simulation lane parity.
 124. [ ] VCAD-PARITY-124: Slicer core lane parity.
 125. [ ] VCAD-PARITY-125: Slicer G-code lane parity.
 126. [ ] VCAD-PARITY-126: Slicer Bambu lane parity.

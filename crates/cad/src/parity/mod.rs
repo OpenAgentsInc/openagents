@@ -40,6 +40,7 @@ pub mod drafting_section_parity;
 pub mod ecad_export_lane_parity;
 pub mod ecad_pcb_lane_parity;
 pub mod ecad_schematic_lane_parity;
+pub mod ecad_simulation_lane_parity;
 pub mod ecad_symbols_lane_parity;
 pub mod expanded_finishing_parity;
 pub mod feature_op_hash_parity;
