@@ -308,7 +308,7 @@ pub fn paint_mcp_pane(
                     wgpui::theme::bg::APP.with_alpha(0.72)
                 })
                 .with_border(wgpui::theme::border::DEFAULT, 1.0)
-                .with_corner_radius(4.0),
+                .with_corner_radius(6.0),
         );
         paint.scene.draw_text(paint.text.layout_mono(
             &format!(
@@ -389,7 +389,7 @@ pub fn paint_apps_pane(
                     wgpui::theme::bg::APP.with_alpha(0.72)
                 })
                 .with_border(wgpui::theme::border::DEFAULT, 1.0)
-                .with_corner_radius(4.0),
+                .with_corner_radius(6.0),
         );
         let description = app.description.as_deref().unwrap_or("n/a");
         paint.scene.draw_text(paint.text.layout_mono(

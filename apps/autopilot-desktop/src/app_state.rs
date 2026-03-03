@@ -8,7 +8,7 @@ use nostr::NostrIdentity;
 use wgpui::components::TextInput;
 use wgpui::components::hud::{CommandPalette, Hotbar, PaneFrame, ResizablePane, ResizeEdge};
 use wgpui::renderer::Renderer;
-use wgpui::{Bounds, EventContext, Modifiers, Point, TextSystem};
+use wgpui::{Bounds, EventContext, Modifiers, Point, TextSystem, theme};
 use winit::window::Window;
 
 use crate::provider_nip90_lane::{
@@ -299,7 +299,9 @@ pub struct ChatPaneInputs {
 impl Default for ChatPaneInputs {
     fn default() -> Self {
         Self {
-            composer: TextInput::new().placeholder("Message Autopilot"),
+            composer: TextInput::new()
+                .placeholder("Describe a task, ask for analysis, or command your Autopilot...")
+                .border_color_focused(theme::border::FOCUS),
         }
     }
 }

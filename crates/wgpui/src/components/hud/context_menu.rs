@@ -368,7 +368,7 @@ impl Component for ContextMenu {
         cx.scene.draw_quad(
             Quad::new(shadow_bounds)
                 .with_background(Hsla::new(0.0, 0.0, 0.0, 0.5))
-                .with_corner_radius(4.0),
+                .with_corner_radius(6.0),
         );
 
         // Draw solid menu background - #0a0a0a
@@ -378,7 +378,7 @@ impl Component for ContextMenu {
             Quad::new(menu_bounds)
                 .with_background(menu_bg)
                 .with_border(menu_border, 1.0)
-                .with_corner_radius(4.0),
+                .with_corner_radius(6.0),
         );
 
         // Draw items
