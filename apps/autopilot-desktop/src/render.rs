@@ -308,7 +308,7 @@ fn bootstrap_runtime_lanes(state: &mut RenderState) {
 fn open_startup_panes(state: &mut RenderState) {
     for pane_kind in startup_pane_kinds() {
         match pane_kind {
-            PaneKind::AutopilotChat | PaneKind::GoOnline => {
+            PaneKind::AutopilotChat | PaneKind::GoOnline | PaneKind::CadDemo => {
                 let _ = PaneController::create_for_kind(state, pane_kind);
             }
             PaneKind::SparkWallet => {
@@ -982,6 +982,7 @@ mod tests {
     fn startup_pane_set_matches_mvp_core_surfaces() {
         let startup = startup_pane_kinds();
         assert!(startup.contains(&PaneKind::AutopilotChat));
+        assert!(startup.contains(&PaneKind::CadDemo));
         assert!(!startup.contains(&PaneKind::GoOnline));
         assert!(!startup.contains(&PaneKind::SparkWallet));
         assert!(!startup.contains(&PaneKind::Empty));
