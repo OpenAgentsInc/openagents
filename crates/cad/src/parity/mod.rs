@@ -71,6 +71,7 @@ pub mod modeling_edge_case_parity;
 pub mod openagents_crawler;
 pub mod pattern_parity;
 pub mod physics_crate_integration_parity;
+pub mod presence_cursor_selection_parity;
 pub mod primitive_contracts_parity;
 pub mod raytrace_face_pick_parity;
 pub mod raytrace_quality_mode_parity;
