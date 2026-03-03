@@ -239,7 +239,7 @@ Major gaps to close:
 133. [x] VCAD-PARITY-133: Deterministic replay parity across all capability fixtures.
 134. [x] VCAD-PARITY-134: Performance parity scorecard reaches target thresholds.
 135. [x] VCAD-PARITY-135: Release gates and runbooks updated for parity maintenance.
-136. [ ] VCAD-PARITY-136: Final parity certification report (`100%` both tiers).
+136. [x] VCAD-PARITY-136: Final parity certification report (`100%` both tiers).
 
 ## 7) Definition of done for the full plan
 

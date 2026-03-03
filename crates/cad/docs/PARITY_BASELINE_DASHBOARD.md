@@ -15,7 +15,7 @@ Issue coverage: `VCAD-PARITY-010`
 | commands match rate | `0.083333` |
 | open risks | `24` |
 | open hard blockers (p0) | `16` |
-| CI source artifact count | `212` |
+| CI source artifact count | `214` |
 
 ## Profile Gates
 
@@ -77,6 +77,7 @@ Issue coverage: `VCAD-PARITY-010`
 - `expanded_finishing_parity_manifest`
 - `feature_op_hash_parity_manifest`
 - `fillet_feature_graph_parity_manifest`
+- `final_parity_certification_report_parity_manifest`
 - `fixtures_analytic_ray_intersections_vcad_reference`
 - `fixtures_assembly_acceptance_scenes_vcad_reference`
 - `fixtures_assembly_fk_vcad_reference`
@@ -120,6 +121,7 @@ Issue coverage: `VCAD-PARITY-010`
 - `fixtures_embroidery_core_lane_vcad_reference`
 - `fixtures_embroidery_dst_pes_lane_vcad_reference`
 - `fixtures_feature_op_hash_vcad_reference_corpus`
+- `fixtures_final_parity_certification_report_vcad_reference`
 - `fixtures_glb_export_vcad_reference`
 - `fixtures_gpu_acceleration_vcad_reference`
 - `fixtures_gym_style_api_vcad_reference`
