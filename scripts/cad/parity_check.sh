@@ -130,6 +130,7 @@ LANE_LABELS=(
     "security-posture-review"
     "deterministic-replay-all-fixtures"
     "performance-scorecard-thresholds"
+    "release-gates-runbooks"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -573,6 +574,9 @@ run_lane "deterministic-replay-all-fixtures" \
 
 run_lane "performance-scorecard-thresholds" \
     "$ROOT_DIR/scripts/cad/parity-performance-scorecard-thresholds-ci.sh"
+
+run_lane "release-gates-runbooks" \
+    "$ROOT_DIR/scripts/cad/parity-release-gates-runbooks-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

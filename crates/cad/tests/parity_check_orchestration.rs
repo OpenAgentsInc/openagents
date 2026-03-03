@@ -102,6 +102,7 @@ fn parity_check_script_list_mode_includes_required_lanes() {
     assert!(lines.contains(&"security-posture-review"));
     assert!(lines.contains(&"deterministic-replay-all-fixtures"));
     assert!(lines.contains(&"performance-scorecard-thresholds"));
+    assert!(lines.contains(&"release-gates-runbooks"));
     assert!(lines.contains(&"ci-artifact-manifest"));
     assert!(lines.contains(&"risk-register-workflow"));
     assert!(lines.contains(&"baseline-dashboard"));
