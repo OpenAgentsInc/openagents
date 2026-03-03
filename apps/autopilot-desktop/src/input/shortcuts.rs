@@ -152,6 +152,17 @@ pub(super) fn is_command_palette_shortcut(
     is_k && !modifiers.meta && !modifiers.ctrl && !modifiers.alt
 }
 
+pub(super) fn should_open_command_palette(
+    logical_key: &WinitLogicalKey,
+    modifiers: Modifiers,
+    text_input_focused: bool,
+    command_palette_open: bool,
+) -> bool {
+    !command_palette_open
+        && !text_input_focused
+        && is_command_palette_shortcut(logical_key, modifiers)
+}
+
 pub(super) fn is_toggle_fullscreen_shortcut(
     logical_key: &WinitLogicalKey,
     modifiers: Modifiers,
