@@ -1,15 +1,14 @@
 use wgpui::markdown::{MarkdownConfig, MarkdownParser, MarkdownRenderer};
-use wgpui::{Bounds, Component, InputEvent, PaintContext, Point, Quad, theme};
+use wgpui::{Bounds, Component, InputEvent, PaintContext, Point, Quad, SvgQuad, theme};
 
 use crate::app_state::{
     AutopilotChatState, AutopilotMessage, AutopilotMessageStatus, AutopilotProgressBlock,
     AutopilotProgressRow, AutopilotRole, ChatPaneInputs, ChatTranscriptSelectionState, PaneKind,
     RenderState,
 };
-use crate::pane_renderer::paint_action_button;
 use crate::pane_system::{
-    chat_composer_input_bounds, chat_send_button_bounds, chat_transcript_bounds,
-    pane_content_bounds,
+    chat_composer_height_for_value, chat_composer_input_bounds_with_height, chat_send_button_bounds,
+    chat_transcript_bounds_with_height, pane_content_bounds,
 };
 
 const CHAT_TRANSCRIPT_LINE_HEIGHT: f32 = 14.0;
@@ -21,6 +20,7 @@ const CHAT_PROGRESS_BLOCK_GAP: f32 = 4.0;
 const CHAT_ACTIVITY_HEADER_LINE_HEIGHT: f32 = 12.0;
 const CHAT_ACTIVITY_ROW_LINE_HEIGHT: f32 = 12.0;
 const CHAT_ACTIVITY_MAX_ROWS: usize = 14;
+const CHAT_SEND_ICON_SVG_RAW: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path fill="#FFFFFF" d="M342.6 73.4C330.1 60.9 309.8 60.9 297.3 73.4L137.3 233.4C124.8 245.9 124.8 266.2 137.3 278.7C149.8 291.2 170.1 291.2 182.6 278.7L288 173.3L288 544C288 561.7 302.3 576 320 576C337.7 576 352 561.7 352 544L352 173.3L457.4 278.7C469.9 291.2 490.2 291.2 502.7 278.7C515.2 266.2 515.2 245.9 502.7 233.4L342.7 73.4z"/></svg>"##;
 
 #[derive(Clone, Copy, Debug)]
 struct WrappedTranscriptLine {
@@ -31,6 +31,56 @@ struct WrappedTranscriptLine {
 
 fn transcript_scroll_clip_bounds(content_bounds: Bounds) -> Bounds {
     let transcript_bounds = chat_transcript_bounds(content_bounds);
+    Bounds::new(
+        transcript_bounds.origin.x + 8.0,
+        transcript_bounds.origin.y + 8.0,
+        (transcript_bounds.size.width - 16.0).max(0.0),
+        (transcript_bounds.size.height - 24.0).max(0.0),
+    )
+}
+
+fn paint_chat_send_button(bounds: Bounds, enabled: bool, paint: &mut PaintContext) {
+    let diameter = bounds.size.height.min(bounds.size.width);
+    let circle_bounds = Bounds::new(
+        bounds.max_x() - diameter,
+        bounds.origin.y + (bounds.size.height - diameter) * 0.5,
+        diameter,
+        diameter,
+    );
+    let (background, border, icon_tint) = if enabled {
+        (theme::accent::PRIMARY, theme::accent::PRIMARY, theme::bg::APP)
+    } else {
+        (
+            theme::bg::ELEVATED,
+            theme::border::DEFAULT,
+            theme::text::DISABLED,
+        )
+    };
+    paint.scene.draw_quad(
+        Quad::new(circle_bounds)
+            .with_background(background)
+            .with_border(border, 1.0)
+            .with_corner_radius(diameter * 0.5),
+    );
+
+    let icon_size = 16.0;
+    let icon_bounds = Bounds::new(
+        circle_bounds.origin.x + (circle_bounds.size.width - icon_size) * 0.5,
+        circle_bounds.origin.y + (circle_bounds.size.height - icon_size) * 0.5,
+        icon_size,
+        icon_size,
+    );
+    paint.scene.draw_svg(
+        SvgQuad::new(
+            icon_bounds,
+            std::sync::Arc::<[u8]>::from(CHAT_SEND_ICON_SVG_RAW.as_bytes()),
+        )
+        .with_tint(icon_tint),
+    );
+}
+
+fn transcript_scroll_clip_bounds_with_height(content_bounds: Bounds, composer_height: f32) -> Bounds {
+    let transcript_bounds = chat_transcript_bounds_with_height(content_bounds, composer_height);
     Bounds::new(
         transcript_bounds.origin.x + 8.0,
         transcript_bounds.origin.y + 8.0,
@@ -202,12 +252,13 @@ fn chat_tool_activity_lines(autopilot_chat: &AutopilotChatState) -> Vec<String> 
 
 fn transcript_content_height(
     content_bounds: Bounds,
+    composer_height: f32,
     autopilot_chat: &AutopilotChatState,
     text_system: &mut wgpui::TextSystem,
 ) -> f32 {
     let mut height = 8.0;
 
-    let transcript_scroll_clip = transcript_scroll_clip_bounds(content_bounds);
+    let transcript_scroll_clip = transcript_scroll_clip_bounds_with_height(content_bounds, composer_height);
     let markdown_width = markdown_body_width(transcript_scroll_clip);
     let markdown_parser = MarkdownParser::new();
     let markdown_renderer = MarkdownRenderer::with_config(chat_markdown_config());
@@ -326,11 +377,12 @@ fn clamp_to_char_boundary(text: &str, mut byte_offset: usize) -> usize {
 fn transcript_message_layouts(
     state: &mut RenderState,
     content_bounds: Bounds,
+    composer_height: f32,
 ) -> Vec<(u64, Bounds)> {
     let autopilot_chat = &state.autopilot_chat;
-    let transcript_scroll_clip = transcript_scroll_clip_bounds(content_bounds);
+    let transcript_scroll_clip = transcript_scroll_clip_bounds_with_height(content_bounds, composer_height);
     let transcript_content_height =
-        transcript_content_height(content_bounds, autopilot_chat, &mut state.text_system);
+        transcript_content_height(content_bounds, composer_height, autopilot_chat, &mut state.text_system);
     let transcript_max_scroll =
         (transcript_content_height - transcript_scroll_clip.size.height).max(0.0);
     let transcript_scroll_offset =
@@ -384,12 +436,13 @@ pub fn transcript_message_byte_offset_at_point(
     point: Point,
 ) -> Option<(u64, usize)> {
     let content_bounds = top_chat_content_bounds(state)?;
-    let clip = transcript_scroll_clip_bounds(content_bounds);
+    let composer_value = state.chat_inputs.composer.get_value().to_string();
+    let composer_height = chat_composer_height_for_value(content_bounds, &composer_value);
+    let clip = transcript_scroll_clip_bounds_with_height(content_bounds, composer_height);
     if !clip.contains(point) {
         return None;
     }
-
-    let (message_id, message_bounds) = transcript_message_layouts(state, content_bounds)
+    transcript_message_layouts(state, content_bounds, composer_height)
         .into_iter()
         .find(|(_, bounds)| bounds.contains(point))?;
     let message_text = transcript_message_copy_text_by_id(state, message_id)?;
@@ -502,20 +555,22 @@ pub fn paint(
     chat_inputs: &mut ChatPaneInputs,
     paint: &mut PaintContext,
 ) {
-    let transcript_bounds = chat_transcript_bounds(content_bounds);
-    let composer_bounds = chat_composer_input_bounds(content_bounds);
+    let composer_value = chat_inputs.composer.get_value().to_string();
+    let composer_height = chat_composer_height_for_value(content_bounds, &composer_value);
+    let transcript_bounds = chat_transcript_bounds_with_height(content_bounds, composer_height);
+    let composer_bounds = chat_composer_input_bounds_with_height(content_bounds, composer_height);
     let send_bounds = chat_send_button_bounds(content_bounds);
 
     paint.scene.draw_quad(
         Quad::new(transcript_bounds)
             .with_background(theme::bg::APP.with_alpha(0.82))
             .with_border(theme::border::DEFAULT, 1.0)
-            .with_corner_radius(4.0),
+            .with_corner_radius(6.0),
     );
 
-    let transcript_scroll_clip = transcript_scroll_clip_bounds(content_bounds);
+    let transcript_scroll_clip = transcript_scroll_clip_bounds_with_height(content_bounds, composer_height);
     let transcript_content_height =
-        transcript_content_height(content_bounds, autopilot_chat, paint.text);
+        transcript_content_height(content_bounds, composer_height, autopilot_chat, paint.text);
     let transcript_max_scroll =
         (transcript_content_height - transcript_scroll_clip.size.height).max(0.0);
     let transcript_scroll_offset =
@@ -528,10 +583,17 @@ pub fn paint(
     let mut y = transcript_scroll_clip.origin.y + 8.0 - transcript_scroll_offset;
 
     if autopilot_chat.messages.is_empty() {
+        let empty_state = "Ask me to do anything...";
+        let empty_state_font_size = 18.0;
+        let empty_state_width = paint.text.measure(empty_state, empty_state_font_size);
+        let empty_state_x =
+            transcript_scroll_clip.origin.x + (transcript_scroll_clip.size.width - empty_state_width) * 0.5;
+        let empty_state_y =
+            transcript_scroll_clip.origin.y + transcript_scroll_clip.size.height * 0.5 - empty_state_font_size * 0.5;
         paint.scene.draw_text(paint.text.layout(
-            "No messages yet. Send a message to start.",
-            Point::new(transcript_scroll_clip.origin.x, y + 14.0),
-            11.0,
+            empty_state,
+            Point::new(empty_state_x.max(transcript_scroll_clip.origin.x), empty_state_y),
+            empty_state_font_size,
             theme::text::MUTED,
         ));
     }
@@ -642,7 +704,8 @@ pub fn paint(
         .composer
         .set_max_width(composer_bounds.size.width);
     chat_inputs.composer.paint(composer_bounds, paint);
-    paint_action_button(send_bounds, "Send", paint);
+    let can_send = !chat_inputs.composer.get_value().trim().is_empty();
+    paint_chat_send_button(send_bounds, can_send, paint);
 }
 
 pub fn dispatch_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
@@ -656,7 +719,10 @@ pub fn dispatch_input_event(state: &mut RenderState, event: &InputEvent) -> bool
         return false;
     };
 
-    let composer_bounds = chat_composer_input_bounds(pane_content_bounds(bounds));
+    let content_bounds = pane_content_bounds(bounds);
+    let composer_value = state.chat_inputs.composer.get_value().to_string();
+    let composer_height = chat_composer_height_for_value(content_bounds, &composer_value);
+    let composer_bounds = chat_composer_input_bounds_with_height(content_bounds, composer_height);
     state
         .chat_inputs
         .composer
@@ -684,13 +750,16 @@ pub fn dispatch_transcript_scroll_event(
     };
 
     let content_bounds = pane_content_bounds(bounds);
-    let clip = transcript_scroll_clip_bounds(content_bounds);
+    let composer_value = state.chat_inputs.composer.get_value().to_string();
+    let composer_height = chat_composer_height_for_value(content_bounds, &composer_value);
+    let clip = transcript_scroll_clip_bounds_with_height(content_bounds, composer_height);
     if !clip.contains(cursor_position) {
         return false;
     }
 
     let content_height = transcript_content_height(
         content_bounds,
+        composer_height,
         &state.autopilot_chat,
         &mut state.text_system,
     );
