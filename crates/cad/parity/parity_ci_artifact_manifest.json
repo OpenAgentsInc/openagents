@@ -5,7 +5,7 @@
   "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
   "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
   "parity_check_entrypoint": "scripts/cad/parity_check.sh",
-  "source_artifact_count": 184,
+  "source_artifact_count": 186,
   "artifacts": [
     {
       "artifact_id": "analytic_ray_intersections_parity_manifest",
@@ -228,6 +228,12 @@
       "source_path": "crates/cad/parity/drafting_section_parity_manifest.json",
       "sha256": "b3b49c787d7761440d5bb5b54959bd8ab69bf6dffdce7d0511d3c95037be82b9",
       "bytes": 2624
+    },
+    {
+      "artifact_id": "ecad_export_lane_parity_manifest",
+      "source_path": "crates/cad/parity/ecad_export_lane_parity_manifest.json",
+      "sha256": "91cdcdb77ac3a59fbe0fc0061df4ad7c6370e51a38a615dff4b89feb0967f424",
+      "bytes": 1844
     },
     {
       "artifact_id": "ecad_pcb_lane_parity_manifest",
@@ -462,6 +468,12 @@
       "source_path": "crates/cad/parity/fixtures/drafting_section_vcad_reference.json",
       "sha256": "f5225ffb7ff6f76e8d863a5eb401fb0831ad29b62d92c2ca2f33dcbeede56044",
       "bytes": 1653
+    },
+    {
+      "artifact_id": "fixtures_ecad_export_lane_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/ecad_export_lane_vcad_reference.json",
+      "sha256": "a573e5208ffd6b80e0805c05ad94a5019e9029db2e6450e9dca71f0b38e2e599",
+      "bytes": 972
     },
     {
       "artifact_id": "fixtures_ecad_pcb_lane_vcad_reference",
@@ -832,8 +844,8 @@
     {
       "artifact_id": "parity_dashboard",
       "source_path": "crates/cad/parity/parity_dashboard.json",
-      "sha256": "6d4e467b0a4ead30517b648db40d47bf5e1ad42cdc456821e638501abc3389f8",
-      "bytes": 10296
+      "sha256": "a4356eb778d1911d48b12608db75270012d256e7d4dd8f153aa0ea02d53e6fc8",
+      "bytes": 10388
     },
     {
       "artifact_id": "parity_risk_register",

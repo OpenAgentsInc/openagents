@@ -89,6 +89,7 @@ fn parity_check_script_list_mode_includes_required_lanes() {
     assert!(lines.contains(&"ecad-symbols-lane"));
     assert!(lines.contains(&"ecad-schematic-lane"));
     assert!(lines.contains(&"ecad-pcb-lane"));
+    assert!(lines.contains(&"ecad-export-lane"));
     assert!(lines.contains(&"ci-artifact-manifest"));
     assert!(lines.contains(&"risk-register-workflow"));
     assert!(lines.contains(&"baseline-dashboard"));
