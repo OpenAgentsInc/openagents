@@ -211,6 +211,8 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/fixtures/embroidery_core_lane_vcad_reference.json"
     "crates/cad/parity/embroidery_dst_pes_lane_parity_manifest.json"
     "crates/cad/parity/fixtures/embroidery_dst_pes_lane_vcad_reference.json"
+    "crates/cad/parity/cam_stocksim_lane_parity_manifest.json"
+    "crates/cad/parity/fixtures/cam_stocksim_lane_vcad_reference.json"
     "crates/cad/parity/fixtures/parity_fixture_corpus.json"
 )
 

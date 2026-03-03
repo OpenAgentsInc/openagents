@@ -230,7 +230,7 @@ Major gaps to close:
 127. [x] VCAD-PARITY-127: Slicer WASM lane parity.
 128. [x] VCAD-PARITY-128: Embroidery core lane parity.
 129. [x] VCAD-PARITY-129: Embroidery DST/PES lane parity.
-130. [ ] VCAD-PARITY-130: CAM/stocksim lane parity.
+130. [x] VCAD-PARITY-130: CAM/stocksim lane parity.
 
 ### Phase K - Hardening + parity signoff (`VCAD-PARITY-131` to `VCAD-PARITY-136`)
 

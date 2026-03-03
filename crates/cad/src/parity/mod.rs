@@ -15,6 +15,7 @@ pub mod bvh_build_traverse_parity;
 pub mod cad_cli_commands_parity;
 pub mod cad_cli_scaffold_parity;
 pub mod cad_mcp_tools_parity;
+pub mod cam_stocksim_lane_parity;
 pub mod chamfer_feature_graph_parity;
 pub mod ci_artifacts;
 pub mod collaborative_document_sync_parity;

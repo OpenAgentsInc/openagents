@@ -125,6 +125,7 @@ LANE_LABELS=(
     "slicer-wasm-lane"
     "embroidery-core-lane"
     "embroidery-dst-pes-lane"
+    "cam-stocksim-lane"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -553,6 +554,9 @@ run_lane "embroidery-core-lane" \
 
 run_lane "embroidery-dst-pes-lane" \
     "$ROOT_DIR/scripts/cad/parity-embroidery-dst-pes-lane-ci.sh"
+
+run_lane "cam-stocksim-lane" \
+    "$ROOT_DIR/scripts/cad/parity-cam-stocksim-lane-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
