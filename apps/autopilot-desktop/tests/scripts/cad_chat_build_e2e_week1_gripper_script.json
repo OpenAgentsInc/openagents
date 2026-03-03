@@ -1,0 +1,179 @@
+{
+  "script_id": "cad-chat-build-e2e-week1-gripper",
+  "seed": 0,
+  "thread_id": "thread.cad-chat-e2e-week1-gripper",
+  "timing": {
+    "max_total_duration_ms": 20000
+  },
+  "steps": [
+    {
+      "name": "tool-call-create-week1-gripper",
+      "kind": "cad_tool_call_intent",
+      "turn_id": "turn.cad-chat-e2e-week1-gripper.1",
+      "payload": "{\"intent\":\"CreateParallelJawGripperSpec\",\"jaw_open_mm\":42.0,\"finger_length_mm\":65.0,\"finger_thickness_mm\":8.0,\"base_width_mm\":78.0,\"base_depth_mm\":52.0,\"base_thickness_mm\":8.0,\"servo_mount_hole_diameter_mm\":2.9,\"print_fit_mm\":0.15,\"print_clearance_mm\":0.35}",
+      "expect": {
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "intent": "CreateParallelJawGripperSpec",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
+        "progress": {
+          "status": "done"
+        }
+      }
+    },
+    {
+      "name": "tool-call-set-material-baseline",
+      "kind": "cad_tool_call_intent",
+      "turn_id": "turn.cad-chat-e2e-week1-gripper.2",
+      "payload": "{\"intent\":\"SetMaterial\",\"material_id\":\"al-6061-t6\"}",
+      "expect": {
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "intent": "SetMaterial",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
+        "progress": {
+          "status": "done"
+        }
+      }
+    },
+    {
+      "name": "cycle-to-wide-jaw",
+      "kind": "cycle_variant",
+      "count": 1,
+      "expect": {
+        "status": "cycled",
+        "active_variant_id": "variant.wide-jaw"
+      }
+    },
+    {
+      "name": "tool-call-set-material-wide-jaw",
+      "kind": "cad_tool_call_intent",
+      "turn_id": "turn.cad-chat-e2e-week1-gripper.3",
+      "payload": "{\"intent\":\"SetMaterial\",\"material_id\":\"steel-1018\"}",
+      "expect": {
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "intent": "SetMaterial",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
+        "progress": {
+          "status": "done"
+        }
+      }
+    },
+    {
+      "name": "cycle-to-long-reach",
+      "kind": "cycle_variant",
+      "count": 1,
+      "expect": {
+        "status": "cycled",
+        "active_variant_id": "variant.long-reach"
+      }
+    },
+    {
+      "name": "tool-call-set-material-long-reach",
+      "kind": "cad_tool_call_intent",
+      "turn_id": "turn.cad-chat-e2e-week1-gripper.4",
+      "payload": "{\"intent\":\"SetMaterial\",\"material_id\":\"al-5052-h32\"}",
+      "expect": {
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "intent": "SetMaterial",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
+        "progress": {
+          "status": "done"
+        }
+      }
+    },
+    {
+      "name": "cycle-to-stiff-finger",
+      "kind": "cycle_variant",
+      "count": 1,
+      "expect": {
+        "status": "cycled",
+        "active_variant_id": "variant.stiff-finger"
+      }
+    },
+    {
+      "name": "tool-call-set-material-stiff-finger",
+      "kind": "cad_tool_call_intent",
+      "turn_id": "turn.cad-chat-e2e-week1-gripper.5",
+      "payload": "{\"intent\":\"SetMaterial\",\"material_id\":\"ti-6al-4v\"}",
+      "expect": {
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "intent": "SetMaterial",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
+        "progress": {
+          "status": "done"
+        }
+      }
+    },
+    {
+      "name": "capture-single-layout-truth",
+      "kind": "capture_snapshot_truth",
+      "expect": {
+        "status": "captured",
+        "design_profile": "parallel_jaw_gripper",
+        "viewport_layout": "single",
+        "active_variant_id": "variant.stiff-finger",
+        "visible_variant_ids": [
+          "variant.stiff-finger"
+        ],
+        "all_variants_visible": false,
+        "variant_materials": {
+          "variant.baseline": "al-6061-t6",
+          "variant.wide-jaw": "steel-1018",
+          "variant.long-reach": "al-5052-h32",
+          "variant.stiff-finger": "ti-6al-4v"
+        }
+      }
+    },
+    {
+      "name": "toggle-to-quad-layout",
+      "kind": "toggle_viewport_layout",
+      "expect": {
+        "status": "toggled",
+        "viewport_layout": "quad",
+        "all_variants_visible": true,
+        "visible_variant_ids": [
+          "variant.baseline",
+          "variant.wide-jaw",
+          "variant.long-reach",
+          "variant.stiff-finger"
+        ]
+      }
+    },
+    {
+      "name": "capture-quad-layout-truth",
+      "kind": "capture_snapshot_truth",
+      "expect": {
+        "status": "captured",
+        "design_profile": "parallel_jaw_gripper",
+        "viewport_layout": "quad",
+        "all_variants_visible": true,
+        "visible_variant_ids": [
+          "variant.baseline",
+          "variant.wide-jaw",
+          "variant.long-reach",
+          "variant.stiff-finger"
+        ],
+        "variant_materials": {
+          "variant.baseline": "al-6061-t6",
+          "variant.wide-jaw": "steel-1018",
+          "variant.long-reach": "al-5052-h32",
+          "variant.stiff-finger": "ti-6al-4v"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "final_state_revision": 5,
+    "active_variant_id": "variant.stiff-finger",
+    "last_error": null
+  }
+}

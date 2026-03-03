@@ -52,6 +52,48 @@ pub struct CreateRackSpecIntent {
     pub mount_type: String,
 }
 
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_JAW_OPEN_MM: f64 = 42.0;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_LENGTH_MM: f64 = 65.0;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_THICKNESS_MM: f64 = 8.0;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_BASE_WIDTH_MM: f64 = 78.0;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_BASE_DEPTH_MM: f64 = 52.0;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_BASE_THICKNESS_MM: f64 = 8.0;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_MOUNT_HOLE_DIAMETER_MM: f64 = 2.9;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_PRINT_FIT_MM: f64 = 0.15;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_PRINT_CLEARANCE_MM: f64 = 0.35;
+pub const PARALLEL_JAW_GRIPPER_MIN_JAW_OPEN_MM: f64 = 8.0;
+pub const PARALLEL_JAW_GRIPPER_MAX_JAW_OPEN_MM: f64 = 140.0;
+pub const PARALLEL_JAW_GRIPPER_MIN_FINGER_LENGTH_MM: f64 = 25.0;
+pub const PARALLEL_JAW_GRIPPER_MAX_FINGER_LENGTH_MM: f64 = 180.0;
+pub const PARALLEL_JAW_GRIPPER_MIN_FINGER_THICKNESS_MM: f64 = 2.0;
+pub const PARALLEL_JAW_GRIPPER_MAX_FINGER_THICKNESS_MM: f64 = 24.0;
+pub const PARALLEL_JAW_GRIPPER_MIN_BASE_WIDTH_MM: f64 = 30.0;
+pub const PARALLEL_JAW_GRIPPER_MAX_BASE_WIDTH_MM: f64 = 240.0;
+pub const PARALLEL_JAW_GRIPPER_MIN_BASE_DEPTH_MM: f64 = 20.0;
+pub const PARALLEL_JAW_GRIPPER_MAX_BASE_DEPTH_MM: f64 = 180.0;
+pub const PARALLEL_JAW_GRIPPER_MIN_BASE_THICKNESS_MM: f64 = 2.0;
+pub const PARALLEL_JAW_GRIPPER_MAX_BASE_THICKNESS_MM: f64 = 40.0;
+pub const PARALLEL_JAW_GRIPPER_MIN_SERVO_MOUNT_HOLE_DIAMETER_MM: f64 = 1.2;
+pub const PARALLEL_JAW_GRIPPER_MAX_SERVO_MOUNT_HOLE_DIAMETER_MM: f64 = 8.0;
+pub const PARALLEL_JAW_GRIPPER_MIN_PRINT_FIT_MM: f64 = 0.05;
+pub const PARALLEL_JAW_GRIPPER_MAX_PRINT_FIT_MM: f64 = 0.4;
+pub const PARALLEL_JAW_GRIPPER_MIN_PRINT_CLEARANCE_MM: f64 = 0.1;
+pub const PARALLEL_JAW_GRIPPER_MAX_PRINT_CLEARANCE_MM: f64 = 0.8;
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateParallelJawGripperSpecIntent {
+    pub jaw_open_mm: f64,
+    pub finger_length_mm: f64,
+    pub finger_thickness_mm: f64,
+    pub base_width_mm: f64,
+    pub base_depth_mm: f64,
+    pub base_thickness_mm: f64,
+    pub servo_mount_hole_diameter_mm: f64,
+    pub print_fit_mm: f64,
+    pub print_clearance_mm: f64,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GenerateVariantsIntent {
@@ -109,6 +151,7 @@ pub struct ExportIntent {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum CadIntent {
     CreateRackSpec(CreateRackSpecIntent),
+    CreateParallelJawGripperSpec(CreateParallelJawGripperSpecIntent),
     GenerateVariants(GenerateVariantsIntent),
     SetObjective(SetObjectiveIntent),
     AdjustParameter(AdjustParameterIntent),
@@ -123,6 +166,7 @@ impl CadIntent {
     pub fn intent_name(&self) -> &'static str {
         match self {
             Self::CreateRackSpec(_) => "CreateRackSpec",
+            Self::CreateParallelJawGripperSpec(_) => "CreateParallelJawGripperSpec",
             Self::GenerateVariants(_) => "GenerateVariants",
             Self::SetObjective(_) => "SetObjective",
             Self::AdjustParameter(_) => "AdjustParameter",
@@ -135,9 +179,10 @@ impl CadIntent {
     }
 }
 
-pub fn allowed_intent_names() -> [&'static str; 9] {
+pub fn allowed_intent_names() -> [&'static str; 10] {
     [
         "CreateRackSpec",
+        "CreateParallelJawGripperSpec",
         "GenerateVariants",
         "SetObjective",
         "AdjustParameter",
@@ -157,6 +202,19 @@ pub fn cad_intent_json_schema() -> Value {
       "allowed_intents": allowed_intent_names(),
       "intents": {
         "CreateRackSpec": {"required": ["units", "material", "airflow", "mount_type"]},
+        "CreateParallelJawGripperSpec": {
+          "required": [
+            "jaw_open_mm",
+            "finger_length_mm",
+            "finger_thickness_mm",
+            "base_width_mm",
+            "base_depth_mm",
+            "base_thickness_mm",
+            "servo_mount_hole_diameter_mm",
+            "print_fit_mm",
+            "print_clearance_mm"
+          ]
+        },
         "GenerateVariants": {"required": ["count", "objective_set"]},
         "SetObjective": {"required": ["objective"]},
         "AdjustParameter": {"required": ["parameter", "operation", "value"]},
@@ -199,6 +257,10 @@ pub fn parse_cad_intent_json(payload: &str) -> Result<CadIntent, CadIntentValida
     let parsed = match intent_name {
         "CreateRackSpec" => parse_payload::<CreateRackSpecIntent>(intent_name, content)
             .map(CadIntent::CreateRackSpec),
+        "CreateParallelJawGripperSpec" => {
+            parse_payload::<CreateParallelJawGripperSpecIntent>(intent_name, content)
+                .map(CadIntent::CreateParallelJawGripperSpec)
+        }
         "GenerateVariants" => parse_payload::<GenerateVariantsIntent>(intent_name, content)
             .map(CadIntent::GenerateVariants),
         "SetObjective" => {
@@ -241,6 +303,79 @@ pub fn validate_cad_intent(intent: &CadIntent) -> Result<(), CadIntentValidation
             validate_non_empty("CreateRackSpec", "material", &payload.material)?;
             validate_non_empty("CreateRackSpec", "airflow", &payload.airflow)?;
             validate_non_empty("CreateRackSpec", "mount_type", &payload.mount_type)?;
+        }
+        CadIntent::CreateParallelJawGripperSpec(payload) => {
+            validate_finite_range(
+                "CreateParallelJawGripperSpec",
+                "jaw_open_mm",
+                payload.jaw_open_mm,
+                PARALLEL_JAW_GRIPPER_MIN_JAW_OPEN_MM,
+                PARALLEL_JAW_GRIPPER_MAX_JAW_OPEN_MM,
+            )?;
+            validate_finite_range(
+                "CreateParallelJawGripperSpec",
+                "finger_length_mm",
+                payload.finger_length_mm,
+                PARALLEL_JAW_GRIPPER_MIN_FINGER_LENGTH_MM,
+                PARALLEL_JAW_GRIPPER_MAX_FINGER_LENGTH_MM,
+            )?;
+            validate_finite_range(
+                "CreateParallelJawGripperSpec",
+                "finger_thickness_mm",
+                payload.finger_thickness_mm,
+                PARALLEL_JAW_GRIPPER_MIN_FINGER_THICKNESS_MM,
+                PARALLEL_JAW_GRIPPER_MAX_FINGER_THICKNESS_MM,
+            )?;
+            validate_finite_range(
+                "CreateParallelJawGripperSpec",
+                "base_width_mm",
+                payload.base_width_mm,
+                PARALLEL_JAW_GRIPPER_MIN_BASE_WIDTH_MM,
+                PARALLEL_JAW_GRIPPER_MAX_BASE_WIDTH_MM,
+            )?;
+            validate_finite_range(
+                "CreateParallelJawGripperSpec",
+                "base_depth_mm",
+                payload.base_depth_mm,
+                PARALLEL_JAW_GRIPPER_MIN_BASE_DEPTH_MM,
+                PARALLEL_JAW_GRIPPER_MAX_BASE_DEPTH_MM,
+            )?;
+            validate_finite_range(
+                "CreateParallelJawGripperSpec",
+                "base_thickness_mm",
+                payload.base_thickness_mm,
+                PARALLEL_JAW_GRIPPER_MIN_BASE_THICKNESS_MM,
+                PARALLEL_JAW_GRIPPER_MAX_BASE_THICKNESS_MM,
+            )?;
+            validate_finite_range(
+                "CreateParallelJawGripperSpec",
+                "servo_mount_hole_diameter_mm",
+                payload.servo_mount_hole_diameter_mm,
+                PARALLEL_JAW_GRIPPER_MIN_SERVO_MOUNT_HOLE_DIAMETER_MM,
+                PARALLEL_JAW_GRIPPER_MAX_SERVO_MOUNT_HOLE_DIAMETER_MM,
+            )?;
+            validate_finite_range(
+                "CreateParallelJawGripperSpec",
+                "print_fit_mm",
+                payload.print_fit_mm,
+                PARALLEL_JAW_GRIPPER_MIN_PRINT_FIT_MM,
+                PARALLEL_JAW_GRIPPER_MAX_PRINT_FIT_MM,
+            )?;
+            validate_finite_range(
+                "CreateParallelJawGripperSpec",
+                "print_clearance_mm",
+                payload.print_clearance_mm,
+                PARALLEL_JAW_GRIPPER_MIN_PRINT_CLEARANCE_MM,
+                PARALLEL_JAW_GRIPPER_MAX_PRINT_CLEARANCE_MM,
+            )?;
+            if payload.print_clearance_mm <= payload.print_fit_mm {
+                return Err(CadIntentValidationError::new(
+                    "CAD-INTENT-INVALID-RANGE",
+                    Some("CreateParallelJawGripperSpec".to_string()),
+                    Some("print_clearance_mm".to_string()),
+                    "print_clearance_mm must be greater than print_fit_mm",
+                ));
+            }
         }
         CadIntent::GenerateVariants(payload) => {
             if payload.count == 0 || payload.count > 4 {
@@ -336,6 +471,24 @@ fn validate_non_empty(
     Ok(())
 }
 
+fn validate_finite_range(
+    intent: &str,
+    field: &str,
+    value: f64,
+    min: f64,
+    max: f64,
+) -> Result<(), CadIntentValidationError> {
+    if !value.is_finite() || value < min || value > max {
+        return Err(CadIntentValidationError::new(
+            "CAD-INTENT-INVALID-RANGE",
+            Some(intent.to_string()),
+            Some(field.to_string()),
+            format!("{field} must be finite and in range [{min}, {max}]"),
+        ));
+    }
+    Ok(())
+}
+
 fn strip_intent_field(object: &Map<String, Value>) -> Value {
     let mut content = object.clone();
     let _ = content.remove("intent");
@@ -373,6 +526,11 @@ mod tests {
             .unwrap_or_default();
         assert_eq!(names.len(), allowed_intent_names().len());
         assert!(names.iter().any(|value| value == "CreateRackSpec"));
+        assert!(
+            names
+                .iter()
+                .any(|value| value == "CreateParallelJawGripperSpec")
+        );
     }
 
     #[test]
@@ -402,6 +560,54 @@ mod tests {
             }
             other => panic!("unexpected intent variant: {other:?}"),
         }
+    }
+
+    #[test]
+    fn parse_and_validate_parallel_jaw_gripper_spec() {
+        let payload = r#"{
+            "intent":"CreateParallelJawGripperSpec",
+            "jaw_open_mm":42.0,
+            "finger_length_mm":65.0,
+            "finger_thickness_mm":8.0,
+            "base_width_mm":78.0,
+            "base_depth_mm":52.0,
+            "base_thickness_mm":8.0,
+            "servo_mount_hole_diameter_mm":2.9,
+            "print_fit_mm":0.15,
+            "print_clearance_mm":0.35
+        }"#;
+        let parsed = parse_cad_intent_json(payload).expect("parallel jaw payload should parse");
+        match parsed {
+            CadIntent::CreateParallelJawGripperSpec(spec) => {
+                assert!((spec.jaw_open_mm - 42.0).abs() < f64::EPSILON);
+                assert!((spec.print_fit_mm - 0.15).abs() < f64::EPSILON);
+            }
+            other => panic!("unexpected intent variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_rejects_invalid_parallel_jaw_clearance_relationship() {
+        let payload = r#"{
+            "intent":"CreateParallelJawGripperSpec",
+            "jaw_open_mm":42.0,
+            "finger_length_mm":65.0,
+            "finger_thickness_mm":8.0,
+            "base_width_mm":78.0,
+            "base_depth_mm":52.0,
+            "base_thickness_mm":8.0,
+            "servo_mount_hole_diameter_mm":2.9,
+            "print_fit_mm":0.35,
+            "print_clearance_mm":0.15
+        }"#;
+        let error = parse_cad_intent_json(payload)
+            .expect_err("clearance <= fit should fail validation");
+        assert_eq!(error.code, "CAD-INTENT-INVALID-RANGE");
+        assert_eq!(
+            error.intent.as_deref(),
+            Some("CreateParallelJawGripperSpec")
+        );
+        assert_eq!(error.field.as_deref(), Some("print_clearance_mm"));
     }
 
     #[test]

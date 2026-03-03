@@ -192,6 +192,18 @@ fn intent_preview(intent: &CadIntent) -> String {
             "units={}, material={}, airflow={}, mount_type={}",
             payload.units, payload.material, payload.airflow, payload.mount_type
         ),
+        CadIntent::CreateParallelJawGripperSpec(payload) => format!(
+            "jaw_open_mm={}, finger_length_mm={}, finger_thickness_mm={}, base_width_mm={}, base_depth_mm={}, base_thickness_mm={}, servo_mount_hole_diameter_mm={}, print_fit_mm={}, print_clearance_mm={}",
+            payload.jaw_open_mm,
+            payload.finger_length_mm,
+            payload.finger_thickness_mm,
+            payload.base_width_mm,
+            payload.base_depth_mm,
+            payload.base_thickness_mm,
+            payload.servo_mount_hole_diameter_mm,
+            payload.print_fit_mm,
+            payload.print_clearance_mm
+        ),
         CadIntent::GenerateVariants(payload) => {
             format!(
                 "count={}, objective_set={}",

@@ -341,6 +341,7 @@ pub enum StableSatsSimulationPaneAction {
 pub enum CadDemoPaneAction {
     Noop,
     CycleVariant,
+    ToggleViewportLayout,
     ResetSession,
     BootstrapDemo,
     ResetCamera,
@@ -396,7 +397,7 @@ pub struct CadPaletteCommandSpec {
     pub action: CadDemoPaneAction,
 }
 
-const CAD_PALETTE_COMMAND_SPECS: [CadPaletteCommandSpec; 29] = [
+const CAD_PALETTE_COMMAND_SPECS: [CadPaletteCommandSpec; 30] = [
     CadPaletteCommandSpec {
         id: "cad.demo.bootstrap",
         label: "CAD: Bootstrap Demo",
@@ -438,6 +439,13 @@ const CAD_PALETTE_COMMAND_SPECS: [CadPaletteCommandSpec; 29] = [
         description: "Toggle CAD projection between orthographic and perspective",
         keybinding: Some("P"),
         action: CadDemoPaneAction::ToggleProjectionMode,
+    },
+    CadPaletteCommandSpec {
+        id: "cad.view.toggle_layout",
+        label: "CAD: Toggle Layout",
+        description: "Toggle CAD viewport layout between single and quad",
+        keybinding: Some("4"),
+        action: CadDemoPaneAction::ToggleViewportLayout,
     },
     CadPaletteCommandSpec {
         id: "cad.drawing.toggle_mode",
@@ -2453,9 +2461,20 @@ pub fn cad_demo_projection_mode_button_bounds(content_bounds: Bounds) -> Bounds 
     )
 }
 
+pub fn cad_demo_viewport_layout_button_bounds(content_bounds: Bounds) -> Bounds {
+    let projection = cad_demo_projection_mode_button_bounds(content_bounds);
+    let desired_width = (content_bounds.size.width * 0.16).clamp(98.0, 170.0);
+    let min_x = content_bounds.origin.x + CHAT_PAD;
+    let max_x = content_bounds.max_x() - CHAT_PAD;
+    let origin_x = (projection.max_x() + JOB_INBOX_BUTTON_GAP).max(min_x);
+    let width = desired_width.min((max_x - origin_x).max(40.0));
+    Bounds::new(origin_x, projection.origin.y, width, projection.size.height)
+}
+
 fn cad_demo_drawing_toolbar_top(content_bounds: Bounds) -> f32 {
     cad_demo_projection_mode_button_bounds(content_bounds)
         .max_y()
+        .max(cad_demo_viewport_layout_button_bounds(content_bounds).max_y())
         .max(cad_demo_reset_camera_button_bounds(content_bounds).max_y())
         + 6.0
 }
@@ -2640,6 +2659,7 @@ fn cad_demo_controls_bottom(content_bounds: Bounds) -> f32 {
         .max(cad_demo_hidden_line_mode_button_bounds(content_bounds).max_y())
         .max(cad_demo_reset_camera_button_bounds(content_bounds).max_y())
         .max(cad_demo_projection_mode_button_bounds(content_bounds).max_y())
+        .max(cad_demo_viewport_layout_button_bounds(content_bounds).max_y())
         .max(cad_demo_drawing_mode_button_bounds(content_bounds).max_y())
         .max(cad_demo_drawing_direction_button_bounds(content_bounds).max_y())
         .max(cad_demo_drawing_hidden_lines_button_bounds(content_bounds).max_y())
@@ -3569,6 +3589,11 @@ fn pane_hit_action_for_pane(
                     CadDemoPaneAction::ToggleProjectionMode,
                 ));
             }
+            if cad_demo_viewport_layout_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CadDemo(
+                    CadDemoPaneAction::ToggleViewportLayout,
+                ));
+            }
             if cad_demo_drawing_mode_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::CadDemo(
                     CadDemoPaneAction::ToggleDrawingViewMode,
@@ -3663,7 +3688,7 @@ fn pane_hit_action_for_pane(
                     CadDemoPaneAction::CycleWarningCodeFilter,
                 ));
             }
-            let dimension_rows = state.cad_demo.dimensions.len().min(4);
+            let dimension_rows = state.cad_demo.visible_dimension_indices().len().min(4);
             for index in 0..dimension_rows {
                 if cad_demo_dimension_row_bounds(content_bounds, index).contains(point) {
                     return Some(PaneHitAction::CadDemo(
@@ -4005,6 +4030,7 @@ mod tests {
         cad_demo_snap_grid_button_bounds, cad_demo_snap_midpoint_button_bounds,
         cad_demo_snap_origin_button_bounds, cad_demo_timeline_panel_bounds,
         cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
+        cad_demo_viewport_layout_button_bounds,
         cad_demo_view_snap_front_button_bounds, cad_demo_view_snap_iso_button_bounds,
         cad_demo_view_snap_right_button_bounds, cad_demo_view_snap_top_button_bounds,
         cad_demo_warning_filter_code_button_bounds, cad_demo_warning_filter_severity_button_bounds,
@@ -4422,6 +4448,7 @@ mod tests {
         let hidden_line = cad_demo_hidden_line_mode_button_bounds(content);
         let reset_camera = cad_demo_reset_camera_button_bounds(content);
         let projection = cad_demo_projection_mode_button_bounds(content);
+        let viewport_layout = cad_demo_viewport_layout_button_bounds(content);
         let drawing_mode = cad_demo_drawing_mode_button_bounds(content);
         let drawing_direction = cad_demo_drawing_direction_button_bounds(content);
         let drawing_hidden = cad_demo_drawing_hidden_lines_button_bounds(content);
@@ -4442,6 +4469,7 @@ mod tests {
         assert!(content.contains(hidden_line.origin));
         assert!(content.contains(reset_camera.origin));
         assert!(content.contains(projection.origin));
+        assert!(content.contains(viewport_layout.origin));
         assert!(content.contains(drawing_mode.origin));
         assert!(content.contains(drawing_direction.origin));
         assert!(content.contains(drawing_hidden.origin));
@@ -4462,6 +4490,7 @@ mod tests {
         assert!(hidden_line.max_y() <= content.max_y());
         assert!(reset_camera.max_y() <= content.max_y());
         assert!(projection.max_y() <= content.max_y());
+        assert!(viewport_layout.max_y() <= content.max_y());
         assert!(drawing_mode.max_y() <= content.max_y());
         assert!(drawing_direction.max_y() <= content.max_y());
         assert!(drawing_hidden.max_y() <= content.max_y());
@@ -4481,6 +4510,7 @@ mod tests {
         assert!(reset.max_x() <= hidden_line.min_x() + 0.001);
         assert!(hidden_line.max_x() <= reset_camera.min_x() + 0.001);
         assert!(reset_camera.max_x() <= projection.min_x() + 0.001);
+        assert!(projection.max_x() <= viewport_layout.min_x() + 0.001);
         assert!(drawing_mode.origin.y >= projection.max_y() - 0.001);
         assert!(drawing_mode.max_x() <= drawing_direction.min_x() + 0.001);
         assert!(drawing_direction.max_x() <= drawing_hidden.min_x() + 0.001);
@@ -4497,7 +4527,7 @@ mod tests {
         assert!(section_plane.origin.y >= hotkeys.max_y() - 0.001);
         assert!(section_plane.max_x() <= section_offset.min_x() + 0.001);
         assert!(section_offset.max_x() <= material.min_x() + 0.001);
-        assert!(projection.max_x() <= content.max_x() + 0.001);
+        assert!(viewport_layout.max_x() <= content.max_x() + 0.001);
     }
 
     #[test]

@@ -254,6 +254,7 @@ fn should_enqueue_rebuild_for_chat_intent(intent: &CadIntent) -> bool {
     matches!(
         intent,
         CadIntent::CreateRackSpec(_)
+            | CadIntent::CreateParallelJawGripperSpec(_)
             | CadIntent::GenerateVariants(_)
             | CadIntent::SetObjective(_)
             | CadIntent::AdjustParameter(_)
@@ -641,6 +642,11 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
             ));
             true
         }
+        CadDemoPaneAction::ToggleViewportLayout => {
+            let layout = state.toggle_viewport_layout();
+            state.last_action = Some(format!("CAD viewport layout -> {}", layout.label()));
+            true
+        }
         CadDemoPaneAction::ResetSession | CadDemoPaneAction::BootstrapDemo => {
             bootstrap_cad_demo_state(state)
         }
@@ -964,8 +970,11 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
             true
         }
         CadDemoPaneAction::StartDimensionEdit(index) => {
-            if state.begin_dimension_edit(index) {
-                if let Some(dimension) = state.dimensions.get(index) {
+            let Some(dimension_index) = state.dimension_index_for_visible_row(index) else {
+                return false;
+            };
+            if state.begin_dimension_edit(dimension_index) {
+                if let Some(dimension) = state.dimensions.get(dimension_index) {
                     state.last_action = Some(format!(
                         "CAD dimension edit -> {} ({:.3} mm)",
                         dimension.label, dimension.value_mm
@@ -1225,11 +1234,11 @@ fn apply_completed_rebuild(
     state.last_good_mesh_payload = Some(completed.mesh_payload.clone());
     state.last_good_mesh_id = Some(completed.mesh_payload.mesh_id.clone());
     let material_id = state
-        .analysis_snapshot
-        .material_id
-        .as_deref()
-        .unwrap_or(DEFAULT_CAD_MATERIAL_ID)
-        .to_string();
+        .variant_materials
+        .get(&receipt.variant_id)
+        .cloned()
+        .or_else(|| state.analysis_snapshot.material_id.clone())
+        .unwrap_or_else(|| DEFAULT_CAD_MATERIAL_ID.to_string());
     let analysis = analysis_snapshot_from_mesh(
         completed.document_revision,
         &receipt.variant_id,
@@ -1521,6 +1530,7 @@ fn emit_cad_event_for_action(state: &mut RenderState, action: CadDemoPaneAction)
             );
         }
         CadDemoPaneAction::CycleMaterialPreset
+        | CadDemoPaneAction::ToggleViewportLayout
         | CadDemoPaneAction::CycleSectionPlane
         | CadDemoPaneAction::StepSectionPlaneOffset
         | CadDemoPaneAction::ToggleDrawingViewMode
@@ -1620,6 +1630,15 @@ fn stats_delta(before: EvalCacheStats, after: EvalCacheStats) -> EvalCacheStats 
 }
 
 fn build_demo_feature_graph(state: &CadDemoPaneState) -> FeatureGraph {
+    match state.active_design_profile() {
+        openagents_cad::dispatch::CadDesignProfile::Rack => build_rack_feature_graph(state),
+        openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper => {
+            build_parallel_jaw_gripper_feature_graph(state)
+        }
+    }
+}
+
+fn build_rack_feature_graph(state: &CadDemoPaneState) -> FeatureGraph {
     let width_mm = dimension_value_mm(state, "width_mm", 390.0);
     let depth_mm = dimension_value_mm(state, "depth_mm", 226.0);
     let height_mm = dimension_value_mm(state, "height_mm", 88.0);
@@ -1738,21 +1757,467 @@ fn build_demo_feature_graph(state: &CadDemoPaneState) -> FeatureGraph {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct GripperVariantDimensions {
+    jaw_open_mm: f64,
+    finger_length_mm: f64,
+    finger_thickness_mm: f64,
+    base_width_mm: f64,
+    base_depth_mm: f64,
+    base_thickness_mm: f64,
+    servo_mount_hole_diameter_mm: f64,
+    print_fit_mm: f64,
+    print_clearance_mm: f64,
+}
+
+impl GripperVariantDimensions {
+    fn from_state(state: &CadDemoPaneState) -> Self {
+        Self {
+            jaw_open_mm: dimension_value_mm(
+                state,
+                "jaw_open_mm",
+                openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_JAW_OPEN_MM,
+            ),
+            finger_length_mm: dimension_value_mm(
+                state,
+                "finger_length_mm",
+                openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_LENGTH_MM,
+            ),
+            finger_thickness_mm: dimension_value_mm(
+                state,
+                "finger_thickness_mm",
+                openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_THICKNESS_MM,
+            ),
+            base_width_mm: dimension_value_mm(
+                state,
+                "base_width_mm",
+                openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_BASE_WIDTH_MM,
+            ),
+            base_depth_mm: dimension_value_mm(
+                state,
+                "base_depth_mm",
+                openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_BASE_DEPTH_MM,
+            ),
+            base_thickness_mm: dimension_value_mm(
+                state,
+                "base_thickness_mm",
+                openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_BASE_THICKNESS_MM,
+            ),
+            servo_mount_hole_diameter_mm: dimension_value_mm(
+                state,
+                "servo_mount_hole_diameter_mm",
+                openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_MOUNT_HOLE_DIAMETER_MM,
+            ),
+            print_fit_mm: dimension_value_mm(
+                state,
+                "print_fit_mm",
+                openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_PRINT_FIT_MM,
+            ),
+            print_clearance_mm: dimension_value_mm(
+                state,
+                "print_clearance_mm",
+                openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_PRINT_CLEARANCE_MM,
+            ),
+        }
+    }
+
+    fn with_variant_deltas(self, variant_id: &str) -> Self {
+        let mut value = self;
+        match variant_id {
+            "variant.wide-jaw" => {
+                value.jaw_open_mm += 22.0;
+                value.base_width_mm += 16.0;
+                value.base_depth_mm += 4.0;
+            }
+            "variant.long-reach" => {
+                value.finger_length_mm += 23.0;
+                value.base_width_mm += 2.0;
+            }
+            "variant.stiff-finger" => {
+                value.jaw_open_mm -= 2.0;
+                value.finger_thickness_mm += 2.0;
+                value.base_thickness_mm += 2.0;
+                value.servo_mount_hole_diameter_mm += 0.3;
+            }
+            _ => {}
+        }
+        value
+    }
+}
+
+fn build_parallel_jaw_gripper_feature_graph(state: &CadDemoPaneState) -> FeatureGraph {
+    let gripper = GripperVariantDimensions::from_state(state)
+        .with_variant_deltas(state.active_variant_id.as_str());
+    let finger_height_mm = (gripper.finger_thickness_mm * 2.4).max(10.0);
+
+    FeatureGraph {
+        nodes: vec![
+            FeatureNode {
+                id: "feature.gripper.base".to_string(),
+                name: "gripper_base".to_string(),
+                operation_key: "gripper.base_plate.v1".to_string(),
+                depends_on: Vec::new(),
+                params: BTreeMap::from([
+                    ("variant".to_string(), state.active_variant_id.clone()),
+                    (
+                        "base_width_mm".to_string(),
+                        format!(
+                            "{:.3}",
+                            gripper
+                                .base_width_mm
+                                .max(openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_BASE_WIDTH_MM)
+                        ),
+                    ),
+                    (
+                        "base_depth_mm".to_string(),
+                        format!(
+                            "{:.3}",
+                            gripper
+                                .base_depth_mm
+                                .max(openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_BASE_DEPTH_MM)
+                        ),
+                    ),
+                    (
+                        "base_thickness_mm".to_string(),
+                        format!(
+                            "{:.3}",
+                            gripper.base_thickness_mm.max(
+                                openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_BASE_THICKNESS_MM
+                            )
+                        ),
+                    ),
+                    ("print_fit_mm".to_string(), format!("{:.3}", gripper.print_fit_mm)),
+                    (
+                        "print_clearance_mm".to_string(),
+                        format!("{:.3}", gripper.print_clearance_mm),
+                    ),
+                ]),
+            },
+            FeatureNode {
+                id: "feature.gripper.finger.left".to_string(),
+                name: "gripper_finger_left".to_string(),
+                operation_key: "gripper.finger.left.v1".to_string(),
+                depends_on: vec!["feature.gripper.base".to_string()],
+                params: BTreeMap::from([
+                    ("variant".to_string(), state.active_variant_id.clone()),
+                    (
+                        "jaw_open_mm".to_string(),
+                        format!(
+                            "{:.3}",
+                            gripper
+                                .jaw_open_mm
+                                .max(openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_JAW_OPEN_MM)
+                        ),
+                    ),
+                    (
+                        "finger_length_mm".to_string(),
+                        format!(
+                            "{:.3}",
+                            gripper.finger_length_mm.max(
+                                openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_FINGER_LENGTH_MM
+                            )
+                        ),
+                    ),
+                    (
+                        "finger_thickness_mm".to_string(),
+                        format!(
+                            "{:.3}",
+                            gripper.finger_thickness_mm.max(
+                                openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_FINGER_THICKNESS_MM
+                            )
+                        ),
+                    ),
+                    (
+                        "base_thickness_mm".to_string(),
+                        format!(
+                            "{:.3}",
+                            gripper.base_thickness_mm.max(
+                                openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_BASE_THICKNESS_MM
+                            )
+                        ),
+                    ),
+                    ("finger_height_mm".to_string(), format!("{finger_height_mm:.3}")),
+                ]),
+            },
+            FeatureNode {
+                id: "feature.gripper.finger.right".to_string(),
+                name: "gripper_finger_right".to_string(),
+                operation_key: "gripper.finger.right.v1".to_string(),
+                depends_on: vec!["feature.gripper.base".to_string()],
+                params: BTreeMap::from([
+                    ("variant".to_string(), state.active_variant_id.clone()),
+                    (
+                        "jaw_open_mm".to_string(),
+                        format!(
+                            "{:.3}",
+                            gripper
+                                .jaw_open_mm
+                                .max(openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_JAW_OPEN_MM)
+                        ),
+                    ),
+                    (
+                        "finger_length_mm".to_string(),
+                        format!(
+                            "{:.3}",
+                            gripper.finger_length_mm.max(
+                                openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_FINGER_LENGTH_MM
+                            )
+                        ),
+                    ),
+                    (
+                        "finger_thickness_mm".to_string(),
+                        format!(
+                            "{:.3}",
+                            gripper.finger_thickness_mm.max(
+                                openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_FINGER_THICKNESS_MM
+                            )
+                        ),
+                    ),
+                    (
+                        "base_thickness_mm".to_string(),
+                        format!(
+                            "{:.3}",
+                            gripper.base_thickness_mm.max(
+                                openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_BASE_THICKNESS_MM
+                            )
+                        ),
+                    ),
+                    ("finger_height_mm".to_string(), format!("{finger_height_mm:.3}")),
+                ]),
+            },
+            FeatureNode {
+                id: "feature.gripper.servo_mount_holes".to_string(),
+                name: "gripper_servo_mount_holes".to_string(),
+                operation_key: "gripper.servo_mount_holes.v1".to_string(),
+                depends_on: vec!["feature.gripper.base".to_string()],
+                params: BTreeMap::from([
+                    ("variant".to_string(), state.active_variant_id.clone()),
+                    (
+                        "base_width_mm".to_string(),
+                        format!(
+                            "{:.3}",
+                            gripper
+                                .base_width_mm
+                                .max(openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_BASE_WIDTH_MM)
+                        ),
+                    ),
+                    (
+                        "base_thickness_mm".to_string(),
+                        format!(
+                            "{:.3}",
+                            gripper.base_thickness_mm.max(
+                                openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_BASE_THICKNESS_MM
+                            )
+                        ),
+                    ),
+                    (
+                        "servo_mount_hole_diameter_mm".to_string(),
+                        format!(
+                            "{:.3}",
+                            gripper.servo_mount_hole_diameter_mm.max(
+                                openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_SERVO_MOUNT_HOLE_DIAMETER_MM
+                            )
+                        ),
+                    ),
+                ]),
+            },
+            FeatureNode {
+                id: "feature.gripper.edge_marker".to_string(),
+                name: "gripper_edge_marker".to_string(),
+                operation_key: "gripper.edge_marker.v1".to_string(),
+                depends_on: vec!["feature.gripper.base".to_string()],
+                params: BTreeMap::from([
+                    ("variant".to_string(), state.active_variant_id.clone()),
+                    (
+                        "base_width_mm".to_string(),
+                        format!(
+                            "{:.3}",
+                            gripper
+                                .base_width_mm
+                                .max(openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_BASE_WIDTH_MM)
+                        ),
+                    ),
+                    (
+                        "base_depth_mm".to_string(),
+                        format!(
+                            "{:.3}",
+                            gripper
+                                .base_depth_mm
+                                .max(openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_BASE_DEPTH_MM)
+                        ),
+                    ),
+                    (
+                        "base_thickness_mm".to_string(),
+                        format!(
+                            "{:.3}",
+                            gripper.base_thickness_mm.max(
+                                openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_BASE_THICKNESS_MM
+                            )
+                        ),
+                    ),
+                ]),
+            },
+        ],
+    }
+}
+
 fn dimension_value_mm(state: &CadDemoPaneState, dimension_id: &str, fallback: f64) -> f64 {
     state.dimension_value_mm(dimension_id).unwrap_or(fallback)
 }
 
 fn refresh_warning_state(state: &mut CadDemoPaneState, document_revision: u64, variant_id: &str) {
-    let snapshot = build_demo_validity_snapshot(document_revision, variant_id);
-    let receipt = run_model_validity_checks(&snapshot);
-    let warnings = receipt
+    let warnings = build_profile_warning_set(state, document_revision, variant_id);
+    state.set_variant_warning_set(variant_id, warnings);
+    state.set_focused_geometry_for_active_variant(None);
+}
+
+fn build_profile_warning_set(
+    state: &CadDemoPaneState,
+    document_revision: u64,
+    variant_id: &str,
+) -> Vec<CadDemoWarningState> {
+    let mut warnings = match state.active_design_profile() {
+        openagents_cad::dispatch::CadDesignProfile::Rack => {
+            validity_warnings_from_snapshot(build_rack_demo_validity_snapshot(
+                document_revision,
+                variant_id,
+            ))
+        }
+        openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper => {
+            validity_warnings_from_snapshot(build_gripper_demo_validity_snapshot(
+                state,
+                document_revision,
+                variant_id,
+            ))
+        }
+    };
+    if state.active_design_profile() == openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper
+    {
+        append_gripper_printability_warnings(state, variant_id, &mut warnings);
+    }
+    warnings
+}
+
+fn validity_warnings_from_snapshot(snapshot: ModelValiditySnapshot) -> Vec<CadDemoWarningState> {
+    run_model_validity_checks(&snapshot)
         .warnings
         .iter()
         .enumerate()
         .map(|(index, warning)| warning_to_pane_state(index, warning))
-        .collect::<Vec<_>>();
-    state.set_variant_warning_set(variant_id, warnings);
-    state.set_focused_geometry_for_active_variant(None);
+        .collect()
+}
+
+fn build_gripper_demo_validity_snapshot(
+    state: &CadDemoPaneState,
+    document_revision: u64,
+    variant_id: &str,
+) -> ModelValiditySnapshot {
+    let gripper = GripperVariantDimensions::from_state(state).with_variant_deltas(variant_id);
+    let entities = vec![
+        ModelValidityEntity {
+            entity_id: "gripper.base.shell".to_string(),
+            feature_id: "feature.gripper.base".to_string(),
+            semantic_ref: Some("gripper_base_plate".to_string()),
+            is_manifold: true,
+            self_intersection_count: 0,
+            min_thickness_mm: gripper.base_thickness_mm.max(0.001),
+            min_face_area_mm2: (gripper.base_width_mm * gripper.base_depth_mm).max(1.0),
+            sliver_face_count: 0,
+            fillet_failure_reason: None,
+        },
+        ModelValidityEntity {
+            entity_id: "gripper.finger.left".to_string(),
+            feature_id: "feature.gripper.finger.left".to_string(),
+            semantic_ref: Some("gripper_finger_left".to_string()),
+            is_manifold: true,
+            self_intersection_count: 0,
+            min_thickness_mm: gripper.finger_thickness_mm.max(0.001),
+            min_face_area_mm2: (gripper.finger_length_mm * gripper.finger_thickness_mm).max(1.0),
+            sliver_face_count: 0,
+            fillet_failure_reason: None,
+        },
+        ModelValidityEntity {
+            entity_id: "gripper.finger.right".to_string(),
+            feature_id: "feature.gripper.finger.right".to_string(),
+            semantic_ref: Some("gripper_finger_right".to_string()),
+            is_manifold: true,
+            self_intersection_count: 0,
+            min_thickness_mm: gripper.finger_thickness_mm.max(0.001),
+            min_face_area_mm2: (gripper.finger_length_mm * gripper.finger_thickness_mm).max(1.0),
+            sliver_face_count: 0,
+            fillet_failure_reason: None,
+        },
+    ];
+    ModelValiditySnapshot {
+        document_revision,
+        variant_id: variant_id.to_string(),
+        tolerance_mm: 0.01,
+        entities,
+    }
+}
+
+fn append_gripper_printability_warnings(
+    state: &CadDemoPaneState,
+    variant_id: &str,
+    warnings: &mut Vec<CadDemoWarningState>,
+) {
+    let gripper = GripperVariantDimensions::from_state(state).with_variant_deltas(variant_id);
+
+    if gripper.finger_thickness_mm < 3.0 {
+        warnings.push(CadDemoWarningState {
+            warning_id: format!("warning.custom.{}", warnings.len()),
+            code: "CAD-WARN-PRINT-THICKNESS".to_string(),
+            severity: "warning".to_string(),
+            message: format!(
+                "Finger thickness {:.2} mm is below 3.0 mm printability target",
+                gripper.finger_thickness_mm
+            ),
+            remediation_hint: "Increase finger_thickness_mm to at least 3.0 mm".to_string(),
+            semantic_refs: vec!["gripper_finger_profile".to_string()],
+            deep_link: Some("cad://feature/feature.gripper.finger.left".to_string()),
+            feature_id: "feature.gripper.finger.left".to_string(),
+            entity_id: "gripper.finger.left".to_string(),
+        });
+    }
+
+    let hole_radius_mm = gripper.servo_mount_hole_diameter_mm * 0.5;
+    let hole_center_offset_mm = (gripper.base_width_mm * 0.22).max(8.0);
+    let hole_edge_margin_mm = (gripper.base_width_mm * 0.5) - hole_center_offset_mm - hole_radius_mm;
+    if hole_edge_margin_mm < 2.5 {
+        warnings.push(CadDemoWarningState {
+            warning_id: format!("warning.custom.{}", warnings.len()),
+            code: "CAD-WARN-HOLE-EDGE-MARGIN".to_string(),
+            severity: "warning".to_string(),
+            message: format!(
+                "Servo hole edge margin {:.2} mm is below 2.5 mm target",
+                hole_edge_margin_mm
+            ),
+            remediation_hint:
+                "Increase base_width_mm or reduce servo_mount_hole_diameter_mm to preserve edge margin"
+                    .to_string(),
+            semantic_refs: vec!["servo_mount_holes".to_string()],
+            deep_link: Some("cad://feature/feature.gripper.servo_mount_holes".to_string()),
+            feature_id: "feature.gripper.servo_mount_holes".to_string(),
+            entity_id: "gripper.hole.edge.margin".to_string(),
+        });
+    }
+
+    if gripper.print_clearance_mm <= gripper.print_fit_mm {
+        warnings.push(CadDemoWarningState {
+            warning_id: format!("warning.custom.{}", warnings.len()),
+            code: "CAD-WARN-PRINT-CLEARANCE".to_string(),
+            severity: "critical".to_string(),
+            message: format!(
+                "print_clearance_mm {:.3} must be greater than print_fit_mm {:.3}",
+                gripper.print_clearance_mm, gripper.print_fit_mm
+            ),
+            remediation_hint: "Increase print_clearance_mm above print_fit_mm".to_string(),
+            semantic_refs: vec!["print_tolerance".to_string()],
+            deep_link: Some("cad://feature/feature.gripper.base".to_string()),
+            feature_id: "feature.gripper.base".to_string(),
+            entity_id: "gripper.print.clearance".to_string(),
+        });
+    }
 }
 
 fn refresh_timeline_state(state: &mut CadDemoPaneState, graph: &FeatureGraph, provenance: String) {
@@ -2113,7 +2578,10 @@ fn warning_to_pane_state(index: usize, warning: &CadWarning) -> CadDemoWarningSt
     }
 }
 
-fn build_demo_validity_snapshot(document_revision: u64, variant_id: &str) -> ModelValiditySnapshot {
+fn build_rack_demo_validity_snapshot(
+    document_revision: u64,
+    variant_id: &str,
+) -> ModelValiditySnapshot {
     let entities = match variant_id {
         "variant.lightweight" => vec![
             ModelValidityEntity {
@@ -2268,6 +2736,12 @@ fn looks_like_cad_prompt(prompt: &str) -> bool {
     [
         "cad",
         "rack",
+        "gripper",
+        "robot hand",
+        "robotic hand",
+        "parallel jaw",
+        "parallel-jaw",
+        "servo mount",
         "variant",
         "material",
         "objective",
@@ -2283,6 +2757,7 @@ fn looks_like_cad_prompt(prompt: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
     use std::fs;
     use std::time::{Duration, Instant};
 
@@ -2498,6 +2973,195 @@ mod tests {
         );
     }
 
+    #[test]
+    fn week1_gripper_variants_are_stable_and_geometry_distinct() {
+        let mut state = CadDemoPaneState::default();
+        let create_intent = parse_cad_intent_json(
+            r#"{
+                "intent":"CreateParallelJawGripperSpec",
+                "jaw_open_mm":42.0,
+                "finger_length_mm":65.0,
+                "finger_thickness_mm":8.0,
+                "base_width_mm":78.0,
+                "base_depth_mm":52.0,
+                "base_thickness_mm":8.0,
+                "servo_mount_hole_diameter_mm":2.9,
+                "print_fit_mm":0.15,
+                "print_clearance_mm":0.35
+            }"#,
+        )
+        .expect("gripper intent should parse");
+        state
+            .apply_chat_intent_for_thread("thread.gripper.variants", &create_intent)
+            .expect("gripper intent should dispatch");
+        let generate_variants = parse_cad_intent_json(
+            r#"{"intent":"GenerateVariants","count":4,"objective_set":"parallel-jaw-week1"}"#,
+        )
+        .expect("generate variants intent should parse");
+        state
+            .apply_chat_intent_for_thread("thread.gripper.variants", &generate_variants)
+            .expect("generate variants should dispatch");
+
+        assert_eq!(
+            state.variant_ids,
+            vec![
+                "variant.baseline".to_string(),
+                "variant.wide-jaw".to_string(),
+                "variant.long-reach".to_string(),
+                "variant.stiff-finger".to_string(),
+            ]
+        );
+
+        let mut mesh_hashes = BTreeSet::new();
+        for (tile_index, expected_variant_id) in state.variant_ids.clone().iter().enumerate() {
+            assert!(
+                state.set_active_variant_tile(tile_index),
+                "tile index {tile_index} should be selectable"
+            );
+            enqueue_rebuild_cycle(&mut state, "test:gripper-variant-cycle")
+                .expect("variant rebuild should enqueue");
+            wait_for_receipt(&mut state);
+            let receipt = state
+                .last_rebuild_receipt
+                .as_ref()
+                .expect("variant rebuild should commit");
+            assert_eq!(&receipt.variant_id, expected_variant_id);
+            mesh_hashes.insert(receipt.mesh_hash.clone());
+        }
+        assert_eq!(
+            mesh_hashes.len(),
+            4,
+            "all week-1 gripper variants should produce unique mesh hashes"
+        );
+    }
+
+    #[test]
+    fn set_material_is_scoped_to_active_variant_for_gripper_profile() {
+        let mut state = CadDemoPaneState::default();
+        let create_intent = parse_cad_intent_json(
+            r#"{
+                "intent":"CreateParallelJawGripperSpec",
+                "jaw_open_mm":42.0,
+                "finger_length_mm":65.0,
+                "finger_thickness_mm":8.0,
+                "base_width_mm":78.0,
+                "base_depth_mm":52.0,
+                "base_thickness_mm":8.0,
+                "servo_mount_hole_diameter_mm":2.9,
+                "print_fit_mm":0.15,
+                "print_clearance_mm":0.35
+            }"#,
+        )
+        .expect("gripper intent should parse");
+        state
+            .apply_chat_intent_for_thread("thread.gripper.materials", &create_intent)
+            .expect("gripper intent should dispatch");
+
+        let baseline_material =
+            parse_cad_intent_json(r#"{"intent":"SetMaterial","material_id":"steel-1018"}"#)
+                .expect("baseline set-material intent should parse");
+        state
+            .apply_chat_intent_for_thread("thread.gripper.materials", &baseline_material)
+            .expect("baseline set-material should dispatch");
+        assert_eq!(
+            state.variant_materials.get("variant.baseline").map(String::as_str),
+            Some("steel-1018")
+        );
+
+        assert!(
+            state.set_active_variant_tile(1),
+            "wide-jaw variant tile should be selectable"
+        );
+        let wide_material =
+            parse_cad_intent_json(r#"{"intent":"SetMaterial","material_id":"al-5052-h32"}"#)
+                .expect("wide-jaw set-material intent should parse");
+        state
+            .apply_chat_intent_for_thread("thread.gripper.materials", &wide_material)
+            .expect("wide-jaw set-material should dispatch");
+        assert_eq!(
+            state.variant_materials.get("variant.wide-jaw").map(String::as_str),
+            Some("al-5052-h32")
+        );
+        assert_eq!(
+            state.variant_materials.get("variant.baseline").map(String::as_str),
+            Some("steel-1018"),
+            "setting material on wide-jaw must not overwrite baseline"
+        );
+
+        assert!(
+            state.set_active_variant_tile(0),
+            "baseline tile should be selectable again"
+        );
+        enqueue_rebuild_cycle(&mut state, "test:gripper-material-baseline")
+            .expect("baseline material rebuild should enqueue");
+        wait_for_receipt(&mut state);
+        assert_eq!(
+            state.analysis_snapshot.material_id.as_deref(),
+            Some("steel-1018")
+        );
+
+        assert!(
+            state.set_active_variant_tile(1),
+            "wide-jaw tile should be selectable again"
+        );
+        enqueue_rebuild_cycle(&mut state, "test:gripper-material-wide")
+            .expect("wide-jaw material rebuild should enqueue");
+        wait_for_receipt(&mut state);
+        assert_eq!(
+            state.analysis_snapshot.material_id.as_deref(),
+            Some("al-5052-h32")
+        );
+    }
+
+    #[test]
+    fn gripper_printability_warning_codes_are_emitted_for_invalid_dimensions() {
+        let mut state = CadDemoPaneState::default();
+        let create_intent = parse_cad_intent_json(
+            r#"{
+                "intent":"CreateParallelJawGripperSpec",
+                "jaw_open_mm":42.0,
+                "finger_length_mm":65.0,
+                "finger_thickness_mm":8.0,
+                "base_width_mm":78.0,
+                "base_depth_mm":52.0,
+                "base_thickness_mm":8.0,
+                "servo_mount_hole_diameter_mm":2.9,
+                "print_fit_mm":0.15,
+                "print_clearance_mm":0.35
+            }"#,
+        )
+        .expect("gripper intent should parse");
+        state
+            .apply_chat_intent_for_thread("thread.gripper.warnings", &create_intent)
+            .expect("gripper intent should dispatch");
+
+        let set_dim = |state: &mut CadDemoPaneState, id: &str, value_mm: f64| {
+            let dim = state
+                .dimensions
+                .iter_mut()
+                .find(|dimension| dimension.dimension_id == id)
+                .unwrap_or_else(|| panic!("dimension {id} should exist"));
+            dim.value_mm = value_mm;
+        };
+        set_dim(&mut state, "finger_thickness_mm", 2.4);
+        set_dim(&mut state, "base_width_mm", 16.0);
+        set_dim(&mut state, "servo_mount_hole_diameter_mm", 8.0);
+        set_dim(&mut state, "print_fit_mm", 0.3);
+        set_dim(&mut state, "print_clearance_mm", 0.2);
+
+        enqueue_rebuild_cycle(&mut state, "test:gripper-warning-codes")
+            .expect("warning validation rebuild should enqueue");
+        wait_for_receipt(&mut state);
+        let warning_codes = state
+            .warnings
+            .iter()
+            .map(|warning| warning.code.clone())
+            .collect::<BTreeSet<_>>();
+        assert!(warning_codes.contains("CAD-WARN-PRINT-THICKNESS"));
+        assert!(warning_codes.contains("CAD-WARN-HOLE-EDGE-MARGIN"));
+        assert!(warning_codes.contains("CAD-WARN-PRINT-CLEARANCE"));
+    }
+
     fn interaction_fixture_path() -> String {
         let root = env!("CARGO_MANIFEST_DIR");
         format!("{root}/tests/goldens/cad_followup_parameter_edit_interaction.json")
@@ -2511,6 +3175,11 @@ mod tests {
     fn cad_chat_build_failure_fixture_path() -> String {
         let root = env!("CARGO_MANIFEST_DIR");
         format!("{root}/tests/goldens/cad_chat_build_e2e_failure_snapshot.json")
+    }
+
+    fn cad_chat_build_week1_gripper_fixture_path() -> String {
+        let root = env!("CARGO_MANIFEST_DIR");
+        format!("{root}/tests/goldens/cad_chat_build_e2e_week1_gripper_snapshot.json")
     }
 
     fn assert_or_write_report_fixture(path: &str, report: &Value, label: &str) {
@@ -3192,6 +3861,33 @@ mod tests {
                         "last_good_mesh_id": state.last_good_mesh_id,
                         "pending_rebuild_request_id": state.pending_rebuild_request_id,
                         "warning_codes": warning_codes,
+                    })
+                }
+                "toggle_viewport_layout" => {
+                    assert!(
+                        apply_cad_demo_action(&mut state, CadDemoPaneAction::ToggleViewportLayout),
+                        "toggle_viewport_layout should mutate state"
+                    );
+                    json!({
+                        "status": "toggled",
+                        "viewport_layout": state.viewport_layout.label(),
+                        "visible_variant_ids": state.visible_variant_ids(),
+                        "all_variants_visible": state.all_variants_visible(),
+                    })
+                }
+                "capture_snapshot_truth" => {
+                    let design_profile = match state.active_design_profile() {
+                        openagents_cad::dispatch::CadDesignProfile::Rack => "rack",
+                        openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper => "parallel_jaw_gripper",
+                    };
+                    json!({
+                        "status": "captured",
+                        "design_profile": design_profile,
+                        "viewport_layout": state.viewport_layout.label(),
+                        "active_variant_id": state.active_variant_id,
+                        "visible_variant_ids": state.visible_variant_ids(),
+                        "all_variants_visible": state.all_variants_visible(),
+                        "variant_materials": &state.variant_materials,
                     })
                 }
                 "dimension_edit" => {
@@ -4319,6 +5015,26 @@ mod tests {
             &cad_chat_build_failure_fixture_path(),
             &report,
             "cad_chat_build_e2e_failure",
+        );
+    }
+
+    #[test]
+    fn cad_chat_build_e2e_harness_week1_gripper_matches_golden() {
+        let report = normalize_report_timing_for_golden(run_headless_cad_script_fixture(
+            "cad_chat_build_e2e_week1_gripper_script.json",
+        ));
+        assert_eq!(
+            report
+                .get("tool_calls")
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(5),
+            "week-1 gripper fixture should execute five deterministic CAD intent calls"
+        );
+        assert_or_write_report_fixture(
+            &cad_chat_build_week1_gripper_fixture_path(),
+            &report,
+            "cad_chat_build_e2e_week1_gripper",
         );
     }
 

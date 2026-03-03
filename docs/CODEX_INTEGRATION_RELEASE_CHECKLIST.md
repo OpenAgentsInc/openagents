@@ -14,6 +14,8 @@ Use this checklist before cutting a desktop release that includes Codex integrat
    - Codex pane registry smoke coverage.
 4. Confirm CAD release gate output includes explicit chat-build pass lines:
    - `CAD release gate pass (E): chat-build e2e harness (success + failure)`
+   - `CAD release gate pass (E): week-1 gripper e2e harness`
+   - `CAD release gate pass (E): week-1 gripper script + golden present`
    - `CAD release gate pass (E): chat-build runbook present`
 
 ## Required Manual Checks
@@ -37,6 +39,11 @@ Use this checklist before cutting a desktop release that includes Codex integrat
    - confirm chat progress block shows phase/tool/rebuild updates
    - confirm CAD rebuild receipt is committed and revision advances
    - confirm follow-up CAD edit also commits.
+4. Execute week-1 gripper smoke path:
+   - use canonical week-1 gripper prompt
+   - generate 4 variants and assign 4 distinct materials
+   - toggle single/quad layout
+   - verify snapshot truth fields (`viewport_layout`, `visible_variant_ids`, `all_variants_visible`, `variant_materials`).
 
 ## Optional Wire Log Verification
 

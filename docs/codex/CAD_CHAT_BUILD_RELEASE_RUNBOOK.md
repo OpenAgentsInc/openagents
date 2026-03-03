@@ -19,6 +19,7 @@ Release is blocked until all items are green:
 
 - [ ] CAD release gates pass via `scripts/cad/release-gate-checklist.sh`.
 - [ ] Chat-build e2e success/failure harness passes.
+- [ ] Week-1 gripper e2e harness passes.
 - [ ] CAD runbook and contract docs are current and linked from [`docs/codex/README.md`](/Users/christopherdavid/code/openagents/docs/codex/README.md).
 - [ ] Tool response codes and failure-class contract are unchanged or intentionally versioned.
 - [ ] Manual smoke script (below) is executed on current `main`.
@@ -34,6 +35,8 @@ scripts/cad/release-gate-checklist.sh
 The gate output must include explicit pass lines for chat-build flow:
 
 - `CAD release gate pass (E): chat-build e2e harness (success + failure)`
+- `CAD release gate pass (E): week-1 gripper e2e harness`
+- `CAD release gate pass (E): week-1 gripper script + golden present`
 - `CAD release gate pass (E): chat-build runbook present`
 
 For focused local verification:
@@ -41,6 +44,7 @@ For focused local verification:
 ```bash
 scripts/cad/headless-script-ci.sh
 cargo test -p autopilot-desktop cad_chat_build_e2e_harness -- --nocapture
+cargo test -p autopilot-desktop cad_chat_build_e2e_harness_week1_gripper_matches_golden -- --nocapture
 ```
 
 ## Manual Smoke Script (Operator)
@@ -57,6 +61,34 @@ cargo test -p autopilot-desktop cad_chat_build_e2e_harness -- --nocapture
 7. Validate failure path with malformed tool intent in harness only:
    - `cargo test -p autopilot-desktop cad_chat_build_e2e_harness_failure_matches_golden -- --nocapture`
 8. Confirm no overflow/flicker regressions in CAD pane rendering.
+
+## Friday Demo Script (Week-1 Gripper)
+
+Run this exact sequence for social/demo capture:
+
+1. Open/focus CAD pane from chat.
+2. Send canonical prompt:
+   - `Create a basic 2-jaw robotic gripper with a base plate, two parallel fingers, and mounting holes for a servo motor. Make it 3D-printable and parametric for easy scaling.`
+3. Generate variants:
+   - `intent_json`: `{"intent":"GenerateVariants","count":4}`
+4. Assign one material per variant by cycling active variant and calling `SetMaterial`:
+   - `variant.baseline -> al-6061-t6`
+   - `variant.wide-jaw -> steel-1018`
+   - `variant.long-reach -> al-5052-h32`
+   - `variant.stiff-finger -> ti-6al-4v`
+5. Set projection and camera:
+   - switch to orthographic and perspective once each.
+   - run camera focus/fit and one orbit move so motion is visible.
+6. Verify snapshot truth in single layout:
+   - `viewport_layout == "single"`
+   - `visible_variant_ids` has exactly one ID (active variant).
+   - `all_variants_visible == false`
+7. Toggle layout (`toggle_viewport_layout`) to quad and verify:
+   - `viewport_layout == "quad"`
+   - `visible_variant_ids` includes all four deterministic IDs.
+   - `all_variants_visible == true`
+   - `variant_materials` includes all four variant->material pairs.
+8. Capture screenshot/video only after step 7 passes.
 
 ## Known Failure Signatures and Triage
 
@@ -162,6 +194,8 @@ Inspect these checkpoints for every incident:
 - Gate/harness artifacts:
   - `apps/autopilot-desktop/tests/scripts/cad_chat_build_e2e_*`
   - `apps/autopilot-desktop/tests/goldens/cad_chat_build_e2e_*`
+  - `apps/autopilot-desktop/tests/scripts/cad_chat_build_e2e_week1_gripper_script.json`
+  - `apps/autopilot-desktop/tests/goldens/cad_chat_build_e2e_week1_gripper_snapshot.json`
 
 ## Dry-Run Evidence (Scripted)
 
@@ -170,6 +204,7 @@ Use this command set as reproducible dry-run evidence:
 ```bash
 scripts/cad/headless-script-ci.sh
 cargo test -p autopilot-desktop cad_chat_build_e2e_harness -- --nocapture
+cargo test -p autopilot-desktop cad_chat_build_e2e_harness_week1_gripper_matches_golden -- --nocapture
 scripts/cad/release-gate-checklist.sh
 ```
 

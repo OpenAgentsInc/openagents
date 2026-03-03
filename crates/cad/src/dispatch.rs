@@ -2,14 +2,28 @@ use std::collections::BTreeMap;
 
 use crate::intent::{
     AddVentPatternIntent, AdjustParameterIntent, CadAdjustOperation, CadIntent,
-    CompareVariantsIntent, CreateRackSpecIntent, ExportIntent, GenerateVariantsIntent,
-    SelectIntent, SetMaterialIntent, SetObjectiveIntent, parse_cad_intent_json_cad_result,
+    CompareVariantsIntent, CreateParallelJawGripperSpecIntent, CreateRackSpecIntent, ExportIntent,
+    GenerateVariantsIntent, SelectIntent, SetMaterialIntent, SetObjectiveIntent,
+    parse_cad_intent_json_cad_result,
 };
 use crate::{CadError, CadResult};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CadDesignProfile {
+    Rack,
+    ParallelJawGripper,
+}
+
+impl Default for CadDesignProfile {
+    fn default() -> Self {
+        Self::Rack
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum CadTypedCommand {
     CreateRackSpec(CreateRackSpecIntent),
+    CreateParallelJawGripperSpec(CreateParallelJawGripperSpecIntent),
     GenerateVariants(GenerateVariantsIntent),
     SetObjective(SetObjectiveIntent),
     AdjustParameter(AdjustParameterIntent),
@@ -24,6 +38,7 @@ pub enum CadTypedCommand {
 pub struct CadDispatchState {
     pub revision: u64,
     pub document_created: bool,
+    pub design_profile: CadDesignProfile,
     pub units: Option<String>,
     pub material_id: Option<String>,
     pub objective: Option<String>,
@@ -39,6 +54,7 @@ pub struct CadDispatchState {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CadDispatchReceipt {
     pub state_revision: u64,
+    pub design_profile: CadDesignProfile,
     pub command: CadTypedCommand,
     pub summary: String,
 }
@@ -58,10 +74,45 @@ pub fn dispatch_cad_intent(
     let command = match intent {
         CadIntent::CreateRackSpec(payload) => {
             state.document_created = true;
+            state.design_profile = CadDesignProfile::Rack;
             state.units = Some(payload.units.clone());
             state.material_id = Some(payload.material.clone());
             state.objective = Some(payload.airflow.clone());
             CadTypedCommand::CreateRackSpec(payload.clone())
+        }
+        CadIntent::CreateParallelJawGripperSpec(payload) => {
+            state.document_created = true;
+            state.design_profile = CadDesignProfile::ParallelJawGripper;
+            state.objective = Some("parallel-jaw-gripper".to_string());
+            state
+                .parameter_values
+                .insert("jaw_open_mm".to_string(), payload.jaw_open_mm);
+            state
+                .parameter_values
+                .insert("finger_length_mm".to_string(), payload.finger_length_mm);
+            state
+                .parameter_values
+                .insert("finger_thickness_mm".to_string(), payload.finger_thickness_mm);
+            state
+                .parameter_values
+                .insert("base_width_mm".to_string(), payload.base_width_mm);
+            state
+                .parameter_values
+                .insert("base_depth_mm".to_string(), payload.base_depth_mm);
+            state
+                .parameter_values
+                .insert("base_thickness_mm".to_string(), payload.base_thickness_mm);
+            state.parameter_values.insert(
+                "servo_mount_hole_diameter_mm".to_string(),
+                payload.servo_mount_hole_diameter_mm,
+            );
+            state
+                .parameter_values
+                .insert("print_fit_mm".to_string(), payload.print_fit_mm);
+            state
+                .parameter_values
+                .insert("print_clearance_mm".to_string(), payload.print_clearance_mm);
+            CadTypedCommand::CreateParallelJawGripperSpec(payload.clone())
         }
         CadIntent::GenerateVariants(payload) => {
             state.generated_variant_count = Some(payload.count);
@@ -112,6 +163,7 @@ pub fn dispatch_cad_intent(
     );
     Ok(CadDispatchReceipt {
         state_revision: state.revision,
+        design_profile: state.design_profile,
         command,
         summary,
     })
@@ -166,8 +218,8 @@ mod tests {
     };
     use crate::intent::{
         AddVentPatternIntent, AdjustParameterIntent, CadAdjustOperation, CadIntent,
-        CompareVariantsIntent, CreateRackSpecIntent, ExportIntent, GenerateVariantsIntent,
-        SelectIntent, SetMaterialIntent, SetObjectiveIntent,
+        CompareVariantsIntent, CreateParallelJawGripperSpecIntent, CreateRackSpecIntent,
+        ExportIntent, GenerateVariantsIntent, SelectIntent, SetMaterialIntent, SetObjectiveIntent,
     };
 
     #[test]
@@ -179,6 +231,17 @@ mod tests {
                 material: "al-6061-t6".to_string(),
                 airflow: "balanced".to_string(),
                 mount_type: "wall".to_string(),
+            }),
+            CadIntent::CreateParallelJawGripperSpec(CreateParallelJawGripperSpecIntent {
+                jaw_open_mm: 42.0,
+                finger_length_mm: 65.0,
+                finger_thickness_mm: 8.0,
+                base_width_mm: 78.0,
+                base_depth_mm: 52.0,
+                base_thickness_mm: 8.0,
+                servo_mount_hole_diameter_mm: 2.9,
+                print_fit_mm: 0.15,
+                print_clearance_mm: 0.35,
             }),
             CadIntent::GenerateVariants(GenerateVariantsIntent {
                 count: 4,
@@ -219,11 +282,42 @@ mod tests {
             let receipt =
                 dispatch_cad_intent(&intent, &mut state).expect("dispatch should succeed");
             assert!(receipt.state_revision >= 1);
+            assert_eq!(receipt.design_profile, state.design_profile);
         }
-        assert_eq!(state.revision, 9);
+        assert_eq!(state.revision, 10);
         assert_eq!(state.material_id.as_deref(), Some("steel-1018"));
         assert_eq!(state.generated_variant_count, Some(4));
         assert_eq!(state.exported_format.as_deref(), Some("step"));
+    }
+
+    #[test]
+    fn parallel_jaw_spec_sets_gripper_design_profile_and_parameter_surface() {
+        let mut state = CadDispatchState::default();
+        let receipt = dispatch_cad_intent(
+            &CadIntent::CreateParallelJawGripperSpec(CreateParallelJawGripperSpecIntent {
+                jaw_open_mm: 42.0,
+                finger_length_mm: 65.0,
+                finger_thickness_mm: 8.0,
+                base_width_mm: 78.0,
+                base_depth_mm: 52.0,
+                base_thickness_mm: 8.0,
+                servo_mount_hole_diameter_mm: 2.9,
+                print_fit_mm: 0.15,
+                print_clearance_mm: 0.35,
+            }),
+            &mut state,
+        )
+        .expect("gripper spec should dispatch");
+        assert_eq!(receipt.design_profile, super::CadDesignProfile::ParallelJawGripper);
+        assert_eq!(state.design_profile, super::CadDesignProfile::ParallelJawGripper);
+        assert_eq!(
+            state.parameter_values.get("jaw_open_mm").copied(),
+            Some(42.0)
+        );
+        assert_eq!(
+            state.parameter_values.get("print_fit_mm").copied(),
+            Some(0.15)
+        );
     }
 
     #[test]
