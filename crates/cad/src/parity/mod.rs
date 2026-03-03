@@ -43,6 +43,7 @@ pub mod ecad_schematic_lane_parity;
 pub mod ecad_simulation_lane_parity;
 pub mod ecad_symbols_lane_parity;
 pub mod embroidery_core_lane_parity;
+pub mod embroidery_dst_pes_lane_parity;
 pub mod expanded_finishing_parity;
 pub mod feature_op_hash_parity;
 pub mod fillet_feature_graph_parity;
