@@ -1,0 +1,17 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-100",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/crates/vcad-kernel-raytrace/src/bvh.rs",
+  "expected_primary_leaf_sizes": [4, 4],
+  "expected_fallback_leaf_sizes": [3, 3],
+  "expected_trace_t_values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+  "expected_closest_t": 1.0,
+  "expected_flatten_node_count": 3,
+  "expected_flatten_leaf_node_count": 2,
+  "expected_flatten_face_count": 8,
+  "expected_num_buckets": 12,
+  "expected_traversal_cost": 0.125,
+  "expected_leaf_threshold": 4,
+  "expected_fallback_triggered": true
+}

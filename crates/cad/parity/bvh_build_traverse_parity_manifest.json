@@ -1,0 +1,51 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-100",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/bvh_build_traverse_vcad_reference.json",
+  "reference_fixture_sha256": "000176182d952858025cd41e42d117db8815b66187de7ce5390a7bc33b79083e",
+  "reference_source": "~/code/vcad/crates/vcad-kernel-raytrace/src/bvh.rs",
+  "reference_commit_match": true,
+  "sah_constants_match": true,
+  "leaf_partition_match": true,
+  "trace_ordering_match": true,
+  "closest_hit_match": true,
+  "flatten_contract_match": true,
+  "deterministic_replay_match": true,
+  "primary_leaf_sizes": [
+    4,
+    4
+  ],
+  "fallback_leaf_sizes": [
+    3,
+    3
+  ],
+  "trace_t_values": [
+    1.0,
+    2.0,
+    3.0,
+    4.0,
+    5.0,
+    6.0,
+    7.0,
+    8.0
+  ],
+  "closest_t": 1.0,
+  "flatten_node_count": 3,
+  "flatten_leaf_node_count": 2,
+  "flatten_face_count": 8,
+  "fallback_triggered": true,
+  "sah_num_buckets": 12,
+  "sah_traversal_cost": 0.125,
+  "leaf_face_threshold": 4,
+  "deterministic_signature": "5f675bfeb8886763",
+  "parity_contracts": [
+    "BVH construction keeps leaf threshold at 4 faces and uses SAH buckets/traversal constants",
+    "partition failure falls back to deterministic midpoint split to avoid empty child nodes",
+    "trace returns hits sorted by ascending t after traversal",
+    "trace_closest uses nearest-AABB child ordering with early-out on current closest t",
+    "flatten contract preserves node metadata and leaf face-count accounting for GPU upload"
+  ]
+}
