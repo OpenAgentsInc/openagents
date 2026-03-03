@@ -127,6 +127,7 @@ LANE_LABELS=(
     "embroidery-dst-pes-lane"
     "cam-stocksim-lane"
     "license-compliance-audit"
+    "security-posture-review"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -561,6 +562,9 @@ run_lane "cam-stocksim-lane" \
 
 run_lane "license-compliance-audit" \
     "$ROOT_DIR/scripts/cad/parity-license-compliance-audit-ci.sh"
+
+run_lane "security-posture-review" \
+    "$ROOT_DIR/scripts/cad/parity-security-posture-review-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
