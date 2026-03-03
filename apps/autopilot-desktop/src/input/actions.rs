@@ -1619,6 +1619,127 @@ pub(super) fn run_earnings_scoreboard_action(
     }
 }
 
+pub(super) fn run_cast_control_action(
+    state: &mut crate::app_state::RenderState,
+    action: CastControlPaneAction,
+) -> bool {
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs());
+
+    let (operation, mode_key, summary, detail, domain) = match action {
+        CastControlPaneAction::RefreshStatus => {
+            state.cast_control.prereq_status = "ready (manual refresh)".to_string();
+            (
+                "refresh_status",
+                "status",
+                "CAST status refreshed".to_string(),
+                "Updated local CAST control status snapshot".to_string(),
+                crate::app_state::ActivityEventDomain::Network,
+            )
+        }
+        CastControlPaneAction::RunCheck => {
+            state.cast_control.last_receipt_path =
+                Some("run/latest/receipts/spell_check.json".to_string());
+            (
+                "run_check",
+                "spell_check",
+                "CAST spell check requested".to_string(),
+                "Queued CAST spell check workflow (non-broadcast path)".to_string(),
+                crate::app_state::ActivityEventDomain::Network,
+            )
+        }
+        CastControlPaneAction::RunProve => {
+            state.cast_control.last_receipt_path =
+                Some("run/latest/receipts/spell_prove.json".to_string());
+            (
+                "run_prove",
+                "spell_prove",
+                "CAST prove requested".to_string(),
+                "Queued CAST prove workflow".to_string(),
+                crate::app_state::ActivityEventDomain::Network,
+            )
+        }
+        CastControlPaneAction::RunSignBroadcast => {
+            state.cast_control.last_receipt_path =
+                Some("run/latest/receipts/sign_and_broadcast.json".to_string());
+            if state.cast_control.broadcast_armed {
+                state.cast_control.last_txid = Some("pending-broadcast".to_string());
+                (
+                    "run_sign_broadcast",
+                    "broadcast_armed",
+                    "CAST sign/broadcast requested".to_string(),
+                    "Broadcast is armed; queued signing/broadcast flow".to_string(),
+                    crate::app_state::ActivityEventDomain::Wallet,
+                )
+            } else {
+                (
+                    "run_sign",
+                    "safe_mode",
+                    "CAST sign requested (safe mode)".to_string(),
+                    "Broadcast is not armed; signing path only".to_string(),
+                    crate::app_state::ActivityEventDomain::Wallet,
+                )
+            }
+        }
+        CastControlPaneAction::RunInspect => {
+            state.cast_control.last_receipt_path =
+                Some("run/latest/receipts/show_spell.json".to_string());
+            (
+                "run_inspect",
+                "show_spell",
+                "CAST spell inspection requested".to_string(),
+                "Queued CAST tx spell decode path".to_string(),
+                crate::app_state::ActivityEventDomain::Network,
+            )
+        }
+        CastControlPaneAction::ToggleBroadcastArmed => {
+            state.cast_control.broadcast_armed = !state.cast_control.broadcast_armed;
+            (
+                "toggle_broadcast_armed",
+                if state.cast_control.broadcast_armed {
+                    "armed"
+                } else {
+                    "disarmed"
+                },
+                if state.cast_control.broadcast_armed {
+                    "CAST broadcast armed".to_string()
+                } else {
+                    "CAST broadcast disarmed".to_string()
+                },
+                "Toggled CAST broadcast safety gate".to_string(),
+                crate::app_state::ActivityEventDomain::Wallet,
+            )
+        }
+    };
+
+    state.cast_control.load_state = crate::app_state::PaneLoadState::Ready;
+    state.cast_control.last_error = None;
+    state.cast_control.last_operation = Some(operation.to_string());
+    state.cast_control.run_count = state.cast_control.run_count.saturating_add(1);
+    state.cast_control.last_action = Some(summary.clone());
+    state.provider_runtime.last_result = Some(summary.clone());
+
+    let receipt_key = state
+        .cast_control
+        .last_receipt_path
+        .as_deref()
+        .unwrap_or("none");
+    let event_id = format!("cast:{operation}:{mode_key}:{receipt_key}");
+    state
+        .activity_feed
+        .upsert_event(crate::app_state::ActivityEventRow {
+            event_id,
+            domain,
+            source_tag: "cast.dex".to_string(),
+            occurred_at_epoch_seconds: now_epoch_seconds,
+            summary,
+            detail,
+        });
+    state.activity_feed.load_state = crate::app_state::PaneLoadState::Ready;
+    true
+}
+
 pub(super) fn run_agent_network_simulation_action(
     state: &mut crate::app_state::RenderState,
     action: AgentNetworkSimulationPaneAction,

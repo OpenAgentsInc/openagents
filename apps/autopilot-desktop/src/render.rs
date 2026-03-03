@@ -252,6 +252,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             agent_profile_state: crate::app_state::AgentProfileStatePaneState::default(),
             agent_schedule_tick: crate::app_state::AgentScheduleTickPaneState::default(),
             trajectory_audit: crate::app_state::TrajectoryAuditPaneState::default(),
+            cast_control: crate::app_state::CastControlPaneState::default(),
             skill_registry: crate::app_state::SkillRegistryPaneState::default(),
             skill_trust_revocation: crate::app_state::SkillTrustRevocationPaneState::default(),
             credit_desk: crate::app_state::CreditDeskPaneState::default(),
@@ -548,6 +549,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &state.agent_profile_state,
             &state.agent_schedule_tick,
             &state.trajectory_audit,
+            &state.cast_control,
             &state.skill_registry,
             &state.skill_trust_revocation,
             &state.credit_desk,
@@ -950,6 +952,9 @@ mod tests {
         }));
         assert!(commands.iter().any(|command| {
             command.id == "pane.trajectory_audit" && command.label == "Trajectory Audit"
+        }));
+        assert!(commands.iter().any(|command| {
+            command.id == "pane.cast_control" && command.label == "CAST Control"
         }));
         assert!(commands.iter().any(|command| {
             command.id == "pane.skill_registry" && command.label == "Agent Skill Registry"

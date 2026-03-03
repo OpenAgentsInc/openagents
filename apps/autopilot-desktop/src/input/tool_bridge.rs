@@ -24,14 +24,15 @@ use crate::pane_registry::{pane_spec, pane_spec_by_command_id, pane_specs};
 use crate::pane_system::{
     ActiveJobPaneAction, ActivityFeedPaneAction, AgentNetworkSimulationPaneAction,
     AgentProfileStatePaneAction, AgentScheduleTickPaneAction, AlertsRecoveryPaneAction,
-    CadDemoPaneAction, CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction,
-    CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction,
-    CredentialsPaneAction, CreditDeskPaneAction, CreditSettlementLedgerPaneAction,
-    EarningsScoreboardPaneAction, JobHistoryPaneAction, JobInboxPaneAction,
-    NetworkRequestsPaneAction, PaneController, PaneHitAction, RelayConnectionsPaneAction,
-    RelaySecuritySimulationPaneAction, SettingsPaneAction, SkillRegistryPaneAction,
-    SkillTrustRevocationPaneAction, StableSatsSimulationPaneAction, StarterJobsPaneAction,
-    SyncHealthPaneAction, TrajectoryAuditPaneAction, TreasuryExchangeSimulationPaneAction,
+    CadDemoPaneAction, CastControlPaneAction, CodexAccountPaneAction, CodexAppsPaneAction,
+    CodexConfigPaneAction, CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction,
+    CodexModelsPaneAction, CredentialsPaneAction, CreditDeskPaneAction,
+    CreditSettlementLedgerPaneAction, EarningsScoreboardPaneAction, JobHistoryPaneAction,
+    JobInboxPaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction,
+    RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction, SettingsPaneAction,
+    SkillRegistryPaneAction, SkillTrustRevocationPaneAction, StableSatsSimulationPaneAction,
+    StarterJobsPaneAction, SyncHealthPaneAction, TrajectoryAuditPaneAction,
+    TreasuryExchangeSimulationPaneAction,
 };
 use crate::runtime_lanes::SaLifecycleCommand;
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
@@ -1297,6 +1298,27 @@ fn pane_action_to_hit_action(
             )),
             "verify_trajectory_hash" => Ok(PaneHitAction::TrajectoryAudit(
                 TrajectoryAuditPaneAction::VerifyTrajectoryHash,
+            )),
+            _ => unsupported(),
+        },
+        PaneKind::CastControl => match action {
+            "refresh" | "refresh_status" => Ok(PaneHitAction::CastControl(
+                CastControlPaneAction::RefreshStatus,
+            )),
+            "run_check" | "check" => {
+                Ok(PaneHitAction::CastControl(CastControlPaneAction::RunCheck))
+            }
+            "run_prove" | "prove" => {
+                Ok(PaneHitAction::CastControl(CastControlPaneAction::RunProve))
+            }
+            "run_sign" | "sign_broadcast" => Ok(PaneHitAction::CastControl(
+                CastControlPaneAction::RunSignBroadcast,
+            )),
+            "run_inspect" | "inspect" => Ok(PaneHitAction::CastControl(
+                CastControlPaneAction::RunInspect,
+            )),
+            "toggle_broadcast_armed" | "toggle_broadcast" => Ok(PaneHitAction::CastControl(
+                CastControlPaneAction::ToggleBroadcastArmed,
             )),
             _ => unsupported(),
         },
@@ -4452,6 +4474,7 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
         PaneKind::SparkPayInvoice => &["pay_invoice", "invoice_pay"],
         PaneKind::NostrIdentity => &["identity", "identity_keys", "nostr"],
         PaneKind::CadDemo => &["cad", "cad_demo"],
+        PaneKind::CastControl => &["cast", "cast_control"],
         _ => &[],
     }
 }
@@ -4489,6 +4512,7 @@ fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::AgentProfileState => "agent_profile_state",
         PaneKind::AgentScheduleTick => "agent_schedule_tick",
         PaneKind::TrajectoryAudit => "trajectory_audit",
+        PaneKind::CastControl => "cast_control",
         PaneKind::SkillRegistry => "skill_registry",
         PaneKind::SkillTrustRevocation => "skill_trust_revocation",
         PaneKind::CreditDesk => "credit_desk",

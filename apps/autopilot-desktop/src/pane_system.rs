@@ -41,6 +41,7 @@ const CHAT_THREAD_ROW_HEIGHT: f32 = 24.0;
 const CHAT_THREAD_ROW_GAP: f32 = 4.0;
 const CHAT_MAX_THREAD_ROWS: usize = 10;
 const CALCULATOR_INPUT_HEIGHT: f32 = 30.0;
+const CAST_BUTTON_HEIGHT: f32 = 28.0;
 const SKILL_REGISTRY_ROW_HEIGHT: f32 = 28.0;
 const SKILL_REGISTRY_ROW_GAP: f32 = 6.0;
 const SKILL_REGISTRY_MAX_ROWS: usize = 8;
@@ -280,6 +281,16 @@ pub enum TrajectoryAuditPaneAction {
     OpenSession,
     CycleStepFilter,
     VerifyTrajectoryHash,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CastControlPaneAction {
+    RefreshStatus,
+    RunCheck,
+    RunProve,
+    RunSignBroadcast,
+    RunInspect,
+    ToggleBroadcastArmed,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -691,6 +702,7 @@ pub enum PaneHitAction {
     AgentProfileState(AgentProfileStatePaneAction),
     AgentScheduleTick(AgentScheduleTickPaneAction),
     TrajectoryAudit(TrajectoryAuditPaneAction),
+    CastControl(CastControlPaneAction),
     SkillRegistry(SkillRegistryPaneAction),
     SkillTrustRevocation(SkillTrustRevocationPaneAction),
     CreditDesk(CreditDeskPaneAction),
@@ -1135,6 +1147,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::AgentProfileState
             | PaneKind::AgentScheduleTick
             | PaneKind::TrajectoryAudit
+            | PaneKind::CastControl
             | PaneKind::SkillRegistry
             | PaneKind::SkillTrustRevocation
             | PaneKind::CreditDesk
@@ -2183,6 +2196,65 @@ pub fn trajectory_verify_button_bounds(content_bounds: Bounds) -> Bounds {
         filter.origin.y,
         filter.size.width,
         filter.size.height,
+    )
+}
+
+pub fn cast_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.2).clamp(120.0, 180.0),
+        CAST_BUTTON_HEIGHT,
+    )
+}
+
+pub fn cast_check_button_bounds(content_bounds: Bounds) -> Bounds {
+    let refresh = cast_refresh_button_bounds(content_bounds);
+    Bounds::new(
+        refresh.max_x() + JOB_INBOX_BUTTON_GAP,
+        refresh.origin.y,
+        refresh.size.width,
+        refresh.size.height,
+    )
+}
+
+pub fn cast_prove_button_bounds(content_bounds: Bounds) -> Bounds {
+    let check = cast_check_button_bounds(content_bounds);
+    Bounds::new(
+        check.max_x() + JOB_INBOX_BUTTON_GAP,
+        check.origin.y,
+        check.size.width,
+        check.size.height,
+    )
+}
+
+pub fn cast_sign_button_bounds(content_bounds: Bounds) -> Bounds {
+    let refresh = cast_refresh_button_bounds(content_bounds);
+    Bounds::new(
+        refresh.origin.x,
+        refresh.max_y() + JOB_INBOX_BUTTON_GAP,
+        refresh.size.width,
+        refresh.size.height,
+    )
+}
+
+pub fn cast_inspect_button_bounds(content_bounds: Bounds) -> Bounds {
+    let sign = cast_sign_button_bounds(content_bounds);
+    Bounds::new(
+        sign.max_x() + JOB_INBOX_BUTTON_GAP,
+        sign.origin.y,
+        sign.size.width,
+        sign.size.height,
+    )
+}
+
+pub fn cast_toggle_broadcast_button_bounds(content_bounds: Bounds) -> Bounds {
+    let inspect = cast_inspect_button_bounds(content_bounds);
+    Bounds::new(
+        inspect.max_x() + JOB_INBOX_BUTTON_GAP,
+        inspect.origin.y,
+        inspect.size.width,
+        inspect.size.height,
     )
 }
 
@@ -3505,6 +3577,35 @@ fn pane_hit_action_for_pane(
             if trajectory_verify_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::TrajectoryAudit(
                     TrajectoryAuditPaneAction::VerifyTrajectoryHash,
+                ));
+            }
+            None
+        }
+        PaneKind::CastControl => {
+            if cast_refresh_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CastControl(
+                    CastControlPaneAction::RefreshStatus,
+                ));
+            }
+            if cast_check_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CastControl(CastControlPaneAction::RunCheck));
+            }
+            if cast_prove_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CastControl(CastControlPaneAction::RunProve));
+            }
+            if cast_sign_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CastControl(
+                    CastControlPaneAction::RunSignBroadcast,
+                ));
+            }
+            if cast_inspect_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CastControl(
+                    CastControlPaneAction::RunInspect,
+                ));
+            }
+            if cast_toggle_broadcast_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CastControl(
+                    CastControlPaneAction::ToggleBroadcastArmed,
                 ));
             }
             None

@@ -235,13 +235,30 @@ Exit criteria:
 
 - Explicitly scoped as app-layer work, requested separately.
 
-## 7. Environment Contract (Draft)
+## 7. Contract And Environment Lock
+
+Pinned CAST contract values (current lock):
+
+- `CAST_APP_VERSION`: `v0.2.0`
+- `CAST_APP_IDENTITY`: `b/0000000000000000000000000000000000000000000000000000000000000000/a471d3fcc436ae7cbc0e0c82a68cdc8e003ee21ef819e1acf834e11c43ce47d8`
+- `CAST_APP_BIN_NAME`: `charms-cast-v0.2.0.wasm`
+- `CAST_APP_RELEASE_URL`: `https://github.com/CharmsDev/cast-releases/releases/tag/v0.2.0`
+- `CAST_SCROLLS_DEFAULT_BASE_URL`: `https://scrolls-v9.charms.dev/main`
+
+Binary integrity policy:
+
+- `CAST_APP_BIN_SHA256` is required for production and CI promotion paths.
+- Local development can run without `CAST_APP_BIN_SHA256`, but scripts must print a warning when hash verification is skipped.
+
+Environment contract:
 
 Core environment keys:
 
 - `CAST_NETWORK` (`mainnet|testnet4`)
 - `CAST_SCROLLS_BASE_URL`
 - `CAST_APP_BIN` (path to cast wasm)
+- `CAST_APP_BIN_SHA256` (required for production/CI promotion)
+- `CAST_APP_IDENTITY` (defaults to pinned identity above)
 - `CAST_OPERATOR_PARAMS_FILE` (JSON/YAML payload)
 - `CAST_PREV_TXS_FILE`
 - `CAST_FUNDING_UTXO`

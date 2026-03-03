@@ -80,7 +80,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 40] = [
+const PANE_SPECS: [PaneSpec; 41] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -537,6 +537,21 @@ const PANE_SPECS: [PaneSpec; 40] = [
             id: "pane.trajectory_audit",
             label: "Trajectory Audit",
             description: "Open SA trajectory session inspection and verification pane",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::CastControl,
+        title: "CAST Control",
+        default_width: 940.0,
+        default_height: 420.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.cast_control",
+            label: "CAST Control",
+            description: "Open Charms CAST operation controls, status, and receipt visibility",
             keybinding: None,
         }),
         hotbar: None,

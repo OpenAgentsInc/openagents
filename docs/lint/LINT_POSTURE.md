@@ -34,6 +34,7 @@ Intentional CLI output exception:
 - Enforce high-risk module size ceilings with `scripts/lint/module-size-budget-check.sh`.
 - Enforce expiry-linked metadata on new `#[allow(...)]` attributes with `scripts/lint/allow-attribute-expiry-check.sh`.
 - Validate repo-managed Agent Skills with `scripts/skills/validate_registry.sh`.
+- CAST skill non-destructive smoke check (opt-in): `scripts/lint/cast-skill-smoke-check.sh`.
 - Enforce Codex protocol parity and smoke coverage with `scripts/lint/codex-protocol-parity-gate.sh`.
 
 ## Strict Production Lanes
