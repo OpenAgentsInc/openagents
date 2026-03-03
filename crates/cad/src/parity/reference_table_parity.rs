@@ -96,7 +96,7 @@ pub fn build_reference_table_parity_manifest(
         issue_id: issue_id.to_string(),
         vcad_commit: scorecard.vcad_commit.clone(),
         openagents_commit: scorecard.openagents_commit.clone(),
-        generated_from_scorecard: scorecard_path.to_string(),
+        generated_from_scorecard: canonicalize_scorecard_path(scorecard_path),
         reference_fixture_path: reference_fixture_path.to_string(),
         reference_fixture_sha256,
         reference_source: reference.source,
@@ -110,6 +110,18 @@ pub fn build_reference_table_parity_manifest(
         deterministic_signature,
         parity_contracts,
     })
+}
+
+/// Canonicalize scorecard paths for fixture-stable parity manifests.
+pub fn canonicalize_scorecard_path(scorecard_path: &str) -> String {
+    let normalized = scorecard_path.replace('\\', "/");
+    if let Some(rest) = normalized.strip_prefix("/Users/") {
+        let mut parts = rest.splitn(2, '/');
+        if let (Some(user), Some(suffix)) = (parts.next(), parts.next()) {
+            return format!("/home/{user}/{suffix}");
+        }
+    }
+    normalized
 }
 
 fn parity_signature(
@@ -161,7 +173,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 mod tests {
     use serde_json::json;
 
-    use super::ReferenceTableSnapshot;
+    use super::{ReferenceTableSnapshot, canonicalize_scorecard_path};
 
     #[test]
     fn snapshot_constructor_sorts_rows_and_contracts() {
@@ -172,5 +184,21 @@ mod tests {
         assert_eq!(snapshot.rows[0]["case_id"], "a");
         assert_eq!(snapshot.rows[1]["case_id"], "b");
         assert_eq!(snapshot.contracts, vec!["a".to_string(), "z".to_string()]);
+    }
+
+    #[test]
+    fn canonicalize_scorecard_path_maps_macos_home_to_linux_home_fixture_path() {
+        assert_eq!(
+            canonicalize_scorecard_path(
+                "/Users/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json"
+            ),
+            "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json"
+        );
+        assert_eq!(
+            canonicalize_scorecard_path(
+                "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json"
+            ),
+            "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json"
+        );
     }
 }

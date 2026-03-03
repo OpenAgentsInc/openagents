@@ -54,12 +54,11 @@ use crate::pane_system::{
     StarterJobsPaneAction, SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction,
     cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds, clamp_all_panes_to_window,
     dispatch_calculator_input_event, dispatch_chat_input_event, dispatch_chat_scroll_event,
-    dispatch_create_invoice_input_event,
-    dispatch_credentials_input_event, dispatch_job_history_input_event,
-    dispatch_network_requests_input_event, dispatch_pay_invoice_input_event,
-    dispatch_relay_connections_input_event, dispatch_settings_input_event,
-    dispatch_spark_input_event, pane_content_bounds, pane_indices_by_z_desc,
-    pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
+    dispatch_create_invoice_input_event, dispatch_credentials_input_event,
+    dispatch_job_history_input_event, dispatch_network_requests_input_event,
+    dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
+    dispatch_settings_input_event, dispatch_spark_input_event, pane_content_bounds,
+    pane_indices_by_z_desc, pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
 };
 use crate::panes::{cad as cad_pane, chat as chat_pane};
 use crate::render::{

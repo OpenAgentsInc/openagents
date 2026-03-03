@@ -137,7 +137,8 @@ mod tests {
         );
         assert!(result.is_cad_turn);
         assert!(
-            result.reason.starts_with("explicit-marker:") || result.reason.starts_with("keyword-pair:")
+            result.reason.starts_with("explicit-marker:")
+                || result.reason.starts_with("keyword-pair:")
         );
     }
 }

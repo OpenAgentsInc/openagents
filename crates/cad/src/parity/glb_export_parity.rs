@@ -5,6 +5,7 @@ use crate::glb::export_glb_from_mesh;
 use crate::mesh::{
     CadMeshBounds, CadMeshMaterialSlot, CadMeshPayload, CadMeshTopology, CadMeshVertex,
 };
+use crate::parity::reference_table_parity::canonicalize_scorecard_path;
 use crate::parity::scorecard::ParityScorecard;
 use crate::{CadError, CadResult};
 
@@ -122,7 +123,7 @@ pub fn build_glb_export_parity_manifest(
         issue_id: PARITY_GLB_EXPORT_ISSUE_ID.to_string(),
         vcad_commit: scorecard.vcad_commit.clone(),
         openagents_commit: scorecard.openagents_commit.clone(),
-        generated_from_scorecard: scorecard_path.to_string(),
+        generated_from_scorecard: canonicalize_scorecard_path(scorecard_path),
         reference_corpus_path: GLB_EXPORT_REFERENCE_CORPUS_PATH.to_string(),
         reference_corpus_sha256,
         reference_source: corpus.source,

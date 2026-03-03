@@ -3,6 +3,7 @@ use sha2::{Digest, Sha256};
 
 use crate::drafting::{EdgeType, Point2D, ProjectedEdge, ProjectedView, ViewDirection, Visibility};
 use crate::export::export_projected_view_to_dxf;
+use crate::parity::reference_table_parity::canonicalize_scorecard_path;
 use crate::parity::scorecard::ParityScorecard;
 use crate::{CadError, CadResult};
 
@@ -92,7 +93,7 @@ pub fn build_drafting_dxf_export_parity_manifest(
         issue_id: PARITY_DRAFTING_DXF_EXPORT_ISSUE_ID.to_string(),
         vcad_commit: scorecard.vcad_commit.clone(),
         openagents_commit: scorecard.openagents_commit.clone(),
-        generated_from_scorecard: scorecard_path.to_string(),
+        generated_from_scorecard: canonicalize_scorecard_path(scorecard_path),
         reference_corpus_path: DRAFTING_DXF_EXPORT_REFERENCE_CORPUS_PATH.to_string(),
         reference_corpus_sha256,
         reference_source: corpus.source,
@@ -223,6 +224,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{DraftingDxfCaseSnapshot, parity_signature};
+    use crate::parity::reference_table_parity::canonicalize_scorecard_path;
 
     #[test]
     fn parity_signature_is_stable_for_identical_inputs() {
@@ -242,5 +244,21 @@ mod tests {
         let first = parity_signature(&cases, true, true, true, "sha");
         let second = parity_signature(&cases, true, true, true, "sha");
         assert_eq!(first, second);
+    }
+
+    #[test]
+    fn normalize_scorecard_path_strips_machine_specific_prefix() {
+        assert_eq!(
+            canonicalize_scorecard_path(
+                "/Users/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json"
+            ),
+            "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json"
+        );
+        assert_eq!(
+            canonicalize_scorecard_path(
+                "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json"
+            ),
+            "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json"
+        );
     }
 }

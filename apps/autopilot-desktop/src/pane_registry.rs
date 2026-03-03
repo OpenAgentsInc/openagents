@@ -792,7 +792,10 @@ mod tests {
             .expect("cad demo command should resolve to a pane spec");
         assert_eq!(spec.kind, PaneKind::CadDemo);
         assert!(spec.singleton, "cad demo pane must be singleton");
-        assert!(spec.startup, "cad demo pane should auto-open during startup");
+        assert!(
+            spec.startup,
+            "cad demo pane should auto-open during startup"
+        );
     }
 
     #[test]
@@ -800,7 +803,13 @@ mod tests {
         let spec = pane_spec_by_command_id("pane.calculator")
             .expect("calculator command should resolve to a pane spec");
         assert_eq!(spec.kind, PaneKind::Calculator);
-        assert!(!spec.singleton, "calculator pane should allow multiple instances");
-        assert!(!spec.startup, "calculator pane should not auto-open during startup");
+        assert!(
+            !spec.singleton,
+            "calculator pane should allow multiple instances"
+        );
+        assert!(
+            !spec.startup,
+            "calculator pane should not auto-open during startup"
+        );
     }
 }

@@ -6,6 +6,7 @@ use crate::kernel_booleans::BooleanPipelineOutcome;
 use crate::kernel_primitives::BRepSolid;
 use crate::kernel_step;
 use crate::mesh::CadMeshPayload;
+use crate::stl::export_stl_from_mesh;
 use crate::{CadError, CadResult};
 
 /// Deterministic STEP schema used for Wave 1 demo exports.
@@ -17,6 +18,8 @@ pub const STEP_EXPORT_EMPTY_REASON: &str = "cannot export to STEP: solid is empt
 /// vcad baseline parity contract for drafting PDF export.
 pub const PDF_EXPORT_PARITY_REASON: &str =
     "vcad baseline has no native drawing PDF exporter; use desktop/browser print pipeline";
+/// Stable schema ID for machine-readable hand assembly BOM payloads.
+pub const HAND_ASSEMBLY_BOM_SCHEMA: &str = "openagents.cad.hand_assembly_bom.v1";
 
 /// Stable receipt emitted for deterministic STEP exports.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -44,6 +47,111 @@ impl CadStepExportArtifact {
         std::str::from_utf8(&self.bytes).map_err(|error| CadError::ExportFailed {
             format: "step".to_string(),
             reason: format!("step payload is not valid utf-8: {error}"),
+        })
+    }
+}
+
+/// Deterministic machine-readable BOM line for hand assembly exports.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CadHandAssemblyBomLineItem {
+    pub part_id: String,
+    pub part_name: String,
+    pub category: String,
+    pub quantity: u32,
+    pub source: String,
+    pub material_id: Option<String>,
+    pub notes: String,
+}
+
+/// Deterministic print metadata attached to hand assembly BOM exports.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CadHandAssemblyPrintMetadata {
+    pub orientation_hints: Vec<String>,
+    pub print_fit_mm: String,
+    pub print_clearance_mm: String,
+    pub tolerance_note: String,
+}
+
+/// Deterministic machine-readable BOM contract for hand assembly exports.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CadHandAssemblyBomDocument {
+    pub schema: String,
+    pub assembly_id: String,
+    pub assembly_name: String,
+    pub design_profile: String,
+    pub document_id: String,
+    pub document_revision: u64,
+    pub variant_id: String,
+    pub items: Vec<CadHandAssemblyBomLineItem>,
+    pub print_metadata: CadHandAssemblyPrintMetadata,
+}
+
+/// Input options for deterministic hand assembly export packaging.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CadHandAssemblyPackageOptions {
+    pub assembly_name: String,
+    pub design_profile: String,
+    pub finger_count: u8,
+    pub servo_motor_count: u8,
+    pub force_sensor_count: u8,
+    pub proximity_sensor_count: u8,
+    pub include_control_board_mount: bool,
+    pub print_fit_mm: f64,
+    pub print_clearance_mm: f64,
+    pub material_id: String,
+}
+
+impl Default for CadHandAssemblyPackageOptions {
+    fn default() -> Self {
+        Self {
+            assembly_name: "humanoid_hand_v1".to_string(),
+            design_profile: "humanoid_hand_v1".to_string(),
+            finger_count: 5,
+            servo_motor_count: 5,
+            force_sensor_count: 5,
+            proximity_sensor_count: 5,
+            include_control_board_mount: true,
+            print_fit_mm: 0.15,
+            print_clearance_mm: 0.35,
+            material_id: "pla".to_string(),
+        }
+    }
+}
+
+/// Stable receipt emitted for deterministic hand assembly export packages.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct CadHandAssemblyExportReceipt {
+    pub document_id: String,
+    pub document_revision: u64,
+    pub variant_id: String,
+    pub assembly_name: String,
+    pub design_profile: String,
+    pub step_file_name: String,
+    pub stl_file_name: String,
+    pub bom_file_name: String,
+    pub step_hash: String,
+    pub stl_hash: String,
+    pub bom_hash: String,
+    pub package_hash: String,
+    pub total_byte_count: usize,
+    pub bom_item_count: usize,
+}
+
+/// Deterministic hand assembly export package artifact.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct CadHandAssemblyExportArtifact {
+    pub receipt: CadHandAssemblyExportReceipt,
+    pub step: CadStepExportArtifact,
+    pub stl_bytes: Vec<u8>,
+    pub bom_bytes: Vec<u8>,
+}
+
+impl CadHandAssemblyExportArtifact {
+    /// Return machine-readable BOM payload as UTF-8 text.
+    pub fn bom_text(&self) -> CadResult<&str> {
+        std::str::from_utf8(&self.bom_bytes).map_err(|error| CadError::ExportFailed {
+            format: "bom".to_string(),
+            reason: format!("bom payload is not valid utf-8: {error}"),
         })
     }
 }
@@ -444,6 +552,72 @@ pub fn export_step_from_mesh(
     Ok(CadStepExportArtifact { receipt, bytes })
 }
 
+/// Export a deterministic hand assembly package from the active mesh:
+/// - STEP artifact for CAD interchange
+/// - STL artifact for print-oriented pipelines
+/// - Machine-readable BOM JSON with print metadata
+pub fn export_hand_assembly_package_from_mesh(
+    document_id: &str,
+    document_revision: u64,
+    variant_id: &str,
+    mesh: &CadMeshPayload,
+    options: &CadHandAssemblyPackageOptions,
+) -> CadResult<CadHandAssemblyExportArtifact> {
+    validate_step_export_identity(document_id, variant_id)?;
+    validate_hand_assembly_package_options(options)?;
+
+    let step = export_step_from_mesh(document_id, document_revision, variant_id, mesh)?;
+    let stl = export_stl_from_mesh(document_id, document_revision, variant_id, mesh)?;
+    let bom = build_hand_assembly_bom_document(document_id, document_revision, variant_id, options);
+    let bom_bytes = serde_json::to_vec_pretty(&bom).map_err(|error| CadError::ExportFailed {
+        format: "bom".to_string(),
+        reason: format!("failed to serialize hand assembly bom json: {error}"),
+    })?;
+    let bom_hash = stable_hex_digest(&bom_bytes);
+    let step_file_name = step.receipt.file_name.clone();
+    let stl_file_name = build_stl_file_name(document_id, variant_id, document_revision);
+    let bom_file_name = build_bom_file_name(document_id, variant_id, document_revision);
+    let package_descriptor = format!(
+        "assembly={}#profile={}#step={}:{}#stl={}:{}#bom={}:{}",
+        sanitize_step_segment(options.assembly_name.as_str()),
+        sanitize_step_segment(options.design_profile.as_str()),
+        step_file_name,
+        step.receipt.deterministic_hash,
+        stl_file_name,
+        stl.receipt.deterministic_hash,
+        bom_file_name,
+        bom_hash
+    );
+    let package_hash = stable_hex_digest(package_descriptor.as_bytes());
+    let total_byte_count = step
+        .bytes
+        .len()
+        .saturating_add(stl.bytes.len())
+        .saturating_add(bom_bytes.len());
+    let receipt = CadHandAssemblyExportReceipt {
+        document_id: document_id.to_string(),
+        document_revision,
+        variant_id: variant_id.to_string(),
+        assembly_name: options.assembly_name.clone(),
+        design_profile: options.design_profile.clone(),
+        step_file_name,
+        stl_file_name,
+        bom_file_name,
+        step_hash: step.receipt.deterministic_hash.clone(),
+        stl_hash: stl.receipt.deterministic_hash.clone(),
+        bom_hash,
+        package_hash,
+        total_byte_count,
+        bom_item_count: bom.items.len(),
+    };
+    Ok(CadHandAssemblyExportArtifact {
+        receipt,
+        step,
+        stl_bytes: stl.bytes,
+        bom_bytes,
+    })
+}
+
 /// Return whether a post-boolean result can be exported to STEP.
 ///
 /// This mirrors vcad's `can_export_step` contract:
@@ -595,7 +769,28 @@ fn sanitize_step_segment(value: &str) -> String {
 
 fn build_step_file_name(document_id: &str, variant_id: &str, document_revision: u64) -> String {
     format!(
-        "{}-{}-r{:06}.step",
+        "{}.step",
+        build_export_file_stem(document_id, variant_id, document_revision)
+    )
+}
+
+fn build_stl_file_name(document_id: &str, variant_id: &str, document_revision: u64) -> String {
+    format!(
+        "{}.stl",
+        build_export_file_stem(document_id, variant_id, document_revision)
+    )
+}
+
+fn build_bom_file_name(document_id: &str, variant_id: &str, document_revision: u64) -> String {
+    format!(
+        "{}.bom.json",
+        build_export_file_stem(document_id, variant_id, document_revision)
+    )
+}
+
+fn build_export_file_stem(document_id: &str, variant_id: &str, document_revision: u64) -> String {
+    format!(
+        "{}-{}-r{:06}",
         sanitize_step_segment(document_id),
         sanitize_step_segment(variant_id),
         document_revision
@@ -614,6 +809,224 @@ fn validate_step_export_identity(document_id: &str, variant_id: &str) -> CadResu
         return Err(step_export_failed("variant id must not be empty"));
     }
     Ok(())
+}
+
+fn validate_hand_assembly_package_options(
+    options: &CadHandAssemblyPackageOptions,
+) -> CadResult<()> {
+    if options.assembly_name.trim().is_empty() {
+        return Err(CadError::ExportFailed {
+            format: "assembly-package".to_string(),
+            reason: "assembly name must not be empty".to_string(),
+        });
+    }
+    if options.design_profile.trim().is_empty() {
+        return Err(CadError::ExportFailed {
+            format: "assembly-package".to_string(),
+            reason: "design profile must not be empty".to_string(),
+        });
+    }
+    if options.finger_count < 2 {
+        return Err(CadError::ExportFailed {
+            format: "assembly-package".to_string(),
+            reason: "finger count must be at least 2".to_string(),
+        });
+    }
+    if !options.print_fit_mm.is_finite() || !options.print_clearance_mm.is_finite() {
+        return Err(CadError::ExportFailed {
+            format: "assembly-package".to_string(),
+            reason: "print fit and print clearance must be finite".to_string(),
+        });
+    }
+    if options.print_fit_mm <= 0.0 || options.print_clearance_mm <= 0.0 {
+        return Err(CadError::ExportFailed {
+            format: "assembly-package".to_string(),
+            reason: "print fit and print clearance must be positive".to_string(),
+        });
+    }
+    Ok(())
+}
+
+fn build_hand_assembly_bom_document(
+    document_id: &str,
+    document_revision: u64,
+    variant_id: &str,
+    options: &CadHandAssemblyPackageOptions,
+) -> CadHandAssemblyBomDocument {
+    let assembly_id = format!(
+        "assembly.{}.{}",
+        sanitize_step_segment(options.design_profile.as_str()),
+        build_export_file_stem(document_id, variant_id, document_revision)
+    );
+    let mut items = Vec::new();
+    let printed_material = Some(options.material_id.clone());
+    items.push(CadHandAssemblyBomLineItem {
+        part_id: "printed.palm_chassis".to_string(),
+        part_name: "Palm Chassis".to_string(),
+        category: "printed_part".to_string(),
+        quantity: 1,
+        source: "printed".to_string(),
+        material_id: printed_material.clone(),
+        notes: "Primary palm body; print with flat palm surface on build plate.".to_string(),
+    });
+    for (digit_index, digit_name) in hand_digit_names(options.finger_count).iter().enumerate() {
+        items.push(CadHandAssemblyBomLineItem {
+            part_id: format!(
+                "printed.digit.{}",
+                sanitize_step_segment(digit_name.as_str())
+            ),
+            part_name: digit_name.clone(),
+            category: "printed_part".to_string(),
+            quantity: 1,
+            source: "printed".to_string(),
+            material_id: printed_material.clone(),
+            notes: format!(
+                "Digit {} shell with integrated tendon channel and joint seats.",
+                digit_index.saturating_add(1)
+            ),
+        });
+    }
+    items.push(CadHandAssemblyBomLineItem {
+        part_id: "printed.arm_interface_mount".to_string(),
+        part_name: "Arm Interface Mount".to_string(),
+        category: "printed_part".to_string(),
+        quantity: 1,
+        source: "printed".to_string(),
+        material_id: printed_material.clone(),
+        notes: "Mount flange for wrist/arm attachment and bench fixturing.".to_string(),
+    });
+    if options.include_control_board_mount {
+        items.push(CadHandAssemblyBomLineItem {
+            part_id: "printed.control_board_tray".to_string(),
+            part_name: "Control Board Tray".to_string(),
+            category: "printed_part".to_string(),
+            quantity: 1,
+            source: "printed".to_string(),
+            material_id: printed_material,
+            notes: "Printed tray for controller board and harness anchor points.".to_string(),
+        });
+    }
+
+    if options.servo_motor_count > 0 {
+        items.push(CadHandAssemblyBomLineItem {
+            part_id: "hardware.servo.sg90".to_string(),
+            part_name: "Micro Servo (SG90 class)".to_string(),
+            category: "motor".to_string(),
+            quantity: options.servo_motor_count as u32,
+            source: "off_the_shelf".to_string(),
+            material_id: None,
+            notes: "Actuator count scales with digit/joint drive topology.".to_string(),
+        });
+    }
+    let fastener_quantity = (options.servo_motor_count as u32).saturating_mul(4).max(12);
+    items.push(CadHandAssemblyBomLineItem {
+        part_id: "hardware.fastener.m2x8_shcs".to_string(),
+        part_name: "M2x8 Socket Head Screw".to_string(),
+        category: "fastener".to_string(),
+        quantity: fastener_quantity,
+        source: "off_the_shelf".to_string(),
+        material_id: None,
+        notes: "Primary structural and servo-mount fastener.".to_string(),
+    });
+    items.push(CadHandAssemblyBomLineItem {
+        part_id: "hardware.fastener.m2_hex_nut".to_string(),
+        part_name: "M2 Hex Nut".to_string(),
+        category: "fastener".to_string(),
+        quantity: fastener_quantity,
+        source: "off_the_shelf".to_string(),
+        material_id: None,
+        notes: "Matching captive nuts for M2 fastener stack.".to_string(),
+    });
+    items.push(CadHandAssemblyBomLineItem {
+        part_id: "hardware.tendon.cable_1mm".to_string(),
+        part_name: "1.0 mm Tendon Cable".to_string(),
+        category: "actuation".to_string(),
+        quantity: options.finger_count as u32,
+        source: "off_the_shelf".to_string(),
+        material_id: None,
+        notes: "One routed tendon per digit channel by default.".to_string(),
+    });
+
+    if options.force_sensor_count > 0 {
+        items.push(CadHandAssemblyBomLineItem {
+            part_id: "sensor.force.fingertip_pad".to_string(),
+            part_name: "Fingertip Force Sensor".to_string(),
+            category: "sensor".to_string(),
+            quantity: options.force_sensor_count as u32,
+            source: "off_the_shelf".to_string(),
+            material_id: None,
+            notes: "Fingertip force sensing pads for grasp feedback.".to_string(),
+        });
+    }
+    if options.proximity_sensor_count > 0 {
+        items.push(CadHandAssemblyBomLineItem {
+            part_id: "sensor.proximity.short_range".to_string(),
+            part_name: "Proximity Sensor Module".to_string(),
+            category: "sensor".to_string(),
+            quantity: options.proximity_sensor_count as u32,
+            source: "off_the_shelf".to_string(),
+            material_id: None,
+            notes: "Short-range proximity modules for pre-contact detection.".to_string(),
+        });
+    }
+    items.push(CadHandAssemblyBomLineItem {
+        part_id: "electronics.control_board.micro".to_string(),
+        part_name: "Micro Control Board".to_string(),
+        category: "electronics".to_string(),
+        quantity: 1,
+        source: "off_the_shelf".to_string(),
+        material_id: None,
+        notes: "Controller board with PWM outputs and sensor input channels.".to_string(),
+    });
+
+    let print_metadata = CadHandAssemblyPrintMetadata {
+        orientation_hints: vec![
+            "Print palm chassis flat with mount surface down.".to_string(),
+            "Print digits upright to preserve tendon channel roundness.".to_string(),
+            "Print arm interface mount with flange on bed for concentric holes.".to_string(),
+        ],
+        print_fit_mm: canonical_print_decimal(options.print_fit_mm),
+        print_clearance_mm: canonical_print_decimal(options.print_clearance_mm),
+        tolerance_note:
+            "Verify printer-specific fit with test coupons before final full assembly run."
+                .to_string(),
+    };
+
+    CadHandAssemblyBomDocument {
+        schema: HAND_ASSEMBLY_BOM_SCHEMA.to_string(),
+        assembly_id,
+        assembly_name: options.assembly_name.clone(),
+        design_profile: options.design_profile.clone(),
+        document_id: document_id.to_string(),
+        document_revision,
+        variant_id: variant_id.to_string(),
+        items,
+        print_metadata,
+    }
+}
+
+fn hand_digit_names(finger_count: u8) -> Vec<String> {
+    const CANONICAL: [&str; 5] = [
+        "Index Finger",
+        "Middle Finger",
+        "Ring Finger",
+        "Pinky Finger",
+        "Thumb",
+    ];
+    let mut names = Vec::with_capacity(finger_count as usize);
+    for index in 0..finger_count {
+        if let Some(name) = CANONICAL.get(index as usize) {
+            names.push((*name).to_string());
+        } else {
+            names.push(format!("Aux Finger {}", index.saturating_add(1)));
+        }
+    }
+    names
+}
+
+fn canonical_print_decimal(value: f64) -> String {
+    let rounded = (value * 1_000.0).round() / 1_000.0;
+    format!("{rounded:.3}")
 }
 
 fn push_dxf_line(text: &mut String, line: &str) {
@@ -642,9 +1055,11 @@ fn dxf_export_failed(reason: impl Into<String>) -> CadError {
 #[cfg(test)]
 mod tests {
     use super::{
-        PDF_EXPORT_PARITY_REASON, STEP_EXPORT_EMPTY_REASON, STEP_EXPORT_NOT_BREP_REASON,
-        can_export_post_boolean_step, export_projected_view_to_dxf, export_projected_view_to_pdf,
-        export_step_from_mesh, export_step_from_post_boolean_brep, sanitize_step_segment,
+        CadHandAssemblyPackageOptions, PDF_EXPORT_PARITY_REASON, STEP_EXPORT_EMPTY_REASON,
+        STEP_EXPORT_NOT_BREP_REASON, can_export_post_boolean_step,
+        export_hand_assembly_package_from_mesh, export_projected_view_to_dxf,
+        export_projected_view_to_pdf, export_step_from_mesh, export_step_from_post_boolean_brep,
+        sanitize_step_segment,
     };
     use crate::drafting::{
         EdgeType, Point2D, ProjectedEdge, ProjectedView, ViewDirection, Visibility,
@@ -956,5 +1371,148 @@ mod tests {
     fn sanitize_step_segment_collapses_symbols() {
         assert_eq!(sanitize_step_segment("Rack V1/2026"), "rack-v1-2026");
         assert_eq!(sanitize_step_segment("___"), "cad");
+    }
+
+    #[test]
+    fn hand_assembly_export_package_is_deterministic_and_machine_readable() {
+        let mesh = sample_tetra_mesh();
+        let options = CadHandAssemblyPackageOptions::default();
+        let first = export_hand_assembly_package_from_mesh(
+            "doc.hand.demo",
+            11,
+            "variant.baseline",
+            &mesh,
+            &options,
+        )
+        .expect("first hand package export should succeed");
+        let second = export_hand_assembly_package_from_mesh(
+            "doc.hand.demo",
+            11,
+            "variant.baseline",
+            &mesh,
+            &options,
+        )
+        .expect("second hand package export should succeed");
+
+        assert_eq!(first.receipt, second.receipt);
+        assert_eq!(first.step.bytes, second.step.bytes);
+        assert_eq!(first.stl_bytes, second.stl_bytes);
+        assert_eq!(first.bom_bytes, second.bom_bytes);
+        assert_eq!(
+            first.receipt.step_hash, first.step.receipt.deterministic_hash,
+            "package should include step hash"
+        );
+        assert_eq!(first.receipt.step_file_name, first.step.receipt.file_name);
+        assert_eq!(
+            first.receipt.stl_file_name,
+            "doc-hand-demo-variant-baseline-r000011.stl"
+        );
+        assert_eq!(
+            first.receipt.bom_file_name,
+            "doc-hand-demo-variant-baseline-r000011.bom.json"
+        );
+
+        let bom_json: serde_json::Value =
+            serde_json::from_slice(&first.bom_bytes).expect("bom should be valid json");
+        assert_eq!(
+            bom_json.get("schema").and_then(|value| value.as_str()),
+            Some("openagents.cad.hand_assembly_bom.v1")
+        );
+        assert_eq!(
+            bom_json
+                .get("assembly_name")
+                .and_then(|value| value.as_str()),
+            Some("humanoid_hand_v1")
+        );
+        assert!(
+            bom_json
+                .get("items")
+                .and_then(|value| value.as_array())
+                .is_some_and(|items| items.len() >= 10)
+        );
+    }
+
+    #[test]
+    fn hand_assembly_export_package_part_names_are_stable() {
+        let mesh = sample_tetra_mesh();
+        let package = export_hand_assembly_package_from_mesh(
+            "doc.hand.demo",
+            3,
+            "variant.baseline",
+            &mesh,
+            &CadHandAssemblyPackageOptions::default(),
+        )
+        .expect("hand package export should succeed");
+        let bom_json: serde_json::Value =
+            serde_json::from_slice(&package.bom_bytes).expect("bom should be valid json");
+        let item_names = bom_json
+            .get("items")
+            .and_then(|value| value.as_array())
+            .expect("items should be present")
+            .iter()
+            .map(|item| {
+                item.get("part_name")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default()
+                    .to_string()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            item_names,
+            vec![
+                "Palm Chassis",
+                "Index Finger",
+                "Middle Finger",
+                "Ring Finger",
+                "Pinky Finger",
+                "Thumb",
+                "Arm Interface Mount",
+                "Control Board Tray",
+                "Micro Servo (SG90 class)",
+                "M2x8 Socket Head Screw",
+                "M2 Hex Nut",
+                "1.0 mm Tendon Cable",
+                "Fingertip Force Sensor",
+                "Proximity Sensor Module",
+                "Micro Control Board",
+            ]
+        );
+    }
+
+    #[test]
+    fn hand_assembly_export_package_hash_changes_when_bom_changes() {
+        let mesh = sample_tetra_mesh();
+        let baseline = export_hand_assembly_package_from_mesh(
+            "doc.hand.demo",
+            4,
+            "variant.baseline",
+            &mesh,
+            &CadHandAssemblyPackageOptions::default(),
+        )
+        .expect("baseline package export should succeed");
+
+        let mut updated_options = CadHandAssemblyPackageOptions::default();
+        updated_options.servo_motor_count = 6;
+        let updated = export_hand_assembly_package_from_mesh(
+            "doc.hand.demo",
+            4,
+            "variant.baseline",
+            &mesh,
+            &updated_options,
+        )
+        .expect("updated package export should succeed");
+
+        assert_eq!(
+            baseline.receipt.step_hash, updated.receipt.step_hash,
+            "same mesh should keep deterministic step hash"
+        );
+        assert_ne!(
+            baseline.receipt.bom_hash, updated.receipt.bom_hash,
+            "bom hash must change when bom items change"
+        );
+        assert_ne!(
+            baseline.receipt.package_hash, updated.receipt.package_hash,
+            "package hash must change when bom hash changes"
+        );
     }
 }

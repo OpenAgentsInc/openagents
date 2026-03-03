@@ -110,7 +110,8 @@ pub fn dispatch_cad_intent(
             state.document_created = true;
             let is_humanoid_hand = payload.finger_count >= 5 && payload.opposable_thumb;
             let is_three_finger_thumb = payload.finger_count >= 3 && payload.opposable_thumb;
-            let is_servo_integrated_hand = is_three_finger_thumb && payload.servo_integration_enabled;
+            let is_servo_integrated_hand =
+                is_three_finger_thumb && payload.servo_integration_enabled;
             state.design_profile = if is_humanoid_hand {
                 CadDesignProfile::HumanoidHandV1
             } else if is_three_finger_thumb {
@@ -120,26 +121,25 @@ pub fn dispatch_cad_intent(
             } else {
                 CadDesignProfile::ParallelJawGripper
             };
-            state.objective = Some(if is_humanoid_hand
-                && is_servo_integrated_hand
-                && payload.compact_servo_layout
-            {
-                "humanoid-hand-v1-servo-compact".to_string()
-            } else if is_humanoid_hand && is_servo_integrated_hand {
-                "humanoid-hand-v1-servo-integration".to_string()
-            } else if is_humanoid_hand {
-                "humanoid-hand-v1".to_string()
-            } else if is_servo_integrated_hand && payload.compact_servo_layout {
-                "three-finger-thumb-servo-compact".to_string()
-            } else if is_servo_integrated_hand {
-                "three-finger-thumb-servo-integration".to_string()
-            } else if is_three_finger_thumb {
-                "three-finger-thumb-hand".to_string()
-            } else if payload.underactuated_mode {
-                "parallel-jaw-gripper-underactuated".to_string()
-            } else {
-                "parallel-jaw-gripper".to_string()
-            });
+            state.objective = Some(
+                if is_humanoid_hand && is_servo_integrated_hand && payload.compact_servo_layout {
+                    "humanoid-hand-v1-servo-compact".to_string()
+                } else if is_humanoid_hand && is_servo_integrated_hand {
+                    "humanoid-hand-v1-servo-integration".to_string()
+                } else if is_humanoid_hand {
+                    "humanoid-hand-v1".to_string()
+                } else if is_servo_integrated_hand && payload.compact_servo_layout {
+                    "three-finger-thumb-servo-compact".to_string()
+                } else if is_servo_integrated_hand {
+                    "three-finger-thumb-servo-integration".to_string()
+                } else if is_three_finger_thumb {
+                    "three-finger-thumb-hand".to_string()
+                } else if payload.underactuated_mode {
+                    "parallel-jaw-gripper-underactuated".to_string()
+                } else {
+                    "parallel-jaw-gripper".to_string()
+                },
+            );
             state.underactuated_mode = payload.underactuated_mode;
             state.single_servo_drive = payload.single_servo_drive;
             state.compliant_joint_count = Some(payload.compliant_joint_count);
@@ -247,7 +247,11 @@ pub fn dispatch_cad_intent(
             );
             state.parameter_values.insert(
                 "compact_servo_layout".to_string(),
-                if payload.compact_servo_layout { 1.0 } else { 0.0 },
+                if payload.compact_servo_layout {
+                    1.0
+                } else {
+                    0.0
+                },
             );
             state.parameter_values.insert(
                 "servo_envelope_length_mm".to_string(),
@@ -715,8 +719,14 @@ mod tests {
             &mut state,
         )
         .expect("humanoid hand spec should dispatch");
-        assert_eq!(receipt.design_profile, super::CadDesignProfile::HumanoidHandV1);
-        assert_eq!(state.design_profile, super::CadDesignProfile::HumanoidHandV1);
+        assert_eq!(
+            receipt.design_profile,
+            super::CadDesignProfile::HumanoidHandV1
+        );
+        assert_eq!(
+            state.design_profile,
+            super::CadDesignProfile::HumanoidHandV1
+        );
         assert_eq!(state.finger_count, Some(5));
         assert!(state.opposable_thumb);
         assert_eq!(

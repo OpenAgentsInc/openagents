@@ -4,6 +4,7 @@ use sha2::{Digest, Sha256};
 use crate::mesh::{
     CadMeshBounds, CadMeshMaterialSlot, CadMeshPayload, CadMeshTopology, CadMeshVertex,
 };
+use crate::parity::reference_table_parity::canonicalize_scorecard_path;
 use crate::parity::scorecard::ParityScorecard;
 use crate::stl::{STL_BINARY_HEADER_LABEL, export_stl_from_mesh, import_stl_to_mesh};
 use crate::{CadError, CadResult};
@@ -116,7 +117,7 @@ pub fn build_stl_import_export_parity_manifest(
         issue_id: PARITY_STL_IMPORT_EXPORT_ISSUE_ID.to_string(),
         vcad_commit: scorecard.vcad_commit.clone(),
         openagents_commit: scorecard.openagents_commit.clone(),
-        generated_from_scorecard: scorecard_path.to_string(),
+        generated_from_scorecard: canonicalize_scorecard_path(scorecard_path),
         reference_corpus_path: STL_IMPORT_EXPORT_REFERENCE_CORPUS_PATH.to_string(),
         reference_corpus_sha256,
         reference_source: corpus.source,

@@ -8,8 +8,8 @@ use crate::app_state::{ActivityFeedFilter, DesktopPane, PaneDragMode, PaneKind, 
 use crate::hotbar::{HOTBAR_FLOAT_GAP, HOTBAR_HEIGHT};
 use crate::pane_registry::pane_spec;
 use crate::panes::{
-    calculator as calculator_pane, chat as chat_pane,
-    relay_connections as relay_connections_pane, wallet as wallet_pane,
+    calculator as calculator_pane, chat as chat_pane, relay_connections as relay_connections_pane,
+    wallet as wallet_pane,
 };
 use crate::render::{
     logical_size, sidebar_go_online_button_bounds, sidebar_handle_bounds,
