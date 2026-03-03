@@ -108,6 +108,7 @@ LANE_LABELS=(
     "simulation-ui-controls"
     "gym-style-api"
     "mcp-simulation-tools"
+    "urdf-import"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -485,6 +486,9 @@ run_lane "gym-style-api" \
 
 run_lane "mcp-simulation-tools" \
     "$ROOT_DIR/scripts/cad/parity-mcp-simulation-tools-ci.sh"
+
+run_lane "urdf-import" \
+    "$ROOT_DIR/scripts/cad/parity-urdf-import-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"

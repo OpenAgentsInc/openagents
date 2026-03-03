@@ -39,7 +39,7 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 166,
+    "source_artifact_count": 168,
     "artifact_ids": [
       "analytic_ray_intersections_parity_manifest",
       "assembly_acceptance_scenes_parity_manifest",
@@ -133,6 +133,7 @@
       "fixtures_text_to_cad_training_eval_vcad_reference",
       "fixtures_text_to_cad_vcad_reference",
       "fixtures_trimmed_surface_ray_hit_vcad_reference",
+      "fixtures_urdf_import_vcad_reference",
       "fixtures_viewport_camera_gizmo_vcad_reference",
       "glb_export_parity_manifest",
       "gpu_acceleration_parity_manifest",
@@ -202,6 +203,7 @@
       "topology_repair_parity_manifest",
       "transform_parity_manifest",
       "trimmed_surface_ray_hit_parity_manifest",
+      "urdf_import_parity_manifest",
       "vcad_capabilities_inventory",
       "vcad_eval_receipts_parity_manifest",
       "vcad_openagents_gap_matrix",
