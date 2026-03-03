@@ -65,6 +65,11 @@ pub const PARALLEL_JAW_GRIPPER_DEFAULT_UNDERACTUATED_MODE: bool = false;
 pub const PARALLEL_JAW_GRIPPER_DEFAULT_COMPLIANT_JOINT_COUNT: u8 = 0;
 pub const PARALLEL_JAW_GRIPPER_DEFAULT_FLEXURE_THICKNESS_MM: f64 = 1.4;
 pub const PARALLEL_JAW_GRIPPER_DEFAULT_SINGLE_SERVO_DRIVE: bool = true;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_COUNT: u8 = 2;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_OPPOSABLE_THUMB: bool = false;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_THUMB_BASE_ANGLE_DEG: f64 = 42.0;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_CHANNEL_DIAMETER_MM: f64 = 1.8;
+pub const PARALLEL_JAW_GRIPPER_DEFAULT_POSE_PRESET: &str = "open";
 pub const PARALLEL_JAW_GRIPPER_MIN_JAW_OPEN_MM: f64 = 8.0;
 pub const PARALLEL_JAW_GRIPPER_MAX_JAW_OPEN_MM: f64 = 140.0;
 pub const PARALLEL_JAW_GRIPPER_MIN_FINGER_LENGTH_MM: f64 = 25.0;
@@ -87,6 +92,12 @@ pub const PARALLEL_JAW_GRIPPER_MIN_COMPLIANT_JOINT_COUNT: u8 = 0;
 pub const PARALLEL_JAW_GRIPPER_MAX_COMPLIANT_JOINT_COUNT: u8 = 6;
 pub const PARALLEL_JAW_GRIPPER_MIN_FLEXURE_THICKNESS_MM: f64 = 0.8;
 pub const PARALLEL_JAW_GRIPPER_MAX_FLEXURE_THICKNESS_MM: f64 = 4.0;
+pub const PARALLEL_JAW_GRIPPER_MIN_FINGER_COUNT: u8 = 2;
+pub const PARALLEL_JAW_GRIPPER_MAX_FINGER_COUNT: u8 = 5;
+pub const PARALLEL_JAW_GRIPPER_MIN_THUMB_BASE_ANGLE_DEG: f64 = 20.0;
+pub const PARALLEL_JAW_GRIPPER_MAX_THUMB_BASE_ANGLE_DEG: f64 = 80.0;
+pub const PARALLEL_JAW_GRIPPER_MIN_TENDON_CHANNEL_DIAMETER_MM: f64 = 0.6;
+pub const PARALLEL_JAW_GRIPPER_MAX_TENDON_CHANNEL_DIAMETER_MM: f64 = 4.0;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -108,6 +119,16 @@ pub struct CreateParallelJawGripperSpecIntent {
     pub flexure_thickness_mm: f64,
     #[serde(default = "default_single_servo_drive")]
     pub single_servo_drive: bool,
+    #[serde(default = "default_finger_count")]
+    pub finger_count: u8,
+    #[serde(default = "default_opposable_thumb")]
+    pub opposable_thumb: bool,
+    #[serde(default = "default_thumb_base_angle_deg")]
+    pub thumb_base_angle_deg: f64,
+    #[serde(default = "default_tendon_channel_diameter_mm")]
+    pub tendon_channel_diameter_mm: f64,
+    #[serde(default = "default_pose_preset")]
+    pub pose_preset: String,
 }
 
 impl Default for CreateParallelJawGripperSpecIntent {
@@ -126,6 +147,11 @@ impl Default for CreateParallelJawGripperSpecIntent {
             compliant_joint_count: PARALLEL_JAW_GRIPPER_DEFAULT_COMPLIANT_JOINT_COUNT,
             flexure_thickness_mm: PARALLEL_JAW_GRIPPER_DEFAULT_FLEXURE_THICKNESS_MM,
             single_servo_drive: PARALLEL_JAW_GRIPPER_DEFAULT_SINGLE_SERVO_DRIVE,
+            finger_count: PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_COUNT,
+            opposable_thumb: PARALLEL_JAW_GRIPPER_DEFAULT_OPPOSABLE_THUMB,
+            thumb_base_angle_deg: PARALLEL_JAW_GRIPPER_DEFAULT_THUMB_BASE_ANGLE_DEG,
+            tendon_channel_diameter_mm: PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_CHANNEL_DIAMETER_MM,
+            pose_preset: PARALLEL_JAW_GRIPPER_DEFAULT_POSE_PRESET.to_string(),
         }
     }
 }
@@ -144,6 +170,26 @@ const fn default_flexure_thickness_mm() -> f64 {
 
 const fn default_single_servo_drive() -> bool {
     PARALLEL_JAW_GRIPPER_DEFAULT_SINGLE_SERVO_DRIVE
+}
+
+const fn default_finger_count() -> u8 {
+    PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_COUNT
+}
+
+const fn default_opposable_thumb() -> bool {
+    PARALLEL_JAW_GRIPPER_DEFAULT_OPPOSABLE_THUMB
+}
+
+const fn default_thumb_base_angle_deg() -> f64 {
+    PARALLEL_JAW_GRIPPER_DEFAULT_THUMB_BASE_ANGLE_DEG
+}
+
+const fn default_tendon_channel_diameter_mm() -> f64 {
+    PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_CHANNEL_DIAMETER_MM
+}
+
+fn default_pose_preset() -> String {
+    PARALLEL_JAW_GRIPPER_DEFAULT_POSE_PRESET.to_string()
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -270,7 +316,12 @@ pub fn cad_intent_json_schema() -> Value {
             "underactuated_mode",
             "compliant_joint_count",
             "flexure_thickness_mm",
-            "single_servo_drive"
+            "single_servo_drive",
+            "finger_count",
+            "opposable_thumb",
+            "thumb_base_angle_deg",
+            "tendon_channel_diameter_mm",
+            "pose_preset"
           ]
         },
         "GenerateVariants": {"required": ["count", "objective_set"]},
@@ -447,6 +498,47 @@ pub fn validate_cad_intent(intent: &CadIntent) -> Result<(), CadIntentValidation
                 PARALLEL_JAW_GRIPPER_MIN_FLEXURE_THICKNESS_MM,
                 PARALLEL_JAW_GRIPPER_MAX_FLEXURE_THICKNESS_MM,
             )?;
+            if payload.finger_count < PARALLEL_JAW_GRIPPER_MIN_FINGER_COUNT
+                || payload.finger_count > PARALLEL_JAW_GRIPPER_MAX_FINGER_COUNT
+            {
+                return Err(CadIntentValidationError::new(
+                    "CAD-INTENT-INVALID-RANGE",
+                    Some("CreateParallelJawGripperSpec".to_string()),
+                    Some("finger_count".to_string()),
+                    format!(
+                        "finger_count must be in range [{}, {}]",
+                        PARALLEL_JAW_GRIPPER_MIN_FINGER_COUNT,
+                        PARALLEL_JAW_GRIPPER_MAX_FINGER_COUNT
+                    ),
+                ));
+            }
+            validate_finite_range(
+                "CreateParallelJawGripperSpec",
+                "thumb_base_angle_deg",
+                payload.thumb_base_angle_deg,
+                PARALLEL_JAW_GRIPPER_MIN_THUMB_BASE_ANGLE_DEG,
+                PARALLEL_JAW_GRIPPER_MAX_THUMB_BASE_ANGLE_DEG,
+            )?;
+            validate_finite_range(
+                "CreateParallelJawGripperSpec",
+                "tendon_channel_diameter_mm",
+                payload.tendon_channel_diameter_mm,
+                PARALLEL_JAW_GRIPPER_MIN_TENDON_CHANNEL_DIAMETER_MM,
+                PARALLEL_JAW_GRIPPER_MAX_TENDON_CHANNEL_DIAMETER_MM,
+            )?;
+            validate_non_empty(
+                "CreateParallelJawGripperSpec",
+                "pose_preset",
+                &payload.pose_preset,
+            )?;
+            if !matches!(payload.pose_preset.as_str(), "open" | "pinch" | "tripod") {
+                return Err(CadIntentValidationError::new(
+                    "CAD-INTENT-INVALID-FIELD",
+                    Some("CreateParallelJawGripperSpec".to_string()),
+                    Some("pose_preset".to_string()),
+                    "pose_preset must be one of: open, pinch, tripod",
+                ));
+            }
             if payload.print_clearance_mm <= payload.print_fit_mm {
                 return Err(CadIntentValidationError::new(
                     "CAD-INTENT-INVALID-RANGE",
@@ -472,6 +564,14 @@ pub fn validate_cad_intent(intent: &CadIntent) -> Result<(), CadIntentValidation
                         "underactuated_mode requires single_servo_drive=true",
                     ));
                 }
+            }
+            if payload.finger_count >= 3 && !payload.opposable_thumb {
+                return Err(CadIntentValidationError::new(
+                    "CAD-INTENT-INVALID-FIELD",
+                    Some("CreateParallelJawGripperSpec".to_string()),
+                    Some("opposable_thumb".to_string()),
+                    "finger_count >= 3 requires opposable_thumb=true for hand profile",
+                ));
             }
         }
         CadIntent::GenerateVariants(payload) => {
@@ -731,8 +831,8 @@ mod tests {
             "print_fit_mm":0.35,
             "print_clearance_mm":0.15
         }"#;
-        let error = parse_cad_intent_json(payload)
-            .expect_err("clearance <= fit should fail validation");
+        let error =
+            parse_cad_intent_json(payload).expect_err("clearance <= fit should fail validation");
         assert_eq!(error.code, "CAD-INTENT-INVALID-RANGE");
         assert_eq!(
             error.intent.as_deref(),

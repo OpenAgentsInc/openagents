@@ -560,6 +560,326 @@ fn tessellate_feature_node(
             );
             Ok(())
         }
+        "hand3.base_plate.v1" => {
+            let base_width_mm = node_param_f32(node, "base_width_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(90.0);
+            let base_depth_mm = node_param_f32(node, "base_depth_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(58.0);
+            let base_thickness_mm = node_param_f32(node, "base_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(8.0);
+            let hole_diameter_mm = node_param_f32(node, "servo_mount_hole_diameter_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(2.9);
+            let channel_diameter_mm = node_param_f32(node, "tendon_channel_diameter_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(1.8)
+                .clamp(0.6, 4.0);
+            let hole_half_mm = (hole_diameter_mm * 0.5).max(0.6);
+            let x_offset_mm = (base_width_mm * 0.18).max(7.5);
+            builder.add_plate_with_dual_holes(
+                base_width_mm,
+                base_depth_mm,
+                base_thickness_mm,
+                x_offset_mm,
+                hole_half_mm,
+                0,
+                1,
+                0.0 + jitter * 0.2,
+            );
+            let channel_manifold_half = (channel_diameter_mm * 1.6).max(1.0);
+            builder.add_box(
+                [
+                    -(base_width_mm * 0.12),
+                    -(base_depth_mm * 0.20),
+                    base_thickness_mm * 0.4,
+                ],
+                [
+                    base_width_mm * 0.12,
+                    base_depth_mm * 0.10,
+                    base_thickness_mm * 0.85 + channel_manifold_half * 0.2,
+                ],
+                1,
+                6,
+            );
+            Ok(())
+        }
+        "hand3.finger.digit.v1" => {
+            let digit_slot = node
+                .params
+                .get("digit_slot")
+                .and_then(|value| value.parse::<i32>().ok())
+                .unwrap_or(0) as f32;
+            let finger_length_mm = node_param_f32(node, "finger_length_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(68.0);
+            let finger_thickness_mm = node_param_f32(node, "finger_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(7.0);
+            let finger_height_mm = node_param_f32(node, "finger_height_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or((finger_thickness_mm * 2.4).max(10.0));
+            let base_depth_mm = node_param_f32(node, "base_depth_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(58.0);
+            let base_thickness_mm = node_param_f32(node, "base_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(8.0);
+            let finger_spacing_mm = node_param_f32(node, "finger_spacing_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(12.0);
+            let pose_preset = node
+                .params
+                .get("pose_preset")
+                .map(String::as_str)
+                .unwrap_or("open");
+            let (reach_scale, spread_scale) = match pose_preset {
+                "pinch" => (0.86, 0.78),
+                "tripod" => (1.04, 1.08),
+                _ => (0.94, 1.0),
+            };
+            let x_center = digit_slot * finger_spacing_mm * spread_scale;
+            let y0 = base_depth_mm * 0.22;
+            let mut y1 = y0 + (finger_length_mm * reach_scale);
+            if digit_slot.abs() < 0.01 && pose_preset == "tripod" {
+                y1 += finger_length_mm * 0.08;
+            }
+            let z0 = base_thickness_mm;
+            let z1 = z0 + finger_height_mm;
+            builder.add_box(
+                [
+                    x_center - (finger_thickness_mm * 0.5),
+                    y0,
+                    z0 + jitter * 0.05,
+                ],
+                [x_center + (finger_thickness_mm * 0.5), y1, z1],
+                1,
+                6,
+            );
+            let tip_length = (finger_thickness_mm * 1.4).clamp(2.0, 8.0);
+            builder.add_box(
+                [
+                    x_center - (finger_thickness_mm * 0.36),
+                    y1 - tip_length,
+                    z1 - (finger_height_mm * 0.25),
+                ],
+                [
+                    x_center + (finger_thickness_mm * 0.36),
+                    y1 + (finger_thickness_mm * 0.12),
+                    z1,
+                ],
+                1,
+                6,
+            );
+            Ok(())
+        }
+        "hand3.thumb.opposable.v1" => {
+            let finger_length_mm = node_param_f32(node, "finger_length_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(68.0);
+            let finger_thickness_mm = node_param_f32(node, "finger_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(7.0);
+            let base_width_mm = node_param_f32(node, "base_width_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(90.0);
+            let base_depth_mm = node_param_f32(node, "base_depth_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(58.0);
+            let base_thickness_mm = node_param_f32(node, "base_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(8.0);
+            let thumb_angle_deg = node_param_f32(node, "thumb_base_angle_deg")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(42.0);
+            let pose_preset = node
+                .params
+                .get("pose_preset")
+                .map(String::as_str)
+                .unwrap_or("open");
+            let pose_angle_delta = match pose_preset {
+                "pinch" => 8.0,
+                "tripod" => -6.0,
+                _ => 0.0,
+            };
+            let angle_rad = (thumb_angle_deg + pose_angle_delta).to_radians();
+            let thumb_length = finger_length_mm * 0.78;
+            let start = [-base_width_mm * 0.34, -base_depth_mm * 0.08];
+            let end = [
+                start[0] + (angle_rad.cos() * thumb_length),
+                start[1] + (angle_rad.sin() * thumb_length),
+            ];
+            let thumb_thickness = finger_thickness_mm * 0.9;
+            let thumb_height = (thumb_thickness * 2.2).max(9.0);
+            for segment in 0..4 {
+                let t0 = segment as f32 / 4.0;
+                let t1 = (segment as f32 + 1.0) / 4.0;
+                let p0 = [
+                    start[0] + ((end[0] - start[0]) * t0),
+                    start[1] + ((end[1] - start[1]) * t0),
+                ];
+                let p1 = [
+                    start[0] + ((end[0] - start[0]) * t1),
+                    start[1] + ((end[1] - start[1]) * t1),
+                ];
+                let z0 = base_thickness_mm + (segment as f32 * 0.24) + jitter * 0.04;
+                let z1 = z0 + thumb_height;
+                builder.add_box(
+                    [
+                        p0[0].min(p1[0]) - (thumb_thickness * 0.5),
+                        p0[1].min(p1[1]) - (thumb_thickness * 0.5),
+                        z0,
+                    ],
+                    [
+                        p0[0].max(p1[0]) + (thumb_thickness * 0.5),
+                        p0[1].max(p1[1]) + (thumb_thickness * 0.5),
+                        z1,
+                    ],
+                    1,
+                    6,
+                );
+            }
+            Ok(())
+        }
+        "hand3.tendon.channel.v1" => {
+            let digit = node
+                .params
+                .get("digit")
+                .map(String::as_str)
+                .unwrap_or("index");
+            let channel_diameter_mm = node_param_f32(node, "channel_diameter_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(1.8)
+                .clamp(0.6, 4.0);
+            let channel_half = channel_diameter_mm * 0.5;
+            let pose_preset = node
+                .params
+                .get("pose_preset")
+                .map(String::as_str)
+                .unwrap_or("open");
+            if digit == "thumb" {
+                let finger_length_mm = node_param_f32(node, "finger_length_mm")
+                    .filter(|value| *value > 0.0)
+                    .unwrap_or(68.0);
+                let base_width_mm = node_param_f32(node, "base_width_mm")
+                    .filter(|value| *value > 0.0)
+                    .unwrap_or(90.0);
+                let base_depth_mm = node_param_f32(node, "base_depth_mm")
+                    .filter(|value| *value > 0.0)
+                    .unwrap_or(58.0);
+                let base_thickness_mm = node_param_f32(node, "base_thickness_mm")
+                    .filter(|value| *value > 0.0)
+                    .unwrap_or(8.0);
+                let thumb_angle_deg = node_param_f32(node, "thumb_base_angle_deg")
+                    .filter(|value| *value > 0.0)
+                    .unwrap_or(42.0);
+                let pose_angle_delta = match pose_preset {
+                    "pinch" => 8.0,
+                    "tripod" => -6.0,
+                    _ => 0.0,
+                };
+                let angle_rad = (thumb_angle_deg + pose_angle_delta).to_radians();
+                let thumb_length = finger_length_mm * 0.74;
+                let start = [-base_width_mm * 0.34, -base_depth_mm * 0.08];
+                for segment in 0..5 {
+                    let t0 = segment as f32 / 5.0;
+                    let t1 = (segment as f32 + 1.0) / 5.0;
+                    let p0 = [
+                        start[0] + (angle_rad.cos() * thumb_length * t0),
+                        start[1] + (angle_rad.sin() * thumb_length * t0),
+                    ];
+                    let p1 = [
+                        start[0] + (angle_rad.cos() * thumb_length * t1),
+                        start[1] + (angle_rad.sin() * thumb_length * t1),
+                    ];
+                    let z0 = base_thickness_mm + (segment as f32 * 0.36) + jitter * 0.03;
+                    builder.add_box(
+                        [
+                            p0[0].min(p1[0]) - channel_half,
+                            p0[1].min(p1[1]) - channel_half,
+                            z0,
+                        ],
+                        [
+                            p0[0].max(p1[0]) + channel_half,
+                            p0[1].max(p1[1]) + channel_half,
+                            z0 + channel_diameter_mm,
+                        ],
+                        0,
+                        4,
+                    );
+                }
+                return Ok(());
+            }
+
+            let digit_slot = node
+                .params
+                .get("digit_slot")
+                .and_then(|value| value.parse::<i32>().ok())
+                .unwrap_or(0) as f32;
+            let finger_length_mm = node_param_f32(node, "finger_length_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(68.0);
+            let finger_thickness_mm = node_param_f32(node, "finger_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(7.0);
+            let base_depth_mm = node_param_f32(node, "base_depth_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(58.0);
+            let base_thickness_mm = node_param_f32(node, "base_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(8.0);
+            let finger_spacing_mm = node_param_f32(node, "finger_spacing_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(12.0);
+            let spread_scale = if pose_preset == "pinch" {
+                0.78
+            } else if pose_preset == "tripod" {
+                1.08
+            } else {
+                1.0
+            };
+            let x_center = digit_slot * finger_spacing_mm * spread_scale;
+            let y0 = base_depth_mm * 0.32;
+            let y1 = y0 + (finger_length_mm * 0.72);
+            let z0 = base_thickness_mm + (finger_thickness_mm * 1.1) + jitter * 0.02;
+            builder.add_box(
+                [x_center - channel_half, y0, z0],
+                [x_center + channel_half, y1, z0 + channel_diameter_mm],
+                0,
+                4,
+            );
+            builder.add_circle_edge_loop([x_center, y0, z0], channel_half, 12, 4, 0);
+            builder.add_circle_edge_loop([x_center, y1, z0], channel_half, 12, 4, 0);
+            Ok(())
+        }
+        "hand3.edge_marker.v1" => {
+            let base_width_mm = node_param_f32(node, "base_width_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(90.0);
+            let base_depth_mm = node_param_f32(node, "base_depth_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(58.0);
+            let base_thickness_mm = node_param_f32(node, "base_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(8.0);
+            let z = base_thickness_mm + jitter + 0.02;
+            let corners = [
+                [-base_width_mm * 0.5, -base_depth_mm * 0.5, z],
+                [base_width_mm * 0.5, -base_depth_mm * 0.5, z],
+                [base_width_mm * 0.5, base_depth_mm * 0.5, z],
+                [-base_width_mm * 0.5, base_depth_mm * 0.5, z],
+            ];
+            let mut v = [0_u32; 4];
+            for (index, corner) in corners.into_iter().enumerate() {
+                v[index] = builder.push_vertex(corner, [0.0, 0.0, 1.0], [0.0, 0.0], 1);
+            }
+            for (a, b) in [(0, 1), (1, 2), (2, 3), (3, 0)] {
+                builder.push_edge(v[a], v[b], 8);
+            }
+            Ok(())
+        }
         other => Err(CadError::EvalFailed {
             reason: format!(
                 "tessellation has no handler for operation_key={other} feature_id={}",
@@ -1186,6 +1506,126 @@ mod tests {
         FeatureGraph { nodes }
     }
 
+    fn three_finger_thumb_graph(
+        variant_id: &str,
+        tendon_channel_diameter_mm: f64,
+        pose_preset: &str,
+    ) -> FeatureGraph {
+        let mut nodes = vec![
+            FeatureNode {
+                id: "feature.hand3.base".to_string(),
+                name: "hand3_base".to_string(),
+                operation_key: "hand3.base_plate.v1".to_string(),
+                depends_on: Vec::new(),
+                params: BTreeMap::from([
+                    ("variant".to_string(), variant_id.to_string()),
+                    ("base_width_mm".to_string(), "90.0".to_string()),
+                    ("base_depth_mm".to_string(), "58.0".to_string()),
+                    ("base_thickness_mm".to_string(), "8.0".to_string()),
+                    (
+                        "servo_mount_hole_diameter_mm".to_string(),
+                        "2.9".to_string(),
+                    ),
+                    (
+                        "tendon_channel_diameter_mm".to_string(),
+                        format!("{tendon_channel_diameter_mm:.3}"),
+                    ),
+                ]),
+            },
+            FeatureNode {
+                id: "feature.hand3.thumb".to_string(),
+                name: "hand3_thumb".to_string(),
+                operation_key: "hand3.thumb.opposable.v1".to_string(),
+                depends_on: vec!["feature.hand3.base".to_string()],
+                params: BTreeMap::from([
+                    ("variant".to_string(), variant_id.to_string()),
+                    ("finger_length_mm".to_string(), "68.0".to_string()),
+                    ("finger_thickness_mm".to_string(), "7.0".to_string()),
+                    ("base_width_mm".to_string(), "90.0".to_string()),
+                    ("base_depth_mm".to_string(), "58.0".to_string()),
+                    ("base_thickness_mm".to_string(), "8.0".to_string()),
+                    ("thumb_base_angle_deg".to_string(), "48.0".to_string()),
+                    ("pose_preset".to_string(), pose_preset.to_string()),
+                ]),
+            },
+        ];
+        for (digit_slot, digit_name) in [(-1_i32, "index"), (0_i32, "middle"), (1_i32, "ring")] {
+            nodes.push(FeatureNode {
+                id: format!("feature.hand3.finger.{digit_name}"),
+                name: format!("hand3_finger_{digit_name}"),
+                operation_key: "hand3.finger.digit.v1".to_string(),
+                depends_on: vec!["feature.hand3.base".to_string()],
+                params: BTreeMap::from([
+                    ("variant".to_string(), variant_id.to_string()),
+                    ("digit_slot".to_string(), digit_slot.to_string()),
+                    ("finger_length_mm".to_string(), "68.0".to_string()),
+                    ("finger_thickness_mm".to_string(), "7.0".to_string()),
+                    ("finger_height_mm".to_string(), "16.8".to_string()),
+                    ("base_depth_mm".to_string(), "58.0".to_string()),
+                    ("base_thickness_mm".to_string(), "8.0".to_string()),
+                    ("finger_spacing_mm".to_string(), "12.0".to_string()),
+                    ("jaw_open_mm".to_string(), "34.0".to_string()),
+                    ("pose_preset".to_string(), pose_preset.to_string()),
+                ]),
+            });
+            nodes.push(FeatureNode {
+                id: format!("feature.hand3.tendon.{digit_name}"),
+                name: format!("hand3_tendon_{digit_name}"),
+                operation_key: "hand3.tendon.channel.v1".to_string(),
+                depends_on: vec![format!("feature.hand3.finger.{digit_name}")],
+                params: BTreeMap::from([
+                    ("variant".to_string(), variant_id.to_string()),
+                    ("digit".to_string(), digit_name.to_string()),
+                    ("digit_slot".to_string(), digit_slot.to_string()),
+                    ("finger_length_mm".to_string(), "68.0".to_string()),
+                    ("finger_thickness_mm".to_string(), "7.0".to_string()),
+                    ("base_thickness_mm".to_string(), "8.0".to_string()),
+                    ("base_depth_mm".to_string(), "58.0".to_string()),
+                    ("finger_spacing_mm".to_string(), "12.0".to_string()),
+                    (
+                        "channel_diameter_mm".to_string(),
+                        format!("{tendon_channel_diameter_mm:.3}"),
+                    ),
+                    ("pose_preset".to_string(), pose_preset.to_string()),
+                ]),
+            });
+        }
+        nodes.push(FeatureNode {
+            id: "feature.hand3.tendon.thumb".to_string(),
+            name: "hand3_tendon_thumb".to_string(),
+            operation_key: "hand3.tendon.channel.v1".to_string(),
+            depends_on: vec!["feature.hand3.thumb".to_string()],
+            params: BTreeMap::from([
+                ("variant".to_string(), variant_id.to_string()),
+                ("digit".to_string(), "thumb".to_string()),
+                ("finger_length_mm".to_string(), "68.0".to_string()),
+                ("finger_thickness_mm".to_string(), "7.0".to_string()),
+                ("base_thickness_mm".to_string(), "8.0".to_string()),
+                ("base_depth_mm".to_string(), "58.0".to_string()),
+                ("base_width_mm".to_string(), "90.0".to_string()),
+                ("thumb_base_angle_deg".to_string(), "48.0".to_string()),
+                (
+                    "channel_diameter_mm".to_string(),
+                    format!("{tendon_channel_diameter_mm:.3}"),
+                ),
+                ("pose_preset".to_string(), pose_preset.to_string()),
+            ]),
+        });
+        nodes.push(FeatureNode {
+            id: "feature.hand3.edge_marker".to_string(),
+            name: "hand3_edge_marker".to_string(),
+            operation_key: "hand3.edge_marker.v1".to_string(),
+            depends_on: vec!["feature.hand3.base".to_string()],
+            params: BTreeMap::from([
+                ("variant".to_string(), variant_id.to_string()),
+                ("base_width_mm".to_string(), "90.0".to_string()),
+                ("base_depth_mm".to_string(), "58.0".to_string()),
+                ("base_thickness_mm".to_string(), "8.0".to_string()),
+            ]),
+        });
+        FeatureGraph { nodes }
+    }
+
     #[test]
     fn gripper_tessellation_is_deterministic_for_identical_inputs() {
         let graph = gripper_graph_for_variant("variant.baseline");
@@ -1321,5 +1761,39 @@ mod tests {
         assert_eq!(receipt_a.mesh_hash, receipt_b.mesh_hash);
         assert_eq!(mesh_a.triangle_indices, mesh_b.triangle_indices);
         assert_eq!(mesh_a.edges, mesh_b.edges);
+    }
+
+    #[test]
+    fn three_finger_thumb_tessellation_is_deterministic_for_identical_inputs() {
+        let graph = three_finger_thumb_graph("variant.baseline", 1.6, "tripod");
+        let rebuild =
+            evaluate_feature_graph_deterministic(&graph).expect("three-finger rebuild should pass");
+        let (mesh_a, receipt_a) =
+            tessellate_rebuild_result(&graph, &rebuild, 41, "variant.baseline")
+                .expect("three-finger tessellation A should succeed");
+        let (mesh_b, receipt_b) =
+            tessellate_rebuild_result(&graph, &rebuild, 41, "variant.baseline")
+                .expect("three-finger tessellation B should succeed");
+        assert_eq!(receipt_a.mesh_hash, receipt_b.mesh_hash);
+        assert_eq!(mesh_a.triangle_indices, mesh_b.triangle_indices);
+        assert_eq!(mesh_a.edges, mesh_b.edges);
+        assert!(mesh_a.vertices.len() > 0);
+    }
+
+    #[test]
+    fn three_finger_thumb_tendon_channel_diameter_changes_mesh_hash() {
+        let narrow_graph = three_finger_thumb_graph("variant.baseline", 1.0, "pinch");
+        let wide_graph = three_finger_thumb_graph("variant.baseline", 2.4, "pinch");
+        let narrow_rebuild = evaluate_feature_graph_deterministic(&narrow_graph)
+            .expect("narrow tendon rebuild should pass");
+        let wide_rebuild = evaluate_feature_graph_deterministic(&wide_graph)
+            .expect("wide tendon rebuild should pass");
+        let (_, narrow_receipt) =
+            tessellate_rebuild_result(&narrow_graph, &narrow_rebuild, 43, "variant.baseline")
+                .expect("narrow tendon tessellation should succeed");
+        let (_, wide_receipt) =
+            tessellate_rebuild_result(&wide_graph, &wide_rebuild, 43, "variant.baseline")
+                .expect("wide tendon tessellation should succeed");
+        assert_ne!(narrow_receipt.mesh_hash, wide_receipt.mesh_hash);
     }
 }

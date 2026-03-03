@@ -27,19 +27,19 @@ use crate::pane_system::{
     cad_demo_drawing_clear_details_button_bounds, cad_demo_drawing_dimensions_button_bounds,
     cad_demo_drawing_direction_button_bounds, cad_demo_drawing_hidden_lines_button_bounds,
     cad_demo_drawing_mode_button_bounds, cad_demo_drawing_reset_view_button_bounds,
-    cad_demo_gripper_jaw_button_bounds,
-    cad_demo_hidden_line_mode_button_bounds, cad_demo_hotkey_profile_button_bounds,
-    cad_demo_material_button_bounds, cad_demo_projection_mode_button_bounds,
-    cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
-    cad_demo_section_offset_button_bounds, cad_demo_section_plane_button_bounds,
-    cad_demo_snap_endpoint_button_bounds, cad_demo_snap_grid_button_bounds,
-    cad_demo_snap_midpoint_button_bounds, cad_demo_snap_origin_button_bounds,
-    cad_demo_timeline_panel_bounds, cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
-    cad_demo_viewport_layout_button_bounds,
+    cad_demo_gripper_jaw_button_bounds, cad_demo_hidden_line_mode_button_bounds,
+    cad_demo_hotkey_profile_button_bounds, cad_demo_material_button_bounds,
+    cad_demo_projection_mode_button_bounds, cad_demo_reset_button_bounds,
+    cad_demo_reset_camera_button_bounds, cad_demo_section_offset_button_bounds,
+    cad_demo_section_plane_button_bounds, cad_demo_snap_endpoint_button_bounds,
+    cad_demo_snap_grid_button_bounds, cad_demo_snap_midpoint_button_bounds,
+    cad_demo_snap_origin_button_bounds, cad_demo_timeline_panel_bounds,
+    cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
     cad_demo_view_snap_front_button_bounds, cad_demo_view_snap_iso_button_bounds,
     cad_demo_view_snap_right_button_bounds, cad_demo_view_snap_top_button_bounds,
-    cad_demo_warning_filter_code_button_bounds, cad_demo_warning_filter_severity_button_bounds,
-    cad_demo_warning_marker_bounds, cad_demo_warning_panel_bounds, cad_demo_warning_row_bounds,
+    cad_demo_viewport_layout_button_bounds, cad_demo_warning_filter_code_button_bounds,
+    cad_demo_warning_filter_severity_button_bounds, cad_demo_warning_marker_bounds,
+    cad_demo_warning_panel_bounds, cad_demo_warning_row_bounds,
 };
 
 const PAD: f32 = 12.0;
@@ -270,7 +270,16 @@ pub fn paint_cad_demo_placeholder_pane(
     paint_action_button(cycle_bounds, "Cycle Variant", paint);
     paint_action_button(
         jaw_bounds,
-        if pane_state.gripper_jaw_open {
+        if matches!(
+            pane_state.active_design_profile(),
+            openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
+        ) {
+            if pane_state.gripper_jaw_open {
+                "Pose: Pinch"
+            } else {
+                "Pose: Tripod"
+            }
+        } else if pane_state.gripper_jaw_open {
             "Jaw: Close"
         } else {
             "Jaw: Open"
@@ -928,7 +937,16 @@ fn paint_cad_demo_basic_pane(
     paint_action_button(cycle_bounds, "Variant", paint);
     paint_action_button(
         jaw_bounds,
-        if pane_state.gripper_jaw_open {
+        if matches!(
+            pane_state.active_design_profile(),
+            openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
+        ) {
+            if pane_state.gripper_jaw_open {
+                "Pose: Pinch"
+            } else {
+                "Pose: Tripod"
+            }
+        } else if pane_state.gripper_jaw_open {
             "Jaw: Close"
         } else {
             "Jaw: Open"

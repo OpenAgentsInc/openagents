@@ -1057,10 +1057,12 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
 }
 
 fn toggle_gripper_jaw_animation(state: &mut CadDemoPaneState) -> bool {
+    let profile = state.active_design_profile();
     if !matches!(
-        state.active_design_profile(),
+        profile,
         openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper
             | openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated
+            | openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
     ) {
         state.last_error =
             Some("gripper jaw animation requires parallel-jaw gripper design profile".to_string());
@@ -1069,29 +1071,75 @@ fn toggle_gripper_jaw_animation(state: &mut CadDemoPaneState) -> bool {
         return true;
     }
 
-    let Some(jaw_dimension) = state
+    let Some(jaw_dimension_index) = state
         .dimensions
-        .iter_mut()
-        .find(|dimension| dimension.dimension_id == "jaw_open_mm")
+        .iter()
+        .position(|dimension| dimension.dimension_id == "jaw_open_mm")
     else {
         state.last_error = Some("jaw_open_mm dimension missing from CAD state".to_string());
         state.last_action =
             Some("CAD gripper jaw animation failed: missing jaw dimension".to_string());
         return true;
     };
-
-    let closed_target_mm = openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_JAW_OPEN_MM
-        .clamp(jaw_dimension.min_mm, jaw_dimension.max_mm);
-    let open_target_mm = (closed_target_mm + 22.0)
-        .clamp(jaw_dimension.min_mm, jaw_dimension.max_mm)
-        .max(closed_target_mm);
-    let (target_mm, open_state, trigger) = if state.gripper_jaw_open {
-        (closed_target_mm, false, "gripper-jaw-close")
-    } else {
-        (open_target_mm, true, "gripper-jaw-open")
+    let (jaw_min_mm, jaw_max_mm, previous_mm) = {
+        let jaw_dimension = &state.dimensions[jaw_dimension_index];
+        (
+            jaw_dimension.min_mm,
+            jaw_dimension.max_mm,
+            jaw_dimension.value_mm,
+        )
     };
-    let previous_mm = jaw_dimension.value_mm;
-    jaw_dimension.value_mm = target_mm;
+
+    let baseline_target_mm = openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_JAW_OPEN_MM
+        .clamp(jaw_min_mm, jaw_max_mm);
+    let open_target_mm = (baseline_target_mm + 22.0)
+        .clamp(jaw_min_mm, jaw_max_mm)
+        .max(baseline_target_mm);
+    let (target_mm, open_state, trigger, pose_preset) = if matches!(
+        profile,
+        openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
+    ) {
+        let pinch_target_mm = (baseline_target_mm - 6.0).clamp(jaw_min_mm, jaw_max_mm);
+        let tripod_target_mm = (baseline_target_mm + 8.0).clamp(jaw_min_mm, jaw_max_mm);
+        let (target, is_tripod, trigger, pose, thumb_angle_deg) = if state.gripper_jaw_open {
+            (
+                pinch_target_mm,
+                false,
+                "hand3-pose-pinch",
+                "pinch",
+                (openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_THUMB_BASE_ANGLE_DEG + 8.0),
+            )
+        } else {
+            (
+                tripod_target_mm,
+                true,
+                "hand3-pose-tripod",
+                "tripod",
+                (openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_THUMB_BASE_ANGLE_DEG - 6.0),
+            )
+        };
+        if let Some(thumb_dimension) = state
+            .dimensions
+            .iter_mut()
+            .find(|dimension| dimension.dimension_id == "thumb_base_angle_deg")
+        {
+            thumb_dimension.value_mm =
+                thumb_angle_deg.clamp(thumb_dimension.min_mm, thumb_dimension.max_mm);
+        }
+        (target, is_tripod, trigger, pose)
+    } else if state.gripper_jaw_open {
+        (baseline_target_mm, false, "gripper-jaw-close", "open")
+    } else {
+        (open_target_mm, true, "gripper-jaw-open", "open")
+    };
+    state.dimensions[jaw_dimension_index].value_mm = target_mm;
+    if let Some(dispatch) = state.active_dispatch_state_mut() {
+        dispatch.pose_preset = Some(pose_preset.to_string());
+        dispatch.parameter_values.insert(
+            "pose_preset_tripod".to_string(),
+            if pose_preset == "tripod" { 1.0 } else { 0.0 },
+        );
+    }
     state.gripper_jaw_open = open_state;
     state.document_revision = state.document_revision.saturating_add(1);
     if let Err(error) = enqueue_rebuild_cycle(state, trigger) {
@@ -1101,8 +1149,16 @@ fn toggle_gripper_jaw_animation(state: &mut CadDemoPaneState) -> bool {
         state.last_error = None;
     }
     state.last_action = Some(format!(
-        "CAD gripper jaw {} ({:.1}mm -> {:.1}mm)",
-        if open_state { "opened" } else { "closed" },
+        "CAD gripper pose {} ({:.1}mm -> {:.1}mm)",
+        if pose_preset == "tripod" {
+            "tripod"
+        } else if pose_preset == "pinch" {
+            "pinch"
+        } else if open_state {
+            "opened"
+        } else {
+            "closed"
+        },
         previous_mm,
         target_mm
     ));
@@ -1732,6 +1788,9 @@ fn build_demo_feature_graph(state: &CadDemoPaneState) -> FeatureGraph {
         | openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated => {
             build_parallel_jaw_gripper_feature_graph(state)
         }
+        openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb => {
+            build_three_finger_thumb_feature_graph(state)
+        }
     }
 }
 
@@ -1854,7 +1913,7 @@ fn build_rack_feature_graph(state: &CadDemoPaneState) -> FeatureGraph {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 struct GripperVariantDimensions {
     jaw_open_mm: f64,
     finger_length_mm: f64,
@@ -1869,6 +1928,11 @@ struct GripperVariantDimensions {
     compliant_joint_count: u8,
     flexure_thickness_mm: f64,
     single_servo_drive: bool,
+    finger_count: u8,
+    opposable_thumb: bool,
+    thumb_base_angle_deg: f64,
+    tendon_channel_diameter_mm: f64,
+    pose_preset: String,
 }
 
 impl GripperVariantDimensions {
@@ -1908,6 +1972,53 @@ impl GripperVariantDimensions {
         let single_servo_drive = dispatch
             .map(|value| value.single_servo_drive)
             .unwrap_or(true);
+        let finger_count = dispatch
+            .and_then(|value| value.finger_count)
+            .unwrap_or_else(|| {
+                dimension_value_mm(
+                    state,
+                    "finger_count",
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_COUNT as f64,
+                )
+                .round()
+                .clamp(
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_FINGER_COUNT as f64,
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_FINGER_COUNT as f64,
+                ) as u8
+            });
+        let opposable_thumb = dispatch
+            .map(|value| value.opposable_thumb)
+            .unwrap_or(matches!(
+                state.active_design_profile(),
+                openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
+            ));
+        let thumb_base_angle_deg = dispatch
+            .and_then(|value| value.thumb_base_angle_deg)
+            .unwrap_or_else(|| {
+                dimension_value_mm(
+                    state,
+                    "thumb_base_angle_deg",
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_THUMB_BASE_ANGLE_DEG,
+                )
+            });
+        let tendon_channel_diameter_mm = dispatch
+            .and_then(|value| value.tendon_channel_diameter_mm)
+            .unwrap_or_else(|| {
+                dimension_value_mm(
+                    state,
+                    "tendon_channel_diameter_mm",
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_CHANNEL_DIAMETER_MM,
+                )
+            });
+        let pose_preset = dispatch
+            .and_then(|value| value.pose_preset.clone())
+            .unwrap_or_else(|| {
+                if state.gripper_jaw_open {
+                    "tripod".to_string()
+                } else {
+                    "pinch".to_string()
+                }
+            });
         Self {
             jaw_open_mm: dimension_value_mm(
                 state,
@@ -1958,6 +2069,11 @@ impl GripperVariantDimensions {
             compliant_joint_count,
             flexure_thickness_mm,
             single_servo_drive,
+            finger_count,
+            opposable_thumb,
+            thumb_base_angle_deg,
+            tendon_channel_diameter_mm,
+            pose_preset,
         }
     }
 
@@ -1978,6 +2094,21 @@ impl GripperVariantDimensions {
                 value.finger_thickness_mm += 2.0;
                 value.base_thickness_mm += 2.0;
                 value.servo_mount_hole_diameter_mm += 0.3;
+            }
+            "variant.pinch" => {
+                value.jaw_open_mm -= 6.0;
+                value.thumb_base_angle_deg += 9.0;
+                value.pose_preset = "pinch".to_string();
+            }
+            "variant.tripod" => {
+                value.jaw_open_mm += 4.0;
+                value.thumb_base_angle_deg -= 5.0;
+                value.pose_preset = "tripod".to_string();
+            }
+            "variant.wide-thumb" => {
+                value.base_width_mm += 12.0;
+                value.jaw_open_mm += 3.0;
+                value.thumb_base_angle_deg += 3.0;
             }
             _ => {}
         }
@@ -2343,6 +2474,228 @@ fn build_parallel_jaw_gripper_feature_graph(state: &CadDemoPaneState) -> Feature
     FeatureGraph { nodes }
 }
 
+fn build_three_finger_thumb_feature_graph(state: &CadDemoPaneState) -> FeatureGraph {
+    let gripper = GripperVariantDimensions::from_state(state)
+        .with_variant_deltas(state.active_variant_id.as_str());
+    let finger_count = gripper
+        .finger_count
+        .max(openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_FINGER_COUNT.max(3));
+    let spacing_denominator = finger_count.saturating_sub(1).max(1) as f64;
+    let finger_spacing_mm = (gripper.jaw_open_mm / spacing_denominator).clamp(8.0, 24.0);
+    let finger_height_mm = (gripper.finger_thickness_mm * 2.4).max(10.0);
+    let pose_preset = gripper.pose_preset.as_str();
+
+    let mut nodes = vec![
+        FeatureNode {
+            id: "feature.hand3.base".to_string(),
+            name: "hand3_base".to_string(),
+            operation_key: "hand3.base_plate.v1".to_string(),
+            depends_on: Vec::new(),
+            params: BTreeMap::from([
+                ("variant".to_string(), state.active_variant_id.clone()),
+                (
+                    "base_width_mm".to_string(),
+                    format!("{:.3}", gripper.base_width_mm),
+                ),
+                (
+                    "base_depth_mm".to_string(),
+                    format!("{:.3}", gripper.base_depth_mm),
+                ),
+                (
+                    "base_thickness_mm".to_string(),
+                    format!("{:.3}", gripper.base_thickness_mm),
+                ),
+                (
+                    "servo_mount_hole_diameter_mm".to_string(),
+                    format!("{:.3}", gripper.servo_mount_hole_diameter_mm),
+                ),
+                (
+                    "tendon_channel_diameter_mm".to_string(),
+                    format!("{:.3}", gripper.tendon_channel_diameter_mm),
+                ),
+            ]),
+        },
+        FeatureNode {
+            id: "feature.hand3.thumb".to_string(),
+            name: "hand3_thumb_opposable".to_string(),
+            operation_key: "hand3.thumb.opposable.v1".to_string(),
+            depends_on: vec!["feature.hand3.base".to_string()],
+            params: BTreeMap::from([
+                ("variant".to_string(), state.active_variant_id.clone()),
+                (
+                    "finger_length_mm".to_string(),
+                    format!("{:.3}", gripper.finger_length_mm),
+                ),
+                (
+                    "finger_thickness_mm".to_string(),
+                    format!("{:.3}", gripper.finger_thickness_mm),
+                ),
+                (
+                    "base_width_mm".to_string(),
+                    format!("{:.3}", gripper.base_width_mm),
+                ),
+                (
+                    "base_depth_mm".to_string(),
+                    format!("{:.3}", gripper.base_depth_mm),
+                ),
+                (
+                    "base_thickness_mm".to_string(),
+                    format!("{:.3}", gripper.base_thickness_mm),
+                ),
+                (
+                    "thumb_base_angle_deg".to_string(),
+                    format!("{:.3}", gripper.thumb_base_angle_deg),
+                ),
+                ("pose_preset".to_string(), pose_preset.to_string()),
+            ]),
+        },
+    ];
+
+    for (digit_slot, digit_name) in [(-1_i8, "index"), (0_i8, "middle"), (1_i8, "ring")] {
+        let finger_feature_id = format!("feature.hand3.finger.{digit_name}");
+        nodes.push(FeatureNode {
+            id: finger_feature_id.clone(),
+            name: format!("hand3_finger_{digit_name}"),
+            operation_key: "hand3.finger.digit.v1".to_string(),
+            depends_on: vec!["feature.hand3.base".to_string()],
+            params: BTreeMap::from([
+                ("variant".to_string(), state.active_variant_id.clone()),
+                ("digit_slot".to_string(), digit_slot.to_string()),
+                (
+                    "finger_length_mm".to_string(),
+                    format!("{:.3}", gripper.finger_length_mm),
+                ),
+                (
+                    "finger_thickness_mm".to_string(),
+                    format!("{:.3}", gripper.finger_thickness_mm),
+                ),
+                (
+                    "finger_height_mm".to_string(),
+                    format!("{:.3}", finger_height_mm),
+                ),
+                (
+                    "base_depth_mm".to_string(),
+                    format!("{:.3}", gripper.base_depth_mm),
+                ),
+                (
+                    "base_thickness_mm".to_string(),
+                    format!("{:.3}", gripper.base_thickness_mm),
+                ),
+                (
+                    "finger_spacing_mm".to_string(),
+                    format!("{:.3}", finger_spacing_mm),
+                ),
+                (
+                    "jaw_open_mm".to_string(),
+                    format!("{:.3}", gripper.jaw_open_mm),
+                ),
+                ("pose_preset".to_string(), pose_preset.to_string()),
+            ]),
+        });
+        nodes.push(FeatureNode {
+            id: format!("feature.hand3.tendon.{digit_name}"),
+            name: format!("hand3_tendon_channel_{digit_name}"),
+            operation_key: "hand3.tendon.channel.v1".to_string(),
+            depends_on: vec![finger_feature_id],
+            params: BTreeMap::from([
+                ("variant".to_string(), state.active_variant_id.clone()),
+                ("digit".to_string(), digit_name.to_string()),
+                ("digit_slot".to_string(), digit_slot.to_string()),
+                (
+                    "finger_length_mm".to_string(),
+                    format!("{:.3}", gripper.finger_length_mm),
+                ),
+                (
+                    "finger_thickness_mm".to_string(),
+                    format!("{:.3}", gripper.finger_thickness_mm),
+                ),
+                (
+                    "base_thickness_mm".to_string(),
+                    format!("{:.3}", gripper.base_thickness_mm),
+                ),
+                (
+                    "base_depth_mm".to_string(),
+                    format!("{:.3}", gripper.base_depth_mm),
+                ),
+                (
+                    "finger_spacing_mm".to_string(),
+                    format!("{:.3}", finger_spacing_mm),
+                ),
+                (
+                    "channel_diameter_mm".to_string(),
+                    format!("{:.3}", gripper.tendon_channel_diameter_mm),
+                ),
+                ("pose_preset".to_string(), pose_preset.to_string()),
+            ]),
+        });
+    }
+
+    if gripper.opposable_thumb {
+        nodes.push(FeatureNode {
+            id: "feature.hand3.tendon.thumb".to_string(),
+            name: "hand3_tendon_channel_thumb".to_string(),
+            operation_key: "hand3.tendon.channel.v1".to_string(),
+            depends_on: vec!["feature.hand3.thumb".to_string()],
+            params: BTreeMap::from([
+                ("variant".to_string(), state.active_variant_id.clone()),
+                ("digit".to_string(), "thumb".to_string()),
+                (
+                    "finger_length_mm".to_string(),
+                    format!("{:.3}", gripper.finger_length_mm),
+                ),
+                (
+                    "finger_thickness_mm".to_string(),
+                    format!("{:.3}", gripper.finger_thickness_mm),
+                ),
+                (
+                    "base_thickness_mm".to_string(),
+                    format!("{:.3}", gripper.base_thickness_mm),
+                ),
+                (
+                    "base_depth_mm".to_string(),
+                    format!("{:.3}", gripper.base_depth_mm),
+                ),
+                (
+                    "base_width_mm".to_string(),
+                    format!("{:.3}", gripper.base_width_mm),
+                ),
+                (
+                    "thumb_base_angle_deg".to_string(),
+                    format!("{:.3}", gripper.thumb_base_angle_deg),
+                ),
+                (
+                    "channel_diameter_mm".to_string(),
+                    format!("{:.3}", gripper.tendon_channel_diameter_mm),
+                ),
+                ("pose_preset".to_string(), pose_preset.to_string()),
+            ]),
+        });
+    }
+
+    nodes.push(FeatureNode {
+        id: "feature.hand3.edge_marker".to_string(),
+        name: "hand3_edge_marker".to_string(),
+        operation_key: "hand3.edge_marker.v1".to_string(),
+        depends_on: vec!["feature.hand3.base".to_string()],
+        params: BTreeMap::from([
+            ("variant".to_string(), state.active_variant_id.clone()),
+            (
+                "base_width_mm".to_string(),
+                format!("{:.3}", gripper.base_width_mm),
+            ),
+            (
+                "base_depth_mm".to_string(),
+                format!("{:.3}", gripper.base_depth_mm),
+            ),
+            (
+                "base_thickness_mm".to_string(),
+                format!("{:.3}", gripper.base_thickness_mm),
+            ),
+        ]),
+    });
+    FeatureGraph { nodes }
+}
+
 fn dimension_value_mm(state: &CadDemoPaneState, dimension_id: &str, fallback: f64) -> f64 {
     state.dimension_value_mm(dimension_id).unwrap_or(fallback)
 }
@@ -2352,6 +2705,7 @@ fn refresh_gripper_grasp_simulation(state: &mut CadDemoPaneState) {
         state.active_design_profile(),
         openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper
             | openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated
+            | openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
     );
     if !is_gripper_profile {
         state.grasp_simulation_samples.clear();
@@ -2361,17 +2715,47 @@ fn refresh_gripper_grasp_simulation(state: &mut CadDemoPaneState) {
     let gripper = GripperVariantDimensions::from_state(state)
         .with_variant_deltas(state.active_variant_id.as_str());
     let base_aperture_mm = gripper.jaw_open_mm.max(1.0);
+    let tendon_gain = if matches!(
+        state.active_design_profile(),
+        openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
+    ) {
+        (gripper.finger_count as f64 * 0.35) + (gripper.tendon_channel_diameter_mm * 0.8)
+    } else {
+        0.0
+    };
     let compliance_gain = if gripper.underactuated_mode {
         (gripper.compliant_joint_count as f64) * (1.8 / gripper.flexure_thickness_mm.max(0.4))
     } else {
         0.0
-    };
+    } + tendon_gain;
     let seed_jitter = ((state.grasp_simulation_seed % 13) as f64) * 0.01;
+    let pose_gain = if gripper.pose_preset == "tripod" {
+        0.12
+    } else if gripper.pose_preset == "pinch" {
+        -0.08
+    } else {
+        0.0
+    };
 
     let samples = [
-        (CadGraspObjectShape::Sphere, 0.86 + seed_jitter, 1.30, 2_u8),
-        (CadGraspObjectShape::Cube, 0.78 + seed_jitter, 0.52, 2_u8),
-        (CadGraspObjectShape::Capsule, 0.90 + seed_jitter, 1.25, 3_u8),
+        (
+            CadGraspObjectShape::Sphere,
+            0.86 + seed_jitter,
+            1.30 + pose_gain,
+            2_u8,
+        ),
+        (
+            CadGraspObjectShape::Cube,
+            0.78 + seed_jitter,
+            0.52 + (pose_gain * 0.3),
+            2_u8,
+        ),
+        (
+            CadGraspObjectShape::Capsule,
+            0.90 + seed_jitter,
+            1.25 + pose_gain,
+            3_u8,
+        ),
     ]
     .into_iter()
     .map(
@@ -2431,11 +2815,19 @@ fn build_profile_warning_set(
                 variant_id,
             ))
         }
+        openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb => {
+            validity_warnings_from_snapshot(build_gripper_demo_validity_snapshot(
+                state,
+                document_revision,
+                variant_id,
+            ))
+        }
     };
     if matches!(
         state.active_design_profile(),
         openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper
             | openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated
+            | openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
     ) {
         append_gripper_printability_warnings(state, variant_id, &mut warnings);
     }
@@ -2457,41 +2849,110 @@ fn build_gripper_demo_validity_snapshot(
     variant_id: &str,
 ) -> ModelValiditySnapshot {
     let gripper = GripperVariantDimensions::from_state(state).with_variant_deltas(variant_id);
-    let entities = vec![
-        ModelValidityEntity {
-            entity_id: "gripper.base.shell".to_string(),
-            feature_id: "feature.gripper.base".to_string(),
-            semantic_ref: Some("gripper_base_plate".to_string()),
-            is_manifold: true,
-            self_intersection_count: 0,
-            min_thickness_mm: gripper.base_thickness_mm.max(0.001),
-            min_face_area_mm2: (gripper.base_width_mm * gripper.base_depth_mm).max(1.0),
-            sliver_face_count: 0,
-            fillet_failure_reason: None,
-        },
-        ModelValidityEntity {
-            entity_id: "gripper.finger.left".to_string(),
-            feature_id: "feature.gripper.finger.left".to_string(),
-            semantic_ref: Some("gripper_finger_left".to_string()),
-            is_manifold: true,
-            self_intersection_count: 0,
-            min_thickness_mm: gripper.finger_thickness_mm.max(0.001),
-            min_face_area_mm2: (gripper.finger_length_mm * gripper.finger_thickness_mm).max(1.0),
-            sliver_face_count: 0,
-            fillet_failure_reason: None,
-        },
-        ModelValidityEntity {
-            entity_id: "gripper.finger.right".to_string(),
-            feature_id: "feature.gripper.finger.right".to_string(),
-            semantic_ref: Some("gripper_finger_right".to_string()),
-            is_manifold: true,
-            self_intersection_count: 0,
-            min_thickness_mm: gripper.finger_thickness_mm.max(0.001),
-            min_face_area_mm2: (gripper.finger_length_mm * gripper.finger_thickness_mm).max(1.0),
-            sliver_face_count: 0,
-            fillet_failure_reason: None,
-        },
-    ];
+    let entities = if matches!(
+        state.active_design_profile(),
+        openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
+    ) {
+        vec![
+            ModelValidityEntity {
+                entity_id: "hand3.base.shell".to_string(),
+                feature_id: "feature.hand3.base".to_string(),
+                semantic_ref: Some("hand3_base_plate".to_string()),
+                is_manifold: true,
+                self_intersection_count: 0,
+                min_thickness_mm: gripper.base_thickness_mm.max(0.001),
+                min_face_area_mm2: (gripper.base_width_mm * gripper.base_depth_mm).max(1.0),
+                sliver_face_count: 0,
+                fillet_failure_reason: None,
+            },
+            ModelValidityEntity {
+                entity_id: "hand3.finger.index".to_string(),
+                feature_id: "feature.hand3.finger.index".to_string(),
+                semantic_ref: Some("hand3_finger_index".to_string()),
+                is_manifold: true,
+                self_intersection_count: 0,
+                min_thickness_mm: gripper.finger_thickness_mm.max(0.001),
+                min_face_area_mm2: (gripper.finger_length_mm * gripper.finger_thickness_mm)
+                    .max(1.0),
+                sliver_face_count: 0,
+                fillet_failure_reason: None,
+            },
+            ModelValidityEntity {
+                entity_id: "hand3.finger.middle".to_string(),
+                feature_id: "feature.hand3.finger.middle".to_string(),
+                semantic_ref: Some("hand3_finger_middle".to_string()),
+                is_manifold: true,
+                self_intersection_count: 0,
+                min_thickness_mm: gripper.finger_thickness_mm.max(0.001),
+                min_face_area_mm2: (gripper.finger_length_mm * gripper.finger_thickness_mm)
+                    .max(1.0),
+                sliver_face_count: 0,
+                fillet_failure_reason: None,
+            },
+            ModelValidityEntity {
+                entity_id: "hand3.finger.ring".to_string(),
+                feature_id: "feature.hand3.finger.ring".to_string(),
+                semantic_ref: Some("hand3_finger_ring".to_string()),
+                is_manifold: true,
+                self_intersection_count: 0,
+                min_thickness_mm: gripper.finger_thickness_mm.max(0.001),
+                min_face_area_mm2: (gripper.finger_length_mm * gripper.finger_thickness_mm)
+                    .max(1.0),
+                sliver_face_count: 0,
+                fillet_failure_reason: None,
+            },
+            ModelValidityEntity {
+                entity_id: "hand3.thumb".to_string(),
+                feature_id: "feature.hand3.thumb".to_string(),
+                semantic_ref: Some("hand3_thumb".to_string()),
+                is_manifold: true,
+                self_intersection_count: 0,
+                min_thickness_mm: (gripper.finger_thickness_mm * 0.9).max(0.001),
+                min_face_area_mm2: (gripper.finger_length_mm * gripper.finger_thickness_mm * 0.7)
+                    .max(1.0),
+                sliver_face_count: 0,
+                fillet_failure_reason: None,
+            },
+        ]
+    } else {
+        vec![
+            ModelValidityEntity {
+                entity_id: "gripper.base.shell".to_string(),
+                feature_id: "feature.gripper.base".to_string(),
+                semantic_ref: Some("gripper_base_plate".to_string()),
+                is_manifold: true,
+                self_intersection_count: 0,
+                min_thickness_mm: gripper.base_thickness_mm.max(0.001),
+                min_face_area_mm2: (gripper.base_width_mm * gripper.base_depth_mm).max(1.0),
+                sliver_face_count: 0,
+                fillet_failure_reason: None,
+            },
+            ModelValidityEntity {
+                entity_id: "gripper.finger.left".to_string(),
+                feature_id: "feature.gripper.finger.left".to_string(),
+                semantic_ref: Some("gripper_finger_left".to_string()),
+                is_manifold: true,
+                self_intersection_count: 0,
+                min_thickness_mm: gripper.finger_thickness_mm.max(0.001),
+                min_face_area_mm2: (gripper.finger_length_mm * gripper.finger_thickness_mm)
+                    .max(1.0),
+                sliver_face_count: 0,
+                fillet_failure_reason: None,
+            },
+            ModelValidityEntity {
+                entity_id: "gripper.finger.right".to_string(),
+                feature_id: "feature.gripper.finger.right".to_string(),
+                semantic_ref: Some("gripper_finger_right".to_string()),
+                is_manifold: true,
+                self_intersection_count: 0,
+                min_thickness_mm: gripper.finger_thickness_mm.max(0.001),
+                min_face_area_mm2: (gripper.finger_length_mm * gripper.finger_thickness_mm)
+                    .max(1.0),
+                sliver_face_count: 0,
+                fillet_failure_reason: None,
+            },
+        ]
+    };
     ModelValiditySnapshot {
         document_revision,
         variant_id: variant_id.to_string(),
@@ -2506,6 +2967,10 @@ fn append_gripper_printability_warnings(
     warnings: &mut Vec<CadDemoWarningState>,
 ) {
     let gripper = GripperVariantDimensions::from_state(state).with_variant_deltas(variant_id);
+    let is_three_finger = matches!(
+        state.active_design_profile(),
+        openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
+    );
 
     if gripper.finger_thickness_mm < 3.0 {
         warnings.push(CadDemoWarningState {
@@ -2561,6 +3026,23 @@ fn append_gripper_printability_warnings(
             deep_link: Some("cad://feature/feature.gripper.base".to_string()),
             feature_id: "feature.gripper.base".to_string(),
             entity_id: "gripper.print.clearance".to_string(),
+        });
+    }
+
+    if is_three_finger && gripper.tendon_channel_diameter_mm < 1.0 {
+        warnings.push(CadDemoWarningState {
+            warning_id: format!("warning.custom.{}", warnings.len()),
+            code: "CAD-WARN-TENDON-CHANNEL".to_string(),
+            severity: "warning".to_string(),
+            message: format!(
+                "Tendon channel diameter {:.2} mm is below 1.0 mm routing target",
+                gripper.tendon_channel_diameter_mm
+            ),
+            remediation_hint: "Increase tendon_channel_diameter_mm to at least 1.0 mm".to_string(),
+            semantic_refs: vec!["hand3_tendon_channel".to_string()],
+            deep_link: Some("cad://feature/feature.hand3.tendon.index".to_string()),
+            feature_id: "feature.hand3.tendon.index".to_string(),
+            entity_id: "hand3.tendon.channel".to_string(),
         });
     }
 }
@@ -3085,6 +3567,9 @@ fn looks_like_cad_prompt(prompt: &str) -> bool {
         "robot hand",
         "robotic hand",
         "parallel jaw",
+        "thumb",
+        "tripod",
+        "tendon",
         "parallel-jaw",
         "servo mount",
         "variant",
@@ -4237,6 +4722,9 @@ mod tests {
                         openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated => {
                             "parallel_jaw_gripper_underactuated"
                         }
+                        openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb => {
+                            "three_finger_thumb"
+                        }
                     };
                     json!({
                         "status": "captured",
@@ -4666,6 +5154,11 @@ mod tests {
                         compliant_joint_count: 3,
                         flexure_thickness_mm: 1.2,
                         single_servo_drive: true,
+                        finger_count: 2,
+                        opposable_thumb: false,
+                        thumb_base_angle_deg: 42.0,
+                        tendon_channel_diameter_mm: 1.8,
+                        pose_preset: "open".to_string(),
                     },
                 ),
             )
@@ -4718,6 +5211,11 @@ mod tests {
                         compliant_joint_count: 3,
                         flexure_thickness_mm: 1.2,
                         single_servo_drive: true,
+                        finger_count: 2,
+                        opposable_thumb: false,
+                        thumb_base_angle_deg: 42.0,
+                        tendon_channel_diameter_mm: 1.8,
+                        pose_preset: "open".to_string(),
                     },
                 ),
             )
@@ -4747,6 +5245,127 @@ mod tests {
         wait_for_receipt(&mut state);
         let samples_b = state.grasp_simulation_samples.clone();
         assert_eq!(samples_a, samples_b);
+    }
+
+    #[test]
+    fn three_finger_thumb_prompt_sets_profile_and_tendon_channel_features() {
+        let mut state = CadDemoPaneState::default();
+        let prompt = "Evolve the gripper into a 3-finger hand with an opposable thumb, tendon-driven for dexterity. Add cable routing channels and tripod grasp pose.";
+        let intent = match translate_chat_to_cad_intent(prompt) {
+            CadIntentTranslationOutcome::Intent(intent) => intent,
+            other => panic!("expected translated CAD intent, got {other:?}"),
+        };
+        state
+            .apply_chat_intent_for_thread("thread-three-finger-thumb", &intent)
+            .expect("three-finger-thumb intent should apply");
+        enqueue_rebuild_cycle(&mut state, "test-three-finger-thumb-geometry")
+            .expect("three-finger-thumb rebuild should queue");
+        wait_for_receipt(&mut state);
+
+        assert_eq!(
+            state.active_design_profile(),
+            openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
+        );
+        assert!(
+            state
+                .timeline_rows
+                .iter()
+                .any(|row| row.feature_id == "feature.hand3.thumb")
+        );
+        assert!(
+            state
+                .timeline_rows
+                .iter()
+                .any(|row| row.feature_id == "feature.hand3.tendon.index")
+        );
+        let dispatch = state
+            .active_dispatch_state()
+            .expect("active dispatch should exist for hand profile");
+        assert_eq!(dispatch.finger_count, Some(3));
+        assert!(dispatch.opposable_thumb);
+        assert_eq!(dispatch.pose_preset.as_deref(), Some("tripod"));
+        assert_eq!(
+            state
+                .dimension_value_mm("tendon_channel_diameter_mm")
+                .expect("tendon channel dimension should be present"),
+            openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_CHANNEL_DIAMETER_MM
+        );
+    }
+
+    #[test]
+    fn three_finger_thumb_pose_toggle_cycles_tripod_and_pinch_geometry() {
+        let mut state = CadDemoPaneState::default();
+        state
+            .apply_chat_intent_for_thread(
+                "thread-three-finger-toggle",
+                &openagents_cad::intent::CadIntent::CreateParallelJawGripperSpec(
+                    openagents_cad::intent::CreateParallelJawGripperSpecIntent {
+                        jaw_open_mm: 34.0,
+                        finger_length_mm: 68.0,
+                        finger_thickness_mm: 7.0,
+                        base_width_mm: 90.0,
+                        base_depth_mm: 58.0,
+                        base_thickness_mm: 8.0,
+                        servo_mount_hole_diameter_mm: 2.9,
+                        print_fit_mm: 0.15,
+                        print_clearance_mm: 0.35,
+                        underactuated_mode: true,
+                        compliant_joint_count: 3,
+                        flexure_thickness_mm: 1.2,
+                        single_servo_drive: true,
+                        finger_count: 3,
+                        opposable_thumb: true,
+                        thumb_base_angle_deg: 48.0,
+                        tendon_channel_diameter_mm: 1.6,
+                        pose_preset: "open".to_string(),
+                    },
+                ),
+            )
+            .expect("three-finger intent should apply");
+        enqueue_rebuild_cycle(&mut state, "test-three-finger-toggle-a")
+            .expect("baseline three-finger rebuild should queue");
+        wait_for_receipt(&mut state);
+        let baseline_hash = state
+            .last_rebuild_receipt
+            .as_ref()
+            .map(|receipt| receipt.mesh_hash.clone())
+            .expect("baseline receipt should exist");
+
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::ToggleGripperJawAnimation
+        ));
+        wait_for_receipt(&mut state);
+        let tripod_hash = state
+            .last_rebuild_receipt
+            .as_ref()
+            .map(|receipt| receipt.mesh_hash.clone())
+            .expect("tripod receipt should exist");
+        assert_eq!(
+            state
+                .active_dispatch_state()
+                .and_then(|dispatch| dispatch.pose_preset.as_deref()),
+            Some("tripod")
+        );
+
+        assert!(apply_cad_demo_action(
+            &mut state,
+            CadDemoPaneAction::ToggleGripperJawAnimation
+        ));
+        wait_for_receipt(&mut state);
+        let pinch_hash = state
+            .last_rebuild_receipt
+            .as_ref()
+            .map(|receipt| receipt.mesh_hash.clone())
+            .expect("pinch receipt should exist");
+        assert_eq!(
+            state
+                .active_dispatch_state()
+                .and_then(|dispatch| dispatch.pose_preset.as_deref()),
+            Some("pinch")
+        );
+        assert_ne!(baseline_hash, tripod_hash);
+        assert_ne!(tripod_hash, pinch_hash);
     }
 
     #[test]
