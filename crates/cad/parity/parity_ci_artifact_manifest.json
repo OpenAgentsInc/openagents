@@ -5,7 +5,7 @@
   "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
   "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
   "parity_check_entrypoint": "scripts/cad/parity_check.sh",
-  "source_artifact_count": 198,
+  "source_artifact_count": 200,
   "artifacts": [
     {
       "artifact_id": "analytic_ray_intersections_parity_manifest",
@@ -266,6 +266,12 @@
       "bytes": 1880
     },
     {
+      "artifact_id": "embroidery_dst_pes_lane_parity_manifest",
+      "source_path": "crates/cad/parity/embroidery_dst_pes_lane_parity_manifest.json",
+      "sha256": "ec1fafbbd29055973198bc56947dcf6e8ddc33df0465dbdb7899ca8ba748e165",
+      "bytes": 1897
+    },
+    {
       "artifact_id": "expanded_finishing_parity_manifest",
       "source_path": "crates/cad/parity/expanded_finishing_parity_manifest.json",
       "sha256": "8e3e5f4c114c912d67593120949a38e4755f6a2bf00d0ff2749b1b2c9be20c65",
@@ -516,6 +522,12 @@
       "source_path": "crates/cad/parity/fixtures/embroidery_core_lane_vcad_reference.json",
       "sha256": "4dfe481a3e0f4a4fcd598d9ad3810cc175e72d75651ab7fbabc89ea0352f394b",
       "bytes": 996
+    },
+    {
+      "artifact_id": "fixtures_embroidery_dst_pes_lane_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/embroidery_dst_pes_lane_vcad_reference.json",
+      "sha256": "5a1b1b448f4e6d882579b34d423ee0b2339f57233f232264818a33c7e36c97b1",
+      "bytes": 1004
     },
     {
       "artifact_id": "fixtures_feature_op_hash_vcad_reference_corpus",
@@ -892,8 +904,8 @@
     {
       "artifact_id": "parity_dashboard",
       "source_path": "crates/cad/parity/parity_dashboard.json",
-      "sha256": "955d4a9d87a204b0bbd3c627c6a76f88a076fae10550da790880ffdc923f9077",
-      "bytes": 10960
+      "sha256": "80937842dfdf80d81e021836f9d6bad37b8d98364df4d3dba9e4b67f68d6b4ce",
+      "bytes": 11066
     },
     {
       "artifact_id": "parity_risk_register",
