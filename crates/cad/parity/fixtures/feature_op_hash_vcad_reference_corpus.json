@@ -1,0 +1,181 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-038",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "Derived from vcad materializer feature parameter semantics (crates/vcad-app/src/materializer.rs) at pinned commit.",
+  "cases": [
+    {
+      "case_id": "box.bracket",
+      "operation": "box",
+      "feature_id": "feature.bracket",
+      "width_mm": 120.0,
+      "depth_mm": 80.0,
+      "height_mm": 6.0,
+      "expected_hash": "60db0257660fee47"
+    },
+    {
+      "case_id": "cylinder.mount_post",
+      "operation": "cylinder",
+      "feature_id": "feature.mount_post",
+      "radius_mm": 4.0,
+      "height_mm": 20.0,
+      "expected_hash": "39d0655bf522f461"
+    },
+    {
+      "case_id": "transform.rotate_scale",
+      "operation": "transform",
+      "feature_id": "feature.transform.final",
+      "source_feature_id": "feature.bracket",
+      "source_geometry_hash": "src.bracket.001",
+      "translation_mm": [5.0, -3.0, 12.0],
+      "rotation_deg_xyz": [0.0, 45.0, 90.0],
+      "scale_xyz": [1.2, 0.8, 1.0],
+      "expected_hash": "1751c53810b73125"
+    },
+    {
+      "case_id": "cut_hole.clearance",
+      "operation": "cut_hole",
+      "feature_id": "feature.cut.clearance",
+      "source_feature_id": "feature.bracket",
+      "source_geometry_hash": "src.bracket.001",
+      "radius_mm": 3.2,
+      "depth_mm": 12.0,
+      "tolerance_mm": 0.001,
+      "expected_hash": "36479518272129c1"
+    },
+    {
+      "case_id": "linear_pattern.slots",
+      "operation": "linear_pattern",
+      "feature_id": "feature.slot.pattern.linear",
+      "source_feature_id": "feature.slot",
+      "source_geometry_hash": "src.slot.001",
+      "count": 4,
+      "spacing_mm": 18.0,
+      "direction_unit_xyz": [1.0, 0.0, 0.0],
+      "start_index": 1,
+      "expected_hash": "f1133e939311afd5"
+    },
+    {
+      "case_id": "circular_pattern.bolts",
+      "operation": "circular_pattern",
+      "feature_id": "feature.bolt.pattern.circular",
+      "source_feature_id": "feature.bolt",
+      "source_geometry_hash": "src.bolt.001",
+      "count": 6,
+      "angle_deg": 360.0,
+      "radius_mm": 24.0,
+      "axis_origin_mm": [0.0, 0.0, 0.0],
+      "axis_direction_xyz": [0.0, 0.0, 1.0],
+      "start_index": 0,
+      "expected_hash": "1315aa5644988f6b"
+    },
+    {
+      "case_id": "fillet_placeholder.edge",
+      "operation": "fillet_placeholder",
+      "feature_id": "feature.edge.fillet",
+      "source_feature_id": "feature.edge",
+      "source_geometry_hash": "src.edge.001",
+      "kind": "fillet",
+      "radius_mm": 1.5,
+      "expected_hash": "8217c3b4ff15409f"
+    },
+    {
+      "case_id": "sweep.handle",
+      "operation": "sweep",
+      "feature_id": "feature.handle.sweep",
+      "source_feature_id": "feature.profile",
+      "source_geometry_hash": "src.profile.001",
+      "path_points_mm": [
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 25.0],
+        [20.0, 0.0, 25.0]
+      ],
+      "twist_angle_rad": 1.5707963267948966,
+      "scale_start": 1.0,
+      "scale_end": 0.6,
+      "path_segments": 0,
+      "expected_hash": "5c1a545e1d735ba5"
+    },
+    {
+      "case_id": "loft.duct_open",
+      "operation": "loft",
+      "feature_id": "feature.duct.loft.open",
+      "source_feature_ids": [
+        "feature.profile.a",
+        "feature.profile.b"
+      ],
+      "source_geometry_hashes": [
+        "src.profile.a",
+        "src.profile.b"
+      ],
+      "closed": false,
+      "profiles": [
+        {
+          "profile_id": "profile.a",
+          "vertices_mm": [
+            [0.0, 0.0, 0.0],
+            [40.0, 0.0, 0.0],
+            [40.0, 20.0, 0.0],
+            [0.0, 20.0, 0.0]
+          ]
+        },
+        {
+          "profile_id": "profile.b",
+          "vertices_mm": [
+            [2.0, 1.0, 40.0],
+            [38.0, 1.0, 40.0],
+            [36.0, 18.0, 40.0],
+            [4.0, 18.0, 40.0]
+          ]
+        }
+      ],
+      "expected_hash": "3ebd62e37d20654d"
+    },
+    {
+      "case_id": "loft.duct_closed",
+      "operation": "loft",
+      "feature_id": "feature.duct.loft.closed",
+      "source_feature_ids": [
+        "feature.profile.a",
+        "feature.profile.b",
+        "feature.profile.c"
+      ],
+      "source_geometry_hashes": [
+        "src.profile.a",
+        "src.profile.b",
+        "src.profile.c"
+      ],
+      "closed": true,
+      "profiles": [
+        {
+          "profile_id": "profile.a",
+          "vertices_mm": [
+            [0.0, 0.0, 0.0],
+            [30.0, 0.0, 0.0],
+            [30.0, 30.0, 0.0],
+            [0.0, 30.0, 0.0]
+          ]
+        },
+        {
+          "profile_id": "profile.b",
+          "vertices_mm": [
+            [4.0, 4.0, 25.0],
+            [26.0, 4.0, 25.0],
+            [26.0, 26.0, 25.0],
+            [4.0, 26.0, 25.0]
+          ]
+        },
+        {
+          "profile_id": "profile.c",
+          "vertices_mm": [
+            [2.0, 2.0, 50.0],
+            [28.0, 2.0, 50.0],
+            [28.0, 28.0, 50.0],
+            [2.0, 28.0, 50.0]
+          ]
+        }
+      ],
+      "expected_hash": "e63d67275b847393"
+    }
+  ]
+}

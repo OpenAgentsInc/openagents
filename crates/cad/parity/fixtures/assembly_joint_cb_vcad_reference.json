@@ -1,0 +1,16 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-059",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/crates/vcad-eval/src/kinematics.rs",
+  "supported_joint_types": [
+    "Cylindrical",
+    "Ball"
+  ],
+  "ball_rotation_axis": "z_axis",
+  "expected_case_ids": [
+    "cylindrical.axis_normalized",
+    "cylindrical.zero_axis_fallback",
+    "ball.z_axis_rotation"
+  ]
+}

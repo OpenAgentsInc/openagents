@@ -1,0 +1,88 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-095",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/gpu_acceleration_vcad_reference.json",
+  "reference_fixture_sha256": "6a1d21c19beaaedc57c57dbe27eca7171a2ba6490ccd60c9ea9ccb8df905b915",
+  "reference_source": "~/code/vcad/crates/vcad-kernel-gpu/src/lib.rs + ~/code/vcad/crates/vcad-kernel-gpu/src/context.rs + ~/code/vcad/crates/vcad-kernel-gpu/src/normals.rs + ~/code/vcad/crates/vcad-kernel-gpu/src/decimate.rs + ~/code/vcad/crates/vcad-kernel-gpu/Cargo.toml",
+  "reference_commit_match": true,
+  "backend_contract_match": true,
+  "capability_export_match": true,
+  "context_error_contract_match": true,
+  "normals_contract_match": true,
+  "decimation_ratio_contract_match": true,
+  "deterministic_replay_match": true,
+  "backend_profile": {
+    "crate_name": "vcad-kernel-gpu",
+    "wgpu_major_version": 23,
+    "backends": [
+      "webgpu",
+      "webgl"
+    ],
+    "requires_pollster_native": true
+  },
+  "exported_capabilities": [
+    "compute_creased_normals",
+    "decimate_mesh"
+  ],
+  "context_error_codes": [
+    "AlreadyInitialized",
+    "BufferMapping",
+    "DeviceRequest",
+    "NoAdapter",
+    "NotInitialized"
+  ],
+  "normals_samples": [
+    {
+      "case_id": "empty_indices",
+      "positions_len": 9,
+      "indices_len": 0,
+      "output_len": 9
+    },
+    {
+      "case_id": "empty_positions",
+      "positions_len": 0,
+      "indices_len": 6,
+      "output_len": 0
+    },
+    {
+      "case_id": "non_empty_mesh",
+      "positions_len": 18,
+      "indices_len": 12,
+      "output_len": 18
+    }
+  ],
+  "decimation_samples": [
+    {
+      "case_id": "ratio_above_max",
+      "triangle_count": 200,
+      "target_ratio_input": 1.5,
+      "clamped_target_ratio": 1.0,
+      "target_triangles": 200
+    },
+    {
+      "case_id": "ratio_below_min",
+      "triangle_count": 200,
+      "target_ratio_input": 0.05,
+      "clamped_target_ratio": 0.1,
+      "target_triangles": 20
+    },
+    {
+      "case_id": "ratio_nominal",
+      "triangle_count": 200,
+      "target_ratio_input": 0.5,
+      "clamped_target_ratio": 0.5,
+      "target_triangles": 100
+    }
+  ],
+  "deterministic_signature": "679b72a5d62f01f0",
+  "parity_contracts": [
+    "gpu lane mirrors vcad-kernel-gpu backend contract (wgpu 23 + webgpu/webgl backends)",
+    "gpu lane exports compute_creased_normals and decimate_mesh capability surfaces",
+    "gpu context error taxonomy matches vcad GpuError variants",
+    "creased-normal lane preserves empty-input output sizing contract",
+    "decimation lane clamps target ratio to [0.1, 1.0] before target-triangle derivation"
+  ]
+}

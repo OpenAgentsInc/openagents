@@ -1,0 +1,95 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-037",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "baseline_snapshot": {
+    "ordered_feature_ids": [
+      "feature.base",
+      "feature.hole",
+      "feature.fillet_marker"
+    ],
+    "rebuild_hash": "8075abb1f9828bbc",
+    "feature_count": 3,
+    "total_ms": 2.645,
+    "tessellate_ms": 0.735,
+    "clash_ms": 0.0,
+    "assembly_ms": 0.0,
+    "parse_ms": null,
+    "serialize_ms": null,
+    "node_timings": [
+      {
+        "feature_id": "feature.base",
+        "op": "primitive.box.v1",
+        "eval_ms": 0.56,
+        "mesh_ms": 0.245
+      },
+      {
+        "feature_id": "feature.fillet_marker",
+        "op": "fillet.placeholder.v1",
+        "eval_ms": 0.72,
+        "mesh_ms": 0.3
+      },
+      {
+        "feature_id": "feature.hole",
+        "op": "cut.hole.v1",
+        "eval_ms": 0.63,
+        "mesh_ms": 0.19
+      }
+    ]
+  },
+  "dependency_snapshot": {
+    "ordered_feature_ids": [
+      "feature.root",
+      "feature.shell",
+      "feature.pattern",
+      "feature.tag"
+    ],
+    "rebuild_hash": "0b3dc51d0acf000a",
+    "feature_count": 4,
+    "total_ms": 3.225,
+    "tessellate_ms": 1.035,
+    "clash_ms": 0.0,
+    "assembly_ms": 0.0,
+    "parse_ms": null,
+    "serialize_ms": null,
+    "node_timings": [
+      {
+        "feature_id": "feature.pattern",
+        "op": "linear.pattern.v1",
+        "eval_ms": 0.71,
+        "mesh_ms": 0.28
+      },
+      {
+        "feature_id": "feature.root",
+        "op": "primitive.cylinder.v1",
+        "eval_ms": 0.37,
+        "mesh_ms": 0.29
+      },
+      {
+        "feature_id": "feature.shell",
+        "op": "shell.v1",
+        "eval_ms": 0.57,
+        "mesh_ms": 0.16
+      },
+      {
+        "feature_id": "feature.tag",
+        "op": "fillet.placeholder.v1",
+        "eval_ms": 0.54,
+        "mesh_ms": 0.305
+      }
+    ]
+  },
+  "deterministic_replay_match": true,
+  "timing_contract_match": true,
+  "missing_dependency_error": "invalid feature graph: feature feature.broken depends on missing node feature.missing",
+  "deterministic_signature": "ab8363b278b230ab",
+  "parity_contracts": [
+    "eval receipts expose vcad-eval timing envelope fields (total/tessellate/clash/assembly/parse/serialize)",
+    "native deterministic lane keeps parse_ms and serialize_ms unset, matching vcad native behavior",
+    "per-node timing snapshots are keyed by feature id and include op/eval_ms/mesh_ms",
+    "timing totals are self-consistent: total_ms = sum(node eval_ms + mesh_ms) + clash_ms + assembly_ms",
+    "identical feature-graph inputs replay byte-identical eval receipts across runs"
+  ]
+}

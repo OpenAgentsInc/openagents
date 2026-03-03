@@ -1,0 +1,43 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-136",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/final_parity_certification_report_vcad_reference.json",
+  "reference_fixture_sha256": "6d2750344b32230062b65946d09b3d71f9a43ca60d1243c3b6f19d076bc2fef4",
+  "reference_source": "~/code/vcad/crates/vcad-parity + ~/code/vcad/docs/parity",
+  "reference_issue_match": true,
+  "reference_commit_match": true,
+  "row_set_match": true,
+  "contract_set_match": true,
+  "deterministic_replay_match": true,
+  "rows": [
+    {
+      "capability": "CAD Final Parity Certification Report",
+      "case_id": "capability_scope",
+      "issue_id": "VCAD-PARITY-136"
+    },
+    {
+      "case_id": "phase_scope",
+      "lane_label": "final-parity-certification-report",
+      "phase": "Phase K - Hardening + parity signoff"
+    },
+    {
+      "case_id": "reference_source",
+      "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+      "vcad_source": "~/code/vcad/crates/vcad-parity + ~/code/vcad/docs/parity"
+    }
+  ],
+  "contracts": [
+    "CAD Final Parity Certification Report parity contracts are aligned to vcad reference behavior",
+    "CI parity artifacts include final_parity_certification_report manifest and vcad fixture evidence",
+    "Phase K - Hardening + parity signoff parity lane remains deterministic across replay"
+  ],
+  "deterministic_signature": "e728b9d61df8160f",
+  "parity_contracts": [
+    "CAD Final Parity Certification Report parity contracts are aligned to vcad reference behavior",
+    "CI parity artifacts include final_parity_certification_report manifest and vcad fixture evidence",
+    "Phase K - Hardening + parity signoff parity lane remains deterministic across replay"
+  ]
+}

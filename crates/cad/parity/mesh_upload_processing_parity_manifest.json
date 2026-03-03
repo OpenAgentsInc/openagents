@@ -1,0 +1,99 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-096",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/mesh_upload_processing_vcad_reference.json",
+  "reference_fixture_sha256": "964a5b5f76c3b2640a6f635205394c04eda9bc4b7738be430888fb98921ec56d",
+  "reference_source": "~/code/vcad/crates/vcad-kernel-wasm/src/lib.rs (processGeometryGpu/computeCreasedNormalsGpu/decimateMeshGpu) + ~/code/vcad/crates/vcad-kernel-gpu/src/normals.rs + ~/code/vcad/crates/vcad-kernel-gpu/src/decimate.rs",
+  "reference_commit_match": true,
+  "upload_contract_match": true,
+  "processing_contract_match": true,
+  "lod_contract_match": true,
+  "fallback_contract_match": true,
+  "deterministic_replay_match": true,
+  "upload_samples": [
+    {
+      "case_id": "index_out_of_bounds",
+      "accepted": false,
+      "vertex_count": 0,
+      "triangle_count": 0,
+      "error": "index 9 out of bounds for 6 vertices"
+    },
+    {
+      "case_id": "invalid_index_stride",
+      "accepted": false,
+      "vertex_count": 0,
+      "triangle_count": 0,
+      "error": "indices length must be divisible by 3"
+    },
+    {
+      "case_id": "invalid_position_stride",
+      "accepted": false,
+      "vertex_count": 0,
+      "triangle_count": 0,
+      "error": "positions length must be divisible by 3"
+    },
+    {
+      "case_id": "valid_mesh",
+      "accepted": true,
+      "vertex_count": 6,
+      "triangle_count": 8,
+      "error": null
+    }
+  ],
+  "processing_samples": [
+    {
+      "case_id": "process_with_lod",
+      "generate_lod": true,
+      "result_count": 3,
+      "lod_ratios": [
+        1.0,
+        0.5,
+        0.25
+      ],
+      "positions_len_per_level": [
+        18,
+        18,
+        18
+      ],
+      "indices_len_per_level": [
+        24,
+        12,
+        6
+      ],
+      "normals_len_per_level": [
+        18,
+        18,
+        18
+      ]
+    },
+    {
+      "case_id": "process_without_lod",
+      "generate_lod": false,
+      "result_count": 1,
+      "lod_ratios": [
+        1.0
+      ],
+      "positions_len_per_level": [
+        18
+      ],
+      "indices_len_per_level": [
+        24
+      ],
+      "normals_len_per_level": [
+        18
+      ]
+    }
+  ],
+  "fallback_error_message": "GPU feature not enabled",
+  "deterministic_signature": "5fea04e5c5dd457d",
+  "parity_contracts": [
+    "mesh upload validates position/index stride and index bounds before processing",
+    "processGeometryGpu returns one level without LOD and three levels with LOD",
+    "LOD processing ratios follow [1.0, 0.5, 0.25] for full/50%/25% geometry outputs",
+    "each processed level emits positions/indices/normals buffers with deterministic lengths",
+    "GPU-disabled fallback error remains stable as 'GPU feature not enabled'"
+  ]
+}

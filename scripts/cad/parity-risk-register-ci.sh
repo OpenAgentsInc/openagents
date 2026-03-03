@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+cd "$ROOT_DIR"
+
+cargo run -p openagents-cad --bin parity-risk-register -- \
+    --check \
+    --enforce-profile phase_a_baseline_v1

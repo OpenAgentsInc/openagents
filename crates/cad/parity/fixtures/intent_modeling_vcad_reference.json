@@ -1,0 +1,11 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-087",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/docs/features/intent-based-modeling.md",
+  "expected_json_intent": "SetMaterial",
+  "expected_natural_language_intent": "CreateRackSpec",
+  "expected_confirmation_required": true,
+  "expected_clarification_code": "CAD-CHAT-AMBIGUOUS",
+  "expected_clarification_marker": "Set material"
+}

@@ -1,0 +1,57 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-046",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "vcad_reference_sources": [
+    "docs/features/sketch-mode.md (Constraint Status Indicator)",
+    "crates/vcad-kernel-constraints/src/sketch.rs (degrees_of_freedom + is_*_constrained)"
+  ],
+  "under_case": {
+    "case_id": "under_constrained_point_only_v1",
+    "status_report": {
+      "status": "under_constrained",
+      "degrees_of_freedom": 2,
+      "parameter_count": 2,
+      "constraint_equation_count": 0
+    },
+    "is_under_constrained": true,
+    "is_fully_constrained": false,
+    "is_over_constrained": false,
+    "model_hash": "46564da705896306"
+  },
+  "fully_case": {
+    "case_id": "fully_constrained_fixed_point_v1",
+    "status_report": {
+      "status": "fully_constrained",
+      "degrees_of_freedom": 0,
+      "parameter_count": 2,
+      "constraint_equation_count": 2
+    },
+    "is_under_constrained": false,
+    "is_fully_constrained": true,
+    "is_over_constrained": false,
+    "model_hash": "40a0b2f1e3c46a2c"
+  },
+  "over_case": {
+    "case_id": "over_constrained_duplicate_fixed_v1",
+    "status_report": {
+      "status": "over_constrained",
+      "degrees_of_freedom": -2,
+      "parameter_count": 2,
+      "constraint_equation_count": 4
+    },
+    "is_under_constrained": false,
+    "is_fully_constrained": false,
+    "is_over_constrained": true,
+    "model_hash": "fb7d363aa5d651cb"
+  },
+  "deterministic_replay_match": true,
+  "deterministic_signature": "43dfa3acb1a1ac48",
+  "parity_contracts": [
+    "degrees_of_freedom follows vcad semantics: parameters - constraint residual equations",
+    "under/fully/over status is classified by DOF sign (>0, =0, <0)",
+    "status helpers is_under/is_fully/is_over are deterministic and replay-stable"
+  ]
+}

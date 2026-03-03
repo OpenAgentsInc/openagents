@@ -1,0 +1,48 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-020",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "default_pipeline_config": {
+    "tolerance_mm": 1e-6,
+    "fallback_segments": 32,
+    "enable_mesh_fallback": false
+  },
+  "overlapping_union": {
+    "outcome": "BrepReconstruction",
+    "stage_count": 4,
+    "has_brep_result": true,
+    "preserved_face_count": 6,
+    "mesh_fallback_present": false,
+    "diagnostic_codes": [],
+    "deterministic_signature": "dad682d82facf224"
+  },
+  "overlapping_difference": {
+    "outcome": "BrepReconstruction",
+    "stage_count": 4,
+    "has_brep_result": true,
+    "preserved_face_count": 6,
+    "mesh_fallback_present": false,
+    "diagnostic_codes": [],
+    "deterministic_signature": "fd623cd5fddf34b2"
+  },
+  "disjoint_intersection": {
+    "outcome": "EmptyResult",
+    "stage_count": 4,
+    "has_brep_result": false,
+    "preserved_face_count": 0,
+    "mesh_fallback_present": false,
+    "diagnostic_codes": [
+      "AABB_DISJOINT",
+      "INTERSECTION_EMPTY"
+    ],
+    "deterministic_signature": "181e692afc7a869b"
+  },
+  "brep_preservation_contracts": [
+    "boolean parity lane preserves BRep outputs for overlapping union/difference",
+    "mesh-only fallback output is removed from parity lane results",
+    "disjoint intersection returns EmptyResult with no mesh fallback",
+    "BRep-preservation snapshots remain deterministic across runs"
+  ]
+}

@@ -1,0 +1,103 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-101",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/packages/core/src/stores/ui-store.ts + ~/code/vcad/packages/app/src/components/RayTracedViewport.tsx + ~/code/vcad/docs/features/ray-tracing.md",
+  "expected_default_quality": "draft",
+  "expected_quality_modes": ["draft", "standard", "high"],
+  "expected_quality_scales": [
+    {
+      "quality": "draft",
+      "scale": 0.5,
+      "max_pixels": 307200
+    },
+    {
+      "quality": "standard",
+      "scale": 1.0,
+      "max_pixels": 921600
+    },
+    {
+      "quality": "high",
+      "scale": 2.0,
+      "max_pixels": 2073600
+    }
+  ],
+  "expected_interaction_policy": {
+    "interacting_frame_threshold": 1,
+    "interacting_effective_quality": "draft"
+  },
+  "expected_samples": [
+    {
+      "case_id": "draft_idle_1280x720",
+      "requested_quality": "draft",
+      "frame_index": 8,
+      "viewport": [1280, 720],
+      "effective_quality": "draft",
+      "max_pixels": 307200,
+      "render_size": [640, 360],
+      "total_pixels": 230400,
+      "cap_scale_factor": 1.0,
+      "cap_applied": false
+    },
+    {
+      "case_id": "high_idle_1920x1080",
+      "requested_quality": "high",
+      "frame_index": 8,
+      "viewport": [1920, 1080],
+      "effective_quality": "high",
+      "max_pixels": 2073600,
+      "render_size": [1920, 1080],
+      "total_pixels": 2073600,
+      "cap_scale_factor": 0.5,
+      "cap_applied": true
+    },
+    {
+      "case_id": "high_idle_3440x1440",
+      "requested_quality": "high",
+      "frame_index": 8,
+      "viewport": [3440, 1440],
+      "effective_quality": "high",
+      "max_pixels": 2073600,
+      "render_size": [2225, 931],
+      "total_pixels": 2071475,
+      "cap_scale_factor": 0.32349832,
+      "cap_applied": true
+    },
+    {
+      "case_id": "high_interacting_1920x1080",
+      "requested_quality": "high",
+      "frame_index": 1,
+      "viewport": [1920, 1080],
+      "effective_quality": "draft",
+      "max_pixels": 307200,
+      "render_size": [739, 415],
+      "total_pixels": 306685,
+      "cap_scale_factor": 0.19245009,
+      "cap_applied": true
+    },
+    {
+      "case_id": "standard_idle_1280x720",
+      "requested_quality": "standard",
+      "frame_index": 8,
+      "viewport": [1280, 720],
+      "effective_quality": "standard",
+      "max_pixels": 921600,
+      "render_size": [1280, 720],
+      "total_pixels": 921600,
+      "cap_scale_factor": 1.0,
+      "cap_applied": false
+    },
+    {
+      "case_id": "standard_interacting_1280x720",
+      "requested_quality": "standard",
+      "frame_index": 1,
+      "viewport": [1280, 720],
+      "effective_quality": "draft",
+      "max_pixels": 307200,
+      "render_size": [739, 415],
+      "total_pixels": 306685,
+      "cap_scale_factor": 0.577350269,
+      "cap_applied": true
+    }
+  ]
+}

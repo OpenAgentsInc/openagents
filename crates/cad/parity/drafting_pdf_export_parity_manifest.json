@@ -1,0 +1,36 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-077",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_corpus_path": "crates/cad/parity/fixtures/drafting_pdf_export_vcad_reference.json",
+  "reference_corpus_sha256": "6ced4a518b1b0173162a6995ad6f2db7a84a7b6da9b8f24f952265d8562c75b0",
+  "reference_source": "vcad baseline: no CAD-core drawing PDF exporter; docs/tutorials route PDF output through print pipeline",
+  "reference_commit_match": true,
+  "case_snapshots": [
+    {
+      "case_id": "empty_view",
+      "edge_count": 0,
+      "error_format": "pdf",
+      "error_reason": "vcad baseline has no native drawing PDF exporter; use desktop/browser print pipeline",
+      "error_message": "export failed (pdf): vcad baseline has no native drawing PDF exporter; use desktop/browser print pipeline"
+    },
+    {
+      "case_id": "mixed_visibility",
+      "edge_count": 2,
+      "error_format": "pdf",
+      "error_reason": "vcad baseline has no native drawing PDF exporter; use desktop/browser print pipeline",
+      "error_message": "export failed (pdf): vcad baseline has no native drawing PDF exporter; use desktop/browser print pipeline"
+    }
+  ],
+  "unsupported_contract_match": true,
+  "deterministic_replay_match": true,
+  "deterministic_signature": "e1291424f8e667dc",
+  "parity_contracts": [
+    "vcad baseline exposes no native CAD-core drawing PDF exporter",
+    "drawing PDF export API returns deterministic ExportFailed(format=pdf) contract",
+    "error reason directs callers to desktop/browser print pipeline",
+    "pdf export unsupported-contract fixtures replay deterministically"
+  ]
+}

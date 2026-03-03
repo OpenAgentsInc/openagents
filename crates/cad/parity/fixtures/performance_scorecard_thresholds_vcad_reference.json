@@ -1,0 +1,28 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-134",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/benches + ~/code/vcad/crates/vcad-perf",
+  "expected_rows": [
+    {
+      "case_id": "capability_scope",
+      "issue_id": "VCAD-PARITY-134",
+      "capability": "CAD Performance Scorecard Thresholds Parity"
+    },
+    {
+      "case_id": "phase_scope",
+      "phase": "Phase K - Hardening + parity signoff",
+      "lane_label": "performance-scorecard-thresholds"
+    },
+    {
+      "case_id": "reference_source",
+      "vcad_source": "~/code/vcad/benches + ~/code/vcad/crates/vcad-perf",
+      "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81"
+    }
+  ],
+  "expected_contracts": [
+    "CAD Performance Scorecard Thresholds Parity parity contracts are aligned to vcad reference behavior",
+    "Phase K - Hardening + parity signoff parity lane remains deterministic across replay",
+    "CI parity artifacts include performance_scorecard_thresholds manifest and vcad fixture evidence"
+  ]
+}

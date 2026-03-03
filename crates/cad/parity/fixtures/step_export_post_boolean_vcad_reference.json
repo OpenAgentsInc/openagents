@@ -1,0 +1,31 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-080",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/crates/vcad-kernel/src/lib.rs + ~/code/vcad/crates/vcad/src/lib.rs",
+  "expected_not_brep_reason": "cannot export to STEP: solid has been converted to mesh (B-rep data lost after boolean operations)",
+  "expected_empty_reason": "cannot export to STEP: solid is empty",
+  "expected_case_expectations": [
+    {
+      "case_id": "boolean_difference_brep",
+      "outcome": "BrepReconstruction",
+      "can_export_step": true,
+      "export_succeeds": true,
+      "export_error": null
+    },
+    {
+      "case_id": "boolean_intersection_empty",
+      "outcome": "EmptyResult",
+      "can_export_step": false,
+      "export_succeeds": false,
+      "export_error": "cannot export to STEP: solid is empty"
+    },
+    {
+      "case_id": "mesh_only_boolean_result",
+      "outcome": "MeshFallback",
+      "can_export_step": false,
+      "export_succeeds": false,
+      "export_error": "cannot export to STEP: solid has been converted to mesh (B-rep data lost after boolean operations)"
+    }
+  ]
+}

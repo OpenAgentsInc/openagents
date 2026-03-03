@@ -1,0 +1,43 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-106",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/collision_shape_generation_vcad_reference.json",
+  "reference_fixture_sha256": "e3d0cde3b8720184060171f69a7f4a92c0d19ca18adaf6e4d4619ea439997af3",
+  "reference_source": "~/code/vcad/crates/vcad-kernel-physics/src/colliders.rs",
+  "reference_issue_match": true,
+  "reference_commit_match": true,
+  "row_set_match": true,
+  "contract_set_match": true,
+  "deterministic_replay_match": true,
+  "rows": [
+    {
+      "capability": "CAD Collision Shape Generation Parity",
+      "case_id": "capability_scope",
+      "issue_id": "VCAD-PARITY-106"
+    },
+    {
+      "case_id": "phase_scope",
+      "lane_label": "collision-shape-generation",
+      "phase": "Phase I - Physics + URDF parity"
+    },
+    {
+      "case_id": "reference_source",
+      "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+      "vcad_source": "~/code/vcad/crates/vcad-kernel-physics/src/colliders.rs"
+    }
+  ],
+  "contracts": [
+    "CAD Collision Shape Generation Parity parity contracts are aligned to vcad reference behavior",
+    "CI parity artifacts include collision_shape_generation manifest and vcad fixture evidence",
+    "Phase I - Physics + URDF parity parity lane remains deterministic across replay"
+  ],
+  "deterministic_signature": "aa66301ed7f753f9",
+  "parity_contracts": [
+    "CAD Collision Shape Generation Parity parity contracts are aligned to vcad reference behavior",
+    "CI parity artifacts include collision_shape_generation manifest and vcad fixture evidence",
+    "Phase I - Physics + URDF parity parity lane remains deterministic across replay"
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-035",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "no_repair_snapshot": {
+    "status": "no_repair_needed",
+    "geometry_hash": "hash.candidate.none",
+    "defects_before": {
+      "non_manifold_edges": 0,
+      "self_intersections": 0,
+      "sliver_faces": 0
+    },
+    "defects_after": {
+      "non_manifold_edges": 0,
+      "self_intersections": 0,
+      "sliver_faces": 0
+    },
+    "action_count": 0,
+    "warning_codes": []
+  },
+  "boolean_repair_snapshot": {
+    "status": "repaired",
+    "geometry_hash": "38a7cb6fd73aed20",
+    "defects_before": {
+      "non_manifold_edges": 2,
+      "self_intersections": 1,
+      "sliver_faces": 3
+    },
+    "defects_after": {
+      "non_manifold_edges": 0,
+      "self_intersections": 0,
+      "sliver_faces": 1
+    },
+    "action_count": 3,
+    "warning_codes": []
+  },
+  "finishing_fallback_snapshot": {
+    "status": "fallback_kept_source",
+    "geometry_hash": "hash.source.finishing",
+    "defects_before": {
+      "non_manifold_edges": 11,
+      "self_intersections": 10,
+      "sliver_faces": 4
+    },
+    "defects_after": {
+      "non_manifold_edges": 8,
+      "self_intersections": 7,
+      "sliver_faces": 1
+    },
+    "action_count": 4,
+    "warning_codes": [
+      "CAD-WARN-NON-MANIFOLD"
+    ]
+  },
+  "deterministic_replay_match": true,
+  "invalid_request_error": "invalid primitive: topology repair feature id must not be empty",
+  "deterministic_signature": "004894c952e67bbf",
+  "parity_contracts": [
+    "post-op topology repair emits deterministic no-op receipts when no defects exist",
+    "boolean repair path applies deterministic action selection and defect reduction",
+    "finishing repair path supports deterministic fallback to source geometry",
+    "fallback warning code is stable: CAD-WARN-NON-MANIFOLD",
+    "topology repair replay is deterministic for identical request payloads"
+  ]
+}

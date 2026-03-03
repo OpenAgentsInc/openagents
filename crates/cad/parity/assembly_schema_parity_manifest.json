@@ -1,0 +1,64 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-056",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_corpus_path": "crates/cad/parity/fixtures/assembly_schema_vcad_reference.json",
+  "reference_corpus_sha256": "1ef4b9f87f0ca7ea0a60bcae1315951082256a4b89dc9e290041082e77bd3a4f",
+  "reference_source": "~/code/vcad/crates/vcad-ir/src/lib.rs + ~/code/vcad/docs/features/assembly-joints.md",
+  "reference_commit_match": true,
+  "document_field_names": [
+    "groundInstanceId",
+    "instances",
+    "joints",
+    "partDefs"
+  ],
+  "part_def_field_names": [
+    "defaultMaterial",
+    "id",
+    "name",
+    "root"
+  ],
+  "instance_field_names": [
+    "id",
+    "material",
+    "name",
+    "partDefId",
+    "transform"
+  ],
+  "joint_field_names": [
+    "childAnchor",
+    "childInstanceId",
+    "id",
+    "kind",
+    "name",
+    "parentAnchor",
+    "parentInstanceId",
+    "state"
+  ],
+  "joint_kind_tags": [
+    "Ball",
+    "Cylindrical",
+    "Fixed",
+    "Revolute",
+    "Slider"
+  ],
+  "joint_kinds_with_limits": [
+    "Revolute",
+    "Slider"
+  ],
+  "part_def_count": 2,
+  "instance_count": 2,
+  "joint_count": 1,
+  "ground_instance_id": "base_inst",
+  "schema_field_match": true,
+  "deterministic_replay_match": true,
+  "deterministic_signature": "5f27cc24919cd9df",
+  "parity_contracts": [
+    "cad document schema includes partDefs/instances/joints/groundInstanceId assembly fields",
+    "part definition, instance, and joint payloads serialize with vcad-compatible camelCase keys",
+    "joint kind tags include Fixed/Revolute/Slider/Cylindrical/Ball and limits only on Revolute/Slider",
+    "assembly schema parity fixture replays deterministically"
+  ]
+}

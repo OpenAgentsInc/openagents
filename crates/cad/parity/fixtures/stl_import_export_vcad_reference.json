@@ -1,0 +1,36 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-081",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/crates/vcad/src/export/stl.rs + ~/code/vcad/packages/core/src/utils/{export-stl.ts,import-stl.ts}",
+  "expected_header_label": "vcad binary STL export",
+  "expected_case_expectations": [
+    {
+      "case_id": "ascii_import",
+      "source_format": "ascii",
+      "triangle_count": 2,
+      "unique_vertex_count": 4,
+      "export_succeeds": false,
+      "import_succeeds": true,
+      "error": null
+    },
+    {
+      "case_id": "binary_export_roundtrip",
+      "source_format": "binary",
+      "triangle_count": 4,
+      "unique_vertex_count": 4,
+      "export_succeeds": true,
+      "import_succeeds": true,
+      "error": null
+    },
+    {
+      "case_id": "truncated_binary_import",
+      "source_format": null,
+      "triangle_count": 0,
+      "unique_vertex_count": 0,
+      "export_succeeds": false,
+      "import_succeeds": false,
+      "error": "Invalid STL: expected at least 84 bytes, got 12"
+    }
+  ]
+}

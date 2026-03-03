@@ -1,0 +1,73 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-028",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "linear_snapshot": {
+    "instance_count": 5,
+    "pattern_indexes": [
+      10,
+      11,
+      12,
+      13,
+      14
+    ],
+    "first_translation_mm": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "last_translation_mm": [
+      33.94112549695428,
+      33.94112549695428,
+      0.0
+    ],
+    "pattern_hash": "3e0022c62a66d6b3"
+  },
+  "circular_snapshot": {
+    "instance_count": 6,
+    "pattern_indexes": [
+      50,
+      51,
+      52,
+      53,
+      54,
+      55
+    ],
+    "first_center_mm": [
+      5.0,
+      18.0,
+      1.0
+    ],
+    "second_center_mm": [
+      -12.320508075688771,
+      8.000000000000002,
+      1.0
+    ],
+    "last_center_mm": [
+      22.32050807568877,
+      8.000000000000002,
+      1.0
+    ],
+    "angle_samples_deg": [
+      0.0,
+      60.0,
+      120.0,
+      180.0
+    ],
+    "pattern_hash": "c371f3547e7f4189",
+    "full_span_without_duplicate_endpoint": true
+  },
+  "deterministic_replay_match": true,
+  "invalid_linear_count_error": "invalid parameter linear_count: linear pattern count must be an integer value",
+  "invalid_circular_axis_error": "invalid primitive: circular pattern axis direction must not be a zero vector",
+  "deterministic_signature": "65e782cd1410440a",
+  "parity_contracts": [
+    "linear pattern count includes original instance and uses normalized direction + spacing",
+    "linear pattern instance indexes are deterministic and stable across replays",
+    "circular pattern uses uniform angular steps (span/count) around axis origin + direction",
+    "circular pattern span excludes duplicated endpoint copy for closed 360-degree loops",
+    "invalid linear count and circular axis map to stable parameter/primitive diagnostics"
+  ]
+}

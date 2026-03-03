@@ -1,0 +1,46 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-029",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "shell_node_snapshot": {
+    "operation_key": "shell.v1",
+    "depends_on": [
+      "feature.base"
+    ],
+    "thickness_param": "shell_thickness_mm",
+    "remove_face_refs": [
+      "face.001",
+      "face.003"
+    ],
+    "allow_fallback": false
+  },
+  "graph_topo_order": [
+    "feature.base",
+    "feature.shell.primary"
+  ],
+  "applied_snapshot": {
+    "status": "applied",
+    "geometry_hash": "60b1a8f811bc861a",
+    "failure_classification": null,
+    "warning_count": 0
+  },
+  "fallback_snapshot": {
+    "status": "fallback_kept_source",
+    "geometry_hash": "shell-source-geometry-hash",
+    "failure_classification": "FINISHING_ZERO_THICKNESS_RISK",
+    "warning_count": 1
+  },
+  "empty_remove_faces_supported": true,
+  "remove_face_selection_affects_hash": true,
+  "invalid_thickness_error": "evaluation failed: shell.v1: shell value must be finite and > 0 (class=FINISHING_INVALID_INPUT)",
+  "deterministic_signature": "abb54d7636e0bf4d",
+  "parity_contracts": [
+    "shell.v1 feature nodes round-trip deterministically in feature graph serialization",
+    "shell remove-face refs are canonicalized (sorted + deduplicated) on node conversion",
+    "closed-shell flow supports empty remove-face sets for production shell parity",
+    "shell geometry hash includes remove-face selection signature for deterministic replay",
+    "shell risk fallback maps to ZERO_THICKNESS_RISK with deterministic warning payload"
+  ]
+}

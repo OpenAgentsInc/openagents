@@ -1,0 +1,145 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-061",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_corpus_path": "crates/cad/parity/fixtures/assembly_fk_vcad_reference.json",
+  "reference_corpus_sha256": "698b8bd4ba61ef9c25213304c43ce1e274116b4d52eafa3f16a7c74f96d0ecc1",
+  "reference_source": "~/code/vcad/crates/vcad-eval/src/kinematics.rs",
+  "reference_commit_match": true,
+  "case_snapshots": [
+    {
+      "case_id": "cyclic_chain_visited_guard",
+      "world_transforms": [
+        {
+          "instance_id": "a-1",
+          "translation_mm": [
+            "0.000000",
+            "5.000000",
+            "0.000000"
+          ],
+          "rotation_deg": [
+            "0.000000",
+            "0.000000",
+            "0.000000"
+          ],
+          "scale": [
+            "1.000000",
+            "1.000000",
+            "1.000000"
+          ]
+        },
+        {
+          "instance_id": "b-1",
+          "translation_mm": [
+            "10.000000",
+            "5.000000",
+            "0.000000"
+          ],
+          "rotation_deg": [
+            "0.000000",
+            "0.000000",
+            "0.000000"
+          ],
+          "scale": [
+            "1.000000",
+            "1.000000",
+            "1.000000"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "joint_chain_compose",
+      "world_transforms": [
+        {
+          "instance_id": "arm-1",
+          "translation_mm": [
+            "100.000000",
+            "9.000000",
+            "0.000000"
+          ],
+          "rotation_deg": [
+            "0.000000",
+            "0.000000",
+            "90.000000"
+          ],
+          "scale": [
+            "1.000000",
+            "1.000000",
+            "1.000000"
+          ]
+        },
+        {
+          "instance_id": "base-1",
+          "translation_mm": [
+            "100.000000",
+            "0.000000",
+            "0.000000"
+          ],
+          "rotation_deg": [
+            "0.000000",
+            "0.000000",
+            "0.000000"
+          ],
+          "scale": [
+            "1.000000",
+            "1.000000",
+            "1.000000"
+          ]
+        },
+        {
+          "instance_id": "slider-1",
+          "translation_mm": [
+            "100.000000",
+            "34.000000",
+            "0.000000"
+          ],
+          "rotation_deg": [
+            "0.000000",
+            "0.000000",
+            "90.000000"
+          ],
+          "scale": [
+            "1.000000",
+            "1.000000",
+            "1.000000"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "world_grounded_parent_none",
+      "world_transforms": [
+        {
+          "instance_id": "free-1",
+          "translation_mm": [
+            "11.000000",
+            "3.000000",
+            "4.000000"
+          ],
+          "rotation_deg": [
+            "0.000000",
+            "0.000000",
+            "0.000000"
+          ],
+          "scale": [
+            "1.000000",
+            "1.000000",
+            "1.000000"
+          ]
+        }
+      ]
+    }
+  ],
+  "behavior_match": true,
+  "deterministic_replay_match": true,
+  "deterministic_signature": "ac1bb999729de8bb",
+  "parity_contracts": [
+    "forward kinematics solves by BFS through parent->child joint graph",
+    "world-grounded joints (parentInstanceId=null) use identity parent transform",
+    "joint transform composition matches vcad order: parent * joint * local",
+    "visited-guard stabilizes cyclic chains for deterministic replay"
+  ]
+}

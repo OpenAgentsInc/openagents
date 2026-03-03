@@ -1,0 +1,54 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-018",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "default_pipeline_config": {
+    "tolerance_mm": 1e-6,
+    "fallback_segments": 32,
+    "enable_mesh_fallback": false
+  },
+  "stage_order": [
+    "AabbFilter",
+    "SurfaceSurfaceIntersection",
+    "Classification",
+    "Reconstruction"
+  ],
+  "sample_union": {
+    "outcome": "BrepReconstruction",
+    "stage_count": 4,
+    "candidate_face_pairs": 36,
+    "ssi_pair_count": 36,
+    "classified_fragment_count": 72,
+    "reconstruction_success": true,
+    "mesh_output_triangle_count": 0,
+    "deterministic_signature": "dad682d82facf224"
+  },
+  "sample_difference": {
+    "outcome": "BrepReconstruction",
+    "stage_count": 4,
+    "candidate_face_pairs": 36,
+    "ssi_pair_count": 36,
+    "classified_fragment_count": 72,
+    "reconstruction_success": true,
+    "mesh_output_triangle_count": 0,
+    "deterministic_signature": "fd623cd5fddf34b2"
+  },
+  "sample_intersection": {
+    "outcome": "BrepReconstruction",
+    "stage_count": 4,
+    "candidate_face_pairs": 36,
+    "ssi_pair_count": 36,
+    "classified_fragment_count": 72,
+    "reconstruction_success": true,
+    "mesh_output_triangle_count": 0,
+    "deterministic_signature": "bd7bc3ad51434825"
+  },
+  "staged_pipeline_contracts": [
+    "AabbFilter -> SurfaceSurfaceIntersection -> Classification -> Reconstruction stage order is stable",
+    "BRep output is preserved for union/difference/intersection overlap cases",
+    "Pipeline emits deterministic signature for identical inputs",
+    "Intersection of disjoint solids yields EmptyResult without mesh fallback"
+  ]
+}

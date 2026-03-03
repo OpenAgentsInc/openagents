@@ -22,6 +22,13 @@
   - ordered feature IDs
   - rebuild hash
   - feature count
+  - `vcad_eval_timing` envelope with vcad-eval compatible fields:
+    - `total_ms`
+    - `parse_ms` / `serialize_ms` (native deterministic lane keeps these unset)
+    - `tessellate_ms`
+    - `clash_ms`
+    - `assembly_ms`
+    - per-node map keyed by feature id with `op`, `eval_ms`, and `mesh_ms`
 
 This receipt is intended for CAD pane telemetry and activity logging.
 

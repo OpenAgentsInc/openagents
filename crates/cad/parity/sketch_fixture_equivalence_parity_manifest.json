@@ -1,0 +1,153 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-054",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_corpus_path": "crates/cad/parity/fixtures/sketch_vcad_reference_corpus.json",
+  "reference_corpus_sha256": "103d61abb15ee29f1aba70c63a9986c602562bb2c58a29148e03dd01afeea4aa",
+  "reference_source": "Derived from vcad sketch feature contracts (docs/features/sketch-mode.md, docs/features/sketch-operations.md, docs/features/undo-redo.md) at pinned commit, mapped to OpenAgents sketch parity fixture signatures.",
+  "reference_commit_match": true,
+  "case_count": 13,
+  "matched_case_count": 13,
+  "deterministic_replay_match": true,
+  "mismatches": [],
+  "case_snapshots": [
+    {
+      "case_id": "sketch.entity_set",
+      "issue_id": "VCAD-PARITY-041",
+      "manifest_path": "crates/cad/parity/sketch_entity_set_parity_manifest.json",
+      "expected_signature": "0374ecd62b313a8a",
+      "openagents_signature": "0374ecd62b313a8a",
+      "expected_replay_match": true,
+      "openagents_replay_match": true,
+      "matches_reference": true
+    },
+    {
+      "case_id": "sketch.plane",
+      "issue_id": "VCAD-PARITY-042",
+      "manifest_path": "crates/cad/parity/sketch_plane_parity_manifest.json",
+      "expected_signature": "d820ddf7a8806a2e",
+      "openagents_signature": "d820ddf7a8806a2e",
+      "expected_replay_match": true,
+      "openagents_replay_match": true,
+      "matches_reference": true
+    },
+    {
+      "case_id": "sketch.constraint_enum",
+      "issue_id": "VCAD-PARITY-043",
+      "manifest_path": "crates/cad/parity/sketch_constraint_enum_parity_manifest.json",
+      "expected_signature": "e5e262316afcbd86",
+      "openagents_signature": "e5e262316afcbd86",
+      "expected_replay_match": true,
+      "openagents_replay_match": true,
+      "matches_reference": true
+    },
+    {
+      "case_id": "sketch.iterative_lm",
+      "issue_id": "VCAD-PARITY-044",
+      "manifest_path": "crates/cad/parity/sketch_iterative_lm_parity_manifest.json",
+      "expected_signature": "7067ab5de5f1c3ce",
+      "openagents_signature": "7067ab5de5f1c3ce",
+      "expected_replay_match": true,
+      "openagents_replay_match": true,
+      "matches_reference": true
+    },
+    {
+      "case_id": "sketch.jacobian_residual",
+      "issue_id": "VCAD-PARITY-045",
+      "manifest_path": "crates/cad/parity/sketch_jacobian_residual_parity_manifest.json",
+      "expected_signature": "eda5d067077ab705",
+      "openagents_signature": "eda5d067077ab705",
+      "expected_replay_match": true,
+      "openagents_replay_match": true,
+      "matches_reference": true
+    },
+    {
+      "case_id": "sketch.constraint_status",
+      "issue_id": "VCAD-PARITY-046",
+      "manifest_path": "crates/cad/parity/sketch_constraint_status_parity_manifest.json",
+      "expected_signature": "43dfa3acb1a1ac48",
+      "openagents_signature": "43dfa3acb1a1ac48",
+      "expected_replay_match": true,
+      "openagents_replay_match": true,
+      "matches_reference": true
+    },
+    {
+      "case_id": "sketch.extrude",
+      "issue_id": "VCAD-PARITY-047",
+      "manifest_path": "crates/cad/parity/sketch_extrude_parity_manifest.json",
+      "expected_signature": "08db1a91348369c2",
+      "openagents_signature": "08db1a91348369c2",
+      "expected_replay_match": true,
+      "openagents_replay_match": true,
+      "matches_reference": true
+    },
+    {
+      "case_id": "sketch.revolve",
+      "issue_id": "VCAD-PARITY-048",
+      "manifest_path": "crates/cad/parity/sketch_revolve_parity_manifest.json",
+      "expected_signature": "a35092f945b5e318",
+      "openagents_signature": "a35092f945b5e318",
+      "expected_replay_match": true,
+      "openagents_replay_match": true,
+      "matches_reference": true
+    },
+    {
+      "case_id": "sketch.sweep",
+      "issue_id": "VCAD-PARITY-049",
+      "manifest_path": "crates/cad/parity/sketch_sweep_parity_manifest.json",
+      "expected_signature": "c0dd546c487f1e1b",
+      "openagents_signature": "c0dd546c487f1e1b",
+      "expected_replay_match": true,
+      "openagents_replay_match": true,
+      "matches_reference": true
+    },
+    {
+      "case_id": "sketch.loft",
+      "issue_id": "VCAD-PARITY-050",
+      "manifest_path": "crates/cad/parity/sketch_loft_parity_manifest.json",
+      "expected_signature": "df5a248a393171c0",
+      "openagents_signature": "df5a248a393171c0",
+      "expected_replay_match": true,
+      "openagents_replay_match": true,
+      "matches_reference": true
+    },
+    {
+      "case_id": "sketch.profile_validity",
+      "issue_id": "VCAD-PARITY-051",
+      "manifest_path": "crates/cad/parity/sketch_profile_validity_parity_manifest.json",
+      "expected_signature": "b84a2208d5b0a885",
+      "openagents_signature": "b84a2208d5b0a885",
+      "expected_replay_match": true,
+      "openagents_replay_match": true,
+      "matches_reference": true
+    },
+    {
+      "case_id": "sketch.interaction",
+      "issue_id": "VCAD-PARITY-052",
+      "manifest_path": "crates/cad/parity/sketch_interaction_parity_manifest.json",
+      "expected_signature": "0d9e3abb1746f5f3",
+      "openagents_signature": "0d9e3abb1746f5f3",
+      "expected_replay_match": true,
+      "openagents_replay_match": true,
+      "matches_reference": true
+    },
+    {
+      "case_id": "sketch.undo_redo",
+      "issue_id": "VCAD-PARITY-053",
+      "manifest_path": "crates/cad/parity/sketch_undo_redo_parity_manifest.json",
+      "expected_signature": "8e6b0e53070a8d9e",
+      "openagents_signature": "8e6b0e53070a8d9e",
+      "expected_replay_match": true,
+      "openagents_replay_match": true,
+      "matches_reference": true
+    }
+  ],
+  "deterministic_signature": "a2557289ed9a8563",
+  "parity_contracts": [
+    "sketch parity fixtures are compared against a pinned vcad reference corpus across issues VCAD-PARITY-041 through VCAD-PARITY-053",
+    "each sketch manifest must match the expected deterministic signature and replay flag from the reference corpus",
+    "fixture equivalence checks run deterministically across repeated evaluations"
+  ]
+}

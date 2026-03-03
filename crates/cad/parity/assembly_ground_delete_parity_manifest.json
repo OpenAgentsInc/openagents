@@ -1,0 +1,84 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-062",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_corpus_path": "crates/cad/parity/fixtures/assembly_ground_delete_vcad_reference.json",
+  "reference_corpus_sha256": "8a096b1c70f4fe2b021ad44a229c0f36c4554e415329668b0988fbfd23d6269c",
+  "reference_source": "~/code/vcad/packages/core/src/stores/document-store.ts",
+  "reference_commit_match": true,
+  "case_snapshots": [
+    {
+      "case_id": "delete_instance_cleanup",
+      "ground_instance_id": null,
+      "instance_ids": [
+        "base-1",
+        "tool-1"
+      ],
+      "joint_ids": [],
+      "removed_joint_ids": [
+        "joint.arm_tool",
+        "joint.base_arm"
+      ],
+      "cleared_ground": true,
+      "error": null
+    },
+    {
+      "case_id": "delete_instance_unknown_error",
+      "ground_instance_id": null,
+      "instance_ids": [
+        "base-1"
+      ],
+      "joint_ids": [],
+      "removed_joint_ids": [],
+      "cleared_ground": false,
+      "error": "invalid parameter instance.id: unknown instance: missing"
+    },
+    {
+      "case_id": "delete_joint_unknown_error",
+      "ground_instance_id": null,
+      "instance_ids": [
+        "base-1"
+      ],
+      "joint_ids": [
+        "joint.1"
+      ],
+      "removed_joint_ids": [],
+      "cleared_ground": false,
+      "error": "invalid parameter joint.id: unknown joint: joint.missing"
+    },
+    {
+      "case_id": "ground_set_success",
+      "ground_instance_id": "base-1",
+      "instance_ids": [
+        "arm-1",
+        "base-1"
+      ],
+      "joint_ids": [],
+      "removed_joint_ids": [],
+      "cleared_ground": false,
+      "error": null
+    },
+    {
+      "case_id": "ground_set_unknown_error",
+      "ground_instance_id": null,
+      "instance_ids": [
+        "base-1"
+      ],
+      "joint_ids": [],
+      "removed_joint_ids": [],
+      "cleared_ground": false,
+      "error": "invalid parameter ground_instance_id: unknown instance: missing"
+    }
+  ],
+  "behavior_match": true,
+  "deterministic_replay_match": true,
+  "deterministic_signature": "9b885a073ee4f919",
+  "parity_contracts": [
+    "set_ground_instance requires a known instance id",
+    "delete_instance removes joints where parent or child references the deleted instance",
+    "deleting the grounded instance clears ground_instance_id",
+    "delete_joint and delete_instance return deterministic invalid-parameter errors"
+  ]
+}

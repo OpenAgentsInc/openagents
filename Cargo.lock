@@ -4029,8 +4029,10 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 name = "openagents-cad"
 version = "0.1.0"
 dependencies = [
+ "robust",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror 2.0.17",
 ]
 
@@ -5047,6 +5049,12 @@ dependencies = [
  "untrusted",
  "windows-sys 0.52.0",
 ]
+
+[[package]]
+name = "robust"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4e27ee8bb91ca0adcf0ecb116293afa12d393f9c2b9b9cd54d33e8078fe19839"
 
 [[package]]
 name = "rodio"

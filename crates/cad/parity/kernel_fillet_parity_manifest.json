@@ -1,0 +1,73 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-023",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "input_cube_counts": {
+    "vertex_count": 8,
+    "half_edge_count": 24,
+    "edge_count": 12,
+    "loop_count": 6,
+    "face_count": 6,
+    "shell_count": 1,
+    "solid_count": 1
+  },
+  "chamfer_cube_counts": {
+    "vertex_count": 24,
+    "half_edge_count": 72,
+    "edge_count": 36,
+    "loop_count": 26,
+    "face_count": 26,
+    "shell_count": 1,
+    "solid_count": 1
+  },
+  "fillet_cube_counts": {
+    "vertex_count": 24,
+    "half_edge_count": 72,
+    "edge_count": 36,
+    "loop_count": 26,
+    "face_count": 26,
+    "shell_count": 1,
+    "solid_count": 1
+  },
+  "fillet_cube_cylinder_surface_count": 12,
+  "cube_edge_case_breakdown": {
+    "plane_plane": 12,
+    "plane_cylinder": 0,
+    "cylinder_cylinder_coaxial": 0,
+    "cylinder_cylinder_skew": 0,
+    "general_curved": 0,
+    "unsupported": 0
+  },
+  "cylinder_edge_case_breakdown": {
+    "plane_plane": 0,
+    "plane_cylinder": 2,
+    "cylinder_cylinder_coaxial": 1,
+    "cylinder_cylinder_skew": 0,
+    "general_curved": 0,
+    "unsupported": 0
+  },
+  "detailed_edge_subset": {
+    "requested_edge_count": 3,
+    "success_count": 2,
+    "unsupported_count": 1,
+    "radius_too_large_count": 0,
+    "degenerate_count": 0
+  },
+  "oversized_radius_subset": {
+    "requested_edge_count": 1,
+    "success_count": 0,
+    "unsupported_count": 0,
+    "radius_too_large_count": 1,
+    "degenerate_count": 0
+  },
+  "deterministic_signature": "6d35cfa298f143b5",
+  "parity_contracts": [
+    "classify_fillet_case parity matches vcad plane/plane, plane/cylinder, and cylinder/cylinder case split",
+    "chamfer_all_edges and fillet_all_edges preserve deterministic topology counts for cube baseline",
+    "fillet_all_edges emits one cylindrical blend surface per successful manifold edge",
+    "fillet_edges_detailed maps unsupported and radius-too-large cases to deterministic per-edge results",
+    "closest_point_uv supports planar and cylindrical subset parity"
+  ]
+}

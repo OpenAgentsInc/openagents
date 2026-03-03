@@ -1,0 +1,38 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-082",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/packages/core/src/utils/export-gltf.ts + ~/code/vcad/crates/vcad/src/export/gltf.rs",
+  "expected_case_expectations": [
+    {
+      "case_id": "invalid_mesh_contract",
+      "export_succeeds": false,
+      "error": "mesh payload is invalid: invalid primitive: mesh payload must include triangle indices",
+      "header_magic": null,
+      "version": null,
+      "json_chunk_type": null,
+      "bin_chunk_type": null,
+      "generator": null
+    },
+    {
+      "case_id": "mesh_export",
+      "export_succeeds": true,
+      "error": null,
+      "header_magic": "glTF",
+      "version": 2,
+      "json_chunk_type": "JSON",
+      "bin_chunk_type": "BIN",
+      "generator": "vcad"
+    },
+    {
+      "case_id": "variant_mismatch",
+      "export_succeeds": false,
+      "error": "mesh variant_id mismatch: payload=variant.parity.glb requested=variant.mismatch",
+      "header_magic": null,
+      "version": null,
+      "json_chunk_type": null,
+      "bin_chunk_type": null,
+      "generator": null
+    }
+  ]
+}

@@ -1,0 +1,129 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-071",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "vcad-kernel-drafting/src/dimension/gdt.rs symbol/material/frame contracts",
+  "expected_symbol_cases": [
+    {
+      "symbol": "angularity",
+      "dxf_text": "%%cA",
+      "requires_datum": true
+    },
+    {
+      "symbol": "circular_runout",
+      "dxf_text": "%%cR",
+      "requires_datum": true
+    },
+    {
+      "symbol": "circularity",
+      "dxf_text": "%%c",
+      "requires_datum": false
+    },
+    {
+      "symbol": "concentricity",
+      "dxf_text": "(O)",
+      "requires_datum": true
+    },
+    {
+      "symbol": "cylindricity",
+      "dxf_text": "%%cC",
+      "requires_datum": false
+    },
+    {
+      "symbol": "flatness",
+      "dxf_text": "%%cF",
+      "requires_datum": false
+    },
+    {
+      "symbol": "parallelism",
+      "dxf_text": "//",
+      "requires_datum": true
+    },
+    {
+      "symbol": "perpendicularity",
+      "dxf_text": "%%cP",
+      "requires_datum": true
+    },
+    {
+      "symbol": "position",
+      "dxf_text": "%%cPOS",
+      "requires_datum": true
+    },
+    {
+      "symbol": "profile_of_line",
+      "dxf_text": "%%cL",
+      "requires_datum": false
+    },
+    {
+      "symbol": "profile_of_surface",
+      "dxf_text": "%%cS",
+      "requires_datum": false
+    },
+    {
+      "symbol": "straightness",
+      "dxf_text": "%%c-",
+      "requires_datum": false
+    },
+    {
+      "symbol": "symmetry",
+      "dxf_text": "=",
+      "requires_datum": true
+    },
+    {
+      "symbol": "total_runout",
+      "dxf_text": "%%cRR",
+      "requires_datum": true
+    }
+  ],
+  "expected_material_condition_cases": [
+    {
+      "condition": "lmc",
+      "dxf_text": "(L)"
+    },
+    {
+      "condition": "mmc",
+      "dxf_text": "(M)"
+    },
+    {
+      "condition": "rfs",
+      "dxf_text": ""
+    }
+  ],
+  "expected_frame_cases": [
+    {
+      "case_id": "flatness_no_datum",
+      "render_text": "FLAT|0.050",
+      "datum_requirement_satisfied": true,
+      "line_count": 5,
+      "text_count": 2
+    },
+    {
+      "case_id": "perpendicularity_missing_datum",
+      "render_text": "PERP|0.020",
+      "datum_requirement_satisfied": false,
+      "line_count": 5,
+      "text_count": 2
+    },
+    {
+      "case_id": "position_diameter_mmc",
+      "render_text": "POS|D0.125(M)|A|B(L)|C",
+      "datum_requirement_satisfied": true,
+      "line_count": 9,
+      "text_count": 5
+    }
+  ],
+  "expected_datum_cases": [
+    {
+      "case_id": "datum_a_with_leader",
+      "label": "A",
+      "line_count": 4,
+      "text_count": 1
+    },
+    {
+      "case_id": "datum_b_without_leader",
+      "label": "B",
+      "line_count": 3,
+      "text_count": 1
+    }
+  ]
+}

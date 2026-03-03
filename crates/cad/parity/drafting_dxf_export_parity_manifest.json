@@ -1,0 +1,58 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-076",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_corpus_path": "crates/cad/parity/fixtures/drafting_dxf_export_vcad_reference.json",
+  "reference_corpus_sha256": "cee6df8a5b08edec7c038b4caae4b0aeb1ee6becc6a373b230f66f992555e6a3",
+  "reference_source": "vcad/src/export/dxf.rs::DxfDraftingDocument + vcad-kernel-wasm::export_projected_view_to_dxf",
+  "reference_commit_match": true,
+  "case_snapshots": [
+    {
+      "case_id": "empty_view",
+      "edge_count": 0,
+      "visible_edge_count": 0,
+      "hidden_edge_count": 0,
+      "line_entity_count": 0,
+      "entity_visible_layer_count": 0,
+      "entity_hidden_layer_count": 0,
+      "byte_count": 397,
+      "deterministic_hash": "733ea69aaab23693",
+      "ends_with_eof": true
+    },
+    {
+      "case_id": "mixed_visibility",
+      "edge_count": 3,
+      "visible_edge_count": 2,
+      "hidden_edge_count": 1,
+      "line_entity_count": 3,
+      "entity_visible_layer_count": 2,
+      "entity_hidden_layer_count": 1,
+      "byte_count": 633,
+      "deterministic_hash": "f995b4f675c0711c",
+      "ends_with_eof": true
+    },
+    {
+      "case_id": "visible_only",
+      "edge_count": 1,
+      "visible_edge_count": 1,
+      "hidden_edge_count": 0,
+      "line_entity_count": 1,
+      "entity_visible_layer_count": 1,
+      "entity_hidden_layer_count": 0,
+      "byte_count": 477,
+      "deterministic_hash": "ee83a3d1c905b635",
+      "ends_with_eof": true
+    }
+  ],
+  "dxf_contract_match": true,
+  "deterministic_replay_match": true,
+  "deterministic_signature": "fb781621701ac0ca",
+  "parity_contracts": [
+    "DXF drafting exports emit AC1009 + INSUNITS millimeter header",
+    "visible edges map to VISIBLE/CONTINUOUS and hidden edges map to HIDDEN/HIDDEN",
+    "LINE entities preserve projected edge ordering and six-decimal coordinates",
+    "drafting dxf export fixtures replay deterministically"
+  ]
+}

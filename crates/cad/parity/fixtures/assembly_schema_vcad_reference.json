@@ -1,0 +1,46 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-056",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/crates/vcad-ir/src/lib.rs + ~/code/vcad/docs/features/assembly-joints.md",
+  "document_field_names": [
+    "partDefs",
+    "instances",
+    "joints",
+    "groundInstanceId"
+  ],
+  "part_def_field_names": [
+    "id",
+    "name",
+    "root",
+    "defaultMaterial"
+  ],
+  "instance_field_names": [
+    "id",
+    "partDefId",
+    "name",
+    "transform",
+    "material"
+  ],
+  "joint_field_names": [
+    "id",
+    "name",
+    "parentInstanceId",
+    "childInstanceId",
+    "parentAnchor",
+    "childAnchor",
+    "kind",
+    "state"
+  ],
+  "joint_kind_tags": [
+    "Ball",
+    "Cylindrical",
+    "Fixed",
+    "Revolute",
+    "Slider"
+  ],
+  "joint_kinds_with_limits": [
+    "Revolute",
+    "Slider"
+  ]
+}

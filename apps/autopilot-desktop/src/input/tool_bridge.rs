@@ -879,6 +879,16 @@ fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Value {
                         "session_id": state.cad_demo.session_id,
                         "document_revision": state.cad_demo.document_revision,
                         "active_variant_id": state.cad_demo.active_variant_id,
+                        "drawing_view_mode": state.cad_demo.drawing_view_mode.label(),
+                        "drawing_view_direction": state.cad_demo.drawing_view_direction.label(),
+                        "drawing_hidden_lines": state.cad_demo.drawing_show_hidden_lines,
+                        "drawing_dimensions": state.cad_demo.drawing_show_dimensions,
+                        "drawing_zoom": state.cad_demo.drawing_zoom,
+                        "drawing_pan": {
+                            "x": state.cad_demo.drawing_pan_x,
+                            "y": state.cad_demo.drawing_pan_y,
+                        },
+                        "drawing_detail_view_count": state.cad_demo.drawing_detail_views.len(),
                         "last_action": state.cad_demo.last_action,
                         "last_error": state.cad_demo.last_error,
                     }),
@@ -1386,6 +1396,25 @@ fn pane_action_to_hit_action(
             "bootstrap" => Ok(PaneHitAction::CadDemo(CadDemoPaneAction::BootstrapDemo)),
             "cycle_variant" => Ok(PaneHitAction::CadDemo(CadDemoPaneAction::CycleVariant)),
             "reset_camera" => Ok(PaneHitAction::CadDemo(CadDemoPaneAction::ResetCamera)),
+            "toggle_drawing_mode" => Ok(PaneHitAction::CadDemo(
+                CadDemoPaneAction::ToggleDrawingViewMode,
+            )),
+            "cycle_drawing_direction" => Ok(PaneHitAction::CadDemo(
+                CadDemoPaneAction::CycleDrawingViewDirection,
+            )),
+            "toggle_drawing_hidden_lines" => Ok(PaneHitAction::CadDemo(
+                CadDemoPaneAction::ToggleDrawingHiddenLines,
+            )),
+            "toggle_drawing_dimensions" => Ok(PaneHitAction::CadDemo(
+                CadDemoPaneAction::ToggleDrawingDimensions,
+            )),
+            "reset_drawing_view" => Ok(PaneHitAction::CadDemo(CadDemoPaneAction::ResetDrawingView)),
+            "add_drawing_detail" => Ok(PaneHitAction::CadDemo(
+                CadDemoPaneAction::AddDrawingDetailView,
+            )),
+            "clear_drawing_details" => Ok(PaneHitAction::CadDemo(
+                CadDemoPaneAction::ClearDrawingDetailViews,
+            )),
             "toggle_projection" => Ok(PaneHitAction::CadDemo(
                 CadDemoPaneAction::ToggleProjectionMode,
             )),
@@ -3943,6 +3972,13 @@ fn cad_action_from_key(
         "reset_session" => CadDemoPaneAction::ResetSession,
         "cycle_variant" => CadDemoPaneAction::CycleVariant,
         "reset_camera" => CadDemoPaneAction::ResetCamera,
+        "toggle_drawing_mode" => CadDemoPaneAction::ToggleDrawingViewMode,
+        "cycle_drawing_direction" => CadDemoPaneAction::CycleDrawingViewDirection,
+        "toggle_drawing_hidden_lines" => CadDemoPaneAction::ToggleDrawingHiddenLines,
+        "toggle_drawing_dimensions" => CadDemoPaneAction::ToggleDrawingDimensions,
+        "reset_drawing_view" => CadDemoPaneAction::ResetDrawingView,
+        "add_drawing_detail" => CadDemoPaneAction::AddDrawingDetailView,
+        "clear_drawing_details" => CadDemoPaneAction::ClearDrawingDetailViews,
         "toggle_projection" => CadDemoPaneAction::ToggleProjectionMode,
         "cycle_section_plane" => CadDemoPaneAction::CycleSectionPlane,
         "step_section_offset" => CadDemoPaneAction::StepSectionPlaneOffset,

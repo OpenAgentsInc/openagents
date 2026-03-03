@@ -1,0 +1,10 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-089",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "~/code/vcad/docs/features/text-to-cad.md",
+  "expected_family_count": 3,
+  "expected_models": ["cad0", "cad0-mini"],
+  "expected_samples_per_family": 2,
+  "expected_min_numeric_tokens": 3
+}

@@ -1,0 +1,41 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-036",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "feature_scope_snapshot": {
+    "part_id": "part.housing",
+    "feature_id": "feature.fillet.1",
+    "material_id": "ti-6al-4v",
+    "scope": "feature",
+    "density_kg_m3": 4430.0,
+    "assignment_hash": "05aff308b5dda1af"
+  },
+  "part_scope_snapshot": {
+    "part_id": "part.housing",
+    "feature_id": "feature.chamfer.1",
+    "material_id": "steel-1018",
+    "scope": "part",
+    "density_kg_m3": 7870.0,
+    "assignment_hash": "64ec19e0d49ef908"
+  },
+  "default_scope_snapshot": {
+    "part_id": "part.frame",
+    "feature_id": "feature.base",
+    "material_id": "al-6061-t6",
+    "scope": "default",
+    "density_kg_m3": 2700.0,
+    "assignment_hash": "05a7a4c82e212fce"
+  },
+  "deterministic_replay_match": true,
+  "invalid_material_error": "unknown material preset: unknown-material",
+  "deterministic_signature": "21f0458c596690fd",
+  "parity_contracts": [
+    "material assignment precedence is deterministic: feature > part > default",
+    "material preset lookup canonicalizes IDs to stable preset IDs",
+    "assignment receipts include stable scope labels and deterministic assignment hashes",
+    "part-level and feature-level assignments preserve deterministic replay behavior",
+    "unknown material IDs emit stable assignment validation errors"
+  ]
+}

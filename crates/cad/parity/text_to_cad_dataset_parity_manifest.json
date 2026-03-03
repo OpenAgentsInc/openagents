@@ -1,0 +1,41 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-089",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/text_to_cad_dataset_vcad_reference.json",
+  "reference_fixture_sha256": "8bf90e7b32d808dd771dcbab557d8ad1c37b0a6fa1cc6f74c4ee0096d3ae9eb8",
+  "reference_source": "~/code/vcad/docs/features/text-to-cad.md",
+  "reference_commit_match": true,
+  "sample_shape_match": true,
+  "annotation_contract_match": true,
+  "deterministic_replay_match": true,
+  "snapshot": {
+    "seed": 42,
+    "samples_per_family": 2,
+    "sample_count": 12,
+    "family_count": 3,
+    "family_counts": {
+      "bracket": 4,
+      "enclosure": 4,
+      "stand": 4
+    },
+    "model_counts": {
+      "cad0": 6,
+      "cad0-mini": 6
+    },
+    "min_numeric_token_count": 4,
+    "max_operation_count": 10,
+    "all_roots_single": true,
+    "dataset_hash": "ed097f50c5486602",
+    "ndjson_hash": "0e0784ce451deeb0"
+  },
+  "deterministic_signature": "cc526bd7b84d659e",
+  "parity_contracts": [
+    "dataset generator emits deterministic prompt->compact-ir samples for core part families",
+    "annotations include deterministic operation/root/token metadata",
+    "dataset export tooling emits stable ndjson payloads",
+    "dataset generation replay is deterministic"
+  ]
+}

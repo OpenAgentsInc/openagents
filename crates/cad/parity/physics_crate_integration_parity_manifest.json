@@ -1,0 +1,55 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-105",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/physics_crate_integration_vcad_reference.json",
+  "reference_fixture_sha256": "059a5b6cd4c63f6cf4bf85f1ff8868ceb6b974709cd0e43db85246c4ce0a9df0",
+  "reference_source": "~/code/vcad/crates/vcad-kernel-physics/src/lib.rs + ~/code/vcad/crates/vcad-kernel-physics/src/world.rs + ~/code/vcad/crates/vcad-sim/src/lib.rs",
+  "reference_issue_match": true,
+  "reference_commit_match": true,
+  "row_set_match": true,
+  "contract_set_match": true,
+  "deterministic_replay_match": true,
+  "rows": [
+    {
+      "backend": "phyz",
+      "case_id": "engine_backend",
+      "default_dt_seconds": 0.004166667,
+      "gravity_mps2": [
+        0.0,
+        0.0,
+        -9.81
+      ]
+    },
+    {
+      "batch_pipeline": "BatchSimPipeline",
+      "case_id": "integration_lane",
+      "simulation_crate": "vcad-sim",
+      "single_pipeline": "SimPipeline"
+    },
+    {
+      "case_id": "physics_crate_exports",
+      "crate": "vcad-kernel-physics",
+      "exports": [
+        "PhysicsWorld",
+        "JointState",
+        "Action",
+        "Observation",
+        "RobotEnv"
+      ]
+    }
+  ],
+  "contracts": [
+    "physics crate integration parity uses vcad-kernel-physics as the reference authority",
+    "physics integration parity artifacts are deterministic across replay",
+    "simulation integration parity keeps vcad-sim single and batch pipeline contracts"
+  ],
+  "deterministic_signature": "21be41faacd50ac7",
+  "parity_contracts": [
+    "physics crate integration parity uses vcad-kernel-physics as the reference authority",
+    "physics integration parity artifacts are deterministic across replay",
+    "simulation integration parity keeps vcad-sim single and batch pipeline contracts"
+  ]
+}

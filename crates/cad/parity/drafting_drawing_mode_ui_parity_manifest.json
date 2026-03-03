@@ -1,0 +1,150 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-074",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_corpus_path": "crates/cad/parity/fixtures/drafting_drawing_mode_ui_vcad_reference.json",
+  "reference_corpus_sha256": "5d7d6bceb68204269408793a2ef275421d0b58f8e5834d3d54294d92e965d7f9",
+  "reference_source": "packages/app/src/stores/drawing-store.ts drawing UI state + toolbar behavior",
+  "reference_commit_match": true,
+  "ui_case_snapshots": [
+    {
+      "case_id": "default_state",
+      "view_mode": "3d",
+      "view_direction": "front",
+      "show_hidden_lines": true,
+      "show_dimensions": true,
+      "zoom": 1.0,
+      "pan_x": 0.0,
+      "pan_y": 0.0,
+      "detail_count": 0,
+      "detail_ids": [],
+      "detail_labels": [],
+      "detail_scales": [],
+      "detail_centers_x": [],
+      "detail_centers_y": [],
+      "detail_widths": [],
+      "detail_heights": [],
+      "next_detail_id": 1
+    },
+    {
+      "case_id": "detail_view_lifecycle",
+      "view_mode": "2d",
+      "view_direction": "front",
+      "show_hidden_lines": true,
+      "show_dimensions": true,
+      "zoom": 1.0,
+      "pan_x": 0.0,
+      "pan_y": 0.0,
+      "detail_count": 1,
+      "detail_ids": [
+        "detail-3"
+      ],
+      "detail_labels": [
+        "C"
+      ],
+      "detail_scales": [
+        4.0
+      ],
+      "detail_centers_x": [
+        5.0
+      ],
+      "detail_centers_y": [
+        -5.0
+      ],
+      "detail_widths": [
+        20.0
+      ],
+      "detail_heights": [
+        20.0
+      ],
+      "next_detail_id": 4
+    },
+    {
+      "case_id": "direction_round_trip",
+      "view_mode": "2d",
+      "view_direction": "front",
+      "show_hidden_lines": true,
+      "show_dimensions": true,
+      "zoom": 1.0,
+      "pan_x": 0.0,
+      "pan_y": 0.0,
+      "detail_count": 0,
+      "detail_ids": [],
+      "detail_labels": [],
+      "detail_scales": [],
+      "detail_centers_x": [],
+      "detail_centers_y": [],
+      "detail_widths": [],
+      "detail_heights": [],
+      "next_detail_id": 1
+    },
+    {
+      "case_id": "mode_switch_and_direction_reset",
+      "view_mode": "2d",
+      "view_direction": "top",
+      "show_hidden_lines": true,
+      "show_dimensions": true,
+      "zoom": 1.0,
+      "pan_x": 0.0,
+      "pan_y": 0.0,
+      "detail_count": 0,
+      "detail_ids": [],
+      "detail_labels": [],
+      "detail_scales": [],
+      "detail_centers_x": [],
+      "detail_centers_y": [],
+      "detail_widths": [],
+      "detail_heights": [],
+      "next_detail_id": 1
+    },
+    {
+      "case_id": "visibility_toggles",
+      "view_mode": "2d",
+      "view_direction": "front",
+      "show_hidden_lines": false,
+      "show_dimensions": false,
+      "zoom": 1.0,
+      "pan_x": 0.0,
+      "pan_y": 0.0,
+      "detail_count": 0,
+      "detail_ids": [],
+      "detail_labels": [],
+      "detail_scales": [],
+      "detail_centers_x": [],
+      "detail_centers_y": [],
+      "detail_widths": [],
+      "detail_heights": [],
+      "next_detail_id": 1
+    },
+    {
+      "case_id": "zoom_and_pan_clamp",
+      "view_mode": "2d",
+      "view_direction": "front",
+      "show_hidden_lines": true,
+      "show_dimensions": true,
+      "zoom": 10.0,
+      "pan_x": 150.25,
+      "pan_y": -80.5,
+      "detail_count": 0,
+      "detail_ids": [],
+      "detail_labels": [],
+      "detail_scales": [],
+      "detail_centers_x": [],
+      "detail_centers_y": [],
+      "detail_widths": [],
+      "detail_heights": [],
+      "next_detail_id": 1
+    }
+  ],
+  "ui_contract_match": true,
+  "deterministic_replay_match": true,
+  "deterministic_signature": "3cd37a0906bdce55",
+  "parity_contracts": [
+    "drawing mode defaults to 3D/front with hidden lines and dimensions enabled",
+    "changing drawing view direction resets zoom and pan to defaults",
+    "drawing zoom clamps to 0.1x..10x and pan updates deterministically",
+    "detail view ids are monotonic and clear does not reset next detail id"
+  ]
+}

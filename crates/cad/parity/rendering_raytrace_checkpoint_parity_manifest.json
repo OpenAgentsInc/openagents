@@ -1,0 +1,59 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-104",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "plan_path": "crates/cad/docs/VCAD_PARITY_PLAN.md",
+  "required_issue_ids": [
+    "VCAD-PARITY-093",
+    "VCAD-PARITY-094",
+    "VCAD-PARITY-095",
+    "VCAD-PARITY-096",
+    "VCAD-PARITY-097",
+    "VCAD-PARITY-098",
+    "VCAD-PARITY-099",
+    "VCAD-PARITY-100",
+    "VCAD-PARITY-101",
+    "VCAD-PARITY-102",
+    "VCAD-PARITY-103"
+  ],
+  "validated_issue_ids": [
+    "VCAD-PARITY-093",
+    "VCAD-PARITY-094",
+    "VCAD-PARITY-095",
+    "VCAD-PARITY-096",
+    "VCAD-PARITY-097",
+    "VCAD-PARITY-098",
+    "VCAD-PARITY-099",
+    "VCAD-PARITY-100",
+    "VCAD-PARITY-101",
+    "VCAD-PARITY-102",
+    "VCAD-PARITY-103"
+  ],
+  "missing_issue_ids": [],
+  "mismatched_issue_ids": [],
+  "checked_manifest_paths": [
+    "crates/cad/parity/analytic_ray_intersections_parity_manifest.json",
+    "crates/cad/parity/bvh_build_traverse_parity_manifest.json",
+    "crates/cad/parity/direct_brep_raytrace_scaffolding_parity_manifest.json",
+    "crates/cad/parity/gpu_acceleration_parity_manifest.json",
+    "crates/cad/parity/mesh_upload_processing_parity_manifest.json",
+    "crates/cad/parity/raytrace_face_pick_parity_manifest.json",
+    "crates/cad/parity/raytrace_quality_mode_parity_manifest.json",
+    "crates/cad/parity/raytrace_ui_toggle_fallback_parity_manifest.json",
+    "crates/cad/parity/render_mode_parity_manifest.json",
+    "crates/cad/parity/trimmed_surface_ray_hit_parity_manifest.json",
+    "crates/cad/parity/viewport_camera_gizmo_parity_manifest.json"
+  ],
+  "plan_items_checked": true,
+  "parity_completion_percent": 100.0,
+  "checkpoint_pass": true,
+  "deterministic_signature": "c95d2e7fce5d4323",
+  "parity_contracts": [
+    "phase-h rendering/raytrace checkpoint validates all VCAD-PARITY-093..103 manifests",
+    "each phase-h rendering/raytrace manifest issue_id must match its expected VCAD-PARITY issue",
+    "phase-h plan entries must be checked before checkpoint pass",
+    "phase-h parity completion must be exactly 100.0%"
+  ]
+}

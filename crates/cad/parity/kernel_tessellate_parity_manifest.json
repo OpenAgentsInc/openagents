@@ -1,0 +1,60 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-016",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "default_params": {
+    "circle_segments": 32,
+    "height_segments": 1,
+    "latitude_segments": 16
+  },
+  "sample_meshes": {
+    "cube": {
+      "vertex_count": 24,
+      "triangle_count": 12,
+      "index_count": 36,
+      "normal_count": 24,
+      "signature": "3387c96614dc1cfb"
+    },
+    "cylinder": {
+      "vertex_count": 130,
+      "triangle_count": 128,
+      "index_count": 384,
+      "normal_count": 130,
+      "signature": "862e72995c2a3b60"
+    },
+    "sphere": {
+      "vertex_count": 561,
+      "triangle_count": 1024,
+      "index_count": 3072,
+      "normal_count": 561,
+      "signature": "fbc3de58708f0d8e"
+    },
+    "cone_pointed": {
+      "vertex_count": 66,
+      "triangle_count": 64,
+      "index_count": 192,
+      "normal_count": 66,
+      "signature": "4cde29fc1bae77b8"
+    },
+    "cone_frustum": {
+      "vertex_count": 130,
+      "triangle_count": 128,
+      "index_count": 384,
+      "normal_count": 130,
+      "signature": "69b896db2c7f6749"
+    }
+  },
+  "unsupported_surface_error": "invalid feature graph: kernel tessellation requires at least one surface",
+  "deterministic_contracts": [
+    "tessellate_brep uses TessellationParams::from_segments with deterministic clamps",
+    "TriangleMesh vertices/indices/normals are deterministic for identical inputs",
+    "Primitive classification routes cube/cylinder/sphere/cone constructors to stable tessellation paths"
+  ],
+  "diagnostic_contracts": [
+    "missing surfaces return CadError::InvalidFeatureGraph",
+    "unknown primitive topology classification returns CadError::InvalidFeatureGraph",
+    "tessellation never emits out-of-bounds indices for generated meshes"
+  ]
+}

@@ -541,6 +541,15 @@ pub struct CadDemoPaneState {
     pub hidden_line_mode: CadHiddenLineMode,
     pub snap_toggles: CadSnapToggles,
     pub projection_mode: CadProjectionMode,
+    pub drawing_view_mode: CadDrawingViewMode,
+    pub drawing_view_direction: CadDrawingViewDirection,
+    pub drawing_show_hidden_lines: bool,
+    pub drawing_show_dimensions: bool,
+    pub drawing_zoom: f32,
+    pub drawing_pan_x: f32,
+    pub drawing_pan_y: f32,
+    pub drawing_detail_views: Vec<CadDrawingDetailViewState>,
+    pub drawing_next_detail_id: u64,
     pub hotkey_profile: String,
     pub hotkeys: CadHotkeyBindings,
     pub three_d_mouse_mode: CadThreeDMouseMode,
@@ -557,6 +566,8 @@ pub struct CadDemoPaneState {
     pub timeline_selected_index: Option<usize>,
     pub timeline_scroll_offset: usize,
     pub selected_feature_params: Vec<(String, String)>,
+    pub assembly_schema: openagents_cad::assembly::CadAssemblySchema,
+    pub assembly_ui_state: openagents_cad::assembly::CadAssemblyUiState,
     pub dimensions: Vec<CadDimensionState>,
     pub dimension_edit: Option<CadDimensionEditState>,
     pub context_menu: CadContextMenuState,
@@ -915,6 +926,77 @@ impl CadProjectionMode {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CadDrawingViewMode {
+    ThreeD,
+    TwoD,
+}
+
+impl CadDrawingViewMode {
+    pub fn next(self) -> Self {
+        match self {
+            Self::ThreeD => Self::TwoD,
+            Self::TwoD => Self::ThreeD,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::ThreeD => "3d",
+            Self::TwoD => "2d",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CadDrawingViewDirection {
+    Front,
+    Back,
+    Top,
+    Bottom,
+    Left,
+    Right,
+    Isometric,
+}
+
+impl CadDrawingViewDirection {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Front => Self::Back,
+            Self::Back => Self::Top,
+            Self::Top => Self::Bottom,
+            Self::Bottom => Self::Left,
+            Self::Left => Self::Right,
+            Self::Right => Self::Isometric,
+            Self::Isometric => Self::Front,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Front => "front",
+            Self::Back => "back",
+            Self::Top => "top",
+            Self::Bottom => "bottom",
+            Self::Left => "left",
+            Self::Right => "right",
+            Self::Isometric => "isometric",
+        }
+    }
+
+    pub fn to_drafting_view_direction(self) -> openagents_cad::drafting::ViewDirection {
+        match self {
+            Self::Front => openagents_cad::drafting::ViewDirection::Front,
+            Self::Back => openagents_cad::drafting::ViewDirection::Back,
+            Self::Top => openagents_cad::drafting::ViewDirection::Top,
+            Self::Bottom => openagents_cad::drafting::ViewDirection::Bottom,
+            Self::Left => openagents_cad::drafting::ViewDirection::Left,
+            Self::Right => openagents_cad::drafting::ViewDirection::Right,
+            Self::Isometric => openagents_cad::drafting::ViewDirection::ISOMETRIC_STANDARD,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CadSectionAxis {
     X,
     Y,
@@ -1197,6 +1279,17 @@ pub struct CadDimensionEditState {
     pub last_error: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct CadDrawingDetailViewState {
+    pub detail_id: String,
+    pub label: String,
+    pub center_x: f32,
+    pub center_y: f32,
+    pub width: f32,
+    pub height: f32,
+    pub scale: f32,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CadContextMenuTargetKind {
     Body,
@@ -1335,6 +1428,62 @@ impl Default for CadDemoPaneState {
                 max_mm: 20.0,
             },
         ];
+        let assembly_schema = openagents_cad::assembly::CadAssemblySchema {
+            part_defs: std::collections::BTreeMap::from([
+                (
+                    "base".to_string(),
+                    openagents_cad::assembly::CadPartDef {
+                        id: "base".to_string(),
+                        name: Some("Base".to_string()),
+                        root: 1,
+                        default_material: Some("aluminum".to_string()),
+                    },
+                ),
+                (
+                    "arm".to_string(),
+                    openagents_cad::assembly::CadPartDef {
+                        id: "arm".to_string(),
+                        name: Some("Arm".to_string()),
+                        root: 2,
+                        default_material: Some("steel".to_string()),
+                    },
+                ),
+            ]),
+            instances: vec![
+                openagents_cad::assembly::CadPartInstance {
+                    id: "base-1".to_string(),
+                    part_def_id: "base".to_string(),
+                    name: Some("Base".to_string()),
+                    transform: Some(openagents_cad::assembly::CadTransform3D::identity()),
+                    material: None,
+                },
+                openagents_cad::assembly::CadPartInstance {
+                    id: "arm-1".to_string(),
+                    part_def_id: "arm".to_string(),
+                    name: Some("Arm".to_string()),
+                    transform: Some(openagents_cad::assembly::CadTransform3D {
+                        translation: openagents_cad::kernel_math::Vec3::new(10.0, 0.0, 0.0),
+                        rotation: openagents_cad::kernel_math::Vec3::new(0.0, 0.0, 0.0),
+                        scale: openagents_cad::kernel_math::Vec3::new(1.0, 1.0, 1.0),
+                    }),
+                    material: None,
+                },
+            ],
+            joints: vec![openagents_cad::assembly::CadAssemblyJoint {
+                id: "joint.hinge".to_string(),
+                name: Some("Hinge".to_string()),
+                parent_instance_id: Some("base-1".to_string()),
+                child_instance_id: "arm-1".to_string(),
+                parent_anchor: openagents_cad::kernel_math::Vec3::new(0.0, 0.0, 0.0),
+                child_anchor: openagents_cad::kernel_math::Vec3::new(0.0, 0.0, 0.0),
+                kind: openagents_cad::assembly::CadJointKind::Revolute {
+                    axis: openagents_cad::kernel_math::Vec3::new(0.0, 0.0, 1.0),
+                    limits: Some((-90.0, 90.0)),
+                },
+                state: 0.0,
+            }],
+            ground_instance_id: Some("base-1".to_string()),
+        };
         let session_id = "cad.session.local".to_string();
         let document_id = "cad.doc.demo-rack".to_string();
         let document_created_event = openagents_cad::events::CadEvent::new_with_key(
@@ -1396,6 +1545,15 @@ impl Default for CadDemoPaneState {
             hidden_line_mode: CadHiddenLineMode::Shaded,
             snap_toggles: CadSnapToggles::default(),
             projection_mode: CadProjectionMode::Orthographic,
+            drawing_view_mode: CadDrawingViewMode::ThreeD,
+            drawing_view_direction: CadDrawingViewDirection::Front,
+            drawing_show_hidden_lines: true,
+            drawing_show_dimensions: true,
+            drawing_zoom: 1.0,
+            drawing_pan_x: 0.0,
+            drawing_pan_y: 0.0,
+            drawing_detail_views: Vec::new(),
+            drawing_next_detail_id: 1,
             hotkey_profile: "default".to_string(),
             hotkeys: CadHotkeyBindings::default(),
             three_d_mouse_mode: CadThreeDMouseMode::Translate,
@@ -1413,6 +1571,8 @@ impl Default for CadDemoPaneState {
             timeline_selected_index: None,
             timeline_scroll_offset: 0,
             selected_feature_params: Vec::new(),
+            assembly_schema,
+            assembly_ui_state: openagents_cad::assembly::CadAssemblyUiState::default(),
             dimensions,
             dimension_edit: None,
             context_menu: CadContextMenuState::default(),
@@ -1593,6 +1753,38 @@ impl CadDemoPaneState {
             .iter()
             .find(|dimension| dimension.dimension_id == dimension_id)
             .map(|dimension| dimension.value_mm)
+    }
+
+    pub fn select_assembly_instance(&mut self, instance_id: &str) -> Result<(), String> {
+        self.assembly_ui_state
+            .select_instance(&self.assembly_schema, instance_id)
+            .map_err(|error| error.to_string())
+    }
+
+    pub fn select_assembly_joint(&mut self, joint_id: &str) -> Result<(), String> {
+        self.assembly_ui_state
+            .select_joint(&self.assembly_schema, joint_id)
+            .map_err(|error| error.to_string())
+    }
+
+    pub fn rename_selected_assembly_instance(&mut self, name: String) -> Result<(), String> {
+        self.assembly_ui_state
+            .rename_selected_instance(&mut self.assembly_schema, name)
+            .map_err(|error| error.to_string())
+    }
+
+    pub fn set_selected_assembly_joint_state(
+        &mut self,
+        requested_state: f64,
+    ) -> Result<openagents_cad::assembly::CadJointStateSemantics, String> {
+        self.assembly_ui_state
+            .set_selected_joint_state(&mut self.assembly_schema, requested_state)
+            .map_err(|error| error.to_string())
+    }
+
+    pub fn sync_assembly_ui_selection(&mut self) {
+        self.assembly_ui_state
+            .sync_with_schema(&self.assembly_schema);
     }
 
     pub fn set_variant_analysis_snapshot(
@@ -2059,6 +2251,69 @@ impl CadDemoPaneState {
 
     pub fn cycle_projection_mode(&mut self) {
         self.projection_mode = self.projection_mode.next();
+    }
+
+    pub fn toggle_drawing_view_mode(&mut self) -> CadDrawingViewMode {
+        self.drawing_view_mode = self.drawing_view_mode.next();
+        self.drawing_view_mode
+    }
+
+    pub fn cycle_drawing_view_direction(&mut self) -> CadDrawingViewDirection {
+        self.drawing_view_direction = self.drawing_view_direction.next();
+        self.reset_drawing_view();
+        self.drawing_view_direction
+    }
+
+    pub fn toggle_drawing_hidden_lines(&mut self) -> bool {
+        self.drawing_show_hidden_lines = !self.drawing_show_hidden_lines;
+        self.drawing_show_hidden_lines
+    }
+
+    pub fn toggle_drawing_dimensions(&mut self) -> bool {
+        self.drawing_show_dimensions = !self.drawing_show_dimensions;
+        self.drawing_show_dimensions
+    }
+
+    pub fn reset_drawing_view(&mut self) {
+        self.drawing_zoom = 1.0;
+        self.drawing_pan_x = 0.0;
+        self.drawing_pan_y = 0.0;
+    }
+
+    pub fn zoom_drawing_view_by_scroll(&mut self, scroll_dy: f32) {
+        let scale = (1.0 + (-scroll_dy * 0.002)).clamp(0.5, 1.5);
+        self.drawing_zoom = (self.drawing_zoom * scale).clamp(0.1, 10.0);
+    }
+
+    pub fn pan_drawing_view_by_drag(&mut self, drag_dx: f32, drag_dy: f32) {
+        self.drawing_pan_x = (self.drawing_pan_x + drag_dx).clamp(-10_000.0, 10_000.0);
+        self.drawing_pan_y = (self.drawing_pan_y + drag_dy).clamp(-10_000.0, 10_000.0);
+    }
+
+    pub fn add_drawing_detail_view(&mut self) -> CadDrawingDetailViewState {
+        let detail_id = format!("detail-{}", self.drawing_next_detail_id);
+        self.drawing_next_detail_id = self.drawing_next_detail_id.saturating_add(1);
+        let label =
+            char::from_u32(u32::from(b'A') + (self.drawing_detail_views.len().min(25) as u32))
+                .unwrap_or('A')
+                .to_string();
+        let detail = CadDrawingDetailViewState {
+            detail_id,
+            label,
+            center_x: 0.0,
+            center_y: 0.0,
+            width: 40.0,
+            height: 40.0,
+            scale: 2.0,
+        };
+        self.drawing_detail_views.push(detail.clone());
+        detail
+    }
+
+    pub fn clear_drawing_detail_views(&mut self) -> usize {
+        let count = self.drawing_detail_views.len();
+        self.drawing_detail_views.clear();
+        count
     }
 
     pub fn cycle_section_axis(&mut self) -> Option<CadSectionAxis> {

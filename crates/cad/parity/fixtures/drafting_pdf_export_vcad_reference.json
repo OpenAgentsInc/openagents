@@ -1,0 +1,22 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-077",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "source": "vcad baseline: no CAD-core drawing PDF exporter; docs/tutorials route PDF output through print pipeline",
+  "expected_case_snapshots": [
+    {
+      "case_id": "empty_view",
+      "edge_count": 0,
+      "error_format": "pdf",
+      "error_reason": "vcad baseline has no native drawing PDF exporter; use desktop/browser print pipeline",
+      "error_message": "export failed (pdf): vcad baseline has no native drawing PDF exporter; use desktop/browser print pipeline"
+    },
+    {
+      "case_id": "mixed_visibility",
+      "edge_count": 2,
+      "error_format": "pdf",
+      "error_reason": "vcad baseline has no native drawing PDF exporter; use desktop/browser print pipeline",
+      "error_message": "export failed (pdf): vcad baseline has no native drawing PDF exporter; use desktop/browser print pipeline"
+    }
+  ]
+}
