@@ -39,7 +39,7 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 182,
+    "source_artifact_count": 184,
     "artifact_ids": [
       "analytic_ray_intersections_parity_manifest",
       "assembly_acceptance_scenes_parity_manifest",
@@ -78,6 +78,7 @@
       "drafting_persistence_parity_manifest",
       "drafting_projection_parity_manifest",
       "drafting_section_parity_manifest",
+      "ecad_pcb_lane_parity_manifest",
       "ecad_schematic_lane_parity_manifest",
       "ecad_symbols_lane_parity_manifest",
       "expanded_finishing_parity_manifest",
@@ -116,6 +117,7 @@
       "fixtures_drafting_persistence_vcad_reference",
       "fixtures_drafting_projection_vcad_reference",
       "fixtures_drafting_section_vcad_reference",
+      "fixtures_ecad_pcb_lane_vcad_reference",
       "fixtures_ecad_schematic_lane_vcad_reference",
       "fixtures_ecad_symbols_lane_vcad_reference",
       "fixtures_feature_op_hash_vcad_reference_corpus",

@@ -116,6 +116,7 @@ LANE_LABELS=(
     "branch-fork-workflow"
     "ecad-symbols-lane"
     "ecad-schematic-lane"
+    "ecad-pcb-lane"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -517,6 +518,9 @@ run_lane "ecad-symbols-lane" \
 
 run_lane "ecad-schematic-lane" \
     "$ROOT_DIR/scripts/cad/parity-ecad-schematic-lane-ci.sh"
+
+run_lane "ecad-pcb-lane" \
+    "$ROOT_DIR/scripts/cad/parity-ecad-pcb-lane-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
