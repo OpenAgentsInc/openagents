@@ -15,7 +15,7 @@ Issue coverage: `VCAD-PARITY-010`
 | commands match rate | `0.083333` |
 | open risks | `24` |
 | open hard blockers (p0) | `16` |
-| CI source artifact count | `194` |
+| CI source artifact count | `196` |
 
 ## Profile Gates
 
@@ -133,6 +133,7 @@ Issue coverage: `VCAD-PARITY-010`
 - `fixtures_slicer_bambu_lane_vcad_reference`
 - `fixtures_slicer_core_lane_vcad_reference`
 - `fixtures_slicer_gcode_lane_vcad_reference`
+- `fixtures_slicer_wasm_lane_vcad_reference`
 - `fixtures_step_export_post_boolean_vcad_reference`
 - `fixtures_step_import_entity_vcad_reference`
 - `fixtures_stl_import_export_vcad_reference`
@@ -205,6 +206,7 @@ Issue coverage: `VCAD-PARITY-010`
 - `slicer_bambu_lane_parity_manifest`
 - `slicer_core_lane_parity_manifest`
 - `slicer_gcode_lane_parity_manifest`
+- `slicer_wasm_lane_parity_manifest`
 - `step_export_post_boolean_parity_manifest`
 - `step_import_entity_parity_manifest`
 - `stl_import_export_parity_manifest`
