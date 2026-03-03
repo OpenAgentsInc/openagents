@@ -39,7 +39,7 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 208,
+    "source_artifact_count": 210,
     "artifact_ids": [
       "analytic_ray_intersections_parity_manifest",
       "assembly_acceptance_scenes_parity_manifest",
@@ -143,6 +143,7 @@
       "fixtures_mcp_simulation_tools_vcad_reference",
       "fixtures_mesh_upload_processing_vcad_reference",
       "fixtures_parity_fixture_corpus",
+      "fixtures_performance_scorecard_thresholds_vcad_reference",
       "fixtures_physics_crate_integration_vcad_reference",
       "fixtures_presence_cursor_selection_vcad_reference",
       "fixtures_raytrace_face_pick_vcad_reference",
@@ -201,6 +202,7 @@
       "parity_risk_register",
       "parity_scorecard",
       "pattern_parity_manifest",
+      "performance_scorecard_thresholds_parity_manifest",
       "physics_crate_integration_parity_manifest",
       "presence_cursor_selection_parity_manifest",
       "primitive_contracts_parity_manifest",

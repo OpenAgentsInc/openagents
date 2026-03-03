@@ -219,6 +219,8 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/fixtures/security_posture_review_vcad_reference.json"
     "crates/cad/parity/deterministic_replay_all_fixtures_parity_manifest.json"
     "crates/cad/parity/fixtures/deterministic_replay_all_fixtures_vcad_reference.json"
+    "crates/cad/parity/performance_scorecard_thresholds_parity_manifest.json"
+    "crates/cad/parity/fixtures/performance_scorecard_thresholds_vcad_reference.json"
     "crates/cad/parity/fixtures/parity_fixture_corpus.json"
 )
 
