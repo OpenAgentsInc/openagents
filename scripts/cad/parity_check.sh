@@ -104,6 +104,7 @@ LANE_LABELS=(
     "collision-shape-generation"
     "convex-decomposition"
     "joint-physics-mapping"
+    "simulation-step-reset-api"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -469,6 +470,9 @@ run_lane "convex-decomposition" \
 
 run_lane "joint-physics-mapping" \
     "$ROOT_DIR/scripts/cad/parity-joint-physics-mapping-ci.sh"
+
+run_lane "simulation-step-reset-api" \
+    "$ROOT_DIR/scripts/cad/parity-simulation-step-reset-api-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
