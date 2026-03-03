@@ -20,7 +20,7 @@ Pinned values:
 - `CAST_APP_IDENTITY=b/0000000000000000000000000000000000000000000000000000000000000000/a471d3fcc436ae7cbc0e0c82a68cdc8e003ee21ef819e1acf834e11c43ce47d8`
 - `CAST_APP_BIN_NAME=charms-cast-v0.2.0.wasm`
 - `CAST_APP_RELEASE_URL=https://github.com/CharmsDev/cast-releases/releases/tag/v0.2.0`
-- `CAST_SCROLLS_DEFAULT_BASE_URL=https://scrolls-v9.charms.dev/main`
+- `CAST_SCROLLS_DEFAULT_BASE_URL` must come from current operator/Scrolls deployment (do not assume legacy `scrolls-v9` hostnames)
 
 Binary integrity policy:
 
@@ -36,9 +36,9 @@ Required:
 - `CAST_APP_BIN`
 - `CAST_APP_IDENTITY`
 - `CAST_OPERATOR_PARAMS_FILE`
+- `CAST_PRIVATE_INPUTS_FILE`
 - `CAST_PREV_TXS_FILE`
-- `CAST_FUNDING_UTXO`
-- `CAST_FUNDING_UTXO_VALUE`
+- `CAST_FUNDING_UTXO` (non-charm BTC input for fees/change in create/cancel-replace flows)
 - `CAST_CHANGE_ADDRESS`
 - `CAST_FEE_RATE`
 
@@ -49,6 +49,12 @@ Conditionally required:
 - `CAST_CANCEL_XPRV_FILE` (required for cancellation signing)
 - `CAST_CANCEL_DERIVATION_PATH` (required for cancellation signing)
 - `BITCOIND_CONTAINER` (optional passthrough for `sign-txs`)
+
+Template rendering keys (for `skills/cast/assets/*.template.yaml`):
+
+- `CAST_APP_INDEX` / `CAST_ASSET_APP_INDEX` (default `0` / `1` when CAST app sorts before asset app)
+- `CAST_ORDER_SCROLLS_DEST`, `CAST_REPLACEMENT_SCROLLS_DEST`, `CAST_TAKER_RECEIVE_DEST`, `CAST_ORDER_MAKER_DEST`, `CAST_FEE_DEST`
+- `tx.coins[*].dest` values must be hex destination bytes (derive via `charms util dest --addr <address>`)
 
 ## Artifacts Directory
 
@@ -92,7 +98,7 @@ Key script-to-receipt mappings:
 ## Execution Summary
 
 1. Run `skills/cast/scripts/check-cast-prereqs.sh <mode>`.
-2. Render spell template from `skills/cast/assets/`.
+2. Render spell + private-input templates from `skills/cast/assets/`.
 3. Run check + mock prove + real prove.
 4. Apply wallet and Scrolls signatures.
 5. Broadcast only after explicit confirmation.

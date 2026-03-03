@@ -29,8 +29,8 @@ Symptoms:
 Remediation:
 
 1. Confirm `CAST_APP_IDENTITY` and `CAST_APP_BIN` match pinned contract version.
-2. Confirm `CAST_PREV_TXS_FILE` includes all ancestry for `ins[].utxo_id`.
-3. Confirm `private_inputs.$CAST.params` includes valid operator-signed params.
+2. Confirm `CAST_PREV_TXS_FILE` includes all ancestry for `tx.ins[]`.
+3. Confirm the private-inputs file contains valid operator params at `${CAST_APP_IDENTITY}.params`.
 4. Re-run check before prove.
 
 ## Scrolls Signing Failures
@@ -57,7 +57,8 @@ Remediation:
 
 1. Regenerate message with exact target `{utxo_id}`.
 2. Re-sign with expected derivation path.
-3. Ensure signature placed at `private_inputs.$CAST.edit_orders.cancel.<index>` for the canceled input.
+3. Ensure signature placed at `${CAST_APP_IDENTITY}.edit_orders.cancel.<index>` for the canceled input.
+4. If `cancel-msg` reports missing `apps` on v11 spells, provide `--message "<utxo_id outputs_hash>"` or upgrade to a v11-aware `cancel-msg` build.
 
 ## Broadcast Rejections
 

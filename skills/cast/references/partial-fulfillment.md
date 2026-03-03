@@ -13,8 +13,14 @@ skills/cast/scripts/check-cast-prereqs.sh taker
 2. Render partial-fill spell and run check/prove.
 
 ```bash
-skills/cast/scripts/cast-spell-check.sh --spell ./rendered/partial-fulfill-order.yaml
-skills/cast/scripts/cast-spell-prove.sh --spell ./rendered/partial-fulfill-order.yaml --mock
+skills/cast/scripts/cast-spell-check.sh \
+  --spell ./rendered/partial-fulfill-order.yaml \
+  --private-inputs-file ./rendered/partial-fulfill-order.private-inputs.yaml
+skills/cast/scripts/cast-spell-prove.sh \
+  --spell ./rendered/partial-fulfill-order.yaml \
+  --private-inputs-file ./rendered/partial-fulfill-order.private-inputs.yaml \
+  --change-address "bc1q..." \
+  --mock
 ```
 
 3. Sign and submit with both wallet and Scrolls signatures.

@@ -1,0 +1,13 @@
+${CAST_APP_IDENTITY}:
+  params:
+    - fulfill:
+        app: ${CAST_APP_IDENTITY}
+        fee_config:
+          taker_fee: ${CAST_TAKER_FEE_BPS}
+          matcher_fee: ${CAST_MATCHER_FEE_BPS}
+          fee_address: ${CAST_FEE_ADDRESS}
+        min_value: ${CAST_MIN_VALUE_SATS}
+    - ${CAST_OPERATOR_SIGNATURE}
+  edit_orders:
+    cancel:
+      ${CAST_CANCEL_INPUT_INDEX}: ${CAST_CANCEL_SIGNATURE_HEX}

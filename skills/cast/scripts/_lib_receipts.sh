@@ -39,6 +39,8 @@ cast_verify_app_bin_hash() {
     local app_bin="$1"
     local expected_hash="${CAST_APP_BIN_SHA256:-}"
     local actual_hash
+    local expected_hash_lc
+    local actual_hash_lc
     actual_hash="$(cast_file_sha256 "$app_bin")"
 
     if [[ -z "$actual_hash" ]]; then
@@ -51,7 +53,10 @@ cast_verify_app_bin_hash() {
         return 0
     fi
 
-    if [[ "${actual_hash,,}" != "${expected_hash,,}" ]]; then
+    actual_hash_lc="$(printf '%s' "$actual_hash" | tr '[:upper:]' '[:lower:]')"
+    expected_hash_lc="$(printf '%s' "$expected_hash" | tr '[:upper:]' '[:lower:]')"
+
+    if [[ "$actual_hash_lc" != "$expected_hash_lc" ]]; then
         printf 'CAST app binary hash mismatch for %s\nExpected: %s\nActual:   %s\n' \
             "$app_bin" "$expected_hash" "$actual_hash" >&2
         return 1

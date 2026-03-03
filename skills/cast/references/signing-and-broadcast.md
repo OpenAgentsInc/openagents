@@ -2,6 +2,11 @@
 
 Use this guide for nonce/address derivation, signing, and safe broadcast controls.
 
+Spell reminder for Charms v11:
+
+- `tx.coins[*].dest` must be hex-encoded destination bytes.
+- derive destination bytes with `charms util dest --addr <bitcoin_address>`.
+
 ## Scrolls Address Derivation
 
 ```bash

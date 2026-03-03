@@ -243,7 +243,8 @@ Pinned CAST contract values (current lock):
 - `CAST_APP_IDENTITY`: `b/0000000000000000000000000000000000000000000000000000000000000000/a471d3fcc436ae7cbc0e0c82a68cdc8e003ee21ef819e1acf834e11c43ce47d8`
 - `CAST_APP_BIN_NAME`: `charms-cast-v0.2.0.wasm`
 - `CAST_APP_RELEASE_URL`: `https://github.com/CharmsDev/cast-releases/releases/tag/v0.2.0`
-- `CAST_SCROLLS_DEFAULT_BASE_URL`: `https://scrolls-v9.charms.dev/main`
+- `CAST_SPELL_VERSION`: `11` (Charms v11 unified spell format)
+- `CAST_SCROLLS_DEFAULT_BASE_URL`: sourced from current operator deployment (do not hardcode legacy `scrolls-v9` endpoint)
 
 Binary integrity policy:
 
@@ -260,12 +261,14 @@ Core environment keys:
 - `CAST_APP_BIN_SHA256` (required for production/CI promotion)
 - `CAST_APP_IDENTITY` (defaults to pinned identity above)
 - `CAST_OPERATOR_PARAMS_FILE` (JSON/YAML payload)
+- `CAST_PRIVATE_INPUTS_FILE`
 - `CAST_PREV_TXS_FILE`
-- `CAST_FUNDING_UTXO`
-- `CAST_FUNDING_UTXO_VALUE`
+- `CAST_FUNDING_UTXO` (included directly in `tx.ins` for maker create/cancel flows)
 - `CAST_CHANGE_ADDRESS`
 - `CAST_FEE_RATE`
 - `CAST_MEMPOOL_BROADCAST_URL`
+- `CAST_APP_INDEX` / `CAST_ASSET_APP_INDEX`
+- destination-byte variables for spell coins (e.g. `CAST_ORDER_SCROLLS_DEST`)
 
 Signing-related keys (prefer file inputs over env where possible):
 
@@ -277,6 +280,7 @@ Policy:
 
 - Secrets must not be committed.
 - Scripts must fail fast when required values are missing.
+- Spell templates must use v11 shape (`version`, `tx`, `app_public_inputs`), with app private inputs in separate files.
 
 ## 8. Data and Artifact Conventions
 

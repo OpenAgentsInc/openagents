@@ -24,7 +24,17 @@ skills/cast/scripts/cast-cancel-signature.sh \
   --path "0/0"
 ```
 
-2. Inject signature into `private_inputs.$CAST.edit_orders.cancel.<input_index>`.
+If your `cancel-msg` build cannot derive messages from v11 spells yet, pass:
+
+```bash
+--message "<utxo_id outputs_hash>"
+```
+
+2. Inject signature into `create/cancel-replace private-inputs` at:
+
+```text
+${CAST_APP_IDENTITY}.edit_orders.cancel.<input_index>
+```
 
 3. Run check/prove via `cast-spell-check.sh` and `cast-spell-prove.sh`.
 
@@ -38,4 +48,4 @@ skills/cast/scripts/cast-cancel-signature.sh \
 
 - `Cancellation message must match "{utxo_id} {outputs_hash}"`: validate `--cancel-utxo` and spell output hash source.
 - `xprv file is empty`: pass a file-backed xprv with no extra whitespace/newlines.
-- Signature rejected in prove: confirm `private_inputs.$CAST.edit_orders.cancel.<index>` matches canceled input index.
+- Signature rejected in prove: confirm `${CAST_APP_IDENTITY}.edit_orders.cancel.<index>` matches canceled input index.

@@ -10,18 +10,21 @@ Validate CAST scripts and workflows with deterministic positive and negative sce
 
 1. Create ask order
 - Render `create-ask-order.template.yaml`
+- Render `create-ask-order.private-inputs.template.yaml`
 - Run `cast-spell-check.sh`
 - Run `cast-spell-prove.sh --mock`
 - Expect success receipt files.
 
 2. Cancel and replace order
 - Render `cancel-replace-order.template.yaml`
+- Render `cancel-replace-order.private-inputs.template.yaml`
 - Generate cancellation signature with `cast-cancel-signature.sh`
 - Run check + mock prove
 - Expect signature accepted at configured cancel input index.
 
 3. Partial fulfillment
 - Render `partial-fulfill-order.template.yaml`
+- Render `partial-fulfill-order.private-inputs.template.yaml`
 - Run check + mock prove
 - Verify remainder invariants in rendered spell and decode output.
 
