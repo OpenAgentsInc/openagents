@@ -244,8 +244,12 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
 
             let text_input_focused = any_text_input_focused(state);
             if event.state == ElementState::Pressed
-                && is_command_palette_shortcut(&event.logical_key, state.input_modifiers)
-                && !text_input_focused
+                && should_open_command_palette(
+                    &event.logical_key,
+                    state.input_modifiers,
+                    text_input_focused,
+                    state.command_palette.is_open(),
+                )
             {
                 toggle_command_palette(state);
                 state.window.request_redraw();
@@ -2733,7 +2737,7 @@ mod tests {
         TurnSkillAttachment, TurnSkillSource, assemble_chat_turn_input,
         build_create_invoice_command, build_pay_invoice_command, build_spark_command_for_action,
         cad_hotkey_action_matrix, cad_pick_kind_label, cad_pick_kind_to_selection_kind,
-        cad_policy_skill_candidates_for_turn, cad_turn_approval_policy,
+        cad_policy_skill_candidates_for_turn, cad_turn_approval_policy, should_open_command_palette,
         is_command_palette_shortcut, is_toggle_fullscreen_shortcut, parse_positive_amount_str,
         resolve_turn_skill_by_name, resolve_turn_skill_by_path, validate_lightning_payment_request,
     };
@@ -2866,6 +2870,16 @@ mod tests {
         assert!(!is_command_palette_shortcut(&key, cmd_mods));
         assert!(!is_command_palette_shortcut(&key, ctrl_mods));
         assert!(is_command_palette_shortcut(&key, none_mods));
+    }
+
+    #[test]
+    fn command_palette_shortcut_opens_only_when_palette_closed_and_no_text_focus() {
+        let key = WinitLogicalKey::Character("k".into());
+        let mods = Modifiers::default();
+
+        assert!(should_open_command_palette(&key, mods, false, false));
+        assert!(!should_open_command_palette(&key, mods, false, true));
+        assert!(!should_open_command_palette(&key, mods, true, false));
     }
 
     #[test]
