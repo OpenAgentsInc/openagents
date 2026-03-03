@@ -24,8 +24,9 @@ use openagents_cad::validity::{
 use crate::app_state::{
     ActivityEventDomain, ActivityEventRow, AutopilotProgressBlock, AutopilotProgressRow,
     CadBuildFailureClass, CadBuildSessionArchiveState, CadBuildSessionPhase, CadBuildSessionState,
-    CadCameraViewSnap, CadDemoPaneState, CadDemoWarningState, CadRebuildReceiptState, CadSnapMode,
-    CadThreeDMouseAxis, CadTimelineRowState, PaneLoadState, RenderState,
+    CadCameraViewSnap, CadDemoPaneState, CadDemoWarningState, CadGraspObjectShape,
+    CadGraspSimulationSample, CadRebuildReceiptState, CadSnapMode, CadThreeDMouseAxis,
+    CadTimelineRowState, PaneLoadState, RenderState,
 };
 use crate::cad_rebuild_worker::{
     CadBackgroundRebuildWorker, CadRebuildCompleted, CadRebuildRequest, CadRebuildResponse,
@@ -1061,10 +1062,10 @@ fn toggle_gripper_jaw_animation(state: &mut CadDemoPaneState) -> bool {
         openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper
             | openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated
     ) {
-        state.last_error = Some(
-            "gripper jaw animation requires parallel-jaw gripper design profile".to_string(),
-        );
-        state.last_action = Some("CAD gripper jaw animation ignored for non-gripper profile".to_string());
+        state.last_error =
+            Some("gripper jaw animation requires parallel-jaw gripper design profile".to_string());
+        state.last_action =
+            Some("CAD gripper jaw animation ignored for non-gripper profile".to_string());
         return true;
     }
 
@@ -1074,7 +1075,8 @@ fn toggle_gripper_jaw_animation(state: &mut CadDemoPaneState) -> bool {
         .find(|dimension| dimension.dimension_id == "jaw_open_mm")
     else {
         state.last_error = Some("jaw_open_mm dimension missing from CAD state".to_string());
-        state.last_action = Some("CAD gripper jaw animation failed: missing jaw dimension".to_string());
+        state.last_action =
+            Some("CAD gripper jaw animation failed: missing jaw dimension".to_string());
         return true;
     };
 
@@ -1347,6 +1349,7 @@ fn apply_completed_rebuild(
         ));
     }
     refresh_warning_state(state, completed.document_revision, &receipt.variant_id);
+    refresh_gripper_grasp_simulation(state);
     refresh_timeline_state(
         state,
         &completed.graph,
@@ -1862,10 +1865,49 @@ struct GripperVariantDimensions {
     servo_mount_hole_diameter_mm: f64,
     print_fit_mm: f64,
     print_clearance_mm: f64,
+    underactuated_mode: bool,
+    compliant_joint_count: u8,
+    flexure_thickness_mm: f64,
+    single_servo_drive: bool,
 }
 
 impl GripperVariantDimensions {
     fn from_state(state: &CadDemoPaneState) -> Self {
+        let dispatch = state.active_dispatch_state();
+        let underactuated_mode =
+            dispatch
+                .map(|value| value.underactuated_mode)
+                .unwrap_or(matches!(
+                    state.active_design_profile(),
+                    openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated
+                ));
+        let compliant_joint_count = dispatch
+            .and_then(|value| value.compliant_joint_count)
+            .unwrap_or_else(|| {
+                dimension_value_mm(
+                    state,
+                    "compliant_joint_count",
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_COMPLIANT_JOINT_COUNT
+                        as f64,
+                )
+                .round()
+                .clamp(
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_COMPLIANT_JOINT_COUNT as f64,
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_COMPLIANT_JOINT_COUNT as f64,
+                ) as u8
+            });
+        let flexure_thickness_mm = dispatch
+            .and_then(|value| value.flexure_thickness_mm)
+            .unwrap_or_else(|| {
+                dimension_value_mm(
+                    state,
+                    "flexure_thickness_mm",
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_FLEXURE_THICKNESS_MM,
+                )
+            });
+        let single_servo_drive = dispatch
+            .map(|value| value.single_servo_drive)
+            .unwrap_or(true);
         Self {
             jaw_open_mm: dimension_value_mm(
                 state,
@@ -1912,6 +1954,10 @@ impl GripperVariantDimensions {
                 "print_clearance_mm",
                 openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_PRINT_CLEARANCE_MM,
             ),
+            underactuated_mode,
+            compliant_joint_count,
+            flexure_thickness_mm,
+            single_servo_drive,
         }
     }
 
@@ -1943,9 +1989,7 @@ fn build_parallel_jaw_gripper_feature_graph(state: &CadDemoPaneState) -> Feature
     let gripper = GripperVariantDimensions::from_state(state)
         .with_variant_deltas(state.active_variant_id.as_str());
     let finger_height_mm = (gripper.finger_thickness_mm * 2.4).max(10.0);
-
-    FeatureGraph {
-        nodes: vec![
+    let mut nodes = vec![
             FeatureNode {
                 id: "feature.gripper.base".to_string(),
                 name: "gripper_base".to_string(),
@@ -2160,12 +2204,208 @@ fn build_parallel_jaw_gripper_feature_graph(state: &CadDemoPaneState) -> Feature
                     ),
                 ]),
             },
-        ],
+        ];
+    if gripper.underactuated_mode {
+        nodes.extend([
+            FeatureNode {
+                id: "feature.gripper.flexure.left".to_string(),
+                name: "gripper_flexure_left".to_string(),
+                operation_key: "gripper.flexure.left.v1".to_string(),
+                depends_on: vec!["feature.gripper.finger.left".to_string()],
+                params: BTreeMap::from([
+                    ("variant".to_string(), state.active_variant_id.clone()),
+                    (
+                        "compliant_joint_count".to_string(),
+                        gripper.compliant_joint_count.to_string(),
+                    ),
+                    (
+                        "jaw_open_mm".to_string(),
+                        format!("{:.3}", gripper.jaw_open_mm),
+                    ),
+                    (
+                        "flexure_thickness_mm".to_string(),
+                        format!("{:.3}", gripper.flexure_thickness_mm),
+                    ),
+                    (
+                        "finger_length_mm".to_string(),
+                        format!("{:.3}", gripper.finger_length_mm),
+                    ),
+                    (
+                        "finger_thickness_mm".to_string(),
+                        format!("{:.3}", gripper.finger_thickness_mm),
+                    ),
+                    (
+                        "base_thickness_mm".to_string(),
+                        format!("{:.3}", gripper.base_thickness_mm),
+                    ),
+                ]),
+            },
+            FeatureNode {
+                id: "feature.gripper.flexure.right".to_string(),
+                name: "gripper_flexure_right".to_string(),
+                operation_key: "gripper.flexure.right.v1".to_string(),
+                depends_on: vec!["feature.gripper.finger.right".to_string()],
+                params: BTreeMap::from([
+                    ("variant".to_string(), state.active_variant_id.clone()),
+                    (
+                        "compliant_joint_count".to_string(),
+                        gripper.compliant_joint_count.to_string(),
+                    ),
+                    (
+                        "jaw_open_mm".to_string(),
+                        format!("{:.3}", gripper.jaw_open_mm),
+                    ),
+                    (
+                        "flexure_thickness_mm".to_string(),
+                        format!("{:.3}", gripper.flexure_thickness_mm),
+                    ),
+                    (
+                        "finger_length_mm".to_string(),
+                        format!("{:.3}", gripper.finger_length_mm),
+                    ),
+                    (
+                        "finger_thickness_mm".to_string(),
+                        format!("{:.3}", gripper.finger_thickness_mm),
+                    ),
+                    (
+                        "base_thickness_mm".to_string(),
+                        format!("{:.3}", gripper.base_thickness_mm),
+                    ),
+                ]),
+            },
+            FeatureNode {
+                id: "feature.gripper.compliant_pads".to_string(),
+                name: "gripper_compliant_pads".to_string(),
+                operation_key: "gripper.compliant_pads.v1".to_string(),
+                depends_on: vec![
+                    "feature.gripper.finger.left".to_string(),
+                    "feature.gripper.finger.right".to_string(),
+                ],
+                params: BTreeMap::from([
+                    ("variant".to_string(), state.active_variant_id.clone()),
+                    (
+                        "jaw_open_mm".to_string(),
+                        format!("{:.3}", gripper.jaw_open_mm),
+                    ),
+                    (
+                        "finger_length_mm".to_string(),
+                        format!("{:.3}", gripper.finger_length_mm),
+                    ),
+                    (
+                        "finger_height_mm".to_string(),
+                        format!("{:.3}", finger_height_mm),
+                    ),
+                    (
+                        "finger_thickness_mm".to_string(),
+                        format!("{:.3}", gripper.finger_thickness_mm),
+                    ),
+                    (
+                        "base_thickness_mm".to_string(),
+                        format!("{:.3}", gripper.base_thickness_mm),
+                    ),
+                    (
+                        "flexure_thickness_mm".to_string(),
+                        format!("{:.3}", gripper.flexure_thickness_mm),
+                    ),
+                ]),
+            },
+            FeatureNode {
+                id: "feature.gripper.single_drive_linkage".to_string(),
+                name: "gripper_single_drive_linkage".to_string(),
+                operation_key: "gripper.single_drive_linkage.v1".to_string(),
+                depends_on: vec![
+                    "feature.gripper.base".to_string(),
+                    "feature.gripper.flexure.left".to_string(),
+                    "feature.gripper.flexure.right".to_string(),
+                ],
+                params: BTreeMap::from([
+                    ("variant".to_string(), state.active_variant_id.clone()),
+                    (
+                        "single_servo_drive".to_string(),
+                        if gripper.single_servo_drive { "1" } else { "0" }.to_string(),
+                    ),
+                    (
+                        "jaw_open_mm".to_string(),
+                        format!("{:.3}", gripper.jaw_open_mm),
+                    ),
+                    (
+                        "base_width_mm".to_string(),
+                        format!("{:.3}", gripper.base_width_mm),
+                    ),
+                    (
+                        "base_thickness_mm".to_string(),
+                        format!("{:.3}", gripper.base_thickness_mm),
+                    ),
+                ]),
+            },
+        ]);
     }
+    FeatureGraph { nodes }
 }
 
 fn dimension_value_mm(state: &CadDemoPaneState, dimension_id: &str, fallback: f64) -> f64 {
     state.dimension_value_mm(dimension_id).unwrap_or(fallback)
+}
+
+fn refresh_gripper_grasp_simulation(state: &mut CadDemoPaneState) {
+    let is_gripper_profile = matches!(
+        state.active_design_profile(),
+        openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper
+            | openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated
+    );
+    if !is_gripper_profile {
+        state.grasp_simulation_samples.clear();
+        state.grasp_simulation_last_updated_revision = state.document_revision;
+        return;
+    }
+    let gripper = GripperVariantDimensions::from_state(state)
+        .with_variant_deltas(state.active_variant_id.as_str());
+    let base_aperture_mm = gripper.jaw_open_mm.max(1.0);
+    let compliance_gain = if gripper.underactuated_mode {
+        (gripper.compliant_joint_count as f64) * (1.8 / gripper.flexure_thickness_mm.max(0.4))
+    } else {
+        0.0
+    };
+    let seed_jitter = ((state.grasp_simulation_seed % 13) as f64) * 0.01;
+
+    let samples = [
+        (CadGraspObjectShape::Sphere, 0.86 + seed_jitter, 1.30, 2_u8),
+        (CadGraspObjectShape::Cube, 0.78 + seed_jitter, 0.52, 2_u8),
+        (CadGraspObjectShape::Capsule, 0.90 + seed_jitter, 1.25, 3_u8),
+    ]
+    .into_iter()
+    .map(
+        |(shape, object_scale, adaptation_factor, base_contact_points)| {
+            let object_span_mm = base_aperture_mm * object_scale;
+            let closure_mm = (base_aperture_mm - object_span_mm
+                + (compliance_gain * adaptation_factor))
+                .max(0.0);
+            let compliance_deflection_mm = if gripper.underactuated_mode {
+                (compliance_gain * adaptation_factor * 0.22).max(0.0)
+            } else {
+                0.0
+            };
+            let contact_points = base_contact_points.saturating_add(
+                if gripper.underactuated_mode && compliance_deflection_mm > 0.2 {
+                    1
+                } else {
+                    0
+                },
+            );
+            let adaptation_score =
+                ((closure_mm + compliance_deflection_mm) / base_aperture_mm).clamp(0.0, 1.0);
+            CadGraspSimulationSample {
+                shape,
+                closure_mm,
+                contact_points,
+                compliance_deflection_mm,
+                adaptation_score,
+            }
+        },
+    )
+    .collect::<Vec<_>>();
+    state.grasp_simulation_samples = samples;
+    state.grasp_simulation_last_updated_revision = state.document_revision;
 }
 
 fn refresh_warning_state(state: &mut CadDemoPaneState, document_revision: u64, variant_id: &str) {
@@ -2180,12 +2420,9 @@ fn build_profile_warning_set(
     variant_id: &str,
 ) -> Vec<CadDemoWarningState> {
     let mut warnings = match state.active_design_profile() {
-        openagents_cad::dispatch::CadDesignProfile::Rack => {
-            validity_warnings_from_snapshot(build_rack_demo_validity_snapshot(
-                document_revision,
-                variant_id,
-            ))
-        }
+        openagents_cad::dispatch::CadDesignProfile::Rack => validity_warnings_from_snapshot(
+            build_rack_demo_validity_snapshot(document_revision, variant_id),
+        ),
         openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper
         | openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated => {
             validity_warnings_from_snapshot(build_gripper_demo_validity_snapshot(
@@ -2289,7 +2526,8 @@ fn append_gripper_printability_warnings(
 
     let hole_radius_mm = gripper.servo_mount_hole_diameter_mm * 0.5;
     let hole_center_offset_mm = (gripper.base_width_mm * 0.22).max(8.0);
-    let hole_edge_margin_mm = (gripper.base_width_mm * 0.5) - hole_center_offset_mm - hole_radius_mm;
+    let hole_edge_margin_mm =
+        (gripper.base_width_mm * 0.5) - hole_center_offset_mm - hole_radius_mm;
     if hole_edge_margin_mm < 2.5 {
         warnings.push(CadDemoWarningState {
             warning_id: format!("warning.custom.{}", warnings.len()),
@@ -2871,12 +3109,12 @@ mod tests {
     use super::{
         activity_row_from_cad_event, analysis_snapshot_from_mesh, apply_cad_demo_action,
         apply_rebuild_response, drain_worker_responses_from_pane, enqueue_rebuild_cycle,
-        parallel_jaw_gripper_bootstrap_state,
-        rebuild_trigger_for_chat_intent, run_step_export_from_active_mesh,
+        parallel_jaw_gripper_bootstrap_state, rebuild_trigger_for_chat_intent,
+        run_step_export_from_active_mesh,
     };
     use crate::app_state::{
         ActivityEventDomain, CadBuildFailureClass, CadBuildSessionPhase, CadDemoPaneState,
-        CadTimelineRowState,
+        CadGraspObjectShape, CadTimelineRowState,
     };
     use crate::cad_rebuild_worker::{CadRebuildFailed, CadRebuildResponse};
     use crate::pane_system::CadDemoPaneAction;
@@ -3172,7 +3410,10 @@ mod tests {
             .apply_chat_intent_for_thread("thread.gripper.materials", &baseline_material)
             .expect("baseline set-material should dispatch");
         assert_eq!(
-            state.variant_materials.get("variant.baseline").map(String::as_str),
+            state
+                .variant_materials
+                .get("variant.baseline")
+                .map(String::as_str),
             Some("steel-1018")
         );
 
@@ -3187,11 +3428,17 @@ mod tests {
             .apply_chat_intent_for_thread("thread.gripper.materials", &wide_material)
             .expect("wide-jaw set-material should dispatch");
         assert_eq!(
-            state.variant_materials.get("variant.wide-jaw").map(String::as_str),
+            state
+                .variant_materials
+                .get("variant.wide-jaw")
+                .map(String::as_str),
             Some("al-5052-h32")
         );
         assert_eq!(
-            state.variant_materials.get("variant.baseline").map(String::as_str),
+            state
+                .variant_materials
+                .get("variant.baseline")
+                .map(String::as_str),
             Some("steel-1018"),
             "setting material on wide-jaw must not overwrite baseline"
         );
@@ -4388,6 +4635,118 @@ mod tests {
             .expect("jaw dimension should remain available");
         assert!(!state.gripper_jaw_open);
         assert!(closed_jaw <= opened_jaw);
+    }
+
+    #[test]
+    fn underactuated_gripper_profile_generates_distinct_compliant_geometry() {
+        let mut baseline = parallel_jaw_gripper_bootstrap_state();
+        wait_for_receipt(&mut baseline);
+        let baseline_hash = baseline
+            .last_rebuild_receipt
+            .as_ref()
+            .map(|receipt| receipt.mesh_hash.clone())
+            .expect("baseline receipt should exist");
+
+        let mut underactuated = CadDemoPaneState::default();
+        underactuated
+            .apply_chat_intent_for_thread(
+                "thread-underactuated-geometry",
+                &openagents_cad::intent::CadIntent::CreateParallelJawGripperSpec(
+                    openagents_cad::intent::CreateParallelJawGripperSpecIntent {
+                        jaw_open_mm: 36.0,
+                        finger_length_mm: 66.0,
+                        finger_thickness_mm: 7.5,
+                        base_width_mm: 82.0,
+                        base_depth_mm: 54.0,
+                        base_thickness_mm: 8.5,
+                        servo_mount_hole_diameter_mm: 2.9,
+                        print_fit_mm: 0.15,
+                        print_clearance_mm: 0.35,
+                        underactuated_mode: true,
+                        compliant_joint_count: 3,
+                        flexure_thickness_mm: 1.2,
+                        single_servo_drive: true,
+                    },
+                ),
+            )
+            .expect("underactuated intent should apply");
+        enqueue_rebuild_cycle(&mut underactuated, "test-underactuated-geometry")
+            .expect("underactuated rebuild should queue");
+        wait_for_receipt(&mut underactuated);
+        assert_eq!(
+            underactuated.active_design_profile(),
+            openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated
+        );
+        let underactuated_hash = underactuated
+            .last_rebuild_receipt
+            .as_ref()
+            .map(|receipt| receipt.mesh_hash.clone())
+            .expect("underactuated receipt should exist");
+        assert_ne!(baseline_hash, underactuated_hash);
+        assert!(
+            underactuated
+                .timeline_rows
+                .iter()
+                .any(|row| row.feature_id == "feature.gripper.flexure.left")
+        );
+        assert!(
+            underactuated
+                .timeline_rows
+                .iter()
+                .any(|row| row.feature_id == "feature.gripper.single_drive_linkage")
+        );
+    }
+
+    #[test]
+    fn underactuated_grasp_simulation_is_adaptive_and_deterministic() {
+        let mut state = CadDemoPaneState::default();
+        state
+            .apply_chat_intent_for_thread(
+                "thread-underactuated-sim",
+                &openagents_cad::intent::CadIntent::CreateParallelJawGripperSpec(
+                    openagents_cad::intent::CreateParallelJawGripperSpecIntent {
+                        jaw_open_mm: 36.0,
+                        finger_length_mm: 66.0,
+                        finger_thickness_mm: 7.5,
+                        base_width_mm: 82.0,
+                        base_depth_mm: 54.0,
+                        base_thickness_mm: 8.5,
+                        servo_mount_hole_diameter_mm: 2.9,
+                        print_fit_mm: 0.15,
+                        print_clearance_mm: 0.35,
+                        underactuated_mode: true,
+                        compliant_joint_count: 3,
+                        flexure_thickness_mm: 1.2,
+                        single_servo_drive: true,
+                    },
+                ),
+            )
+            .expect("underactuated intent should apply");
+        enqueue_rebuild_cycle(&mut state, "test-underactuated-sim-a")
+            .expect("simulation rebuild A should queue");
+        wait_for_receipt(&mut state);
+        let samples_a = state.grasp_simulation_samples.clone();
+        assert_eq!(samples_a.len(), 3);
+        let sphere = samples_a
+            .iter()
+            .find(|sample| sample.shape == CadGraspObjectShape::Sphere)
+            .expect("sphere sample should exist");
+        let cube = samples_a
+            .iter()
+            .find(|sample| sample.shape == CadGraspObjectShape::Cube)
+            .expect("cube sample should exist");
+        let capsule = samples_a
+            .iter()
+            .find(|sample| sample.shape == CadGraspObjectShape::Capsule)
+            .expect("capsule sample should exist");
+        assert!(sphere.closure_mm > cube.closure_mm);
+        assert!(capsule.contact_points >= sphere.contact_points);
+
+        enqueue_rebuild_cycle(&mut state, "test-underactuated-sim-b")
+            .expect("simulation rebuild B should queue");
+        wait_for_receipt(&mut state);
+        let samples_b = state.grasp_simulation_samples.clone();
+        assert_eq!(samples_a, samples_b);
     }
 
     #[test]
