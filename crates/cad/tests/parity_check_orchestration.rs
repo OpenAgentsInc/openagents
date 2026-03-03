@@ -69,6 +69,7 @@ fn parity_check_script_list_mode_includes_required_lanes() {
     assert!(lines.contains(&"trimmed-surface-ray-hit"));
     assert!(lines.contains(&"bvh-build-traverse"));
     assert!(lines.contains(&"raytrace-quality-mode"));
+    assert!(lines.contains(&"raytrace-face-pick"));
     assert!(lines.contains(&"ci-artifact-manifest"));
     assert!(lines.contains(&"risk-register-workflow"));
     assert!(lines.contains(&"baseline-dashboard"));
