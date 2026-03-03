@@ -510,6 +510,7 @@ pub struct CadDemoPaneState {
     pub document_revision: u64,
     pub active_variant_id: String,
     pub variant_ids: Vec<String>,
+    pub variant_materials: std::collections::BTreeMap<String, String>,
     pub active_variant_tile_index: usize,
     pub variant_viewports: Vec<CadVariantViewportState>,
     pub last_rebuild_receipt: Option<CadRebuildReceiptState>,
@@ -541,6 +542,7 @@ pub struct CadDemoPaneState {
     pub hidden_line_mode: CadHiddenLineMode,
     pub snap_toggles: CadSnapToggles,
     pub projection_mode: CadProjectionMode,
+    pub viewport_layout: CadViewportLayout,
     pub drawing_view_mode: CadDrawingViewMode,
     pub drawing_view_direction: CadDrawingViewDirection,
     pub drawing_show_hidden_lines: bool,
@@ -907,6 +909,28 @@ impl Default for CadSnapToggles {
 pub enum CadProjectionMode {
     Orthographic,
     Perspective,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CadViewportLayout {
+    Single,
+    Quad,
+}
+
+impl CadViewportLayout {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Single => Self::Quad,
+            Self::Quad => Self::Single,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Single => "single",
+            Self::Quad => "quad",
+        }
+    }
 }
 
 impl CadProjectionMode {
@@ -1398,6 +1422,15 @@ impl Default for CadDemoPaneState {
             .iter()
             .map(|variant_id| (variant_id.clone(), Vec::new()))
             .collect::<std::collections::BTreeMap<_, _>>();
+        let variant_materials = variant_ids
+            .iter()
+            .map(|variant_id| {
+                (
+                    variant_id.clone(),
+                    openagents_cad::materials::DEFAULT_CAD_MATERIAL_ID.to_string(),
+                )
+            })
+            .collect::<std::collections::BTreeMap<_, _>>();
         let dimensions = vec![
             CadDimensionState {
                 dimension_id: "width_mm".to_string(),
@@ -1426,6 +1459,70 @@ impl Default for CadDemoPaneState {
                 value_mm: 6.0,
                 min_mm: 2.0,
                 max_mm: 20.0,
+            },
+            CadDimensionState {
+                dimension_id: "jaw_open_mm".to_string(),
+                label: "Jaw Open".to_string(),
+                value_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_JAW_OPEN_MM,
+                min_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_JAW_OPEN_MM,
+                max_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_JAW_OPEN_MM,
+            },
+            CadDimensionState {
+                dimension_id: "finger_length_mm".to_string(),
+                label: "Finger Length".to_string(),
+                value_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_LENGTH_MM,
+                min_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_FINGER_LENGTH_MM,
+                max_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_FINGER_LENGTH_MM,
+            },
+            CadDimensionState {
+                dimension_id: "finger_thickness_mm".to_string(),
+                label: "Finger Thick".to_string(),
+                value_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_THICKNESS_MM,
+                min_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_FINGER_THICKNESS_MM,
+                max_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_FINGER_THICKNESS_MM,
+            },
+            CadDimensionState {
+                dimension_id: "base_width_mm".to_string(),
+                label: "Base Width".to_string(),
+                value_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_BASE_WIDTH_MM,
+                min_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_BASE_WIDTH_MM,
+                max_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_BASE_WIDTH_MM,
+            },
+            CadDimensionState {
+                dimension_id: "base_depth_mm".to_string(),
+                label: "Base Depth".to_string(),
+                value_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_BASE_DEPTH_MM,
+                min_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_BASE_DEPTH_MM,
+                max_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_BASE_DEPTH_MM,
+            },
+            CadDimensionState {
+                dimension_id: "base_thickness_mm".to_string(),
+                label: "Base Thick".to_string(),
+                value_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_BASE_THICKNESS_MM,
+                min_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_BASE_THICKNESS_MM,
+                max_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_BASE_THICKNESS_MM,
+            },
+            CadDimensionState {
+                dimension_id: "servo_mount_hole_diameter_mm".to_string(),
+                label: "Servo Hole".to_string(),
+                value_mm:
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_MOUNT_HOLE_DIAMETER_MM,
+                min_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_SERVO_MOUNT_HOLE_DIAMETER_MM,
+                max_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_SERVO_MOUNT_HOLE_DIAMETER_MM,
+            },
+            CadDimensionState {
+                dimension_id: "print_fit_mm".to_string(),
+                label: "Print Fit".to_string(),
+                value_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_PRINT_FIT_MM,
+                min_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_PRINT_FIT_MM,
+                max_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_PRINT_FIT_MM,
+            },
+            CadDimensionState {
+                dimension_id: "print_clearance_mm".to_string(),
+                label: "Print Clear".to_string(),
+                value_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_PRINT_CLEARANCE_MM,
+                min_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_PRINT_CLEARANCE_MM,
+                max_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_PRINT_CLEARANCE_MM,
             },
         ];
         let assembly_schema = openagents_cad::assembly::CadAssemblySchema {
@@ -1514,6 +1611,7 @@ impl Default for CadDemoPaneState {
             document_revision: 0,
             active_variant_id: initial_variant_id.clone(),
             variant_ids,
+            variant_materials,
             active_variant_tile_index: 0,
             variant_viewports,
             last_rebuild_receipt: None,
@@ -1545,6 +1643,7 @@ impl Default for CadDemoPaneState {
             hidden_line_mode: CadHiddenLineMode::Shaded,
             snap_toggles: CadSnapToggles::default(),
             projection_mode: CadProjectionMode::Orthographic,
+            viewport_layout: CadViewportLayout::Single,
             drawing_view_mode: CadDrawingViewMode::ThreeD,
             drawing_view_direction: CadDrawingViewDirection::Front,
             drawing_show_hidden_lines: true,
@@ -1589,6 +1688,173 @@ fn current_epoch_millis() -> u64 {
 }
 
 impl CadDemoPaneState {
+    fn default_analysis_for_variant(&self, variant_id: &str) -> openagents_cad::contracts::CadAnalysis {
+        openagents_cad::contracts::CadAnalysis {
+            document_revision: self.document_revision,
+            variant_id: variant_id.to_string(),
+            material_id: self
+                .variant_materials
+                .get(variant_id)
+                .cloned()
+                .or_else(|| Some(openagents_cad::materials::DEFAULT_CAD_MATERIAL_ID.to_string())),
+            volume_mm3: None,
+            mass_kg: None,
+            center_of_gravity_mm: None,
+            estimated_cost_usd: None,
+            max_deflection_mm: None,
+            estimator_metadata: std::collections::BTreeMap::new(),
+            objective_scores: std::collections::BTreeMap::new(),
+        }
+    }
+
+    pub fn active_dispatch_state(&self) -> Option<&openagents_cad::dispatch::CadDispatchState> {
+        let session_id = self.active_chat_session_id.as_ref().unwrap_or(&self.session_id);
+        self.dispatch_sessions.get(session_id)
+    }
+
+    pub fn active_design_profile(&self) -> openagents_cad::dispatch::CadDesignProfile {
+        self.active_dispatch_state()
+            .map(|state| state.design_profile)
+            .unwrap_or_default()
+    }
+
+    fn profile_dimension_ids(
+        profile: openagents_cad::dispatch::CadDesignProfile,
+    ) -> &'static [&'static str] {
+        match profile {
+            openagents_cad::dispatch::CadDesignProfile::Rack => {
+                &["width_mm", "depth_mm", "height_mm", "wall_mm"]
+            }
+            openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper => &[
+                "jaw_open_mm",
+                "finger_length_mm",
+                "finger_thickness_mm",
+                "base_width_mm",
+            ],
+        }
+    }
+
+    fn align_dimensions_for_profile(&mut self, profile: openagents_cad::dispatch::CadDesignProfile) {
+        let preferred_ids = Self::profile_dimension_ids(profile);
+        let mut reordered = Vec::with_capacity(self.dimensions.len());
+        for dimension_id in preferred_ids {
+            if let Some(index) = self
+                .dimensions
+                .iter()
+                .position(|dimension| dimension.dimension_id == *dimension_id)
+            {
+                reordered.push(self.dimensions[index].clone());
+            }
+        }
+        for dimension in &self.dimensions {
+            if !reordered
+                .iter()
+                .any(|entry| entry.dimension_id == dimension.dimension_id)
+            {
+                reordered.push(dimension.clone());
+            }
+        }
+        self.dimensions = reordered;
+    }
+
+    pub fn visible_dimension_indices(&self) -> Vec<usize> {
+        let preferred_ids = Self::profile_dimension_ids(self.active_design_profile());
+        self.dimensions
+            .iter()
+            .enumerate()
+            .filter(|(_, dimension)| preferred_ids.contains(&dimension.dimension_id.as_str()))
+            .map(|(index, _)| index)
+            .collect()
+    }
+
+    pub fn visible_dimension_slots(&self) -> Vec<(usize, &CadDimensionState)> {
+        self.visible_dimension_indices()
+            .into_iter()
+            .filter_map(|index| self.dimensions.get(index).map(|dimension| (index, dimension)))
+            .collect()
+    }
+
+    pub fn dimension_index_for_visible_row(&self, visible_row_index: usize) -> Option<usize> {
+        self.visible_dimension_indices().get(visible_row_index).copied()
+    }
+
+    pub fn ensure_variant_family_for_profile(
+        &mut self,
+        profile: openagents_cad::dispatch::CadDesignProfile,
+    ) {
+        let target = match profile {
+            openagents_cad::dispatch::CadDesignProfile::Rack => vec![
+                "variant.baseline".to_string(),
+                "variant.lightweight".to_string(),
+                "variant.low-cost".to_string(),
+                "variant.stiffness".to_string(),
+            ],
+            openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper => vec![
+                "variant.baseline".to_string(),
+                "variant.wide-jaw".to_string(),
+                "variant.long-reach".to_string(),
+                "variant.stiff-finger".to_string(),
+            ],
+        };
+        if self.variant_ids == target {
+            return;
+        }
+
+        let previous_active = self.active_variant_id.clone();
+        let existing_viewports = self
+            .variant_viewports
+            .iter()
+            .map(|view| (view.variant_id.clone(), view.clone()))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        self.variant_ids = target.clone();
+        self.variant_viewports = target
+            .iter()
+            .map(|variant_id| {
+                existing_viewports
+                    .get(variant_id)
+                    .cloned()
+                    .unwrap_or_else(|| CadVariantViewportState::for_variant(variant_id))
+            })
+            .collect();
+
+        for variant_id in &target {
+            self.variant_materials
+                .entry(variant_id.clone())
+                .or_insert_with(|| openagents_cad::materials::DEFAULT_CAD_MATERIAL_ID.to_string());
+            self.variant_warning_sets
+                .entry(variant_id.clone())
+                .or_default();
+            if !self.variant_analysis_snapshots.contains_key(variant_id) {
+                let default_analysis = self.default_analysis_for_variant(variant_id);
+                self.variant_analysis_snapshots
+                    .insert(variant_id.clone(), default_analysis);
+            }
+        }
+        self.variant_materials
+            .retain(|variant_id, _| target.contains(variant_id));
+        self.variant_warning_sets
+            .retain(|variant_id, _| target.contains(variant_id));
+        self.variant_analysis_snapshots
+            .retain(|variant_id, _| target.contains(variant_id));
+
+        self.active_variant_id = if target.contains(&previous_active) {
+            previous_active
+        } else {
+            target
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "variant.baseline".to_string())
+        };
+        self.active_variant_tile_index = self
+            .variant_viewports
+            .iter()
+            .position(|viewport| viewport.variant_id == self.active_variant_id)
+            .unwrap_or(0);
+        self.align_dimensions_for_profile(profile);
+        self.sync_global_from_variant_viewport();
+        self.sync_active_variant_payloads_from_maps();
+    }
+
     fn sync_active_variant_viewport_from_global(&mut self) {
         let Some(active) = self
             .variant_viewports
@@ -1665,6 +1931,38 @@ impl CadDemoPaneState {
     pub fn set_hovered_geometry_for_active_variant(&mut self, value: Option<String>) {
         self.hovered_geometry_ref = value;
         self.sync_active_variant_viewport_from_global();
+    }
+
+    fn set_dimension_value_mm_if_present(&mut self, dimension_id: &str, value_mm: f64) {
+        let Some(dimension) = self
+            .dimensions
+            .iter_mut()
+            .find(|dimension| dimension.dimension_id == dimension_id)
+        else {
+            return;
+        };
+        if !value_mm.is_finite() {
+            return;
+        }
+        dimension.value_mm = value_mm.clamp(dimension.min_mm, dimension.max_mm);
+    }
+
+    pub fn apply_parallel_jaw_gripper_spec_dimensions(
+        &mut self,
+        spec: &openagents_cad::intent::CreateParallelJawGripperSpecIntent,
+    ) {
+        self.set_dimension_value_mm_if_present("jaw_open_mm", spec.jaw_open_mm);
+        self.set_dimension_value_mm_if_present("finger_length_mm", spec.finger_length_mm);
+        self.set_dimension_value_mm_if_present("finger_thickness_mm", spec.finger_thickness_mm);
+        self.set_dimension_value_mm_if_present("base_width_mm", spec.base_width_mm);
+        self.set_dimension_value_mm_if_present("base_depth_mm", spec.base_depth_mm);
+        self.set_dimension_value_mm_if_present("base_thickness_mm", spec.base_thickness_mm);
+        self.set_dimension_value_mm_if_present(
+            "servo_mount_hole_diameter_mm",
+            spec.servo_mount_hole_diameter_mm,
+        );
+        self.set_dimension_value_mm_if_present("print_fit_mm", spec.print_fit_mm);
+        self.set_dimension_value_mm_if_present("print_clearance_mm", spec.print_clearance_mm);
     }
 
     pub fn begin_dimension_edit(&mut self, index: usize) -> bool {
@@ -2096,7 +2394,18 @@ impl CadDemoPaneState {
             .entry(session_id.clone())
             .or_default();
         let receipt = openagents_cad::dispatch::dispatch_cad_intent(intent, dispatch_state)?;
+        let profile = dispatch_state.design_profile;
         self.document_revision = receipt.state_revision;
+        self.ensure_variant_family_for_profile(profile);
+        match intent {
+            openagents_cad::intent::CadIntent::CreateParallelJawGripperSpec(spec) => {
+                self.apply_parallel_jaw_gripper_spec_dimensions(spec);
+            }
+            openagents_cad::intent::CadIntent::SetMaterial(payload) => {
+                self.set_active_variant_material(payload.material_id.as_str());
+            }
+            _ => {}
+        }
         self.last_chat_intent_name = Some(intent.intent_name().to_string());
         self.last_action = Some(format!(
             "CAD chat intent {} applied to {} (rev {})",
@@ -2388,13 +2697,54 @@ impl CadDemoPaneState {
 
     pub fn cycle_material_preset(&mut self) -> String {
         let current = self
-            .analysis_snapshot
-            .material_id
-            .as_deref()
+            .variant_materials
+            .get(&self.active_variant_id)
+            .map(String::as_str)
+            .or(self.analysis_snapshot.material_id.as_deref())
             .unwrap_or(openagents_cad::materials::DEFAULT_CAD_MATERIAL_ID);
         let next = openagents_cad::materials::next_material_preset_id(current).to_string();
+        self.variant_materials
+            .insert(self.active_variant_id.clone(), next.clone());
+        if let Some(analysis) = self
+            .variant_analysis_snapshots
+            .get_mut(&self.active_variant_id)
+        {
+            analysis.material_id = Some(next.clone());
+        }
         self.analysis_snapshot.material_id = Some(next.clone());
         next
+    }
+
+    pub fn set_active_variant_material(&mut self, material_id: &str) {
+        let normalized = material_id.trim().to_string();
+        if normalized.is_empty() {
+            return;
+        }
+        self.variant_materials
+            .insert(self.active_variant_id.clone(), normalized.clone());
+        if let Some(analysis) = self
+            .variant_analysis_snapshots
+            .get_mut(&self.active_variant_id)
+        {
+            analysis.material_id = Some(normalized.clone());
+        }
+        self.analysis_snapshot.material_id = Some(normalized);
+    }
+
+    pub fn toggle_viewport_layout(&mut self) -> CadViewportLayout {
+        self.viewport_layout = self.viewport_layout.next();
+        self.viewport_layout
+    }
+
+    pub fn visible_variant_ids(&self) -> Vec<String> {
+        match self.viewport_layout {
+            CadViewportLayout::Single => vec![self.active_variant_id.clone()],
+            CadViewportLayout::Quad => self.variant_ids.iter().take(4).cloned().collect(),
+        }
+    }
+
+    pub fn all_variants_visible(&self) -> bool {
+        self.visible_variant_ids().len() == self.variant_ids.len()
     }
 
     pub fn cycle_hotkey_profile(&mut self) -> Result<(), String> {

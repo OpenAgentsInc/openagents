@@ -57,6 +57,7 @@ This runbook is for diagnosing Codex app-server integration failures in `autopil
    - `cargo test -p autopilot-desktop labs_api_smoke_commands_emit_responses_and_notifications -- --nocapture`
 4. Targeted CAD integration tests:
    - `cargo test -p autopilot-desktop cad_chat_build_e2e_harness -- --nocapture`
+   - `cargo test -p autopilot-desktop cad_chat_build_e2e_harness_week1_gripper_matches_golden -- --nocapture`
    - `cargo test -p autopilot-desktop tool_bridge -- --nocapture`
 
 ## Common Failure Patterns

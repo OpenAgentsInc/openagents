@@ -1,6 +1,11 @@
 use crate::intent::{
     AdjustParameterIntent, CadAdjustOperation, CadIntent, CadIntentValidationError,
-    CompareVariantsIntent, CreateRackSpecIntent, ExportIntent, SelectIntent, SetMaterialIntent,
+    CompareVariantsIntent, CreateParallelJawGripperSpecIntent, CreateRackSpecIntent, ExportIntent,
+    PARALLEL_JAW_GRIPPER_DEFAULT_BASE_DEPTH_MM, PARALLEL_JAW_GRIPPER_DEFAULT_BASE_THICKNESS_MM,
+    PARALLEL_JAW_GRIPPER_DEFAULT_BASE_WIDTH_MM, PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_LENGTH_MM,
+    PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_THICKNESS_MM, PARALLEL_JAW_GRIPPER_DEFAULT_JAW_OPEN_MM,
+    PARALLEL_JAW_GRIPPER_DEFAULT_PRINT_CLEARANCE_MM, PARALLEL_JAW_GRIPPER_DEFAULT_PRINT_FIT_MM,
+    PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_MOUNT_HOLE_DIAMETER_MM, SelectIntent, SetMaterialIntent,
     SetObjectiveIntent, parse_cad_intent_json,
 };
 
@@ -41,6 +46,14 @@ pub fn translate_chat_to_cad_intent(message: &str) -> CadIntentTranslationOutcom
 
     if let Some(intent) = translate_phrase(input) {
         return CadIntentTranslationOutcome::Intent(intent);
+    }
+
+    if looks_like_gripper_prompt(input) {
+        return parse_failure(
+            "CAD-CHAT-GRIPPER-AMBIGUOUS",
+            "gripper prompt is missing deterministic week-1 details",
+            "For week-1 use: `Create a basic 2-jaw robotic gripper with a base plate, two parallel fingers, and mounting holes for a servo motor. Make it 3D-printable and parametric for easy scaling.` or send explicit intent_json.",
+        );
     }
 
     parse_failure(
@@ -127,6 +140,10 @@ fn translate_phrase(input: &str) -> Option<CadIntent> {
         return Some(intent);
     }
 
+    if let Some(intent) = translate_parallel_jaw_gripper_prompt(&lower) {
+        return Some(intent);
+    }
+
     None
 }
 
@@ -149,6 +166,70 @@ fn translate_rack_design_prompt(lower: &str) -> Option<CadIntent> {
         airflow,
         mount_type,
     }))
+}
+
+fn translate_parallel_jaw_gripper_prompt(lower: &str) -> Option<CadIntent> {
+    let has_design_verb = ["design", "build", "create", "model", "draft", "generate"]
+        .iter()
+        .any(|verb| lower.contains(verb));
+    let has_gripper_target = [
+        "gripper",
+        "parallel-jaw",
+        "parallel jaw",
+        "robot hand",
+        "robotic hand",
+    ]
+    .iter()
+    .any(|token| lower.contains(token));
+    if !has_design_verb || !has_gripper_target {
+        return None;
+    }
+
+    let mut spec = CreateParallelJawGripperSpecIntent {
+        jaw_open_mm: PARALLEL_JAW_GRIPPER_DEFAULT_JAW_OPEN_MM,
+        finger_length_mm: PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_LENGTH_MM,
+        finger_thickness_mm: PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_THICKNESS_MM,
+        base_width_mm: PARALLEL_JAW_GRIPPER_DEFAULT_BASE_WIDTH_MM,
+        base_depth_mm: PARALLEL_JAW_GRIPPER_DEFAULT_BASE_DEPTH_MM,
+        base_thickness_mm: PARALLEL_JAW_GRIPPER_DEFAULT_BASE_THICKNESS_MM,
+        servo_mount_hole_diameter_mm: PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_MOUNT_HOLE_DIAMETER_MM,
+        print_fit_mm: PARALLEL_JAW_GRIPPER_DEFAULT_PRINT_FIT_MM,
+        print_clearance_mm: PARALLEL_JAW_GRIPPER_DEFAULT_PRINT_CLEARANCE_MM,
+    };
+
+    if lower.contains("wide") || lower.contains("large jaw") {
+        spec.jaw_open_mm = 64.0;
+        spec.base_width_mm = 94.0;
+    }
+    if lower.contains("long reach") || lower.contains("extended reach") {
+        spec.finger_length_mm = 85.0;
+    }
+    if lower.contains("stiff") || lower.contains("stronger finger") {
+        spec.finger_thickness_mm = 10.0;
+    }
+    if lower.contains("m2.5") {
+        spec.servo_mount_hole_diameter_mm = 2.9;
+    } else if lower.contains("m2") {
+        spec.servo_mount_hole_diameter_mm = 2.2;
+    } else if lower.contains("m3") {
+        spec.servo_mount_hole_diameter_mm = 3.2;
+    }
+    if lower.contains("tight fit") {
+        spec.print_fit_mm = 0.12;
+        spec.print_clearance_mm = 0.28;
+    } else if lower.contains("loose fit") {
+        spec.print_fit_mm = 0.2;
+        spec.print_clearance_mm = 0.4;
+    }
+
+    Some(CadIntent::CreateParallelJawGripperSpec(spec))
+}
+
+fn looks_like_gripper_prompt(input: &str) -> bool {
+    let lower = input.to_ascii_lowercase();
+    ["gripper", "robot hand", "robotic hand", "parallel jaw"]
+        .iter()
+        .any(|token| lower.contains(token))
 }
 
 fn infer_units(lower: &str) -> String {
@@ -338,6 +419,33 @@ mod tests {
                 assert_eq!(payload.material, "al-5052-h32");
                 assert_eq!(payload.airflow, "high");
                 assert_eq!(payload.mount_type, "wall");
+            }
+            other => panic!("unexpected outcome: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn adapter_translates_gripper_design_prompt_into_parallel_jaw_spec() {
+        let outcome = translate_chat_to_cad_intent(
+            "Create a basic 2-jaw robotic gripper with a base plate, two parallel fingers, and mounting holes for a servo motor. Make it 3D-printable and parametric for easy scaling.",
+        );
+        match outcome {
+            CadIntentTranslationOutcome::Intent(CadIntent::CreateParallelJawGripperSpec(spec)) => {
+                assert!((spec.jaw_open_mm - 42.0).abs() < f64::EPSILON);
+                assert!((spec.print_fit_mm - 0.15).abs() < f64::EPSILON);
+                assert!((spec.print_clearance_mm - 0.35).abs() < f64::EPSILON);
+            }
+            other => panic!("unexpected outcome: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn adapter_returns_clarification_for_ambiguous_gripper_prompt() {
+        let outcome = translate_chat_to_cad_intent("Can you make a robot hand gripper?");
+        match outcome {
+            CadIntentTranslationOutcome::ParseFailure(error) => {
+                assert_eq!(error.code, "CAD-CHAT-GRIPPER-AMBIGUOUS");
+                assert!(error.recovery_prompt.contains("2-jaw robotic gripper"));
             }
             other => panic!("unexpected outcome: {other:?}"),
         }

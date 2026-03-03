@@ -873,12 +873,18 @@ fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Value {
                 );
             }
             PaneKind::CadDemo => {
+                let visible_variant_ids = state.cad_demo.visible_variant_ids();
                 map.insert(
                     "cad".to_string(),
                     json!({
                         "session_id": state.cad_demo.session_id,
                         "document_revision": state.cad_demo.document_revision,
+                        "design_profile": cad_design_profile_label(state.cad_demo.active_design_profile()),
                         "active_variant_id": state.cad_demo.active_variant_id,
+                        "variant_materials": &state.cad_demo.variant_materials,
+                        "viewport_layout": state.cad_demo.viewport_layout.label(),
+                        "visible_variant_ids": visible_variant_ids,
+                        "all_variants_visible": state.cad_demo.all_variants_visible(),
                         "drawing_view_mode": state.cad_demo.drawing_view_mode.label(),
                         "drawing_view_direction": state.cad_demo.drawing_view_direction.label(),
                         "drawing_hidden_lines": state.cad_demo.drawing_show_hidden_lines,
@@ -1395,6 +1401,9 @@ fn pane_action_to_hit_action(
         PaneKind::CadDemo => match action {
             "bootstrap" => Ok(PaneHitAction::CadDemo(CadDemoPaneAction::BootstrapDemo)),
             "cycle_variant" => Ok(PaneHitAction::CadDemo(CadDemoPaneAction::CycleVariant)),
+            "toggle_viewport_layout" | "toggle_layout" => Ok(PaneHitAction::CadDemo(
+                CadDemoPaneAction::ToggleViewportLayout,
+            )),
             "reset_camera" => Ok(PaneHitAction::CadDemo(CadDemoPaneAction::ResetCamera)),
             "toggle_drawing_mode" => Ok(PaneHitAction::CadDemo(
                 CadDemoPaneAction::ToggleDrawingViewMode,
@@ -1655,6 +1664,8 @@ fn cad_checkpoint_payload(
 ) -> Value {
     let (warnings_by_severity, warnings_by_code) = cad_warning_counts(cad_demo);
     let analysis = &cad_demo.analysis_snapshot;
+    let design_profile = cad_demo.active_design_profile();
+    let visible_variant_ids = cad_demo.visible_variant_ids();
     let last_receipt = cad_demo.last_rebuild_receipt.as_ref().map_or_else(
         || {
             json!({
@@ -1690,11 +1701,16 @@ fn cad_checkpoint_payload(
             "active_id": cad_demo.active_variant_id,
             "active_tile_index": cad_demo.active_variant_tile_index,
             "all_ids": cad_demo.variant_ids,
+            "visible_ids": visible_variant_ids,
+            "all_visible": cad_demo.all_variants_visible(),
+            "materials": &cad_demo.variant_materials,
         },
+        "design_profile": cad_design_profile_label(design_profile),
         "context": {
             "session_id": cad_demo.session_id,
             "active_chat_session_id": cad_demo.active_chat_session_id,
             "dispatch_session_count": cad_demo.dispatch_sessions.len(),
+            "viewport_layout": cad_demo.viewport_layout.label(),
         },
         "pending_rebuild": {
             "is_pending": cad_demo.pending_rebuild_request_id.is_some(),
@@ -1723,6 +1739,11 @@ fn cad_checkpoint_payload(
             "max_deflection_mm": analysis.max_deflection_mm,
             "center_of_gravity_mm": analysis.center_of_gravity_mm,
         },
+        "gripper_parameters": if design_profile == openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper {
+            cad_gripper_parameter_summary(cad_demo)
+        } else {
+            json!({})
+        },
         "build_session": cad_build_session_checkpoint(cad_demo),
         "last_rebuild_receipt": last_receipt,
         "last_action": cad_demo.last_action,
@@ -1732,6 +1753,34 @@ fn cad_checkpoint_payload(
 
 fn cad_failure_class_label(class: CadBuildFailureClass) -> &'static str {
     class.label()
+}
+
+fn cad_design_profile_label(profile: openagents_cad::dispatch::CadDesignProfile) -> &'static str {
+    match profile {
+        openagents_cad::dispatch::CadDesignProfile::Rack => "rack",
+        openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper => "parallel_jaw_gripper",
+    }
+}
+
+fn cad_gripper_parameter_summary(cad_demo: &crate::app_state::CadDemoPaneState) -> Value {
+    let keys = [
+        "jaw_open_mm",
+        "finger_length_mm",
+        "finger_thickness_mm",
+        "base_width_mm",
+        "base_depth_mm",
+        "base_thickness_mm",
+        "servo_mount_hole_diameter_mm",
+        "print_fit_mm",
+        "print_clearance_mm",
+    ];
+    let mut summary = serde_json::Map::new();
+    for key in keys {
+        if let Some(value) = cad_demo.dimension_value_mm(key) {
+            summary.insert(key.to_string(), json!(value));
+        }
+    }
+    Value::Object(summary)
 }
 
 fn cad_parse_retry_prompt(prompt: &str) -> Option<String> {
@@ -3971,6 +4020,7 @@ fn cad_action_from_key(
         "bootstrap" | "bootstrap_demo" => CadDemoPaneAction::BootstrapDemo,
         "reset_session" => CadDemoPaneAction::ResetSession,
         "cycle_variant" => CadDemoPaneAction::CycleVariant,
+        "toggle_viewport_layout" | "toggle_layout" => CadDemoPaneAction::ToggleViewportLayout,
         "reset_camera" => CadDemoPaneAction::ResetCamera,
         "toggle_drawing_mode" => CadDemoPaneAction::ToggleDrawingViewMode,
         "cycle_drawing_direction" => CadDemoPaneAction::CycleDrawingViewDirection,
@@ -4157,7 +4207,8 @@ mod tests {
         validate_direction_unit,
     };
     use crate::app_state::{
-        AutopilotToolCallRequest, CadDemoPaneState, CadDemoWarningState, PaneKind,
+        AutopilotToolCallRequest, CadDemoPaneState, CadDemoWarningState, CadViewportLayout,
+        PaneKind,
     };
     use crate::pane_system::{
         CadDemoPaneAction, PaneHitAction, RelayConnectionsPaneAction, SettingsPaneAction,
@@ -4328,6 +4379,10 @@ mod tests {
             CadDemoPaneAction::Noop
         );
         assert_eq!(
+            cad_action_from_key("toggle_viewport_layout", None).expect("toggle layout action"),
+            CadDemoPaneAction::ToggleViewportLayout
+        );
+        assert_eq!(
             cad_action_from_key("status", None).expect("status action"),
             CadDemoPaneAction::Noop
         );
@@ -4443,6 +4498,76 @@ mod tests {
             tool_response
                 .pointer("/checkpoint/schema_version")
                 .is_some()
+        );
+    }
+
+    #[test]
+    fn cad_checkpoint_payload_reports_single_vs_quad_visibility_truth() {
+        let mut cad_demo = CadDemoPaneState::default();
+        cad_demo.viewport_layout = CadViewportLayout::Single;
+        let single_payload = cad_checkpoint_payload(&cad_demo, Some("thread-1"), "test-source");
+        assert_eq!(
+            single_payload.pointer("/variant/visible_ids"),
+            Some(&serde_json::json!(vec!["variant.baseline"]))
+        );
+        assert_eq!(
+            single_payload.pointer("/variant/all_visible"),
+            Some(&serde_json::json!(false))
+        );
+        assert_eq!(
+            single_payload.pointer("/context/viewport_layout"),
+            Some(&serde_json::json!("single"))
+        );
+
+        cad_demo.viewport_layout = CadViewportLayout::Quad;
+        let quad_payload = cad_checkpoint_payload(&cad_demo, Some("thread-1"), "test-source");
+        let visible_ids = quad_payload
+            .pointer("/variant/visible_ids")
+            .and_then(serde_json::Value::as_array)
+            .expect("visible ids should be array");
+        assert_eq!(visible_ids.len(), 4);
+        assert_eq!(
+            quad_payload.pointer("/variant/all_visible"),
+            Some(&serde_json::json!(true))
+        );
+        assert_eq!(
+            quad_payload.pointer("/context/viewport_layout"),
+            Some(&serde_json::json!("quad"))
+        );
+    }
+
+    #[test]
+    fn cad_checkpoint_payload_includes_viewport_visibility_truth_fields() {
+        let mut cad_demo = CadDemoPaneState::default();
+        cad_demo.viewport_layout = CadViewportLayout::Single;
+        let single_payload = cad_checkpoint_payload(&cad_demo, Some("thread-1"), "test-source");
+        assert_eq!(
+            single_payload.pointer("/context/viewport_layout"),
+            Some(&serde_json::json!("single"))
+        );
+        assert_eq!(
+            single_payload.pointer("/variant/visible_ids"),
+            Some(&serde_json::json!(vec!["variant.baseline"]))
+        );
+        assert_eq!(
+            single_payload.pointer("/variant/all_visible"),
+            Some(&serde_json::json!(false))
+        );
+
+        cad_demo.viewport_layout = CadViewportLayout::Quad;
+        let quad_payload = cad_checkpoint_payload(&cad_demo, Some("thread-1"), "test-source");
+        let visible_ids = quad_payload
+            .pointer("/variant/visible_ids")
+            .and_then(serde_json::Value::as_array)
+            .expect("quad visible ids should be array");
+        assert_eq!(visible_ids.len(), 4);
+        assert_eq!(
+            quad_payload.pointer("/variant/all_visible"),
+            Some(&serde_json::json!(true))
+        );
+        assert_eq!(
+            quad_payload.pointer("/context/viewport_layout"),
+            Some(&serde_json::json!("quad"))
         );
     }
 

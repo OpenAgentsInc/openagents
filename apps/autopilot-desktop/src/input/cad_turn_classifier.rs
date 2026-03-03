@@ -57,6 +57,13 @@ const EXPLICIT_CAD_MARKERS: &[&str] = &[
     "use our cad tools",
     "step export",
     "export step",
+    "robotic hand",
+    "robot hand",
+    "parallel jaw",
+    "parallel-jaw",
+    "servo mount",
+    "3d printable",
+    "3d-printable",
 ];
 
 const CAD_VERBS: &[&str] = &[
@@ -78,6 +85,14 @@ const CAD_NOUNS: &[&str] = &[
     "parametric",
     "feature graph",
     "step",
+    "gripper",
+    "jaw",
+    "robotic hand",
+    "robot hand",
+    "servo mount",
+    "finger",
+    "3d printable",
+    "3d-printable",
 ];
 
 #[cfg(test)]
@@ -113,5 +128,16 @@ mod tests {
         let result = classify_chat_prompt("Summarize the last five commits in this repository");
         assert!(!result.is_cad_turn);
         assert_eq!(result.reason, "no-cad-signals");
+    }
+
+    #[test]
+    fn classify_marks_robot_gripper_prompt_as_cad() {
+        let result = classify_chat_prompt(
+            "Create a 3D-printable parallel jaw robotic hand gripper with servo mount holes",
+        );
+        assert!(result.is_cad_turn);
+        assert!(
+            result.reason.starts_with("explicit-marker:") || result.reason.starts_with("keyword-pair:")
+        );
     }
 }

@@ -1,0 +1,810 @@
+{
+  "final": {
+    "active_variant_id": "variant.stiff-finger",
+    "analysis": {
+      "document_revision": 5,
+      "estimated_cost_usd": 154.27320086160378,
+      "mass_kg": 0.3184035857956393,
+      "material_id": "ti-6al-4v",
+      "max_deflection_mm": 0.00004327645113795836,
+      "variant_id": "variant.stiff-finger",
+      "volume_mm3": 71874.39859946711
+    },
+    "final_state_revision": 5,
+    "last_error": null,
+    "receipts": [
+      {
+        "cache_evictions": 0,
+        "cache_hits": 0,
+        "cache_misses": 5,
+        "document_revision": 1,
+        "duration_ms": 22,
+        "edge_count": 104,
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-week1-gripper:1:1",
+        "feature_count": 5,
+        "mesh_hash": "612e8b1d8066e80f",
+        "rebuild_hash": "82919d04d1410440",
+        "triangle_count": 164,
+        "variant_id": "variant.baseline",
+        "vertex_count": 96
+      },
+      {
+        "cache_evictions": 0,
+        "cache_hits": 0,
+        "cache_misses": 5,
+        "document_revision": 2,
+        "duration_ms": 22,
+        "edge_count": 104,
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-week1-gripper:2:2",
+        "feature_count": 5,
+        "mesh_hash": "d2a09570e601080a",
+        "rebuild_hash": "82919d04d1410440",
+        "triangle_count": 164,
+        "variant_id": "variant.baseline",
+        "vertex_count": 96
+      },
+      {
+        "cache_evictions": 0,
+        "cache_hits": 0,
+        "cache_misses": 5,
+        "document_revision": 3,
+        "duration_ms": 22,
+        "edge_count": 104,
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-week1-gripper:3:3",
+        "feature_count": 5,
+        "mesh_hash": "4ede6b91009752d8",
+        "rebuild_hash": "0e0edc3646939a8b",
+        "triangle_count": 164,
+        "variant_id": "variant.wide-jaw",
+        "vertex_count": 96
+      },
+      {
+        "cache_evictions": 0,
+        "cache_hits": 5,
+        "cache_misses": 0,
+        "document_revision": 3,
+        "duration_ms": 19,
+        "edge_count": 104,
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-week1-gripper:3:4",
+        "feature_count": 5,
+        "mesh_hash": "4ede6b91009752d8",
+        "rebuild_hash": "0e0edc3646939a8b",
+        "triangle_count": 164,
+        "variant_id": "variant.wide-jaw",
+        "vertex_count": 96
+      },
+      {
+        "cache_evictions": 0,
+        "cache_hits": 0,
+        "cache_misses": 5,
+        "document_revision": 4,
+        "duration_ms": 22,
+        "edge_count": 104,
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-week1-gripper:4:5",
+        "feature_count": 5,
+        "mesh_hash": "1b6cc79527281ee8",
+        "rebuild_hash": "857a8605ede0c000",
+        "triangle_count": 164,
+        "variant_id": "variant.long-reach",
+        "vertex_count": 96
+      },
+      {
+        "cache_evictions": 0,
+        "cache_hits": 5,
+        "cache_misses": 0,
+        "document_revision": 4,
+        "duration_ms": 19,
+        "edge_count": 104,
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-week1-gripper:4:6",
+        "feature_count": 5,
+        "mesh_hash": "1b6cc79527281ee8",
+        "rebuild_hash": "857a8605ede0c000",
+        "triangle_count": 164,
+        "variant_id": "variant.long-reach",
+        "vertex_count": 96
+      },
+      {
+        "cache_evictions": 0,
+        "cache_hits": 0,
+        "cache_misses": 5,
+        "document_revision": 5,
+        "duration_ms": 22,
+        "edge_count": 104,
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-week1-gripper:5:7",
+        "feature_count": 5,
+        "mesh_hash": "6ca3899f7ba08973",
+        "rebuild_hash": "358a5b7f348c64da",
+        "triangle_count": 164,
+        "variant_id": "variant.stiff-finger",
+        "vertex_count": 96
+      },
+      {
+        "cache_evictions": 0,
+        "cache_hits": 5,
+        "cache_misses": 0,
+        "document_revision": 5,
+        "duration_ms": 19,
+        "edge_count": 104,
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-week1-gripper:5:8",
+        "feature_count": 5,
+        "mesh_hash": "6ca3899f7ba08973",
+        "rebuild_hash": "358a5b7f348c64da",
+        "triangle_count": 164,
+        "variant_id": "variant.stiff-finger",
+        "vertex_count": 96
+      }
+    ],
+    "timing": {
+      "total_duration_ms": 0
+    },
+    "warnings": {
+      "codes": [],
+      "count": 0,
+      "critical_count": 0
+    }
+  },
+  "script_id": "cad-chat-build-e2e-week1-gripper",
+  "seed": 0,
+  "steps": [
+    {
+      "duration_ms": 0,
+      "index": 0,
+      "kind": "cad_tool_call_intent",
+      "name": "tool-call-create-week1-gripper",
+      "result": {
+        "has_mesh_payload": true,
+        "intent": "CreateParallelJawGripperSpec",
+        "pending_rebuild_request_id": null,
+        "progress": {
+          "rows": [
+            {
+              "label": "phase",
+              "tone": "success",
+              "value": "done"
+            },
+            {
+              "label": "tool",
+              "tone": "info",
+              "value": "ok:OA-CAD-INTENT-OK"
+            },
+            {
+              "label": "rebuild",
+              "tone": "info",
+              "value": "trigger=ai-intent:createparalleljawgripperspec result=ok hash=82919d04d1410440 mesh=612e8b1d8066e80f duration_ms=22"
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.rebuild.result trigger=ai-intent:createparalleljawgripperspec result=ok hash=82919d0..."
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=1"
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 1"
+            }
+          ],
+          "status": "done",
+          "turn_id": "turn.cad-chat-e2e-week1-gripper.1"
+        },
+        "rebuild_status": "committed",
+        "rebuild_trigger": "ai-intent:createparalleljawgripperspec",
+        "state_revision": 1,
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "turn_id": "turn.cad-chat-e2e-week1-gripper.1"
+      }
+    },
+    {
+      "duration_ms": 0,
+      "index": 1,
+      "kind": "cad_tool_call_intent",
+      "name": "tool-call-set-material-baseline",
+      "result": {
+        "has_mesh_payload": true,
+        "intent": "SetMaterial",
+        "pending_rebuild_request_id": null,
+        "progress": {
+          "rows": [
+            {
+              "label": "phase",
+              "tone": "success",
+              "value": "done"
+            },
+            {
+              "label": "tool",
+              "tone": "info",
+              "value": "ok:OA-CAD-INTENT-OK"
+            },
+            {
+              "label": "rebuild",
+              "tone": "info",
+              "value": "trigger=ai-intent:setmaterial result=ok hash=82919d04d1410440 mesh=d2a09570e601080a duration_ms=22"
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=82919d04d1410440 mesh=d2..."
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=2"
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 2"
+            }
+          ],
+          "status": "done",
+          "turn_id": "turn.cad-chat-e2e-week1-gripper.2"
+        },
+        "rebuild_status": "committed",
+        "rebuild_trigger": "ai-intent:setmaterial",
+        "state_revision": 2,
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "turn_id": "turn.cad-chat-e2e-week1-gripper.2"
+      }
+    },
+    {
+      "duration_ms": 0,
+      "index": 2,
+      "kind": "cycle_variant",
+      "name": "cycle-to-wide-jaw",
+      "result": {
+        "active_variant_id": "variant.wide-jaw",
+        "count": 1,
+        "has_mesh_payload": true,
+        "last_good_mesh_id": "mesh.variant-wide-jaw.0e0edc3646939a8b",
+        "last_receipt": {
+          "cache_evictions": 0,
+          "cache_hits": 0,
+          "cache_misses": 5,
+          "document_revision": 3,
+          "duration_ms": 22,
+          "edge_count": 104,
+          "event_id": "cad.session.chat.thread-cad-chat-e2e-week1-gripper:3:3",
+          "feature_count": 5,
+          "mesh_hash": "4ede6b91009752d8",
+          "rebuild_hash": "0e0edc3646939a8b",
+          "triangle_count": 164,
+          "variant_id": "variant.wide-jaw",
+          "vertex_count": 96
+        },
+        "pending_rebuild_request_id": null,
+        "state_revision": 3,
+        "status": "cycled",
+        "warning_codes": []
+      }
+    },
+    {
+      "duration_ms": 0,
+      "index": 3,
+      "kind": "cad_tool_call_intent",
+      "name": "tool-call-set-material-wide-jaw",
+      "result": {
+        "has_mesh_payload": true,
+        "intent": "SetMaterial",
+        "pending_rebuild_request_id": null,
+        "progress": {
+          "rows": [
+            {
+              "label": "phase",
+              "tone": "success",
+              "value": "done"
+            },
+            {
+              "label": "tool",
+              "tone": "info",
+              "value": "ok:OA-CAD-INTENT-OK"
+            },
+            {
+              "label": "rebuild",
+              "tone": "info",
+              "value": "trigger=ai-intent:setmaterial result=ok hash=0e0edc3646939a8b mesh=4ede6b91009752d8 duration_ms=19"
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=0e0edc3646939a8b mesh=4e..."
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.wide-jaw rev=3"
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.done CAD rebuild committed for variant.wide-jaw at revision 3"
+            }
+          ],
+          "status": "done",
+          "turn_id": "turn.cad-chat-e2e-week1-gripper.3"
+        },
+        "rebuild_status": "committed",
+        "rebuild_trigger": "ai-intent:setmaterial",
+        "state_revision": 3,
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "turn_id": "turn.cad-chat-e2e-week1-gripper.3"
+      }
+    },
+    {
+      "duration_ms": 0,
+      "index": 4,
+      "kind": "cycle_variant",
+      "name": "cycle-to-long-reach",
+      "result": {
+        "active_variant_id": "variant.long-reach",
+        "count": 1,
+        "has_mesh_payload": true,
+        "last_good_mesh_id": "mesh.variant-long-reach.857a8605ede0c000",
+        "last_receipt": {
+          "cache_evictions": 0,
+          "cache_hits": 0,
+          "cache_misses": 5,
+          "document_revision": 4,
+          "duration_ms": 22,
+          "edge_count": 104,
+          "event_id": "cad.session.chat.thread-cad-chat-e2e-week1-gripper:4:5",
+          "feature_count": 5,
+          "mesh_hash": "1b6cc79527281ee8",
+          "rebuild_hash": "857a8605ede0c000",
+          "triangle_count": 164,
+          "variant_id": "variant.long-reach",
+          "vertex_count": 96
+        },
+        "pending_rebuild_request_id": null,
+        "state_revision": 4,
+        "status": "cycled",
+        "warning_codes": []
+      }
+    },
+    {
+      "duration_ms": 0,
+      "index": 5,
+      "kind": "cad_tool_call_intent",
+      "name": "tool-call-set-material-long-reach",
+      "result": {
+        "has_mesh_payload": true,
+        "intent": "SetMaterial",
+        "pending_rebuild_request_id": null,
+        "progress": {
+          "rows": [
+            {
+              "label": "phase",
+              "tone": "success",
+              "value": "done"
+            },
+            {
+              "label": "tool",
+              "tone": "info",
+              "value": "ok:OA-CAD-INTENT-OK"
+            },
+            {
+              "label": "rebuild",
+              "tone": "info",
+              "value": "trigger=ai-intent:setmaterial result=ok hash=857a8605ede0c000 mesh=1b6cc79527281ee8 duration_ms=19"
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=857a8605ede0c000 mesh=1b..."
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.long-reach rev=4"
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.done CAD rebuild committed for variant.long-reach at revision 4"
+            }
+          ],
+          "status": "done",
+          "turn_id": "turn.cad-chat-e2e-week1-gripper.4"
+        },
+        "rebuild_status": "committed",
+        "rebuild_trigger": "ai-intent:setmaterial",
+        "state_revision": 4,
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "turn_id": "turn.cad-chat-e2e-week1-gripper.4"
+      }
+    },
+    {
+      "duration_ms": 0,
+      "index": 6,
+      "kind": "cycle_variant",
+      "name": "cycle-to-stiff-finger",
+      "result": {
+        "active_variant_id": "variant.stiff-finger",
+        "count": 1,
+        "has_mesh_payload": true,
+        "last_good_mesh_id": "mesh.variant-stiff-finger.358a5b7f348c64da",
+        "last_receipt": {
+          "cache_evictions": 0,
+          "cache_hits": 0,
+          "cache_misses": 5,
+          "document_revision": 5,
+          "duration_ms": 22,
+          "edge_count": 104,
+          "event_id": "cad.session.chat.thread-cad-chat-e2e-week1-gripper:5:7",
+          "feature_count": 5,
+          "mesh_hash": "6ca3899f7ba08973",
+          "rebuild_hash": "358a5b7f348c64da",
+          "triangle_count": 164,
+          "variant_id": "variant.stiff-finger",
+          "vertex_count": 96
+        },
+        "pending_rebuild_request_id": null,
+        "state_revision": 5,
+        "status": "cycled",
+        "warning_codes": []
+      }
+    },
+    {
+      "duration_ms": 0,
+      "index": 7,
+      "kind": "cad_tool_call_intent",
+      "name": "tool-call-set-material-stiff-finger",
+      "result": {
+        "has_mesh_payload": true,
+        "intent": "SetMaterial",
+        "pending_rebuild_request_id": null,
+        "progress": {
+          "rows": [
+            {
+              "label": "phase",
+              "tone": "success",
+              "value": "done"
+            },
+            {
+              "label": "tool",
+              "tone": "info",
+              "value": "ok:OA-CAD-INTENT-OK"
+            },
+            {
+              "label": "rebuild",
+              "tone": "info",
+              "value": "trigger=ai-intent:setmaterial result=ok hash=358a5b7f348c64da mesh=6ca3899f7ba08973 duration_ms=19"
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=358a5b7f348c64da mesh=6c..."
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.stiff-finger rev=5"
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.done CAD rebuild committed for variant.stiff-finger at revision 5"
+            }
+          ],
+          "status": "done",
+          "turn_id": "turn.cad-chat-e2e-week1-gripper.5"
+        },
+        "rebuild_status": "committed",
+        "rebuild_trigger": "ai-intent:setmaterial",
+        "state_revision": 5,
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "turn_id": "turn.cad-chat-e2e-week1-gripper.5"
+      }
+    },
+    {
+      "duration_ms": 0,
+      "index": 8,
+      "kind": "capture_snapshot_truth",
+      "name": "capture-single-layout-truth",
+      "result": {
+        "active_variant_id": "variant.stiff-finger",
+        "all_variants_visible": false,
+        "design_profile": "parallel_jaw_gripper",
+        "status": "captured",
+        "variant_materials": {
+          "variant.baseline": "al-6061-t6",
+          "variant.long-reach": "al-5052-h32",
+          "variant.stiff-finger": "ti-6al-4v",
+          "variant.wide-jaw": "steel-1018"
+        },
+        "viewport_layout": "single",
+        "visible_variant_ids": [
+          "variant.stiff-finger"
+        ]
+      }
+    },
+    {
+      "duration_ms": 0,
+      "index": 9,
+      "kind": "toggle_viewport_layout",
+      "name": "toggle-to-quad-layout",
+      "result": {
+        "all_variants_visible": true,
+        "status": "toggled",
+        "viewport_layout": "quad",
+        "visible_variant_ids": [
+          "variant.baseline",
+          "variant.wide-jaw",
+          "variant.long-reach",
+          "variant.stiff-finger"
+        ]
+      }
+    },
+    {
+      "duration_ms": 0,
+      "index": 10,
+      "kind": "capture_snapshot_truth",
+      "name": "capture-quad-layout-truth",
+      "result": {
+        "active_variant_id": "variant.stiff-finger",
+        "all_variants_visible": true,
+        "design_profile": "parallel_jaw_gripper",
+        "status": "captured",
+        "variant_materials": {
+          "variant.baseline": "al-6061-t6",
+          "variant.long-reach": "al-5052-h32",
+          "variant.stiff-finger": "ti-6al-4v",
+          "variant.wide-jaw": "steel-1018"
+        },
+        "viewport_layout": "quad",
+        "visible_variant_ids": [
+          "variant.baseline",
+          "variant.wide-jaw",
+          "variant.long-reach",
+          "variant.stiff-finger"
+        ]
+      }
+    }
+  ],
+  "thread_id": "thread.cad-chat-e2e-week1-gripper",
+  "tool_calls": [
+    {
+      "has_mesh_payload": true,
+      "intent": "CreateParallelJawGripperSpec",
+      "pending_rebuild_request_id": null,
+      "progress": {
+        "rows": [
+          {
+            "label": "phase",
+            "tone": "success",
+            "value": "done"
+          },
+          {
+            "label": "tool",
+            "tone": "info",
+            "value": "ok:OA-CAD-INTENT-OK"
+          },
+          {
+            "label": "rebuild",
+            "tone": "info",
+            "value": "trigger=ai-intent:createparalleljawgripperspec result=ok hash=82919d04d1410440 mesh=612e8b1d8066e80f duration_ms=22"
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.rebuild.result trigger=ai-intent:createparalleljawgripperspec result=ok hash=82919d0..."
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=1"
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 1"
+          }
+        ],
+        "status": "done",
+        "turn_id": "turn.cad-chat-e2e-week1-gripper.1"
+      },
+      "rebuild_status": "committed",
+      "rebuild_trigger": "ai-intent:createparalleljawgripperspec",
+      "state_revision": 1,
+      "status": "completed",
+      "tool": "openagents.cad.intent",
+      "turn_id": "turn.cad-chat-e2e-week1-gripper.1"
+    },
+    {
+      "has_mesh_payload": true,
+      "intent": "SetMaterial",
+      "pending_rebuild_request_id": null,
+      "progress": {
+        "rows": [
+          {
+            "label": "phase",
+            "tone": "success",
+            "value": "done"
+          },
+          {
+            "label": "tool",
+            "tone": "info",
+            "value": "ok:OA-CAD-INTENT-OK"
+          },
+          {
+            "label": "rebuild",
+            "tone": "info",
+            "value": "trigger=ai-intent:setmaterial result=ok hash=82919d04d1410440 mesh=d2a09570e601080a duration_ms=22"
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=82919d04d1410440 mesh=d2..."
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=2"
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 2"
+          }
+        ],
+        "status": "done",
+        "turn_id": "turn.cad-chat-e2e-week1-gripper.2"
+      },
+      "rebuild_status": "committed",
+      "rebuild_trigger": "ai-intent:setmaterial",
+      "state_revision": 2,
+      "status": "completed",
+      "tool": "openagents.cad.intent",
+      "turn_id": "turn.cad-chat-e2e-week1-gripper.2"
+    },
+    {
+      "has_mesh_payload": true,
+      "intent": "SetMaterial",
+      "pending_rebuild_request_id": null,
+      "progress": {
+        "rows": [
+          {
+            "label": "phase",
+            "tone": "success",
+            "value": "done"
+          },
+          {
+            "label": "tool",
+            "tone": "info",
+            "value": "ok:OA-CAD-INTENT-OK"
+          },
+          {
+            "label": "rebuild",
+            "tone": "info",
+            "value": "trigger=ai-intent:setmaterial result=ok hash=0e0edc3646939a8b mesh=4ede6b91009752d8 duration_ms=19"
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=0e0edc3646939a8b mesh=4e..."
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.wide-jaw rev=3"
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.done CAD rebuild committed for variant.wide-jaw at revision 3"
+          }
+        ],
+        "status": "done",
+        "turn_id": "turn.cad-chat-e2e-week1-gripper.3"
+      },
+      "rebuild_status": "committed",
+      "rebuild_trigger": "ai-intent:setmaterial",
+      "state_revision": 3,
+      "status": "completed",
+      "tool": "openagents.cad.intent",
+      "turn_id": "turn.cad-chat-e2e-week1-gripper.3"
+    },
+    {
+      "has_mesh_payload": true,
+      "intent": "SetMaterial",
+      "pending_rebuild_request_id": null,
+      "progress": {
+        "rows": [
+          {
+            "label": "phase",
+            "tone": "success",
+            "value": "done"
+          },
+          {
+            "label": "tool",
+            "tone": "info",
+            "value": "ok:OA-CAD-INTENT-OK"
+          },
+          {
+            "label": "rebuild",
+            "tone": "info",
+            "value": "trigger=ai-intent:setmaterial result=ok hash=857a8605ede0c000 mesh=1b6cc79527281ee8 duration_ms=19"
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=857a8605ede0c000 mesh=1b..."
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.long-reach rev=4"
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.done CAD rebuild committed for variant.long-reach at revision 4"
+          }
+        ],
+        "status": "done",
+        "turn_id": "turn.cad-chat-e2e-week1-gripper.4"
+      },
+      "rebuild_status": "committed",
+      "rebuild_trigger": "ai-intent:setmaterial",
+      "state_revision": 4,
+      "status": "completed",
+      "tool": "openagents.cad.intent",
+      "turn_id": "turn.cad-chat-e2e-week1-gripper.4"
+    },
+    {
+      "has_mesh_payload": true,
+      "intent": "SetMaterial",
+      "pending_rebuild_request_id": null,
+      "progress": {
+        "rows": [
+          {
+            "label": "phase",
+            "tone": "success",
+            "value": "done"
+          },
+          {
+            "label": "tool",
+            "tone": "info",
+            "value": "ok:OA-CAD-INTENT-OK"
+          },
+          {
+            "label": "rebuild",
+            "tone": "info",
+            "value": "trigger=ai-intent:setmaterial result=ok hash=358a5b7f348c64da mesh=6ca3899f7ba08973 duration_ms=19"
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=358a5b7f348c64da mesh=6c..."
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.stiff-finger rev=5"
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.done CAD rebuild committed for variant.stiff-finger at revision 5"
+          }
+        ],
+        "status": "done",
+        "turn_id": "turn.cad-chat-e2e-week1-gripper.5"
+      },
+      "rebuild_status": "committed",
+      "rebuild_trigger": "ai-intent:setmaterial",
+      "state_revision": 5,
+      "status": "completed",
+      "tool": "openagents.cad.intent",
+      "turn_id": "turn.cad-chat-e2e-week1-gripper.5"
+    }
+  ]
+}

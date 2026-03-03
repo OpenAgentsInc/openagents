@@ -17,7 +17,7 @@ use wgpui::{
 
 use crate::app_state::{
     CadCameraViewSnap, CadDemoPaneState, CadDemoWarningState, CadDrawingViewMode,
-    CadHiddenLineMode, CadProjectionMode, CadVariantViewportState,
+    CadHiddenLineMode, CadProjectionMode, CadVariantViewportState, CadViewportLayout,
 };
 use crate::pane_renderer::paint_action_button;
 use crate::pane_system::{
@@ -34,6 +34,7 @@ use crate::pane_system::{
     cad_demo_snap_endpoint_button_bounds, cad_demo_snap_grid_button_bounds,
     cad_demo_snap_midpoint_button_bounds, cad_demo_snap_origin_button_bounds,
     cad_demo_timeline_panel_bounds, cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
+    cad_demo_viewport_layout_button_bounds,
     cad_demo_view_snap_front_button_bounds, cad_demo_view_snap_iso_button_bounds,
     cad_demo_view_snap_right_button_bounds, cad_demo_view_snap_top_button_bounds,
     cad_demo_warning_filter_code_button_bounds, cad_demo_warning_filter_severity_button_bounds,
@@ -122,6 +123,7 @@ fn cad_demo_body_bounds(content_bounds: Bounds) -> Bounds {
     let hidden_line_bounds = cad_demo_hidden_line_mode_button_bounds(content_bounds);
     let reset_camera_bounds = cad_demo_reset_camera_button_bounds(content_bounds);
     let projection_bounds = cad_demo_projection_mode_button_bounds(content_bounds);
+    let viewport_layout_bounds = cad_demo_viewport_layout_button_bounds(content_bounds);
     let drawing_mode_bounds = cad_demo_drawing_mode_button_bounds(content_bounds);
     let drawing_direction_bounds = cad_demo_drawing_direction_button_bounds(content_bounds);
     let drawing_hidden_bounds = cad_demo_drawing_hidden_lines_button_bounds(content_bounds);
@@ -143,6 +145,7 @@ fn cad_demo_body_bounds(content_bounds: Bounds) -> Bounds {
         .max(hidden_line_bounds.max_y())
         .max(reset_camera_bounds.max_y())
         .max(projection_bounds.max_y())
+        .max(viewport_layout_bounds.max_y())
         .max(drawing_mode_bounds.max_y())
         .max(drawing_direction_bounds.max_y())
         .max(drawing_hidden_bounds.max_y())
@@ -174,6 +177,7 @@ fn cad_demo_basic_toolbar_bottom(content_bounds: Bounds) -> f32 {
         .max(cad_demo_reset_button_bounds(content_bounds).max_y())
         .max(cad_demo_reset_camera_button_bounds(content_bounds).max_y())
         .max(cad_demo_projection_mode_button_bounds(content_bounds).max_y())
+        .max(cad_demo_viewport_layout_button_bounds(content_bounds).max_y())
         .max(cad_demo_drawing_mode_button_bounds(content_bounds).max_y())
         .max(cad_demo_drawing_direction_button_bounds(content_bounds).max_y())
         .max(cad_demo_drawing_hidden_lines_button_bounds(content_bounds).max_y())
@@ -244,6 +248,7 @@ pub fn paint_cad_demo_placeholder_pane(
     let hidden_line_bounds = cad_demo_hidden_line_mode_button_bounds(content_bounds);
     let reset_camera_bounds = cad_demo_reset_camera_button_bounds(content_bounds);
     let projection_bounds = cad_demo_projection_mode_button_bounds(content_bounds);
+    let viewport_layout_bounds = cad_demo_viewport_layout_button_bounds(content_bounds);
     let snap_grid_bounds = cad_demo_snap_grid_button_bounds(content_bounds);
     let snap_origin_bounds = cad_demo_snap_origin_button_bounds(content_bounds);
     let snap_endpoint_bounds = cad_demo_snap_endpoint_button_bounds(content_bounds);
@@ -268,6 +273,11 @@ pub fn paint_cad_demo_placeholder_pane(
     paint_action_button(
         projection_bounds,
         &format!("Projection: {}", pane_state.projection_mode.label()),
+        paint,
+    );
+    paint_action_button(
+        viewport_layout_bounds,
+        &format!("Layout: {}", pane_state.viewport_layout.label()),
         paint,
     );
     paint_action_button(
@@ -638,15 +648,20 @@ pub fn paint_cad_demo_placeholder_pane(
             theme::text::SECONDARY,
         ));
 
-        for (index, dimension) in pane_state.dimensions.iter().take(4).enumerate() {
-            let row_bounds = cad_demo_dimension_row_bounds(content_bounds, index);
+        for (visible_index, (dimension_index, dimension)) in pane_state
+            .visible_dimension_slots()
+            .into_iter()
+            .take(4)
+            .enumerate()
+        {
+            let row_bounds = cad_demo_dimension_row_bounds(content_bounds, visible_index);
             if row_bounds.max_y() > dimension_panel.max_y() {
                 break;
             }
             let is_editing = pane_state
                 .dimension_edit
                 .as_ref()
-                .is_some_and(|edit| edit.dimension_index == index);
+                .is_some_and(|edit| edit.dimension_index == dimension_index);
             if is_editing {
                 paint.scene.draw_quad(
                     Quad::new(row_bounds)
@@ -886,6 +901,7 @@ fn paint_cad_demo_basic_pane(
     let reset_bounds = cad_demo_reset_button_bounds(content_bounds);
     let reset_camera_bounds = cad_demo_reset_camera_button_bounds(content_bounds);
     let projection_bounds = cad_demo_projection_mode_button_bounds(content_bounds);
+    let viewport_layout_bounds = cad_demo_viewport_layout_button_bounds(content_bounds);
     let drawing_mode_bounds = cad_demo_drawing_mode_button_bounds(content_bounds);
     let drawing_direction_bounds = cad_demo_drawing_direction_button_bounds(content_bounds);
     let drawing_hidden_lines_bounds = cad_demo_drawing_hidden_lines_button_bounds(content_bounds);
@@ -900,6 +916,11 @@ fn paint_cad_demo_basic_pane(
     paint_action_button(
         projection_bounds,
         &format!("Projection: {}", pane_state.projection_mode.label()),
+        paint,
+    );
+    paint_action_button(
+        viewport_layout_bounds,
+        &format!("Layout: {}", pane_state.viewport_layout.label()),
         paint,
     );
     paint_action_button(
@@ -957,38 +978,7 @@ fn paint_cad_demo_basic_pane(
     if pane_state.drawing_view_mode == CadDrawingViewMode::TwoD {
         status = paint_drawing_mode_viewport(viewport_bounds, pane_state, paint);
     } else {
-        let active_variant_view = pane_state.variant_viewport(pane_state.active_variant_tile_index);
-        let selected_outline_active =
-            active_variant_view.is_some_and(|view| view.selected_ref.is_some());
-        let camera_pose = if let Some(viewport_state) = active_variant_view {
-            CadCameraPose::from_variant(viewport_state, pane_state.projection_mode)
-        } else {
-            let fallback = CadVariantViewportState::for_variant(&pane_state.active_variant_id);
-            CadCameraPose::from_variant(&fallback, pane_state.projection_mode)
-        };
-        if let Some(mesh_payload) = pane_state.last_good_mesh_payload.as_ref() {
-            match cad_mesh_to_viewport_primitive(
-                mesh_payload,
-                viewport_bounds,
-                selected_outline_active,
-                pane_state.hidden_line_mode,
-                camera_pose,
-            ) {
-                Ok(mesh) => {
-                    paint.scene.push_clip(viewport_bounds);
-                    if let Err(error) = paint.scene.draw_mesh(mesh) {
-                        let _ = error;
-                        status = "mesh draw skipped".to_string();
-                    }
-                    paint.scene.pop_clip();
-                }
-                Err(error) => {
-                    status = format!("mesh conversion failed: {}", error);
-                }
-            }
-        } else {
-            status = "waiting for CAD mesh payload".to_string();
-        }
+        status = paint_basic_3d_viewport(viewport_bounds, pane_state, paint);
     }
 
     paint.scene.draw_text(paint.text.layout(
@@ -1023,6 +1013,131 @@ fn paint_cad_demo_basic_pane(
     ));
 
     paint.scene.pop_clip();
+}
+
+fn viewport_quad_tile_bounds(viewport: Bounds, tile_index: usize) -> Bounds {
+    let gap = VARIANT_TILE_GAP;
+    let tile_width = ((viewport.size.width - gap) * 0.5).max(2.0);
+    let tile_height = ((viewport.size.height - gap) * 0.5).max(2.0);
+    let col = (tile_index % 2) as f32;
+    let row = ((tile_index / 2) % 2) as f32;
+    Bounds::new(
+        viewport.origin.x + col * (tile_width + gap),
+        viewport.origin.y + row * (tile_height + gap),
+        tile_width,
+        tile_height,
+    )
+}
+
+fn paint_basic_3d_viewport(
+    viewport_bounds: Bounds,
+    pane_state: &CadDemoPaneState,
+    paint: &mut PaintContext,
+) -> String {
+    let Some(mesh_payload) = pane_state.last_good_mesh_payload.as_ref() else {
+        return "waiting for CAD mesh payload".to_string();
+    };
+
+    if pane_state.viewport_layout == CadViewportLayout::Single {
+        let active_variant_view = pane_state.variant_viewport(pane_state.active_variant_tile_index);
+        let selected_outline_active =
+            active_variant_view.is_some_and(|view| view.selected_ref.is_some());
+        let camera_pose = if let Some(viewport_state) = active_variant_view {
+            CadCameraPose::from_variant(viewport_state, pane_state.projection_mode)
+        } else {
+            let fallback = CadVariantViewportState::for_variant(&pane_state.active_variant_id);
+            CadCameraPose::from_variant(&fallback, pane_state.projection_mode)
+        };
+        return match cad_mesh_to_viewport_primitive(
+            mesh_payload,
+            viewport_bounds,
+            selected_outline_active,
+            pane_state.hidden_line_mode,
+            camera_pose,
+        ) {
+            Ok(mesh) => {
+                paint.scene.push_clip(viewport_bounds);
+                if let Err(error) = paint.scene.draw_mesh(mesh) {
+                    let _ = error;
+                    paint.scene.pop_clip();
+                    "mesh draw skipped".to_string()
+                } else {
+                    paint.scene.pop_clip();
+                    format!(
+                        "{} | rev {}",
+                        pane_state.active_variant_id, pane_state.document_revision
+                    )
+                }
+            }
+            Err(error) => format!("mesh conversion failed: {error}"),
+        };
+    }
+
+    let mut status = "quad layout showing 4 variants".to_string();
+    for tile_index in 0..4 {
+        let tile_bounds = viewport_quad_tile_bounds(viewport_bounds, tile_index);
+        if tile_bounds.size.width < 2.0 || tile_bounds.size.height < 2.0 {
+            continue;
+        }
+        let variant_id = pane_state
+            .variant_ids
+            .get(tile_index)
+            .cloned()
+            .unwrap_or_else(|| "variant.unset".to_string());
+        let tile_view = pane_state
+            .variant_viewports
+            .iter()
+            .find(|view| view.variant_id == variant_id);
+        let is_active = pane_state.active_variant_id == variant_id;
+
+        let mut tile_quad = Quad::new(tile_bounds)
+            .with_background(theme::bg::SURFACE)
+            .with_corner_radius(4.0)
+            .with_border(theme::border::SUBTLE, 1.0);
+        if is_active {
+            tile_quad = tile_quad.with_border(theme::text::PRIMARY, 1.0);
+        }
+        paint.scene.draw_quad(tile_quad);
+        paint.scene.draw_text(paint.text.layout(
+            &variant_id,
+            Point::new(tile_bounds.origin.x + 6.0, tile_bounds.origin.y + 10.0),
+            8.0,
+            if is_active {
+                theme::text::PRIMARY
+            } else {
+                theme::text::MUTED
+            },
+        ));
+
+        let selected_outline_active = tile_view.is_some_and(|view| view.selected_ref.is_some());
+        let camera_pose = if let Some(view) = tile_view {
+            CadCameraPose::from_variant(view, pane_state.projection_mode)
+        } else {
+            let fallback = CadVariantViewportState::for_variant(&variant_id);
+            CadCameraPose::from_variant(&fallback, pane_state.projection_mode)
+        };
+        match cad_mesh_to_viewport_primitive(
+            mesh_payload,
+            tile_bounds,
+            selected_outline_active,
+            pane_state.hidden_line_mode,
+            camera_pose,
+        ) {
+            Ok(mesh) => {
+                paint.scene.push_clip(tile_bounds);
+                if let Err(error) = paint.scene.draw_mesh(mesh) {
+                    let _ = error;
+                    status = format!("mesh draw skipped tile {}", tile_index + 1);
+                }
+                paint.scene.pop_clip();
+            }
+            Err(error) => {
+                status = format!("mesh conversion failed tile {}: {}", tile_index + 1, error);
+            }
+        }
+    }
+
+    status
 }
 
 fn paint_drawing_mode_viewport(

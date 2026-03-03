@@ -80,6 +80,8 @@ run_check D "chat->cad interaction deterministic path" \
 # Gate E: engineering overlays, scripted reliability, and budget compliance.
 run_check E "chat-build e2e harness (success + failure)" \
     cargo test -p autopilot-desktop cad_chat_build_e2e_harness --quiet
+run_check E "week-1 gripper e2e harness" \
+    cargo test -p autopilot-desktop cad_chat_build_e2e_harness_week1_gripper_matches_golden --quiet
 run_check E "step checker + roundtrip fixtures" \
     "$ROOT_DIR/scripts/cad/step-checker-ci.sh"
 run_check E "headless script harness" \
@@ -90,5 +92,8 @@ run_check E "20 second reliability script" \
     "$ROOT_DIR/scripts/cad/reliability-20s-ci.sh"
 run_check E "chat-build runbook present" \
     test -f "$ROOT_DIR/docs/codex/CAD_CHAT_BUILD_RELEASE_RUNBOOK.md"
+run_check E "week-1 gripper script + golden present" \
+    test -f "$ROOT_DIR/apps/autopilot-desktop/tests/scripts/cad_chat_build_e2e_week1_gripper_script.json" \
+    -a -f "$ROOT_DIR/apps/autopilot-desktop/tests/goldens/cad_chat_build_e2e_week1_gripper_snapshot.json"
 
 printf 'CAD demo release gates passed (A-E).\n'
