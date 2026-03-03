@@ -1,5 +1,6 @@
 pub mod agent;
 pub mod cad;
+pub mod calculator;
 pub mod chat;
 pub mod codex;
 pub mod credit;

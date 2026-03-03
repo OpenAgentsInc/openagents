@@ -53,7 +53,8 @@ use crate::pane_system::{
     SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StableSatsSimulationPaneAction,
     StarterJobsPaneAction, SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction,
     cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds, clamp_all_panes_to_window,
-    dispatch_chat_input_event, dispatch_chat_scroll_event, dispatch_create_invoice_input_event,
+    dispatch_calculator_input_event, dispatch_chat_input_event, dispatch_chat_scroll_event,
+    dispatch_create_invoice_input_event,
     dispatch_credentials_input_event, dispatch_job_history_input_event,
     dispatch_network_requests_input_event, dispatch_pay_invoice_input_event,
     dispatch_relay_connections_input_event, dispatch_settings_input_event,
@@ -2119,6 +2120,7 @@ fn dispatch_text_inputs(state: &mut crate::app_state::RenderState, event: &Input
     handled |= dispatch_settings_input_event(state, event);
     handled |= dispatch_credentials_input_event(state, event);
     handled |= dispatch_chat_input_event(state, event);
+    handled |= dispatch_calculator_input_event(state, event);
     handled |= dispatch_job_history_input_event(state, event);
     handled
 }

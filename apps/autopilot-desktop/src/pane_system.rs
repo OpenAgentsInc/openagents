@@ -8,7 +8,8 @@ use crate::app_state::{ActivityFeedFilter, DesktopPane, PaneDragMode, PaneKind, 
 use crate::hotbar::{HOTBAR_FLOAT_GAP, HOTBAR_HEIGHT};
 use crate::pane_registry::pane_spec;
 use crate::panes::{
-    chat as chat_pane, relay_connections as relay_connections_pane, wallet as wallet_pane,
+    calculator as calculator_pane, chat as chat_pane,
+    relay_connections as relay_connections_pane, wallet as wallet_pane,
 };
 use crate::render::{
     logical_size, sidebar_go_online_button_bounds, sidebar_handle_bounds,
@@ -39,6 +40,7 @@ const CHAT_THREAD_ACTION_BUTTON_GAP: f32 = 4.0;
 const CHAT_THREAD_ROW_HEIGHT: f32 = 24.0;
 const CHAT_THREAD_ROW_GAP: f32 = 4.0;
 const CHAT_MAX_THREAD_ROWS: usize = 10;
+const CALCULATOR_INPUT_HEIGHT: f32 = 30.0;
 const SKILL_REGISTRY_ROW_HEIGHT: f32 = 28.0;
 const SKILL_REGISTRY_ROW_GAP: f32 = 6.0;
 const SKILL_REGISTRY_MAX_ROWS: usize = 8;
@@ -1053,6 +1055,11 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                     return CursorIcon::Text;
                 }
             }
+            PaneKind::Calculator => {
+                if calculator_expression_input_bounds(content_bounds).contains(point) {
+                    return CursorIcon::Text;
+                }
+            }
             PaneKind::RelayConnections => {
                 if relay_connections_url_input_bounds(content_bounds).contains(point) {
                     return CursorIcon::Text;
@@ -1377,6 +1384,15 @@ pub fn chat_transcript_bounds(content_bounds: Bounds) -> Bounds {
         content_bounds.origin.y + CHAT_PAD,
         (content_bounds.max_x() - left - CHAT_PAD).max(220.0),
         (composer_bounds.origin.y - (content_bounds.origin.y + CHAT_PAD) - CHAT_PAD).max(120.0),
+    )
+}
+
+pub fn calculator_expression_input_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(120.0),
+        CALCULATOR_INPUT_HEIGHT,
     )
 }
 
@@ -2995,6 +3011,7 @@ fn pane_hit_action_for_pane(
             }
             None
         }
+        PaneKind::Calculator => None,
         PaneKind::GoOnline => {
             if go_online_toggle_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::GoOnlineToggle)
@@ -3852,6 +3869,10 @@ pub fn dispatch_pay_invoice_input_event(state: &mut RenderState, event: &InputEv
 
 pub fn dispatch_chat_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
     chat_pane::dispatch_input_event(state, event)
+}
+
+pub fn dispatch_calculator_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
+    calculator_pane::dispatch_input_event(state, event)
 }
 
 pub fn dispatch_chat_scroll_event(

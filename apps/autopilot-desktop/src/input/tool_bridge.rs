@@ -971,6 +971,7 @@ fn pane_action_to_hit_action(
             }
             _ => unsupported(),
         },
+        PaneKind::Calculator => unsupported(),
         PaneKind::GoOnline => match action {
             "toggle" | "set_online" => Ok(PaneHitAction::GoOnlineToggle),
             _ => unsupported(),
@@ -4441,6 +4442,7 @@ fn resolve_pane_kind(raw: &str) -> Option<PaneKind> {
 fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
     match kind {
         PaneKind::AutopilotChat => &["chat", "autopilot_chat", "autopilot", "codex"],
+        PaneKind::Calculator => &["calculator", "calc"],
         PaneKind::SparkWallet => &["wallet", "spark_wallet"],
         PaneKind::SparkCreateInvoice => &["create_invoice", "invoice_create"],
         PaneKind::SparkPayInvoice => &["pay_invoice", "invoice_pay"],
@@ -4472,6 +4474,7 @@ fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::AlertsRecovery => "alerts_recovery",
         PaneKind::Settings => "settings",
         PaneKind::Credentials => "credentials",
+        PaneKind::Calculator => "calculator",
         PaneKind::JobInbox => "job_inbox",
         PaneKind::ActiveJob => "active_job",
         PaneKind::JobHistory => "job_history",
@@ -4638,6 +4641,11 @@ mod tests {
             Some(PaneKind::SparkWallet)
         );
         assert_eq!(resolve_pane_kind("wallet"), Some(PaneKind::SparkWallet));
+        assert_eq!(
+            resolve_pane_kind("pane.calculator"),
+            Some(PaneKind::Calculator)
+        );
+        assert_eq!(resolve_pane_kind("calc"), Some(PaneKind::Calculator));
     }
 
     #[test]
@@ -4648,6 +4656,7 @@ mod tests {
     #[test]
     fn pane_key_normalization_is_stable() {
         assert_eq!(pane_kind_key(PaneKind::AutopilotChat), "autopilot_chat");
+        assert_eq!(pane_kind_key(PaneKind::Calculator), "calculator");
         assert_eq!(
             normalize_key("Spark Lightning Wallet"),
             "spark_lightning_wallet"
