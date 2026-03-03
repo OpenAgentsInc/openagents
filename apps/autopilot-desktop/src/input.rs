@@ -95,7 +95,7 @@ use shortcuts::*;
 const CHAT_MESSAGE_LONG_PRESS_MS: u64 = 450;
 
 pub(crate) fn bootstrap_startup_cad_mesh(state: &mut crate::app_state::RenderState) {
-    let _ = reducers::run_cad_demo_action(state, CadDemoPaneAction::BootstrapDemo);
+    let _ = reducers::bootstrap_startup_parallel_jaw_gripper(state);
 }
 
 pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: WindowEvent) {
