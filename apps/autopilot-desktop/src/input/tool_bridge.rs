@@ -1656,6 +1656,46 @@ fn cad_kinematic_checkpoint(cad_demo: &crate::app_state::CadDemoPaneState) -> Va
     })
 }
 
+fn cad_sensor_feedback_checkpoint(cad_demo: &crate::app_state::CadDemoPaneState) -> Value {
+    let latest_readings = cad_demo
+        .sensor_feedback_readings
+        .iter()
+        .map(|reading| {
+            json!({
+                "digit_id": reading.digit_id,
+                "pressure_ratio": reading.pressure_ratio,
+                "proximity_mm": reading.proximity_mm,
+                "contact": reading.contact,
+            })
+        })
+        .collect::<Vec<_>>();
+    let trace = cad_demo
+        .sensor_feedback_trace
+        .iter()
+        .rev()
+        .take(8)
+        .cloned()
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .map(|sample| {
+            json!({
+                "document_revision": sample.document_revision,
+                "pose_preset": sample.pose_preset,
+                "average_pressure_ratio": sample.average_pressure_ratio,
+                "minimum_proximity_mm": sample.minimum_proximity_mm,
+                "contact_count": sample.contact_count,
+            })
+        })
+        .collect::<Vec<_>>();
+    json!({
+        "visualization_mode": cad_demo.sensor_visualization_mode.label(),
+        "last_updated_revision": cad_demo.sensor_feedback_last_updated_revision,
+        "latest_readings": latest_readings,
+        "trace": trace,
+    })
+}
+
 fn cad_build_session_checkpoint(cad_demo: &crate::app_state::CadDemoPaneState) -> Value {
     if cad_demo.build_session.phase != crate::app_state::CadBuildSessionPhase::Idle {
         return json!({
@@ -1782,6 +1822,7 @@ fn cad_checkpoint_payload(
             "center_of_gravity_mm": analysis.center_of_gravity_mm,
         },
         "kinematics": cad_kinematic_checkpoint(cad_demo),
+        "sensor_feedback": cad_sensor_feedback_checkpoint(cad_demo),
         "gripper_parameters": if matches!(
             design_profile,
             openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper
@@ -1900,7 +1941,10 @@ fn cad_gripper_parameter_summary(
         "servo_integration_enabled".to_string(),
         json!(servo_integration_enabled),
     );
-    summary.insert("compact_servo_layout".to_string(), json!(compact_servo_layout));
+    summary.insert(
+        "compact_servo_layout".to_string(),
+        json!(compact_servo_layout),
+    );
     if let Some(pose_preset) = cad_demo
         .active_dispatch_state()
         .and_then(|dispatch| dispatch.pose_preset.as_deref())
@@ -1974,10 +2018,18 @@ fn cad_gripper_parameter_summary(
         {
             summary.insert("wiring_channel_diameter_mm".to_string(), json!(value));
         }
-        if let Some(value) = dispatch.parameter_values.get("wiring_bend_radius_mm").copied() {
+        if let Some(value) = dispatch
+            .parameter_values
+            .get("wiring_bend_radius_mm")
+            .copied()
+        {
             summary.insert("wiring_bend_radius_mm".to_string(), json!(value));
         }
-        if let Some(value) = dispatch.parameter_values.get("wiring_clearance_mm").copied() {
+        if let Some(value) = dispatch
+            .parameter_values
+            .get("wiring_clearance_mm")
+            .copied()
+        {
             summary.insert("wiring_clearance_mm".to_string(), json!(value));
         }
         if let Some(value) = dispatch
@@ -1992,7 +2044,10 @@ fn cad_gripper_parameter_summary(
             .get("proximity_sensor_port_diameter_mm")
             .copied()
         {
-            summary.insert("proximity_sensor_port_diameter_mm".to_string(), json!(value));
+            summary.insert(
+                "proximity_sensor_port_diameter_mm".to_string(),
+                json!(value),
+            );
         }
         if let Some(value) = dispatch
             .parameter_values
@@ -4300,6 +4355,9 @@ fn cad_action_from_key(
         "snap_right" => CadDemoPaneAction::SnapViewRight,
         "snap_isometric" => CadDemoPaneAction::SnapViewIsometric,
         "cycle_hidden_line_mode" => CadDemoPaneAction::CycleHiddenLineMode,
+        "cycle_sensor_mode" | "cycle_sensor_visualization_mode" => {
+            CadDemoPaneAction::CycleSensorVisualizationMode
+        }
         "cycle_warning_severity_filter" => CadDemoPaneAction::CycleWarningSeverityFilter,
         "cycle_warning_code_filter" => CadDemoPaneAction::CycleWarningCodeFilter,
         "select_warning" => CadDemoPaneAction::SelectWarning(require_index(action)?),
@@ -4649,6 +4707,10 @@ mod tests {
             CadDemoPaneAction::Noop
         );
         assert_eq!(
+            cad_action_from_key("cycle_sensor_mode", None).expect("sensor mode action"),
+            CadDemoPaneAction::CycleSensorVisualizationMode
+        );
+        assert_eq!(
             cad_action_from_key("select_warning", Some(3)).expect("indexed action"),
             CadDemoPaneAction::SelectWarning(3)
         );
@@ -4744,6 +4806,11 @@ mod tests {
         assert!(
             payload
                 .pointer("/failure_metrics/dispatch_rebuild_failures")
+                .is_some()
+        );
+        assert!(
+            payload
+                .pointer("/sensor_feedback/visualization_mode")
                 .is_some()
         );
         assert!(payload.get("build_session").is_some());
@@ -4964,6 +5031,56 @@ mod tests {
         assert_eq!(
             payload.pointer("/kinematics/nominal_range_valid"),
             Some(&serde_json::json!(true))
+        );
+    }
+
+    #[test]
+    fn cad_checkpoint_payload_exposes_sensor_feedback_mode_and_latest_readings() {
+        let mut cad_demo = CadDemoPaneState::default();
+        cad_demo.sensor_visualization_mode = crate::app_state::CadSensorVisualizationMode::Combined;
+        cad_demo.sensor_feedback_last_updated_revision = 23;
+        cad_demo.sensor_feedback_readings = vec![
+            crate::app_state::CadSensorFeedbackReading {
+                digit_id: "index".to_string(),
+                pressure_ratio: 0.64,
+                proximity_mm: 0.92,
+                contact: true,
+            },
+            crate::app_state::CadSensorFeedbackReading {
+                digit_id: "thumb".to_string(),
+                pressure_ratio: 0.58,
+                proximity_mm: 1.14,
+                contact: true,
+            },
+        ];
+        cad_demo.sensor_feedback_trace = vec![crate::app_state::CadSensorFeedbackTracePoint {
+            document_revision: 23,
+            pose_preset: "tripod".to_string(),
+            average_pressure_ratio: 0.61,
+            minimum_proximity_mm: 0.92,
+            contact_count: 2,
+        }];
+
+        let payload = cad_checkpoint_payload(&cad_demo, Some("thread-sensor"), "test-source");
+        assert_eq!(
+            payload.pointer("/sensor_feedback/visualization_mode"),
+            Some(&serde_json::json!("combined"))
+        );
+        assert_eq!(
+            payload.pointer("/sensor_feedback/last_updated_revision"),
+            Some(&serde_json::json!(23))
+        );
+        assert_eq!(
+            payload.pointer("/sensor_feedback/latest_readings/0/digit_id"),
+            Some(&serde_json::json!("index"))
+        );
+        assert_eq!(
+            payload.pointer("/sensor_feedback/latest_readings/0/contact"),
+            Some(&serde_json::json!(true))
+        );
+        assert_eq!(
+            payload.pointer("/sensor_feedback/trace/0/pose_preset"),
+            Some(&serde_json::json!("tripod"))
         );
     }
 

@@ -540,6 +540,7 @@ pub struct CadDemoPaneState {
     pub section_axis: Option<CadSectionAxis>,
     pub section_offset_normalized: f32,
     pub hidden_line_mode: CadHiddenLineMode,
+    pub sensor_visualization_mode: CadSensorVisualizationMode,
     pub snap_toggles: CadSnapToggles,
     pub projection_mode: CadProjectionMode,
     pub viewport_layout: CadViewportLayout,
@@ -547,6 +548,9 @@ pub struct CadDemoPaneState {
     pub grasp_simulation_seed: u64,
     pub grasp_simulation_samples: Vec<CadGraspSimulationSample>,
     pub grasp_simulation_last_updated_revision: u64,
+    pub sensor_feedback_readings: Vec<CadSensorFeedbackReading>,
+    pub sensor_feedback_trace: Vec<CadSensorFeedbackTracePoint>,
+    pub sensor_feedback_last_updated_revision: u64,
     pub drawing_view_mode: CadDrawingViewMode,
     pub drawing_view_direction: CadDrawingViewDirection,
     pub drawing_show_hidden_lines: bool,
@@ -604,6 +608,51 @@ pub struct CadGraspSimulationSample {
     pub contact_points: u8,
     pub compliance_deflection_mm: f64,
     pub adaptation_score: f64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CadSensorVisualizationMode {
+    Off,
+    Pressure,
+    Proximity,
+    Combined,
+}
+
+impl CadSensorVisualizationMode {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Off => Self::Pressure,
+            Self::Pressure => Self::Proximity,
+            Self::Proximity => Self::Combined,
+            Self::Combined => Self::Off,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Pressure => "pressure",
+            Self::Proximity => "proximity",
+            Self::Combined => "combined",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct CadSensorFeedbackReading {
+    pub digit_id: String,
+    pub pressure_ratio: f64,
+    pub proximity_mm: f64,
+    pub contact: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct CadSensorFeedbackTracePoint {
+    pub document_revision: u64,
+    pub pose_preset: String,
+    pub average_pressure_ratio: f64,
+    pub minimum_proximity_mm: f64,
+    pub contact_count: usize,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1910,6 +1959,7 @@ impl Default for CadDemoPaneState {
             section_axis: None,
             section_offset_normalized: 0.0,
             hidden_line_mode: CadHiddenLineMode::Shaded,
+            sensor_visualization_mode: CadSensorVisualizationMode::Off,
             snap_toggles: CadSnapToggles::default(),
             projection_mode: CadProjectionMode::Orthographic,
             viewport_layout: CadViewportLayout::Single,
@@ -1917,6 +1967,9 @@ impl Default for CadDemoPaneState {
             grasp_simulation_seed: 20_260_303,
             grasp_simulation_samples: Vec::new(),
             grasp_simulation_last_updated_revision: 0,
+            sensor_feedback_readings: Vec::new(),
+            sensor_feedback_trace: Vec::new(),
+            sensor_feedback_last_updated_revision: 0,
             drawing_view_mode: CadDrawingViewMode::ThreeD,
             drawing_view_direction: CadDrawingViewDirection::Front,
             drawing_show_hidden_lines: true,
@@ -2339,7 +2392,10 @@ impl CadDemoPaneState {
             "servo_envelope_length_mm",
             spec.servo_envelope_length_mm,
         );
-        self.set_dimension_value_mm_if_present("servo_envelope_width_mm", spec.servo_envelope_width_mm);
+        self.set_dimension_value_mm_if_present(
+            "servo_envelope_width_mm",
+            spec.servo_envelope_width_mm,
+        );
         self.set_dimension_value_mm_if_present(
             "servo_envelope_height_mm",
             spec.servo_envelope_height_mm,
@@ -2795,6 +2851,18 @@ impl CadDemoPaneState {
         let profile = dispatch_state.design_profile;
         self.document_revision = receipt.state_revision;
         self.ensure_variant_family_for_profile(profile);
+        if matches!(
+            profile,
+            openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
+        ) {
+            if self.sensor_visualization_mode == CadSensorVisualizationMode::Off {
+                self.sensor_visualization_mode = CadSensorVisualizationMode::Combined;
+            }
+        } else {
+            self.sensor_visualization_mode = CadSensorVisualizationMode::Off;
+            self.sensor_feedback_readings.clear();
+            self.sensor_feedback_trace.clear();
+        }
         match intent {
             openagents_cad::intent::CadIntent::CreateParallelJawGripperSpec(spec) => {
                 self.apply_parallel_jaw_gripper_spec_dimensions(spec);
@@ -2978,6 +3046,11 @@ impl CadDemoPaneState {
 
     pub fn cycle_projection_mode(&mut self) {
         self.projection_mode = self.projection_mode.next();
+    }
+
+    pub fn cycle_sensor_visualization_mode(&mut self) -> CadSensorVisualizationMode {
+        self.sensor_visualization_mode = self.sensor_visualization_mode.next();
+        self.sensor_visualization_mode
     }
 
     pub fn toggle_drawing_view_mode(&mut self) -> CadDrawingViewMode {

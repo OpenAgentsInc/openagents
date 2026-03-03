@@ -25,7 +25,8 @@ use crate::app_state::{
     ActivityEventDomain, ActivityEventRow, AutopilotProgressBlock, AutopilotProgressRow,
     CadBuildFailureClass, CadBuildSessionArchiveState, CadBuildSessionPhase, CadBuildSessionState,
     CadCameraViewSnap, CadDemoPaneState, CadDemoWarningState, CadGraspObjectShape,
-    CadGraspSimulationSample, CadRebuildReceiptState, CadSnapMode, CadThreeDMouseAxis,
+    CadGraspSimulationSample, CadRebuildReceiptState, CadSensorFeedbackReading,
+    CadSensorFeedbackTracePoint, CadSensorVisualizationMode, CadSnapMode, CadThreeDMouseAxis,
     CadTimelineRowState, PaneLoadState, RenderState,
 };
 use crate::cad_rebuild_worker::{
@@ -919,6 +920,11 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
             ));
             true
         }
+        CadDemoPaneAction::CycleSensorVisualizationMode => {
+            let mode = state.cycle_sensor_visualization_mode();
+            state.last_action = Some(format!("CAD sensor visualization -> {}", mode.label()));
+            true
+        }
         CadDemoPaneAction::CycleWarningSeverityFilter => {
             state.warning_filter_severity =
                 next_warning_severity_filter(&state.warning_filter_severity);
@@ -1407,6 +1413,7 @@ fn apply_completed_rebuild(
     }
     refresh_warning_state(state, completed.document_revision, &receipt.variant_id);
     refresh_gripper_grasp_simulation(state);
+    refresh_sensor_feedback_simulation(state);
     refresh_timeline_state(
         state,
         &completed.graph,
@@ -1693,6 +1700,7 @@ fn emit_cad_event_for_action(state: &mut RenderState, action: CadDemoPaneAction)
         | CadDemoPaneAction::ResetDrawingView
         | CadDemoPaneAction::AddDrawingDetailView
         | CadDemoPaneAction::ClearDrawingDetailViews
+        | CadDemoPaneAction::CycleSensorVisualizationMode
         | CadDemoPaneAction::DimensionInputCommit => {
             emit_cad_event(
                 state,
@@ -2157,13 +2165,28 @@ impl GripperVariantDimensions {
             .and_then(|value| value.parameter_values.get("gearbox_ratio").copied())
             .unwrap_or_else(|| dimension_value_mm(state, "gearbox_ratio", 4.5));
         let gearbox_stage_diameter_mm = dispatch
-            .and_then(|value| value.parameter_values.get("gearbox_stage_diameter_mm").copied())
+            .and_then(|value| {
+                value
+                    .parameter_values
+                    .get("gearbox_stage_diameter_mm")
+                    .copied()
+            })
             .unwrap_or_else(|| dimension_value_mm(state, "gearbox_stage_diameter_mm", 11.0));
         let gearbox_stage_length_mm = dispatch
-            .and_then(|value| value.parameter_values.get("gearbox_stage_length_mm").copied())
+            .and_then(|value| {
+                value
+                    .parameter_values
+                    .get("gearbox_stage_length_mm")
+                    .copied()
+            })
             .unwrap_or_else(|| dimension_value_mm(state, "gearbox_stage_length_mm", 14.0));
         let wiring_channel_diameter_mm = dispatch
-            .and_then(|value| value.parameter_values.get("wiring_channel_diameter_mm").copied())
+            .and_then(|value| {
+                value
+                    .parameter_values
+                    .get("wiring_channel_diameter_mm")
+                    .copied()
+            })
             .unwrap_or_else(|| dimension_value_mm(state, "wiring_channel_diameter_mm", 1.8));
         let wiring_bend_radius_mm = dispatch
             .and_then(|value| value.parameter_values.get("wiring_bend_radius_mm").copied())
@@ -2186,9 +2209,7 @@ impl GripperVariantDimensions {
                     .get("proximity_sensor_port_diameter_mm")
                     .copied()
             })
-            .unwrap_or_else(|| {
-                dimension_value_mm(state, "proximity_sensor_port_diameter_mm", 4.0)
-            });
+            .unwrap_or_else(|| dimension_value_mm(state, "proximity_sensor_port_diameter_mm", 4.0));
         let control_board_mount_width_mm = dispatch
             .and_then(|value| {
                 value
@@ -2222,12 +2243,22 @@ impl GripperVariantDimensions {
             })
             .unwrap_or_else(|| dimension_value_mm(state, "modular_mount_slot_pitch_mm", 8.0));
         let modular_mount_slot_count = dispatch
-            .and_then(|value| value.parameter_values.get("modular_mount_slot_count").copied())
+            .and_then(|value| {
+                value
+                    .parameter_values
+                    .get("modular_mount_slot_count")
+                    .copied()
+            })
             .unwrap_or_else(|| dimension_value_mm(state, "modular_mount_slot_count", 4.0))
             .round()
             .clamp(2.0, 10.0) as u8;
         let electrical_clearance_mm = dispatch
-            .and_then(|value| value.parameter_values.get("electrical_clearance_mm").copied())
+            .and_then(|value| {
+                value
+                    .parameter_values
+                    .get("electrical_clearance_mm")
+                    .copied()
+            })
             .unwrap_or_else(|| dimension_value_mm(state, "electrical_clearance_mm", 2.2));
         let pose_preset = dispatch
             .and_then(|value| value.pose_preset.clone())
@@ -2370,8 +2401,10 @@ impl GripperVariantDimensions {
             value.gearbox_stage_diameter_mm = (value.gearbox_stage_diameter_mm - 0.6).max(5.0);
             value.gearbox_stage_length_mm = (value.gearbox_stage_length_mm - 1.1).max(6.0);
             value.wiring_clearance_mm = (value.wiring_clearance_mm - 0.1).max(0.2);
-            value.control_board_mount_width_mm = (value.control_board_mount_width_mm - 2.0).max(10.0);
-            value.control_board_mount_depth_mm = (value.control_board_mount_depth_mm - 1.0).max(8.0);
+            value.control_board_mount_width_mm =
+                (value.control_board_mount_width_mm - 2.0).max(10.0);
+            value.control_board_mount_depth_mm =
+                (value.control_board_mount_depth_mm - 1.0).max(8.0);
             value.modular_mount_slot_pitch_mm = (value.modular_mount_slot_pitch_mm - 0.3).max(3.0);
         }
         value
@@ -2959,7 +2992,12 @@ fn build_three_finger_thumb_feature_graph(state: &CadDemoPaneState) -> FeatureGr
     }
 
     if gripper.servo_integration_enabled {
-        let compact_layout = if gripper.compact_servo_layout { "1" } else { "0" }.to_string();
+        let compact_layout = if gripper.compact_servo_layout {
+            "1"
+        } else {
+            "0"
+        }
+        .to_string();
         for (digit_slot, digit_name, parent_feature_id) in [
             (-1_i8, "index", "feature.hand3.finger.index"),
             (0_i8, "middle", "feature.hand3.finger.middle"),
@@ -3616,6 +3654,130 @@ fn refresh_gripper_grasp_simulation(state: &mut CadDemoPaneState) {
     state.grasp_simulation_last_updated_revision = state.document_revision;
 }
 
+fn refresh_sensor_feedback_simulation(state: &mut CadDemoPaneState) {
+    let is_gripper_profile = matches!(
+        state.active_design_profile(),
+        openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper
+            | openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated
+            | openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
+    );
+    if !is_gripper_profile {
+        state.sensor_feedback_readings.clear();
+        state.sensor_feedback_trace.clear();
+        state.sensor_feedback_last_updated_revision = state.document_revision;
+        state.sensor_visualization_mode = CadSensorVisualizationMode::Off;
+        return;
+    }
+
+    let gripper = GripperVariantDimensions::from_state(state)
+        .with_variant_deltas(state.active_variant_id.as_str());
+    let digit_ids: &[&str] = if matches!(
+        state.active_design_profile(),
+        openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
+    ) {
+        &["index", "middle", "ring", "thumb"]
+    } else {
+        &["left", "right"]
+    };
+
+    let jaw_span = (openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_JAW_OPEN_MM
+        - openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_JAW_OPEN_MM)
+        .max(1.0);
+    let closure_ratio = ((openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_JAW_OPEN_MM
+        - gripper.jaw_open_mm)
+        / jaw_span)
+        .clamp(0.0, 1.0);
+    let compliance_gain = if gripper.underactuated_mode {
+        ((gripper.compliant_joint_count as f64) * (0.30 / gripper.flexure_thickness_mm.max(0.4)))
+            .clamp(0.0, 0.32)
+    } else {
+        0.0
+    };
+    let pose_gain = match gripper.pose_preset.as_str() {
+        "tripod" => 0.08,
+        "pinch" => 0.13,
+        _ => 0.02,
+    };
+    let variant_bias = (((state
+        .active_variant_id
+        .bytes()
+        .fold(0_u32, |acc, value| acc.saturating_add(value as u32))
+        % 9) as f64)
+        * 0.012)
+        - 0.04;
+    let proximity_base_mm = (gripper.jaw_open_mm
+        / (digit_ids.len() as f64 + if digit_ids.len() > 2 { 0.9 } else { 0.5 }))
+    .max(0.4);
+
+    let mut readings = Vec::with_capacity(digit_ids.len());
+    for (index, digit_id) in digit_ids.iter().enumerate() {
+        let finger_bias = match index {
+            0 => 0.03,
+            1 => 0.07,
+            2 => 0.05,
+            _ => 0.10,
+        };
+        let pressure_ratio = (0.18
+            + closure_ratio * 0.56
+            + compliance_gain * 0.28
+            + pose_gain
+            + finger_bias
+            + variant_bias)
+            .clamp(0.0, 1.0);
+        let proximity_mm =
+            (proximity_base_mm * (1.0 - pressure_ratio * 0.58) + ((index as f64) * 0.10)).max(0.2);
+        readings.push(CadSensorFeedbackReading {
+            digit_id: (*digit_id).to_string(),
+            pressure_ratio,
+            proximity_mm,
+            contact: pressure_ratio >= 0.56 || proximity_mm <= 1.2,
+        });
+    }
+
+    let average_pressure_ratio = if readings.is_empty() {
+        0.0
+    } else {
+        readings
+            .iter()
+            .map(|reading| reading.pressure_ratio)
+            .sum::<f64>()
+            / readings.len() as f64
+    };
+    let minimum_proximity_mm = readings
+        .iter()
+        .map(|reading| reading.proximity_mm)
+        .fold(f64::INFINITY, f64::min);
+    let contact_count = readings.iter().filter(|reading| reading.contact).count();
+    let trace_point = CadSensorFeedbackTracePoint {
+        document_revision: state.document_revision,
+        pose_preset: gripper.pose_preset.clone(),
+        average_pressure_ratio,
+        minimum_proximity_mm,
+        contact_count,
+    };
+
+    state.sensor_feedback_readings = readings;
+    state.sensor_feedback_last_updated_revision = state.document_revision;
+    if let Some(last) = state.sensor_feedback_trace.last_mut()
+        && last.document_revision == trace_point.document_revision
+    {
+        *last = trace_point;
+    } else {
+        state.sensor_feedback_trace.push(trace_point);
+    }
+    if state.sensor_feedback_trace.len() > 24 {
+        let overflow = state.sensor_feedback_trace.len().saturating_sub(24);
+        state.sensor_feedback_trace.drain(0..overflow);
+    }
+    if matches!(
+        state.active_design_profile(),
+        openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
+    ) && state.sensor_visualization_mode == CadSensorVisualizationMode::Off
+    {
+        state.sensor_visualization_mode = CadSensorVisualizationMode::Combined;
+    }
+}
+
 fn refresh_warning_state(state: &mut CadDemoPaneState, document_revision: u64, variant_id: &str) {
     let warnings = build_profile_warning_set(state, document_revision, variant_id);
     state.set_variant_warning_set(variant_id, warnings);
@@ -3931,7 +4093,10 @@ fn append_gripper_printability_warnings(
                 remediation_hint:
                     "Increase jaw_open_mm or reduce servo_envelope_width_mm / wiring_clearance_mm"
                         .to_string(),
-                semantic_refs: vec!["hand3_servo_housing".to_string(), "hand3_wiring_channel".to_string()],
+                semantic_refs: vec![
+                    "hand3_servo_housing".to_string(),
+                    "hand3_wiring_channel".to_string(),
+                ],
                 deep_link: Some("cad://feature/feature.hand3.servo_housing.middle".to_string()),
                 feature_id: "feature.hand3.servo_housing.middle".to_string(),
                 entity_id: "hand3.housing.jaw_interference".to_string(),
@@ -6693,7 +6858,10 @@ mod tests {
             .expect("baseline receipt should exist");
 
         for _ in 0..4 {
-            assert!(apply_cad_demo_action(&mut state, CadDemoPaneAction::CycleVariant));
+            assert!(apply_cad_demo_action(
+                &mut state,
+                CadDemoPaneAction::CycleVariant
+            ));
             wait_for_receipt(&mut state);
         }
         assert_eq!(state.active_variant_id, "variant.baseline");
@@ -6702,9 +6870,18 @@ mod tests {
             .as_ref()
             .cloned()
             .expect("cycled baseline receipt should exist");
-        assert_eq!(baseline_receipt_a.feature_count, baseline_receipt_b.feature_count);
-        assert_eq!(baseline_receipt_a.vertex_count, baseline_receipt_b.vertex_count);
-        assert_eq!(baseline_receipt_a.triangle_count, baseline_receipt_b.triangle_count);
+        assert_eq!(
+            baseline_receipt_a.feature_count,
+            baseline_receipt_b.feature_count
+        );
+        assert_eq!(
+            baseline_receipt_a.vertex_count,
+            baseline_receipt_b.vertex_count
+        );
+        assert_eq!(
+            baseline_receipt_a.triangle_count,
+            baseline_receipt_b.triangle_count
+        );
         assert_eq!(baseline_receipt_a.edge_count, baseline_receipt_b.edge_count);
     }
 
