@@ -39,7 +39,7 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 194,
+    "source_artifact_count": 196,
     "artifact_ids": [
       "analytic_ray_intersections_parity_manifest",
       "assembly_acceptance_scenes_parity_manifest",
@@ -146,6 +146,7 @@
       "fixtures_slicer_bambu_lane_vcad_reference",
       "fixtures_slicer_core_lane_vcad_reference",
       "fixtures_slicer_gcode_lane_vcad_reference",
+      "fixtures_slicer_wasm_lane_vcad_reference",
       "fixtures_step_export_post_boolean_vcad_reference",
       "fixtures_step_import_entity_vcad_reference",
       "fixtures_stl_import_export_vcad_reference",
@@ -218,6 +219,7 @@
       "slicer_bambu_lane_parity_manifest",
       "slicer_core_lane_parity_manifest",
       "slicer_gcode_lane_parity_manifest",
+      "slicer_wasm_lane_parity_manifest",
       "step_export_post_boolean_parity_manifest",
       "step_import_entity_parity_manifest",
       "stl_import_export_parity_manifest",

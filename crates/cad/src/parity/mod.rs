@@ -108,6 +108,7 @@ pub mod sketch_undo_redo_parity;
 pub mod slicer_bambu_lane_parity;
 pub mod slicer_core_lane_parity;
 pub mod slicer_gcode_lane_parity;
+pub mod slicer_wasm_lane_parity;
 pub mod step_export_post_boolean_parity;
 pub mod step_import_entity_parity;
 pub mod stl_import_export_parity;

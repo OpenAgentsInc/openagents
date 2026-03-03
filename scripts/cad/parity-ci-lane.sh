@@ -205,6 +205,8 @@ ARTIFACT_SOURCE_PATHS=(
     "crates/cad/parity/fixtures/slicer_gcode_lane_vcad_reference.json"
     "crates/cad/parity/slicer_bambu_lane_parity_manifest.json"
     "crates/cad/parity/fixtures/slicer_bambu_lane_vcad_reference.json"
+    "crates/cad/parity/slicer_wasm_lane_parity_manifest.json"
+    "crates/cad/parity/fixtures/slicer_wasm_lane_vcad_reference.json"
     "crates/cad/parity/fixtures/parity_fixture_corpus.json"
 )
 
