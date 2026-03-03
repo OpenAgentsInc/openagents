@@ -44,6 +44,7 @@ pub mod gpu_acceleration_parity;
 pub mod headless_script_harness_parity;
 pub mod intent_modeling_parity;
 pub mod io_headless_ai_checkpoint_parity;
+pub mod joint_physics_mapping_parity;
 pub mod kernel_adapter_v2;
 pub mod kernel_boolean_brep_parity;
 pub mod kernel_boolean_diagnostics_parity;

@@ -2,7 +2,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use openagents_cad::parity::ci_artifacts::{
-    PARITY_CI_ARTIFACTS_ISSUE_ID, ParityCiArtifactManifest, build_ci_artifact_manifest,
+    PARITY_CI_ARTIFACTS_ISSUE_ID, PARITY_CI_SOURCE_PATHS, ParityCiArtifactManifest,
+    build_ci_artifact_manifest,
 };
 use openagents_cad::parity::scorecard::ParityScorecard;
 
@@ -32,8 +33,8 @@ fn parity_ci_artifact_manifest_fixture_is_well_formed() {
     let manifest: ParityCiArtifactManifest = load_json(&path);
     assert_eq!(manifest.manifest_version, 1);
     assert_eq!(manifest.issue_id, PARITY_CI_ARTIFACTS_ISSUE_ID);
-    assert_eq!(manifest.source_artifact_count, 156);
-    assert_eq!(manifest.artifacts.len(), 156);
+    assert_eq!(manifest.source_artifact_count, PARITY_CI_SOURCE_PATHS.len());
+    assert_eq!(manifest.artifacts.len(), PARITY_CI_SOURCE_PATHS.len());
     assert_eq!(
         manifest.parity_check_entrypoint,
         "scripts/cad/parity_check.sh".to_string()

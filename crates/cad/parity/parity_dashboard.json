@@ -39,7 +39,7 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 156,
+    "source_artifact_count": 158,
     "artifact_ids": [
       "analytic_ray_intersections_parity_manifest",
       "assembly_acceptance_scenes_parity_manifest",
@@ -113,6 +113,7 @@
       "fixtures_gpu_acceleration_vcad_reference",
       "fixtures_headless_script_harness_vcad_reference",
       "fixtures_intent_modeling_vcad_reference",
+      "fixtures_joint_physics_mapping_vcad_reference",
       "fixtures_mesh_upload_processing_vcad_reference",
       "fixtures_parity_fixture_corpus",
       "fixtures_physics_crate_integration_vcad_reference",
@@ -134,6 +135,7 @@
       "headless_script_harness_parity_manifest",
       "intent_modeling_parity_manifest",
       "io_headless_ai_checkpoint_parity_manifest",
+      "joint_physics_mapping_parity_manifest",
       "kernel_adapter_v2_manifest",
       "kernel_boolean_brep_parity_manifest",
       "kernel_boolean_diagnostics_parity_manifest",

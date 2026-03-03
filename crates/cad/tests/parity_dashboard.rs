@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use openagents_cad::parity::ci_artifacts::ParityCiArtifactManifest;
+use openagents_cad::parity::ci_artifacts::{PARITY_CI_SOURCE_PATHS, ParityCiArtifactManifest};
 use openagents_cad::parity::dashboard::{
     PARITY_DASHBOARD_ISSUE_ID, ParityDashboard, build_dashboard, render_dashboard_markdown,
 };
@@ -42,7 +42,10 @@ fn parity_dashboard_fixture_is_well_formed() {
         dashboard.phase_status,
         "phase_g_io_headless_ai_checkpoint_complete"
     );
-    assert_eq!(dashboard.artifacts.source_artifact_count, 156);
+    assert_eq!(
+        dashboard.artifacts.source_artifact_count,
+        PARITY_CI_SOURCE_PATHS.len()
+    );
     assert!(dashboard.summary.overall_match_rate > 0.0);
 }
 
