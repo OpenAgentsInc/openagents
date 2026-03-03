@@ -208,7 +208,7 @@ Major gaps to close:
 108. [x] VCAD-PARITY-108: Joint-to-physics mapping parity.
 109. [x] VCAD-PARITY-109: Simulation `step/reset` API parity.
 110. [x] VCAD-PARITY-110: Simulation UI controls parity (play/pause/step/record).
-111. [ ] VCAD-PARITY-111: Gym-style API parity (`obs/action/reward/done`).
+111. [x] VCAD-PARITY-111: Gym-style API parity (`obs/action/reward/done`).
 112. [ ] VCAD-PARITY-112: MCP simulation tools parity.
 113. [ ] VCAD-PARITY-113: URDF import parity.
 114. [ ] VCAD-PARITY-114: URDF export parity + fixtures.

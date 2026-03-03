@@ -41,6 +41,7 @@ pub mod fixture_corpus;
 pub mod gap_matrix;
 pub mod glb_export_parity;
 pub mod gpu_acceleration_parity;
+pub mod gym_style_api_parity;
 pub mod headless_script_harness_parity;
 pub mod intent_modeling_parity;
 pub mod io_headless_ai_checkpoint_parity;
