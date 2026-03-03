@@ -1179,6 +1179,187 @@ fn tessellate_feature_node(
             builder.add_circle_edge_loop([x_center, y_joint, z_base], half, 12, 4, 0);
             Ok(())
         }
+        "hand3.sensor.pad.v1" => {
+            let digit_slot = node
+                .params
+                .get("digit_slot")
+                .and_then(|value| value.parse::<i32>().ok())
+                .unwrap_or(0) as f32;
+            let base_width_mm = node_param_f32(node, "base_width_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(90.0);
+            let base_depth_mm = node_param_f32(node, "base_depth_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(58.0);
+            let base_thickness_mm = node_param_f32(node, "base_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(8.0);
+            let finger_spacing_mm = node_param_f32(node, "finger_spacing_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(12.0);
+            let pad_diameter_mm = node_param_f32(node, "force_sensor_pad_diameter_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(6.4);
+            let electrical_clearance_mm = node_param_f32(node, "electrical_clearance_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(2.2);
+            let compact_layout = node_param_bool(node, "compact_layout").unwrap_or(false);
+            let compact_scale = if compact_layout { 0.92 } else { 1.0 };
+            let x_center = if digit_slot <= -1.5 {
+                -base_width_mm * 0.34
+            } else {
+                digit_slot * finger_spacing_mm
+            };
+            let y_center = if digit_slot <= -1.5 {
+                base_depth_mm * 0.06
+            } else {
+                base_depth_mm * 0.45
+            };
+            let radius = (pad_diameter_mm * 0.5 * compact_scale).max(0.8);
+            let z_center = base_thickness_mm + electrical_clearance_mm + jitter * 0.02;
+            builder.add_cylinder_z(
+                [x_center, y_center, z_center + radius * 0.25],
+                radius,
+                (radius * 0.5).max(0.6),
+                14,
+                1,
+                6,
+            );
+            builder.add_circle_edge_loop([x_center, y_center, z_center], radius, 14, 6, 0);
+            Ok(())
+        }
+        "hand3.sensor.proximity_port.v1" => {
+            let digit_slot = node
+                .params
+                .get("digit_slot")
+                .and_then(|value| value.parse::<i32>().ok())
+                .unwrap_or(0) as f32;
+            let base_width_mm = node_param_f32(node, "base_width_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(90.0);
+            let base_depth_mm = node_param_f32(node, "base_depth_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(58.0);
+            let base_thickness_mm = node_param_f32(node, "base_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(8.0);
+            let finger_spacing_mm = node_param_f32(node, "finger_spacing_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(12.0);
+            let port_diameter_mm = node_param_f32(node, "proximity_sensor_port_diameter_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(4.0);
+            let electrical_clearance_mm = node_param_f32(node, "electrical_clearance_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(2.2);
+            let compact_layout = node_param_bool(node, "compact_layout").unwrap_or(false);
+            let compact_scale = if compact_layout { 0.92 } else { 1.0 };
+            let x_center = if digit_slot <= -1.5 {
+                -base_width_mm * 0.34 + (port_diameter_mm * 0.45)
+            } else {
+                digit_slot * finger_spacing_mm + (port_diameter_mm * 0.45)
+            };
+            let y_center = if digit_slot <= -1.5 {
+                base_depth_mm * 0.02
+            } else {
+                base_depth_mm * 0.40
+            };
+            let radius = (port_diameter_mm * 0.5 * compact_scale).max(0.5);
+            let depth = (electrical_clearance_mm * 0.9).max(0.6);
+            builder.add_cylinder_z(
+                [x_center, y_center, base_thickness_mm + depth * 0.5],
+                radius,
+                depth,
+                12,
+                0,
+                4,
+            );
+            builder.add_circle_edge_loop(
+                [x_center, y_center, base_thickness_mm + depth],
+                radius,
+                12,
+                4,
+                0,
+            );
+            Ok(())
+        }
+        "hand3.electronics.board_mount.v1" => {
+            let base_width_mm = node_param_f32(node, "base_width_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(90.0);
+            let base_depth_mm = node_param_f32(node, "base_depth_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(58.0);
+            let base_thickness_mm = node_param_f32(node, "base_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(8.0);
+            let board_width_mm = node_param_f32(node, "control_board_mount_width_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(34.0);
+            let board_depth_mm = node_param_f32(node, "control_board_mount_depth_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(24.0);
+            let board_height_mm = node_param_f32(node, "control_board_mount_height_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(6.0);
+            let electrical_clearance_mm = node_param_f32(node, "electrical_clearance_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(2.2);
+            let compact_layout = node_param_bool(node, "compact_layout").unwrap_or(false);
+            let compact_scale = if compact_layout { 0.94 } else { 1.0 };
+            let half_w = (board_width_mm * 0.5 * compact_scale).min(base_width_mm * 0.44);
+            let half_d = (board_depth_mm * 0.5 * compact_scale).min(base_depth_mm * 0.44);
+            let z0 = base_thickness_mm + electrical_clearance_mm + jitter * 0.02;
+            let z1 = z0 + board_height_mm.max(1.5);
+            builder.add_box([-half_w, -half_d, z0], [half_w, half_d, z1], 1, 6);
+            let rail = (electrical_clearance_mm * 0.45).max(0.5);
+            builder.add_box(
+                [-half_w - rail, -half_d - rail, z0 - rail],
+                [half_w + rail, half_d + rail, z1 + rail],
+                0,
+                4,
+            );
+            Ok(())
+        }
+        "hand3.electronics.mount_slots.v1" => {
+            let base_thickness_mm = node_param_f32(node, "base_thickness_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(8.0);
+            let board_width_mm = node_param_f32(node, "control_board_mount_width_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(34.0);
+            let board_depth_mm = node_param_f32(node, "control_board_mount_depth_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(24.0);
+            let slot_pitch_mm = node_param_f32(node, "modular_mount_slot_pitch_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(8.0);
+            let slot_count = node
+                .params
+                .get("modular_mount_slot_count")
+                .and_then(|value| value.parse::<u32>().ok())
+                .unwrap_or(4)
+                .clamp(2, 10);
+            let electrical_clearance_mm = node_param_f32(node, "electrical_clearance_mm")
+                .filter(|value| *value > 0.0)
+                .unwrap_or(2.2);
+            let slot_half_w = (slot_pitch_mm * 0.22).max(0.5);
+            let slot_half_d = (board_depth_mm * 0.36).max(1.2);
+            let z = base_thickness_mm + electrical_clearance_mm + jitter * 0.02;
+            let center_bias = (slot_count as f32 - 1.0) * 0.5;
+            for index in 0..slot_count {
+                let x_center = ((index as f32 - center_bias) * slot_pitch_mm)
+                    .clamp(-(board_width_mm * 0.45), board_width_mm * 0.45);
+                builder.add_box(
+                    [x_center - slot_half_w, -slot_half_d, z],
+                    [x_center + slot_half_w, slot_half_d, z + 0.8],
+                    0,
+                    4,
+                );
+                builder.add_circle_edge_loop([x_center, 0.0, z + 0.8], slot_half_w, 10, 4, 0);
+            }
+            Ok(())
+        }
         "hand3.edge_marker.v1" => {
             let base_width_mm = node_param_f32(node, "base_width_mm")
                 .filter(|value| *value > 0.0)
@@ -2074,7 +2255,81 @@ mod tests {
                         ("compact_layout".to_string(), "1".to_string()),
                     ]),
                 });
+                nodes.push(FeatureNode {
+                    id: format!("feature.hand3.sensor_pad.{digit_name}"),
+                    name: format!("hand3_sensor_pad_{digit_name}"),
+                    operation_key: "hand3.sensor.pad.v1".to_string(),
+                    depends_on: vec![parent_feature_id.to_string()],
+                    params: BTreeMap::from([
+                        ("variant".to_string(), variant_id.to_string()),
+                        ("digit".to_string(), digit_name.to_string()),
+                        ("digit_slot".to_string(), digit_slot.to_string()),
+                        ("base_width_mm".to_string(), "90.0".to_string()),
+                        ("base_depth_mm".to_string(), "58.0".to_string()),
+                        ("base_thickness_mm".to_string(), "8.0".to_string()),
+                        ("finger_spacing_mm".to_string(), "12.0".to_string()),
+                        ("force_sensor_pad_diameter_mm".to_string(), "6.4".to_string()),
+                        ("electrical_clearance_mm".to_string(), "2.2".to_string()),
+                        ("compact_layout".to_string(), "1".to_string()),
+                    ]),
+                });
+                nodes.push(FeatureNode {
+                    id: format!("feature.hand3.proximity_port.{digit_name}"),
+                    name: format!("hand3_proximity_port_{digit_name}"),
+                    operation_key: "hand3.sensor.proximity_port.v1".to_string(),
+                    depends_on: vec![parent_feature_id.to_string()],
+                    params: BTreeMap::from([
+                        ("variant".to_string(), variant_id.to_string()),
+                        ("digit".to_string(), digit_name.to_string()),
+                        ("digit_slot".to_string(), digit_slot.to_string()),
+                        ("base_width_mm".to_string(), "90.0".to_string()),
+                        ("base_depth_mm".to_string(), "58.0".to_string()),
+                        ("base_thickness_mm".to_string(), "8.0".to_string()),
+                        ("finger_spacing_mm".to_string(), "12.0".to_string()),
+                        (
+                            "proximity_sensor_port_diameter_mm".to_string(),
+                            "4.0".to_string(),
+                        ),
+                        ("electrical_clearance_mm".to_string(), "2.2".to_string()),
+                        ("compact_layout".to_string(), "1".to_string()),
+                    ]),
+                });
             }
+            nodes.push(FeatureNode {
+                id: "feature.hand3.control_board_mount".to_string(),
+                name: "hand3_control_board_mount".to_string(),
+                operation_key: "hand3.electronics.board_mount.v1".to_string(),
+                depends_on: vec!["feature.hand3.base".to_string()],
+                params: BTreeMap::from([
+                    ("variant".to_string(), variant_id.to_string()),
+                    ("base_width_mm".to_string(), "90.0".to_string()),
+                    ("base_depth_mm".to_string(), "58.0".to_string()),
+                    ("base_thickness_mm".to_string(), "8.0".to_string()),
+                    ("control_board_mount_width_mm".to_string(), "34.0".to_string()),
+                    ("control_board_mount_depth_mm".to_string(), "24.0".to_string()),
+                    ("control_board_mount_height_mm".to_string(), "6.0".to_string()),
+                    ("electrical_clearance_mm".to_string(), "2.2".to_string()),
+                    ("compact_layout".to_string(), "1".to_string()),
+                ]),
+            });
+            nodes.push(FeatureNode {
+                id: "feature.hand3.modular_mount_slots".to_string(),
+                name: "hand3_modular_mount_slots".to_string(),
+                operation_key: "hand3.electronics.mount_slots.v1".to_string(),
+                depends_on: vec!["feature.hand3.control_board_mount".to_string()],
+                params: BTreeMap::from([
+                    ("variant".to_string(), variant_id.to_string()),
+                    ("base_width_mm".to_string(), "90.0".to_string()),
+                    ("base_depth_mm".to_string(), "58.0".to_string()),
+                    ("base_thickness_mm".to_string(), "8.0".to_string()),
+                    ("control_board_mount_width_mm".to_string(), "34.0".to_string()),
+                    ("control_board_mount_depth_mm".to_string(), "24.0".to_string()),
+                    ("modular_mount_slot_pitch_mm".to_string(), "8.0".to_string()),
+                    ("modular_mount_slot_count".to_string(), "4".to_string()),
+                    ("electrical_clearance_mm".to_string(), "2.2".to_string()),
+                    ("compact_layout".to_string(), "1".to_string()),
+                ]),
+            });
         }
         FeatureGraph { nodes }
     }

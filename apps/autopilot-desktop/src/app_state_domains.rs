@@ -1737,6 +1737,62 @@ impl Default for CadDemoPaneState {
                 min_mm: 0.2,
                 max_mm: 6.0,
             },
+            CadDimensionState {
+                dimension_id: "force_sensor_pad_diameter_mm".to_string(),
+                label: "Pad Dia".to_string(),
+                value_mm: 6.4,
+                min_mm: 2.0,
+                max_mm: 16.0,
+            },
+            CadDimensionState {
+                dimension_id: "proximity_sensor_port_diameter_mm".to_string(),
+                label: "Prox Port".to_string(),
+                value_mm: 4.0,
+                min_mm: 1.0,
+                max_mm: 12.0,
+            },
+            CadDimensionState {
+                dimension_id: "control_board_mount_width_mm".to_string(),
+                label: "Board W".to_string(),
+                value_mm: 34.0,
+                min_mm: 10.0,
+                max_mm: 90.0,
+            },
+            CadDimensionState {
+                dimension_id: "control_board_mount_depth_mm".to_string(),
+                label: "Board D".to_string(),
+                value_mm: 24.0,
+                min_mm: 8.0,
+                max_mm: 70.0,
+            },
+            CadDimensionState {
+                dimension_id: "control_board_mount_height_mm".to_string(),
+                label: "Board H".to_string(),
+                value_mm: 6.0,
+                min_mm: 2.0,
+                max_mm: 24.0,
+            },
+            CadDimensionState {
+                dimension_id: "modular_mount_slot_pitch_mm".to_string(),
+                label: "Slot Pitch".to_string(),
+                value_mm: 8.0,
+                min_mm: 3.0,
+                max_mm: 20.0,
+            },
+            CadDimensionState {
+                dimension_id: "modular_mount_slot_count".to_string(),
+                label: "Slot Count".to_string(),
+                value_mm: 4.0,
+                min_mm: 2.0,
+                max_mm: 10.0,
+            },
+            CadDimensionState {
+                dimension_id: "electrical_clearance_mm".to_string(),
+                label: "Elec Clr".to_string(),
+                value_mm: 2.2,
+                min_mm: 0.5,
+                max_mm: 12.0,
+            },
         ];
         let assembly_schema = openagents_cad::assembly::CadAssemblySchema {
             part_defs: std::collections::BTreeMap::from([
@@ -1999,6 +2055,14 @@ impl CadDemoPaneState {
                 "wiring_channel_diameter_mm",
                 "wiring_bend_radius_mm",
                 "wiring_clearance_mm",
+                "force_sensor_pad_diameter_mm",
+                "proximity_sensor_port_diameter_mm",
+                "control_board_mount_width_mm",
+                "control_board_mount_depth_mm",
+                "control_board_mount_height_mm",
+                "modular_mount_slot_pitch_mm",
+                "modular_mount_slot_count",
+                "electrical_clearance_mm",
             ],
         }
     }
