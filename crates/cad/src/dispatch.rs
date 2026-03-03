@@ -13,6 +13,7 @@ pub enum CadDesignProfile {
     Rack,
     ParallelJawGripper,
     ParallelJawGripperUnderactuated,
+    ThreeFingerThumb,
 }
 
 impl Default for CadDesignProfile {
@@ -54,6 +55,11 @@ pub struct CadDispatchState {
     pub compliant_joint_count: Option<u8>,
     pub flexure_thickness_mm: Option<f64>,
     pub single_servo_drive: bool,
+    pub finger_count: Option<u8>,
+    pub opposable_thumb: bool,
+    pub thumb_base_angle_deg: Option<f64>,
+    pub tendon_channel_diameter_mm: Option<f64>,
+    pub pose_preset: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -87,12 +93,17 @@ pub fn dispatch_cad_intent(
         }
         CadIntent::CreateParallelJawGripperSpec(payload) => {
             state.document_created = true;
-            state.design_profile = if payload.underactuated_mode {
+            let is_three_finger_thumb = payload.finger_count >= 3 && payload.opposable_thumb;
+            state.design_profile = if is_three_finger_thumb {
+                CadDesignProfile::ThreeFingerThumb
+            } else if payload.underactuated_mode {
                 CadDesignProfile::ParallelJawGripperUnderactuated
             } else {
                 CadDesignProfile::ParallelJawGripper
             };
-            state.objective = Some(if payload.underactuated_mode {
+            state.objective = Some(if is_three_finger_thumb {
+                "three-finger-thumb-hand".to_string()
+            } else if payload.underactuated_mode {
                 "parallel-jaw-gripper-underactuated".to_string()
             } else {
                 "parallel-jaw-gripper".to_string()
@@ -101,15 +112,21 @@ pub fn dispatch_cad_intent(
             state.single_servo_drive = payload.single_servo_drive;
             state.compliant_joint_count = Some(payload.compliant_joint_count);
             state.flexure_thickness_mm = Some(payload.flexure_thickness_mm);
+            state.finger_count = Some(payload.finger_count);
+            state.opposable_thumb = payload.opposable_thumb;
+            state.thumb_base_angle_deg = Some(payload.thumb_base_angle_deg);
+            state.tendon_channel_diameter_mm = Some(payload.tendon_channel_diameter_mm);
+            state.pose_preset = Some(payload.pose_preset.clone());
             state
                 .parameter_values
                 .insert("jaw_open_mm".to_string(), payload.jaw_open_mm);
             state
                 .parameter_values
                 .insert("finger_length_mm".to_string(), payload.finger_length_mm);
-            state
-                .parameter_values
-                .insert("finger_thickness_mm".to_string(), payload.finger_thickness_mm);
+            state.parameter_values.insert(
+                "finger_thickness_mm".to_string(),
+                payload.finger_thickness_mm,
+            );
             state
                 .parameter_values
                 .insert("base_width_mm".to_string(), payload.base_width_mm);
@@ -144,6 +161,21 @@ pub fn dispatch_cad_intent(
             state.parameter_values.insert(
                 "flexure_thickness_mm".to_string(),
                 payload.flexure_thickness_mm,
+            );
+            state
+                .parameter_values
+                .insert("finger_count".to_string(), payload.finger_count as f64);
+            state.parameter_values.insert(
+                "opposable_thumb".to_string(),
+                if payload.opposable_thumb { 1.0 } else { 0.0 },
+            );
+            state.parameter_values.insert(
+                "thumb_base_angle_deg".to_string(),
+                payload.thumb_base_angle_deg,
+            );
+            state.parameter_values.insert(
+                "tendon_channel_diameter_mm".to_string(),
+                payload.tendon_channel_diameter_mm,
             );
             CadTypedCommand::CreateParallelJawGripperSpec(payload.clone())
         }
@@ -279,6 +311,11 @@ mod tests {
                 compliant_joint_count: 0,
                 flexure_thickness_mm: 1.4,
                 single_servo_drive: true,
+                finger_count: 2,
+                opposable_thumb: false,
+                thumb_base_angle_deg: 42.0,
+                tendon_channel_diameter_mm: 1.8,
+                pose_preset: "open".to_string(),
             }),
             CadIntent::GenerateVariants(GenerateVariantsIntent {
                 count: 4,
@@ -345,12 +382,23 @@ mod tests {
                 compliant_joint_count: 0,
                 flexure_thickness_mm: 1.4,
                 single_servo_drive: true,
+                finger_count: 2,
+                opposable_thumb: false,
+                thumb_base_angle_deg: 42.0,
+                tendon_channel_diameter_mm: 1.8,
+                pose_preset: "open".to_string(),
             }),
             &mut state,
         )
         .expect("gripper spec should dispatch");
-        assert_eq!(receipt.design_profile, super::CadDesignProfile::ParallelJawGripper);
-        assert_eq!(state.design_profile, super::CadDesignProfile::ParallelJawGripper);
+        assert_eq!(
+            receipt.design_profile,
+            super::CadDesignProfile::ParallelJawGripper
+        );
+        assert_eq!(
+            state.design_profile,
+            super::CadDesignProfile::ParallelJawGripper
+        );
         assert_eq!(
             state.parameter_values.get("jaw_open_mm").copied(),
             Some(42.0)
@@ -383,6 +431,11 @@ mod tests {
                 compliant_joint_count: 3,
                 flexure_thickness_mm: 1.2,
                 single_servo_drive: true,
+                finger_count: 2,
+                opposable_thumb: false,
+                thumb_base_angle_deg: 42.0,
+                tendon_channel_diameter_mm: 1.8,
+                pose_preset: "open".to_string(),
             }),
             &mut state,
         )
@@ -402,6 +455,52 @@ mod tests {
         assert_eq!(
             state.parameter_values.get("underactuated_mode").copied(),
             Some(1.0)
+        );
+    }
+
+    #[test]
+    fn three_finger_thumb_spec_sets_three_finger_profile_state() {
+        let mut state = CadDispatchState::default();
+        let receipt = dispatch_cad_intent(
+            &CadIntent::CreateParallelJawGripperSpec(CreateParallelJawGripperSpecIntent {
+                jaw_open_mm: 34.0,
+                finger_length_mm: 68.0,
+                finger_thickness_mm: 7.0,
+                base_width_mm: 90.0,
+                base_depth_mm: 58.0,
+                base_thickness_mm: 8.0,
+                servo_mount_hole_diameter_mm: 2.9,
+                print_fit_mm: 0.15,
+                print_clearance_mm: 0.35,
+                underactuated_mode: true,
+                compliant_joint_count: 3,
+                flexure_thickness_mm: 1.2,
+                single_servo_drive: true,
+                finger_count: 3,
+                opposable_thumb: true,
+                thumb_base_angle_deg: 48.0,
+                tendon_channel_diameter_mm: 1.6,
+                pose_preset: "tripod".to_string(),
+            }),
+            &mut state,
+        )
+        .expect("three-finger hand spec should dispatch");
+        assert_eq!(
+            receipt.design_profile,
+            super::CadDesignProfile::ThreeFingerThumb
+        );
+        assert_eq!(
+            state.design_profile,
+            super::CadDesignProfile::ThreeFingerThumb
+        );
+        assert_eq!(state.finger_count, Some(3));
+        assert!(state.opposable_thumb);
+        assert_eq!(state.thumb_base_angle_deg, Some(48.0));
+        assert_eq!(state.tendon_channel_diameter_mm, Some(1.6));
+        assert_eq!(state.pose_preset.as_deref(), Some("tripod"));
+        assert_eq!(
+            state.parameter_values.get("finger_count").copied(),
+            Some(3.0)
         );
     }
 

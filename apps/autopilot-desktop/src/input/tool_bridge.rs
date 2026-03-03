@@ -1746,6 +1746,7 @@ fn cad_checkpoint_payload(
             design_profile,
             openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper
                 | openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated
+                | openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
         ) {
             cad_gripper_parameter_summary(cad_demo, design_profile)
         } else {
@@ -1769,6 +1770,7 @@ fn cad_design_profile_label(profile: openagents_cad::dispatch::CadDesignProfile)
         openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated => {
             "parallel_jaw_gripper_underactuated"
         }
+        openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb => "three_finger_thumb",
     }
 }
 
@@ -1788,6 +1790,9 @@ fn cad_gripper_parameter_summary(
         "print_clearance_mm",
         "compliant_joint_count",
         "flexure_thickness_mm",
+        "finger_count",
+        "thumb_base_angle_deg",
+        "tendon_channel_diameter_mm",
     ];
     let mut summary = serde_json::Map::new();
     for key in keys {
@@ -1801,6 +1806,7 @@ fn cad_gripper_parameter_summary(
         .unwrap_or(matches!(
             design_profile,
             openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated
+                | openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
         ));
     summary.insert("underactuated_mode".to_string(), json!(underactuated_mode));
     let single_servo_drive = cad_demo
@@ -1808,6 +1814,20 @@ fn cad_gripper_parameter_summary(
         .map(|dispatch| dispatch.single_servo_drive)
         .unwrap_or(true);
     summary.insert("single_servo_drive".to_string(), json!(single_servo_drive));
+    let opposable_thumb = cad_demo
+        .active_dispatch_state()
+        .map(|dispatch| dispatch.opposable_thumb)
+        .unwrap_or(matches!(
+            design_profile,
+            openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb
+        ));
+    summary.insert("opposable_thumb".to_string(), json!(opposable_thumb));
+    if let Some(pose_preset) = cad_demo
+        .active_dispatch_state()
+        .and_then(|dispatch| dispatch.pose_preset.as_deref())
+    {
+        summary.insert("pose_preset".to_string(), json!(pose_preset));
+    }
     if let Some(dispatch) = cad_demo.active_dispatch_state() {
         if let Some(value) = dispatch.compliant_joint_count {
             summary.insert("compliant_joint_count".to_string(), json!(value));
@@ -4633,11 +4653,17 @@ mod tests {
                         compliant_joint_count: 3,
                         flexure_thickness_mm: 1.2,
                         single_servo_drive: true,
+                        finger_count: 2,
+                        opposable_thumb: false,
+                        thumb_base_angle_deg: 42.0,
+                        tendon_channel_diameter_mm: 1.8,
+                        pose_preset: "open".to_string(),
                     },
                 ),
             )
             .expect("underactuated intent should apply");
-        let payload = cad_checkpoint_payload(&cad_demo, Some("thread-underactuated"), "test-source");
+        let payload =
+            cad_checkpoint_payload(&cad_demo, Some("thread-underactuated"), "test-source");
         assert_eq!(
             payload.pointer("/design_profile"),
             Some(&serde_json::json!("parallel_jaw_gripper_underactuated"))

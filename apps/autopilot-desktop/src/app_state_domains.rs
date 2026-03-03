@@ -1571,6 +1571,28 @@ impl Default for CadDemoPaneState {
                 min_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_FLEXURE_THICKNESS_MM,
                 max_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_FLEXURE_THICKNESS_MM,
             },
+            CadDimensionState {
+                dimension_id: "finger_count".to_string(),
+                label: "Finger Count".to_string(),
+                value_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_COUNT as f64,
+                min_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_FINGER_COUNT as f64,
+                max_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_FINGER_COUNT as f64,
+            },
+            CadDimensionState {
+                dimension_id: "thumb_base_angle_deg".to_string(),
+                label: "Thumb Angle".to_string(),
+                value_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_THUMB_BASE_ANGLE_DEG,
+                min_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_THUMB_BASE_ANGLE_DEG,
+                max_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_THUMB_BASE_ANGLE_DEG,
+            },
+            CadDimensionState {
+                dimension_id: "tendon_channel_diameter_mm".to_string(),
+                label: "Tendon Ch.".to_string(),
+                value_mm:
+                    openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_CHANNEL_DIAMETER_MM,
+                min_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_TENDON_CHANNEL_DIAMETER_MM,
+                max_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_TENDON_CHANNEL_DIAMETER_MM,
+            },
         ];
         let assembly_schema = openagents_cad::assembly::CadAssemblySchema {
             part_defs: std::collections::BTreeMap::from([
@@ -1769,6 +1791,16 @@ impl CadDemoPaneState {
         self.dispatch_sessions.get(session_id)
     }
 
+    pub fn active_dispatch_state_mut(
+        &mut self,
+    ) -> Option<&mut openagents_cad::dispatch::CadDispatchState> {
+        let session_id = self
+            .active_chat_session_id
+            .clone()
+            .unwrap_or_else(|| self.session_id.clone());
+        self.dispatch_sessions.get_mut(&session_id)
+    }
+
     pub fn active_design_profile(&self) -> openagents_cad::dispatch::CadDesignProfile {
         self.active_dispatch_state()
             .map(|state| state.design_profile)
@@ -1795,6 +1827,16 @@ impl CadDemoPaneState {
                 "base_width_mm",
                 "compliant_joint_count",
                 "flexure_thickness_mm",
+            ],
+            openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb => &[
+                "jaw_open_mm",
+                "finger_length_mm",
+                "finger_thickness_mm",
+                "base_width_mm",
+                "base_depth_mm",
+                "finger_count",
+                "thumb_base_angle_deg",
+                "tendon_channel_diameter_mm",
             ],
         }
     }
@@ -1874,6 +1916,12 @@ impl CadDemoPaneState {
                 "variant.wide-jaw".to_string(),
                 "variant.long-reach".to_string(),
                 "variant.stiff-finger".to_string(),
+            ],
+            openagents_cad::dispatch::CadDesignProfile::ThreeFingerThumb => vec![
+                "variant.baseline".to_string(),
+                "variant.pinch".to_string(),
+                "variant.tripod".to_string(),
+                "variant.wide-thumb".to_string(),
             ],
         };
         if self.variant_ids == target {
@@ -2048,6 +2096,12 @@ impl CadDemoPaneState {
             spec.compliant_joint_count as f64,
         );
         self.set_dimension_value_mm_if_present("flexure_thickness_mm", spec.flexure_thickness_mm);
+        self.set_dimension_value_mm_if_present("finger_count", spec.finger_count as f64);
+        self.set_dimension_value_mm_if_present("thumb_base_angle_deg", spec.thumb_base_angle_deg);
+        self.set_dimension_value_mm_if_present(
+            "tendon_channel_diameter_mm",
+            spec.tendon_channel_diameter_mm,
+        );
     }
 
     pub fn begin_dimension_edit(&mut self, index: usize) -> bool {

@@ -1,11 +1,15 @@
 use crate::intent::{
     AdjustParameterIntent, CadAdjustOperation, CadIntent, CadIntentValidationError,
     CompareVariantsIntent, CreateParallelJawGripperSpecIntent, CreateRackSpecIntent, ExportIntent,
-    PARALLEL_JAW_GRIPPER_DEFAULT_COMPLIANT_JOINT_COUNT,
-    PARALLEL_JAW_GRIPPER_DEFAULT_FLEXURE_THICKNESS_MM,
-    PARALLEL_JAW_GRIPPER_MAX_COMPLIANT_JOINT_COUNT,
-    PARALLEL_JAW_GRIPPER_MAX_FLEXURE_THICKNESS_MM, PARALLEL_JAW_GRIPPER_MIN_FLEXURE_THICKNESS_MM,
-    SelectIntent, SetMaterialIntent, SetObjectiveIntent, parse_cad_intent_json,
+    PARALLEL_JAW_GRIPPER_DEFAULT_COMPLIANT_JOINT_COUNT, PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_COUNT,
+    PARALLEL_JAW_GRIPPER_DEFAULT_FLEXURE_THICKNESS_MM, PARALLEL_JAW_GRIPPER_DEFAULT_POSE_PRESET,
+    PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_CHANNEL_DIAMETER_MM,
+    PARALLEL_JAW_GRIPPER_DEFAULT_THUMB_BASE_ANGLE_DEG,
+    PARALLEL_JAW_GRIPPER_MAX_COMPLIANT_JOINT_COUNT, PARALLEL_JAW_GRIPPER_MAX_FLEXURE_THICKNESS_MM,
+    PARALLEL_JAW_GRIPPER_MAX_TENDON_CHANNEL_DIAMETER_MM,
+    PARALLEL_JAW_GRIPPER_MIN_FLEXURE_THICKNESS_MM,
+    PARALLEL_JAW_GRIPPER_MIN_TENDON_CHANNEL_DIAMETER_MM, SelectIntent, SetMaterialIntent,
+    SetObjectiveIntent, parse_cad_intent_json,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -171,8 +175,8 @@ fn translate_parallel_jaw_gripper_prompt(lower: &str) -> Option<CadIntent> {
     let has_design_verb = [
         "design", "build", "create", "model", "draft", "generate", "modify", "evolve",
     ]
-        .iter()
-        .any(|verb| lower.contains(verb));
+    .iter()
+    .any(|verb| lower.contains(verb));
     let has_gripper_target = [
         "gripper",
         "parallel-jaw",
@@ -246,6 +250,58 @@ fn translate_parallel_jaw_gripper_prompt(lower: &str) -> Option<CadIntent> {
             PARALLEL_JAW_GRIPPER_MIN_FLEXURE_THICKNESS_MM,
             PARALLEL_JAW_GRIPPER_MAX_FLEXURE_THICKNESS_MM,
         );
+    }
+    let requests_three_finger_thumb = [
+        "3-finger",
+        "3 finger",
+        "three-finger",
+        "three finger",
+        "opposable thumb",
+        "thumb",
+        "tripod",
+        "pinch",
+        "tendon-driven",
+        "tendon driven",
+        "tendon channel",
+        "cable routing",
+    ]
+    .iter()
+    .any(|token| lower.contains(token));
+    if requests_three_finger_thumb {
+        spec.finger_count = PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_COUNT.max(3);
+        spec.opposable_thumb = true;
+        spec.underactuated_mode = true;
+        spec.compliant_joint_count = spec.compliant_joint_count.max(3);
+        spec.thumb_base_angle_deg = PARALLEL_JAW_GRIPPER_DEFAULT_THUMB_BASE_ANGLE_DEG;
+        spec.tendon_channel_diameter_mm = PARALLEL_JAW_GRIPPER_DEFAULT_TENDON_CHANNEL_DIAMETER_MM;
+        spec.pose_preset = if lower.contains("tripod") {
+            "tripod".to_string()
+        } else if lower.contains("pinch") {
+            "pinch".to_string()
+        } else {
+            PARALLEL_JAW_GRIPPER_DEFAULT_POSE_PRESET.to_string()
+        };
+    }
+    if let Some(count) = extract_finger_count(lower) {
+        spec.finger_count = count.max(3);
+        spec.opposable_thumb = true;
+        spec.underactuated_mode = true;
+        spec.compliant_joint_count = spec.compliant_joint_count.max(3);
+    }
+    if let Some(angle_deg) = extract_thumb_base_angle_deg(lower) {
+        spec.thumb_base_angle_deg = angle_deg;
+        spec.opposable_thumb = true;
+    }
+    if let Some(channel_mm) = extract_tendon_channel_diameter_mm(lower) {
+        spec.tendon_channel_diameter_mm = channel_mm.clamp(
+            PARALLEL_JAW_GRIPPER_MIN_TENDON_CHANNEL_DIAMETER_MM,
+            PARALLEL_JAW_GRIPPER_MAX_TENDON_CHANNEL_DIAMETER_MM,
+        );
+    }
+    if lower.contains("tripod") {
+        spec.pose_preset = "tripod".to_string();
+    } else if lower.contains("pinch") {
+        spec.pose_preset = "pinch".to_string();
     }
 
     Some(CadIntent::CreateParallelJawGripperSpec(spec))
@@ -345,6 +401,25 @@ fn extract_compliant_joint_count(lower: &str) -> Option<u8> {
     None
 }
 
+fn extract_finger_count(lower: &str) -> Option<u8> {
+    if lower.contains("3-finger")
+        || lower.contains("3 finger")
+        || lower.contains("three-finger")
+        || lower.contains("three finger")
+    {
+        return Some(3);
+    }
+    for token in lower.split_whitespace() {
+        let trimmed = token.trim_matches(|ch: char| !ch.is_ascii_digit());
+        if let Ok(value) = trimmed.parse::<u8>() {
+            if (3..=5).contains(&value) && lower.contains("finger") {
+                return Some(value);
+            }
+        }
+    }
+    None
+}
+
 fn extract_flexure_thickness_mm(lower: &str) -> Option<f64> {
     if let Some(index) = lower.find("flexure thickness") {
         let tail = &lower[index + "flexure thickness".len()..];
@@ -365,6 +440,26 @@ fn extract_flexure_thickness_mm(lower: &str) -> Option<f64> {
         if let Ok(value) = cleaned.parse::<f64>() {
             return Some(value);
         }
+    }
+    None
+}
+
+fn extract_thumb_base_angle_deg(lower: &str) -> Option<f64> {
+    if let Some(index) = lower.find("thumb angle") {
+        return extract_first_numeric_token(&lower[index + "thumb angle".len()..]);
+    }
+    if let Some(index) = lower.find("thumb base angle") {
+        return extract_first_numeric_token(&lower[index + "thumb base angle".len()..]);
+    }
+    None
+}
+
+fn extract_tendon_channel_diameter_mm(lower: &str) -> Option<f64> {
+    if let Some(index) = lower.find("tendon channel") {
+        return extract_first_numeric_token(&lower[index + "tendon channel".len()..]);
+    }
+    if let Some(index) = lower.find("channel diameter") {
+        return extract_first_numeric_token(&lower[index + "channel diameter".len()..]);
     }
     None
 }
@@ -418,7 +513,9 @@ fn extract_json_candidate(input: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::{CadIntentTranslationOutcome, translate_chat_to_cad_intent};
-    use crate::intent::{CadAdjustOperation, CadIntent};
+    use crate::intent::{
+        CadAdjustOperation, CadIntent, PARALLEL_JAW_GRIPPER_MIN_TENDON_CHANNEL_DIAMETER_MM,
+    };
 
     #[test]
     fn adapter_accepts_valid_intent_json() {
@@ -524,6 +621,27 @@ mod tests {
                 assert_eq!(spec.compliant_joint_count, 3);
                 assert!(spec.single_servo_drive);
                 assert!((spec.flexure_thickness_mm - 1.3).abs() < f64::EPSILON);
+            }
+            other => panic!("unexpected outcome: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn adapter_translates_three_finger_thumb_prompt_into_hand_profile_spec() {
+        let outcome = translate_chat_to_cad_intent(
+            "Evolve the gripper into a 3-finger hand with an opposable thumb, tendon-driven for dexterity. Add cable routing channels and tripod grasp pose.",
+        );
+        match outcome {
+            CadIntentTranslationOutcome::Intent(CadIntent::CreateParallelJawGripperSpec(spec)) => {
+                assert_eq!(spec.finger_count, 3);
+                assert!(spec.opposable_thumb);
+                assert!(spec.underactuated_mode);
+                assert!(spec.compliant_joint_count >= 3);
+                assert_eq!(spec.pose_preset, "tripod".to_string());
+                assert!(
+                    spec.tendon_channel_diameter_mm
+                        >= PARALLEL_JAW_GRIPPER_MIN_TENDON_CHANNEL_DIAMETER_MM
+                );
             }
             other => panic!("unexpected outcome: {other:?}"),
         }
