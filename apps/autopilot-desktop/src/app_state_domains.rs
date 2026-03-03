@@ -1525,6 +1525,23 @@ impl Default for CadDemoPaneState {
                 min_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_PRINT_CLEARANCE_MM,
                 max_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_PRINT_CLEARANCE_MM,
             },
+            CadDimensionState {
+                dimension_id: "compliant_joint_count".to_string(),
+                label: "Compliant Joints".to_string(),
+                value_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_COMPLIANT_JOINT_COUNT
+                    as f64,
+                min_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_COMPLIANT_JOINT_COUNT
+                    as f64,
+                max_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_COMPLIANT_JOINT_COUNT
+                    as f64,
+            },
+            CadDimensionState {
+                dimension_id: "flexure_thickness_mm".to_string(),
+                label: "Flexure Thick".to_string(),
+                value_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_DEFAULT_FLEXURE_THICKNESS_MM,
+                min_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MIN_FLEXURE_THICKNESS_MM,
+                max_mm: openagents_cad::intent::PARALLEL_JAW_GRIPPER_MAX_FLEXURE_THICKNESS_MM,
+            },
         ];
         let assembly_schema = openagents_cad::assembly::CadAssemblySchema {
             part_defs: std::collections::BTreeMap::from([
@@ -1733,6 +1750,14 @@ impl CadDemoPaneState {
                 "finger_thickness_mm",
                 "base_width_mm",
             ],
+            openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated => &[
+                "jaw_open_mm",
+                "finger_length_mm",
+                "finger_thickness_mm",
+                "base_width_mm",
+                "compliant_joint_count",
+                "flexure_thickness_mm",
+            ],
         }
     }
 
@@ -1792,6 +1817,12 @@ impl CadDemoPaneState {
                 "variant.stiffness".to_string(),
             ],
             openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper => vec![
+                "variant.baseline".to_string(),
+                "variant.wide-jaw".to_string(),
+                "variant.long-reach".to_string(),
+                "variant.stiff-finger".to_string(),
+            ],
+            openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated => vec![
                 "variant.baseline".to_string(),
                 "variant.wide-jaw".to_string(),
                 "variant.long-reach".to_string(),
@@ -1965,6 +1996,11 @@ impl CadDemoPaneState {
         );
         self.set_dimension_value_mm_if_present("print_fit_mm", spec.print_fit_mm);
         self.set_dimension_value_mm_if_present("print_clearance_mm", spec.print_clearance_mm);
+        self.set_dimension_value_mm_if_present(
+            "compliant_joint_count",
+            spec.compliant_joint_count as f64,
+        );
+        self.set_dimension_value_mm_if_present("flexure_thickness_mm", spec.flexure_thickness_mm);
     }
 
     pub fn begin_dimension_edit(&mut self, index: usize) -> bool {

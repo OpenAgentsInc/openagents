@@ -193,7 +193,7 @@ fn intent_preview(intent: &CadIntent) -> String {
             payload.units, payload.material, payload.airflow, payload.mount_type
         ),
         CadIntent::CreateParallelJawGripperSpec(payload) => format!(
-            "jaw_open_mm={}, finger_length_mm={}, finger_thickness_mm={}, base_width_mm={}, base_depth_mm={}, base_thickness_mm={}, servo_mount_hole_diameter_mm={}, print_fit_mm={}, print_clearance_mm={}",
+            "jaw_open_mm={}, finger_length_mm={}, finger_thickness_mm={}, base_width_mm={}, base_depth_mm={}, base_thickness_mm={}, servo_mount_hole_diameter_mm={}, print_fit_mm={}, print_clearance_mm={}, underactuated_mode={}, compliant_joint_count={}, flexure_thickness_mm={}, single_servo_drive={}",
             payload.jaw_open_mm,
             payload.finger_length_mm,
             payload.finger_thickness_mm,
@@ -202,7 +202,11 @@ fn intent_preview(intent: &CadIntent) -> String {
             payload.base_thickness_mm,
             payload.servo_mount_hole_diameter_mm,
             payload.print_fit_mm,
-            payload.print_clearance_mm
+            payload.print_clearance_mm,
+            payload.underactuated_mode,
+            payload.compliant_joint_count,
+            payload.flexure_thickness_mm,
+            payload.single_servo_drive
         ),
         CadIntent::GenerateVariants(payload) => {
             format!(

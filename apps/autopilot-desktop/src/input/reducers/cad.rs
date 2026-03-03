@@ -1056,8 +1056,11 @@ fn apply_cad_demo_action(state: &mut CadDemoPaneState, action: CadDemoPaneAction
 }
 
 fn toggle_gripper_jaw_animation(state: &mut CadDemoPaneState) -> bool {
-    if state.active_design_profile() != openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper
-    {
+    if !matches!(
+        state.active_design_profile(),
+        openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper
+            | openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated
+    ) {
         state.last_error = Some(
             "gripper jaw animation requires parallel-jaw gripper design profile".to_string(),
         );
@@ -1722,7 +1725,8 @@ fn stats_delta(before: EvalCacheStats, after: EvalCacheStats) -> EvalCacheStats 
 fn build_demo_feature_graph(state: &CadDemoPaneState) -> FeatureGraph {
     match state.active_design_profile() {
         openagents_cad::dispatch::CadDesignProfile::Rack => build_rack_feature_graph(state),
-        openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper => {
+        openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper
+        | openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated => {
             build_parallel_jaw_gripper_feature_graph(state)
         }
     }
@@ -2182,7 +2186,8 @@ fn build_profile_warning_set(
                 variant_id,
             ))
         }
-        openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper => {
+        openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper
+        | openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated => {
             validity_warnings_from_snapshot(build_gripper_demo_validity_snapshot(
                 state,
                 document_revision,
@@ -2190,8 +2195,11 @@ fn build_profile_warning_set(
             ))
         }
     };
-    if state.active_design_profile() == openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper
-    {
+    if matches!(
+        state.active_design_profile(),
+        openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper
+            | openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated
+    ) {
         append_gripper_printability_warnings(state, variant_id, &mut warnings);
     }
     warnings
@@ -3979,6 +3987,9 @@ mod tests {
                     let design_profile = match state.active_design_profile() {
                         openagents_cad::dispatch::CadDesignProfile::Rack => "rack",
                         openagents_cad::dispatch::CadDesignProfile::ParallelJawGripper => "parallel_jaw_gripper",
+                        openagents_cad::dispatch::CadDesignProfile::ParallelJawGripperUnderactuated => {
+                            "parallel_jaw_gripper_underactuated"
+                        }
                     };
                     json!({
                         "status": "captured",
