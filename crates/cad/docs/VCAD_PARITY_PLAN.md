@@ -211,7 +211,7 @@ Major gaps to close:
 111. [x] VCAD-PARITY-111: Gym-style API parity (`obs/action/reward/done`).
 112. [x] VCAD-PARITY-112: MCP simulation tools parity.
 113. [x] VCAD-PARITY-113: URDF import parity.
-114. [ ] VCAD-PARITY-114: URDF export parity + fixtures.
+114. [x] VCAD-PARITY-114: URDF export parity + fixtures.
 
 ### Phase J - Full workspace parity lanes (`VCAD-PARITY-115` to `VCAD-PARITY-130`)
 

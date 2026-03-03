@@ -106,6 +106,7 @@ pub mod text_to_cad_training_eval_parity;
 pub mod topology_repair_parity;
 pub mod transform_parity;
 pub mod trimmed_surface_ray_hit_parity;
+pub mod urdf_export_fixtures_parity;
 pub mod urdf_import_parity;
 pub mod vcad_crawler;
 pub mod vcad_eval_receipts_parity;
