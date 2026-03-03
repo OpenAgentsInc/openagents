@@ -193,7 +193,7 @@ Major gaps to close:
 96. [x] VCAD-PARITY-096: Mesh upload + processing parity contracts.
 97. [x] VCAD-PARITY-097: Direct BRep raytrace module scaffolding.
 98. [x] VCAD-PARITY-098: Analytic ray intersections parity set.
-99. [ ] VCAD-PARITY-099: Trimmed-surface ray hit parity handling.
+99. [x] VCAD-PARITY-099: Trimmed-surface ray hit parity handling.
 100. [ ] VCAD-PARITY-100: BVH build/traverse parity for raytrace.
 101. [ ] VCAD-PARITY-101: Raytrace quality mode parity (`draft/standard/high`).
 102. [ ] VCAD-PARITY-102: Raytrace face-pick parity.
