@@ -18,6 +18,7 @@ use crate::app_state::{
 };
 use crate::codex_lane::{CodexLaneConfig, CodexLaneSnapshot, CodexLaneWorker};
 use crate::hotbar::{configure_hotbar, hotbar_bounds, new_hotbar};
+use crate::input::bootstrap_startup_cad_mesh;
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 use crate::pane_registry::{pane_specs, startup_pane_kinds};
 use crate::pane_renderer::PaneRenderer;
@@ -308,8 +309,12 @@ fn bootstrap_runtime_lanes(state: &mut RenderState) {
 fn open_startup_panes(state: &mut RenderState) {
     for pane_kind in startup_pane_kinds() {
         match pane_kind {
-            PaneKind::AutopilotChat | PaneKind::GoOnline | PaneKind::CadDemo => {
+            PaneKind::AutopilotChat | PaneKind::GoOnline => {
                 let _ = PaneController::create_for_kind(state, pane_kind);
+            }
+            PaneKind::CadDemo => {
+                let _ = PaneController::create_for_kind(state, pane_kind);
+                bootstrap_startup_cad_mesh(state);
             }
             PaneKind::SparkWallet => {
                 let _ = PaneController::create_for_kind(state, pane_kind);
