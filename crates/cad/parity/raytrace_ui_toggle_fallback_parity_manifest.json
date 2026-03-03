@@ -1,0 +1,145 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-103",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/raytrace_ui_toggle_fallback_vcad_reference.json",
+  "reference_fixture_sha256": "1517e6cdb32e6df07cd38f4a7d4143661d34d23daf18f2d70f0e61b5f44fb097",
+  "reference_source": "~/code/vcad/packages/core/src/stores/ui-store.ts + ~/code/vcad/packages/app/src/components/CornerIcons.tsx + ~/code/vcad/packages/app/src/hooks/useKeyboardShortcuts.ts + ~/code/vcad/packages/app/src/hooks/useEngine.ts + ~/code/vcad/packages/app/src/components/Viewport.tsx + ~/code/vcad/packages/app/src/components/ViewportContent.tsx + ~/code/vcad/docs/features/ray-tracing.md",
+  "reference_commit_match": true,
+  "default_state_match": true,
+  "init_outcome_match": true,
+  "keyboard_guard_match": true,
+  "quality_selection_toggle_match": true,
+  "overlay_gate_match": true,
+  "fallback_behavior_match": true,
+  "deterministic_replay_match": true,
+  "default_state": {
+    "render_mode": "standard",
+    "raytrace_quality": "draft",
+    "raytrace_available": false
+  },
+  "init_outcomes": [
+    {
+      "case_id": "gpu_ok_raytracer_fail",
+      "gpu_available": true,
+      "raytracer_init_success": false,
+      "raytrace_available": false
+    },
+    {
+      "case_id": "gpu_ok_raytracer_ok",
+      "gpu_available": true,
+      "raytracer_init_success": true,
+      "raytrace_available": true
+    },
+    {
+      "case_id": "gpu_unavailable",
+      "gpu_available": false,
+      "raytracer_init_success": false,
+      "raytrace_available": false
+    }
+  ],
+  "toggle_samples": [
+    {
+      "case_id": "keyboard_alt_r_available",
+      "initial_render_mode": "standard",
+      "raytrace_available": true,
+      "action": "keyboard_alt_r",
+      "selected_quality": null,
+      "final_render_mode": "raytrace",
+      "final_quality": "draft",
+      "mode_changed": true
+    },
+    {
+      "case_id": "keyboard_alt_r_unavailable",
+      "initial_render_mode": "standard",
+      "raytrace_available": false,
+      "action": "keyboard_alt_r",
+      "selected_quality": null,
+      "final_render_mode": "standard",
+      "final_quality": "draft",
+      "mode_changed": false
+    },
+    {
+      "case_id": "off_click_from_raytrace",
+      "initial_render_mode": "raytrace",
+      "raytrace_available": true,
+      "action": "menu_off_click",
+      "selected_quality": null,
+      "final_render_mode": "standard",
+      "final_quality": "draft",
+      "mode_changed": true
+    },
+    {
+      "case_id": "quality_click_from_off",
+      "initial_render_mode": "standard",
+      "raytrace_available": true,
+      "action": "quality_click",
+      "selected_quality": "high",
+      "final_render_mode": "raytrace",
+      "final_quality": "high",
+      "mode_changed": true
+    },
+    {
+      "case_id": "quality_click_standard_from_off",
+      "initial_render_mode": "standard",
+      "raytrace_available": true,
+      "action": "quality_click",
+      "selected_quality": "standard",
+      "final_render_mode": "raytrace",
+      "final_quality": "standard",
+      "mode_changed": true
+    }
+  ],
+  "overlay_samples": [
+    {
+      "case_id": "raytrace_mode_available",
+      "electronics_active": false,
+      "render_mode": "raytrace",
+      "raytrace_available": true,
+      "raytrace_menu_visible": true,
+      "viewport_overlay_active": true,
+      "viewport_sync_active": true,
+      "fallback_to_standard_raster": false
+    },
+    {
+      "case_id": "raytrace_mode_available_electronics",
+      "electronics_active": true,
+      "render_mode": "raytrace",
+      "raytrace_available": true,
+      "raytrace_menu_visible": true,
+      "viewport_overlay_active": false,
+      "viewport_sync_active": false,
+      "fallback_to_standard_raster": true
+    },
+    {
+      "case_id": "raytrace_mode_unavailable",
+      "electronics_active": false,
+      "render_mode": "raytrace",
+      "raytrace_available": false,
+      "raytrace_menu_visible": false,
+      "viewport_overlay_active": false,
+      "viewport_sync_active": false,
+      "fallback_to_standard_raster": true
+    },
+    {
+      "case_id": "standard_mode_available",
+      "electronics_active": false,
+      "render_mode": "standard",
+      "raytrace_available": true,
+      "raytrace_menu_visible": true,
+      "viewport_overlay_active": false,
+      "viewport_sync_active": false,
+      "fallback_to_standard_raster": true
+    }
+  ],
+  "deterministic_signature": "34cd2931372ccf8f",
+  "parity_contracts": [
+    "raytrace ui state defaults to renderMode=standard, raytraceQuality=draft, raytraceAvailable=false",
+    "raytrace availability is only enabled when GPU init succeeds and raytracer init succeeds",
+    "Alt+R keyboard toggle is guarded by raytraceAvailable and no-ops when unavailable",
+    "quality selection from the raytrace menu auto-toggles renderMode to raytrace when currently off",
+    "viewport raytrace overlay/sync are gated by renderMode==raytrace AND raytraceAvailable AND !electronicsActive"
+  ]
+}

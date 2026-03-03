@@ -42,7 +42,7 @@ fn parity_dashboard_fixture_is_well_formed() {
         dashboard.phase_status,
         "phase_g_io_headless_ai_checkpoint_complete"
     );
-    assert_eq!(dashboard.artifacts.source_artifact_count, 147);
+    assert_eq!(dashboard.artifacts.source_artifact_count, 149);
     assert!(dashboard.summary.overall_match_rate > 0.0);
 }
 

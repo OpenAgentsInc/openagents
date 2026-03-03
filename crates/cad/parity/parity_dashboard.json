@@ -39,7 +39,7 @@
     }
   ],
   "artifacts": {
-    "source_artifact_count": 147,
+    "source_artifact_count": 149,
     "artifact_ids": [
       "analytic_ray_intersections_parity_manifest",
       "assembly_acceptance_scenes_parity_manifest",
@@ -113,6 +113,7 @@
       "fixtures_parity_fixture_corpus",
       "fixtures_raytrace_face_pick_vcad_reference",
       "fixtures_raytrace_quality_mode_vcad_reference",
+      "fixtures_raytrace_ui_toggle_fallback_vcad_reference",
       "fixtures_render_mode_vcad_reference",
       "fixtures_sketch_vcad_reference_corpus",
       "fixtures_step_export_post_boolean_vcad_reference",
@@ -156,6 +157,7 @@
       "primitive_contracts_parity_manifest",
       "raytrace_face_pick_parity_manifest",
       "raytrace_quality_mode_parity_manifest",
+      "raytrace_ui_toggle_fallback_parity_manifest",
       "render_mode_parity_manifest",
       "shell_feature_graph_parity_manifest",
       "sketch_constraint_enum_parity_manifest",

@@ -98,6 +98,7 @@ LANE_LABELS=(
     "bvh-build-traverse"
     "raytrace-quality-mode"
     "raytrace-face-pick"
+    "raytrace-ui-toggle-fallback"
     "ci-artifact-manifest"
     "risk-register-workflow"
     "baseline-dashboard"
@@ -445,6 +446,9 @@ run_lane "raytrace-quality-mode" \
 
 run_lane "raytrace-face-pick" \
     "$ROOT_DIR/scripts/cad/parity-raytrace-face-pick-ci.sh"
+
+run_lane "raytrace-ui-toggle-fallback" \
+    "$ROOT_DIR/scripts/cad/parity-raytrace-ui-toggle-fallback-ci.sh"
 
 run_lane "ci-artifact-manifest" \
     "$ROOT_DIR/scripts/cad/parity-ci-artifacts-ci.sh"
