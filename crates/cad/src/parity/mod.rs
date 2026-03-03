@@ -78,6 +78,7 @@ pub mod risk_register;
 pub mod scorecard;
 pub mod shell_feature_graph_parity;
 pub mod simulation_step_reset_api_parity;
+pub mod simulation_ui_controls_parity;
 pub mod sketch_constraint_enum_parity;
 pub mod sketch_constraint_status_parity;
 pub mod sketch_constraints_checkpoint_parity;

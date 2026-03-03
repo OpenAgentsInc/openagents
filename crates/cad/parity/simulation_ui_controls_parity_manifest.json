@@ -1,0 +1,43 @@
+{
+  "manifest_version": 1,
+  "issue_id": "VCAD-PARITY-110",
+  "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+  "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
+  "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
+  "reference_fixture_path": "crates/cad/parity/fixtures/simulation_ui_controls_vcad_reference.json",
+  "reference_fixture_sha256": "0e8b0958038a9cffc65537599ae4fb4976355a2bf51d0aa10045a87bdcfaf1e7",
+  "reference_source": "~/code/vcad/apps/vcad-desktop/src/simulation_controls.rs + ~/code/vcad/crates/vcad-sim-ui/src/lib.rs",
+  "reference_issue_match": true,
+  "reference_commit_match": true,
+  "row_set_match": true,
+  "contract_set_match": true,
+  "deterministic_replay_match": true,
+  "rows": [
+    {
+      "capability": "CAD Simulation UI Controls Parity",
+      "case_id": "capability_scope",
+      "issue_id": "VCAD-PARITY-110"
+    },
+    {
+      "case_id": "phase_scope",
+      "lane_label": "simulation-ui-controls",
+      "phase": "Phase I - Physics + URDF parity"
+    },
+    {
+      "case_id": "reference_source",
+      "vcad_commit": "1b59e7948efcdb848d8dba6848785d57aa310e81",
+      "vcad_source": "~/code/vcad/apps/vcad-desktop/src/simulation_controls.rs + ~/code/vcad/crates/vcad-sim-ui/src/lib.rs"
+    }
+  ],
+  "contracts": [
+    "CAD Simulation UI Controls Parity parity contracts are aligned to vcad reference behavior",
+    "CI parity artifacts include simulation_ui_controls manifest and vcad fixture evidence",
+    "Phase I - Physics + URDF parity parity lane remains deterministic across replay"
+  ],
+  "deterministic_signature": "0a79aa3b05c0e80e",
+  "parity_contracts": [
+    "CAD Simulation UI Controls Parity parity contracts are aligned to vcad reference behavior",
+    "CI parity artifacts include simulation_ui_controls manifest and vcad fixture evidence",
+    "Phase I - Physics + URDF parity parity lane remains deterministic across replay"
+  ]
+}

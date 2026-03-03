@@ -15,7 +15,7 @@ Issue coverage: `VCAD-PARITY-010`
 | commands match rate | `0.083333` |
 | open risks | `24` |
 | open hard blockers (p0) | `16` |
-| CI source artifact count | `160` |
+| CI source artifact count | `162` |
 
 ## Profile Gates
 
@@ -109,6 +109,7 @@ Issue coverage: `VCAD-PARITY-010`
 - `fixtures_raytrace_ui_toggle_fallback_vcad_reference`
 - `fixtures_render_mode_vcad_reference`
 - `fixtures_simulation_step_reset_api_vcad_reference`
+- `fixtures_simulation_ui_controls_vcad_reference`
 - `fixtures_sketch_vcad_reference_corpus`
 - `fixtures_step_export_post_boolean_vcad_reference`
 - `fixtures_step_import_entity_vcad_reference`
@@ -158,6 +159,7 @@ Issue coverage: `VCAD-PARITY-010`
 - `rendering_raytrace_checkpoint_parity_manifest`
 - `shell_feature_graph_parity_manifest`
 - `simulation_step_reset_api_parity_manifest`
+- `simulation_ui_controls_parity_manifest`
 - `sketch_constraint_enum_parity_manifest`
 - `sketch_constraint_status_parity_manifest`
 - `sketch_constraints_checkpoint_parity_manifest`
