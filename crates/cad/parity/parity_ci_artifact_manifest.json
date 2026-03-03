@@ -5,7 +5,7 @@
   "openagents_commit": "04faa5227f077c419f1c5c52ddebbb7552838fd4",
   "generated_from_scorecard": "/home/christopherdavid/code/openagents/crates/cad/parity/parity_scorecard.json",
   "parity_check_entrypoint": "scripts/cad/parity_check.sh",
-  "source_artifact_count": 206,
+  "source_artifact_count": 208,
   "artifacts": [
     {
       "artifact_id": "analytic_ray_intersections_parity_manifest",
@@ -156,6 +156,12 @@
       "source_path": "crates/cad/parity/crdt_lane_architecture_parity_manifest.json",
       "sha256": "ef6a28df016d4593b59b929df4c1de2c138c25bcc5b74e2f58e65f23239bdfca",
       "bytes": 1872
+    },
+    {
+      "artifact_id": "deterministic_replay_all_fixtures_parity_manifest",
+      "source_path": "crates/cad/parity/deterministic_replay_all_fixtures_parity_manifest.json",
+      "sha256": "43c75bb74574a94216faba404b942603f6c3aed07f46bab17a55d2a396c8536e",
+      "bytes": 1998
     },
     {
       "artifact_id": "direct_brep_raytrace_scaffolding_parity_manifest",
@@ -426,6 +432,12 @@
       "source_path": "crates/cad/parity/fixtures/crdt_lane_architecture_vcad_reference.json",
       "sha256": "88dc27644676d5348886596f677167ffa0d76e837e2c7a244d58caa83dcb5f7f",
       "bytes": 982
+    },
+    {
+      "artifact_id": "fixtures_deterministic_replay_all_fixtures_vcad_reference",
+      "source_path": "crates/cad/parity/fixtures/deterministic_replay_all_fixtures_vcad_reference.json",
+      "sha256": "a28fbb0dffa0a9e224a8b8d84e62a07901251bc08ba405faf45e94548f678c8c",
+      "bytes": 1076
     },
     {
       "artifact_id": "fixtures_direct_brep_raytrace_scaffolding_vcad_reference",
@@ -934,8 +946,8 @@
     {
       "artifact_id": "parity_dashboard",
       "source_path": "crates/cad/parity/parity_dashboard.json",
-      "sha256": "b5c3a2f0762b2646d6e4ab0cc500969e262b91d588a930cf3f0238276c14ebe1",
-      "bytes": 11374
+      "sha256": "0346500ae5b6488fa2b4520ca5829b809f4b9287559b31f801fbdf0ba407c450",
+      "bytes": 11500
     },
     {
       "artifact_id": "parity_risk_register",
