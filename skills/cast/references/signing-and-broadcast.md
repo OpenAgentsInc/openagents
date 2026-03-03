@@ -31,6 +31,8 @@ Expected JSON fields:
 
 Use `--dry-run` before any broadcast.
 
+If `sign-txs` cannot query chain prevouts (`No such mempool transaction ... Use -txindex`), pass `--prev-txs-file` (or set `CAST_PREV_TXS_FILE`) so the wrapper can build prevouts from supplied ancestry and fall back to wallet signing.
+
 ## Broadcast Flow
 
 1. Confirm tx hex and expected txid(s).
