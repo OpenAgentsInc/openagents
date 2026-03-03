@@ -109,6 +109,10 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
     match event {
         WindowEvent::CloseRequested => {
             let _ = state.spark_worker.cancel_pending();
+            if let Some(mut process) = state.cast_control_process.take() {
+                let _ = process.child.kill();
+                let _ = process.child.wait();
+            }
             state.codex_lane_worker.shutdown_async();
             event_loop.exit();
         }
@@ -450,6 +454,12 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
         changed = true;
     }
     if state.autopilot_chat.expire_copy_notice(now) {
+        changed = true;
+    }
+    if run_cast_control_process_tick(state) {
+        changed = true;
+    }
+    if run_auto_cast_control_loop(state, now) {
         changed = true;
     }
     if run_auto_agent_network_simulation(state, now) {

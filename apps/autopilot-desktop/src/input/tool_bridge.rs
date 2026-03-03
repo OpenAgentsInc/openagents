@@ -1317,6 +1317,12 @@ fn pane_action_to_hit_action(
             "run_inspect" | "inspect" => Ok(PaneHitAction::CastControl(
                 CastControlPaneAction::RunInspect,
             )),
+            "run_loop_once" | "loop_once" => Ok(PaneHitAction::CastControl(
+                CastControlPaneAction::RunLoopOnce,
+            )),
+            "toggle_auto_loop" | "start_loop" | "stop_loop" => Ok(PaneHitAction::CastControl(
+                CastControlPaneAction::ToggleAutoLoop,
+            )),
             "toggle_broadcast_armed" | "toggle_broadcast" => Ok(PaneHitAction::CastControl(
                 CastControlPaneAction::ToggleBroadcastArmed,
             )),

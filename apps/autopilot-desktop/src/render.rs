@@ -253,6 +253,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             agent_schedule_tick: crate::app_state::AgentScheduleTickPaneState::default(),
             trajectory_audit: crate::app_state::TrajectoryAuditPaneState::default(),
             cast_control: crate::app_state::CastControlPaneState::default(),
+            cast_control_process: None,
             skill_registry: crate::app_state::SkillRegistryPaneState::default(),
             skill_trust_revocation: crate::app_state::SkillTrustRevocationPaneState::default(),
             credit_desk: crate::app_state::CreditDeskPaneState::default(),

@@ -290,6 +290,8 @@ pub enum CastControlPaneAction {
     RunProve,
     RunSignBroadcast,
     RunInspect,
+    RunLoopOnce,
+    ToggleAutoLoop,
     ToggleBroadcastArmed,
 }
 
@@ -2258,6 +2260,26 @@ pub fn cast_toggle_broadcast_button_bounds(content_bounds: Bounds) -> Bounds {
     )
 }
 
+pub fn cast_loop_once_button_bounds(content_bounds: Bounds) -> Bounds {
+    let sign = cast_sign_button_bounds(content_bounds);
+    Bounds::new(
+        sign.origin.x,
+        sign.max_y() + JOB_INBOX_BUTTON_GAP,
+        sign.size.width,
+        sign.size.height,
+    )
+}
+
+pub fn cast_toggle_loop_button_bounds(content_bounds: Bounds) -> Bounds {
+    let loop_once = cast_loop_once_button_bounds(content_bounds);
+    Bounds::new(
+        loop_once.max_x() + JOB_INBOX_BUTTON_GAP,
+        loop_once.origin.y,
+        loop_once.size.width,
+        loop_once.size.height,
+    )
+}
+
 pub fn skill_registry_discover_button_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         content_bounds.origin.x + CHAT_PAD,
@@ -3607,6 +3629,12 @@ fn pane_hit_action_for_pane(
                 return Some(PaneHitAction::CastControl(
                     CastControlPaneAction::ToggleBroadcastArmed,
                 ));
+            }
+            if cast_loop_once_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CastControl(CastControlPaneAction::RunLoopOnce));
+            }
+            if cast_toggle_loop_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CastControl(CastControlPaneAction::ToggleAutoLoop));
             }
             None
         }

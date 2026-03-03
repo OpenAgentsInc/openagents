@@ -2768,6 +2768,13 @@ impl_pane_status_access!(
     StableSatsSimulationPaneState,
 );
 
+pub struct CastControlProcess {
+    pub child: std::process::Child,
+    pub operation: String,
+    pub receipt_path: String,
+    pub log_path: String,
+}
+
 pub struct RenderState {
     pub window: Arc<Window>,
     pub surface: wgpu::Surface<'static>,
@@ -2838,6 +2845,7 @@ pub struct RenderState {
     pub agent_schedule_tick: AgentScheduleTickPaneState,
     pub trajectory_audit: TrajectoryAuditPaneState,
     pub cast_control: CastControlPaneState,
+    pub cast_control_process: Option<CastControlProcess>,
     pub skill_registry: SkillRegistryPaneState,
     pub skill_trust_revocation: SkillTrustRevocationPaneState,
     pub credit_desk: CreditDeskPaneState,

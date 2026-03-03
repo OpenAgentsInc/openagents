@@ -1,0 +1,28 @@
+# CAST autotrade loop example configuration.
+# Source via:
+#   skills/cast/scripts/cast-autotrade-loop.sh --config skills/cast/assets/autotrade-loop.config.example --once
+
+# Required for check/prove stages:
+export CAST_AUTOTRADE_SPELL_FILE="rendered/cancel-replace-order.yaml"
+export CAST_AUTOTRADE_PRIVATE_INPUTS_FILE="rendered/cancel-replace-order.private-inputs.yaml"
+export CAST_APP_BIN="/absolute/path/to/charms-cast-v11.0.1.wasm"
+export CAST_PREV_TXS_FILE="/absolute/path/to/prev_txs_phase2.txt"
+export CAST_CHANGE_ADDRESS="bc1q..."
+
+# Optional stage controls:
+export CAST_AUTOTRADE_STAGES="check,prove,sign,inspect"
+# export CAST_AUTOTRADE_TX_JSON="/absolute/path/to/tx_to_sign.json"
+# export CAST_AUTOTRADE_TX_HEX="<hex>"
+
+# Loop controls:
+export CAST_AUTOTRADE_INTERVAL_SECONDS="30"
+export CAST_AUTOTRADE_MAX_ITERATIONS="0"
+export CAST_AUTOTRADE_CONTINUE_ON_ERROR="0"
+
+# Prove/sign safety:
+export CAST_AUTOTRADE_MOCK_PROVE="1"
+# pass --broadcast to cast-autotrade-loop.sh for live broadcast mode
+
+# Optional:
+# export CAST_CHAIN="bitcoin"
+# export CAST_MEMPOOL_BROADCAST_URL="https://mempool.space/api/tx"

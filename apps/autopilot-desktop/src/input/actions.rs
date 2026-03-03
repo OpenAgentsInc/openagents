@@ -1623,109 +1623,157 @@ pub(super) fn run_cast_control_action(
     state: &mut crate::app_state::RenderState,
     action: CastControlPaneAction,
 ) -> bool {
-    let now_epoch_seconds = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_secs());
-
-    let (operation, mode_key, summary, detail, domain) = match action {
+    match action {
         CastControlPaneAction::RefreshStatus => {
-            state.cast_control.prereq_status = "ready (manual refresh)".to_string();
-            (
+            state.cast_control.load_state = crate::app_state::PaneLoadState::Ready;
+            state.cast_control.last_error = None;
+            state.cast_control.prereq_status = format!(
+                "autotrade script: {} | process: {}",
+                if cast_autotrade_script_path().is_file() {
+                    "present"
+                } else {
+                    "missing"
+                },
+                if state.cast_control_process.is_some() {
+                    "running"
+                } else {
+                    "idle"
+                }
+            );
+            state.cast_control.last_action = Some("CAST status refreshed".to_string());
+            publish_cast_activity_event(
+                state,
                 "refresh_status",
-                "status",
+                crate::app_state::ActivityEventDomain::Network,
                 "CAST status refreshed".to_string(),
-                "Updated local CAST control status snapshot".to_string(),
-                crate::app_state::ActivityEventDomain::Network,
-            )
+                "Refreshed script/config/runtime status".to_string(),
+            );
+            true
         }
-        CastControlPaneAction::RunCheck => {
-            state.cast_control.last_receipt_path =
-                Some("run/latest/receipts/spell_check.json".to_string());
-            (
-                "run_check",
-                "spell_check",
-                "CAST spell check requested".to_string(),
-                "Queued CAST spell check workflow (non-broadcast path)".to_string(),
-                crate::app_state::ActivityEventDomain::Network,
-            )
-        }
-        CastControlPaneAction::RunProve => {
-            state.cast_control.last_receipt_path =
-                Some("run/latest/receipts/spell_prove.json".to_string());
-            (
-                "run_prove",
-                "spell_prove",
-                "CAST prove requested".to_string(),
-                "Queued CAST prove workflow".to_string(),
-                crate::app_state::ActivityEventDomain::Network,
-            )
-        }
-        CastControlPaneAction::RunSignBroadcast => {
-            state.cast_control.last_receipt_path =
-                Some("run/latest/receipts/sign_and_broadcast.json".to_string());
+        CastControlPaneAction::RunCheck => queue_cast_autotrade_once(
+            state,
+            "run_check",
+            "check",
+            false,
+            crate::app_state::ActivityEventDomain::Network,
+        ),
+        CastControlPaneAction::RunProve => queue_cast_autotrade_once(
+            state,
+            "run_prove",
+            "check,prove",
+            false,
+            crate::app_state::ActivityEventDomain::Network,
+        ),
+        CastControlPaneAction::RunSignBroadcast => queue_cast_autotrade_once(
+            state,
             if state.cast_control.broadcast_armed {
-                state.cast_control.last_txid = Some("pending-broadcast".to_string());
-                (
-                    "run_sign_broadcast",
-                    "broadcast_armed",
-                    "CAST sign/broadcast requested".to_string(),
-                    "Broadcast is armed; queued signing/broadcast flow".to_string(),
-                    crate::app_state::ActivityEventDomain::Wallet,
-                )
+                "run_sign_broadcast"
             } else {
-                (
-                    "run_sign",
-                    "safe_mode",
-                    "CAST sign requested (safe mode)".to_string(),
-                    "Broadcast is not armed; signing path only".to_string(),
-                    crate::app_state::ActivityEventDomain::Wallet,
-                )
+                "run_sign_safe"
+            },
+            "sign",
+            state.cast_control.broadcast_armed,
+            crate::app_state::ActivityEventDomain::Wallet,
+        ),
+        CastControlPaneAction::RunInspect => queue_cast_autotrade_once(
+            state,
+            "run_inspect",
+            "inspect",
+            false,
+            crate::app_state::ActivityEventDomain::Network,
+        ),
+        CastControlPaneAction::RunLoopOnce => queue_cast_autotrade_once(
+            state,
+            "run_loop_once",
+            "check,prove,sign,inspect",
+            state.cast_control.broadcast_armed,
+            crate::app_state::ActivityEventDomain::Network,
+        ),
+        CastControlPaneAction::ToggleAutoLoop => {
+            if state.cast_control.auto_loop_enabled {
+                state.cast_control.stop_auto_loop();
+                if let Some(mut process) = state.cast_control_process.take() {
+                    let _ = process.child.kill();
+                    let _ = process.child.wait();
+                    state.cast_control.active_pid = None;
+                }
+                state.cast_control.load_state = crate::app_state::PaneLoadState::Ready;
+                state.cast_control.last_action = Some("CAST auto loop stopped".to_string());
+                publish_cast_activity_event(
+                    state,
+                    "toggle_auto_loop",
+                    crate::app_state::ActivityEventDomain::Network,
+                    "CAST auto loop stopped".to_string(),
+                    "Disabled recurring CAST autotrade iterations".to_string(),
+                );
+            } else {
+                state.cast_control.start_auto_loop();
+                state.cast_control.load_state = crate::app_state::PaneLoadState::Ready;
+                state.cast_control.last_action = Some("CAST auto loop enabled".to_string());
+                publish_cast_activity_event(
+                    state,
+                    "toggle_auto_loop",
+                    crate::app_state::ActivityEventDomain::Network,
+                    "CAST auto loop enabled".to_string(),
+                    "Recurring CAST autotrade iterations will run on pane interval".to_string(),
+                );
             }
-        }
-        CastControlPaneAction::RunInspect => {
-            state.cast_control.last_receipt_path =
-                Some("run/latest/receipts/show_spell.json".to_string());
-            (
-                "run_inspect",
-                "show_spell",
-                "CAST spell inspection requested".to_string(),
-                "Queued CAST tx spell decode path".to_string(),
-                crate::app_state::ActivityEventDomain::Network,
-            )
+            true
         }
         CastControlPaneAction::ToggleBroadcastArmed => {
             state.cast_control.broadcast_armed = !state.cast_control.broadcast_armed;
-            (
+            state.cast_control.load_state = crate::app_state::PaneLoadState::Ready;
+            state.cast_control.last_error = None;
+            state.cast_control.last_action = Some(if state.cast_control.broadcast_armed {
+                "CAST broadcast armed".to_string()
+            } else {
+                "CAST broadcast disarmed".to_string()
+            });
+            publish_cast_activity_event(
+                state,
                 "toggle_broadcast_armed",
-                if state.cast_control.broadcast_armed {
-                    "armed"
-                } else {
-                    "disarmed"
-                },
-                if state.cast_control.broadcast_armed {
-                    "CAST broadcast armed".to_string()
-                } else {
-                    "CAST broadcast disarmed".to_string()
-                },
-                "Toggled CAST broadcast safety gate".to_string(),
                 crate::app_state::ActivityEventDomain::Wallet,
-            )
+                state
+                    .cast_control
+                    .last_action
+                    .clone()
+                    .unwrap_or_else(|| "CAST broadcast toggle".to_string()),
+                "Toggled CAST broadcast safety gate".to_string(),
+            );
+            true
         }
-    };
+    }
+}
 
-    state.cast_control.load_state = crate::app_state::PaneLoadState::Ready;
-    state.cast_control.last_error = None;
-    state.cast_control.last_operation = Some(operation.to_string());
-    state.cast_control.run_count = state.cast_control.run_count.saturating_add(1);
-    state.cast_control.last_action = Some(summary.clone());
-    state.provider_runtime.last_result = Some(summary.clone());
+fn cast_repo_root() -> std::path::PathBuf {
+    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    manifest_dir
+        .parent()
+        .and_then(std::path::Path::parent)
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or(manifest_dir)
+}
 
-    let receipt_key = state
-        .cast_control
-        .last_receipt_path
-        .as_deref()
-        .unwrap_or("none");
-    let event_id = format!("cast:{operation}:{mode_key}:{receipt_key}");
+fn cast_autotrade_script_path() -> std::path::PathBuf {
+    cast_repo_root()
+        .join("skills")
+        .join("cast")
+        .join("scripts")
+        .join("cast-autotrade-loop.sh")
+}
+
+fn publish_cast_activity_event(
+    state: &mut crate::app_state::RenderState,
+    operation: &str,
+    domain: crate::app_state::ActivityEventDomain,
+    summary: String,
+    detail: String,
+) {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let now_epoch_seconds = now.as_secs();
+    let event_id = format!("cast:{operation}:{}", now.as_millis());
     state
         .activity_feed
         .upsert_event(crate::app_state::ActivityEventRow {
@@ -1733,11 +1781,312 @@ pub(super) fn run_cast_control_action(
             domain,
             source_tag: "cast.dex".to_string(),
             occurred_at_epoch_seconds: now_epoch_seconds,
-            summary,
+            summary: summary.clone(),
             detail,
         });
     state.activity_feed.load_state = crate::app_state::PaneLoadState::Ready;
+    state.provider_runtime.last_result = Some(summary);
+}
+
+fn queue_cast_autotrade_once(
+    state: &mut crate::app_state::RenderState,
+    operation: &str,
+    stages: &str,
+    broadcast: bool,
+    domain: crate::app_state::ActivityEventDomain,
+) -> bool {
+    if state.cast_control_process.is_some() {
+        state.cast_control.load_state = crate::app_state::PaneLoadState::Error;
+        state.cast_control.last_error = Some(
+            "CAST command already running; wait for current run to finish or stop auto loop."
+                .to_string(),
+        );
+        return true;
+    }
+
+    let repo_root = cast_repo_root();
+    let script_path = cast_autotrade_script_path();
+    if !script_path.is_file() {
+        state.cast_control.load_state = crate::app_state::PaneLoadState::Error;
+        state.cast_control.last_error = Some(format!(
+            "CAST autotrade script not found: {}",
+            script_path.display()
+        ));
+        return true;
+    }
+
+    let run_latest_dir = repo_root.join("run").join("latest");
+    let receipt_dir = run_latest_dir.join("receipts");
+    let log_dir = run_latest_dir.join("logs");
+    if let Err(error) = std::fs::create_dir_all(&receipt_dir) {
+        state.cast_control.load_state = crate::app_state::PaneLoadState::Error;
+        state.cast_control.last_error = Some(format!(
+            "failed to create CAST receipt dir {}: {}",
+            receipt_dir.display(),
+            error
+        ));
+        return true;
+    }
+    if let Err(error) = std::fs::create_dir_all(&log_dir) {
+        state.cast_control.load_state = crate::app_state::PaneLoadState::Error;
+        state.cast_control.last_error = Some(format!(
+            "failed to create CAST log dir {}: {}",
+            log_dir.display(),
+            error
+        ));
+        return true;
+    }
+
+    let receipt_path = receipt_dir.join(format!("{operation}.json"));
+    let log_path = log_dir.join(format!("{operation}.log"));
+    let log_file = match std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(&log_path)
+    {
+        Ok(file) => file,
+        Err(error) => {
+            state.cast_control.load_state = crate::app_state::PaneLoadState::Error;
+            state.cast_control.last_error = Some(format!(
+                "failed to open CAST log file {}: {}",
+                log_path.display(),
+                error
+            ));
+            return true;
+        }
+    };
+
+    let mut command = std::process::Command::new("bash");
+    command
+        .current_dir(&repo_root)
+        .arg(script_path.as_os_str())
+        .arg("--once")
+        .arg("--stages")
+        .arg(stages)
+        .arg("--summary-file")
+        .arg(receipt_path.as_os_str());
+
+    let config_trimmed = state.cast_control.loop_config_path.trim();
+    if !config_trimmed.is_empty() {
+        let config_path = {
+            let path = std::path::PathBuf::from(config_trimmed);
+            if path.is_absolute() {
+                path
+            } else {
+                repo_root.join(path)
+            }
+        };
+        if config_path.is_file() {
+            state.cast_control.prereq_status =
+                format!("config loaded: {}", config_path.display());
+            command.arg("--config").arg(config_path.as_os_str());
+        } else {
+            state.cast_control.prereq_status = format!(
+                "config missing: {} (falling back to process env)",
+                config_path.display()
+            );
+        }
+    } else {
+        state.cast_control.prereq_status = "config unset (using process env)".to_string();
+    }
+
+    if broadcast {
+        command.arg("--broadcast");
+    }
+
+    let stderr_file = match log_file.try_clone() {
+        Ok(file) => file,
+        Err(error) => {
+            state.cast_control.load_state = crate::app_state::PaneLoadState::Error;
+            state.cast_control.last_error = Some(format!(
+                "failed to duplicate CAST log handle {}: {}",
+                log_path.display(),
+                error
+            ));
+            return true;
+        }
+    };
+
+    command.stdout(std::process::Stdio::from(log_file));
+    command.stderr(std::process::Stdio::from(stderr_file));
+
+    let child = match command.spawn() {
+        Ok(child) => child,
+        Err(error) => {
+            state.cast_control.load_state = crate::app_state::PaneLoadState::Error;
+            state.cast_control.last_error = Some(format!("failed to spawn CAST command: {}", error));
+            return true;
+        }
+    };
+
+    let pid = child.id();
+    state.cast_control_process = Some(crate::app_state::CastControlProcess {
+        child,
+        operation: operation.to_string(),
+        receipt_path: receipt_path.display().to_string(),
+        log_path: log_path.display().to_string(),
+    });
+    state.cast_control.load_state = crate::app_state::PaneLoadState::Loading;
+    state.cast_control.last_error = None;
+    state.cast_control.last_operation = Some(operation.to_string());
+    state.cast_control.last_receipt_path = Some(receipt_path.display().to_string());
+    state.cast_control.last_log_path = Some(log_path.display().to_string());
+    state.cast_control.active_pid = Some(pid.to_string());
+    state.cast_control.run_count = state.cast_control.run_count.saturating_add(1);
+    state.cast_control.last_action = Some(format!(
+        "CAST {} started (pid {})",
+        operation.replace('_', " "),
+        pid
+    ));
+
+    publish_cast_activity_event(
+        state,
+        operation,
+        domain,
+        state
+            .cast_control
+            .last_action
+            .clone()
+            .unwrap_or_else(|| "CAST command started".to_string()),
+        format!(
+            "stages={} broadcast={} receipt={} log={}",
+            stages,
+            broadcast,
+            receipt_path.display(),
+            log_path.display()
+        ),
+    );
     true
+}
+
+pub(super) fn run_cast_control_process_tick(state: &mut crate::app_state::RenderState) -> bool {
+    let status = {
+        let Some(process) = state.cast_control_process.as_mut() else {
+            return false;
+        };
+        match process.child.try_wait() {
+            Ok(Some(status)) => status,
+            Ok(None) => return false,
+            Err(error) => {
+                state.cast_control.load_state = crate::app_state::PaneLoadState::Error;
+                state.cast_control.last_error =
+                    Some(format!("failed to poll CAST process: {}", error));
+                let _ = state.cast_control_process.take();
+                state.cast_control.active_pid = None;
+                return true;
+            }
+        }
+    };
+
+    let Some(process) = state.cast_control_process.take() else {
+        return false;
+    };
+    state.cast_control.active_pid = None;
+    state.cast_control.last_receipt_path = Some(process.receipt_path.clone());
+    state.cast_control.last_log_path = Some(process.log_path.clone());
+
+    let mut summary_ok = status.success();
+    let mut summary_detail = format!("exit_status={}", status);
+    if let Ok(raw) = std::fs::read_to_string(&process.receipt_path)
+        && let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw)
+    {
+        if let Some(ok) = value.get("ok").and_then(serde_json::Value::as_bool) {
+            summary_ok = summary_ok && ok;
+        }
+        if let Some(stage) = value
+            .get("failed_stage")
+            .and_then(serde_json::Value::as_str)
+            .filter(|stage| !stage.is_empty())
+        {
+            let message = value
+                .get("failed_message")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("stage failure");
+            summary_detail = format!("failed_stage={} message={}", stage, message);
+        }
+        let txid = value
+            .get("last_broadcast_txid")
+            .and_then(serde_json::Value::as_str)
+            .filter(|txid| !txid.is_empty())
+            .or_else(|| {
+                value
+                    .get("last_local_txid")
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|txid| !txid.is_empty())
+            });
+        if let Some(txid) = txid {
+            state.cast_control.last_txid = Some(txid.to_string());
+        }
+    }
+
+    if summary_ok {
+        state.cast_control.load_state = crate::app_state::PaneLoadState::Ready;
+        state.cast_control.last_error = None;
+        state.cast_control.last_action = Some(format!(
+            "CAST {} completed",
+            process.operation.replace('_', " ")
+        ));
+    } else {
+        state.cast_control.load_state = crate::app_state::PaneLoadState::Error;
+        state.cast_control.last_error = Some(format!(
+            "CAST {} failed ({}). See log: {}",
+            process.operation.replace('_', " "),
+            summary_detail,
+            process.log_path
+        ));
+        state.cast_control.last_action = Some(format!(
+            "CAST {} failed",
+            process.operation.replace('_', " ")
+        ));
+    }
+
+    publish_cast_activity_event(
+        state,
+        &format!("complete_{}", process.operation),
+        if process.operation.contains("sign") || process.operation.contains("broadcast") {
+            crate::app_state::ActivityEventDomain::Wallet
+        } else {
+            crate::app_state::ActivityEventDomain::Network
+        },
+        state
+            .cast_control
+            .last_action
+            .clone()
+            .unwrap_or_else(|| "CAST command completed".to_string()),
+        format!(
+            "{} | receipt={} | log={}",
+            summary_detail, process.receipt_path, process.log_path
+        ),
+    );
+    true
+}
+
+pub(super) fn run_auto_cast_control_loop(
+    state: &mut crate::app_state::RenderState,
+    now: std::time::Instant,
+) -> bool {
+    if state.cast_control_process.is_some() {
+        return false;
+    }
+    if !state.cast_control.should_run_auto_loop(now) {
+        return false;
+    }
+    let changed = queue_cast_autotrade_once(
+        state,
+        "auto_loop_tick",
+        "check,prove,sign,inspect",
+        state.cast_control.broadcast_armed,
+        crate::app_state::ActivityEventDomain::Network,
+    );
+    if state.cast_control_process.is_some() {
+        state.cast_control.mark_auto_loop_tick(now);
+    } else {
+        state.cast_control.stop_auto_loop();
+        state.cast_control.last_action =
+            Some("CAST auto loop stopped after launch failure".to_string());
+    }
+    changed
 }
 
 pub(super) fn run_agent_network_simulation_action(

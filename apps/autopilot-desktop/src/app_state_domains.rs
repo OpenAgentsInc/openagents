@@ -414,7 +414,13 @@ pub struct CastControlPaneState {
     pub last_operation: Option<String>,
     pub last_receipt_path: Option<String>,
     pub last_txid: Option<String>,
+    pub last_log_path: Option<String>,
     pub broadcast_armed: bool,
+    pub auto_loop_enabled: bool,
+    pub auto_loop_interval: Duration,
+    pub active_pid: Option<String>,
+    pub loop_config_path: String,
+    auto_loop_last_tick: Option<Instant>,
     pub run_count: u64,
 }
 
@@ -429,9 +435,40 @@ impl Default for CastControlPaneState {
             last_operation: None,
             last_receipt_path: None,
             last_txid: None,
+            last_log_path: None,
             broadcast_armed: false,
+            auto_loop_enabled: false,
+            auto_loop_interval: Duration::from_secs(45),
+            active_pid: None,
+            loop_config_path: "skills/cast/assets/autotrade-loop.config.example".to_string(),
+            auto_loop_last_tick: None,
             run_count: 0,
         }
+    }
+}
+
+impl CastControlPaneState {
+    pub fn start_auto_loop(&mut self) {
+        self.auto_loop_enabled = true;
+        self.auto_loop_last_tick = None;
+        self.last_error = None;
+    }
+
+    pub fn stop_auto_loop(&mut self) {
+        self.auto_loop_enabled = false;
+        self.auto_loop_last_tick = None;
+    }
+
+    pub fn should_run_auto_loop(&self, now: Instant) -> bool {
+        if !self.auto_loop_enabled {
+            return false;
+        }
+        self.auto_loop_last_tick
+            .is_none_or(|last| now.duration_since(last) >= self.auto_loop_interval)
+    }
+
+    pub fn mark_auto_loop_tick(&mut self, now: Instant) {
+        self.auto_loop_last_tick = Some(now);
     }
 }
 
