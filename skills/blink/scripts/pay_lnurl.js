@@ -49,12 +49,12 @@ const PAY_LNURL_MUTATION = `
 `;
 
 async function main() {
-  const { walletCurrency, remaining } = parseWalletArg(process.argv.slice(2));
+  const { walletCurrency, dryRun, force, maxAmount, remaining } = parseWalletArg(process.argv.slice(2));
   const lnurl = remaining[0] ? remaining[0].trim() : null;
   const amountSats = remaining[1] ? parseInt(remaining[1], 10) : null;
 
   if (!lnurl || amountSats === null) {
-    console.error('Usage: node pay_lnurl.js <lnurl> <amount_sats> [--wallet BTC|USD]');
+    console.error('Usage: node pay_lnurl.js <lnurl> <amount_sats> [--wallet BTC|USD] [--dry-run] [--force] [--max-amount <sats>]');
     process.exit(1);
   }
 
@@ -68,23 +68,51 @@ async function main() {
     process.exit(1);
   }
 
+  // ── Amount ceiling check ──
+  if (maxAmount !== null && amountSats > maxAmount) {
+    throw new Error(`Amount ${amountSats} sats exceeds --max-amount ceiling of ${maxAmount} sats.`);
+  }
+
   const apiKey = getApiKey();
   const apiUrl = getApiUrl();
 
   // Resolve wallet (BTC or USD)
   const wallet = await getWallet({ apiKey, apiUrl, currency: walletCurrency });
 
-  // Balance warning (BTC balance is in sats, directly comparable; USD balance
-  // is in cents, not directly comparable to sats — skip for USD)
+  // ── Balance check (BTC only — USD balance in cents is not comparable to sats) ──
   if (walletCurrency === 'BTC' && wallet.balance < amountSats) {
-    console.error(
-      `Warning: wallet balance (${wallet.balance} sats) may be insufficient for ${amountSats} sats + fees.`,
-    );
+    if (force) {
+      console.error(
+        `Warning: wallet balance (${wallet.balance} sats) may be insufficient for ${amountSats} sats + fees. Proceeding due to --force.`,
+      );
+    } else {
+      throw new Error(
+        `Insufficient balance: ${wallet.balance} sats < ${amountSats} sats (+ fees). Use --force to attempt anyway.`,
+      );
+    }
   }
 
   console.error(
     `Sending ${amountSats} sats via LNURL from ${walletCurrency} wallet ${wallet.id} (balance: ${formatBalance(wallet)})`,
   );
+
+  // ── Dry-run: resolve everything, show details, exit without sending ──
+  if (dryRun) {
+    console.error('[DRY RUN] Would send payment — no funds will be transferred.');
+    const output = {
+      dryRun: true,
+      lnurl,
+      amountSats,
+      walletId: wallet.id,
+      walletCurrency,
+      balance: wallet.balance,
+    };
+    if (walletCurrency === 'USD') {
+      output.balanceFormatted = `$${(wallet.balance / 100).toFixed(2)}`;
+    }
+    console.log(JSON.stringify(output, null, 2));
+    return;
+  }
 
   const input = {
     walletId: wallet.id,
@@ -129,7 +157,11 @@ async function main() {
   console.log(JSON.stringify(output, null, 2));
 }
 
-main().catch((e) => {
-  console.error('Error:', e.message);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((e) => {
+    console.error('Error:', e.message);
+    process.exit(1);
+  });
+}
+
+module.exports = { main };

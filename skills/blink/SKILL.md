@@ -1,11 +1,11 @@
 ---
 name: blink
-description: Blink Lightning wallet for agents — balances, invoices, payments, QR codes, price conversion, and transaction history.
+description: Blink Lightning wallet for agents — balances, invoices, payments, BTC/USD swaps, QR codes, price conversion, and transaction history.
 metadata:
   oa:
     project: blink
     identifier: blink
-    version: "0.5.0"
+    version: "1.2.0"
     expires_at_unix: 1798761600
     capabilities:
       - http:outbound
@@ -15,7 +15,7 @@ metadata:
 
 # Blink Skill
 
-Bitcoin Lightning wallet operations via the Blink API. Enables agents to check balances, receive payments via invoices, send payments over Lightning, track transactions, and monitor prices.
+Bitcoin Lightning wallet operations via the Blink API. Enables agents to check balances, receive payments via invoices, send payments over Lightning, swap between BTC and USD wallets, track transactions, and monitor prices.
 
 ## What is Blink?
 
@@ -64,6 +64,7 @@ If not set, production (`https://api.blink.sv/graphql`) is used by default.
 1. Pick the operation path first:
 - Receive payments (invoice creation, QR codes, payment monitoring).
 - Send payments (invoice pay, Lightning Address, LNURL, BTC or USD wallet).
+- Swap between wallets (BTC <-> USD internal conversion).
 - Read-only queries (balance, transactions, price, account info).
 
 2. Configure API access from [blink-api-and-auth](references/blink-api-and-auth.md):
@@ -75,18 +76,26 @@ If not set, production (`https://api.blink.sv/graphql`) is used by default.
 - Check balance before sending.
 - Probe fees with `fee_probe.js`.
 - Choose BTC or USD wallet with `--wallet` flag.
+- Use `--dry-run` to preview without sending. Use `--max-amount` to cap outgoing amounts.
 - Execute payment and verify in transaction history.
 
-4. For receiving payments, follow [invoice-lifecycle](references/invoice-lifecycle.md):
+4. For swapping between wallets, follow [swap-operations](references/swap-operations.md):
+- Get a quote with `swap_quote.js` to preview the conversion.
+- Execute with `swap_execute.js` (use `--dry-run` first).
+
+5. For receiving payments, follow [invoice-lifecycle](references/invoice-lifecycle.md):
 - Create BTC or USD invoice.
 - Parse two-phase output (invoice created, then payment resolution).
 - Generate QR code and send to payer.
 - Monitor via auto-subscribe, polling, or standalone subscription.
 
-5. Apply safety constraints:
+6. Apply safety constraints:
 - Use minimum API key scopes for the task.
 - Test on staging before production.
 - Always check balance before sending.
+- Use `--dry-run` on payment and swap commands to preview before executing.
+- Use `--max-amount <sats>` to enforce a per-payment ceiling (pay_lnaddress, pay_lnurl).
+- Use `--force` to override balance-check failures when you know the payment should proceed.
 - Payments are irreversible once settled.
 
 ## Quick Commands
@@ -166,19 +175,21 @@ Checks the payment status of a Lightning invoice by its payment hash. Use after 
 
 ### Pay Lightning Invoice
 ```bash
-source ~/.profile && node {baseDir}/scripts/pay_invoice.js <bolt11_invoice> [--wallet BTC|USD]
+source ~/.profile && node {baseDir}/scripts/pay_invoice.js <bolt11_invoice> [--wallet BTC|USD] [--dry-run] [--force]
 ```
 
 Pays a BOLT-11 Lightning invoice from the BTC or USD wallet. Returns payment status: `SUCCESS`, `PENDING`, `FAILURE`, or `ALREADY_PAID`. The wallet ID is resolved automatically.
 
 - `bolt11_invoice` — the BOLT-11 payment request string, e.g. `lnbc...` (required)
 - `--wallet BTC|USD` — wallet to pay from (default: BTC). When USD is selected, the Blink API debits the USD equivalent from the USD wallet.
+- `--dry-run` — preview the payment without sending (returns wallet info and invoice details)
+- `--force` — attempt payment even when the wallet balance appears insufficient
 
 **Requires Write scope on the API key.**
 
 ### Pay to Lightning Address
 ```bash
-source ~/.profile && node {baseDir}/scripts/pay_lnaddress.js <lightning_address> <amount_sats> [--wallet BTC|USD]
+source ~/.profile && node {baseDir}/scripts/pay_lnaddress.js <lightning_address> <amount_sats> [--wallet BTC|USD] [--dry-run] [--force] [--max-amount <sats>]
 ```
 
 Sends satoshis to a Lightning Address (e.g. `user@blink.sv`). Returns payment status. The wallet ID is resolved automatically.
@@ -186,12 +197,15 @@ Sends satoshis to a Lightning Address (e.g. `user@blink.sv`). Returns payment st
 - `lightning_address` — recipient in `user@domain` format (required)
 - `amount_sats` — amount in satoshis (required)
 - `--wallet BTC|USD` — wallet to pay from (default: BTC). When USD is selected, the amount is still specified in satoshis; the Blink API debits the USD equivalent from the USD wallet automatically.
+- `--dry-run` — preview the payment without sending (returns wallet info and amount details)
+- `--force` — attempt payment even when the wallet balance appears insufficient
+- `--max-amount <sats>` — reject the payment if the amount exceeds this ceiling (in satoshis)
 
 **Requires Write scope on the API key.**
 
 ### Pay to LNURL
 ```bash
-source ~/.profile && node {baseDir}/scripts/pay_lnurl.js <lnurl> <amount_sats> [--wallet BTC|USD]
+source ~/.profile && node {baseDir}/scripts/pay_lnurl.js <lnurl> <amount_sats> [--wallet BTC|USD] [--dry-run] [--force] [--max-amount <sats>]
 ```
 
 Sends satoshis to a raw LNURL payRequest string. For Lightning Addresses (`user@domain`), use `pay_lnaddress.js` instead.
@@ -199,6 +213,9 @@ Sends satoshis to a raw LNURL payRequest string. For Lightning Addresses (`user@
 - `lnurl` — LNURL string, e.g. `lnurl1...` (required)
 - `amount_sats` — amount in satoshis (required)
 - `--wallet BTC|USD` — wallet to pay from (default: BTC). When USD is selected, the amount is still specified in satoshis; the Blink API debits the USD equivalent from the USD wallet automatically.
+- `--dry-run` — preview the payment without sending (returns wallet info and amount details)
+- `--force` — attempt payment even when the wallet balance appears insufficient
+- `--max-amount <sats>` — reject the payment if the amount exceeds this ceiling (in satoshis)
 
 **Requires Write scope on the API key.**
 
