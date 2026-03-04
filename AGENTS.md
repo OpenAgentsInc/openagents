@@ -25,3 +25,20 @@
 - Prefer deletion/simplification over expansion unless requested.
 - Keep changes small, verifiable, and directly tied to current MVP goals.
 - Do not add `.github/workflows/` automation in this repo.
+
+## Implementation Guardrails
+
+- Retained implementation is Rust/WGPUI-first.
+- Sync and state continuity must remain deterministic and replay-safe.
+- Wallet and payout state must be explicit and truthful in UI and behavior.
+
+## Validation Gates
+
+- Shared dependency hygiene: `scripts/lint/workspace-dependency-drift-check.sh`.
+- Architecture boundary hygiene: `scripts/lint/ownership-boundary-check.sh`.
+- Clean-on-touch clippy hygiene: `scripts/lint/touched-clippy-gate.sh` with debt allowlist in `scripts/lint/clippy-debt-allowlist.toml`.
+- Repo-managed Agent Skills validation: `scripts/skills/validate_registry.sh`.
+- Codex chat/skills regression coverage:
+  - `cargo test -p autopilot-desktop codex_lane`
+  - `cargo test -p autopilot-desktop assemble_chat_turn_input`
+  - `cargo test -p codex-client --test skills_and_user_input`
