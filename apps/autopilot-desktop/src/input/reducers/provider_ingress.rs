@@ -1,7 +1,10 @@
 use crate::app_state::{
     ActivityEventDomain, ActivityEventRow, PaneLoadState, ProviderMode, RenderState,
 };
-use crate::provider_nip90_lane::{ProviderNip90LaneMode, ProviderNip90LaneSnapshot};
+use crate::provider_nip90_lane::{
+    ProviderNip90LaneMode, ProviderNip90LaneSnapshot, ProviderNip90PublishOutcome,
+    ProviderNip90PublishRole,
+};
 use crate::state::job_inbox::JobInboxNetworkRequest;
 
 pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: ProviderNip90LaneSnapshot) {
@@ -70,4 +73,92 @@ pub(super) fn apply_ingressed_request(state: &mut RenderState, request: JobInbox
     state.sync_health.last_applied_event_seq =
         state.sync_health.last_applied_event_seq.saturating_add(1);
     state.sync_health.cursor_last_advanced_seconds_ago = 0;
+}
+
+pub(super) fn apply_publish_outcome(state: &mut RenderState, outcome: ProviderNip90PublishOutcome) {
+    let publish_succeeded = outcome.accepted_relays > 0;
+
+    if !publish_succeeded {
+        let error = outcome
+            .first_error
+            .clone()
+            .unwrap_or_else(|| "All relays rejected publish".to_string());
+        state.provider_runtime.mode = ProviderMode::Degraded;
+        state.provider_runtime.degraded_reason_code = Some("NIP90_PUBLISH_ERROR".to_string());
+        state.provider_runtime.last_error_detail = Some(error);
+    } else if state.provider_runtime.mode != ProviderMode::Offline {
+        state.provider_runtime.mode = ProviderMode::Online;
+        state.provider_runtime.degraded_reason_code = None;
+        state.provider_runtime.last_error_detail = None;
+    }
+
+    let publish_label = if publish_succeeded {
+        "published"
+    } else {
+        "failed to publish"
+    };
+    state.provider_runtime.last_result = Some(format!(
+        "{} {} event {} (accepted={}, rejected={})",
+        publish_label,
+        outcome.role.label(),
+        outcome.event_id,
+        outcome.accepted_relays,
+        outcome.rejected_relays
+    ));
+
+    if let Some(job) = state.active_job.job.as_mut()
+        && job.request_id == outcome.request_id
+    {
+        if publish_succeeded {
+            match outcome.role {
+                ProviderNip90PublishRole::Result => {
+                    if job.sa_tick_result_event_id.is_none() {
+                        job.sa_tick_result_event_id = Some(outcome.event_id.clone());
+                    }
+                }
+                ProviderNip90PublishRole::Feedback => {
+                    // Reuse settlement/default fields until a dedicated NIP-90 feedback receipt field lands.
+                    if job.stage == crate::app_state::JobLifecycleStage::Failed {
+                        if job.ac_default_event_id.is_none() {
+                            job.ac_default_event_id = Some(outcome.event_id.clone());
+                        }
+                    } else if job.ac_settlement_event_id.is_none() {
+                        job.ac_settlement_event_id = Some(outcome.event_id.clone());
+                    }
+                }
+            }
+        }
+        state.active_job.append_event(format!(
+            "{} {} event {} (accepted={}, rejected={})",
+            publish_label,
+            outcome.role.label(),
+            outcome.event_id,
+            outcome.accepted_relays,
+            outcome.rejected_relays
+        ));
+    }
+
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs());
+    state.activity_feed.upsert_event(ActivityEventRow {
+        event_id: format!("nip90:{}:{}", outcome.role.label(), outcome.event_id),
+        domain: ActivityEventDomain::Network,
+        source_tag: "nip90.publish".to_string(),
+        summary: if publish_succeeded {
+            format!("Published NIP-90 {} event", outcome.role.label())
+        } else {
+            format!("Failed NIP-90 {} publish", outcome.role.label())
+        },
+        detail: format!(
+            "request={} event_id={} accepted_relays={} rejected_relays={} error={}",
+            outcome.request_id,
+            outcome.event_id,
+            outcome.accepted_relays,
+            outcome.rejected_relays,
+            outcome.first_error.as_deref().unwrap_or("none")
+        ),
+        occurred_at_epoch_seconds: now_epoch_seconds,
+    });
+    state.activity_feed.load_state = PaneLoadState::Ready;
 }

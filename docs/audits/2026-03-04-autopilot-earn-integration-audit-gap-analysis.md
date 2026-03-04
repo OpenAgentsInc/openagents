@@ -88,6 +88,11 @@ Red:
   - Removed synthetic delivered/paid authority stamping from active-job stage advancement.
   - Relay ingress now maps request event id into `sa_tick_request_event_id` to preserve stage authority provenance (`apps/autopilot-desktop/src/provider_nip90_lane.rs`).
   - Added/updated tests for authority-gated transitions and wallet-confirmed settlement behavior (`apps/autopilot-desktop/src/app_state.rs`, `apps/autopilot-desktop/src/provider_nip90_lane.rs`).
+- 2026-03-04: `#2879` (result/feedback publishing from desktop execution lane) implemented.
+  - Added canonical NIP-90 publish command/outcome support in provider relay lane, including relay acceptance/rejection accounting and runtime degraded-state mapping for publish failures (`apps/autopilot-desktop/src/provider_nip90_lane.rs`).
+  - Added request-kind provenance to inbox/active-job records and used it to derive canonical result kind (`request_kind + 1000`) and job-linked feedback/result tags (`apps/autopilot-desktop/src/state/job_inbox.rs`, `apps/autopilot-desktop/src/app_state.rs`, `apps/autopilot-desktop/src/input/reducers/jobs.rs`).
+  - Active-job stage actions now sign and queue canonical NIP-90 result/feedback publishes for running, paid, and abort flows via provider lane commands (`apps/autopilot-desktop/src/input/reducers/jobs.rs`, `apps/autopilot-desktop/src/input/reducers/provider_ingress.rs`).
+  - Added/updated automated coverage for signed publish behavior (`provider_nip90_lane::tests::worker_publishes_signed_feedback_event_to_connected_relay`) and verified via `./scripts/lint/autopilot-earnings-epic-test-gate.sh`.
 
 ## MVP Requirement Matrix (from `docs/MVP.md`)
 

@@ -79,6 +79,9 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
             crate::provider_nip90_lane::ProviderNip90LaneUpdate::IngressedRequest(request) => {
                 provider_ingress::apply_ingressed_request(state, request);
             }
+            crate::provider_nip90_lane::ProviderNip90LaneUpdate::PublishOutcome(outcome) => {
+                provider_ingress::apply_publish_outcome(state, outcome);
+            }
         }
     }
 

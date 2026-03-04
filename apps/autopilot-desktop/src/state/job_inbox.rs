@@ -38,6 +38,7 @@ impl JobInboxDecision {
 pub struct JobInboxRequest {
     pub request_id: String,
     pub requester: String,
+    pub request_kind: u16,
     pub capability: String,
     pub skill_scope_id: Option<String>,
     pub skl_manifest_a: Option<String>,
@@ -56,6 +57,7 @@ pub struct JobInboxRequest {
 pub struct JobInboxNetworkRequest {
     pub request_id: String,
     pub requester: String,
+    pub request_kind: u16,
     pub capability: String,
     pub skill_scope_id: Option<String>,
     pub skl_manifest_a: Option<String>,
@@ -98,6 +100,7 @@ impl JobInboxState {
             .find(|existing| existing.request_id == request.request_id)
         {
             existing.requester = request.requester;
+            existing.request_kind = request.request_kind;
             existing.capability = request.capability;
             existing.skill_scope_id = request.skill_scope_id;
             existing.skl_manifest_a = request.skl_manifest_a;
@@ -116,6 +119,7 @@ impl JobInboxState {
         self.requests.push(JobInboxRequest {
             request_id: request.request_id,
             requester: request.requester,
+            request_kind: request.request_kind,
             capability: request.capability,
             skill_scope_id: request.skill_scope_id,
             skl_manifest_a: request.skl_manifest_a,

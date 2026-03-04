@@ -339,6 +339,7 @@ dependencies = [
  "codex-client",
  "dirs 6.0.0",
  "futures-util",
+ "hex",
  "keyring",
  "nostr 0.1.0",
  "nostr-client",
