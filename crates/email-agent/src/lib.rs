@@ -7,6 +7,7 @@ mod gmail_sync;
 mod knowledge_base;
 mod normalization;
 mod retrieval;
+mod send_execution;
 mod style_profile;
 
 pub use approval_workflow::{
@@ -33,4 +34,9 @@ pub use knowledge_base::{
 };
 pub use normalization::{NormalizationConfig, NormalizedConversationItem, normalize_gmail_message};
 pub use retrieval::{RetrievalIndex, RetrievalQuery, RetrievedContextChunk};
+pub use send_execution::{
+    GmailSendProvider, GmailSendSuccess, SendAuditEventType, SendAuditRecord, SendDeliveryState,
+    SendExecutionError, SendExecutionOutcome, SendExecutionPolicy, SendExecutionState,
+    SendFailureClass, SendProviderError, SendRecord, SendRequest, execute_send_with_idempotency,
+};
 pub use style_profile::{StyleProfile, StyleTone, derive_style_profile};
