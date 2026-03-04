@@ -3,6 +3,7 @@
 mod ac;
 mod cad;
 mod codex;
+mod email;
 mod jobs;
 mod provider_ingress;
 mod sa;
@@ -21,6 +22,10 @@ use crate::runtime_lanes::{
     AcLaneUpdate, RuntimeCommandResponse, RuntimeCommandStatus, RuntimeLane, SaLaneUpdate,
     SklLaneUpdate,
 };
+use openagents_email_agent::{
+    GmailBackfillCheckpoint, GmailBackfillConfig, GmailBackfillResult, GmailSyncOutcome,
+    GmailSyncState, SendExecutionOutcome, SendExecutionPolicy, SendExecutionState, SendRequest,
+};
 
 pub(super) fn run_job_inbox_action(state: &mut RenderState, action: JobInboxPaneAction) -> bool {
     jobs::run_job_inbox_action(state, action)
@@ -35,6 +40,40 @@ pub(super) fn run_job_history_action(
     action: JobHistoryPaneAction,
 ) -> bool {
     jobs::run_job_history_action(state, action)
+}
+
+pub(super) fn fetch_live_gmail_backfill(
+    state: &mut RenderState,
+    checkpoint: Option<&GmailBackfillCheckpoint>,
+    config: &GmailBackfillConfig,
+) -> Result<GmailBackfillResult, String> {
+    email::fetch_live_gmail_backfill(state, checkpoint, config)
+}
+
+pub(super) fn run_live_gmail_incremental_sync(
+    state: &mut RenderState,
+    sync_state: &mut GmailSyncState,
+    max_results: usize,
+) -> Result<GmailSyncOutcome, String> {
+    email::run_live_gmail_incremental_sync(state, sync_state, max_results)
+}
+
+pub(super) fn execute_live_gmail_send(
+    state: &mut RenderState,
+    send_state: &mut SendExecutionState,
+    request: &SendRequest,
+    policy: &SendExecutionPolicy,
+    now_unix: u64,
+) -> Result<SendExecutionOutcome, String> {
+    email::execute_live_gmail_send(state, send_state, request, policy, now_unix)
+}
+
+pub(super) fn gmail_stale_cursor_reason() -> &'static str {
+    email::stale_cursor_reason()
+}
+
+pub(super) fn gmail_now_epoch_seconds() -> u64 {
+    email::now_epoch_seconds()
 }
 
 pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {

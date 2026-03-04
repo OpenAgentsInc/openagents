@@ -268,6 +268,36 @@ impl CredentialsState {
         self.repository.read_value_secure(name)
     }
 
+    pub fn load_google_gmail_oauth_lifecycle(
+        &self,
+    ) -> Result<Option<crate::credentials::GoogleGmailOAuthLifecycle>, String> {
+        self.repository
+            .load_google_gmail_oauth_lifecycle(self.entries.as_slice())
+    }
+
+    pub fn set_value_for_name(&mut self, name: &str, value: &str) -> Result<(), String> {
+        let normalized = crate::credentials::normalize_env_var_name(name);
+        let Some(entry_index) = self
+            .entries
+            .iter()
+            .position(|entry| entry.name == normalized)
+        else {
+            return Err(
+                self.pane_set_error(format!("Credential {} is not available", normalized))
+            );
+        };
+
+        self.repository
+            .set_value(normalized.as_str(), value)
+            .map_err(|error| self.pane_set_error(error))?;
+        if let Some(entry) = self.entries.get_mut(entry_index) {
+            entry.has_value = true;
+        }
+        self.persist_metadata()?;
+        self.pane_set_ready(format!("Stored value for {} in secure storage.", normalized));
+        Ok(())
+    }
+
     fn persist_metadata(&mut self) -> Result<(), String> {
         self.repository
             .persist_records(self.entries.as_slice())
