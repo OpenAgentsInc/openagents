@@ -4477,6 +4477,67 @@ mod tests {
     }
 
     #[test]
+    fn starter_demand_dispatch_respects_budget_interval_and_rollbacks() {
+        let mut starter_jobs = StarterJobsState::default();
+        starter_jobs.apply_dispatch_controls(260, 1, 4);
+        let now = std::time::Instant::now();
+
+        let first = starter_jobs
+            .dispatch_next_if_due(now)
+            .expect("dispatch should not error")
+            .expect("first starter quest should dispatch");
+        assert_eq!(first.status, StarterJobStatus::Queued);
+        assert_eq!(starter_jobs.budget_allocated_sats, first.payout_sats);
+        assert!(starter_jobs.budget_allocated_sats <= starter_jobs.budget_cap_sats);
+
+        let blocked_by_interval = starter_jobs
+            .dispatch_next_if_due(now + std::time::Duration::from_millis(500))
+            .expect("interval check should not error");
+        assert!(blocked_by_interval.is_none());
+
+        let second = starter_jobs
+            .dispatch_next_if_due(now + std::time::Duration::from_secs(1))
+            .expect("second dispatch should not error")
+            .expect("second starter quest should dispatch");
+        assert_eq!(starter_jobs.inflight_jobs(), 2);
+        assert!(starter_jobs.budget_allocated_sats <= starter_jobs.budget_cap_sats);
+
+        let exhausted = starter_jobs
+            .dispatch_next_if_due(now + std::time::Duration::from_secs(2))
+            .expect("budget check should not error");
+        assert!(exhausted.is_none());
+        assert!(
+            starter_jobs
+                .last_action
+                .as_deref()
+                .is_some_and(|value| value.contains("budget exhausted"))
+        );
+
+        assert!(starter_jobs.rollback_dispatched_job(&second.job_id));
+        assert_eq!(starter_jobs.inflight_jobs(), 1);
+        assert_eq!(starter_jobs.budget_allocated_sats, first.payout_sats);
+    }
+
+    #[test]
+    fn starter_demand_kill_switch_blocks_dispatch() {
+        let mut starter_jobs = StarterJobsState::default();
+        starter_jobs.apply_dispatch_controls(500, 1, 2);
+        let now = std::time::Instant::now();
+
+        assert!(starter_jobs.toggle_kill_switch());
+        let blocked = starter_jobs
+            .dispatch_next_if_due(now)
+            .expect("kill switch check should not error");
+        assert!(blocked.is_none());
+
+        assert!(!starter_jobs.toggle_kill_switch());
+        let resumed = starter_jobs
+            .dispatch_next_if_due(now + std::time::Duration::from_secs(1))
+            .expect("dispatch after kill switch disable should not error");
+        assert!(resumed.is_some());
+    }
+
+    #[test]
     fn starter_jobs_complete_selected_requires_wallet_pointer() {
         let mut starter_jobs = StarterJobsState::default();
         starter_jobs.jobs.push(fixture_starter_job(

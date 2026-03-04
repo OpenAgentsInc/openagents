@@ -1110,6 +1110,9 @@ fn pane_action_to_hit_action(
             "complete_selected" => Ok(PaneHitAction::StarterJobs(
                 StarterJobsPaneAction::CompleteSelected,
             )),
+            "toggle_kill_switch" => Ok(PaneHitAction::StarterJobs(
+                StarterJobsPaneAction::ToggleKillSwitch,
+            )),
             "select_row" => Ok(PaneHitAction::StarterJobs(
                 StarterJobsPaneAction::SelectRow(require_index(action)?),
             )),

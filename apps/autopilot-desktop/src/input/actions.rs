@@ -3704,6 +3704,188 @@ fn local_network_request_inject_enabled() -> bool {
         .unwrap_or(false)
 }
 
+const STARTER_DEMAND_BUDGET_SATS_ENV: &str = "OPENAGENTS_STARTER_DEMAND_BUDGET_SATS";
+const STARTER_DEMAND_DISPATCH_INTERVAL_ENV: &str =
+    "OPENAGENTS_STARTER_DEMAND_DISPATCH_INTERVAL_SECONDS";
+const STARTER_DEMAND_MAX_INFLIGHT_ENV: &str = "OPENAGENTS_STARTER_DEMAND_MAX_INFLIGHT";
+const STARTER_DEMAND_REQUEST_TIMEOUT_SECONDS: u64 = 75;
+
+pub(super) fn run_auto_starter_demand_generator(
+    state: &mut crate::app_state::RenderState,
+    now: std::time::Instant,
+) -> bool {
+    state.starter_jobs.apply_dispatch_controls(
+        starter_demand_budget_sats(),
+        starter_demand_dispatch_interval_seconds(),
+        starter_demand_max_inflight_jobs(),
+    );
+
+    if !matches!(state.provider_runtime.mode, ProviderMode::Online)
+        || state.provider_nip90_lane.connected_relays == 0
+    {
+        return false;
+    }
+
+    let dispatched = match state.starter_jobs.dispatch_next_if_due(now) {
+        Ok(Some(job)) => job,
+        Ok(None) => return false,
+        Err(error) => {
+            state.starter_jobs.last_error = Some(error.clone());
+            state.starter_jobs.load_state = crate::app_state::PaneLoadState::Error;
+            state.provider_runtime.last_error_detail = Some(error.clone());
+            state.provider_runtime.last_result =
+                Some(format!("starter demand dispatch blocked: {error}"));
+            return true;
+        }
+    };
+
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs());
+    match queue_starter_demand_request(state, &dispatched, now_epoch_seconds) {
+        Ok(request_id) => {
+            state.provider_runtime.last_result = Some(format!(
+                "starter demand dispatched {} -> {}",
+                dispatched.job_id, request_id
+            ));
+            state
+                .activity_feed
+                .upsert_event(crate::app_state::ActivityEventRow {
+                    event_id: format!("starter.quest.dispatch:{}", dispatched.job_id),
+                    domain: crate::app_state::ActivityEventDomain::Network,
+                    source_tag: "starter.quest".to_string(),
+                    summary: "Starter demand dispatched".to_string(),
+                    detail: format!(
+                        "job={} request={} payout_sats={} remaining_budget={}",
+                        dispatched.job_id,
+                        request_id,
+                        dispatched.payout_sats,
+                        state.starter_jobs.budget_remaining_sats()
+                    ),
+                    occurred_at_epoch_seconds: now_epoch_seconds,
+                });
+            state.activity_feed.load_state = crate::app_state::PaneLoadState::Ready;
+            true
+        }
+        Err(error) => {
+            let _ = state
+                .starter_jobs
+                .rollback_dispatched_job(dispatched.job_id.as_str());
+            state.starter_jobs.last_error = Some(error.clone());
+            state.starter_jobs.load_state = crate::app_state::PaneLoadState::Error;
+            state.provider_runtime.last_error_detail = Some(error.clone());
+            state.provider_runtime.last_result =
+                Some(format!("starter demand dispatch failed: {error}"));
+            true
+        }
+    }
+}
+
+fn queue_starter_demand_request(
+    state: &mut crate::app_state::RenderState,
+    starter_job: &crate::app_state::StarterJobRow,
+    now_epoch_seconds: u64,
+) -> Result<String, String> {
+    let request_type = "starter.quest.text_generation".to_string();
+    let payload = serde_json::json!({
+        "starter_job_id": starter_job.job_id,
+        "prompt": starter_job.summary,
+    })
+    .to_string();
+    let timeout_seconds = STARTER_DEMAND_REQUEST_TIMEOUT_SECONDS;
+    let scope = format!(
+        "starter.quest:{}:{}",
+        starter_job.job_id, starter_job.payout_sats
+    );
+    let command_seq = state.queue_ac_command(AcCreditCommand::PublishCreditIntent {
+        scope,
+        request_type: request_type.clone(),
+        payload: payload.clone(),
+        skill_scope_id: None,
+        credit_envelope_ref: state.ac_lane.envelope_event_id.clone(),
+        requested_sats: starter_job.payout_sats,
+        timeout_seconds,
+    })?;
+    let request_id = state
+        .network_requests
+        .queue_request_submission(NetworkRequestSubmission {
+            request_type,
+            payload,
+            skill_scope_id: None,
+            credit_envelope_ref: state.ac_lane.envelope_event_id.clone(),
+            budget_sats: starter_job.payout_sats,
+            timeout_seconds,
+            authority_command_seq: command_seq,
+        })?;
+
+    state
+        .job_inbox
+        .upsert_network_request(JobInboxNetworkRequest {
+            request_id: request_id.clone(),
+            requester: "starter-demand".to_string(),
+            request_kind: nostr::nip90::KIND_JOB_TEXT_GENERATION,
+            capability: "starter.quest.dispatch".to_string(),
+            skill_scope_id: None,
+            skl_manifest_a: None,
+            skl_manifest_event_id: None,
+            sa_tick_request_event_id: None,
+            sa_tick_result_event_id: None,
+            ac_envelope_event_id: state.ac_lane.envelope_event_id.clone(),
+            price_sats: starter_job.payout_sats,
+            ttl_seconds: timeout_seconds,
+            validation: JobInboxValidation::Valid,
+        });
+    state.sync_health.last_applied_event_seq =
+        state.sync_health.last_applied_event_seq.saturating_add(1);
+    state.sync_health.cursor_last_advanced_seconds_ago = 0;
+    refresh_sync_health(state);
+
+    if let Some(job) = state
+        .starter_jobs
+        .jobs
+        .iter_mut()
+        .find(|job| job.job_id == starter_job.job_id)
+    {
+        job.summary = format!("{} [request={}]", job.summary, request_id);
+    }
+
+    state
+        .activity_feed
+        .upsert_event(crate::app_state::ActivityEventRow {
+            event_id: format!("starter.quest.request:{}", request_id),
+            domain: crate::app_state::ActivityEventDomain::Job,
+            source_tag: "starter.quest".to_string(),
+            summary: "Starter request queued".to_string(),
+            detail: format!(
+                "request={} job={} payout_sats={} timeout={}s",
+                request_id, starter_job.job_id, starter_job.payout_sats, timeout_seconds
+            ),
+            occurred_at_epoch_seconds: now_epoch_seconds,
+        });
+    state.activity_feed.load_state = crate::app_state::PaneLoadState::Ready;
+    Ok(request_id)
+}
+
+fn starter_demand_budget_sats() -> u64 {
+    parse_env_u64_with_default(STARTER_DEMAND_BUDGET_SATS_ENV, 5_000, 1, 5_000_000)
+}
+
+fn starter_demand_dispatch_interval_seconds() -> u64 {
+    parse_env_u64_with_default(STARTER_DEMAND_DISPATCH_INTERVAL_ENV, 12, 1, 3_600)
+}
+
+fn starter_demand_max_inflight_jobs() -> usize {
+    parse_env_u64_with_default(STARTER_DEMAND_MAX_INFLIGHT_ENV, 3, 1, 12) as usize
+}
+
+fn parse_env_u64_with_default(key: &str, default: u64, min: u64, max: u64) -> u64 {
+    std::env::var(key)
+        .ok()
+        .and_then(|raw| raw.trim().parse::<u64>().ok())
+        .map(|value| value.clamp(min, max))
+        .unwrap_or(default)
+}
+
 pub(super) fn run_starter_jobs_action(
     state: &mut crate::app_state::RenderState,
     action: StarterJobsPaneAction,
@@ -3716,6 +3898,15 @@ pub(super) fn run_starter_jobs_action(
             } else {
                 state.starter_jobs.load_state = crate::app_state::PaneLoadState::Ready;
             }
+            true
+        }
+        StarterJobsPaneAction::ToggleKillSwitch => {
+            let enabled = state.starter_jobs.toggle_kill_switch();
+            state.provider_runtime.last_result = Some(if enabled {
+                "starter demand kill switch enabled".to_string()
+            } else {
+                "starter demand kill switch disabled".to_string()
+            });
             true
         }
         StarterJobsPaneAction::CompleteSelected => {

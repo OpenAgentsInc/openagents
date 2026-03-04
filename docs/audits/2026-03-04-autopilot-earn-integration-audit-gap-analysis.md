@@ -103,6 +103,13 @@ Red:
   - Added relay mock harness helper that supports both live request delivery and publish-event capture/ack in a single websocket session (`apps/autopilot-desktop/src/provider_nip90_lane.rs`).
   - Wired the new harness into the Earn regression gate so this loop is continuously enforced (`scripts/lint/autopilot-earnings-epic-test-gate.sh`).
   - Updated harness documentation to reflect the new end-to-end desktop flow coverage (`docs/AUTOPILOT_EARN_MVP_TEST_HARNESS.md`).
+- 2026-03-04: `#2882` (starter-demand generator with budget/kill-switch controls) implemented.
+  - Added deterministic starter-demand dispatch state with explicit controls for sats budget cap, dispatch interval, max inflight quests, and a manual kill switch (`apps/autopilot-desktop/src/state/operations.rs`).
+  - Added automatic starter-demand generator tick in desktop background loop that dispatches starter quests only while provider is online and relay ingress is connected (`apps/autopilot-desktop/src/input.rs`, `apps/autopilot-desktop/src/input/actions.rs`).
+  - Added controlled starter-demand request publication path that queues AC credit intent, records network request submission, and injects starter ingress requests into the provider inbox (`apps/autopilot-desktop/src/input/actions.rs`).
+  - Added starter-pane kill-switch UI action and status rendering (`apps/autopilot-desktop/src/pane_system.rs`, `apps/autopilot-desktop/src/pane_renderer.rs`, `apps/autopilot-desktop/src/input/tool_bridge.rs`).
+  - Added automated coverage for budget/interval/kill-switch/rollback behavior and wired it into the earnings epic gate (`apps/autopilot-desktop/src/app_state.rs`, `scripts/lint/autopilot-earnings-epic-test-gate.sh`).
+  - Updated harness documentation with starter-demand controls coverage (`docs/AUTOPILOT_EARN_MVP_TEST_HARNESS.md`).
 
 ## MVP Requirement Matrix (from `docs/MVP.md`)
 

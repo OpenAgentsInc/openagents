@@ -39,7 +39,8 @@ use crate::pane_system::{
     pane_content_bounds, settings_provider_queue_input_bounds, settings_relay_input_bounds,
     settings_reset_button_bounds, settings_save_button_bounds,
     settings_wallet_default_input_bounds, starter_jobs_complete_button_bounds,
-    starter_jobs_row_bounds, starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
+    starter_jobs_kill_switch_button_bounds, starter_jobs_row_bounds,
+    starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
 };
 use crate::panes::{
     agent as agent_pane, cad as cad_pane, calculator as calculator_pane, cast as cast_pane,
@@ -1061,7 +1062,17 @@ fn paint_starter_jobs_pane(
     paint_source_badge(content_bounds, "runtime", paint);
 
     let complete_bounds = starter_jobs_complete_button_bounds(content_bounds);
+    let kill_switch_bounds = starter_jobs_kill_switch_button_bounds(content_bounds);
     paint_action_button(complete_bounds, "Complete selected", paint);
+    paint_action_button(
+        kill_switch_bounds,
+        if starter_jobs.kill_switch_enabled {
+            "Kill switch: ON"
+        } else {
+            "Kill switch: OFF"
+        },
+        paint,
+    );
 
     let y = paint_state_summary(
         paint,
@@ -1072,12 +1083,26 @@ fn paint_starter_jobs_pane(
         starter_jobs.last_action.as_deref(),
         starter_jobs.last_error.as_deref(),
     );
+    let controls_summary = format!(
+        "Budget {} / {} sats | Interval {}s | Inflight {}/{}",
+        starter_jobs.budget_allocated_sats,
+        starter_jobs.budget_cap_sats,
+        starter_jobs.dispatch_interval_seconds,
+        starter_jobs.inflight_jobs(),
+        starter_jobs.max_inflight_jobs
+    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        &controls_summary,
+        Point::new(content_bounds.origin.x + 12.0, y + 10.0),
+        10.0,
+        theme::text::MUTED,
+    ));
 
     let visible_rows = starter_jobs_visible_row_count(starter_jobs.jobs.len());
     if visible_rows == 0 {
         paint.scene.draw_text(paint.text.layout(
             "No starter jobs available.",
-            Point::new(content_bounds.origin.x + 12.0, y),
+            Point::new(content_bounds.origin.x + 12.0, y + 28.0),
             11.0,
             theme::text::MUTED,
         ));

@@ -218,6 +218,7 @@ pub enum NetworkRequestsPaneAction {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StarterJobsPaneAction {
     CompleteSelected,
+    ToggleKillSwitch,
     SelectRow(usize),
 }
 
@@ -1736,6 +1737,16 @@ pub fn starter_jobs_complete_button_bounds(content_bounds: Bounds) -> Bounds {
         content_bounds.origin.y + CHAT_PAD,
         (content_bounds.size.width * 0.28).clamp(160.0, 240.0),
         JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn starter_jobs_kill_switch_button_bounds(content_bounds: Bounds) -> Bounds {
+    let complete = starter_jobs_complete_button_bounds(content_bounds);
+    Bounds::new(
+        complete.max_x() + JOB_INBOX_BUTTON_GAP,
+        complete.origin.y,
+        (content_bounds.size.width * 0.28).clamp(160.0, 240.0),
+        complete.size.height,
     )
 }
 
@@ -3349,6 +3360,11 @@ fn pane_hit_action_for_pane(
                     StarterJobsPaneAction::CompleteSelected,
                 ));
             }
+            if starter_jobs_kill_switch_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::StarterJobs(
+                    StarterJobsPaneAction::ToggleKillSwitch,
+                ));
+            }
 
             let visible_rows = starter_jobs_visible_row_count(state.starter_jobs.jobs.len());
             for row_index in 0..visible_rows {
@@ -4319,9 +4335,10 @@ mod tests {
         skill_registry_inspect_button_bounds, skill_registry_install_button_bounds,
         skill_trust_attestations_button_bounds, skill_trust_kill_switch_button_bounds,
         skill_trust_refresh_button_bounds, skill_trust_revoke_button_bounds,
-        starter_jobs_complete_button_bounds, starter_jobs_row_bounds,
-        sync_health_rebootstrap_button_bounds, trajectory_filter_button_bounds,
-        trajectory_open_session_button_bounds, trajectory_verify_button_bounds,
+        starter_jobs_complete_button_bounds, starter_jobs_kill_switch_button_bounds,
+        starter_jobs_row_bounds, sync_health_rebootstrap_button_bounds,
+        trajectory_filter_button_bounds, trajectory_open_session_button_bounds,
+        trajectory_verify_button_bounds,
     };
     use crate::pane_registry::pane_specs;
     use wgpui::{Bounds, Point};
@@ -4536,9 +4553,11 @@ mod tests {
     fn starter_jobs_controls_and_rows_are_ordered() {
         let content = Bounds::new(0.0, 0.0, 860.0, 420.0);
         let complete = starter_jobs_complete_button_bounds(content);
+        let kill_switch = starter_jobs_kill_switch_button_bounds(content);
         let row0 = starter_jobs_row_bounds(content, 0);
         let row1 = starter_jobs_row_bounds(content, 1);
 
+        assert!(complete.max_x() < kill_switch.min_x());
         assert!(complete.max_y() < row0.min_y());
         assert!(row0.max_y() < row1.min_y());
     }
