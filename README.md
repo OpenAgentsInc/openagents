@@ -13,7 +13,13 @@ Ownership boundaries are defined in [docs/OWNERSHIP.md](docs/OWNERSHIP.md).
 
 ## Earning Bitcoin (WIP)
 
-Autopilot Earn is available as an MVP and is still a work in progress. The current user-facing flow is focused on a single proof loop: go online, run paid NIP-90 work, receive wallet-confirmed sats, and withdraw over Lightning. For setup expectations, current limitations, and source-of-truth behavior, see the user guide: [docs/EARN.md](docs/EARN.md).
+Autopilot Earn starts with the simplest possible market: spare compute. You run the desktop app, press `Go Online`, and offer idle CPU/GPU capacity to paid NIP-90 jobs. A buyer posts work, your machine executes locally, and settlement happens over Lightning. The first loop is intentionally concrete: compute goes in, result comes out, sats hit the wallet.
+
+That narrow loop is the point of the MVP. The product has to prove, quickly and honestly, that paid jobs exist and payouts are real. If work appears completed but wallet-confirmed sats do not arrive, it does not count as successful earnings. This is why the current Earn surface is deliberately focused and still marked WIP.
+
+From there, the model expands from a single job type into a broader provider economy. Compute is the first lane, not the last one. Future lanes can include roles like liquidity solver participation under Hydra, where providers contribute capital plus execution and earn routing fees/spreads in an OpenAgents-native solver market. The architecture stays the same: intent-driven work, deterministic receipts, and explicit payouts.
+
+For setup expectations, current limitations, and source-of-truth behavior, see the user guide: [docs/EARN.md](docs/EARN.md).
 
 ## Current Repository Scope
 
