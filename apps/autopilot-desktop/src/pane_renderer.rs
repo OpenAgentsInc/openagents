@@ -1126,7 +1126,7 @@ fn paint_starter_jobs_pane(
             "ineligible"
         };
         let summary = format!(
-            "starter {} {} {} sats {} {}",
+            "starter-demand {} {} {} sats {} {}",
             job.job_id,
             job.status.label(),
             job.payout_sats,
@@ -1946,10 +1946,11 @@ fn paint_job_inbox_pane(
             crate::app_state::JobInboxValidation::Invalid(_) => theme::status::ERROR,
         };
         let summary = format!(
-            "#{} {} {} scope:{} env:{} {} sats ttl:{}s {} {}",
+            "#{} {} {} src:{} scope:{} env:{} {} sats ttl:{}s {} {}",
             request.arrival_seq,
             request.request_id,
             request.capability,
+            request.demand_source.label(),
             request.skill_scope_id.as_deref().unwrap_or("none"),
             request.ac_envelope_event_id.as_deref().unwrap_or("none"),
             request.price_sats,
@@ -1983,6 +1984,13 @@ fn paint_job_inbox_pane(
             &selected.request_id,
         );
         line_y = paint_label_line(paint, x, line_y, "Decision", &selected.decision.label());
+        line_y = paint_label_line(
+            paint,
+            x,
+            line_y,
+            "Demand source",
+            selected.demand_source.label(),
+        );
         line_y = paint_label_line(
             paint,
             x,
@@ -2095,6 +2103,13 @@ fn paint_active_job_pane(
         y,
         "Capability",
         &job.capability,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Demand source",
+        job.demand_source.label(),
     );
     y = paint_label_line(
         paint,
@@ -2355,9 +2370,10 @@ fn paint_job_history_pane(
                 .with_corner_radius(4.0),
         );
         let row_line = format!(
-            "{} {} ts:{} scope:{} tick:{} set:{} def:{} {} {}",
+            "{} {} src:{} ts:{} scope:{} tick:{} set:{} def:{} {} {}",
             row.job_id,
             row.status.label(),
+            row.demand_source.label(),
             row.completed_at_epoch_seconds,
             row.skill_scope_id.as_deref().unwrap_or("none"),
             row.sa_tick_result_event_id.as_deref().unwrap_or("none"),

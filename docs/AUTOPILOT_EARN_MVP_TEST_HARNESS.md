@@ -82,6 +82,20 @@ Primary assertions:
 - kill switch blocks all automatic starter dispatches,
 - rollback removes queued quest and restores budget accounting.
 
+### 5) Starter-Demand Provenance Tagging Harness (`autopilot-desktop`)
+
+File: `apps/autopilot-desktop/src/app_state.rs` test `starter_provenance_propagates_from_inbox_to_history_receipt`
+
+What it covers:
+- creates a starter-demand request in inbox state,
+- verifies demand source is preserved in active-job state after acceptance,
+- verifies terminal history receipt retains the same source tag.
+
+Primary assertions:
+- starter-demand requests are explicitly tagged `starter-demand`,
+- source tag propagation is stable across inbox -> active job -> history receipt,
+- receipt provenance cannot silently downgrade into open-network labeling.
+
 ## Existing Supporting Tests Used In This Pass
 
 - `app_state::tests::job_history_rejects_unconfirmed_success_settlement_from_active_job`
@@ -97,6 +111,7 @@ cargo test -p nostr-client --test dvm_submit_await_e2e
 cargo test -p autopilot-desktop --bin autopilot-desktop mission_control_earn_loop_wallet_confirmed_end_to_end
 cargo test -p autopilot-desktop --bin autopilot-desktop provider_nip90_lane::tests::desktop_earn_harness_relay_execute_publish_wallet_confirm_end_to_end
 cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::starter_demand_
+cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::starter_provenance_propagates_from_inbox_to_history_receipt
 cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::job_history_rejects_unconfirmed_success_settlement_from_active_job
 cargo test -p autopilot-desktop --bin autopilot-desktop state::earnings_gate::tests::accepts_wallet_backed_earnings_evidence
 cargo test -p autopilot-desktop --bin autopilot-desktop state::wallet_reconciliation::tests::reconciliation_distinguishes_earn_vs_swap_and_fee

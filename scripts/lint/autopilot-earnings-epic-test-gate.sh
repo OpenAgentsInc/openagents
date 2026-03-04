@@ -118,6 +118,11 @@ run_test \
     app_state::tests::starter_demand_ \
     -- --nocapture
 run_test \
+    "Starter-demand provenance propagates into receipts/history" \
+    cargo test -p autopilot-desktop \
+    app_state::tests::starter_provenance_propagates_from_inbox_to_history_receipt \
+    -- --nocapture
+run_test \
     "Earn bitcoin until +N sats flow" \
     cargo test -p autopilot-desktop \
     state::earnings_gate::tests::earn_bitcoin_until_target_sats_requires_wallet_confirmed_threshold \

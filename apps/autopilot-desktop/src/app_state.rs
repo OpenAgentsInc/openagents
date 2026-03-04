@@ -1592,7 +1592,7 @@ pub use crate::state::{
         AlertDomain, AlertLifecycle, AlertSeverity, AlertsRecoveryState, RecoveryAlertRow,
     },
     job_inbox::{
-        JobInboxDecision, JobInboxNetworkRequest, JobInboxRequest, JobInboxState,
+        JobDemandSource, JobInboxDecision, JobInboxNetworkRequest, JobInboxRequest, JobInboxState,
         JobInboxValidation,
     },
 };
@@ -2169,6 +2169,7 @@ pub struct ActiveJobRecord {
     pub job_id: String,
     pub request_id: String,
     pub requester: String,
+    pub demand_source: JobDemandSource,
     pub request_kind: u16,
     pub capability: String,
     pub skill_scope_id: Option<String>,
@@ -2217,6 +2218,7 @@ impl ActiveJobState {
             job_id,
             request_id: request.request_id.clone(),
             requester: request.requester.clone(),
+            demand_source: request.demand_source,
             request_kind: request.request_kind,
             capability: request.capability.clone(),
             skill_scope_id: request.skill_scope_id.clone(),
@@ -2434,6 +2436,7 @@ impl JobHistoryTimeRange {
 pub struct JobHistoryReceiptRow {
     pub job_id: String,
     pub status: JobHistoryStatus,
+    pub demand_source: JobDemandSource,
     pub completed_at_epoch_seconds: u64,
     pub skill_scope_id: Option<String>,
     pub skl_manifest_a: Option<String>,
@@ -2582,6 +2585,7 @@ impl JobHistoryState {
         self.upsert_row(JobHistoryReceiptRow {
             job_id: job.job_id.clone(),
             status,
+            demand_source: job.demand_source,
             completed_at_epoch_seconds: completed,
             skill_scope_id: job.skill_scope_id.clone(),
             skl_manifest_a: job.skl_manifest_a.clone(),
@@ -3156,8 +3160,9 @@ mod tests {
         CadDemoPaneState, CadDemoWarningState, CadDrawingViewDirection, CadDrawingViewMode,
         CadHiddenLineMode, CadHotkeyAction, CadProjectionMode, CadSectionAxis, CadSnapMode,
         CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile, EarningsScoreboardState,
-        JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange,
-        JobInboxDecision, JobInboxNetworkRequest, JobInboxState, JobInboxValidation,
+        JobDemandSource, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
+        JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest, JobInboxState,
+        JobInboxValidation,
         JobLifecycleStage, NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState,
         NostrSecretState, ProviderMode, ProviderRuntimeState, RecoveryAlertRow, RelayConnectionRow,
         RelayConnectionStatus, RelayConnectionsState, RelaySecuritySimulationPaneState,
@@ -3173,9 +3178,28 @@ mod tests {
         ttl_seconds: u64,
         validation: JobInboxValidation,
     ) -> JobInboxNetworkRequest {
+        fixture_inbox_request_with_source(
+            request_id,
+            capability,
+            price_sats,
+            ttl_seconds,
+            validation,
+            JobDemandSource::OpenNetwork,
+        )
+    }
+
+    fn fixture_inbox_request_with_source(
+        request_id: &str,
+        capability: &str,
+        price_sats: u64,
+        ttl_seconds: u64,
+        validation: JobInboxValidation,
+        demand_source: JobDemandSource,
+    ) -> JobInboxNetworkRequest {
         JobInboxNetworkRequest {
             request_id: request_id.to_string(),
             requester: format!("npub1{request_id}"),
+            demand_source,
             request_kind: 5050,
             capability: capability.to_string(),
             skill_scope_id: None,
@@ -3207,6 +3231,7 @@ mod tests {
         super::JobHistoryReceiptRow {
             job_id: job_id.to_string(),
             status,
+            demand_source: JobDemandSource::OpenNetwork,
             completed_at_epoch_seconds,
             skill_scope_id: None,
             skl_manifest_a: None,
@@ -4074,6 +4099,59 @@ mod tests {
     }
 
     #[test]
+    fn starter_provenance_propagates_from_inbox_to_history_receipt() {
+        let mut inbox = seed_job_inbox(vec![fixture_inbox_request_with_source(
+            "req-starter-provenance",
+            "starter.quest.dispatch",
+            75,
+            120,
+            JobInboxValidation::Valid,
+            JobDemandSource::StarterDemand,
+        )]);
+        assert!(inbox.select_by_index(0));
+        let request = inbox
+            .selected_request()
+            .expect("starter request should exist")
+            .clone();
+        assert_eq!(request.demand_source, JobDemandSource::StarterDemand);
+
+        let mut active = ActiveJobState::default();
+        active.start_from_request(&request);
+        assert_eq!(
+            active
+                .job
+                .as_ref()
+                .expect("active job should start")
+                .demand_source,
+            JobDemandSource::StarterDemand
+        );
+        assert_eq!(
+            active
+                .advance_stage()
+                .expect("accepted->running should succeed"),
+            JobLifecycleStage::Running
+        );
+        assert_eq!(
+            active
+                .advance_stage()
+                .expect("running->delivered should succeed"),
+            JobLifecycleStage::Delivered
+        );
+        active.job.as_mut().expect("active job").payment_id =
+            Some("wallet-payment-starter-provenance".to_string());
+        assert_eq!(
+            active.advance_stage().expect("delivered->paid should succeed"),
+            JobLifecycleStage::Paid
+        );
+
+        let terminal = active.job.clone().expect("terminal job should exist");
+        let mut history = JobHistoryState::default();
+        history.record_from_active_job(&terminal, JobHistoryStatus::Succeeded);
+        let row = history.rows.first().expect("history row should exist");
+        assert_eq!(row.demand_source, JobDemandSource::StarterDemand);
+    }
+
+    #[test]
     fn job_history_filters_search_status_and_time() {
         let mut history = seed_job_history(vec![
             fixture_history_row(
@@ -4111,6 +4189,7 @@ mod tests {
         history.upsert_row(super::JobHistoryReceiptRow {
             job_id: "job-bootstrap-000".to_string(),
             status: JobHistoryStatus::Failed,
+            demand_source: JobDemandSource::OpenNetwork,
             completed_at_epoch_seconds: history.reference_epoch_seconds + 10,
             skill_scope_id: None,
             skl_manifest_a: None,

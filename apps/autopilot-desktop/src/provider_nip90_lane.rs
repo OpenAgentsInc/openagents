@@ -593,6 +593,7 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
     Some(JobInboxNetworkRequest {
         request_id: event.id.clone(),
         requester: event.pubkey.clone(),
+        demand_source: crate::app_state::JobDemandSource::OpenNetwork,
         request_kind: event.kind,
         capability: capability_for_kind(event.kind),
         skill_scope_id,
@@ -711,6 +712,7 @@ mod tests {
         assert_eq!(row.request_id, "req-001");
         assert_eq!(row.requester, "npub1buyer");
         assert_eq!(row.capability, "text.generation");
+        assert_eq!(row.demand_source.label(), "open-network");
         assert_eq!(row.request_kind, 5050);
         assert_eq!(row.price_sats, 25);
         assert_eq!(row.ttl_seconds, 90);
@@ -764,6 +766,7 @@ mod tests {
                     ProviderNip90LaneUpdate::IngressedRequest(row)
                         if row.request_id == "request-live-1" =>
                     {
+                        assert_eq!(row.demand_source.label(), "open-network");
                         ingressed = true;
                         break;
                     }
