@@ -7,6 +7,7 @@ mod gmail_connector;
 mod gmail_sync;
 mod knowledge_base;
 mod normalization;
+mod observability;
 mod quality_scoring;
 mod retrieval;
 mod send_execution;
@@ -40,6 +41,11 @@ pub use knowledge_base::{
     GroundingReference, KnowledgeBase, KnowledgeChunk, KnowledgeChunkingConfig, KnowledgeDocument,
 };
 pub use normalization::{NormalizationConfig, NormalizedConversationItem, normalize_gmail_message};
+pub use observability::{
+    LifecycleStage, PipelineAuditError, PipelineAuditTrail, PipelineEvent, PipelineEventInput,
+    PipelineEventStatus, RedactedPipelineEvent, SendTraceReport, derive_correlation_id,
+    diagnostics_for_correlation, record_pipeline_event,
+};
 pub use quality_scoring::{
     QualityCase, QualityCaseScore, QualityDimensionScores, QualityEvaluationReport,
     QualityGateError, QualityThresholds, enforce_quality_gate, evaluate_quality_corpus,
