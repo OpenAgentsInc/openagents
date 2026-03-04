@@ -93,6 +93,11 @@ Red:
   - Added request-kind provenance to inbox/active-job records and used it to derive canonical result kind (`request_kind + 1000`) and job-linked feedback/result tags (`apps/autopilot-desktop/src/state/job_inbox.rs`, `apps/autopilot-desktop/src/app_state.rs`, `apps/autopilot-desktop/src/input/reducers/jobs.rs`).
   - Active-job stage actions now sign and queue canonical NIP-90 result/feedback publishes for running, paid, and abort flows via provider lane commands (`apps/autopilot-desktop/src/input/reducers/jobs.rs`, `apps/autopilot-desktop/src/input/reducers/provider_ingress.rs`).
   - Added/updated automated coverage for signed publish behavior (`provider_nip90_lane::tests::worker_publishes_signed_feedback_event_to_connected_relay`) and verified via `./scripts/lint/autopilot-earnings-epic-test-gate.sh`.
+- 2026-03-04: `#2880` (wallet-authoritative mission-control totals) implemented.
+  - Mission-control and earnings scoreboard payouts now derive from wallet-reconciled settled receive evidence only (job-history row + settled wallet payment id match), not raw wallet balance or unreconciled receipt rows (`apps/autopilot-desktop/src/app_state.rs`).
+  - Added wallet-reconciled payout projection (`wallet_reconciled_payout_rows`) and used it for `sats_today`, `lifetime_sats`, and `jobs_today` scoreboard counters (`apps/autopilot-desktop/src/app_state.rs`).
+  - Updated mission-control “Recent Payouts” rows to render wallet-reconciled payout entries only (`apps/autopilot-desktop/src/render.rs`).
+  - Added automated coverage for reconciled vs unreconciled scoreboard behavior (`app_state::tests::earnings_scoreboard_refreshes_from_wallet_and_history`, `app_state::tests::earnings_scoreboard_ignores_unreconciled_history_rows`).
 
 ## MVP Requirement Matrix (from `docs/MVP.md`)
 
