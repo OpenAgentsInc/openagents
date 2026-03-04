@@ -15,8 +15,9 @@ use crate::app_state::RenderState;
 use crate::pane_system::{
     ActiveJobPaneAction, AgentProfileStatePaneAction, AgentScheduleTickPaneAction,
     CadDemoPaneAction, CreditDeskPaneAction, CreditSettlementLedgerPaneAction,
-    JobHistoryPaneAction, JobInboxPaneAction, SkillRegistryPaneAction,
-    SkillTrustRevocationPaneAction, TrajectoryAuditPaneAction,
+    EmailApprovalQueuePaneAction, EmailDraftQueuePaneAction, EmailFollowUpQueuePaneAction,
+    EmailInboxPaneAction, EmailSendLogPaneAction, JobHistoryPaneAction, JobInboxPaneAction,
+    SkillRegistryPaneAction, SkillTrustRevocationPaneAction, TrajectoryAuditPaneAction,
 };
 use crate::runtime_lanes::{
     AcLaneUpdate, RuntimeCommandResponse, RuntimeCommandStatus, RuntimeLane, SaLaneUpdate,
@@ -41,6 +42,41 @@ pub(super) fn run_job_history_action(
     action: JobHistoryPaneAction,
 ) -> bool {
     jobs::run_job_history_action(state, action)
+}
+
+pub(super) fn run_email_inbox_action(
+    state: &mut RenderState,
+    action: EmailInboxPaneAction,
+) -> bool {
+    email::run_email_inbox_action(state, action)
+}
+
+pub(super) fn run_email_draft_queue_action(
+    state: &mut RenderState,
+    action: EmailDraftQueuePaneAction,
+) -> bool {
+    email::run_email_draft_queue_action(state, action)
+}
+
+pub(super) fn run_email_approval_queue_action(
+    state: &mut RenderState,
+    action: EmailApprovalQueuePaneAction,
+) -> bool {
+    email::run_email_approval_queue_action(state, action)
+}
+
+pub(super) fn run_email_send_log_action(
+    state: &mut RenderState,
+    action: EmailSendLogPaneAction,
+) -> bool {
+    email::run_email_send_log_action(state, action)
+}
+
+pub(super) fn run_email_follow_up_queue_action(
+    state: &mut RenderState,
+    action: EmailFollowUpQueuePaneAction,
+) -> bool {
+    email::run_email_follow_up_queue_action(state, action)
 }
 
 pub(super) fn fetch_live_gmail_backfill(

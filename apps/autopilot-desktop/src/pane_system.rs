@@ -56,6 +56,11 @@ const JOB_INBOX_BUTTON_GAP: f32 = 10.0;
 const JOB_INBOX_ROW_GAP: f32 = 6.0;
 const JOB_INBOX_ROW_HEIGHT: f32 = 30.0;
 const JOB_INBOX_MAX_ROWS: usize = 8;
+const EMAIL_BUTTON_HEIGHT: f32 = 28.0;
+const EMAIL_BUTTON_GAP: f32 = 8.0;
+const EMAIL_ROW_HEIGHT: f32 = 30.0;
+const EMAIL_ROW_GAP: f32 = 6.0;
+const EMAIL_MAX_ROWS: usize = 9;
 const RELAY_CONNECTIONS_ROW_HEIGHT: f32 = 30.0;
 const RELAY_CONNECTIONS_ROW_GAP: f32 = 6.0;
 const RELAY_CONNECTIONS_MAX_ROWS: usize = 8;
@@ -127,6 +132,40 @@ pub enum JobHistoryPaneAction {
     CycleTimeRange,
     PreviousPage,
     NextPage,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EmailInboxPaneAction {
+    Refresh,
+    GenerateDraftSelected,
+    SelectRow(usize),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EmailDraftQueuePaneAction {
+    SelectRow(usize),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EmailApprovalQueuePaneAction {
+    ApproveSelected,
+    RejectSelected,
+    RequestEditsSelected,
+    TogglePauseQueue,
+    ToggleKillSwitch,
+    SelectRow(usize),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EmailSendLogPaneAction {
+    SendSelected,
+    SelectRow(usize),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EmailFollowUpQueuePaneAction {
+    RunSchedulerTick,
+    SelectRow(usize),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -702,6 +741,11 @@ pub enum PaneHitAction {
     JobInbox(JobInboxPaneAction),
     ActiveJob(ActiveJobPaneAction),
     JobHistory(JobHistoryPaneAction),
+    EmailInbox(EmailInboxPaneAction),
+    EmailDraftQueue(EmailDraftQueuePaneAction),
+    EmailApprovalQueue(EmailApprovalQueuePaneAction),
+    EmailSendLog(EmailSendLogPaneAction),
+    EmailFollowUpQueue(EmailFollowUpQueuePaneAction),
     AgentProfileState(AgentProfileStatePaneAction),
     AgentScheduleTick(AgentScheduleTickPaneAction),
     TrajectoryAudit(TrajectoryAuditPaneAction),
@@ -2009,6 +2053,167 @@ pub fn job_inbox_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds 
 
 pub fn job_inbox_visible_row_count(request_count: usize) -> usize {
     request_count.min(JOB_INBOX_MAX_ROWS)
+}
+
+pub fn email_inbox_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.22).clamp(136.0, 200.0),
+        EMAIL_BUTTON_HEIGHT,
+    )
+}
+
+pub fn email_inbox_generate_draft_button_bounds(content_bounds: Bounds) -> Bounds {
+    let refresh = email_inbox_refresh_button_bounds(content_bounds);
+    Bounds::new(
+        refresh.max_x() + EMAIL_BUTTON_GAP,
+        refresh.origin.y,
+        (content_bounds.size.width * 0.3).clamp(180.0, 260.0),
+        EMAIL_BUTTON_HEIGHT,
+    )
+}
+
+pub fn email_inbox_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
+    let safe_index = row_index.min(EMAIL_MAX_ROWS.saturating_sub(1));
+    let top = email_inbox_refresh_button_bounds(content_bounds).max_y() + 46.0;
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        top + safe_index as f32 * (EMAIL_ROW_HEIGHT + EMAIL_ROW_GAP),
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(240.0),
+        EMAIL_ROW_HEIGHT,
+    )
+}
+
+pub fn email_inbox_visible_row_count(row_count: usize) -> usize {
+    row_count.min(EMAIL_MAX_ROWS)
+}
+
+pub fn email_draft_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
+    let safe_index = row_index.min(EMAIL_MAX_ROWS.saturating_sub(1));
+    let top = content_bounds.origin.y + CHAT_PAD + 56.0;
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        top + safe_index as f32 * (EMAIL_ROW_HEIGHT + EMAIL_ROW_GAP),
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(240.0),
+        EMAIL_ROW_HEIGHT,
+    )
+}
+
+pub fn email_draft_visible_row_count(row_count: usize) -> usize {
+    row_count.min(EMAIL_MAX_ROWS)
+}
+
+pub fn email_approval_approve_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.2).clamp(132.0, 190.0),
+        EMAIL_BUTTON_HEIGHT,
+    )
+}
+
+pub fn email_approval_reject_button_bounds(content_bounds: Bounds) -> Bounds {
+    let approve = email_approval_approve_button_bounds(content_bounds);
+    Bounds::new(
+        approve.max_x() + EMAIL_BUTTON_GAP,
+        approve.origin.y,
+        approve.size.width,
+        approve.size.height,
+    )
+}
+
+pub fn email_approval_request_edits_button_bounds(content_bounds: Bounds) -> Bounds {
+    let reject = email_approval_reject_button_bounds(content_bounds);
+    Bounds::new(
+        reject.max_x() + EMAIL_BUTTON_GAP,
+        reject.origin.y,
+        (content_bounds.size.width * 0.28).clamp(168.0, 240.0),
+        reject.size.height,
+    )
+}
+
+pub fn email_approval_pause_button_bounds(content_bounds: Bounds) -> Bounds {
+    let approve = email_approval_approve_button_bounds(content_bounds);
+    Bounds::new(
+        approve.origin.x,
+        approve.max_y() + 8.0,
+        approve.size.width,
+        approve.size.height,
+    )
+}
+
+pub fn email_approval_kill_switch_button_bounds(content_bounds: Bounds) -> Bounds {
+    let pause = email_approval_pause_button_bounds(content_bounds);
+    Bounds::new(
+        pause.max_x() + EMAIL_BUTTON_GAP,
+        pause.origin.y,
+        (content_bounds.size.width * 0.28).clamp(168.0, 240.0),
+        pause.size.height,
+    )
+}
+
+pub fn email_approval_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
+    let safe_index = row_index.min(EMAIL_MAX_ROWS.saturating_sub(1));
+    let top = email_approval_pause_button_bounds(content_bounds).max_y() + 14.0;
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        top + safe_index as f32 * (EMAIL_ROW_HEIGHT + EMAIL_ROW_GAP),
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(240.0),
+        EMAIL_ROW_HEIGHT,
+    )
+}
+
+pub fn email_approval_visible_row_count(row_count: usize) -> usize {
+    row_count.min(EMAIL_MAX_ROWS)
+}
+
+pub fn email_send_send_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.26).clamp(160.0, 240.0),
+        EMAIL_BUTTON_HEIGHT,
+    )
+}
+
+pub fn email_send_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
+    let safe_index = row_index.min(EMAIL_MAX_ROWS.saturating_sub(1));
+    let top = email_send_send_button_bounds(content_bounds).max_y() + 46.0;
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        top + safe_index as f32 * (EMAIL_ROW_HEIGHT + EMAIL_ROW_GAP),
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(240.0),
+        EMAIL_ROW_HEIGHT,
+    )
+}
+
+pub fn email_send_visible_row_count(row_count: usize) -> usize {
+    row_count.min(EMAIL_MAX_ROWS)
+}
+
+pub fn email_follow_up_run_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.3).clamp(186.0, 260.0),
+        EMAIL_BUTTON_HEIGHT,
+    )
+}
+
+pub fn email_follow_up_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
+    let safe_index = row_index.min(EMAIL_MAX_ROWS.saturating_sub(1));
+    let top = email_follow_up_run_button_bounds(content_bounds).max_y() + 46.0;
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        top + safe_index as f32 * (EMAIL_ROW_HEIGHT + EMAIL_ROW_GAP),
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(240.0),
+        EMAIL_ROW_HEIGHT,
+    )
+}
+
+pub fn email_follow_up_visible_row_count(row_count: usize) -> usize {
+    row_count.min(EMAIL_MAX_ROWS)
 }
 
 pub fn active_job_advance_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -3545,6 +3750,110 @@ fn pane_hit_action_for_pane(
             }
             None
         }
+        PaneKind::EmailInbox => {
+            if email_inbox_refresh_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::EmailInbox(EmailInboxPaneAction::Refresh));
+            }
+            if email_inbox_generate_draft_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::EmailInbox(
+                    EmailInboxPaneAction::GenerateDraftSelected,
+                ));
+            }
+
+            let visible_rows = email_inbox_visible_row_count(state.email_lane.inbox_rows.len());
+            for row_index in 0..visible_rows {
+                if email_inbox_row_bounds(content_bounds, row_index).contains(point) {
+                    return Some(PaneHitAction::EmailInbox(EmailInboxPaneAction::SelectRow(
+                        row_index,
+                    )));
+                }
+            }
+            None
+        }
+        PaneKind::EmailDraftQueue => {
+            let visible_rows = email_draft_visible_row_count(state.email_lane.draft_rows.len());
+            for row_index in 0..visible_rows {
+                if email_draft_row_bounds(content_bounds, row_index).contains(point) {
+                    return Some(PaneHitAction::EmailDraftQueue(
+                        EmailDraftQueuePaneAction::SelectRow(row_index),
+                    ));
+                }
+            }
+            None
+        }
+        PaneKind::EmailApprovalQueue => {
+            if email_approval_approve_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::EmailApprovalQueue(
+                    EmailApprovalQueuePaneAction::ApproveSelected,
+                ));
+            }
+            if email_approval_reject_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::EmailApprovalQueue(
+                    EmailApprovalQueuePaneAction::RejectSelected,
+                ));
+            }
+            if email_approval_request_edits_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::EmailApprovalQueue(
+                    EmailApprovalQueuePaneAction::RequestEditsSelected,
+                ));
+            }
+            if email_approval_pause_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::EmailApprovalQueue(
+                    EmailApprovalQueuePaneAction::TogglePauseQueue,
+                ));
+            }
+            if email_approval_kill_switch_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::EmailApprovalQueue(
+                    EmailApprovalQueuePaneAction::ToggleKillSwitch,
+                ));
+            }
+
+            let visible_rows =
+                email_approval_visible_row_count(state.email_lane.approval_rows.len());
+            for row_index in 0..visible_rows {
+                if email_approval_row_bounds(content_bounds, row_index).contains(point) {
+                    return Some(PaneHitAction::EmailApprovalQueue(
+                        EmailApprovalQueuePaneAction::SelectRow(row_index),
+                    ));
+                }
+            }
+            None
+        }
+        PaneKind::EmailSendLog => {
+            if email_send_send_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::EmailSendLog(
+                    EmailSendLogPaneAction::SendSelected,
+                ));
+            }
+
+            let visible_rows = email_send_visible_row_count(state.email_lane.send_rows.len());
+            for row_index in 0..visible_rows {
+                if email_send_row_bounds(content_bounds, row_index).contains(point) {
+                    return Some(PaneHitAction::EmailSendLog(
+                        EmailSendLogPaneAction::SelectRow(row_index),
+                    ));
+                }
+            }
+            None
+        }
+        PaneKind::EmailFollowUpQueue => {
+            if email_follow_up_run_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::EmailFollowUpQueue(
+                    EmailFollowUpQueuePaneAction::RunSchedulerTick,
+                ));
+            }
+
+            let visible_rows =
+                email_follow_up_visible_row_count(state.email_lane.follow_up_rows.len());
+            for row_index in 0..visible_rows {
+                if email_follow_up_row_bounds(content_bounds, row_index).contains(point) {
+                    return Some(PaneHitAction::EmailFollowUpQueue(
+                        EmailFollowUpQueuePaneAction::SelectRow(row_index),
+                    ));
+                }
+            }
+            None
+        }
         PaneKind::AgentProfileState => {
             if agent_profile_publish_profile_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::AgentProfileState(
@@ -4005,13 +4314,7 @@ fn pane_hit_action_for_pane(
             let layout = spark_pane::pay_invoice_layout(content_bounds);
             spark_pane::hit_pay_invoice_action(layout, point).map(PaneHitAction::SparkPayInvoice)
         }
-        PaneKind::Empty
-        | PaneKind::ProviderStatus
-        | PaneKind::EmailInbox
-        | PaneKind::EmailDraftQueue
-        | PaneKind::EmailSendLog
-        | PaneKind::EmailApprovalQueue
-        | PaneKind::EmailFollowUpQueue => None,
+        PaneKind::Empty | PaneKind::ProviderStatus => None,
     }
 }
 

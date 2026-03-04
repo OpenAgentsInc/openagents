@@ -17,11 +17,11 @@ use codex_client::{
 use nostr::regenerate_identity;
 use openagents_cad::contracts::CadSelectionKind;
 use openagents_cad::query::{
-    pick_mesh_hit, CadPickCameraPose, CadPickEntityKind, CadPickProjectionMode, CadPickQuery,
-    CadPickViewport,
+    CadPickCameraPose, CadPickEntityKind, CadPickProjectionMode, CadPickQuery, CadPickViewport,
+    pick_mesh_hit,
 };
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::{Mutex, OnceLock};
 use wgpui::clipboard::copy_to_clipboard;
@@ -39,27 +39,28 @@ use crate::app_state::{
     JobInboxValidation, NetworkRequestSubmission, PaneKind, ProviderMode,
 };
 use crate::hotbar::{
-    activate_hotbar_slot, hotbar_slot_for_key, process_hotbar_clicks, HOTBAR_SLOT_NOSTR_IDENTITY,
-    HOTBAR_SLOT_SPARK_WALLET,
+    HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_SPARK_WALLET, activate_hotbar_slot,
+    hotbar_slot_for_key, process_hotbar_clicks,
 };
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 use crate::pane_registry::{pane_enabled_in_runtime, pane_spec_by_command_id};
 use crate::pane_system::{
-    cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds, clamp_all_panes_to_window,
-    dispatch_calculator_input_event, dispatch_chat_input_event, dispatch_chat_scroll_event,
-    dispatch_create_invoice_input_event, dispatch_credentials_input_event,
-    dispatch_job_history_input_event, dispatch_network_requests_input_event,
-    dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
-    dispatch_settings_input_event, dispatch_spark_input_event, pane_content_bounds,
-    pane_indices_by_z_desc, pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
     ActivityFeedPaneAction, AgentNetworkSimulationPaneAction, AlertsRecoveryPaneAction,
     CadDemoPaneAction, CastControlPaneAction, CodexAccountPaneAction, CodexAppsPaneAction,
     CodexConfigPaneAction, CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction,
     CodexModelsPaneAction, CredentialsPaneAction, EarningsScoreboardPaneAction,
-    NetworkRequestsPaneAction, PaneController, PaneHitAction, PaneInput,
-    RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction, SettingsPaneAction,
-    StableSatsSimulationPaneAction, StarterJobsPaneAction, SyncHealthPaneAction,
-    TreasuryExchangeSimulationPaneAction, SIDEBAR_DEFAULT_WIDTH,
+    EmailApprovalQueuePaneAction, EmailFollowUpQueuePaneAction, EmailInboxPaneAction,
+    EmailSendLogPaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction, PaneInput,
+    RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction, SIDEBAR_DEFAULT_WIDTH,
+    SettingsPaneAction, StableSatsSimulationPaneAction, StarterJobsPaneAction,
+    SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction, cad_demo_context_menu_bounds,
+    cad_demo_context_menu_row_bounds, clamp_all_panes_to_window, dispatch_calculator_input_event,
+    dispatch_chat_input_event, dispatch_chat_scroll_event, dispatch_create_invoice_input_event,
+    dispatch_credentials_input_event, dispatch_job_history_input_event,
+    dispatch_network_requests_input_event, dispatch_pay_invoice_input_event,
+    dispatch_relay_connections_input_event, dispatch_settings_input_event,
+    dispatch_spark_input_event, pane_content_bounds, pane_indices_by_z_desc,
+    pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
 };
 use crate::panes::{cad as cad_pane, chat as chat_pane};
 use crate::provider_nip90_lane::ProviderNip90LaneCommand;
@@ -79,11 +80,11 @@ use crate::state::autopilot_goals::{
 };
 use crate::state::goal_conditions::{ConditionEvaluation, GoalProgressSnapshot};
 use crate::state::goal_loop_executor::{
-    retry_backoff_seconds, select_runnable_goal, ActiveGoalLoopRun, GoalLoopPhase,
-    GoalLoopStopReason,
+    ActiveGoalLoopRun, GoalLoopPhase, GoalLoopStopReason, retry_backoff_seconds,
+    select_runnable_goal,
 };
 use crate::state::wallet_reconciliation::{
-    reconcile_wallet_events_for_goal, WalletLedgerEventKind,
+    WalletLedgerEventKind, reconcile_wallet_events_for_goal,
 };
 
 mod actions;
@@ -2279,6 +2280,7 @@ fn dispatch_keyboard_submit_actions(
         || handle_create_invoice_keyboard_input(state, logical_key)
         || handle_relay_connections_keyboard_input(state, logical_key)
         || handle_network_requests_keyboard_input(state, logical_key)
+        || handle_email_lane_keyboard_input(state, logical_key)
         || handle_settings_keyboard_input(state, logical_key)
         || handle_credentials_keyboard_input(state, logical_key)
         || handle_job_history_keyboard_input(state, logical_key)
@@ -2427,6 +2429,17 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::JobInbox(action) => reducers::run_job_inbox_action(state, action),
         PaneHitAction::ActiveJob(action) => reducers::run_active_job_action(state, action),
         PaneHitAction::JobHistory(action) => reducers::run_job_history_action(state, action),
+        PaneHitAction::EmailInbox(action) => reducers::run_email_inbox_action(state, action),
+        PaneHitAction::EmailDraftQueue(action) => {
+            reducers::run_email_draft_queue_action(state, action)
+        }
+        PaneHitAction::EmailApprovalQueue(action) => {
+            reducers::run_email_approval_queue_action(state, action)
+        }
+        PaneHitAction::EmailSendLog(action) => reducers::run_email_send_log_action(state, action),
+        PaneHitAction::EmailFollowUpQueue(action) => {
+            reducers::run_email_follow_up_queue_action(state, action)
+        }
         PaneHitAction::AgentProfileState(action) => {
             reducers::run_agent_profile_state_action(state, action)
         }
@@ -2689,6 +2702,48 @@ fn handle_settings_keyboard_input(
     )
 }
 
+fn handle_email_lane_keyboard_input(
+    state: &mut crate::app_state::RenderState,
+    logical_key: &WinitLogicalKey,
+) -> bool {
+    let Some(key) = map_winit_key(logical_key) else {
+        return false;
+    };
+    if !matches!(key, Key::Named(NamedKey::Enter)) {
+        return false;
+    }
+
+    let Some(active_pane_id) = PaneController::active(state) else {
+        return false;
+    };
+    let Some(active_kind) = state
+        .panes
+        .iter()
+        .find(|pane| pane.id == active_pane_id)
+        .map(|pane| pane.kind)
+    else {
+        return false;
+    };
+
+    match active_kind {
+        PaneKind::EmailInbox => {
+            reducers::run_email_inbox_action(state, EmailInboxPaneAction::Refresh)
+        }
+        PaneKind::EmailApprovalQueue => reducers::run_email_approval_queue_action(
+            state,
+            EmailApprovalQueuePaneAction::ApproveSelected,
+        ),
+        PaneKind::EmailSendLog => {
+            reducers::run_email_send_log_action(state, EmailSendLogPaneAction::SendSelected)
+        }
+        PaneKind::EmailFollowUpQueue => reducers::run_email_follow_up_queue_action(
+            state,
+            EmailFollowUpQueuePaneAction::RunSchedulerTick,
+        ),
+        _ => false,
+    }
+}
+
 fn handle_credentials_keyboard_input(
     state: &mut crate::app_state::RenderState,
     logical_key: &WinitLogicalKey,
@@ -2869,18 +2924,18 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        assemble_chat_turn_input, build_create_invoice_command, build_pay_invoice_command,
-        build_spark_command_for_action, cad_hit_action_blocks_camera_zoom,
-        cad_hotkey_action_matrix, cad_pick_kind_label, cad_pick_kind_to_selection_kind,
-        cad_policy_skill_candidates_for_turn, cad_turn_approval_policy,
-        is_command_palette_shortcut, is_toggle_fullscreen_shortcut, parse_positive_amount_str,
-        resolve_turn_skill_by_name, resolve_turn_skill_by_path, should_open_command_palette,
-        validate_lightning_payment_request, TurnSkillAttachment, TurnSkillSource,
+        TurnSkillAttachment, TurnSkillSource, assemble_chat_turn_input,
+        build_create_invoice_command, build_pay_invoice_command, build_spark_command_for_action,
+        cad_hit_action_blocks_camera_zoom, cad_hotkey_action_matrix, cad_pick_kind_label,
+        cad_pick_kind_to_selection_kind, cad_policy_skill_candidates_for_turn,
+        cad_turn_approval_policy, is_command_palette_shortcut, is_toggle_fullscreen_shortcut,
+        parse_positive_amount_str, resolve_turn_skill_by_name, resolve_turn_skill_by_path,
+        should_open_command_palette, validate_lightning_payment_request,
     };
     use crate::app_state::SkillRegistryDiscoveredSkill;
     use crate::pane_system::cad_palette_command_specs;
     use crate::spark_pane::{
-        hit_action, layout, CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction,
+        CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction, hit_action, layout,
     };
     use crate::spark_wallet::SparkWalletCommand;
     use codex_client::UserInput;
@@ -2894,12 +2949,16 @@ mod tests {
     #[test]
     fn parse_positive_amount_str_validates_inputs() {
         assert_eq!(parse_positive_amount_str("42", "Amount"), Ok(42));
-        assert!(parse_positive_amount_str("0", "Amount")
-            .expect_err("zero rejected")
-            .contains("greater than 0"));
-        assert!(parse_positive_amount_str("abc", "Amount")
-            .expect_err("non-numeric rejected")
-            .contains("valid integer"));
+        assert!(
+            parse_positive_amount_str("0", "Amount")
+                .expect_err("zero rejected")
+                .contains("greater than 0")
+        );
+        assert!(
+            parse_positive_amount_str("abc", "Amount")
+                .expect_err("non-numeric rejected")
+                .contains("valid integer")
+        );
     }
 
     #[test]
@@ -3316,15 +3375,21 @@ mod tests {
 
         let skills = cad_policy_skill_candidates_for_turn(true, &discovered);
         assert_eq!(skills.len(), 2);
-        assert!(skills
-            .iter()
-            .any(|skill| skill.name == "autopilot-cad-builder"));
-        assert!(skills
-            .iter()
-            .any(|skill| skill.name == "autopilot-pane-control"));
-        assert!(skills
-            .iter()
-            .all(|skill| skill.source == TurnSkillSource::PolicyRequired));
+        assert!(
+            skills
+                .iter()
+                .any(|skill| skill.name == "autopilot-cad-builder")
+        );
+        assert!(
+            skills
+                .iter()
+                .any(|skill| skill.name == "autopilot-pane-control")
+        );
+        assert!(
+            skills
+                .iter()
+                .all(|skill| skill.source == TurnSkillSource::PolicyRequired)
+        );
     }
 
     #[test]

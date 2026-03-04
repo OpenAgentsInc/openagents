@@ -14,7 +14,7 @@ use openagents_email_agent::{
     apply_gmail_incremental_sync, authorize_draft_send, derive_style_profile,
     enqueue_draft_for_approval, execute_send_with_idempotency, generate_draft,
     normalize_gmail_message, record_approval_decision, run_follow_up_scheduler_tick,
-    run_gmail_backfill,
+    run_gmail_backfill, set_approval_kill_switch, set_approval_queue_paused,
 };
 use reqwest::StatusCode;
 use reqwest::blocking::Client;
@@ -24,6 +24,10 @@ use serde::{Deserialize, Serialize};
 use crate::app_state::{PaneLoadState, PaneStatusAccess, RenderState};
 use crate::credentials::{
     GOOGLE_GMAIL_ACCESS_TOKEN, GOOGLE_GMAIL_TOKEN_EXPIRY_UNIX, GoogleGmailOAuthLifecycle,
+};
+use crate::pane_system::{
+    EmailApprovalQueuePaneAction, EmailDraftQueuePaneAction, EmailFollowUpQueuePaneAction,
+    EmailInboxPaneAction, EmailSendLogPaneAction,
 };
 
 const GMAIL_API_ROOT: &str = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -362,6 +366,247 @@ pub(super) fn run_follow_up_scheduler(state: &mut RenderState) -> Result<usize, 
     ));
     state.email_lane.rebuild_rows();
     Ok(outcome.emitted_events.len())
+}
+
+pub(super) fn run_email_inbox_action(
+    state: &mut RenderState,
+    action: EmailInboxPaneAction,
+) -> bool {
+    match action {
+        EmailInboxPaneAction::Refresh => {
+            if let Err(error) = refresh_email_lane_from_live_gmail(state) {
+                state
+                    .email_lane
+                    .pane_set_error(format!("email inbox refresh failed: {error}"));
+            }
+            true
+        }
+        EmailInboxPaneAction::GenerateDraftSelected => {
+            if let Err(error) = generate_selected_inbox_draft(state) {
+                state
+                    .email_lane
+                    .pane_set_error(format!("draft generation failed: {error}"));
+            }
+            true
+        }
+        EmailInboxPaneAction::SelectRow(index) => {
+            if state.email_lane.select_inbox_row(index) {
+                state.email_lane.pane_set_ready(format!(
+                    "Selected inbox message row {}",
+                    index.saturating_add(1)
+                ));
+            } else {
+                state.email_lane.pane_set_error(format!(
+                    "Inbox row {} out of range",
+                    index.saturating_add(1)
+                ));
+            }
+            true
+        }
+    }
+}
+
+pub(super) fn run_email_draft_queue_action(
+    state: &mut RenderState,
+    action: EmailDraftQueuePaneAction,
+) -> bool {
+    match action {
+        EmailDraftQueuePaneAction::SelectRow(index) => {
+            if state.email_lane.select_draft_row(index) {
+                if let Some(draft_id) = state.email_lane.selected_draft_id.clone() {
+                    state.email_lane.selected_approval_draft_id = Some(draft_id.clone());
+                    state
+                        .email_lane
+                        .pane_set_ready(format!("Selected draft {}", draft_id));
+                } else {
+                    state
+                        .email_lane
+                        .pane_set_ready(format!("Selected draft row {}", index.saturating_add(1)));
+                }
+            } else {
+                state.email_lane.pane_set_error(format!(
+                    "Draft row {} out of range",
+                    index.saturating_add(1)
+                ));
+            }
+            true
+        }
+    }
+}
+
+pub(super) fn run_email_approval_queue_action(
+    state: &mut RenderState,
+    action: EmailApprovalQueuePaneAction,
+) -> bool {
+    match action {
+        EmailApprovalQueuePaneAction::ApproveSelected => {
+            if let Err(error) =
+                approve_or_reject_selected_draft(state, ApprovalDecisionAction::Approve, None)
+            {
+                state
+                    .email_lane
+                    .pane_set_error(format!("approve draft failed: {error}"));
+            }
+            true
+        }
+        EmailApprovalQueuePaneAction::RejectSelected => {
+            if let Err(error) = approve_or_reject_selected_draft(
+                state,
+                ApprovalDecisionAction::Reject,
+                Some("Rejected by operator".to_string()),
+            ) {
+                state
+                    .email_lane
+                    .pane_set_error(format!("reject draft failed: {error}"));
+            }
+            true
+        }
+        EmailApprovalQueuePaneAction::RequestEditsSelected => {
+            if let Err(error) = approve_or_reject_selected_draft(
+                state,
+                ApprovalDecisionAction::RequestEdits,
+                Some("Edits requested by operator".to_string()),
+            ) {
+                state
+                    .email_lane
+                    .pane_set_error(format!("request edits failed: {error}"));
+            }
+            true
+        }
+        EmailApprovalQueuePaneAction::TogglePauseQueue => {
+            let pause_queue = !state.email_lane.approval_workflow.queue_paused;
+            match set_approval_queue_paused(
+                &mut state.email_lane.approval_workflow,
+                pause_queue,
+                "operator",
+                now_epoch_seconds(),
+                Some("desktop pane action"),
+            ) {
+                Ok(event) => {
+                    state.email_lane.last_result = Some(format!(
+                        "approval queue control: event={} action={:?}",
+                        event.event_id, event.action
+                    ));
+                    state.email_lane.pane_set_ready(if pause_queue {
+                        "Approval queue paused".to_string()
+                    } else {
+                        "Approval queue resumed".to_string()
+                    });
+                    state.email_lane.rebuild_rows();
+                }
+                Err(error) => {
+                    state
+                        .email_lane
+                        .pane_set_error(format!("toggle approval queue pause failed: {error}"));
+                }
+            }
+            true
+        }
+        EmailApprovalQueuePaneAction::ToggleKillSwitch => {
+            let engage_kill_switch = !state.email_lane.approval_workflow.kill_switch_engaged;
+            match set_approval_kill_switch(
+                &mut state.email_lane.approval_workflow,
+                engage_kill_switch,
+                "operator",
+                now_epoch_seconds(),
+                Some("desktop pane action"),
+            ) {
+                Ok(event) => {
+                    state.email_lane.last_result = Some(format!(
+                        "approval kill switch control: event={} action={:?}",
+                        event.event_id, event.action
+                    ));
+                    state.email_lane.pane_set_ready(if engage_kill_switch {
+                        "Approval kill switch engaged".to_string()
+                    } else {
+                        "Approval kill switch disengaged".to_string()
+                    });
+                    state.email_lane.rebuild_rows();
+                }
+                Err(error) => {
+                    state
+                        .email_lane
+                        .pane_set_error(format!("toggle approval kill switch failed: {error}"));
+                }
+            }
+            true
+        }
+        EmailApprovalQueuePaneAction::SelectRow(index) => {
+            if state.email_lane.select_approval_row(index) {
+                state.email_lane.selected_draft_id = state
+                    .email_lane
+                    .selected_approval_draft_id()
+                    .map(ToString::to_string);
+                state
+                    .email_lane
+                    .pane_set_ready(format!("Selected approval row {}", index.saturating_add(1)));
+            } else {
+                state.email_lane.pane_set_error(format!(
+                    "Approval row {} out of range",
+                    index.saturating_add(1)
+                ));
+            }
+            true
+        }
+    }
+}
+
+pub(super) fn run_email_send_log_action(
+    state: &mut RenderState,
+    action: EmailSendLogPaneAction,
+) -> bool {
+    match action {
+        EmailSendLogPaneAction::SendSelected => {
+            if let Err(error) = send_selected_approved_draft(state) {
+                state
+                    .email_lane
+                    .pane_set_error(format!("send selected draft failed: {error}"));
+            }
+            true
+        }
+        EmailSendLogPaneAction::SelectRow(index) => {
+            if state.email_lane.select_send_row(index) {
+                state
+                    .email_lane
+                    .pane_set_ready(format!("Selected send row {}", index.saturating_add(1)));
+            } else {
+                state
+                    .email_lane
+                    .pane_set_error(format!("Send row {} out of range", index.saturating_add(1)));
+            }
+            true
+        }
+    }
+}
+
+pub(super) fn run_email_follow_up_queue_action(
+    state: &mut RenderState,
+    action: EmailFollowUpQueuePaneAction,
+) -> bool {
+    match action {
+        EmailFollowUpQueuePaneAction::RunSchedulerTick => {
+            if let Err(error) = run_follow_up_scheduler(state) {
+                state
+                    .email_lane
+                    .pane_set_error(format!("follow-up scheduler tick failed: {error}"));
+            }
+            true
+        }
+        EmailFollowUpQueuePaneAction::SelectRow(index) => {
+            if state.email_lane.select_follow_up_row(index) {
+                state.email_lane.pane_set_ready(format!(
+                    "Selected follow-up row {}",
+                    index.saturating_add(1)
+                ));
+            } else {
+                state.email_lane.pane_set_error(format!(
+                    "Follow-up row {} out of range",
+                    index.saturating_add(1)
+                ));
+            }
+            true
+        }
+    }
 }
 
 fn fetch_live_gmail_message(

@@ -5,7 +5,7 @@ use std::process::Command;
 use codex_client::{DynamicToolCallOutputContentItem, DynamicToolCallResponse};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::app_state::{
     ActivityFeedFilter, AutopilotToolCallRequest, CadBuildFailureClass, PaneKind, RenderState,
@@ -29,12 +29,13 @@ use crate::pane_system::{
     CadDemoPaneAction, CastControlPaneAction, CodexAccountPaneAction, CodexAppsPaneAction,
     CodexConfigPaneAction, CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction,
     CodexModelsPaneAction, CredentialsPaneAction, CreditDeskPaneAction,
-    CreditSettlementLedgerPaneAction, EarningsScoreboardPaneAction, JobHistoryPaneAction,
-    JobInboxPaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction,
-    RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction, SettingsPaneAction,
-    SkillRegistryPaneAction, SkillTrustRevocationPaneAction, StableSatsSimulationPaneAction,
-    StarterJobsPaneAction, SyncHealthPaneAction, TrajectoryAuditPaneAction,
-    TreasuryExchangeSimulationPaneAction,
+    CreditSettlementLedgerPaneAction, EarningsScoreboardPaneAction, EmailApprovalQueuePaneAction,
+    EmailDraftQueuePaneAction, EmailFollowUpQueuePaneAction, EmailInboxPaneAction,
+    EmailSendLogPaneAction, JobHistoryPaneAction, JobInboxPaneAction, NetworkRequestsPaneAction,
+    PaneController, PaneHitAction, RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction,
+    SettingsPaneAction, SkillRegistryPaneAction, SkillTrustRevocationPaneAction,
+    StableSatsSimulationPaneAction, StarterJobsPaneAction, SyncHealthPaneAction,
+    TrajectoryAuditPaneAction, TreasuryExchangeSimulationPaneAction,
 };
 use crate::runtime_lanes::SaLifecycleCommand;
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
@@ -42,7 +43,7 @@ use crate::spark_wallet::SparkWalletCommand;
 use crate::state::autopilot_goals::{
     GoalMissedRunPolicy, GoalRolloutHardeningChecklist, GoalRolloutRollbackPolicy, GoalRolloutStage,
 };
-use crate::state::os_scheduler::{preferred_adapter_for_host, OsSchedulerAdapterKind};
+use crate::state::os_scheduler::{OsSchedulerAdapterKind, preferred_adapter_for_host};
 use crate::state::swap_contract::{
     SwapAmount, SwapAmountUnit, SwapCommandProvenance, SwapDirection, SwapExecutionStatus,
     SwapQuoteTerms,
@@ -1242,6 +1243,61 @@ fn pane_action_to_hit_action(
             "next_page" => Ok(PaneHitAction::JobHistory(JobHistoryPaneAction::NextPage)),
             _ => unsupported(),
         },
+        PaneKind::EmailInbox => match action {
+            "refresh" => Ok(PaneHitAction::EmailInbox(EmailInboxPaneAction::Refresh)),
+            "generate_draft_selected" | "generate_draft" => Ok(PaneHitAction::EmailInbox(
+                EmailInboxPaneAction::GenerateDraftSelected,
+            )),
+            "select_row" | "select_message" => Ok(PaneHitAction::EmailInbox(
+                EmailInboxPaneAction::SelectRow(require_index(action)?),
+            )),
+            _ => unsupported(),
+        },
+        PaneKind::EmailDraftQueue => match action {
+            "select_row" | "select_draft" => Ok(PaneHitAction::EmailDraftQueue(
+                EmailDraftQueuePaneAction::SelectRow(require_index(action)?),
+            )),
+            _ => unsupported(),
+        },
+        PaneKind::EmailApprovalQueue => match action {
+            "approve_selected" | "approve" => Ok(PaneHitAction::EmailApprovalQueue(
+                EmailApprovalQueuePaneAction::ApproveSelected,
+            )),
+            "reject_selected" | "reject" => Ok(PaneHitAction::EmailApprovalQueue(
+                EmailApprovalQueuePaneAction::RejectSelected,
+            )),
+            "request_edits_selected" | "request_edits" => Ok(PaneHitAction::EmailApprovalQueue(
+                EmailApprovalQueuePaneAction::RequestEditsSelected,
+            )),
+            "toggle_pause_queue" => Ok(PaneHitAction::EmailApprovalQueue(
+                EmailApprovalQueuePaneAction::TogglePauseQueue,
+            )),
+            "toggle_kill_switch" => Ok(PaneHitAction::EmailApprovalQueue(
+                EmailApprovalQueuePaneAction::ToggleKillSwitch,
+            )),
+            "select_row" | "select_draft" => Ok(PaneHitAction::EmailApprovalQueue(
+                EmailApprovalQueuePaneAction::SelectRow(require_index(action)?),
+            )),
+            _ => unsupported(),
+        },
+        PaneKind::EmailSendLog => match action {
+            "send_selected" | "send" => Ok(PaneHitAction::EmailSendLog(
+                EmailSendLogPaneAction::SendSelected,
+            )),
+            "select_row" | "select_send" => Ok(PaneHitAction::EmailSendLog(
+                EmailSendLogPaneAction::SelectRow(require_index(action)?),
+            )),
+            _ => unsupported(),
+        },
+        PaneKind::EmailFollowUpQueue => match action {
+            "run_scheduler_tick" | "run_scheduler" | "tick" => Ok(
+                PaneHitAction::EmailFollowUpQueue(EmailFollowUpQueuePaneAction::RunSchedulerTick),
+            ),
+            "select_row" | "select_job" => Ok(PaneHitAction::EmailFollowUpQueue(
+                EmailFollowUpQueuePaneAction::SelectRow(require_index(action)?),
+            )),
+            _ => unsupported(),
+        },
         PaneKind::NostrIdentity => match action {
             "regenerate" => Ok(PaneHitAction::NostrRegenerate),
             "reveal" => Ok(PaneHitAction::NostrReveal),
@@ -1519,13 +1575,7 @@ fn pane_action_to_hit_action(
             ))),
             _ => unsupported(),
         },
-        PaneKind::ProviderStatus
-        | PaneKind::Empty
-        | PaneKind::EmailInbox
-        | PaneKind::EmailDraftQueue
-        | PaneKind::EmailSendLog
-        | PaneKind::EmailApprovalQueue
-        | PaneKind::EmailFollowUpQueue => unsupported(),
+        PaneKind::ProviderStatus | PaneKind::Empty => unsupported(),
     }
 }
 
@@ -4597,16 +4647,16 @@ fn normalize_key(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        cad_action_from_key, cad_checkpoint_payload, cad_parse_retry_prompt,
-        decode_tool_call_request, normalize_key, pane_action_to_hit_action, pane_kind_key,
-        parse_blink_execution_payload_from_json, parse_blink_quote_terms_from_json,
-        parse_bool_env_override, parse_goal_rollout_stage, parse_swap_direction, parse_swap_unit,
-        parse_treasury_transfer_asset, resolve_pane_kind_for_runtime, run_blink_swap_script_json,
-        select_existing_blink_swap_script_path, validate_direction_unit, ToolBridgeResultEnvelope,
         CAD_CHECKPOINT_SCHEMA_VERSION, CAD_TOOL_RESPONSE_SCHEMA_VERSION,
         LEGACY_OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_SWAP_QUOTE,
         OPENAGENTS_TOOL_TREASURY_CONVERT, OPENAGENTS_TOOL_TREASURY_RECEIPT,
-        OPENAGENTS_TOOL_TREASURY_TRANSFER,
+        OPENAGENTS_TOOL_TREASURY_TRANSFER, ToolBridgeResultEnvelope, cad_action_from_key,
+        cad_checkpoint_payload, cad_parse_retry_prompt, decode_tool_call_request, normalize_key,
+        pane_action_to_hit_action, pane_kind_key, parse_blink_execution_payload_from_json,
+        parse_blink_quote_terms_from_json, parse_bool_env_override, parse_goal_rollout_stage,
+        parse_swap_direction, parse_swap_unit, parse_treasury_transfer_asset,
+        resolve_pane_kind_for_runtime, run_blink_swap_script_json,
+        select_existing_blink_swap_script_path, validate_direction_unit,
     };
     use crate::app_state::{
         AutopilotToolCallRequest, CadDemoPaneState, CadDemoWarningState, CadViewportLayout,
@@ -4905,19 +4955,27 @@ mod tests {
             payload.pointer("/warnings/by_code/W001"),
             Some(&serde_json::json!(1))
         );
-        assert!(payload
-            .pointer("/analysis/material_id")
-            .is_some_and(|value| !value.is_null()));
+        assert!(
+            payload
+                .pointer("/analysis/material_id")
+                .is_some_and(|value| !value.is_null())
+        );
         assert!(payload.pointer("/kinematics/profile").is_some());
-        assert!(payload
-            .pointer("/failure_metrics/intent_parse_failures")
-            .is_some());
-        assert!(payload
-            .pointer("/failure_metrics/dispatch_rebuild_failures")
-            .is_some());
-        assert!(payload
-            .pointer("/sensor_feedback/visualization_mode")
-            .is_some());
+        assert!(
+            payload
+                .pointer("/failure_metrics/intent_parse_failures")
+                .is_some()
+        );
+        assert!(
+            payload
+                .pointer("/failure_metrics/dispatch_rebuild_failures")
+                .is_some()
+        );
+        assert!(
+            payload
+                .pointer("/sensor_feedback/visualization_mode")
+                .is_some()
+        );
         assert!(payload.get("build_session").is_some());
         assert!(payload.get("last_rebuild_receipt").is_some());
 
@@ -4929,9 +4987,11 @@ mod tests {
             tool_response.pointer("/schema_version"),
             Some(&serde_json::json!(CAD_TOOL_RESPONSE_SCHEMA_VERSION))
         );
-        assert!(tool_response
-            .pointer("/checkpoint/schema_version")
-            .is_some());
+        assert!(
+            tool_response
+                .pointer("/checkpoint/schema_version")
+                .is_some()
+        );
     }
 
     #[test]
