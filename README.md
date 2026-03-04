@@ -2,7 +2,7 @@
 
 OpenAgents builds Autopilot: a personal agent for your computer. It does useful work for you and performs paid jobs on the network for Bitcoin.
 
-The MVP centers on one irreducible outcome: a user goes online, receives paid NIP-90 work, sees bitcoin land in their Autopilot wallet, and withdraws over Lightning. The product delivers this loop as a real, repeatable path.
+The MVP focuses on one user flow and outcome: a user goes online, receives paid NIP-90 work, sees bitcoin land in their Autopilot wallet, and withdraws over Lightning. The product delivers this loop as a real, repeatable path.
 
 This repository exists to deliver that loop with clear authority, deterministic behavior, and a fast WGPUI-native desktop experience.
 
