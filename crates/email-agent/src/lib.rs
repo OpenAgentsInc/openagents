@@ -12,6 +12,7 @@ mod quality_scoring;
 mod retrieval;
 mod send_execution;
 mod style_profile;
+mod tenant_isolation;
 
 pub use approval_workflow::{
     ApprovalDecisionAction, ApprovalDecisionInput, ApprovalMode, ApprovalPolicyPath,
@@ -57,3 +58,9 @@ pub use send_execution::{
     SendFailureClass, SendProviderError, SendRecord, SendRequest, execute_send_with_idempotency,
 };
 pub use style_profile::{StyleProfile, StyleTone, derive_style_profile};
+pub use tenant_isolation::{
+    TenantEnvironment, TenantIsolationError, TenantIsolationReport, TenantIsolationState,
+    TenantNetworkBoundary, TenantProvisionRequest, TenantRuntimeIdentity, TenantSecretScope,
+    TenantStorageLayout, TenantTeardownPlan, provision_tenant_environment,
+    rotate_tenant_secret_scope, teardown_tenant_environment, verify_hard_tenant_isolation,
+};
