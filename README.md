@@ -11,6 +11,10 @@ This repository exists to deliver that loop with clear authority, deterministic 
 The product authority is [docs/MVP.md](docs/MVP.md).
 Ownership boundaries are defined in [docs/OWNERSHIP.md](docs/OWNERSHIP.md).
 
+## Earning Bitcoin (WIP)
+
+Autopilot Earn is available as an MVP and is still a work in progress. The current user-facing flow is focused on a single proof loop: go online, run paid NIP-90 work, receive wallet-confirmed sats, and withdraw over Lightning. For setup expectations, current limitations, and source-of-truth behavior, see the user guide: [docs/EARN.md](docs/EARN.md).
+
 ## Current Repository Scope
 
 - Active implementation is focused on `crates/wgpui`.
