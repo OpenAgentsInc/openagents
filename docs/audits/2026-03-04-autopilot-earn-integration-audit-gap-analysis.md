@@ -77,6 +77,13 @@ Red:
 - Desktop provider loop is not yet clearly wired to real relay-driven NIP-90 job intake/execution/result publication in the primary path.
 - “Global network” stats are currently computed from local state, not an authoritative external network source.
 
+## Execution Status Updates
+
+- 2026-03-04: `#2877` (desktop relay-backed NIP-90 provider lane wiring) implemented.
+  - Added `nostr-client` ingress worker in `apps/autopilot-desktop/src/provider_nip90_lane.rs`.
+  - Wired `Go Online` and relay/settings sync to configure and toggle live ingress in app runtime.
+  - Added automated coverage for relay ingress (`provider_nip90_lane::tests::worker_ingests_live_relay_request`) and included it in `scripts/lint/autopilot-earnings-epic-test-gate.sh`.
+
 ## MVP Requirement Matrix (from `docs/MVP.md`)
 
 Reference requirements:

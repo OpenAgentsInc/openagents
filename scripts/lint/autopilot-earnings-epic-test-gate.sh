@@ -103,6 +103,11 @@ run_test \
     state::earnings_gate::tests::accepts_wallet_backed_earnings_evidence \
     -- --nocapture
 run_test \
+    "Relay-backed NIP-90 provider ingress lane wiring" \
+    cargo test -p autopilot-desktop \
+    provider_nip90_lane::tests::worker_ingests_live_relay_request \
+    -- --nocapture
+run_test \
     "Earn bitcoin until +N sats flow" \
     cargo test -p autopilot-desktop \
     state::earnings_gate::tests::earn_bitcoin_until_target_sats_requires_wallet_confirmed_threshold \

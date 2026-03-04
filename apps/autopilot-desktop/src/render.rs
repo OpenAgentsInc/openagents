@@ -26,6 +26,7 @@ use crate::pane_renderer::PaneRenderer;
 use crate::pane_system::{
     PANE_MIN_HEIGHT, PANE_MIN_WIDTH, PaneController, cad_palette_command_specs,
 };
+use crate::provider_nip90_lane::{ProviderNip90LaneSnapshot, ProviderNip90LaneWorker};
 use crate::runtime_lanes::{
     AcCreditCommand, AcLaneSnapshot, AcLaneWorker, SaLaneSnapshot, SaLaneWorker,
     SaLifecycleCommand, SklLaneSnapshot, SklLaneWorker,
@@ -162,6 +163,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             crate::stablesats_blink_worker::StableSatsBlinkWorker::spawn();
         let settings = crate::app_state::SettingsState::load_from_disk();
         let settings_inputs = crate::app_state::SettingsPaneInputs::from_state(&settings);
+        let initial_relay_url = settings.document.relay_url.clone();
         let credentials = crate::app_state::CredentialsState::load_from_disk();
         let credentials_inputs = crate::app_state::CredentialsPaneInputs::from_state(&credentials);
         let autopilot_goals = crate::state::autopilot_goals::AutopilotGoalsState::load_from_disk();
@@ -170,6 +172,8 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let sa_lane_worker = SaLaneWorker::spawn();
         let skl_lane_worker = SklLaneWorker::spawn();
         let ac_lane_worker = AcLaneWorker::spawn();
+        let provider_nip90_lane_worker =
+            ProviderNip90LaneWorker::spawn(vec![initial_relay_url.clone()]);
         let command_palette_actions = Rc::new(RefCell::new(Vec::<String>::new()));
         let mut command_palette = CommandPalette::new()
             .mono(true)
@@ -235,6 +239,8 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             sa_lane_worker,
             skl_lane_worker,
             ac_lane_worker,
+            provider_nip90_lane: ProviderNip90LaneSnapshot::with_relays(vec![initial_relay_url]),
+            provider_nip90_lane_worker,
             runtime_command_responses: Vec::new(),
             next_runtime_command_seq: 1,
             provider_runtime: crate::app_state::ProviderRuntimeState::default(),
@@ -281,6 +287,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             command_palette_actions,
         };
         bootstrap_runtime_lanes(&mut state);
+        let _ = state.sync_provider_nip90_lane_relays();
         open_startup_panes(&mut state);
         Ok(state)
     })
