@@ -2,6 +2,7 @@
 
 mod approval_workflow;
 mod draft_pipeline;
+mod e2e_harness;
 mod follow_up_scheduler;
 mod gmail_connector;
 mod gmail_sync;
@@ -24,6 +25,10 @@ pub use approval_workflow::{
 };
 pub use draft_pipeline::{
     DraftArtifact, DraftGenerationError, DraftGenerationInput, DraftPolicy, generate_draft,
+};
+pub use e2e_harness::{
+    E2eFailureInjection, E2eHarnessConfig, E2eHarnessOutcome, E2eHarnessStatus,
+    run_email_pipeline_e2e,
 };
 pub use follow_up_scheduler::{
     FollowUpEvent, FollowUpEventType, FollowUpJob, FollowUpJobStatus, FollowUpRule,
