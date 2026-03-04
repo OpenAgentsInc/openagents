@@ -34,7 +34,7 @@ Current gate status:
 | Wallet-confirmed payout gate | ✅ Implemented | `#2880` |
 | Seed-demand buyer lane with controls | ✅ Implemented | `#2882`, `#2883` |
 | Public stats lane consistent with wallet-confirmed payouts | ✅ Implemented | `#2884`, `#2885` |
-| Reliability/test/rollout and canonical-status closure | ⏳ In progress | Open `#2889`, `#2890` |
+| Reliability/test/rollout and canonical-status closure | ⏳ In progress | Open `#2890` |
 
 The epic should not be treated as fully complete until the open reconciliation issues above are closed with code and verification evidence.
 
@@ -54,7 +54,7 @@ The epic should not be treated as fully complete until the open reconciliation i
 | [#2886](https://github.com/OpenAgentsInc/openagents/issues/2886) | Earn P1: Reconcile epic tracker closure with code evidence | CLOSED |
 | [#2887](https://github.com/OpenAgentsInc/openagents/issues/2887) | Earn P2: Failure taxonomy + user-facing diagnostics | CLOSED |
 | [#2888](https://github.com/OpenAgentsInc/openagents/issues/2888) | Earn P2: Loop integrity SLO metrics and alerts | CLOSED |
-| [#2889](https://github.com/OpenAgentsInc/openagents/issues/2889) | Earn P2: Simulation path isolation | OPEN |
+| [#2889](https://github.com/OpenAgentsInc/openagents/issues/2889) | Earn P2: Simulation path isolation | CLOSED |
 | [#2890](https://github.com/OpenAgentsInc/openagents/issues/2890) | Earn P2: Docs consolidation for canonical status | OPEN |
 
 ## Historical Issue List (`#2814 - #2876`)

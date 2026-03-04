@@ -5,7 +5,7 @@ use std::process::Command;
 use codex_client::{DynamicToolCallOutputContentItem, DynamicToolCallResponse};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use crate::app_state::{
     ActivityFeedFilter, AutopilotToolCallRequest, CadBuildFailureClass, PaneKind, RenderState,
@@ -20,7 +20,9 @@ use crate::openagents_dynamic_tools::{
     OPENAGENTS_TOOL_SWAP_QUOTE, OPENAGENTS_TOOL_TREASURY_CONVERT, OPENAGENTS_TOOL_TREASURY_RECEIPT,
     OPENAGENTS_TOOL_TREASURY_TRANSFER, OPENAGENTS_TOOL_WALLET_CHECK,
 };
-use crate::pane_registry::{pane_spec, pane_spec_by_command_id, pane_specs};
+use crate::pane_registry::{
+    pane_enabled_in_runtime, pane_spec, pane_spec_by_command_id, pane_specs,
+};
 use crate::pane_system::{
     ActiveJobPaneAction, ActivityFeedPaneAction, AgentNetworkSimulationPaneAction,
     AgentProfileStatePaneAction, AgentScheduleTickPaneAction, AlertsRecoveryPaneAction,
@@ -40,7 +42,7 @@ use crate::spark_wallet::SparkWalletCommand;
 use crate::state::autopilot_goals::{
     GoalMissedRunPolicy, GoalRolloutHardeningChecklist, GoalRolloutRollbackPolicy, GoalRolloutStage,
 };
-use crate::state::os_scheduler::{OsSchedulerAdapterKind, preferred_adapter_for_host};
+use crate::state::os_scheduler::{preferred_adapter_for_host, OsSchedulerAdapterKind};
 use crate::state::swap_contract::{
     SwapAmount, SwapAmountUnit, SwapCommandProvenance, SwapDirection, SwapExecutionStatus,
     SwapQuoteTerms,
@@ -621,6 +623,7 @@ fn execute_pane_list(state: &RenderState) -> ToolBridgeResultEnvelope {
     let registered = pane_specs()
         .iter()
         .filter(|spec| spec.kind != PaneKind::Empty)
+        .filter(|spec| pane_enabled_in_runtime(spec.kind, state.simulation_panes_enabled))
         .map(|spec| {
             json!({
                 "kind": pane_kind_key(spec.kind),
@@ -672,8 +675,12 @@ fn execute_pane_list(state: &RenderState) -> ToolBridgeResultEnvelope {
 }
 
 fn execute_pane_open(state: &mut RenderState, pane_ref: &str) -> ToolBridgeResultEnvelope {
-    let Some(kind) = resolve_pane_kind(pane_ref) else {
-        return pane_resolution_error("OA-PANE-OPEN-NOT-FOUND", pane_ref);
+    let Some(kind) = resolve_pane_kind(state, pane_ref) else {
+        return pane_resolution_error(
+            "OA-PANE-OPEN-NOT-FOUND",
+            pane_ref,
+            state.simulation_panes_enabled,
+        );
     };
     let pane_id = PaneController::create_for_kind(state, kind);
     ToolBridgeResultEnvelope::ok(
@@ -688,8 +695,12 @@ fn execute_pane_open(state: &mut RenderState, pane_ref: &str) -> ToolBridgeResul
 }
 
 fn execute_pane_focus(state: &mut RenderState, pane_ref: &str) -> ToolBridgeResultEnvelope {
-    let Some(kind) = resolve_pane_kind(pane_ref) else {
-        return pane_resolution_error("OA-PANE-FOCUS-NOT-FOUND", pane_ref);
+    let Some(kind) = resolve_pane_kind(state, pane_ref) else {
+        return pane_resolution_error(
+            "OA-PANE-FOCUS-NOT-FOUND",
+            pane_ref,
+            state.simulation_panes_enabled,
+        );
     };
     let pane = state
         .panes
@@ -720,8 +731,12 @@ fn execute_pane_focus(state: &mut RenderState, pane_ref: &str) -> ToolBridgeResu
 }
 
 fn execute_pane_close(state: &mut RenderState, pane_ref: &str) -> ToolBridgeResultEnvelope {
-    let Some(kind) = resolve_pane_kind(pane_ref) else {
-        return pane_resolution_error("OA-PANE-CLOSE-NOT-FOUND", pane_ref);
+    let Some(kind) = resolve_pane_kind(state, pane_ref) else {
+        return pane_resolution_error(
+            "OA-PANE-CLOSE-NOT-FOUND",
+            pane_ref,
+            state.simulation_panes_enabled,
+        );
     };
     let pane = state
         .panes
@@ -755,8 +770,12 @@ fn execute_pane_set_input(
     state: &mut RenderState,
     args: &PaneInputArgs,
 ) -> ToolBridgeResultEnvelope {
-    let Some(kind) = resolve_pane_kind(args.pane.trim()) else {
-        return pane_resolution_error("OA-PANE-SET-INPUT-NOT-FOUND", args.pane.trim());
+    let Some(kind) = resolve_pane_kind(state, args.pane.trim()) else {
+        return pane_resolution_error(
+            "OA-PANE-SET-INPUT-NOT-FOUND",
+            args.pane.trim(),
+            state.simulation_panes_enabled,
+        );
     };
     let _ = PaneController::create_for_kind(state, kind);
     let field = normalize_key(&args.field);
@@ -806,8 +825,12 @@ fn execute_pane_set_input(
 }
 
 fn execute_pane_action(state: &mut RenderState, args: &PaneActionArgs) -> ToolBridgeResultEnvelope {
-    let Some(kind) = resolve_pane_kind(args.pane.trim()) else {
-        return pane_resolution_error("OA-PANE-ACTION-NOT-FOUND", args.pane.trim());
+    let Some(kind) = resolve_pane_kind(state, args.pane.trim()) else {
+        return pane_resolution_error(
+            "OA-PANE-ACTION-NOT-FOUND",
+            args.pane.trim(),
+            state.simulation_panes_enabled,
+        );
     };
     let _ = PaneController::create_for_kind(state, kind);
     let action_key = normalize_key(&args.action);
@@ -4422,7 +4445,11 @@ fn cad_action_from_key(
     Ok(value)
 }
 
-fn pane_resolution_error(code: &str, pane_ref: &str) -> ToolBridgeResultEnvelope {
+fn pane_resolution_error(
+    code: &str,
+    pane_ref: &str,
+    simulation_panes_enabled: bool,
+) -> ToolBridgeResultEnvelope {
     ToolBridgeResultEnvelope::error(
         code,
         format!("Could not resolve pane reference '{}'", pane_ref),
@@ -4431,6 +4458,7 @@ fn pane_resolution_error(code: &str, pane_ref: &str) -> ToolBridgeResultEnvelope
             "supported_panes": pane_specs()
                 .iter()
                 .filter(|spec| spec.kind != PaneKind::Empty)
+                .filter(|spec| pane_enabled_in_runtime(spec.kind, simulation_panes_enabled))
                 .map(|spec| {
                     json!({
                         "kind": pane_kind_key(spec.kind),
@@ -4443,12 +4471,18 @@ fn pane_resolution_error(code: &str, pane_ref: &str) -> ToolBridgeResultEnvelope
     )
 }
 
-fn resolve_pane_kind(raw: &str) -> Option<PaneKind> {
+fn resolve_pane_kind(state: &RenderState, raw: &str) -> Option<PaneKind> {
+    resolve_pane_kind_for_runtime(raw, state.simulation_panes_enabled)
+}
+
+fn resolve_pane_kind_for_runtime(raw: &str, simulation_panes_enabled: bool) -> Option<PaneKind> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return None;
     }
-    if let Some(spec) = pane_spec_by_command_id(trimmed) {
+    if let Some(spec) = pane_spec_by_command_id(trimmed)
+        .filter(|spec| pane_enabled_in_runtime(spec.kind, simulation_panes_enabled))
+    {
         return Some(spec.kind);
     }
 
@@ -4460,6 +4494,7 @@ fn resolve_pane_kind(raw: &str) -> Option<PaneKind> {
     pane_specs()
         .iter()
         .filter(|spec| spec.kind != PaneKind::Empty)
+        .filter(|spec| pane_enabled_in_runtime(spec.kind, simulation_panes_enabled))
         .find_map(|spec| {
             let title_key = normalize_key(spec.title);
             let kind_key = normalize_key(pane_kind_key(spec.kind));
@@ -4562,16 +4597,16 @@ fn normalize_key(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
+        cad_action_from_key, cad_checkpoint_payload, cad_parse_retry_prompt,
+        decode_tool_call_request, normalize_key, pane_action_to_hit_action, pane_kind_key,
+        parse_blink_execution_payload_from_json, parse_blink_quote_terms_from_json,
+        parse_bool_env_override, parse_goal_rollout_stage, parse_swap_direction, parse_swap_unit,
+        parse_treasury_transfer_asset, resolve_pane_kind_for_runtime, run_blink_swap_script_json,
+        select_existing_blink_swap_script_path, validate_direction_unit, ToolBridgeResultEnvelope,
         CAD_CHECKPOINT_SCHEMA_VERSION, CAD_TOOL_RESPONSE_SCHEMA_VERSION,
         LEGACY_OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_SWAP_QUOTE,
         OPENAGENTS_TOOL_TREASURY_CONVERT, OPENAGENTS_TOOL_TREASURY_RECEIPT,
-        OPENAGENTS_TOOL_TREASURY_TRANSFER, ToolBridgeResultEnvelope, cad_action_from_key,
-        cad_checkpoint_payload, cad_parse_retry_prompt, decode_tool_call_request, normalize_key,
-        pane_action_to_hit_action, pane_kind_key, parse_blink_execution_payload_from_json,
-        parse_blink_quote_terms_from_json, parse_bool_env_override, parse_goal_rollout_stage,
-        parse_swap_direction, parse_swap_unit, parse_treasury_transfer_asset, resolve_pane_kind,
-        run_blink_swap_script_json, select_existing_blink_swap_script_path,
-        validate_direction_unit,
+        OPENAGENTS_TOOL_TREASURY_TRANSFER,
     };
     use crate::app_state::{
         AutopilotToolCallRequest, CadDemoPaneState, CadDemoWarningState, CadViewportLayout,
@@ -4681,24 +4716,45 @@ mod tests {
     #[test]
     fn resolve_pane_kind_accepts_command_id_title_and_alias() {
         assert_eq!(
-            resolve_pane_kind("pane.wallet"),
+            resolve_pane_kind_for_runtime("pane.wallet", false),
             Some(PaneKind::SparkWallet)
         );
         assert_eq!(
-            resolve_pane_kind("Spark Lightning Wallet"),
+            resolve_pane_kind_for_runtime("Spark Lightning Wallet", false),
             Some(PaneKind::SparkWallet)
         );
-        assert_eq!(resolve_pane_kind("wallet"), Some(PaneKind::SparkWallet));
         assert_eq!(
-            resolve_pane_kind("pane.calculator"),
+            resolve_pane_kind_for_runtime("wallet", false),
+            Some(PaneKind::SparkWallet)
+        );
+        assert_eq!(
+            resolve_pane_kind_for_runtime("pane.calculator", false),
             Some(PaneKind::Calculator)
         );
-        assert_eq!(resolve_pane_kind("calc"), Some(PaneKind::Calculator));
+        assert_eq!(
+            resolve_pane_kind_for_runtime("calc", false),
+            Some(PaneKind::Calculator)
+        );
     }
 
     #[test]
     fn resolve_pane_kind_rejects_unknown_reference() {
-        assert_eq!(resolve_pane_kind("not-a-real-pane"), None);
+        assert_eq!(
+            resolve_pane_kind_for_runtime("not-a-real-pane", false),
+            None
+        );
+    }
+
+    #[test]
+    fn resolve_pane_kind_gates_simulation_references() {
+        assert_eq!(
+            resolve_pane_kind_for_runtime("pane.agent_network_simulation", false),
+            None
+        );
+        assert_eq!(
+            resolve_pane_kind_for_runtime("pane.agent_network_simulation", true),
+            Some(PaneKind::AgentNetworkSimulation)
+        );
     }
 
     #[test]
@@ -4849,27 +4905,19 @@ mod tests {
             payload.pointer("/warnings/by_code/W001"),
             Some(&serde_json::json!(1))
         );
-        assert!(
-            payload
-                .pointer("/analysis/material_id")
-                .is_some_and(|value| !value.is_null())
-        );
+        assert!(payload
+            .pointer("/analysis/material_id")
+            .is_some_and(|value| !value.is_null()));
         assert!(payload.pointer("/kinematics/profile").is_some());
-        assert!(
-            payload
-                .pointer("/failure_metrics/intent_parse_failures")
-                .is_some()
-        );
-        assert!(
-            payload
-                .pointer("/failure_metrics/dispatch_rebuild_failures")
-                .is_some()
-        );
-        assert!(
-            payload
-                .pointer("/sensor_feedback/visualization_mode")
-                .is_some()
-        );
+        assert!(payload
+            .pointer("/failure_metrics/intent_parse_failures")
+            .is_some());
+        assert!(payload
+            .pointer("/failure_metrics/dispatch_rebuild_failures")
+            .is_some());
+        assert!(payload
+            .pointer("/sensor_feedback/visualization_mode")
+            .is_some());
         assert!(payload.get("build_session").is_some());
         assert!(payload.get("last_rebuild_receipt").is_some());
 
@@ -4881,11 +4929,9 @@ mod tests {
             tool_response.pointer("/schema_version"),
             Some(&serde_json::json!(CAD_TOOL_RESPONSE_SCHEMA_VERSION))
         );
-        assert!(
-            tool_response
-                .pointer("/checkpoint/schema_version")
-                .is_some()
-        );
+        assert!(tool_response
+            .pointer("/checkpoint/schema_version")
+            .is_some());
     }
 
     #[test]

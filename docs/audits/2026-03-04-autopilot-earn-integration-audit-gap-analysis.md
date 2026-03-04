@@ -140,6 +140,11 @@ Red:
   - Extended earnings scoreboard state to track first-job latency, completion ratio, payout success ratio, and average wallet confirmation latency from runtime/history/wallet-reconciled evidence (`apps/autopilot-desktop/src/app_state.rs`, `apps/autopilot-desktop/src/pane_renderer.rs`).
   - Added deterministic loop-integrity SLO alert evaluation and alert-row upsert/recovery wiring for degraded metric thresholds (`apps/autopilot-desktop/src/input/actions.rs`).
   - Added automated coverage for SLO metric projection and SLO alert threshold behavior, and wired both checks into the earnings epic gate (`apps/autopilot-desktop/src/app_state.rs`, `apps/autopilot-desktop/src/input/actions.rs`, `scripts/lint/autopilot-earnings-epic-test-gate.sh`).
+- 2026-03-04: `#2889` (simulation path isolation) implemented.
+  - Added explicit runtime gate for simulation-only panes using `OPENAGENTS_ENABLE_SIMULATION_PANES`, defaulting simulation routes off in production (`apps/autopilot-desktop/src/pane_registry.rs`, `apps/autopilot-desktop/src/render.rs`, `apps/autopilot-desktop/src/app_state.rs`).
+  - Isolated simulation paths from default runtime pump/action routes by skipping auto-simulation loops and blocking simulation pane actions when gate is off (`apps/autopilot-desktop/src/input.rs`, `apps/autopilot-desktop/src/input/shortcuts.rs`).
+  - Restricted tool-bridge pane resolution/listing so simulation panes are not discoverable/actionable unless explicitly enabled (`apps/autopilot-desktop/src/input/tool_bridge.rs`).
+  - Added deterministic coverage for runtime simulation-gate predicates and command/bridge isolation behavior; wired checks into the earnings epic gate (`apps/autopilot-desktop/src/pane_registry.rs`, `apps/autopilot-desktop/src/render.rs`, `apps/autopilot-desktop/src/input/tool_bridge.rs`, `scripts/lint/autopilot-earnings-epic-test-gate.sh`).
 
 ## MVP Requirement Matrix (from `docs/MVP.md`)
 

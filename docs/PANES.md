@@ -2,6 +2,8 @@
 
 This document defines the active pane surfaces in `apps/autopilot-desktop` and how they are opened.
 
+Simulation-only pane flows are isolated from the default production UX route and require explicit opt-in via `OPENAGENTS_ENABLE_SIMULATION_PANES=1`.
+
 ## Pane Inventory
 
 - `Autopilot Chat`

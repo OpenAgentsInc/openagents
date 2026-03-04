@@ -80,6 +80,34 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
+pub const SIMULATION_PANES_ENV: &str = "OPENAGENTS_ENABLE_SIMULATION_PANES";
+
+pub fn simulation_panes_enabled_from_env() -> bool {
+    std::env::var(SIMULATION_PANES_ENV)
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
+pub fn is_simulation_pane(kind: PaneKind) -> bool {
+    matches!(
+        kind,
+        PaneKind::AgentNetworkSimulation
+            | PaneKind::TreasuryExchangeSimulation
+            | PaneKind::RelaySecuritySimulation
+            | PaneKind::StableSatsSimulation
+    )
+}
+
+pub fn pane_enabled_in_runtime(kind: PaneKind, simulation_panes_enabled: bool) -> bool {
+    simulation_panes_enabled || !is_simulation_pane(kind)
+}
+
 const PANE_SPECS: [PaneSpec; 46] = [
     PaneSpec {
         kind: PaneKind::Empty,
@@ -746,7 +774,8 @@ const PANE_SPECS: [PaneSpec; 46] = [
         command: Some(PaneCommandSpec {
             id: "pane.stablesats_simulation",
             label: "StableSats Wallet Simulation",
-            description: "Open Blink-style BTC/USD balance switching simulation for multiple agents",
+            description:
+                "Open Blink-style BTC/USD balance switching simulation for multiple agents",
             keybinding: None,
         }),
         hotbar: None,
@@ -786,8 +815,8 @@ const PANE_SPECS: [PaneSpec; 46] = [
 #[cfg(test)]
 mod tests {
     use super::{
-        pane_kind_for_hotbar_slot, pane_spec, pane_spec_by_command_id, pane_specs,
-        startup_pane_kinds,
+        is_simulation_pane, pane_enabled_in_runtime, pane_kind_for_hotbar_slot, pane_spec,
+        pane_spec_by_command_id, pane_specs, startup_pane_kinds,
     };
     use crate::app_state::PaneKind;
     use std::collections::BTreeSet;
@@ -901,5 +930,22 @@ mod tests {
             !spec.startup,
             "calculator pane should not auto-open during startup"
         );
+    }
+
+    #[test]
+    fn simulation_panes_respect_runtime_gate() {
+        let simulation_kinds = [
+            PaneKind::AgentNetworkSimulation,
+            PaneKind::TreasuryExchangeSimulation,
+            PaneKind::RelaySecuritySimulation,
+            PaneKind::StableSatsSimulation,
+        ];
+        for kind in simulation_kinds {
+            assert!(is_simulation_pane(kind));
+            assert!(!pane_enabled_in_runtime(kind, false));
+            assert!(pane_enabled_in_runtime(kind, true));
+        }
+        assert!(!is_simulation_pane(PaneKind::EarningsScoreboard));
+        assert!(pane_enabled_in_runtime(PaneKind::EarningsScoreboard, false));
     }
 }

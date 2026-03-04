@@ -3122,6 +3122,7 @@ pub struct RenderState {
     pub treasury_exchange_simulation: TreasuryExchangeSimulationPaneState,
     pub relay_security_simulation: RelaySecuritySimulationPaneState,
     pub stable_sats_simulation: StableSatsSimulationPaneState,
+    pub simulation_panes_enabled: bool,
     pub autopilot_goals: crate::state::autopilot_goals::AutopilotGoalsState,
     pub goal_loop_executor: crate::state::goal_loop_executor::GoalLoopExecutorState,
     pub goal_restart_recovery_ran: bool,
