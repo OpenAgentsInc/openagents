@@ -1,4 +1,6 @@
-use crate::app_state::{JobHistoryStatus, JobLifecycleStage, PaneKind, PaneLoadState, RenderState};
+use crate::app_state::{
+    EarnFailureClass, JobHistoryStatus, JobLifecycleStage, PaneKind, PaneLoadState, RenderState,
+};
 use crate::pane_system::{
     ActiveJobPaneAction, JobHistoryPaneAction, JobInboxPaneAction, PaneController,
 };
@@ -140,6 +142,8 @@ pub(super) fn run_active_job_action(state: &mut RenderState, action: ActiveJobPa
                         }
                         Err(error) => {
                             state.provider_runtime.last_error_detail = Some(error.clone());
+                            state.provider_runtime.last_authoritative_error_class =
+                                Some(EarnFailureClass::Execution);
                             state.provider_runtime.last_result = Some(format!(
                                 "active job running but feedback publish failed: {error}"
                             ));
@@ -166,6 +170,8 @@ pub(super) fn run_active_job_action(state: &mut RenderState, action: ActiveJobPa
                         }
                         Err(error) => {
                             state.provider_runtime.last_error_detail = Some(error.clone());
+                            state.provider_runtime.last_authoritative_error_class =
+                                Some(EarnFailureClass::Execution);
                             state.provider_runtime.last_result = Some(format!(
                                 "active job paid but status feedback publish failed: {error}"
                             ));
@@ -215,6 +221,8 @@ pub(super) fn run_active_job_action(state: &mut RenderState, action: ActiveJobPa
                     }
                     Err(error) => {
                         state.provider_runtime.last_error_detail = Some(error.clone());
+                        state.provider_runtime.last_authoritative_error_class =
+                            Some(EarnFailureClass::Execution);
                         state.provider_runtime.last_result = Some(format!(
                             "active job aborted; feedback publish failed: {error}"
                         ));
@@ -379,5 +387,6 @@ fn set_active_job_action_error(state: &mut RenderState, error: impl Into<String>
     state.active_job.last_error = Some(error.clone());
     state.active_job.load_state = PaneLoadState::Error;
     state.provider_runtime.last_error_detail = Some(error.clone());
+    state.provider_runtime.last_authoritative_error_class = Some(EarnFailureClass::Execution);
     state.provider_runtime.last_result = Some(format!("active job advance blocked: {error}"));
 }

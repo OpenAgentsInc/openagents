@@ -137,8 +137,22 @@ What it covers:
 
 Primary assertions:
 - reconciliation sections exist in tracker/log docs,
-- tracker contains open-state contract for `#2886`,
+- tracker reflects latest closed/open reconciliation issue states,
 - implementation log includes evidence-ledger + reconciliation-stream declarations.
+
+### 9) Failure Taxonomy + Diagnostics Classifier (`autopilot-desktop`)
+
+File: `apps/autopilot-desktop/src/input/actions.rs` test `provider_failure_taxonomy_classifies_relay_execution_payment_and_reconciliation`
+
+What it covers:
+- classifies provider failures into one canonical class with deterministic precedence,
+- verifies concise diagnostics prefixes for relay, execution, payment, and reconciliation classes.
+
+Primary assertions:
+- relay failures classify as `relay`,
+- execution failures classify as `execution`,
+- wallet failures classify as `payment`,
+- succeeded-vs-reconciled payout mismatch classifies as `reconciliation`.
 
 ## Existing Supporting Tests Used In This Pass
 
@@ -160,6 +174,7 @@ cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::relay_
 cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::starter_demand_
 cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::starter_provenance_propagates_from_inbox_to_history_receipt
 cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::network_aggregate_counters_
+cargo test -p autopilot-desktop --bin autopilot-desktop input::actions::tests::provider_failure_taxonomy_classifies_relay_execution_payment_and_reconciliation
 cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::job_history_rejects_unconfirmed_success_settlement_from_active_job
 cargo test -p autopilot-desktop --bin autopilot-desktop state::earnings_gate::tests::accepts_wallet_backed_earnings_evidence
 cargo test -p autopilot-desktop --bin autopilot-desktop state::wallet_reconciliation::tests::reconciliation_distinguishes_earn_vs_swap_and_fee

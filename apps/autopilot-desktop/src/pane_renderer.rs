@@ -595,7 +595,7 @@ fn paint_provider_status_pane(
         "Authority error class",
         provider_runtime
             .last_authoritative_error_class
-            .as_deref()
+            .map(crate::app_state::EarnFailureClass::label)
             .unwrap_or("n/a"),
     );
 

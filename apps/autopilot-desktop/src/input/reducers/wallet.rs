@@ -1,4 +1,4 @@
-use crate::app_state::RenderState;
+use crate::app_state::{EarnFailureClass, RenderState};
 
 pub(super) fn drain_spark_worker_updates(state: &mut RenderState) -> bool {
     let previous_invoice = state.spark_wallet.last_invoice.clone();
@@ -17,6 +17,14 @@ pub(super) fn drain_spark_worker_updates(state: &mut RenderState) -> bool {
         let invoice = invoice.to_string();
         state.spark_inputs.send_request.set_value(invoice.clone());
         state.pay_invoice_inputs.payment_request.set_value(invoice);
+    }
+
+    if state.spark_wallet.last_error.is_some() {
+        state.provider_runtime.last_authoritative_error_class = Some(EarnFailureClass::Payment);
+    } else if state.provider_runtime.last_authoritative_error_class
+        == Some(EarnFailureClass::Payment)
+    {
+        state.provider_runtime.last_authoritative_error_class = None;
     }
 
     super::super::refresh_earnings_scoreboard(state, std::time::Instant::now());
