@@ -126,6 +126,20 @@ Primary assertions:
 - retrying a relay keeps status in `connecting` until transport confirms connection state,
 - relay remove/add/retry flows remain deterministic and replay-safe.
 
+### 8) Epic Tracker Reconciliation Integrity Check (`scripts/lint`)
+
+File: `scripts/lint/autopilot-earn-doc-reconciliation-check.sh`
+
+What it covers:
+- validates that the epic tracker explicitly separates historical stream (`#2814`-`#2876`) from reconciliation stream (`#2877`-`#2890`),
+- validates that reconciliation issues (`#2886`-`#2890`) are present with expected state entries,
+- validates implementation log wording avoids stale “complete” claims without reconciliation context.
+
+Primary assertions:
+- reconciliation sections exist in tracker/log docs,
+- tracker contains open-state contract for `#2886`,
+- implementation log includes evidence-ledger + reconciliation-stream declarations.
+
 ## Existing Supporting Tests Used In This Pass
 
 - `app_state::tests::job_history_rejects_unconfirmed_success_settlement_from_active_job`
@@ -142,6 +156,7 @@ cargo test -p autopilot-desktop --bin autopilot-desktop mission_control_earn_loo
 cargo test -p autopilot-desktop --bin autopilot-desktop provider_nip90_lane::tests::desktop_earn_harness_relay_execute_publish_wallet_confirm_end_to_end
 cargo test -p autopilot-desktop --bin autopilot-desktop provider_nip90_lane::tests::worker_ingests_live_relay_request
 cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::relay_connections_add_retry_remove_flow
+./scripts/lint/autopilot-earn-doc-reconciliation-check.sh
 cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::starter_demand_
 cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::starter_provenance_propagates_from_inbox_to_history_receipt
 cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::network_aggregate_counters_
