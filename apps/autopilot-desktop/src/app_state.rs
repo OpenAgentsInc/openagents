@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -11,7 +11,6 @@ use wgpui::renderer::Renderer;
 use wgpui::{Bounds, EventContext, Modifiers, Point, TextSystem};
 use winit::window::Window;
 
-use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 use crate::provider_nip90_lane::{
     ProviderNip90LaneCommand, ProviderNip90LaneSnapshot, ProviderNip90LaneWorker,
 };
@@ -2450,6 +2449,15 @@ pub struct JobHistoryReceiptRow {
     pub failure_reason: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WalletReconciledPayoutRow {
+    pub job_id: String,
+    pub payout_sats: u64,
+    pub payment_pointer: String,
+    pub completed_at_epoch_seconds: u64,
+    pub wallet_received_at_epoch_seconds: u64,
+}
+
 pub struct JobHistoryState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
@@ -2598,6 +2606,55 @@ impl JobHistoryState {
         self.last_action = Some(format!("Recorded history receipt for {}", job.job_id));
     }
 
+    pub fn wallet_reconciled_payout_rows(
+        &self,
+        spark_wallet: &SparkPaneState,
+    ) -> Vec<WalletReconciledPayoutRow> {
+        let settled_receive_by_id = spark_wallet
+            .recent_payments
+            .iter()
+            .filter(|payment| {
+                payment.direction.eq_ignore_ascii_case("receive")
+                    && is_settled_wallet_payment_status(payment.status.as_str())
+            })
+            .map(|payment| (payment.id.as_str(), payment))
+            .collect::<HashMap<_, _>>();
+
+        let mut rows = Vec::<WalletReconciledPayoutRow>::new();
+        let mut seen_payment_pointers = HashSet::<String>::new();
+        for row in &self.rows {
+            let payment_pointer = row.payment_pointer.trim();
+            if !is_authoritative_payment_pointer(Some(payment_pointer)) {
+                continue;
+            }
+            let Some(payment) = settled_receive_by_id.get(payment_pointer) else {
+                continue;
+            };
+            if !seen_payment_pointers.insert(payment_pointer.to_string()) {
+                continue;
+            }
+            rows.push(WalletReconciledPayoutRow {
+                job_id: row.job_id.clone(),
+                payout_sats: payment.amount_sats,
+                payment_pointer: payment_pointer.to_string(),
+                completed_at_epoch_seconds: row.completed_at_epoch_seconds,
+                wallet_received_at_epoch_seconds: payment.timestamp,
+            });
+        }
+        rows.sort_by(|left, right| {
+            right
+                .wallet_received_at_epoch_seconds
+                .cmp(&left.wallet_received_at_epoch_seconds)
+                .then_with(|| {
+                    right
+                        .completed_at_epoch_seconds
+                        .cmp(&left.completed_at_epoch_seconds)
+                })
+                .then_with(|| left.job_id.cmp(&right.job_id))
+        });
+        rows
+    }
+
     fn filtered_rows(&self) -> Vec<&JobHistoryReceiptRow> {
         let search = self.search_job_id.trim().to_lowercase();
         self.rows
@@ -2638,6 +2695,13 @@ fn is_authoritative_payment_pointer(pointer: Option<&str>) -> bool {
         && !pointer.starts_with("pay:")
         && !pointer.starts_with("inv-")
         && !pointer.starts_with("pay-req-")
+}
+
+fn is_settled_wallet_payment_status(status: &str) -> bool {
+    matches!(
+        status.to_ascii_lowercase().as_str(),
+        "succeeded" | "success" | "settled" | "completed" | "confirmed"
+    )
 }
 
 pub struct EarningsScoreboardState {
@@ -2691,30 +2755,23 @@ impl EarningsScoreboardState {
             self.last_action = Some("Scoreboard waiting for first wallet refresh".to_string());
         } else {
             self.load_state = PaneLoadState::Ready;
-            self.last_action = Some("Scoreboard refreshed from authoritative sources".to_string());
+            self.last_action =
+                Some("Scoreboard refreshed from reconciled wallet evidence".to_string());
         }
 
-        self.lifetime_sats = spark_wallet
-            .balance
-            .as_ref()
-            .map_or(0, spark_total_balance_sats);
-
+        let reconciled_payout_rows = job_history.wallet_reconciled_payout_rows(spark_wallet);
         let threshold = job_history.reference_epoch_seconds.saturating_sub(86_400);
-        self.jobs_today = job_history
-            .rows
+        self.jobs_today = reconciled_payout_rows
             .iter()
-            .filter(|row| {
-                row.status == JobHistoryStatus::Succeeded
-                    && row.completed_at_epoch_seconds >= threshold
-            })
+            .filter(|row| row.wallet_received_at_epoch_seconds >= threshold)
             .count() as u64;
-        self.sats_today = job_history
-            .rows
+        self.sats_today = reconciled_payout_rows
             .iter()
-            .filter(|row| {
-                row.status == JobHistoryStatus::Succeeded
-                    && row.completed_at_epoch_seconds >= threshold
-            })
+            .filter(|row| row.wallet_received_at_epoch_seconds >= threshold)
+            .map(|row| row.payout_sats)
+            .sum();
+        self.lifetime_sats = reconciled_payout_rows
+            .iter()
             .map(|row| row.payout_sats)
             .sum();
 
@@ -4546,27 +4603,65 @@ mod tests {
     fn earnings_scoreboard_refreshes_from_wallet_and_history() {
         let mut score = EarningsScoreboardState::default();
         let provider = ProviderRuntimeState::default();
-        let history = seed_job_history(vec![fixture_history_row(
+        let mut row = fixture_history_row(
             "job-earned-001",
             JobHistoryStatus::Succeeded,
             1_761_919_970,
             2100,
-        )]);
+        );
+        row.payment_pointer = "wallet-payment-001".to_string();
+        let history = seed_job_history(vec![row]);
         let mut spark = SparkPaneState::default();
         spark.balance = Some(openagents_spark::Balance {
             spark_sats: 1000,
             lightning_sats: 2000,
             onchain_sats: 3000,
         });
+        spark
+            .recent_payments
+            .push(openagents_spark::PaymentSummary {
+                id: "wallet-payment-001".to_string(),
+                direction: "receive".to_string(),
+                status: "succeeded".to_string(),
+                amount_sats: 2100,
+                timestamp: history.reference_epoch_seconds,
+            });
 
         let now = std::time::Instant::now();
         score.refresh_from_sources(now, &provider, &history, &spark);
 
         assert_eq!(score.load_state, super::PaneLoadState::Ready);
-        assert_eq!(score.lifetime_sats, 6000);
-        assert!(score.jobs_today >= 1);
-        assert!(score.sats_today >= 1);
+        assert_eq!(score.lifetime_sats, 2100);
+        assert_eq!(score.jobs_today, 1);
+        assert_eq!(score.sats_today, 2100);
         assert!(!score.is_stale(now));
+    }
+
+    #[test]
+    fn earnings_scoreboard_ignores_unreconciled_history_rows() {
+        let mut score = EarningsScoreboardState::default();
+        let provider = ProviderRuntimeState::default();
+        let mut row = fixture_history_row(
+            "job-unreconciled-001",
+            JobHistoryStatus::Succeeded,
+            1_761_919_970,
+            4200,
+        );
+        row.payment_pointer = "wallet-payment-missing".to_string();
+        let history = seed_job_history(vec![row]);
+        let mut spark = SparkPaneState::default();
+        spark.balance = Some(openagents_spark::Balance {
+            spark_sats: 10_000,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+
+        score.refresh_from_sources(std::time::Instant::now(), &provider, &history, &spark);
+
+        assert_eq!(score.load_state, super::PaneLoadState::Ready);
+        assert_eq!(score.lifetime_sats, 0);
+        assert_eq!(score.jobs_today, 0);
+        assert_eq!(score.sats_today, 0);
     }
 
     #[test]

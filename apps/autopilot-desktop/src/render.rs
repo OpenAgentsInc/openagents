@@ -590,7 +590,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
 
             y += 20.0;
             paint.scene.draw_text(paint.text.layout(
-                "Recent Jobs",
+                "Recent Payouts",
                 Point::new(left, y),
                 11.0,
                 theme::text::MUTED,
@@ -613,13 +613,9 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
                 y += 14.0;
             }
 
-            let mut recent_rows = state.job_history.rows.iter().collect::<Vec<_>>();
-            recent_rows.sort_by(|left_row, right_row| {
-                right_row
-                    .completed_at_epoch_seconds
-                    .cmp(&left_row.completed_at_epoch_seconds)
-                    .then_with(|| right_row.job_id.cmp(&left_row.job_id))
-            });
+            let recent_rows = state
+                .job_history
+                .wallet_reconciled_payout_rows(&state.spark_wallet);
 
             if recent_rows.is_empty() && state.active_job.job.is_none() {
                 let waiting = if state.provider_runtime.mode == ProviderMode::Online {
@@ -636,13 +632,8 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
                 y += 14.0;
             } else {
                 for row in recent_rows.into_iter().take(2) {
-                    let payout = if row.payout_sats == 0 {
-                        "n/a".to_string()
-                    } else {
-                        format!("{} sats", row.payout_sats)
-                    };
                     paint.scene.draw_text(paint.text.layout_mono(
-                        &format!("{} | {} | {}", row.job_id, row.status.label(), payout),
+                        &format!("{} | settled | {} sats", row.job_id, row.payout_sats),
                         Point::new(left, y),
                         10.0,
                         theme::text::PRIMARY,
