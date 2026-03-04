@@ -98,6 +98,11 @@ Red:
   - Added wallet-reconciled payout projection (`wallet_reconciled_payout_rows`) and used it for `sats_today`, `lifetime_sats`, and `jobs_today` scoreboard counters (`apps/autopilot-desktop/src/app_state.rs`).
   - Updated mission-control “Recent Payouts” rows to render wallet-reconciled payout entries only (`apps/autopilot-desktop/src/render.rs`).
   - Added automated coverage for reconciled vs unreconciled scoreboard behavior (`app_state::tests::earnings_scoreboard_refreshes_from_wallet_and_history`, `app_state::tests::earnings_scoreboard_ignores_unreconciled_history_rows`).
+- 2026-03-04: `#2881` (desktop E2E harness: relay -> execute -> publish -> wallet confirm) implemented.
+  - Added full-loop desktop integration harness test covering relay ingress, local job lifecycle progression, result/feedback publishing, and wallet-confirmed scoreboard settlement in one path (`apps/autopilot-desktop/src/provider_nip90_lane.rs`: `desktop_earn_harness_relay_execute_publish_wallet_confirm_end_to_end`).
+  - Added relay mock harness helper that supports both live request delivery and publish-event capture/ack in a single websocket session (`apps/autopilot-desktop/src/provider_nip90_lane.rs`).
+  - Wired the new harness into the Earn regression gate so this loop is continuously enforced (`scripts/lint/autopilot-earnings-epic-test-gate.sh`).
+  - Updated harness documentation to reflect the new end-to-end desktop flow coverage (`docs/AUTOPILOT_EARN_MVP_TEST_HARNESS.md`).
 
 ## MVP Requirement Matrix (from `docs/MVP.md`)
 

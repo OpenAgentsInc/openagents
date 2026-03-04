@@ -672,9 +672,15 @@ mod tests {
         ProviderNip90LaneCommand, ProviderNip90LaneUpdate, ProviderNip90LaneWorker,
         ProviderNip90PublishRole, event_to_inbox_request,
     };
+    use crate::app_state::{
+        ActiveJobState, EarningsScoreboardState, JobHistoryState, JobHistoryStatus, JobInboxState,
+        JobLifecycleStage, ProviderMode, ProviderRuntimeState,
+    };
     use futures_util::{SinkExt, StreamExt};
     use nostr::Event;
+    use openagents_spark::{Balance, PaymentSummary};
     use serde_json::Value;
+    use std::collections::HashSet;
     use std::time::{Duration, Instant};
     use tokio::net::TcpListener;
     use tokio::task::JoinHandle;
@@ -875,6 +881,216 @@ mod tests {
         relay_task.abort();
     }
 
+    #[test]
+    fn desktop_earn_harness_relay_execute_publish_wallet_confirm_end_to_end() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("build tokio runtime for relay harness");
+        let (relay_url, relay_task, published_rx) =
+            runtime.block_on(spawn_mock_relay_with_request_and_publish_capture());
+
+        let mut worker = ProviderNip90LaneWorker::spawn(vec![relay_url]);
+        worker
+            .enqueue(ProviderNip90LaneCommand::SetOnline { online: true })
+            .expect("queue online command");
+
+        let ingest_deadline = Instant::now() + Duration::from_secs(5);
+        let mut online = false;
+        let mut ingressed_request = None;
+        while Instant::now() < ingest_deadline {
+            for update in worker.drain_updates() {
+                match update {
+                    ProviderNip90LaneUpdate::Snapshot(snapshot)
+                        if snapshot.mode == super::ProviderNip90LaneMode::Online
+                            && snapshot.connected_relays > 0 =>
+                    {
+                        online = true;
+                    }
+                    ProviderNip90LaneUpdate::IngressedRequest(request)
+                        if request.request_id == "request-live-1" =>
+                    {
+                        ingressed_request = Some(request);
+                    }
+                    _ => {}
+                }
+            }
+            if online && ingressed_request.is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(online, "relay lane should be online");
+        let request = ingressed_request.expect("relay ingress should provide request");
+
+        let mut inbox = JobInboxState::default();
+        inbox.upsert_network_request(request.clone());
+        assert!(
+            inbox.select_by_index(0),
+            "ingressed row should be selectable"
+        );
+        inbox
+            .decide_selected(true, "relay request accepted")
+            .expect("accept ingressed request");
+        let accepted = inbox
+            .selected_request()
+            .expect("accepted request remains selected")
+            .clone();
+
+        let mut active = ActiveJobState::default();
+        active.start_from_request(&accepted);
+        assert_eq!(
+            active
+                .advance_stage()
+                .expect("accepted->running transition"),
+            JobLifecycleStage::Running
+        );
+
+        let feedback_event = Event {
+            id: "feedback-processing-live-1".to_string(),
+            pubkey: "44".repeat(32),
+            created_at: 1_760_000_125,
+            kind: 7000,
+            tags: vec![
+                vec!["status".to_string(), "processing".to_string()],
+                vec!["e".to_string(), request.request_id.clone()],
+                vec!["p".to_string(), request.requester.clone()],
+            ],
+            content: "processing".to_string(),
+            sig: "55".repeat(64),
+        };
+        worker
+            .enqueue(ProviderNip90LaneCommand::PublishEvent {
+                request_id: request.request_id.clone(),
+                role: ProviderNip90PublishRole::Feedback,
+                event: Box::new(feedback_event.clone()),
+            })
+            .expect("queue processing feedback publish");
+
+        let result_event = Event {
+            id: "result-live-1".to_string(),
+            pubkey: "66".repeat(32),
+            created_at: 1_760_000_126,
+            kind: request.request_kind.saturating_add(1000),
+            tags: vec![
+                vec!["status".to_string(), "success".to_string()],
+                vec!["e".to_string(), request.request_id.clone()],
+                vec!["p".to_string(), request.requester.clone()],
+                vec![
+                    "amount".to_string(),
+                    (request.price_sats.saturating_mul(1000)).to_string(),
+                ],
+            ],
+            content: "{\"result\":\"ok\"}".to_string(),
+            sig: "77".repeat(64),
+        };
+        worker
+            .enqueue(ProviderNip90LaneCommand::PublishEvent {
+                request_id: request.request_id.clone(),
+                role: ProviderNip90PublishRole::Result,
+                event: Box::new(result_event.clone()),
+            })
+            .expect("queue result publish");
+
+        let publish_deadline = Instant::now() + Duration::from_secs(5);
+        let mut feedback_outcome_seen = false;
+        let mut result_outcome_seen = false;
+        while Instant::now() < publish_deadline {
+            for update in worker.drain_updates() {
+                if let ProviderNip90LaneUpdate::PublishOutcome(outcome) = update
+                    && outcome.request_id == request.request_id
+                {
+                    assert!(
+                        outcome.accepted_relays >= 1,
+                        "expected at least one accepted relay, got {}",
+                        outcome.accepted_relays
+                    );
+                    match outcome.role {
+                        ProviderNip90PublishRole::Feedback => feedback_outcome_seen = true,
+                        ProviderNip90PublishRole::Result => result_outcome_seen = true,
+                    }
+                }
+            }
+            if feedback_outcome_seen && result_outcome_seen {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            feedback_outcome_seen && result_outcome_seen,
+            "expected publish outcomes for feedback and result"
+        );
+
+        let first_published = published_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("relay should receive first published event");
+        let second_published = published_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("relay should receive second published event");
+        let published_ids = HashSet::from([first_published.id, second_published.id]);
+        assert!(published_ids.contains("feedback-processing-live-1"));
+        assert!(published_ids.contains("result-live-1"));
+
+        active
+            .job
+            .as_mut()
+            .expect("active job present")
+            .sa_tick_result_event_id = Some(result_event.id.clone());
+        assert_eq!(
+            active
+                .advance_stage()
+                .expect("running->delivered transition"),
+            JobLifecycleStage::Delivered
+        );
+        active.job.as_mut().expect("active job present").payment_id =
+            Some("wallet-payment-e2e-001".to_string());
+        assert_eq!(
+            active.advance_stage().expect("delivered->paid transition"),
+            JobLifecycleStage::Paid
+        );
+
+        let terminal_job = active.job.clone().expect("terminal active job");
+        let mut history = JobHistoryState::default();
+        history.record_from_active_job(&terminal_job, JobHistoryStatus::Succeeded);
+        assert_eq!(
+            history.rows.len(),
+            1,
+            "history should capture settled receipt"
+        );
+        assert_eq!(
+            history.rows[0].payment_pointer, "wallet-payment-e2e-001",
+            "history should retain authoritative wallet pointer"
+        );
+
+        let mut wallet = crate::spark_wallet::SparkPaneState::default();
+        wallet.balance = Some(Balance {
+            spark_sats: 500,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+        wallet.recent_payments.push(PaymentSummary {
+            id: "wallet-payment-e2e-001".to_string(),
+            direction: "receive".to_string(),
+            status: "succeeded".to_string(),
+            amount_sats: request.price_sats,
+            timestamp: history.reference_epoch_seconds,
+        });
+
+        let mut provider = ProviderRuntimeState::default();
+        provider.mode = ProviderMode::Online;
+        provider.online_since = Some(Instant::now());
+
+        let mut scoreboard = EarningsScoreboardState::default();
+        scoreboard.refresh_from_sources(Instant::now(), &provider, &history, &wallet);
+        assert_eq!(scoreboard.jobs_today, 1);
+        assert_eq!(scoreboard.sats_today, request.price_sats);
+        assert_eq!(scoreboard.lifetime_sats, request.price_sats);
+
+        let _ = worker.enqueue(ProviderNip90LaneCommand::SetOnline { online: false });
+        relay_task.abort();
+    }
+
     async fn spawn_mock_relay_with_request() -> (String, JoinHandle<()>) {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
@@ -967,6 +1183,78 @@ mod tests {
                         let subscription_id = frame[1].as_str().expect("REQ subscription id");
                         let payload = serde_json::json!(["EOSE", subscription_id]);
                         ws.send(Message::Text(payload.to_string().into()))
+                            .await
+                            .expect("send eose");
+                    }
+                    "EVENT" => {
+                        let event: Event = serde_json::from_value(frame[1].clone())
+                            .expect("parse published event");
+                        let _ = published_tx.send(event.clone());
+                        let ok = serde_json::json!(["OK", event.id, true, "accepted"]);
+                        ws.send(Message::Text(ok.to_string().into()))
+                            .await
+                            .expect("send ok");
+                    }
+                    _ => {}
+                }
+            }
+        });
+
+        (format!("ws://{}", addr), handle, published_rx)
+    }
+
+    async fn spawn_mock_relay_with_request_and_publish_capture()
+    -> (String, JoinHandle<()>, std::sync::mpsc::Receiver<Event>) {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind mock relay listener");
+        let addr = listener.local_addr().expect("resolve listener addr");
+        let (published_tx, published_rx) = std::sync::mpsc::channel::<Event>();
+
+        let handle = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept websocket client");
+            let mut ws = accept_async(stream)
+                .await
+                .expect("upgrade websocket connection");
+
+            loop {
+                let Some(message) = ws.next().await else {
+                    break;
+                };
+                let Ok(message) = message else {
+                    break;
+                };
+                let Message::Text(text) = message else {
+                    continue;
+                };
+                let value: Value = serde_json::from_str(text.as_ref()).expect("parse relay frame");
+                let Some(frame) = value.as_array() else {
+                    continue;
+                };
+                let Some(kind) = frame.first().and_then(Value::as_str) else {
+                    continue;
+                };
+                match kind {
+                    "REQ" => {
+                        let subscription_id = frame[1].as_str().expect("REQ subscription id");
+                        let request = Event {
+                            id: "request-live-1".to_string(),
+                            pubkey: "npub1remote-buyer".to_string(),
+                            created_at: 1_760_000_110,
+                            kind: 5050,
+                            tags: vec![
+                                vec!["bid".to_string(), "50000".to_string()],
+                                vec!["param".to_string(), "ttl".to_string(), "45".to_string()],
+                            ],
+                            content: "Generate a short summary".to_string(),
+                            sig: "33".repeat(64),
+                        };
+                        let event_payload = serde_json::json!(["EVENT", subscription_id, request]);
+                        ws.send(Message::Text(event_payload.to_string().into()))
+                            .await
+                            .expect("send request event");
+                        let eose_payload = serde_json::json!(["EOSE", subscription_id]);
+                        ws.send(Message::Text(eose_payload.to_string().into()))
                             .await
                             .expect("send eose");
                     }
