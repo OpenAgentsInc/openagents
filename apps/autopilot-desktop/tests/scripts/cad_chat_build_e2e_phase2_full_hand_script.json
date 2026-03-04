@@ -1,0 +1,125 @@
+{
+  "script_id": "cad-chat-build-e2e-phase2-full-hand",
+  "seed": 0,
+  "thread_id": "thread.cad-chat-e2e-phase2-full-hand",
+  "timing": {
+    "max_total_duration_ms": 20000
+  },
+  "steps": [
+    {
+      "name": "tool-call-create-full-hand",
+      "kind": "cad_tool_call_intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-full-hand.1",
+      "payload": "{\"intent\":\"CreateParallelJawGripperSpec\",\"jaw_open_mm\":46.0,\"finger_length_mm\":78.0,\"finger_thickness_mm\":7.8,\"base_width_mm\":92.0,\"base_depth_mm\":64.0,\"base_thickness_mm\":8.4,\"servo_mount_hole_diameter_mm\":2.9,\"print_fit_mm\":0.15,\"print_clearance_mm\":0.35,\"underactuated_mode\":true,\"compliant_joint_count\":4,\"flexure_thickness_mm\":1.4,\"single_servo_drive\":true,\"finger_count\":5,\"opposable_thumb\":true,\"thumb_base_angle_deg\":31.0,\"tendon_channel_diameter_mm\":2.4,\"tendon_route_clearance_mm\":1.4,\"tendon_bend_radius_mm\":3.3,\"servo_integration_enabled\":true,\"compact_servo_layout\":false,\"servo_envelope_length_mm\":26.0,\"servo_envelope_width_mm\":13.5,\"servo_envelope_height_mm\":16.0,\"servo_shaft_axis_offset_mm\":4.4,\"servo_mount_pattern_pitch_mm\":15.5,\"servo_bracket_thickness_mm\":2.8,\"servo_housing_wall_mm\":2.0,\"servo_standoff_diameter_mm\":4.6,\"pose_preset\":\"pinch\"}",
+      "expect": {
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "intent": "CreateParallelJawGripperSpec",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
+        "progress": {
+          "status": "done"
+        }
+      }
+    },
+    {
+      "name": "tool-call-set-material-baseline",
+      "kind": "cad_tool_call_intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-full-hand.2",
+      "payload": "{\"intent\":\"SetMaterial\",\"material_id\":\"steel-1018\"}",
+      "expect": {
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "intent": "SetMaterial",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
+        "progress": {
+          "status": "done"
+        }
+      }
+    },
+    {
+      "name": "cycle-to-precision",
+      "kind": "cycle_variant",
+      "count": 1,
+      "expect": {
+        "status": "cycled",
+        "active_variant_id": "variant.precision"
+      }
+    },
+    {
+      "name": "tool-call-set-material-precision",
+      "kind": "cad_tool_call_intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-full-hand.3",
+      "payload": "{\"intent\":\"SetMaterial\",\"material_id\":\"ti-6al-4v\"}",
+      "expect": {
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "intent": "SetMaterial",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
+        "progress": {
+          "status": "done"
+        }
+      }
+    },
+    {
+      "name": "capture-single-layout-truth",
+      "kind": "capture_snapshot_truth",
+      "expect": {
+        "status": "captured",
+        "design_profile": "humanoid_hand_v1",
+        "viewport_layout": "single",
+        "active_variant_id": "variant.precision",
+        "visible_variant_ids": [
+          "variant.precision"
+        ],
+        "all_variants_visible": false,
+        "variant_materials": {
+          "variant.baseline": "steel-1018",
+          "variant.precision": "ti-6al-4v"
+        }
+      }
+    },
+    {
+      "name": "toggle-to-quad-layout",
+      "kind": "toggle_viewport_layout",
+      "expect": {
+        "status": "toggled",
+        "viewport_layout": "quad",
+        "all_variants_visible": true,
+        "visible_variant_ids": [
+          "variant.baseline",
+          "variant.precision",
+          "variant.power",
+          "variant.wide-spread"
+        ]
+      }
+    },
+    {
+      "name": "capture-quad-layout-truth",
+      "kind": "capture_snapshot_truth",
+      "expect": {
+        "status": "captured",
+        "design_profile": "humanoid_hand_v1",
+        "viewport_layout": "quad",
+        "all_variants_visible": true,
+        "visible_variant_ids": [
+          "variant.baseline",
+          "variant.precision",
+          "variant.power",
+          "variant.wide-spread"
+        ],
+        "variant_materials": {
+          "variant.baseline": "steel-1018",
+          "variant.precision": "ti-6al-4v"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "final_state_revision": 3,
+    "active_variant_id": "variant.precision",
+    "last_error": null
+  }
+}

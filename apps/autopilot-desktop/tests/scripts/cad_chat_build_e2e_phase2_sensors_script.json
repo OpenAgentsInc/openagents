@@ -1,0 +1,173 @@
+{
+  "script_id": "cad-chat-build-e2e-phase2-sensors",
+  "seed": 0,
+  "thread_id": "thread.cad-chat-e2e-phase2-sensors",
+  "timing": {
+    "max_total_duration_ms": 20000
+  },
+  "steps": [
+    {
+      "name": "tool-call-create-sensors",
+      "kind": "cad_tool_call_intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-sensors.1",
+      "payload": "{\"intent\":\"CreateParallelJawGripperSpec\",\"jaw_open_mm\":44.0,\"finger_length_mm\":74.0,\"finger_thickness_mm\":7.8,\"base_width_mm\":86.0,\"base_depth_mm\":60.0,\"base_thickness_mm\":8.2,\"servo_mount_hole_diameter_mm\":2.9,\"print_fit_mm\":0.15,\"print_clearance_mm\":0.35,\"underactuated_mode\":true,\"compliant_joint_count\":3,\"flexure_thickness_mm\":1.3,\"single_servo_drive\":true,\"finger_count\":3,\"opposable_thumb\":true,\"thumb_base_angle_deg\":33.0,\"tendon_channel_diameter_mm\":2.3,\"tendon_route_clearance_mm\":1.4,\"tendon_bend_radius_mm\":3.1,\"servo_integration_enabled\":true,\"compact_servo_layout\":true,\"servo_envelope_length_mm\":24.0,\"servo_envelope_width_mm\":13.0,\"servo_envelope_height_mm\":15.0,\"servo_shaft_axis_offset_mm\":4.2,\"servo_mount_pattern_pitch_mm\":15.0,\"servo_bracket_thickness_mm\":2.6,\"servo_housing_wall_mm\":1.9,\"servo_standoff_diameter_mm\":4.4,\"pose_preset\":\"tripod\"}",
+      "expect": {
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "intent": "CreateParallelJawGripperSpec",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
+        "progress": {
+          "status": "done"
+        }
+      }
+    },
+    {
+      "name": "tool-call-set-material-baseline",
+      "kind": "cad_tool_call_intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-sensors.2",
+      "payload": "{\"intent\":\"SetMaterial\",\"material_id\":\"steel-1018\"}",
+      "expect": {
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "intent": "SetMaterial",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
+        "progress": {
+          "status": "done"
+        }
+      }
+    },
+    {
+      "name": "tool-call-adjust-force-sensor-pad",
+      "kind": "cad_tool_call_intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-sensors.3",
+      "payload": "{\"intent\":\"AdjustParameter\",\"parameter\":\"force_sensor_pad_diameter_mm\",\"operation\":\"set\",\"value\":6.8}",
+      "expect": {
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "intent": "AdjustParameter",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
+        "progress": {
+          "status": "done"
+        }
+      }
+    },
+    {
+      "name": "tool-call-adjust-proximity-port",
+      "kind": "cad_tool_call_intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-sensors.4",
+      "payload": "{\"intent\":\"AdjustParameter\",\"parameter\":\"proximity_sensor_port_diameter_mm\",\"operation\":\"set\",\"value\":4.4}",
+      "expect": {
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "intent": "AdjustParameter",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
+        "progress": {
+          "status": "done"
+        }
+      }
+    },
+    {
+      "name": "tool-call-adjust-control-board",
+      "kind": "cad_tool_call_intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-sensors.5",
+      "payload": "{\"intent\":\"AdjustParameter\",\"parameter\":\"control_board_mount_width_mm\",\"operation\":\"set\",\"value\":36.0}",
+      "expect": {
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "intent": "AdjustParameter",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
+        "progress": {
+          "status": "done"
+        }
+      }
+    },
+    {
+      "name": "cycle-to-pinch",
+      "kind": "cycle_variant",
+      "count": 1,
+      "expect": {
+        "status": "cycled",
+        "active_variant_id": "variant.pinch"
+      }
+    },
+    {
+      "name": "tool-call-set-material-pinch",
+      "kind": "cad_tool_call_intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-sensors.6",
+      "payload": "{\"intent\":\"SetMaterial\",\"material_id\":\"al-5052-h32\"}",
+      "expect": {
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "intent": "SetMaterial",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
+        "progress": {
+          "status": "done"
+        }
+      }
+    },
+    {
+      "name": "capture-single-layout-truth",
+      "kind": "capture_snapshot_truth",
+      "expect": {
+        "status": "captured",
+        "design_profile": "three_finger_thumb",
+        "viewport_layout": "single",
+        "active_variant_id": "variant.pinch",
+        "visible_variant_ids": [
+          "variant.pinch"
+        ],
+        "all_variants_visible": false,
+        "variant_materials": {
+          "variant.baseline": "steel-1018",
+          "variant.pinch": "al-5052-h32"
+        }
+      }
+    },
+    {
+      "name": "toggle-to-quad-layout",
+      "kind": "toggle_viewport_layout",
+      "expect": {
+        "status": "toggled",
+        "viewport_layout": "quad",
+        "all_variants_visible": true,
+        "visible_variant_ids": [
+          "variant.baseline",
+          "variant.pinch",
+          "variant.tripod",
+          "variant.wide-thumb"
+        ]
+      }
+    },
+    {
+      "name": "capture-quad-layout-truth",
+      "kind": "capture_snapshot_truth",
+      "expect": {
+        "status": "captured",
+        "design_profile": "three_finger_thumb",
+        "viewport_layout": "quad",
+        "all_variants_visible": true,
+        "visible_variant_ids": [
+          "variant.baseline",
+          "variant.pinch",
+          "variant.tripod",
+          "variant.wide-thumb"
+        ],
+        "variant_materials": {
+          "variant.baseline": "steel-1018",
+          "variant.pinch": "al-5052-h32"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "final_state_revision": 6,
+    "active_variant_id": "variant.pinch",
+    "last_error": null
+  }
+}

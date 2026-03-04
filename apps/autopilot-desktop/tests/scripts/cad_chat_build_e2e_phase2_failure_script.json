@@ -1,0 +1,120 @@
+{
+  "script_id": "cad-chat-build-e2e-phase2-failure",
+  "seed": 0,
+  "thread_id": "thread.cad-chat-e2e-phase2-failure",
+  "timing": {
+    "max_total_duration_ms": 20000
+  },
+  "steps": [
+    {
+      "name": "tool-call-invalid-underactuated",
+      "kind": "cad_tool_call_intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-failure.1",
+      "payload": "{\"intent\":\"CreateParallelJawGripperSpec\",\"jaw_open_mm\":36.0,\"finger_length_mm\":66.0,\"finger_thickness_mm\":7.5,\"base_width_mm\":76.0,\"base_depth_mm\":50.0,\"base_thickness_mm\":8.0,\"servo_mount_hole_diameter_mm\":2.9,\"print_fit_mm\":0.15,\"print_clearance_mm\":0.35,\"underactuated_mode\":true,\"compliant_joint_count\":3,\"flexure_thickness_mm\":1.3,\"single_servo_drive\":false}",
+      "expect": {
+        "status": "rejected_parse"
+      }
+    },
+    {
+      "name": "tool-call-create-warning-hand",
+      "kind": "cad_tool_call_intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-failure.2",
+      "payload": "{\"intent\":\"CreateParallelJawGripperSpec\",\"jaw_open_mm\":40.0,\"finger_length_mm\":70.0,\"finger_thickness_mm\":7.5,\"base_width_mm\":82.0,\"base_depth_mm\":56.0,\"base_thickness_mm\":8.0,\"servo_mount_hole_diameter_mm\":2.9,\"print_fit_mm\":0.15,\"print_clearance_mm\":0.35,\"underactuated_mode\":true,\"compliant_joint_count\":3,\"flexure_thickness_mm\":1.3,\"single_servo_drive\":true,\"finger_count\":3,\"opposable_thumb\":true,\"thumb_base_angle_deg\":34.0,\"tendon_channel_diameter_mm\":2.4,\"tendon_route_clearance_mm\":1.2,\"tendon_bend_radius_mm\":3.2,\"servo_integration_enabled\":true,\"compact_servo_layout\":true,\"servo_envelope_length_mm\":22.0,\"servo_envelope_width_mm\":12.0,\"servo_envelope_height_mm\":14.0,\"servo_shaft_axis_offset_mm\":4.0,\"servo_mount_pattern_pitch_mm\":14.0,\"servo_bracket_thickness_mm\":2.4,\"servo_housing_wall_mm\":1.8,\"servo_standoff_diameter_mm\":4.2,\"pose_preset\":\"tripod\"}",
+      "expect": {
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "intent": "CreateParallelJawGripperSpec",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
+        "progress": {
+          "status": "done"
+        }
+      }
+    },
+    {
+      "name": "tool-call-adjust-wiring-channel",
+      "kind": "cad_tool_call_intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-failure.3",
+      "payload": "{\"intent\":\"AdjustParameter\",\"parameter\":\"wiring_channel_diameter_mm\",\"operation\":\"set\",\"value\":3.4}",
+      "expect": {
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "intent": "AdjustParameter",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
+        "progress": {
+          "status": "done"
+        }
+      }
+    },
+    {
+      "name": "tool-call-adjust-wiring-bend",
+      "kind": "cad_tool_call_intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-failure.4",
+      "payload": "{\"intent\":\"AdjustParameter\",\"parameter\":\"wiring_bend_radius_mm\",\"operation\":\"set\",\"value\":1.2}",
+      "expect": {
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "intent": "AdjustParameter",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
+        "progress": {
+          "status": "done"
+        }
+      }
+    },
+    {
+      "name": "tool-call-adjust-wiring-clearance",
+      "kind": "cad_tool_call_intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-failure.5",
+      "payload": "{\"intent\":\"AdjustParameter\",\"parameter\":\"wiring_clearance_mm\",\"operation\":\"set\",\"value\":3.0}",
+      "expect": {
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "intent": "AdjustParameter",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
+        "progress": {
+          "status": "done"
+        }
+      }
+    },
+    {
+      "name": "dimension-edit-jaw-open",
+      "kind": "dimension_edit",
+      "index": 0,
+      "value": "12.0",
+      "expect": {
+        "status": "edited"
+      }
+    },
+    {
+      "name": "assert-warning-escalation",
+      "kind": "assert_warning_escalation",
+      "min_warning_count": 2,
+      "min_critical_count": 1,
+      "expect": {
+        "status": "asserted"
+      }
+    },
+    {
+      "name": "capture-single-layout-truth",
+      "kind": "capture_snapshot_truth",
+      "expect": {
+        "status": "captured",
+        "design_profile": "three_finger_thumb",
+        "viewport_layout": "single",
+        "active_variant_id": "variant.baseline",
+        "visible_variant_ids": [
+          "variant.baseline"
+        ],
+        "all_variants_visible": false
+      }
+    }
+  ],
+  "expect": {
+    "final_state_revision": 5,
+    "active_variant_id": "variant.baseline",
+    "last_error": null
+  }
+}

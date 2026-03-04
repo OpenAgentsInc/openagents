@@ -1,0 +1,494 @@
+{
+  "final": {
+    "active_variant_id": "variant.precision",
+    "analysis": {
+      "document_revision": 3,
+      "estimated_cost_usd": 374.70765143237577,
+      "mass_kg": 1.032380872130703,
+      "material_id": "ti-6al-4v",
+      "max_deflection_mm": 0.00023325427980055622,
+      "variant_id": "variant.precision",
+      "volume_mm3": 233043.0862597524
+    },
+    "final_state_revision": 3,
+    "last_error": null,
+    "receipts": [
+      {
+        "cache_evictions": 0,
+        "cache_hits": 0,
+        "cache_misses": 50,
+        "document_revision": 1,
+        "duration_ms": 202,
+        "edge_count": 2382,
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-full-hand:1:1",
+        "feature_count": 50,
+        "mesh_hash": "e5146b2e7b5773e8",
+        "rebuild_hash": "6239d49101c741cf",
+        "triangle_count": 3180,
+        "variant_id": "variant.baseline",
+        "vertex_count": 2218
+      },
+      {
+        "cache_evictions": 0,
+        "cache_hits": 0,
+        "cache_misses": 50,
+        "document_revision": 2,
+        "duration_ms": 202,
+        "edge_count": 2382,
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-full-hand:2:2",
+        "feature_count": 50,
+        "mesh_hash": "ed3b0b7bab49ed21",
+        "rebuild_hash": "6239d49101c741cf",
+        "triangle_count": 3180,
+        "variant_id": "variant.baseline",
+        "vertex_count": 2218
+      },
+      {
+        "cache_evictions": 22,
+        "cache_hits": 0,
+        "cache_misses": 50,
+        "document_revision": 3,
+        "duration_ms": 224,
+        "edge_count": 2382,
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-full-hand:3:3",
+        "feature_count": 50,
+        "mesh_hash": "1ffa03f7eddf13a9",
+        "rebuild_hash": "8f85d03b0ee634d0",
+        "triangle_count": 3180,
+        "variant_id": "variant.precision",
+        "vertex_count": 2218
+      },
+      {
+        "cache_evictions": 0,
+        "cache_hits": 50,
+        "cache_misses": 0,
+        "document_revision": 3,
+        "duration_ms": 177,
+        "edge_count": 2382,
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-full-hand:3:4",
+        "feature_count": 50,
+        "mesh_hash": "1ffa03f7eddf13a9",
+        "rebuild_hash": "8f85d03b0ee634d0",
+        "triangle_count": 3180,
+        "variant_id": "variant.precision",
+        "vertex_count": 2218
+      }
+    ],
+    "timing": {
+      "total_duration_ms": 0
+    },
+    "warnings": {
+      "codes": [
+        "CAD-WARN-TENDON-ROUTING-COLLISION",
+        "CAD-WARN-HAND-SELF-INTERSECTION"
+      ],
+      "count": 2,
+      "critical_count": 2
+    }
+  },
+  "script_id": "cad-chat-build-e2e-phase2-full-hand",
+  "seed": 0,
+  "steps": [
+    {
+      "duration_ms": 0,
+      "index": 0,
+      "kind": "cad_tool_call_intent",
+      "name": "tool-call-create-full-hand",
+      "result": {
+        "has_mesh_payload": true,
+        "intent": "CreateParallelJawGripperSpec",
+        "pending_rebuild_request_id": null,
+        "progress": {
+          "rows": [
+            {
+              "label": "phase",
+              "tone": "success",
+              "value": "done"
+            },
+            {
+              "label": "tool",
+              "tone": "info",
+              "value": "ok:OA-CAD-INTENT-OK"
+            },
+            {
+              "label": "rebuild",
+              "tone": "info",
+              "value": "trigger=ai-intent:createparalleljawgripperspec result=ok hash=6239d49101c741cf mesh=e5146b2e7b5773e8 duration_ms=202"
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.rebuild.result trigger=ai-intent:createparalleljawgripperspec result=ok hash=6239d49..."
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=1"
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 1"
+            }
+          ],
+          "status": "done",
+          "turn_id": "turn.cad-chat-e2e-phase2-full-hand.1"
+        },
+        "rebuild_status": "committed",
+        "rebuild_trigger": "ai-intent:createparalleljawgripperspec",
+        "state_revision": 1,
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "turn_id": "turn.cad-chat-e2e-phase2-full-hand.1"
+      }
+    },
+    {
+      "duration_ms": 0,
+      "index": 1,
+      "kind": "cad_tool_call_intent",
+      "name": "tool-call-set-material-baseline",
+      "result": {
+        "has_mesh_payload": true,
+        "intent": "SetMaterial",
+        "pending_rebuild_request_id": null,
+        "progress": {
+          "rows": [
+            {
+              "label": "phase",
+              "tone": "success",
+              "value": "done"
+            },
+            {
+              "label": "tool",
+              "tone": "info",
+              "value": "ok:OA-CAD-INTENT-OK"
+            },
+            {
+              "label": "rebuild",
+              "tone": "info",
+              "value": "trigger=ai-intent:setmaterial result=ok hash=6239d49101c741cf mesh=ed3b0b7bab49ed21 duration_ms=202"
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=6239d49101c741cf mesh=ed..."
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=2"
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 2"
+            }
+          ],
+          "status": "done",
+          "turn_id": "turn.cad-chat-e2e-phase2-full-hand.2"
+        },
+        "rebuild_status": "committed",
+        "rebuild_trigger": "ai-intent:setmaterial",
+        "state_revision": 2,
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "turn_id": "turn.cad-chat-e2e-phase2-full-hand.2"
+      }
+    },
+    {
+      "duration_ms": 0,
+      "index": 2,
+      "kind": "cycle_variant",
+      "name": "cycle-to-precision",
+      "result": {
+        "active_variant_id": "variant.precision",
+        "count": 1,
+        "has_mesh_payload": true,
+        "last_good_mesh_id": "mesh.variant-precision.8f85d03b0ee634d0",
+        "last_receipt": {
+          "cache_evictions": 22,
+          "cache_hits": 0,
+          "cache_misses": 50,
+          "document_revision": 3,
+          "duration_ms": 224,
+          "edge_count": 2382,
+          "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-full-hand:3:3",
+          "feature_count": 50,
+          "mesh_hash": "1ffa03f7eddf13a9",
+          "rebuild_hash": "8f85d03b0ee634d0",
+          "triangle_count": 3180,
+          "variant_id": "variant.precision",
+          "vertex_count": 2218
+        },
+        "pending_rebuild_request_id": null,
+        "state_revision": 3,
+        "status": "cycled",
+        "warning_codes": [
+          "CAD-WARN-TENDON-ROUTING-COLLISION",
+          "CAD-WARN-HAND-SELF-INTERSECTION"
+        ]
+      }
+    },
+    {
+      "duration_ms": 0,
+      "index": 3,
+      "kind": "cad_tool_call_intent",
+      "name": "tool-call-set-material-precision",
+      "result": {
+        "has_mesh_payload": true,
+        "intent": "SetMaterial",
+        "pending_rebuild_request_id": null,
+        "progress": {
+          "rows": [
+            {
+              "label": "phase",
+              "tone": "success",
+              "value": "done"
+            },
+            {
+              "label": "tool",
+              "tone": "info",
+              "value": "ok:OA-CAD-INTENT-OK"
+            },
+            {
+              "label": "rebuild",
+              "tone": "info",
+              "value": "trigger=ai-intent:setmaterial result=ok hash=8f85d03b0ee634d0 mesh=1ffa03f7eddf13a9 duration_ms=177"
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=8f85d03b0ee634d0 mesh=1f..."
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.precision rev=3"
+            },
+            {
+              "label": "event",
+              "tone": "muted",
+              "value": "cad.build.done CAD rebuild committed for variant.precision at revision 3"
+            }
+          ],
+          "status": "done",
+          "turn_id": "turn.cad-chat-e2e-phase2-full-hand.3"
+        },
+        "rebuild_status": "committed",
+        "rebuild_trigger": "ai-intent:setmaterial",
+        "state_revision": 3,
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "turn_id": "turn.cad-chat-e2e-phase2-full-hand.3"
+      }
+    },
+    {
+      "duration_ms": 0,
+      "index": 4,
+      "kind": "capture_snapshot_truth",
+      "name": "capture-single-layout-truth",
+      "result": {
+        "active_variant_id": "variant.precision",
+        "all_variants_visible": false,
+        "design_profile": "humanoid_hand_v1",
+        "status": "captured",
+        "variant_materials": {
+          "variant.baseline": "steel-1018",
+          "variant.power": "al-6061-t6",
+          "variant.precision": "ti-6al-4v",
+          "variant.wide-spread": "al-6061-t6"
+        },
+        "viewport_layout": "single",
+        "visible_variant_ids": [
+          "variant.precision"
+        ]
+      }
+    },
+    {
+      "duration_ms": 0,
+      "index": 5,
+      "kind": "toggle_viewport_layout",
+      "name": "toggle-to-quad-layout",
+      "result": {
+        "all_variants_visible": true,
+        "status": "toggled",
+        "viewport_layout": "quad",
+        "visible_variant_ids": [
+          "variant.baseline",
+          "variant.precision",
+          "variant.power",
+          "variant.wide-spread"
+        ]
+      }
+    },
+    {
+      "duration_ms": 0,
+      "index": 6,
+      "kind": "capture_snapshot_truth",
+      "name": "capture-quad-layout-truth",
+      "result": {
+        "active_variant_id": "variant.precision",
+        "all_variants_visible": true,
+        "design_profile": "humanoid_hand_v1",
+        "status": "captured",
+        "variant_materials": {
+          "variant.baseline": "steel-1018",
+          "variant.power": "al-6061-t6",
+          "variant.precision": "ti-6al-4v",
+          "variant.wide-spread": "al-6061-t6"
+        },
+        "viewport_layout": "quad",
+        "visible_variant_ids": [
+          "variant.baseline",
+          "variant.precision",
+          "variant.power",
+          "variant.wide-spread"
+        ]
+      }
+    }
+  ],
+  "thread_id": "thread.cad-chat-e2e-phase2-full-hand",
+  "tool_calls": [
+    {
+      "has_mesh_payload": true,
+      "intent": "CreateParallelJawGripperSpec",
+      "pending_rebuild_request_id": null,
+      "progress": {
+        "rows": [
+          {
+            "label": "phase",
+            "tone": "success",
+            "value": "done"
+          },
+          {
+            "label": "tool",
+            "tone": "info",
+            "value": "ok:OA-CAD-INTENT-OK"
+          },
+          {
+            "label": "rebuild",
+            "tone": "info",
+            "value": "trigger=ai-intent:createparalleljawgripperspec result=ok hash=6239d49101c741cf mesh=e5146b2e7b5773e8 duration_ms=202"
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.rebuild.result trigger=ai-intent:createparalleljawgripperspec result=ok hash=6239d49..."
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=1"
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 1"
+          }
+        ],
+        "status": "done",
+        "turn_id": "turn.cad-chat-e2e-phase2-full-hand.1"
+      },
+      "rebuild_status": "committed",
+      "rebuild_trigger": "ai-intent:createparalleljawgripperspec",
+      "state_revision": 1,
+      "status": "completed",
+      "tool": "openagents.cad.intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-full-hand.1"
+    },
+    {
+      "has_mesh_payload": true,
+      "intent": "SetMaterial",
+      "pending_rebuild_request_id": null,
+      "progress": {
+        "rows": [
+          {
+            "label": "phase",
+            "tone": "success",
+            "value": "done"
+          },
+          {
+            "label": "tool",
+            "tone": "info",
+            "value": "ok:OA-CAD-INTENT-OK"
+          },
+          {
+            "label": "rebuild",
+            "tone": "info",
+            "value": "trigger=ai-intent:setmaterial result=ok hash=6239d49101c741cf mesh=ed3b0b7bab49ed21 duration_ms=202"
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=6239d49101c741cf mesh=ed..."
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=2"
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 2"
+          }
+        ],
+        "status": "done",
+        "turn_id": "turn.cad-chat-e2e-phase2-full-hand.2"
+      },
+      "rebuild_status": "committed",
+      "rebuild_trigger": "ai-intent:setmaterial",
+      "state_revision": 2,
+      "status": "completed",
+      "tool": "openagents.cad.intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-full-hand.2"
+    },
+    {
+      "has_mesh_payload": true,
+      "intent": "SetMaterial",
+      "pending_rebuild_request_id": null,
+      "progress": {
+        "rows": [
+          {
+            "label": "phase",
+            "tone": "success",
+            "value": "done"
+          },
+          {
+            "label": "tool",
+            "tone": "info",
+            "value": "ok:OA-CAD-INTENT-OK"
+          },
+          {
+            "label": "rebuild",
+            "tone": "info",
+            "value": "trigger=ai-intent:setmaterial result=ok hash=8f85d03b0ee634d0 mesh=1ffa03f7eddf13a9 duration_ms=177"
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=8f85d03b0ee634d0 mesh=1f..."
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.precision rev=3"
+          },
+          {
+            "label": "event",
+            "tone": "muted",
+            "value": "cad.build.done CAD rebuild committed for variant.precision at revision 3"
+          }
+        ],
+        "status": "done",
+        "turn_id": "turn.cad-chat-e2e-phase2-full-hand.3"
+      },
+      "rebuild_status": "committed",
+      "rebuild_trigger": "ai-intent:setmaterial",
+      "state_revision": 3,
+      "status": "completed",
+      "tool": "openagents.cad.intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-full-hand.3"
+    }
+  ]
+}
