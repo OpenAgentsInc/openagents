@@ -21,7 +21,9 @@ use reqwest::blocking::Client;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-use crate::app_state::{PaneLoadState, PaneStatusAccess, RenderState};
+use crate::app_state::{
+    EmailFailureClass, EmailPaneDomain, PaneLoadState, PaneStatusAccess, RenderState,
+};
 use crate::credentials::{
     GOOGLE_GMAIL_ACCESS_TOKEN, GOOGLE_GMAIL_TOKEN_EXPIRY_UNIX, GoogleGmailOAuthLifecycle,
 };
@@ -77,6 +79,7 @@ pub(super) fn refresh_email_lane_from_live_gmail(state: &mut RenderState) -> Res
     state.email_lane.load_state = PaneLoadState::Loading;
     state.email_lane.last_error = None;
     state.email_lane.last_sync_error = None;
+    state.email_lane.last_failure_class = None;
     state.email_lane.last_action = Some("Refreshing Gmail inbox snapshot".to_string());
 
     let checkpoint = state.email_lane.backfill_checkpoint.clone();
@@ -89,7 +92,10 @@ pub(super) fn refresh_email_lane_from_live_gmail(state: &mut RenderState) -> Res
         },
     )?;
     state.email_lane.ingest_backfill_result(backfill);
-    sync_email_lane_incremental(state, 200)?;
+    let sync_outcome = sync_email_lane_incremental(state, 200)?;
+    if sync_outcome.rebootstrap_required {
+        return Ok(());
+    }
     state.email_lane.pane_set_ready(format!(
         "Email lane refreshed (inbox={} drafts={} approvals={} sends={} followups={})",
         state.email_lane.inbox_rows.len(),
@@ -117,8 +123,17 @@ pub(super) fn sync_email_lane_incremental(
             .unwrap_or_else(|| stale_cursor_reason().to_string());
         state.email_lane.load_state = PaneLoadState::Error;
         state.email_lane.last_sync_error = Some(reason.clone());
-        state.email_lane.last_error = Some(reason);
+        state.email_lane.last_error = Some(reason.clone());
+        state.email_lane.last_failure_class = Some(EmailFailureClass::SyncCursorStale);
         state.email_lane.sync_rebootstrap_required = true;
+        state.email_lane.record_pane_error(
+            EmailPaneDomain::Inbox,
+            EmailFailureClass::SyncCursorStale,
+            format!(
+                "{} (action: run Inbox refresh to rebootstrap Gmail history cursor)",
+                reason
+            ),
+        );
         state.email_lane.rebuild_rows();
         return Ok(outcome);
     }
@@ -139,6 +154,7 @@ pub(super) fn sync_email_lane_incremental(
     }
     state.email_lane.sync_rebootstrap_required = false;
     state.email_lane.sync_rebootstrap_reason = None;
+    state.email_lane.last_failure_class = None;
     state.email_lane.rebuild_rows();
     Ok(outcome)
 }
@@ -374,32 +390,84 @@ pub(super) fn run_email_inbox_action(
 ) -> bool {
     match action {
         EmailInboxPaneAction::Refresh => {
-            if let Err(error) = refresh_email_lane_from_live_gmail(state) {
-                state
-                    .email_lane
-                    .pane_set_error(format!("email inbox refresh failed: {error}"));
+            state
+                .email_lane
+                .record_pane_action(EmailPaneDomain::Inbox, "Refresh Gmail inbox snapshot");
+            match refresh_email_lane_from_live_gmail(state) {
+                Ok(()) => {
+                    if state.email_lane.sync_rebootstrap_required {
+                        let reason = state
+                            .email_lane
+                            .sync_rebootstrap_reason
+                            .clone()
+                            .unwrap_or_else(|| stale_cursor_reason().to_string());
+                        record_email_lane_error(
+                            state,
+                            EmailPaneDomain::Inbox,
+                            reason,
+                            EmailFailureClass::SyncCursorStale,
+                        );
+                    } else {
+                        state.email_lane.record_pane_result(
+                            EmailPaneDomain::Inbox,
+                            format!(
+                                "Inbox refreshed (messages={})",
+                                state.email_lane.inbox_rows.len()
+                            ),
+                        );
+                    }
+                }
+                Err(error) => {
+                    record_email_lane_error(
+                        state,
+                        EmailPaneDomain::Inbox,
+                        format!("Email inbox refresh failed: {error}"),
+                        EmailFailureClass::Unknown,
+                    );
+                }
             }
             true
         }
         EmailInboxPaneAction::GenerateDraftSelected => {
-            if let Err(error) = generate_selected_inbox_draft(state) {
-                state
-                    .email_lane
-                    .pane_set_error(format!("draft generation failed: {error}"));
+            state.email_lane.record_pane_action(
+                EmailPaneDomain::Inbox,
+                "Generate draft for selected inbox row",
+            );
+            match generate_selected_inbox_draft(state) {
+                Ok(draft_id) => {
+                    state.email_lane.record_pane_result(
+                        EmailPaneDomain::Inbox,
+                        format!("Generated draft {draft_id}"),
+                    );
+                }
+                Err(error) => {
+                    record_email_lane_error(
+                        state,
+                        EmailPaneDomain::Inbox,
+                        format!("Draft generation failed: {error}"),
+                        EmailFailureClass::Unknown,
+                    );
+                }
             }
             true
         }
         EmailInboxPaneAction::SelectRow(index) => {
+            state.email_lane.record_pane_action(
+                EmailPaneDomain::Inbox,
+                format!("Select inbox row {}", index.saturating_add(1)),
+            );
             if state.email_lane.select_inbox_row(index) {
-                state.email_lane.pane_set_ready(format!(
-                    "Selected inbox message row {}",
-                    index.saturating_add(1)
-                ));
+                state.email_lane.record_pane_result(
+                    EmailPaneDomain::Inbox,
+                    format!("Selected inbox message row {}", index.saturating_add(1)),
+                );
             } else {
-                state.email_lane.pane_set_error(format!(
-                    "Inbox row {} out of range",
-                    index.saturating_add(1)
-                ));
+                record_email_lane_error(
+                    state,
+                    EmailPaneDomain::Inbox,
+                    format!("Inbox row {} out of range", index.saturating_add(1)),
+                    EmailFailureClass::Unknown,
+                );
             }
             true
         }
@@ -412,22 +480,30 @@ pub(super) fn run_email_draft_queue_action(
 ) -> bool {
     match action {
         EmailDraftQueuePaneAction::SelectRow(index) => {
+            state.email_lane.record_pane_action(
+                EmailPaneDomain::DraftQueue,
+                format!("Select draft row {}", index.saturating_add(1)),
+            );
             if state.email_lane.select_draft_row(index) {
                 if let Some(draft_id) = state.email_lane.selected_draft_id.clone() {
                     state.email_lane.selected_approval_draft_id = Some(draft_id.clone());
-                    state
-                        .email_lane
-                        .pane_set_ready(format!("Selected draft {}", draft_id));
+                    state.email_lane.record_pane_result(
+                        EmailPaneDomain::DraftQueue,
+                        format!("Selected draft {}", draft_id),
+                    );
                 } else {
-                    state
-                        .email_lane
-                        .pane_set_ready(format!("Selected draft row {}", index.saturating_add(1)));
+                    state.email_lane.record_pane_result(
+                        EmailPaneDomain::DraftQueue,
+                        format!("Selected draft row {}", index.saturating_add(1)),
+                    );
                 }
             } else {
-                state.email_lane.pane_set_error(format!(
-                    "Draft row {} out of range",
-                    index.saturating_add(1)
-                ));
+                record_email_lane_error(
+                    state,
+                    EmailPaneDomain::DraftQueue,
+                    format!("Draft row {} out of range", index.saturating_add(1)),
+                    EmailFailureClass::Unknown,
+                );
             }
             true
         }
@@ -440,40 +516,85 @@ pub(super) fn run_email_approval_queue_action(
 ) -> bool {
     match action {
         EmailApprovalQueuePaneAction::ApproveSelected => {
-            if let Err(error) =
-                approve_or_reject_selected_draft(state, ApprovalDecisionAction::Approve, None)
-            {
-                state
-                    .email_lane
-                    .pane_set_error(format!("approve draft failed: {error}"));
+            state
+                .email_lane
+                .record_pane_action(EmailPaneDomain::ApprovalQueue, "Approve selected draft");
+            match approve_or_reject_selected_draft(state, ApprovalDecisionAction::Approve, None) {
+                Ok(draft_id) => {
+                    state.email_lane.record_pane_result(
+                        EmailPaneDomain::ApprovalQueue,
+                        format!("Approved draft {draft_id}"),
+                    );
+                }
+                Err(error) => {
+                    record_email_lane_error(
+                        state,
+                        EmailPaneDomain::ApprovalQueue,
+                        format!("Approve draft failed: {error}"),
+                        EmailFailureClass::Unknown,
+                    );
+                }
             }
             true
         }
         EmailApprovalQueuePaneAction::RejectSelected => {
-            if let Err(error) = approve_or_reject_selected_draft(
+            state
+                .email_lane
+                .record_pane_action(EmailPaneDomain::ApprovalQueue, "Reject selected draft");
+            match approve_or_reject_selected_draft(
                 state,
                 ApprovalDecisionAction::Reject,
                 Some("Rejected by operator".to_string()),
             ) {
-                state
-                    .email_lane
-                    .pane_set_error(format!("reject draft failed: {error}"));
+                Ok(draft_id) => {
+                    state.email_lane.record_pane_result(
+                        EmailPaneDomain::ApprovalQueue,
+                        format!("Rejected draft {draft_id}"),
+                    );
+                }
+                Err(error) => {
+                    record_email_lane_error(
+                        state,
+                        EmailPaneDomain::ApprovalQueue,
+                        format!("Reject draft failed: {error}"),
+                        EmailFailureClass::Unknown,
+                    );
+                }
             }
             true
         }
         EmailApprovalQueuePaneAction::RequestEditsSelected => {
-            if let Err(error) = approve_or_reject_selected_draft(
+            state.email_lane.record_pane_action(
+                EmailPaneDomain::ApprovalQueue,
+                "Request edits for selected draft",
+            );
+            match approve_or_reject_selected_draft(
                 state,
                 ApprovalDecisionAction::RequestEdits,
                 Some("Edits requested by operator".to_string()),
             ) {
-                state
-                    .email_lane
-                    .pane_set_error(format!("request edits failed: {error}"));
+                Ok(draft_id) => {
+                    state.email_lane.record_pane_result(
+                        EmailPaneDomain::ApprovalQueue,
+                        format!("Requested edits for draft {draft_id}"),
+                    );
+                }
+                Err(error) => {
+                    record_email_lane_error(
+                        state,
+                        EmailPaneDomain::ApprovalQueue,
+                        format!("Request edits failed: {error}"),
+                        EmailFailureClass::Unknown,
+                    );
+                }
             }
             true
         }
         EmailApprovalQueuePaneAction::TogglePauseQueue => {
+            state.email_lane.record_pane_action(
+                EmailPaneDomain::ApprovalQueue,
+                "Toggle approval queue pause",
+            );
             let pause_queue = !state.email_lane.approval_workflow.queue_paused;
             match set_approval_queue_paused(
                 &mut state.email_lane.approval_workflow,
@@ -487,22 +608,32 @@ pub(super) fn run_email_approval_queue_action(
                         "approval queue control: event={} action={:?}",
                         event.event_id, event.action
                     ));
-                    state.email_lane.pane_set_ready(if pause_queue {
-                        "Approval queue paused".to_string()
-                    } else {
-                        "Approval queue resumed".to_string()
-                    });
+                    state.email_lane.record_pane_result(
+                        EmailPaneDomain::ApprovalQueue,
+                        if pause_queue {
+                            "Approval queue paused".to_string()
+                        } else {
+                            "Approval queue resumed".to_string()
+                        },
+                    );
                     state.email_lane.rebuild_rows();
                 }
                 Err(error) => {
-                    state
-                        .email_lane
-                        .pane_set_error(format!("toggle approval queue pause failed: {error}"));
+                    record_email_lane_error(
+                        state,
+                        EmailPaneDomain::ApprovalQueue,
+                        format!("Toggle approval queue pause failed: {error}"),
+                        EmailFailureClass::Unknown,
+                    );
                 }
             }
             true
         }
         EmailApprovalQueuePaneAction::ToggleKillSwitch => {
+            state.email_lane.record_pane_action(
+                EmailPaneDomain::ApprovalQueue,
+                "Toggle approval kill switch",
+            );
             let engage_kill_switch = !state.email_lane.approval_workflow.kill_switch_engaged;
             match set_approval_kill_switch(
                 &mut state.email_lane.approval_workflow,
@@ -516,35 +647,48 @@ pub(super) fn run_email_approval_queue_action(
                         "approval kill switch control: event={} action={:?}",
                         event.event_id, event.action
                     ));
-                    state.email_lane.pane_set_ready(if engage_kill_switch {
-                        "Approval kill switch engaged".to_string()
-                    } else {
-                        "Approval kill switch disengaged".to_string()
-                    });
+                    state.email_lane.record_pane_result(
+                        EmailPaneDomain::ApprovalQueue,
+                        if engage_kill_switch {
+                            "Approval kill switch engaged".to_string()
+                        } else {
+                            "Approval kill switch disengaged".to_string()
+                        },
+                    );
                     state.email_lane.rebuild_rows();
                 }
                 Err(error) => {
-                    state
-                        .email_lane
-                        .pane_set_error(format!("toggle approval kill switch failed: {error}"));
+                    record_email_lane_error(
+                        state,
+                        EmailPaneDomain::ApprovalQueue,
+                        format!("Toggle approval kill switch failed: {error}"),
+                        EmailFailureClass::Unknown,
+                    );
                 }
             }
             true
         }
         EmailApprovalQueuePaneAction::SelectRow(index) => {
+            state.email_lane.record_pane_action(
+                EmailPaneDomain::ApprovalQueue,
+                format!("Select approval row {}", index.saturating_add(1)),
+            );
             if state.email_lane.select_approval_row(index) {
                 state.email_lane.selected_draft_id = state
                     .email_lane
                     .selected_approval_draft_id()
                     .map(ToString::to_string);
-                state
-                    .email_lane
-                    .pane_set_ready(format!("Selected approval row {}", index.saturating_add(1)));
+                state.email_lane.record_pane_result(
+                    EmailPaneDomain::ApprovalQueue,
+                    format!("Selected approval row {}", index.saturating_add(1)),
+                );
             } else {
-                state.email_lane.pane_set_error(format!(
-                    "Approval row {} out of range",
-                    index.saturating_add(1)
-                ));
+                record_email_lane_error(
+                    state,
+                    EmailPaneDomain::ApprovalQueue,
+                    format!("Approval row {} out of range", index.saturating_add(1)),
+                    EmailFailureClass::Unknown,
+                );
             }
             true
         }
@@ -557,22 +701,53 @@ pub(super) fn run_email_send_log_action(
 ) -> bool {
     match action {
         EmailSendLogPaneAction::SendSelected => {
-            if let Err(error) = send_selected_approved_draft(state) {
-                state
-                    .email_lane
-                    .pane_set_error(format!("send selected draft failed: {error}"));
+            state
+                .email_lane
+                .record_pane_action(EmailPaneDomain::SendLog, "Send selected approved draft");
+            match send_selected_approved_draft(state) {
+                Ok(send_id) => {
+                    if let Some(send_error) = state.email_lane.last_send_error.clone() {
+                        record_email_lane_error(
+                            state,
+                            EmailPaneDomain::SendLog,
+                            format!("Send {} failed: {}", send_id, send_error),
+                            EmailFailureClass::SendFailure,
+                        );
+                    } else {
+                        state.email_lane.record_pane_result(
+                            EmailPaneDomain::SendLog,
+                            format!("Send {} completed successfully", send_id),
+                        );
+                    }
+                }
+                Err(error) => {
+                    record_email_lane_error(
+                        state,
+                        EmailPaneDomain::SendLog,
+                        format!("Send selected draft failed: {error}"),
+                        EmailFailureClass::SendFailure,
+                    );
+                }
             }
             true
         }
         EmailSendLogPaneAction::SelectRow(index) => {
+            state.email_lane.record_pane_action(
+                EmailPaneDomain::SendLog,
+                format!("Select send row {}", index.saturating_add(1)),
+            );
             if state.email_lane.select_send_row(index) {
-                state
-                    .email_lane
-                    .pane_set_ready(format!("Selected send row {}", index.saturating_add(1)));
+                state.email_lane.record_pane_result(
+                    EmailPaneDomain::SendLog,
+                    format!("Selected send row {}", index.saturating_add(1)),
+                );
             } else {
-                state
-                    .email_lane
-                    .pane_set_error(format!("Send row {} out of range", index.saturating_add(1)));
+                record_email_lane_error(
+                    state,
+                    EmailPaneDomain::SendLog,
+                    format!("Send row {} out of range", index.saturating_add(1)),
+                    EmailFailureClass::Unknown,
+                );
             }
             true
         }
@@ -585,27 +760,116 @@ pub(super) fn run_email_follow_up_queue_action(
 ) -> bool {
     match action {
         EmailFollowUpQueuePaneAction::RunSchedulerTick => {
-            if let Err(error) = run_follow_up_scheduler(state) {
-                state
-                    .email_lane
-                    .pane_set_error(format!("follow-up scheduler tick failed: {error}"));
+            state.email_lane.record_pane_action(
+                EmailPaneDomain::FollowUpQueue,
+                "Run follow-up scheduler tick",
+            );
+            match run_follow_up_scheduler(state) {
+                Ok(event_count) => {
+                    state.email_lane.record_pane_result(
+                        EmailPaneDomain::FollowUpQueue,
+                        format!("Follow-up scheduler emitted {} events", event_count),
+                    );
+                }
+                Err(error) => {
+                    record_email_lane_error(
+                        state,
+                        EmailPaneDomain::FollowUpQueue,
+                        format!("Follow-up scheduler tick failed: {error}"),
+                        EmailFailureClass::Unknown,
+                    );
+                }
             }
             true
         }
         EmailFollowUpQueuePaneAction::SelectRow(index) => {
+            state.email_lane.record_pane_action(
+                EmailPaneDomain::FollowUpQueue,
+                format!("Select follow-up row {}", index.saturating_add(1)),
+            );
             if state.email_lane.select_follow_up_row(index) {
-                state.email_lane.pane_set_ready(format!(
-                    "Selected follow-up row {}",
-                    index.saturating_add(1)
-                ));
+                state.email_lane.record_pane_result(
+                    EmailPaneDomain::FollowUpQueue,
+                    format!("Selected follow-up row {}", index.saturating_add(1)),
+                );
             } else {
-                state.email_lane.pane_set_error(format!(
-                    "Follow-up row {} out of range",
-                    index.saturating_add(1)
-                ));
+                record_email_lane_error(
+                    state,
+                    EmailPaneDomain::FollowUpQueue,
+                    format!("Follow-up row {} out of range", index.saturating_add(1)),
+                    EmailFailureClass::Unknown,
+                );
             }
             true
         }
+    }
+}
+
+fn record_email_lane_error(
+    state: &mut RenderState,
+    pane: EmailPaneDomain,
+    error: String,
+    fallback_class: EmailFailureClass,
+) {
+    let failure_class = classify_email_failure(error.as_str(), fallback_class);
+    let actionable = actionable_email_failure_hint(failure_class);
+    let enriched_error = format!("{error} (action: {actionable})");
+    state
+        .email_lane
+        .record_pane_error(pane, failure_class, enriched_error);
+    state.email_lane.last_result = Some(format!("{} action failed", email_pane_domain_label(pane)));
+}
+
+fn classify_email_failure(error: &str, fallback: EmailFailureClass) -> EmailFailureClass {
+    let normalized = error.to_ascii_lowercase();
+    if normalized.contains("history cursor moved backwards")
+        || normalized.contains("rebootstrap")
+        || normalized.contains("stale cursor")
+    {
+        return EmailFailureClass::SyncCursorStale;
+    }
+    if normalized.contains("429")
+        || normalized.contains("too many requests")
+        || normalized.contains("rate limit")
+    {
+        return EmailFailureClass::ApiRateLimited;
+    }
+    if normalized.contains("oauth")
+        || normalized.contains("invalid_grant")
+        || normalized.contains("unauthorized")
+        || normalized.contains("401")
+    {
+        return EmailFailureClass::OAuthExpired;
+    }
+    if fallback == EmailFailureClass::SendFailure || normalized.contains("send") {
+        return EmailFailureClass::SendFailure;
+    }
+    fallback
+}
+
+fn actionable_email_failure_hint(class: EmailFailureClass) -> &'static str {
+    match class {
+        EmailFailureClass::OAuthExpired => {
+            "Reconnect Gmail OAuth credentials in Credentials pane and retry."
+        }
+        EmailFailureClass::ApiRateLimited => "Wait for Gmail quota backoff window before retrying.",
+        EmailFailureClass::SendFailure => {
+            "Verify approval state, recipient, and credentials before retrying send."
+        }
+        EmailFailureClass::SyncCursorStale => {
+            "Run Inbox refresh to rebootstrap Gmail history cursor."
+        }
+        EmailFailureClass::Unknown => "Review diagnostics and retry the operation.",
+    }
+}
+
+fn email_pane_domain_label(pane: EmailPaneDomain) -> &'static str {
+    match pane {
+        EmailPaneDomain::Inbox => "Inbox",
+        EmailPaneDomain::DraftQueue => "Draft queue",
+        EmailPaneDomain::ApprovalQueue => "Approval queue",
+        EmailPaneDomain::SendLog => "Send log",
+        EmailPaneDomain::FollowUpQueue => "Follow-up queue",
     }
 }
 
@@ -849,6 +1113,15 @@ fn parse_json_response<T: DeserializeOwned>(
     }
     let status = response.status();
     let text = response.text().unwrap_or_default();
+    if status == StatusCode::TOO_MANY_REQUESTS {
+        return Err(format!("{context} rate limited (429): {}", text.trim()));
+    }
+    if status == StatusCode::UNAUTHORIZED {
+        return Err(format!(
+            "{context} unauthorized (401), OAuth likely expired: {}",
+            text.trim()
+        ));
+    }
     Err(format!(
         "{context} failed with status {}: {}",
         status.as_u16(),
@@ -877,14 +1150,21 @@ fn parse_send_json_response<T: DeserializeOwned>(
     } else {
         SendFailureClass::Permanent
     };
-    Err(SendProviderError {
-        class,
-        reason: format!(
+    let reason = if status == StatusCode::TOO_MANY_REQUESTS {
+        format!("{context} rate limited (429): {}", text.trim())
+    } else if status == StatusCode::UNAUTHORIZED {
+        format!(
+            "{context} unauthorized (401), OAuth likely expired: {}",
+            text.trim()
+        )
+    } else {
+        format!(
             "{context} failed with status {}: {}",
             status.as_u16(),
             text.trim()
-        ),
-    })
+        )
+    };
+    Err(SendProviderError { class, reason })
 }
 
 pub(super) struct LiveGmailMailboxProvider {

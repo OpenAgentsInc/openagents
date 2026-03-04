@@ -1594,8 +1594,8 @@ pub use crate::state::{
         AlertDomain, AlertLifecycle, AlertSeverity, AlertsRecoveryState, RecoveryAlertRow,
     },
     email_lane::{
-        EmailApprovalRow, EmailDraftRow, EmailFollowUpRow, EmailInboxRow, EmailLaneState,
-        EmailSendRow,
+        EmailApprovalRow, EmailDraftRow, EmailFailureClass, EmailFollowUpRow, EmailInboxRow,
+        EmailLaneState, EmailPaneDiagnostics, EmailPaneDomain, EmailSendRow,
     },
     job_inbox::{
         JobDemandSource, JobInboxDecision, JobInboxNetworkRequest, JobInboxRequest, JobInboxState,

@@ -55,6 +55,7 @@ pub struct EmailSendRow {
     pub attempt_count: u32,
     pub provider_message_id: Option<String>,
     pub last_error: Option<String>,
+    pub actionable_reason: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -66,6 +67,44 @@ pub struct EmailFollowUpRow {
     pub scheduled_for_unix: u64,
     pub status: String,
     pub reason: Option<String>,
+    pub actionable_reason: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EmailFailureClass {
+    OAuthExpired,
+    ApiRateLimited,
+    SendFailure,
+    SyncCursorStale,
+    Unknown,
+}
+
+impl EmailFailureClass {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::OAuthExpired => "oauth_expired",
+            Self::ApiRateLimited => "api_rate_limited",
+            Self::SendFailure => "send_failure",
+            Self::SyncCursorStale => "sync_cursor_stale",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EmailPaneDomain {
+    Inbox,
+    DraftQueue,
+    ApprovalQueue,
+    SendLog,
+    FollowUpQueue,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct EmailPaneDiagnostics {
+    pub last_action: Option<String>,
+    pub last_result: Option<String>,
+    pub last_error: Option<String>,
 }
 
 pub struct EmailLaneState {
@@ -73,6 +112,7 @@ pub struct EmailLaneState {
     pub last_error: Option<String>,
     pub last_action: Option<String>,
     pub last_result: Option<String>,
+    pub last_failure_class: Option<EmailFailureClass>,
     pub last_sync_error: Option<String>,
     pub last_send_error: Option<String>,
     pub sync_rebootstrap_required: bool,
@@ -101,6 +141,11 @@ pub struct EmailLaneState {
     pub selected_approval_draft_id: Option<String>,
     pub selected_send_idempotency_key: Option<String>,
     pub selected_follow_up_job_id: Option<String>,
+    pub inbox_diagnostics: EmailPaneDiagnostics,
+    pub draft_queue_diagnostics: EmailPaneDiagnostics,
+    pub approval_queue_diagnostics: EmailPaneDiagnostics,
+    pub send_log_diagnostics: EmailPaneDiagnostics,
+    pub follow_up_queue_diagnostics: EmailPaneDiagnostics,
 }
 
 impl Default for EmailLaneState {
@@ -120,6 +165,7 @@ impl Default for EmailLaneState {
             last_error: None,
             last_action: Some("Waiting for email lane action".to_string()),
             last_result: None,
+            last_failure_class: None,
             last_sync_error: None,
             last_send_error: None,
             sync_rebootstrap_required: false,
@@ -166,6 +212,26 @@ impl Default for EmailLaneState {
             selected_approval_draft_id: None,
             selected_send_idempotency_key: None,
             selected_follow_up_job_id: None,
+            inbox_diagnostics: EmailPaneDiagnostics {
+                last_action: Some("Waiting for inbox action".to_string()),
+                ..EmailPaneDiagnostics::default()
+            },
+            draft_queue_diagnostics: EmailPaneDiagnostics {
+                last_action: Some("Waiting for draft queue action".to_string()),
+                ..EmailPaneDiagnostics::default()
+            },
+            approval_queue_diagnostics: EmailPaneDiagnostics {
+                last_action: Some("Waiting for approval queue action".to_string()),
+                ..EmailPaneDiagnostics::default()
+            },
+            send_log_diagnostics: EmailPaneDiagnostics {
+                last_action: Some("Waiting for send log action".to_string()),
+                ..EmailPaneDiagnostics::default()
+            },
+            follow_up_queue_diagnostics: EmailPaneDiagnostics {
+                last_action: Some("Waiting for follow-up queue action".to_string()),
+                ..EmailPaneDiagnostics::default()
+            },
         }
     }
 }
@@ -182,10 +248,12 @@ impl EmailLaneState {
             self.normalized_by_message_id
                 .insert(normalized.source_message_id.clone(), normalized);
         }
-        self.pane_set_ready(format!(
+        let summary = format!(
             "Imported {} inbox messages from Gmail",
             self.normalized_by_message_id.len()
-        ));
+        );
+        self.pane_set_ready(summary.clone());
+        self.record_pane_result(EmailPaneDomain::Inbox, summary);
         self.rebuild_rows();
     }
 
@@ -217,6 +285,11 @@ impl EmailLaneState {
             outcome.applied_deltas.len(),
             outcome.duplicate_drop_count
         ));
+        if !outcome.rebootstrap_required
+            && self.last_failure_class == Some(EmailFailureClass::SyncCursorStale)
+        {
+            self.last_failure_class = None;
+        }
     }
 
     pub fn select_inbox_row(&mut self, index: usize) -> bool {
@@ -286,6 +359,49 @@ impl EmailLaneState {
     pub fn selected_send_record(&self) -> Option<&SendRecord> {
         let key = self.selected_send_idempotency_key.as_deref()?;
         self.send_execution.records_by_idempotency_key.get(key)
+    }
+
+    pub fn pane_diagnostics(&self, pane: EmailPaneDomain) -> &EmailPaneDiagnostics {
+        match pane {
+            EmailPaneDomain::Inbox => &self.inbox_diagnostics,
+            EmailPaneDomain::DraftQueue => &self.draft_queue_diagnostics,
+            EmailPaneDomain::ApprovalQueue => &self.approval_queue_diagnostics,
+            EmailPaneDomain::SendLog => &self.send_log_diagnostics,
+            EmailPaneDomain::FollowUpQueue => &self.follow_up_queue_diagnostics,
+        }
+    }
+
+    pub fn record_pane_action(&mut self, pane: EmailPaneDomain, action: impl Into<String>) {
+        let action = action.into();
+        self.pane_diagnostics_mut(pane).last_action = Some(action.clone());
+        self.last_action = Some(action);
+    }
+
+    pub fn record_pane_result(&mut self, pane: EmailPaneDomain, result: impl Into<String>) {
+        let result = result.into();
+        let diagnostics = self.pane_diagnostics_mut(pane);
+        diagnostics.last_result = Some(result.clone());
+        diagnostics.last_error = None;
+        self.last_result = Some(result);
+        self.last_error = None;
+        self.last_failure_class = None;
+        if self.load_state != PaneLoadState::Loading {
+            self.load_state = PaneLoadState::Ready;
+        }
+    }
+
+    pub fn record_pane_error(
+        &mut self,
+        pane: EmailPaneDomain,
+        failure_class: EmailFailureClass,
+        error: impl Into<String>,
+    ) {
+        let error = error.into();
+        let diagnostics = self.pane_diagnostics_mut(pane);
+        diagnostics.last_error = Some(error.clone());
+        self.last_error = Some(error);
+        self.load_state = PaneLoadState::Error;
+        self.last_failure_class = Some(failure_class);
     }
 
     pub fn rebuild_rows(&mut self) {
@@ -427,14 +543,19 @@ impl EmailLaneState {
             .follow_up_scheduler
             .jobs
             .values()
-            .map(|job| EmailFollowUpRow {
-                job_id: job.job_id.clone(),
-                thread_id: job.thread_id.clone(),
-                recipient_email: job.recipient_email.clone(),
-                rule_id: job.rule_id.clone(),
-                scheduled_for_unix: job.scheduled_for_unix,
-                status: follow_up_status_label(job.status).to_string(),
-                reason: job.reason.clone(),
+            .map(|job| {
+                let actionable_reason =
+                    follow_up_actionable_reason(job.status, job.reason.as_deref());
+                EmailFollowUpRow {
+                    job_id: job.job_id.clone(),
+                    thread_id: job.thread_id.clone(),
+                    recipient_email: job.recipient_email.clone(),
+                    rule_id: job.rule_id.clone(),
+                    scheduled_for_unix: job.scheduled_for_unix,
+                    status: follow_up_status_label(job.status).to_string(),
+                    reason: job.reason.clone(),
+                    actionable_reason,
+                }
             })
             .collect::<Vec<_>>();
         rows.sort_by(|left, right| left.job_id.cmp(&right.job_id));
@@ -516,6 +637,16 @@ impl EmailLaneState {
         }
         self.selected_follow_up_job_id = self.follow_up_rows.first().map(|row| row.job_id.clone());
     }
+
+    fn pane_diagnostics_mut(&mut self, pane: EmailPaneDomain) -> &mut EmailPaneDiagnostics {
+        match pane {
+            EmailPaneDomain::Inbox => &mut self.inbox_diagnostics,
+            EmailPaneDomain::DraftQueue => &mut self.draft_queue_diagnostics,
+            EmailPaneDomain::ApprovalQueue => &mut self.approval_queue_diagnostics,
+            EmailPaneDomain::SendLog => &mut self.send_log_diagnostics,
+            EmailPaneDomain::FollowUpQueue => &mut self.follow_up_queue_diagnostics,
+        }
+    }
 }
 
 fn seed_knowledge_documents() -> Vec<KnowledgeDocument> {
@@ -555,6 +686,7 @@ fn send_row_from_record(record: &SendRecord) -> EmailSendRow {
         attempt_count: record.attempt_count,
         provider_message_id: record.provider_message_id.clone(),
         last_error: record.last_error.clone(),
+        actionable_reason: record.last_error.as_deref().map(actionable_send_reason),
     }
 }
 
@@ -576,12 +708,52 @@ fn follow_up_status_label(status: FollowUpJobStatus) -> &'static str {
     }
 }
 
+fn actionable_send_reason(raw_error: &str) -> String {
+    let normalized = raw_error.to_ascii_lowercase();
+    if normalized.contains("429")
+        || normalized.contains("too many requests")
+        || normalized.contains("rate limit")
+    {
+        return "Gmail API rate limited this send; wait for quota reset and retry.".to_string();
+    }
+    if normalized.contains("oauth")
+        || normalized.contains("invalid_grant")
+        || normalized.contains("unauthorized")
+        || normalized.contains("401")
+    {
+        return "Gmail OAuth credentials appear expired/revoked; re-authenticate and retry."
+            .to_string();
+    }
+    "Send failed; inspect draft/recipient details and retry once dependencies are healthy."
+        .to_string()
+}
+
+fn follow_up_actionable_reason(status: FollowUpJobStatus, reason: Option<&str>) -> Option<String> {
+    if status == FollowUpJobStatus::SkippedRecipientLimit {
+        return Some(
+            "Follow-up skipped because recipient reminder limit was reached; adjust policy or wait for reply."
+                .to_string(),
+        );
+    }
+    reason.map(|reason| {
+        if reason.trim().is_empty() {
+            return "Follow-up reason unavailable; rerun scheduler after refreshing inbox/send state."
+                .to_string();
+        }
+        format!("{reason} (next: rerun scheduler after relevant state updates)")
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::EmailLaneState;
+    use super::{
+        EmailFailureClass, EmailLaneState, EmailPaneDomain, actionable_send_reason,
+        follow_up_actionable_reason,
+    };
     use openagents_email_agent::{
-        GmailBackfillCheckpoint, GmailBackfillResult, GmailMessage, GmailMessageBody,
-        GmailMessageHeader, GmailMessageMetadata, GmailMessagePayload, GmailThreadParticipant,
+        FollowUpJobStatus, GmailBackfillCheckpoint, GmailBackfillResult, GmailMessage,
+        GmailMessageBody, GmailMessageHeader, GmailMessageMetadata, GmailMessagePayload,
+        GmailThreadParticipant, SendDeliveryState, SendRecord,
     };
 
     fn gmail_message(id: &str, internal_date_ms: u64) -> GmailMessage {
@@ -631,5 +803,66 @@ mod tests {
         assert_eq!(state.inbox_rows[0].message_id, "m2");
         assert_eq!(state.inbox_rows[1].message_id, "m1");
         assert_eq!(state.selected_inbox_message_id.as_deref(), Some("m2"));
+    }
+
+    #[test]
+    fn pane_diagnostics_track_action_result_and_error() {
+        let mut state = EmailLaneState::default();
+        state.record_pane_action(EmailPaneDomain::SendLog, "send");
+        state.record_pane_result(EmailPaneDomain::SendLog, "sent");
+        assert_eq!(
+            state.send_log_diagnostics.last_action.as_deref(),
+            Some("send")
+        );
+        assert_eq!(
+            state.send_log_diagnostics.last_result.as_deref(),
+            Some("sent")
+        );
+        assert_eq!(state.last_failure_class, None);
+
+        state.record_pane_error(
+            EmailPaneDomain::SendLog,
+            EmailFailureClass::SendFailure,
+            "send failed",
+        );
+        assert_eq!(
+            state.last_failure_class,
+            Some(EmailFailureClass::SendFailure)
+        );
+        assert_eq!(
+            state.send_log_diagnostics.last_error.as_deref(),
+            Some("send failed")
+        );
+    }
+
+    #[test]
+    fn actionable_reason_helpers_cover_send_and_follow_up_failures() {
+        let send_reason = actionable_send_reason(
+            "gmail POST messages/send unauthorized (401), OAuth likely expired",
+        );
+        assert!(send_reason.contains("OAuth"));
+
+        let follow_up_reason =
+            follow_up_actionable_reason(FollowUpJobStatus::SkippedRecipientLimit, None);
+        assert!(follow_up_reason.is_some());
+        assert!(
+            follow_up_reason
+                .expect("reason should exist")
+                .contains("recipient reminder limit")
+        );
+
+        let send_row = super::send_row_from_record(&SendRecord {
+            send_id: "send-1".to_string(),
+            draft_id: "draft-1".to_string(),
+            idempotency_key: "idem-1".to_string(),
+            request_fingerprint: "fp".to_string(),
+            state: SendDeliveryState::FailedPermanent,
+            attempt_count: 1,
+            provider_message_id: None,
+            last_error: Some("too many requests (429)".to_string()),
+            next_retry_at_unix: None,
+            finalized_at_unix: Some(100),
+        });
+        assert!(send_row.actionable_reason.is_some());
     }
 }

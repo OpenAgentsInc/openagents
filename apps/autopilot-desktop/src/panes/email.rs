@@ -1,4 +1,4 @@
-use crate::app_state::{EmailLaneState, PaneLoadState};
+use crate::app_state::{EmailLaneState, EmailPaneDomain, PaneLoadState};
 use crate::pane_system::{
     email_approval_approve_button_bounds, email_approval_kill_switch_button_bounds,
     email_approval_pause_button_bounds, email_approval_reject_button_bounds,
@@ -16,7 +16,7 @@ pub fn paint_email_inbox_pane(
     email_lane: &EmailLaneState,
     paint: &mut PaintContext,
 ) {
-    paint_shared_header(content_bounds, email_lane, paint);
+    paint_shared_header(content_bounds, email_lane, EmailPaneDomain::Inbox, paint);
 
     paint_action_button(
         email_inbox_refresh_button_bounds(content_bounds),
@@ -64,7 +64,12 @@ pub fn paint_email_draft_queue_pane(
     email_lane: &EmailLaneState,
     paint: &mut PaintContext,
 ) {
-    paint_shared_header(content_bounds, email_lane, paint);
+    paint_shared_header(
+        content_bounds,
+        email_lane,
+        EmailPaneDomain::DraftQueue,
+        paint,
+    );
 
     let visible_rows = email_draft_visible_row_count(email_lane.draft_rows.len());
     if visible_rows == 0 {
@@ -101,7 +106,12 @@ pub fn paint_email_approval_queue_pane(
     email_lane: &EmailLaneState,
     paint: &mut PaintContext,
 ) {
-    paint_shared_header(content_bounds, email_lane, paint);
+    paint_shared_header(
+        content_bounds,
+        email_lane,
+        EmailPaneDomain::ApprovalQueue,
+        paint,
+    );
 
     paint_action_button(
         email_approval_approve_button_bounds(content_bounds),
@@ -171,7 +181,7 @@ pub fn paint_email_send_log_pane(
     email_lane: &EmailLaneState,
     paint: &mut PaintContext,
 ) {
-    paint_shared_header(content_bounds, email_lane, paint);
+    paint_shared_header(content_bounds, email_lane, EmailPaneDomain::SendLog, paint);
 
     paint_action_button(
         email_send_send_button_bounds(content_bounds),
@@ -198,11 +208,18 @@ pub fn paint_email_send_log_pane(
         let selected =
             email_lane.selected_send_idempotency_key.as_deref() == Some(&row.idempotency_key);
         let label = format!(
-            "{} | {} | attempts={} | msg={}",
+            "{} | {} | attempts={} | msg={} | reason={}",
             row.send_id,
             row.state,
             row.attempt_count,
-            row.provider_message_id.as_deref().unwrap_or("n/a")
+            row.provider_message_id.as_deref().unwrap_or("n/a"),
+            truncate_line(
+                row.actionable_reason
+                    .as_deref()
+                    .or(row.last_error.as_deref())
+                    .unwrap_or("none"),
+                64
+            )
         );
         paint_row(
             email_send_row_bounds(content_bounds, row_index),
@@ -218,7 +235,12 @@ pub fn paint_email_follow_up_queue_pane(
     email_lane: &EmailLaneState,
     paint: &mut PaintContext,
 ) {
-    paint_shared_header(content_bounds, email_lane, paint);
+    paint_shared_header(
+        content_bounds,
+        email_lane,
+        EmailPaneDomain::FollowUpQueue,
+        paint,
+    );
 
     paint_action_button(
         email_follow_up_run_button_bounds(content_bounds),
@@ -244,8 +266,18 @@ pub fn paint_email_follow_up_queue_pane(
         let row = &email_lane.follow_up_rows[row_index];
         let selected = email_lane.selected_follow_up_job_id.as_deref() == Some(&row.job_id);
         let label = format!(
-            "{} | {} | scheduled={} | {}",
-            row.job_id, row.status, row.scheduled_for_unix, row.rule_id
+            "{} | {} | scheduled={} | {} | reason={}",
+            row.job_id,
+            row.status,
+            row.scheduled_for_unix,
+            row.rule_id,
+            truncate_line(
+                row.actionable_reason
+                    .as_deref()
+                    .or(row.reason.as_deref())
+                    .unwrap_or("none"),
+                64
+            )
         );
         paint_row(
             email_follow_up_row_bounds(content_bounds, row_index),
@@ -259,15 +291,23 @@ pub fn paint_email_follow_up_queue_pane(
 fn paint_shared_header(
     content_bounds: Bounds,
     email_lane: &EmailLaneState,
+    pane: EmailPaneDomain,
     paint: &mut PaintContext,
 ) {
+    let diagnostics = email_lane.pane_diagnostics(pane);
     let state_color = match email_lane.load_state {
         PaneLoadState::Ready => theme::status::SUCCESS,
         PaneLoadState::Loading => theme::accent::PRIMARY,
         PaneLoadState::Error => theme::status::ERROR,
     };
+    let mut state_line = format!("state: {}", email_lane.load_state.label());
+    if let Some(failure_class) = email_lane.last_failure_class
+        && diagnostics.last_error.is_some()
+    {
+        state_line.push_str(" | failure: ");
+        state_line.push_str(failure_class.label());
+    }
     let status_x = (content_bounds.max_x() - 320.0).max(content_bounds.origin.x + 12.0);
-    let state_line = format!("state: {}", email_lane.load_state.label());
     paint.scene.draw_text(paint.text.layout(
         state_line.as_str(),
         Point::new(status_x, content_bounds.origin.y + 18.0),
@@ -275,18 +315,38 @@ fn paint_shared_header(
         state_color,
     ));
 
-    if let Some(action) = email_lane.last_action.as_deref() {
+    if let Some(action) = diagnostics
+        .last_action
+        .as_deref()
+        .or(email_lane.last_action.as_deref())
+    {
         paint.scene.draw_text(paint.text.layout(
-            action,
+            format!("action: {}", truncate_line(action, 56)).as_str(),
             Point::new(status_x, content_bounds.origin.y + 32.0),
             10.0,
             theme::text::MUTED,
         ));
     }
-    if let Some(error) = email_lane.last_error.as_deref() {
+    if let Some(result) = diagnostics
+        .last_result
+        .as_deref()
+        .or(email_lane.last_result.as_deref())
+    {
         paint.scene.draw_text(paint.text.layout(
-            error,
+            format!("result: {}", truncate_line(result, 56)).as_str(),
             Point::new(status_x, content_bounds.origin.y + 46.0),
+            10.0,
+            theme::text::PRIMARY,
+        ));
+    }
+    if let Some(error) = diagnostics
+        .last_error
+        .as_deref()
+        .or(email_lane.last_error.as_deref())
+    {
+        paint.scene.draw_text(paint.text.layout(
+            format!("error: {}", truncate_line(error, 56)).as_str(),
+            Point::new(status_x, content_bounds.origin.y + 60.0),
             10.0,
             theme::status::ERROR,
         ));
@@ -330,4 +390,16 @@ fn paint_action_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
         10.0,
         theme::text::PRIMARY,
     ));
+}
+
+fn truncate_line(value: &str, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        return value.to_string();
+    }
+    let mut truncated = value
+        .chars()
+        .take(max_chars.saturating_sub(3))
+        .collect::<String>();
+    truncated.push_str("...");
+    truncated
 }
