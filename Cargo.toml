@@ -4,6 +4,7 @@ members = [
     "apps/autopilot-desktop",
     "crates/cad",
     "crates/codex-client",
+    "crates/email-agent",
     "crates/nostr/client",
     "crates/nostr/core",
     "crates/openagents-ios-domain",

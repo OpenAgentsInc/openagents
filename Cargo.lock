@@ -4040,6 +4040,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-email-agent"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "openagents-ios-domain"
 version = "0.1.0"
 
