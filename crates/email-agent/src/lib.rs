@@ -1,5 +1,6 @@
 #![cfg_attr(test, allow(clippy::expect_used))]
 
+mod approval_workflow;
 mod draft_pipeline;
 mod gmail_connector;
 mod gmail_sync;
@@ -8,6 +9,13 @@ mod normalization;
 mod retrieval;
 mod style_profile;
 
+pub use approval_workflow::{
+    ApprovalDecisionAction, ApprovalDecisionInput, ApprovalMode, ApprovalPolicyPath,
+    ApprovalWorkflowError, ApprovalWorkflowState, DraftApprovalItem, DraftApprovalStatus,
+    DraftEnqueueRequest, QueueControlAction, QueueControlEvent, SendAuthorization,
+    authorize_draft_send, enqueue_draft_for_approval, record_approval_decision,
+    set_approval_kill_switch, set_approval_queue_paused,
+};
 pub use draft_pipeline::{
     DraftArtifact, DraftGenerationError, DraftGenerationInput, DraftPolicy, generate_draft,
 };
