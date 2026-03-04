@@ -3697,6 +3697,98 @@ mod tests {
     }
 
     #[test]
+    fn mission_control_earn_loop_wallet_confirmed_end_to_end() {
+        let mut provider = ProviderRuntimeState::default();
+        provider.mode = ProviderMode::Online;
+        provider.online_since = Some(std::time::Instant::now());
+
+        let mut inbox = seed_job_inbox(vec![fixture_inbox_request(
+            "req-e2e",
+            "run_model",
+            50,
+            120,
+            JobInboxValidation::Valid,
+        )]);
+        assert!(inbox.select_by_index(0));
+        let selected_request_id = inbox
+            .decide_selected(true, "capability matched")
+            .expect("accept request");
+        assert_eq!(selected_request_id, "req-e2e");
+        let request = inbox
+            .selected_request()
+            .expect("selected request exists")
+            .clone();
+
+        let mut active = ActiveJobState::default();
+        active.start_from_request(&request);
+        assert_eq!(
+            active.job.as_ref().expect("active job").stage,
+            JobLifecycleStage::Accepted
+        );
+        assert_eq!(
+            active
+                .advance_stage()
+                .expect("accepted->running transition"),
+            JobLifecycleStage::Running
+        );
+        assert_eq!(
+            active
+                .advance_stage()
+                .expect("running->delivered transition"),
+            JobLifecycleStage::Delivered
+        );
+        active.job.as_mut().expect("active job").payment_id =
+            Some("wallet-payment-001".to_string());
+        assert_eq!(
+            active.advance_stage().expect("delivered->paid transition"),
+            JobLifecycleStage::Paid
+        );
+        let terminal_job = active.job.clone().expect("terminal active job");
+
+        let mut history = JobHistoryState::default();
+        history.record_from_active_job(&terminal_job, JobHistoryStatus::Succeeded);
+        let row = history.rows.first().expect("history row recorded");
+        assert_eq!(row.status, JobHistoryStatus::Succeeded);
+        assert_eq!(row.payout_sats, 50);
+        assert_eq!(row.payment_pointer, "wallet-payment-001");
+
+        let mut wallet = SparkPaneState::default();
+        wallet.balance = Some(openagents_spark::Balance {
+            spark_sats: 10_000,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+        wallet
+            .recent_payments
+            .push(openagents_spark::PaymentSummary {
+                id: "wallet-payment-001".to_string(),
+                direction: "receive".to_string(),
+                status: "succeeded".to_string(),
+                amount_sats: 50,
+                timestamp: history.reference_epoch_seconds,
+            });
+
+        let swap_receipts = Vec::<crate::state::swap_contract::GoalSwapExecutionReceipt>::new();
+        let reconciliation = crate::state::wallet_reconciliation::reconcile_wallet_events_for_goal(
+            history.reference_epoch_seconds.saturating_sub(60),
+            9_950,
+            10_000,
+            "goal-e2e",
+            &history,
+            &wallet,
+            &swap_receipts,
+        );
+        assert_eq!(reconciliation.earned_wallet_delta_sats, 50);
+        assert_eq!(reconciliation.unattributed_receive_sats, 0);
+
+        let mut score = EarningsScoreboardState::default();
+        score.refresh_from_sources(std::time::Instant::now(), &provider, &history, &wallet);
+        assert_eq!(score.load_state, super::PaneLoadState::Ready);
+        assert!(score.sats_today >= 50);
+        assert_eq!(score.jobs_today, 1);
+    }
+
+    #[test]
     fn job_history_filters_search_status_and_time() {
         let mut history = seed_job_history(vec![
             fixture_history_row(
