@@ -666,7 +666,10 @@ mod tests {
             GOOGLE_OAUTH_REDIRECT_URI.to_string(),
             "http://localhost/callback".to_string(),
         );
-        values.insert(GOOGLE_GMAIL_ACCESS_TOKEN.to_string(), "access-token".to_string());
+        values.insert(
+            GOOGLE_GMAIL_ACCESS_TOKEN.to_string(),
+            "access-token".to_string(),
+        );
         values.insert(
             GOOGLE_GMAIL_REFRESH_TOKEN.to_string(),
             "refresh-token".to_string(),
