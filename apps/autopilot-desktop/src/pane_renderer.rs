@@ -15,7 +15,7 @@ use crate::app_state::{
     TrajectoryAuditPaneState, TreasuryExchangeSimulationPaneState,
 };
 use crate::pane_system::{
-    PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
+    active_job_abort_button_bounds, active_job_advance_button_bounds,
     activity_feed_filter_button_bounds, activity_feed_refresh_button_bounds,
     activity_feed_row_bounds, activity_feed_visible_row_count, alerts_recovery_ack_button_bounds,
     alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
@@ -40,7 +40,7 @@ use crate::pane_system::{
     settings_reset_button_bounds, settings_save_button_bounds,
     settings_wallet_default_input_bounds, starter_jobs_complete_button_bounds,
     starter_jobs_kill_switch_button_bounds, starter_jobs_row_bounds,
-    starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
+    starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds, PANE_TITLE_HEIGHT,
 };
 use crate::panes::{
     agent as agent_pane, cad as cad_pane, calculator as calculator_pane, cast as cast_pane,
@@ -49,7 +49,7 @@ use crate::panes::{
     skill as skill_pane, wallet as wallet_pane,
 };
 use crate::spark_wallet::SparkPaneState;
-use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
+use wgpui::{theme, Bounds, Component, Hsla, PaintContext, Point, Quad};
 
 pub struct PaneRenderer;
 
@@ -743,6 +743,45 @@ fn paint_earnings_scoreboard_pane(
             .uptime_seconds(std::time::Instant::now())
             .to_string(),
     );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "First job latency (s)",
+        &earnings_scoreboard
+            .first_job_latency_seconds
+            .map_or_else(|| "n/a".to_string(), |value| value.to_string()),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Completion ratio",
+        &format_bps_percent(earnings_scoreboard.completion_ratio_bps),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Payout success ratio",
+        &format_bps_percent(earnings_scoreboard.payout_success_ratio_bps),
+    );
+    let _ = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Wallet confirm latency (avg s)",
+        &earnings_scoreboard
+            .avg_wallet_confirmation_latency_seconds
+            .map_or_else(|| "n/a".to_string(), |value| value.to_string()),
+    );
+}
+
+fn format_bps_percent(value: Option<u16>) -> String {
+    value.map_or_else(
+        || "n/a".to_string(),
+        |bps| format!("{:.2}%", (bps as f64) / 100.0),
+    )
 }
 
 fn paint_relay_connections_pane(

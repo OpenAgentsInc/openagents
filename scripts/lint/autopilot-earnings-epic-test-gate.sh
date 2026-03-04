@@ -138,6 +138,16 @@ run_test \
     input::actions::tests::provider_failure_taxonomy_classifies_relay_execution_payment_and_reconciliation \
     -- --nocapture
 run_test \
+    "Loop integrity SLO metrics projection" \
+    cargo test -p autopilot-desktop \
+    app_state::tests::earnings_scoreboard_tracks_loop_integrity_slo_metrics \
+    -- --nocapture
+run_test \
+    "Loop integrity SLO alert thresholds" \
+    cargo test -p autopilot-desktop \
+    input::actions::tests::loop_integrity_alert_specs_flags_expected_slo_breaches \
+    -- --nocapture
+run_test \
     "Earn bitcoin until +N sats flow" \
     cargo test -p autopilot-desktop \
     state::earnings_gate::tests::earn_bitcoin_until_target_sats_requires_wallet_confirmed_threshold \

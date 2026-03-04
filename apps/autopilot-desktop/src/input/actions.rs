@@ -4624,6 +4624,8 @@ pub(super) fn refresh_earnings_scoreboard(
             state.provider_runtime.last_error_detail = None;
         }
     }
+
+    refresh_loop_integrity_slo_alerts(state);
 }
 
 fn classify_provider_failure(
@@ -4712,6 +4714,176 @@ fn is_taxonomy_failure_detail(detail: &str) -> bool {
     ]
     .into_iter()
     .any(|class| detail.to_ascii_lowercase().starts_with(class.label()))
+}
+
+const FIRST_JOB_LATENCY_SLO_SECONDS: u64 = 300;
+const COMPLETION_RATIO_SLO_BPS: u16 = 7_500;
+const PAYOUT_SUCCESS_SLO_BPS: u16 = 9_000;
+const WALLET_CONFIRM_LATENCY_SLO_SECONDS: u64 = 300;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct LoopIntegrityAlertSpec {
+    alert_id: &'static str,
+    domain: crate::app_state::AlertDomain,
+    severity: crate::app_state::AlertSeverity,
+    active: bool,
+    summary: String,
+    remediation: String,
+}
+
+fn loop_integrity_alert_specs(
+    first_job_latency_seconds: Option<u64>,
+    completion_ratio_bps: Option<u16>,
+    payout_success_ratio_bps: Option<u16>,
+    avg_wallet_confirmation_latency_seconds: Option<u64>,
+) -> Vec<LoopIntegrityAlertSpec> {
+    let first_job_active =
+        first_job_latency_seconds.is_some_and(|latency| latency > FIRST_JOB_LATENCY_SLO_SECONDS);
+    let completion_active =
+        completion_ratio_bps.is_some_and(|ratio| ratio < COMPLETION_RATIO_SLO_BPS);
+    let payout_active =
+        payout_success_ratio_bps.is_some_and(|ratio| ratio < PAYOUT_SUCCESS_SLO_BPS);
+    let wallet_latency_active = avg_wallet_confirmation_latency_seconds
+        .is_some_and(|latency| latency > WALLET_CONFIRM_LATENCY_SLO_SECONDS);
+
+    vec![
+        LoopIntegrityAlertSpec {
+            alert_id: "alert:slo:first-job-latency",
+            domain: crate::app_state::AlertDomain::ProviderRuntime,
+            severity: crate::app_state::AlertSeverity::Warning,
+            active: first_job_active,
+            summary: first_job_latency_seconds.map_or_else(
+                || "SLO first-job latency unavailable".to_string(),
+                |latency| {
+                    format!(
+                        "SLO first-job latency {}s (target <= {}s)",
+                        latency, FIRST_JOB_LATENCY_SLO_SECONDS
+                    )
+                },
+            ),
+            remediation:
+                "Check relay connectivity and starter-demand health to reduce time-to-first-job."
+                    .to_string(),
+        },
+        LoopIntegrityAlertSpec {
+            alert_id: "alert:slo:completion-ratio",
+            domain: crate::app_state::AlertDomain::ProviderRuntime,
+            severity: crate::app_state::AlertSeverity::Warning,
+            active: completion_active,
+            summary: completion_ratio_bps.map_or_else(
+                || "SLO completion ratio unavailable".to_string(),
+                |ratio| {
+                    format!(
+                        "SLO completion ratio {:.2}% (target >= {:.2}%)",
+                        ratio as f64 / 100.0,
+                        COMPLETION_RATIO_SLO_BPS as f64 / 100.0
+                    )
+                },
+            ),
+            remediation:
+                "Inspect execution failures in Active Job and resolve blocking runtime dependencies."
+                    .to_string(),
+        },
+        LoopIntegrityAlertSpec {
+            alert_id: "alert:slo:payout-success-ratio",
+            domain: crate::app_state::AlertDomain::Wallet,
+            severity: crate::app_state::AlertSeverity::Critical,
+            active: payout_active,
+            summary: payout_success_ratio_bps.map_or_else(
+                || "SLO payout success ratio unavailable".to_string(),
+                |ratio| {
+                    format!(
+                        "SLO payout success ratio {:.2}% (target >= {:.2}%)",
+                        ratio as f64 / 100.0,
+                        PAYOUT_SUCCESS_SLO_BPS as f64 / 100.0
+                    )
+                },
+            ),
+            remediation: "Audit wallet reconciliation mismatches and verify payout pointers against settled receive payments.".to_string(),
+        },
+        LoopIntegrityAlertSpec {
+            alert_id: "alert:slo:wallet-confirm-latency",
+            domain: crate::app_state::AlertDomain::Wallet,
+            severity: crate::app_state::AlertSeverity::Warning,
+            active: wallet_latency_active,
+            summary: avg_wallet_confirmation_latency_seconds.map_or_else(
+                || "SLO wallet confirmation latency unavailable".to_string(),
+                |latency| {
+                    format!(
+                        "SLO wallet confirm latency {}s (target <= {}s)",
+                        latency, WALLET_CONFIRM_LATENCY_SLO_SECONDS
+                    )
+                },
+            ),
+            remediation:
+                "Investigate payment settlement delays and wallet ingest lag before accepting more demand."
+                    .to_string(),
+        },
+    ]
+}
+
+fn refresh_loop_integrity_slo_alerts(state: &mut crate::app_state::RenderState) {
+    let specs = loop_integrity_alert_specs(
+        state.earnings_scoreboard.first_job_latency_seconds,
+        state.earnings_scoreboard.completion_ratio_bps,
+        state.earnings_scoreboard.payout_success_ratio_bps,
+        state
+            .earnings_scoreboard
+            .avg_wallet_confirmation_latency_seconds,
+    );
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs());
+
+    let mut active_count = 0usize;
+    for spec in specs {
+        if let Some(existing) = state
+            .alerts_recovery
+            .alerts
+            .iter_mut()
+            .find(|alert| alert.alert_id == spec.alert_id)
+        {
+            if spec.active {
+                active_count = active_count.saturating_add(1);
+                existing.domain = spec.domain;
+                existing.severity = spec.severity;
+                existing.lifecycle = crate::app_state::AlertLifecycle::Active;
+                existing.summary = spec.summary;
+                existing.remediation = spec.remediation;
+                existing.last_transition_epoch_seconds = now_epoch_seconds;
+            } else if existing.lifecycle != crate::app_state::AlertLifecycle::Resolved {
+                existing.lifecycle = crate::app_state::AlertLifecycle::Resolved;
+                existing.summary = format!("{} (recovered)", spec.summary);
+                existing.last_transition_epoch_seconds = now_epoch_seconds;
+            }
+            continue;
+        }
+
+        if spec.active {
+            active_count = active_count.saturating_add(1);
+            state
+                .alerts_recovery
+                .alerts
+                .push(crate::app_state::RecoveryAlertRow {
+                    alert_id: spec.alert_id.to_string(),
+                    domain: spec.domain,
+                    severity: spec.severity,
+                    lifecycle: crate::app_state::AlertLifecycle::Active,
+                    summary: spec.summary,
+                    remediation: spec.remediation,
+                    last_transition_epoch_seconds: now_epoch_seconds,
+                });
+        }
+    }
+
+    if active_count > 0 {
+        state.alerts_recovery.load_state = crate::app_state::PaneLoadState::Ready;
+        state.alerts_recovery.last_error = None;
+        state.alerts_recovery.last_action = Some(format!(
+            "Loop integrity SLO alerts active: {}",
+            active_count
+        ));
+    }
 }
 
 pub(super) fn refresh_network_aggregate_counters(
@@ -5083,7 +5255,7 @@ pub(super) fn parse_positive_amount_str(raw: &str, label: &str) -> Result<u64, S
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_provider_failure, is_taxonomy_failure_detail,
+        classify_provider_failure, is_taxonomy_failure_detail, loop_integrity_alert_specs,
         resolve_wallet_blink_env_from_secure_values,
         stable_sats_period_convert_totals_from_receipts,
         stable_sats_real_round_phase_from_operation_count, taxonomy_failure_detail,
@@ -5327,5 +5499,18 @@ mod tests {
         assert_eq!(relay, "relay: relay publish failed");
         assert!(is_taxonomy_failure_detail(relay.as_str()));
         assert!(!is_taxonomy_failure_detail("wallet backend unavailable"));
+    }
+
+    #[test]
+    fn loop_integrity_alert_specs_flags_expected_slo_breaches() {
+        let degraded_specs =
+            loop_integrity_alert_specs(Some(600), Some(6_000), Some(8_000), Some(420));
+        assert_eq!(degraded_specs.len(), 4);
+        assert!(degraded_specs.iter().all(|spec| spec.active));
+
+        let healthy_specs =
+            loop_integrity_alert_specs(Some(45), Some(9_500), Some(10_000), Some(90));
+        assert_eq!(healthy_specs.len(), 4);
+        assert!(healthy_specs.iter().all(|spec| !spec.active));
     }
 }
