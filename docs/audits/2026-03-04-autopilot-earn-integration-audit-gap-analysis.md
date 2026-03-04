@@ -116,6 +116,11 @@ Red:
   - Extended UI rows/details to render source provenance in Job Inbox, Active Job, Job History, and starter-job labeling (`apps/autopilot-desktop/src/pane_renderer.rs`).
   - Added provenance in result publication payload and automated propagation coverage (`apps/autopilot-desktop/src/input/reducers/jobs.rs`, `apps/autopilot-desktop/src/app_state.rs`).
   - Added regression gate coverage for starter provenance tagging (`scripts/lint/autopilot-earnings-epic-test-gate.sh`).
+- 2026-03-04: `#2884` (authoritative network stats pipeline) implemented.
+  - Added dedicated aggregate-counters service state for Mission Control network/global counters with explicit source/load/error semantics (`apps/autopilot-desktop/src/app_state.rs`).
+  - Wired aggregate refresh into background pump and removed ad-hoc inline Mission Control stats math in sidebar render path (`apps/autopilot-desktop/src/input.rs`, `apps/autopilot-desktop/src/input/actions.rs`, `apps/autopilot-desktop/src/render.rs`).
+  - Aggregate counters now derive from provider lane connectivity snapshot + wallet-reconciled payout rows (`jobs completed`, `sats paid`, and global today sats) instead of raw unreconciled history rows.
+  - Added automated coverage for reconciled/unreconciled/error aggregate-counter behavior and wired it into the earnings gate script (`apps/autopilot-desktop/src/app_state.rs`, `scripts/lint/autopilot-earnings-epic-test-gate.sh`).
 
 ## MVP Requirement Matrix (from `docs/MVP.md`)
 

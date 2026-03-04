@@ -2798,6 +2798,81 @@ impl EarningsScoreboardState {
     }
 }
 
+pub struct NetworkAggregateCountersState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub source_tag: String,
+    pub providers_online: u64,
+    pub jobs_completed: u64,
+    pub sats_paid: u64,
+    pub global_earnings_today_sats: u64,
+    pub stale_after: Duration,
+    pub last_refreshed_at: Option<Instant>,
+}
+
+impl Default for NetworkAggregateCountersState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for aggregate counters service refresh".to_string()),
+            source_tag: "aggregate.pending".to_string(),
+            providers_online: 0,
+            jobs_completed: 0,
+            sats_paid: 0,
+            global_earnings_today_sats: 0,
+            stale_after: Duration::from_secs(12),
+            last_refreshed_at: None,
+        }
+    }
+}
+
+impl NetworkAggregateCountersState {
+    pub fn refresh_from_sources(
+        &mut self,
+        now: Instant,
+        provider_nip90_lane: &ProviderNip90LaneSnapshot,
+        job_history: &JobHistoryState,
+        spark_wallet: &SparkPaneState,
+    ) {
+        self.last_refreshed_at = Some(now);
+        self.providers_online = provider_nip90_lane.connected_relays as u64;
+
+        let reconciled_payout_rows = job_history.wallet_reconciled_payout_rows(spark_wallet);
+        let threshold = job_history.reference_epoch_seconds.saturating_sub(86_400);
+        self.jobs_completed = reconciled_payout_rows.len() as u64;
+        self.sats_paid = reconciled_payout_rows.iter().map(|row| row.payout_sats).sum();
+        self.global_earnings_today_sats = reconciled_payout_rows
+            .iter()
+            .filter(|row| row.wallet_received_at_epoch_seconds >= threshold)
+            .map(|row| row.payout_sats)
+            .sum();
+
+        self.last_error = None;
+        if let Some(error) = spark_wallet.last_error.as_deref() {
+            self.load_state = PaneLoadState::Error;
+            self.last_error = Some(format!("Wallet source error: {error}"));
+            self.last_action = Some("Aggregate counters degraded due to wallet error".to_string());
+            self.source_tag = "aggregate.degraded.wallet".to_string();
+        } else if spark_wallet.balance.is_none() {
+            self.load_state = PaneLoadState::Loading;
+            self.last_action = Some("Aggregate counters waiting for wallet refresh".to_string());
+            self.source_tag = "aggregate.pending.wallet".to_string();
+        } else {
+            self.load_state = PaneLoadState::Ready;
+            self.last_action =
+                Some("Aggregate counters refreshed from wallet-reconciled payouts".to_string());
+            self.source_tag = "aggregate.wallet-reconciled.local".to_string();
+        }
+    }
+
+    pub fn is_stale(&self, now: Instant) -> bool {
+        self.last_refreshed_at
+            .is_none_or(|refresh| now.duration_since(refresh) > self.stale_after)
+    }
+}
+
 pub struct NostrSecretState {
     pub reveal_duration: Duration,
     pub revealed_until: Option<Instant>,
@@ -2950,6 +3025,7 @@ pub struct RenderState {
     pub next_runtime_command_seq: u64,
     pub provider_runtime: ProviderRuntimeState,
     pub earnings_scoreboard: EarningsScoreboardState,
+    pub network_aggregate_counters: NetworkAggregateCountersState,
     pub relay_connections: RelayConnectionsState,
     pub sync_health: SyncHealthState,
     pub network_requests: NetworkRequestsState,
@@ -3162,7 +3238,7 @@ mod tests {
         CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile, EarningsScoreboardState,
         JobDemandSource, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
         JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest, JobInboxState,
-        JobInboxValidation,
+        JobInboxValidation, NetworkAggregateCountersState,
         JobLifecycleStage, NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState,
         NostrSecretState, ProviderMode, ProviderRuntimeState, RecoveryAlertRow, RelayConnectionRow,
         RelayConnectionStatus, RelayConnectionsState, RelaySecuritySimulationPaneState,
@@ -4820,6 +4896,96 @@ mod tests {
                 .last_error
                 .as_deref()
                 .is_some_and(|error| error.contains("wallet backend unavailable"))
+        );
+    }
+
+    #[test]
+    fn network_aggregate_counters_refreshes_from_wallet_reconciled_payouts() {
+        let mut counters = NetworkAggregateCountersState::default();
+        let mut provider_lane = crate::provider_nip90_lane::ProviderNip90LaneSnapshot::default();
+        provider_lane.connected_relays = 7;
+        let mut row = fixture_history_row(
+            "job-network-aggregate-001",
+            JobHistoryStatus::Succeeded,
+            1_761_919_970,
+            2100,
+        );
+        row.payment_pointer = "wallet-payment-aggregate-001".to_string();
+        let history = seed_job_history(vec![row]);
+        let mut spark = SparkPaneState::default();
+        spark.balance = Some(openagents_spark::Balance {
+            spark_sats: 1000,
+            lightning_sats: 2000,
+            onchain_sats: 3000,
+        });
+        spark
+            .recent_payments
+            .push(openagents_spark::PaymentSummary {
+                id: "wallet-payment-aggregate-001".to_string(),
+                direction: "receive".to_string(),
+                status: "settled".to_string(),
+                amount_sats: 2100,
+                timestamp: history.reference_epoch_seconds,
+            });
+
+        let now = std::time::Instant::now();
+        counters.refresh_from_sources(now, &provider_lane, &history, &spark);
+
+        assert_eq!(counters.load_state, super::PaneLoadState::Ready);
+        assert_eq!(counters.source_tag, "aggregate.wallet-reconciled.local");
+        assert_eq!(counters.providers_online, 7);
+        assert_eq!(counters.jobs_completed, 1);
+        assert_eq!(counters.sats_paid, 2100);
+        assert_eq!(counters.global_earnings_today_sats, 2100);
+        assert!(!counters.is_stale(now));
+    }
+
+    #[test]
+    fn network_aggregate_counters_ignore_unreconciled_history_rows() {
+        let mut counters = NetworkAggregateCountersState::default();
+        let mut provider_lane = crate::provider_nip90_lane::ProviderNip90LaneSnapshot::default();
+        provider_lane.connected_relays = 3;
+        let mut row = fixture_history_row(
+            "job-network-aggregate-002",
+            JobHistoryStatus::Succeeded,
+            1_761_919_970,
+            4200,
+        );
+        row.payment_pointer = "wallet-payment-missing".to_string();
+        let history = seed_job_history(vec![row]);
+        let mut spark = SparkPaneState::default();
+        spark.balance = Some(openagents_spark::Balance {
+            spark_sats: 4_200,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+
+        counters.refresh_from_sources(std::time::Instant::now(), &provider_lane, &history, &spark);
+
+        assert_eq!(counters.load_state, super::PaneLoadState::Ready);
+        assert_eq!(counters.providers_online, 3);
+        assert_eq!(counters.jobs_completed, 0);
+        assert_eq!(counters.sats_paid, 0);
+        assert_eq!(counters.global_earnings_today_sats, 0);
+    }
+
+    #[test]
+    fn network_aggregate_counters_surface_wallet_errors() {
+        let mut counters = NetworkAggregateCountersState::default();
+        let provider_lane = crate::provider_nip90_lane::ProviderNip90LaneSnapshot::default();
+        let history = JobHistoryState::default();
+        let mut spark = SparkPaneState::default();
+        spark.last_error = Some("wallet service unavailable".to_string());
+
+        counters.refresh_from_sources(std::time::Instant::now(), &provider_lane, &history, &spark);
+
+        assert_eq!(counters.load_state, super::PaneLoadState::Error);
+        assert_eq!(counters.source_tag, "aggregate.degraded.wallet");
+        assert!(
+            counters
+                .last_error
+                .as_deref()
+                .is_some_and(|error| error.contains("wallet service unavailable"))
         );
     }
 

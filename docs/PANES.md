@@ -23,6 +23,7 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - Codex protocol observability pane with raw events, method counters, failure snapshots, and wire-log controls.
 - `Go Online`
   - Provider mode toggle pane with explicit state machine (`offline`, `connecting`, `online`, `degraded`) and preflight blockers.
+  - Mission Control network/global counters are hydrated via aggregate-counters service state (provider ingress connectivity + wallet-reconciled payout evidence), not ad-hoc render-only projections.
   - Action: toggle online/offline.
 - `Provider Status`
   - Runtime status pane for heartbeat freshness, uptime, queue depth, and dependency state.
