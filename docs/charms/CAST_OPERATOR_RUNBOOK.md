@@ -131,3 +131,4 @@ Key script-to-receipt mappings:
 
 - [CAST failure modes](CAST_FAILURE_MODES.md)
 - [CAST test matrix](CAST_TEST_MATRIX.md)
+- [CAST oa-bitcoind connection runbook](CAST_OA_BITCOIND_CONNECTION_RUNBOOK.md)
