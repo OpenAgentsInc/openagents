@@ -127,6 +127,10 @@ Red:
   - Relay pane reducer now hydrates relay rows directly from provider lane transport snapshots, preserving selection while removing pane-local connected simulation (`apps/autopilot-desktop/src/input/reducers/provider_ingress.rs`).
   - Relay retry action now sets `connecting` only and queues reconnect sync, leaving connected/latency state to transport authority (`apps/autopilot-desktop/src/state/operations.rs`, `apps/autopilot-desktop/src/input/actions.rs`).
   - Added/updated automated coverage for transport relay snapshot wiring and retry semantics; wired relay-retry regression into the earnings gate script (`apps/autopilot-desktop/src/provider_nip90_lane.rs`, `apps/autopilot-desktop/src/app_state.rs`, `scripts/lint/autopilot-earnings-epic-test-gate.sh`).
+- 2026-03-04: `#2886` (epic tracker + implementation log reconciliation) implemented.
+  - Updated `docs/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md` with a reconciled gate-status matrix and explicit follow-on issue state table for `#2877` through `#2890`.
+  - Clarified the original `#2814`-`#2876` list as historical scope and documented that open reconciliation issues block final completion claims.
+  - Updated `docs/AUTOPILOT_EARN_MVP_IMPLEMENTATION_LOG.md` header/claims to separate historical evidence from live completion status, plus added reconciliation addendum coverage for `#2877`-`#2890`.
 
 ## MVP Requirement Matrix (from `docs/MVP.md`)
 

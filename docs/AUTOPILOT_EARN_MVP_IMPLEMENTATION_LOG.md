@@ -1,11 +1,36 @@
 # Autopilot Earn MVP Implementation Log
 
 Date: 2026-03-04
-Issues: #2815 - #2876
+Issues: historical stream `#2815 - #2876`, reconciliation stream `#2877 - #2890`
 
-This log records the implementation evidence used to complete the full Autopilot Earn MVP issue sequence.
+This log records implementation evidence for the historical Autopilot Earn MVP issue stream and the follow-on reconciliation stream opened by the 2026-03-04 audit.
 
 Scope note: this log is compute-lane specific (NIP-90 provider earnings). It does not include future liquidity-solver implementation work.
+
+Current-status note: this file is an evidence ledger, not a completion assertion. Canonical live status is tracked in:
+- `docs/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md`
+- `docs/audits/2026-03-04-autopilot-earn-integration-audit-gap-analysis.md`
+
+## Reconciliation Addendum (2026-03-04)
+
+Follow-on issues created from audit gap analysis:
+
+| # | State | Scope |
+| --- | --- | --- |
+| [#2877](https://github.com/OpenAgentsInc/openagents/issues/2877) | CLOSED | Relay-backed provider ingress wiring |
+| [#2878](https://github.com/OpenAgentsInc/openagents/issues/2878) | CLOSED | External authority mapping for lifecycle stages |
+| [#2879](https://github.com/OpenAgentsInc/openagents/issues/2879) | CLOSED | Desktop publish path for feedback/result events |
+| [#2880](https://github.com/OpenAgentsInc/openagents/issues/2880) | CLOSED | Wallet-authoritative mission-control totals |
+| [#2881](https://github.com/OpenAgentsInc/openagents/issues/2881) | CLOSED | Desktop relay->execute->publish->wallet harness |
+| [#2882](https://github.com/OpenAgentsInc/openagents/issues/2882) | CLOSED | Starter-demand controls and kill switch |
+| [#2883](https://github.com/OpenAgentsInc/openagents/issues/2883) | CLOSED | Starter provenance tagging into receipts/history |
+| [#2884](https://github.com/OpenAgentsInc/openagents/issues/2884) | CLOSED | Aggregate network stats service pipeline |
+| [#2885](https://github.com/OpenAgentsInc/openagents/issues/2885) | CLOSED | Relay connectivity truth model |
+| [#2886](https://github.com/OpenAgentsInc/openagents/issues/2886) | OPEN | Tracker/log claim reconciliation |
+| [#2887](https://github.com/OpenAgentsInc/openagents/issues/2887) | OPEN | Failure taxonomy + diagnostics |
+| [#2888](https://github.com/OpenAgentsInc/openagents/issues/2888) | OPEN | Loop integrity SLO metrics/alerts |
+| [#2889](https://github.com/OpenAgentsInc/openagents/issues/2889) | OPEN | Simulation path isolation |
+| [#2890](https://github.com/OpenAgentsInc/openagents/issues/2890) | OPEN | Docs consolidation for canonical status |
 
 ## Program + Backroom
 

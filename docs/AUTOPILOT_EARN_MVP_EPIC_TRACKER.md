@@ -21,7 +21,43 @@ The epic is complete only when all are true:
 5. Public stats lane is live and consistent with wallet-confirmed payouts.
 6. Reliability/test/rollout gates are green.
 
-## Issue List
+## Current Reconciliation Status (2026-03-04)
+
+Epic issue `#2814` is historically closed, but the 2026-03-04 code audit opened a follow-on reconciliation track (`#2877` to `#2890`) to align claims with merged code and test evidence.
+
+Current gate status:
+
+| Gate | Status | Evidence |
+| --- | --- | --- |
+| Mission Control first-run loop | ✅ Implemented | Closed implementation stream through `#2821`-`#2828` |
+| Relay-backed provider runtime (request/result/feedback) | ✅ Implemented | `#2877`, `#2878`, `#2879` |
+| Wallet-confirmed payout gate | ✅ Implemented | `#2880` |
+| Seed-demand buyer lane with controls | ✅ Implemented | `#2882`, `#2883` |
+| Public stats lane consistent with wallet-confirmed payouts | ✅ Implemented | `#2884`, `#2885` |
+| Reliability/test/rollout and canonical-status closure | ⏳ In progress | Open `#2886`, `#2887`, `#2888`, `#2889`, `#2890` |
+
+The epic should not be treated as fully complete until the open reconciliation issues above are closed with code and verification evidence.
+
+## Reconciliation Follow-On Issues
+
+| # | Title | State |
+| --- | --- | --- |
+| [#2877](https://github.com/OpenAgentsInc/openagents/issues/2877) | Earn P0: Desktop relay-backed NIP-90 provider lane wiring | CLOSED |
+| [#2878](https://github.com/OpenAgentsInc/openagents/issues/2878) | Earn P0: Provider job lifecycle external authority mapping | CLOSED |
+| [#2879](https://github.com/OpenAgentsInc/openagents/issues/2879) | Earn P0: Result/feedback publishing from desktop execution lane | CLOSED |
+| [#2880](https://github.com/OpenAgentsInc/openagents/issues/2880) | Earn P0: Wallet-authoritative mission-control totals | CLOSED |
+| [#2881](https://github.com/OpenAgentsInc/openagents/issues/2881) | Earn P0: Desktop E2E harness (relay -> execute -> publish -> wallet confirm) | CLOSED |
+| [#2882](https://github.com/OpenAgentsInc/openagents/issues/2882) | Earn P1: Starter-demand generator with budget/kill-switch controls | CLOSED |
+| [#2883](https://github.com/OpenAgentsInc/openagents/issues/2883) | Earn P1: Starter job provenance and receipt tagging | CLOSED |
+| [#2884](https://github.com/OpenAgentsInc/openagents/issues/2884) | Earn P1: Authoritative network stats pipeline | CLOSED |
+| [#2885](https://github.com/OpenAgentsInc/openagents/issues/2885) | Earn P1: Relay connectivity truth model | CLOSED |
+| [#2886](https://github.com/OpenAgentsInc/openagents/issues/2886) | Earn P1: Reconcile epic tracker closure with code evidence | OPEN |
+| [#2887](https://github.com/OpenAgentsInc/openagents/issues/2887) | Earn P2: Failure taxonomy + user-facing diagnostics | OPEN |
+| [#2888](https://github.com/OpenAgentsInc/openagents/issues/2888) | Earn P2: Loop integrity SLO metrics and alerts | OPEN |
+| [#2889](https://github.com/OpenAgentsInc/openagents/issues/2889) | Earn P2: Simulation path isolation | OPEN |
+| [#2890](https://github.com/OpenAgentsInc/openagents/issues/2890) | Earn P2: Docs consolidation for canonical status | OPEN |
+
+## Historical Issue List (`#2814 - #2876`)
 
 | # | Title | State |
 | --- | --- | --- |

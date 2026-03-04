@@ -147,5 +147,8 @@ run_test \
     cargo test -p autopilot-desktop \
     state::autopilot_goals::tests::rollout_metrics_and_health_capture_false_success_latency_and_abort_distribution \
     -- --nocapture
+run_test \
+    "Earn docs reconciliation integrity" \
+    ./scripts/lint/autopilot-earn-doc-reconciliation-check.sh
 
 printf 'Autopilot earnings epic test matrix gate passed.\n'
