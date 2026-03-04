@@ -49,8 +49,7 @@ use crate::pane_system::{
     CadDemoPaneAction, CastControlPaneAction, CodexAccountPaneAction, CodexAppsPaneAction,
     CodexConfigPaneAction, CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction,
     CodexModelsPaneAction, CredentialsPaneAction, EarningsScoreboardPaneAction,
-    EmailApprovalQueuePaneAction, EmailFollowUpQueuePaneAction, EmailInboxPaneAction,
-    EmailSendLogPaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction, PaneInput,
+    NetworkRequestsPaneAction, PaneController, PaneHitAction, PaneInput,
     RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction, SIDEBAR_DEFAULT_WIDTH,
     SettingsPaneAction, StableSatsSimulationPaneAction, StarterJobsPaneAction,
     SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction, cad_demo_context_menu_bounds,
@@ -2280,7 +2279,6 @@ fn dispatch_keyboard_submit_actions(
         || handle_create_invoice_keyboard_input(state, logical_key)
         || handle_relay_connections_keyboard_input(state, logical_key)
         || handle_network_requests_keyboard_input(state, logical_key)
-        || handle_email_lane_keyboard_input(state, logical_key)
         || handle_settings_keyboard_input(state, logical_key)
         || handle_credentials_keyboard_input(state, logical_key)
         || handle_job_history_keyboard_input(state, logical_key)
@@ -2429,17 +2427,6 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::JobInbox(action) => reducers::run_job_inbox_action(state, action),
         PaneHitAction::ActiveJob(action) => reducers::run_active_job_action(state, action),
         PaneHitAction::JobHistory(action) => reducers::run_job_history_action(state, action),
-        PaneHitAction::EmailInbox(action) => reducers::run_email_inbox_action(state, action),
-        PaneHitAction::EmailDraftQueue(action) => {
-            reducers::run_email_draft_queue_action(state, action)
-        }
-        PaneHitAction::EmailApprovalQueue(action) => {
-            reducers::run_email_approval_queue_action(state, action)
-        }
-        PaneHitAction::EmailSendLog(action) => reducers::run_email_send_log_action(state, action),
-        PaneHitAction::EmailFollowUpQueue(action) => {
-            reducers::run_email_follow_up_queue_action(state, action)
-        }
         PaneHitAction::AgentProfileState(action) => {
             reducers::run_agent_profile_state_action(state, action)
         }
@@ -2700,48 +2687,6 @@ fn handle_settings_keyboard_input(
             false
         },
     )
-}
-
-fn handle_email_lane_keyboard_input(
-    state: &mut crate::app_state::RenderState,
-    logical_key: &WinitLogicalKey,
-) -> bool {
-    let Some(key) = map_winit_key(logical_key) else {
-        return false;
-    };
-    if !matches!(key, Key::Named(NamedKey::Enter)) {
-        return false;
-    }
-
-    let Some(active_pane_id) = PaneController::active(state) else {
-        return false;
-    };
-    let Some(active_kind) = state
-        .panes
-        .iter()
-        .find(|pane| pane.id == active_pane_id)
-        .map(|pane| pane.kind)
-    else {
-        return false;
-    };
-
-    match active_kind {
-        PaneKind::EmailInbox => {
-            reducers::run_email_inbox_action(state, EmailInboxPaneAction::Refresh)
-        }
-        PaneKind::EmailApprovalQueue => reducers::run_email_approval_queue_action(
-            state,
-            EmailApprovalQueuePaneAction::ApproveSelected,
-        ),
-        PaneKind::EmailSendLog => {
-            reducers::run_email_send_log_action(state, EmailSendLogPaneAction::SendSelected)
-        }
-        PaneKind::EmailFollowUpQueue => reducers::run_email_follow_up_queue_action(
-            state,
-            EmailFollowUpQueuePaneAction::RunSchedulerTick,
-        ),
-        _ => false,
-    }
 }
 
 fn handle_credentials_keyboard_input(

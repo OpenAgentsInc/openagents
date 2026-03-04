@@ -3,7 +3,6 @@
 mod ac;
 mod cad;
 mod codex;
-mod email;
 mod jobs;
 mod provider_ingress;
 mod sa;
@@ -14,19 +13,13 @@ pub(super) use cad::CadChatPromptApplyOutcome;
 use crate::app_state::RenderState;
 use crate::pane_system::{
     ActiveJobPaneAction, AgentProfileStatePaneAction, AgentScheduleTickPaneAction,
-    CadDemoPaneAction, CreditDeskPaneAction, CreditSettlementLedgerPaneAction,
-    EmailApprovalQueuePaneAction, EmailDraftQueuePaneAction, EmailFollowUpQueuePaneAction,
-    EmailInboxPaneAction, EmailSendLogPaneAction, JobHistoryPaneAction, JobInboxPaneAction,
-    SkillRegistryPaneAction, SkillTrustRevocationPaneAction, TrajectoryAuditPaneAction,
+    CadDemoPaneAction, CreditDeskPaneAction, CreditSettlementLedgerPaneAction, JobHistoryPaneAction,
+    JobInboxPaneAction, SkillRegistryPaneAction, SkillTrustRevocationPaneAction,
+    TrajectoryAuditPaneAction,
 };
 use crate::runtime_lanes::{
     AcLaneUpdate, RuntimeCommandResponse, RuntimeCommandStatus, RuntimeLane, SaLaneUpdate,
     SklLaneUpdate,
-};
-use openagents_email_agent::{
-    ApprovalDecisionAction, GmailBackfillCheckpoint, GmailBackfillConfig, GmailBackfillResult,
-    GmailSyncOutcome, GmailSyncState, SendExecutionOutcome, SendExecutionPolicy,
-    SendExecutionState, SendRequest,
 };
 
 pub(super) fn run_job_inbox_action(state: &mut RenderState, action: JobInboxPaneAction) -> bool {
@@ -42,110 +35,6 @@ pub(super) fn run_job_history_action(
     action: JobHistoryPaneAction,
 ) -> bool {
     jobs::run_job_history_action(state, action)
-}
-
-pub(super) fn run_email_inbox_action(
-    state: &mut RenderState,
-    action: EmailInboxPaneAction,
-) -> bool {
-    email::run_email_inbox_action(state, action)
-}
-
-pub(super) fn run_email_draft_queue_action(
-    state: &mut RenderState,
-    action: EmailDraftQueuePaneAction,
-) -> bool {
-    email::run_email_draft_queue_action(state, action)
-}
-
-pub(super) fn run_email_approval_queue_action(
-    state: &mut RenderState,
-    action: EmailApprovalQueuePaneAction,
-) -> bool {
-    email::run_email_approval_queue_action(state, action)
-}
-
-pub(super) fn run_email_send_log_action(
-    state: &mut RenderState,
-    action: EmailSendLogPaneAction,
-) -> bool {
-    email::run_email_send_log_action(state, action)
-}
-
-pub(super) fn run_email_follow_up_queue_action(
-    state: &mut RenderState,
-    action: EmailFollowUpQueuePaneAction,
-) -> bool {
-    email::run_email_follow_up_queue_action(state, action)
-}
-
-pub(super) fn fetch_live_gmail_backfill(
-    state: &mut RenderState,
-    checkpoint: Option<&GmailBackfillCheckpoint>,
-    config: &GmailBackfillConfig,
-) -> Result<GmailBackfillResult, String> {
-    email::fetch_live_gmail_backfill(state, checkpoint, config)
-}
-
-pub(super) fn run_live_gmail_incremental_sync(
-    state: &mut RenderState,
-    sync_state: &mut GmailSyncState,
-    max_results: usize,
-) -> Result<GmailSyncOutcome, String> {
-    email::run_live_gmail_incremental_sync(state, sync_state, max_results)
-}
-
-pub(super) fn execute_live_gmail_send(
-    state: &mut RenderState,
-    send_state: &mut SendExecutionState,
-    request: &SendRequest,
-    policy: &SendExecutionPolicy,
-    now_unix: u64,
-) -> Result<SendExecutionOutcome, String> {
-    email::execute_live_gmail_send(state, send_state, request, policy, now_unix)
-}
-
-pub(super) fn gmail_stale_cursor_reason() -> &'static str {
-    email::stale_cursor_reason()
-}
-
-pub(super) fn gmail_now_epoch_seconds() -> u64 {
-    email::now_epoch_seconds()
-}
-
-pub(super) fn refresh_email_lane_from_live_gmail(state: &mut RenderState) -> Result<(), String> {
-    email::refresh_email_lane_from_live_gmail(state)
-}
-
-pub(super) fn sync_email_lane_incremental(
-    state: &mut RenderState,
-    max_results: usize,
-) -> Result<GmailSyncOutcome, String> {
-    email::sync_email_lane_incremental(state, max_results)
-}
-
-pub(super) fn generate_selected_inbox_draft(state: &mut RenderState) -> Result<String, String> {
-    email::generate_selected_inbox_draft(state)
-}
-
-pub(super) fn approve_or_reject_selected_draft(
-    state: &mut RenderState,
-    action: ApprovalDecisionAction,
-    reason: Option<String>,
-) -> Result<String, String> {
-    email::approve_or_reject_selected_draft(state, action, reason)
-}
-
-pub(super) fn send_selected_approved_draft(state: &mut RenderState) -> Result<String, String> {
-    email::send_selected_approved_draft(state)
-}
-
-pub(super) fn run_email_follow_up_scheduler(state: &mut RenderState) -> Result<usize, String> {
-    email::run_follow_up_scheduler(state)
-}
-
-pub(super) fn start_gmail_oauth_login(state: &mut RenderState) -> Result<(), String> {
-    email::start_gmail_oauth_login(state)
 }
 
 pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {

@@ -157,7 +157,6 @@ From the Credentials pane, users can:
 
 - `Add custom`: create new slot (metadata persisted)
 - `Save value`: store value in keyring for selected slot
-- `Gmail Login`: launch browser OAuth, capture callback locally, and save Gmail access/refresh tokens automatically
 - `Clear value` / `Delete slot`:
   - template slot: clear keyring value only
   - custom slot: remove slot metadata + clear keyring value
@@ -224,12 +223,11 @@ When an action fails, Autopilot:
 1. Open command palette (`K`) and open `Credentials` pane.
 2. Select a slot (for example `BLINK_API_KEY`) or add a custom slot.
 3. Paste key into `Value` and click `Save value`.
-4. For Gmail lane usage, click `Gmail Login` after configuring OAuth client credentials; token fields are stored automatically in secure storage.
-5. Set scopes:
+4. Set scopes:
    - skills/Codex-integrations: enable `Skills` (and `Codex` if needed)
    - Spark API key: enable `Spark`
-6. Leave `Global` off unless multiple runtimes truly need it.
-7. Use the integration; Autopilot will resync/restart runtimes when required.
+5. Leave `Global` off unless multiple runtimes truly need it.
+6. Use the integration; Autopilot will resync/restart runtimes when required.
 
 ## Developer Notes
 

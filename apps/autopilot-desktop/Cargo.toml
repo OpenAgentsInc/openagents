@@ -26,7 +26,6 @@ workspace = true
 anyhow = { workspace = true }
 codex-client = { path = "../../crates/codex-client" }
 openagents-cad = { path = "../../crates/cad" }
-openagents-email-agent = { path = "../../crates/email-agent" }
 openagents-spark = { path = "../../crates/spark" }
 nostr = { path = "../../crates/nostr/core" }
 nostr-client = { path = "../../crates/nostr/client" }
