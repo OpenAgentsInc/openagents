@@ -2,6 +2,7 @@
 
 mod approval_workflow;
 mod draft_pipeline;
+mod follow_up_scheduler;
 mod gmail_connector;
 mod gmail_sync;
 mod knowledge_base;
@@ -19,6 +20,11 @@ pub use approval_workflow::{
 };
 pub use draft_pipeline::{
     DraftArtifact, DraftGenerationError, DraftGenerationInput, DraftPolicy, generate_draft,
+};
+pub use follow_up_scheduler::{
+    FollowUpEvent, FollowUpEventType, FollowUpJob, FollowUpJobStatus, FollowUpRule,
+    FollowUpRuleKind, FollowUpSchedulerError, FollowUpSchedulerPolicy, FollowUpSchedulerState,
+    FollowUpTickOutcome, ThreadFollowUpContext, run_follow_up_scheduler_tick,
 };
 pub use gmail_connector::{
     GmailBackfillCheckpoint, GmailBackfillConfig, GmailBackfillPage, GmailBackfillResult,
