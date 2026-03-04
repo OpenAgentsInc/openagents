@@ -11,6 +11,13 @@ pub const CREDENTIAL_SCOPE_ALL: u8 = CREDENTIAL_SCOPE_CODEX
     | CREDENTIAL_SCOPE_SKILLS
     | CREDENTIAL_SCOPE_GLOBAL;
 
+pub const GOOGLE_OAUTH_CLIENT_ID: &str = "GOOGLE_OAUTH_CLIENT_ID";
+pub const GOOGLE_OAUTH_CLIENT_SECRET: &str = "GOOGLE_OAUTH_CLIENT_SECRET";
+pub const GOOGLE_OAUTH_REDIRECT_URI: &str = "GOOGLE_OAUTH_REDIRECT_URI";
+pub const GOOGLE_GMAIL_ACCESS_TOKEN: &str = "GOOGLE_GMAIL_ACCESS_TOKEN";
+pub const GOOGLE_GMAIL_REFRESH_TOKEN: &str = "GOOGLE_GMAIL_REFRESH_TOKEN";
+pub const GOOGLE_GMAIL_TOKEN_EXPIRY_UNIX: &str = "GOOGLE_GMAIL_TOKEN_EXPIRY_UNIX";
+
 const CREDENTIALS_SCHEMA_VERSION: u16 = 1;
 const CREDENTIALS_KEYRING_SERVICE: &str = "com.openagents.autopilot.credentials";
 
@@ -21,7 +28,7 @@ pub struct CredentialTemplate {
     pub scopes: u8,
 }
 
-pub const CREDENTIAL_TEMPLATES: [CredentialTemplate; 11] = [
+pub const CREDENTIAL_TEMPLATES: [CredentialTemplate; 17] = [
     CredentialTemplate {
         name: "OPENAI_API_KEY",
         secret: true,
@@ -41,6 +48,36 @@ pub const CREDENTIAL_TEMPLATES: [CredentialTemplate; 11] = [
         name: "OPENAI_CHATGPT_PLAN_TYPE",
         secret: false,
         scopes: CREDENTIAL_SCOPE_CODEX | CREDENTIAL_SCOPE_GLOBAL,
+    },
+    CredentialTemplate {
+        name: GOOGLE_OAUTH_CLIENT_ID,
+        secret: false,
+        scopes: CREDENTIAL_SCOPE_CODEX | CREDENTIAL_SCOPE_SKILLS | CREDENTIAL_SCOPE_GLOBAL,
+    },
+    CredentialTemplate {
+        name: GOOGLE_OAUTH_CLIENT_SECRET,
+        secret: true,
+        scopes: CREDENTIAL_SCOPE_CODEX | CREDENTIAL_SCOPE_SKILLS | CREDENTIAL_SCOPE_GLOBAL,
+    },
+    CredentialTemplate {
+        name: GOOGLE_OAUTH_REDIRECT_URI,
+        secret: false,
+        scopes: CREDENTIAL_SCOPE_CODEX | CREDENTIAL_SCOPE_SKILLS | CREDENTIAL_SCOPE_GLOBAL,
+    },
+    CredentialTemplate {
+        name: GOOGLE_GMAIL_ACCESS_TOKEN,
+        secret: true,
+        scopes: CREDENTIAL_SCOPE_CODEX | CREDENTIAL_SCOPE_SKILLS | CREDENTIAL_SCOPE_GLOBAL,
+    },
+    CredentialTemplate {
+        name: GOOGLE_GMAIL_REFRESH_TOKEN,
+        secret: true,
+        scopes: CREDENTIAL_SCOPE_CODEX | CREDENTIAL_SCOPE_SKILLS | CREDENTIAL_SCOPE_GLOBAL,
+    },
+    CredentialTemplate {
+        name: GOOGLE_GMAIL_TOKEN_EXPIRY_UNIX,
+        secret: false,
+        scopes: CREDENTIAL_SCOPE_CODEX | CREDENTIAL_SCOPE_SKILLS | CREDENTIAL_SCOPE_GLOBAL,
     },
     CredentialTemplate {
         name: "OPENAGENTS_SPARK_API_KEY",
@@ -87,6 +124,30 @@ pub struct CredentialRecord {
     pub template: bool,
     pub scopes: u8,
     pub has_value: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GoogleGmailOAuthLifecycle {
+    pub client_id: String,
+    pub client_secret: String,
+    pub redirect_uri: String,
+    pub access_token: String,
+    pub refresh_token: String,
+    pub expires_at_unix: u64,
+}
+
+impl GoogleGmailOAuthLifecycle {
+    pub fn is_expired_at(&self, now_unix: u64) -> bool {
+        now_unix >= self.expires_at_unix
+    }
+
+    pub fn refresh_deadline_unix(&self, refresh_skew_seconds: u64) -> u64 {
+        self.expires_at_unix.saturating_sub(refresh_skew_seconds)
+    }
+
+    pub fn should_refresh_at(&self, now_unix: u64, refresh_skew_seconds: u64) -> bool {
+        now_unix >= self.refresh_deadline_unix(refresh_skew_seconds)
+    }
 }
 
 impl CredentialRecord {
@@ -248,6 +309,37 @@ impl CredentialRepository {
         pairs.sort_by_key(|entry| entry.0.clone());
         Ok(pairs)
     }
+
+    pub fn load_google_gmail_oauth_lifecycle(
+        &self,
+        records: &[CredentialRecord],
+    ) -> Result<Option<GoogleGmailOAuthLifecycle>, String> {
+        let template_names = [
+            GOOGLE_OAUTH_CLIENT_ID,
+            GOOGLE_OAUTH_CLIENT_SECRET,
+            GOOGLE_OAUTH_REDIRECT_URI,
+            GOOGLE_GMAIL_ACCESS_TOKEN,
+            GOOGLE_GMAIL_REFRESH_TOKEN,
+            GOOGLE_GMAIL_TOKEN_EXPIRY_UNIX,
+        ];
+        let mut values = HashMap::<String, String>::new();
+        for template_name in template_names {
+            let is_enabled = records
+                .iter()
+                .any(|record| record.enabled && record.name == template_name);
+            if !is_enabled {
+                continue;
+            }
+            if let Some(value) = self.read_value_secure(template_name)? {
+                values.insert(template_name.to_string(), value);
+            }
+        }
+        if values.is_empty() {
+            return Ok(None);
+        }
+
+        parse_google_gmail_oauth_lifecycle(&values).map(Some)
+    }
 }
 
 pub fn is_valid_env_var_name(raw: &str) -> bool {
@@ -271,6 +363,36 @@ pub fn infer_secret_from_name(name: &str) -> bool {
         || normalized.ends_with("_TOKEN")
         || normalized.contains("SECRET")
         || normalized.contains("PASSWORD")
+}
+
+pub fn parse_google_gmail_oauth_lifecycle(
+    values: &HashMap<String, String>,
+) -> Result<GoogleGmailOAuthLifecycle, String> {
+    fn required(values: &HashMap<String, String>, key: &str) -> Result<String, String> {
+        values
+            .get(key)
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| format!("Missing required credential {key}"))
+    }
+
+    let client_id = required(values, GOOGLE_OAUTH_CLIENT_ID)?;
+    let client_secret = required(values, GOOGLE_OAUTH_CLIENT_SECRET)?;
+    let redirect_uri = required(values, GOOGLE_OAUTH_REDIRECT_URI)?;
+    let access_token = required(values, GOOGLE_GMAIL_ACCESS_TOKEN)?;
+    let refresh_token = required(values, GOOGLE_GMAIL_REFRESH_TOKEN)?;
+    let expires_at_unix = required(values, GOOGLE_GMAIL_TOKEN_EXPIRY_UNIX)?
+        .parse::<u64>()
+        .map_err(|error| format!("Invalid {} value: {error}", GOOGLE_GMAIL_TOKEN_EXPIRY_UNIX))?;
+
+    Ok(GoogleGmailOAuthLifecycle {
+        client_id,
+        client_secret,
+        redirect_uri,
+        access_token,
+        refresh_token,
+        expires_at_unix,
+    })
 }
 
 fn keyring_entry(name: &str) -> Result<keyring::Entry, String> {
@@ -458,9 +580,13 @@ fn record_sort_key(record: &CredentialRecord) -> (u8, usize, String) {
 mod tests {
     use super::{
         CREDENTIAL_SCOPE_CODEX, CREDENTIAL_SCOPE_GLOBAL, CREDENTIAL_SCOPE_SKILLS,
-        CREDENTIAL_SCOPE_SPARK, CREDENTIAL_TEMPLATES, CredentialRecord, is_valid_env_var_name,
-        normalize_env_var_name, parse_credentials_metadata, serialize_credentials_metadata,
+        CREDENTIAL_SCOPE_SPARK, CREDENTIAL_TEMPLATES, CredentialRecord, GOOGLE_GMAIL_ACCESS_TOKEN,
+        GOOGLE_GMAIL_REFRESH_TOKEN, GOOGLE_GMAIL_TOKEN_EXPIRY_UNIX, GOOGLE_OAUTH_CLIENT_ID,
+        GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REDIRECT_URI, GoogleGmailOAuthLifecycle,
+        is_valid_env_var_name, normalize_env_var_name, parse_credentials_metadata,
+        parse_google_gmail_oauth_lifecycle, serialize_credentials_metadata,
     };
+    use std::collections::HashMap;
 
     #[test]
     fn env_var_name_validation_rejects_invalid_shapes() {
@@ -526,5 +652,49 @@ mod tests {
         assert!(has_codex);
         assert!(has_spark);
         assert!(has_skills);
+    }
+
+    #[test]
+    fn parse_google_gmail_oauth_lifecycle_requires_complete_fields() {
+        let mut values = HashMap::new();
+        values.insert(GOOGLE_OAUTH_CLIENT_ID.to_string(), "client-id".to_string());
+        values.insert(
+            GOOGLE_OAUTH_CLIENT_SECRET.to_string(),
+            "client-secret".to_string(),
+        );
+        values.insert(
+            GOOGLE_OAUTH_REDIRECT_URI.to_string(),
+            "http://localhost/callback".to_string(),
+        );
+        values.insert(GOOGLE_GMAIL_ACCESS_TOKEN.to_string(), "access-token".to_string());
+        values.insert(
+            GOOGLE_GMAIL_REFRESH_TOKEN.to_string(),
+            "refresh-token".to_string(),
+        );
+        values.insert(
+            GOOGLE_GMAIL_TOKEN_EXPIRY_UNIX.to_string(),
+            "1735689600".to_string(),
+        );
+
+        let parsed = parse_google_gmail_oauth_lifecycle(&values).expect("oauth lifecycle");
+        assert_eq!(parsed.client_id, "client-id");
+        assert_eq!(parsed.expires_at_unix, 1_735_689_600);
+    }
+
+    #[test]
+    fn gmail_oauth_lifecycle_refresh_window_is_deterministic() {
+        let lifecycle = GoogleGmailOAuthLifecycle {
+            client_id: "client".to_string(),
+            client_secret: "secret".to_string(),
+            redirect_uri: "http://localhost".to_string(),
+            access_token: "access".to_string(),
+            refresh_token: "refresh".to_string(),
+            expires_at_unix: 2_000,
+        };
+        assert!(!lifecycle.is_expired_at(1_999));
+        assert!(lifecycle.is_expired_at(2_000));
+        assert_eq!(lifecycle.refresh_deadline_unix(120), 1_880);
+        assert!(!lifecycle.should_refresh_at(1_879, 120));
+        assert!(lifecycle.should_refresh_at(1_880, 120));
     }
 }
