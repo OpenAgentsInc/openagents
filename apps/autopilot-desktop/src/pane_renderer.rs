@@ -6,16 +6,16 @@ use crate::app_state::{
     CodexConfigPaneState, CodexDiagnosticsPaneState, CodexLabsPaneState, CodexMcpPaneState,
     CodexModelsPaneState, CreateInvoicePaneInputs, CredentialsPaneInputs, CredentialsState,
     CreditDeskPaneState, CreditSettlementLedgerPaneState, DesktopPane, EarningsScoreboardState,
-    JobHistoryPaneInputs, JobHistoryState, JobInboxState, JobLifecycleStage, NetworkRequestStatus,
-    NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
-    PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, RelayConnectionsPaneInputs,
-    RelayConnectionsState, RelaySecuritySimulationPaneState, SettingsPaneInputs, SettingsState,
-    SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs,
-    StableSatsSimulationPaneState, StarterJobStatus, StarterJobsState, SyncHealthState,
-    TrajectoryAuditPaneState, TreasuryExchangeSimulationPaneState,
+    EmailLaneState, JobHistoryPaneInputs, JobHistoryState, JobInboxState, JobLifecycleStage,
+    NetworkRequestStatus, NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState,
+    PaneKind, PaneLoadState, PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState,
+    RelayConnectionsPaneInputs, RelayConnectionsState, RelaySecuritySimulationPaneState,
+    SettingsPaneInputs, SettingsState, SkillRegistryPaneState, SkillTrustRevocationPaneState,
+    SparkPaneInputs, StableSatsSimulationPaneState, StarterJobStatus, StarterJobsState,
+    SyncHealthState, TrajectoryAuditPaneState, TreasuryExchangeSimulationPaneState,
 };
 use crate::pane_system::{
-    active_job_abort_button_bounds, active_job_advance_button_bounds,
+    PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
     activity_feed_filter_button_bounds, activity_feed_refresh_button_bounds,
     activity_feed_row_bounds, activity_feed_visible_row_count, alerts_recovery_ack_button_bounds,
     alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
@@ -40,7 +40,7 @@ use crate::pane_system::{
     settings_reset_button_bounds, settings_save_button_bounds,
     settings_wallet_default_input_bounds, starter_jobs_complete_button_bounds,
     starter_jobs_kill_switch_button_bounds, starter_jobs_row_bounds,
-    starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds, PANE_TITLE_HEIGHT,
+    starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
 };
 use crate::panes::{
     agent as agent_pane, cad as cad_pane, calculator as calculator_pane, cast as cast_pane,
@@ -49,7 +49,7 @@ use crate::panes::{
     skill as skill_pane, wallet as wallet_pane,
 };
 use crate::spark_wallet::SparkPaneState;
-use wgpui::{theme, Bounds, Component, Hsla, PaintContext, Point, Quad};
+use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
 
 pub struct PaneRenderer;
 
@@ -86,6 +86,7 @@ impl PaneRenderer {
         alerts_recovery: &AlertsRecoveryState,
         settings: &SettingsState,
         credentials: &CredentialsState,
+        email_lane: &EmailLaneState,
         job_inbox: &JobInboxState,
         active_job: &ActiveJobState,
         job_history: &JobHistoryState,
@@ -241,19 +242,19 @@ impl PaneRenderer {
                     paint_job_history_pane(content_bounds, job_history, job_history_inputs, paint);
                 }
                 PaneKind::EmailInbox => {
-                    email_pane::paint_email_inbox_pane(content_bounds, paint);
+                    email_pane::paint_email_inbox_pane(content_bounds, email_lane, paint);
                 }
                 PaneKind::EmailDraftQueue => {
-                    email_pane::paint_email_draft_queue_pane(content_bounds, paint);
+                    email_pane::paint_email_draft_queue_pane(content_bounds, email_lane, paint);
                 }
                 PaneKind::EmailApprovalQueue => {
-                    email_pane::paint_email_approval_queue_pane(content_bounds, paint);
+                    email_pane::paint_email_approval_queue_pane(content_bounds, email_lane, paint);
                 }
                 PaneKind::EmailSendLog => {
-                    email_pane::paint_email_send_log_pane(content_bounds, paint);
+                    email_pane::paint_email_send_log_pane(content_bounds, email_lane, paint);
                 }
                 PaneKind::EmailFollowUpQueue => {
-                    email_pane::paint_email_follow_up_queue_pane(content_bounds, paint);
+                    email_pane::paint_email_follow_up_queue_pane(content_bounds, email_lane, paint);
                 }
                 PaneKind::AgentProfileState => {
                     agent_pane::paint_agent_profile_state_pane(

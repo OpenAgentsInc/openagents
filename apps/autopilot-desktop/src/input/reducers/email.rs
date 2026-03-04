@@ -3,20 +3,25 @@ use std::time::Duration;
 
 use base64::Engine;
 use openagents_email_agent::{
-    GmailBackfillCheckpoint, GmailBackfillConfig, GmailBackfillPage, GmailBackfillResult,
-    GmailConnectorError, GmailDeltaItem, GmailDeltaOperation, GmailHistoryProvider,
-    GmailMailboxProvider, GmailMessage, GmailMessageBody, GmailMessageHeader, GmailMessageMetadata,
-    GmailMessagePayload, GmailSendProvider, GmailSendSuccess, GmailSyncBatch, GmailSyncError,
-    GmailSyncOutcome, GmailSyncState, SendExecutionOutcome, SendExecutionPolicy,
-    SendExecutionState, SendFailureClass, SendProviderError, SendRequest,
-    apply_gmail_incremental_sync, execute_send_with_idempotency, run_gmail_backfill,
+    ApprovalDecisionAction, ApprovalDecisionInput, DraftEnqueueRequest, DraftGenerationInput,
+    DraftPolicy, GmailBackfillCheckpoint, GmailBackfillConfig, GmailBackfillPage,
+    GmailBackfillResult, GmailConnectorError, GmailDeltaItem, GmailDeltaOperation,
+    GmailHistoryProvider, GmailMailboxProvider, GmailMessage, GmailMessageBody, GmailMessageHeader,
+    GmailMessageMetadata, GmailMessagePayload, GmailSendProvider, GmailSendSuccess, GmailSyncBatch,
+    GmailSyncError, GmailSyncOutcome, GmailSyncState, NormalizationConfig, RetrievalQuery,
+    SendDeliveryState, SendExecutionOutcome, SendExecutionPolicy, SendExecutionState,
+    SendFailureClass, SendProviderError, SendRequest, ThreadFollowUpContext,
+    apply_gmail_incremental_sync, authorize_draft_send, derive_style_profile,
+    enqueue_draft_for_approval, execute_send_with_idempotency, generate_draft,
+    normalize_gmail_message, record_approval_decision, run_follow_up_scheduler_tick,
+    run_gmail_backfill,
 };
 use reqwest::StatusCode;
 use reqwest::blocking::Client;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-use crate::app_state::RenderState;
+use crate::app_state::{PaneLoadState, PaneStatusAccess, RenderState};
 use crate::credentials::{
     GOOGLE_GMAIL_ACCESS_TOKEN, GOOGLE_GMAIL_TOKEN_EXPIRY_UNIX, GoogleGmailOAuthLifecycle,
 };
@@ -62,6 +67,384 @@ pub(super) fn execute_live_gmail_send(
     let provider = LiveGmailSendProvider::new(gmail_session(state)?);
     execute_send_with_idempotency(send_state, &provider, request, policy, now_unix)
         .map_err(|error| error.to_string())
+}
+
+pub(super) fn refresh_email_lane_from_live_gmail(state: &mut RenderState) -> Result<(), String> {
+    state.email_lane.load_state = PaneLoadState::Loading;
+    state.email_lane.last_error = None;
+    state.email_lane.last_sync_error = None;
+    state.email_lane.last_action = Some("Refreshing Gmail inbox snapshot".to_string());
+
+    let checkpoint = state.email_lane.backfill_checkpoint.clone();
+    let backfill = fetch_live_gmail_backfill(
+        state,
+        checkpoint.as_ref(),
+        &GmailBackfillConfig {
+            page_size: 25,
+            max_pages: 2,
+        },
+    )?;
+    state.email_lane.ingest_backfill_result(backfill);
+    sync_email_lane_incremental(state, 200)?;
+    state.email_lane.pane_set_ready(format!(
+        "Email lane refreshed (inbox={} drafts={} approvals={} sends={} followups={})",
+        state.email_lane.inbox_rows.len(),
+        state.email_lane.draft_rows.len(),
+        state.email_lane.approval_rows.len(),
+        state.email_lane.send_rows.len(),
+        state.email_lane.follow_up_rows.len()
+    ));
+    Ok(())
+}
+
+pub(super) fn sync_email_lane_incremental(
+    state: &mut RenderState,
+    max_results: usize,
+) -> Result<GmailSyncOutcome, String> {
+    let mut sync_state = state.email_lane.gmail_sync.clone();
+    let outcome = run_live_gmail_incremental_sync(state, &mut sync_state, max_results)?;
+    state.email_lane.gmail_sync = sync_state;
+    state.email_lane.apply_sync_outcome(&outcome);
+
+    if outcome.rebootstrap_required {
+        let reason = outcome
+            .reason
+            .clone()
+            .unwrap_or_else(|| stale_cursor_reason().to_string());
+        state.email_lane.load_state = PaneLoadState::Error;
+        state.email_lane.last_sync_error = Some(reason.clone());
+        state.email_lane.last_error = Some(reason);
+        state.email_lane.sync_rebootstrap_required = true;
+        state.email_lane.rebuild_rows();
+        return Ok(outcome);
+    }
+
+    for delta in &outcome.applied_deltas {
+        match delta.operation {
+            GmailDeltaOperation::Delete => {
+                state
+                    .email_lane
+                    .remove_normalized_item(delta.message_id.as_str());
+            }
+            GmailDeltaOperation::Create | GmailDeltaOperation::Update => {
+                let message = fetch_live_gmail_message(state, delta.message_id.as_str())?;
+                let normalized = normalize_gmail_message(&message, &NormalizationConfig::default());
+                state.email_lane.upsert_normalized_item(normalized);
+            }
+        }
+    }
+    state.email_lane.sync_rebootstrap_required = false;
+    state.email_lane.sync_rebootstrap_reason = None;
+    state.email_lane.rebuild_rows();
+    Ok(outcome)
+}
+
+pub(super) fn generate_selected_inbox_draft(state: &mut RenderState) -> Result<String, String> {
+    let inbound = state
+        .email_lane
+        .selected_inbox_item()
+        .cloned()
+        .ok_or_else(|| "Select an inbox row before generating a draft".to_string())?;
+
+    let existing_draft = state
+        .email_lane
+        .drafts_by_id
+        .values()
+        .find(|draft| draft.source_message_id == inbound.source_message_id)
+        .map(|draft| draft.draft_id.clone());
+    if let Some(existing_draft) = existing_draft {
+        state.email_lane.selected_draft_id = Some(existing_draft.clone());
+        state
+            .email_lane
+            .pane_set_ready(format!("Draft already exists: {existing_draft}"));
+        state.email_lane.rebuild_rows();
+        return Ok(existing_draft);
+    }
+
+    let style_corpus = state
+        .email_lane
+        .normalized_by_message_id
+        .values()
+        .cloned()
+        .collect::<Vec<_>>();
+    let style_profile = derive_style_profile("desktop-live-gmail", style_corpus.as_slice());
+    let retrieval_context = state.email_lane.retrieval_index.search(&RetrievalQuery {
+        text: inbound.body_summary.clone(),
+        thread_id: Some(inbound.thread_id.clone()),
+        participant_email: Some(inbound.sender_email.clone()),
+        label: None,
+        limit: 4,
+    });
+
+    let mut grounding_references = state.email_lane.knowledge_base.search(
+        inbound.body_summary.as_str(),
+        &["email".to_string()],
+        3,
+    );
+    if grounding_references.is_empty() {
+        grounding_references =
+            state
+                .email_lane
+                .knowledge_base
+                .search(inbound.body_summary.as_str(), &[], 3);
+    }
+
+    let draft = generate_draft(&DraftGenerationInput {
+        inbound_message: inbound.clone(),
+        style_profile,
+        retrieval_context,
+        grounding_references,
+        policy: DraftPolicy::default(),
+    })
+    .map_err(|error| format!("draft generation failed: {error}"))?;
+    let draft_id = draft.draft_id.clone();
+    state.email_lane.draft_subject_by_id.insert(
+        draft_id.clone(),
+        if inbound.subject.trim().is_empty() {
+            "Re: (no subject)".to_string()
+        } else {
+            format!("Re: {}", inbound.subject.trim())
+        },
+    );
+    state
+        .email_lane
+        .draft_recipient_by_id
+        .insert(draft_id.clone(), inbound.sender_email.clone());
+    state
+        .email_lane
+        .drafts_by_id
+        .insert(draft_id.clone(), draft);
+
+    let now_unix = now_epoch_seconds();
+    enqueue_draft_for_approval(
+        &mut state.email_lane.approval_workflow,
+        DraftEnqueueRequest {
+            draft_id: draft_id.clone(),
+            queued_at_unix: now_unix,
+            auto_policy_id: None,
+        },
+    )
+    .map_err(|error| format!("approval enqueue failed: {error}"))?;
+    state.email_lane.selected_draft_id = Some(draft_id.clone());
+    state.email_lane.selected_approval_draft_id = Some(draft_id.clone());
+    state.email_lane.pane_set_ready(format!(
+        "Generated draft {} for inbox message {}",
+        draft_id, inbound.source_message_id
+    ));
+    state.email_lane.rebuild_rows();
+    Ok(draft_id)
+}
+
+pub(super) fn approve_or_reject_selected_draft(
+    state: &mut RenderState,
+    action: ApprovalDecisionAction,
+    reason: Option<String>,
+) -> Result<String, String> {
+    let draft_id = state
+        .email_lane
+        .selected_approval_draft_id()
+        .ok_or_else(|| "Select an approval queue row first".to_string())?
+        .to_string();
+    let decision = record_approval_decision(
+        &mut state.email_lane.approval_workflow,
+        ApprovalDecisionInput {
+            draft_id: draft_id.clone(),
+            action,
+            actor: "operator".to_string(),
+            decided_at_unix: now_epoch_seconds(),
+            reason,
+        },
+    )
+    .map_err(|error| format!("approval decision failed: {error}"))?;
+    state.email_lane.pane_set_ready(format!(
+        "Recorded approval decision {} for {}",
+        decision.decision_id, draft_id
+    ));
+    state.email_lane.rebuild_rows();
+    Ok(draft_id)
+}
+
+pub(super) fn send_selected_approved_draft(state: &mut RenderState) -> Result<String, String> {
+    let draft_id = state
+        .email_lane
+        .selected_approval_draft_id()
+        .or(state.email_lane.selected_draft_id.as_deref())
+        .ok_or_else(|| "Select a draft row before sending".to_string())?
+        .to_string();
+
+    let authorization = authorize_draft_send(
+        &state.email_lane.approval_workflow,
+        draft_id.as_str(),
+        now_epoch_seconds(),
+    )
+    .map_err(|error| format!("draft send authorization failed: {error}"))?;
+    let draft = state
+        .email_lane
+        .drafts_by_id
+        .get(draft_id.as_str())
+        .cloned()
+        .ok_or_else(|| format!("draft {draft_id} not found in runtime cache"))?;
+    let recipient = state
+        .email_lane
+        .draft_recipient_by_id
+        .get(draft_id.as_str())
+        .cloned()
+        .ok_or_else(|| format!("recipient metadata missing for draft {draft_id}"))?;
+    let subject = state
+        .email_lane
+        .draft_subject_by_id
+        .get(draft_id.as_str())
+        .cloned()
+        .unwrap_or_else(|| "Re: update".to_string());
+
+    let request = SendRequest {
+        draft_id: draft_id.clone(),
+        idempotency_key: format!("{}:{}", draft_id, authorization.decision_id),
+        recipient_email: recipient,
+        subject,
+        body: draft.body,
+    };
+    let send_policy = state.email_lane.send_policy.clone();
+    let mut send_state = state.email_lane.send_execution.clone();
+    let outcome = execute_live_gmail_send(
+        state,
+        &mut send_state,
+        &request,
+        &send_policy,
+        now_epoch_seconds(),
+    )?;
+    state.email_lane.send_execution = send_state;
+    state.email_lane.last_send_error =
+        if outcome.state.is_final() && outcome.provider_message_id.is_none() {
+            state
+                .email_lane
+                .send_execution
+                .records_by_idempotency_key
+                .get(request.idempotency_key.as_str())
+                .and_then(|record| record.last_error.clone())
+        } else {
+            None
+        };
+    state.email_lane.last_result = Some(format!(
+        "send {} -> {} (attempts={})",
+        outcome.send_id,
+        send_delivery_state_label(outcome.state),
+        outcome.attempt_count
+    ));
+    state.email_lane.selected_send_idempotency_key = Some(outcome.idempotency_key.clone());
+    state.email_lane.pane_set_ready(format!(
+        "Send outcome for {}: {:?}",
+        draft_id, outcome.state
+    ));
+    state.email_lane.rebuild_rows();
+    Ok(outcome.send_id)
+}
+
+pub(super) fn run_follow_up_scheduler(state: &mut RenderState) -> Result<usize, String> {
+    let contexts = build_follow_up_contexts(state);
+    let mut scheduler_state = state.email_lane.follow_up_scheduler.clone();
+    let outcome = run_follow_up_scheduler_tick(
+        &mut scheduler_state,
+        contexts.as_slice(),
+        &state.email_lane.follow_up_policy,
+        now_epoch_seconds(),
+    )
+    .map_err(|error| format!("follow-up scheduler failed: {error}"))?;
+    state.email_lane.follow_up_scheduler = scheduler_state;
+    state.email_lane.last_result = Some(format!(
+        "follow-up tick emitted {} events",
+        outcome.emitted_events.len()
+    ));
+    state.email_lane.pane_set_ready(format!(
+        "Follow-up tick complete (scheduled={}, executed={})",
+        outcome.upcoming_jobs.len(),
+        outcome.executed_jobs.len()
+    ));
+    state.email_lane.rebuild_rows();
+    Ok(outcome.emitted_events.len())
+}
+
+fn fetch_live_gmail_message(
+    state: &mut RenderState,
+    message_id: &str,
+) -> Result<GmailMessage, String> {
+    let provider = LiveGmailMailboxProvider::new(gmail_session(state)?);
+    provider
+        .get_message(message_id)
+        .map_err(|error| format!("gmail get message {} failed: {}", message_id, error))
+}
+
+fn build_follow_up_contexts(state: &RenderState) -> Vec<ThreadFollowUpContext> {
+    let mut contexts = Vec::<ThreadFollowUpContext>::new();
+    for draft in state.email_lane.drafts_by_id.values() {
+        let Some(inbound) = state
+            .email_lane
+            .normalized_by_message_id
+            .get(draft.source_message_id.as_str())
+        else {
+            continue;
+        };
+
+        let sent_record = state
+            .email_lane
+            .send_execution
+            .records_by_idempotency_key
+            .values()
+            .filter(|record| record.draft_id == draft.draft_id)
+            .filter(|record| record.state == SendDeliveryState::Sent)
+            .max_by_key(|record| record.finalized_at_unix.unwrap_or(0));
+        let Some(sent_record) = sent_record else {
+            continue;
+        };
+
+        let recipient_email = state
+            .email_lane
+            .draft_recipient_by_id
+            .get(draft.draft_id.as_str())
+            .cloned()
+            .unwrap_or_else(|| inbound.sender_email.clone());
+        let reminder_count = state
+            .email_lane
+            .follow_up_scheduler
+            .jobs
+            .values()
+            .filter(|job| job.thread_id == inbound.thread_id)
+            .filter(|job| {
+                job.recipient_email
+                    .eq_ignore_ascii_case(recipient_email.as_str())
+            })
+            .count() as u32;
+        contexts.push(ThreadFollowUpContext {
+            thread_id: inbound.thread_id.clone(),
+            recipient_email,
+            last_inbound_unix: inbound.timestamp_ms / 1000,
+            last_outbound_unix: sent_record
+                .finalized_at_unix
+                .unwrap_or(inbound.timestamp_ms / 1000),
+            awaiting_reply: true,
+            is_critical: inbound
+                .labels
+                .iter()
+                .any(|label| label.eq_ignore_ascii_case("important")),
+            reminder_count,
+        });
+    }
+    contexts.sort_by(|left, right| {
+        left.thread_id
+            .cmp(&right.thread_id)
+            .then_with(|| left.recipient_email.cmp(&right.recipient_email))
+    });
+    contexts
+}
+
+fn send_delivery_state_label(state: SendDeliveryState) -> &'static str {
+    match state {
+        SendDeliveryState::Pending => "pending",
+        SendDeliveryState::RetryScheduled => "retry_scheduled",
+        SendDeliveryState::Sent => "sent",
+        SendDeliveryState::FailedPermanent => "failed_permanent",
+        SendDeliveryState::FailedTransientExhausted => "failed_transient_exhausted",
+    }
 }
 
 #[derive(Clone)]
@@ -132,10 +515,9 @@ fn gmail_access_token(state: &mut RenderState) -> Result<String, String> {
         let refreshed = refresh_google_access_token(&lifecycle)?;
         lifecycle.access_token = refreshed.access_token.clone();
         lifecycle.expires_at_unix = refreshed.expires_at_unix;
-        state.credentials.set_value_for_name(
-            GOOGLE_GMAIL_ACCESS_TOKEN,
-            lifecycle.access_token.as_str(),
-        )?;
+        state
+            .credentials
+            .set_value_for_name(GOOGLE_GMAIL_ACCESS_TOKEN, lifecycle.access_token.as_str())?;
         state.credentials.set_value_for_name(
             GOOGLE_GMAIL_TOKEN_EXPIRY_UNIX,
             lifecycle.expires_at_unix.to_string().as_str(),
@@ -359,10 +741,12 @@ struct GmailHeaderValue {
     value: String,
 }
 
-fn decode_gmail_message(response: GmailMessageResponse) -> Result<GmailMessage, GmailConnectorError> {
-    let payload = response
-        .payload
-        .ok_or_else(|| GmailConnectorError::Provider("gmail message payload missing".to_string()))?;
+fn decode_gmail_message(
+    response: GmailMessageResponse,
+) -> Result<GmailMessage, GmailConnectorError> {
+    let payload = response.payload.ok_or_else(|| {
+        GmailConnectorError::Provider("gmail message payload missing".to_string())
+    })?;
     let headers = flatten_headers(payload.headers.as_slice());
     let (mime_type, body) = decode_message_body(&payload);
     let internal_date_ms = response
@@ -420,7 +804,10 @@ fn decode_message_body(payload: &GmailPayloadNode) -> (String, String) {
     ("text/plain".to_string(), String::new())
 }
 
-fn first_part_data<'a>(payload: &'a GmailPayloadNode, mime_match: &str) -> Option<(String, &'a str)> {
+fn first_part_data<'a>(
+    payload: &'a GmailPayloadNode,
+    mime_match: &str,
+) -> Option<(String, &'a str)> {
     if payload
         .mime_type
         .as_deref()
@@ -517,12 +904,10 @@ impl GmailHistoryProvider for LiveGmailHistoryProvider {
         if let Some(since_history_id) = since_history_id {
             match self.fetch_history_batch(since_history_id, max_results) {
                 Ok(batch) => Ok(batch),
-                Err(error) if is_stale_history_error(error.as_str()) => {
-                    Ok(GmailSyncBatch {
-                        next_history_id: since_history_id.saturating_sub(1),
-                        deltas: Vec::new(),
-                    })
-                }
+                Err(error) if is_stale_history_error(error.as_str()) => Ok(GmailSyncBatch {
+                    next_history_id: since_history_id.saturating_sub(1),
+                    deltas: Vec::new(),
+                }),
                 Err(error) => Err(GmailSyncError::Provider(error)),
             }
         } else {
@@ -725,12 +1110,13 @@ impl GmailSendProvider for LiveGmailSendProvider {
 
         let rfc822 = compose_plain_text_rfc822(request);
         let raw = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(rfc822.as_bytes());
-        let response = self.session.auth_post_json::<_, SendResponse>(
-            "messages/send",
-            &SendRequestBody { raw },
-        )?;
+        let response = self
+            .session
+            .auth_post_json::<_, SendResponse>("messages/send", &SendRequestBody { raw })?;
         let provider_message_id = response.id.unwrap_or_else(|| "gmail:unknown".to_string());
-        Ok(GmailSendSuccess { provider_message_id })
+        Ok(GmailSendSuccess {
+            provider_message_id,
+        })
     }
 }
 

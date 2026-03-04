@@ -23,8 +23,9 @@ use crate::runtime_lanes::{
     SklLaneUpdate,
 };
 use openagents_email_agent::{
-    GmailBackfillCheckpoint, GmailBackfillConfig, GmailBackfillResult, GmailSyncOutcome,
-    GmailSyncState, SendExecutionOutcome, SendExecutionPolicy, SendExecutionState, SendRequest,
+    ApprovalDecisionAction, GmailBackfillCheckpoint, GmailBackfillConfig, GmailBackfillResult,
+    GmailSyncOutcome, GmailSyncState, SendExecutionOutcome, SendExecutionPolicy,
+    SendExecutionState, SendRequest,
 };
 
 pub(super) fn run_job_inbox_action(state: &mut RenderState, action: JobInboxPaneAction) -> bool {
@@ -74,6 +75,37 @@ pub(super) fn gmail_stale_cursor_reason() -> &'static str {
 
 pub(super) fn gmail_now_epoch_seconds() -> u64 {
     email::now_epoch_seconds()
+}
+
+pub(super) fn refresh_email_lane_from_live_gmail(state: &mut RenderState) -> Result<(), String> {
+    email::refresh_email_lane_from_live_gmail(state)
+}
+
+pub(super) fn sync_email_lane_incremental(
+    state: &mut RenderState,
+    max_results: usize,
+) -> Result<GmailSyncOutcome, String> {
+    email::sync_email_lane_incremental(state, max_results)
+}
+
+pub(super) fn generate_selected_inbox_draft(state: &mut RenderState) -> Result<String, String> {
+    email::generate_selected_inbox_draft(state)
+}
+
+pub(super) fn approve_or_reject_selected_draft(
+    state: &mut RenderState,
+    action: ApprovalDecisionAction,
+    reason: Option<String>,
+) -> Result<String, String> {
+    email::approve_or_reject_selected_draft(state, action, reason)
+}
+
+pub(super) fn send_selected_approved_draft(state: &mut RenderState) -> Result<String, String> {
+    email::send_selected_approved_draft(state)
+}
+
+pub(super) fn run_email_follow_up_scheduler(state: &mut RenderState) -> Result<usize, String> {
+    email::run_follow_up_scheduler(state)
 }
 
 pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {

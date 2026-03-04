@@ -3,12 +3,12 @@ use std::{cell::RefCell, rc::Rc};
 
 use anyhow::{Context, Result};
 use nostr::load_or_create_identity;
-use wgpui::components::hud::{Command, CommandPalette, DotShape, DotsGrid, DotsOrigin};
 use wgpui::components::Text;
+use wgpui::components::hud::{Command, CommandPalette, DotShape, DotsGrid, DotsOrigin};
 use wgpui::renderer::Renderer;
 use wgpui::{
-    theme, Bounds, Component, Easing, Hsla, PaintContext, Point, Quad, Scene, Size, SvgQuad,
-    TextSystem,
+    Bounds, Component, Easing, Hsla, PaintContext, Point, Quad, Scene, Size, SvgQuad, TextSystem,
+    theme,
 };
 use winit::event_loop::ActiveEventLoop;
 use winit::window::Window;
@@ -25,7 +25,7 @@ use crate::pane_registry::{
 };
 use crate::pane_renderer::PaneRenderer;
 use crate::pane_system::{
-    cad_palette_command_specs, PaneController, PANE_MIN_HEIGHT, PANE_MIN_WIDTH,
+    PANE_MIN_HEIGHT, PANE_MIN_WIDTH, PaneController, cad_palette_command_specs,
 };
 use crate::provider_nip90_lane::{ProviderNip90LaneSnapshot, ProviderNip90LaneWorker};
 use crate::runtime_lanes::{
@@ -256,6 +256,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             alerts_recovery: crate::app_state::AlertsRecoveryState::default(),
             settings,
             credentials,
+            email_lane: crate::app_state::EmailLaneState::default(),
             job_inbox: crate::app_state::JobInboxState::default(),
             active_job: crate::app_state::ActiveJobState::default(),
             job_history: crate::app_state::JobHistoryState::default(),
@@ -686,6 +687,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &state.alerts_recovery,
             &state.settings,
             &state.credentials,
+            &state.email_lane,
             &state.job_inbox,
             &state.active_job,
             &state.job_history,
@@ -1022,21 +1024,27 @@ mod tests {
     #[test]
     fn command_registry_includes_job_inbox_command() {
         let commands = command_registry(false);
-        assert!(commands
-            .iter()
-            .any(|command| { command.id == "pane.job_inbox" && command.label == "Job Inbox" }));
-        assert!(commands
-            .iter()
-            .any(|command| { command.id == "pane.active_job" && command.label == "Active Job" }));
+        assert!(
+            commands
+                .iter()
+                .any(|command| { command.id == "pane.job_inbox" && command.label == "Job Inbox" })
+        );
+        assert!(
+            commands.iter().any(|command| {
+                command.id == "pane.active_job" && command.label == "Active Job"
+            })
+        );
         assert!(commands.iter().any(|command| {
             command.id == "pane.earnings_scoreboard" && command.label == "Earnings Scoreboard"
         }));
         assert!(commands.iter().any(|command| {
             command.id == "pane.relay_connections" && command.label == "Relay Connections"
         }));
-        assert!(commands
-            .iter()
-            .any(|command| { command.id == "pane.sync_health" && command.label == "Sync Health" }));
+        assert!(
+            commands.iter().any(|command| {
+                command.id == "pane.sync_health" && command.label == "Sync Health"
+            })
+        );
         assert!(commands.iter().any(|command| {
             command.id == "pane.network_requests" && command.label == "Network Requests"
         }));
@@ -1049,24 +1057,32 @@ mod tests {
         assert!(commands.iter().any(|command| {
             command.id == "pane.alerts_recovery" && command.label == "Alerts and Recovery"
         }));
-        assert!(commands
-            .iter()
-            .any(|command| { command.id == "pane.settings" && command.label == "Settings" }));
-        assert!(commands
-            .iter()
-            .any(|command| { command.id == "pane.credentials" && command.label == "Credentials" }));
-        assert!(commands
-            .iter()
-            .any(|command| { command.id == "pane.wallet" && command.label == "Spark Wallet" }));
+        assert!(
+            commands
+                .iter()
+                .any(|command| { command.id == "pane.settings" && command.label == "Settings" })
+        );
+        assert!(
+            commands.iter().any(|command| {
+                command.id == "pane.credentials" && command.label == "Credentials"
+            })
+        );
+        assert!(
+            commands
+                .iter()
+                .any(|command| { command.id == "pane.wallet" && command.label == "Spark Wallet" })
+        );
         assert!(commands.iter().any(|command| {
             command.id == "pane.pay_invoice" && command.label == "Pay Lightning Invoice"
         }));
         assert!(commands.iter().any(|command| {
             command.id == "pane.create_invoice" && command.label == "Create Lightning Invoice"
         }));
-        assert!(commands
-            .iter()
-            .any(|command| { command.id == "pane.job_history" && command.label == "Job History" }));
+        assert!(
+            commands.iter().any(|command| {
+                command.id == "pane.job_history" && command.label == "Job History"
+            })
+        );
         assert!(commands.iter().any(|command| {
             command.id == "pane.agent_profile_state" && command.label == "Agent Profile and State"
         }));
@@ -1086,9 +1102,11 @@ mod tests {
             command.id == "pane.skill_trust_revocation"
                 && command.label == "Skill Trust and Revocation"
         }));
-        assert!(commands
-            .iter()
-            .any(|command| { command.id == "pane.credit_desk" && command.label == "Credit Desk" }));
+        assert!(
+            commands.iter().any(|command| {
+                command.id == "pane.credit_desk" && command.label == "Credit Desk"
+            })
+        );
         assert!(commands.iter().any(|command| {
             command.id == "pane.credit_settlement_ledger"
                 && command.label == "Credit Settlement Ledger"

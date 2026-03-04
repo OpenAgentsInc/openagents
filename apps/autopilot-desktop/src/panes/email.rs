@@ -1,95 +1,185 @@
+use crate::app_state::{EmailLaneState, PaneLoadState};
 use wgpui::components::Text;
-use wgpui::{Bounds, Component, Hsla, PaintContext, Quad, theme};
+use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
 
-const ROW_HEIGHT: f32 = 28.0;
+const ROW_HEIGHT: f32 = 32.0;
 const ROW_GAP: f32 = 6.0;
+const MAX_ROWS: usize = 9;
 
-pub fn paint_email_inbox_pane(content_bounds: Bounds, paint: &mut PaintContext) {
-    paint_section_title(content_bounds, "Inbox (imported)", paint);
-    let rows = [
-        "msg-2026-001 | sender@example.com | received -> normalized",
-        "msg-2026-002 | ops@example.com | received -> parse_failed(reason=invalid_mime)",
-        "msg-2026-003 | support@example.com | received -> normalized -> draft_pending",
-    ];
-    paint_rows(content_bounds, &rows, paint);
+pub fn paint_email_inbox_pane(
+    content_bounds: Bounds,
+    email_lane: &EmailLaneState,
+    paint: &mut PaintContext,
+) {
+    let mut y = paint_shared_header(content_bounds, "Inbox", email_lane, paint);
+    for row in email_lane.inbox_rows.iter().take(MAX_ROWS) {
+        let selected = email_lane.selected_inbox_message_id.as_deref() == Some(&row.message_id);
+        let label = format!(
+            "{} | {} | {}",
+            row.message_id, row.sender_email, row.pipeline_state
+        );
+        y = paint_row(content_bounds, y, label.as_str(), selected, paint);
+    }
 }
 
-pub fn paint_email_draft_queue_pane(content_bounds: Bounds, paint: &mut PaintContext) {
-    paint_section_title(content_bounds, "Draft Queue", paint);
-    let rows = [
-        "draft:m1:profile-1 | generated -> awaiting_approval | confidence=810m",
-        "draft:m2:profile-1 | generated -> revision_requested(reason=tone_mismatch) | confidence=620m",
-        "draft:m3:profile-2 | generated -> approved(policy=manual) | confidence=910m",
-    ];
-    paint_rows(content_bounds, &rows, paint);
+pub fn paint_email_draft_queue_pane(
+    content_bounds: Bounds,
+    email_lane: &EmailLaneState,
+    paint: &mut PaintContext,
+) {
+    let mut y = paint_shared_header(content_bounds, "Draft Queue", email_lane, paint);
+    for row in email_lane.draft_rows.iter().take(MAX_ROWS) {
+        let selected = email_lane.selected_draft_id.as_deref() == Some(&row.draft_id);
+        let label = format!(
+            "{} | {} | confidence={}m | {}",
+            row.draft_id, row.recipient_email, row.confidence_milli, row.approval_status
+        );
+        y = paint_row(content_bounds, y, label.as_str(), selected, paint);
+    }
 }
 
-pub fn paint_email_approval_queue_pane(content_bounds: Bounds, paint: &mut PaintContext) {
-    paint_section_title(content_bounds, "Approval Queue", paint);
-    let rows = [
-        "decision-001 | draft:m1 | pending -> approve/reject/edit",
-        "decision-002 | draft:m2 | rejected(actor=operator, reason=missing_refs)",
-        "decision-003 | draft:m3 | approved(actor=policy:auto-safe-mode)",
-    ];
-    paint_rows(content_bounds, &rows, paint);
+pub fn paint_email_approval_queue_pane(
+    content_bounds: Bounds,
+    email_lane: &EmailLaneState,
+    paint: &mut PaintContext,
+) {
+    let mut y = paint_shared_header(content_bounds, "Approval Queue", email_lane, paint);
+    for row in email_lane.approval_rows.iter().take(MAX_ROWS) {
+        let selected =
+            email_lane.selected_approval_draft_id.as_deref() == Some(row.draft_id.as_str());
+        let actor = row.decision_actor.as_deref().unwrap_or("pending");
+        let label = format!("{} | {} | actor={}", row.draft_id, row.status, actor);
+        y = paint_row(content_bounds, y, label.as_str(), selected, paint);
+    }
 }
 
-pub fn paint_email_send_log_pane(content_bounds: Bounds, paint: &mut PaintContext) {
-    paint_section_title(content_bounds, "Send Log", paint);
-    let rows = [
-        "send-0001 | queued -> sent | provider_msg_id=gmail:17f...",
-        "send-0002 | queued -> retrying(attempt=2, reason=rate_limit)",
-        "send-0003 | queued -> failed(reason=invalid_recipient)",
-    ];
-    paint_rows(content_bounds, &rows, paint);
+pub fn paint_email_send_log_pane(
+    content_bounds: Bounds,
+    email_lane: &EmailLaneState,
+    paint: &mut PaintContext,
+) {
+    let mut y = paint_shared_header(content_bounds, "Send Log", email_lane, paint);
+    for row in email_lane.send_rows.iter().take(MAX_ROWS) {
+        let selected =
+            email_lane.selected_send_idempotency_key.as_deref() == Some(&row.idempotency_key);
+        let label = format!(
+            "{} | {} | attempts={} | msg={}",
+            row.send_id,
+            row.state,
+            row.attempt_count,
+            row.provider_message_id.as_deref().unwrap_or("n/a")
+        );
+        y = paint_row(content_bounds, y, label.as_str(), selected, paint);
+    }
 }
 
-pub fn paint_email_follow_up_queue_pane(content_bounds: Bounds, paint: &mut PaintContext) {
-    paint_section_title(content_bounds, "Follow-up Queue", paint);
-    let rows = [
-        "followup-1001 | scheduled(2026-03-05T14:00Z) | rule=no_reply_48h",
-        "followup-1002 | deferred(reason=quiet_hours, retry=2026-03-05T15:30Z)",
-        "followup-1003 | failed(reason=recipient_limit_exceeded)",
-    ];
-    paint_rows(content_bounds, &rows, paint);
+pub fn paint_email_follow_up_queue_pane(
+    content_bounds: Bounds,
+    email_lane: &EmailLaneState,
+    paint: &mut PaintContext,
+) {
+    let mut y = paint_shared_header(content_bounds, "Follow-up Queue", email_lane, paint);
+    for row in email_lane.follow_up_rows.iter().take(MAX_ROWS) {
+        let selected = email_lane.selected_follow_up_job_id.as_deref() == Some(&row.job_id);
+        let label = format!(
+            "{} | {} | scheduled={} | {}",
+            row.job_id, row.status, row.scheduled_for_unix, row.rule_id
+        );
+        y = paint_row(content_bounds, y, label.as_str(), selected, paint);
+    }
 }
 
-fn paint_section_title(content_bounds: Bounds, title: &str, paint: &mut PaintContext) {
+fn paint_shared_header(
+    content_bounds: Bounds,
+    title: &str,
+    email_lane: &EmailLaneState,
+    paint: &mut PaintContext,
+) -> f32 {
     Text::new(title).color(theme::text::PRIMARY).paint(
         Bounds::new(
             content_bounds.origin.x + 12.0,
             content_bounds.origin.y + 10.0,
             content_bounds.size.width - 24.0,
-            24.0,
+            20.0,
         ),
         paint,
     );
+
+    let state_color = match email_lane.load_state {
+        PaneLoadState::Ready => theme::status::SUCCESS,
+        PaneLoadState::Loading => theme::accent::PRIMARY,
+        PaneLoadState::Error => theme::status::ERROR,
+    };
+    let state_line = format!("state: {}", email_lane.load_state.label());
+    paint.scene.draw_text(paint.text.layout(
+        state_line.as_str(),
+        Point::new(
+            content_bounds.origin.x + 12.0,
+            content_bounds.origin.y + 30.0,
+        ),
+        11.0,
+        state_color,
+    ));
+
+    if let Some(action) = email_lane.last_action.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            action,
+            Point::new(
+                content_bounds.origin.x + 12.0,
+                content_bounds.origin.y + 46.0,
+            ),
+            10.0,
+            theme::text::MUTED,
+        ));
+    }
+    if let Some(error) = email_lane.last_error.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            error,
+            Point::new(
+                content_bounds.origin.x + 12.0,
+                content_bounds.origin.y + 60.0,
+            ),
+            10.0,
+            theme::status::ERROR,
+        ));
+    }
+
+    content_bounds.origin.y + 78.0
 }
 
-fn paint_rows(content_bounds: Bounds, rows: &[&str], paint: &mut PaintContext) {
-    let mut y = content_bounds.origin.y + 44.0;
-    for row in rows {
-        let row_bounds = Bounds::new(
-            content_bounds.origin.x + 12.0,
-            y,
-            content_bounds.size.width - 24.0,
-            ROW_HEIGHT,
-        );
-        paint.scene.draw_quad(
-            Quad::new(row_bounds)
-                .with_background(Hsla::from_hex(0x1a1d24))
-                .with_border(theme::border::DEFAULT, 1.0)
-                .with_corner_radius(6.0),
-        );
-        Text::new(*row).color(theme::text::MUTED).paint(
-            Bounds::new(
-                row_bounds.origin.x + 10.0,
-                row_bounds.origin.y + 7.0,
-                row_bounds.size.width - 20.0,
-                18.0,
-            ),
-            paint,
-        );
-        y += ROW_HEIGHT + ROW_GAP;
-    }
+fn paint_row(
+    content_bounds: Bounds,
+    y: f32,
+    label: &str,
+    selected: bool,
+    paint: &mut PaintContext,
+) -> f32 {
+    let row_bounds = Bounds::new(
+        content_bounds.origin.x + 12.0,
+        y,
+        content_bounds.size.width - 24.0,
+        ROW_HEIGHT,
+    );
+    let background = if selected {
+        Hsla::from_hex(0x22324a)
+    } else {
+        Hsla::from_hex(0x1a1d24)
+    };
+    paint.scene.draw_quad(
+        Quad::new(row_bounds)
+            .with_background(background)
+            .with_border(theme::border::DEFAULT, 1.0)
+            .with_corner_radius(6.0),
+    );
+    paint.scene.draw_text(paint.text.layout(
+        label,
+        Point::new(row_bounds.origin.x + 10.0, row_bounds.origin.y + 20.0),
+        10.0,
+        if selected {
+            theme::text::PRIMARY
+        } else {
+            theme::text::MUTED
+        },
+    ));
+    y + ROW_HEIGHT + ROW_GAP
 }

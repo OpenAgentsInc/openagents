@@ -1593,6 +1593,10 @@ pub use crate::state::{
     alerts_recovery::{
         AlertDomain, AlertLifecycle, AlertSeverity, AlertsRecoveryState, RecoveryAlertRow,
     },
+    email_lane::{
+        EmailApprovalRow, EmailDraftRow, EmailFollowUpRow, EmailInboxRow, EmailLaneState,
+        EmailSendRow,
+    },
     job_inbox::{
         JobDemandSource, JobInboxDecision, JobInboxNetworkRequest, JobInboxRequest, JobInboxState,
         JobInboxValidation,
@@ -3014,6 +3018,7 @@ impl_pane_status_access!(
     AlertsRecoveryState,
     SettingsState,
     CredentialsState,
+    EmailLaneState,
     JobInboxState,
     ActiveJobState,
     JobHistoryState,
@@ -3105,6 +3110,7 @@ pub struct RenderState {
     pub alerts_recovery: AlertsRecoveryState,
     pub settings: SettingsState,
     pub credentials: CredentialsState,
+    pub email_lane: EmailLaneState,
     pub job_inbox: JobInboxState,
     pub active_job: ActiveJobState,
     pub job_history: JobHistoryState,
