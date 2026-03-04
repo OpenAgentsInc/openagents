@@ -12,6 +12,8 @@ Programmatically validate as much of the MVP earn loop as possible:
 4. Wallet-confirmed payout gating
 5. Earnings/reconciliation projection
 
+Scope note: this harness validates the compute-provider lane only. Liquidity-solver lane tests are future scope.
+
 ## Added / Extended Harnesses
 
 ### 1) NIP-90 Relay Round-Trip Integration (`nostr-client`)

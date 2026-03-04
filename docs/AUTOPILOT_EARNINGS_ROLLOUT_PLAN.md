@@ -12,9 +12,16 @@ Define production rollout controls for autonomous earnings goals:
 - explicit rollback conditions,
 - post-launch hardening checklist.
 
+Autopilot Earn is modeled as multi-lane (compute provider now, liquidity solver later), but this rollout plan currently governs the compute lane.
+
 ## Rollout Control Surface
 
 Rollout is controlled through `openagents_goal_scheduler` action `set_rollout`.
+
+Default lane posture:
+
+- compute lane may be staged through normal rollout controls,
+- liquidity solver lane remains disabled unless a dedicated future rollout introduces explicit solver controls.
 
 Key fields:
 
@@ -56,6 +63,11 @@ Rollout status is visible from `openagents_goal_scheduler` action `status`:
 
 4. `general_availability`
 - Fully enabled once canary remains healthy and checklist is complete.
+
+Lane policy note:
+
+- Stage transitions in this document apply to compute-lane earnings.
+- Liquidity-solver rollout must be separately staged with capital-risk-specific controls and explicit user opt-in requirements.
 
 ## Metric Definitions
 

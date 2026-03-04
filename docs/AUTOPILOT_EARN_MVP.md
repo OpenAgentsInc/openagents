@@ -19,6 +19,8 @@ The MVP is optimized for three moments only:
 
 If those three moments are not obvious in the first session, MVP failed.
 
+This document is intentionally the compute-provider cut of Earn. It does not attempt to ship the full multi-lane economy in one pass.
+
 ## 2) MVP Outcome
 
 A fresh desktop user can complete this loop in minutes:
@@ -30,6 +32,15 @@ A fresh desktop user can complete this loop in minutes:
 5. Withdraw by paying a Lightning invoice.
 
 No synthetic payout-only states count as success.
+
+### 2.1) Multi-Lane Context (Canonical, Scope-Gated)
+
+Autopilot Earn is a provider marketplace with multiple revenue lanes:
+
+1. **Compute provider** (this MVP): execute paid NIP-90 jobs.
+2. **Liquidity solver** (future Hydra lane): fill liquidity intents using capital + execution and earn fees/spreads.
+
+`Go Online` should continue to mean "I'm available to earn," but this MVP binds that to compute only. Liquidity solver mode must remain an explicit future opt-in and never activate automatically.
 
 ## 3) UX Spec: Mission Control First
 
@@ -101,6 +112,7 @@ Total: 50 sats
 - No settings-first interaction.
 - One primary action button (`Go Online`/`Go Offline`).
 - Advanced panes may remain available via command palette, but not required for first earnings loop.
+- Future provider modes may be added later, but compute remains the default active lane for this MVP.
 
 ## 4) Scope Alignment To Current Repo
 
@@ -238,7 +250,8 @@ Global Network Earnings Today: <btc>
 - reputation economy,
 - escrow/dispute systems,
 - plugin marketplace UX,
-- broad multi-model infra controls.
+- broad multi-model infra controls,
+- Hydra liquidity-solver execution or capital-routing UX.
 
 ## 12) Acceptance Criteria
 
@@ -268,6 +281,9 @@ Everything in this MVP must reinforce that difference.
 This spec is the first-run provider-beacon cut.
 
 - It complements (does not replace) `docs/MVP.md`.
+- It aligns with the phased liquidity strategy in:
+  - `docs/plans/hydra-x.md`
+  - `docs/plans/hydra-liquidity-engine.md`
 - It is narrower than autonomous goal/swap operations documented in:
   - `docs/AUTOPILOT_EARNINGS_AUTOMATION.md`
   - `docs/AUTOPILOT_EARNINGS_OPERATOR_RUNBOOK.md`

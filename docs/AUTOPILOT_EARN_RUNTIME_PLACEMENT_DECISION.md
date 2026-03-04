@@ -9,6 +9,8 @@ Provider runtime ownership remains in `apps/autopilot-desktop`.
 
 No new retained runtime crate is introduced for this MVP pass.
 
+Scope note: this decision is for the compute-provider MVP lane and does not pre-decide future liquidity-solver module placement.
+
 ## Rationale
 
 - `docs/OWNERSHIP.md` assigns product workflow/state authority to `apps/autopilot-desktop`.
