@@ -1,8 +1,6 @@
 # OpenAgents
 
-OpenAgents is currently scoped to the **Autopilot MVP**.
-
-Autopilot is a desktop-first personal agent that runs on your machine, uses local compute and tools, and can both do useful work for you and earn Bitcoin when you opt into provider mode.
+OpenAgents is Autopilot: a desktop-first personal agent that lives on your machine, runs against your real local environment, and turns your computer into an active economic node. It can execute useful work for you, and when you opt into provider mode, it can sell spare compute on the open network for Bitcoin.
 
 The MVP centers on one irreducible outcome: a user can go online, receive paid NIP-90 work, see sats land in their Spark wallet, and successfully withdraw over Lightning. If that loop is not real and repeatable, the product is not complete.
 
