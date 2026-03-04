@@ -108,6 +108,11 @@ run_test \
     provider_nip90_lane::tests::worker_ingests_live_relay_request \
     -- --nocapture
 run_test \
+    "Desktop E2E harness (relay -> execute -> publish -> wallet confirm)" \
+    cargo test -p autopilot-desktop \
+    provider_nip90_lane::tests::desktop_earn_harness_relay_execute_publish_wallet_confirm_end_to_end \
+    -- --nocapture
+run_test \
     "Earn bitcoin until +N sats flow" \
     cargo test -p autopilot-desktop \
     state::earnings_gate::tests::earn_bitcoin_until_target_sats_requires_wallet_confirmed_threshold \

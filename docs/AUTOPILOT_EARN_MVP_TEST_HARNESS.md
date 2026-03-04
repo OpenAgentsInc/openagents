@@ -48,6 +48,23 @@ Primary assertions:
 - reconciliation earned delta matches payout amount,
 - scoreboard jobs/sats update from authoritative sources.
 
+### 3) Desktop Relay -> Execute -> Publish -> Wallet Confirm Harness (`autopilot-desktop`)
+
+File: `apps/autopilot-desktop/src/provider_nip90_lane.rs` test `desktop_earn_harness_relay_execute_publish_wallet_confirm_end_to_end`
+
+What it covers:
+- spins up a websocket relay mock,
+- ingests a live NIP-90 request through desktop provider lane worker,
+- executes local active-job lifecycle transitions,
+- publishes canonical feedback + result events back to relay and verifies publish outcomes,
+- records paid receipt and confirms mission-control scoreboard from wallet-reconciled receive evidence.
+
+Primary assertions:
+- relay ingress produces a selectable inbox request,
+- feedback/result publish outcomes are relay-accepted and events are observed by relay,
+- active job requires result authority before `delivered` and wallet pointer before `paid`,
+- earnings scoreboard `today/total/jobs` reflect reconciled wallet payout evidence only.
+
 ## Existing Supporting Tests Used In This Pass
 
 - `app_state::tests::job_history_rejects_unconfirmed_success_settlement_from_active_job`
@@ -61,6 +78,7 @@ These provide additional coverage for payout hard-gates and reconciliation seman
 ```bash
 cargo test -p nostr-client --test dvm_submit_await_e2e
 cargo test -p autopilot-desktop --bin autopilot-desktop mission_control_earn_loop_wallet_confirmed_end_to_end
+cargo test -p autopilot-desktop --bin autopilot-desktop provider_nip90_lane::tests::desktop_earn_harness_relay_execute_publish_wallet_confirm_end_to_end
 cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::job_history_rejects_unconfirmed_success_settlement_from_active_job
 cargo test -p autopilot-desktop --bin autopilot-desktop state::earnings_gate::tests::accepts_wallet_backed_earnings_evidence
 cargo test -p autopilot-desktop --bin autopilot-desktop state::wallet_reconciliation::tests::reconciliation_distinguishes_earn_vs_swap_and_fee
