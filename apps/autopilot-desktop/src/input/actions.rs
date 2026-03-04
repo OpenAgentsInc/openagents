@@ -3522,6 +3522,7 @@ pub(super) fn run_relay_connections_action(
                 Ok(()) => {
                     state.provider_runtime.last_result =
                         state.relay_connections.last_action.clone();
+                    let _ = state.sync_provider_nip90_lane_relays();
                 }
                 Err(error) => {
                     state.relay_connections.last_error = Some(error);
@@ -3532,6 +3533,7 @@ pub(super) fn run_relay_connections_action(
             match state.relay_connections.remove_selected() {
                 Ok(url) => {
                     state.provider_runtime.last_result = Some(format!("removed relay {url}"));
+                    let _ = state.sync_provider_nip90_lane_relays();
                 }
                 Err(error) => {
                     state.relay_connections.last_error = Some(error);
@@ -3542,6 +3544,7 @@ pub(super) fn run_relay_connections_action(
             match state.relay_connections.retry_selected() {
                 Ok(url) => {
                     state.provider_runtime.last_result = Some(format!("retried relay {url}"));
+                    let _ = state.sync_provider_nip90_lane_relays();
                 }
                 Err(error) => {
                     state.relay_connections.last_error = Some(error);
@@ -3636,10 +3639,6 @@ pub(super) fn run_network_requests_action(
             });
             match queue_result {
                 Ok(command_seq) => {
-                    let inbox_request_type = request_type.clone();
-                    let inbox_payload = payload.clone();
-                    let inbox_skill_scope_id = skill_scope_id.clone();
-                    let inbox_credit_envelope_ref = credit_envelope_ref.clone();
                     match state.network_requests.queue_request_submission(
                         NetworkRequestSubmission {
                             request_type,
@@ -3655,38 +3654,24 @@ pub(super) fn run_network_requests_action(
                             state.provider_runtime.last_result = Some(format!(
                                 "Queued network request {request_id} -> AC cmd#{command_seq}"
                             ));
-                            let validation =
-                                if inbox_payload.to_ascii_lowercase().contains("invalid") {
-                                    JobInboxValidation::Invalid(
-                                        "payload contains reserved invalid marker".to_string(),
-                                    )
-                                } else if inbox_payload.len() < 12 {
-                                    JobInboxValidation::Pending
-                                } else {
-                                    JobInboxValidation::Valid
-                                };
-                            state
-                                .job_inbox
-                                .upsert_network_request(JobInboxNetworkRequest {
-                                    request_id: request_id.clone(),
-                                    requester: "network-buyer".to_string(),
-                                    capability: inbox_request_type,
-                                    skill_scope_id: inbox_skill_scope_id,
-                                    skl_manifest_a: state.skl_lane.manifest_a.clone(),
-                                    skl_manifest_event_id: state.skl_lane.manifest_event_id.clone(),
-                                    sa_tick_request_event_id: state
-                                        .sa_lane
-                                        .last_tick_request_event_id
-                                        .clone(),
-                                    sa_tick_result_event_id: state
-                                        .sa_lane
-                                        .last_tick_result_event_id
-                                        .clone(),
-                                    ac_envelope_event_id: inbox_credit_envelope_ref,
-                                    price_sats: budget_sats,
-                                    ttl_seconds: timeout_seconds,
-                                    validation,
-                                });
+                            if local_network_request_inject_enabled() {
+                                state
+                                    .job_inbox
+                                    .upsert_network_request(JobInboxNetworkRequest {
+                                        request_id: request_id.clone(),
+                                        requester: "network-buyer".to_string(),
+                                        capability: "local.injected.request".to_string(),
+                                        skill_scope_id: None,
+                                        skl_manifest_a: None,
+                                        skl_manifest_event_id: None,
+                                        sa_tick_request_event_id: None,
+                                        sa_tick_result_event_id: None,
+                                        ac_envelope_event_id: None,
+                                        price_sats: budget_sats,
+                                        ttl_seconds: timeout_seconds,
+                                        validation: JobInboxValidation::Pending,
+                                    });
+                            }
                             state.sync_health.last_applied_event_seq =
                                 state.sync_health.last_applied_event_seq.saturating_add(1);
                             state.sync_health.cursor_last_advanced_seconds_ago = 0;
@@ -3709,6 +3694,13 @@ pub(super) fn run_network_requests_action(
             true
         }
     }
+}
+
+fn local_network_request_inject_enabled() -> bool {
+    std::env::var("OPENAGENTS_LOCAL_NETWORK_REQUEST_INJECT")
+        .ok()
+        .map(|value| matches!(value.trim(), "1" | "true" | "TRUE" | "yes" | "on"))
+        .unwrap_or(false)
 }
 
 pub(super) fn run_starter_jobs_action(
@@ -4046,6 +4038,7 @@ pub(super) fn run_settings_action(
                         .relay_connections_inputs
                         .relay_url
                         .set_value(state.settings.document.relay_url.clone());
+                    let _ = state.sync_provider_nip90_lane_relays();
                     state
                         .spark_inputs
                         .send_amount
@@ -4076,6 +4069,7 @@ pub(super) fn run_settings_action(
                         .relay_connections_inputs
                         .relay_url
                         .set_value(state.settings.document.relay_url.clone());
+                    let _ = state.sync_provider_nip90_lane_relays();
                     state
                         .spark_inputs
                         .send_amount

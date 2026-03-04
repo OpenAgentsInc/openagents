@@ -62,6 +62,7 @@ use crate::pane_system::{
     pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
 };
 use crate::panes::{cad as cad_pane, chat as chat_pane};
+use crate::provider_nip90_lane::ProviderNip90LaneCommand;
 use crate::render::{
     logical_size, render_frame, sidebar_go_online_button_bounds, sidebar_handle_bounds,
     wallet_balance_chip_bounds,
@@ -2359,6 +2360,19 @@ pub(super) fn run_pane_hit_action(
             );
             if wants_online {
                 queue_spark_command(state, SparkWalletCommand::Refresh);
+                let _ = state.sync_provider_nip90_lane_relays();
+            }
+            if let Err(error) =
+                state.queue_provider_nip90_lane_command(ProviderNip90LaneCommand::SetOnline {
+                    online: wants_online,
+                })
+            {
+                state.provider_runtime.last_result = Some(error.clone());
+                state.provider_runtime.last_error_detail = Some(error);
+                state.provider_runtime.mode = ProviderMode::Degraded;
+                state.provider_runtime.degraded_reason_code =
+                    Some("NIP90_INGRESS_QUEUE_ERROR".to_string());
+                state.provider_runtime.mode_changed_at = std::time::Instant::now();
             }
             match state.queue_sa_command(SaLifecycleCommand::SetRunnerOnline {
                 online: wants_online,

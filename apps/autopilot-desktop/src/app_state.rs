@@ -12,6 +12,9 @@ use wgpui::{Bounds, EventContext, Modifiers, Point, TextSystem};
 use winit::window::Window;
 
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
+use crate::provider_nip90_lane::{
+    ProviderNip90LaneCommand, ProviderNip90LaneSnapshot, ProviderNip90LaneWorker,
+};
 use crate::runtime_lanes::{
     AcCreditCommand, AcLaneSnapshot, AcLaneWorker, RuntimeCommandResponse, SaLaneSnapshot,
     SaLaneWorker, SaLifecycleCommand, SkillTrustTier, SklDiscoveryTrustCommand, SklLaneSnapshot,
@@ -2826,6 +2829,8 @@ pub struct RenderState {
     pub sa_lane_worker: SaLaneWorker,
     pub skl_lane_worker: SklLaneWorker,
     pub ac_lane_worker: AcLaneWorker,
+    pub provider_nip90_lane: ProviderNip90LaneSnapshot,
+    pub provider_nip90_lane_worker: ProviderNip90LaneWorker,
     pub runtime_command_responses: Vec<RuntimeCommandResponse>,
     pub next_runtime_command_seq: u64,
     pub provider_runtime: ProviderRuntimeState,
@@ -2968,6 +2973,40 @@ impl RenderState {
     pub fn queue_ac_command(&mut self, command: AcCreditCommand) -> Result<u64, String> {
         let seq = self.allocate_runtime_command_seq();
         self.ac_lane_worker.enqueue(seq, command).map(|()| seq)
+    }
+
+    pub fn queue_provider_nip90_lane_command(
+        &mut self,
+        command: ProviderNip90LaneCommand,
+    ) -> Result<(), String> {
+        self.provider_nip90_lane_worker.enqueue(command)
+    }
+
+    pub fn configured_provider_relay_urls(&self) -> Vec<String> {
+        let mut relays = self
+            .relay_connections
+            .relays
+            .iter()
+            .map(|row| row.url.trim())
+            .filter(|url| !url.is_empty())
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+
+        if relays.is_empty() {
+            let default_relay = self.settings.document.relay_url.trim();
+            if !default_relay.is_empty() {
+                relays.push(default_relay.to_string());
+            }
+        }
+
+        let mut seen = std::collections::HashSet::<String>::new();
+        relays.retain(|relay| seen.insert(relay.clone()));
+        relays
+    }
+
+    pub fn sync_provider_nip90_lane_relays(&mut self) -> Result<(), String> {
+        let relays = self.configured_provider_relay_urls();
+        self.queue_provider_nip90_lane_command(ProviderNip90LaneCommand::ConfigureRelays { relays })
     }
 
     pub fn record_runtime_command_response(&mut self, response: RuntimeCommandResponse) {

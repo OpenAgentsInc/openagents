@@ -28,6 +28,7 @@ codex-client = { path = "../../crates/codex-client" }
 openagents-cad = { path = "../../crates/cad" }
 openagents-spark = { path = "../../crates/spark" }
 nostr = { path = "../../crates/nostr/core" }
+nostr-client = { path = "../../crates/nostr/client" }
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
@@ -41,6 +42,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 dirs = "6.0"
 reqwest = { workspace = true, features = ["blocking"] }
 chrono = { version = "0.4", default-features = true, features = ["clock"] }
+
+[dev-dependencies]
+futures-util = "0.3"
+tokio-tungstenite = "0.24"
 
 [package.metadata.bundle]
 name = "Autopilot"

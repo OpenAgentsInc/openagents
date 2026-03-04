@@ -4,6 +4,7 @@ mod ac;
 mod cad;
 mod codex;
 mod jobs;
+mod provider_ingress;
 mod sa;
 mod skl;
 pub(super) mod wallet;
@@ -65,6 +66,18 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
             AcLaneUpdate::Snapshot(snapshot) => ac::apply_lane_snapshot(state, *snapshot),
             AcLaneUpdate::CommandResponse(response) => {
                 apply_runtime_command_response(state, response);
+            }
+        }
+    }
+
+    for update in state.provider_nip90_lane_worker.drain_updates() {
+        changed = true;
+        match update {
+            crate::provider_nip90_lane::ProviderNip90LaneUpdate::Snapshot(snapshot) => {
+                provider_ingress::apply_lane_snapshot(state, *snapshot);
+            }
+            crate::provider_nip90_lane::ProviderNip90LaneUpdate::IngressedRequest(request) => {
+                provider_ingress::apply_ingressed_request(state, request);
             }
         }
     }

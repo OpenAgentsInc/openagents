@@ -13,6 +13,7 @@ mod pane_registry;
 mod pane_renderer;
 mod pane_system;
 mod panes;
+mod provider_nip90_lane;
 mod render;
 mod runtime_lanes;
 mod skill_autoload;
