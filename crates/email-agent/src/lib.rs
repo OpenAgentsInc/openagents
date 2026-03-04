@@ -4,6 +4,7 @@ mod gmail_connector;
 mod gmail_sync;
 mod normalization;
 mod retrieval;
+mod style_profile;
 
 pub use gmail_connector::{
     GmailBackfillCheckpoint, GmailBackfillConfig, GmailBackfillPage, GmailBackfillResult,
@@ -16,3 +17,4 @@ pub use gmail_sync::{
 };
 pub use normalization::{NormalizationConfig, NormalizedConversationItem, normalize_gmail_message};
 pub use retrieval::{RetrievalIndex, RetrievalQuery, RetrievedContextChunk};
+pub use style_profile::{StyleProfile, StyleTone, derive_style_profile};
