@@ -6,8 +6,8 @@ use crate::pane_renderer::{
     paint_state_summary,
 };
 use crate::pane_system::{
-    cast_check_button_bounds, cast_inspect_button_bounds, cast_prove_button_bounds,
-    cast_loop_once_button_bounds, cast_refresh_button_bounds, cast_sign_button_bounds,
+    cast_check_button_bounds, cast_inspect_button_bounds, cast_loop_once_button_bounds,
+    cast_prove_button_bounds, cast_refresh_button_bounds, cast_sign_button_bounds,
     cast_toggle_broadcast_button_bounds, cast_toggle_loop_button_bounds,
 };
 

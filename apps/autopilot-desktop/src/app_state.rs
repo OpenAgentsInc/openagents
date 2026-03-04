@@ -604,7 +604,7 @@ impl Default for SidebarState {
     fn default() -> Self {
         Self {
             width: 300.0,
-            is_open: false,
+            is_open: true,
             is_pressed: false,
             is_dragging: false,
             drag_start_x: 0.0,

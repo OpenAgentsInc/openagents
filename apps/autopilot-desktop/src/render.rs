@@ -14,7 +14,8 @@ use winit::event_loop::ActiveEventLoop;
 use winit::window::Window;
 
 use crate::app_state::{
-    PaneKind, ProviderMode, RenderState, SidebarState, WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH,
+    JobHistoryStatus, PaneKind, ProviderMode, RelayConnectionStatus, RenderState, SidebarState,
+    WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH,
 };
 use crate::codex_lane::{CodexLaneConfig, CodexLaneSnapshot, CodexLaneWorker};
 use crate::hotbar::{configure_hotbar, hotbar_bounds, new_hotbar};
@@ -433,85 +434,236 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
         dots_grid.paint(Bounds::new(0.0, 0.0, width, height), &mut paint);
         paint.scene.pop_clip();
 
-        // Sidebar: minimal "Go Online" toggle — Offline | [pill] | Online (right-aligned).
         if panel_width > 0.0 {
-            let section_top = 16.0;
-            let pad = 12.0;
-            let track_height = 18.0;
-            let track_radius = track_height * 0.5;
-            let thumb_diameter = 14.0;
-            let thumb_inset = 2.0;
-            let track_width = 44.0;
-            let label_gap = 6.0;
-            let font_size = 10.0;
-            let is_online = state.provider_runtime.mode == ProviderMode::Online;
+            let left = sidebar_x + 12.0;
+            let right = sidebar_x + panel_width - 12.0;
+            let mut y = 16.0;
 
-            let offline_w = paint.text.measure("Offline", font_size);
-            let online_w = paint.text.measure("Online", font_size);
-            let total_width = offline_w + label_gap + track_width + label_gap + online_w;
-            let right_edge = sidebar_x + panel_width - pad;
-            let left_edge = right_edge - total_width;
+            let providers_online = state
+                .relay_connections
+                .relays
+                .iter()
+                .filter(|relay| relay.status == RelayConnectionStatus::Connected)
+                .count();
+            let jobs_completed = state
+                .job_history
+                .rows
+                .iter()
+                .filter(|row| row.status == JobHistoryStatus::Succeeded)
+                .count();
+            let sats_paid_network = state
+                .job_history
+                .rows
+                .iter()
+                .filter(|row| {
+                    row.status == JobHistoryStatus::Succeeded
+                        && !is_synthetic_payment_pointer(row.payment_pointer.as_str())
+                })
+                .map(|row| row.payout_sats)
+                .sum::<u64>();
+            let global_earnings_today_sats = sats_paid_network;
 
-            // "Offline" label on the left of the row
-            let offline_x = left_edge;
             paint.scene.draw_text(paint.text.layout(
-                "Offline",
-                Point::new(
-                    offline_x,
-                    section_top + (track_height - font_size) * 0.5 - 1.0,
+                "Autopilot - Mission Control",
+                Point::new(left, y),
+                13.0,
+                theme::text::PRIMARY,
+            ));
+            y += 18.0;
+
+            paint.scene.draw_text(paint.text.layout_mono(
+                &format!(
+                    "Global Network Earnings Today: {} BTC",
+                    format_btc_from_sats(global_earnings_today_sats)
                 ),
-                font_size,
+                Point::new(left, y),
+                10.0,
+                theme::status::SUCCESS,
+            ));
+            y += 18.0;
+
+            let status_label = match state.provider_runtime.mode {
+                ProviderMode::Offline => "OFFLINE",
+                ProviderMode::Connecting => "CONNECTING",
+                ProviderMode::Online => "ONLINE",
+                ProviderMode::Degraded => "DEGRADED",
+            };
+            paint.scene.draw_text(paint.text.layout_mono(
+                &format!("Status: {status_label}"),
+                Point::new(left, y),
+                11.0,
+                if state.provider_runtime.mode == ProviderMode::Online {
+                    theme::status::SUCCESS
+                } else {
+                    theme::text::MUTED
+                },
+            ));
+
+            let go_online_bounds = Bounds::new(left, 72.0, (panel_width - 24.0).max(120.0), 34.0);
+            let is_online = state.provider_runtime.mode != ProviderMode::Offline;
+            let action_label = if is_online { "GO OFFLINE" } else { "GO ONLINE" };
+            paint.scene.draw_quad(
+                Quad::new(go_online_bounds)
+                    .with_background(if is_online {
+                        theme::status::ERROR.with_alpha(0.25)
+                    } else {
+                        theme::status::SUCCESS.with_alpha(0.28)
+                    })
+                    .with_border(
+                        if is_online {
+                            theme::status::ERROR.with_alpha(0.75)
+                        } else {
+                            theme::status::SUCCESS.with_alpha(0.75)
+                        },
+                        1.0,
+                    )
+                    .with_corner_radius(8.0),
+            );
+            let action_width = paint.text.measure(action_label, 11.0);
+            paint.scene.draw_text(paint.text.layout_mono(
+                action_label,
+                Point::new(
+                    go_online_bounds.origin.x + (go_online_bounds.size.width - action_width) * 0.5,
+                    go_online_bounds.origin.y + 22.0,
+                ),
+                11.0,
+                theme::text::PRIMARY,
+            ));
+
+            y = go_online_bounds.max_y() + 18.0;
+            paint.scene.draw_text(paint.text.layout(
+                "Network Stats",
+                Point::new(left, y),
+                11.0,
                 theme::text::MUTED,
             ));
-            let track_x = offline_x + offline_w + label_gap;
-            let track_bounds = Bounds::new(track_x, section_top, track_width, track_height);
+            y += 16.0;
+            paint.scene.draw_text(paint.text.layout_mono(
+                &format!("Providers Online: {providers_online}"),
+                Point::new(left, y),
+                10.0,
+                theme::text::PRIMARY,
+            ));
+            y += 14.0;
+            paint.scene.draw_text(paint.text.layout_mono(
+                &format!("Jobs Completed: {jobs_completed}"),
+                Point::new(left, y),
+                10.0,
+                theme::text::PRIMARY,
+            ));
+            y += 14.0;
+            paint.scene.draw_text(paint.text.layout_mono(
+                &format!("Sats Paid: {} BTC", format_btc_from_sats(sats_paid_network)),
+                Point::new(left, y),
+                10.0,
+                theme::text::PRIMARY,
+            ));
 
-            // Track background: muted when off, green tint when on
-            let track_bg = if is_online {
-                theme::status::SUCCESS.with_alpha(0.22)
-            } else {
-                Hsla::new(0.0, 0.0, 0.22, 0.85)
-            };
-            let track_border = if is_online {
-                theme::status::SUCCESS.with_alpha(0.5)
-            } else {
-                theme::border::DEFAULT.with_alpha(0.5)
-            };
-            paint.scene.draw_quad(
-                Quad::new(track_bounds)
-                    .with_background(track_bg)
-                    .with_border(track_border, 1.0)
-                    .with_corner_radius(track_radius),
-            );
-
-            // Thumb: circle on the left (offline) or right (online)
-            let thumb_y = track_bounds.origin.y + (track_height - thumb_diameter) * 0.5;
-            let thumb_x = if is_online {
-                track_bounds.origin.x + track_width - thumb_inset - thumb_diameter
-            } else {
-                track_bounds.origin.x + thumb_inset
-            };
-            let thumb_bounds = Bounds::new(thumb_x, thumb_y, thumb_diameter, thumb_diameter);
-            let thumb_bg = if is_online {
-                theme::status::SUCCESS
-            } else {
-                Hsla::new(0.0, 0.0, 0.45, 1.0)
-            };
-            paint.scene.draw_quad(
-                Quad::new(thumb_bounds)
-                    .with_background(thumb_bg)
-                    .with_corner_radius(thumb_diameter * 0.5),
-            );
-
-            // "Online" label on the right of the track
-            let online_x = track_bounds.origin.x + track_width + label_gap;
+            y += 20.0;
             paint.scene.draw_text(paint.text.layout(
-                "Online",
-                Point::new(
-                    online_x,
-                    section_top + (track_height - font_size) * 0.5 - 1.0,
-                ),
-                font_size,
+                "Your Earnings",
+                Point::new(left, y),
+                11.0,
+                theme::text::MUTED,
+            ));
+            y += 16.0;
+            paint.scene.draw_text(paint.text.layout_mono(
+                &format!("Today: {} sats", state.earnings_scoreboard.sats_today),
+                Point::new(left, y),
+                10.0,
+                theme::text::PRIMARY,
+            ));
+            y += 14.0;
+            paint.scene.draw_text(paint.text.layout_mono(
+                &format!("Total: {} sats", state.earnings_scoreboard.lifetime_sats),
+                Point::new(left, y),
+                10.0,
+                theme::text::PRIMARY,
+            ));
+
+            y += 20.0;
+            paint.scene.draw_text(paint.text.layout(
+                "Recent Jobs",
+                Point::new(left, y),
+                11.0,
+                theme::text::MUTED,
+            ));
+            y += 16.0;
+
+            if let Some(active) = state.active_job.job.as_ref() {
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &format!(
+                        "{} | {} | {} sats | {}",
+                        active.job_id,
+                        active.capability,
+                        active.quoted_price_sats,
+                        active.stage.label()
+                    ),
+                    Point::new(left, y),
+                    10.0,
+                    theme::text::PRIMARY,
+                ));
+                y += 14.0;
+            }
+
+            let mut recent_rows = state.job_history.rows.iter().collect::<Vec<_>>();
+            recent_rows.sort_by(|left_row, right_row| {
+                right_row
+                    .completed_at_epoch_seconds
+                    .cmp(&left_row.completed_at_epoch_seconds)
+                    .then_with(|| right_row.job_id.cmp(&left_row.job_id))
+            });
+
+            if recent_rows.is_empty() && state.active_job.job.is_none() {
+                let waiting = if state.provider_runtime.mode == ProviderMode::Online {
+                    "Waiting for first job..."
+                } else {
+                    "(empty)"
+                };
+                paint.scene.draw_text(paint.text.layout(
+                    waiting,
+                    Point::new(left, y),
+                    10.0,
+                    theme::text::MUTED,
+                ));
+                y += 14.0;
+            } else {
+                for row in recent_rows.into_iter().take(2) {
+                    let payout = if row.payout_sats == 0 {
+                        "n/a".to_string()
+                    } else {
+                        format!("{} sats", row.payout_sats)
+                    };
+                    paint.scene.draw_text(paint.text.layout_mono(
+                        &format!("{} | {} | {}", row.job_id, row.status.label(), payout),
+                        Point::new(left, y),
+                        10.0,
+                        theme::text::PRIMARY,
+                    ));
+                    y += 14.0;
+                }
+            }
+
+            y += 10.0;
+            let wallet_state = if state.spark_wallet.last_error.is_some() {
+                "degraded"
+            } else {
+                state.spark_wallet.network_status_label()
+            };
+            paint.scene.draw_text(paint.text.layout_mono(
+                &format!("Wallet: {wallet_state}"),
+                Point::new(left, y),
+                10.0,
+                if wallet_state == "connected" {
+                    theme::status::SUCCESS
+                } else {
+                    theme::text::MUTED
+                },
+            ));
+            paint.scene.draw_text(paint.text.layout_mono(
+                &format!("Lane: {}", state.sync_health.subscription_state),
+                Point::new(right - 118.0, y),
+                10.0,
                 theme::text::MUTED,
             ));
         }
@@ -777,7 +929,7 @@ pub fn sidebar_handle_bounds(state: &RenderState) -> Bounds {
     Bounds::new(handle_x, handle_y, handle_width, handle_height)
 }
 
-/// Bounds of the "Go Online" toggle switch in the sidebar (when panel is open). Full track = hit area.
+/// Bounds of the "Go Online" mission-control button in the sidebar (when panel is open).
 pub fn sidebar_go_online_button_bounds(state: &RenderState) -> Bounds {
     let logical = logical_size(&state.config, state.scale_factor);
     let width = logical.width;
@@ -797,21 +949,20 @@ pub fn sidebar_go_online_button_bounds(state: &RenderState) -> Bounds {
     if panel_width < 1.0 {
         return Bounds::new(-1000.0, -1000.0, 0.0, 0.0);
     }
-    let section_top = 16.0;
-    let pad = 12.0;
-    let track_height = 18.0;
-    let track_width = 44.0;
-    let label_gap = 6.0;
-    let offline_w = 32.0;
-    let online_w = 28.0;
-    let toggle_width = offline_w + label_gap + track_width + label_gap + online_w;
-    let right_edge = sidebar_x + panel_width - pad;
-    Bounds::new(
-        right_edge - toggle_width,
-        section_top,
-        toggle_width,
-        track_height,
-    )
+    let width = (panel_width - 24.0).max(120.0);
+    Bounds::new(sidebar_x + 12.0, 72.0, width, 34.0)
+}
+
+fn format_btc_from_sats(sats: u64) -> String {
+    format!("{:.8}", sats as f64 / 100_000_000.0)
+}
+
+fn is_synthetic_payment_pointer(pointer: &str) -> bool {
+    let normalized = pointer.trim().to_ascii_lowercase();
+    normalized.starts_with("pending:")
+        || normalized.starts_with("pay:")
+        || normalized.starts_with("pay-req-")
+        || normalized.starts_with("inv-")
 }
 
 fn command_registry() -> Vec<Command> {
