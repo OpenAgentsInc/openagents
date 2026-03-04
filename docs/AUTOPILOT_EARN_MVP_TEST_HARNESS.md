@@ -110,6 +110,22 @@ Primary assertions:
 - unreconciled receipt rows do not inflate global counters,
 - wallet source failures set aggregate counter service state to degraded/error.
 
+### 7) Relay Connectivity Truth Harness (`autopilot-desktop`)
+
+Files:
+- `apps/autopilot-desktop/src/provider_nip90_lane.rs` test `worker_ingests_live_relay_request`
+- `apps/autopilot-desktop/src/app_state.rs` test `relay_connections_add_retry_remove_flow`
+
+What it covers:
+- verifies provider-lane snapshots carry live relay health rows sourced from transport state,
+- verifies relay pane retry actions no longer stamp synthetic `connected/96ms` local success,
+- verifies relay retry path remains a reconnect attempt (`connecting`) pending lane authority.
+
+Primary assertions:
+- relay health rows are present in live lane snapshots while ingress is active,
+- retrying a relay keeps status in `connecting` until transport confirms connection state,
+- relay remove/add/retry flows remain deterministic and replay-safe.
+
 ## Existing Supporting Tests Used In This Pass
 
 - `app_state::tests::job_history_rejects_unconfirmed_success_settlement_from_active_job`
@@ -124,6 +140,8 @@ These provide additional coverage for payout hard-gates and reconciliation seman
 cargo test -p nostr-client --test dvm_submit_await_e2e
 cargo test -p autopilot-desktop --bin autopilot-desktop mission_control_earn_loop_wallet_confirmed_end_to_end
 cargo test -p autopilot-desktop --bin autopilot-desktop provider_nip90_lane::tests::desktop_earn_harness_relay_execute_publish_wallet_confirm_end_to_end
+cargo test -p autopilot-desktop --bin autopilot-desktop provider_nip90_lane::tests::worker_ingests_live_relay_request
+cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::relay_connections_add_retry_remove_flow
 cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::starter_demand_
 cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::starter_provenance_propagates_from_inbox_to_history_receipt
 cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::network_aggregate_counters_

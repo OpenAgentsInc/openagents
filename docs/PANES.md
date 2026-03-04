@@ -29,8 +29,9 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - Runtime status pane for heartbeat freshness, uptime, queue depth, and dependency state.
   - Action: read-only operational visibility.
 - `Relay Connections`
-  - Configured relay list with per-relay state (`connected`, `connecting`, `disconnected`, `error`), latency, last-seen, and last-error fields.
+  - Configured relay list with per-relay state (`connected`, `connecting`, `disconnected`, `error`), latency, last-seen, and last-error fields derived from provider-lane transport snapshots.
   - Inputs/actions: add relay (`wss://` validation), select row, retry selected, remove selected.
+  - Retry is a reconnect attempt (`connecting`) only; connected state is set by relay transport health, not pane-local simulation.
   - Explicit pane state machine: `loading`, `ready`, `error`.
 - `Sync Health`
   - Spacetime sync diagnostics for connection state, subscription state, cursor progress, stale detection, replay count, and duplicate-drop count.

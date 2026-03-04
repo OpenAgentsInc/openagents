@@ -1,15 +1,47 @@
 use crate::app_state::{
-    ActivityEventDomain, ActivityEventRow, PaneLoadState, ProviderMode, RenderState,
+    ActivityEventDomain, ActivityEventRow, PaneLoadState, ProviderMode, RelayConnectionRow,
+    RelayConnectionStatus, RenderState,
 };
 use crate::provider_nip90_lane::{
     ProviderNip90LaneMode, ProviderNip90LaneSnapshot, ProviderNip90PublishOutcome,
-    ProviderNip90PublishRole,
+    ProviderNip90PublishRole, ProviderNip90RelayStatus,
 };
 use crate::state::job_inbox::JobInboxNetworkRequest;
 
 pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: ProviderNip90LaneSnapshot) {
     let previous_mode = state.provider_nip90_lane.mode;
+    let selected_url = state.relay_connections.selected_url.clone();
     state.provider_nip90_lane = snapshot;
+    state.relay_connections.relays = state
+        .provider_nip90_lane
+        .relay_health
+        .iter()
+        .map(|relay| RelayConnectionRow {
+            url: relay.relay_url.clone(),
+            status: map_relay_status(relay.status),
+            latency_ms: relay.latency_ms,
+            last_seen_seconds_ago: relay.last_seen_seconds_ago,
+            last_error: relay.last_error.clone(),
+        })
+        .collect();
+    state.relay_connections.load_state = PaneLoadState::Ready;
+    state.relay_connections.last_error = state.provider_nip90_lane.last_error.clone();
+    state.relay_connections.last_action = state.provider_nip90_lane.last_action.clone();
+    state.relay_connections.selected_url = selected_url
+        .filter(|selected| {
+            state
+                .relay_connections
+                .relays
+                .iter()
+                .any(|relay| relay.url == *selected)
+        })
+        .or_else(|| {
+            state
+                .relay_connections
+                .relays
+                .first()
+                .map(|relay| relay.url.clone())
+        });
 
     if let Some(last_error) = state.provider_nip90_lane.last_error.as_deref() {
         state.provider_runtime.mode = ProviderMode::Degraded;
@@ -26,6 +58,15 @@ pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: ProviderNip
         state.provider_runtime.last_error_detail = None;
         state.provider_runtime.last_result = state.provider_nip90_lane.last_action.clone();
         state.provider_runtime.mode_changed_at = std::time::Instant::now();
+    }
+}
+
+fn map_relay_status(status: ProviderNip90RelayStatus) -> RelayConnectionStatus {
+    match status {
+        ProviderNip90RelayStatus::Connected => RelayConnectionStatus::Connected,
+        ProviderNip90RelayStatus::Connecting => RelayConnectionStatus::Connecting,
+        ProviderNip90RelayStatus::Disconnected => RelayConnectionStatus::Disconnected,
+        ProviderNip90RelayStatus::Error => RelayConnectionStatus::Error,
     }
 }
 

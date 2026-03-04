@@ -121,6 +121,12 @@ Red:
   - Wired aggregate refresh into background pump and removed ad-hoc inline Mission Control stats math in sidebar render path (`apps/autopilot-desktop/src/input.rs`, `apps/autopilot-desktop/src/input/actions.rs`, `apps/autopilot-desktop/src/render.rs`).
   - Aggregate counters now derive from provider lane connectivity snapshot + wallet-reconciled payout rows (`jobs completed`, `sats paid`, and global today sats) instead of raw unreconciled history rows.
   - Added automated coverage for reconciled/unreconciled/error aggregate-counter behavior and wired it into the earnings gate script (`apps/autopilot-desktop/src/app_state.rs`, `scripts/lint/autopilot-earnings-epic-test-gate.sh`).
+- 2026-03-04: `#2885` (relay connectivity truth model) implemented.
+  - Added transport-derived per-relay health rows to provider ingress snapshots (`connected/connecting/disconnected/error`, latency, last-seen, last-error) and wired lane loop telemetry updates from real relay transport state (`apps/autopilot-desktop/src/provider_nip90_lane.rs`).
+  - Replaced strict all-relay subscribe/connect path with per-relay connect+subscribe handling and reconnect attempts so one failing relay does not force total ingress failure (`apps/autopilot-desktop/src/provider_nip90_lane.rs`).
+  - Relay pane reducer now hydrates relay rows directly from provider lane transport snapshots, preserving selection while removing pane-local connected simulation (`apps/autopilot-desktop/src/input/reducers/provider_ingress.rs`).
+  - Relay retry action now sets `connecting` only and queues reconnect sync, leaving connected/latency state to transport authority (`apps/autopilot-desktop/src/state/operations.rs`, `apps/autopilot-desktop/src/input/actions.rs`).
+  - Added/updated automated coverage for transport relay snapshot wiring and retry semantics; wired relay-retry regression into the earnings gate script (`apps/autopilot-desktop/src/provider_nip90_lane.rs`, `apps/autopilot-desktop/src/app_state.rs`, `scripts/lint/autopilot-earnings-epic-test-gate.sh`).
 
 ## MVP Requirement Matrix (from `docs/MVP.md`)
 

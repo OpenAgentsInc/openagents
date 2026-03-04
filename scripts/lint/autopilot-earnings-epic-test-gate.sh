@@ -108,6 +108,11 @@ run_test \
     provider_nip90_lane::tests::worker_ingests_live_relay_request \
     -- --nocapture
 run_test \
+    "Relay retry path stays transport-authoritative" \
+    cargo test -p autopilot-desktop \
+    app_state::tests::relay_connections_add_retry_remove_flow \
+    -- --nocapture
+run_test \
     "Desktop E2E harness (relay -> execute -> publish -> wallet confirm)" \
     cargo test -p autopilot-desktop \
     provider_nip90_lane::tests::desktop_earn_harness_relay_execute_publish_wallet_confirm_end_to_end \

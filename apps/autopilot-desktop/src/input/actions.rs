@@ -3660,7 +3660,8 @@ pub(super) fn run_network_requests_action(
                                     .upsert_network_request(JobInboxNetworkRequest {
                                         request_id: request_id.clone(),
                                         requester: "network-buyer".to_string(),
-                                        demand_source: crate::app_state::JobDemandSource::OpenNetwork,
+                                        demand_source:
+                                            crate::app_state::JobDemandSource::OpenNetwork,
                                         request_kind: nostr::nip90::KIND_JOB_TEXT_GENERATION,
                                         capability: "local.injected.request".to_string(),
                                         skill_scope_id: None,
@@ -3944,8 +3945,7 @@ pub(super) fn run_starter_jobs_action(
                                 .upsert_row(crate::app_state::JobHistoryReceiptRow {
                                     job_id: job_id.clone(),
                                     status: crate::app_state::JobHistoryStatus::Succeeded,
-                                    demand_source:
-                                        crate::app_state::JobDemandSource::StarterDemand,
+                                    demand_source: crate::app_state::JobDemandSource::StarterDemand,
                                     completed_at_epoch_seconds: state
                                         .job_history
                                         .reference_epoch_seconds
@@ -4132,7 +4132,10 @@ pub(super) fn run_alerts_recovery_action(
                             .map(|row| row.url.clone());
                     }
                     match state.relay_connections.retry_selected() {
-                        Ok(url) => Ok(format!("Relay reconnect attempted for {url}")),
+                        Ok(url) => {
+                            let _ = state.sync_provider_nip90_lane_relays();
+                            Ok(format!("Relay reconnect attempted for {url}"))
+                        }
                         Err(error) => Err(error),
                     }
                 }
