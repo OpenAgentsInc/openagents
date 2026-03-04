@@ -14,8 +14,7 @@ use winit::event_loop::ActiveEventLoop;
 use winit::window::Window;
 
 use crate::app_state::{
-    JobHistoryStatus, PaneKind, ProviderMode, RelayConnectionStatus, RenderState, SidebarState,
-    WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH,
+    PaneKind, ProviderMode, RenderState, SidebarState, WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH,
 };
 use crate::codex_lane::{CodexLaneConfig, CodexLaneSnapshot, CodexLaneWorker};
 use crate::hotbar::{configure_hotbar, hotbar_bounds, new_hotbar};
@@ -245,6 +244,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             next_runtime_command_seq: 1,
             provider_runtime: crate::app_state::ProviderRuntimeState::default(),
             earnings_scoreboard: crate::app_state::EarningsScoreboardState::default(),
+            network_aggregate_counters: crate::app_state::NetworkAggregateCountersState::default(),
             relay_connections: crate::app_state::RelayConnectionsState::default(),
             sync_health: crate::app_state::SyncHealthState::default(),
             network_requests: crate::app_state::NetworkRequestsState::default(),
@@ -446,29 +446,11 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             let right = sidebar_x + panel_width - 12.0;
             let mut y = 16.0;
 
-            let providers_online = state
-                .relay_connections
-                .relays
-                .iter()
-                .filter(|relay| relay.status == RelayConnectionStatus::Connected)
-                .count();
-            let jobs_completed = state
-                .job_history
-                .rows
-                .iter()
-                .filter(|row| row.status == JobHistoryStatus::Succeeded)
-                .count();
-            let sats_paid_network = state
-                .job_history
-                .rows
-                .iter()
-                .filter(|row| {
-                    row.status == JobHistoryStatus::Succeeded
-                        && !is_synthetic_payment_pointer(row.payment_pointer.as_str())
-                })
-                .map(|row| row.payout_sats)
-                .sum::<u64>();
-            let global_earnings_today_sats = sats_paid_network;
+            let providers_online = state.network_aggregate_counters.providers_online;
+            let jobs_completed = state.network_aggregate_counters.jobs_completed;
+            let sats_paid_network = state.network_aggregate_counters.sats_paid;
+            let global_earnings_today_sats =
+                state.network_aggregate_counters.global_earnings_today_sats;
 
             paint.scene.draw_text(paint.text.layout(
                 "Autopilot - Mission Control",
@@ -485,7 +467,12 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
                 ),
                 Point::new(left, y),
                 10.0,
-                theme::status::SUCCESS,
+                if state.network_aggregate_counters.load_state == crate::app_state::PaneLoadState::Ready
+                {
+                    theme::status::SUCCESS
+                } else {
+                    theme::text::MUTED
+                },
             ));
             y += 18.0;
 
@@ -953,14 +940,6 @@ pub fn sidebar_go_online_button_bounds(state: &RenderState) -> Bounds {
 
 fn format_btc_from_sats(sats: u64) -> String {
     format!("{:.8}", sats as f64 / 100_000_000.0)
-}
-
-fn is_synthetic_payment_pointer(pointer: &str) -> bool {
-    let normalized = pointer.trim().to_ascii_lowercase();
-    normalized.starts_with("pending:")
-        || normalized.starts_with("pay:")
-        || normalized.starts_with("pay-req-")
-        || normalized.starts_with("inv-")
 }
 
 fn command_registry() -> Vec<Command> {

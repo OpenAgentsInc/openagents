@@ -4588,6 +4588,18 @@ pub(super) fn refresh_earnings_scoreboard(
     );
 }
 
+pub(super) fn refresh_network_aggregate_counters(
+    state: &mut crate::app_state::RenderState,
+    now: std::time::Instant,
+) {
+    state.network_aggregate_counters.refresh_from_sources(
+        now,
+        &state.provider_nip90_lane,
+        &state.job_history,
+        &state.spark_wallet,
+    );
+}
+
 pub(super) fn refresh_sync_health(state: &mut crate::app_state::RenderState) {
     state.sync_health.refresh_from_runtime(
         std::time::Instant::now(),

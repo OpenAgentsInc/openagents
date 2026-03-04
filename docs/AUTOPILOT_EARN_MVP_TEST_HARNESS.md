@@ -96,6 +96,20 @@ Primary assertions:
 - source tag propagation is stable across inbox -> active job -> history receipt,
 - receipt provenance cannot silently downgrade into open-network labeling.
 
+### 6) Mission Control Aggregate Counters Harness (`autopilot-desktop`)
+
+File: `apps/autopilot-desktop/src/app_state.rs` tests prefixed with `network_aggregate_counters_`
+
+What it covers:
+- refreshes a dedicated aggregate-counters service state from authoritative wallet-reconciled payout rows,
+- verifies Mission Control global counters (`providers online`, `jobs completed`, `sats paid`) derive from that aggregate pipeline rather than ad-hoc render-time math,
+- verifies degraded/ignore paths for unreconciled receipts and wallet source failures.
+
+Primary assertions:
+- `jobs_completed` and `sats_paid` count only wallet-reconciled payout evidence,
+- unreconciled receipt rows do not inflate global counters,
+- wallet source failures set aggregate counter service state to degraded/error.
+
 ## Existing Supporting Tests Used In This Pass
 
 - `app_state::tests::job_history_rejects_unconfirmed_success_settlement_from_active_job`
@@ -112,6 +126,7 @@ cargo test -p autopilot-desktop --bin autopilot-desktop mission_control_earn_loo
 cargo test -p autopilot-desktop --bin autopilot-desktop provider_nip90_lane::tests::desktop_earn_harness_relay_execute_publish_wallet_confirm_end_to_end
 cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::starter_demand_
 cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::starter_provenance_propagates_from_inbox_to_history_receipt
+cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::network_aggregate_counters_
 cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::job_history_rejects_unconfirmed_success_settlement_from_active_job
 cargo test -p autopilot-desktop --bin autopilot-desktop state::earnings_gate::tests::accepts_wallet_backed_earnings_evidence
 cargo test -p autopilot-desktop --bin autopilot-desktop state::wallet_reconciliation::tests::reconciliation_distinguishes_earn_vs_swap_and_fee
