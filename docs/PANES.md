@@ -44,6 +44,7 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - Seed-demand queue focused on first-earnings path, explicitly separated from open-network job intake.
   - Shows eligibility and payout sats per starter job.
   - Tracks completion with payout pointer linkage for wallet/history visibility.
+  - Includes explicit dispatch safety controls: sats budget cap telemetry, inflight cap telemetry, and immediate kill-switch toggle.
   - Explicit pane state machine: `loading`, `ready`, `error`.
 - `Activity Feed`
   - Unified event stream across chat, jobs, wallet, network, and sync lanes.

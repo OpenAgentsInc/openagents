@@ -475,6 +475,9 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     if run_auto_stable_sats_simulation(state, now) {
         changed = true;
     }
+    if run_auto_starter_demand_generator(state, now) {
+        changed = true;
+    }
     refresh_earnings_scoreboard(state, now);
     refresh_sync_health(state);
     mirror_ui_errors_to_console(state);

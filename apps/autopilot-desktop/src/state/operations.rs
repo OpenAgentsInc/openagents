@@ -471,12 +471,49 @@ pub struct StarterJobRow {
     pub payout_pointer: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct StarterDemandTemplate {
+    summary: &'static str,
+    payout_sats: u64,
+}
+
+const STARTER_DEMAND_TEMPLATES: [StarterDemandTemplate; 4] = [
+    StarterDemandTemplate {
+        summary: "Summarize a short project update into three bullets",
+        payout_sats: 120,
+    },
+    StarterDemandTemplate {
+        summary: "Extract action items from a meeting note",
+        payout_sats: 150,
+    },
+    StarterDemandTemplate {
+        summary: "Translate a paragraph to plain English",
+        payout_sats: 90,
+    },
+    StarterDemandTemplate {
+        summary: "Classify a support ticket and suggest a response",
+        payout_sats: 110,
+    },
+];
+
+const STARTER_DEMAND_DEFAULT_BUDGET_SATS: u64 = 5_000;
+const STARTER_DEMAND_DEFAULT_DISPATCH_INTERVAL_SECONDS: u64 = 12;
+const STARTER_DEMAND_DEFAULT_MAX_INFLIGHT_JOBS: usize = 3;
+
 pub struct StarterJobsState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
     pub last_action: Option<String>,
     pub jobs: Vec<StarterJobRow>,
     pub selected_job_id: Option<String>,
+    pub kill_switch_enabled: bool,
+    pub budget_cap_sats: u64,
+    pub budget_allocated_sats: u64,
+    pub dispatch_interval_seconds: u64,
+    pub max_inflight_jobs: usize,
+    pub last_dispatched_at: Option<Instant>,
+    next_dispatch_due_at: Option<Instant>,
+    next_dispatch_seq: u64,
 }
 
 impl Default for StarterJobsState {
@@ -487,6 +524,14 @@ impl Default for StarterJobsState {
             last_action: Some("Waiting for starter demand lane snapshot".to_string()),
             jobs: Vec::new(),
             selected_job_id: None,
+            kill_switch_enabled: false,
+            budget_cap_sats: STARTER_DEMAND_DEFAULT_BUDGET_SATS,
+            budget_allocated_sats: 0,
+            dispatch_interval_seconds: STARTER_DEMAND_DEFAULT_DISPATCH_INTERVAL_SECONDS,
+            max_inflight_jobs: STARTER_DEMAND_DEFAULT_MAX_INFLIGHT_JOBS,
+            last_dispatched_at: None,
+            next_dispatch_due_at: None,
+            next_dispatch_seq: 0,
         }
     }
 }
@@ -504,6 +549,135 @@ impl StarterJobsState {
     pub fn selected(&self) -> Option<&StarterJobRow> {
         let selected = self.selected_job_id.as_deref()?;
         self.jobs.iter().find(|job| job.job_id == selected)
+    }
+
+    pub fn toggle_kill_switch(&mut self) -> bool {
+        self.kill_switch_enabled = !self.kill_switch_enabled;
+        let state = if self.kill_switch_enabled {
+            "enabled"
+        } else {
+            "disabled"
+        };
+        self.pane_set_ready(format!("Starter demand kill switch {state}"));
+        self.kill_switch_enabled
+    }
+
+    pub fn apply_dispatch_controls(
+        &mut self,
+        budget_cap_sats: u64,
+        dispatch_interval_seconds: u64,
+        max_inflight_jobs: usize,
+    ) {
+        let budget_cap_sats = budget_cap_sats.max(1);
+        let dispatch_interval_seconds = dispatch_interval_seconds.clamp(1, 3600);
+        let max_inflight_jobs = max_inflight_jobs.clamp(1, 12);
+        if self.budget_cap_sats == budget_cap_sats
+            && self.dispatch_interval_seconds == dispatch_interval_seconds
+            && self.max_inflight_jobs == max_inflight_jobs
+        {
+            return;
+        }
+
+        self.budget_cap_sats = budget_cap_sats;
+        self.dispatch_interval_seconds = dispatch_interval_seconds;
+        self.max_inflight_jobs = max_inflight_jobs;
+        self.last_action = Some(format!(
+            "Starter demand controls updated (budget={} sats interval={}s max_inflight={})",
+            self.budget_cap_sats, self.dispatch_interval_seconds, self.max_inflight_jobs
+        ));
+    }
+
+    pub fn inflight_jobs(&self) -> usize {
+        self.jobs
+            .iter()
+            .filter(|job| job.status != StarterJobStatus::Completed)
+            .count()
+    }
+
+    pub fn budget_remaining_sats(&self) -> u64 {
+        self.budget_cap_sats
+            .saturating_sub(self.budget_allocated_sats)
+    }
+
+    pub fn dispatch_next_if_due(&mut self, now: Instant) -> Result<Option<StarterJobRow>, String> {
+        if self.kill_switch_enabled {
+            self.last_action = Some("Starter demand paused by kill switch".to_string());
+            return Ok(None);
+        }
+
+        if let Some(next_due_at) = self.next_dispatch_due_at
+            && now < next_due_at
+        {
+            return Ok(None);
+        }
+
+        if self.inflight_jobs() >= self.max_inflight_jobs {
+            self.next_dispatch_due_at =
+                Some(now + std::time::Duration::from_secs(self.dispatch_interval_seconds.max(1)));
+            self.last_action = Some(format!(
+                "Starter demand waiting ({} inflight, max={})",
+                self.inflight_jobs(),
+                self.max_inflight_jobs
+            ));
+            return Ok(None);
+        }
+
+        let remaining = self.budget_remaining_sats();
+        let Some(template) = self.next_template_for_remaining_budget(remaining) else {
+            self.next_dispatch_due_at =
+                Some(now + std::time::Duration::from_secs(self.dispatch_interval_seconds.max(1)));
+            self.last_action = Some(format!(
+                "Starter demand budget exhausted (allocated {} / cap {} sats)",
+                self.budget_allocated_sats, self.budget_cap_sats
+            ));
+            return Ok(None);
+        };
+
+        let job_id = format!("starter-quest-{:04}", self.next_dispatch_seq);
+        self.next_dispatch_seq = self.next_dispatch_seq.saturating_add(1);
+        let job = StarterJobRow {
+            job_id: job_id.clone(),
+            summary: template.summary.to_string(),
+            payout_sats: template.payout_sats,
+            eligible: true,
+            status: StarterJobStatus::Queued,
+            payout_pointer: None,
+        };
+        self.jobs.insert(0, job.clone());
+        if self.selected_job_id.is_none() {
+            self.selected_job_id = Some(job_id.clone());
+        }
+        self.budget_allocated_sats = self.budget_allocated_sats.saturating_add(job.payout_sats);
+        self.last_dispatched_at = Some(now);
+        self.next_dispatch_due_at =
+            Some(now + std::time::Duration::from_secs(self.dispatch_interval_seconds.max(1)));
+        self.pane_set_ready(format!(
+            "Starter demand dispatched {} ({} sats, remaining {} sats)",
+            job_id,
+            job.payout_sats,
+            self.budget_remaining_sats()
+        ));
+        Ok(Some(job))
+    }
+
+    pub fn rollback_dispatched_job(&mut self, job_id: &str) -> bool {
+        let Some(index) = self
+            .jobs
+            .iter()
+            .position(|job| job.job_id == job_id && job.status == StarterJobStatus::Queued)
+        else {
+            return false;
+        };
+
+        let removed = self.jobs.remove(index);
+        self.budget_allocated_sats = self
+            .budget_allocated_sats
+            .saturating_sub(removed.payout_sats);
+        if self.selected_job_id.as_deref() == Some(job_id) {
+            self.selected_job_id = self.jobs.first().map(|job| job.job_id.clone());
+        }
+        self.last_action = Some(format!("Rolled back starter dispatch {}", removed.job_id));
+        true
     }
 
     pub fn start_selected_execution(&mut self) -> Result<(String, u64), String> {
@@ -576,5 +750,20 @@ impl StarterJobsState {
             job_id, payout_sats
         ));
         Ok((job_id, payout_sats, payout_pointer))
+    }
+
+    fn next_template_for_remaining_budget(
+        &self,
+        remaining_budget_sats: u64,
+    ) -> Option<&'static StarterDemandTemplate> {
+        let total = STARTER_DEMAND_TEMPLATES.len();
+        for offset in 0..total {
+            let index = (self.next_dispatch_seq as usize + offset) % total;
+            let template = &STARTER_DEMAND_TEMPLATES[index];
+            if template.payout_sats <= remaining_budget_sats {
+                return Some(template);
+            }
+        }
+        None
     }
 }

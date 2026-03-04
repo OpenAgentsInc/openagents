@@ -65,6 +65,23 @@ Primary assertions:
 - active job requires result authority before `delivered` and wallet pointer before `paid`,
 - earnings scoreboard `today/total/jobs` reflect reconciled wallet payout evidence only.
 
+### 4) Starter-Demand Generator Controls Harness (`autopilot-desktop`)
+
+File: `apps/autopilot-desktop/src/app_state.rs` tests prefixed with `starter_demand_`
+
+What it covers:
+- deterministic starter-demand dispatch sequence,
+- dispatch interval gating,
+- strict budget cap enforcement,
+- kill-switch hard stop behavior,
+- rollback semantics that reclaim reserved budget after dispatch failure.
+
+Primary assertions:
+- generator never allocates sats beyond configured cap,
+- dispatch does not fire before the configured cadence,
+- kill switch blocks all automatic starter dispatches,
+- rollback removes queued quest and restores budget accounting.
+
 ## Existing Supporting Tests Used In This Pass
 
 - `app_state::tests::job_history_rejects_unconfirmed_success_settlement_from_active_job`
@@ -79,6 +96,7 @@ These provide additional coverage for payout hard-gates and reconciliation seman
 cargo test -p nostr-client --test dvm_submit_await_e2e
 cargo test -p autopilot-desktop --bin autopilot-desktop mission_control_earn_loop_wallet_confirmed_end_to_end
 cargo test -p autopilot-desktop --bin autopilot-desktop provider_nip90_lane::tests::desktop_earn_harness_relay_execute_publish_wallet_confirm_end_to_end
+cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::starter_demand_
 cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::job_history_rejects_unconfirmed_success_settlement_from_active_job
 cargo test -p autopilot-desktop --bin autopilot-desktop state::earnings_gate::tests::accepts_wallet_backed_earnings_evidence
 cargo test -p autopilot-desktop --bin autopilot-desktop state::wallet_reconciliation::tests::reconciliation_distinguishes_earn_vs_swap_and_fee

@@ -113,6 +113,11 @@ run_test \
     provider_nip90_lane::tests::desktop_earn_harness_relay_execute_publish_wallet_confirm_end_to_end \
     -- --nocapture
 run_test \
+    "Starter-demand generator budget/kill-switch controls" \
+    cargo test -p autopilot-desktop \
+    app_state::tests::starter_demand_ \
+    -- --nocapture
+run_test \
     "Earn bitcoin until +N sats flow" \
     cargo test -p autopilot-desktop \
     state::earnings_gate::tests::earn_bitcoin_until_target_sats_requires_wallet_confirmed_threshold \
