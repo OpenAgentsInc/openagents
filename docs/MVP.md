@@ -145,7 +145,7 @@ In both paths, the provider should have an explicit, visible “job lifecycle”
 This is lane A of the broader Earn model:
 
 * **Lane A (MVP):** compute provider via NIP-90 jobs.
-* **Lane B (future):** liquidity solver via Hydra intents, where providers commit capital + execution and earn routing fees/spreads.
+* **Lane B (future):** liquidity solver via Hydra intents in an OpenAgents-native solver market, where providers commit capital + execution and earn routing fees/spreads.
 
 Lane B is deliberately out of MVP scope and must never auto-activate for users.
 

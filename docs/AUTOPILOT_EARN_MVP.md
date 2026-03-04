@@ -42,6 +42,8 @@ Autopilot Earn is a provider marketplace with multiple revenue lanes:
 
 `Go Online` should continue to mean "I'm available to earn," but this MVP binds that to compute only. Liquidity solver mode must remain an explicit future opt-in and never activate automatically.
 
+Earn roadmap note: future liquidity solver earnings run through an OpenAgents-native solver market under Hydra, not third-party solver networks.
+
 ## 3) UX Spec: Mission Control First
 
 ### 3.1 First screen (offline)

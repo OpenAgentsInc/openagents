@@ -5,7 +5,7 @@
 Hydra X extends **Hydra (OpenAgents Liquidity Engine)** into a unified economic substrate that supports:
 
 1. **Lightning-first settlement** for marketplace flows (MVP now).
-2. **Liquidity solver jobs** where agent operators compete to fulfill value-routing intents (Medium term).
+2. **Liquidity solver jobs** where solver providers compete to fulfill value-routing intents (Medium term).
 3. **Agent liquidity routing** across multiple rails (LN, on-chain BTC, EVM, and other supported chains) through deterministic receipts and strict policy budgets (Long term).
 
 Hydra X does **not** become a wallet UI, exchange UI, or speculative bridge app. It becomes a **programmable liquidity router** and **market for solvers** that can be invoked by Autopilot, Skills, and the marketplace.
@@ -55,13 +55,27 @@ A deterministic scorer that selects rails and solver strategies based on reliabi
 
 ### (D) Solver Market
 
-A protocol + runtime that allows agent operators (“solvers”) to compete to fulfill **liquidity intents**, earning BTC-denominated fees/spreads.
+A protocol + runtime that allows solver providers (“solvers”) to compete to fulfill **liquidity intents**, earning BTC-denominated fees/spreads.
 
 ### (E) Cross-Rail Adapters
 
-A set of rail adapters that let Hydra satisfy intents across LN, on-chain BTC, EVM, and other chains (phase-gated). Garden integration is treated as one adapter path.
+A set of rail adapters that let Hydra satisfy intents across LN, on-chain BTC, EVM, and other chains (phase-gated). Adapters are supported for interoperability, but roadmap-critical routes must not depend on third-party solver network openness.
 
 Hydra X is the economic complement to your compute marketplace: **compute intents + liquidity intents** become the two legs of an agent economy.
+
+---
+
+## External Liquidity Networks: Current Posture
+
+- Garden provides a useful reference architecture (`intent -> match -> initiate -> redeem`).
+- As of 2026-03-04, Garden's solver network/orderbook is **not open** to external fillers; Hydra should assume **no access** for roadmap planning.
+- Therefore, OpenAgents must build:
+  - OpenAgents-native matching + solver provider role,
+  - internal liquidity routing jobs,
+  - native adapters (LN, BTC on-chain, and eventually cross-chain) under Hydra invariants.
+- External liquidity adapters remain optional future interop, gated by policy, and are not required for roadmap success.
+
+Rule: **No roadmap item depends on Garden openness.**
 
 ---
 
@@ -99,7 +113,7 @@ Hydra X is the economic complement to your compute marketplace: **compute intent
 
 Hydra X adds two new blocks under the existing Hydra layer:
 
-1. **Intent Router**: chooses LN direct vs solver vs FX RFQ vs hybrid.
+1. **Intent Router**: chooses LN direct vs native solver market vs FX RFQ vs multi-hop internal routes.
 2. **Solver Market**: orderbook + matching + solver settlement adapters.
 
 ```text
@@ -115,7 +129,7 @@ Autopilot / Skills / Marketplace
      └──────┬───────────────────────────┬───────────────┘
             │                           │
    Lightning Node(s)            Cross-Rail Adapters
-   (LLP + routing health)       (Garden adapter, HTLC, etc.)
+   (LLP + routing health)       (Native HTLC first; optional external interop adapters)
 ```
 
 ---
@@ -147,8 +161,8 @@ Hydra evaluates:
 
 1. **LN direct** (LLP can pay invoice directly)
 2. **FX RFQ** (Hydra FX flows for fiat/stable conversions if enabled)
-3. **Solver market** (internal or external solver fills)
-4. **Hybrid** (e.g., LN → on-chain BTC → cross-rail)
+3. **Solver market** (OpenAgents-native solver provider fills)
+4. **Multi-hop route** (e.g., LN -> on-chain BTC -> cross-rail adapter path)
 
 Hydra emits a **RoutePlan receipt** even before execution, so decisions are legible.
 
@@ -187,7 +201,7 @@ Explicit non-goal: bridging or cross-chain routing for end users.
 
 ### Phase 2 — Liquidity Solver Jobs (Medium term)
 
-**Goal:** create *real revenue jobs* for agents: solvers compete to fulfill intents and earn spreads/fees.
+**Goal:** create *real revenue jobs* for solver providers: solvers compete to fulfill intents and earn spreads/fees.
 
 Scope:
 
@@ -203,14 +217,14 @@ Scope:
 
 ### Phase 3 — Hydra as Agent Liquidity Router (Long term)
 
-**Goal:** Hydra becomes a multi-rail liquidity router rivaling systems like THORChain/Garden/CoW in function, but agent-native and receipt-driven.
+**Goal:** Hydra becomes a multi-rail liquidity router rivaling systems like THORChain and CoW in function, but agent-native and receipt-driven.
 
 Scope:
 
 * Cross-rail adapters:
 
-  * Garden adapter (as one path)
   * Native HTLC adapters (BTC ↔ EVM and others)
+  * Optional external interop adapters (policy-gated, non-blocking)
   * Additional RFQ providers and aggregator logic
 * Solver Market v1:
 
@@ -313,50 +327,21 @@ Hydra X implements adapters behind a common interface. Each adapter is responsib
 * `refund(order) -> RefundReceipt`
 * `status(order_id) -> State`
 
-### 7.2 Garden Adapter (Integration)
+### 7.2 External Reference Systems (Not Currently Actionable)
 
-Hydra X can integrate Garden as a cross-rail adapter, using the cookbook flow.
+Garden remains a useful reference architecture for adapter design (`intent -> match -> initiate -> redeem`), but it is not currently actionable as a roadmap dependency.
 
-**Key: Garden is treated as an external orderbook + relayer path.**
+As of 2026-03-04, Garden's solver network/orderbook is not open to external fillers. Hydra therefore treats Garden-style flows as reference material for receipt shape and state-machine design, not as a required integration path.
 
-Hydra X calls Garden endpoints through an adapter service:
+If external adapter access becomes available in the future, it must remain policy-gated and non-blocking:
 
-* strategy selection
-* price quote
-* attested order generation
-* order creation
-* polling matched order
-* initiation (EVM via typed signing + relayer; BTC via HTLC funding tx)
-* destination initiation observation
-* redeem (EVM via relayer; BTC via signed redeem tx; optional gasless redemption)
+* disabled by default,
+* bounded by treasury/route/notional controls,
+* never required for core solver-market milestones.
 
-**Receipts required**
-Hydra must emit canonical receipts that wrap Garden evidence:
+### 7.3 Native HTLC Adapters (Primary Path)
 
-* `hydra.routeplan_receipt` (selected Garden strategy)
-* `hydra.external_order_receipt` (Garden order_id, matched order hash)
-* `hydra.chain_initiate_receipt` (EVM tx hash or BTC funding txid)
-* `hydra.chain_redeem_receipt` (EVM redeem tx hash or BTC redeem txid)
-* `hydra.settlement_final_receipt` (amounts + fees + completion)
-
-Hydra stores:
-
-* request/response digests (hashes) for Garden calls
-* any relayer IDs
-* EIP-712 signed payload hash
-* Bitcoin tx hex hash and txid
-
-**Policy gating**
-Garden adapter can be disabled by default and enabled only for:
-
-* certain treasuries,
-* certain max sizes,
-* certain chains,
-* and only when LN direct cannot satisfy an intent.
-
-### 7.3 Native HTLC Adapters (Build-your-own)
-
-Hydra X supports implementing native HTLC settlement without Garden’s servers. This is the “our own version” path.
+Hydra X builds native HTLC settlement as the primary cross-rail path under OpenAgents authority.
 
 Initial scope:
 
@@ -368,9 +353,9 @@ Components:
 * Nostr intent broadcast (optional interop)
 * Hydra matching engine (internal)
 * chain adapters for HTLC initiate/redeem/refund
-* solver operators run the filler logic (like Garden COBI)
+* solver providers run the filler logic under OpenAgents policy + receipt constraints
 
-Benefits vs Garden:
+Benefits of this path:
 
 * fewer external dependencies
 * stronger alignment with receipt determinism + policy
@@ -515,8 +500,8 @@ Hydra already has internal lanes. Hydra X adds:
 
 ### Adapters (internal)
 
-* `POST /internal/v1/hydra/adapters/garden/*`
 * `POST /internal/v1/hydra/adapters/htlc/*`
+* `POST /internal/v1/hydra/adapters/external/*` (optional, future interop)
 
 ### Existing Hydra surfaces remain
 
@@ -549,16 +534,16 @@ Hydra already has internal lanes. Hydra X adds:
 
 ### Phase 3 focus
 
-* Introduce Garden adapter for selected treasuries and intents
-* Add native HTLC adapters as you migrate away from external dependencies
+* Expand native HTLC adapters for primary cross-rail coverage
+* Optionally evaluate policy-gated external interop adapters if openness and reliability requirements are met
 * Expand routing to multi-hop and more assets
 
 ---
 
-## 14) Why This Rivals THORChain / Garden / CoW (But Agent-Native)
+## 14) Why This Rivals THORChain / CoW (But Agent-Native)
 
 * Like **CoW**, Hydra X treats requests as **intents** and uses **solvers**.
-* Like **Garden**, Hydra X can do **atomic swap style settlement** and solver fills.
+* Like external swap-router systems, Hydra X can do **atomic swap style settlement** and solver fills.
 * Like **THORChain**, Hydra X aims to route value across ecosystems.
 
 But Hydra X is distinct because:
@@ -588,309 +573,94 @@ Hydra X becomes the liquidity substrate for an agent economy: agents compete not
 
 ### Phase 3 (Liquidity router)
 
-* at least one cross-rail adapter live (Garden and/or native HTLC)
+* at least one cross-rail native adapter live (HTLC path)
 * multi-rail routing decisions are legible, reproducible, and receipted
 * solver market supports multiple independent operators with bounded risk
 
 ---
 
-# Addendum A — External Liquidity Adapters and Hybrid Solver Strategy
+# Addendum A — External Liquidity Posture (Native-First)
 
 **Status:** Canonical addendum to *Hydra — OpenAgents Liquidity Engine (Spec)*
 
-This addendum defines Hydra’s strategy for integrating external liquidity networks (e.g., Garden) while building the OpenAgents-native solver market described in Hydra X.
-
-Hydra adopts a **hybrid architecture**:
-
-1. **Aggregate external liquidity networks where advantageous.**
-2. **Develop a native solver market for agent-operated liquidity routing.**
-3. **Gradually internalize high-volume routes as solver liquidity matures.**
-
-This approach allows Hydra to **bootstrap liquidity and route coverage immediately** while preserving long-term **sovereignty, reliability, and protocol invariants**.
+This addendum defines how Hydra handles external liquidity networks while preserving a native solver-market roadmap.
 
 ---
 
-# A.1 Design Principle
+# A.1 Current Posture
 
-Hydra treats external liquidity networks as **route providers**, not as trusted settlement authorities.
+As of 2026-03-04, Garden's solver network/orderbook is not open to external fillers.
 
-Hydra remains the **authoritative economic layer** responsible for:
+Hydra therefore treats Garden as a **reference architecture**, not an integration dependency.
 
-* policy enforcement
-* budgeting and credit envelopes
-* routing decisions
-* receipt emission
-* settlement verification
-* failure recovery
+Garden flow remains useful as a modeling reference:
 
-External networks provide **liquidity execution capacity**, but Hydra retains full control over:
+`intent -> match -> initiate -> redeem`
 
-* which routes are used
-* when they are used
-* exposure limits
-* failover behavior
+Roadmap implications:
 
-This ensures Hydra remains the **canonical settlement ledger for the OpenAgents economy**.
+1. OpenAgents builds native solver matching and solver provider participation.
+2. OpenAgents builds native routing jobs and adapters under Hydra authority lanes.
+3. External interop remains optional, future, and policy-gated.
+
+Rule: **No roadmap item depends on Garden openness.**
 
 ---
 
-# A.2 External Liquidity Adapters
+# A.2 Adapter-Compatible, Not Adapter-Dependent
 
-Hydra X introduces the concept of **External Liquidity Adapters**.
+Hydra X is designed with pluggable adapters; however, OpenAgents does not assume access to any external solver network for liquidity bootstrapping.
 
-Adapters allow Hydra to interact with external routing or swap systems without compromising Hydra’s deterministic execution model.
+Canonical path:
 
-Examples include:
+1. Build OpenAgents-native solver market first.
+2. Expand native route coverage under Hydra invariants.
+3. Add optional interop adapters later if and only if external networks become open and operationally reliable.
 
-* Garden
-* RFQ liquidity providers
-* external swap routers
-* chain-native HTLC systems
-
-Each adapter implements the standard Hydra adapter interface:
-
-```
-quote(intent)
-match(intent, quote)
-initiate(order)
-await_destination(order)
-redeem(order)
-refund(order)
-status(order_id)
-```
-
-Adapters must produce sufficient evidence for Hydra to generate canonical receipts.
-
-Adapters do **not** mutate Hydra state directly.
-
-All authoritative mutations occur through Hydra HTTP authority endpoints.
+All mutations remain HTTP-only authority mutations. All effects remain receipt-driven and replayable.
 
 ---
 
-# A.3 Garden Adapter (Bootstrap Liquidity)
+# A.3 Native Solver Market MVP Path
 
-Hydra integrates Garden through a **Garden Adapter** that treats Garden as a route provider.
+Native build order (aligned with Hydra phases):
 
-Hydra interacts with Garden’s infrastructure using the documented flow:
+1. **LN-adjacent solver jobs first**
+   - liquidity rebalancing
+   - liquidity provisioning jobs
+   - invoice acquisition/fill jobs
+2. **BTC on-chain routing next**
+   - constrained route types
+   - strict policy caps and deterministic receipts
+3. **Cross-chain adapters later**
+   - HTLC-based adapters
+   - enabled only after receipt and failure-state hardening
 
-1. Fetch strategies
-2. Obtain price quote
-3. Request attested order
-4. Create order
-5. Wait for filler match
-6. Initiate source chain swap
-7. Wait for destination initiation
-8. Redeem funds
-
-Hydra wraps each stage with canonical receipts.
-
-Minimum evidence stored for each Garden operation includes:
-
-* Garden `strategy_id`
-* Garden `order_id`
-* request/response digests
-* EIP-712 payload hash (for EVM initiation)
-* Bitcoin transaction hex hash
-* Bitcoin funding txid
-* Bitcoin redeem txid
-* destination chain tx hash
-* final settlement amounts
-
-Hydra therefore maintains **full provenance** even when using external infrastructure.
+This sequence provides self-sufficient liquidity execution without third-party solver dependency.
 
 ---
 
-# A.4 Policy and Exposure Controls
+# A.4 External Interop (Optional Future)
 
-External adapters are subject to strict policy gating.
+External adapter integrations are non-blocking and must never be required for:
 
-Default policy for external liquidity routes:
+* solver-provider onboarding,
+* intent matching milestones,
+* core liquidity routing SLAs.
 
-* disabled unless explicitly allowed
-* maximum notional per intent
-* maximum daily exposure
-* allowed asset pairs
-* allowed destination chains
-* routing score minimum thresholds
-* circuit breaker triggers
+If enabled in the future, external adapters must be:
 
-Hydra routing intelligence may choose external routes only when:
-
-1. LN direct settlement is not possible, or
-2. external route cost and reliability exceed internal solver routes.
-
-External routes are therefore **fallback or expansion routes**, not the primary settlement path.
+* disabled by default,
+* treasury/route/notional bounded,
+* guarded by circuit breakers,
+* fully receipted with request/response provenance.
 
 ---
 
-# A.5 Hybrid Routing Strategy
+# A.5 Reference Systems Appendix Note
 
-Hydra’s routing layer evaluates routes in priority order:
+Garden-specific endpoint and flow details are retained only as reference-system patterns.
 
-1. **LLP (Lightning direct)**
-   Primary settlement rail for the OpenAgents marketplace.
+**Not currently actionable: Garden network not open.**
 
-2. **Internal solver market**
-   Agent providers fulfilling liquidity intents within the OpenAgents economy.
-
-3. **External liquidity adapters (e.g., Garden)**
-   Used for route coverage and liquidity bootstrapping.
-
-4. **FX RFQ providers**
-   Used where fiat or stable asset conversion is required.
-
-Hydra chooses routes using deterministic scoring based on:
-
-* expected cost
-* reliability history
-* latency
-* solver reputation
-* liquidity availability
-* policy constraints
-
-Hydra emits a **RoutePlan receipt** documenting the chosen route and the factors influencing the decision.
-
----
-
-# A.6 Internalization Strategy
-
-Hydra will gradually internalize routes as internal liquidity improves.
-
-Internalization occurs when the internal solver market meets reliability and liquidity thresholds.
-
-Examples:
-
-| Route                 | Initial Strategy  | Long-term Strategy      |
-| --------------------- | ----------------- | ----------------------- |
-| LN → LN               | LLP direct        | LLP direct              |
-| LN → BTC on-chain     | External adapters | Internal solvers        |
-| BTC → EVM stablecoins | Garden adapter    | Internal HTLC adapters  |
-| BTC → other chains    | Garden adapter    | Internal solver network |
-
-Hydra continuously measures route performance using settlement receipts.
-
-Internalization decisions are based on:
-
-* volume concentration
-* solver participation
-* reliability metrics
-* capital efficiency
-* operational risk
-
-Garden may remain available as a **long-tail fallback route** even after internalization.
-
----
-
-# A.7 Benefits of Hybrid Architecture
-
-The hybrid strategy provides several advantages.
-
-### Immediate route coverage
-
-Hydra gains instant access to cross-chain liquidity through Garden.
-
-This allows OpenAgents to support cross-rail settlement before its own solver market is fully developed.
-
-### Liquidity bootstrapping
-
-Hydra can observe real market behavior from existing solver networks, including:
-
-* spread distributions
-* fill latency
-* failure modes
-* liquidity availability
-
-This data informs Hydra’s routing intelligence and underwriting models.
-
-### Gradual sovereignty
-
-Hydra can progressively internalize routes without disrupting the interface exposed to Autopilot and Skills.
-
-Because Hydra controls the intent and receipt layers, changing adapters does not affect higher layers of the system.
-
-### Risk containment
-
-External adapters are constrained by policy caps and circuit breakers, limiting systemic risk while liquidity is being bootstrapped.
-
----
-
-# A.8 Relationship to the Solver Market
-
-Hydra’s solver market and external adapters coexist.
-
-External routes provide baseline liquidity while internal solvers grow.
-
-Over time, internal solvers may outperform external providers on:
-
-* latency
-* reliability
-* fees
-* capital efficiency
-
-Hydra routing intelligence will naturally shift order flow toward internal solvers as their performance improves.
-
-This creates a **positive feedback loop**:
-
-1. Internal solvers earn more volume.
-2. Solver capital increases.
-3. Liquidity deepens.
-4. Internal routes become cheaper and more reliable.
-5. External dependency decreases.
-
----
-
-# A.9 Deterministic Receipts for External Routes
-
-Hydra must ensure that external routes produce receipts equivalent in strength to internal settlement receipts.
-
-External adapter receipts include:
-
-```
-hydra.routeplan_receipt
-hydra.external_order_receipt
-hydra.chain_initiate_receipt
-hydra.chain_redeem_receipt
-hydra.settlement_final_receipt
-```
-
-These receipts contain:
-
-* adapter identifier
-* external order identifiers
-* transaction hashes
-* proof artifacts
-* settlement amounts
-* routing decisions
-* policy bundle identifiers
-
-This preserves OpenAgents’ core invariant:
-
-**all economic activity must be replayable from receipts.**
-
----
-
-# A.10 Long-Term Outcome
-
-Under the hybrid architecture, Hydra evolves through three stages:
-
-**Stage 1 — Lightning settlement engine**
-
-Hydra provides reliable LN settlement and credit envelopes for the OpenAgents marketplace.
-
-**Stage 2 — Solver marketplace**
-
-Agent providers compete to fulfill liquidity intents and earn routing fees.
-
-**Stage 3 — Agent liquidity router**
-
-Hydra routes value across multiple rails using both internal solvers and external liquidity networks.
-
-At maturity, Hydra functions as a **machine-native liquidity layer** where:
-
-* agents provide compute
-* agents provide capital
-* agents provide routing
-
-and all of it settles through deterministic receipts.
-
-External liquidity networks remain integrated as optional route providers, but the OpenAgents solver market becomes the **primary liquidity engine** of the ecosystem.
+Hydra remains interop-ready, but roadmap execution is native-first.
