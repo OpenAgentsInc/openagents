@@ -110,6 +110,12 @@ Red:
   - Added starter-pane kill-switch UI action and status rendering (`apps/autopilot-desktop/src/pane_system.rs`, `apps/autopilot-desktop/src/pane_renderer.rs`, `apps/autopilot-desktop/src/input/tool_bridge.rs`).
   - Added automated coverage for budget/interval/kill-switch/rollback behavior and wired it into the earnings epic gate (`apps/autopilot-desktop/src/app_state.rs`, `scripts/lint/autopilot-earnings-epic-test-gate.sh`).
   - Updated harness documentation with starter-demand controls coverage (`docs/AUTOPILOT_EARN_MVP_TEST_HARNESS.md`).
+- 2026-03-04: `#2883` (starter job provenance and receipt tagging) implemented.
+  - Added explicit demand-source tagging across job ingest and lifecycle records (`open-network` vs `starter-demand`) in inbox, active-job, and job-history state models (`apps/autopilot-desktop/src/state/job_inbox.rs`, `apps/autopilot-desktop/src/app_state.rs`).
+  - Wired source tagging on ingress paths: live relay requests are tagged open-network, while seeded starter dispatch requests are tagged starter-demand (`apps/autopilot-desktop/src/provider_nip90_lane.rs`, `apps/autopilot-desktop/src/input/actions.rs`).
+  - Extended UI rows/details to render source provenance in Job Inbox, Active Job, Job History, and starter-job labeling (`apps/autopilot-desktop/src/pane_renderer.rs`).
+  - Added provenance in result publication payload and automated propagation coverage (`apps/autopilot-desktop/src/input/reducers/jobs.rs`, `apps/autopilot-desktop/src/app_state.rs`).
+  - Added regression gate coverage for starter provenance tagging (`scripts/lint/autopilot-earnings-epic-test-gate.sh`).
 
 ## MVP Requirement Matrix (from `docs/MVP.md`)
 

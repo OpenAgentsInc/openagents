@@ -176,6 +176,7 @@ mod tests {
             rows: vec![JobHistoryReceiptRow {
                 job_id: "job-1".to_string(),
                 status: JobHistoryStatus::Succeeded,
+                demand_source: crate::app_state::JobDemandSource::OpenNetwork,
                 completed_at_epoch_seconds: 20,
                 skill_scope_id: None,
                 skl_manifest_a: None,

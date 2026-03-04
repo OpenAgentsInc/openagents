@@ -282,6 +282,7 @@ fn queue_nip90_result_publish_for_active_job(state: &mut RenderState) -> Result<
         "request_id": request_id,
         "job_id": job.job_id,
         "capability": job.capability,
+        "demand_source": job.demand_source.label(),
         "status": "completed",
         "source": "desktop.execution.lane"
     })

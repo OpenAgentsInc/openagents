@@ -68,16 +68,16 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - Actions: refresh metrics and stale-state visibility.
 - `Job Inbox`
   - Deterministic intake pane for incoming NIP-90 requests with stable request IDs and replay-safe ordering.
-  - Shows requester, capability, price, ttl, validation state, and decision state per request.
+  - Shows requester, capability, demand source (`open-network` vs `starter-demand`), price, ttl, validation state, and decision state per request.
   - Actions: select request, accept selected (with reason), reject selected (with reason).
 - `Active Job`
   - In-flight job lifecycle pane for one selected job (`received -> accepted -> running -> delivered -> paid`).
-  - Shows append-only execution log events, invoice/payment linkage, and failure reason when present.
+  - Shows append-only execution log events, request demand source, invoice/payment linkage, and failure reason when present.
   - Actions: advance stage, abort job (disabled when runtime lane does not support cancel).
 - `Job History`
   - Deterministic receipt/history pane for completed/failed jobs with immutable metadata.
   - Includes status/time filters, job-id search, and pagination.
-  - Row model includes `job_id`, `status`, `completed timestamp`, `result hash`, and `payment pointer`.
+  - Row model includes `job_id`, `status`, `demand source`, `completed timestamp`, `result hash`, and `payment pointer`.
 - `Email Inbox`
   - Communication-lane inbox view for imported inbound messages.
   - Rows show message id, sender, and normalized summary.
