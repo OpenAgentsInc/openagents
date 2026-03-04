@@ -933,6 +933,28 @@ mod tests {
     }
 
     #[test]
+    fn email_lane_commands_map_to_expected_singleton_panes() {
+        let cases = [
+            ("pane.email_inbox", PaneKind::EmailInbox),
+            ("pane.email_draft_queue", PaneKind::EmailDraftQueue),
+            ("pane.email_approval_queue", PaneKind::EmailApprovalQueue),
+            ("pane.email_send_log", PaneKind::EmailSendLog),
+            ("pane.email_follow_up_queue", PaneKind::EmailFollowUpQueue),
+        ];
+
+        for (command_id, expected_kind) in cases {
+            let spec = pane_spec_by_command_id(command_id)
+                .unwrap_or_else(|| panic!("missing email pane command registration {command_id}"));
+            assert_eq!(spec.kind, expected_kind);
+            assert!(
+                spec.singleton,
+                "email pane {:?} must stay singleton",
+                expected_kind
+            );
+        }
+    }
+
+    #[test]
     fn simulation_panes_respect_runtime_gate() {
         let simulation_kinds = [
             PaneKind::AgentNetworkSimulation,

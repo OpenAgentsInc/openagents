@@ -4620,6 +4620,12 @@ mod tests {
         credit_desk_intent_button_bounds, credit_desk_offer_button_bounds,
         credit_desk_spend_button_bounds, credit_settlement_default_button_bounds,
         credit_settlement_reputation_button_bounds, credit_settlement_verify_button_bounds,
+        email_approval_approve_button_bounds, email_approval_kill_switch_button_bounds,
+        email_approval_pause_button_bounds, email_approval_reject_button_bounds,
+        email_approval_request_edits_button_bounds, email_approval_row_bounds,
+        email_draft_row_bounds, email_follow_up_row_bounds, email_follow_up_run_button_bounds,
+        email_inbox_generate_draft_button_bounds, email_inbox_refresh_button_bounds,
+        email_inbox_row_bounds, email_send_row_bounds, email_send_send_button_bounds,
         earnings_scoreboard_refresh_button_bounds, go_online_toggle_button_bounds,
         job_history_next_page_button_bounds, job_history_prev_page_button_bounds,
         job_history_search_input_bounds, job_history_status_button_bounds,
@@ -4917,6 +4923,43 @@ mod tests {
         assert!(accept.max_x() < reject.min_x());
         assert!(accept.max_y() < row0.min_y());
         assert!(row0.max_y() < row1.min_y());
+    }
+
+    #[test]
+    fn email_controls_and_rows_are_ordered() {
+        let content = Bounds::new(0.0, 0.0, 920.0, 500.0);
+
+        let inbox_refresh = email_inbox_refresh_button_bounds(content);
+        let inbox_generate = email_inbox_generate_draft_button_bounds(content);
+        let inbox_row0 = email_inbox_row_bounds(content, 0);
+        let inbox_row1 = email_inbox_row_bounds(content, 1);
+        assert!(inbox_refresh.max_x() < inbox_generate.min_x());
+        assert!(inbox_refresh.max_y() < inbox_row0.min_y());
+        assert!(inbox_row0.max_y() < inbox_row1.min_y());
+
+        let draft_row0 = email_draft_row_bounds(content, 0);
+        let draft_row1 = email_draft_row_bounds(content, 1);
+        assert!(draft_row0.max_y() < draft_row1.min_y());
+
+        let approval_approve = email_approval_approve_button_bounds(content);
+        let approval_reject = email_approval_reject_button_bounds(content);
+        let approval_edits = email_approval_request_edits_button_bounds(content);
+        let approval_pause = email_approval_pause_button_bounds(content);
+        let approval_kill = email_approval_kill_switch_button_bounds(content);
+        let approval_row0 = email_approval_row_bounds(content, 0);
+        assert!(approval_approve.max_x() < approval_reject.min_x());
+        assert!(approval_reject.max_x() < approval_edits.min_x());
+        assert!(approval_approve.max_y() < approval_pause.min_y());
+        assert!(approval_pause.max_x() < approval_kill.min_x());
+        assert!(approval_pause.max_y() < approval_row0.min_y());
+
+        let send_button = email_send_send_button_bounds(content);
+        let send_row0 = email_send_row_bounds(content, 0);
+        assert!(send_button.max_y() < send_row0.min_y());
+
+        let follow_up_button = email_follow_up_run_button_bounds(content);
+        let follow_up_row0 = email_follow_up_row_bounds(content, 0);
+        assert!(follow_up_button.max_y() < follow_up_row0.min_y());
     }
 
     #[test]

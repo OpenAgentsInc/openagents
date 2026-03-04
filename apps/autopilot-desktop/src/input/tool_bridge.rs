@@ -4663,7 +4663,9 @@ mod tests {
         PaneKind,
     };
     use crate::pane_system::{
-        CadDemoPaneAction, PaneHitAction, RelayConnectionsPaneAction, SettingsPaneAction,
+        CadDemoPaneAction, EmailApprovalQueuePaneAction, EmailDraftQueuePaneAction,
+        EmailFollowUpQueuePaneAction, EmailInboxPaneAction, EmailSendLogPaneAction,
+        PaneHitAction, RelayConnectionsPaneAction, SettingsPaneAction,
     };
     use crate::spark_pane::SparkPaneAction;
     use crate::state::autopilot_goals::GoalRolloutStage;
@@ -4844,6 +4846,52 @@ mod tests {
             pane_action_to_hit_action(PaneKind::RelayConnections, "select_row", Some(2))
                 .expect("with index"),
             PaneHitAction::RelayConnections(RelayConnectionsPaneAction::SelectRow(2))
+        );
+    }
+
+    #[test]
+    fn pane_action_mapping_supports_email_panes() {
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::EmailInbox, "refresh", None)
+                .expect("email inbox refresh"),
+            PaneHitAction::EmailInbox(EmailInboxPaneAction::Refresh)
+        );
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::EmailInbox, "generate_draft", None)
+                .expect("email inbox generate draft"),
+            PaneHitAction::EmailInbox(EmailInboxPaneAction::GenerateDraftSelected)
+        );
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::EmailDraftQueue, "select_draft", Some(1))
+                .expect("email draft select"),
+            PaneHitAction::EmailDraftQueue(EmailDraftQueuePaneAction::SelectRow(1))
+        );
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::EmailApprovalQueue, "approve", None)
+                .expect("approval approve"),
+            PaneHitAction::EmailApprovalQueue(EmailApprovalQueuePaneAction::ApproveSelected)
+        );
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::EmailSendLog, "send_selected", None)
+                .expect("send selected"),
+            PaneHitAction::EmailSendLog(EmailSendLogPaneAction::SendSelected)
+        );
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::EmailFollowUpQueue, "run_scheduler_tick", None)
+                .expect("follow-up tick"),
+            PaneHitAction::EmailFollowUpQueue(EmailFollowUpQueuePaneAction::RunSchedulerTick)
+        );
+    }
+
+    #[test]
+    fn pane_action_mapping_requires_index_for_email_row_selection() {
+        let err = pane_action_to_hit_action(PaneKind::EmailInbox, "select_row", None)
+            .expect_err("email inbox row selection should require index");
+        assert_eq!(err.code, "OA-PANE-ACTION-MISSING-INDEX");
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::EmailApprovalQueue, "select_row", Some(3))
+                .expect("email approval row select"),
+            PaneHitAction::EmailApprovalQueue(EmailApprovalQueuePaneAction::SelectRow(3))
         );
     }
 
