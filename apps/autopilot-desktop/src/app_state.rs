@@ -2170,6 +2170,7 @@ pub struct ActiveJobRecord {
     pub job_id: String,
     pub request_id: String,
     pub requester: String,
+    pub request_kind: u16,
     pub capability: String,
     pub skill_scope_id: Option<String>,
     pub skl_manifest_a: Option<String>,
@@ -2217,6 +2218,7 @@ impl ActiveJobState {
             job_id,
             request_id: request.request_id.clone(),
             requester: request.requester.clone(),
+            request_kind: request.request_kind,
             capability: request.capability.clone(),
             skill_scope_id: request.skill_scope_id.clone(),
             skl_manifest_a: request.skl_manifest_a.clone(),
@@ -2348,9 +2350,6 @@ impl ActiveJobState {
         let reason_text = reason.trim().to_string();
         job.stage = JobLifecycleStage::Failed;
         job.failure_reason = Some(reason_text.clone());
-        if job.ac_default_event_id.is_none() {
-            job.ac_default_event_id = Some(format!("ac:39245:{}", job.request_id));
-        }
         self.append_event(format!("job aborted: {reason_text}"));
         self.last_error = None;
         self.load_state = PaneLoadState::Ready;
@@ -3120,6 +3119,7 @@ mod tests {
         JobInboxNetworkRequest {
             request_id: request_id.to_string(),
             requester: format!("npub1{request_id}"),
+            request_kind: 5050,
             capability: capability.to_string(),
             skill_scope_id: None,
             skl_manifest_a: None,

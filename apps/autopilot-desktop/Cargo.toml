@@ -42,6 +42,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 dirs = "6.0"
 reqwest = { workspace = true, features = ["blocking"] }
 chrono = { version = "0.4", default-features = true, features = ["clock"] }
+hex = { workspace = true }
 
 [dev-dependencies]
 futures-util = "0.3"

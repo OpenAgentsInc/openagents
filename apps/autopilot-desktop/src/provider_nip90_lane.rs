@@ -74,14 +74,49 @@ impl Default for ProviderNip90LaneSnapshot {
 
 #[derive(Clone, Debug)]
 pub enum ProviderNip90LaneCommand {
-    ConfigureRelays { relays: Vec<String> },
-    SetOnline { online: bool },
+    ConfigureRelays {
+        relays: Vec<String>,
+    },
+    SetOnline {
+        online: bool,
+    },
+    PublishEvent {
+        request_id: String,
+        role: ProviderNip90PublishRole,
+        event: Box<Event>,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProviderNip90PublishRole {
+    Feedback,
+    Result,
+}
+
+impl ProviderNip90PublishRole {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Feedback => "feedback",
+            Self::Result => "result",
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ProviderNip90PublishOutcome {
+    pub request_id: String,
+    pub role: ProviderNip90PublishRole,
+    pub event_id: String,
+    pub accepted_relays: usize,
+    pub rejected_relays: usize,
+    pub first_error: Option<String>,
 }
 
 #[derive(Clone, Debug)]
 pub enum ProviderNip90LaneUpdate {
     Snapshot(Box<ProviderNip90LaneSnapshot>),
     IngressedRequest(JobInboxNetworkRequest),
+    PublishOutcome(ProviderNip90PublishOutcome),
 }
 
 pub struct ProviderNip90LaneWorker {
@@ -163,7 +198,21 @@ fn run_lane_loop(
     loop {
         match command_rx.recv_timeout(LANE_POLL) {
             Ok(command) => {
-                handle_command(&runtime, &mut state, command);
+                match command {
+                    ProviderNip90LaneCommand::ConfigureRelays { .. }
+                    | ProviderNip90LaneCommand::SetOnline { .. } => {
+                        handle_command(&runtime, &mut state, command);
+                    }
+                    ProviderNip90LaneCommand::PublishEvent {
+                        request_id,
+                        role,
+                        event,
+                    } => {
+                        handle_publish_event(
+                            &runtime, &mut state, &update_tx, request_id, role, *event,
+                        );
+                    }
+                }
                 let _ = update_tx.send(ProviderNip90LaneUpdate::Snapshot(Box::new(
                     state.snapshot.clone(),
                 )));
@@ -266,6 +315,128 @@ fn handle_command(
                 state.snapshot.last_error = None;
                 state.snapshot.last_action = Some("Provider relay ingress offline".to_string());
             }
+        }
+        ProviderNip90LaneCommand::PublishEvent { .. } => {}
+    }
+}
+
+fn handle_publish_event(
+    runtime: &tokio::runtime::Runtime,
+    state: &mut ProviderNip90LaneState,
+    update_tx: &Sender<ProviderNip90LaneUpdate>,
+    request_id: String,
+    role: ProviderNip90PublishRole,
+    event: Event,
+) {
+    let event_id = event.id.clone();
+
+    if !state.wants_online {
+        let message = "Cannot publish NIP-90 event while provider lane is offline".to_string();
+        state.snapshot.mode = ProviderNip90LaneMode::Degraded;
+        state.snapshot.last_error = Some(message.clone());
+        state.snapshot.last_action = Some(format!("publish {} failed: offline", role.label()));
+        let _ = update_tx.send(ProviderNip90LaneUpdate::PublishOutcome(
+            ProviderNip90PublishOutcome {
+                request_id,
+                role,
+                event_id,
+                accepted_relays: 0,
+                rejected_relays: 0,
+                first_error: Some(message),
+            },
+        ));
+        return;
+    }
+
+    if ensure_online_pool(runtime, state).is_err() {
+        let message = state
+            .snapshot
+            .last_error
+            .clone()
+            .unwrap_or_else(|| "Unable to connect relays for publish".to_string());
+        let _ = update_tx.send(ProviderNip90LaneUpdate::PublishOutcome(
+            ProviderNip90PublishOutcome {
+                request_id,
+                role,
+                event_id,
+                accepted_relays: 0,
+                rejected_relays: 0,
+                first_error: Some(message),
+            },
+        ));
+        return;
+    }
+
+    let Some(pool) = state.pool.as_ref().cloned() else {
+        let message = "Cannot publish NIP-90 event: relay pool unavailable".to_string();
+        state.snapshot.mode = ProviderNip90LaneMode::Degraded;
+        state.snapshot.last_error = Some(message.clone());
+        state.snapshot.last_action =
+            Some(format!("publish {} failed: no relay pool", role.label()));
+        let _ = update_tx.send(ProviderNip90LaneUpdate::PublishOutcome(
+            ProviderNip90PublishOutcome {
+                request_id,
+                role,
+                event_id,
+                accepted_relays: 0,
+                rejected_relays: 0,
+                first_error: Some(message),
+            },
+        ));
+        return;
+    };
+
+    match runtime.block_on(pool.publish(&event)) {
+        Ok(confirmations) => {
+            let accepted_relays = confirmations.iter().filter(|entry| entry.accepted).count();
+            let rejected_relays = confirmations.len().saturating_sub(accepted_relays);
+            let first_error = confirmations
+                .iter()
+                .find(|entry| !entry.accepted)
+                .map(|entry| entry.message.clone());
+
+            if accepted_relays == 0 {
+                state.snapshot.mode = ProviderNip90LaneMode::Degraded;
+                state.snapshot.last_error = first_error
+                    .clone()
+                    .or_else(|| Some(format!("All relays rejected {} publish", role.label())));
+            } else {
+                state.snapshot.mode = ProviderNip90LaneMode::Online;
+                state.snapshot.last_error = None;
+            }
+            state.snapshot.last_action = Some(format!(
+                "published {} event {} (accepted={}, rejected={})",
+                role.label(),
+                event_id,
+                accepted_relays,
+                rejected_relays
+            ));
+            let _ = update_tx.send(ProviderNip90LaneUpdate::PublishOutcome(
+                ProviderNip90PublishOutcome {
+                    request_id,
+                    role,
+                    event_id,
+                    accepted_relays,
+                    rejected_relays,
+                    first_error,
+                },
+            ));
+        }
+        Err(error) => {
+            let message = format!("Failed publishing {} event: {error}", role.label());
+            state.snapshot.mode = ProviderNip90LaneMode::Degraded;
+            state.snapshot.last_error = Some(message.clone());
+            state.snapshot.last_action = Some(format!("publish {} failed", role.label()));
+            let _ = update_tx.send(ProviderNip90LaneUpdate::PublishOutcome(
+                ProviderNip90PublishOutcome {
+                    request_id,
+                    role,
+                    event_id,
+                    accepted_relays: 0,
+                    rejected_relays: 0,
+                    first_error: Some(message),
+                },
+            ));
         }
     }
 }
@@ -422,6 +593,7 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
     Some(JobInboxNetworkRequest {
         request_id: event.id.clone(),
         requester: event.pubkey.clone(),
+        request_kind: event.kind,
         capability: capability_for_kind(event.kind),
         skill_scope_id,
         skl_manifest_a: None,
@@ -498,7 +670,7 @@ fn normalize_relays(relays: Vec<String>) -> Vec<String> {
 mod tests {
     use super::{
         ProviderNip90LaneCommand, ProviderNip90LaneUpdate, ProviderNip90LaneWorker,
-        event_to_inbox_request,
+        ProviderNip90PublishRole, event_to_inbox_request,
     };
     use futures_util::{SinkExt, StreamExt};
     use nostr::Event;
@@ -533,6 +705,7 @@ mod tests {
         assert_eq!(row.request_id, "req-001");
         assert_eq!(row.requester, "npub1buyer");
         assert_eq!(row.capability, "text.generation");
+        assert_eq!(row.request_kind, 5050);
         assert_eq!(row.price_sats, 25);
         assert_eq!(row.ttl_seconds, 90);
         assert_eq!(
@@ -615,6 +788,93 @@ mod tests {
         relay_task.abort();
     }
 
+    #[test]
+    fn worker_publishes_signed_feedback_event_to_connected_relay() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("build tokio runtime for relay harness");
+        let (relay_url, relay_task, published_rx) =
+            runtime.block_on(spawn_mock_relay_for_publish());
+
+        let mut worker = ProviderNip90LaneWorker::spawn(vec![relay_url]);
+        worker
+            .enqueue(ProviderNip90LaneCommand::SetOnline { online: true })
+            .expect("queue online command");
+
+        let online_deadline = Instant::now() + Duration::from_secs(4);
+        while Instant::now() < online_deadline {
+            let mut online = false;
+            for update in worker.drain_updates() {
+                if let ProviderNip90LaneUpdate::Snapshot(snapshot) = update
+                    && snapshot.mode == super::ProviderNip90LaneMode::Online
+                    && snapshot.connected_relays > 0
+                {
+                    online = true;
+                }
+            }
+            if online {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+
+        let event = Event {
+            id: "feedback-event-1".to_string(),
+            pubkey: "11".repeat(32),
+            created_at: 1_760_000_120,
+            kind: 7000,
+            tags: vec![
+                vec!["status".to_string(), "processing".to_string()],
+                vec!["e".to_string(), "request-live-1".to_string()],
+                vec!["p".to_string(), "npub1remote-buyer".to_string()],
+            ],
+            content: "processing".to_string(),
+            sig: "22".repeat(64),
+        };
+        worker
+            .enqueue(ProviderNip90LaneCommand::PublishEvent {
+                request_id: "request-live-1".to_string(),
+                role: ProviderNip90PublishRole::Feedback,
+                event: Box::new(event.clone()),
+            })
+            .expect("queue publish command");
+
+        let publish_deadline = Instant::now() + Duration::from_secs(4);
+        let mut outcome_seen = false;
+        while Instant::now() < publish_deadline {
+            for update in worker.drain_updates() {
+                if let ProviderNip90LaneUpdate::PublishOutcome(outcome) = update
+                    && outcome.request_id == "request-live-1"
+                    && outcome.role == ProviderNip90PublishRole::Feedback
+                {
+                    assert_eq!(outcome.event_id, "feedback-event-1");
+                    assert!(
+                        outcome.accepted_relays >= 1,
+                        "expected at least one accepted relay, got {}",
+                        outcome.accepted_relays
+                    );
+                    outcome_seen = true;
+                }
+            }
+            if outcome_seen {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+
+        assert!(outcome_seen, "expected publish outcome update");
+        let published = published_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("relay should receive published event");
+        assert_eq!(published.id, "feedback-event-1");
+        assert_eq!(published.kind, 7000);
+
+        let _ = worker.enqueue(ProviderNip90LaneCommand::SetOnline { online: false });
+        relay_task.abort();
+    }
+
     async fn spawn_mock_relay_with_request() -> (String, JoinHandle<()>) {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
@@ -669,5 +929,61 @@ mod tests {
         });
 
         (format!("ws://{}", addr), handle)
+    }
+
+    async fn spawn_mock_relay_for_publish()
+    -> (String, JoinHandle<()>, std::sync::mpsc::Receiver<Event>) {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind mock relay listener");
+        let addr = listener.local_addr().expect("resolve listener addr");
+        let (published_tx, published_rx) = std::sync::mpsc::channel::<Event>();
+
+        let handle = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept websocket client");
+            let mut ws = accept_async(stream)
+                .await
+                .expect("upgrade websocket connection");
+
+            loop {
+                let Some(message) = ws.next().await else {
+                    break;
+                };
+                let Ok(message) = message else {
+                    break;
+                };
+                let Message::Text(text) = message else {
+                    continue;
+                };
+                let value: Value = serde_json::from_str(text.as_ref()).expect("parse relay frame");
+                let Some(frame) = value.as_array() else {
+                    continue;
+                };
+                let Some(kind) = frame.first().and_then(Value::as_str) else {
+                    continue;
+                };
+                match kind {
+                    "REQ" => {
+                        let subscription_id = frame[1].as_str().expect("REQ subscription id");
+                        let payload = serde_json::json!(["EOSE", subscription_id]);
+                        ws.send(Message::Text(payload.to_string().into()))
+                            .await
+                            .expect("send eose");
+                    }
+                    "EVENT" => {
+                        let event: Event = serde_json::from_value(frame[1].clone())
+                            .expect("parse published event");
+                        let _ = published_tx.send(event.clone());
+                        let ok = serde_json::json!(["OK", event.id, true, "accepted"]);
+                        ws.send(Message::Text(ok.to_string().into()))
+                            .await
+                            .expect("send ok");
+                    }
+                    _ => {}
+                }
+            }
+        });
+
+        (format!("ws://{}", addr), handle, published_rx)
     }
 }

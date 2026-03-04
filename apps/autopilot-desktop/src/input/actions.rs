@@ -3660,6 +3660,7 @@ pub(super) fn run_network_requests_action(
                                     .upsert_network_request(JobInboxNetworkRequest {
                                         request_id: request_id.clone(),
                                         requester: "network-buyer".to_string(),
+                                        request_kind: nostr::nip90::KIND_JOB_TEXT_GENERATION,
                                         capability: "local.injected.request".to_string(),
                                         skill_scope_id: None,
                                         skl_manifest_a: None,
