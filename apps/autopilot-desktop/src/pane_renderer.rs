@@ -21,17 +21,17 @@ use crate::pane_system::{
     alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
     alerts_recovery_row_bounds, alerts_recovery_visible_row_count,
     credentials_add_custom_button_bounds, credentials_delete_button_bounds,
-    credentials_import_button_bounds, credentials_name_input_bounds,
-    credentials_reload_button_bounds, credentials_row_bounds, credentials_save_value_button_bounds,
-    credentials_scope_codex_button_bounds, credentials_scope_global_button_bounds,
-    credentials_scope_skills_button_bounds, credentials_scope_spark_button_bounds,
-    credentials_toggle_enabled_button_bounds, credentials_value_input_bounds,
-    credentials_visible_row_count, earnings_scoreboard_refresh_button_bounds,
-    go_online_toggle_button_bounds, job_history_next_page_button_bounds,
-    job_history_prev_page_button_bounds, job_history_search_input_bounds,
-    job_history_status_button_bounds, job_history_time_button_bounds,
-    job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
-    job_inbox_visible_row_count, network_requests_budget_input_bounds,
+    credentials_gmail_login_button_bounds, credentials_import_button_bounds,
+    credentials_name_input_bounds, credentials_reload_button_bounds, credentials_row_bounds,
+    credentials_save_value_button_bounds, credentials_scope_codex_button_bounds,
+    credentials_scope_global_button_bounds, credentials_scope_skills_button_bounds,
+    credentials_scope_spark_button_bounds, credentials_toggle_enabled_button_bounds,
+    credentials_value_input_bounds, credentials_visible_row_count,
+    earnings_scoreboard_refresh_button_bounds, go_online_toggle_button_bounds,
+    job_history_next_page_button_bounds, job_history_prev_page_button_bounds,
+    job_history_search_input_bounds, job_history_status_button_bounds,
+    job_history_time_button_bounds, job_inbox_accept_button_bounds, job_inbox_reject_button_bounds,
+    job_inbox_row_bounds, job_inbox_visible_row_count, network_requests_budget_input_bounds,
     network_requests_credit_envelope_input_bounds, network_requests_payload_input_bounds,
     network_requests_skill_scope_input_bounds, network_requests_submit_button_bounds,
     network_requests_timeout_input_bounds, network_requests_type_input_bounds,
@@ -1564,6 +1564,7 @@ fn paint_credentials_pane(
     let scope_spark_bounds = credentials_scope_spark_button_bounds(content_bounds);
     let scope_skills_bounds = credentials_scope_skills_button_bounds(content_bounds);
     let scope_global_bounds = credentials_scope_global_button_bounds(content_bounds);
+    let gmail_login_bounds = credentials_gmail_login_button_bounds(content_bounds);
 
     paint.scene.draw_text(paint.text.layout(
         "Variable name",
@@ -1669,11 +1670,12 @@ fn paint_credentials_pane(
         ),
         paint,
     );
+    paint_action_button(gmail_login_bounds, "Gmail Login", paint);
 
     let summary_y = paint_state_summary(
         paint,
         content_bounds.origin.x + 12.0,
-        scope_global_bounds.max_y() + 10.0,
+        gmail_login_bounds.max_y() + 10.0,
         credentials.load_state,
         &format!("State: {}", credentials.load_state.label()),
         credentials.last_action.as_deref(),

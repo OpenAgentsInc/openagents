@@ -294,6 +294,7 @@ pub enum CredentialsPaneAction {
     ToggleScopeGlobal,
     ImportFromEnv,
     Reload,
+    StartGmailOAuthLogin,
     SelectRow(usize),
 }
 
@@ -2005,9 +2006,13 @@ pub fn credentials_scope_global_button_bounds(content_bounds: Bounds) -> Bounds 
     credentials_button_bounds(content_bounds, 1, 5)
 }
 
+pub fn credentials_gmail_login_button_bounds(content_bounds: Bounds) -> Bounds {
+    credentials_button_bounds(content_bounds, 2, 0)
+}
+
 pub fn credentials_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
     let safe_index = row_index.min(CREDENTIALS_MAX_ROWS.saturating_sub(1));
-    let top = credentials_import_button_bounds(content_bounds).max_y() + 12.0;
+    let top = credentials_gmail_login_button_bounds(content_bounds).max_y() + 12.0;
     Bounds::new(
         content_bounds.origin.x + CHAT_PAD,
         top + safe_index as f32 * (CREDENTIALS_ROW_HEIGHT + CREDENTIALS_ROW_GAP),
@@ -3689,6 +3694,11 @@ fn pane_hit_action_for_pane(
                     CredentialsPaneAction::ToggleScopeGlobal,
                 ));
             }
+            if credentials_gmail_login_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::Credentials(
+                    CredentialsPaneAction::StartGmailOAuthLogin,
+                ));
+            }
 
             let visible_rows = credentials_visible_row_count(state.credentials.entries.len());
             for row_index in 0..visible_rows {
@@ -4620,13 +4630,13 @@ mod tests {
         credit_desk_intent_button_bounds, credit_desk_offer_button_bounds,
         credit_desk_spend_button_bounds, credit_settlement_default_button_bounds,
         credit_settlement_reputation_button_bounds, credit_settlement_verify_button_bounds,
-        email_approval_approve_button_bounds, email_approval_kill_switch_button_bounds,
-        email_approval_pause_button_bounds, email_approval_reject_button_bounds,
-        email_approval_request_edits_button_bounds, email_approval_row_bounds,
-        email_draft_row_bounds, email_follow_up_row_bounds, email_follow_up_run_button_bounds,
-        email_inbox_generate_draft_button_bounds, email_inbox_refresh_button_bounds,
-        email_inbox_row_bounds, email_send_row_bounds, email_send_send_button_bounds,
-        earnings_scoreboard_refresh_button_bounds, go_online_toggle_button_bounds,
+        earnings_scoreboard_refresh_button_bounds, email_approval_approve_button_bounds,
+        email_approval_kill_switch_button_bounds, email_approval_pause_button_bounds,
+        email_approval_reject_button_bounds, email_approval_request_edits_button_bounds,
+        email_approval_row_bounds, email_draft_row_bounds, email_follow_up_row_bounds,
+        email_follow_up_run_button_bounds, email_inbox_generate_draft_button_bounds,
+        email_inbox_refresh_button_bounds, email_inbox_row_bounds, email_send_row_bounds,
+        email_send_send_button_bounds, go_online_toggle_button_bounds,
         job_history_next_page_button_bounds, job_history_prev_page_button_bounds,
         job_history_search_input_bounds, job_history_status_button_bounds,
         job_history_time_button_bounds, job_inbox_accept_button_bounds,

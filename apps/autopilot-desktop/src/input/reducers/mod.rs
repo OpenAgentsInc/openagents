@@ -144,6 +144,10 @@ pub(super) fn run_email_follow_up_scheduler(state: &mut RenderState) -> Result<u
     email::run_follow_up_scheduler(state)
 }
 
+pub(super) fn start_gmail_oauth_login(state: &mut RenderState) -> Result<(), String> {
+    email::start_gmail_oauth_login(state)
+}
+
 pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
     let mut changed = false;
 

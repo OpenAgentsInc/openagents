@@ -282,9 +282,7 @@ impl CredentialsState {
             .iter()
             .position(|entry| entry.name == normalized)
         else {
-            return Err(
-                self.pane_set_error(format!("Credential {} is not available", normalized))
-            );
+            return Err(self.pane_set_error(format!("Credential {} is not available", normalized)));
         };
 
         self.repository
@@ -294,7 +292,35 @@ impl CredentialsState {
             entry.has_value = true;
         }
         self.persist_metadata()?;
-        self.pane_set_ready(format!("Stored value for {} in secure storage.", normalized));
+        self.pane_set_ready(format!(
+            "Stored value for {} in secure storage.",
+            normalized
+        ));
+        Ok(())
+    }
+
+    pub fn ensure_entries_enabled(&mut self, names: &[&str]) -> Result<(), String> {
+        let mut changed = false;
+        for name in names {
+            let normalized = crate::credentials::normalize_env_var_name(name);
+            let Some(entry) = self
+                .entries
+                .iter_mut()
+                .find(|entry| entry.name == normalized)
+            else {
+                return Err(
+                    self.pane_set_error(format!("Credential {} is not available", normalized))
+                );
+            };
+            if !entry.enabled {
+                entry.enabled = true;
+                changed = true;
+            }
+        }
+        if changed {
+            self.persist_metadata()?;
+            self.pane_set_ready("Enabled required Gmail OAuth credential slots.");
+        }
         Ok(())
     }
 

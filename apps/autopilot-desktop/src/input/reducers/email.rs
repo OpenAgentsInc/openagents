@@ -1,5 +1,8 @@
 use std::collections::BTreeSet;
-use std::time::Duration;
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
+use std::process::Command;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use base64::Engine;
 use openagents_email_agent::{
@@ -25,7 +28,9 @@ use crate::app_state::{
     EmailFailureClass, EmailPaneDomain, PaneLoadState, PaneStatusAccess, RenderState,
 };
 use crate::credentials::{
-    GOOGLE_GMAIL_ACCESS_TOKEN, GOOGLE_GMAIL_TOKEN_EXPIRY_UNIX, GoogleGmailOAuthLifecycle,
+    GOOGLE_GMAIL_ACCESS_TOKEN, GOOGLE_GMAIL_REFRESH_TOKEN, GOOGLE_GMAIL_TOKEN_EXPIRY_UNIX,
+    GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REDIRECT_URI,
+    GoogleGmailOAuthLifecycle,
 };
 use crate::pane_system::{
     EmailApprovalQueuePaneAction, EmailDraftQueuePaneAction, EmailFollowUpQueuePaneAction,
@@ -33,8 +38,13 @@ use crate::pane_system::{
 };
 
 const GMAIL_API_ROOT: &str = "https://gmail.googleapis.com/gmail/v1/users/me";
+const GOOGLE_OAUTH_AUTH_ENDPOINT: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_OAUTH_TOKEN_ENDPOINT: &str = "https://oauth2.googleapis.com/token";
 const GMAIL_QUERY_INBOX: &str = "in:inbox";
+const GMAIL_OAUTH_SCOPE: &str =
+    "https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send";
+const GMAIL_OAUTH_DEFAULT_REDIRECT_URI: &str = "http://127.0.0.1:38087/oauth/gmail/callback";
+const GMAIL_OAUTH_CALLBACK_TIMEOUT_SECONDS: u64 = 180;
 const GMAIL_SYNC_REBOOTSTRAP_REASON: &str = "gmail sync cursor stale; rebootstrap required";
 const OAUTH_REFRESH_SKEW_SECONDS: u64 = 120;
 const HTTP_TIMEOUT_SECONDS: u64 = 20;
@@ -73,6 +83,94 @@ pub(super) fn execute_live_gmail_send(
     let provider = LiveGmailSendProvider::new(gmail_session(state)?);
     execute_send_with_idempotency(send_state, &provider, request, policy, now_unix)
         .map_err(|error| error.to_string())
+}
+
+pub(super) fn start_gmail_oauth_login(state: &mut RenderState) -> Result<(), String> {
+    state.credentials.load_state = PaneLoadState::Loading;
+    state.credentials.last_error = None;
+    state.credentials.last_action = Some("Starting Gmail OAuth login flow in browser".to_string());
+
+    let client_id = required_secure_credential(state, GOOGLE_OAUTH_CLIENT_ID)?;
+    let client_secret = required_secure_credential(state, GOOGLE_OAUTH_CLIENT_SECRET)?;
+
+    let redirect_uri = state
+        .credentials
+        .read_secure_value(GOOGLE_OAUTH_REDIRECT_URI)?
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| GMAIL_OAUTH_DEFAULT_REDIRECT_URI.to_string());
+    if redirect_uri == GMAIL_OAUTH_DEFAULT_REDIRECT_URI {
+        state
+            .credentials
+            .set_value_for_name(GOOGLE_OAUTH_REDIRECT_URI, redirect_uri.as_str())?;
+    }
+
+    let (listener, expected_path) = bind_loopback_oauth_listener(redirect_uri.as_str())?;
+    let oauth_state = oauth_state_nonce();
+    let authorization_url = build_google_oauth_authorization_url(
+        client_id.as_str(),
+        redirect_uri.as_str(),
+        &oauth_state,
+    )?;
+    open_system_browser(authorization_url.as_str())?;
+    state.credentials.last_action =
+        Some("Google login opened in browser; waiting for callback confirmation".to_string());
+
+    let authorization_code = wait_for_google_oauth_callback(
+        &listener,
+        expected_path.as_str(),
+        oauth_state.as_str(),
+        Duration::from_secs(GMAIL_OAUTH_CALLBACK_TIMEOUT_SECONDS),
+    )?;
+    let exchanged = exchange_google_auth_code(
+        client_id.as_str(),
+        client_secret.as_str(),
+        redirect_uri.as_str(),
+        authorization_code.as_str(),
+    )?;
+    let refresh_token = exchanged
+        .refresh_token
+        .or(state
+            .credentials
+            .read_secure_value(GOOGLE_GMAIL_REFRESH_TOKEN)?)
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| {
+            "Google OAuth did not return a refresh token; revoke app access and retry.".to_string()
+        })?;
+    let expires_at_unix = now_epoch_seconds().saturating_add(exchanged.expires_in);
+
+    state
+        .credentials
+        .set_value_for_name(GOOGLE_OAUTH_CLIENT_ID, client_id.as_str())?;
+    state
+        .credentials
+        .set_value_for_name(GOOGLE_OAUTH_CLIENT_SECRET, client_secret.as_str())?;
+    state
+        .credentials
+        .set_value_for_name(GOOGLE_OAUTH_REDIRECT_URI, redirect_uri.as_str())?;
+    state
+        .credentials
+        .set_value_for_name(GOOGLE_GMAIL_ACCESS_TOKEN, exchanged.access_token.as_str())?;
+    state
+        .credentials
+        .set_value_for_name(GOOGLE_GMAIL_REFRESH_TOKEN, refresh_token.as_str())?;
+    state.credentials.set_value_for_name(
+        GOOGLE_GMAIL_TOKEN_EXPIRY_UNIX,
+        expires_at_unix.to_string().as_str(),
+    )?;
+    state.credentials.ensure_entries_enabled(&[
+        GOOGLE_OAUTH_CLIENT_ID,
+        GOOGLE_OAUTH_CLIENT_SECRET,
+        GOOGLE_OAUTH_REDIRECT_URI,
+        GOOGLE_GMAIL_ACCESS_TOKEN,
+        GOOGLE_GMAIL_REFRESH_TOKEN,
+        GOOGLE_GMAIL_TOKEN_EXPIRY_UNIX,
+    ])?;
+    state.credentials.last_action = Some(format!(
+        "Gmail OAuth connected; token expires at unix {}",
+        expires_at_unix
+    ));
+    state.credentials.load_state = PaneLoadState::Ready;
+    Ok(())
 }
 
 pub(super) fn refresh_email_lane_from_live_gmail(state: &mut RenderState) -> Result<(), String> {
@@ -881,6 +979,327 @@ fn fetch_live_gmail_message(
     provider
         .get_message(message_id)
         .map_err(|error| format!("gmail get message {} failed: {}", message_id, error))
+}
+
+fn required_secure_credential(state: &mut RenderState, name: &str) -> Result<String, String> {
+    state
+        .credentials
+        .read_secure_value(name)?
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            format!(
+                "Missing {} in Credentials pane. Set it once, then click Gmail Login.",
+                name
+            )
+        })
+}
+
+fn bind_loopback_oauth_listener(redirect_uri: &str) -> Result<(TcpListener, String), String> {
+    let parsed = reqwest::Url::parse(redirect_uri)
+        .map_err(|error| format!("Invalid Gmail redirect URI {}: {}", redirect_uri, error))?;
+    if parsed.scheme() != "http" {
+        return Err(
+            "Gmail redirect URI must use http loopback (for example http://127.0.0.1:38087/oauth/gmail/callback)"
+                .to_string(),
+        );
+    }
+
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| "Gmail redirect URI is missing host".to_string())?;
+    if host != "127.0.0.1" && host != "localhost" {
+        return Err(
+            "Gmail redirect URI host must be 127.0.0.1 or localhost for desktop callback"
+                .to_string(),
+        );
+    }
+    let port = parsed
+        .port_or_known_default()
+        .ok_or_else(|| "Gmail redirect URI is missing a port".to_string())?;
+    let listener = TcpListener::bind(("127.0.0.1", port)).map_err(|error| {
+        format!(
+            "Failed to bind Gmail OAuth callback port {}: {}",
+            port, error
+        )
+    })?;
+    listener
+        .set_nonblocking(true)
+        .map_err(|error| format!("Failed to set Gmail OAuth listener nonblocking mode: {error}"))?;
+    Ok((listener, parsed.path().to_string()))
+}
+
+fn oauth_state_nonce() -> String {
+    let now_nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    format!("oa-gmail-{now_nanos}-{}", std::process::id())
+}
+
+fn build_google_oauth_authorization_url(
+    client_id: &str,
+    redirect_uri: &str,
+    state: &str,
+) -> Result<String, String> {
+    let mut url = reqwest::Url::parse(GOOGLE_OAUTH_AUTH_ENDPOINT)
+        .map_err(|error| format!("Invalid OAuth endpoint: {error}"))?;
+    {
+        let mut query = url.query_pairs_mut();
+        query.append_pair("client_id", client_id);
+        query.append_pair("redirect_uri", redirect_uri);
+        query.append_pair("response_type", "code");
+        query.append_pair("scope", GMAIL_OAUTH_SCOPE);
+        query.append_pair("access_type", "offline");
+        query.append_pair("prompt", "consent");
+        query.append_pair("include_granted_scopes", "true");
+        query.append_pair("state", state);
+    }
+    Ok(url.into())
+}
+
+fn open_system_browser(url: &str) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        let mut cmd = Command::new("open");
+        cmd.arg(url);
+        cmd
+    };
+
+    #[cfg(target_os = "linux")]
+    let mut command = {
+        let mut cmd = Command::new("xdg-open");
+        cmd.arg(url);
+        cmd
+    };
+
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        let mut cmd = Command::new("cmd");
+        cmd.arg("/C").arg("start").arg("").arg(url);
+        cmd
+    };
+
+    let status = command
+        .status()
+        .map_err(|error| format!("Failed to launch browser for Gmail OAuth: {error}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Browser launch for Gmail OAuth exited with status {}",
+            status
+        ))
+    }
+}
+
+fn wait_for_google_oauth_callback(
+    listener: &TcpListener,
+    expected_path: &str,
+    expected_state: &str,
+    timeout: Duration,
+) -> Result<String, String> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match listener.accept() {
+            Ok((mut stream, _)) => {
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .map_err(|error| {
+                        format!("Failed to configure OAuth callback socket: {error}")
+                    })?;
+                if let Some(code) = handle_google_oauth_callback_request(
+                    &mut stream,
+                    expected_path,
+                    expected_state,
+                )? {
+                    return Ok(code);
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                if Instant::now() >= deadline {
+                    return Err(
+                        "Timed out waiting for Gmail OAuth callback. Retry Gmail Login."
+                            .to_string(),
+                    );
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            Err(error) => {
+                return Err(format!(
+                    "Failed while waiting for Gmail OAuth callback: {error}"
+                ));
+            }
+        }
+    }
+}
+
+fn handle_google_oauth_callback_request(
+    stream: &mut TcpStream,
+    expected_path: &str,
+    expected_state: &str,
+) -> Result<Option<String>, String> {
+    let mut buffer = [0u8; 8192];
+    let bytes_read = stream
+        .read(&mut buffer)
+        .map_err(|error| format!("Failed to read Gmail OAuth callback request: {error}"))?;
+    if bytes_read == 0 {
+        write_callback_response(
+            stream,
+            "400 Bad Request",
+            "OAuth callback request was empty.",
+        )?;
+        return Ok(None);
+    }
+    let request = String::from_utf8_lossy(&buffer[..bytes_read]);
+    let Some(request_line) = request.lines().next() else {
+        write_callback_response(
+            stream,
+            "400 Bad Request",
+            "OAuth callback request did not contain a request line.",
+        )?;
+        return Ok(None);
+    };
+    let mut parts = request_line.split_whitespace();
+    let method = parts.next().unwrap_or_default();
+    let target = parts.next().unwrap_or_default();
+    if method != "GET" {
+        write_callback_response(stream, "405 Method Not Allowed", "Only GET is supported.")?;
+        return Ok(None);
+    }
+    if target.is_empty() {
+        write_callback_response(stream, "400 Bad Request", "OAuth callback target missing.")?;
+        return Ok(None);
+    }
+    let parsed_target = reqwest::Url::parse(format!("http://localhost{target}").as_str())
+        .map_err(|error| format!("Invalid OAuth callback target: {error}"))?;
+    if parsed_target.path() != expected_path {
+        write_callback_response(
+            stream,
+            "404 Not Found",
+            "OAuth callback path did not match.",
+        )?;
+        return Ok(None);
+    }
+
+    let mut callback_state = None::<String>;
+    let mut callback_code = None::<String>;
+    let mut callback_error = None::<String>;
+    for (key, value) in parsed_target.query_pairs() {
+        match key.as_ref() {
+            "state" => callback_state = Some(value.to_string()),
+            "code" => callback_code = Some(value.to_string()),
+            "error" => callback_error = Some(value.to_string()),
+            _ => {}
+        }
+    }
+
+    if let Some(error) = callback_error {
+        write_callback_response(
+            stream,
+            "400 Bad Request",
+            format!("Google OAuth returned error: {}", error).as_str(),
+        )?;
+        return Err(format!("Gmail OAuth failed: {}", error));
+    }
+    if callback_state.as_deref() != Some(expected_state) {
+        write_callback_response(stream, "400 Bad Request", "OAuth callback state mismatch.")?;
+        return Err("Gmail OAuth callback state mismatch; retry Gmail Login.".to_string());
+    }
+    let Some(code) = callback_code else {
+        write_callback_response(
+            stream,
+            "400 Bad Request",
+            "OAuth callback did not include an authorization code.",
+        )?;
+        return Err("Gmail OAuth callback missing authorization code.".to_string());
+    };
+    write_callback_response(
+        stream,
+        "200 OK",
+        "Gmail login complete. You can close this tab and return to Autopilot.",
+    )?;
+    Ok(Some(code))
+}
+
+fn write_callback_response(
+    stream: &mut TcpStream,
+    status: &str,
+    message: &str,
+) -> Result<(), String> {
+    let body = format!(
+        "<html><body><h3>{}</h3><p>OpenAgents Autopilot Gmail OAuth callback.</p></body></html>",
+        message
+    );
+    let response = format!(
+        "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        body.len(),
+        body
+    );
+    stream
+        .write_all(response.as_bytes())
+        .map_err(|error| format!("Failed to write OAuth callback response: {error}"))?;
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct OAuthCodeExchangeSuccess {
+    access_token: String,
+    expires_in: u64,
+    #[serde(default)]
+    refresh_token: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct OAuthCodeExchangeError {
+    error: Option<String>,
+    error_description: Option<String>,
+}
+
+fn exchange_google_auth_code(
+    client_id: &str,
+    client_secret: &str,
+    redirect_uri: &str,
+    code: &str,
+) -> Result<OAuthCodeExchangeSuccess, String> {
+    let client = Client::builder()
+        .timeout(Duration::from_secs(HTTP_TIMEOUT_SECONDS))
+        .user_agent(USER_AGENT)
+        .build()
+        .map_err(|error| format!("oauth code exchange client init failed: {error}"))?;
+
+    let form = [
+        ("grant_type", "authorization_code"),
+        ("code", code),
+        ("client_id", client_id),
+        ("client_secret", client_secret),
+        ("redirect_uri", redirect_uri),
+    ];
+    let response = client
+        .post(GOOGLE_OAUTH_TOKEN_ENDPOINT)
+        .form(&form)
+        .send()
+        .map_err(|error| format!("oauth code exchange request failed: {error}"))?;
+    if response.status().is_success() {
+        return response
+            .json::<OAuthCodeExchangeSuccess>()
+            .map_err(|error| format!("oauth code exchange response parse failed: {error}"));
+    }
+
+    let status = response.status();
+    let body = response.text().unwrap_or_default();
+    let detail = serde_json::from_str::<OAuthCodeExchangeError>(body.as_str())
+        .ok()
+        .map(|payload| {
+            if let Some(description) = payload.error_description {
+                return description;
+            }
+            payload
+                .error
+                .unwrap_or_else(|| "oauth code exchange failed".to_string())
+        })
+        .unwrap_or_else(|| body.trim().to_string());
+    Err(format!("oauth code exchange failed ({status}): {detail}"))
 }
 
 fn build_follow_up_contexts(state: &RenderState) -> Vec<ThreadFollowUpContext> {
