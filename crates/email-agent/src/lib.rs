@@ -3,6 +3,7 @@
 mod gmail_connector;
 mod gmail_sync;
 mod normalization;
+mod retrieval;
 
 pub use gmail_connector::{
     GmailBackfillCheckpoint, GmailBackfillConfig, GmailBackfillPage, GmailBackfillResult,
@@ -14,3 +15,4 @@ pub use gmail_sync::{
     GmailSyncError, GmailSyncOutcome, GmailSyncState, apply_gmail_incremental_sync,
 };
 pub use normalization::{NormalizationConfig, NormalizedConversationItem, normalize_gmail_message};
+pub use retrieval::{RetrievalIndex, RetrievalQuery, RetrievedContextChunk};
