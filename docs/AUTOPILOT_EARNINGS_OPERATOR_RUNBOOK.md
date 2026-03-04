@@ -10,6 +10,15 @@ Internal operators responsible for keeping autonomous earnings runs healthy, pay
 - Keep scheduler and recovery paths deterministic.
 - Keep swap exposure and Blink execution behavior within policy.
 - Maintain clear incident response with fast containment.
+- Keep revenue-lane posture explicit (compute lane active; liquidity solver lane disabled unless explicitly rolled out).
+
+## Lane Scope and Default Posture
+
+Autopilot Earn is a multi-lane provider economy, but current operations are compute-lane first.
+
+- Active lane: NIP-90 compute provider earnings.
+- Future lane: Hydra liquidity solver earnings (capital + execution).
+- Default safety rule: liquidity solver mode remains off unless a dedicated rollout explicitly enables it.
 
 ## Daily Checks
 
@@ -17,16 +26,20 @@ Internal operators responsible for keeping autonomous earnings runs healthy, pay
 - Sample active goals with `openagents_goal_scheduler` `status`.
 - Verify goals have sane `next_run_epoch_seconds`, no stuck `Running` state, and expected missed-run policy.
 
-2. Payout correctness
+2. Lane posture
+- Confirm current cohorts are operating compute-lane goals only.
+- Treat any unexpected liquidity-solver activation as a containment incident until explicitly authorized.
+
+3. Payout correctness
 - Confirm latest run audits include payout evidence and wallet reconciliation with no synthetic-pointer mismatches.
 - Spot-check wallet receive totals against reported earned delta.
 
-3. Swap risk posture
+4. Swap risk posture
 - Check recent swap quote audits and execution receipts.
 - Track provider/source consistency (`blink_infrastructure` expected for production).
 - Flag repeated failures, high fee/low output anomalies, or stale quote execution attempts.
 
-4. Recovery posture
+5. Recovery posture
 - Ensure startup recovery reports are healthy (`recover_startup` as needed).
 - Confirm catch-up backlog is draining for `catch_up` goals.
 

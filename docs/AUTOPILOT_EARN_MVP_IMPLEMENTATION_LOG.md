@@ -5,6 +5,8 @@ Issues: #2815 - #2876
 
 This log records the implementation evidence used to complete the full Autopilot Earn MVP issue sequence.
 
+Scope note: this log is compute-lane specific (NIP-90 provider earnings). It does not include future liquidity-solver implementation work.
+
 ## Program + Backroom
 
 - #2815 Backroom harvest audit: `docs/AUTOPILOT_EARN_BACKROOM_HARVEST_AUDIT.md`

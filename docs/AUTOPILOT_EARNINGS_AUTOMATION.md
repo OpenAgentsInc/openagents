@@ -4,12 +4,22 @@
 
 This guide covers how to run the "earn bitcoin on autopilot" flow from Autopilot Chat with goal automation, scheduler controls, BTC/USD swap support, and authoritative payout checks.
 
+## Scope Note: Revenue Lanes
+
+Autopilot Earn is a multi-lane provider model:
+
+- compute provider lane (active in MVP),
+- liquidity solver lane (future Hydra lane).
+
+This runbook currently covers compute-lane automation and wallet/swap controls around that loop. Solver-lane automation is future scope and must be explicitly opt-in when introduced.
+
 ## Prerequisites
 
 - OpenAgents Desktop is running and wallet is connected.
 - At least one earnings goal exists in `autopilot_goals` state.
 - Required skills are enabled (`blink`, `l402`, `moneydevkit`, `neutronpay` as applicable).
 - Provider mode can be toggled online when the goal requires incoming paid work.
+- Liquidity solver mode is disabled unless explicitly enabled in a dedicated future rollout.
 
 ## Basic Flow
 

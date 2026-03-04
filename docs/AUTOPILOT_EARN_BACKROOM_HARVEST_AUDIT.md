@@ -8,6 +8,8 @@ Issues: #2815, #2816, #2817, #2818
 
 Audit backroom NIP-90/provider/wallet assets and decide what to restore into the MVP repo without reintroducing archived surface area.
 
+Scope note: this harvest targeted compute-provider MVP assets only, not future liquidity-solver codepaths.
+
 ## Candidate Inventory
 
 | Backroom Source | Purpose | Keep/Drop | MVP Landing |

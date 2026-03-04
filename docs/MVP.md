@@ -9,7 +9,9 @@ The “why” is simple and visceral: **Autopilot turns your machine into a mone
 This is not “another chat app.” It is a **two-sided marketplace** collapsed into one product surface:
 
 * **Buy side:** you use Autopilot as a personal agent (a high-leverage wrapper around Codex + your computer) and can submit work requests out to the network when it makes sense.
-* **Sell side:** you provide compute (and, later, plugins/skills) to the network and **earn Bitcoin**.
+* **Sell side:** you provide compute now (and later additional provider lanes such as liquidity solving and plugins/skills) to the network and **earn Bitcoin**.
+
+Autopilot Earn is a provider marketplace with multiple potential revenue lanes. The MVP activates only the compute-provider lane; liquidity-solver mode is future scope.
 
 The MVP is designed to make the core emotional beat unavoidable: *“holy shit, the numbers are ticking up.”* If that moment doesn’t happen, nothing else matters.
 
@@ -100,6 +102,8 @@ Everything in this spec exists because it supports one of those steps.
 
 This MVP is the smallest real version of “Autopilot prints Bitcoin.” It is not the full OpenAgents economy, and it is not the end state marketplace UI.
 
+In multi-lane terms: this MVP ships the **compute-provider lane only**.
+
 We are shipping:
 
 * A desktop Autopilot experience that can do basic work and maintain conversation state.
@@ -111,6 +115,7 @@ We are intentionally *not* shipping:
 
 * Full L402 marketplace productization and paywalls
 * Advanced underwriting/policy layers (Hydra/Aegis UX)
+* Liquidity solver mode and Hydra intent-routing UX (future lane, explicit opt-in only)
 * A comprehensive plugin store UI
 * Multi-surface parity across web/mobile
 * Operator-only consoles or complicated admin tooling
@@ -137,6 +142,13 @@ There are two acceptable paths, and the MVP may implement both:
 
 In both paths, the provider should have an explicit, visible “job lifecycle” in the UI: received → accepted → running → delivered → paid. If payment fails, the UI must say so plainly.
 
+This is lane A of the broader Earn model:
+
+* **Lane A (MVP):** compute provider via NIP-90 jobs.
+* **Lane B (future):** liquidity solver via Hydra intents, where providers commit capital + execution and earn routing fees/spreads.
+
+Lane B is deliberately out of MVP scope and must never auto-activate for users.
+
 ---
 
 ## 9) Functional behavior: what the system must do
@@ -162,6 +174,8 @@ The key here is not breadth of capability; it is **reliability and legibility**.
 * Advertise capability in a way that buyers can discover
 * Enter a heartbeat loop that makes online presence real (and detectable)
 * Surface failures immediately (relay issues, auth issues, wallet issues, execution issues)
+
+For MVP, this online mode advertises compute-provider capability only. Future provider modules (for example liquidity solving) must remain separately gated and explicit.
 
 When the user flips it off, the provider must stop cleanly. There must be no zombie “online” state.
 
@@ -325,6 +339,7 @@ Core crates remain as previously enumerated (wgpui, autopilot_ui/app/core, clien
 After the MVP loop is stable and users can reliably earn and withdraw, the next expansions are obvious:
 
 * richer provider capability (more job types, better scheduling, GPU specialization)
+* liquidity solver lane (Hydra intent fills, route policy controls, explicit capital opt-in)
 * plugin/skill selling as a first-class “upgrade your rig” mechanic
 * richer buy-side flows (spend sats to delegate work to the network)
 * policy/underwriting layers and marketplace productization (Hydra/Aegis)

@@ -5,6 +5,8 @@ Issue: #2820
 
 This file records each restored backroom block, source path, and adaptation notes.
 
+Scope note: restored blocks listed here support the compute-provider MVP lane; no liquidity-solver components were restored.
+
 ## Restored Blocks
 
 ### 1) NIP-90 submit + await helper sequencing

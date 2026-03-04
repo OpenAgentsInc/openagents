@@ -8,6 +8,8 @@ Spec source: `docs/AUTOPILOT_EARN_MVP.md`
 
 Track the full Autopilot Earn MVP execution program from issue creation through implementation closeout.
 
+Scope note: this tracker covers the compute-provider MVP lane. Future liquidity-solver work should be tracked as a separate Hydra-aligned program.
+
 ## Acceptance Gates
 
 The epic is complete only when all are true:
