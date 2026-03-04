@@ -3631,10 +3631,14 @@ fn pane_hit_action_for_pane(
                 ));
             }
             if cast_loop_once_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::CastControl(CastControlPaneAction::RunLoopOnce));
+                return Some(PaneHitAction::CastControl(
+                    CastControlPaneAction::RunLoopOnce,
+                ));
             }
             if cast_toggle_loop_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::CastControl(CastControlPaneAction::ToggleAutoLoop));
+                return Some(PaneHitAction::CastControl(
+                    CastControlPaneAction::ToggleAutoLoop,
+                ));
             }
             None
         }

@@ -1878,8 +1878,7 @@ fn queue_cast_autotrade_once(
             }
         };
         if config_path.is_file() {
-            state.cast_control.prereq_status =
-                format!("config loaded: {}", config_path.display());
+            state.cast_control.prereq_status = format!("config loaded: {}", config_path.display());
             command.arg("--config").arg(config_path.as_os_str());
         } else {
             state.cast_control.prereq_status = format!(
@@ -1915,7 +1914,8 @@ fn queue_cast_autotrade_once(
         Ok(child) => child,
         Err(error) => {
             state.cast_control.load_state = crate::app_state::PaneLoadState::Error;
-            state.cast_control.last_error = Some(format!("failed to spawn CAST command: {}", error));
+            state.cast_control.last_error =
+                Some(format!("failed to spawn CAST command: {}", error));
             return true;
         }
     };

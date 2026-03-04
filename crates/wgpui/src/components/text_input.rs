@@ -2,7 +2,7 @@ use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
 use crate::input::{Key, NamedKey};
 use crate::text::FontStyle;
-use crate::{theme, Bounds, Hsla, InputEvent, MouseButton, Point, Quad};
+use crate::{Bounds, Hsla, InputEvent, MouseButton, Point, Quad, theme};
 
 type TextInputChangeHandler = Box<dyn FnMut(&str) + 'static>;
 type TextInputSubmitHandler = Box<dyn FnMut(&str) + 'static>;

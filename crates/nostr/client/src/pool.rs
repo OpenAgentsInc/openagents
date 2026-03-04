@@ -161,4 +161,9 @@ impl RelayPool {
     pub async fn relay(&self, url: &str) -> Option<Arc<RelayConnection>> {
         self.relays.read().await.get(url).cloned()
     }
+
+    /// Snapshot all relays currently tracked by the pool.
+    pub async fn relays(&self) -> Vec<Arc<RelayConnection>> {
+        self.relays.read().await.values().cloned().collect()
+    }
 }
