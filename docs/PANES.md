@@ -68,6 +68,7 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
 - `Earnings Scoreboard`
   - Canonical MVP earnings metrics sourced from wallet/runtime/history lanes.
   - Shows sats today, lifetime sats, jobs today, last job result, and current online uptime.
+  - Includes loop-integrity SLO metrics: first-job latency, completion ratio, payout success ratio, and wallet confirmation latency.
   - Actions: refresh metrics and stale-state visibility.
 - `Job Inbox`
   - Deterministic intake pane for incoming NIP-90 requests with stable request IDs and replay-safe ordering.

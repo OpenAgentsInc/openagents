@@ -28,7 +28,7 @@ Follow-on issues created from audit gap analysis:
 | [#2885](https://github.com/OpenAgentsInc/openagents/issues/2885) | CLOSED | Relay connectivity truth model |
 | [#2886](https://github.com/OpenAgentsInc/openagents/issues/2886) | CLOSED | Tracker/log claim reconciliation |
 | [#2887](https://github.com/OpenAgentsInc/openagents/issues/2887) | CLOSED | Failure taxonomy + diagnostics |
-| [#2888](https://github.com/OpenAgentsInc/openagents/issues/2888) | OPEN | Loop integrity SLO metrics/alerts |
+| [#2888](https://github.com/OpenAgentsInc/openagents/issues/2888) | CLOSED | Loop integrity SLO metrics/alerts |
 | [#2889](https://github.com/OpenAgentsInc/openagents/issues/2889) | OPEN | Simulation path isolation |
 | [#2890](https://github.com/OpenAgentsInc/openagents/issues/2890) | OPEN | Docs consolidation for canonical status |
 

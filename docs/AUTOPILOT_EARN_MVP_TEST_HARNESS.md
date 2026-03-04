@@ -154,6 +154,22 @@ Primary assertions:
 - wallet failures classify as `payment`,
 - succeeded-vs-reconciled payout mismatch classifies as `reconciliation`.
 
+### 10) Loop Integrity SLO Metrics + Alerts (`autopilot-desktop`)
+
+Files:
+- `apps/autopilot-desktop/src/app_state.rs` test `earnings_scoreboard_tracks_loop_integrity_slo_metrics`
+- `apps/autopilot-desktop/src/input/actions.rs` test `loop_integrity_alert_specs_flags_expected_slo_breaches`
+
+What it covers:
+- tracks first-job latency, completion ratio, payout success ratio, and wallet confirmation latency in Earnings Scoreboard state,
+- evaluates SLO alert thresholds for those metrics so degraded loop integrity raises deterministic alerts.
+
+Primary assertions:
+- first-job latency tracks pending and completed latency from provider-online session timing,
+- completion and payout-success ratios compute from authoritative history + wallet-reconciled payout evidence,
+- wallet confirmation latency computes from reconciled payout receive timestamps,
+- degraded metric samples activate all expected SLO alerts while healthy samples clear them.
+
 ## Existing Supporting Tests Used In This Pass
 
 - `app_state::tests::job_history_rejects_unconfirmed_success_settlement_from_active_job`
@@ -175,6 +191,8 @@ cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::starte
 cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::starter_provenance_propagates_from_inbox_to_history_receipt
 cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::network_aggregate_counters_
 cargo test -p autopilot-desktop --bin autopilot-desktop input::actions::tests::provider_failure_taxonomy_classifies_relay_execution_payment_and_reconciliation
+cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::earnings_scoreboard_tracks_loop_integrity_slo_metrics
+cargo test -p autopilot-desktop --bin autopilot-desktop input::actions::tests::loop_integrity_alert_specs_flags_expected_slo_breaches
 cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::job_history_rejects_unconfirmed_success_settlement_from_active_job
 cargo test -p autopilot-desktop --bin autopilot-desktop state::earnings_gate::tests::accepts_wallet_backed_earnings_evidence
 cargo test -p autopilot-desktop --bin autopilot-desktop state::wallet_reconciliation::tests::reconciliation_distinguishes_earn_vs_swap_and_fee

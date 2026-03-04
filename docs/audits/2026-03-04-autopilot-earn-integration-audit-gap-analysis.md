@@ -136,6 +136,10 @@ Red:
   - Wired deterministic failure classification with precedence in scoreboard refresh path so operator diagnostics consistently map relay, execution, wallet/payment, and reconciliation mismatch failures (`apps/autopilot-desktop/src/input/actions.rs`).
   - Updated reducer error mapping to use canonical classes across ingress, active-job execution, wallet, and SA command response flows (`apps/autopilot-desktop/src/input/reducers/{provider_ingress,jobs,wallet,sa}.rs`, `apps/autopilot-desktop/src/input.rs`).
   - Added automated taxonomy classifier coverage and wired it into the earnings epic gate (`apps/autopilot-desktop/src/input/actions.rs`, `scripts/lint/autopilot-earnings-epic-test-gate.sh`).
+- 2026-03-04: `#2888` (loop integrity SLO metrics + alerts) implemented.
+  - Extended earnings scoreboard state to track first-job latency, completion ratio, payout success ratio, and average wallet confirmation latency from runtime/history/wallet-reconciled evidence (`apps/autopilot-desktop/src/app_state.rs`, `apps/autopilot-desktop/src/pane_renderer.rs`).
+  - Added deterministic loop-integrity SLO alert evaluation and alert-row upsert/recovery wiring for degraded metric thresholds (`apps/autopilot-desktop/src/input/actions.rs`).
+  - Added automated coverage for SLO metric projection and SLO alert threshold behavior, and wired both checks into the earnings epic gate (`apps/autopilot-desktop/src/app_state.rs`, `apps/autopilot-desktop/src/input/actions.rs`, `scripts/lint/autopilot-earnings-epic-test-gate.sh`).
 
 ## MVP Requirement Matrix (from `docs/MVP.md`)
 

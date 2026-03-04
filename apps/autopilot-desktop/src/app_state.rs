@@ -2719,8 +2719,14 @@ pub struct EarningsScoreboardState {
     pub jobs_today: u64,
     pub last_job_result: String,
     pub online_uptime_seconds: u64,
+    pub first_job_latency_seconds: Option<u64>,
+    pub completion_ratio_bps: Option<u16>,
+    pub payout_success_ratio_bps: Option<u16>,
+    pub avg_wallet_confirmation_latency_seconds: Option<u64>,
     pub stale_after: Duration,
     pub last_refreshed_at: Option<Instant>,
+    tracked_online_since: Option<Instant>,
+    first_completed_since_online: Option<Instant>,
 }
 
 impl Default for EarningsScoreboardState {
@@ -2734,8 +2740,14 @@ impl Default for EarningsScoreboardState {
             jobs_today: 0,
             last_job_result: "none".to_string(),
             online_uptime_seconds: 0,
+            first_job_latency_seconds: None,
+            completion_ratio_bps: None,
+            payout_success_ratio_bps: None,
+            avg_wallet_confirmation_latency_seconds: None,
             stale_after: Duration::from_secs(12),
             last_refreshed_at: None,
+            tracked_online_since: None,
+            first_completed_since_online: None,
         }
     }
 }
@@ -2751,6 +2763,29 @@ impl EarningsScoreboardState {
         self.last_refreshed_at = Some(now);
         self.online_uptime_seconds = provider_runtime.uptime_seconds(now);
         self.last_error = None;
+
+        if self.tracked_online_since != provider_runtime.online_since {
+            self.tracked_online_since = provider_runtime.online_since;
+            self.first_completed_since_online = None;
+        }
+        if self.tracked_online_since.is_none() {
+            self.first_job_latency_seconds = None;
+            self.first_completed_since_online = None;
+        } else {
+            if self.first_completed_since_online.is_none()
+                && let Some(last_completed) = provider_runtime.last_completed_job_at
+                && self
+                    .tracked_online_since
+                    .is_some_and(|online_since| last_completed >= online_since)
+            {
+                self.first_completed_since_online = Some(last_completed);
+            }
+            self.first_job_latency_seconds = self.tracked_online_since.and_then(|online_since| {
+                let end = self.first_completed_since_online.unwrap_or(now);
+                end.checked_duration_since(online_since)
+                    .map(|duration| duration.as_secs())
+            });
+        }
 
         if let Some(error) = spark_wallet.last_error.as_deref() {
             self.load_state = PaneLoadState::Error;
@@ -2780,6 +2815,29 @@ impl EarningsScoreboardState {
             .iter()
             .map(|row| row.payout_sats)
             .sum();
+        let total_terminal_jobs = job_history.rows.len() as u64;
+        let completed_jobs = job_history
+            .rows
+            .iter()
+            .filter(|row| row.status == JobHistoryStatus::Succeeded)
+            .count() as u64;
+        self.completion_ratio_bps = ratio_bps(completed_jobs, total_terminal_jobs);
+        self.payout_success_ratio_bps =
+            ratio_bps(reconciled_payout_rows.len() as u64, completed_jobs);
+        self.avg_wallet_confirmation_latency_seconds = if reconciled_payout_rows.is_empty() {
+            None
+        } else {
+            Some(
+                reconciled_payout_rows
+                    .iter()
+                    .map(|row| {
+                        row.wallet_received_at_epoch_seconds
+                            .saturating_sub(row.completed_at_epoch_seconds)
+                    })
+                    .sum::<u64>()
+                    / reconciled_payout_rows.len() as u64,
+            )
+        };
 
         self.last_job_result = job_history
             .rows
@@ -2798,6 +2856,14 @@ impl EarningsScoreboardState {
         self.last_refreshed_at
             .is_none_or(|refresh| now.duration_since(refresh) > self.stale_after)
     }
+}
+
+fn ratio_bps(numerator: u64, denominator: u64) -> Option<u16> {
+    if denominator == 0 {
+        return None;
+    }
+    let ratio = ((numerator as u128) * 10_000u128 / (denominator as u128)).min(10_000u128);
+    Some(ratio as u16)
 }
 
 pub struct NetworkAggregateCountersState {
@@ -4903,6 +4969,76 @@ mod tests {
                 .as_deref()
                 .is_some_and(|error| error.contains("wallet backend unavailable"))
         );
+    }
+
+    #[test]
+    fn earnings_scoreboard_tracks_loop_integrity_slo_metrics() {
+        let mut score = EarningsScoreboardState::default();
+        let now = std::time::Instant::now();
+        let mut provider = ProviderRuntimeState::default();
+        provider.online_since = Some(now - std::time::Duration::from_secs(120));
+        provider.last_completed_job_at = Some(now - std::time::Duration::from_secs(90));
+
+        let mut succeeded_row = fixture_history_row(
+            "job-loop-metric-001",
+            JobHistoryStatus::Succeeded,
+            1_761_919_970,
+            2_100,
+        );
+        succeeded_row.payment_pointer = "wallet-loop-metric-001".to_string();
+        let failed_row = fixture_history_row(
+            "job-loop-metric-002",
+            JobHistoryStatus::Failed,
+            1_761_919_980,
+            0,
+        );
+        let history = seed_job_history(vec![succeeded_row, failed_row]);
+
+        let mut spark = SparkPaneState::default();
+        spark.balance = Some(openagents_spark::Balance {
+            spark_sats: 10_000,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+        spark
+            .recent_payments
+            .push(openagents_spark::PaymentSummary {
+                id: "wallet-loop-metric-001".to_string(),
+                direction: "receive".to_string(),
+                status: "settled".to_string(),
+                amount_sats: 2_100,
+                timestamp: 1_761_920_000,
+            });
+
+        score.refresh_from_sources(now, &provider, &history, &spark);
+
+        assert_eq!(score.first_job_latency_seconds, Some(30));
+        assert_eq!(score.completion_ratio_bps, Some(5_000));
+        assert_eq!(score.payout_success_ratio_bps, Some(10_000));
+        assert_eq!(score.avg_wallet_confirmation_latency_seconds, Some(30));
+    }
+
+    #[test]
+    fn earnings_scoreboard_tracks_pending_first_job_latency_before_completion() {
+        let mut score = EarningsScoreboardState::default();
+        let now = std::time::Instant::now();
+        let mut provider = ProviderRuntimeState::default();
+        provider.online_since = Some(now - std::time::Duration::from_secs(70));
+
+        let history = JobHistoryState::default();
+        let mut spark = SparkPaneState::default();
+        spark.balance = Some(openagents_spark::Balance {
+            spark_sats: 100,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+
+        score.refresh_from_sources(now, &provider, &history, &spark);
+
+        assert_eq!(score.first_job_latency_seconds, Some(70));
+        assert_eq!(score.completion_ratio_bps, None);
+        assert_eq!(score.payout_success_ratio_bps, None);
+        assert_eq!(score.avg_wallet_confirmation_latency_seconds, None);
     }
 
     #[test]
