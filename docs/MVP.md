@@ -226,10 +226,22 @@ This MVP is a money-moving, network-participating desktop app. That means the sy
 * The retained implementation is Rust-only. We do not ship a split-brain authority system.
 * Cross-boundary contracts are proto-first. The desktop app and services talk in typed, versioned contracts.
 * Spacetime is the retained live sync transport. Desktop sync must not depend on legacy websocket/Phoenix frames.
-* Sync is delivery and replay, not authority. The sync lane cannot silently mutate truth; authority mutations happen through authenticated commands.
+* Sync/replay remains non-authoritative by default, with one explicit exception class: ADR-approved app-db domains (presence/checkpoints/projections) may be Spacetime-authoritative.
 * Commands are explicit, authenticated, and receipt-able. If something changes state (especially money state), we know exactly why and we can replay or prove it.
 
 The product framing of this is simple: **the app must never “feel like it paid you” unless it actually did.** The architecture exists to enforce that honesty.
+
+Domain-scoped authority matrix:
+
+| Domain | Authority Owner | Spacetime reducer authority |
+| --- | --- | --- |
+| Money/settlement/wallet truth | authenticated command lanes | no |
+| Trust/policy/security verdicts | authenticated command lanes | no |
+| Provider/device online presence | Spacetime presence reducers | yes |
+| Replay checkpoints/cursor continuity | Spacetime checkpoint reducers | yes |
+| Non-monetary projections/counters | Spacetime projection reducers/queries | yes |
+
+Canonical decision record: `docs/adr/ADR-0001-spacetime-domain-authority-matrix.md`
 
 ---
 
