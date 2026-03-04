@@ -7,6 +7,7 @@ This folder is the primary reference set for Codex integration in desktop MVP, w
 1. [`CAD_CHAT_BUILD_IMPLEMENTATION.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_IMPLEMENTATION.md)
 2. [`CODEX_PANE_CAD_TOOLING.md`](/Users/christopherdavid/code/openagents/docs/codex/CODEX_PANE_CAD_TOOLING.md)
 3. [`CAD_CHAT_BUILD_RELEASE_RUNBOOK.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_RELEASE_RUNBOOK.md)
+4. [`CAD_PHASE2_DEMO_RUNBOOK.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_PHASE2_DEMO_RUNBOOK.md)
 
 ## Documents
 
@@ -21,6 +22,8 @@ This folder is the primary reference set for Codex integration in desktop MVP, w
 
 - [`CAD_CHAT_BUILD_RELEASE_RUNBOOK.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_RELEASE_RUNBOOK.md)
   - release readiness checklist, manual smoke script, failure signatures, rollback toggles, and escalation flow.
+- [`CAD_PHASE2_DEMO_RUNBOOK.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_PHASE2_DEMO_RUNBOOK.md)
+  - phase-2 robotic hand demo choreography, capture checklist, and deterministic checkpoints.
 - [`LIVE_HARNESS.md`](/Users/christopherdavid/code/openagents/docs/codex/LIVE_HARNESS.md)
   - codex live harness probes and manual protocol debugging workflow.
 

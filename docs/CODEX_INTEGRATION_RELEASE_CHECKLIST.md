@@ -15,8 +15,11 @@ Use this checklist before cutting a desktop release that includes Codex integrat
 4. Confirm CAD release gate output includes explicit chat-build pass lines:
    - `CAD release gate pass (E): chat-build e2e harness (success + failure)`
    - `CAD release gate pass (E): week-1 gripper e2e harness`
+   - `CAD release gate pass (E): phase-2 e2e harness`
    - `CAD release gate pass (E): week-1 gripper script + golden present`
    - `CAD release gate pass (E): chat-build runbook present`
+   - `CAD release gate pass (E): phase-2 demo runbook present`
+   - `CAD release gate pass (E): phase-2 harness scripts + goldens present`
 
 ## Required Manual Checks
 
@@ -44,6 +47,10 @@ Use this checklist before cutting a desktop release that includes Codex integrat
    - generate 4 variants and assign 4 distinct materials
    - toggle single/quad layout
    - verify snapshot truth fields (`viewport_layout`, `visible_variant_ids`, `all_variants_visible`, `variant_materials`).
+5. Execute phase-2 hand demo path:
+   - follow `docs/codex/CAD_PHASE2_DEMO_RUNBOOK.md`
+   - capture the short hook clip and at least one deep-dive clip
+   - confirm checkpoint expectations in each phase.
 
 ## Optional Wire Log Verification
 
@@ -57,6 +64,7 @@ Use this checklist before cutting a desktop release that includes Codex integrat
 - `docs/codex/CODEX_PANE_CAD_TOOLING.md`
 - `docs/codex/CAD_CHAT_BUILD_IMPLEMENTATION.md`
 - `docs/codex/CAD_CHAT_BUILD_RELEASE_RUNBOOK.md`
+- `docs/codex/CAD_PHASE2_DEMO_RUNBOOK.md`
 - `docs/charms/CAST_RELEASE_CHECKLIST.md` (when CAST pane/workflow changes are included)
 
 ## Release Script Integration

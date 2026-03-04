@@ -5573,6 +5573,41 @@ mod tests {
         format!("{root}/tests/goldens/cad_chat_build_e2e_week1_gripper_snapshot.json")
     }
 
+    fn cad_chat_build_phase2_gripper_fixture_path() -> String {
+        let root = env!("CARGO_MANIFEST_DIR");
+        format!("{root}/tests/goldens/cad_chat_build_e2e_phase2_gripper_snapshot.json")
+    }
+
+    fn cad_chat_build_phase2_underactuated_fixture_path() -> String {
+        let root = env!("CARGO_MANIFEST_DIR");
+        format!("{root}/tests/goldens/cad_chat_build_e2e_phase2_underactuated_snapshot.json")
+    }
+
+    fn cad_chat_build_phase2_three_finger_fixture_path() -> String {
+        let root = env!("CARGO_MANIFEST_DIR");
+        format!("{root}/tests/goldens/cad_chat_build_e2e_phase2_three_finger_snapshot.json")
+    }
+
+    fn cad_chat_build_phase2_motors_fixture_path() -> String {
+        let root = env!("CARGO_MANIFEST_DIR");
+        format!("{root}/tests/goldens/cad_chat_build_e2e_phase2_motors_snapshot.json")
+    }
+
+    fn cad_chat_build_phase2_sensors_fixture_path() -> String {
+        let root = env!("CARGO_MANIFEST_DIR");
+        format!("{root}/tests/goldens/cad_chat_build_e2e_phase2_sensors_snapshot.json")
+    }
+
+    fn cad_chat_build_phase2_full_hand_fixture_path() -> String {
+        let root = env!("CARGO_MANIFEST_DIR");
+        format!("{root}/tests/goldens/cad_chat_build_e2e_phase2_full_hand_snapshot.json")
+    }
+
+    fn cad_chat_build_phase2_failure_fixture_path() -> String {
+        let root = env!("CARGO_MANIFEST_DIR");
+        format!("{root}/tests/goldens/cad_chat_build_e2e_phase2_failure_snapshot.json")
+    }
+
     fn assert_or_write_report_fixture(path: &str, report: &Value, label: &str) {
         let actual_json =
             serde_json::to_string_pretty(report).expect("fixture report should serialize");
@@ -8373,6 +8408,146 @@ mod tests {
             &cad_chat_build_week1_gripper_fixture_path(),
             &report,
             "cad_chat_build_e2e_week1_gripper",
+        );
+    }
+
+    #[test]
+    fn cad_chat_build_e2e_harness_phase2_gripper_matches_golden() {
+        let report = normalize_report_timing_for_golden(run_headless_cad_script_fixture(
+            "cad_chat_build_e2e_phase2_gripper_script.json",
+        ));
+        assert_eq!(
+            report
+                .get("tool_calls")
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(3),
+            "phase-2 gripper fixture should execute three deterministic CAD intent calls"
+        );
+        assert_or_write_report_fixture(
+            &cad_chat_build_phase2_gripper_fixture_path(),
+            &report,
+            "cad_chat_build_e2e_phase2_gripper",
+        );
+    }
+
+    #[test]
+    fn cad_chat_build_e2e_harness_phase2_underactuated_matches_golden() {
+        let report = normalize_report_timing_for_golden(run_headless_cad_script_fixture(
+            "cad_chat_build_e2e_phase2_underactuated_script.json",
+        ));
+        assert_eq!(
+            report
+                .get("tool_calls")
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(3),
+            "phase-2 underactuated fixture should execute three deterministic CAD intent calls"
+        );
+        assert_or_write_report_fixture(
+            &cad_chat_build_phase2_underactuated_fixture_path(),
+            &report,
+            "cad_chat_build_e2e_phase2_underactuated",
+        );
+    }
+
+    #[test]
+    fn cad_chat_build_e2e_harness_phase2_three_finger_matches_golden() {
+        let report = normalize_report_timing_for_golden(run_headless_cad_script_fixture(
+            "cad_chat_build_e2e_phase2_three_finger_script.json",
+        ));
+        assert_eq!(
+            report
+                .get("tool_calls")
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(3),
+            "phase-2 three-finger fixture should execute three deterministic CAD intent calls"
+        );
+        assert_or_write_report_fixture(
+            &cad_chat_build_phase2_three_finger_fixture_path(),
+            &report,
+            "cad_chat_build_e2e_phase2_three_finger",
+        );
+    }
+
+    #[test]
+    fn cad_chat_build_e2e_harness_phase2_motors_matches_golden() {
+        let report = normalize_report_timing_for_golden(run_headless_cad_script_fixture(
+            "cad_chat_build_e2e_phase2_motors_script.json",
+        ));
+        assert_eq!(
+            report
+                .get("tool_calls")
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(3),
+            "phase-2 motors fixture should execute three deterministic CAD intent calls"
+        );
+        assert_or_write_report_fixture(
+            &cad_chat_build_phase2_motors_fixture_path(),
+            &report,
+            "cad_chat_build_e2e_phase2_motors",
+        );
+    }
+
+    #[test]
+    fn cad_chat_build_e2e_harness_phase2_sensors_matches_golden() {
+        let report = normalize_report_timing_for_golden(run_headless_cad_script_fixture(
+            "cad_chat_build_e2e_phase2_sensors_script.json",
+        ));
+        assert_eq!(
+            report
+                .get("tool_calls")
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(6),
+            "phase-2 sensors fixture should execute six deterministic CAD intent calls"
+        );
+        assert_or_write_report_fixture(
+            &cad_chat_build_phase2_sensors_fixture_path(),
+            &report,
+            "cad_chat_build_e2e_phase2_sensors",
+        );
+    }
+
+    #[test]
+    fn cad_chat_build_e2e_harness_phase2_full_hand_matches_golden() {
+        let report = normalize_report_timing_for_golden(run_headless_cad_script_fixture(
+            "cad_chat_build_e2e_phase2_full_hand_script.json",
+        ));
+        assert_eq!(
+            report
+                .get("tool_calls")
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(3),
+            "phase-2 full-hand fixture should execute three deterministic CAD intent calls"
+        );
+        assert_or_write_report_fixture(
+            &cad_chat_build_phase2_full_hand_fixture_path(),
+            &report,
+            "cad_chat_build_e2e_phase2_full_hand",
+        );
+    }
+
+    #[test]
+    fn cad_chat_build_e2e_harness_phase2_failure_matches_golden() {
+        let report = normalize_report_timing_for_golden(run_headless_cad_script_fixture(
+            "cad_chat_build_e2e_phase2_failure_script.json",
+        ));
+        assert_eq!(
+            report
+                .get("tool_calls")
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(5),
+            "phase-2 failure fixture should execute five deterministic CAD intent calls"
+        );
+        assert_or_write_report_fixture(
+            &cad_chat_build_phase2_failure_fixture_path(),
+            &report,
+            "cad_chat_build_e2e_phase2_failure",
         );
     }
 
