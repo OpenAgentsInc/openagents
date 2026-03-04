@@ -17,11 +17,11 @@ use codex_client::{
 use nostr::regenerate_identity;
 use openagents_cad::contracts::CadSelectionKind;
 use openagents_cad::query::{
-    CadPickCameraPose, CadPickEntityKind, CadPickProjectionMode, CadPickQuery, CadPickViewport,
-    pick_mesh_hit,
+    pick_mesh_hit, CadPickCameraPose, CadPickEntityKind, CadPickProjectionMode, CadPickQuery,
+    CadPickViewport,
 };
-use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::{Mutex, OnceLock};
 use wgpui::clipboard::copy_to_clipboard;
@@ -39,27 +39,27 @@ use crate::app_state::{
     JobInboxValidation, NetworkRequestSubmission, PaneKind, ProviderMode,
 };
 use crate::hotbar::{
-    HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_SPARK_WALLET, activate_hotbar_slot,
-    hotbar_slot_for_key, process_hotbar_clicks,
+    activate_hotbar_slot, hotbar_slot_for_key, process_hotbar_clicks, HOTBAR_SLOT_NOSTR_IDENTITY,
+    HOTBAR_SLOT_SPARK_WALLET,
 };
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
-use crate::pane_registry::pane_spec_by_command_id;
+use crate::pane_registry::{pane_enabled_in_runtime, pane_spec_by_command_id};
 use crate::pane_system::{
+    cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds, clamp_all_panes_to_window,
+    dispatch_calculator_input_event, dispatch_chat_input_event, dispatch_chat_scroll_event,
+    dispatch_create_invoice_input_event, dispatch_credentials_input_event,
+    dispatch_job_history_input_event, dispatch_network_requests_input_event,
+    dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
+    dispatch_settings_input_event, dispatch_spark_input_event, pane_content_bounds,
+    pane_indices_by_z_desc, pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
     ActivityFeedPaneAction, AgentNetworkSimulationPaneAction, AlertsRecoveryPaneAction,
     CadDemoPaneAction, CastControlPaneAction, CodexAccountPaneAction, CodexAppsPaneAction,
     CodexConfigPaneAction, CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction,
     CodexModelsPaneAction, CredentialsPaneAction, EarningsScoreboardPaneAction,
     NetworkRequestsPaneAction, PaneController, PaneHitAction, PaneInput,
-    RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction, SIDEBAR_DEFAULT_WIDTH,
-    SettingsPaneAction, StableSatsSimulationPaneAction, StarterJobsPaneAction,
-    SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction, cad_demo_context_menu_bounds,
-    cad_demo_context_menu_row_bounds, clamp_all_panes_to_window, dispatch_calculator_input_event,
-    dispatch_chat_input_event, dispatch_chat_scroll_event, dispatch_create_invoice_input_event,
-    dispatch_credentials_input_event, dispatch_job_history_input_event,
-    dispatch_network_requests_input_event, dispatch_pay_invoice_input_event,
-    dispatch_relay_connections_input_event, dispatch_settings_input_event,
-    dispatch_spark_input_event, pane_content_bounds, pane_indices_by_z_desc,
-    pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
+    RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction, SettingsPaneAction,
+    StableSatsSimulationPaneAction, StarterJobsPaneAction, SyncHealthPaneAction,
+    TreasuryExchangeSimulationPaneAction, SIDEBAR_DEFAULT_WIDTH,
 };
 use crate::panes::{cad as cad_pane, chat as chat_pane};
 use crate::provider_nip90_lane::ProviderNip90LaneCommand;
@@ -79,11 +79,11 @@ use crate::state::autopilot_goals::{
 };
 use crate::state::goal_conditions::{ConditionEvaluation, GoalProgressSnapshot};
 use crate::state::goal_loop_executor::{
-    ActiveGoalLoopRun, GoalLoopPhase, GoalLoopStopReason, retry_backoff_seconds,
-    select_runnable_goal,
+    retry_backoff_seconds, select_runnable_goal, ActiveGoalLoopRun, GoalLoopPhase,
+    GoalLoopStopReason,
 };
 use crate::state::wallet_reconciliation::{
-    WalletLedgerEventKind, reconcile_wallet_events_for_goal,
+    reconcile_wallet_events_for_goal, WalletLedgerEventKind,
 };
 
 mod actions;
@@ -463,17 +463,19 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     if run_auto_cast_control_loop(state, now) {
         changed = true;
     }
-    if run_auto_agent_network_simulation(state, now) {
-        changed = true;
-    }
-    if run_auto_treasury_exchange_simulation(state, now) {
-        changed = true;
-    }
-    if run_auto_relay_security_simulation(state, now) {
-        changed = true;
-    }
-    if run_auto_stable_sats_simulation(state, now) {
-        changed = true;
+    if state.simulation_panes_enabled {
+        if run_auto_agent_network_simulation(state, now) {
+            changed = true;
+        }
+        if run_auto_treasury_exchange_simulation(state, now) {
+            changed = true;
+        }
+        if run_auto_relay_security_simulation(state, now) {
+            changed = true;
+        }
+        if run_auto_stable_sats_simulation(state, now) {
+            changed = true;
+        }
     }
     if run_auto_starter_demand_generator(state, now) {
         changed = true;
@@ -2444,15 +2446,39 @@ pub(super) fn run_pane_hit_action(
             reducers::run_credit_settlement_ledger_action(state, action)
         }
         PaneHitAction::AgentNetworkSimulation(action) => {
+            if !pane_enabled_in_runtime(
+                crate::app_state::PaneKind::AgentNetworkSimulation,
+                state.simulation_panes_enabled,
+            ) {
+                return simulation_pane_action_blocked(state, "agent_network_simulation");
+            }
             run_agent_network_simulation_action(state, action)
         }
         PaneHitAction::TreasuryExchangeSimulation(action) => {
+            if !pane_enabled_in_runtime(
+                crate::app_state::PaneKind::TreasuryExchangeSimulation,
+                state.simulation_panes_enabled,
+            ) {
+                return simulation_pane_action_blocked(state, "treasury_exchange_simulation");
+            }
             run_treasury_exchange_simulation_action(state, action)
         }
         PaneHitAction::RelaySecuritySimulation(action) => {
+            if !pane_enabled_in_runtime(
+                crate::app_state::PaneKind::RelaySecuritySimulation,
+                state.simulation_panes_enabled,
+            ) {
+                return simulation_pane_action_blocked(state, "relay_security_simulation");
+            }
             run_relay_security_simulation_action(state, action)
         }
         PaneHitAction::StableSatsSimulation(action) => {
+            if !pane_enabled_in_runtime(
+                crate::app_state::PaneKind::StableSatsSimulation,
+                state.simulation_panes_enabled,
+            ) {
+                return simulation_pane_action_blocked(state, "stable_sats_simulation");
+            }
             run_stable_sats_simulation_action(state, action)
         }
         PaneHitAction::CadDemo(action) => reducers::run_cad_demo_action(state, action),
@@ -2460,6 +2486,17 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::SparkCreateInvoice(action) => run_create_invoice_action(state, action),
         PaneHitAction::SparkPayInvoice(action) => run_pay_invoice_action(state, action),
     }
+}
+
+fn simulation_pane_action_blocked(
+    state: &mut crate::app_state::RenderState,
+    pane_key: &str,
+) -> bool {
+    state.provider_runtime.last_result = Some(format!(
+        "Simulation pane '{}' is disabled. Set OPENAGENTS_ENABLE_SIMULATION_PANES=1 for dev/test sessions.",
+        pane_key
+    ));
+    true
 }
 
 fn handle_chat_keyboard_input(
@@ -2832,18 +2869,18 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        TurnSkillAttachment, TurnSkillSource, assemble_chat_turn_input,
-        build_create_invoice_command, build_pay_invoice_command, build_spark_command_for_action,
-        cad_hit_action_blocks_camera_zoom, cad_hotkey_action_matrix, cad_pick_kind_label,
-        cad_pick_kind_to_selection_kind, cad_policy_skill_candidates_for_turn,
-        cad_turn_approval_policy, is_command_palette_shortcut, is_toggle_fullscreen_shortcut,
-        parse_positive_amount_str, resolve_turn_skill_by_name, resolve_turn_skill_by_path,
-        should_open_command_palette, validate_lightning_payment_request,
+        assemble_chat_turn_input, build_create_invoice_command, build_pay_invoice_command,
+        build_spark_command_for_action, cad_hit_action_blocks_camera_zoom,
+        cad_hotkey_action_matrix, cad_pick_kind_label, cad_pick_kind_to_selection_kind,
+        cad_policy_skill_candidates_for_turn, cad_turn_approval_policy,
+        is_command_palette_shortcut, is_toggle_fullscreen_shortcut, parse_positive_amount_str,
+        resolve_turn_skill_by_name, resolve_turn_skill_by_path, should_open_command_palette,
+        validate_lightning_payment_request, TurnSkillAttachment, TurnSkillSource,
     };
     use crate::app_state::SkillRegistryDiscoveredSkill;
     use crate::pane_system::cad_palette_command_specs;
     use crate::spark_pane::{
-        CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction, hit_action, layout,
+        hit_action, layout, CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction,
     };
     use crate::spark_wallet::SparkWalletCommand;
     use codex_client::UserInput;
@@ -2857,16 +2894,12 @@ mod tests {
     #[test]
     fn parse_positive_amount_str_validates_inputs() {
         assert_eq!(parse_positive_amount_str("42", "Amount"), Ok(42));
-        assert!(
-            parse_positive_amount_str("0", "Amount")
-                .expect_err("zero rejected")
-                .contains("greater than 0")
-        );
-        assert!(
-            parse_positive_amount_str("abc", "Amount")
-                .expect_err("non-numeric rejected")
-                .contains("valid integer")
-        );
+        assert!(parse_positive_amount_str("0", "Amount")
+            .expect_err("zero rejected")
+            .contains("greater than 0"));
+        assert!(parse_positive_amount_str("abc", "Amount")
+            .expect_err("non-numeric rejected")
+            .contains("valid integer"));
     }
 
     #[test]
@@ -3283,21 +3316,15 @@ mod tests {
 
         let skills = cad_policy_skill_candidates_for_turn(true, &discovered);
         assert_eq!(skills.len(), 2);
-        assert!(
-            skills
-                .iter()
-                .any(|skill| skill.name == "autopilot-cad-builder")
-        );
-        assert!(
-            skills
-                .iter()
-                .any(|skill| skill.name == "autopilot-pane-control")
-        );
-        assert!(
-            skills
-                .iter()
-                .all(|skill| skill.source == TurnSkillSource::PolicyRequired)
-        );
+        assert!(skills
+            .iter()
+            .any(|skill| skill.name == "autopilot-cad-builder"));
+        assert!(skills
+            .iter()
+            .any(|skill| skill.name == "autopilot-pane-control"));
+        assert!(skills
+            .iter()
+            .all(|skill| skill.source == TurnSkillSource::PolicyRequired));
     }
 
     #[test]

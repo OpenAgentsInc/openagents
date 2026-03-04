@@ -170,6 +170,23 @@ Primary assertions:
 - wallet confirmation latency computes from reconciled payout receive timestamps,
 - degraded metric samples activate all expected SLO alerts while healthy samples clear them.
 
+### 11) Simulation Path Isolation (`autopilot-desktop`)
+
+Files:
+- `apps/autopilot-desktop/src/pane_registry.rs` test `simulation_panes_respect_runtime_gate`
+- `apps/autopilot-desktop/src/render.rs` test `command_registry_hides_simulation_commands_when_disabled`
+- `apps/autopilot-desktop/src/input/tool_bridge.rs` test `resolve_pane_kind_gates_simulation_references`
+
+What it covers:
+- gates simulation-only panes behind an explicit runtime flag (`OPENAGENTS_ENABLE_SIMULATION_PANES`),
+- removes simulation pane commands from default command-palette routes,
+- blocks tool-bridge pane resolution for simulation panes when the runtime gate is disabled.
+
+Primary assertions:
+- simulation pane kinds are denied when runtime simulation gate is off and allowed when on,
+- default command registry excludes simulation pane commands,
+- tool-bridge pane resolution rejects simulation pane references unless runtime simulation gate is enabled.
+
 ## Existing Supporting Tests Used In This Pass
 
 - `app_state::tests::job_history_rejects_unconfirmed_success_settlement_from_active_job`
@@ -193,6 +210,9 @@ cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::networ
 cargo test -p autopilot-desktop --bin autopilot-desktop input::actions::tests::provider_failure_taxonomy_classifies_relay_execution_payment_and_reconciliation
 cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::earnings_scoreboard_tracks_loop_integrity_slo_metrics
 cargo test -p autopilot-desktop --bin autopilot-desktop input::actions::tests::loop_integrity_alert_specs_flags_expected_slo_breaches
+cargo test -p autopilot-desktop --bin autopilot-desktop pane_registry::tests::simulation_panes_respect_runtime_gate
+cargo test -p autopilot-desktop --bin autopilot-desktop render::tests::command_registry_hides_simulation_commands_when_disabled
+cargo test -p autopilot-desktop --bin autopilot-desktop input::tool_bridge::tests::resolve_pane_kind_gates_simulation_references
 cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::job_history_rejects_unconfirmed_success_settlement_from_active_job
 cargo test -p autopilot-desktop --bin autopilot-desktop state::earnings_gate::tests::accepts_wallet_backed_earnings_evidence
 cargo test -p autopilot-desktop --bin autopilot-desktop state::wallet_reconciliation::tests::reconciliation_distinguishes_earn_vs_swap_and_fee

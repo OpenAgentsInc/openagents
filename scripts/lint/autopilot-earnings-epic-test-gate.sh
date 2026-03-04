@@ -148,6 +148,21 @@ run_test \
     input::actions::tests::loop_integrity_alert_specs_flags_expected_slo_breaches \
     -- --nocapture
 run_test \
+    "Simulation pane runtime gate predicates" \
+    cargo test -p autopilot-desktop \
+    pane_registry::tests::simulation_panes_respect_runtime_gate \
+    -- --nocapture
+run_test \
+    "Simulation pane commands hidden by default" \
+    cargo test -p autopilot-desktop \
+    render::tests::command_registry_hides_simulation_commands_when_disabled \
+    -- --nocapture
+run_test \
+    "Simulation pane tool-bridge isolation" \
+    cargo test -p autopilot-desktop \
+    input::tool_bridge::tests::resolve_pane_kind_gates_simulation_references \
+    -- --nocapture
+run_test \
     "Earn bitcoin until +N sats flow" \
     cargo test -p autopilot-desktop \
     state::earnings_gate::tests::earn_bitcoin_until_target_sats_requires_wallet_confirmed_threshold \

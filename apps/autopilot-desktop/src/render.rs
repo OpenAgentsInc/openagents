@@ -3,12 +3,12 @@ use std::{cell::RefCell, rc::Rc};
 
 use anyhow::{Context, Result};
 use nostr::load_or_create_identity;
-use wgpui::components::Text;
 use wgpui::components::hud::{Command, CommandPalette, DotShape, DotsGrid, DotsOrigin};
+use wgpui::components::Text;
 use wgpui::renderer::Renderer;
 use wgpui::{
-    Bounds, Component, Easing, Hsla, PaintContext, Point, Quad, Scene, Size, SvgQuad, TextSystem,
-    theme,
+    theme, Bounds, Component, Easing, Hsla, PaintContext, Point, Quad, Scene, Size, SvgQuad,
+    TextSystem,
 };
 use winit::event_loop::ActiveEventLoop;
 use winit::window::Window;
@@ -20,10 +20,12 @@ use crate::codex_lane::{CodexLaneConfig, CodexLaneSnapshot, CodexLaneWorker};
 use crate::hotbar::{configure_hotbar, hotbar_bounds, new_hotbar};
 use crate::input::bootstrap_startup_cad_mesh;
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
-use crate::pane_registry::{pane_specs, startup_pane_kinds};
+use crate::pane_registry::{
+    pane_enabled_in_runtime, pane_specs, simulation_panes_enabled_from_env, startup_pane_kinds,
+};
 use crate::pane_renderer::PaneRenderer;
 use crate::pane_system::{
-    PANE_MIN_HEIGHT, PANE_MIN_WIDTH, PaneController, cad_palette_command_specs,
+    cad_palette_command_specs, PaneController, PANE_MIN_HEIGHT, PANE_MIN_WIDTH,
 };
 use crate::provider_nip90_lane::{ProviderNip90LaneSnapshot, ProviderNip90LaneWorker};
 use crate::runtime_lanes::{
@@ -173,10 +175,11 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let ac_lane_worker = AcLaneWorker::spawn();
         let provider_nip90_lane_worker =
             ProviderNip90LaneWorker::spawn(vec![initial_relay_url.clone()]);
+        let simulation_panes_enabled = simulation_panes_enabled_from_env();
         let command_palette_actions = Rc::new(RefCell::new(Vec::<String>::new()));
         let mut command_palette = CommandPalette::new()
             .mono(true)
-            .commands(command_registry());
+            .commands(command_registry(simulation_panes_enabled));
         {
             let action_queue = Rc::clone(&command_palette_actions);
             command_palette = command_palette.on_select(move |command| {
@@ -272,6 +275,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             relay_security_simulation: crate::app_state::RelaySecuritySimulationPaneState::default(
             ),
             stable_sats_simulation: crate::app_state::StableSatsSimulationPaneState::default(),
+            simulation_panes_enabled,
             autopilot_goals,
             goal_loop_executor: crate::state::goal_loop_executor::GoalLoopExecutorState::default(),
             goal_restart_recovery_ran: false,
@@ -467,7 +471,8 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
                 ),
                 Point::new(left, y),
                 10.0,
-                if state.network_aggregate_counters.load_state == crate::app_state::PaneLoadState::Ready
+                if state.network_aggregate_counters.load_state
+                    == crate::app_state::PaneLoadState::Ready
                 {
                     theme::status::SUCCESS
                 } else {
@@ -942,9 +947,10 @@ fn format_btc_from_sats(sats: u64) -> String {
     format!("{:.8}", sats as f64 / 100_000_000.0)
 }
 
-fn command_registry() -> Vec<Command> {
+fn command_registry(simulation_panes_enabled: bool) -> Vec<Command> {
     let mut commands: Vec<Command> = pane_specs()
         .iter()
+        .filter(|spec| pane_enabled_in_runtime(spec.kind, simulation_panes_enabled))
         .filter_map(|spec| {
             let command = spec.command?;
             let mut entry = Command::new(command.id, command.label)
@@ -974,14 +980,16 @@ fn command_registry() -> Vec<Command> {
 mod tests {
     use super::{command_registry, wallet_balance_chip_bounds_for_logical};
     use crate::app_state::PaneKind;
-    use crate::pane_registry::{pane_spec_by_command_id, pane_specs, startup_pane_kinds};
+    use crate::pane_registry::{
+        pane_enabled_in_runtime, pane_spec_by_command_id, pane_specs, startup_pane_kinds,
+    };
     use crate::pane_system::cad_palette_command_specs;
     use std::collections::BTreeSet;
     use wgpui::Size;
 
     #[test]
     fn command_registry_matches_pane_specs() {
-        let commands = command_registry();
+        let commands = command_registry(true);
         let command_ids: BTreeSet<&str> =
             commands.iter().map(|command| command.id.as_str()).collect();
 
@@ -1013,28 +1021,22 @@ mod tests {
 
     #[test]
     fn command_registry_includes_job_inbox_command() {
-        let commands = command_registry();
-        assert!(
-            commands
-                .iter()
-                .any(|command| { command.id == "pane.job_inbox" && command.label == "Job Inbox" })
-        );
-        assert!(
-            commands.iter().any(|command| {
-                command.id == "pane.active_job" && command.label == "Active Job"
-            })
-        );
+        let commands = command_registry(false);
+        assert!(commands
+            .iter()
+            .any(|command| { command.id == "pane.job_inbox" && command.label == "Job Inbox" }));
+        assert!(commands
+            .iter()
+            .any(|command| { command.id == "pane.active_job" && command.label == "Active Job" }));
         assert!(commands.iter().any(|command| {
             command.id == "pane.earnings_scoreboard" && command.label == "Earnings Scoreboard"
         }));
         assert!(commands.iter().any(|command| {
             command.id == "pane.relay_connections" && command.label == "Relay Connections"
         }));
-        assert!(
-            commands.iter().any(|command| {
-                command.id == "pane.sync_health" && command.label == "Sync Health"
-            })
-        );
+        assert!(commands
+            .iter()
+            .any(|command| { command.id == "pane.sync_health" && command.label == "Sync Health" }));
         assert!(commands.iter().any(|command| {
             command.id == "pane.network_requests" && command.label == "Network Requests"
         }));
@@ -1047,32 +1049,24 @@ mod tests {
         assert!(commands.iter().any(|command| {
             command.id == "pane.alerts_recovery" && command.label == "Alerts and Recovery"
         }));
-        assert!(
-            commands
-                .iter()
-                .any(|command| { command.id == "pane.settings" && command.label == "Settings" })
-        );
-        assert!(
-            commands.iter().any(|command| {
-                command.id == "pane.credentials" && command.label == "Credentials"
-            })
-        );
-        assert!(
-            commands
-                .iter()
-                .any(|command| { command.id == "pane.wallet" && command.label == "Spark Wallet" })
-        );
+        assert!(commands
+            .iter()
+            .any(|command| { command.id == "pane.settings" && command.label == "Settings" }));
+        assert!(commands
+            .iter()
+            .any(|command| { command.id == "pane.credentials" && command.label == "Credentials" }));
+        assert!(commands
+            .iter()
+            .any(|command| { command.id == "pane.wallet" && command.label == "Spark Wallet" }));
         assert!(commands.iter().any(|command| {
             command.id == "pane.pay_invoice" && command.label == "Pay Lightning Invoice"
         }));
         assert!(commands.iter().any(|command| {
             command.id == "pane.create_invoice" && command.label == "Create Lightning Invoice"
         }));
-        assert!(
-            commands.iter().any(|command| {
-                command.id == "pane.job_history" && command.label == "Job History"
-            })
-        );
+        assert!(commands
+            .iter()
+            .any(|command| { command.id == "pane.job_history" && command.label == "Job History" }));
         assert!(commands.iter().any(|command| {
             command.id == "pane.agent_profile_state" && command.label == "Agent Profile and State"
         }));
@@ -1092,31 +1086,52 @@ mod tests {
             command.id == "pane.skill_trust_revocation"
                 && command.label == "Skill Trust and Revocation"
         }));
-        assert!(
-            commands.iter().any(|command| {
-                command.id == "pane.credit_desk" && command.label == "Credit Desk"
-            })
-        );
+        assert!(commands
+            .iter()
+            .any(|command| { command.id == "pane.credit_desk" && command.label == "Credit Desk" }));
         assert!(commands.iter().any(|command| {
             command.id == "pane.credit_settlement_ledger"
                 && command.label == "Credit Settlement Ledger"
         }));
-        assert!(commands.iter().any(|command| {
+    }
+
+    #[test]
+    fn command_registry_hides_simulation_commands_when_disabled() {
+        let commands = command_registry(false);
+        assert!(!commands.iter().any(|command| {
             command.id == "pane.agent_network_simulation"
-                && command.label == "Sovereign Agent Simulation"
+                || command.id == "pane.treasury_exchange_simulation"
+                || command.id == "pane.relay_security_simulation"
+                || command.id == "pane.stablesats_simulation"
         }));
-        assert!(commands.iter().any(|command| {
-            command.id == "pane.treasury_exchange_simulation"
-                && command.label == "Treasury Exchange Simulation"
-        }));
-        assert!(commands.iter().any(|command| {
-            command.id == "pane.relay_security_simulation"
-                && command.label == "Relay Security Simulation"
-        }));
-        assert!(commands.iter().any(|command| {
-            command.id == "pane.stablesats_simulation"
-                && command.label == "StableSats Wallet Simulation"
-        }));
+    }
+
+    #[test]
+    fn command_registry_includes_simulation_commands_when_enabled() {
+        let commands = command_registry(true);
+        let command_ids: BTreeSet<&str> =
+            commands.iter().map(|command| command.id.as_str()).collect();
+
+        let expected_simulation_ids: BTreeSet<&str> = pane_specs()
+            .iter()
+            .filter(|spec| {
+                pane_enabled_in_runtime(spec.kind, true)
+                    && !pane_enabled_in_runtime(spec.kind, false)
+            })
+            .filter_map(|spec| spec.command.map(|command| command.id))
+            .collect();
+        assert_eq!(
+            expected_simulation_ids,
+            BTreeSet::from([
+                "pane.agent_network_simulation",
+                "pane.treasury_exchange_simulation",
+                "pane.relay_security_simulation",
+                "pane.stablesats_simulation",
+            ])
+        );
+        for command_id in expected_simulation_ids {
+            assert!(command_ids.contains(command_id));
+        }
     }
 
     #[test]
