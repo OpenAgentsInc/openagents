@@ -10,6 +10,14 @@ Track the full Autopilot Earn MVP execution program from issue creation through 
 
 Scope note: this tracker covers the compute-provider MVP lane. Future liquidity-solver work should be tracked as a separate Hydra-aligned program.
 
+## Canonical Status Authority
+
+This file is the single canonical current implementation status document for Autopilot Earn MVP.
+
+Historical evidence lives in appendices and must not be treated as live status authority:
+- `docs/AUTOPILOT_EARN_MVP_IMPLEMENTATION_LOG.md` (historical evidence appendix)
+- `docs/audits/2026-03-04-autopilot-earn-integration-audit-gap-analysis.md` (audit snapshot)
+
 ## Acceptance Gates
 
 The epic is complete only when all are true:
@@ -34,9 +42,9 @@ Current gate status:
 | Wallet-confirmed payout gate | ✅ Implemented | `#2880` |
 | Seed-demand buyer lane with controls | ✅ Implemented | `#2882`, `#2883` |
 | Public stats lane consistent with wallet-confirmed payouts | ✅ Implemented | `#2884`, `#2885` |
-| Reliability/test/rollout and canonical-status closure | ⏳ In progress | Open `#2890` |
+| Reliability/test/rollout and canonical-status closure | ✅ Implemented | Closed `#2887`, `#2888`, `#2889`, `#2890` |
 
-The epic should not be treated as fully complete until the open reconciliation issues above are closed with code and verification evidence.
+All reconciliation follow-on issues are closed with code and verification evidence.
 
 ## Reconciliation Follow-On Issues
 
@@ -55,7 +63,7 @@ The epic should not be treated as fully complete until the open reconciliation i
 | [#2887](https://github.com/OpenAgentsInc/openagents/issues/2887) | Earn P2: Failure taxonomy + user-facing diagnostics | CLOSED |
 | [#2888](https://github.com/OpenAgentsInc/openagents/issues/2888) | Earn P2: Loop integrity SLO metrics and alerts | CLOSED |
 | [#2889](https://github.com/OpenAgentsInc/openagents/issues/2889) | Earn P2: Simulation path isolation | CLOSED |
-| [#2890](https://github.com/OpenAgentsInc/openagents/issues/2890) | Earn P2: Docs consolidation for canonical status | OPEN |
+| [#2890](https://github.com/OpenAgentsInc/openagents/issues/2890) | Earn P2: Docs consolidation for canonical status | CLOSED |
 
 ## Historical Issue List (`#2814 - #2876`)
 

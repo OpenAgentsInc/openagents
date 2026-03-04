@@ -16,20 +16,23 @@ require_contains() {
 }
 
 require_contains "$TRACKER" "## Reconciliation Follow-On Issues" "tracker must include reconciliation follow-on section"
+require_contains "$TRACKER" "single canonical current implementation status document" "tracker must declare canonical current-status authority"
 require_contains "$TRACKER" "#2886" "tracker must include reconciliation issue #2886"
 require_contains "$TRACKER" "#2890" "tracker must include reconciliation issue #2890"
 require_contains "$TRACKER" "| [#2886](https://github.com/OpenAgentsInc/openagents/issues/2886) | Earn P1: Reconcile epic tracker closure with code evidence | CLOSED |" "tracker must show #2886 closed state"
 require_contains "$TRACKER" "| [#2887](https://github.com/OpenAgentsInc/openagents/issues/2887) | Earn P2: Failure taxonomy + user-facing diagnostics | CLOSED |" "tracker must show #2887 closed state"
 require_contains "$TRACKER" "| [#2888](https://github.com/OpenAgentsInc/openagents/issues/2888) | Earn P2: Loop integrity SLO metrics and alerts | CLOSED |" "tracker must show #2888 closed state"
 require_contains "$TRACKER" "| [#2889](https://github.com/OpenAgentsInc/openagents/issues/2889) | Earn P2: Simulation path isolation | CLOSED |" "tracker must show #2889 closed state"
-require_contains "$TRACKER" "| [#2890](https://github.com/OpenAgentsInc/openagents/issues/2890) | Earn P2: Docs consolidation for canonical status | OPEN |" "tracker must show remaining open reconciliation issues"
+require_contains "$TRACKER" "| [#2890](https://github.com/OpenAgentsInc/openagents/issues/2890) | Earn P2: Docs consolidation for canonical status | CLOSED |" "tracker must show #2890 closed state"
 require_contains "$TRACKER" '## Historical Issue List (`#2814 - #2876`)' "tracker must clearly separate historical stream"
 
 require_contains "$IMPLEMENTATION_LOG" 'historical stream `#2815 - #2876`, reconciliation stream `#2877 - #2890`' "implementation log must declare both streams"
+require_contains "$IMPLEMENTATION_LOG" "Role: historical evidence appendix only." "implementation log must declare appendix-only role"
 require_contains "$IMPLEMENTATION_LOG" "Current-status note: this file is an evidence ledger, not a completion assertion." "implementation log must avoid stale completion claims"
 require_contains "$IMPLEMENTATION_LOG" "| [#2886](https://github.com/OpenAgentsInc/openagents/issues/2886) | CLOSED | Tracker/log claim reconciliation |" "implementation log must include reconciliation issue #2886 closed state"
 require_contains "$IMPLEMENTATION_LOG" "| [#2887](https://github.com/OpenAgentsInc/openagents/issues/2887) | CLOSED | Failure taxonomy + diagnostics |" "implementation log must include reconciliation issue #2887 closed state"
 require_contains "$IMPLEMENTATION_LOG" "| [#2888](https://github.com/OpenAgentsInc/openagents/issues/2888) | CLOSED | Loop integrity SLO metrics/alerts |" "implementation log must include reconciliation issue #2888 closed state"
 require_contains "$IMPLEMENTATION_LOG" "| [#2889](https://github.com/OpenAgentsInc/openagents/issues/2889) | CLOSED | Simulation path isolation |" "implementation log must include reconciliation issue #2889 closed state"
+require_contains "$IMPLEMENTATION_LOG" "| [#2890](https://github.com/OpenAgentsInc/openagents/issues/2890) | CLOSED | Docs consolidation for canonical status |" "implementation log must include reconciliation issue #2890 closed state"
 
 printf 'Autopilot Earn docs reconciliation check passed.\n'

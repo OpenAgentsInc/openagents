@@ -145,6 +145,10 @@ Red:
   - Isolated simulation paths from default runtime pump/action routes by skipping auto-simulation loops and blocking simulation pane actions when gate is off (`apps/autopilot-desktop/src/input.rs`, `apps/autopilot-desktop/src/input/shortcuts.rs`).
   - Restricted tool-bridge pane resolution/listing so simulation panes are not discoverable/actionable unless explicitly enabled (`apps/autopilot-desktop/src/input/tool_bridge.rs`).
   - Added deterministic coverage for runtime simulation-gate predicates and command/bridge isolation behavior; wired checks into the earnings epic gate (`apps/autopilot-desktop/src/pane_registry.rs`, `apps/autopilot-desktop/src/render.rs`, `apps/autopilot-desktop/src/input/tool_bridge.rs`, `scripts/lint/autopilot-earnings-epic-test-gate.sh`).
+- 2026-03-04: `#2890` (docs consolidation for canonical status) implemented.
+  - Declared `docs/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md` as the single canonical current-status source and aligned reconciliation gate language to fully closed stream state.
+  - Demoted `docs/AUTOPILOT_EARN_MVP_IMPLEMENTATION_LOG.md` to explicit historical appendix role and removed live-status ambiguity.
+  - Added canonical-status assertions to docs reconciliation lint checks and retained them in the earnings epic gate to prevent status-authority drift (`scripts/lint/autopilot-earn-doc-reconciliation-check.sh`, `scripts/lint/autopilot-earnings-epic-test-gate.sh`).
 
 ## MVP Requirement Matrix (from `docs/MVP.md`)
 
