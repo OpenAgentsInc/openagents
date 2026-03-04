@@ -10,6 +10,7 @@ mod normalization;
 mod observability;
 mod quality_scoring;
 mod retrieval;
+mod security_privacy;
 mod send_execution;
 mod style_profile;
 mod tenant_isolation;
@@ -52,6 +53,12 @@ pub use quality_scoring::{
     QualityGateError, QualityThresholds, enforce_quality_gate, evaluate_quality_corpus,
 };
 pub use retrieval::{RetrievalIndex, RetrievalQuery, RetrievedContextChunk};
+pub use security_privacy::{
+    AccessAction, AccessAuditEvent, AccessRole, DataCategory, DataRecord, DeletionReceipt,
+    DeletionRequest, ExportBundle, ExportRecord, ExportRequest, ExportScope, RetentionPolicy,
+    RetentionSweepOutcome, SecurityPrivacyError, SecurityPrivacyState, enforce_retention_policy,
+    export_records, redact_debug_trace, run_deletion_workflow,
+};
 pub use send_execution::{
     GmailSendProvider, GmailSendSuccess, SendAuditEventType, SendAuditRecord, SendDeliveryState,
     SendExecutionError, SendExecutionOutcome, SendExecutionPolicy, SendExecutionState,
