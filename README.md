@@ -18,6 +18,7 @@ MVP completion means this loop works end to end with clear proof in-app: job lif
 From there, the model expands from a single job type into a broader provider economy. Compute is lane one. Next lanes can include liquidity solver participation under Hydra, where providers contribute capital plus execution and earn routing fees/spreads in an OpenAgents-native solver market. The architecture stays the same: intent-driven work, deterministic receipts, and explicit payouts.
 
 For setup expectations, current limitations, and source-of-truth behavior, see the user guide: [docs/EARN.md](docs/EARN.md).
+For canonical implementation status, see: [docs/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md](docs/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md).
 
 ## Run Locally
 

@@ -187,6 +187,21 @@ Primary assertions:
 - default command registry excludes simulation pane commands,
 - tool-bridge pane resolution rejects simulation pane references unless runtime simulation gate is enabled.
 
+### 12) Canonical Status Docs Consolidation (`docs` + lint harness)
+
+File:
+- `scripts/lint/autopilot-earn-doc-reconciliation-check.sh`
+
+What it covers:
+- enforces one canonical current-status source (`docs/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md`),
+- enforces historical-log demotion to appendix role (`docs/AUTOPILOT_EARN_MVP_IMPLEMENTATION_LOG.md`),
+- verifies reconciliation issue-state tables stay synchronized with latest closed/open truth.
+
+Primary assertions:
+- tracker explicitly declares canonical current-status authority,
+- implementation log explicitly declares appendix-only evidence role,
+- reconciliation issue rows (`#2886`-`#2890`) match expected closed state in tracker/log.
+
 ## Existing Supporting Tests Used In This Pass
 
 - `app_state::tests::job_history_rejects_unconfirmed_success_settlement_from_active_job`

@@ -7,9 +7,10 @@ This log records implementation evidence for the historical Autopilot Earn MVP i
 
 Scope note: this log is compute-lane specific (NIP-90 provider earnings). It does not include future liquidity-solver implementation work.
 
+Role: historical evidence appendix only. This file is not a live status board.
+
 Current-status note: this file is an evidence ledger, not a completion assertion. Canonical live status is tracked in:
 - `docs/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md`
-- `docs/audits/2026-03-04-autopilot-earn-integration-audit-gap-analysis.md`
 
 ## Reconciliation Addendum (2026-03-04)
 
@@ -30,7 +31,7 @@ Follow-on issues created from audit gap analysis:
 | [#2887](https://github.com/OpenAgentsInc/openagents/issues/2887) | CLOSED | Failure taxonomy + diagnostics |
 | [#2888](https://github.com/OpenAgentsInc/openagents/issues/2888) | CLOSED | Loop integrity SLO metrics/alerts |
 | [#2889](https://github.com/OpenAgentsInc/openagents/issues/2889) | CLOSED | Simulation path isolation |
-| [#2890](https://github.com/OpenAgentsInc/openagents/issues/2890) | OPEN | Docs consolidation for canonical status |
+| [#2890](https://github.com/OpenAgentsInc/openagents/issues/2890) | CLOSED | Docs consolidation for canonical status |
 
 ## Program + Backroom
 

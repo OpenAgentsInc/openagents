@@ -5,6 +5,8 @@ This guide explains how earning works in OpenAgents today, what to expect, and w
 Status: **Work in progress (WIP)**.  
 Behavior, UI, and operator defaults may change as the MVP hardens.
 
+Current implementation status authority: `docs/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md`.
+
 ## Revenue Lanes (Canonical Model)
 
 Autopilot Earn is a provider marketplace with multiple revenue lanes, not a single job type.
@@ -82,6 +84,7 @@ If a job looks completed but has no wallet-confirmed payout evidence, it is not 
 ## Related Docs
 
 - Product authority: [MVP.md](MVP.md)
+- Canonical implementation status: [AUTOPILOT_EARN_MVP_EPIC_TRACKER.md](AUTOPILOT_EARN_MVP_EPIC_TRACKER.md)
 - Mission/control implementation spec: [AUTOPILOT_EARN_MVP.md](AUTOPILOT_EARN_MVP.md)
 - Programmatic harness coverage: [AUTOPILOT_EARN_MVP_TEST_HARNESS.md](AUTOPILOT_EARN_MVP_TEST_HARNESS.md)
 - Operator runbook: [AUTOPILOT_EARNINGS_OPERATOR_RUNBOOK.md](AUTOPILOT_EARNINGS_OPERATOR_RUNBOOK.md)
