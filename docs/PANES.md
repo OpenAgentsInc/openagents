@@ -84,21 +84,6 @@ Simulation-only pane flows are isolated from the default production UX route and
   - Deterministic receipt/history pane for completed/failed jobs with immutable metadata.
   - Includes status/time filters, job-id search, and pagination.
   - Row model includes `job_id`, `status`, `demand source`, `completed timestamp`, `result hash`, and `payment pointer`.
-- `Email Inbox`
-  - Communication-lane inbox view for imported inbound messages.
-  - Rows show message id, sender, and normalized summary.
-- `Email Draft Queue`
-  - Draft lifecycle view for generated candidate responses.
-  - Rows show draft id, approval readiness, and confidence metadata.
-- `Email Approval Queue`
-  - Operator approval view for explicit approve/reject/edit decisions before send.
-  - Rows show draft id, actor/policy path, and rejection reasons.
-- `Email Send Log`
-  - Send attempt history view for outbound communication execution.
-  - Rows show send id, delivery status, and provider message linkage.
-- `Email Follow-up Queue`
-  - Scheduled follow-up queue driven by explicit policy rules.
-  - Rows show follow-up id, next execution window, and defer/failure reasons.
 - `Agent Profile and State`
   - SA profile/state/goals pane for `39200`, `39201`, and `39203` event visibility.
   - Actions: publish profile, publish encrypted state, update goals snapshot.
@@ -193,11 +178,6 @@ Current pane badge mapping:
 - `Job Inbox`: `source: runtime`
 - `Active Job`: `source: runtime`
 - `Job History`: `source: runtime`
-- `Email Inbox`: `source: runtime`
-- `Email Draft Queue`: `source: runtime`
-- `Email Approval Queue`: `source: runtime`
-- `Email Send Log`: `source: runtime`
-- `Email Follow-up Queue`: `source: runtime`
 - `Nostr Keys (NIP-06)`: `source: local`
 - `Agent Profile and State`: `source: runtime`
 - `Agent Schedule and Tick`: `source: runtime`
@@ -239,11 +219,6 @@ Current pane badge mapping:
   - `Job Inbox` -> opens `Job Inbox`.
   - `Active Job` -> opens `Active Job`.
   - `Job History` -> opens `Job History`.
-  - `Email Inbox` -> opens `Email Inbox`.
-  - `Email Draft Queue` -> opens `Email Draft Queue`.
-  - `Email Approval Queue` -> opens `Email Approval Queue`.
-  - `Email Send Log` -> opens `Email Send Log`.
-  - `Email Follow-up Queue` -> opens `Email Follow-up Queue`.
   - `Agent Profile and State` -> opens `Agent Profile and State`.
   - `Agent Schedule and Tick` -> opens `Agent Schedule and Tick`.
   - `Trajectory Audit` -> opens `Trajectory Audit`.
@@ -259,7 +234,7 @@ Current pane badge mapping:
 
 ## Behavior Notes
 
-- Chat, Codex Account, Codex Models, Codex Config, Codex MCP, Codex Apps, Codex Labs, Codex Diagnostics, Go Online, Provider Status, Relay Connections, Sync Health, Network Requests, Starter Jobs, Activity Feed, Alerts and Recovery, Settings, Earnings Scoreboard, Job Inbox, Active Job, Job History, Email Inbox, Email Draft Queue, Email Approval Queue, Email Send Log, Email Follow-up Queue, Agent Profile and State, Agent Schedule and Tick, Trajectory Audit, CAST Control, Agent Skill Registry, Skill Trust and Revocation, Credit Desk, Credit Settlement Ledger, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
+- Chat, Codex Account, Codex Models, Codex Config, Codex MCP, Codex Apps, Codex Labs, Codex Diagnostics, Go Online, Provider Status, Relay Connections, Sync Health, Network Requests, Starter Jobs, Activity Feed, Alerts and Recovery, Settings, Earnings Scoreboard, Job Inbox, Active Job, Job History, Agent Profile and State, Agent Schedule and Tick, Trajectory Audit, CAST Control, Agent Skill Registry, Skill Trust and Revocation, Credit Desk, Credit Settlement Ledger, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
 - Wallet worker updates are shared across wallet-related panes.
 - When a new invoice is created in the wallet pane, that invoice is prefilled into send/payment request inputs.
 

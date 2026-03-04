@@ -29,13 +29,12 @@ use crate::pane_system::{
     CadDemoPaneAction, CastControlPaneAction, CodexAccountPaneAction, CodexAppsPaneAction,
     CodexConfigPaneAction, CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction,
     CodexModelsPaneAction, CredentialsPaneAction, CreditDeskPaneAction,
-    CreditSettlementLedgerPaneAction, EarningsScoreboardPaneAction, EmailApprovalQueuePaneAction,
-    EmailDraftQueuePaneAction, EmailFollowUpQueuePaneAction, EmailInboxPaneAction,
-    EmailSendLogPaneAction, JobHistoryPaneAction, JobInboxPaneAction, NetworkRequestsPaneAction,
-    PaneController, PaneHitAction, RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction,
-    SettingsPaneAction, SkillRegistryPaneAction, SkillTrustRevocationPaneAction,
-    StableSatsSimulationPaneAction, StarterJobsPaneAction, SyncHealthPaneAction,
-    TrajectoryAuditPaneAction, TreasuryExchangeSimulationPaneAction,
+    CreditSettlementLedgerPaneAction, EarningsScoreboardPaneAction, JobHistoryPaneAction,
+    JobInboxPaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction,
+    RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction, SettingsPaneAction,
+    SkillRegistryPaneAction, SkillTrustRevocationPaneAction, StableSatsSimulationPaneAction,
+    StarterJobsPaneAction, SyncHealthPaneAction, TrajectoryAuditPaneAction,
+    TreasuryExchangeSimulationPaneAction,
 };
 use crate::runtime_lanes::SaLifecycleCommand;
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
@@ -1212,9 +1211,6 @@ fn pane_action_to_hit_action(
                 CredentialsPaneAction::ImportFromEnv,
             )),
             "reload" => Ok(PaneHitAction::Credentials(CredentialsPaneAction::Reload)),
-            "gmail_login" | "gmail_oauth_login" => Ok(PaneHitAction::Credentials(
-                CredentialsPaneAction::StartGmailOAuthLogin,
-            )),
             "select_row" => Ok(PaneHitAction::Credentials(
                 CredentialsPaneAction::SelectRow(require_index(action)?),
             )),
@@ -1244,61 +1240,6 @@ fn pane_action_to_hit_action(
                 JobHistoryPaneAction::PreviousPage,
             )),
             "next_page" => Ok(PaneHitAction::JobHistory(JobHistoryPaneAction::NextPage)),
-            _ => unsupported(),
-        },
-        PaneKind::EmailInbox => match action {
-            "refresh" => Ok(PaneHitAction::EmailInbox(EmailInboxPaneAction::Refresh)),
-            "generate_draft_selected" | "generate_draft" => Ok(PaneHitAction::EmailInbox(
-                EmailInboxPaneAction::GenerateDraftSelected,
-            )),
-            "select_row" | "select_message" => Ok(PaneHitAction::EmailInbox(
-                EmailInboxPaneAction::SelectRow(require_index(action)?),
-            )),
-            _ => unsupported(),
-        },
-        PaneKind::EmailDraftQueue => match action {
-            "select_row" | "select_draft" => Ok(PaneHitAction::EmailDraftQueue(
-                EmailDraftQueuePaneAction::SelectRow(require_index(action)?),
-            )),
-            _ => unsupported(),
-        },
-        PaneKind::EmailApprovalQueue => match action {
-            "approve_selected" | "approve" => Ok(PaneHitAction::EmailApprovalQueue(
-                EmailApprovalQueuePaneAction::ApproveSelected,
-            )),
-            "reject_selected" | "reject" => Ok(PaneHitAction::EmailApprovalQueue(
-                EmailApprovalQueuePaneAction::RejectSelected,
-            )),
-            "request_edits_selected" | "request_edits" => Ok(PaneHitAction::EmailApprovalQueue(
-                EmailApprovalQueuePaneAction::RequestEditsSelected,
-            )),
-            "toggle_pause_queue" => Ok(PaneHitAction::EmailApprovalQueue(
-                EmailApprovalQueuePaneAction::TogglePauseQueue,
-            )),
-            "toggle_kill_switch" => Ok(PaneHitAction::EmailApprovalQueue(
-                EmailApprovalQueuePaneAction::ToggleKillSwitch,
-            )),
-            "select_row" | "select_draft" => Ok(PaneHitAction::EmailApprovalQueue(
-                EmailApprovalQueuePaneAction::SelectRow(require_index(action)?),
-            )),
-            _ => unsupported(),
-        },
-        PaneKind::EmailSendLog => match action {
-            "send_selected" | "send" => Ok(PaneHitAction::EmailSendLog(
-                EmailSendLogPaneAction::SendSelected,
-            )),
-            "select_row" | "select_send" => Ok(PaneHitAction::EmailSendLog(
-                EmailSendLogPaneAction::SelectRow(require_index(action)?),
-            )),
-            _ => unsupported(),
-        },
-        PaneKind::EmailFollowUpQueue => match action {
-            "run_scheduler_tick" | "run_scheduler" | "tick" => Ok(
-                PaneHitAction::EmailFollowUpQueue(EmailFollowUpQueuePaneAction::RunSchedulerTick),
-            ),
-            "select_row" | "select_job" => Ok(PaneHitAction::EmailFollowUpQueue(
-                EmailFollowUpQueuePaneAction::SelectRow(require_index(action)?),
-            )),
             _ => unsupported(),
         },
         PaneKind::NostrIdentity => match action {
@@ -4608,11 +4549,6 @@ fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::JobInbox => "job_inbox",
         PaneKind::ActiveJob => "active_job",
         PaneKind::JobHistory => "job_history",
-        PaneKind::EmailInbox => "email_inbox",
-        PaneKind::EmailDraftQueue => "email_draft_queue",
-        PaneKind::EmailApprovalQueue => "email_approval_queue",
-        PaneKind::EmailSendLog => "email_send_log",
-        PaneKind::EmailFollowUpQueue => "email_follow_up_queue",
         PaneKind::NostrIdentity => "nostr_identity",
         PaneKind::SparkWallet => "spark_wallet",
         PaneKind::SparkCreateInvoice => "spark_create_invoice",
@@ -4666,9 +4602,8 @@ mod tests {
         PaneKind,
     };
     use crate::pane_system::{
-        CadDemoPaneAction, CredentialsPaneAction, EmailApprovalQueuePaneAction,
-        EmailDraftQueuePaneAction, EmailFollowUpQueuePaneAction, EmailInboxPaneAction,
-        EmailSendLogPaneAction, PaneHitAction, RelayConnectionsPaneAction, SettingsPaneAction,
+        CadDemoPaneAction, CredentialsPaneAction, PaneHitAction, RelayConnectionsPaneAction,
+        SettingsPaneAction,
     };
     use crate::spark_pane::SparkPaneAction;
     use crate::state::autopilot_goals::GoalRolloutStage;
@@ -4838,11 +4773,6 @@ mod tests {
                 .expect("wallet refresh"),
             PaneHitAction::Spark(SparkPaneAction::Refresh)
         );
-        assert_eq!(
-            pane_action_to_hit_action(PaneKind::Credentials, "gmail_login", None)
-                .expect("gmail login"),
-            PaneHitAction::Credentials(CredentialsPaneAction::StartGmailOAuthLogin)
-        );
     }
 
     #[test]
@@ -4854,52 +4784,6 @@ mod tests {
             pane_action_to_hit_action(PaneKind::RelayConnections, "select_row", Some(2))
                 .expect("with index"),
             PaneHitAction::RelayConnections(RelayConnectionsPaneAction::SelectRow(2))
-        );
-    }
-
-    #[test]
-    fn pane_action_mapping_supports_email_panes() {
-        assert_eq!(
-            pane_action_to_hit_action(PaneKind::EmailInbox, "refresh", None)
-                .expect("email inbox refresh"),
-            PaneHitAction::EmailInbox(EmailInboxPaneAction::Refresh)
-        );
-        assert_eq!(
-            pane_action_to_hit_action(PaneKind::EmailInbox, "generate_draft", None)
-                .expect("email inbox generate draft"),
-            PaneHitAction::EmailInbox(EmailInboxPaneAction::GenerateDraftSelected)
-        );
-        assert_eq!(
-            pane_action_to_hit_action(PaneKind::EmailDraftQueue, "select_draft", Some(1))
-                .expect("email draft select"),
-            PaneHitAction::EmailDraftQueue(EmailDraftQueuePaneAction::SelectRow(1))
-        );
-        assert_eq!(
-            pane_action_to_hit_action(PaneKind::EmailApprovalQueue, "approve", None)
-                .expect("approval approve"),
-            PaneHitAction::EmailApprovalQueue(EmailApprovalQueuePaneAction::ApproveSelected)
-        );
-        assert_eq!(
-            pane_action_to_hit_action(PaneKind::EmailSendLog, "send_selected", None)
-                .expect("send selected"),
-            PaneHitAction::EmailSendLog(EmailSendLogPaneAction::SendSelected)
-        );
-        assert_eq!(
-            pane_action_to_hit_action(PaneKind::EmailFollowUpQueue, "run_scheduler_tick", None)
-                .expect("follow-up tick"),
-            PaneHitAction::EmailFollowUpQueue(EmailFollowUpQueuePaneAction::RunSchedulerTick)
-        );
-    }
-
-    #[test]
-    fn pane_action_mapping_requires_index_for_email_row_selection() {
-        let err = pane_action_to_hit_action(PaneKind::EmailInbox, "select_row", None)
-            .expect_err("email inbox row selection should require index");
-        assert_eq!(err.code, "OA-PANE-ACTION-MISSING-INDEX");
-        assert_eq!(
-            pane_action_to_hit_action(PaneKind::EmailApprovalQueue, "select_row", Some(3))
-                .expect("email approval row select"),
-            PaneHitAction::EmailApprovalQueue(EmailApprovalQueuePaneAction::SelectRow(3))
         );
     }
 

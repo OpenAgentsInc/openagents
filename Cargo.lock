@@ -345,7 +345,6 @@ dependencies = [
  "nostr 0.1.0",
  "nostr-client",
  "openagents-cad",
- "openagents-email-agent",
  "openagents-spark",
  "pollster",
  "reqwest",
@@ -4039,13 +4038,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "thiserror 2.0.17",
-]
-
-[[package]]
-name = "openagents-email-agent"
-version = "0.1.0"
-dependencies = [
  "thiserror 2.0.17",
 ]
 

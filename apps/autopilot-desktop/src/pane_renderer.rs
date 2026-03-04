@@ -6,13 +6,13 @@ use crate::app_state::{
     CodexConfigPaneState, CodexDiagnosticsPaneState, CodexLabsPaneState, CodexMcpPaneState,
     CodexModelsPaneState, CreateInvoicePaneInputs, CredentialsPaneInputs, CredentialsState,
     CreditDeskPaneState, CreditSettlementLedgerPaneState, DesktopPane, EarningsScoreboardState,
-    EmailLaneState, JobHistoryPaneInputs, JobHistoryState, JobInboxState, JobLifecycleStage,
-    NetworkRequestStatus, NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState,
-    PaneKind, PaneLoadState, PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState,
-    RelayConnectionsPaneInputs, RelayConnectionsState, RelaySecuritySimulationPaneState,
-    SettingsPaneInputs, SettingsState, SkillRegistryPaneState, SkillTrustRevocationPaneState,
-    SparkPaneInputs, StableSatsSimulationPaneState, StarterJobStatus, StarterJobsState,
-    SyncHealthState, TrajectoryAuditPaneState, TreasuryExchangeSimulationPaneState,
+    JobHistoryPaneInputs, JobHistoryState, JobInboxState, JobLifecycleStage, NetworkRequestStatus,
+    NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
+    PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, RelayConnectionsPaneInputs,
+    RelayConnectionsState, RelaySecuritySimulationPaneState, SettingsPaneInputs, SettingsState,
+    SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs,
+    StableSatsSimulationPaneState, StarterJobStatus, StarterJobsState, SyncHealthState,
+    TrajectoryAuditPaneState, TreasuryExchangeSimulationPaneState,
 };
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
@@ -21,12 +21,12 @@ use crate::pane_system::{
     alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
     alerts_recovery_row_bounds, alerts_recovery_visible_row_count,
     credentials_add_custom_button_bounds, credentials_delete_button_bounds,
-    credentials_gmail_login_button_bounds, credentials_import_button_bounds,
-    credentials_name_input_bounds, credentials_reload_button_bounds, credentials_row_bounds,
-    credentials_save_value_button_bounds, credentials_scope_codex_button_bounds,
-    credentials_scope_global_button_bounds, credentials_scope_skills_button_bounds,
-    credentials_scope_spark_button_bounds, credentials_toggle_enabled_button_bounds,
-    credentials_value_input_bounds, credentials_visible_row_count,
+    credentials_import_button_bounds, credentials_name_input_bounds,
+    credentials_reload_button_bounds, credentials_row_bounds, credentials_save_value_button_bounds,
+    credentials_scope_codex_button_bounds, credentials_scope_global_button_bounds,
+    credentials_scope_skills_button_bounds, credentials_scope_spark_button_bounds,
+    credentials_toggle_enabled_button_bounds, credentials_value_input_bounds,
+    credentials_visible_row_count,
     earnings_scoreboard_refresh_button_bounds, go_online_toggle_button_bounds,
     job_history_next_page_button_bounds, job_history_prev_page_button_bounds,
     job_history_search_input_bounds, job_history_status_button_bounds,
@@ -44,9 +44,9 @@ use crate::pane_system::{
 };
 use crate::panes::{
     agent as agent_pane, cad as cad_pane, calculator as calculator_pane, cast as cast_pane,
-    chat as chat_pane, codex as codex_pane, credit as credit_pane, email as email_pane,
-    relay_connections as relay_connections_pane, simulation as simulation_pane,
-    skill as skill_pane, wallet as wallet_pane,
+    chat as chat_pane, codex as codex_pane, credit as credit_pane,
+    relay_connections as relay_connections_pane, simulation as simulation_pane, skill as skill_pane,
+    wallet as wallet_pane,
 };
 use crate::spark_wallet::SparkPaneState;
 use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
@@ -86,7 +86,6 @@ impl PaneRenderer {
         alerts_recovery: &AlertsRecoveryState,
         settings: &SettingsState,
         credentials: &CredentialsState,
-        email_lane: &EmailLaneState,
         job_inbox: &JobInboxState,
         active_job: &ActiveJobState,
         job_history: &JobHistoryState,
@@ -240,21 +239,6 @@ impl PaneRenderer {
                 }
                 PaneKind::JobHistory => {
                     paint_job_history_pane(content_bounds, job_history, job_history_inputs, paint);
-                }
-                PaneKind::EmailInbox => {
-                    email_pane::paint_email_inbox_pane(content_bounds, email_lane, paint);
-                }
-                PaneKind::EmailDraftQueue => {
-                    email_pane::paint_email_draft_queue_pane(content_bounds, email_lane, paint);
-                }
-                PaneKind::EmailApprovalQueue => {
-                    email_pane::paint_email_approval_queue_pane(content_bounds, email_lane, paint);
-                }
-                PaneKind::EmailSendLog => {
-                    email_pane::paint_email_send_log_pane(content_bounds, email_lane, paint);
-                }
-                PaneKind::EmailFollowUpQueue => {
-                    email_pane::paint_email_follow_up_queue_pane(content_bounds, email_lane, paint);
                 }
                 PaneKind::AgentProfileState => {
                     agent_pane::paint_agent_profile_state_pane(
@@ -1564,7 +1548,6 @@ fn paint_credentials_pane(
     let scope_spark_bounds = credentials_scope_spark_button_bounds(content_bounds);
     let scope_skills_bounds = credentials_scope_skills_button_bounds(content_bounds);
     let scope_global_bounds = credentials_scope_global_button_bounds(content_bounds);
-    let gmail_login_bounds = credentials_gmail_login_button_bounds(content_bounds);
 
     paint.scene.draw_text(paint.text.layout(
         "Variable name",
@@ -1670,12 +1653,11 @@ fn paint_credentials_pane(
         ),
         paint,
     );
-    paint_action_button(gmail_login_bounds, "Gmail Login", paint);
 
     let summary_y = paint_state_summary(
         paint,
         content_bounds.origin.x + 12.0,
-        gmail_login_bounds.max_y() + 10.0,
+        scope_global_bounds.max_y() + 10.0,
         credentials.load_state,
         &format!("State: {}", credentials.load_state.label()),
         credentials.last_action.as_deref(),
