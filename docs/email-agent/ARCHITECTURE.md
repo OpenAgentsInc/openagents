@@ -95,3 +95,10 @@ Define the retained architecture and contracts for the communication-agent lane 
 4. Style/knowledge + draft generation.
 5. Approval/send/follow-up workflows.
 6. Observability, security controls, and release gates.
+
+## Operational References
+
+- Tenant isolation: `docs/email-agent/TENANT_ISOLATION.md`
+- Security and privacy: `docs/email-agent/SECURITY_PRIVACY_RUNBOOK.md`
+- Onboarding: `docs/email-agent/ONBOARDING.md`
+- Operations playbook: `docs/email-agent/OPERATIONS_PLAYBOOK.md`
