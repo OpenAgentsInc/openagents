@@ -1,6 +1,6 @@
 use crate::app_state::{
-    ActivityEventDomain, ActivityEventRow, PaneLoadState, ProviderMode, RelayConnectionRow,
-    RelayConnectionStatus, RenderState,
+    ActivityEventDomain, ActivityEventRow, EarnFailureClass, PaneLoadState, ProviderMode,
+    RelayConnectionRow, RelayConnectionStatus, RenderState,
 };
 use crate::provider_nip90_lane::{
     ProviderNip90LaneMode, ProviderNip90LaneSnapshot, ProviderNip90PublishOutcome,
@@ -47,6 +47,7 @@ pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: ProviderNip
         state.provider_runtime.mode = ProviderMode::Degraded;
         state.provider_runtime.degraded_reason_code = Some("NIP90_RELAY_INGRESS_ERROR".to_string());
         state.provider_runtime.last_error_detail = Some(last_error.to_string());
+        state.provider_runtime.last_authoritative_error_class = Some(EarnFailureClass::Relay);
         state.provider_runtime.last_result = state.provider_nip90_lane.last_action.clone();
         state.provider_runtime.mode_changed_at = std::time::Instant::now();
     } else if state.provider_nip90_lane.mode == ProviderNip90LaneMode::Online
@@ -56,6 +57,9 @@ pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: ProviderNip
         state.provider_runtime.mode = ProviderMode::Online;
         state.provider_runtime.degraded_reason_code = None;
         state.provider_runtime.last_error_detail = None;
+        if state.provider_runtime.last_authoritative_error_class == Some(EarnFailureClass::Relay) {
+            state.provider_runtime.last_authoritative_error_class = None;
+        }
         state.provider_runtime.last_result = state.provider_nip90_lane.last_action.clone();
         state.provider_runtime.mode_changed_at = std::time::Instant::now();
     }
@@ -91,7 +95,9 @@ pub(super) fn apply_ingressed_request(state: &mut RenderState, request: JobInbox
     ));
     state.provider_runtime.last_authoritative_status = Some("accepted".to_string());
     state.provider_runtime.last_authoritative_event_id = Some(request.request_id.clone());
-    state.provider_runtime.last_authoritative_error_class = None;
+    if state.provider_runtime.last_authoritative_error_class == Some(EarnFailureClass::Relay) {
+        state.provider_runtime.last_authoritative_error_class = None;
+    }
 
     if is_new {
         let now_epoch_seconds = std::time::SystemTime::now()
@@ -127,10 +133,14 @@ pub(super) fn apply_publish_outcome(state: &mut RenderState, outcome: ProviderNi
         state.provider_runtime.mode = ProviderMode::Degraded;
         state.provider_runtime.degraded_reason_code = Some("NIP90_PUBLISH_ERROR".to_string());
         state.provider_runtime.last_error_detail = Some(error);
+        state.provider_runtime.last_authoritative_error_class = Some(EarnFailureClass::Relay);
     } else if state.provider_runtime.mode != ProviderMode::Offline {
         state.provider_runtime.mode = ProviderMode::Online;
         state.provider_runtime.degraded_reason_code = None;
         state.provider_runtime.last_error_detail = None;
+        if state.provider_runtime.last_authoritative_error_class == Some(EarnFailureClass::Relay) {
+            state.provider_runtime.last_authoritative_error_class = None;
+        }
     }
 
     let publish_label = if publish_succeeded {

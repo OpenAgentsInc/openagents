@@ -4589,6 +4589,129 @@ pub(super) fn refresh_earnings_scoreboard(
         &state.job_history,
         &state.spark_wallet,
     );
+
+    let succeeded_jobs = state
+        .job_history
+        .rows
+        .iter()
+        .filter(|row| row.status == crate::app_state::JobHistoryStatus::Succeeded)
+        .count();
+    let reconciled_jobs = state
+        .job_history
+        .wallet_reconciled_payout_rows(&state.spark_wallet)
+        .len();
+    let failure = classify_provider_failure(
+        state.provider_nip90_lane.last_error.as_deref(),
+        state.provider_runtime.degraded_reason_code.as_deref(),
+        state.provider_runtime.last_error_detail.as_deref(),
+        state.active_job.last_error.as_deref(),
+        state.spark_wallet.last_error.as_deref(),
+        state.spark_wallet.balance.is_some() && state.spark_wallet.last_error.is_none(),
+        succeeded_jobs,
+        reconciled_jobs,
+    );
+    if let Some((class, detail)) = failure {
+        state.provider_runtime.last_authoritative_error_class = Some(class);
+        state.provider_runtime.last_error_detail = Some(detail);
+    } else {
+        state.provider_runtime.last_authoritative_error_class = None;
+        if state
+            .provider_runtime
+            .last_error_detail
+            .as_deref()
+            .is_some_and(is_taxonomy_failure_detail)
+        {
+            state.provider_runtime.last_error_detail = None;
+        }
+    }
+}
+
+fn classify_provider_failure(
+    relay_lane_error: Option<&str>,
+    degraded_reason_code: Option<&str>,
+    runtime_error_detail: Option<&str>,
+    active_job_error: Option<&str>,
+    wallet_error: Option<&str>,
+    wallet_ready: bool,
+    succeeded_jobs: usize,
+    reconciled_jobs: usize,
+) -> Option<(crate::app_state::EarnFailureClass, String)> {
+    if let Some(error) = relay_lane_error {
+        return Some((
+            crate::app_state::EarnFailureClass::Relay,
+            taxonomy_failure_detail(crate::app_state::EarnFailureClass::Relay, error),
+        ));
+    }
+    if degraded_reason_code.is_some_and(|code| code.starts_with("NIP90_")) {
+        return Some((
+            crate::app_state::EarnFailureClass::Relay,
+            taxonomy_failure_detail(
+                crate::app_state::EarnFailureClass::Relay,
+                runtime_error_detail.unwrap_or("relay lane degraded"),
+            ),
+        ));
+    }
+    if let Some(error) = active_job_error {
+        return Some((
+            crate::app_state::EarnFailureClass::Execution,
+            taxonomy_failure_detail(crate::app_state::EarnFailureClass::Execution, error),
+        ));
+    }
+    if degraded_reason_code.is_some_and(|code| code.starts_with("SA_")) {
+        return Some((
+            crate::app_state::EarnFailureClass::Execution,
+            taxonomy_failure_detail(
+                crate::app_state::EarnFailureClass::Execution,
+                runtime_error_detail.unwrap_or("execution lane degraded"),
+            ),
+        ));
+    }
+    if let Some(error) = wallet_error {
+        return Some((
+            crate::app_state::EarnFailureClass::Payment,
+            taxonomy_failure_detail(crate::app_state::EarnFailureClass::Payment, error),
+        ));
+    }
+    if wallet_ready && succeeded_jobs > reconciled_jobs {
+        let missing = succeeded_jobs.saturating_sub(reconciled_jobs);
+        return Some((
+            crate::app_state::EarnFailureClass::Reconciliation,
+            taxonomy_failure_detail(
+                crate::app_state::EarnFailureClass::Reconciliation,
+                format!("{missing} succeeded job(s) missing wallet-confirmed payout evidence"),
+            ),
+        ));
+    }
+
+    None
+}
+
+fn taxonomy_failure_detail(
+    class: crate::app_state::EarnFailureClass,
+    detail: impl AsRef<str>,
+) -> String {
+    let detail = detail.as_ref().trim();
+    if detail.is_empty() {
+        class.label().to_string()
+    } else if detail
+        .to_ascii_lowercase()
+        .starts_with(&format!("{}:", class.label()))
+    {
+        detail.to_string()
+    } else {
+        format!("{}: {}", class.label(), detail)
+    }
+}
+
+fn is_taxonomy_failure_detail(detail: &str) -> bool {
+    [
+        crate::app_state::EarnFailureClass::Relay,
+        crate::app_state::EarnFailureClass::Execution,
+        crate::app_state::EarnFailureClass::Payment,
+        crate::app_state::EarnFailureClass::Reconciliation,
+    ]
+    .into_iter()
+    .any(|class| detail.to_ascii_lowercase().starts_with(class.label()))
 }
 
 pub(super) fn refresh_network_aggregate_counters(
@@ -4960,9 +5083,10 @@ pub(super) fn parse_positive_amount_str(raw: &str, label: &str) -> Result<u64, S
 #[cfg(test)]
 mod tests {
     use super::{
+        classify_provider_failure, is_taxonomy_failure_detail,
         resolve_wallet_blink_env_from_secure_values,
         stable_sats_period_convert_totals_from_receipts,
-        stable_sats_real_round_phase_from_operation_count,
+        stable_sats_real_round_phase_from_operation_count, taxonomy_failure_detail,
     };
 
     fn fixture_wallet() -> crate::app_state::StableSatsAgentWalletState {
@@ -5139,5 +5263,69 @@ mod tests {
 
         let totals = stable_sats_period_convert_totals_from_receipts(receipts.as_slice(), cutoff);
         assert_eq!(totals, (1_200, 345));
+    }
+
+    #[test]
+    fn provider_failure_taxonomy_classifies_relay_execution_payment_and_reconciliation() {
+        let relay = classify_provider_failure(
+            Some("relay timeout"),
+            None,
+            None,
+            Some("active job failed"),
+            Some("wallet offline"),
+            true,
+            3,
+            1,
+        )
+        .expect("relay failure should classify");
+        assert_eq!(relay.0, crate::app_state::EarnFailureClass::Relay);
+        assert!(relay.1.starts_with("relay:"));
+
+        let execution = classify_provider_failure(
+            None,
+            Some("SA_COMMAND_REJECTED"),
+            Some("sa lane rejected command"),
+            Some("active job failed"),
+            Some("wallet offline"),
+            true,
+            3,
+            1,
+        )
+        .expect("execution failure should classify");
+        assert_eq!(execution.0, crate::app_state::EarnFailureClass::Execution);
+        assert!(execution.1.starts_with("execution:"));
+
+        let payment = classify_provider_failure(
+            None,
+            None,
+            None,
+            None,
+            Some("wallet backend unavailable"),
+            true,
+            3,
+            1,
+        )
+        .expect("payment failure should classify");
+        assert_eq!(payment.0, crate::app_state::EarnFailureClass::Payment);
+        assert!(payment.1.starts_with("payment:"));
+
+        let reconciliation = classify_provider_failure(None, None, None, None, None, true, 4, 2)
+            .expect("reconciliation mismatch should classify");
+        assert_eq!(
+            reconciliation.0,
+            crate::app_state::EarnFailureClass::Reconciliation
+        );
+        assert!(reconciliation.1.starts_with("reconciliation:"));
+    }
+
+    #[test]
+    fn taxonomy_failure_detail_helpers_prefix_and_detect_labels() {
+        let relay = taxonomy_failure_detail(
+            crate::app_state::EarnFailureClass::Relay,
+            " relay publish failed ",
+        );
+        assert_eq!(relay, "relay: relay publish failed");
+        assert!(is_taxonomy_failure_detail(relay.as_str()));
+        assert!(!is_taxonomy_failure_detail("wallet backend unavailable"));
     }
 }

@@ -131,6 +131,11 @@ Red:
   - Updated `docs/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md` with a reconciled gate-status matrix and explicit follow-on issue state table for `#2877` through `#2890`.
   - Clarified the original `#2814`-`#2876` list as historical scope and documented that open reconciliation issues block final completion claims.
   - Updated `docs/AUTOPILOT_EARN_MVP_IMPLEMENTATION_LOG.md` header/claims to separate historical evidence from live completion status, plus added reconciliation addendum coverage for `#2877`-`#2890`.
+- 2026-03-04: `#2887` (failure taxonomy + user-facing diagnostics) implemented.
+  - Added canonical provider failure classes (`relay`, `execution`, `payment`, `reconciliation`) as typed runtime state and surfaced them in Provider Status diagnostics (`apps/autopilot-desktop/src/state/provider_runtime.rs`, `apps/autopilot-desktop/src/pane_renderer.rs`).
+  - Wired deterministic failure classification with precedence in scoreboard refresh path so operator diagnostics consistently map relay, execution, wallet/payment, and reconciliation mismatch failures (`apps/autopilot-desktop/src/input/actions.rs`).
+  - Updated reducer error mapping to use canonical classes across ingress, active-job execution, wallet, and SA command response flows (`apps/autopilot-desktop/src/input/reducers/{provider_ingress,jobs,wallet,sa}.rs`, `apps/autopilot-desktop/src/input.rs`).
+  - Added automated taxonomy classifier coverage and wired it into the earnings epic gate (`apps/autopilot-desktop/src/input/actions.rs`, `scripts/lint/autopilot-earnings-epic-test-gate.sh`).
 
 ## MVP Requirement Matrix (from `docs/MVP.md`)
 

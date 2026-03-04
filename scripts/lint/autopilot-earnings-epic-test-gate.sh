@@ -133,6 +133,11 @@ run_test \
     app_state::tests::network_aggregate_counters_ \
     -- --nocapture
 run_test \
+    "Failure taxonomy classifier wiring" \
+    cargo test -p autopilot-desktop \
+    input::actions::tests::provider_failure_taxonomy_classifies_relay_execution_payment_and_reconciliation \
+    -- --nocapture
+run_test \
     "Earn bitcoin until +N sats flow" \
     cargo test -p autopilot-desktop \
     state::earnings_gate::tests::earn_bitcoin_until_target_sats_requires_wallet_confirmed_threshold \

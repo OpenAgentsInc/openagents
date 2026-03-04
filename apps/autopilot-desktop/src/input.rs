@@ -35,8 +35,8 @@ use winit::window::Fullscreen;
 
 use crate::app_state::{
     ActivityEventDomain, ActivityEventRow, AlertDomain, App, CadCameraDragMode, CadCameraDragState,
-    CadHotkeyAction, ChatTranscriptSelectionDragState, JobInboxNetworkRequest, JobInboxValidation,
-    NetworkRequestSubmission, PaneKind, ProviderMode,
+    CadHotkeyAction, ChatTranscriptSelectionDragState, EarnFailureClass, JobInboxNetworkRequest,
+    JobInboxValidation, NetworkRequestSubmission, PaneKind, ProviderMode,
 };
 use crate::hotbar::{
     HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_SPARK_WALLET, activate_hotbar_slot,
@@ -2376,6 +2376,8 @@ pub(super) fn run_pane_hit_action(
                 state.provider_runtime.mode = ProviderMode::Degraded;
                 state.provider_runtime.degraded_reason_code =
                     Some("NIP90_INGRESS_QUEUE_ERROR".to_string());
+                state.provider_runtime.last_authoritative_error_class =
+                    Some(EarnFailureClass::Relay);
                 state.provider_runtime.mode_changed_at = std::time::Instant::now();
             }
             match state.queue_sa_command(SaLifecycleCommand::SetRunnerOnline {
@@ -2399,7 +2401,7 @@ pub(super) fn run_pane_hit_action(
                         Some(RuntimeCommandStatus::Retryable.label().to_string());
                     state.provider_runtime.last_authoritative_event_id = None;
                     state.provider_runtime.last_authoritative_error_class =
-                        Some(RuntimeCommandErrorClass::Transport.label().to_string());
+                        Some(EarnFailureClass::Execution);
                 }
             }
             true

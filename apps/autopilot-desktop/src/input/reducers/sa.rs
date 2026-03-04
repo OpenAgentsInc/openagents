@@ -1,4 +1,4 @@
-use crate::app_state::{PaneLoadState, ProviderMode, RenderState};
+use crate::app_state::{EarnFailureClass, PaneLoadState, ProviderMode, RenderState};
 use crate::pane_system::{
     AgentProfileStatePaneAction, AgentScheduleTickPaneAction, TrajectoryAuditPaneAction,
 };
@@ -47,10 +47,8 @@ pub(super) fn apply_command_response(
         .provider_runtime
         .last_authoritative_event_id
         .clone_from(&response.event_id);
-    state.provider_runtime.last_authoritative_error_class = response
-        .error
-        .as_ref()
-        .map(|error| error.class.label().to_string());
+    state.provider_runtime.last_authoritative_error_class =
+        response.error.as_ref().map(|_| EarnFailureClass::Execution);
     if response.status != RuntimeCommandStatus::Accepted {
         state.provider_runtime.last_error_detail = response
             .error

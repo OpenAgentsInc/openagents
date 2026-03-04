@@ -47,6 +47,25 @@ impl ProviderBlocker {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EarnFailureClass {
+    Relay,
+    Execution,
+    Payment,
+    Reconciliation,
+}
+
+impl EarnFailureClass {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Relay => "relay",
+            Self::Execution => "execution",
+            Self::Payment => "payment",
+            Self::Reconciliation => "reconciliation",
+        }
+    }
+}
+
 pub struct ProviderRuntimeState {
     pub mode: ProviderMode,
     pub mode_changed_at: Instant,
@@ -61,7 +80,7 @@ pub struct ProviderRuntimeState {
     pub last_error_detail: Option<String>,
     pub last_authoritative_status: Option<String>,
     pub last_authoritative_event_id: Option<String>,
-    pub last_authoritative_error_class: Option<String>,
+    pub last_authoritative_error_class: Option<EarnFailureClass>,
 }
 
 impl Default for ProviderRuntimeState {

@@ -1585,7 +1585,9 @@ impl AutopilotChatState {
     }
 }
 
-pub use crate::state::provider_runtime::{ProviderBlocker, ProviderMode, ProviderRuntimeState};
+pub use crate::state::provider_runtime::{
+    EarnFailureClass, ProviderBlocker, ProviderMode, ProviderRuntimeState,
+};
 #[allow(unused_imports)]
 pub use crate::state::{
     alerts_recovery::{
