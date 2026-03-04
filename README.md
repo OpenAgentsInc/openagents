@@ -18,22 +18,3 @@ MVP completion means this loop works end to end with clear proof in-app: job lif
 From there, the model expands from a single job type into a broader provider economy. Compute is lane one. Next lanes can include liquidity solver participation under Hydra, where providers contribute capital plus execution and earn routing fees/spreads in an OpenAgents-native solver market. The architecture stays the same: intent-driven work, deterministic receipts, and explicit payouts.
 
 For setup expectations, current limitations, and source-of-truth behavior, see the user guide: [docs/EARN.md](docs/EARN.md).
-
-## Current Repository Scope
-
-- Active implementation is focused on `crates/wgpui`.
-- This repository is intentionally pruned for MVP execution speed.
-- Most historical services, docs, and supporting code were moved to a backroom archive and are restored only when explicitly directed.
-
-## Working Principles
-
-- Retained implementation is Rust/WGPUI-first.
-- Sync and state continuity must remain deterministic and replay-safe.
-- Wallet and payout state must be explicit and truthful in UI and behavior.
-- Shared dependency hygiene is guarded by `scripts/lint/workspace-dependency-drift-check.sh`.
-- Architecture boundary hygiene is guarded by `scripts/lint/ownership-boundary-check.sh`.
-- Clean-on-touch clippy hygiene is guarded by `scripts/lint/touched-clippy-gate.sh` with tracked debt in `scripts/lint/clippy-debt-allowlist.toml`.
-- Repo-managed Agent Skills validation is guarded by `scripts/skills/validate_registry.sh`.
-- Codex chat/skills regression coverage: `cargo test -p autopilot-desktop codex_lane`, `cargo test -p autopilot-desktop assemble_chat_turn_input`, and `cargo test -p codex-client --test skills_and_user_input`.
-
-For contributor guardrails and scope rules, see [AGENTS.md](AGENTS.md).
