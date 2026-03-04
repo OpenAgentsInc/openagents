@@ -1212,6 +1212,9 @@ fn pane_action_to_hit_action(
                 CredentialsPaneAction::ImportFromEnv,
             )),
             "reload" => Ok(PaneHitAction::Credentials(CredentialsPaneAction::Reload)),
+            "gmail_login" | "gmail_oauth_login" => Ok(PaneHitAction::Credentials(
+                CredentialsPaneAction::StartGmailOAuthLogin,
+            )),
             "select_row" => Ok(PaneHitAction::Credentials(
                 CredentialsPaneAction::SelectRow(require_index(action)?),
             )),
@@ -4663,9 +4666,9 @@ mod tests {
         PaneKind,
     };
     use crate::pane_system::{
-        CadDemoPaneAction, EmailApprovalQueuePaneAction, EmailDraftQueuePaneAction,
-        EmailFollowUpQueuePaneAction, EmailInboxPaneAction, EmailSendLogPaneAction,
-        PaneHitAction, RelayConnectionsPaneAction, SettingsPaneAction,
+        CadDemoPaneAction, CredentialsPaneAction, EmailApprovalQueuePaneAction,
+        EmailDraftQueuePaneAction, EmailFollowUpQueuePaneAction, EmailInboxPaneAction,
+        EmailSendLogPaneAction, PaneHitAction, RelayConnectionsPaneAction, SettingsPaneAction,
     };
     use crate::spark_pane::SparkPaneAction;
     use crate::state::autopilot_goals::GoalRolloutStage;
@@ -4834,6 +4837,11 @@ mod tests {
             pane_action_to_hit_action(PaneKind::SparkWallet, "refresh", None)
                 .expect("wallet refresh"),
             PaneHitAction::Spark(SparkPaneAction::Refresh)
+        );
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::Credentials, "gmail_login", None)
+                .expect("gmail login"),
+            PaneHitAction::Credentials(CredentialsPaneAction::StartGmailOAuthLogin)
         );
     }
 

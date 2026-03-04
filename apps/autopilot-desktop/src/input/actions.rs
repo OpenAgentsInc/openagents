@@ -4373,6 +4373,11 @@ pub(super) fn run_credentials_action(
             state.credentials = crate::app_state::CredentialsState::load_from_disk();
             Ok(())
         }
+        CredentialsPaneAction::StartGmailOAuthLogin => {
+            sync_runtime = true;
+            restart_codex = true;
+            super::reducers::start_gmail_oauth_login(state)
+        }
         CredentialsPaneAction::SelectRow(row_index) => state.credentials.select_row(row_index),
     };
 
