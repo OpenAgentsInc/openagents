@@ -17,7 +17,7 @@ Internal operators responsible for keeping autonomous earnings runs healthy, pay
 Autopilot Earn is a multi-lane provider economy, but current operations are compute-lane first.
 
 - Active lane: NIP-90 compute provider earnings.
-- Future lane: Hydra liquidity solver earnings (capital + execution).
+- Future lane: Hydra liquidity solver earnings (capital + execution) in an OpenAgents-native solver market.
 - Default safety rule: liquidity solver mode remains off unless a dedicated rollout explicitly enables it.
 
 ## Daily Checks

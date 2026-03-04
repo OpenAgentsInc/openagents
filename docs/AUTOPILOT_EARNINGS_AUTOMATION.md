@@ -12,6 +12,7 @@ Autopilot Earn is a multi-lane provider model:
 - liquidity solver lane (future Hydra lane).
 
 This runbook currently covers compute-lane automation and wallet/swap controls around that loop. Solver-lane automation is future scope and must be explicitly opt-in when introduced.
+When solver automation is introduced, it is expected to run through an OpenAgents-native solver market, not a third-party solver network dependency.
 
 ## Prerequisites
 

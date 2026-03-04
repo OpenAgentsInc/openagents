@@ -45,6 +45,8 @@ Planned Hydra lane example:
 2. A solver accepts and executes the route/swap.
 3. Solver earns fee/spread when settlement completes.
 
+Liquidity solver jobs are an OpenAgents-native market. We do not rely on third-party solver networks.
+
 Important constraint: solver mode is **never auto-enabled**.  
 It requires explicit user opt-in because it introduces capital commitment and route-risk policy decisions.
 

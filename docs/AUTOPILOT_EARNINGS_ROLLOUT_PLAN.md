@@ -13,6 +13,7 @@ Define production rollout controls for autonomous earnings goals:
 - post-launch hardening checklist.
 
 Autopilot Earn is modeled as multi-lane (compute provider now, liquidity solver later), but this rollout plan currently governs the compute lane.
+Future liquidity-solver rollout is expected to target an OpenAgents-native solver market path.
 
 ## Rollout Control Surface
 

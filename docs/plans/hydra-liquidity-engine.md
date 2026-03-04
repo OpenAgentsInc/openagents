@@ -58,6 +58,17 @@ Still to do (remaining scope):
 
 ---
 
+## External Liquidity Networks: Current Posture
+
+- Garden remains a useful reference architecture for intent-based liquidity routing.
+- As of 2026-03-04, Garden's solver network/orderbook is not open to external fillers; Hydra planning assumes no direct dependency.
+- Hydra roadmap execution is native-first: OpenAgents-owned matching, solver provider participation, and receipt-driven routing under HTTP-only authority mutations.
+- External adapters are optional future interop only, policy-gated, and non-blocking.
+
+Rule: **No Hydra roadmap item depends on Garden openness.**
+
+---
+
 ## 1) Goals and Non-Goals
 
 ### Goals
