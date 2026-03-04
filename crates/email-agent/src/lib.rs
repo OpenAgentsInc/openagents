@@ -7,6 +7,7 @@ mod gmail_connector;
 mod gmail_sync;
 mod knowledge_base;
 mod normalization;
+mod quality_scoring;
 mod retrieval;
 mod send_execution;
 mod style_profile;
@@ -39,6 +40,10 @@ pub use knowledge_base::{
     GroundingReference, KnowledgeBase, KnowledgeChunk, KnowledgeChunkingConfig, KnowledgeDocument,
 };
 pub use normalization::{NormalizationConfig, NormalizedConversationItem, normalize_gmail_message};
+pub use quality_scoring::{
+    QualityCase, QualityCaseScore, QualityDimensionScores, QualityEvaluationReport,
+    QualityGateError, QualityThresholds, enforce_quality_gate, evaluate_quality_corpus,
+};
 pub use retrieval::{RetrievalIndex, RetrievalQuery, RetrievedContextChunk};
 pub use send_execution::{
     GmailSendProvider, GmailSendSuccess, SendAuditEventType, SendAuditRecord, SendDeliveryState,
