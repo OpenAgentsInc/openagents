@@ -110,3 +110,4 @@ Must not own:
 - Does this change introduce product-specific behavior into reusable crates?
 - Does this change add a crate-to-app dependency?
 - Could this logic be moved one layer closer to its true owner?
+- Does this change respect domain-scoped authority boundaries in `docs/adr/ADR-0001-spacetime-domain-authority-matrix.md`?
