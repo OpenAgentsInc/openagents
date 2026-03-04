@@ -1154,6 +1154,11 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::SkillTrustRevocation
             | PaneKind::CreditDesk
             | PaneKind::CreditSettlementLedger
+            | PaneKind::EmailInbox
+            | PaneKind::EmailDraftQueue
+            | PaneKind::EmailSendLog
+            | PaneKind::EmailApprovalQueue
+            | PaneKind::EmailFollowUpQueue
             | PaneKind::AgentNetworkSimulation
             | PaneKind::TreasuryExchangeSimulation
             | PaneKind::RelaySecuritySimulation
@@ -3984,7 +3989,13 @@ fn pane_hit_action_for_pane(
             let layout = spark_pane::pay_invoice_layout(content_bounds);
             spark_pane::hit_pay_invoice_action(layout, point).map(PaneHitAction::SparkPayInvoice)
         }
-        PaneKind::Empty | PaneKind::ProviderStatus => None,
+        PaneKind::Empty
+        | PaneKind::ProviderStatus
+        | PaneKind::EmailInbox
+        | PaneKind::EmailDraftQueue
+        | PaneKind::EmailSendLog
+        | PaneKind::EmailApprovalQueue
+        | PaneKind::EmailFollowUpQueue => None,
     }
 }
 

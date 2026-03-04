@@ -43,7 +43,7 @@ use crate::pane_system::{
 };
 use crate::panes::{
     agent as agent_pane, cad as cad_pane, calculator as calculator_pane, cast as cast_pane,
-    chat as chat_pane, codex as codex_pane, credit as credit_pane,
+    chat as chat_pane, codex as codex_pane, credit as credit_pane, email as email_pane,
     relay_connections as relay_connections_pane, simulation as simulation_pane,
     skill as skill_pane, wallet as wallet_pane,
 };
@@ -238,6 +238,21 @@ impl PaneRenderer {
                 }
                 PaneKind::JobHistory => {
                     paint_job_history_pane(content_bounds, job_history, job_history_inputs, paint);
+                }
+                PaneKind::EmailInbox => {
+                    email_pane::paint_email_inbox_pane(content_bounds, paint);
+                }
+                PaneKind::EmailDraftQueue => {
+                    email_pane::paint_email_draft_queue_pane(content_bounds, paint);
+                }
+                PaneKind::EmailApprovalQueue => {
+                    email_pane::paint_email_approval_queue_pane(content_bounds, paint);
+                }
+                PaneKind::EmailSendLog => {
+                    email_pane::paint_email_send_log_pane(content_bounds, paint);
+                }
+                PaneKind::EmailFollowUpQueue => {
+                    email_pane::paint_email_follow_up_queue_pane(content_bounds, paint);
                 }
                 PaneKind::AgentProfileState => {
                     agent_pane::paint_agent_profile_state_pane(

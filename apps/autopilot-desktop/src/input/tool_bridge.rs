@@ -1493,7 +1493,13 @@ fn pane_action_to_hit_action(
             ))),
             _ => unsupported(),
         },
-        PaneKind::ProviderStatus | PaneKind::Empty => unsupported(),
+        PaneKind::ProviderStatus
+        | PaneKind::Empty
+        | PaneKind::EmailInbox
+        | PaneKind::EmailDraftQueue
+        | PaneKind::EmailSendLog
+        | PaneKind::EmailApprovalQueue
+        | PaneKind::EmailFollowUpQueue => unsupported(),
     }
 }
 
@@ -4511,6 +4517,11 @@ fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::JobInbox => "job_inbox",
         PaneKind::ActiveJob => "active_job",
         PaneKind::JobHistory => "job_history",
+        PaneKind::EmailInbox => "email_inbox",
+        PaneKind::EmailDraftQueue => "email_draft_queue",
+        PaneKind::EmailApprovalQueue => "email_approval_queue",
+        PaneKind::EmailSendLog => "email_send_log",
+        PaneKind::EmailFollowUpQueue => "email_follow_up_queue",
         PaneKind::NostrIdentity => "nostr_identity",
         PaneKind::SparkWallet => "spark_wallet",
         PaneKind::SparkCreateInvoice => "spark_create_invoice",

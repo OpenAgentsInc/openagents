@@ -80,7 +80,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 41] = [
+const PANE_SPECS: [PaneSpec; 46] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -422,6 +422,81 @@ const PANE_SPECS: [PaneSpec; 41] = [
             id: "pane.job_history",
             label: "Job History",
             description: "Open immutable receipts with SA/SKL/AC proof links",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::EmailInbox,
+        title: "Email Inbox",
+        default_width: 900.0,
+        default_height: 500.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.email_inbox",
+            label: "Email Inbox",
+            description: "Open email inbox queue with latest imported message summaries",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::EmailDraftQueue,
+        title: "Email Draft Queue",
+        default_width: 940.0,
+        default_height: 520.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.email_draft_queue",
+            label: "Email Draft Queue",
+            description: "Open generated email drafts and approval-readiness metadata",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::EmailApprovalQueue,
+        title: "Email Approval Queue",
+        default_width: 920.0,
+        default_height: 500.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.email_approval_queue",
+            label: "Email Approval Queue",
+            description: "Open approval decisions with actor, reason, and policy path details",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::EmailSendLog,
+        title: "Email Send Log",
+        default_width: 920.0,
+        default_height: 480.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.email_send_log",
+            label: "Email Send Log",
+            description: "Open send attempts and outcome telemetry for email lane",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::EmailFollowUpQueue,
+        title: "Email Follow-up Queue",
+        default_width: 920.0,
+        default_height: 480.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.email_follow_up_queue",
+            label: "Email Follow-up Queue",
+            description: "Open follow-up jobs with schedule status, policy reason, and retry state",
             keybinding: None,
         }),
         hotbar: None,
