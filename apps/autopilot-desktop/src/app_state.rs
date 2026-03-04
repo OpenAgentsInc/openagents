@@ -2842,7 +2842,10 @@ impl NetworkAggregateCountersState {
         let reconciled_payout_rows = job_history.wallet_reconciled_payout_rows(spark_wallet);
         let threshold = job_history.reference_epoch_seconds.saturating_sub(86_400);
         self.jobs_completed = reconciled_payout_rows.len() as u64;
-        self.sats_paid = reconciled_payout_rows.iter().map(|row| row.payout_sats).sum();
+        self.sats_paid = reconciled_payout_rows
+            .iter()
+            .map(|row| row.payout_sats)
+            .sum();
         self.global_earnings_today_sats = reconciled_payout_rows
             .iter()
             .filter(|row| row.wallet_received_at_epoch_seconds >= threshold)
@@ -3238,13 +3241,12 @@ mod tests {
         CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile, EarningsScoreboardState,
         JobDemandSource, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
         JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest, JobInboxState,
-        JobInboxValidation, NetworkAggregateCountersState,
-        JobLifecycleStage, NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState,
-        NostrSecretState, ProviderMode, ProviderRuntimeState, RecoveryAlertRow, RelayConnectionRow,
-        RelayConnectionStatus, RelayConnectionsState, RelaySecuritySimulationPaneState,
-        SettingsState, SparkPaneState, StableSatsSimulationPaneState, StarterJobRow,
-        StarterJobStatus, StarterJobsState, SyncHealthState, SyncRecoveryPhase,
-        TreasuryExchangeSimulationPaneState,
+        JobInboxValidation, JobLifecycleStage, NetworkAggregateCountersState, NetworkRequestStatus,
+        NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderMode,
+        ProviderRuntimeState, RecoveryAlertRow, RelayConnectionRow, RelayConnectionStatus,
+        RelayConnectionsState, RelaySecuritySimulationPaneState, SettingsState, SparkPaneState,
+        StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
+        SyncHealthState, SyncRecoveryPhase, TreasuryExchangeSimulationPaneState,
     };
 
     fn fixture_inbox_request(
@@ -4216,7 +4218,9 @@ mod tests {
         active.job.as_mut().expect("active job").payment_id =
             Some("wallet-payment-starter-provenance".to_string());
         assert_eq!(
-            active.advance_stage().expect("delivered->paid should succeed"),
+            active
+                .advance_stage()
+                .expect("delivered->paid should succeed"),
             JobLifecycleStage::Paid
         );
 
@@ -4302,7 +4306,7 @@ mod tests {
         assert!(relays.retry_selected().is_ok());
         assert_eq!(
             relays.selected().map(|row| row.status),
-            Some(RelayConnectionStatus::Connected)
+            Some(RelayConnectionStatus::Connecting)
         );
 
         assert!(relays.remove_selected().is_ok());

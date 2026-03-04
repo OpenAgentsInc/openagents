@@ -125,9 +125,9 @@ impl RelayConnectionsState {
             return Err(self.pane_set_error("Selected relay no longer exists"));
         };
 
-        relay.status = RelayConnectionStatus::Connected;
-        relay.latency_ms = Some(96);
-        relay.last_seen_seconds_ago = Some(0);
+        relay.status = RelayConnectionStatus::Connecting;
+        relay.latency_ms = None;
+        relay.last_seen_seconds_ago = None;
         relay.last_error = None;
         self.pane_set_ready(format!("Retried relay {selected}"));
         Ok(selected)
