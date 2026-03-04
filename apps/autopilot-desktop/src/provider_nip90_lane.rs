@@ -426,7 +426,8 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
         skill_scope_id,
         skl_manifest_a: None,
         skl_manifest_event_id: None,
-        sa_tick_request_event_id: None,
+        // The request event itself is the external authority for accepted->running.
+        sa_tick_request_event_id: Some(event.id.clone()),
         sa_tick_result_event_id: None,
         ac_envelope_event_id: None,
         price_sats,
@@ -538,6 +539,7 @@ mod tests {
             row.skill_scope_id,
             Some("33400:npub1agent:summarize-text:0.1.0".to_string())
         );
+        assert_eq!(row.sa_tick_request_event_id.as_deref(), Some("req-001"));
     }
 
     #[test]

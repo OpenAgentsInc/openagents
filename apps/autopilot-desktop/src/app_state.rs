@@ -2255,6 +2255,44 @@ impl ActiveJobState {
             return Err("No active job selected".to_string());
         };
 
+        match job.stage {
+            JobLifecycleStage::Accepted => {
+                if job.sa_tick_request_event_id.is_none() {
+                    self.last_error =
+                        Some("Cannot mark running without authoritative running event".to_string());
+                    self.load_state = PaneLoadState::Error;
+                    return Err(
+                        "missing authoritative running event (sa_tick_request_event_id)"
+                            .to_string(),
+                    );
+                }
+            }
+            JobLifecycleStage::Running => {
+                if job.sa_tick_result_event_id.is_none() {
+                    self.last_error = Some(
+                        "Cannot mark delivered without authoritative delivery event".to_string(),
+                    );
+                    self.load_state = PaneLoadState::Error;
+                    return Err(
+                        "missing authoritative delivered event (sa_tick_result_event_id)"
+                            .to_string(),
+                    );
+                }
+            }
+            JobLifecycleStage::Delivered => {
+                if !is_authoritative_payment_pointer(job.payment_id.as_deref()) {
+                    self.last_error = Some(
+                        "Cannot mark paid without wallet-authoritative payment pointer".to_string(),
+                    );
+                    self.load_state = PaneLoadState::Error;
+                    return Err(
+                        "missing authoritative payment pointer for paid transition".to_string()
+                    );
+                }
+            }
+            JobLifecycleStage::Received | JobLifecycleStage::Paid | JobLifecycleStage::Failed => {}
+        }
+
         let next_stage = match job.stage {
             JobLifecycleStage::Received => JobLifecycleStage::Accepted,
             JobLifecycleStage::Accepted => JobLifecycleStage::Running,
@@ -2268,18 +2306,21 @@ impl ActiveJobState {
         };
 
         job.stage = next_stage;
-        if next_stage == JobLifecycleStage::Delivered {
-            job.invoice_id = Some(format!("inv-{}", job.request_id));
-            if job.sa_tick_result_event_id.is_none() {
-                job.sa_tick_result_event_id = Some(format!("sa:39211:{}", job.request_id));
-            }
-        }
-        if next_stage == JobLifecycleStage::Paid {
-            if job.ac_settlement_event_id.is_none() {
-                job.ac_settlement_event_id = Some(format!("ac:39244:{}", job.request_id));
-            }
-        }
-        self.append_event(format!("stage advanced to {}", next_stage.label()));
+        let authority_ref = match next_stage {
+            JobLifecycleStage::Accepted => Some(job.request_id.clone()),
+            JobLifecycleStage::Running => job.sa_tick_request_event_id.clone(),
+            JobLifecycleStage::Delivered => job.sa_tick_result_event_id.clone(),
+            JobLifecycleStage::Paid => job
+                .payment_id
+                .clone()
+                .or_else(|| job.ac_settlement_event_id.clone()),
+            JobLifecycleStage::Received | JobLifecycleStage::Failed => None,
+        };
+        self.append_event(format!(
+            "stage advanced to {} (authority={})",
+            next_stage.label(),
+            authority_ref.unwrap_or_else(|| "none".to_string())
+        ));
         self.last_error = None;
         self.load_state = PaneLoadState::Ready;
         self.last_action = Some(format!("Advanced active job to {}", next_stage.label()));
@@ -2507,11 +2548,8 @@ impl JobHistoryState {
             .clone()
             .or_else(|| job.invoice_id.clone())
             .unwrap_or_else(|| format!("pending:{}", job.request_id));
-        let authoritative_settlement = !payment_pointer.is_empty()
-            && !payment_pointer.starts_with("pending:")
-            && !payment_pointer.starts_with("pay:")
-            && !payment_pointer.starts_with("inv-")
-            && !payment_pointer.starts_with("pay-req-");
+        let authoritative_settlement =
+            is_authoritative_payment_pointer(Some(payment_pointer.as_str()));
         let converted_to_failed =
             status == JobHistoryStatus::Succeeded && !authoritative_settlement;
         let settled_success = status == JobHistoryStatus::Succeeded && authoritative_settlement;
@@ -2584,6 +2622,18 @@ impl JobHistoryState {
             })
             .collect()
     }
+}
+
+fn is_authoritative_payment_pointer(pointer: Option<&str>) -> bool {
+    let Some(pointer) = pointer else {
+        return false;
+    };
+    let pointer = pointer.trim();
+    !pointer.is_empty()
+        && !pointer.starts_with("pending:")
+        && !pointer.starts_with("pay:")
+        && !pointer.starts_with("inv-")
+        && !pointer.starts_with("pay-req-")
 }
 
 pub struct EarningsScoreboardState {
@@ -3069,8 +3119,8 @@ mod tests {
             skill_scope_id: None,
             skl_manifest_a: None,
             skl_manifest_event_id: None,
-            sa_tick_request_event_id: None,
-            sa_tick_result_event_id: None,
+            sa_tick_request_event_id: Some(format!("req-event:{request_id}")),
+            sa_tick_result_event_id: Some(format!("result-event:{request_id}")),
             ac_envelope_event_id: None,
             price_sats,
             ttl_seconds,
@@ -3689,7 +3739,17 @@ mod tests {
         assert_eq!(stage, JobLifecycleStage::Delivered);
         let current = active.job.as_ref().expect("active job exists");
         assert_eq!(current.stage, JobLifecycleStage::Delivered);
-        assert!(current.invoice_id.is_some());
+        assert!(current.invoice_id.is_none());
+        assert!(current.events.iter().any(|event| {
+            event
+                .message
+                .contains("running (authority=req-event:req-active)")
+        }));
+        assert!(current.events.iter().any(|event| {
+            event
+                .message
+                .contains("delivered (authority=result-event:req-active)")
+        }));
     }
 
     #[test]
@@ -3714,11 +3774,17 @@ mod tests {
         active
             .advance_stage()
             .expect("running->delivered should succeed");
-        active
-            .advance_stage()
-            .expect("delivered->paid should succeed");
+        let paid_transition = active.advance_stage();
+        assert!(paid_transition.is_err());
+        assert!(
+            paid_transition
+                .err()
+                .as_deref()
+                .is_some_and(|error| error.contains("payment pointer"))
+        );
         let job = active.job.as_ref().expect("active job exists");
         assert!(job.payment_id.is_none());
+        assert_eq!(job.stage, JobLifecycleStage::Delivered);
 
         let mut history = JobHistoryState::default();
         history.record_from_active_job(job, JobHistoryStatus::Succeeded);
@@ -3732,6 +3798,124 @@ mod tests {
             row.failure_reason
                 .as_deref()
                 .is_some_and(|reason| reason.contains("not wallet-confirmed"))
+        );
+    }
+
+    #[test]
+    fn active_job_rejects_running_without_authoritative_request_event() {
+        let mut request = fixture_inbox_request(
+            "req-missing-running-authority",
+            "summarize.text",
+            500,
+            90,
+            JobInboxValidation::Valid,
+        );
+        request.sa_tick_request_event_id = None;
+
+        let mut active = ActiveJobState::default();
+        let mut inbox = seed_job_inbox(vec![request]);
+        assert!(inbox.select_by_index(0));
+        let selected = inbox
+            .selected_request()
+            .expect("request should exist")
+            .clone();
+        active.start_from_request(&selected);
+
+        let outcome = active.advance_stage();
+        assert!(outcome.is_err());
+        assert!(
+            outcome
+                .err()
+                .as_deref()
+                .is_some_and(|error| error.contains("running event"))
+        );
+        assert_eq!(
+            active.job.as_ref().expect("job should exist").stage,
+            JobLifecycleStage::Accepted
+        );
+    }
+
+    #[test]
+    fn active_job_rejects_delivered_without_authoritative_result_event() {
+        let mut request = fixture_inbox_request(
+            "req-missing-delivered-authority",
+            "summarize.text",
+            500,
+            90,
+            JobInboxValidation::Valid,
+        );
+        request.sa_tick_result_event_id = None;
+
+        let mut active = ActiveJobState::default();
+        let mut inbox = seed_job_inbox(vec![request]);
+        assert!(inbox.select_by_index(0));
+        let selected = inbox
+            .selected_request()
+            .expect("request should exist")
+            .clone();
+        active.start_from_request(&selected);
+        assert_eq!(
+            active
+                .advance_stage()
+                .expect("accepted->running should succeed"),
+            JobLifecycleStage::Running
+        );
+
+        let outcome = active.advance_stage();
+        assert!(outcome.is_err());
+        assert!(
+            outcome
+                .err()
+                .as_deref()
+                .is_some_and(|error| error.contains("delivered event"))
+        );
+        assert_eq!(
+            active.job.as_ref().expect("job should exist").stage,
+            JobLifecycleStage::Running
+        );
+    }
+
+    #[test]
+    fn active_job_rejects_paid_without_wallet_authority() {
+        let request = fixture_inbox_request(
+            "req-missing-payment-authority",
+            "summarize.text",
+            500,
+            90,
+            JobInboxValidation::Valid,
+        );
+        let mut active = ActiveJobState::default();
+        let mut inbox = seed_job_inbox(vec![request]);
+        assert!(inbox.select_by_index(0));
+        let selected = inbox
+            .selected_request()
+            .expect("request should exist")
+            .clone();
+        active.start_from_request(&selected);
+        assert_eq!(
+            active
+                .advance_stage()
+                .expect("accepted->running should succeed"),
+            JobLifecycleStage::Running
+        );
+        assert_eq!(
+            active
+                .advance_stage()
+                .expect("running->delivered should succeed"),
+            JobLifecycleStage::Delivered
+        );
+
+        let outcome = active.advance_stage();
+        assert!(outcome.is_err());
+        assert!(
+            outcome
+                .err()
+                .as_deref()
+                .is_some_and(|error| error.contains("payment pointer"))
+        );
+        assert_eq!(
+            active.job.as_ref().expect("job should exist").stage,
+            JobLifecycleStage::Delivered
         );
     }
 

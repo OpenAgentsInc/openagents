@@ -83,6 +83,11 @@ Red:
   - Added `nostr-client` ingress worker in `apps/autopilot-desktop/src/provider_nip90_lane.rs`.
   - Wired `Go Online` and relay/settings sync to configure and toggle live ingress in app runtime.
   - Added automated coverage for relay ingress (`provider_nip90_lane::tests::worker_ingests_live_relay_request`) and included it in `scripts/lint/autopilot-earnings-epic-test-gate.sh`.
+- 2026-03-04: `#2878` (provider lifecycle external authority mapping) implemented.
+  - Active-job stage transitions now hard-fail without external authority references (`running` requires request authority, `delivered` requires result authority, `paid` requires wallet-authoritative pointer) in `apps/autopilot-desktop/src/app_state.rs`.
+  - Removed synthetic delivered/paid authority stamping from active-job stage advancement.
+  - Relay ingress now maps request event id into `sa_tick_request_event_id` to preserve stage authority provenance (`apps/autopilot-desktop/src/provider_nip90_lane.rs`).
+  - Added/updated tests for authority-gated transitions and wallet-confirmed settlement behavior (`apps/autopilot-desktop/src/app_state.rs`, `apps/autopilot-desktop/src/provider_nip90_lane.rs`).
 
 ## MVP Requirement Matrix (from `docs/MVP.md`)
 
@@ -104,7 +109,7 @@ Evidence: local inbox upsert from request form in `apps/autopilot-desktop/src/in
 
 3. Provider executes job and returns result lifecycle.  
 Status: Partial (state machine present, external execution/publication not fully wired).  
-Evidence: active job stage progression is local in `apps/autopilot-desktop/src/app_state.rs:2248-2284`; synthetic invoice/settlement IDs in `apps/autopilot-desktop/src/app_state.rs:2269-2277`.
+Evidence: active job stage progression remains operator-driven in `apps/autopilot-desktop/src/app_state.rs`, but stage transitions now require external authority references (request/result/payment) and reject missing authority.
 
 4. Wallet receives payment and earnings UI reflects truth.  
 Status: Implemented for reconciliation/gating contracts; integration path still partial.  
@@ -184,9 +189,9 @@ Impact:
 ## 4) Active job lifecycle is local stage machine
 
 - Active job created from selected inbox request and manually advanced through stages.
-- Evidence: `apps/autopilot-desktop/src/app_state.rs:2206-2235`, `apps/autopilot-desktop/src/app_state.rs:2248-2284`.
-- Delivered/Paid stages stamp synthetic IDs when absent.
-- Evidence: `apps/autopilot-desktop/src/app_state.rs:2269-2277`.
+- Evidence: `apps/autopilot-desktop/src/app_state.rs`.
+- Stage transitions are now authority-gated (request/result/payment) instead of minting synthetic delivered/paid IDs.
+- Evidence: `apps/autopilot-desktop/src/app_state.rs`.
 
 Impact:
 
