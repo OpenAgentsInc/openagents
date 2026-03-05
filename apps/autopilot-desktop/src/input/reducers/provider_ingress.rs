@@ -6,7 +6,7 @@ use crate::provider_nip90_lane::{
     ProviderNip90LaneMode, ProviderNip90LaneSnapshot, ProviderNip90PublishOutcome,
     ProviderNip90PublishRole, ProviderNip90RelayStatus,
 };
-use crate::state::job_inbox::JobInboxNetworkRequest;
+use crate::state::job_inbox::{JobInboxNetworkRequest, JobInboxValidation};
 
 pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: ProviderNip90LaneSnapshot) {
     let previous_mode = state.provider_nip90_lane.mode;
@@ -74,7 +74,16 @@ fn map_relay_status(status: ProviderNip90RelayStatus) -> RelayConnectionStatus {
     }
 }
 
-pub(super) fn apply_ingressed_request(state: &mut RenderState, request: JobInboxNetworkRequest) {
+pub(super) fn apply_ingressed_request(
+    state: &mut RenderState,
+    mut request: JobInboxNetworkRequest,
+) {
+    apply_encrypted_request_handling(state, &mut request);
+    if let Some(reason) = target_policy_reject_reason(state, &request) {
+        apply_ignored_ingress_request(state, &request, reason.as_str());
+        return;
+    }
+
     let is_new = !state
         .job_inbox
         .requests
@@ -138,6 +147,267 @@ pub(super) fn apply_ingressed_request(state: &mut RenderState, request: JobInbox
     state.sync_health.last_applied_event_seq =
         state.sync_health.last_applied_event_seq.saturating_add(1);
     state.sync_health.cursor_last_advanced_seconds_ago = 0;
+}
+
+fn apply_encrypted_request_handling(state: &RenderState, request: &mut JobInboxNetworkRequest) {
+    if !request.encrypted {
+        return;
+    }
+
+    let Some(payload) = request
+        .encrypted_payload
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        request.validation = JobInboxValidation::Invalid(
+            "encrypted request payload is empty; expected NIP-44 ciphertext in content".to_string(),
+        );
+        append_parsed_shape_line(
+            &mut request.parsed_event_shape,
+            "request.encrypted_payload_status=invalid_empty_payload".to_string(),
+        );
+        return;
+    };
+
+    let Some(identity) = state.nostr_identity.as_ref() else {
+        request.validation = JobInboxValidation::Invalid(
+            "encrypted request cannot be decrypted because local Nostr identity is unavailable"
+                .to_string(),
+        );
+        append_parsed_shape_line(
+            &mut request.parsed_event_shape,
+            "request.encrypted_payload_status=missing_local_identity".to_string(),
+        );
+        return;
+    };
+
+    match decrypt_encrypted_request_payload(
+        identity.private_key_hex.as_str(),
+        request.requester.as_str(),
+        payload,
+    ) {
+        Ok(plaintext) => {
+            let preview = sanitize_payload_preview(plaintext.as_str(), 220);
+            append_parsed_shape_line(
+                &mut request.parsed_event_shape,
+                format!(
+                    "request.encrypted_payload_status=decrypted plaintext_bytes={} plaintext.preview={}",
+                    plaintext.len(),
+                    preview
+                ),
+            );
+        }
+        Err(error) => {
+            let reason = format!(
+                "encrypted request decryption failed; verify identity key and payload: {error}"
+            );
+            request.validation = JobInboxValidation::Invalid(reason.clone());
+            append_parsed_shape_line(
+                &mut request.parsed_event_shape,
+                format!("request.encrypted_payload_status=decrypt_failed error={error}"),
+            );
+        }
+    }
+}
+
+fn target_policy_reject_reason(
+    state: &RenderState,
+    request: &JobInboxNetworkRequest,
+) -> Option<String> {
+    target_policy_reject_reason_for(
+        request.target_provider_pubkeys.as_slice(),
+        state.nostr_identity.as_ref(),
+    )
+}
+
+fn target_policy_reject_reason_for(
+    target_provider_pubkeys: &[String],
+    identity: Option<&nostr::NostrIdentity>,
+) -> Option<String> {
+    if target_provider_pubkeys.is_empty() {
+        return None;
+    }
+
+    let targets = normalize_provider_keys(target_provider_pubkeys);
+    if targets.is_empty() {
+        return None;
+    }
+
+    let Some(identity) = identity else {
+        return Some(
+            "request contains target provider `p` tags but local Nostr identity is unavailable"
+                .to_string(),
+        );
+    };
+
+    let local_keys = local_provider_keys(identity);
+    let target_match = targets
+        .iter()
+        .any(|target| local_keys.iter().any(|local| local == target));
+    if target_match {
+        return None;
+    }
+
+    Some(format!(
+        "request target policy mismatch (targets=[{}], local=[{}])",
+        targets.join(","),
+        local_keys.join(",")
+    ))
+}
+
+fn apply_ignored_ingress_request(
+    state: &mut RenderState,
+    request: &JobInboxNetworkRequest,
+    reason: &str,
+) {
+    state.job_inbox.load_state = PaneLoadState::Ready;
+    state.job_inbox.last_error = None;
+    state.job_inbox.last_action = Some(format!(
+        "Ignored live NIP-90 request {} ({})",
+        request.request_id, reason
+    ));
+
+    state.provider_runtime.last_result = Some(format!(
+        "relay ingress ignored request {} ({})",
+        request.request_id, reason
+    ));
+    state.provider_runtime.last_authoritative_status = Some("ignored".to_string());
+    state.provider_runtime.last_authoritative_event_id = Some(request.request_id.clone());
+    if state.provider_runtime.last_authoritative_error_class == Some(EarnFailureClass::Relay) {
+        state.provider_runtime.last_authoritative_error_class = None;
+    }
+
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs());
+    state.activity_feed.upsert_event(ActivityEventRow {
+        event_id: format!("nip90:req:ignored:{}", request.request_id),
+        domain: ActivityEventDomain::Network,
+        source_tag: "nip90.policy".to_string(),
+        summary: "Ignored live NIP-90 request".to_string(),
+        detail: format!(
+            "request={} requester={} targets={} encrypted={} reason={}\n\nshape:\n{}\n\nraw_event_json:\n{}",
+            request.request_id,
+            request.requester,
+            if request.target_provider_pubkeys.is_empty() {
+                "none".to_string()
+            } else {
+                request.target_provider_pubkeys.join(",")
+            },
+            request.encrypted,
+            reason,
+            request
+                .parsed_event_shape
+                .as_deref()
+                .unwrap_or("shape unavailable"),
+            request
+                .raw_event_json
+                .as_deref()
+                .unwrap_or("raw event json unavailable"),
+        ),
+        occurred_at_epoch_seconds: now_epoch_seconds,
+    });
+    state.activity_feed.load_state = PaneLoadState::Ready;
+
+    state.sync_health.last_applied_event_seq =
+        state.sync_health.last_applied_event_seq.saturating_add(1);
+    state.sync_health.cursor_last_advanced_seconds_ago = 0;
+}
+
+fn normalize_provider_keys(values: &[String]) -> Vec<String> {
+    let mut normalized = values
+        .iter()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+    normalized.sort();
+    normalized.dedup();
+    normalized
+}
+
+fn local_provider_keys(identity: &nostr::NostrIdentity) -> Vec<String> {
+    normalize_provider_keys(&[identity.npub.clone(), identity.public_key_hex.clone()])
+}
+
+fn append_parsed_shape_line(shape: &mut Option<String>, line: String) {
+    if let Some(existing) = shape.as_mut() {
+        if !existing.ends_with('\n') {
+            existing.push('\n');
+        }
+        existing.push_str(line.as_str());
+    } else {
+        *shape = Some(line);
+    }
+}
+
+fn sanitize_payload_preview(raw: &str, limit: usize) -> String {
+    let mut normalized = raw
+        .chars()
+        .filter_map(|ch| match ch {
+            '\n' | '\r' | '\t' => Some(' '),
+            ch if ch.is_control() => None,
+            ch => Some(ch),
+        })
+        .collect::<String>()
+        .trim()
+        .to_string();
+    if normalized.len() > limit {
+        normalized.truncate(limit);
+        normalized.push_str("...");
+    }
+    normalized
+}
+
+fn decrypt_encrypted_request_payload(
+    recipient_private_key_hex: &str,
+    sender_pubkey_hex: &str,
+    payload: &str,
+) -> Result<String, String> {
+    let recipient_private_key = parse_private_key_hex(recipient_private_key_hex)?;
+    let sender_pubkey_bytes = decode_xonly_pubkey_hex(sender_pubkey_hex)?;
+    let mut last_error = String::new();
+
+    for prefix in [0x02u8, 0x03u8] {
+        let mut compressed_pubkey = vec![prefix];
+        compressed_pubkey.extend_from_slice(sender_pubkey_bytes.as_slice());
+        match nostr::nip44::decrypt(
+            &recipient_private_key,
+            compressed_pubkey.as_slice(),
+            payload,
+        ) {
+            Ok(plaintext) => return Ok(plaintext),
+            Err(error) => last_error = error.to_string(),
+        }
+    }
+
+    Err(format!("NIP-44 decrypt failed: {last_error}"))
+}
+
+fn parse_private_key_hex(private_key_hex: &str) -> Result<[u8; 32], String> {
+    let bytes = hex::decode(private_key_hex.trim())
+        .map_err(|error| format!("invalid local private key hex: {error}"))?;
+    if bytes.len() != 32 {
+        return Err(format!(
+            "invalid local private key length {}, expected 32 bytes",
+            bytes.len()
+        ));
+    }
+    let mut key = [0u8; 32];
+    key.copy_from_slice(bytes.as_slice());
+    Ok(key)
+}
+
+fn decode_xonly_pubkey_hex(sender_pubkey_hex: &str) -> Result<Vec<u8>, String> {
+    let bytes = hex::decode(sender_pubkey_hex.trim())
+        .map_err(|error| format!("invalid requester pubkey hex: {error}"))?;
+    if bytes.len() != 32 {
+        return Err(format!(
+            "invalid requester pubkey length {}, expected 32-byte x-only key",
+            bytes.len()
+        ));
+    }
+    Ok(bytes)
 }
 
 pub(super) fn apply_publish_outcome(state: &mut RenderState, outcome: ProviderNip90PublishOutcome) {
@@ -249,4 +519,97 @@ pub(super) fn apply_publish_outcome(state: &mut RenderState, outcome: ProviderNi
         occurred_at_epoch_seconds: now_epoch_seconds,
     });
     state.activity_feed.load_state = PaneLoadState::Ready;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        decrypt_encrypted_request_payload, normalize_provider_keys, target_policy_reject_reason_for,
+    };
+
+    fn fixture_identity() -> nostr::NostrIdentity {
+        nostr::NostrIdentity {
+            identity_path: std::path::PathBuf::from("/tmp/test-identity.mnemonic"),
+            mnemonic: "test mnemonic".to_string(),
+            npub: "npub1localprovider".to_string(),
+            nsec: "nsec1localprovider".to_string(),
+            public_key_hex: "aa".repeat(32),
+            private_key_hex: "11".repeat(32),
+        }
+    }
+
+    #[test]
+    fn normalize_provider_keys_trims_dedups_and_lowercases() {
+        let normalized = normalize_provider_keys(&[
+            "  NPUB1LOCALPROVIDER  ".to_string(),
+            "".to_string(),
+            "npub1localprovider".to_string(),
+            "AA".repeat(32),
+        ]);
+        assert_eq!(
+            normalized,
+            vec!["aa".repeat(32), "npub1localprovider".to_string()]
+        );
+    }
+
+    #[test]
+    fn target_policy_accepts_when_local_provider_is_targeted() {
+        let identity = fixture_identity();
+        let reject_reason =
+            target_policy_reject_reason_for(&[" npub1localprovider ".to_string()], Some(&identity));
+        assert!(reject_reason.is_none());
+    }
+
+    #[test]
+    fn target_policy_rejects_when_local_provider_not_targeted() {
+        let identity = fixture_identity();
+        let reject_reason =
+            target_policy_reject_reason_for(&["npub1otherprovider".to_string()], Some(&identity));
+        assert!(
+            reject_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("target policy mismatch"))
+        );
+    }
+
+    #[test]
+    fn target_policy_rejects_targeted_requests_without_identity() {
+        let reject_reason =
+            target_policy_reject_reason_for(&["npub1otherprovider".to_string()], None);
+        assert!(
+            reject_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("local Nostr identity is unavailable"))
+        );
+    }
+
+    #[test]
+    fn decrypt_encrypted_request_payload_roundtrip_works_for_valid_keys() {
+        let sender_secret = nostr::generate_secret_key();
+        let sender_pubkey_hex =
+            nostr::get_public_key_hex(&sender_secret).expect("sender public key should derive");
+
+        let recipient_secret = nostr::generate_secret_key();
+        let recipient_pubkey_hex = nostr::get_public_key_hex(&recipient_secret)
+            .expect("recipient public key should derive");
+        let recipient_pubkey_bytes =
+            hex::decode(recipient_pubkey_hex).expect("recipient pubkey hex should decode");
+        let mut recipient_compressed_pubkey = vec![0x02u8];
+        recipient_compressed_pubkey.extend_from_slice(recipient_pubkey_bytes.as_slice());
+
+        let payload = nostr::nip44::encrypt(
+            &sender_secret,
+            recipient_compressed_pubkey.as_slice(),
+            "encrypted hello",
+        )
+        .expect("ciphertext should encrypt");
+
+        let decrypted = decrypt_encrypted_request_payload(
+            hex::encode(recipient_secret).as_str(),
+            sender_pubkey_hex.as_str(),
+            payload.as_str(),
+        )
+        .expect("payload should decrypt");
+        assert_eq!(decrypted, "encrypted hello");
+    }
 }
