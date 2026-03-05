@@ -318,12 +318,80 @@ fn build_snapshot(
         })
         .collect::<Vec<_>>();
     let personhood_verified_share = ratio(personhood_verified, total_work_units);
+    let terminal_receipts = terminal_by_work_unit
+        .values()
+        .copied()
+        .collect::<Vec<_>>();
+    let long_feedback_terminal_count = terminal_receipts
+        .iter()
+        .filter(|receipt| is_long_feedback_terminal_receipt(receipt))
+        .count() as u64;
+    let adverse_terminal_count = terminal_receipts
+        .iter()
+        .filter(|receipt| is_adverse_terminal_receipt(receipt))
+        .count() as u64;
+    let (total_severity_weight, unverified_severity_weight, adverse_severity_weight) =
+        severity_weight_totals(terminal_receipts.as_slice());
+    let incident_signal_count = scoped_receipts
+        .iter()
+        .copied()
+        .filter(|receipt| is_incident_or_near_miss_receipt(receipt))
+        .count() as u64;
+    let breaker_signal_count = scoped_receipts
+        .iter()
+        .copied()
+        .filter(|receipt| is_breaker_or_throttle_receipt(receipt))
+        .count() as u64;
+    let rollback_signal_count = scoped_receipts
+        .iter()
+        .copied()
+        .filter(|receipt| is_rollback_receipt(receipt))
+        .count() as u64;
     let claims_paid_sats = scoped_receipts
         .iter()
         .copied()
         .filter(|receipt| is_claim_paid_receipt(receipt))
         .map(|receipt| money_as_sats(receipt.hints.notional.as_ref()))
         .fold(0u64, u64::saturating_add);
+    let claims_signal_count = scoped_receipts
+        .iter()
+        .copied()
+        .filter(|receipt| is_claim_paid_receipt(receipt))
+        .count() as u64;
+    let total_scoped_receipts = scoped_receipts.len() as u64;
+    let long_feedback_share = ratio(long_feedback_terminal_count, total_work_units);
+    let unverified_share = ratio(
+        total_work_units.saturating_sub(verified_work_units),
+        total_work_units,
+    );
+    let adverse_terminal_share = ratio(adverse_terminal_count, total_work_units);
+    let incident_signal_share = ratio(
+        incident_signal_count
+            .saturating_add(rollback_signal_count)
+            .saturating_add(claims_signal_count),
+        total_scoped_receipts,
+    );
+    let unverified_severity_share = ratio_f64(unverified_severity_weight, total_severity_weight);
+    let adverse_severity_share = ratio_f64(adverse_severity_weight, total_severity_weight);
+    let breaker_signal_share = ratio(breaker_signal_count, total_scoped_receipts);
+    let claim_signal_share = ratio(claims_signal_count, total_scoped_receipts);
+    let rollback_signal_share = ratio(rollback_signal_count, total_scoped_receipts);
+    let quote_variance_share = quote_delivery_variance_share(scoped_receipts.as_slice());
+    let delta_m_hat = clamp_unit_interval(
+        (0.30 * long_feedback_share)
+            + (0.25 * correlated_verification_share)
+            + (0.20 * unverified_share)
+            + (0.15 * adverse_terminal_share)
+            + (0.10 * incident_signal_share),
+    );
+    let xa_hat = clamp_unit_interval(
+        (0.40 * unverified_severity_share)
+            + (0.20 * adverse_severity_share)
+            + (0.15 * breaker_signal_share)
+            + (0.10 * claim_signal_share)
+            + (0.10 * rollback_signal_share)
+            + (0.05 * quote_variance_share),
+    );
     let capital_reserves_sats = liability_premiums_collected_sats.saturating_sub(claims_paid_sats);
     let loss_ratio = if liability_premiums_collected_sats == 0 {
         0.0
@@ -344,8 +412,8 @@ fn build_snapshot(
         rho,
         total_work_units,
         nv,
-        0.0,
-        0.0,
+        delta_m_hat,
+        xa_hat,
         correlated_verification_share,
         provenance_p0_share,
         provenance_p1_share,
@@ -371,8 +439,8 @@ fn build_snapshot(
         rho,
         n: total_work_units,
         nv,
-        delta_m_hat: 0.0,
-        xa_hat: 0.0,
+        delta_m_hat,
+        xa_hat,
         correlated_verification_share,
         provenance_p0_share,
         provenance_p1_share,
@@ -404,6 +472,152 @@ fn is_verified_terminal_receipt(receipt: &Receipt) -> bool {
             .evidence
             .iter()
             .any(|evidence| evidence.kind == "wallet_settlement_proof")
+}
+
+fn is_long_feedback_terminal_receipt(receipt: &Receipt) -> bool {
+    matches!(
+        receipt
+            .hints
+            .tfb_class
+            .unwrap_or(FeedbackLatencyClass::FeedbackLatencyClassUnspecified),
+        FeedbackLatencyClass::Long
+            | FeedbackLatencyClass::Medium
+            | FeedbackLatencyClass::FeedbackLatencyClassUnspecified
+    )
+}
+
+fn is_adverse_terminal_receipt(receipt: &Receipt) -> bool {
+    matches!(
+        receipt.receipt_type.as_str(),
+        "earn.job.withheld.v1" | "earn.job.failed.v1"
+    ) || receipt
+        .hints
+        .reason_code
+        .as_deref()
+        .is_some_and(|reason| {
+            let normalized = reason.to_ascii_lowercase();
+            normalized.contains("failed")
+                || normalized.contains("withheld")
+                || normalized.contains("rollback")
+        })
+}
+
+fn severity_weight(severity: Option<SeverityClass>) -> f64 {
+    match severity.unwrap_or(SeverityClass::SeverityClassUnspecified) {
+        SeverityClass::Low => 0.25,
+        SeverityClass::Medium => 0.50,
+        SeverityClass::High => 0.75,
+        SeverityClass::Critical => 1.00,
+        SeverityClass::SeverityClassUnspecified => 0.50,
+    }
+}
+
+fn severity_weight_totals(receipts: &[&Receipt]) -> (f64, f64, f64) {
+    let mut total = 0.0;
+    let mut unverified = 0.0;
+    let mut adverse = 0.0;
+    for receipt in receipts {
+        let weight = severity_weight(receipt.hints.severity);
+        total += weight;
+        if !is_verified_terminal_receipt(receipt) {
+            unverified += weight;
+        }
+        if is_adverse_terminal_receipt(receipt) {
+            adverse += weight;
+        }
+    }
+    (total, unverified, adverse)
+}
+
+fn is_incident_or_near_miss_receipt(receipt: &Receipt) -> bool {
+    let lower_type = receipt.receipt_type.to_ascii_lowercase();
+    if lower_type.contains("incident") || lower_type.contains("near_miss") {
+        return true;
+    }
+    receipt.evidence.iter().any(|evidence| {
+        let lower_kind = evidence.kind.to_ascii_lowercase();
+        lower_kind.contains("incident") || lower_kind.contains("near_miss")
+    })
+}
+
+fn is_breaker_or_throttle_receipt(receipt: &Receipt) -> bool {
+    if receipt.receipt_type == "economy.policy.throttle_action_applied.v1" {
+        return true;
+    }
+    if receipt
+        .hints
+        .reason_code
+        .as_deref()
+        .is_some_and(|reason| reason == "POLICY_THROTTLE_TRIGGERED")
+    {
+        return true;
+    }
+    receipt.evidence.iter().any(|evidence| {
+        evidence.kind == "breaker_transition" || evidence.kind == "snapshot_ref"
+    })
+}
+
+fn is_rollback_receipt(receipt: &Receipt) -> bool {
+    let lower_type = receipt.receipt_type.to_ascii_lowercase();
+    if lower_type.contains("rollback") || lower_type.contains("compensating_action") {
+        return true;
+    }
+    receipt
+        .hints
+        .reason_code
+        .as_deref()
+        .is_some_and(|reason| {
+            let lower = reason.to_ascii_lowercase();
+            lower.contains("rollback") || lower.contains("compensating")
+        })
+}
+
+fn quote_delivery_variance_share(scoped_receipts: &[&Receipt]) -> f64 {
+    let mut quoted_by_work_unit = BTreeMap::<String, u64>::new();
+    let mut delivered_by_work_unit = BTreeMap::<String, u64>::new();
+
+    for receipt in scoped_receipts {
+        let Some(work_unit_id) = receipt.trace.work_unit_id.as_ref() else {
+            continue;
+        };
+        if receipt.receipt_type == "earn.job.ingress_request.v1" {
+            let quoted = money_as_sats(receipt.hints.notional.as_ref());
+            if quoted > 0 {
+                quoted_by_work_unit
+                    .entry(work_unit_id.clone())
+                    .or_insert(quoted);
+            }
+            continue;
+        }
+        if is_terminal_work_unit_receipt(receipt) {
+            let delivered = money_as_sats(receipt.hints.notional.as_ref());
+            if delivered > 0 {
+                delivered_by_work_unit.insert(work_unit_id.clone(), delivered);
+            }
+        }
+    }
+
+    let mut samples = 0u64;
+    let mut total_variance = 0.0;
+    for (work_unit_id, quoted) in quoted_by_work_unit {
+        if quoted == 0 {
+            continue;
+        }
+        let Some(delivered) = delivered_by_work_unit.get(work_unit_id.as_str()) else {
+            continue;
+        };
+        let variance = if delivered >= &quoted {
+            (*delivered - quoted) as f64 / quoted as f64
+        } else {
+            (quoted - *delivered) as f64 / quoted as f64
+        };
+        samples = samples.saturating_add(1);
+        total_variance += variance;
+    }
+    if samples == 0 {
+        return 0.0;
+    }
+    clamp_unit_interval(total_variance / samples as f64)
 }
 
 fn metric_key_for_receipt(receipt: &Receipt) -> MetricKey {
@@ -568,6 +782,17 @@ fn ratio(numerator: u64, denominator: u64) -> f64 {
         return 0.0;
     }
     numerator as f64 / denominator as f64
+}
+
+fn ratio_f64(numerator: f64, denominator: f64) -> f64 {
+    if denominator <= 0.0 {
+        return 0.0;
+    }
+    numerator / denominator
+}
+
+fn clamp_unit_interval(value: f64) -> f64 {
+    value.clamp(0.0, 1.0)
 }
 
 fn money_as_sats(value: Option<&Money>) -> u64 {
@@ -870,8 +1095,8 @@ mod tests {
         assert_eq!(snapshot.sv_breakdown.len(), 1);
         assert_eq!(snapshot.sv_breakdown[0].total_work_units, 3);
         assert_eq!(snapshot.sv_breakdown[0].verified_work_units, 2);
-        assert_eq!(snapshot.delta_m_hat, 0.0);
-        assert_eq!(snapshot.xa_hat, 0.0);
+        assert!(snapshot.delta_m_hat > 0.0);
+        assert!(snapshot.xa_hat > 0.0);
         assert_eq!(snapshot.auth_assurance_distribution.len(), 1);
         assert_eq!(
             snapshot.auth_assurance_distribution[0].level,
@@ -923,6 +1148,109 @@ mod tests {
         let snapshot = computed.snapshot;
         assert!((snapshot.personhood_verified_share - 0.5).abs() < 1e-9);
         assert_eq!(snapshot.auth_assurance_distribution.len(), 2);
+    }
+
+    #[test]
+    fn estimators_are_deterministic_for_equivalent_receipt_sets() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let path_a = temp_dir.path().join("snapshots-a.json");
+        let path_b = temp_dir.path().join("snapshots-b.json");
+        let mut state_a = EconomySnapshotState::from_snapshot_path_for_tests(path_a);
+        let mut state_b = EconomySnapshotState::from_snapshot_path_for_tests(path_b);
+
+        let paid = fixture_receipt(
+            "receipt-paid-1",
+            "earn.job.settlement_observed.v1",
+            1_762_000_010_000,
+            "job-1",
+            true,
+        );
+        let failed = fixture_receipt(
+            "receipt-failed-1",
+            "earn.job.failed.v1",
+            1_762_000_011_000,
+            "job-2",
+            false,
+        );
+        let mut throttle = fixture_receipt(
+            "receipt-throttle-1",
+            "economy.policy.throttle_action_applied.v1",
+            1_762_000_012_000,
+            "job-3",
+            false,
+        );
+        throttle.hints.reason_code = Some("POLICY_THROTTLE_TRIGGERED".to_string());
+
+        let first = state_a
+            .compute_minute_snapshot(
+                1_762_000_060_000,
+                &[paid.clone(), failed.clone(), throttle.clone()],
+            )
+            .expect("snapshot A should compute");
+        let second = state_b
+            .compute_minute_snapshot(1_762_000_060_000, &[throttle, failed, paid])
+            .expect("snapshot B should compute");
+
+        assert_eq!(first.snapshot.delta_m_hat, second.snapshot.delta_m_hat);
+        assert_eq!(first.snapshot.xa_hat, second.snapshot.xa_hat);
+        assert_eq!(first.snapshot.snapshot_hash, second.snapshot.snapshot_hash);
+    }
+
+    #[test]
+    fn estimators_respect_windowing_and_increase_with_recent_adverse_signals() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let outside_path = temp_dir.path().join("snapshots-window-outside.json");
+        let inside_path = temp_dir.path().join("snapshots-window-inside.json");
+        let mut outside_state = EconomySnapshotState::from_snapshot_path_for_tests(outside_path);
+        let mut inside_state = EconomySnapshotState::from_snapshot_path_for_tests(inside_path);
+        let as_of_ms = 1_762_000_080_000;
+
+        let paid = fixture_receipt(
+            "receipt-paid-1",
+            "earn.job.settlement_observed.v1",
+            1_762_000_010_000,
+            "job-1",
+            true,
+        );
+        let mut stale_failed = fixture_receipt(
+            "receipt-failed-stale",
+            "earn.job.failed.v1",
+            as_of_ms - 90_000_000,
+            "job-2",
+            false,
+        );
+        stale_failed.hints.reason_code = Some("JOB_FAILED".to_string());
+
+        let mut recent_failed = fixture_receipt(
+            "receipt-failed-recent",
+            "earn.job.failed.v1",
+            as_of_ms - 10_000,
+            "job-2",
+            false,
+        );
+        recent_failed.hints.reason_code = Some("JOB_FAILED".to_string());
+
+        let outside_snapshot = outside_state
+            .compute_minute_snapshot(as_of_ms, &[paid.clone(), stale_failed])
+            .expect("outside snapshot should compute")
+            .snapshot;
+        let inside_snapshot = inside_state
+            .compute_minute_snapshot(as_of_ms, &[paid, recent_failed])
+            .expect("inside snapshot should compute")
+            .snapshot;
+
+        assert!(
+            inside_snapshot.delta_m_hat > outside_snapshot.delta_m_hat,
+            "inside delta_m_hat={} outside delta_m_hat={}",
+            inside_snapshot.delta_m_hat,
+            outside_snapshot.delta_m_hat
+        );
+        assert!(
+            inside_snapshot.xa_hat > outside_snapshot.xa_hat,
+            "inside xa_hat={} outside xa_hat={}",
+            inside_snapshot.xa_hat,
+            outside_snapshot.xa_hat
+        );
     }
 
     #[test]
