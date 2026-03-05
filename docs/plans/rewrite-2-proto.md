@@ -1129,5 +1129,5 @@ If policy says “halt_new_envelopes” for a category, Hydra MUST respond `WITH
 If you want, next I can do the very concrete “wiring plan” that ties these new proto fields to your existing runtime lanes:
 
 * which services stamp `Receipt.hints` and how,
-* how `ComputeSnapshot` queries receipts efficiently (Convex tables + rollups),
+* how `ComputeSnapshot` queries receipts efficiently using the system’s receipt index and rollups,
 * and the exact `/stats` tables derived from `EconomySnapshot` + existing Hydra metrics.
