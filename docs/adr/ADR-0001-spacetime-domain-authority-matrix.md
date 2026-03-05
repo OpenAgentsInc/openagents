@@ -33,6 +33,7 @@ Authority is scoped by domain. Spacetime is authoritative only for explicitly li
 3. Any new Spacetime-authoritative domain requires ADR update before implementation.
 4. Replay/apply must stay deterministic and idempotent per `(stream_id, seq)`.
 5. UI labels must match data source truth (no proxy fields labeled as Spacetime).
+6. Presence counter cardinality/TTL semantics are governed by `ADR-0002-provider-presence-cardinality-and-ttl-policy.md`.
 
 ## Consequences
 

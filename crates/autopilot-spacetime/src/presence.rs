@@ -607,4 +607,40 @@ mod tests {
         assert_eq!(registry.providers_online(PresenceCardinality::Worker), 2);
         assert_eq!(registry.providers_online(PresenceCardinality::Identity), 1);
     }
+
+    #[test]
+    fn worker_cardinality_dedupes_same_identity_worker_id() {
+        let mut registry = ProviderPresenceRegistry::default();
+        let private_key_hex = fixture_private_key_hex();
+        let pubkey_hex = fixture_pubkey_hex(private_key_hex.as_str());
+
+        for (node, now) in [("node-a", 7_000), ("node-b", 7_100)] {
+            let challenge = registry
+                .issue_nostr_bind_challenge(node, now)
+                .expect("challenge should issue");
+            let signature = sign_nostr_presence_challenge(
+                private_key_hex.as_str(),
+                node,
+                challenge.challenge.as_str(),
+            )
+            .expect("signature should build");
+            let _ = registry
+                .register_online(RegisterOnlineRequest {
+                    node_id: node.to_string(),
+                    session_id: format!("sess-{node}"),
+                    worker_id: Some("worker-shared".to_string()),
+                    region: "us-central1".to_string(),
+                    nostr_pubkey_hex: pubkey_hex.clone(),
+                    nostr_pubkey_npub: Some("npub1fixture".to_string()),
+                    challenge: challenge.challenge,
+                    challenge_signature_hex: signature,
+                    now_unix_ms: now + 20,
+                })
+                .expect("online registration should pass");
+        }
+
+        assert_eq!(registry.providers_online(PresenceCardinality::Device), 2);
+        assert_eq!(registry.providers_online(PresenceCardinality::Worker), 1);
+        assert_eq!(registry.providers_online(PresenceCardinality::Identity), 1);
+    }
 }
