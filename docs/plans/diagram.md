@@ -561,6 +561,73 @@ flowchart LR
 
 ---
 
+## 8) Autopilot Desktop ↔ Economy Kernel
+
+How the Autopilot desktop app connects to and uses the economy kernel: authority path (commands and canonical data), projection path (progress only), and local state (receipt stream, snapshot derivation, job lifecycle).
+
+```mermaid
+flowchart TB
+  subgraph AP[Autopilot Desktop]
+    UI[UI Panes<br/>earnings scoreboard job inbox<br/>economy snapshot treasury simulation<br/>agent profile trajectory audit]
+    EKR[EarnKernelReceiptState<br/>receipt stream load persist<br/>policy slice evaluation<br/>work unit metadata idempotency]
+    ESN[EconomySnapshotState<br/>load persist snapshots<br/>compute_minute_snapshot from receipts]
+    EJP[EarnJobLifecycleProjection<br/>derived from same events<br/>job lifecycle rows for UI]
+    JOB[Job and earn state<br/>job_inbox active_job job_history<br/>provider ingress]
+  end
+
+  subgraph AUTH[Authority Plane]
+    TR[TreasuryRouter]
+    K[Kernel Authority API]
+    RS[(Receipt Stream)]
+    SS[(EconomySnapshot Store)]
+  end
+
+  subgraph PROJ[Projection Plane non authoritative]
+    WS[WS Nostr Spacetime<br/>progress and coordination only]
+  end
+
+  %% User actions: future HTTP commands to kernel
+  UI -->|CreateWorkUnit CreateContract<br/>Fund Submit etc intended| TR
+  TR --> K
+  K --> RS
+  K --> SS
+
+  %% Receipt stream and snapshot: where they come from
+  RS -.->|sync or HTTP tail optional<br/>MVP: local file| EKR
+  SS -.->|stats public optional<br/>MVP: local compute| ESN
+  EKR -->|receipts as input| ESN
+  ESN -->|compute_minute_snapshot<br/>idempotent per UTC minute| ESN
+
+  %% Local recording: app emits receipts for job lifecycle
+  JOB -->|record_ingress_request<br/>record_active_job_stage<br/>record_preflight_rejection<br/>record_history_receipt<br/>record_swap_execute_attempt<br/>record_economy_snapshot_receipt| EKR
+  EKR --> EJP
+  EKR --> UI
+  ESN --> UI
+  EJP --> UI
+
+  %% Progress only
+  UI <-->|progress only| WS
+```
+
+**In plain English:**
+
+- **Autopilot’s local state**  
+  The app keeps an **earn kernel receipt stream** (load/save from a local file), an **economy snapshot** state (snapshots loaded/saved and/or **computed from receipts** at UTC minute boundaries), and an **earn job lifecycle projection** (derived from the same events for the job/earnings UI). Job inbox, active job, job history, and provider ingress feed into both the projection and the receipt state.
+
+- **Authority path (intended)**  
+  User actions (create work, create contract, fund, submit, etc.) are sent over **authenticated HTTP to TreasuryRouter**, which talks to the Kernel Authority API. The kernel writes to the canonical **Receipt Stream** and **EconomySnapshot Store**. The app does not mutate kernel state except via these commands.
+
+- **How the app gets kernel data**  
+  In the full design the app can **sync or poll** a tail of the receipt stream and/or the **stats public** snapshot (redacted). In the **current MVP** the receipt stream is a **local file** (same schema as the kernel’s); the app **computes** economy snapshots locally from that receipt stream and persists them, and may later replace this with kernel-published stats or receipt tail.
+
+- **Local receipt recording**  
+  The app **records receipts locally** for job-lifecycle events (ingress request, active job stage, preflight rejection, history receipt, swap execute attempt, economy snapshot receipt). That keeps a single receipt stream and projection consistent on the client; when the kernel is authoritative, those events would be produced by the kernel after the app sends commands, and the app would consume kernel receipts instead of (or in addition to) writing its own.
+
+- **Projection path**  
+  Autopilot and the kernel (or other services) can use **WS Nostr Spacetime** for **progress and coordination only**—no authority for money, verdicts, or state. The diagram shows the desktop app and this projection plane as separate from the authority path.
+
+---
+
 ### Notes for maintainers (diagram intent)
 
 * **Authority plane is HTTP-only**: everything that mutates money/credit/liability/verdict/breakers/snapshots is idempotent + receipted.
