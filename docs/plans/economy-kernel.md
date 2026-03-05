@@ -114,7 +114,7 @@ These invariants apply to all modules, flows, and extensions.
 * pool accounting that affects solvency or withdrawals
 * circuit breaker and throttle states
 
-2. **WS/Nostr/Spacetime MAY be used only for non-authoritative projection and coordination.**
+2. **WebSocket, Nostr, and Spacetime MAY be used only for non-authoritative projection and coordination.** (Nostr = protocol for relays/identity/coordination; Spacetime = sync/presence/projection backend.)
    No money/credit/liability/verdict changes may occur through those lanes.
 
 3. **Every authority request MUST include:**
