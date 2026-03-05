@@ -4068,6 +4068,11 @@ fn queue_starter_demand_request(
         now_epoch_seconds,
         "starter.quest.ingress",
     );
+    state.earn_kernel_receipts.record_ingress_request(
+        &starter_request,
+        now_epoch_seconds,
+        "starter.quest.ingress",
+    );
     state.sync_health.last_applied_event_seq =
         state.sync_health.last_applied_event_seq.saturating_add(1);
     state.sync_health.cursor_last_advanced_seconds_ago = 0;
@@ -4611,6 +4616,11 @@ pub(super) fn run_starter_jobs_action(
                                 receipt_row.completed_at_epoch_seconds,
                                 "starter.quest.settlement",
                             );
+                            state.earn_kernel_receipts.record_history_receipt(
+                                &receipt_row,
+                                receipt_row.completed_at_epoch_seconds,
+                                "starter.quest.settlement",
+                            );
                             state
                                 .activity_feed
                                 .upsert_event(crate::app_state::ActivityEventRow {
@@ -4740,6 +4750,12 @@ pub(super) fn run_open_network_paid_transition_reconciliation(
                     crate::app_state::JobHistoryStatus::Succeeded,
                 );
                 state.earn_job_lifecycle_projection.record_active_job_stage(
+                    active_job,
+                    crate::app_state::JobLifecycleStage::Paid,
+                    current_epoch_seconds(),
+                    "active_job.wallet_paid_transition",
+                );
+                state.earn_kernel_receipts.record_active_job_stage(
                     active_job,
                     crate::app_state::JobLifecycleStage::Paid,
                     current_epoch_seconds(),

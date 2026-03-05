@@ -73,6 +73,12 @@ pub(super) fn run_job_inbox_action(state: &mut RenderState, action: JobInboxPane
                                 current_epoch_seconds(),
                                 "job.inbox.accept",
                             );
+                            state.earn_kernel_receipts.record_active_job_stage(
+                                job,
+                                JobLifecycleStage::Accepted,
+                                current_epoch_seconds(),
+                                "job.inbox.accept",
+                            );
                         }
                         let _ = PaneController::create_for_kind(state, PaneKind::ActiveJob);
                     }
@@ -202,6 +208,12 @@ pub(super) fn run_active_job_action(state: &mut RenderState, action: ActiveJobPa
                         current_epoch_seconds(),
                         "active_job.advance_stage",
                     );
+                    state.earn_kernel_receipts.record_active_job_stage(
+                        job,
+                        stage,
+                        current_epoch_seconds(),
+                        "active_job.advance_stage",
+                    );
                 }
             }
             super::super::refresh_earnings_scoreboard(state, now);
@@ -254,6 +266,12 @@ pub(super) fn run_active_job_action(state: &mut RenderState, action: ActiveJobPa
                         .job_history
                         .record_from_active_job(job, JobHistoryStatus::Failed);
                     state.earn_job_lifecycle_projection.record_active_job_stage(
+                        job,
+                        JobLifecycleStage::Failed,
+                        current_epoch_seconds(),
+                        "active_job.abort",
+                    );
+                    state.earn_kernel_receipts.record_active_job_stage(
                         job,
                         JobLifecycleStage::Failed,
                         current_epoch_seconds(),

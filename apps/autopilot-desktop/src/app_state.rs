@@ -3763,6 +3763,7 @@ pub struct RenderState {
     pub active_job: ActiveJobState,
     pub job_history: JobHistoryState,
     pub earn_job_lifecycle_projection: EarnJobLifecycleProjectionState,
+    pub earn_kernel_receipts: crate::state::earn_kernel_receipts::EarnKernelReceiptState,
     pub agent_profile_state: AgentProfileStatePaneState,
     pub agent_schedule_tick: AgentScheduleTickPaneState,
     pub trajectory_audit: TrajectoryAuditPaneState,

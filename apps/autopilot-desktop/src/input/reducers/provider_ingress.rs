@@ -127,6 +127,11 @@ pub(super) fn apply_ingressed_request(
             now_epoch_seconds,
             "nip90.relay.ingress",
         );
+        state.earn_kernel_receipts.record_ingress_request(
+            &request,
+            now_epoch_seconds,
+            "nip90.relay.ingress",
+        );
         state.activity_feed.upsert_event(ActivityEventRow {
             event_id: format!("nip90:req:{}", request.request_id),
             domain: ActivityEventDomain::Network,

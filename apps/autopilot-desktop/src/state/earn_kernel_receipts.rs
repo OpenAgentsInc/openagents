@@ -1,0 +1,770 @@
+use crate::app_state::{
+    ActiveJobRecord, JobDemandSource, JobHistoryReceiptRow, JobHistoryStatus, JobLifecycleStage,
+    PaneLoadState,
+};
+use crate::economy_kernel_receipts::{
+    Asset, EvidenceRef, FeedbackLatencyClass, Money, MoneyAmount, PolicyContext, Receipt,
+    ReceiptBuilder, ReceiptHints, SeverityClass, TraceContext,
+};
+use crate::state::job_inbox::JobInboxNetworkRequest;
+use bitcoin::hashes::{Hash, sha256};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use std::path::{Path, PathBuf};
+
+const EARN_KERNEL_RECEIPT_SCHEMA_VERSION: u16 = 1;
+const EARN_KERNEL_RECEIPT_STREAM_ID: &str = "stream.earn_kernel_receipts.v1";
+const EARN_KERNEL_RECEIPT_AUTHORITY: &str = "kernel.authority";
+const EARN_KERNEL_RECEIPT_ROW_LIMIT: usize = 2048;
+
+#[derive(Debug, Serialize, Deserialize)]
+struct EarnKernelReceiptDocumentV1 {
+    schema_version: u16,
+    stream_id: String,
+    authority: String,
+    receipts: Vec<Receipt>,
+}
+
+pub struct EarnKernelReceiptState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub stream_id: String,
+    pub authority: String,
+    pub receipts: Vec<Receipt>,
+    receipt_file_path: PathBuf,
+}
+
+impl Default for EarnKernelReceiptState {
+    fn default() -> Self {
+        let receipt_file_path = earn_kernel_receipts_file_path();
+        Self::from_receipt_file_path(receipt_file_path)
+    }
+}
+
+impl EarnKernelReceiptState {
+    fn from_receipt_file_path(receipt_file_path: PathBuf) -> Self {
+        let (receipts, load_state, last_error, last_action) =
+            match load_earn_kernel_receipts(receipt_file_path.as_path()) {
+                Ok(receipts) => (
+                    receipts,
+                    PaneLoadState::Ready,
+                    None,
+                    Some("Loaded economy-kernel receipt stream".to_string()),
+                ),
+                Err(error) => (
+                    Vec::new(),
+                    PaneLoadState::Error,
+                    Some(error),
+                    Some("Economy-kernel receipt stream load failed".to_string()),
+                ),
+            };
+        Self {
+            load_state,
+            last_error,
+            last_action,
+            stream_id: EARN_KERNEL_RECEIPT_STREAM_ID.to_string(),
+            authority: EARN_KERNEL_RECEIPT_AUTHORITY.to_string(),
+            receipts,
+            receipt_file_path,
+        }
+    }
+
+    pub fn record_ingress_request(
+        &mut self,
+        request: &JobInboxNetworkRequest,
+        occurred_at_epoch_seconds: u64,
+        source_tag: &str,
+    ) {
+        let job_id = format!("job-{}", request.request_id);
+        let receipt_id = lifecycle_receipt_id(
+            job_id.as_str(),
+            JobLifecycleStage::Received,
+            request.request_id.as_str(),
+        );
+        let mut evidence = vec![
+            EvidenceRef::new(
+                "nostr_request",
+                format!("oa://nip90/request/{}", request.request_id),
+                digest_for_text(request.request_id.as_str()),
+            ),
+            EvidenceRef::new(
+                "request_shape",
+                format!("oa://nip90/request/{}/shape", request.request_id),
+                digest_for_text(
+                    request
+                        .parsed_event_shape
+                        .as_deref()
+                        .unwrap_or("shape:unknown"),
+                ),
+            ),
+        ];
+        if let Some(event_id) = request.sa_tick_request_event_id.as_deref() {
+            evidence.push(EvidenceRef::new(
+                "sa_tick_request_event",
+                format!("oa://sa/tick/request/{event_id}"),
+                digest_for_text(event_id),
+            ));
+        }
+
+        let hints = ReceiptHints {
+            category: Some(work_category_for_demand_source(request.demand_source).to_string()),
+            tfb_class: Some(tfb_class_for_ttl_seconds(request.ttl_seconds)),
+            severity: Some(severity_for_notional_sats(request.price_sats)),
+            achieved_verification_tier: None,
+            verification_correlated: None,
+            provenance_grade: None,
+            reason_code: None,
+            notional: Some(Money {
+                asset: Asset::Btc,
+                amount: MoneyAmount::AmountSats(request.price_sats),
+            }),
+        };
+
+        let receipt = ReceiptBuilder::new(
+            receipt_id,
+            "earn.job.ingress_request.v1",
+            epoch_seconds_to_ms(occurred_at_epoch_seconds),
+            lifecycle_idempotency_key(
+                "ingress_request",
+                job_id.as_str(),
+                request.request_id.as_str(),
+            ),
+            trace_for_job(job_id.as_str(), Some(request.request_id.as_str()), None),
+            current_policy_context(),
+        )
+        .with_inputs_payload(json!({
+            "request_id": request.request_id,
+            "request_kind": request.request_kind,
+            "requester": request.requester,
+            "demand_source": request.demand_source.label(),
+            "capability": request.capability,
+            "price_sats": request.price_sats,
+            "ttl_seconds": request.ttl_seconds,
+            "skill_scope_id": request.skill_scope_id,
+            "ac_envelope_event_id": request.ac_envelope_event_id,
+        }))
+        .with_outputs_payload(json!({
+            "stage": JobLifecycleStage::Received.label(),
+            "source_tag": source_tag,
+            "status": "accepted_for_inbox_projection",
+        }))
+        .with_evidence(evidence)
+        .with_hints(hints)
+        .build();
+
+        self.append_receipt(receipt, source_tag);
+    }
+
+    pub fn record_active_job_stage(
+        &mut self,
+        job: &ActiveJobRecord,
+        stage: JobLifecycleStage,
+        occurred_at_epoch_seconds: u64,
+        source_tag: &str,
+    ) {
+        let authority_key = match stage {
+            JobLifecycleStage::Received | JobLifecycleStage::Accepted => job.request_id.as_str(),
+            JobLifecycleStage::Running => job
+                .sa_tick_request_event_id
+                .as_deref()
+                .unwrap_or(job.request_id.as_str()),
+            JobLifecycleStage::Delivered => job
+                .sa_tick_result_event_id
+                .as_deref()
+                .unwrap_or(job.request_id.as_str()),
+            JobLifecycleStage::Paid => job
+                .payment_id
+                .as_deref()
+                .or(job.ac_settlement_event_id.as_deref())
+                .unwrap_or(job.request_id.as_str()),
+            JobLifecycleStage::Failed => job
+                .ac_default_event_id
+                .as_deref()
+                .or(job.failure_reason.as_deref())
+                .unwrap_or(job.request_id.as_str()),
+        };
+        let receipt_id = lifecycle_receipt_id(job.job_id.as_str(), stage, authority_key);
+
+        let (receipt_type, reason_code) = match stage {
+            JobLifecycleStage::Accepted => ("earn.job.accepted.v1", None),
+            JobLifecycleStage::Running => ("earn.job.executed.v1", None),
+            JobLifecycleStage::Delivered => ("earn.job.result_published.v1", None),
+            JobLifecycleStage::Paid => ("earn.job.settlement_observed.v1", None),
+            JobLifecycleStage::Failed => ("earn.job.failed.v1", Some("JOB_FAILED")),
+            JobLifecycleStage::Received => ("earn.job.received.v1", None),
+        };
+
+        let payment_pointer = job
+            .payment_id
+            .as_deref()
+            .or(job.invoice_id.as_deref())
+            .unwrap_or("");
+        if stage == JobLifecycleStage::Paid
+            && !is_wallet_authoritative_payment_pointer(Some(payment_pointer))
+        {
+            self.last_error = Some(format!(
+                "Skipping paid receipt for {}: missing wallet-authoritative payment pointer",
+                job.job_id
+            ));
+            self.load_state = PaneLoadState::Error;
+            return;
+        }
+
+        let mut evidence = vec![EvidenceRef::new(
+            "request_id",
+            format!("oa://nip90/request/{}", job.request_id),
+            digest_for_text(job.request_id.as_str()),
+        )];
+        if let Some(event_id) = job.sa_tick_request_event_id.as_deref() {
+            evidence.push(EvidenceRef::new(
+                "sa_tick_request_event",
+                format!("oa://sa/tick/request/{event_id}"),
+                digest_for_text(event_id),
+            ));
+        }
+        if let Some(event_id) = job.sa_tick_result_event_id.as_deref() {
+            evidence.push(EvidenceRef::new(
+                "sa_tick_result_event",
+                format!("oa://sa/tick/result/{event_id}"),
+                digest_for_text(event_id),
+            ));
+        }
+        if stage == JobLifecycleStage::Paid {
+            evidence.push(EvidenceRef::new(
+                "wallet_settlement_proof",
+                format!("oa://wallet/payments/{payment_pointer}"),
+                digest_for_text(payment_pointer),
+            ));
+            if let Some(event_id) = job.ac_settlement_event_id.as_deref() {
+                evidence.push(EvidenceRef::new(
+                    "settlement_feedback_event",
+                    format!("oa://nip90/feedback/{event_id}"),
+                    digest_for_text(event_id),
+                ));
+            }
+        }
+        if stage == JobLifecycleStage::Failed {
+            let reason = job
+                .failure_reason
+                .as_deref()
+                .unwrap_or("unknown_failure_reason");
+            evidence.push(EvidenceRef::new(
+                "failure_reason",
+                format!("oa://earn/jobs/{}/failure", job.job_id),
+                digest_for_text(reason),
+            ));
+        }
+
+        let hints = ReceiptHints {
+            category: Some(work_category_for_demand_source(job.demand_source).to_string()),
+            tfb_class: None,
+            severity: Some(severity_for_notional_sats(job.quoted_price_sats)),
+            achieved_verification_tier: None,
+            verification_correlated: None,
+            provenance_grade: None,
+            reason_code: reason_code.map(ToString::to_string),
+            notional: Some(Money {
+                asset: Asset::Btc,
+                amount: MoneyAmount::AmountSats(job.quoted_price_sats),
+            }),
+        };
+
+        let receipt = ReceiptBuilder::new(
+            receipt_id,
+            receipt_type,
+            epoch_seconds_to_ms(occurred_at_epoch_seconds),
+            lifecycle_idempotency_key(stage.label(), job.job_id.as_str(), authority_key),
+            trace_for_job(
+                job.job_id.as_str(),
+                Some(job.request_id.as_str()),
+                job.sa_trajectory_session_id.as_deref(),
+            ),
+            current_policy_context(),
+        )
+        .with_inputs_payload(json!({
+            "job_id": job.job_id,
+            "request_id": job.request_id,
+            "requester": job.requester,
+            "demand_source": job.demand_source.label(),
+            "capability": job.capability,
+            "stage": stage.label(),
+            "quoted_price_sats": job.quoted_price_sats,
+            "payment_pointer": if payment_pointer.is_empty() { None::<String> } else { Some(payment_pointer.to_string()) },
+        }))
+        .with_outputs_payload(json!({
+            "stage": stage.label(),
+            "source_tag": source_tag,
+            "status": if stage == JobLifecycleStage::Failed { "failed" } else { "ok" },
+            "reason_code": reason_code,
+        }))
+        .with_evidence(evidence)
+        .with_hints(hints)
+        .build();
+
+        self.append_receipt(receipt, source_tag);
+    }
+
+    pub fn record_history_receipt(
+        &mut self,
+        row: &JobHistoryReceiptRow,
+        occurred_at_epoch_seconds: u64,
+        source_tag: &str,
+    ) {
+        let stage = if row.status == JobHistoryStatus::Succeeded {
+            JobLifecycleStage::Paid
+        } else {
+            JobLifecycleStage::Failed
+        };
+        let authority_key = if stage == JobLifecycleStage::Paid {
+            row.payment_pointer.as_str()
+        } else {
+            row.result_hash.as_str()
+        };
+        if stage == JobLifecycleStage::Paid
+            && !is_wallet_authoritative_payment_pointer(Some(row.payment_pointer.as_str()))
+        {
+            self.last_error = Some(format!(
+                "Skipping paid history receipt for {}: non-authoritative payment pointer",
+                row.job_id
+            ));
+            self.load_state = PaneLoadState::Error;
+            return;
+        }
+
+        let reason_code = if stage == JobLifecycleStage::Failed {
+            Some("JOB_FAILED")
+        } else {
+            None
+        };
+
+        let receipt = ReceiptBuilder::new(
+            lifecycle_receipt_id(row.job_id.as_str(), stage, authority_key),
+            if stage == JobLifecycleStage::Paid {
+                "earn.job.settlement_observed.v1"
+            } else {
+                "earn.job.failed.v1"
+            },
+            epoch_seconds_to_ms(occurred_at_epoch_seconds),
+            lifecycle_idempotency_key("history_receipt", row.job_id.as_str(), authority_key),
+            trace_for_job(
+                row.job_id.as_str(),
+                Some(infer_request_id_from_job_id(row.job_id.as_str()).as_str()),
+                row.sa_trajectory_session_id.as_deref(),
+            ),
+            current_policy_context(),
+        )
+        .with_inputs_payload(json!({
+            "job_id": row.job_id,
+            "status": row.status.label(),
+            "demand_source": row.demand_source.label(),
+            "payout_sats": row.payout_sats,
+            "payment_pointer": row.payment_pointer,
+            "result_hash": row.result_hash,
+            "failure_reason": row.failure_reason,
+        }))
+        .with_outputs_payload(json!({
+            "stage": stage.label(),
+            "source_tag": source_tag,
+            "status": row.status.label(),
+            "wallet_settlement_authoritative": stage == JobLifecycleStage::Paid,
+            "reason_code": reason_code,
+        }))
+        .with_evidence(vec![
+            EvidenceRef::new(
+                "history_result_hash",
+                format!("oa://earn/jobs/{}/result", row.job_id),
+                normalize_digest(row.result_hash.as_str()),
+            ),
+            EvidenceRef::new(
+                if stage == JobLifecycleStage::Paid {
+                    "wallet_settlement_proof"
+                } else {
+                    "failure_reason"
+                },
+                if stage == JobLifecycleStage::Paid {
+                    format!("oa://wallet/payments/{}", row.payment_pointer)
+                } else {
+                    format!("oa://earn/jobs/{}/failure", row.job_id)
+                },
+                if stage == JobLifecycleStage::Paid {
+                    digest_for_text(row.payment_pointer.as_str())
+                } else {
+                    digest_for_text(
+                        row.failure_reason
+                            .as_deref()
+                            .unwrap_or("unknown_failure_reason"),
+                    )
+                },
+            ),
+        ])
+        .with_hints(ReceiptHints {
+            category: Some(work_category_for_demand_source(row.demand_source).to_string()),
+            tfb_class: None,
+            severity: Some(severity_for_notional_sats(row.payout_sats)),
+            achieved_verification_tier: None,
+            verification_correlated: None,
+            provenance_grade: None,
+            reason_code: reason_code.map(ToString::to_string),
+            notional: Some(Money {
+                asset: Asset::Btc,
+                amount: MoneyAmount::AmountSats(row.payout_sats),
+            }),
+        })
+        .build();
+
+        self.append_receipt(receipt, source_tag);
+    }
+
+    pub fn get_receipt(&self, receipt_id: &str) -> Option<&Receipt> {
+        self.receipts
+            .iter()
+            .find(|receipt| receipt.receipt_id == receipt_id)
+    }
+
+    pub fn receipts_for_job(&self, job_id: &str) -> Vec<&Receipt> {
+        self.receipts
+            .iter()
+            .filter(|receipt| receipt.trace.work_unit_id.as_deref() == Some(job_id))
+            .collect()
+    }
+
+    fn append_receipt(&mut self, receipt: Result<Receipt, String>, source_tag: &str) {
+        let receipt = match receipt {
+            Ok(value) => value,
+            Err(error) => {
+                self.last_error = Some(error);
+                self.load_state = PaneLoadState::Error;
+                return;
+            }
+        };
+
+        if self
+            .receipts
+            .iter()
+            .any(|existing| existing.receipt_id == receipt.receipt_id)
+        {
+            self.last_error = None;
+            self.load_state = PaneLoadState::Ready;
+            self.last_action = Some(format!(
+                "Receipt {} already recorded (idempotent replay)",
+                receipt.receipt_id
+            ));
+            return;
+        }
+
+        self.receipts.push(receipt.clone());
+        self.receipts = normalize_receipts(std::mem::take(&mut self.receipts));
+        if let Err(error) =
+            persist_earn_kernel_receipts(self.receipt_file_path.as_path(), self.receipts.as_slice())
+        {
+            self.last_error = Some(error);
+            self.load_state = PaneLoadState::Error;
+            return;
+        }
+        self.last_error = None;
+        self.load_state = PaneLoadState::Ready;
+        self.last_action = Some(format!(
+            "Emitted {} via {} ({})",
+            receipt.receipt_type, source_tag, receipt.receipt_id
+        ));
+    }
+}
+
+fn work_category_for_demand_source(source: JobDemandSource) -> &'static str {
+    match source {
+        JobDemandSource::OpenNetwork | JobDemandSource::StarterDemand => "compute",
+    }
+}
+
+fn tfb_class_for_ttl_seconds(ttl_seconds: u64) -> FeedbackLatencyClass {
+    if ttl_seconds <= 60 {
+        FeedbackLatencyClass::Instant
+    } else if ttl_seconds <= 300 {
+        FeedbackLatencyClass::Short
+    } else if ttl_seconds <= 1_800 {
+        FeedbackLatencyClass::Medium
+    } else {
+        FeedbackLatencyClass::Long
+    }
+}
+
+fn severity_for_notional_sats(amount_sats: u64) -> SeverityClass {
+    if amount_sats >= 100_000 {
+        SeverityClass::Critical
+    } else if amount_sats >= 10_000 {
+        SeverityClass::High
+    } else if amount_sats >= 1_000 {
+        SeverityClass::Medium
+    } else {
+        SeverityClass::Low
+    }
+}
+
+fn current_policy_context() -> PolicyContext {
+    PolicyContext {
+        policy_bundle_id: std::env::var("OPENAGENTS_EARN_POLICY_BUNDLE_ID")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "policy.earn.default".to_string()),
+        policy_version: std::env::var("OPENAGENTS_EARN_POLICY_VERSION")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "1".to_string()),
+        approved_by: std::env::var("OPENAGENTS_EARN_POLICY_APPROVED_BY")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "autopilot-desktop".to_string()),
+    }
+}
+
+fn trace_for_job(
+    job_id: &str,
+    request_id: Option<&str>,
+    trajectory_session: Option<&str>,
+) -> TraceContext {
+    TraceContext {
+        session_id: trajectory_session.map(ToString::to_string),
+        trajectory_hash: trajectory_session.map(digest_for_text),
+        job_hash: request_id.map(digest_for_text),
+        run_id: request_id.map(|request_id| format!("run:{request_id}")),
+        work_unit_id: Some(job_id.to_string()),
+        contract_id: None,
+        claim_id: None,
+    }
+}
+
+fn lifecycle_receipt_id(job_id: &str, stage: JobLifecycleStage, authority_key: &str) -> String {
+    format!(
+        "receipt.earn:{}:{}:{}",
+        normalize_key(job_id),
+        stage.label(),
+        normalize_key(authority_key)
+    )
+}
+
+fn lifecycle_idempotency_key(action: &str, job_id: &str, authority_key: &str) -> String {
+    format!(
+        "idemp.earn:{}:{}:{}",
+        normalize_key(action),
+        normalize_key(job_id),
+        normalize_key(authority_key)
+    )
+}
+
+fn normalize_key(value: &str) -> String {
+    value
+        .trim()
+        .chars()
+        .map(|ch| if ch.is_whitespace() { '_' } else { ch })
+        .collect()
+}
+
+fn infer_request_id_from_job_id(job_id: &str) -> String {
+    job_id
+        .strip_prefix("job-")
+        .map(ToString::to_string)
+        .unwrap_or_else(|| job_id.to_string())
+}
+
+fn epoch_seconds_to_ms(epoch_seconds: u64) -> i64 {
+    epoch_seconds.saturating_mul(1_000).min(i64::MAX as u64) as i64
+}
+
+fn digest_for_text(value: &str) -> String {
+    let digest = sha256::Hash::hash(value.as_bytes());
+    format!("sha256:{digest}")
+}
+
+fn normalize_digest(value: &str) -> String {
+    if value.starts_with("sha256:") {
+        value.to_ascii_lowercase()
+    } else {
+        digest_for_text(value)
+    }
+}
+
+fn is_wallet_authoritative_payment_pointer(pointer: Option<&str>) -> bool {
+    let Some(pointer) = pointer else {
+        return false;
+    };
+    let pointer = pointer.trim();
+    !pointer.is_empty()
+        && !pointer.starts_with("pending:")
+        && !pointer.starts_with("pay:")
+        && !pointer.starts_with("inv-")
+        && !pointer.starts_with("pay-req-")
+}
+
+fn earn_kernel_receipts_file_path() -> PathBuf {
+    std::env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join(".openagents")
+        .join("autopilot-earn-kernel-receipts-v1.json")
+}
+
+fn normalize_receipts(mut receipts: Vec<Receipt>) -> Vec<Receipt> {
+    receipts.sort_by(|lhs, rhs| {
+        rhs.created_at_ms
+            .cmp(&lhs.created_at_ms)
+            .then_with(|| lhs.receipt_id.cmp(&rhs.receipt_id))
+    });
+    receipts.truncate(EARN_KERNEL_RECEIPT_ROW_LIMIT);
+    receipts
+}
+
+fn persist_earn_kernel_receipts(path: &Path, receipts: &[Receipt]) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("Failed to create economy-kernel receipt dir: {error}"))?;
+    }
+
+    let document = EarnKernelReceiptDocumentV1 {
+        schema_version: EARN_KERNEL_RECEIPT_SCHEMA_VERSION,
+        stream_id: EARN_KERNEL_RECEIPT_STREAM_ID.to_string(),
+        authority: EARN_KERNEL_RECEIPT_AUTHORITY.to_string(),
+        receipts: normalize_receipts(receipts.to_vec()),
+    };
+    let payload = serde_json::to_string_pretty(&document)
+        .map_err(|error| format!("Failed to encode economy-kernel receipts: {error}"))?;
+    let temp_path = path.with_extension("tmp");
+    std::fs::write(&temp_path, payload)
+        .map_err(|error| format!("Failed to write economy-kernel receipts temp file: {error}"))?;
+    std::fs::rename(&temp_path, path)
+        .map_err(|error| format!("Failed to persist economy-kernel receipts: {error}"))?;
+    Ok(())
+}
+
+fn load_earn_kernel_receipts(path: &Path) -> Result<Vec<Receipt>, String> {
+    let raw = match std::fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => {
+            return Err(format!("Failed to read economy-kernel receipts: {error}"));
+        }
+    };
+    let document = serde_json::from_str::<EarnKernelReceiptDocumentV1>(&raw)
+        .map_err(|error| format!("Failed to parse economy-kernel receipts: {error}"))?;
+    if document.schema_version != EARN_KERNEL_RECEIPT_SCHEMA_VERSION {
+        return Err(format!(
+            "Unsupported economy-kernel receipt schema version: {}",
+            document.schema_version
+        ));
+    }
+    if document.stream_id != EARN_KERNEL_RECEIPT_STREAM_ID {
+        return Err(format!(
+            "Unsupported economy-kernel receipt stream id: {}",
+            document.stream_id
+        ));
+    }
+    if document.authority != EARN_KERNEL_RECEIPT_AUTHORITY {
+        return Err(format!(
+            "Unsupported economy-kernel receipt authority marker: {}",
+            document.authority
+        ));
+    }
+    Ok(normalize_receipts(document.receipts))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fixture_ingress_request() -> JobInboxNetworkRequest {
+        JobInboxNetworkRequest {
+            request_id: "req-123".to_string(),
+            requester: "npub1abc".to_string(),
+            demand_source: JobDemandSource::OpenNetwork,
+            request_kind: 5000,
+            capability: "text_generation".to_string(),
+            target_provider_pubkeys: vec!["npub1target".to_string()],
+            encrypted: false,
+            encrypted_payload: None,
+            parsed_event_shape: Some("shape".to_string()),
+            raw_event_json: Some("{\"kind\":5000}".to_string()),
+            skill_scope_id: Some("skill.scope".to_string()),
+            skl_manifest_a: None,
+            skl_manifest_event_id: None,
+            sa_tick_request_event_id: None,
+            sa_tick_result_event_id: None,
+            ac_envelope_event_id: Some("ac-env-1".to_string()),
+            price_sats: 42,
+            ttl_seconds: 120,
+            validation: crate::state::job_inbox::JobInboxValidation::Valid,
+        }
+    }
+
+    fn fixture_history_row(payment_pointer: &str) -> JobHistoryReceiptRow {
+        JobHistoryReceiptRow {
+            job_id: "job-req-123".to_string(),
+            status: JobHistoryStatus::Succeeded,
+            demand_source: JobDemandSource::OpenNetwork,
+            completed_at_epoch_seconds: 1_762_000_000,
+            skill_scope_id: Some("skill.scope".to_string()),
+            skl_manifest_a: None,
+            skl_manifest_event_id: None,
+            sa_tick_result_event_id: Some("result-evt".to_string()),
+            sa_trajectory_session_id: Some("traj:123".to_string()),
+            ac_envelope_event_id: Some("ac-env-1".to_string()),
+            ac_settlement_event_id: Some("fb-evt".to_string()),
+            ac_default_event_id: None,
+            payout_sats: 42,
+            result_hash: "sha256:abc".to_string(),
+            payment_pointer: payment_pointer.to_string(),
+            failure_reason: None,
+        }
+    }
+
+    #[test]
+    fn paid_history_receipt_requires_wallet_authoritative_pointer() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+
+        state.record_history_receipt(
+            &fixture_history_row("pending:abc"),
+            1_762_000_010,
+            "test.history",
+        );
+
+        assert!(state.receipts.is_empty());
+        assert!(state.last_error.is_some());
+        assert_eq!(state.load_state, PaneLoadState::Error);
+    }
+
+    #[test]
+    fn ingress_receipt_and_history_settlement_receipt_are_emitted() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+
+        let ingress = fixture_ingress_request();
+        state.record_ingress_request(&ingress, 1_762_000_000, "test.ingress");
+        state.record_history_receipt(
+            &fixture_history_row("wallet-payment-1"),
+            1_762_000_010,
+            "test.history",
+        );
+
+        assert_eq!(state.load_state, PaneLoadState::Ready);
+        assert_eq!(state.receipts.len(), 2);
+        assert!(
+            state
+                .receipts
+                .iter()
+                .any(|receipt| receipt.receipt_type == "earn.job.ingress_request.v1")
+        );
+        let settlement = state
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_type == "earn.job.settlement_observed.v1")
+            .expect("settlement receipt");
+        assert!(
+            settlement
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "wallet_settlement_proof")
+        );
+    }
+}
