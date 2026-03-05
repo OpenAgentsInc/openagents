@@ -25,6 +25,7 @@ const DEFAULT_TTL_SECONDS: u64 = 60;
 pub enum ProviderNip90LaneMode {
     Offline,
     Connecting,
+    Preview,
     Online,
     Degraded,
 }
@@ -34,6 +35,7 @@ impl ProviderNip90LaneMode {
         match self {
             Self::Offline => "offline",
             Self::Connecting => "connecting",
+            Self::Preview => "preview",
             Self::Online => "online",
             Self::Degraded => "degraded",
         }
@@ -236,6 +238,29 @@ struct ProviderNip90LaneState {
     relay_last_error: HashMap<String, String>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DesiredLaneState {
+    Offline,
+    Preview,
+    Online,
+}
+
+impl ProviderNip90LaneState {
+    fn desired_state(&self) -> DesiredLaneState {
+        if self.snapshot.configured_relays.is_empty() {
+            DesiredLaneState::Offline
+        } else if self.wants_online {
+            DesiredLaneState::Online
+        } else {
+            DesiredLaneState::Preview
+        }
+    }
+
+    fn connection_expected(&self) -> bool {
+        !matches!(self.desired_state(), DesiredLaneState::Offline)
+    }
+}
+
 fn run_lane_loop(
     command_rx: Receiver<ProviderNip90LaneCommand>,
     update_tx: Sender<ProviderNip90LaneUpdate>,
@@ -313,7 +338,7 @@ fn run_lane_loop(
         let mode_before = state.snapshot.mode;
         let connected_before = state.snapshot.connected_relays;
         let relay_health_before = state.snapshot.relay_health.clone();
-        if ensure_online_pool(&runtime, &mut state).is_err() {
+        if ensure_connected_pool(&runtime, &mut state).is_err() {
             let _ = update_tx.send(ProviderNip90LaneUpdate::Snapshot(Box::new(
                 state.snapshot.clone(),
             )));
@@ -328,7 +353,7 @@ fn run_lane_loop(
             )));
         }
 
-        if !state.wants_online {
+        if !state.connection_expected() {
             continue;
         }
 
@@ -347,12 +372,24 @@ fn run_lane_loop(
         if state.snapshot.connected_relays != outcome.connected_relays {
             state.snapshot.connected_relays = outcome.connected_relays;
         }
+        let desired_state = state.desired_state();
         if outcome.connected_relays == 0 {
             state.snapshot.mode = ProviderNip90LaneMode::Degraded;
-            state.snapshot.last_error =
-                Some("Provider ingress has zero connected relays while online".to_string());
-        } else if state.snapshot.mode != ProviderNip90LaneMode::Online {
-            state.snapshot.mode = ProviderNip90LaneMode::Online;
+            state.snapshot.last_error = Some(match desired_state {
+                DesiredLaneState::Offline => "Provider relay lane offline".to_string(),
+                DesiredLaneState::Preview => {
+                    "Relay preview has zero connected relays while provider is offline".to_string()
+                }
+                DesiredLaneState::Online => {
+                    "Provider ingress has zero connected relays while online".to_string()
+                }
+            });
+        } else {
+            state.snapshot.mode = match desired_state {
+                DesiredLaneState::Offline => ProviderNip90LaneMode::Offline,
+                DesiredLaneState::Preview => ProviderNip90LaneMode::Preview,
+                DesiredLaneState::Online => ProviderNip90LaneMode::Online,
+            };
             state.snapshot.last_error = None;
         }
 
@@ -417,15 +454,16 @@ fn handle_command(
             prune_relay_observation_maps(state);
             state.snapshot.relay_health = relay_health_rows_for(
                 &state.snapshot.configured_relays,
-                if state.wants_online {
+                if state.connection_expected() {
                     ProviderNip90RelayStatus::Connecting
                 } else {
                     ProviderNip90RelayStatus::Disconnected
                 },
             );
-            state.snapshot.last_action = Some("Updated provider relay configuration".to_string());
+            state.snapshot.last_action =
+                Some("Updated relay observation configuration".to_string());
 
-            if state.wants_online {
+            if state.pool.is_some() {
                 disconnect_pool(runtime, state);
             }
             refresh_relay_health_snapshot(runtime, state);
@@ -440,11 +478,23 @@ fn handle_command(
                     ProviderNip90RelayStatus::Connecting,
                 );
             } else {
-                disconnect_pool(runtime, state);
-                state.snapshot.mode = ProviderNip90LaneMode::Offline;
                 state.snapshot.last_error = None;
-                state.relay_last_error.clear();
-                state.snapshot.last_action = Some("Provider relay ingress offline".to_string());
+                if state.snapshot.configured_relays.is_empty() {
+                    disconnect_pool(runtime, state);
+                    state.snapshot.mode = ProviderNip90LaneMode::Offline;
+                    state.snapshot.last_action = Some("Provider relay ingress offline".to_string());
+                } else if state.pool.is_some() {
+                    state.snapshot.mode = ProviderNip90LaneMode::Preview;
+                    state.snapshot.last_action =
+                        Some("Relay preview active while provider is offline".to_string());
+                } else {
+                    state.snapshot.mode = ProviderNip90LaneMode::Connecting;
+                    state.snapshot.last_action = Some("Connecting relay preview".to_string());
+                    state.snapshot.relay_health = relay_health_rows_for(
+                        &state.snapshot.configured_relays,
+                        ProviderNip90RelayStatus::Connecting,
+                    );
+                }
             }
             refresh_relay_health_snapshot(runtime, state);
         }
@@ -499,7 +549,7 @@ fn handle_publish_event(
         return;
     }
 
-    if ensure_online_pool(runtime, state).is_err() {
+    if ensure_connected_pool(runtime, state).is_err() {
         let message = state
             .snapshot
             .last_error
@@ -607,11 +657,18 @@ fn disconnect_pool(runtime: &tokio::runtime::Runtime, state: &mut ProviderNip90L
     state.snapshot.connected_relays = 0;
 }
 
-fn ensure_online_pool(
+fn ensure_connected_pool(
     runtime: &tokio::runtime::Runtime,
     state: &mut ProviderNip90LaneState,
 ) -> Result<(), ()> {
-    if !state.wants_online {
+    let desired_state = state.desired_state();
+    if matches!(desired_state, DesiredLaneState::Offline) {
+        if state.pool.is_some() {
+            disconnect_pool(runtime, state);
+        }
+        state.snapshot.mode = ProviderNip90LaneMode::Offline;
+        state.snapshot.last_error = None;
+        state.snapshot.last_action = Some("Provider relay ingress offline".to_string());
         refresh_relay_health_snapshot(runtime, state);
         return Ok(());
     }
@@ -632,13 +689,33 @@ fn ensure_online_pool(
         reconnect_disconnected_relays(runtime, state, pool);
         refresh_relay_health_snapshot(runtime, state);
         if state.snapshot.connected_relays > 0 {
+            if matches!(desired_state, DesiredLaneState::Preview) {
+                state.snapshot.mode = ProviderNip90LaneMode::Preview;
+                state.snapshot.last_error = None;
+                state.snapshot.last_action = Some(format!(
+                    "Relay preview active ({}/{})",
+                    state.snapshot.connected_relays,
+                    state.snapshot.configured_relays.len()
+                ));
+            }
             return Ok(());
         }
 
         state.snapshot.mode = ProviderNip90LaneMode::Degraded;
-        state.snapshot.last_error =
-            Some("Provider ingress has zero connected relays while online".to_string());
-        state.snapshot.last_action = Some("Provider relay ingress degraded".to_string());
+        state.snapshot.last_error = Some(match desired_state {
+            DesiredLaneState::Preview => {
+                "Relay preview has zero connected relays while provider is offline".to_string()
+            }
+            DesiredLaneState::Online => {
+                "Provider ingress has zero connected relays while online".to_string()
+            }
+            DesiredLaneState::Offline => "Provider relay ingress offline".to_string(),
+        });
+        state.snapshot.last_action = Some(match desired_state {
+            DesiredLaneState::Preview => "Relay preview degraded".to_string(),
+            DesiredLaneState::Online => "Provider relay ingress degraded".to_string(),
+            DesiredLaneState::Offline => "Provider relay ingress offline".to_string(),
+        });
         return Err(());
     }
 
@@ -721,25 +798,52 @@ fn ensure_online_pool(
         let _ = runtime.block_on(pool.disconnect_all());
         state.snapshot.mode = ProviderNip90LaneMode::Degraded;
         state.snapshot.last_error = first_error;
-        state.snapshot.last_action = Some("Provider relay ingress failed to connect".to_string());
+        state.snapshot.last_action = Some(match desired_state {
+            DesiredLaneState::Preview => "Relay preview failed to connect".to_string(),
+            DesiredLaneState::Online => "Provider relay ingress failed to connect".to_string(),
+            DesiredLaneState::Offline => "Provider relay ingress offline".to_string(),
+        });
         refresh_relay_health_snapshot(runtime, state);
         return Err(());
     }
 
     state.pool = Some(pool);
     refresh_relay_health_snapshot(runtime, state);
-    if connected_relays == state.snapshot.configured_relays.len() {
-        state.snapshot.mode = ProviderNip90LaneMode::Online;
-        state.snapshot.last_error = None;
-    } else {
-        state.snapshot.mode = ProviderNip90LaneMode::Degraded;
-        state.snapshot.last_error = first_error;
+    match desired_state {
+        DesiredLaneState::Preview => {
+            if connected_relays == state.snapshot.configured_relays.len() {
+                state.snapshot.mode = ProviderNip90LaneMode::Preview;
+                state.snapshot.last_error = None;
+            } else {
+                state.snapshot.mode = ProviderNip90LaneMode::Degraded;
+                state.snapshot.last_error = first_error;
+            }
+            state.snapshot.last_action = Some(format!(
+                "Relay preview active ({}/{})",
+                connected_relays,
+                state.snapshot.configured_relays.len()
+            ));
+        }
+        DesiredLaneState::Online => {
+            if connected_relays == state.snapshot.configured_relays.len() {
+                state.snapshot.mode = ProviderNip90LaneMode::Online;
+                state.snapshot.last_error = None;
+            } else {
+                state.snapshot.mode = ProviderNip90LaneMode::Degraded;
+                state.snapshot.last_error = first_error;
+            }
+            state.snapshot.last_action = Some(format!(
+                "Provider relay ingress online ({}/{})",
+                connected_relays,
+                state.snapshot.configured_relays.len()
+            ));
+        }
+        DesiredLaneState::Offline => {
+            state.snapshot.mode = ProviderNip90LaneMode::Offline;
+            state.snapshot.last_error = None;
+            state.snapshot.last_action = Some("Provider relay ingress offline".to_string());
+        }
     }
-    state.snapshot.last_action = Some(format!(
-        "Provider relay ingress online ({}/{})",
-        connected_relays,
-        state.snapshot.configured_relays.len()
-    ));
     Ok(())
 }
 
@@ -889,6 +993,7 @@ fn refresh_relay_health_snapshot(
     state: &mut ProviderNip90LaneState,
 ) {
     prune_relay_observation_maps(state);
+    let connection_expected = state.connection_expected();
 
     let connection_states = if let Some(pool) = state.pool.as_ref().cloned() {
         runtime.block_on(async {
@@ -916,7 +1021,7 @@ fn refresh_relay_health_snapshot(
                 Some(ConnectionState::Disconnected) => {
                     if state.relay_last_error.contains_key(&relay_key) {
                         ProviderNip90RelayStatus::Error
-                    } else if state.wants_online {
+                    } else if connection_expected {
                         ProviderNip90RelayStatus::Connecting
                     } else {
                         ProviderNip90RelayStatus::Disconnected
@@ -925,7 +1030,7 @@ fn refresh_relay_health_snapshot(
                 None => {
                     if state.relay_last_error.contains_key(&relay_key) {
                         ProviderNip90RelayStatus::Error
-                    } else if state.wants_online {
+                    } else if connection_expected {
                         ProviderNip90RelayStatus::Connecting
                     } else {
                         ProviderNip90RelayStatus::Disconnected
@@ -1637,6 +1742,66 @@ mod tests {
             event_to_buyer_response_event(&event, &tracked).is_none(),
             "untracked request ids should not emit buyer response events"
         );
+    }
+
+    #[test]
+    fn worker_previews_live_relay_request_while_provider_is_offline() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("build tokio runtime for relay harness");
+        let (relay_url, relay_task) = runtime.block_on(spawn_mock_relay_with_request());
+        let mut worker = ProviderNip90LaneWorker::spawn(vec![relay_url]);
+
+        let deadline = Instant::now() + Duration::from_secs(4);
+        let mut ingressed = false;
+        let mut preview_snapshot_seen = false;
+        let mut last_snapshot: Option<String> = None;
+        while Instant::now() < deadline {
+            for update in worker.drain_updates() {
+                match update {
+                    ProviderNip90LaneUpdate::IngressedRequest(row)
+                        if row.request_id == "request-live-1" =>
+                    {
+                        ingressed = true;
+                    }
+                    ProviderNip90LaneUpdate::Snapshot(snapshot) => {
+                        if snapshot.mode == super::ProviderNip90LaneMode::Preview
+                            && snapshot.connected_relays > 0
+                        {
+                            preview_snapshot_seen = true;
+                        }
+                        last_snapshot = Some(format!(
+                            "mode={} connected_relays={} relays={} last_error={:?} last_action={:?}",
+                            snapshot.mode.label(),
+                            snapshot.connected_relays,
+                            snapshot.relay_health.len(),
+                            snapshot.last_error,
+                            snapshot.last_action
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+            if ingressed && preview_snapshot_seen {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+
+        assert!(
+            preview_snapshot_seen,
+            "expected preview snapshot before going online (last snapshot: {})",
+            last_snapshot.clone().unwrap_or_else(|| "none".to_string())
+        );
+        assert!(
+            ingressed,
+            "expected preview ingress while offline (last snapshot: {})",
+            last_snapshot.unwrap_or_else(|| "none".to_string())
+        );
+
+        relay_task.abort();
     }
 
     #[test]

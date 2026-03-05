@@ -13,6 +13,7 @@ use crate::state::job_inbox::{JobInboxNetworkRequest, JobInboxValidation};
 pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: ProviderNip90LaneSnapshot) {
     let previous_mode = state.provider_nip90_lane.mode;
     let selected_url = state.relay_connections.selected_url.clone();
+    let provider_was_offline = state.provider_runtime.mode == ProviderMode::Offline;
     state.provider_nip90_lane = snapshot;
     state.relay_connections.relays = state
         .provider_nip90_lane
@@ -45,7 +46,17 @@ pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: ProviderNip
                 .map(|relay| relay.url.clone())
         });
 
-    if let Some(last_error) = state.provider_nip90_lane.last_error.as_deref() {
+    if provider_was_offline && state.provider_nip90_lane.mode != ProviderNip90LaneMode::Online {
+        state.provider_runtime.mode = ProviderMode::Offline;
+        state.provider_runtime.degraded_reason_code = None;
+        state.provider_runtime.last_error_detail = None;
+        if matches!(
+            state.provider_nip90_lane.mode,
+            ProviderNip90LaneMode::Preview | ProviderNip90LaneMode::Connecting
+        ) {
+            state.provider_runtime.last_result = state.provider_nip90_lane.last_action.clone();
+        }
+    } else if let Some(last_error) = state.provider_nip90_lane.last_error.as_deref() {
         state.provider_runtime.mode = ProviderMode::Degraded;
         state.provider_runtime.degraded_reason_code = Some("NIP90_RELAY_INGRESS_ERROR".to_string());
         state.provider_runtime.last_error_detail = Some(last_error.to_string());
@@ -80,6 +91,7 @@ pub(super) fn apply_ingressed_request(
     state: &mut RenderState,
     mut request: JobInboxNetworkRequest,
 ) {
+    let preview_only = state.provider_runtime.mode == ProviderMode::Offline;
     apply_encrypted_request_handling(state, &mut request);
     if let Some(reason) = target_policy_reject_reason(state, &request) {
         apply_ignored_ingress_request(state, &request, reason.as_str());
@@ -96,18 +108,30 @@ pub(super) fn apply_ingressed_request(
     state.job_inbox.load_state = PaneLoadState::Ready;
     state.job_inbox.last_error = None;
     state.job_inbox.last_action = Some(format!(
-        "Ingested live NIP-90 request {} from relay lane",
-        request.request_id
+        "{} NIP-90 request {} from relay lane",
+        if preview_only {
+            "Observed preview"
+        } else {
+            "Ingested live"
+        },
+        request.request_id,
     ));
 
-    state.provider_runtime.last_result = Some(format!(
-        "relay ingress received request {} ({})",
-        request.request_id, request.capability
-    ));
-    state.provider_runtime.last_authoritative_status = Some("accepted".to_string());
-    state.provider_runtime.last_authoritative_event_id = Some(request.request_id.clone());
-    if state.provider_runtime.last_authoritative_error_class == Some(EarnFailureClass::Relay) {
-        state.provider_runtime.last_authoritative_error_class = None;
+    if preview_only {
+        state.provider_runtime.last_result = Some(format!(
+            "preview observed request {} ({})",
+            request.request_id, request.capability
+        ));
+    } else {
+        state.provider_runtime.last_result = Some(format!(
+            "relay ingress received request {} ({})",
+            request.request_id, request.capability
+        ));
+        state.provider_runtime.last_authoritative_status = Some("accepted".to_string());
+        state.provider_runtime.last_authoritative_event_id = Some(request.request_id.clone());
+        if state.provider_runtime.last_authoritative_error_class == Some(EarnFailureClass::Relay) {
+            state.provider_runtime.last_authoritative_error_class = None;
+        }
     }
 
     if is_new {
@@ -136,7 +160,11 @@ pub(super) fn apply_ingressed_request(
             event_id: format!("nip90:req:{}", request.request_id),
             domain: ActivityEventDomain::Network,
             source_tag: "nip90.relay".to_string(),
-            summary: format!("Live request {} arrived", request.capability),
+            summary: if preview_only {
+                format!("Preview request {} observed", request.capability)
+            } else {
+                format!("Live request {} arrived", request.capability)
+            },
             detail: format!(
                 "request={} requester={} price_sats={} ttl_seconds={}\n\nshape:\n{}\n\nraw_event_json:\n{}",
                 request.request_id,
@@ -268,6 +296,7 @@ fn apply_ignored_ingress_request(
     request: &JobInboxNetworkRequest,
     reason: &str,
 ) {
+    let preview_only = state.provider_runtime.mode == ProviderMode::Offline;
     let now_epoch_seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs());
@@ -283,18 +312,32 @@ fn apply_ignored_ingress_request(
     state.job_inbox.load_state = PaneLoadState::Ready;
     state.job_inbox.last_error = None;
     state.job_inbox.last_action = Some(format!(
-        "Ignored live NIP-90 request {} ({})",
-        request.request_id, reason
+        "{} NIP-90 request {} ({})",
+        if preview_only {
+            "Ignored preview"
+        } else {
+            "Ignored live"
+        },
+        request.request_id,
+        reason
     ));
 
     state.provider_runtime.last_result = Some(format!(
-        "relay ingress ignored request {} ({})",
-        request.request_id, reason
+        "{} request {} ({})",
+        if preview_only {
+            "preview ignored"
+        } else {
+            "relay ingress ignored"
+        },
+        request.request_id,
+        reason
     ));
-    state.provider_runtime.last_authoritative_status = Some("ignored".to_string());
-    state.provider_runtime.last_authoritative_event_id = Some(request.request_id.clone());
-    if state.provider_runtime.last_authoritative_error_class == Some(EarnFailureClass::Relay) {
-        state.provider_runtime.last_authoritative_error_class = None;
+    if !preview_only {
+        state.provider_runtime.last_authoritative_status = Some("ignored".to_string());
+        state.provider_runtime.last_authoritative_event_id = Some(request.request_id.clone());
+        if state.provider_runtime.last_authoritative_error_class == Some(EarnFailureClass::Relay) {
+            state.provider_runtime.last_authoritative_error_class = None;
+        }
     }
 
     let now_epoch_seconds = std::time::SystemTime::now()
@@ -304,7 +347,11 @@ fn apply_ignored_ingress_request(
         event_id: format!("nip90:req:ignored:{}", request.request_id),
         domain: ActivityEventDomain::Network,
         source_tag: "nip90.policy".to_string(),
-        summary: "Ignored live NIP-90 request".to_string(),
+        summary: if preview_only {
+            "Ignored preview NIP-90 request".to_string()
+        } else {
+            "Ignored live NIP-90 request".to_string()
+        },
         detail: format!(
             "request={} requester={} targets={} encrypted={} reason={}\n\nshape:\n{}\n\nraw_event_json:\n{}",
             request.request_id,

@@ -1,4 +1,5 @@
 use crate::app_state::PaneLoadState;
+use crate::state::provider_runtime::ProviderMode;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum JobDemandSource {
@@ -69,6 +70,20 @@ pub struct JobInboxRequest {
     pub decision: JobInboxDecision,
 }
 
+impl JobInboxRequest {
+    pub const fn preview_only(&self, provider_mode: ProviderMode) -> bool {
+        matches!(provider_mode, ProviderMode::Offline)
+    }
+
+    pub const fn eligibility_label(&self, provider_mode: ProviderMode) -> &'static str {
+        if self.preview_only(provider_mode) {
+            "preview-only"
+        } else {
+            "claimable"
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct JobInboxNetworkRequest {
     pub request_id: String,
@@ -115,6 +130,14 @@ impl Default for JobInboxState {
 }
 
 impl JobInboxState {
+    pub const fn preview_block_reason(&self, provider_mode: ProviderMode) -> Option<&'static str> {
+        if matches!(provider_mode, ProviderMode::Offline) {
+            Some("Preview only while offline. Click Go Online to claim jobs.")
+        } else {
+            None
+        }
+    }
+
     pub fn upsert_network_request(&mut self, request: JobInboxNetworkRequest) {
         if let Some(existing) = self
             .requests
@@ -211,5 +234,64 @@ impl JobInboxState {
             format!("Rejected {} ({decision_reason})", request.request_id)
         });
         Ok(request.request_id.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        JobDemandSource, JobInboxDecision, JobInboxRequest, JobInboxState, JobInboxValidation,
+    };
+    use crate::app_state::PaneLoadState;
+    use crate::state::provider_runtime::ProviderMode;
+
+    fn fixture_request() -> JobInboxRequest {
+        JobInboxRequest {
+            request_id: "req-preview".to_string(),
+            requester: "buyer".to_string(),
+            demand_source: JobDemandSource::OpenNetwork,
+            request_kind: 5050,
+            capability: "summarize.text".to_string(),
+            skill_scope_id: None,
+            skl_manifest_a: None,
+            skl_manifest_event_id: None,
+            sa_tick_request_event_id: None,
+            sa_tick_result_event_id: None,
+            ac_envelope_event_id: None,
+            price_sats: 42,
+            ttl_seconds: 60,
+            validation: JobInboxValidation::Valid,
+            arrival_seq: 1,
+            decision: JobInboxDecision::Pending,
+        }
+    }
+
+    #[test]
+    fn request_eligibility_is_preview_only_while_provider_offline() {
+        let request = fixture_request();
+        assert!(request.preview_only(ProviderMode::Offline));
+        assert_eq!(
+            request.eligibility_label(ProviderMode::Offline),
+            "preview-only"
+        );
+        assert_eq!(request.eligibility_label(ProviderMode::Online), "claimable");
+    }
+
+    #[test]
+    fn inbox_reports_preview_block_reason_only_while_offline() {
+        let inbox = JobInboxState {
+            load_state: PaneLoadState::Ready,
+            last_error: None,
+            last_action: None,
+            requests: vec![fixture_request()],
+            selected_request_id: Some("req-preview".to_string()),
+            next_arrival_seq: 2,
+        };
+
+        assert_eq!(
+            inbox.preview_block_reason(ProviderMode::Offline),
+            Some("Preview only while offline. Click Go Online to claim jobs.")
+        );
+        assert_eq!(inbox.preview_block_reason(ProviderMode::Online), None);
     }
 }

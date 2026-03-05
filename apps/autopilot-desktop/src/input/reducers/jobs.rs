@@ -22,6 +22,16 @@ pub(super) fn run_job_inbox_action(state: &mut RenderState, action: JobInboxPane
             true
         }
         JobInboxPaneAction::AcceptSelected => {
+            if let Some(reason) = state
+                .job_inbox
+                .preview_block_reason(state.provider_runtime.mode)
+            {
+                state.job_inbox.last_error = Some(reason.to_string());
+                state.job_inbox.last_action =
+                    Some("Offline market preview is read-only".to_string());
+                state.job_inbox.load_state = PaneLoadState::Error;
+                return true;
+            }
             match state
                 .job_inbox
                 .decide_selected(true, "validated + queued for runtime")
@@ -91,6 +101,16 @@ pub(super) fn run_job_inbox_action(state: &mut RenderState, action: JobInboxPane
             true
         }
         JobInboxPaneAction::RejectSelected => {
+            if let Some(reason) = state
+                .job_inbox
+                .preview_block_reason(state.provider_runtime.mode)
+            {
+                state.job_inbox.last_error = Some(reason.to_string());
+                state.job_inbox.last_action =
+                    Some("Offline market preview is read-only".to_string());
+                state.job_inbox.load_state = PaneLoadState::Error;
+                return true;
+            }
             match state
                 .job_inbox
                 .decide_selected(false, "failed policy preflight")

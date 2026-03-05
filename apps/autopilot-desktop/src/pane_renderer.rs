@@ -251,7 +251,7 @@ impl PaneRenderer {
                     paint_credentials_pane(content_bounds, credentials, credentials_inputs, paint);
                 }
                 PaneKind::JobInbox => {
-                    paint_job_inbox_pane(content_bounds, job_inbox, paint);
+                    paint_job_inbox_pane(content_bounds, job_inbox, provider_runtime, paint);
                 }
                 PaneKind::ActiveJob => {
                     paint_active_job_pane(
@@ -609,7 +609,7 @@ fn paint_go_online_pane(
     let recent_requests = job_inbox.requests.iter().rev().take(5).collect::<Vec<_>>();
     if recent_requests.is_empty() {
         let empty_label = if provider_runtime.mode == crate::app_state::ProviderMode::Offline {
-            "No jobs visible yet. Mission Control is ready; online intake will populate here."
+            "No jobs visible yet. Relay preview is warming up; observed market activity will appear here before you go online."
         } else {
             "No jobs visible yet. Stay online and Mission Control will fill as demand arrives."
         };
@@ -2561,16 +2561,34 @@ fn nostr_identity_view_state(
 fn paint_job_inbox_pane(
     content_bounds: Bounds,
     job_inbox: &JobInboxState,
+    provider_runtime: &ProviderRuntimeState,
     paint: &mut PaintContext,
 ) {
     paint_source_badge(content_bounds, "runtime", paint);
 
     let accept_bounds = job_inbox_accept_button_bounds(content_bounds);
     let reject_bounds = job_inbox_reject_button_bounds(content_bounds);
-    paint_action_button(accept_bounds, "Accept selected", paint);
-    paint_action_button(reject_bounds, "Reject selected", paint);
+    let preview_only = provider_runtime.mode == crate::app_state::ProviderMode::Offline;
+    paint_action_button(
+        accept_bounds,
+        if preview_only {
+            "Go Online to claim"
+        } else {
+            "Accept selected"
+        },
+        paint,
+    );
+    paint_action_button(
+        reject_bounds,
+        if preview_only {
+            "Preview only"
+        } else {
+            "Reject selected"
+        },
+        paint,
+    );
 
-    let y = paint_state_summary(
+    let mut y = paint_state_summary(
         paint,
         content_bounds.origin.x + 12.0,
         accept_bounds.max_y() + 12.0,
@@ -2579,6 +2597,16 @@ fn paint_job_inbox_pane(
         job_inbox.last_action.as_deref(),
         job_inbox.last_error.as_deref(),
     );
+
+    if let Some(reason) = job_inbox.preview_block_reason(provider_runtime.mode) {
+        paint.scene.draw_text(paint.text.layout(
+            reason,
+            Point::new(content_bounds.origin.x + 12.0, y),
+            11.0,
+            theme::accent::PRIMARY,
+        ));
+        y += 16.0;
+    }
 
     match job_inbox.load_state {
         PaneLoadState::Loading => {
@@ -2617,7 +2645,7 @@ fn paint_job_inbox_pane(
             crate::app_state::JobInboxValidation::Invalid(_) => theme::status::ERROR,
         };
         let summary = format!(
-            "#{} {} {} src:{} scope:{} env:{} {} sats ttl:{}s {} {}",
+            "#{} {} {} src:{} scope:{} env:{} {} sats ttl:{}s {} {} eligibility:{}",
             request.arrival_seq,
             request.request_id,
             request.capability,
@@ -2627,7 +2655,8 @@ fn paint_job_inbox_pane(
             request.price_sats,
             request.ttl_seconds,
             request.validation.label(),
-            request.decision.label()
+            request.decision.label(),
+            request.eligibility_label(provider_runtime.mode)
         );
         paint.scene.draw_text(paint.text.layout_mono(
             &summary,
@@ -2655,6 +2684,13 @@ fn paint_job_inbox_pane(
             &selected.request_id,
         );
         line_y = paint_label_line(paint, x, line_y, "Decision", &selected.decision.label());
+        line_y = paint_label_line(
+            paint,
+            x,
+            line_y,
+            "Eligibility",
+            selected.eligibility_label(provider_runtime.mode),
+        );
         line_y = paint_label_line(
             paint,
             x,
