@@ -24,6 +24,7 @@ workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+autopilot-spacetime = { path = "../../crates/autopilot-spacetime" }
 codex-client = { path = "../../crates/codex-client" }
 openagents-cad = { path = "../../crates/cad" }
 openagents-spark = { path = "../../crates/spark" }

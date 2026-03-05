@@ -335,6 +335,7 @@ name = "autopilot-desktop"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "autopilot-spacetime",
  "base64",
  "chrono",
  "codex-client",
@@ -357,6 +358,14 @@ dependencies = [
  "wgpu",
  "wgpui",
  "winit",
+]
+
+[[package]]
+name = "autopilot-spacetime"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "serde_json",
 ]
 
 [[package]]

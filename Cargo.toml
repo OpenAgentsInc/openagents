@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "apps/autopilot-desktop",
     "crates/cad",
+    "crates/autopilot-spacetime",
     "crates/codex-client",
     "crates/nostr/client",
     "crates/nostr/core",
