@@ -1,12 +1,12 @@
 # Hydra — OpenAgents Liquidity Engine (Spec)
 
-> **DEPRECATED (2026-03-05):** Preserved for historical reference. The authoritative normative spec is `rewrite-2.md` and `rewrite-2-proto.md`.
+> **DEPRECATED (2026-03-05):** Preserved for historical reference. The authoritative normative spec is `economy-kernel.md` and `economy-kernel-proto.md`.
 
 **Hydra** is the agent-native liquidity, routing, and bounded-credit layer for the OpenAgents economy. It exists so autonomous agents can reliably **pay**, **get paid**, and **route value** at machine speed while staying **budget-bounded**, **receipt-driven**, and **replayable** under OpenAgents invariants (proto-first contracts, HTTP-only authority mutations, deterministic receipts).
 
 Hydra is not a wallet UI and not “node ops tooling.” It is the **capital substrate** that the rest of the system (Autopilot, OpenAgents Compute, Skills, Exchange) can program against.
 
-**Status:** Deprecated implementation plan (superseded by `rewrite-2.md`).
+**Status:** Deprecated implementation plan (superseded by `economy-kernel.md`).
 
 ### Implementation Status Snapshot (as of 2026-02-25)
 

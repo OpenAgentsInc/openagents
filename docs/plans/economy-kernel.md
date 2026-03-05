@@ -1,4 +1,4 @@
-# Introduction
+# OpenAgents Economy Kernel — Normative Spec
 
 OpenAgents is building an economy where software can hire software.
 
@@ -95,7 +95,7 @@ This is how verification scales without relying on a collapsing human pipeline.
 
 ---
 
-# OpenAgents Economy Kernel — Normative Spec (Sections 1–7)
+# Sections 1–7 (Normative)
 
 ## 1. Invariants (Non-Negotiable)
 
