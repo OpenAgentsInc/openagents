@@ -1139,14 +1139,23 @@ fn paint_network_requests_pane(
             NetworkRequestStatus::Failed => theme::status::ERROR,
         };
         let summary = format!(
-            "{} {} scope:{} env:{} budget:{} timeout:{}s stream:{} [{}|{}|{}|{}]",
+            "{} {} targets:{} scope:{} env:{} budget:{} timeout:{}s stream:{} published:{} [{}|{}|{}|{}]",
             request.request_id,
             request.request_type,
+            if request.target_provider_pubkeys.is_empty() {
+                "any".to_string()
+            } else {
+                request.target_provider_pubkeys.join(",")
+            },
             request.skill_scope_id.as_deref().unwrap_or("none"),
             request.credit_envelope_ref.as_deref().unwrap_or("none"),
             request.budget_sats,
             request.timeout_seconds,
             request.response_stream_id,
+            request
+                .published_request_event_id
+                .as_deref()
+                .unwrap_or("n/a"),
             request.status.label(),
             request.authority_status.as_deref().unwrap_or("pending"),
             request.authority_event_id.as_deref().unwrap_or("event:n/a"),

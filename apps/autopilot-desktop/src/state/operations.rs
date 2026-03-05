@@ -370,8 +370,11 @@ impl NetworkRequestStatus {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SubmittedNetworkRequest {
     pub request_id: String,
+    pub published_request_event_id: Option<String>,
     pub request_type: String,
     pub payload: String,
+    pub target_provider_pubkeys: Vec<String>,
+    pub last_provider_pubkey: Option<String>,
     pub skill_scope_id: Option<String>,
     pub credit_envelope_ref: Option<String>,
     pub budget_sats: u64,
@@ -386,8 +389,10 @@ pub struct SubmittedNetworkRequest {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NetworkRequestSubmission {
+    pub request_id: Option<String>,
     pub request_type: String,
     pub payload: String,
+    pub target_provider_pubkeys: Vec<String>,
     pub skill_scope_id: Option<String>,
     pub credit_envelope_ref: Option<String>,
     pub budget_sats: u64,
@@ -421,8 +426,10 @@ impl NetworkRequestsState {
         submission: NetworkRequestSubmission,
     ) -> Result<String, String> {
         let NetworkRequestSubmission {
+            request_id,
             request_type,
             payload,
+            target_provider_pubkeys,
             skill_scope_id,
             credit_envelope_ref,
             budget_sats,
@@ -448,15 +455,31 @@ impl NetworkRequestsState {
             return Err(self.pane_set_error("Timeout seconds must be greater than 0"));
         }
 
-        let request_id = format!("req-buy-{:04}", self.next_request_seq);
-        self.next_request_seq = self.next_request_seq.saturating_add(1);
+        let request_id = request_id
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| {
+                let generated = format!("req-buy-{:04}", self.next_request_seq);
+                self.next_request_seq = self.next_request_seq.saturating_add(1);
+                generated
+            });
         let stream_id = format!("stream:{request_id}");
+        let mut target_provider_pubkeys = target_provider_pubkeys
+            .into_iter()
+            .map(|pubkey| pubkey.trim().to_string())
+            .filter(|pubkey| !pubkey.is_empty())
+            .collect::<Vec<_>>();
+        target_provider_pubkeys.sort();
+        target_provider_pubkeys.dedup();
         self.submitted.insert(
             0,
             SubmittedNetworkRequest {
                 request_id: request_id.clone(),
+                published_request_event_id: None,
                 request_type: request_type.to_string(),
                 payload: payload.to_string(),
+                target_provider_pubkeys,
+                last_provider_pubkey: None,
                 skill_scope_id,
                 credit_envelope_ref,
                 budget_sats,
@@ -473,6 +496,45 @@ impl NetworkRequestsState {
             "Queued buyer request {request_id} -> cmd#{authority_command_seq}"
         ));
         Ok(request_id)
+    }
+
+    pub fn apply_nip90_request_publish_outcome(
+        &mut self,
+        request_id: &str,
+        event_id: &str,
+        accepted_relays: usize,
+        rejected_relays: usize,
+        first_error: Option<&str>,
+    ) {
+        let request_id = {
+            let Some(request) = self
+                .submitted
+                .iter_mut()
+                .find(|request| request.request_id == request_id)
+            else {
+                return;
+            };
+            request.published_request_event_id = Some(event_id.to_string());
+            if accepted_relays > 0 {
+                request.status = NetworkRequestStatus::Streaming;
+            } else {
+                request.status = NetworkRequestStatus::Failed;
+            }
+            request.request_id.clone()
+        };
+
+        if accepted_relays > 0 {
+            self.pane_set_ready(format!(
+                "Published request {} (accepted={}, rejected={})",
+                request_id, accepted_relays, rejected_relays
+            ));
+        } else {
+            let error = first_error.unwrap_or("All relays rejected request publish");
+            let _ = self.pane_set_error(format!(
+                "Failed publishing request {}: {}",
+                request_id, error
+            ));
+        }
     }
 
     pub fn apply_authority_response(&mut self, response: &RuntimeCommandResponse) {

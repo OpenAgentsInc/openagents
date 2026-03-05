@@ -5158,8 +5158,10 @@ mod tests {
         let mut requests = NetworkRequestsState::default();
         let request_id = requests
             .queue_request_submission(NetworkRequestSubmission {
+                request_id: None,
                 request_type: "translate.text".to_string(),
                 payload: "{\"text\":\"hola\"}".to_string(),
+                target_provider_pubkeys: vec!["npub1provider".to_string()],
                 skill_scope_id: Some("33400:npub1agent:summarize-text:0.1.0".to_string()),
                 credit_envelope_ref: Some("ac:39242:00000001".to_string()),
                 budget_sats: 1200,
