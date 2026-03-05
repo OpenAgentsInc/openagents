@@ -449,8 +449,11 @@ fn bootstrap_runtime_lanes(state: &mut RenderState) {
 fn open_startup_panes(state: &mut RenderState) {
     for pane_kind in startup_pane_kinds() {
         match pane_kind {
-            PaneKind::AutopilotChat | PaneKind::GoOnline => {
+            PaneKind::GoOnline => {
                 let _ = PaneController::create_for_kind(state, pane_kind);
+                if let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Refresh) {
+                    state.spark_wallet.last_error = Some(error);
+                }
             }
             PaneKind::CadDemo => {
                 let _ = PaneController::create_for_kind(state, pane_kind);
@@ -1322,9 +1325,9 @@ mod tests {
     #[test]
     fn startup_pane_set_matches_mvp_core_surfaces() {
         let startup = startup_pane_kinds();
-        assert!(startup.contains(&PaneKind::AutopilotChat));
-        assert!(startup.contains(&PaneKind::CadDemo));
-        assert!(!startup.contains(&PaneKind::GoOnline));
+        assert_eq!(startup, vec![PaneKind::GoOnline]);
+        assert!(!startup.contains(&PaneKind::AutopilotChat));
+        assert!(!startup.contains(&PaneKind::CadDemo));
         assert!(!startup.contains(&PaneKind::SparkWallet));
         assert!(!startup.contains(&PaneKind::Empty));
     }

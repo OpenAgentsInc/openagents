@@ -184,6 +184,10 @@ impl PaneRenderer {
                         skl_lane,
                         ac_lane,
                         provider_blockers,
+                        earnings_scoreboard,
+                        spark_wallet,
+                        job_inbox,
+                        active_job,
                         paint,
                     );
                 }
@@ -400,9 +404,13 @@ fn paint_go_online_pane(
     skl_lane: &crate::runtime_lanes::SklLaneSnapshot,
     ac_lane: &crate::runtime_lanes::AcLaneSnapshot,
     provider_blockers: &[ProviderBlocker],
+    earnings_scoreboard: &EarningsScoreboardState,
+    spark_wallet: &SparkPaneState,
+    job_inbox: &JobInboxState,
+    active_job: &ActiveJobState,
     paint: &mut PaintContext,
 ) {
-    paint_source_badge(content_bounds, "runtime", paint);
+    paint_source_badge(content_bounds, "mission-control", paint);
 
     let toggle_bounds = go_online_toggle_button_bounds(content_bounds);
     let toggle_label = if provider_runtime.mode == crate::app_state::ProviderMode::Offline {
@@ -412,103 +420,341 @@ fn paint_go_online_pane(
     };
     paint_action_button(toggle_bounds, toggle_label, paint);
 
-    let now = std::time::Instant::now();
-    let mut y = toggle_bounds.max_y() + 14.0;
-    y = paint_label_line(
-        paint,
+    let title_x = toggle_bounds.max_x() + 18.0;
+    paint.scene.draw_text(paint.text.layout(
+        "Mission Control",
+        Point::new(title_x, content_bounds.origin.y + 16.0),
+        16.0,
+        theme::text::PRIMARY,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        "Earn-first shell for provider state, wallet truth, and job flow.",
+        Point::new(title_x, content_bounds.origin.y + 36.0),
+        11.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        "Hotbar: 1 chat, 2 keys, 3 wallet",
+        Point::new(title_x, content_bounds.origin.y + 54.0),
+        10.0,
+        theme::text::MUTED,
+    ));
+
+    let card_y = toggle_bounds.max_y() + 16.0;
+    let card_gap = 12.0;
+    let card_width = ((content_bounds.size.width - 24.0 - card_gap) * 0.5).max(240.0);
+    let left_card = Bounds::new(content_bounds.origin.x + 12.0, card_y, card_width, 170.0);
+    let right_card = Bounds::new(left_card.max_x() + card_gap, card_y, card_width, 170.0);
+    let bottom_card = Bounds::new(
         content_bounds.origin.x + 12.0,
-        y,
-        "Provider mode",
+        left_card.max_y() + card_gap,
+        content_bounds.size.width - 24.0,
+        (content_bounds.max_y() - left_card.max_y() - card_gap - 12.0).max(180.0),
+    );
+
+    paint_mission_control_card(left_card, "Provider Rig", theme::accent::PRIMARY, paint);
+    paint_mission_control_card(
+        right_card,
+        "Wallet + First Sats",
+        theme::status::SUCCESS,
+        paint,
+    );
+    paint_mission_control_card(bottom_card, "Job Flow", theme::border::DEFAULT, paint);
+
+    let now = std::time::Instant::now();
+    let mut left_y = left_card.origin.y + 32.0;
+    left_y = paint_label_line(
+        paint,
+        left_card.origin.x + 12.0,
+        left_y,
+        "Mode",
         provider_runtime.mode.label(),
     );
-    y = paint_label_line(
+    left_y = paint_label_line(
         paint,
-        content_bounds.origin.x + 12.0,
-        y,
+        left_card.origin.x + 12.0,
+        left_y,
         "Uptime (s)",
         &provider_runtime.uptime_seconds(now).to_string(),
     );
-    y = paint_label_line(
+    left_y = paint_label_line(
         paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "SA runner mode",
+        left_card.origin.x + 12.0,
+        left_y,
+        "SA runner",
         sa_lane.mode.label(),
     );
-    y = paint_label_line(
+    left_y = paint_label_line(
         paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "SA profile event",
-        sa_lane.profile_event_id.as_deref().unwrap_or("n/a"),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "SKL trust tier",
+        left_card.origin.x + 12.0,
+        left_y,
+        "SKL trust",
         skl_lane.trust_tier.label(),
     );
-    y = paint_label_line(
+    left_y = paint_label_line(
         paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "SKL manifest",
-        skl_lane.manifest_a.as_deref().unwrap_or("n/a"),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "AC credit lane",
+        left_card.origin.x + 12.0,
+        left_y,
+        "Credit lane",
         if ac_lane.credit_available {
             "available"
         } else {
             "unavailable"
         },
     );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "AC envelope",
-        ac_lane.envelope_event_id.as_deref().unwrap_or("n/a"),
-    );
-
     if provider_blockers.is_empty() {
         paint.scene.draw_text(paint.text.layout(
-            "Preflight: clear",
-            Point::new(content_bounds.origin.x + 12.0, y),
+            "Preflight clear",
+            Point::new(left_card.origin.x + 12.0, left_y + 2.0),
             11.0,
             theme::status::SUCCESS,
         ));
     } else {
         paint.scene.draw_text(paint.text.layout(
-            "Preflight blockers:",
-            Point::new(content_bounds.origin.x + 12.0, y),
+            "Preflight blockers",
+            Point::new(left_card.origin.x + 12.0, left_y + 2.0),
             11.0,
             theme::status::ERROR,
         ));
-        y += 16.0;
-        for blocker in provider_blockers {
+        let mut blocker_y = left_y + 18.0;
+        for blocker in provider_blockers.iter().take(3) {
             paint.scene.draw_text(paint.text.layout_mono(
                 &format!("{} - {}", blocker.code(), blocker.detail()),
-                Point::new(content_bounds.origin.x + 12.0, y),
+                Point::new(left_card.origin.x + 12.0, blocker_y),
                 10.0,
                 theme::status::ERROR,
             ));
-            y += 14.0;
+            blocker_y += 14.0;
+        }
+    }
+
+    let mut right_y = right_card.origin.y + 32.0;
+    let wallet_balance = spark_wallet
+        .balance
+        .as_ref()
+        .map(|balance| balance.total_sats().to_string())
+        .unwrap_or_else(|| "loading".to_string());
+    right_y = paint_label_line(
+        paint,
+        right_card.origin.x + 12.0,
+        right_y,
+        "Wallet sats",
+        &wallet_balance,
+    );
+    right_y = paint_label_line(
+        paint,
+        right_card.origin.x + 12.0,
+        right_y,
+        "Wallet status",
+        spark_wallet.network_status_label(),
+    );
+    right_y = paint_label_line(
+        paint,
+        right_card.origin.x + 12.0,
+        right_y,
+        "Sats today",
+        &earnings_scoreboard.sats_today.to_string(),
+    );
+    right_y = paint_label_line(
+        paint,
+        right_card.origin.x + 12.0,
+        right_y,
+        "Lifetime sats",
+        &earnings_scoreboard.lifetime_sats.to_string(),
+    );
+    right_y = paint_label_line(
+        paint,
+        right_card.origin.x + 12.0,
+        right_y,
+        "Jobs today",
+        &earnings_scoreboard.jobs_today.to_string(),
+    );
+    paint_first_sats_progress(
+        Bounds::new(
+            right_card.origin.x + 12.0,
+            right_y + 4.0,
+            right_card.size.width - 24.0,
+            48.0,
+        ),
+        earnings_scoreboard.lifetime_sats,
+        paint,
+    );
+
+    let active_summary = active_job.job.as_ref().map_or_else(
+        || "No active job yet".to_string(),
+        |job| {
+            format!(
+                "{} [{}] {} sats",
+                job.capability,
+                job.stage.label(),
+                job.quoted_price_sats
+            )
+        },
+    );
+    let jobs_title_y = bottom_card.origin.y + 32.0;
+    paint.scene.draw_text(paint.text.layout(
+        "Active job",
+        Point::new(bottom_card.origin.x + 12.0, jobs_title_y),
+        11.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        &active_summary,
+        Point::new(bottom_card.origin.x + 126.0, jobs_title_y),
+        11.0,
+        theme::text::PRIMARY,
+    ));
+
+    let list_origin_y = jobs_title_y + 24.0;
+    let recent_requests = job_inbox.requests.iter().rev().take(5).collect::<Vec<_>>();
+    if recent_requests.is_empty() {
+        let empty_label = if provider_runtime.mode == crate::app_state::ProviderMode::Offline {
+            "No jobs visible yet. Mission Control is ready; online intake will populate here."
+        } else {
+            "No jobs visible yet. Stay online and Mission Control will fill as demand arrives."
+        };
+        paint.scene.draw_text(paint.text.layout(
+            empty_label,
+            Point::new(bottom_card.origin.x + 12.0, list_origin_y + 4.0),
+            11.0,
+            theme::text::MUTED,
+        ));
+    } else {
+        let row_height = 28.0;
+        for (index, request) in recent_requests.iter().enumerate() {
+            let row_bounds = Bounds::new(
+                bottom_card.origin.x + 12.0,
+                list_origin_y + index as f32 * row_height,
+                bottom_card.size.width - 24.0,
+                22.0,
+            );
+            let accent = match request.demand_source {
+                crate::app_state::JobDemandSource::StarterDemand => theme::status::SUCCESS,
+                crate::app_state::JobDemandSource::OpenNetwork => theme::accent::PRIMARY,
+            };
+            paint.scene.draw_quad(
+                Quad::new(row_bounds)
+                    .with_background(theme::bg::APP.with_alpha(0.55))
+                    .with_border(theme::border::DEFAULT, 1.0)
+                    .with_corner_radius(4.0),
+            );
+            let source_label = match request.demand_source {
+                crate::app_state::JobDemandSource::StarterDemand => "STARTER",
+                crate::app_state::JobDemandSource::OpenNetwork => "OPEN",
+            };
+            paint.scene.draw_text(paint.text.layout_mono(
+                source_label,
+                Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 6.0),
+                9.0,
+                accent,
+            ));
+            paint.scene.draw_text(paint.text.layout_mono(
+                &format!("{} sats", request.price_sats),
+                Point::new(row_bounds.origin.x + 74.0, row_bounds.origin.y + 6.0),
+                10.0,
+                theme::text::PRIMARY,
+            ));
+            let preview_suffix = if provider_runtime.mode == crate::app_state::ProviderMode::Offline
+            {
+                "preview".to_string()
+            } else {
+                request.decision.label()
+            };
+            paint.scene.draw_text(paint.text.layout(
+                &format!(
+                    "{}  {}  {}",
+                    request.capability, request.requester, preview_suffix
+                ),
+                Point::new(row_bounds.origin.x + 146.0, row_bounds.origin.y + 5.0),
+                10.0,
+                theme::text::PRIMARY,
+            ));
         }
     }
 
     if let Some(code) = provider_runtime.degraded_reason_code.as_deref() {
         paint.scene.draw_text(paint.text.layout_mono(
             &format!("Last reason code: {code}"),
-            Point::new(content_bounds.origin.x + 12.0, y + 12.0),
+            Point::new(bottom_card.origin.x + 12.0, bottom_card.max_y() - 18.0),
             10.0,
             theme::text::MUTED,
         ));
     }
+}
+
+fn paint_mission_control_card(bounds: Bounds, title: &str, accent: Hsla, paint: &mut PaintContext) {
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(theme::bg::APP.with_alpha(0.52))
+            .with_border(accent.with_alpha(0.72), 1.0)
+            .with_corner_radius(8.0),
+    );
+    paint.scene.draw_text(paint.text.layout(
+        title,
+        Point::new(bounds.origin.x + 12.0, bounds.origin.y + 12.0),
+        12.0,
+        theme::text::PRIMARY,
+    ));
+}
+
+fn paint_first_sats_progress(bounds: Bounds, lifetime_sats: u64, paint: &mut PaintContext) {
+    const FIRST_SATS_MILESTONES: [u64; 4] = [10, 25, 50, 100];
+    let next_target = FIRST_SATS_MILESTONES
+        .into_iter()
+        .find(|target| lifetime_sats < *target);
+    let progress_label = match next_target {
+        Some(target) => format!(
+            "Next milestone: {} / {} sats ({} to go)",
+            lifetime_sats,
+            target,
+            target.saturating_sub(lifetime_sats)
+        ),
+        None => format!("{lifetime_sats} sats earned. First-sats ladder cleared."),
+    };
+    let progress_ratio = next_target.map_or(1.0, |target| {
+        if target == 0 {
+            1.0
+        } else {
+            (lifetime_sats as f32 / target as f32).clamp(0.0, 1.0)
+        }
+    });
+
+    paint.scene.draw_text(paint.text.layout(
+        "First sats progression",
+        Point::new(bounds.origin.x, bounds.origin.y),
+        11.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        &progress_label,
+        Point::new(bounds.origin.x, bounds.origin.y + 16.0),
+        10.0,
+        theme::text::PRIMARY,
+    ));
+
+    let track_bounds = Bounds::new(
+        bounds.origin.x,
+        bounds.origin.y + 30.0,
+        bounds.size.width,
+        10.0,
+    );
+    let fill_bounds = Bounds::new(
+        track_bounds.origin.x,
+        track_bounds.origin.y,
+        track_bounds.size.width * progress_ratio,
+        track_bounds.size.height,
+    );
+    paint.scene.draw_quad(
+        Quad::new(track_bounds)
+            .with_background(theme::bg::SURFACE)
+            .with_border(theme::border::DEFAULT, 1.0)
+            .with_corner_radius(5.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(fill_bounds)
+            .with_background(theme::status::SUCCESS.with_alpha(0.72))
+            .with_corner_radius(5.0),
+    );
 }
 
 fn paint_provider_status_pane(
