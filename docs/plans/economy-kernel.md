@@ -610,6 +610,8 @@ Rules:
 * Claims MUST reference evidence bundles and relevant receipts (contract terms, verdict, settlement).
 * Approved claims MUST map deterministically to bond draws/refunds with receipts.
 * Dispute bonds MAY be required by policy and must be explicit in the contract or policy notes.
+* Final truth in a dispute lane MUST come only from one declared path: objective harness output, declared adjudication policy, or explicit human underwriting.
+* Unreceipted external updates MUST NOT silently finalize/override claim outcomes. Any external truth input must enter via receipted evidence objects and a receipted resolution action.
 
 ### 4.5 Verification plan and tier semantics (tightened)
 
@@ -1115,6 +1117,24 @@ Every GroundTruthCase MUST link to:
 * any follow-on correction/supersession receipts (if applicable)
 
 A SimulationScenario derived from a GroundTruthCase MUST reference the GroundTruthCase id and the same underlying evidence digests.
+
+**GroundTruthEvidence contract for long-latency lanes (normative)**
+When truth arrives from delayed/external systems (for example chargeback windows, legal rulings, external audits), GroundTruthCase updates MUST include explicit GroundTruthEvidence objects with at least:
+
+* `source_id` (who/what system produced the evidence),
+* `evidence_ref` + digest (hash-bound),
+* `received_at_ms` (when the kernel ingested it),
+* `confidence/posture` metadata (for example final/provisional/contested),
+* linkage to relevant `contract` / `verdict` / `claim` receipt refs.
+
+GroundTruthEvidence objects MUST be append-only and receipted; late-arriving evidence may refine state but MUST NOT mutate prior receipts in place.
+
+**Simulation derivation governance (normative)**
+GroundTruthCase → SimulationScenario derivation MUST be machine-legible:
+
+1. Derivation MUST emit a receipt (or equivalent hash-bound reference) identifying source incident digest(s), generator identity, and generation timestamp.
+2. Validation/approval MUST emit a separate receipt (or hash-bound reference) identifying validator identity and validation posture.
+3. Scenario exports MUST carry derivation and validation linkage so third parties can replay provenance without private side logs.
 
 Synthetic practice is not optional: it is how verification capacity scales over time.
 

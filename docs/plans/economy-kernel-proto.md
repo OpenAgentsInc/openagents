@@ -902,6 +902,8 @@ Normative implementation notes:
 * Incident objects are append-only, hash-addressed revisions; updates/resolutions supersede prior digests, not overwrite them.
 * Taxonomy meaning is immutable for a `(taxonomy_id, taxonomy_version, code)` tuple.
 * Export surfaces MUST support at least `public` and `restricted` redaction tiers for incident audit packages.
+* Long-latency external truth inputs MUST be represented as explicit `GroundTruthEvidence` objects with source identity, digest-bound evidence ref, and `received_at_ms`.
+* Dispute truth finalization MUST be receipted and may resolve only via objective harness, adjudication policy, or explicit human underwriting.
 
 ```proto
 syntax = "proto3";
@@ -946,6 +948,23 @@ message RollbackAttemptRef {
   bool rollback_succeeded = 3;
 }
 
+message GroundTruthEvidence {
+  string source_id = 1; // external registry/counterparty/authority/source system id
+  openagents.common.v1.EvidenceRef evidence = 2; // digest-bound
+  int64 received_at_ms = 3;
+  string confidence_posture = 4; // provisional/final/contested/etc.
+  repeated openagents.common.v1.ReceiptRef linked_receipts = 5; // contract/verdict/claim refs
+}
+
+message SimulationDerivationRef {
+  string simulation_scenario_id = 1;
+  repeated openagents.common.v1.EvidenceRef source_incident_digests = 2;
+  openagents.common.v1.IdentityAssurance generated_by = 3;
+  openagents.common.v1.IdentityAssurance validated_by = 4;
+  openagents.common.v1.ReceiptRef derivation_receipt = 5;
+  openagents.common.v1.ReceiptRef validation_receipt = 6;
+}
+
 message IncidentReport {
   string incident_id = 1;
   IncidentKind kind = 2;
@@ -967,6 +986,8 @@ message IncidentReport {
   repeated openagents.common.v1.EvidenceRef evidence_digests = 31; // no raw payload
   repeated RollbackAttemptRef rollback_attempts = 32;
   DisclosureBundleRef disclosure_bundle = 33;
+  repeated GroundTruthEvidence ground_truth_evidence = 34; // required for delayed/external truth lanes
+  repeated SimulationDerivationRef simulation_derivations = 35;
 
   openagents.common.v1.PolicyContext policy = 40;
   map<string, string> tags = 50;
@@ -1980,5 +2001,15 @@ Verification services MUST enforce assignment semantics deterministically:
 * If fetched bytes do not match `digest`, the evidence MUST be rejected for authority decisions and replay.
 * Evidence supersession MUST be append-only (new digest + new receipt linkage), never in-place mutation.
 * Large evidence payloads SHOULD be externalized and referenced by digest/URI; receipts SHOULD carry compact summaries plus references, not bulk opaque payload bodies.
+
+#### N) Long-latency truth resolution and simulation governance
+
+* Delayed/external truth inputs MUST be represented as `GroundTruthEvidence` with `source_id`, digest-bound evidence ref, `received_at_ms`, confidence posture, and contract/verdict/claim receipt linkage.
+* Claim/dispute finalization MUST be receipted and may resolve only via objective harness, declared adjudication policy, or explicit human underwriting.
+* External updates MUST NOT silently flip truth state; they must flow through receipted incident/update and claim-resolution transitions.
+* GroundTruthCase -> SimulationScenario promotion MUST preserve derivation governance:
+  * receipted derivation linkage (source incident digest(s), generator identity, timestamp),
+  * receipted validation linkage (validator identity + posture),
+  * export bundles carrying derivation/validation refs for replay.
 
 ---
