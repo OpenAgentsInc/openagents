@@ -1,11 +1,11 @@
 ---
 name: blink
-description: Blink Lightning wallet for agents — balances, invoices, payments, BTC/USD swaps, QR codes, price conversion, and transaction history.
+description: Bitcoin Lightning wallet for agents — balances, invoices, payments, BTC/USD swaps, QR codes, price conversion, and transaction history via the Blink API. All output is JSON.
 metadata:
   oa:
     project: blink
     identifier: blink
-    version: "1.2.0"
+    version: "1.3.0"
     expires_at_unix: 1798761600
     capabilities:
       - http:outbound
@@ -32,32 +32,76 @@ Blink is a custodial Bitcoin Lightning wallet with a GraphQL API. Key concepts:
 - Requires `bash` and Node.js 18+.
 - Requires `BLINK_API_KEY` environment variable with appropriate scopes.
 - For WebSocket subscriptions: Node 22+ (native) or Node 20+ with `--experimental-websocket`.
-- No npm dependencies. Scripts use Node.js built-in `fetch` and `WebSocket`.
+- Zero runtime npm dependencies. Only Node.js built-in modules are used (`node:util`, `node:fs`, `node:path`, `node:child_process`).
 
 Use this skill for concrete wallet operations, not generic Lightning theory.
 
-## Setup
+## Getting Started
 
-Store your API key in `~/.profile`:
+### 1. Get your API key
+
+1. Create a free account at [dashboard.blink.sv](https://dashboard.blink.sv).
+2. Go to **API Keys** and create a key with the scopes you need.
+3. Set it in your environment:
+
 ```bash
 export BLINK_API_KEY="blink_..."
 ```
-
-Get your API key from the [Blink Dashboard](https://dashboard.blink.sv) under API Keys.
 
 **API Key Scopes:**
 - **Read** — query balances, transaction history, price, account info
 - **Receive** — create invoices
 - **Write** — send payments (use with caution)
 
-### Staging / Testnet
+> **Tip:** Start with Read + Receive only. Add Write when you need to send payments.
 
-To use the Blink staging environment (signet), set:
+### 2. Verify it works
+
+```bash
+node {baseDir}/scripts/balance.js
+```
+
+If you see JSON with your wallet balances, you're ready.
+
+### 3. Staging / Testnet (recommended for first-time setup)
+
+To use the Blink staging environment (signet) instead of real money:
 ```bash
 export BLINK_API_URL="https://api.staging.blink.sv/graphql"
 ```
 
-If not set, production (`https://api.blink.sv/graphql`) is used by default.
+Create a staging API key at [dashboard.staging.blink.sv](https://dashboard.staging.blink.sv). The staging environment uses signet bitcoin (no real value) — perfect for testing payment flows safely.
+
+If `BLINK_API_URL` is not set, production (`https://api.blink.sv/graphql`) is used by default.
+
+### API key auto-detection
+
+Scripts automatically resolve `BLINK_API_KEY` using this order:
+1. `process.env.BLINK_API_KEY` (checked first)
+2. Shell rc files: `~/.profile`, `~/.bashrc`, `~/.bash_profile`, `~/.zshrc` — scanned for an `export BLINK_API_KEY=...` line only
+
+No `source ~/.profile` prefix is needed. The rc file scan uses a targeted regex that reads only the `BLINK_API_KEY` export line — no other data is extracted from these files.
+
+## Agent Safety Policy
+
+These rules are mandatory for any AI agent using this skill:
+
+1. **Ask before spending.** Never execute `pay_invoice.js`, `pay_lnaddress.js`, `pay_lnurl.js`, or `swap_execute.js` without explicit user confirmation of the amount and recipient.
+2. **Dry-run first.** For swaps, always run with `--dry-run` before executing for real unless the user explicitly says to skip it.
+3. **Check balance before sending.** Always run `balance.js` before any payment or swap to verify sufficient funds.
+4. **Probe fees before paying.** Run `fee_probe.js` before `pay_invoice.js` to show the user the fee cost.
+5. **Use minimum scopes.** Only request Write-scoped API keys when send operations are actually needed.
+6. **Never log or display the API key.** Treat `BLINK_API_KEY` as a secret. Do not echo it, include it in messages, or write it to files.
+7. **Prefer staging for testing.** When the user is testing or learning, suggest setting `BLINK_API_URL` to the staging endpoint.
+8. **Respect irreversibility.** Warn the user that Lightning payments and swaps cannot be reversed once executed.
+
+## Bitcoin Units
+
+- **BTC wallet** amounts are always in **satoshis** (sats). 1 BTC = 100,000,000 sats.
+- **USD wallet** amounts are always in **cents**. $1.00 = 100 cents.
+- When displaying amounts to users, use the formatted fields from output JSON (e.g. `btcBalanceUsdFormatted`, `usdBalanceFormatted`).
+- Do not perform manual BTC-to-USD conversion math — use `node {baseDir}/scripts/price.js <sats>` or the `btcBalanceUsd` field from `balance` output instead.
+- For swap amounts, the `--unit` flag controls interpretation: `sats` for BTC, `cents` for USD.
 
 ## Workflow
 
@@ -102,16 +146,16 @@ If not set, production (`https://api.blink.sv/graphql`) is used by default.
 
 ```bash
 # Check balances
-source ~/.profile && node {baseDir}/scripts/balance.js
+node {baseDir}/scripts/balance.js
 
 # Create BTC invoice (auto-subscribes to payment)
-source ~/.profile && node {baseDir}/scripts/create_invoice.js 1000 "Payment for service"
+node {baseDir}/scripts/create_invoice.js 1000 "Payment for service"
 
 # Pay a Lightning invoice
-source ~/.profile && node {baseDir}/scripts/pay_invoice.js lnbc1000n1...
+node {baseDir}/scripts/pay_invoice.js lnbc1000n1...
 
 # Pay from USD wallet
-source ~/.profile && node {baseDir}/scripts/pay_invoice.js lnbc1000n1... --wallet USD
+node {baseDir}/scripts/pay_invoice.js lnbc1000n1... --wallet USD
 
 # Get current BTC/USD price
 node {baseDir}/scripts/price.js
@@ -127,14 +171,14 @@ node {baseDir}/scripts/swap_execute.js usd-to-btc 500 --unit cents
 
 ### Check Wallet Balances
 ```bash
-source ~/.profile && node {baseDir}/scripts/balance.js
+node {baseDir}/scripts/balance.js
 ```
 
 Returns JSON with all wallet balances (BTC in sats, USD in cents), wallet IDs, pending incoming amounts, and a **pre-computed USD estimate** for the BTC wallet. Use `btcBalanceUsd` for the BTC wallet's USD value — do not calculate it yourself.
 
 ### Create Lightning Invoice (BTC)
 ```bash
-source ~/.profile && node {baseDir}/scripts/create_invoice.js <amount_sats> [--timeout <seconds>] [--no-subscribe] [memo...]
+node {baseDir}/scripts/create_invoice.js <amount_sats> [--timeout <seconds>] [--no-subscribe] [memo...]
 ```
 
 Generates a BOLT-11 Lightning invoice for the specified amount in satoshis. Returns the `paymentRequest` string that can be paid by any Lightning wallet. The BTC wallet ID is resolved automatically.
@@ -152,7 +196,7 @@ The agent should read the first JSON to share the invoice/QR with the user right
 
 ### Create Lightning Invoice (USD)
 ```bash
-source ~/.profile && node {baseDir}/scripts/create_invoice_usd.js <amount_cents> [--timeout <seconds>] [--no-subscribe] [memo...]
+node {baseDir}/scripts/create_invoice_usd.js <amount_cents> [--timeout <seconds>] [--no-subscribe] [memo...]
 ```
 
 Creates a Lightning invoice denominated in USD cents. The sender pays in BTC/Lightning, but the received amount is locked to a USD value at the current exchange rate. Credited to the USD wallet. **Expires in ~5 minutes** due to exchange rate lock.
@@ -166,7 +210,7 @@ Creates a Lightning invoice denominated in USD cents. The sender pays in BTC/Lig
 
 ### Check Invoice Status
 ```bash
-source ~/.profile && node {baseDir}/scripts/check_invoice.js <payment_hash>
+node {baseDir}/scripts/check_invoice.js <payment_hash>
 ```
 
 Checks the payment status of a Lightning invoice by its payment hash. Use after creating an invoice to detect when it has been paid. Returns status: `PAID`, `PENDING`, or `EXPIRED`.
@@ -175,7 +219,7 @@ Checks the payment status of a Lightning invoice by its payment hash. Use after 
 
 ### Pay Lightning Invoice
 ```bash
-source ~/.profile && node {baseDir}/scripts/pay_invoice.js <bolt11_invoice> [--wallet BTC|USD] [--dry-run] [--force]
+node {baseDir}/scripts/pay_invoice.js <bolt11_invoice> [--wallet BTC|USD] [--dry-run] [--force]
 ```
 
 Pays a BOLT-11 Lightning invoice from the BTC or USD wallet. Returns payment status: `SUCCESS`, `PENDING`, `FAILURE`, or `ALREADY_PAID`. The wallet ID is resolved automatically.
@@ -187,9 +231,11 @@ Pays a BOLT-11 Lightning invoice from the BTC or USD wallet. Returns payment sta
 
 **Requires Write scope on the API key.**
 
+> **AGENT:** This command spends funds. Always run `balance.js` and `fee_probe.js` first, then confirm amount and recipient with the user before executing.
+
 ### Pay to Lightning Address
 ```bash
-source ~/.profile && node {baseDir}/scripts/pay_lnaddress.js <lightning_address> <amount_sats> [--wallet BTC|USD] [--dry-run] [--force] [--max-amount <sats>]
+node {baseDir}/scripts/pay_lnaddress.js <lightning_address> <amount_sats> [--wallet BTC|USD] [--dry-run] [--force] [--max-amount <sats>]
 ```
 
 Sends satoshis to a Lightning Address (e.g. `user@blink.sv`). Returns payment status. The wallet ID is resolved automatically.
@@ -203,9 +249,11 @@ Sends satoshis to a Lightning Address (e.g. `user@blink.sv`). Returns payment st
 
 **Requires Write scope on the API key.**
 
+> **AGENT:** This command spends funds. Always run `balance.js` first, confirm the Lightning Address and amount with the user, then execute.
+
 ### Pay to LNURL
 ```bash
-source ~/.profile && node {baseDir}/scripts/pay_lnurl.js <lnurl> <amount_sats> [--wallet BTC|USD] [--dry-run] [--force] [--max-amount <sats>]
+node {baseDir}/scripts/pay_lnurl.js <lnurl> <amount_sats> [--wallet BTC|USD] [--dry-run] [--force] [--max-amount <sats>]
 ```
 
 Sends satoshis to a raw LNURL payRequest string. For Lightning Addresses (`user@domain`), use `pay_lnaddress.js` instead.
@@ -219,9 +267,11 @@ Sends satoshis to a raw LNURL payRequest string. For Lightning Addresses (`user@
 
 **Requires Write scope on the API key.**
 
+> **AGENT:** This command spends funds. Always run `balance.js` first, confirm the LNURL and amount with the user, then execute.
+
 ### Estimate Payment Fee
 ```bash
-source ~/.profile && node {baseDir}/scripts/fee_probe.js <bolt11_invoice> [--wallet BTC|USD]
+node {baseDir}/scripts/fee_probe.js <bolt11_invoice> [--wallet BTC|USD]
 ```
 
 Estimates the fee for paying a Lightning invoice without actually sending. Use before `pay_invoice.js` to check costs. Payments to other Blink users and direct-channel nodes are free (0 sats).
@@ -231,7 +281,7 @@ Estimates the fee for paying a Lightning invoice without actually sending. Use b
 
 ### Render Invoice QR Code
 ```bash
-source ~/.profile && node {baseDir}/scripts/qr_invoice.js <bolt11_invoice>
+node {baseDir}/scripts/qr_invoice.js <bolt11_invoice>
 ```
 
 Renders a terminal QR code for a Lightning invoice (BOLT-11) to stderr and generates a **PNG image file** to `/tmp`. The stdout JSON includes a `pngPath` field with the absolute path to the PNG file.
@@ -250,7 +300,7 @@ Output JSON includes:
 
 ### List Transactions
 ```bash
-source ~/.profile && node {baseDir}/scripts/transactions.js [--first N] [--after CURSOR] [--wallet BTC|USD]
+node {baseDir}/scripts/transactions.js [--first N] [--after CURSOR] [--wallet BTC|USD]
 ```
 
 Lists recent transactions (incoming and outgoing) with pagination. Returns direction, amount, status, type (lightning/onchain/intraledger), and metadata.
@@ -261,10 +311,10 @@ Lists recent transactions (incoming and outgoing) with pagination. Returns direc
 
 ### Get BTC/USD Price
 ```bash
-source ~/.profile && node {baseDir}/scripts/price.js [amount_sats]
-source ~/.profile && node {baseDir}/scripts/price.js --usd <amount_usd>
-source ~/.profile && node {baseDir}/scripts/price.js --history <range>
-source ~/.profile && node {baseDir}/scripts/price.js --currencies
+node {baseDir}/scripts/price.js [amount_sats]
+node {baseDir}/scripts/price.js --usd <amount_usd>
+node {baseDir}/scripts/price.js --history <range>
+node {baseDir}/scripts/price.js --currencies
 ```
 
 Multi-purpose exchange rate tool. All price queries are **public (no API key required)**, though the key is sent if available.
@@ -278,14 +328,14 @@ Multi-purpose exchange rate tool. All price queries are **public (no API key req
 
 ### Account Info
 ```bash
-source ~/.profile && node {baseDir}/scripts/account_info.js
+node {baseDir}/scripts/account_info.js
 ```
 
 Shows account level, spending limits (withdrawal, internal send, convert), default wallet, and wallet summary with **pre-computed USD estimates** for BTC balances. Limits are denominated in USD cents with a rolling 24-hour window.
 
 ### Quote Internal BTC <-> USD Swap
 ```bash
-source ~/.profile && node {baseDir}/scripts/swap_quote.js <direction> <amount> [--unit sats|cents] [--ttl-seconds N] [--immediate]
+node {baseDir}/scripts/swap_quote.js <direction> <amount> [--unit sats|cents] [--ttl-seconds N] [--immediate]
 ```
 
 Builds a deterministic quote-like receipt for internal wallet conversion.
@@ -304,7 +354,7 @@ Uses Blink's conversion estimation path for pricing and records:
 
 ### Execute Internal BTC <-> USD Swap
 ```bash
-source ~/.profile && node {baseDir}/scripts/swap_execute.js <direction> <amount> [--unit sats|cents] [--ttl-seconds N] [--immediate] [--dry-run] [--memo "text"]
+node {baseDir}/scripts/swap_execute.js <direction> <amount> [--unit sats|cents] [--ttl-seconds N] [--immediate] [--dry-run] [--memo "text"]
 ```
 
 Executes a wallet-native internal conversion between your BTC and USD wallets.
@@ -321,20 +371,22 @@ Fee/settlement interpretation:
 
 For deeper behavior details and formulas, see [swap-operations](references/swap-operations.md).
 
+> **AGENT:** This command moves funds between wallets. Always run with `--dry-run` first, show the quote to the user, and get explicit confirmation before executing without `--dry-run`.
+
 ## Realtime Subscriptions
 
 Blink supports GraphQL subscriptions over WebSocket using the `graphql-transport-ws` protocol. Node 20 requires the `--experimental-websocket` flag.
 
 ### Subscribe to Invoice Payment Status
 ```bash
-source ~/.profile && node --experimental-websocket {baseDir}/scripts/subscribe_invoice.js <bolt11_invoice> [--timeout <seconds>]
+node --experimental-websocket {baseDir}/scripts/subscribe_invoice.js <bolt11_invoice> [--timeout <seconds>]
 ```
 
 Watches a single invoice and exits when it is **PAID** or **EXPIRED**. Status updates are printed to stderr. JSON result is printed to stdout.
 
 ### Subscribe to Account Updates (myUpdates)
 ```bash
-source ~/.profile && node --experimental-websocket {baseDir}/scripts/subscribe_updates.js [--timeout <seconds>] [--max <count>]
+node --experimental-websocket {baseDir}/scripts/subscribe_updates.js [--timeout <seconds>] [--max <count>]
 ```
 
 Streams account updates in real time. Each event is output as a JSON line (NDJSON) to stdout. Use `--max` to stop after N events.
@@ -577,12 +629,12 @@ Second JSON (when payment resolves):
 ### Receive a payment (recommended — auto-subscribe + QR image)
 ```bash
 # 1. Create invoice — script auto-subscribes and outputs two JSON objects
-source ~/.profile && node {baseDir}/scripts/create_invoice.js 1000 "Payment for service"
+node {baseDir}/scripts/create_invoice.js 1000 "Payment for service"
 # → First JSON: {"event": "invoice_created", "paymentRequest": "lnbc...", ...}
 # → Read paymentRequest from first JSON immediately
 
 # 2. Generate QR code PNG
-source ~/.profile && node {baseDir}/scripts/qr_invoice.js <paymentRequest>
+node {baseDir}/scripts/qr_invoice.js <paymentRequest>
 # → JSON includes "pngPath": "/tmp/blink_qr_123456.png"
 # → Send the PNG file to the user as a media attachment in the current chat
 
@@ -597,19 +649,19 @@ source ~/.profile && node {baseDir}/scripts/qr_invoice.js <paymentRequest>
 ### Receive a payment (polling fallback)
 ```bash
 # 1. Create invoice without auto-subscribe
-source ~/.profile && node {baseDir}/scripts/create_invoice.js 1000 --no-subscribe "Payment for service"
+node {baseDir}/scripts/create_invoice.js 1000 --no-subscribe "Payment for service"
 # 2. Give the paymentRequest to the payer
 # 3. Poll for payment
-source ~/.profile && node {baseDir}/scripts/check_invoice.js <payment_hash>
+node {baseDir}/scripts/check_invoice.js <payment_hash>
 # 4. Verify balance
-source ~/.profile && node {baseDir}/scripts/balance.js
+node {baseDir}/scripts/balance.js
 ```
 
 ### Receive a USD payment
 ```bash
 # Same two-phase pattern as BTC, but using create_invoice_usd.js
 # Note: USD invoices expire in ~5 minutes
-source ~/.profile && node {baseDir}/scripts/create_invoice_usd.js 500 "Five dollars for service"
+node {baseDir}/scripts/create_invoice_usd.js 500 "Five dollars for service"
 # → First JSON: {"event": "invoice_created", "amountCents": 500, "amountUsd": "$5.00", ...}
 # Generate QR and send to user, then wait for second JSON
 ```
@@ -682,15 +734,37 @@ node {baseDir}/scripts/price.js --history ONE_DAY
 node {baseDir}/scripts/price.js --history ONE_MONTH
 ```
 
-## Security Notes
+## Security
 
-- **API key is your wallet access** — anyone with a Write-scoped key can spend your balance
-- **Use minimum scopes** — Read-only for balance checks, Receive for invoices, Write only when sending
-- **Never expose keys in client-side code** — keys are for server-side / agent use only
-- **Sending is irreversible** — Lightning payments cannot be reversed once sent
-- **Test on staging first** — use `BLINK_API_URL` to point at the signet staging environment
-- **USD invoices expire fast** — ~5 minutes due to exchange rate lock
-- **Price queries are public** — `price.js` works without an API key; only wallet operations require authentication
+### API Key Handling
+
+- **Your API key is your wallet access** — anyone with a Write-scoped key can spend your entire balance.
+- **Use minimum scopes** — Read-only for balance checks, Receive for invoices, Write only when sending.
+- **Never expose keys in output** — do not echo, log, or include `BLINK_API_KEY` in chat messages or files.
+- Keys are for server-side / agent use only. Never embed in client-side code.
+
+### What Data Leaves the Machine
+
+- **Outbound HTTPS** to `api.blink.sv` (or `BLINK_API_URL` override) for all GraphQL queries and mutations.
+- **Outbound WSS** to `ws.blink.sv` (or `BLINK_WS_URL` override) for subscription WebSockets.
+- **No other network calls.** Scripts do not phone home, send telemetry, or contact any third-party services.
+
+### Filesystem Access
+
+- **RC file reading:** If `BLINK_API_KEY` is not found in `process.env`, the client scans `~/.profile`, `~/.bashrc`, `~/.bash_profile`, and `~/.zshrc` for a line matching `export BLINK_API_KEY=...`. Only the value of that specific export is extracted — no other data is read from these files. The environment variable is always checked first.
+- **QR PNG generation:** The `qr` command writes temporary PNG files to `/tmp/blink_qr_*.png`. These are standard image files with no embedded metadata beyond the QR content.
+- **No other filesystem writes.** Scripts do not create config files, databases, or caches.
+
+### Stateless Design
+
+This skill stores no data between runs. There are no databases, config files, session tokens, or caches. Each script invocation is independent — it reads the API key, makes API calls, outputs JSON, and exits.
+
+### Payment Safety
+
+- **Sending is irreversible** — Lightning payments cannot be reversed once settled.
+- **Test on staging first** — use `BLINK_API_URL=https://api.staging.blink.sv/graphql` to point at the signet staging environment with test funds.
+- **USD invoices expire fast** — ~5 minutes due to exchange rate lock.
+- **Price queries are public** — `price.js` works without an API key; only wallet operations require authentication.
 
 ## Reference Files
 
