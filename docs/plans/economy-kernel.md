@@ -1016,6 +1016,28 @@ Minimum requirements:
 3. Drift-triggered actions MUST bind to the specific snapshot id/hash used.
 4. Drift signals and alert rates MUST be visible in `/stats`.
 
+Receipt requirements (normative):
+
+* Implementations MUST emit:
+  * `economy.drift.signal_emitted.v1`
+  * `economy.drift.alert_raised.v1`
+  * `economy.drift.false_positive_confirmed.v1`
+* Drift receipt idempotency MUST be keyed by `(snapshot_id + detector_id + receipt_type)` so replaying the same snapshot window cannot produce duplicate drift state transitions.
+* Every drift receipt MUST include hash-bound `snapshot_ref` linkage and detector linkage (`detector_id`, `signal_code`).
+* Reason codes for drift transitions MUST be stable: `DRIFT_SIGNAL_EMITTED`, `DRIFT_ALERT_RAISED`, `DRIFT_FALSE_POSITIVE_CONFIRMED`.
+
+`/stats` drift surface (normative):
+
+* `drift_alerts_24h` (aggregate pressure used by policy gates)
+* `top_drift_signals` with machine-readable rows:
+  * `detector_id`
+  * `signal_code`
+  * `count_24h`
+  * `ratio`
+  * `threshold`
+  * `score`
+  * `alert`
+
 ### 6.13 Safety signals, certification, and interoperability (normative)
 
 The kernel MUST support interoperability-focused public safety infrastructure:

@@ -5540,6 +5540,9 @@ pub(super) fn refresh_network_aggregate_counters(
             },
             compute_result.snapshot.loss_ratio,
             compute_result.snapshot.capital_coverage_ratio,
+            compute_result.snapshot.drift_alerts_24h,
+            compute_result.snapshot.drift_signals,
+            compute_result.snapshot.top_drift_signals,
             compute_result.input_evidence,
             "economy.snapshot.minute",
         );

@@ -3,14 +3,14 @@ use crate::app_state::{
     PaneLoadState,
 };
 use crate::economy_kernel_receipts::{
-    Asset, AuthAssuranceLevel, EvidenceRef, FeedbackLatencyClass, Money, MoneyAmount,
-    PolicyContext, ProvenanceAttestationKind, ProvenanceGrade, Receipt, ReceiptBuilder,
-    ReceiptHints, SeverityClass, TraceContext,
+    Asset, AuthAssuranceLevel, DriftSignalSummary, EvidenceRef, FeedbackLatencyClass, Money,
+    MoneyAmount, PolicyContext, ProvenanceAttestationKind, ProvenanceGrade, Receipt,
+    ReceiptBuilder, ReceiptHints, SeverityClass, TraceContext,
 };
 use crate::state::job_inbox::{JobInboxNetworkRequest, JobInboxRequest};
-use bitcoin::hashes::{sha256, Hash};
+use bitcoin::hashes::{Hash, sha256};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 
@@ -27,8 +27,12 @@ const REASON_CODE_AUTH_ASSURANCE_INSUFFICIENT: &str = "AUTH_ASSURANCE_INSUFFICIE
 const REASON_CODE_PROVENANCE_REQUIREMENTS_UNMET: &str = "PROVENANCE_REQUIREMENTS_UNMET";
 const REASON_CODE_IDEMPOTENCY_CONFLICT: &str = "IDEMPOTENCY_CONFLICT";
 const REASON_CODE_POLICY_THROTTLE_TRIGGERED: &str = "POLICY_THROTTLE_TRIGGERED";
+const REASON_CODE_DRIFT_SIGNAL_EMITTED: &str = "DRIFT_SIGNAL_EMITTED";
+const REASON_CODE_DRIFT_ALERT_RAISED: &str = "DRIFT_ALERT_RAISED";
+const REASON_CODE_DRIFT_FALSE_POSITIVE_CONFIRMED: &str = "DRIFT_FALSE_POSITIVE_CONFIRMED";
 const DEFAULT_PRICING_SNAPSHOT_ID: &str = "snapshot.economy:unavailable";
 const DEFAULT_PRICING_SNAPSHOT_HASH: &str = "sha256:unavailable";
+const DRIFT_WINDOW_MS: i64 = 86_400_000;
 
 #[derive(Clone)]
 struct PolicyDecision {
@@ -1185,6 +1189,9 @@ impl EarnKernelReceiptState {
         capital_reserves_24h_sats: u64,
         loss_ratio: f64,
         capital_coverage_ratio: f64,
+        drift_alerts_24h: u64,
+        drift_signals: Vec<DriftSignalSummary>,
+        top_drift_signals: Vec<DriftSignalSummary>,
         mut input_evidence: Vec<EvidenceRef>,
         source_tag: &str,
     ) {
@@ -1203,7 +1210,9 @@ impl EarnKernelReceiptState {
         ));
         let snapshot_metrics_digest = digest_for_text(
             format!(
-                "{snapshot_id}:{sv}:{rho}:{n}:{nv}:{delta_m_hat}:{xa_hat}:{correlated_verification_share}:{liability_premiums_collected_24h_sats}:{claims_paid_24h_sats}:{bonded_exposure_24h_sats}:{capital_reserves_24h_sats}:{loss_ratio}:{capital_coverage_ratio}"
+                "{snapshot_id}:{sv}:{rho}:{n}:{nv}:{delta_m_hat}:{xa_hat}:{correlated_verification_share}:{liability_premiums_collected_24h_sats}:{claims_paid_24h_sats}:{bonded_exposure_24h_sats}:{capital_reserves_24h_sats}:{loss_ratio}:{capital_coverage_ratio}:{drift_alerts_24h}:{}"
+                ,
+                drift_signal_digest_material(drift_signals.as_slice())
             )
             .as_str(),
         );
@@ -1251,7 +1260,13 @@ impl EarnKernelReceiptState {
         );
         snapshot_metrics
             .meta
-            .insert("drift_alerts_24h".to_string(), json!(0u64));
+            .insert("drift_alerts_24h".to_string(), json!(drift_alerts_24h));
+        snapshot_metrics
+            .meta
+            .insert("drift_signals".to_string(), json!(drift_signals));
+        snapshot_metrics
+            .meta
+            .insert("top_drift_signals".to_string(), json!(top_drift_signals));
         input_evidence.push(snapshot_metrics);
 
         let receipt = ReceiptBuilder::new(
@@ -1293,6 +1308,8 @@ impl EarnKernelReceiptState {
             "capital_reserves_24h_sats": capital_reserves_24h_sats,
             "loss_ratio": loss_ratio,
             "capital_coverage_ratio": capital_coverage_ratio,
+            "drift_alerts_24h": drift_alerts_24h,
+            "top_drift_signals": top_drift_signals,
             "source_tag": source_tag,
         }))
         .with_evidence(input_evidence)
@@ -1316,6 +1333,17 @@ impl EarnKernelReceiptState {
             return;
         }
 
+        self.emit_drift_receipts_for_snapshot(
+            snapshot_id,
+            as_of_ms,
+            snapshot_hash,
+            drift_signals.as_slice(),
+            source_tag,
+        );
+        if self.load_state == PaneLoadState::Error {
+            return;
+        }
+
         let policy_bundle = current_policy_bundle();
         self.emit_policy_throttle_receipts_for_snapshot(
             snapshot_id,
@@ -1325,10 +1353,279 @@ impl EarnKernelReceiptState {
             xa_hat,
             delta_m_hat,
             correlated_verification_share,
-            0,
+            drift_alerts_24h,
             &policy_bundle,
             source_tag,
         );
+    }
+
+    fn emit_drift_receipts_for_snapshot(
+        &mut self,
+        snapshot_id: &str,
+        as_of_ms: i64,
+        snapshot_hash: &str,
+        drift_signals: &[DriftSignalSummary],
+        source_tag: &str,
+    ) {
+        let mut ordered_signals = drift_signals.to_vec();
+        ordered_signals.sort_by(|lhs, rhs| {
+            lhs.detector_id
+                .cmp(&rhs.detector_id)
+                .then_with(|| lhs.signal_code.cmp(&rhs.signal_code))
+        });
+        let previous_active = active_drift_alert_detectors_before(
+            self.receipts.as_slice(),
+            as_of_ms.saturating_sub(1),
+        );
+        let mut current_active = BTreeSet::<String>::new();
+
+        for signal in ordered_signals {
+            let normalized_detector = normalize_key(signal.detector_id.as_str());
+            let signal_receipt_id = format!(
+                "receipt.economy.drift_signal:{}:{}",
+                normalize_key(snapshot_id),
+                normalized_detector
+            );
+            let signal_receipt = ReceiptBuilder::new(
+                signal_receipt_id.clone(),
+                "economy.drift.signal_emitted.v1",
+                as_of_ms.max(0),
+                format!(
+                    "idemp.economy.drift_signal:{}:{}",
+                    normalize_key(snapshot_id),
+                    normalized_detector
+                ),
+                TraceContext {
+                    session_id: None,
+                    trajectory_hash: None,
+                    job_hash: None,
+                    run_id: Some(format!("economy_drift:{snapshot_id}")),
+                    work_unit_id: None,
+                    contract_id: None,
+                    claim_id: None,
+                },
+                current_policy_context(),
+            )
+            .with_inputs_payload(json!({
+                "snapshot_id": snapshot_id,
+                "snapshot_hash": snapshot_hash,
+                "detector_id": signal.detector_id,
+                "signal_code": signal.signal_code,
+                "ratio": signal.ratio,
+                "threshold": signal.threshold,
+                "count_24h": signal.count_24h,
+                "score": signal.score,
+                "alert": signal.alert,
+            }))
+            .with_outputs_payload(json!({
+                "status": "signal_emitted",
+                "snapshot_id": snapshot_id,
+                "snapshot_hash": snapshot_hash,
+                "detector_id": signal.detector_id,
+                "signal_code": signal.signal_code,
+                "count_24h": signal.count_24h,
+                "score": signal.score,
+                "alert": signal.alert,
+                "source_tag": source_tag,
+            }))
+            .with_evidence(vec![
+                EvidenceRef::new(
+                    "snapshot_ref",
+                    format!("oa://economy/snapshots/{snapshot_id}"),
+                    snapshot_hash.to_string(),
+                ),
+                drift_detector_evidence(&signal),
+                drift_signal_summary_evidence(snapshot_id, &signal),
+            ])
+            .with_hints(ReceiptHints {
+                category: Some("compute".to_string()),
+                tfb_class: None,
+                severity: Some(if signal.alert {
+                    SeverityClass::High
+                } else {
+                    SeverityClass::Low
+                }),
+                achieved_verification_tier: None,
+                verification_correlated: None,
+                provenance_grade: None,
+                auth_assurance_level: Some(AuthAssuranceLevel::Authenticated),
+                personhood_proved: Some(false),
+                reason_code: Some(REASON_CODE_DRIFT_SIGNAL_EMITTED.to_string()),
+                notional: None,
+                liability_premium: None,
+            })
+            .build();
+            self.append_receipt(signal_receipt, source_tag);
+            if self.load_state == PaneLoadState::Error {
+                return;
+            }
+
+            if !signal.alert {
+                continue;
+            }
+            current_active.insert(signal.detector_id.clone());
+            let alert_receipt = ReceiptBuilder::new(
+                format!(
+                    "receipt.economy.drift_alert:{}:{}",
+                    normalize_key(snapshot_id),
+                    normalized_detector
+                ),
+                "economy.drift.alert_raised.v1",
+                as_of_ms.max(0),
+                format!(
+                    "idemp.economy.drift_alert:{}:{}",
+                    normalize_key(snapshot_id),
+                    normalized_detector
+                ),
+                TraceContext {
+                    session_id: None,
+                    trajectory_hash: None,
+                    job_hash: None,
+                    run_id: Some(format!("economy_drift:{snapshot_id}")),
+                    work_unit_id: None,
+                    contract_id: None,
+                    claim_id: None,
+                },
+                current_policy_context(),
+            )
+            .with_inputs_payload(json!({
+                "snapshot_id": snapshot_id,
+                "snapshot_hash": snapshot_hash,
+                "detector_id": signal.detector_id,
+                "signal_code": signal.signal_code,
+                "score": signal.score,
+                "count_24h": signal.count_24h,
+            }))
+            .with_outputs_payload(json!({
+                "status": "alert_raised",
+                "snapshot_id": snapshot_id,
+                "snapshot_hash": snapshot_hash,
+                "detector_id": signal.detector_id,
+                "signal_code": signal.signal_code,
+                "score": signal.score,
+                "count_24h": signal.count_24h,
+                "source_tag": source_tag,
+            }))
+            .with_evidence(vec![
+                EvidenceRef::new(
+                    "snapshot_ref",
+                    format!("oa://economy/snapshots/{snapshot_id}"),
+                    snapshot_hash.to_string(),
+                ),
+                drift_detector_evidence(&signal),
+                EvidenceRef::new(
+                    "receipt_ref",
+                    format!("oa://receipts/{signal_receipt_id}"),
+                    self.get_receipt(signal_receipt_id.as_str())
+                        .map(|receipt| receipt.canonical_hash.clone())
+                        .unwrap_or_else(|| digest_for_text(signal_receipt_id.as_str())),
+                ),
+            ])
+            .with_hints(ReceiptHints {
+                category: Some("compute".to_string()),
+                tfb_class: None,
+                severity: Some(SeverityClass::High),
+                achieved_verification_tier: None,
+                verification_correlated: None,
+                provenance_grade: None,
+                auth_assurance_level: Some(AuthAssuranceLevel::Authenticated),
+                personhood_proved: Some(false),
+                reason_code: Some(REASON_CODE_DRIFT_ALERT_RAISED.to_string()),
+                notional: None,
+                liability_premium: None,
+            })
+            .build();
+            self.append_receipt(alert_receipt, source_tag);
+            if self.load_state == PaneLoadState::Error {
+                return;
+            }
+        }
+
+        let mut cleared = previous_active
+            .difference(&current_active)
+            .cloned()
+            .collect::<Vec<_>>();
+        cleared.sort();
+        for detector_id in cleared {
+            let normalized_detector = normalize_key(detector_id.as_str());
+            let fallback_signal = DriftSignalSummary {
+                detector_id: detector_id.clone(),
+                signal_code: "alert_cleared".to_string(),
+                count_24h: 0,
+                ratio: 0.0,
+                threshold: 0.0,
+                score: 0.0,
+                alert: false,
+            };
+            let signal = drift_signals
+                .iter()
+                .find(|candidate| candidate.detector_id == detector_id)
+                .cloned()
+                .unwrap_or(fallback_signal);
+            let false_positive_receipt = ReceiptBuilder::new(
+                format!(
+                    "receipt.economy.drift_false_positive:{}:{}",
+                    normalize_key(snapshot_id),
+                    normalized_detector
+                ),
+                "economy.drift.false_positive_confirmed.v1",
+                as_of_ms.max(0),
+                format!(
+                    "idemp.economy.drift_false_positive:{}:{}",
+                    normalize_key(snapshot_id),
+                    normalized_detector
+                ),
+                TraceContext {
+                    session_id: None,
+                    trajectory_hash: None,
+                    job_hash: None,
+                    run_id: Some(format!("economy_drift:{snapshot_id}")),
+                    work_unit_id: None,
+                    contract_id: None,
+                    claim_id: None,
+                },
+                current_policy_context(),
+            )
+            .with_inputs_payload(json!({
+                "snapshot_id": snapshot_id,
+                "snapshot_hash": snapshot_hash,
+                "detector_id": detector_id,
+                "signal_code": signal.signal_code,
+            }))
+            .with_outputs_payload(json!({
+                "status": "false_positive_confirmed",
+                "snapshot_id": snapshot_id,
+                "snapshot_hash": snapshot_hash,
+                "detector_id": detector_id,
+                "source_tag": source_tag,
+            }))
+            .with_evidence(vec![
+                EvidenceRef::new(
+                    "snapshot_ref",
+                    format!("oa://economy/snapshots/{snapshot_id}"),
+                    snapshot_hash.to_string(),
+                ),
+                drift_detector_evidence(&signal),
+            ])
+            .with_hints(ReceiptHints {
+                category: Some("compute".to_string()),
+                tfb_class: None,
+                severity: Some(SeverityClass::Medium),
+                achieved_verification_tier: None,
+                verification_correlated: None,
+                provenance_grade: None,
+                auth_assurance_level: Some(AuthAssuranceLevel::Authenticated),
+                personhood_proved: Some(false),
+                reason_code: Some(REASON_CODE_DRIFT_FALSE_POSITIVE_CONFIRMED.to_string()),
+                notional: None,
+                liability_premium: None,
+            })
+            .build();
+            self.append_receipt(false_positive_receipt, source_tag);
+            if self.load_state == PaneLoadState::Error {
+                return;
+            }
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -3411,6 +3708,131 @@ fn pricing_payload(pricing: &LiabilityPricingBreakdown) -> serde_json::Value {
     })
 }
 
+fn drift_signal_digest_material(signals: &[DriftSignalSummary]) -> String {
+    let mut rows = signals.to_vec();
+    rows.sort_by(|lhs, rhs| {
+        lhs.detector_id
+            .cmp(&rhs.detector_id)
+            .then_with(|| lhs.signal_code.cmp(&rhs.signal_code))
+    });
+    rows.into_iter()
+        .map(|signal| {
+            format!(
+                "{}:{}:{}:{:.6}:{:.6}:{:.6}:{}",
+                signal.detector_id,
+                signal.signal_code,
+                signal.count_24h,
+                signal.ratio,
+                signal.threshold,
+                signal.score,
+                signal.alert
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("|")
+}
+
+fn drift_detector_evidence(signal: &DriftSignalSummary) -> EvidenceRef {
+    let mut evidence = EvidenceRef::new(
+        "drift_detector_ref",
+        format!(
+            "oa://economy/drift/detectors/{}",
+            normalize_key(signal.detector_id.as_str())
+        ),
+        digest_for_text(signal.detector_id.as_str()),
+    );
+    evidence
+        .meta
+        .insert("detector_id".to_string(), json!(signal.detector_id.clone()));
+    evidence
+        .meta
+        .insert("signal_code".to_string(), json!(signal.signal_code.clone()));
+    evidence
+}
+
+fn drift_signal_summary_evidence(snapshot_id: &str, signal: &DriftSignalSummary) -> EvidenceRef {
+    let mut evidence = EvidenceRef::new(
+        "drift_signal_summary",
+        format!(
+            "oa://economy/drift/snapshots/{}/{}",
+            normalize_key(snapshot_id),
+            normalize_key(signal.detector_id.as_str())
+        ),
+        digest_for_text(drift_signal_digest_material(std::slice::from_ref(signal)).as_str()),
+    );
+    evidence
+        .meta
+        .insert("detector_id".to_string(), json!(signal.detector_id.clone()));
+    evidence
+        .meta
+        .insert("signal_code".to_string(), json!(signal.signal_code.clone()));
+    evidence
+        .meta
+        .insert("count_24h".to_string(), json!(signal.count_24h));
+    evidence
+        .meta
+        .insert("ratio".to_string(), json!(signal.ratio));
+    evidence
+        .meta
+        .insert("threshold".to_string(), json!(signal.threshold));
+    evidence
+        .meta
+        .insert("score".to_string(), json!(signal.score));
+    evidence
+        .meta
+        .insert("alert".to_string(), json!(signal.alert));
+    evidence
+}
+
+fn active_drift_alert_detectors_before(receipts: &[Receipt], as_of_ms: i64) -> BTreeSet<String> {
+    let window_start_ms = as_of_ms.saturating_sub(DRIFT_WINDOW_MS);
+    let mut ordered = receipts
+        .iter()
+        .filter(|receipt| {
+            receipt.created_at_ms <= as_of_ms && receipt.created_at_ms > window_start_ms
+        })
+        .collect::<Vec<_>>();
+    ordered.sort_by(|lhs, rhs| {
+        lhs.created_at_ms
+            .cmp(&rhs.created_at_ms)
+            .then_with(|| lhs.receipt_id.cmp(&rhs.receipt_id))
+    });
+    let mut active = BTreeSet::<String>::new();
+    for receipt in ordered {
+        let Some(detector_id) = drift_detector_id_from_receipt(receipt) else {
+            continue;
+        };
+        if receipt.receipt_type == "economy.drift.alert_raised.v1" {
+            active.insert(detector_id);
+        } else if receipt.receipt_type == "economy.drift.false_positive_confirmed.v1" {
+            active.remove(detector_id.as_str());
+        }
+    }
+    active
+}
+
+fn drift_detector_id_from_receipt(receipt: &Receipt) -> Option<String> {
+    let detector_ref = receipt
+        .evidence
+        .iter()
+        .find(|evidence| evidence.kind == "drift_detector_ref")?;
+    if let Some(value) = detector_ref.meta.get("detector_id").and_then(Value::as_str) {
+        if !value.trim().is_empty() {
+            return Some(value.to_string());
+        }
+    }
+    detector_ref
+        .uri
+        .strip_prefix("oa://economy/drift/detectors/")
+        .and_then(|value| {
+            if value.trim().is_empty() {
+                None
+            } else {
+                Some(value.to_string())
+            }
+        })
+}
+
 fn parse_snapshot_id_from_uri(uri: &str) -> Option<&str> {
     uri.strip_prefix("oa://economy/snapshots/")
         .and_then(|suffix| {
@@ -4083,6 +4505,18 @@ mod tests {
         }
     }
 
+    fn fixture_drift_signals(alert: bool) -> Vec<DriftSignalSummary> {
+        vec![DriftSignalSummary {
+            detector_id: "detector.drift.sv_floor".to_string(),
+            signal_code: "sv_below_floor".to_string(),
+            count_24h: if alert { 3 } else { 0 },
+            ratio: if alert { 0.55 } else { 0.95 },
+            threshold: 0.70,
+            score: if alert { 0.2142857142857142 } else { 0.0 },
+            alert,
+        }]
+    }
+
     #[test]
     fn paid_history_receipt_without_wallet_proof_is_withheld() {
         let temp_dir = tempfile::tempdir().expect("tempdir");
@@ -4105,10 +4539,12 @@ mod tests {
             withheld.hints.reason_code.as_deref(),
             Some(REASON_CODE_PAYMENT_POINTER_NON_AUTHORITATIVE)
         );
-        assert!(withheld
-            .evidence
-            .iter()
-            .any(|evidence| evidence.kind == "policy_decision"));
+        assert!(
+            withheld
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "policy_decision")
+        );
     }
 
     #[test]
@@ -4127,27 +4563,35 @@ mod tests {
 
         assert_eq!(state.load_state, PaneLoadState::Ready);
         assert_eq!(state.receipts.len(), 2);
-        assert!(state
-            .receipts
-            .iter()
-            .any(|receipt| receipt.receipt_type == "earn.job.ingress_request.v1"));
+        assert!(
+            state
+                .receipts
+                .iter()
+                .any(|receipt| receipt.receipt_type == "earn.job.ingress_request.v1")
+        );
         let settlement = state
             .receipts
             .iter()
             .find(|receipt| receipt.receipt_type == "earn.job.settlement_observed.v1")
             .expect("settlement receipt");
-        assert!(settlement
-            .evidence
-            .iter()
-            .any(|evidence| evidence.kind == "wallet_settlement_proof"));
-        assert!(settlement
-            .evidence
-            .iter()
-            .any(|evidence| evidence.kind == "pricing_snapshot_ref"));
-        assert!(settlement
-            .evidence
-            .iter()
-            .any(|evidence| evidence.kind == "risk_pricing_rule_ref"));
+        assert!(
+            settlement
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "wallet_settlement_proof")
+        );
+        assert!(
+            settlement
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "pricing_snapshot_ref")
+        );
+        assert!(
+            settlement
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "risk_pricing_rule_ref")
+        );
         assert_eq!(
             settlement.hints.tfb_class,
             Some(FeedbackLatencyClass::Short)
@@ -4391,9 +4835,11 @@ mod tests {
             &policy_bundle,
         );
         assert!(first.is_err());
-        assert!(first
-            .err()
-            .is_some_and(|error| error.contains(REASON_CODE_AUTH_ASSURANCE_INSUFFICIENT)));
+        assert!(
+            first
+                .err()
+                .is_some_and(|error| error.contains(REASON_CODE_AUTH_ASSURANCE_INSUFFICIENT))
+        );
         let first_count = state.receipts.len();
 
         let second = state.record_wallet_withdraw_send_attempt_with_policy(
@@ -4421,14 +4867,18 @@ mod tests {
             Some(AuthAssuranceLevel::Authenticated)
         );
         assert_eq!(withheld.hints.personhood_proved, Some(false));
-        assert!(withheld
-            .evidence
-            .iter()
-            .any(|evidence| evidence.kind == "policy_decision"));
-        assert!(withheld
-            .evidence
-            .iter()
-            .any(|evidence| evidence.kind.starts_with("credential_ref_")));
+        assert!(
+            withheld
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "policy_decision")
+        );
+        assert!(
+            withheld
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind.starts_with("credential_ref_"))
+        );
     }
 
     #[test]
@@ -4465,10 +4915,12 @@ mod tests {
             .iter()
             .find(|receipt| receipt.receipt_type == "earn.job.settlement_observed.v1")
             .expect("settlement receipt");
-        assert!(settlement_receipt
-            .evidence
-            .iter()
-            .any(|evidence| evidence.kind == "receipt_ref"));
+        assert!(
+            settlement_receipt
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "receipt_ref")
+        );
 
         let lineage = state
             .settlement_lineage_receipt_ids(settlement_receipt.receipt_id.as_str())
@@ -4523,10 +4975,12 @@ mod tests {
             rejection.hints.reason_code.as_deref(),
             Some(REASON_CODE_POLICY_PREFLIGHT_REJECTED)
         );
-        assert!(rejection
-            .evidence
-            .iter()
-            .any(|evidence| evidence.kind == "policy_decision"));
+        assert!(
+            rejection
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "policy_decision")
+        );
         assert_eq!(rejection.policy.policy_bundle_id, "policy.earn.default");
         assert_eq!(rejection.policy.policy_version, "1");
     }
@@ -4559,6 +5013,9 @@ mod tests {
             100,
             0.2,
             0.05,
+            0,
+            vec![],
+            vec![],
             vec![input],
             "test.snapshot",
         );
@@ -4568,14 +5025,18 @@ mod tests {
             .iter()
             .find(|receipt| receipt.receipt_type == "economy.stats.snapshot_receipt.v1")
             .expect("snapshot receipt");
-        assert!(receipt
-            .evidence
-            .iter()
-            .any(|evidence| evidence.kind == "receipt_window"));
-        assert!(receipt
-            .evidence
-            .iter()
-            .any(|evidence| evidence.kind == "economy_snapshot_artifact"));
+        assert!(
+            receipt
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "receipt_window")
+        );
+        assert!(
+            receipt
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "economy_snapshot_artifact")
+        );
         let snapshot_metrics = receipt
             .evidence
             .iter()
@@ -4592,8 +5053,197 @@ mod tests {
             Some(&json!(25))
         );
         assert_eq!(
+            snapshot_metrics.meta.get("drift_alerts_24h"),
+            Some(&json!(0))
+        );
+        assert_eq!(
+            snapshot_metrics.meta.get("top_drift_signals"),
+            Some(&json!([]))
+        );
+        assert_eq!(
             receipt.idempotency_key,
             "idemp.economy.snapshot:1762000060000"
+        );
+    }
+
+    #[test]
+    fn drift_receipts_are_emitted_once_per_snapshot_window() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        let drift_signals = fixture_drift_signals(true);
+        let top_drift_signals = drift_signals.clone();
+
+        state.record_economy_snapshot_receipt(
+            "snapshot.economy:1762000060000",
+            1_762_000_060_000,
+            "sha256:snapshot",
+            0.5,
+            0.5,
+            2,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            125,
+            25,
+            2_000,
+            100,
+            0.2,
+            0.05,
+            3,
+            drift_signals.clone(),
+            top_drift_signals.clone(),
+            vec![],
+            "test.snapshot",
+        );
+        state.record_economy_snapshot_receipt(
+            "snapshot.economy:1762000060000",
+            1_762_000_060_000,
+            "sha256:snapshot",
+            0.5,
+            0.5,
+            2,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            125,
+            25,
+            2_000,
+            100,
+            0.2,
+            0.05,
+            3,
+            drift_signals,
+            top_drift_signals,
+            vec![],
+            "test.snapshot.replay",
+        );
+
+        assert_eq!(
+            state
+                .receipts
+                .iter()
+                .filter(|receipt| receipt.receipt_type == "economy.stats.snapshot_receipt.v1")
+                .count(),
+            1
+        );
+        assert_eq!(
+            state
+                .receipts
+                .iter()
+                .filter(|receipt| receipt.receipt_type == "economy.drift.signal_emitted.v1")
+                .count(),
+            1
+        );
+        assert_eq!(
+            state
+                .receipts
+                .iter()
+                .filter(|receipt| receipt.receipt_type == "economy.drift.alert_raised.v1")
+                .count(),
+            1
+        );
+        let signal = state
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_type == "economy.drift.signal_emitted.v1")
+            .expect("drift signal receipt");
+        assert_eq!(
+            signal.hints.reason_code.as_deref(),
+            Some(REASON_CODE_DRIFT_SIGNAL_EMITTED)
+        );
+        assert!(
+            signal
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "snapshot_ref")
+        );
+        assert!(
+            signal
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "drift_detector_ref")
+        );
+    }
+
+    #[test]
+    fn drift_false_positive_receipt_is_emitted_when_alert_clears() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+
+        let active_signals = fixture_drift_signals(true);
+        state.record_economy_snapshot_receipt(
+            "snapshot.economy:1762000060000",
+            1_762_000_060_000,
+            "sha256:snapshot-a",
+            0.5,
+            0.5,
+            2,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            125,
+            25,
+            2_000,
+            100,
+            0.2,
+            0.05,
+            3,
+            active_signals.clone(),
+            active_signals,
+            vec![],
+            "test.snapshot.a",
+        );
+
+        let cleared_signals = fixture_drift_signals(false);
+        state.record_economy_snapshot_receipt(
+            "snapshot.economy:1762000120000",
+            1_762_000_120_000,
+            "sha256:snapshot-b",
+            0.8,
+            0.8,
+            2,
+            1.6,
+            0.0,
+            0.0,
+            0.0,
+            125,
+            25,
+            2_000,
+            100,
+            0.2,
+            0.05,
+            0,
+            cleared_signals,
+            vec![],
+            vec![],
+            "test.snapshot.b",
+        );
+
+        let false_positive = state
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_type == "economy.drift.false_positive_confirmed.v1")
+            .expect("false positive receipt");
+        assert_eq!(
+            false_positive.hints.reason_code.as_deref(),
+            Some(REASON_CODE_DRIFT_FALSE_POSITIVE_CONFIRMED)
+        );
+        assert!(
+            false_positive
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "snapshot_ref")
+        );
+        assert!(
+            false_positive
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "drift_detector_ref")
         );
     }
 
@@ -4620,6 +5270,47 @@ mod tests {
             300,
             0.25,
             0.15,
+            3,
+            vec![
+                DriftSignalSummary {
+                    detector_id: "detector.drift.sv_floor".to_string(),
+                    signal_code: "sv_below_floor".to_string(),
+                    count_24h: 2,
+                    ratio: 0.55,
+                    threshold: 0.70,
+                    score: 0.2142857142857142,
+                    alert: true,
+                },
+                DriftSignalSummary {
+                    detector_id: "detector.drift.dispute_claim_spike".to_string(),
+                    signal_code: "dispute_claim_share_high".to_string(),
+                    count_24h: 1,
+                    ratio: 0.1,
+                    threshold: 0.08,
+                    score: 0.021739130434782594,
+                    alert: true,
+                },
+            ],
+            vec![
+                DriftSignalSummary {
+                    detector_id: "detector.drift.sv_floor".to_string(),
+                    signal_code: "sv_below_floor".to_string(),
+                    count_24h: 2,
+                    ratio: 0.55,
+                    threshold: 0.70,
+                    score: 0.2142857142857142,
+                    alert: true,
+                },
+                DriftSignalSummary {
+                    detector_id: "detector.drift.dispute_claim_spike".to_string(),
+                    signal_code: "dispute_claim_share_high".to_string(),
+                    count_24h: 1,
+                    ratio: 0.1,
+                    threshold: 0.08,
+                    score: 0.021739130434782594,
+                    alert: true,
+                },
+            ],
             vec![],
             "test.snapshot",
         );
@@ -4681,6 +5372,9 @@ mod tests {
             100,
             0.2,
             0.05,
+            0,
+            vec![],
+            vec![],
             vec![],
             "test.snapshot",
         );
@@ -4701,18 +5395,24 @@ mod tests {
             .expect("bundle export");
         assert_eq!(bundle.receipt_count, 1);
         let settlement = &bundle.receipts[0];
-        assert!(settlement
-            .evidence
-            .iter()
-            .any(|evidence| evidence.kind == "pricing_snapshot_ref"));
-        assert!(settlement
-            .evidence
-            .iter()
-            .any(|evidence| evidence.kind == "risk_pricing_rule_ref"));
-        assert!(!settlement
-            .evidence
-            .iter()
-            .any(|evidence| evidence.kind == "snapshot_metrics"));
+        assert!(
+            settlement
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "pricing_snapshot_ref")
+        );
+        assert!(
+            settlement
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "risk_pricing_rule_ref")
+        );
+        assert!(
+            !settlement
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "snapshot_metrics")
+        );
         assert!(settlement.hints.liability_premium.is_some());
     }
 
@@ -4880,9 +5580,11 @@ mod tests {
             missing_runtime.as_slice(),
         );
         assert!(failed.is_err());
-        assert!(failed
-            .err()
-            .is_some_and(|decision| decision.rule_id == "policy.test.provenance.requirements.v1"));
+        assert!(
+            failed.err().is_some_and(
+                |decision| decision.rule_id == "policy.test.provenance.requirements.v1"
+            )
+        );
 
         let mut complete = missing_runtime;
         complete.push(EvidenceRef::new(
@@ -5011,14 +5713,18 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(throttle_receipts.len(), 1);
         let throttle = throttle_receipts[0];
-        assert!(throttle
-            .evidence
-            .iter()
-            .any(|evidence| evidence.kind == "snapshot_ref"));
-        assert!(throttle
-            .evidence
-            .iter()
-            .any(|evidence| evidence.kind == "policy_decision"));
+        assert!(
+            throttle
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "snapshot_ref")
+        );
+        assert!(
+            throttle
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "policy_decision")
+        );
         assert_eq!(
             throttle.hints.reason_code.as_deref(),
             Some(REASON_CODE_POLICY_THROTTLE_TRIGGERED)

@@ -1,11 +1,12 @@
 use crate::app_state::PaneLoadState;
 use crate::economy_kernel_receipts::{
-    Asset, AuthAssuranceLevel, EvidenceRef, FeedbackLatencyClass, Money, MoneyAmount,
-    ProvenanceGrade, Receipt, SeverityClass, VerificationTier,
+    Asset, AuthAssuranceLevel, DriftSignalSummary, EvidenceRef, FeedbackLatencyClass, Money,
+    MoneyAmount, ProvenanceGrade, Receipt, SeverityClass, VerificationTier,
 };
-use bitcoin::hashes::{sha256, Hash};
+use bitcoin::hashes::{Hash, sha256};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -13,6 +14,13 @@ const ECONOMY_SNAPSHOT_SCHEMA_VERSION: u16 = 1;
 const ECONOMY_SNAPSHOT_STREAM_ID: &str = "stream.economy_snapshots.v1";
 const ECONOMY_SNAPSHOT_WINDOW_MS: i64 = 86_400_000;
 const ECONOMY_SNAPSHOT_RETENTION_LIMIT: usize = 10_080;
+const DRIFT_SIGNAL_TOP_LIMIT: usize = 5;
+const DRIFT_THRESHOLD_SV_FLOOR: f64 = 0.70;
+const DRIFT_THRESHOLD_CORRELATED_SHARE_MAX: f64 = 0.55;
+const DRIFT_THRESHOLD_PAYOUT_SUCCESS_MIN: f64 = 0.80;
+const DRIFT_THRESHOLD_DISPUTE_CLAIM_SHARE_MAX: f64 = 0.08;
+const DRIFT_THRESHOLD_INCIDENT_SHARE_MAX: f64 = 0.05;
+const DRIFT_THRESHOLD_XA_MAX: f64 = 0.25;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Ord, PartialOrd)]
 pub struct MetricKey {
@@ -63,6 +71,12 @@ pub struct EconomySnapshot {
     pub capital_reserves_24h: Money,
     pub loss_ratio: f64,
     pub capital_coverage_ratio: f64,
+    #[serde(default)]
+    pub drift_alerts_24h: u64,
+    #[serde(default)]
+    pub drift_signals: Vec<DriftSignalSummary>,
+    #[serde(default)]
+    pub top_drift_signals: Vec<DriftSignalSummary>,
     pub sv_breakdown: Vec<SvBreakdownRow>,
     pub inputs: Vec<EvidenceRef>,
 }
@@ -252,6 +266,7 @@ fn build_snapshot(
     let mut breakdown = BTreeMap::<MetricKey, (u64, u64)>::new();
     let mut total_work_units = 0u64;
     let mut verified_work_units = 0u64;
+    let mut settlement_terminal_count = 0u64;
     let mut correlated_verified = 0u64;
     let mut provenance_counts = [0u64; 4];
     let mut auth_assurance_counts = BTreeMap::<AuthAssuranceLevel, u64>::new();
@@ -264,9 +279,14 @@ fn build_snapshot(
         let verified = is_verified_terminal_receipt(receipt);
         if verified {
             verified_work_units = verified_work_units.saturating_add(1);
+            if is_settlement_terminal_receipt(receipt) {
+                settlement_terminal_count = settlement_terminal_count.saturating_add(1);
+            }
             if receipt.hints.verification_correlated.unwrap_or(false) {
                 correlated_verified = correlated_verified.saturating_add(1);
             }
+        } else if is_settlement_terminal_receipt(receipt) {
+            settlement_terminal_count = settlement_terminal_count.saturating_add(1);
         }
         provenance_counts[provenance_bucket(receipt.hints.provenance_grade)] =
             provenance_counts[provenance_bucket(receipt.hints.provenance_grade)].saturating_add(1);
@@ -318,10 +338,7 @@ fn build_snapshot(
         })
         .collect::<Vec<_>>();
     let personhood_verified_share = ratio(personhood_verified, total_work_units);
-    let terminal_receipts = terminal_by_work_unit
-        .values()
-        .copied()
-        .collect::<Vec<_>>();
+    let terminal_receipts = terminal_by_work_unit.values().copied().collect::<Vec<_>>();
     let long_feedback_terminal_count = terminal_receipts
         .iter()
         .filter(|receipt| is_long_feedback_terminal_receipt(receipt))
@@ -358,6 +375,11 @@ fn build_snapshot(
         .copied()
         .filter(|receipt| is_claim_paid_receipt(receipt))
         .count() as u64;
+    let dispute_or_claim_count = scoped_receipts
+        .iter()
+        .copied()
+        .filter(|receipt| is_dispute_or_claim_receipt(receipt))
+        .count() as u64;
     let total_scoped_receipts = scoped_receipts.len() as u64;
     let long_feedback_share = ratio(long_feedback_terminal_count, total_work_units);
     let unverified_share = ratio(
@@ -377,6 +399,8 @@ fn build_snapshot(
     let claim_signal_share = ratio(claims_signal_count, total_scoped_receipts);
     let rollback_signal_share = ratio(rollback_signal_count, total_scoped_receipts);
     let quote_variance_share = quote_delivery_variance_share(scoped_receipts.as_slice());
+    let payout_success_share = ratio(settlement_terminal_count, total_work_units);
+    let dispute_or_claim_share = ratio(dispute_or_claim_count, total_scoped_receipts);
     let delta_m_hat = clamp_unit_interval(
         (0.30 * long_feedback_share)
             + (0.25 * correlated_verification_share)
@@ -391,6 +415,22 @@ fn build_snapshot(
             + (0.10 * claim_signal_share)
             + (0.10 * rollback_signal_share)
             + (0.05 * quote_variance_share),
+    );
+    let incident_alert_count = incident_signal_count
+        .saturating_add(rollback_signal_count)
+        .saturating_add(claims_signal_count);
+    let (drift_alerts_24h, drift_signals, top_drift_signals) = build_drift_signals(
+        sv,
+        correlated_verification_share,
+        payout_success_share,
+        dispute_or_claim_share,
+        incident_signal_share,
+        xa_hat,
+        total_work_units.saturating_sub(verified_work_units),
+        correlated_verified,
+        adverse_terminal_count,
+        dispute_or_claim_count,
+        incident_alert_count,
     );
     let capital_reserves_sats = liability_premiums_collected_sats.saturating_sub(claims_paid_sats);
     let loss_ratio = if liability_premiums_collected_sats == 0 {
@@ -426,6 +466,9 @@ fn build_snapshot(
         capital_reserves_sats,
         loss_ratio,
         capital_coverage_ratio,
+        drift_alerts_24h,
+        drift_signals.as_slice(),
+        top_drift_signals.as_slice(),
         auth_assurance_distribution.as_slice(),
         sv_breakdown.as_slice(),
         inputs.as_slice(),
@@ -454,6 +497,9 @@ fn build_snapshot(
         capital_reserves_24h: btc_sats_money(capital_reserves_sats),
         loss_ratio,
         capital_coverage_ratio,
+        drift_alerts_24h,
+        drift_signals,
+        top_drift_signals,
         sv_breakdown,
         inputs,
     })
@@ -466,8 +512,12 @@ fn is_terminal_work_unit_receipt(receipt: &Receipt) -> bool {
     )
 }
 
-fn is_verified_terminal_receipt(receipt: &Receipt) -> bool {
+fn is_settlement_terminal_receipt(receipt: &Receipt) -> bool {
     receipt.receipt_type == "earn.job.settlement_observed.v1"
+}
+
+fn is_verified_terminal_receipt(receipt: &Receipt) -> bool {
+    is_settlement_terminal_receipt(receipt)
         && receipt
             .evidence
             .iter()
@@ -490,16 +540,12 @@ fn is_adverse_terminal_receipt(receipt: &Receipt) -> bool {
     matches!(
         receipt.receipt_type.as_str(),
         "earn.job.withheld.v1" | "earn.job.failed.v1"
-    ) || receipt
-        .hints
-        .reason_code
-        .as_deref()
-        .is_some_and(|reason| {
-            let normalized = reason.to_ascii_lowercase();
-            normalized.contains("failed")
-                || normalized.contains("withheld")
-                || normalized.contains("rollback")
-        })
+    ) || receipt.hints.reason_code.as_deref().is_some_and(|reason| {
+        let normalized = reason.to_ascii_lowercase();
+        normalized.contains("failed")
+            || normalized.contains("withheld")
+            || normalized.contains("rollback")
+    })
 }
 
 fn severity_weight(severity: Option<SeverityClass>) -> f64 {
@@ -552,9 +598,10 @@ fn is_breaker_or_throttle_receipt(receipt: &Receipt) -> bool {
     {
         return true;
     }
-    receipt.evidence.iter().any(|evidence| {
-        evidence.kind == "breaker_transition" || evidence.kind == "snapshot_ref"
-    })
+    receipt
+        .evidence
+        .iter()
+        .any(|evidence| evidence.kind == "breaker_transition" || evidence.kind == "snapshot_ref")
 }
 
 fn is_rollback_receipt(receipt: &Receipt) -> bool {
@@ -562,14 +609,10 @@ fn is_rollback_receipt(receipt: &Receipt) -> bool {
     if lower_type.contains("rollback") || lower_type.contains("compensating_action") {
         return true;
     }
-    receipt
-        .hints
-        .reason_code
-        .as_deref()
-        .is_some_and(|reason| {
-            let lower = reason.to_ascii_lowercase();
-            lower.contains("rollback") || lower.contains("compensating")
-        })
+    receipt.hints.reason_code.as_deref().is_some_and(|reason| {
+        let lower = reason.to_ascii_lowercase();
+        lower.contains("rollback") || lower.contains("compensating")
+    })
 }
 
 fn quote_delivery_variance_share(scoped_receipts: &[&Receipt]) -> f64 {
@@ -716,6 +759,9 @@ struct CanonicalSnapshotPayload<'a> {
     capital_reserves_24h_sats: u64,
     loss_ratio: f64,
     capital_coverage_ratio: f64,
+    drift_alerts_24h: u64,
+    drift_signals: &'a [DriftSignalSummary],
+    top_drift_signals: &'a [DriftSignalSummary],
     auth_assurance_distribution: &'a [AuthAssuranceDistributionRow],
     sv_breakdown: &'a [SvBreakdownRow],
     inputs: &'a [EvidenceRef],
@@ -743,6 +789,9 @@ fn snapshot_hash_for(
     capital_reserves_24h_sats: u64,
     loss_ratio: f64,
     capital_coverage_ratio: f64,
+    drift_alerts_24h: u64,
+    drift_signals: &[DriftSignalSummary],
+    top_drift_signals: &[DriftSignalSummary],
     auth_assurance_distribution: &[AuthAssuranceDistributionRow],
     sv_breakdown: &[SvBreakdownRow],
     inputs: &[EvidenceRef],
@@ -768,6 +817,9 @@ fn snapshot_hash_for(
         capital_reserves_24h_sats,
         loss_ratio,
         capital_coverage_ratio,
+        drift_alerts_24h,
+        drift_signals,
+        top_drift_signals,
         auth_assurance_distribution,
         sv_breakdown,
         inputs,
@@ -793,6 +845,145 @@ fn ratio_f64(numerator: f64, denominator: f64) -> f64 {
 
 fn clamp_unit_interval(value: f64) -> f64 {
     value.clamp(0.0, 1.0)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_drift_signals(
+    sv: f64,
+    correlated_verification_share: f64,
+    payout_success_share: f64,
+    dispute_or_claim_share: f64,
+    incident_signal_share: f64,
+    xa_hat: f64,
+    unverified_count_24h: u64,
+    correlated_verified_count_24h: u64,
+    payout_failure_count_24h: u64,
+    dispute_or_claim_count_24h: u64,
+    incident_count_24h: u64,
+) -> (u64, Vec<DriftSignalSummary>, Vec<DriftSignalSummary>) {
+    let mut drift_signals = vec![
+        drift_signal_low_guard(
+            "detector.drift.sv_floor",
+            "sv_below_floor",
+            unverified_count_24h,
+            sv,
+            DRIFT_THRESHOLD_SV_FLOOR,
+        ),
+        drift_signal_high_guard(
+            "detector.drift.correlation_pressure",
+            "correlated_verification_high",
+            correlated_verified_count_24h,
+            correlated_verification_share,
+            DRIFT_THRESHOLD_CORRELATED_SHARE_MAX,
+        ),
+        drift_signal_low_guard(
+            "detector.drift.payout_success",
+            "payout_success_low",
+            payout_failure_count_24h,
+            payout_success_share,
+            DRIFT_THRESHOLD_PAYOUT_SUCCESS_MIN,
+        ),
+        drift_signal_high_guard(
+            "detector.drift.dispute_claim_spike",
+            "dispute_claim_share_high",
+            dispute_or_claim_count_24h,
+            dispute_or_claim_share,
+            DRIFT_THRESHOLD_DISPUTE_CLAIM_SHARE_MAX,
+        ),
+        drift_signal_high_guard(
+            "detector.drift.incident_pressure",
+            "incident_share_high",
+            incident_count_24h,
+            incident_signal_share,
+            DRIFT_THRESHOLD_INCIDENT_SHARE_MAX,
+        ),
+        drift_signal_high_guard(
+            "detector.drift.xa_pressure",
+            "xa_hat_high",
+            incident_count_24h.max(payout_failure_count_24h),
+            xa_hat,
+            DRIFT_THRESHOLD_XA_MAX,
+        ),
+    ];
+
+    drift_signals.sort_by(compare_drift_signals);
+    let drift_alerts_24h = drift_signals
+        .iter()
+        .filter(|signal| signal.alert)
+        .fold(0u64, |total, signal| {
+            total.saturating_add(signal.count_24h.max(1))
+        });
+    let top_drift_signals = drift_signals
+        .iter()
+        .filter(|signal| signal.score > 0.0)
+        .take(DRIFT_SIGNAL_TOP_LIMIT)
+        .cloned()
+        .collect::<Vec<_>>();
+
+    (drift_alerts_24h, drift_signals, top_drift_signals)
+}
+
+fn compare_drift_signals(lhs: &DriftSignalSummary, rhs: &DriftSignalSummary) -> Ordering {
+    rhs.score
+        .partial_cmp(&lhs.score)
+        .unwrap_or(Ordering::Equal)
+        .then_with(|| rhs.count_24h.cmp(&lhs.count_24h))
+        .then_with(|| lhs.detector_id.cmp(&rhs.detector_id))
+        .then_with(|| lhs.signal_code.cmp(&rhs.signal_code))
+}
+
+fn drift_signal_high_guard(
+    detector_id: &str,
+    signal_code: &str,
+    count_24h: u64,
+    ratio: f64,
+    threshold: f64,
+) -> DriftSignalSummary {
+    let ratio = clamp_unit_interval(ratio);
+    let threshold = clamp_unit_interval(threshold);
+    let alert = ratio > threshold;
+    let score = if ratio <= threshold {
+        0.0
+    } else if threshold >= 1.0 {
+        1.0
+    } else {
+        clamp_unit_interval((ratio - threshold) / (1.0 - threshold))
+    };
+    DriftSignalSummary {
+        detector_id: detector_id.to_string(),
+        signal_code: signal_code.to_string(),
+        count_24h,
+        ratio,
+        threshold,
+        score,
+        alert,
+    }
+}
+
+fn drift_signal_low_guard(
+    detector_id: &str,
+    signal_code: &str,
+    count_24h: u64,
+    ratio: f64,
+    threshold: f64,
+) -> DriftSignalSummary {
+    let ratio = clamp_unit_interval(ratio);
+    let threshold = clamp_unit_interval(threshold);
+    let alert = ratio < threshold;
+    let score = if ratio >= threshold || threshold <= 0.0 {
+        0.0
+    } else {
+        clamp_unit_interval((threshold - ratio) / threshold)
+    };
+    DriftSignalSummary {
+        detector_id: detector_id.to_string(),
+        signal_code: signal_code.to_string(),
+        count_24h,
+        ratio,
+        threshold,
+        score,
+        alert,
+    }
 }
 
 fn money_as_sats(value: Option<&Money>) -> u64 {
@@ -825,6 +1016,20 @@ fn is_claim_paid_receipt(receipt: &Receipt) -> bool {
         .evidence
         .iter()
         .any(|evidence| evidence.kind == "claim_payout_proof")
+}
+
+fn is_dispute_or_claim_receipt(receipt: &Receipt) -> bool {
+    if is_claim_paid_receipt(receipt) {
+        return true;
+    }
+    let receipt_type = receipt.receipt_type.to_ascii_lowercase();
+    if receipt_type.contains("dispute") || receipt_type.contains("chargeback") {
+        return true;
+    }
+    receipt.evidence.iter().any(|evidence| {
+        let kind = evidence.kind.to_ascii_lowercase();
+        kind.contains("dispute") || kind.contains("chargeback")
+    })
 }
 
 fn floor_to_minute_utc(value_ms: i64) -> i64 {
@@ -1030,9 +1235,11 @@ mod tests {
         );
 
         let reloaded = EconomySnapshotState::from_snapshot_path_for_tests(path);
-        assert!(reloaded
-            .get_snapshot("snapshot.economy:1761999960000")
-            .is_some());
+        assert!(
+            reloaded
+                .get_snapshot("snapshot.economy:1761999960000")
+                .is_some()
+        );
     }
 
     #[test]
@@ -1113,6 +1320,10 @@ mod tests {
         assert_eq!(snapshot.capital_reserves_24h, btc_sats_money(15));
         assert!((snapshot.loss_ratio - 0.5).abs() < 1e-9);
         assert!((snapshot.capital_coverage_ratio - (15.0 / 350.0)).abs() < 1e-9);
+        assert!(snapshot.drift_alerts_24h > 0);
+        assert!(!snapshot.drift_signals.is_empty());
+        assert!(!snapshot.top_drift_signals.is_empty());
+        assert!(snapshot.top_drift_signals.len() <= snapshot.drift_signals.len());
     }
 
     #[test]
@@ -1193,6 +1404,14 @@ mod tests {
 
         assert_eq!(first.snapshot.delta_m_hat, second.snapshot.delta_m_hat);
         assert_eq!(first.snapshot.xa_hat, second.snapshot.xa_hat);
+        assert_eq!(
+            first.snapshot.drift_alerts_24h,
+            second.snapshot.drift_alerts_24h
+        );
+        assert_eq!(
+            first.snapshot.top_drift_signals,
+            second.snapshot.top_drift_signals
+        );
         assert_eq!(first.snapshot.snapshot_hash, second.snapshot.snapshot_hash);
     }
 
@@ -1251,6 +1470,51 @@ mod tests {
             inside_snapshot.xa_hat,
             outside_snapshot.xa_hat
         );
+        assert!(
+            inside_snapshot.drift_alerts_24h >= outside_snapshot.drift_alerts_24h,
+            "inside drift_alerts_24h={} outside drift_alerts_24h={}",
+            inside_snapshot.drift_alerts_24h,
+            outside_snapshot.drift_alerts_24h
+        );
+    }
+
+    #[test]
+    fn top_drift_signals_are_sorted_by_risk_score() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let path = temp_dir.path().join("snapshots-drift-ordering.json");
+        let mut state = EconomySnapshotState::from_snapshot_path_for_tests(path);
+        let mut failed = fixture_receipt(
+            "receipt-failed-order-1",
+            "earn.job.failed.v1",
+            1_762_000_010_000,
+            "job-order-1",
+            false,
+        );
+        failed.hints.reason_code = Some("JOB_FAILED".to_string());
+        let mut claim = fixture_receipt(
+            "receipt-claim-order-1",
+            "earn.claim.paid.v1",
+            1_762_000_011_000,
+            "job-order-1",
+            false,
+        );
+        claim.hints.notional = Some(btc_sats_money(25));
+        claim.evidence.push(EvidenceRef::new(
+            "claim_payout_proof",
+            "oa://claims/payout/receipt-claim-order-1",
+            "sha256:claim-order-1",
+        ));
+
+        let snapshot = state
+            .compute_minute_snapshot(1_762_000_060_000, &[failed, claim])
+            .expect("snapshot should compute")
+            .snapshot;
+        assert!(!snapshot.top_drift_signals.is_empty());
+        let mut previous = f64::INFINITY;
+        for signal in &snapshot.top_drift_signals {
+            assert!(signal.score <= previous + 1e-9);
+            previous = signal.score;
+        }
     }
 
     #[test]
@@ -1269,20 +1533,26 @@ mod tests {
         let computed = state
             .compute_minute_snapshot(1_762_000_012_000, receipts.as_slice())
             .expect("snapshot should compute");
-        assert!(computed
-            .snapshot
-            .inputs
-            .iter()
-            .all(|input| !input.uri.contains("wallet/payments")));
-        assert!(computed
-            .snapshot
-            .inputs
-            .iter()
-            .all(|input| !input.uri.contains("invoice")));
-        assert!(computed
-            .snapshot
-            .inputs
-            .iter()
-            .all(|input| !input.uri.contains("preimage")));
+        assert!(
+            computed
+                .snapshot
+                .inputs
+                .iter()
+                .all(|input| !input.uri.contains("wallet/payments"))
+        );
+        assert!(
+            computed
+                .snapshot
+                .inputs
+                .iter()
+                .all(|input| !input.uri.contains("invoice"))
+        );
+        assert!(
+            computed
+                .snapshot
+                .inputs
+                .iter()
+                .all(|input| !input.uri.contains("preimage"))
+        );
     }
 }
