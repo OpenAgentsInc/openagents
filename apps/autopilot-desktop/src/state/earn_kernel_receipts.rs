@@ -23,6 +23,8 @@ const EARN_IDEMPOTENCY_RECORD_ROW_LIMIT: usize = 4096;
 const INCIDENT_OBJECT_ROW_LIMIT: usize = 4096;
 const INCIDENT_TAXONOMY_ROW_LIMIT: usize = 1024;
 const OUTCOME_REGISTRY_ROW_LIMIT: usize = 4096;
+const SAFETY_SIGNAL_ROW_LIMIT: usize = 8192;
+const SAFETY_SIGNAL_BUCKET_ROW_LIMIT: usize = 2048;
 const AUDIT_LINKAGE_ROW_LIMIT: usize = 65_536;
 const REASON_CODE_JOB_FAILED: &str = "JOB_FAILED";
 const REASON_CODE_POLICY_PREFLIGHT_REJECTED: &str = "POLICY_PREFLIGHT_REJECTED";
@@ -336,6 +338,56 @@ pub enum IncidentExportRedactionTier {
 pub enum AuditExportRedactionTier {
     Public,
     Restricted,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq, Ord, PartialOrd)]
+#[serde(rename_all = "snake_case")]
+pub enum SafetySignalExportMode {
+    PublicAggregate,
+    RestrictedFeed,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct SafetySignal {
+    pub signal_id: String,
+    pub signal_digest: String,
+    pub source_receipt_id: String,
+    pub source_receipt_type: String,
+    pub signal_class: String,
+    pub source_kind: String,
+    pub taxonomy_code: String,
+    pub signal_code: String,
+    pub category: String,
+    pub tfb_class: FeedbackLatencyClass,
+    pub severity: SeverityClass,
+    pub hashed_indicators: Vec<String>,
+    pub created_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct SafetySignalBucketRow {
+    pub taxonomy_code: String,
+    pub severity: SeverityClass,
+    pub signal_count: u64,
+    pub incident_signal_count: u64,
+    pub drift_signal_count: u64,
+    pub adverse_signal_count: u64,
+    pub signal_rate: f64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct SafetySignalFeed {
+    pub schema_version: u16,
+    pub generated_at_ms: i64,
+    pub stream_id: String,
+    pub authority: String,
+    pub export_mode: SafetySignalExportMode,
+    pub query: ReceiptQuery,
+    pub signal_count: usize,
+    pub bucket_count: usize,
+    pub signals: Vec<SafetySignal>,
+    pub buckets: Vec<SafetySignalBucketRow>,
+    pub package_hash: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -2840,6 +2892,83 @@ impl EarnKernelReceiptState {
         Ok(package)
     }
 
+    pub fn export_safety_signal_feed(
+        &self,
+        query: &ReceiptQuery,
+        mode: SafetySignalExportMode,
+        generated_at_ms: i64,
+        reader_role: Option<&str>,
+        caller_identity: Option<&str>,
+    ) -> Result<SafetySignalFeed, String> {
+        let receipts = self
+            .query_receipts(query)
+            .into_iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        let all_signals = derive_safety_signals(receipts.as_slice());
+        let buckets = aggregate_safety_signal_buckets(all_signals.as_slice());
+
+        if mode == SafetySignalExportMode::RestrictedFeed {
+            let role = canonical_safety_signal_reader_role(reader_role);
+            let caller_identity = caller_identity.unwrap_or("").trim();
+            enforce_restricted_safety_signal_access(
+                all_signals.as_slice(),
+                role.as_str(),
+                caller_identity,
+            )?;
+        }
+
+        let mut signals = all_signals.clone();
+        if mode == SafetySignalExportMode::PublicAggregate {
+            signals.clear();
+        }
+        let package_hash =
+            hash_safety_signal_feed(query, mode, signals.as_slice(), buckets.as_slice())?;
+        Ok(SafetySignalFeed {
+            schema_version: EARN_KERNEL_RECEIPT_SCHEMA_VERSION,
+            generated_at_ms: generated_at_ms.max(0),
+            stream_id: self.stream_id.clone(),
+            authority: self.authority.clone(),
+            export_mode: mode,
+            query: query.clone(),
+            signal_count: signals.len(),
+            bucket_count: buckets.len(),
+            signals,
+            buckets,
+            package_hash,
+        })
+    }
+
+    pub fn export_safety_signal_feed_to_path(
+        &self,
+        query: &ReceiptQuery,
+        mode: SafetySignalExportMode,
+        generated_at_ms: i64,
+        reader_role: Option<&str>,
+        caller_identity: Option<&str>,
+        path: &Path,
+    ) -> Result<SafetySignalFeed, String> {
+        let feed = self.export_safety_signal_feed(
+            query,
+            mode,
+            generated_at_ms,
+            reader_role,
+            caller_identity,
+        )?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("Failed to create safety signal feed dir: {error}"))?;
+        }
+        let payload = serde_json::to_string_pretty(&feed)
+            .map_err(|error| format!("Failed to encode safety signal feed: {error}"))?;
+        let temp_path = path.with_extension("tmp");
+        std::fs::write(&temp_path, payload)
+            .map_err(|error| format!("Failed to write safety signal feed temp file: {error}"))?;
+        std::fs::rename(&temp_path, path)
+            .map_err(|error| format!("Failed to persist safety signal feed: {error}"))?;
+        Ok(feed)
+    }
+
     pub fn record_rollback_action(
         &mut self,
         draft: RollbackActionDraft,
@@ -4526,17 +4655,30 @@ fn current_policy_bundle() -> PolicyBundleConfig {
 
 fn default_policy_bundle() -> PolicyBundleConfig {
     PolicyBundleConfig {
-        authentication_rules: vec![AuthenticationPolicyRule {
-            rule_id: "policy.earn.auth.default.operator.v1".to_string(),
-            slice: PolicySliceRule {
-                category: Some("compute".to_string()),
-                tfb_class: None,
-                severity: None,
+        authentication_rules: vec![
+            AuthenticationPolicyRule {
+                rule_id: "policy.earn.auth.default.operator.v1".to_string(),
+                slice: PolicySliceRule {
+                    category: Some("compute".to_string()),
+                    tfb_class: None,
+                    severity: None,
+                },
+                role: Some("operator".to_string()),
+                min_auth_assurance: Some("authenticated".to_string()),
+                require_personhood: false,
             },
-            role: Some("operator".to_string()),
-            min_auth_assurance: Some("authenticated".to_string()),
-            require_personhood: false,
-        }],
+            AuthenticationPolicyRule {
+                rule_id: "policy.earn.auth.default.safety_signal_reader.v1".to_string(),
+                slice: PolicySliceRule {
+                    category: Some("compute".to_string()),
+                    tfb_class: None,
+                    severity: None,
+                },
+                role: Some("safety_signal_reader".to_string()),
+                min_auth_assurance: Some("authenticated".to_string()),
+                require_personhood: false,
+            },
+        ],
         provenance_rules: vec![ProvenancePolicyRule {
             rule_id: "policy.earn.provenance.high_severity.v1".to_string(),
             slice: PolicySliceRule {
@@ -6599,6 +6741,545 @@ fn hash_audit_package(
     Ok(format!("sha256:{digest}"))
 }
 
+fn canonical_safety_signal_reader_role(reader_role: Option<&str>) -> String {
+    let role = reader_role
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase())
+        .unwrap_or_else(|| "auditor".to_string());
+    match role.as_str() {
+        "auditor" | "verifier" | "underwriter" => "safety_signal_reader".to_string(),
+        _ => role,
+    }
+}
+
+fn enforce_restricted_safety_signal_access(
+    signals: &[SafetySignal],
+    role: &str,
+    caller_identity: &str,
+) -> Result<(), String> {
+    let policy_bundle = current_policy_bundle();
+    let observed_level = auth_assurance_for_identity(caller_identity);
+    let personhood_proved = personhood_proved_for_identity(caller_identity, observed_level);
+    let mut slices = BTreeSet::<(String, FeedbackLatencyClass, SeverityClass)>::new();
+    for signal in signals {
+        slices.insert((signal.category.clone(), signal.tfb_class, signal.severity));
+    }
+    if slices.is_empty() {
+        slices.insert((
+            "compute".to_string(),
+            FeedbackLatencyClass::FeedbackLatencyClassUnspecified,
+            SeverityClass::SeverityClassUnspecified,
+        ));
+    }
+    for (category, tfb_class, severity) in slices {
+        if let Err(decision) = evaluate_authentication_gate(
+            &policy_bundle,
+            category.as_str(),
+            tfb_class,
+            severity,
+            role,
+            observed_level,
+            personhood_proved,
+        ) {
+            return Err(format!(
+                "restricted safety signal feed denied for role={} category={} tfb={} severity={} (rule={}): {}",
+                role,
+                category,
+                tfb_class.label(),
+                severity.label(),
+                decision.rule_id,
+                decision.notes
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum DerivedSafetySignalClass {
+    Incident,
+    Drift,
+    Adverse,
+}
+
+impl DerivedSafetySignalClass {
+    fn label(self) -> &'static str {
+        match self {
+            DerivedSafetySignalClass::Incident => "incident",
+            DerivedSafetySignalClass::Drift => "drift",
+            DerivedSafetySignalClass::Adverse => "adverse",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum IncidentSignalKind {
+    Incident,
+    NearMiss,
+    GroundTruthCase,
+}
+
+impl IncidentSignalKind {
+    fn source_kind(self) -> &'static str {
+        match self {
+            IncidentSignalKind::Incident => "incident_reported",
+            IncidentSignalKind::NearMiss => "near_miss_reported",
+            IncidentSignalKind::GroundTruthCase => "ground_truth_case_recorded",
+        }
+    }
+
+    fn signal_code(self) -> &'static str {
+        match self {
+            IncidentSignalKind::Incident => "incident_reported",
+            IncidentSignalKind::NearMiss => "near_miss_reported",
+            IncidentSignalKind::GroundTruthCase => "ground_truth_case_recorded",
+        }
+    }
+}
+
+fn derive_safety_signals(receipts: &[Receipt]) -> Vec<SafetySignal> {
+    let mut ordered = receipts.to_vec();
+    ordered.sort_by(|lhs, rhs| {
+        lhs.created_at_ms
+            .cmp(&rhs.created_at_ms)
+            .then_with(|| lhs.receipt_id.cmp(&rhs.receipt_id))
+    });
+    let mut by_id = BTreeMap::<String, SafetySignal>::new();
+    for receipt in &ordered {
+        let Some((signal_class, source_kind, taxonomy_code, severity, signal_code)) =
+            safety_signal_descriptor_for_receipt(receipt)
+        else {
+            continue;
+        };
+        let category = receipt
+            .hints
+            .category
+            .clone()
+            .unwrap_or_else(|| "compute".to_string());
+        let tfb_class = receipt
+            .hints
+            .tfb_class
+            .unwrap_or(FeedbackLatencyClass::FeedbackLatencyClassUnspecified);
+        let signal_id = format!(
+            "safety_signal:{}:{}:{}:{}",
+            signal_class.label(),
+            normalize_key(receipt.receipt_id.as_str()),
+            normalize_key(taxonomy_code.as_str()),
+            normalize_key(signal_code.as_str()),
+        );
+        let signal_digest = digest_for_text(
+            format!(
+                "{}:{}:{}:{}:{}:{}:{}:{}",
+                signal_id,
+                receipt.canonical_hash,
+                source_kind,
+                taxonomy_code,
+                signal_code,
+                category,
+                tfb_class.label(),
+                severity.label()
+            )
+            .as_str(),
+        );
+        let hashed_indicators =
+            safety_signal_hashed_indicators(receipt, taxonomy_code.as_str(), signal_code.as_str());
+        by_id
+            .entry(signal_id.clone())
+            .or_insert_with(|| SafetySignal {
+                signal_id,
+                signal_digest,
+                source_receipt_id: receipt.receipt_id.clone(),
+                source_receipt_type: receipt.receipt_type.clone(),
+                signal_class: signal_class.label().to_string(),
+                source_kind,
+                taxonomy_code,
+                signal_code,
+                category,
+                tfb_class,
+                severity,
+                hashed_indicators,
+                created_at_ms: receipt.created_at_ms.max(0),
+            });
+    }
+    let mut rows = by_id.into_values().collect::<Vec<_>>();
+    rows.sort_by(|lhs, rhs| {
+        lhs.created_at_ms
+            .cmp(&rhs.created_at_ms)
+            .then_with(|| lhs.signal_id.cmp(&rhs.signal_id))
+    });
+    rows.truncate(SAFETY_SIGNAL_ROW_LIMIT);
+    rows
+}
+
+fn aggregate_safety_signal_buckets(signals: &[SafetySignal]) -> Vec<SafetySignalBucketRow> {
+    let mut counts = BTreeMap::<(String, SeverityClass), (u64, u64, u64, u64)>::new();
+    for signal in signals {
+        let key = (signal.taxonomy_code.clone(), signal.severity);
+        let entry = counts.entry(key).or_insert((0, 0, 0, 0));
+        entry.0 = entry.0.saturating_add(1);
+        match signal.signal_class.as_str() {
+            "incident" => entry.1 = entry.1.saturating_add(1),
+            "drift" => entry.2 = entry.2.saturating_add(1),
+            _ => entry.3 = entry.3.saturating_add(1),
+        }
+    }
+    let total_signal_count = counts
+        .values()
+        .map(|(count, _, _, _)| *count)
+        .fold(0u64, u64::saturating_add);
+    let mut rows = counts
+        .into_iter()
+        .map(
+            |(
+                (taxonomy_code, severity),
+                (signal_count, incident_signal_count, drift_signal_count, adverse_signal_count),
+            )| SafetySignalBucketRow {
+                taxonomy_code,
+                severity,
+                signal_count,
+                incident_signal_count,
+                drift_signal_count,
+                adverse_signal_count,
+                signal_rate: ratio_u64(signal_count, total_signal_count),
+            },
+        )
+        .collect::<Vec<_>>();
+    rows.sort_by(|lhs, rhs| {
+        lhs.taxonomy_code
+            .cmp(&rhs.taxonomy_code)
+            .then_with(|| lhs.severity.cmp(&rhs.severity))
+    });
+    rows.truncate(SAFETY_SIGNAL_BUCKET_ROW_LIMIT);
+    rows
+}
+
+fn safety_signal_descriptor_for_receipt(
+    receipt: &Receipt,
+) -> Option<(
+    DerivedSafetySignalClass,
+    String,
+    String,
+    SeverityClass,
+    String,
+)> {
+    if let Some((kind, taxonomy_code, severity)) = incident_signal_descriptor(receipt) {
+        return Some((
+            DerivedSafetySignalClass::Incident,
+            kind.source_kind().to_string(),
+            taxonomy_code,
+            severity,
+            kind.signal_code().to_string(),
+        ));
+    }
+    if let Some((source_kind, taxonomy_code, severity, signal_code)) =
+        drift_signal_descriptor(receipt)
+    {
+        return Some((
+            DerivedSafetySignalClass::Drift,
+            source_kind,
+            taxonomy_code,
+            severity,
+            signal_code,
+        ));
+    }
+    if let Some((source_kind, taxonomy_code, severity, signal_code)) =
+        adverse_signal_descriptor(receipt)
+    {
+        return Some((
+            DerivedSafetySignalClass::Adverse,
+            source_kind,
+            taxonomy_code,
+            severity,
+            signal_code,
+        ));
+    }
+    None
+}
+
+fn incident_signal_descriptor(
+    receipt: &Receipt,
+) -> Option<(IncidentSignalKind, String, SeverityClass)> {
+    let has_incident_ref = receipt
+        .evidence
+        .iter()
+        .any(|evidence| evidence.kind == "incident_object_ref");
+    if !receipt.receipt_type.starts_with("economy.incident.") && !has_incident_ref {
+        return None;
+    }
+    let kind = incident_signal_kind_from_receipt(receipt);
+    let taxonomy_code =
+        incident_taxonomy_code_from_receipt(receipt).unwrap_or_else(|| "unknown".to_string());
+    let severity = incident_severity_from_receipt(receipt);
+    Some((kind, taxonomy_code, severity))
+}
+
+fn incident_signal_kind_from_receipt(receipt: &Receipt) -> IncidentSignalKind {
+    let kind_from_meta = receipt
+        .evidence
+        .iter()
+        .find(|evidence| evidence.kind == "incident_object_ref")
+        .and_then(|evidence| evidence.meta.get("incident_kind"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    match kind_from_meta {
+        "near_miss" => IncidentSignalKind::NearMiss,
+        "ground_truth_case" => IncidentSignalKind::GroundTruthCase,
+        _ => {
+            let lower_type = receipt.receipt_type.to_ascii_lowercase();
+            if lower_type.contains("near_miss") {
+                IncidentSignalKind::NearMiss
+            } else if lower_type.contains("ground_truth") {
+                IncidentSignalKind::GroundTruthCase
+            } else {
+                IncidentSignalKind::Incident
+            }
+        }
+    }
+}
+
+fn incident_taxonomy_code_from_receipt(receipt: &Receipt) -> Option<String> {
+    receipt
+        .evidence
+        .iter()
+        .find(|evidence| evidence.kind == "incident_object_ref")
+        .and_then(|evidence| evidence.meta.get("taxonomy_code"))
+        .and_then(Value::as_str)
+        .and_then(normalized_safety_signal_label)
+}
+
+fn incident_severity_from_receipt(receipt: &Receipt) -> SeverityClass {
+    if let Some(severity_label) = receipt
+        .evidence
+        .iter()
+        .find(|evidence| evidence.kind == "incident_object_ref")
+        .and_then(|evidence| evidence.meta.get("severity"))
+        .and_then(Value::as_str)
+    {
+        return severity_from_label(severity_label);
+    }
+    receipt
+        .hints
+        .severity
+        .unwrap_or(SeverityClass::SeverityClassUnspecified)
+}
+
+fn drift_signal_descriptor(receipt: &Receipt) -> Option<(String, String, SeverityClass, String)> {
+    let has_drift_ref = receipt
+        .evidence
+        .iter()
+        .any(|evidence| evidence.kind == "drift_detector_ref");
+    if !receipt.receipt_type.starts_with("economy.drift.") && !has_drift_ref {
+        return None;
+    }
+    let signal_code = drift_signal_code_from_receipt(receipt);
+    let taxonomy_code = format!("drift.{}", signal_code);
+    let source_kind = if receipt.receipt_type == "economy.drift.alert_raised.v1" {
+        "drift_alert_raised".to_string()
+    } else if receipt.receipt_type == "economy.drift.false_positive_confirmed.v1" {
+        "drift_false_positive_confirmed".to_string()
+    } else {
+        "drift_signal_emitted".to_string()
+    };
+    let severity = drift_severity_from_receipt(receipt);
+    Some((source_kind, taxonomy_code, severity, signal_code))
+}
+
+fn drift_signal_code_from_receipt(receipt: &Receipt) -> String {
+    let from_meta = receipt
+        .evidence
+        .iter()
+        .find(|evidence| evidence.kind == "drift_signal_summary")
+        .and_then(|evidence| evidence.meta.get("signal_code"))
+        .and_then(Value::as_str)
+        .and_then(normalized_safety_signal_label);
+    if let Some(signal_code) = from_meta {
+        return signal_code;
+    }
+    let from_detector = receipt
+        .evidence
+        .iter()
+        .find(|evidence| evidence.kind == "drift_detector_ref")
+        .and_then(|evidence| evidence.meta.get("signal_code"))
+        .and_then(Value::as_str)
+        .and_then(normalized_safety_signal_label);
+    if let Some(signal_code) = from_detector {
+        return signal_code;
+    }
+    if let Some(reason_code) = receipt
+        .hints
+        .reason_code
+        .as_deref()
+        .and_then(normalized_safety_signal_label)
+    {
+        return reason_code;
+    }
+    "unknown".to_string()
+}
+
+fn drift_severity_from_receipt(receipt: &Receipt) -> SeverityClass {
+    if receipt.receipt_type == "economy.drift.alert_raised.v1" {
+        return SeverityClass::High;
+    }
+    if receipt.receipt_type == "economy.drift.false_positive_confirmed.v1" {
+        return SeverityClass::Low;
+    }
+    if let Some(score) = receipt
+        .evidence
+        .iter()
+        .find(|evidence| evidence.kind == "drift_signal_summary")
+        .and_then(|evidence| evidence.meta.get("score"))
+        .and_then(Value::as_f64)
+    {
+        if score >= 0.85 {
+            return SeverityClass::Critical;
+        }
+        if score >= 0.55 {
+            return SeverityClass::High;
+        }
+        if score >= 0.20 {
+            return SeverityClass::Medium;
+        }
+        return SeverityClass::Low;
+    }
+    receipt.hints.severity.unwrap_or(SeverityClass::Medium)
+}
+
+fn adverse_signal_descriptor(receipt: &Receipt) -> Option<(String, String, SeverityClass, String)> {
+    if receipt.receipt_type == "economy.policy.throttle_action_applied.v1"
+        || receipt
+            .hints
+            .reason_code
+            .as_deref()
+            .is_some_and(|reason| reason == REASON_CODE_POLICY_THROTTLE_TRIGGERED)
+    {
+        return Some((
+            "policy_throttle".to_string(),
+            "policy.throttle".to_string(),
+            receipt.hints.severity.unwrap_or(SeverityClass::High),
+            "policy_throttle_triggered".to_string(),
+        ));
+    }
+    let lower_receipt_type = receipt.receipt_type.to_ascii_lowercase();
+    let reason_code = receipt
+        .hints
+        .reason_code
+        .as_deref()
+        .and_then(normalized_safety_signal_label)
+        .unwrap_or_else(|| "unknown".to_string());
+    if lower_receipt_type.contains("rollback")
+        || lower_receipt_type.contains("compensating_action")
+        || reason_code.contains("rollback")
+        || reason_code.contains("compensating")
+    {
+        let signal_code = if reason_code == "unknown" {
+            "rollback_event".to_string()
+        } else {
+            reason_code
+        };
+        return Some((
+            "rollback_action".to_string(),
+            "rollback.action".to_string(),
+            receipt.hints.severity.unwrap_or(SeverityClass::High),
+            signal_code,
+        ));
+    }
+    if lower_receipt_type.contains("claim")
+        || lower_receipt_type.contains("dispute")
+        || receipt
+            .evidence
+            .iter()
+            .any(|evidence| evidence.kind == "claim_payout_proof")
+    {
+        return Some((
+            "claim_dispute".to_string(),
+            "finance.claim_dispute".to_string(),
+            receipt.hints.severity.unwrap_or(SeverityClass::High),
+            "claim_dispute_observed".to_string(),
+        ));
+    }
+    None
+}
+
+fn normalized_safety_signal_label(value: &str) -> Option<String> {
+    let normalized = value.trim().to_ascii_lowercase().replace(' ', "_");
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized)
+    }
+}
+
+fn severity_from_label(value: &str) -> SeverityClass {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "critical" => SeverityClass::Critical,
+        "high" => SeverityClass::High,
+        "medium" => SeverityClass::Medium,
+        "low" => SeverityClass::Low,
+        _ => SeverityClass::SeverityClassUnspecified,
+    }
+}
+
+fn safety_signal_hashed_indicators(
+    receipt: &Receipt,
+    taxonomy_code: &str,
+    signal_code: &str,
+) -> Vec<String> {
+    let mut indicators = BTreeSet::<String>::new();
+    indicators.insert(normalize_digest(receipt.canonical_hash.as_str()));
+    indicators.insert(digest_for_text(
+        format!("taxonomy:{taxonomy_code}:signal:{signal_code}").as_str(),
+    ));
+    for evidence in &receipt.evidence {
+        if matches!(
+            evidence.kind.as_str(),
+            "incident_object_ref"
+                | "drift_detector_ref"
+                | "drift_signal_summary"
+                | "claim_payout_proof"
+                | "outcome_registry_entry_ref"
+        ) {
+            indicators.insert(normalize_digest(evidence.digest.as_str()));
+        }
+    }
+    indicators.into_iter().collect::<Vec<_>>()
+}
+
+fn ratio_u64(numerator: u64, denominator: u64) -> f64 {
+    if denominator == 0 {
+        0.0
+    } else {
+        numerator as f64 / denominator as f64
+    }
+}
+
+#[derive(Serialize)]
+struct CanonicalSafetySignalFeedPayload<'a> {
+    query: &'a ReceiptQuery,
+    export_mode: SafetySignalExportMode,
+    signals: &'a [SafetySignal],
+    buckets: &'a [SafetySignalBucketRow],
+}
+
+fn hash_safety_signal_feed(
+    query: &ReceiptQuery,
+    export_mode: SafetySignalExportMode,
+    signals: &[SafetySignal],
+    buckets: &[SafetySignalBucketRow],
+) -> Result<String, String> {
+    let value = serde_json::to_value(CanonicalSafetySignalFeedPayload {
+        query,
+        export_mode,
+        signals,
+        buckets,
+    })
+    .map_err(|error| format!("Failed to encode safety signal feed payload: {error}"))?;
+    let payload = serde_json::to_vec(&value)
+        .map_err(|error| format!("Failed to encode safety signal feed hash payload: {error}"))?;
+    let digest = sha256::Hash::hash(payload.as_slice());
+    Ok(format!("sha256:{digest}"))
+}
+
 fn parse_receipt_ref_uri(uri: &str) -> Option<&str> {
     uri.strip_prefix("oa://receipts/")
 }
@@ -6960,6 +7641,66 @@ mod tests {
             score: if alert { 0.2142857142857142 } else { 0.0 },
             alert,
         }]
+    }
+
+    fn fixture_drift_alert_receipt(
+        receipt_id: &str,
+        linked_work_unit_id: &str,
+        created_at_ms: i64,
+    ) -> Receipt {
+        let mut drift_detector = EvidenceRef::new(
+            "drift_detector_ref",
+            "oa://economy/drift/detectors/detector.drift.sv_floor",
+            digest_for_text("detector.drift.sv_floor"),
+        );
+        drift_detector
+            .meta
+            .insert("detector_id".to_string(), json!("detector.drift.sv_floor"));
+        drift_detector
+            .meta
+            .insert("signal_code".to_string(), json!("sv_below_floor"));
+        let mut drift_summary = EvidenceRef::new(
+            "drift_signal_summary",
+            "oa://economy/drift/snapshots/snapshot.economy.1762000060000/detector.drift.sv_floor",
+            digest_for_text("drift-summary-sv-below-floor"),
+        );
+        drift_summary
+            .meta
+            .insert("signal_code".to_string(), json!("sv_below_floor"));
+        drift_summary.meta.insert("score".to_string(), json!(0.91));
+        drift_summary.meta.insert("alert".to_string(), json!(true));
+
+        ReceiptBuilder::new(
+            receipt_id.to_string(),
+            "economy.drift.alert_raised.v1".to_string(),
+            created_at_ms,
+            format!("idemp:test:{receipt_id}"),
+            TraceContext {
+                work_unit_id: Some(linked_work_unit_id.to_string()),
+                ..TraceContext::default()
+            },
+            current_policy_context(),
+        )
+        .with_inputs_payload(json!({
+            "snapshot_id": "snapshot.economy:1762000060000",
+            "detector_id": "detector.drift.sv_floor",
+        }))
+        .with_outputs_payload(json!({
+            "status": "alert_raised",
+            "signal_code": "sv_below_floor",
+        }))
+        .with_evidence(vec![drift_detector, drift_summary])
+        .with_hints(ReceiptHints {
+            category: Some("compute".to_string()),
+            tfb_class: Some(FeedbackLatencyClass::Short),
+            severity: Some(SeverityClass::High),
+            reason_code: Some(REASON_CODE_DRIFT_ALERT_RAISED.to_string()),
+            auth_assurance_level: Some(AuthAssuranceLevel::Authenticated),
+            personhood_proved: Some(false),
+            ..ReceiptHints::default()
+        })
+        .build()
+        .expect("drift alert fixture receipt should build")
     }
 
     fn fixture_incident_draft(
@@ -8233,6 +8974,126 @@ mod tests {
                     .starts_with("outcome_registry:outcome:")
                 && edge.to_receipt_id == linked_receipt_id
         }));
+    }
+
+    #[test]
+    fn safety_signal_feed_is_deterministic_and_public_mode_is_aggregate_only() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        state.record_history_receipt(
+            &fixture_history_row("wallet-payment-safety-signal"),
+            1_762_000_010,
+            "test.history",
+        );
+        let linked_receipt_id = state
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_type == "earn.job.settlement_observed.v1")
+            .expect("settlement receipt")
+            .receipt_id
+            .clone();
+        state
+            .report_incident(
+                fixture_incident_draft(linked_receipt_id.as_str(), "incident-safety-signal"),
+                1_762_000_060_000,
+                "test.incident",
+            )
+            .expect("incident report");
+        let drift_alert = fixture_drift_alert_receipt(
+            "receipt.drift.alert.safety-signal",
+            "job-req-123",
+            1_762_000_065_000,
+        );
+        state.append_receipt(Ok(drift_alert), "test.drift");
+
+        let query = ReceiptQuery::default();
+        let restricted_a = state
+            .export_safety_signal_feed(
+                &query,
+                SafetySignalExportMode::RestrictedFeed,
+                1_762_000_090_000,
+                Some("auditor"),
+                Some("auditor:alice"),
+            )
+            .expect("restricted safety feed");
+        let restricted_b = state
+            .export_safety_signal_feed(
+                &query,
+                SafetySignalExportMode::RestrictedFeed,
+                1_762_000_090_000,
+                Some("auditor"),
+                Some("auditor:alice"),
+            )
+            .expect("restricted safety feed replay");
+        let public = state
+            .export_safety_signal_feed(
+                &query,
+                SafetySignalExportMode::PublicAggregate,
+                1_762_000_090_000,
+                None,
+                None,
+            )
+            .expect("public safety feed");
+
+        assert!(!restricted_a.signals.is_empty());
+        assert!(
+            restricted_a
+                .signals
+                .iter()
+                .all(|signal| !signal.hashed_indicators.is_empty())
+        );
+        assert_eq!(restricted_a, restricted_b);
+        assert!(public.signals.is_empty());
+        assert_eq!(public.bucket_count, restricted_a.bucket_count);
+        assert_ne!(public.package_hash, restricted_a.package_hash);
+    }
+
+    #[test]
+    fn restricted_safety_signal_feed_enforces_policy_authentication_gate() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        state.record_history_receipt(
+            &fixture_history_row("wallet-payment-safety-gate"),
+            1_762_000_010,
+            "test.history",
+        );
+        let linked_receipt_id = state
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_type == "earn.job.settlement_observed.v1")
+            .expect("settlement receipt")
+            .receipt_id
+            .clone();
+        state
+            .report_incident(
+                fixture_incident_draft(linked_receipt_id.as_str(), "incident-safety-gate"),
+                1_762_000_060_000,
+                "test.incident",
+            )
+            .expect("incident report");
+
+        let query = ReceiptQuery::default();
+        let denied = state.export_safety_signal_feed(
+            &query,
+            SafetySignalExportMode::RestrictedFeed,
+            1_762_000_090_000,
+            Some("auditor"),
+            Some(""),
+        );
+        assert!(denied.is_err());
+        let error = denied.err().unwrap_or_default();
+        assert!(error.contains("restricted safety signal feed denied"));
+
+        let allowed = state.export_safety_signal_feed(
+            &query,
+            SafetySignalExportMode::RestrictedFeed,
+            1_762_000_090_000,
+            Some("auditor"),
+            Some("auditor:authenticated"),
+        );
+        assert!(allowed.is_ok());
     }
 
     #[test]

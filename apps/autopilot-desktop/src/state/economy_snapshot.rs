@@ -58,6 +58,17 @@ pub struct IncidentBucketRow {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct SafetySignalBucketRow {
+    pub taxonomy_code: String,
+    pub severity: SeverityClass,
+    pub signal_count_24h: u64,
+    pub incident_signals_24h: u64,
+    pub drift_signals_24h: u64,
+    pub adverse_signals_24h: u64,
+    pub signal_rate: f64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct OutcomeDistributionRow {
     pub category: String,
     pub tfb_class: FeedbackLatencyClass,
@@ -119,6 +130,8 @@ pub struct EconomySnapshot {
     pub top_drift_signals: Vec<DriftSignalSummary>,
     #[serde(default)]
     pub incident_buckets: Vec<IncidentBucketRow>,
+    #[serde(default)]
+    pub safety_signal_buckets: Vec<SafetySignalBucketRow>,
     #[serde(default)]
     pub outcome_distribution: Vec<OutcomeDistributionRow>,
     #[serde(default)]
@@ -507,6 +520,48 @@ fn build_snapshot(
             .cmp(&rhs.taxonomy_code)
             .then_with(|| lhs.severity.cmp(&rhs.severity))
     });
+    let mut safety_signal_counts = BTreeMap::<(String, SeverityClass), (u64, u64, u64, u64)>::new();
+    for receipt in scoped_receipts.iter().copied() {
+        let Some(meta) = safety_signal_meta_for_receipt(receipt) else {
+            continue;
+        };
+        let key = (meta.taxonomy_code, meta.severity);
+        let entry = safety_signal_counts.entry(key).or_insert((0, 0, 0, 0));
+        entry.0 = entry.0.saturating_add(1);
+        match meta.signal_class {
+            SafetySignalClass::Incident => {
+                entry.1 = entry.1.saturating_add(1);
+            }
+            SafetySignalClass::Drift => {
+                entry.2 = entry.2.saturating_add(1);
+            }
+            SafetySignalClass::Adverse => {
+                entry.3 = entry.3.saturating_add(1);
+            }
+        }
+    }
+    let mut safety_signal_buckets = safety_signal_counts
+        .into_iter()
+        .map(
+            |(
+                (taxonomy_code, severity),
+                (signal_count_24h, incident_signals_24h, drift_signals_24h, adverse_signals_24h),
+            )| SafetySignalBucketRow {
+                taxonomy_code,
+                severity,
+                signal_count_24h,
+                incident_signals_24h,
+                drift_signals_24h,
+                adverse_signals_24h,
+                signal_rate: ratio(signal_count_24h, total_work_units),
+            },
+        )
+        .collect::<Vec<_>>();
+    safety_signal_buckets.sort_by(|lhs, rhs| {
+        lhs.taxonomy_code
+            .cmp(&rhs.taxonomy_code)
+            .then_with(|| lhs.severity.cmp(&rhs.severity))
+    });
     let mut outcome_distribution_counts = BTreeMap::<
         (
             String,
@@ -743,6 +798,7 @@ fn build_snapshot(
         drift_signals.as_slice(),
         top_drift_signals.as_slice(),
         incident_buckets.as_slice(),
+        safety_signal_buckets.as_slice(),
         outcome_distribution.as_slice(),
         outcome_key_rates.as_slice(),
         rollback_signal_count,
@@ -783,6 +839,7 @@ fn build_snapshot(
         drift_signals,
         top_drift_signals,
         incident_buckets,
+        safety_signal_buckets,
         outcome_distribution,
         outcome_key_rates,
         rollback_attempts_24h: rollback_signal_count,
@@ -1096,6 +1153,7 @@ struct CanonicalSnapshotPayload<'a> {
     drift_signals: &'a [DriftSignalSummary],
     top_drift_signals: &'a [DriftSignalSummary],
     incident_buckets: &'a [IncidentBucketRow],
+    safety_signal_buckets: &'a [SafetySignalBucketRow],
     outcome_distribution: &'a [OutcomeDistributionRow],
     outcome_key_rates: &'a [OutcomeKeyRateRow],
     rollback_attempts_24h: u64,
@@ -1135,6 +1193,7 @@ fn snapshot_hash_for(
     drift_signals: &[DriftSignalSummary],
     top_drift_signals: &[DriftSignalSummary],
     incident_buckets: &[IncidentBucketRow],
+    safety_signal_buckets: &[SafetySignalBucketRow],
     outcome_distribution: &[OutcomeDistributionRow],
     outcome_key_rates: &[OutcomeKeyRateRow],
     rollback_attempts_24h: u64,
@@ -1172,6 +1231,7 @@ fn snapshot_hash_for(
         drift_signals,
         top_drift_signals,
         incident_buckets,
+        safety_signal_buckets,
         outcome_distribution,
         outcome_key_rates,
         rollback_attempts_24h,
@@ -1480,6 +1540,165 @@ fn incident_severity_for_receipt(receipt: &Receipt) -> SeverityClass {
         .hints
         .severity
         .unwrap_or(SeverityClass::SeverityClassUnspecified)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SafetySignalClass {
+    Incident,
+    Drift,
+    Adverse,
+}
+
+#[derive(Clone, Debug)]
+struct SafetySignalReceiptMeta {
+    taxonomy_code: String,
+    severity: SeverityClass,
+    signal_class: SafetySignalClass,
+}
+
+fn safety_signal_meta_for_receipt(receipt: &Receipt) -> Option<SafetySignalReceiptMeta> {
+    if is_incident_receipt(receipt) {
+        return Some(SafetySignalReceiptMeta {
+            taxonomy_code: incident_taxonomy_code_for_receipt(receipt)
+                .unwrap_or_else(|| "unknown".to_string()),
+            severity: incident_severity_for_receipt(receipt),
+            signal_class: SafetySignalClass::Incident,
+        });
+    }
+    if is_drift_signal_receipt(receipt) {
+        return Some(SafetySignalReceiptMeta {
+            taxonomy_code: drift_taxonomy_code_for_receipt(receipt),
+            severity: drift_severity_for_receipt(receipt),
+            signal_class: SafetySignalClass::Drift,
+        });
+    }
+    adverse_signal_meta_for_receipt(receipt)
+}
+
+fn is_drift_signal_receipt(receipt: &Receipt) -> bool {
+    receipt.receipt_type.starts_with("economy.drift.")
+        || receipt
+            .evidence
+            .iter()
+            .any(|evidence| evidence.kind == "drift_detector_ref")
+}
+
+fn drift_taxonomy_code_for_receipt(receipt: &Receipt) -> String {
+    let signal_code = drift_signal_code_for_receipt(receipt);
+    format!("drift.{signal_code}")
+}
+
+fn drift_signal_code_for_receipt(receipt: &Receipt) -> String {
+    let from_summary = receipt
+        .evidence
+        .iter()
+        .find(|evidence| evidence.kind == "drift_signal_summary")
+        .and_then(|evidence| evidence.meta.get("signal_code"))
+        .and_then(Value::as_str)
+        .and_then(normalized_signal_label);
+    if let Some(signal_code) = from_summary {
+        return signal_code;
+    }
+    let from_detector = receipt
+        .evidence
+        .iter()
+        .find(|evidence| evidence.kind == "drift_detector_ref")
+        .and_then(|evidence| evidence.meta.get("signal_code"))
+        .and_then(Value::as_str)
+        .and_then(normalized_signal_label);
+    if let Some(signal_code) = from_detector {
+        return signal_code;
+    }
+    if let Some(reason_code) = receipt
+        .hints
+        .reason_code
+        .as_deref()
+        .and_then(normalized_signal_label)
+    {
+        return reason_code;
+    }
+    "unknown".to_string()
+}
+
+fn drift_severity_for_receipt(receipt: &Receipt) -> SeverityClass {
+    if receipt.receipt_type == "economy.drift.alert_raised.v1" {
+        return SeverityClass::High;
+    }
+    if receipt.receipt_type == "economy.drift.false_positive_confirmed.v1" {
+        return SeverityClass::Low;
+    }
+    if let Some(score) = receipt
+        .evidence
+        .iter()
+        .find(|evidence| evidence.kind == "drift_signal_summary")
+        .and_then(|evidence| evidence.meta.get("score"))
+        .and_then(Value::as_f64)
+    {
+        if score >= 0.85 {
+            return SeverityClass::Critical;
+        }
+        if score >= 0.55 {
+            return SeverityClass::High;
+        }
+        if score >= 0.20 {
+            return SeverityClass::Medium;
+        }
+        return SeverityClass::Low;
+    }
+    receipt.hints.severity.unwrap_or(SeverityClass::Medium)
+}
+
+fn adverse_signal_meta_for_receipt(receipt: &Receipt) -> Option<SafetySignalReceiptMeta> {
+    let receipt_type = receipt.receipt_type.to_ascii_lowercase();
+    let reason_code = receipt
+        .hints
+        .reason_code
+        .as_deref()
+        .and_then(normalized_signal_label)
+        .unwrap_or_else(|| "unknown".to_string());
+    if receipt.receipt_type == "economy.policy.throttle_action_applied.v1"
+        || reason_code == "policy_throttle_triggered"
+    {
+        return Some(SafetySignalReceiptMeta {
+            taxonomy_code: "policy.throttle".to_string(),
+            severity: receipt.hints.severity.unwrap_or(SeverityClass::High),
+            signal_class: SafetySignalClass::Adverse,
+        });
+    }
+    if receipt_type.contains("rollback")
+        || receipt_type.contains("compensating_action")
+        || reason_code.contains("rollback")
+        || reason_code.contains("compensating")
+    {
+        return Some(SafetySignalReceiptMeta {
+            taxonomy_code: "rollback.action".to_string(),
+            severity: receipt.hints.severity.unwrap_or(SeverityClass::High),
+            signal_class: SafetySignalClass::Adverse,
+        });
+    }
+    if receipt_type.contains("claim")
+        || receipt_type.contains("dispute")
+        || receipt
+            .evidence
+            .iter()
+            .any(|evidence| evidence.kind == "claim_payout_proof")
+    {
+        return Some(SafetySignalReceiptMeta {
+            taxonomy_code: "finance.claim_dispute".to_string(),
+            severity: receipt.hints.severity.unwrap_or(SeverityClass::High),
+            signal_class: SafetySignalClass::Adverse,
+        });
+    }
+    None
+}
+
+fn normalized_signal_label(value: &str) -> Option<String> {
+    let normalized = value.trim().to_ascii_lowercase().replace(' ', "_");
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1834,6 +2053,58 @@ mod tests {
         receipt
     }
 
+    fn fixture_drift_alert_receipt(receipt_id: &str, created_at_ms: i64) -> Receipt {
+        let mut receipt = fixture_receipt(
+            receipt_id,
+            "economy.drift.alert_raised.v1",
+            created_at_ms,
+            "drift-work-unit",
+            false,
+        );
+        receipt.hints.severity = Some(SeverityClass::High);
+        let mut detector_ref = EvidenceRef::new(
+            "drift_detector_ref",
+            format!("oa://economy/drift/detectors/{receipt_id}"),
+            digest_for_text(receipt_id),
+        );
+        detector_ref.meta.insert(
+            "detector_id".to_string(),
+            serde_json::json!("detector.drift.sv_floor"),
+        );
+        detector_ref.meta.insert(
+            "signal_code".to_string(),
+            serde_json::json!("sv_below_floor"),
+        );
+        let mut summary_ref = EvidenceRef::new(
+            "drift_signal_summary",
+            format!("oa://economy/drift/signals/{receipt_id}"),
+            digest_for_text(format!("{receipt_id}:summary").as_str()),
+        );
+        summary_ref.meta.insert(
+            "signal_code".to_string(),
+            serde_json::json!("sv_below_floor"),
+        );
+        summary_ref
+            .meta
+            .insert("score".to_string(), serde_json::json!(0.9));
+        receipt.evidence.push(detector_ref);
+        receipt.evidence.push(summary_ref);
+        receipt
+    }
+
+    fn fixture_policy_throttle_receipt(receipt_id: &str, created_at_ms: i64) -> Receipt {
+        let mut receipt = fixture_receipt(
+            receipt_id,
+            "economy.policy.throttle_action_applied.v1",
+            created_at_ms,
+            "policy-work-unit",
+            false,
+        );
+        receipt.hints.severity = Some(SeverityClass::High);
+        receipt.hints.reason_code = Some("POLICY_THROTTLE_TRIGGERED".to_string());
+        receipt
+    }
+
     #[test]
     fn computes_minute_snapshot_once_and_reuses_same_snapshot_id() {
         let temp_dir = tempfile::tempdir().expect("tempdir");
@@ -2184,6 +2455,54 @@ mod tests {
         assert_eq!(bucket.near_misses_24h, 1);
         assert!((bucket.incident_rate - 1.0).abs() < 1e-9);
         assert!((bucket.near_miss_rate - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn snapshot_aggregates_safety_signal_buckets_by_taxonomy_and_class() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let path = temp_dir.path().join("snapshots-safety-signals.json");
+        let mut state = EconomySnapshotState::from_snapshot_path_for_tests(path);
+        let paid = fixture_receipt(
+            "receipt-paid-safety-signal",
+            "earn.job.settlement_observed.v1",
+            1_762_000_010_000,
+            "job-safety-signal",
+            true,
+        );
+        let incident = fixture_incident_receipt(
+            "receipt-incident-safety-signal",
+            1_762_000_011_000,
+            "incident",
+            "ops.execution_failure",
+            "high",
+        );
+        let drift = fixture_drift_alert_receipt("receipt-drift-safety-signal", 1_762_000_012_000);
+        let throttle =
+            fixture_policy_throttle_receipt("receipt-throttle-safety-signal", 1_762_000_013_000);
+
+        let snapshot = state
+            .compute_minute_snapshot(1_762_000_060_000, &[paid, incident, drift, throttle])
+            .expect("snapshot should compute")
+            .snapshot;
+        assert_eq!(snapshot.safety_signal_buckets.len(), 3);
+        assert!(snapshot.safety_signal_buckets.iter().any(|bucket| {
+            bucket.taxonomy_code == "ops.execution_failure"
+                && bucket.incident_signals_24h == 1
+                && bucket.drift_signals_24h == 0
+                && bucket.adverse_signals_24h == 0
+        }));
+        assert!(snapshot.safety_signal_buckets.iter().any(|bucket| {
+            bucket.taxonomy_code == "drift.sv_below_floor"
+                && bucket.incident_signals_24h == 0
+                && bucket.drift_signals_24h == 1
+                && bucket.adverse_signals_24h == 0
+        }));
+        assert!(snapshot.safety_signal_buckets.iter().any(|bucket| {
+            bucket.taxonomy_code == "policy.throttle"
+                && bucket.incident_signals_24h == 0
+                && bucket.drift_signals_24h == 0
+                && bucket.adverse_signals_24h == 1
+        }));
     }
 
     #[test]
