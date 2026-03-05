@@ -1,6 +1,7 @@
 use reqwest::StatusCode;
 use reqwest::Url;
 use reqwest::blocking::Client;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeSet;
 
@@ -17,6 +18,20 @@ const ENV_SPACETIME_BASE_URL_KEYS: [&str; 2] = [
 const ENV_SPACETIME_DATABASE_KEYS: [&str; 2] =
     ["OA_SPACETIME_DATABASE", "OA_SPACETIME_DEV_DATABASE"];
 const ENV_REQUIRED_STREAM_GRANTS: &str = "OA_SYNC_REQUIRED_STREAM_GRANTS";
+const ENV_CONTROL_BEARER_TOKEN_KEYS: [&str; 3] = [
+    "OA_CONTROL_BEARER_TOKEN",
+    "OA_CONTROL_ACCESS_TOKEN",
+    "OA_OPENAGENTS_CONTROL_BEARER_TOKEN",
+];
+const ENV_ENABLE_CONTROL_SESSION_BOOTSTRAP: &str = "OA_CONTROL_BOOTSTRAP_DESKTOP_SESSION";
+const ENV_CONTROL_DESKTOP_CLIENT_ID_KEYS: [&str; 2] =
+    ["OA_CONTROL_DESKTOP_CLIENT_ID", "OA_DESKTOP_CLIENT_ID"];
+const ENV_CONTROL_DEVICE_NAME_KEYS: [&str; 2] =
+    ["OA_CONTROL_DEVICE_NAME", "OA_DESKTOP_DEVICE_NAME"];
+const ENV_CONTROL_BOUND_NOSTR_PUBKEY_KEYS: [&str; 2] =
+    ["OA_CONTROL_BOUND_NOSTR_PUBKEY", "OA_NOSTR_PUBKEY"];
+const ENV_CONTROL_CLIENT_VERSION_KEYS: [&str; 2] =
+    ["OA_CONTROL_CLIENT_VERSION", "OA_DESKTOP_CLIENT_VERSION"];
 
 const LEGACY_SYNC_TOKEN_PATHS: [&str; 3] = [
     "/api/spacetime/token",
@@ -28,6 +43,7 @@ const DEFAULT_REQUIRED_STREAM_GRANTS: [&str; 2] = [
     "stream.activity_projection.v1",
     "stream.earn_job_lifecycle_projection.v1",
 ];
+const CONTROL_DESKTOP_SESSION_PATH: &str = "/api/session/desktop";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SpacetimeSubscribeTarget {
@@ -57,6 +73,48 @@ pub struct SyncBootstrapResult {
     pub control_token_endpoint: String,
     pub target: SpacetimeSubscribeTarget,
     pub token_lease: SyncTokenLease,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ControlSessionLease {
+    pub session_id: String,
+    pub account_id: String,
+    pub access_token: String,
+    pub token_type: String,
+    pub desktop_client_id: String,
+    pub device_name: Option<String>,
+    pub bound_nostr_pubkey: Option<String>,
+    pub client_version: Option<String>,
+    pub issued_at_unix_ms: Option<u64>,
+    pub expires_at_unix_ms: Option<u64>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct DesktopSessionBootstrapRequest {
+    pub desktop_client_id: String,
+    pub device_name: Option<String>,
+    pub bound_nostr_pubkey: Option<String>,
+    pub client_version: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct ControlSessionLeasePayload {
+    session_id: String,
+    account_id: String,
+    access_token: String,
+    #[serde(default)]
+    token_type: Option<String>,
+    desktop_client_id: String,
+    #[serde(default)]
+    device_name: Option<String>,
+    #[serde(default)]
+    bound_nostr_pubkey: Option<String>,
+    #[serde(default)]
+    client_version: Option<String>,
+    #[serde(default)]
+    issued_at_unix_ms: Option<u64>,
+    #[serde(default)]
+    expires_at_unix_ms: Option<u64>,
 }
 
 pub fn spacetime_sync_enabled_from_env() -> bool {
@@ -137,6 +195,104 @@ pub fn canonical_sync_token_endpoint(control_base_url: &str) -> Result<Url, Stri
     Ok(url)
 }
 
+pub fn canonical_desktop_session_endpoint(control_base_url: &str) -> Result<Url, String> {
+    let normalized_base = normalize_http_base_url(control_base_url)?;
+    let mut url = Url::parse(normalized_base.as_str())
+        .map_err(|error| format!("invalid control base url: {error}"))?;
+    url.set_path(CONTROL_DESKTOP_SESSION_PATH);
+    url.set_query(None);
+    url.set_fragment(None);
+    Ok(url)
+}
+
+pub fn mint_control_session_blocking(
+    client: &Client,
+    control_base_url: &str,
+    request_payload: &DesktopSessionBootstrapRequest,
+) -> Result<ControlSessionLease, String> {
+    let endpoint = canonical_desktop_session_endpoint(control_base_url)?;
+    let response = client
+        .post(endpoint)
+        .json(request_payload)
+        .send()
+        .map_err(|error| format!("control session bootstrap request failed: {error}"))?;
+    let status = response.status();
+    let body = response
+        .text()
+        .unwrap_or_else(|_| "<unreadable-body>".to_string());
+    if !status.is_success() {
+        return Err(format!(
+            "control session bootstrap failed status={} body={}",
+            status.as_u16(),
+            truncate_body(body.as_str())
+        ));
+    }
+    let payload: ControlSessionLeasePayload = serde_json::from_str(body.as_str())
+        .map_err(|error| format!("invalid control session payload: {error}"))?;
+    let session_id = payload.session_id.trim();
+    let account_id = payload.account_id.trim();
+    let access_token = payload.access_token.trim();
+    let desktop_client_id = payload.desktop_client_id.trim();
+    if session_id.is_empty() || account_id.is_empty() || access_token.is_empty() {
+        return Err("control session response missing required identifiers".to_string());
+    }
+    if desktop_client_id.is_empty() {
+        return Err("control session response missing desktop_client_id".to_string());
+    }
+
+    Ok(ControlSessionLease {
+        session_id: session_id.to_string(),
+        account_id: account_id.to_string(),
+        access_token: access_token.to_string(),
+        token_type: payload.token_type.unwrap_or_else(|| "Bearer".to_string()),
+        desktop_client_id: desktop_client_id.to_string(),
+        device_name: payload.device_name,
+        bound_nostr_pubkey: payload.bound_nostr_pubkey,
+        client_version: payload.client_version,
+        issued_at_unix_ms: payload.issued_at_unix_ms,
+        expires_at_unix_ms: payload.expires_at_unix_ms,
+    })
+}
+
+pub fn resolve_control_bearer_auth(
+    client: &Client,
+    control_base_url: &str,
+    static_bearer_auth: Option<&str>,
+    session_bootstrap_request: Option<&DesktopSessionBootstrapRequest>,
+) -> Result<Option<String>, String> {
+    if let Some(token) = static_bearer_auth
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(Some(token.to_string()));
+    }
+
+    if let Some(request_payload) = session_bootstrap_request {
+        let session = mint_control_session_blocking(client, control_base_url, request_payload)?;
+        return Ok(Some(session.access_token));
+    }
+
+    Ok(None)
+}
+
+pub fn resolve_control_bearer_auth_from_env(
+    client: &Client,
+    control_base_url: &str,
+) -> Result<Option<String>, String> {
+    let static_bearer_auth = ENV_CONTROL_BEARER_TOKEN_KEYS
+        .iter()
+        .find_map(|key| std::env::var(key).ok())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let session_bootstrap_request = session_bootstrap_request_from_env();
+    resolve_control_bearer_auth(
+        client,
+        control_base_url,
+        static_bearer_auth.as_deref(),
+        session_bootstrap_request.as_ref(),
+    )
+}
+
 pub fn mint_sync_token_blocking(
     client: &Client,
     control_base_url: &str,
@@ -170,20 +326,20 @@ pub fn mint_sync_token_blocking(
 
 pub fn bootstrap_sync_session_from_env(
     client: &Client,
-    bearer_auth: Option<&str>,
 ) -> Result<Option<SyncBootstrapResult>, String> {
     if !spacetime_sync_enabled_from_env() {
         return Ok(None);
     }
 
     let control_base_url = resolve_control_base_url_from_env()?;
+    let bearer_auth = resolve_control_bearer_auth_from_env(client, control_base_url.as_str())?;
     let target = resolve_subscribe_target_from_env()?;
     let result = bootstrap_sync_session(
         client,
         control_base_url.as_str(),
         target.base_url.as_str(),
         target.database.as_str(),
-        bearer_auth,
+        bearer_auth.as_deref(),
     )?;
     Ok(Some(result))
 }
@@ -594,6 +750,58 @@ fn truncate_body(value: &str) -> String {
     format!("{prefix}...")
 }
 
+fn session_bootstrap_request_from_env() -> Option<DesktopSessionBootstrapRequest> {
+    if !env_flag_enabled(ENV_ENABLE_CONTROL_SESSION_BOOTSTRAP) {
+        return None;
+    }
+
+    Some(DesktopSessionBootstrapRequest {
+        desktop_client_id: resolve_optional_env_any(&ENV_CONTROL_DESKTOP_CLIENT_ID_KEYS)
+            .unwrap_or_else(default_desktop_client_id),
+        device_name: resolve_optional_env_any(&ENV_CONTROL_DEVICE_NAME_KEYS)
+            .or_else(default_device_name),
+        bound_nostr_pubkey: resolve_optional_env_any(&ENV_CONTROL_BOUND_NOSTR_PUBKEY_KEYS),
+        client_version: resolve_optional_env_any(&ENV_CONTROL_CLIENT_VERSION_KEYS),
+    })
+}
+
+fn resolve_optional_env_any(keys: &[&str]) -> Option<String> {
+    keys.iter()
+        .find_map(|key| std::env::var(key).ok())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn env_flag_enabled(key: &str) -> bool {
+    std::env::var(key)
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
+fn default_desktop_client_id() -> String {
+    let host = std::env::var("HOSTNAME")
+        .ok()
+        .or_else(|| std::env::var("COMPUTERNAME").ok())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "unknown-host".to_string());
+    format!("autopilot-desktop-{host}")
+}
+
+fn default_device_name() -> Option<String> {
+    std::env::var("HOSTNAME")
+        .ok()
+        .or_else(|| std::env::var("COMPUTERNAME").ok())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use reqwest::blocking::Client;
@@ -601,8 +809,10 @@ mod tests {
     use std::net::{SocketAddr, TcpListener};
 
     use super::{
-        SyncTokenLease, bootstrap_sync_session, canonical_sync_token_endpoint,
-        mint_sync_token_blocking, parse_sync_token_lease, resolve_subscribe_target,
+        ControlSessionLease, DesktopSessionBootstrapRequest, SyncTokenLease,
+        bootstrap_sync_session, canonical_desktop_session_endpoint, canonical_sync_token_endpoint,
+        mint_control_session_blocking, mint_sync_token_blocking, parse_sync_token_lease,
+        resolve_control_bearer_auth, resolve_subscribe_target,
     };
 
     fn required_streams() -> Vec<String> {
@@ -655,11 +865,74 @@ mod tests {
         addr
     }
 
+    fn run_session_then_sync_token_server(
+        session_body: &str,
+        sync_token_body: &str,
+    ) -> std::net::SocketAddr {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind should succeed");
+        let addr = listener.local_addr().expect("local addr should exist");
+        let session_response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{session_body}",
+            session_body.len()
+        );
+        let sync_response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{sync_token_body}",
+            sync_token_body.len()
+        );
+
+        std::thread::spawn(move || {
+            let (mut first_stream, _) = listener.accept().expect("first accept should succeed");
+            let mut first_request = [0u8; 4096];
+            let first_read = first_stream
+                .read(&mut first_request)
+                .expect("first read should succeed");
+            let first_text = String::from_utf8_lossy(&first_request[..first_read]);
+            assert!(
+                first_text.starts_with("POST /api/session/desktop HTTP/1.1"),
+                "unexpected first request line: {first_text}"
+            );
+            first_stream
+                .write_all(session_response.as_bytes())
+                .expect("first response write should succeed");
+
+            let (mut second_stream, _) = listener.accept().expect("second accept should succeed");
+            let mut second_request = [0u8; 4096];
+            let second_read = second_stream
+                .read(&mut second_request)
+                .expect("second read should succeed");
+            let second_text = String::from_utf8_lossy(&second_request[..second_read]);
+            assert!(
+                second_text.starts_with("POST /api/sync/token HTTP/1.1"),
+                "unexpected second request line: {second_text}"
+            );
+            assert!(
+                second_text.contains("authorization: Bearer desktop-access-token")
+                    || second_text.contains("Authorization: Bearer desktop-access-token"),
+                "expected bearer auth header in sync token request: {second_text}"
+            );
+            second_stream
+                .write_all(sync_response.as_bytes())
+                .expect("second response write should succeed");
+        });
+
+        addr
+    }
+
     #[test]
     fn canonical_endpoint_rejects_legacy_paths() {
         let err = canonical_sync_token_endpoint("https://control.example.com/api/spacetime/token")
             .expect_err("legacy path must fail");
         assert!(err.contains("legacy sync token endpoint path"));
+    }
+
+    #[test]
+    fn canonical_desktop_session_endpoint_uses_canonical_path() {
+        let url = canonical_desktop_session_endpoint("https://control.example.com/base")
+            .expect("desktop session endpoint should resolve");
+        assert_eq!(
+            url.as_str(),
+            "https://control.example.com/api/session/desktop"
+        );
     }
 
     #[test]
@@ -701,6 +974,102 @@ mod tests {
                 rotation_id: Some("rotation-1".to_string()),
             }
         );
+    }
+
+    #[test]
+    fn mint_control_session_hits_canonical_endpoint_and_parses_payload() {
+        let body = r#"{
+  "session_id":"sess-control-1",
+  "account_id":"desktop:alpha",
+  "access_token":"desktop-access-token",
+  "token_type":"Bearer",
+  "desktop_client_id":"desktop-alpha",
+  "device_name":"Chris MacBook",
+  "bound_nostr_pubkey":"npub1alpha",
+  "client_version":"mvp",
+  "issued_at_unix_ms":1700000000000,
+  "expires_at_unix_ms":1700003600000
+}"#;
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind should succeed");
+        let addr = listener.local_addr().expect("local addr should exist");
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept should succeed");
+            let mut request = [0u8; 4096];
+            let read = stream.read(&mut request).expect("read should succeed");
+            let request_text = String::from_utf8_lossy(&request[..read]);
+            assert!(
+                request_text.starts_with("POST /api/session/desktop HTTP/1.1"),
+                "unexpected request line: {request_text}"
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("response write should succeed");
+        });
+        let client = Client::builder().build().expect("client should build");
+
+        let lease = mint_control_session_blocking(
+            &client,
+            format!("http://{addr}").as_str(),
+            &DesktopSessionBootstrapRequest {
+                desktop_client_id: "desktop-alpha".to_string(),
+                device_name: Some("Chris MacBook".to_string()),
+                bound_nostr_pubkey: Some("npub1alpha".to_string()),
+                client_version: Some("mvp".to_string()),
+            },
+        )
+        .expect("control session mint should succeed");
+        assert_eq!(
+            lease,
+            ControlSessionLease {
+                session_id: "sess-control-1".to_string(),
+                account_id: "desktop:alpha".to_string(),
+                access_token: "desktop-access-token".to_string(),
+                token_type: "Bearer".to_string(),
+                desktop_client_id: "desktop-alpha".to_string(),
+                device_name: Some("Chris MacBook".to_string()),
+                bound_nostr_pubkey: Some("npub1alpha".to_string()),
+                client_version: Some("mvp".to_string()),
+                issued_at_unix_ms: Some(1_700_000_000_000),
+                expires_at_unix_ms: Some(1_700_003_600_000),
+            }
+        );
+    }
+
+    #[test]
+    fn resolve_control_bearer_auth_bootstraps_session_before_sync_token_mint() {
+        let session_body = r#"{
+  "session_id":"sess-control-1",
+  "account_id":"desktop:alpha",
+  "access_token":"desktop-access-token",
+  "token_type":"Bearer",
+  "desktop_client_id":"desktop-alpha"
+}"#;
+        let sync_token_body = valid_token_payload();
+        let addr = run_session_then_sync_token_server(session_body, sync_token_body.as_str());
+        let client = Client::builder().build().expect("client should build");
+        let control_base_url = format!("http://{addr}");
+        let bearer_auth = resolve_control_bearer_auth(
+            &client,
+            control_base_url.as_str(),
+            None,
+            Some(&DesktopSessionBootstrapRequest {
+                desktop_client_id: "desktop-alpha".to_string(),
+                device_name: None,
+                bound_nostr_pubkey: None,
+                client_version: None,
+            }),
+        )
+        .expect("control bearer resolution should succeed");
+        assert_eq!(bearer_auth.as_deref(), Some("desktop-access-token"));
+
+        let lease =
+            mint_sync_token_blocking(&client, control_base_url.as_str(), bearer_auth.as_deref())
+                .expect("sync token mint should succeed");
+        assert_eq!(lease.token, "sync-token");
     }
 
     #[test]

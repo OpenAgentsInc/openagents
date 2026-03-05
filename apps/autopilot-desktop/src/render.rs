@@ -364,7 +364,7 @@ fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
         }
     };
 
-    match crate::sync_bootstrap::bootstrap_sync_session_from_env(&client, None) {
+    match crate::sync_bootstrap::bootstrap_sync_session_from_env(&client) {
         Ok(Some(result)) => {
             let note = format!(
                 "Minted sync token via {} and prepared subscribe target {}",
