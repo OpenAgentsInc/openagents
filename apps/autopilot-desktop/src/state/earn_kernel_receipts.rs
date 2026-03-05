@@ -3,8 +3,8 @@ use crate::app_state::{
     PaneLoadState,
 };
 use crate::economy_kernel_receipts::{
-    Asset, EvidenceRef, FeedbackLatencyClass, Money, MoneyAmount, PolicyContext, Receipt,
-    ReceiptBuilder, ReceiptHints, SeverityClass, TraceContext,
+    Asset, AuthAssuranceLevel, EvidenceRef, FeedbackLatencyClass, Money, MoneyAmount,
+    PolicyContext, Receipt, ReceiptBuilder, ReceiptHints, SeverityClass, TraceContext,
 };
 use crate::state::job_inbox::{JobInboxNetworkRequest, JobInboxRequest};
 use bitcoin::hashes::{sha256, Hash};
@@ -22,9 +22,11 @@ const EARN_IDEMPOTENCY_RECORD_ROW_LIMIT: usize = 4096;
 const REASON_CODE_JOB_FAILED: &str = "JOB_FAILED";
 const REASON_CODE_POLICY_PREFLIGHT_REJECTED: &str = "POLICY_PREFLIGHT_REJECTED";
 const REASON_CODE_PAYMENT_POINTER_NON_AUTHORITATIVE: &str = "PAYMENT_POINTER_NON_AUTHORITATIVE";
+const REASON_CODE_AUTH_ASSURANCE_INSUFFICIENT: &str = "AUTH_ASSURANCE_INSUFFICIENT";
 const REASON_CODE_IDEMPOTENCY_CONFLICT: &str = "IDEMPOTENCY_CONFLICT";
 const REASON_CODE_POLICY_THROTTLE_TRIGGERED: &str = "POLICY_THROTTLE_TRIGGERED";
 
+#[derive(Clone)]
 struct PolicyDecision {
     rule_id: String,
     decision: &'static str,
@@ -358,6 +360,8 @@ impl EarnKernelReceiptState {
             achieved_verification_tier: None,
             verification_correlated: None,
             provenance_grade: None,
+            auth_assurance_level: Some(AuthAssuranceLevel::Authenticated),
+            personhood_proved: Some(false),
             reason_code: None,
             notional: Some(Money {
                 asset: Asset::Btc,
@@ -541,6 +545,8 @@ impl EarnKernelReceiptState {
             achieved_verification_tier: None,
             verification_correlated: None,
             provenance_grade: None,
+            auth_assurance_level: Some(AuthAssuranceLevel::Authenticated),
+            personhood_proved: Some(false),
             reason_code: Some(REASON_CODE_POLICY_PREFLIGHT_REJECTED.to_string()),
             notional: Some(Money {
                 asset: Asset::Btc,
@@ -595,12 +601,38 @@ impl EarnKernelReceiptState {
             job.quoted_price_sats,
             None,
         );
+        let auth_assurance = auth_assurance_for_identity(job.requester.as_str());
+        let personhood_proved =
+            personhood_proved_for_identity(job.requester.as_str(), auth_assurance);
+        let policy_bundle = current_policy_bundle();
+        let stage_auth_gate = if stage == JobLifecycleStage::Paid {
+            evaluate_authentication_gate(
+                &policy_bundle,
+                metadata.category.as_str(),
+                metadata.tfb_class,
+                metadata.severity,
+                "verifier",
+                auth_assurance,
+                personhood_proved,
+            )
+            .err()
+        } else {
+            None
+        };
         let (receipt_type, reason_code, status, policy_decision): (
             &'static str,
             Option<&'static str>,
             &'static str,
             PolicyDecision,
-        ) = if stage == JobLifecycleStage::Paid && !paid_pointer_authoritative {
+        ) = if stage == JobLifecycleStage::Paid && stage_auth_gate.is_some() {
+            authority_key = format!("withheld-auth:{}", job.request_id);
+            (
+                "earn.job.withheld.v1",
+                Some(REASON_CODE_AUTH_ASSURANCE_INSUFFICIENT),
+                "withheld",
+                stage_auth_gate.clone().expect("auth gate checked"),
+            )
+        } else if stage == JobLifecycleStage::Paid && !paid_pointer_authoritative {
             authority_key = format!("withheld:{}", job.request_id);
             (
                 "earn.job.withheld.v1",
@@ -682,6 +714,17 @@ impl EarnKernelReceiptState {
                 digest_for_text(REASON_CODE_PAYMENT_POINTER_NON_AUTHORITATIVE),
             ));
         }
+        if stage == JobLifecycleStage::Paid && stage_auth_gate.is_some() {
+            evidence.push(EvidenceRef::new(
+                "withheld_reason",
+                format!("oa://earn/jobs/{}/withheld_auth", job.job_id),
+                digest_for_text(REASON_CODE_AUTH_ASSURANCE_INSUFFICIENT),
+            ));
+            evidence.push(credential_ref_for_identity(
+                job.requester.as_str(),
+                auth_assurance,
+            ));
+        }
         if stage == JobLifecycleStage::Failed {
             let reason = job
                 .failure_reason
@@ -706,6 +749,8 @@ impl EarnKernelReceiptState {
             achieved_verification_tier: None,
             verification_correlated: None,
             provenance_grade: None,
+            auth_assurance_level: Some(auth_assurance),
+            personhood_proved: Some(personhood_proved),
             reason_code: reason_code.map(ToString::to_string),
             notional: Some(Money {
                 asset: Asset::Btc,
@@ -766,6 +811,23 @@ impl EarnKernelReceiptState {
             row.payout_sats,
             None,
         );
+        let auth_assurance = AuthAssuranceLevel::Authenticated;
+        let personhood_proved = false;
+        let policy_bundle = current_policy_bundle();
+        let history_auth_gate = if row.status == JobHistoryStatus::Succeeded {
+            evaluate_authentication_gate(
+                &policy_bundle,
+                metadata.category.as_str(),
+                metadata.tfb_class,
+                metadata.severity,
+                "verifier",
+                auth_assurance,
+                personhood_proved,
+            )
+            .err()
+        } else {
+            None
+        };
         let payment_pointer_authoritative =
             is_wallet_authoritative_payment_pointer(Some(row.payment_pointer.as_str()));
         let (stage, receipt_type, reason_code, status, authority_key, policy_decision): (
@@ -775,7 +837,19 @@ impl EarnKernelReceiptState {
             &'static str,
             String,
             PolicyDecision,
-        ) = if row.status == JobHistoryStatus::Succeeded && payment_pointer_authoritative {
+        ) = if row.status == JobHistoryStatus::Succeeded
+            && payment_pointer_authoritative
+            && history_auth_gate.is_some()
+        {
+            (
+                JobLifecycleStage::Paid,
+                "earn.job.withheld.v1",
+                Some(REASON_CODE_AUTH_ASSURANCE_INSUFFICIENT),
+                "withheld",
+                format!("withheld-auth:{request_id}"),
+                history_auth_gate.clone().expect("auth gate checked"),
+            )
+        } else if row.status == JobHistoryStatus::Succeeded && payment_pointer_authoritative {
             (
                 JobLifecycleStage::Paid,
                 "earn.job.settlement_observed.v1",
@@ -869,6 +943,18 @@ impl EarnKernelReceiptState {
                     format!("oa://wallet/payments/{}", row.payment_pointer),
                     digest_for_text(row.payment_pointer.as_str()),
                 ));
+            } else if stage == JobLifecycleStage::Paid
+                && reason_code == Some(REASON_CODE_AUTH_ASSURANCE_INSUFFICIENT)
+            {
+                evidence.push(EvidenceRef::new(
+                    "withheld_reason",
+                    format!("oa://earn/jobs/{}/withheld_auth", row.job_id),
+                    digest_for_text(REASON_CODE_AUTH_ASSURANCE_INSUFFICIENT),
+                ));
+                evidence.push(credential_ref_for_identity(
+                    "history_projection",
+                    auth_assurance,
+                ));
             } else if stage == JobLifecycleStage::Paid {
                 evidence.push(EvidenceRef::new(
                     "withheld_reason",
@@ -897,6 +983,8 @@ impl EarnKernelReceiptState {
             achieved_verification_tier: None,
             verification_correlated: None,
             provenance_grade: None,
+            auth_assurance_level: Some(auth_assurance),
+            personhood_proved: Some(personhood_proved),
             reason_code: reason_code.map(ToString::to_string),
             notional: Some(Money {
                 asset: Asset::Btc,
@@ -981,6 +1069,8 @@ impl EarnKernelReceiptState {
             achieved_verification_tier: None,
             verification_correlated: None,
             provenance_grade: None,
+            auth_assurance_level: Some(AuthAssuranceLevel::Authenticated),
+            personhood_proved: Some(false),
             reason_code: None,
             notional: None,
         })
@@ -1023,7 +1113,8 @@ impl EarnKernelReceiptState {
         let category = "compute";
         let tfb_class = FeedbackLatencyClass::Short;
         let severity = SeverityClass::High;
-        let _ = select_authentication_rule(policy_bundle, category, tfb_class, severity);
+        let _ =
+            select_authentication_rule(policy_bundle, category, tfb_class, severity, "operator");
         let _ = select_monitoring_rule(policy_bundle, category, tfb_class, severity);
         let _ = select_risk_pricing_rule(policy_bundle, category, tfb_class, severity);
         let _ = select_certification_rule(policy_bundle, category, tfb_class, severity);
@@ -1119,6 +1210,8 @@ impl EarnKernelReceiptState {
                 achieved_verification_tier: None,
                 verification_correlated: Some(correlated_verification_share > 0.0),
                 provenance_grade: None,
+                auth_assurance_level: Some(AuthAssuranceLevel::Authenticated),
+                personhood_proved: Some(false),
                 reason_code: Some(REASON_CODE_POLICY_THROTTLE_TRIGGERED.to_string()),
                 notional: None,
             })
@@ -1138,6 +1231,26 @@ impl EarnKernelReceiptState {
         occurred_at_epoch_ms: i64,
         source_tag: &str,
     ) -> Result<String, String> {
+        let policy_bundle = current_policy_bundle();
+        self.record_wallet_withdraw_send_attempt_with_policy(
+            caller_identity,
+            payment_request,
+            amount_sats,
+            occurred_at_epoch_ms,
+            source_tag,
+            &policy_bundle,
+        )
+    }
+
+    fn record_wallet_withdraw_send_attempt_with_policy(
+        &mut self,
+        caller_identity: &str,
+        payment_request: &str,
+        amount_sats: Option<u64>,
+        occurred_at_epoch_ms: i64,
+        source_tag: &str,
+        policy_bundle: &PolicyBundleConfig,
+    ) -> Result<String, String> {
         let caller_identity = caller_identity.trim();
         if caller_identity.is_empty() {
             return Err("caller_identity cannot be empty".to_string());
@@ -1154,16 +1267,109 @@ impl EarnKernelReceiptState {
             normalize_key(caller_identity),
             normalize_key(payment_request_digest.as_str()),
         );
-        let receipt_id = format!(
+        let success_receipt_id = format!(
             "receipt.earn:wallet_withdraw:{}:{}",
             normalize_key(caller_identity),
             normalize_key(payment_request_digest.as_str())
         );
         let mut policy = current_policy_context();
         policy.approved_by = caller_identity.to_string();
+        let severity = if amount_sats >= 100_000 {
+            SeverityClass::Critical
+        } else if amount_sats >= 10_000 {
+            SeverityClass::High
+        } else if amount_sats >= 1_000 {
+            SeverityClass::Medium
+        } else {
+            SeverityClass::Low
+        };
+        let auth_assurance = auth_assurance_for_identity(caller_identity);
+        let personhood_proved = personhood_proved_for_identity(caller_identity, auth_assurance);
+        let auth_evidence = credential_ref_for_identity(caller_identity, auth_assurance);
+        let auth_policy_result = evaluate_authentication_gate(
+            policy_bundle,
+            "compute",
+            FeedbackLatencyClass::Instant,
+            severity,
+            "operator",
+            auth_assurance,
+            personhood_proved,
+        );
+        let policy_decision = match auth_policy_result {
+            Ok(decision) => decision,
+            Err(decision) => {
+                let withheld_receipt = ReceiptBuilder::new(
+                    format!(
+                        "receipt.earn:wallet_withdraw_withheld:{}:{}",
+                        normalize_key(caller_identity),
+                        normalize_key(payment_request_digest.as_str())
+                    ),
+                    "earn.wallet.withdraw_withheld.v1",
+                    occurred_at_epoch_ms.max(0),
+                    format!("{idempotency_key}:auth_withheld"),
+                    TraceContext {
+                        session_id: None,
+                        trajectory_hash: None,
+                        job_hash: None,
+                        run_id: Some(format!("wallet_withdraw:{caller_identity}")),
+                        work_unit_id: None,
+                        contract_id: None,
+                        claim_id: None,
+                    },
+                    policy,
+                )
+                .with_inputs_payload(json!({
+                    "caller_identity": caller_identity,
+                    "payment_request_digest": payment_request_digest,
+                    "amount_sats": if amount_sats == 0 { None::<u64> } else { Some(amount_sats) },
+                }))
+                .with_outputs_payload(json!({
+                    "status": "withheld",
+                    "reason_code": REASON_CODE_AUTH_ASSURANCE_INSUFFICIENT,
+                    "policy_rule_id": decision.rule_id,
+                    "policy_decision": decision.decision,
+                    "policy_notes": decision.notes,
+                    "source_tag": source_tag,
+                }))
+                .with_evidence(vec![
+                    EvidenceRef::new(
+                        "wallet_send_request",
+                        format!("oa://wallet/withdraw/{caller_identity}"),
+                        payment_request_digest.clone(),
+                    ),
+                    auth_evidence,
+                    policy_decision_evidence(&decision),
+                ])
+                .with_hints(ReceiptHints {
+                    category: Some("compute".to_string()),
+                    tfb_class: Some(FeedbackLatencyClass::Instant),
+                    severity: Some(severity),
+                    achieved_verification_tier: None,
+                    verification_correlated: None,
+                    provenance_grade: None,
+                    auth_assurance_level: Some(auth_assurance),
+                    personhood_proved: Some(personhood_proved),
+                    reason_code: Some(REASON_CODE_AUTH_ASSURANCE_INSUFFICIENT.to_string()),
+                    notional: if amount_sats == 0 {
+                        None
+                    } else {
+                        Some(Money {
+                            asset: Asset::Btc,
+                            amount: MoneyAmount::AmountSats(amount_sats),
+                        })
+                    },
+                })
+                .build();
+                self.append_receipt(withheld_receipt, source_tag);
+                return Err(format!(
+                    "{}: caller_identity={} required_by_rule={}",
+                    REASON_CODE_AUTH_ASSURANCE_INSUFFICIENT, caller_identity, decision.rule_id
+                ));
+            }
+        };
 
         let receipt = ReceiptBuilder::new(
-            receipt_id.clone(),
+            success_receipt_id.clone(),
             "earn.wallet.withdraw_submitted.v1",
             occurred_at_epoch_ms.max(0),
             idempotency_key,
@@ -1185,28 +1391,29 @@ impl EarnKernelReceiptState {
         }))
         .with_outputs_payload(json!({
             "status": "submitted",
+            "policy_rule_id": policy_decision.rule_id.clone(),
+            "policy_decision": policy_decision.decision,
+            "policy_notes": policy_decision.notes.clone(),
             "source_tag": source_tag,
         }))
-        .with_evidence(vec![EvidenceRef::new(
-            "wallet_send_request",
-            format!("oa://wallet/withdraw/{caller_identity}"),
-            payment_request_digest,
-        )])
+        .with_evidence(vec![
+            EvidenceRef::new(
+                "wallet_send_request",
+                format!("oa://wallet/withdraw/{caller_identity}"),
+                payment_request_digest,
+            ),
+            auth_evidence,
+            policy_decision_evidence(&policy_decision),
+        ])
         .with_hints(ReceiptHints {
             category: Some("compute".to_string()),
             tfb_class: Some(FeedbackLatencyClass::Instant),
-            severity: Some(if amount_sats >= 100_000 {
-                SeverityClass::Critical
-            } else if amount_sats >= 10_000 {
-                SeverityClass::High
-            } else if amount_sats >= 1_000 {
-                SeverityClass::Medium
-            } else {
-                SeverityClass::Low
-            }),
+            severity: Some(severity),
             achieved_verification_tier: None,
             verification_correlated: None,
             provenance_grade: None,
+            auth_assurance_level: Some(auth_assurance),
+            personhood_proved: Some(personhood_proved),
             reason_code: None,
             notional: if amount_sats == 0 {
                 None
@@ -1225,7 +1432,7 @@ impl EarnKernelReceiptState {
                 .clone()
                 .unwrap_or_else(|| "failed to emit wallet withdraw receipt".to_string()));
         }
-        Ok(receipt_id)
+        Ok(success_receipt_id)
     }
 
     pub fn record_swap_execute_attempt(
@@ -1302,6 +1509,8 @@ impl EarnKernelReceiptState {
             achieved_verification_tier: None,
             verification_correlated: None,
             provenance_grade: None,
+            auth_assurance_level: Some(AuthAssuranceLevel::Authenticated),
+            personhood_proved: Some(false),
             reason_code: None,
             notional: None,
         })
@@ -1599,6 +1808,8 @@ impl EarnKernelReceiptState {
             achieved_verification_tier: exemplar.hints.achieved_verification_tier,
             verification_correlated: exemplar.hints.verification_correlated,
             provenance_grade: exemplar.hints.provenance_grade,
+            auth_assurance_level: exemplar.hints.auth_assurance_level,
+            personhood_proved: exemplar.hints.personhood_proved,
             reason_code: Some("RECEIPT_SUPERSEDED".to_string()),
             notional: exemplar.hints.notional.clone(),
         })
@@ -2284,16 +2495,181 @@ fn select_authentication_rule<'a>(
     category: &str,
     tfb_class: FeedbackLatencyClass,
     severity: SeverityClass,
+    role: &str,
 ) -> Option<&'a AuthenticationPolicyRule> {
-    select_best_slice_rule(
-        bundle.authentication_rules.as_slice(),
-        category,
-        tfb_class,
-        severity,
-        |rule| &rule.slice,
-        |rule| rule.rule_id.as_str(),
+    let role = role.trim().to_ascii_lowercase();
+    bundle
+        .authentication_rules
+        .iter()
+        .filter(|rule| {
+            rule.role
+                .as_deref()
+                .is_none_or(|rule_role| rule_role.eq_ignore_ascii_case(role.as_str()))
+        })
+        .filter_map(|rule| {
+            let precedence = slice_rule_precedence(&rule.slice, category, tfb_class, severity)?;
+            Some((rule, precedence))
+        })
+        .min_by(|lhs, rhs| {
+            lhs.1
+                .cmp(&rhs.1)
+                .then_with(|| lhs.0.rule_id.cmp(&rhs.0.rule_id))
+        })
+        .map(|(rule, _)| rule)
+}
+
+fn parse_auth_assurance_level(value: &str) -> Option<AuthAssuranceLevel> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "" => None,
+        "anon" | "anonymous" => Some(AuthAssuranceLevel::Anon),
+        "authenticated" | "auth" => Some(AuthAssuranceLevel::Authenticated),
+        "org_kyc" | "org-kyc" | "kyc_org" => Some(AuthAssuranceLevel::OrgKyc),
+        "personhood" | "proof_of_personhood" | "person" => Some(AuthAssuranceLevel::Personhood),
+        "gov_id" | "gov-id" | "government_id" => Some(AuthAssuranceLevel::GovId),
+        "hardware_bound" | "hardware-bound" | "hw_bound" => Some(AuthAssuranceLevel::HardwareBound),
+        _ => None,
+    }
+}
+
+fn auth_assurance_rank(level: AuthAssuranceLevel) -> u8 {
+    match level {
+        AuthAssuranceLevel::AuthAssuranceLevelUnspecified => 0,
+        AuthAssuranceLevel::Anon => 1,
+        AuthAssuranceLevel::Authenticated => 2,
+        AuthAssuranceLevel::OrgKyc => 3,
+        AuthAssuranceLevel::Personhood => 4,
+        AuthAssuranceLevel::GovId => 5,
+        AuthAssuranceLevel::HardwareBound => 6,
+    }
+}
+
+fn auth_assurance_for_identity(caller_identity: &str) -> AuthAssuranceLevel {
+    let caller_identity = caller_identity.trim().to_ascii_lowercase();
+    if caller_identity.is_empty() {
+        return AuthAssuranceLevel::Anon;
+    }
+    if caller_identity.starts_with("hw:")
+        || caller_identity.contains(":hardware")
+        || caller_identity.contains("hardware_bound")
+    {
+        return AuthAssuranceLevel::HardwareBound;
+    }
+    if caller_identity.starts_with("govid:") || caller_identity.contains("gov_id") {
+        return AuthAssuranceLevel::GovId;
+    }
+    if caller_identity.starts_with("personhood:") || caller_identity.contains("personhood") {
+        return AuthAssuranceLevel::Personhood;
+    }
+    if caller_identity.starts_with("orgkyc:")
+        || caller_identity.starts_with("org_kyc:")
+        || caller_identity.contains("org_kyc")
+    {
+        return AuthAssuranceLevel::OrgKyc;
+    }
+    AuthAssuranceLevel::Authenticated
+}
+
+fn personhood_proved_for_identity(caller_identity: &str, level: AuthAssuranceLevel) -> bool {
+    if matches!(
+        level,
+        AuthAssuranceLevel::Personhood
+            | AuthAssuranceLevel::GovId
+            | AuthAssuranceLevel::HardwareBound
+    ) {
+        return true;
+    }
+    caller_identity.to_ascii_lowercase().contains("personhood")
+}
+
+fn credential_ref_for_identity(caller_identity: &str, level: AuthAssuranceLevel) -> EvidenceRef {
+    let caller_identity = caller_identity.trim();
+    let credential_kind = match level {
+        AuthAssuranceLevel::AuthAssuranceLevelUnspecified | AuthAssuranceLevel::Anon => {
+            "credential_ref_anonymous"
+        }
+        AuthAssuranceLevel::Authenticated => "credential_ref_authenticated",
+        AuthAssuranceLevel::OrgKyc => "credential_ref_org_kyc",
+        AuthAssuranceLevel::Personhood => "credential_ref_personhood",
+        AuthAssuranceLevel::GovId => "credential_ref_gov_id",
+        AuthAssuranceLevel::HardwareBound => "credential_ref_hardware_bound",
+    };
+    let digest_value = if caller_identity.is_empty() {
+        "anonymous".to_string()
+    } else {
+        caller_identity.to_string()
+    };
+    EvidenceRef::new(
+        credential_kind,
+        format!(
+            "oa://identity/credentials/{}",
+            normalize_key(digest_value.as_str())
+        ),
+        digest_for_text(digest_value.as_str()),
     )
-    .map(|(rule, _)| rule)
+}
+
+fn evaluate_authentication_gate(
+    bundle: &PolicyBundleConfig,
+    category: &str,
+    tfb_class: FeedbackLatencyClass,
+    severity: SeverityClass,
+    role: &str,
+    observed_level: AuthAssuranceLevel,
+    personhood_proved: bool,
+) -> Result<PolicyDecision, PolicyDecision> {
+    let Some(rule) = select_authentication_rule(bundle, category, tfb_class, severity, role) else {
+        return Ok(PolicyDecision {
+            rule_id: format!(
+                "policy.earn.auth.fallback.{}.{}.{}",
+                normalize_key(category),
+                normalize_key(role),
+                severity.label()
+            ),
+            decision: "allow",
+            notes: format!(
+                "No authentication rule matched; allowing {} for category={} tfb={} severity={} (fallback deterministic mapping)",
+                role,
+                category,
+                tfb_class.label(),
+                severity.label(),
+            ),
+        });
+    };
+
+    let required_level = rule
+        .min_auth_assurance
+        .as_deref()
+        .and_then(parse_auth_assurance_level)
+        .unwrap_or(AuthAssuranceLevel::Authenticated);
+    let required_personhood = rule.require_personhood;
+    let level_ok = auth_assurance_rank(observed_level) >= auth_assurance_rank(required_level);
+    let personhood_ok = !required_personhood || personhood_proved;
+
+    let notes = format!(
+        "policy_rule={} role={} required_level={:?} observed_level={:?} required_personhood={} observed_personhood={} category={} tfb={} severity={}",
+        rule.rule_id,
+        role,
+        required_level,
+        observed_level,
+        required_personhood,
+        personhood_proved,
+        category,
+        tfb_class.label(),
+        severity.label(),
+    );
+    if level_ok && personhood_ok {
+        return Ok(PolicyDecision {
+            rule_id: rule.rule_id.clone(),
+            decision: "allow",
+            notes,
+        });
+    }
+
+    Err(PolicyDecision {
+        rule_id: rule.rule_id.clone(),
+        decision: "withhold",
+        notes,
+    })
 }
 
 fn select_monitoring_rule<'a>(
@@ -3249,6 +3625,75 @@ mod tests {
     }
 
     #[test]
+    fn wallet_withdraw_with_insufficient_auth_is_withheld_and_idempotent() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        let policy_bundle = PolicyBundleConfig {
+            authentication_rules: vec![AuthenticationPolicyRule {
+                rule_id: "policy.test.auth.personhood_required.v1".to_string(),
+                slice: PolicySliceRule {
+                    category: Some("compute".to_string()),
+                    tfb_class: Some(FeedbackLatencyClass::Instant),
+                    severity: Some(SeverityClass::Critical),
+                },
+                role: Some("operator".to_string()),
+                min_auth_assurance: Some("personhood".to_string()),
+                require_personhood: true,
+            }],
+            ..PolicyBundleConfig::default()
+        };
+
+        let first = state.record_wallet_withdraw_send_attempt_with_policy(
+            "npub1walletuser",
+            "lnbc1restrictedinvoice",
+            Some(250_000),
+            1_762_000_010_000,
+            "test.wallet.auth",
+            &policy_bundle,
+        );
+        assert!(first.is_err());
+        assert!(first
+            .err()
+            .is_some_and(|error| error.contains(REASON_CODE_AUTH_ASSURANCE_INSUFFICIENT)));
+        let first_count = state.receipts.len();
+
+        let second = state.record_wallet_withdraw_send_attempt_with_policy(
+            "npub1walletuser",
+            "lnbc1restrictedinvoice",
+            Some(250_000),
+            1_762_000_010_500,
+            "test.wallet.auth.replay",
+            &policy_bundle,
+        );
+        assert!(second.is_err());
+        assert_eq!(state.receipts.len(), first_count);
+
+        let withheld = state
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_type == "earn.wallet.withdraw_withheld.v1")
+            .expect("withheld auth receipt should exist");
+        assert_eq!(
+            withheld.hints.reason_code.as_deref(),
+            Some(REASON_CODE_AUTH_ASSURANCE_INSUFFICIENT)
+        );
+        assert_eq!(
+            withheld.hints.auth_assurance_level,
+            Some(AuthAssuranceLevel::Authenticated)
+        );
+        assert_eq!(withheld.hints.personhood_proved, Some(false));
+        assert!(withheld
+            .evidence
+            .iter()
+            .any(|evidence| evidence.kind == "policy_decision"));
+        assert!(withheld
+            .evidence
+            .iter()
+            .any(|evidence| evidence.kind.starts_with("credential_ref_")));
+    }
+
+    #[test]
     fn settlement_receipt_contains_receipt_refs_and_transitive_lineage() {
         let temp_dir = tempfile::tempdir().expect("tempdir");
         let state_path = temp_dir.path().join("receipts.json");
@@ -3439,6 +3884,7 @@ mod tests {
             "compute",
             FeedbackLatencyClass::Short,
             SeverityClass::High,
+            "operator",
         )
         .expect("specific rule should match");
         assert_eq!(selected_specific.rule_id, "rule.specific.a");
@@ -3448,6 +3894,7 @@ mod tests {
             "router",
             FeedbackLatencyClass::Instant,
             SeverityClass::Low,
+            "operator",
         )
         .expect("global fallback should match");
         assert_eq!(selected_global.rule_id, "rule.global");

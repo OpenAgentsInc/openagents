@@ -1,8 +1,9 @@
 use crate::app_state::PaneLoadState;
 use crate::economy_kernel_receipts::{
-    EvidenceRef, FeedbackLatencyClass, ProvenanceGrade, Receipt, SeverityClass, VerificationTier,
+    AuthAssuranceLevel, EvidenceRef, FeedbackLatencyClass, ProvenanceGrade, Receipt, SeverityClass,
+    VerificationTier,
 };
-use bitcoin::hashes::{Hash, sha256};
+use bitcoin::hashes::{sha256, Hash};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -32,6 +33,13 @@ pub struct SvBreakdownRow {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct AuthAssuranceDistributionRow {
+    pub level: AuthAssuranceLevel,
+    pub count: u64,
+    pub share: f64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct EconomySnapshot {
     pub snapshot_id: String,
     pub as_of_ms: i64,
@@ -47,6 +55,8 @@ pub struct EconomySnapshot {
     pub provenance_p1_share: f64,
     pub provenance_p2_share: f64,
     pub provenance_p3_share: f64,
+    pub auth_assurance_distribution: Vec<AuthAssuranceDistributionRow>,
+    pub personhood_verified_share: f64,
     pub sv_breakdown: Vec<SvBreakdownRow>,
     pub inputs: Vec<EvidenceRef>,
 }
@@ -238,6 +248,8 @@ fn build_snapshot(
     let mut verified_work_units = 0u64;
     let mut correlated_verified = 0u64;
     let mut provenance_counts = [0u64; 4];
+    let mut auth_assurance_counts = BTreeMap::<AuthAssuranceLevel, u64>::new();
+    let mut personhood_verified = 0u64;
 
     for receipt in terminal_by_work_unit.values() {
         total_work_units = total_work_units.saturating_add(1);
@@ -250,6 +262,15 @@ fn build_snapshot(
         }
         provenance_counts[provenance_bucket(receipt.hints.provenance_grade)] =
             provenance_counts[provenance_bucket(receipt.hints.provenance_grade)].saturating_add(1);
+        let auth_level = receipt
+            .hints
+            .auth_assurance_level
+            .unwrap_or(AuthAssuranceLevel::AuthAssuranceLevelUnspecified);
+        let auth_entry = auth_assurance_counts.entry(auth_level).or_insert(0);
+        *auth_entry = auth_entry.saturating_add(1);
+        if receipt.hints.personhood_proved.unwrap_or(false) {
+            personhood_verified = personhood_verified.saturating_add(1);
+        }
 
         let key = metric_key_for_receipt(receipt);
         let entry = breakdown.entry(key).or_insert((0, 0));
@@ -276,6 +297,15 @@ fn build_snapshot(
     let provenance_p1_share = ratio(provenance_counts[1], total_work_units);
     let provenance_p2_share = ratio(provenance_counts[2], total_work_units);
     let provenance_p3_share = ratio(provenance_counts[3], total_work_units);
+    let auth_assurance_distribution = auth_assurance_counts
+        .into_iter()
+        .map(|(level, count)| AuthAssuranceDistributionRow {
+            level,
+            count,
+            share: ratio(count, total_work_units),
+        })
+        .collect::<Vec<_>>();
+    let personhood_verified_share = ratio(personhood_verified, total_work_units);
 
     let inputs = snapshot_input_evidence(window_start_ms, as_of_ms, scoped_receipts.as_slice());
     let snapshot_hash = snapshot_hash_for(
@@ -292,6 +322,8 @@ fn build_snapshot(
         provenance_p1_share,
         provenance_p2_share,
         provenance_p3_share,
+        personhood_verified_share,
+        auth_assurance_distribution.as_slice(),
         sv_breakdown.as_slice(),
         inputs.as_slice(),
     )?;
@@ -311,6 +343,8 @@ fn build_snapshot(
         provenance_p1_share,
         provenance_p2_share,
         provenance_p3_share,
+        auth_assurance_distribution,
+        personhood_verified_share,
         sv_breakdown,
         inputs,
     })
@@ -420,6 +454,8 @@ struct CanonicalSnapshotPayload<'a> {
     provenance_p1_share: f64,
     provenance_p2_share: f64,
     provenance_p3_share: f64,
+    personhood_verified_share: f64,
+    auth_assurance_distribution: &'a [AuthAssuranceDistributionRow],
     sv_breakdown: &'a [SvBreakdownRow],
     inputs: &'a [EvidenceRef],
 }
@@ -439,6 +475,8 @@ fn snapshot_hash_for(
     provenance_p1_share: f64,
     provenance_p2_share: f64,
     provenance_p3_share: f64,
+    personhood_verified_share: f64,
+    auth_assurance_distribution: &[AuthAssuranceDistributionRow],
     sv_breakdown: &[SvBreakdownRow],
     inputs: &[EvidenceRef],
 ) -> Result<String, String> {
@@ -456,6 +494,8 @@ fn snapshot_hash_for(
         provenance_p1_share,
         provenance_p2_share,
         provenance_p3_share,
+        personhood_verified_share,
+        auth_assurance_distribution,
         sv_breakdown,
         inputs,
     };
@@ -638,6 +678,8 @@ mod tests {
             achieved_verification_tier: None,
             verification_correlated: None,
             provenance_grade: None,
+            auth_assurance_level: Some(AuthAssuranceLevel::Authenticated),
+            personhood_proved: Some(false),
             reason_code: None,
             notional: None,
         })
@@ -671,11 +713,9 @@ mod tests {
         );
 
         let reloaded = EconomySnapshotState::from_snapshot_path_for_tests(path);
-        assert!(
-            reloaded
-                .get_snapshot("snapshot.economy:1761999960000")
-                .is_some()
-        );
+        assert!(reloaded
+            .get_snapshot("snapshot.economy:1761999960000")
+            .is_some());
     }
 
     #[test]
@@ -718,6 +758,48 @@ mod tests {
         assert_eq!(snapshot.sv_breakdown[0].verified_work_units, 2);
         assert_eq!(snapshot.delta_m_hat, 0.0);
         assert_eq!(snapshot.xa_hat, 0.0);
+        assert_eq!(snapshot.auth_assurance_distribution.len(), 1);
+        assert_eq!(
+            snapshot.auth_assurance_distribution[0].level,
+            AuthAssuranceLevel::Authenticated
+        );
+        assert_eq!(snapshot.auth_assurance_distribution[0].count, 3);
+        assert_eq!(snapshot.personhood_verified_share, 0.0);
+    }
+
+    #[test]
+    fn snapshot_tracks_personhood_share_from_terminal_receipts() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let path = temp_dir.path().join("snapshots.json");
+        let mut state = EconomySnapshotState::from_snapshot_path_for_tests(path);
+        let mut personhood_receipt = fixture_receipt(
+            "receipt-personhood-1",
+            "earn.job.settlement_observed.v1",
+            1_762_000_013_000,
+            "job-4",
+            true,
+        );
+        personhood_receipt.hints.auth_assurance_level = Some(AuthAssuranceLevel::Personhood);
+        personhood_receipt.hints.personhood_proved = Some(true);
+        let mut authenticated_receipt = fixture_receipt(
+            "receipt-auth-1",
+            "earn.job.settlement_observed.v1",
+            1_762_000_014_000,
+            "job-5",
+            true,
+        );
+        authenticated_receipt.hints.auth_assurance_level = Some(AuthAssuranceLevel::Authenticated);
+        authenticated_receipt.hints.personhood_proved = Some(false);
+
+        let computed = state
+            .compute_minute_snapshot(
+                1_762_000_060_000,
+                &[personhood_receipt, authenticated_receipt],
+            )
+            .expect("snapshot should compute");
+        let snapshot = computed.snapshot;
+        assert!((snapshot.personhood_verified_share - 0.5).abs() < 1e-9);
+        assert_eq!(snapshot.auth_assurance_distribution.len(), 2);
     }
 
     #[test]
@@ -736,26 +818,20 @@ mod tests {
         let computed = state
             .compute_minute_snapshot(1_762_000_012_000, receipts.as_slice())
             .expect("snapshot should compute");
-        assert!(
-            computed
-                .snapshot
-                .inputs
-                .iter()
-                .all(|input| !input.uri.contains("wallet/payments"))
-        );
-        assert!(
-            computed
-                .snapshot
-                .inputs
-                .iter()
-                .all(|input| !input.uri.contains("invoice"))
-        );
-        assert!(
-            computed
-                .snapshot
-                .inputs
-                .iter()
-                .all(|input| !input.uri.contains("preimage"))
-        );
+        assert!(computed
+            .snapshot
+            .inputs
+            .iter()
+            .all(|input| !input.uri.contains("wallet/payments")));
+        assert!(computed
+            .snapshot
+            .inputs
+            .iter()
+            .all(|input| !input.uri.contains("invoice")));
+        assert!(computed
+            .snapshot
+            .inputs
+            .iter()
+            .all(|input| !input.uri.contains("preimage")));
     }
 }
