@@ -114,12 +114,19 @@ Terminology clarification from current product direction:
 - `Pylon` should no longer be treated as a separate product surface. Its provider role is being folded into `Autopilot`.
 - `Nexus` is the intended name for the opinionated, open-source, self-hostable server-authoritative stack that OpenAgents will run by default and that users or organizations should be able to run themselves.
 - Current product direction also wants `Nexus` to expose a Nostr relay surface so Autopilot can use it as the default primary relay, with a curated default public relay set alongside it. That default should not restrict normal marketplace discovery or intake: Autopilot is expected to ingest NIP-90 demand from the full configured reachable relay set and deduplicate across relays. The initial relay set should be chosen pragmatically from relays where OpenAgents observes meaningful recent NIP-90 job activity.
+- Current product direction also favors broad publish fanout: provider capability, feedback, and result events should go to every healthy configured relay by default. The tradeoff is extra outbound traffic and more partial-failure cases, but the upside is better market visibility and buyer reach. For MVP that fanout should be best-effort, not a blocking quorum requirement.
+- Current product direction also wants providers to auto-accept matching jobs by default. For open-market NIP-90 that does not create a global exclusivity guarantee; duplicate work remains possible on public relays. OpenAgents starter jobs should therefore use hosted-Nexus single-assignee leases rather than plain open broadcast.
+- Current product direction treats `max_inflight` as provider-side concurrent active jobs, not some Nexus-global counter. The preferred MVP default is now `1` until the desktop runtime and Codex lane are proven to handle safe concurrent job execution.
+- Current product direction now distinguishes buyer resolution modes: OpenAgents starter jobs use hosted-Nexus single-assignee leases with a very aggressive start-confirm deadline and a more forgiving execution window; public OpenAgents-posted jobs default to `race` in MVP (`first valid result wins`); and a later `windowed` mode should handle jobs where a timed submission window is better than fastest-wins incentives. For `race`, the preferred buyer behavior is explicit unpaid loser feedback when later duplicate results can be correlated, not silent no-pay.
+- Current product direction also wants online mode to require a fresh explicit user click each app session. MVP should not auto-restore provider availability on launch even if the user was online previously.
 - Current product direction further narrows the bootstrap story: starter jobs / seed demand come from the OpenAgents-hosted Nexus only at first, not from every self-hosted Nexus deployment.
+- Current product direction wants starter jobs to remain in the normal earn flow rather than in a fully separate user-facing queue. They should still be visibly marked in job surfaces with a source tag/badge/star so the user can tell OpenAgents-funded starter demand from ordinary open-network demand.
 - Self-hosted Nexus should still be public/open by default. Closed/private Nexus modes are later roadmap work rather than near-term scope.
 - The OpenAgents-hosted Nexus should remain anon/open for general marketplace traffic, while buyer-side policy can target preferred or required OpenAgents participants; OpenAgents seed jobs are intended to target Autopilot users only.
 - OpenAgents starter jobs are not federated across third-party Nexus deployments in MVP. A provider must be connected to the OpenAgents-hosted Nexus itself to be eligible for OpenAgents-funded starter demand.
 - NIP-89's `client` tag is optional and privacy-sensitive, so it is a weak basis for seed-job eligibility on its own. NIP-42 relay auth proves key possession to the relay, not that the software is Autopilot. The accepted MVP proof path is OpenAgents-hosted-Nexus session/auth evidence plus bound Nostr identity; stronger anti-spoofing attestation should be treated as later hardening work.
 - MVP payout routing is intentionally simple: all provider earnings should land in the built-in Spark wallet first, and users move funds to an external wallet by withdrawing later. There is no MVP requirement for arbitrary external invoice configuration as the provider receive sink.
+- Withdrawal should remain available while the provider is online. MVP should not require users to leave earn mode before moving funds out of the built-in Spark wallet.
 
 ## MVP Alignment
 
@@ -192,7 +199,7 @@ Spacetime should own the shared live app-db domains already approved by `ADR-000
 - sync replay checkpoints and cursor continuity,
 - non-monetary job/activity projections,
 - aggregated counters derived from Spacetime-authoritative domains,
-- optionally mirrored projections of Nostr or backend events after they are applied elsewhere.
+- optionally mirrored projections of Nostr or backend events after they are applied elsewhere, including future starter-job lease visibility if OpenAgents later decides to mirror that state.
 
 This is consistent with:
 
@@ -205,8 +212,11 @@ Spacetime should not own:
 
 - public Nostr marketplace traffic,
 - payment execution or settlement truth,
+- starter-job assignment authority in MVP,
 - treasury/policy/verification authority,
 - canonical receipts or `/stats` publication authority.
+
+Practical recommendation: do not make Spacetime the first MVP answer to "which provider gets this starter job?" Use Nexus backend services for that short-lived assignment lease, because starter-job dispatch directly affects subsidy spend and execution behavior. If later we want low-latency shared visibility of leases, mirror the active lease state into Spacetime after authority decisions are made elsewhere.
 
 ### What should live in OpenAgents backend infrastructure
 
@@ -426,7 +436,7 @@ There is an internal mismatch worth noting:
 - `crates/autopilot-spacetime/src/schema.rs` describes a broader sync schema including `provider_capability`, `compute_assignment`, `bridge_outbox`, `coordination_event`, and `conflict_event`.
 - `spacetime/modules/autopilot-sync/README.md` describes a narrower actual module: `active_connection`, `nostr_presence_claim`, `stream_head`, `sync_event`, `stream_checkpoint`.
 
-That means even inside the Spacetime track, part of the broader design remains unshipped.
+That means even inside the Spacetime track, part of the broader design remains unshipped. In particular, the published module does not currently implement `compute_assignment`, so any Spacetime-based starter-job triage or lease authority is still hypothetical rather than built.
 
 ## Do TreasuryRouter and Related Systems Need Backend Deployment?
 
