@@ -54,6 +54,9 @@ This NIP introduces:
 |------|------|-------------|
 | 33400 | Addressable (parameterized replaceable) | Skill Manifest |
 | 33401 | Regular | Skill Version Log |
+| 33410 | Regular | Authentication Challenge |
+| 33411 | Regular | Authentication Response |
+| 33420 | Addressable (parameterized replaceable) | Permission Grant |
 
 This NIP reuses:
 
@@ -116,6 +119,76 @@ SKL core supports two signing profiles.
 - Because NIP-26 is marked unrecommended in the canonical NIPs repository, SKL does not require it for baseline interoperability.
 
 If delegated signing is used, clients SHOULD verify delegation constraints and expiry before trust elevation.
+
+### 1.5 Authentication Challenge Protocol (`kind:33410` / `kind:33411`)
+
+Publishing a manifest proves that a pubkey *once* signed a skill declaration. It does not prove the agent *currently* holds the corresponding private key. To separate **identification** (manifest publication) from **authentication** (proof-of-possession), SKL defines a challenge-response protocol.
+
+#### Challenge Event (`kind:33410`)
+
+A relying party (e.g., a credit issuer, outcome provider, or marketplace) issues a challenge:
+
+```json
+{
+  "kind": 33410,
+  "pubkey": "<relying_party_pubkey>",
+  "created_at": 1740500000,
+  "tags": [
+    ["p", "<agent_or_skill_pubkey>"],
+    ["nonce", "<32-byte-hex-random>"],
+    ["exp", "1740500060"]
+  ],
+  "content": ""
+}
+```
+
+- `nonce`: a cryptographically random 32-byte hex value. MUST be unique per challenge.
+- `exp`: unix timestamp after which the challenge is stale. Responders SHOULD reject challenges older than 60 seconds.
+
+#### Response Event (`kind:33411`)
+
+The challenged agent responds with a signed proof:
+
+```json
+{
+  "kind": 33411,
+  "pubkey": "<agent_or_skill_pubkey>",
+  "created_at": 1740500005,
+  "tags": [
+    ["e", "<challenge_event_id>", "<relay>"],
+    ["p", "<relying_party_pubkey>"],
+    ["nonce", "<same-32-byte-hex>"]
+  ],
+  "content": ""
+}
+```
+
+Verification: the relying party checks that (a) the response `pubkey` matches the challenged pubkey, (b) the `nonce` matches, (c) the response `created_at` is within the challenge `exp` window, and (d) the Nostr event signature is valid.
+
+#### Normative Requirements
+
+- Agents accepting OSCE credit (NIP-AC) MUST support `kind:33410`/`kind:33411` authentication.
+- All other agents SHOULD support this protocol.
+- Relying parties SHOULD issue challenges before granting access to protected resources.
+- Implementations MUST NOT reuse nonces across challenges.
+
+### 1.6 Organizational Identity (NIP-05 Domain Verification)
+
+Agents MAY declare organizational affiliation using NIP-05 domain verification. An organization proves control over an agent by publishing a NIP-05 identifier where the domain is controlled by the organization:
+
+```text
+agent-name@example.com
+```
+
+The organization maintains a `/.well-known/nostr.json` file at `example.com` that maps the agent name to the agent's pubkey. This leverages the existing NIP-05 mechanism as the organizational identity binding — no new credential format is needed.
+
+Manifests MAY include a `nip05` tag:
+
+```json
+["nip05", "research-bot@openagents.com"]
+```
+
+Clients MAY verify the NIP-05 binding and display organizational affiliation, but MUST NOT require it for SKL core validity. This mechanism is OPTIONAL and non-normative.
 
 ---
 
@@ -244,11 +317,88 @@ Use `L=skill-security` and `l` values such as:
 
 Label interpretation and quorum policy are local runtime policy.
 
+### 4.3 Assurance Tier Tags
+
+Safety labels MAY include a structured `assurance_tier` tag that communicates the rigor of the agent's security evaluation:
+
+```json
+["assurance_tier", "<tier>", "<evaluator_pubkey>", "<attestation_event_id>"]
+```
+
+Defined tiers:
+
+| Tier | Meaning |
+|------|---------|
+| `self-assessed` | The agent operator self-declares compliance. No independent evaluation. |
+| `third-party-evaluated` | An independent evaluator has reviewed the agent and published a signed attestation. |
+| `red-team-tested` | The agent has undergone adversarial testing (e.g., prompt injection, hijacking). |
+
+The `evaluator_pubkey` and `attestation_event_id` fields are OPTIONAL for `self-assessed` and REQUIRED for `third-party-evaluated` and `red-team-tested`. When present, clients MAY fetch the referenced attestation event to verify the evaluator's claim.
+
+This tag is OPTIONAL and non-normative. Clients MAY use it to inform trust decisions but MUST NOT require it for SKL core validity.
+
 ---
 
-## 5. Revocation And Safety
+## 5. Permission Grants (`kind:33420`)
 
-### 5.1 Publisher-Origin Revocation (`kind:5`, NIP-09)
+A **permission grant** is a signed, time-bounded, scope-limited authorization issued by an operator or guardian to an agent. It specifies what the agent is allowed to do — which tool kinds it may invoke, what data it may access, and what action types it may perform.
+
+### 5.1 Grant Event
+
+```json
+{
+  "kind": 33420,
+  "pubkey": "<operator_or_guardian_pubkey>",
+  "created_at": 1740500000,
+  "tags": [
+    ["d", "<grant_identifier>"],
+    ["p", "<agent_pubkey>"],
+    ["a", "33400:<skill_pubkey>:<d-tag>", "<relay>"],
+    ["allowed_tools", "web_search", "file_read"],
+    ["allowed_actions", "query", "summarize"],
+    ["data_boundary", "namespace:project-alpha"],
+    ["exp", "1740586400"],
+    ["max_invocations", "100"]
+  ],
+  "content": "Grant for research task within project-alpha scope."
+}
+```
+
+#### Tag Definitions
+
+| Tag | Required | Description |
+|-----|----------|-------------|
+| `d` | Yes | Unique grant identifier (for addressable replacement). |
+| `p` | Yes | The agent pubkey receiving the grant. |
+| `a` | No | Reference to the SKL manifest the grant applies to. |
+| `allowed_tools` | No | Whitelist of tool kind identifiers the agent may invoke. If absent, no tool restriction. |
+| `allowed_actions` | No | Whitelist of action types (e.g., `query`, `write`, `transfer`). If absent, no action restriction. |
+| `data_boundary` | No | Namespace or scope identifier limiting data access. |
+| `exp` | Yes | Unix timestamp after which the grant is expired. |
+| `max_invocations` | No | Maximum number of times the grant may be exercised. |
+
+### 5.2 Grant Verification
+
+Relying parties (e.g., Cashu mints, API endpoints, tool providers) SHOULD verify the following before honoring an agent request:
+
+1. A valid `kind:33420` grant exists for the requesting agent pubkey.
+2. The grant was signed by a pubkey the relying party recognizes as an authorized operator or guardian.
+3. The grant has not expired (`exp` > current time).
+4. The requested action falls within the grant's `allowed_tools`, `allowed_actions`, and `data_boundary` constraints.
+5. The `max_invocations` limit has not been exceeded.
+
+### 5.3 Normative Requirements
+
+- Agents operating under OSCE credit (NIP-AC) MUST hold a valid permission grant for the tools and actions they invoke.
+- Relying parties SHOULD verify permission grants before granting access to protected resources.
+- Operators SHOULD issue grants with the narrowest scope necessary (least privilege).
+- Grants MAY be revoked early by publishing a replacement `kind:33420` event with the same `d` tag and an `exp` in the past.
+
+---
+
+## 6. Revocation And Safety
+
+### 6.1 Publisher-Origin Revocation (`kind:5`, NIP-09)
 
 Revocation by deletion request MUST follow NIP-09 semantics:
 
@@ -271,19 +421,19 @@ Example:
 }
 ```
 
-### 5.2 Third-Party Security Warnings
+### 6.2 Third-Party Security Warnings
 
 Third parties (auditors, marketplaces, operators) SHOULD NOT use `kind:5` for authoritative cross-pubkey revocation. They SHOULD publish NIP-32 labels and let runtimes apply local policy.
 
-### 5.3 Emergency Kill Practice
+### 6.3 Emergency Kill Practice
 
 High-risk skills SHOULD keep a pre-signed `kind:5` for the skill publisher key in secure storage. This preserves NIP-09 semantics while enabling rapid emergency broadcast.
 
 ---
 
-## 6. Discovery
+## 7. Discovery
 
-### 6.1 Baseline Discovery (Core)
+### 7.1 Baseline Discovery (Core)
 
 Clients discover skills by querying `kind:33400` directly.
 
@@ -299,11 +449,11 @@ For a specific slug:
 ["REQ", "skill-by-d", {"kinds": [33400], "#d": ["research-assistant"], "authors": ["<skill_pubkey_hex>"]}]
 ```
 
-### 6.2 Listing-Assisted Discovery (NIP-99)
+### 7.2 Listing-Assisted Discovery (NIP-99)
 
 `kind:30402` listings MAY reference skill addresses via `a` or `skill` tags. SKL trust checks still run against `kind:33400`.
 
-### 6.3 Optional NIP-90 Search Profile
+### 7.3 Optional NIP-90 Search Profile
 
 Implementations MAY define a skill-search request/result pair in the NIP-90 request/result ranges (for example `5390`/`6390`).
 
@@ -317,7 +467,7 @@ SKL core does not require NIP-90 discovery support.
 
 ---
 
-## 7. Commerce Boundary
+## 8. Commerce Boundary
 
 SKL core defines identity/trust metadata only.
 
@@ -335,9 +485,9 @@ Non-standard payment rail details (Cashu mints, L402 endpoints, etc.) are profil
 
 ---
 
-## 8. Optional Profiles (Non-Normative)
+## 9. Optional Profiles (Non-Normative)
 
-### 8.1 SKL-Bridge Profile (BreezClaw/ClaWHub Migration)
+### 9.1 SKL-Bridge Profile (BreezClaw/ClaWHub Migration)
 
 Bridge implementations MAY define import metadata such as:
 
@@ -349,7 +499,7 @@ Bridge metadata MUST NOT be required for SKL core validity.
 
 If an ecosystem uses auxiliary advertisement events (including `kind:31337` conventions), that remains an ecosystem profile. SKL core discovery remains `kind:33400`-first.
 
-### 8.2 SKL-Commerce Profile
+### 9.2 SKL-Commerce Profile
 
 Commercial/operator deployments MAY add policy tags for:
 
@@ -362,16 +512,16 @@ These profile tags MUST NOT change SKL core parsing/validation requirements.
 
 ---
 
-## 9. SA And AC Interop
+## 10. SA And AC Interop
 
-### 9.1 SA Fulfillment Link
+### 10.1 SA Fulfillment Link
 
 When NIP-SA issues skill licenses/deliveries, events SHOULD reference:
 
 - `a = 33400:<skill_pubkey>:<d-tag>`
 - `e = <manifest_event_id>` (version pin)
 
-### 9.2 AC Scope Link
+### 10.2 AC Scope Link
 
 When NIP-AC uses `scope=skill`, implementations SHOULD use:
 
@@ -390,10 +540,23 @@ where `skill_scope_id` is the SKL canonical format.
 3. Revocation authority must respect NIP-09 pubkey semantics.
 4. Delegated-signing trust elevation must validate delegation constraints/expiry if used.
 5. Third-party kill signals should be labels with explicit local quorum policy.
+6. Authentication challenges MUST use unique nonces; relying parties MUST reject replayed responses.
+7. Permission grants SHOULD follow least-privilege scoping; operators SHOULD prefer narrow `allowed_tools` and `data_boundary` constraints.
+8. Assurance tier claims from `self-assessed` sources carry no independent verification weight.
 
 ---
 
 ## Changelog
+
+**v4 (2026-03-05) — NIST AI Agent Standards Alignment**
+
+- Added Authentication Challenge Protocol (`kind:33410`/`kind:33411`) for proof-of-possession identity verification (§1.5).
+- Added Organizational Identity via NIP-05 domain verification (§1.6).
+- Added Assurance Tier Tags to safety labels for evaluation rigor signaling (§4.3).
+- Added Permission Grants (`kind:33420`) for enforceable, time-bounded, scope-limited authorization (§5).
+- Renumbered sections 5–9 → 6–10 to accommodate new Permission Grants section.
+- Added security considerations for nonce replay, least-privilege grants, and assurance tier interpretation.
+- Satisfies requirements from: NIST NCCoE AI Agent Identity Concept Paper (Feb 2026), CAISI RFI NIST-2025-0035 (Jan 2026), CAISI AI Agent Standards Initiative (Feb 2026).
 
 **v3 (2026-02-26)**
 

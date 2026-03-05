@@ -61,6 +61,8 @@ This NIP reserves the following event kinds:
 | 39221 | Skill Delivery | Ephemeral |
 | 39230 | Agent Trajectory Session | Addressable |
 | 39231 | Agent Trajectory Event | Regular |
+| 39250 | Agent Audit Trail Entry | Addressable |
+| 39260 | Agent Delegation | Regular |
 
 ## Agent Identity
 
@@ -135,6 +137,37 @@ Autonomy levels:
 - `supervised`: Agent requests approval before major actions
 - `bounded`: Agent acts within defined constraints without approval
 - `autonomous`: Agent acts freely toward goals
+
+### Security Posture Declaration
+
+Agents with tool-use capabilities SHOULD include a `security_posture` object in the profile `content` metadata. This declaration is informational — it gives consumers a machine-readable signal about the agent's security properties.
+
+```json
+{
+  "name": "ResearchBot",
+  "about": "I research topics and summarize findings",
+  "capabilities": ["research", "summarization"],
+  "autonomy_level": "bounded",
+  "version": "1.0.0",
+  "security_posture": {
+    "instruction_data_separation": true,
+    "tool_use_requires_guardian": false,
+    "hijacking_resistance_tier": "third-party-evaluated",
+    "evaluation_ref": "33400:<evaluator_pubkey>:<attestation_d_tag>"
+  }
+}
+```
+
+#### Field Definitions
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `instruction_data_separation` | boolean | Whether the agent implements separation between instruction context and external data inputs (mitigates indirect prompt injection). |
+| `tool_use_requires_guardian` | boolean | Whether tool invocations require guardian confirmation before execution. |
+| `hijacking_resistance_tier` | string | One of `self-assessed`, `third-party-evaluated`, `red-team-tested`. References the assurance tier taxonomy defined in NIP-SKL §4.3. |
+| `evaluation_ref` | string | OPTIONAL. NIP-33 `a`-tag reference to the SKL safety label or attestation event that supports the declared tier. |
+
+This declaration is OPTIONAL and non-normative. Consumers MAY use it to inform trust decisions (e.g., requiring `tool_use_requires_guardian: true` for high-value OSCE envelopes) but MUST NOT treat it as a security guarantee.
 
 ## Agent State
 
@@ -471,6 +504,104 @@ Trajectories can be verified and referenced:
 ```
 
 This allows payment events, reputation updates, or dispute claims to reference the work that was done.
+
+## Audit Trail (`kind:39250`)
+
+Agents operating under OSCE credit (NIP-AC) SHOULD publish structured audit events that provide an inspectable record of actions taken during task execution. This satisfies accountability and monitoring requirements.
+
+### Audit Event
+
+```jsonc
+{
+  "kind": 39250,
+  "pubkey": "<agent_pubkey>",
+  "created_at": 1740500100,
+  "tags": [
+    ["d", "<audit_entry_id>"],
+    ["session", "<session_event_id>"],
+    ["action_type", "tool_invocation"],
+    ["tool_invoked", "web_search"],
+    ["input_hash", "<sha256_of_input>"],
+    ["output_hash", "<sha256_of_output>"],
+    ["guardian_approval_ref", "<approval_event_id>"],  // if guardian-gated
+    ["osce_ref", "<osce_event_id>"],                   // if OSCE-funded
+    ["grant_ref", "<permission_grant_event_id>"],      // SKL permission grant
+    ["seq", "7"]                                       // sequence number within session
+  ],
+  "content": ""
+}
+```
+
+### Tag Definitions
+
+| Tag | Required | Description |
+|-----|----------|-------------|
+| `d` | Yes | Unique audit entry identifier. |
+| `session` | Yes | Reference to the SA session event this audit entry belongs to. |
+| `action_type` | Yes | One of: `tool_invocation`, `data_access`, `delegation`, `state_transition`, `credit_spend`. |
+| `tool_invoked` | Conditional | Tool identifier. Required when `action_type` is `tool_invocation`. |
+| `input_hash` | Yes | SHA-256 hash of the action input. Allows verification without exposing content. |
+| `output_hash` | Yes | SHA-256 hash of the action output. |
+| `guardian_approval_ref` | No | Event ID of the guardian approval that authorized this action, if applicable. |
+| `osce_ref` | No | Event ID of the OSCE envelope funding this action, if applicable. |
+| `grant_ref` | No | Event ID of the SKL permission grant authorizing this action, if applicable. |
+| `seq` | Yes | Monotonically increasing sequence number within the session for ordering. |
+
+### Normative Requirements
+
+- Agents operating under OSCE credit SHOULD publish `kind:39250` audit events for each consequential action.
+- Guardians MAY require audit event publication as a precondition for ongoing approval.
+- Audit events MUST reference the session they belong to via the `session` tag.
+- Input and output hashes MUST use SHA-256. Implementations MUST NOT include raw input/output content in audit events to preserve privacy.
+- All other agents MAY publish audit events. This is OPTIONAL.
+
+## Agent Delegation
+
+When an agent delegates a sub-task to another agent, the delegation MUST preserve authorization scope, audit chain integrity, and identity verification requirements.
+
+### Delegation Event
+
+The parent agent publishes a delegation event:
+
+```jsonc
+{
+  "kind": 39260,
+  "pubkey": "<parent_agent_pubkey>",
+  "created_at": 1740500200,
+  "tags": [
+    ["p", "<sub_agent_pubkey>"],
+    ["a", "33400:<sub_agent_skill_pubkey>:<d-tag>", "<relay>"],  // sub-agent's SKL manifest
+    ["osce_ref", "<parent_osce_event_id>"],
+    ["max_amount", "500"],                                       // sub-budget (≤ parent OSCE)
+    ["allowed_skills", "web_search", "summarize"],               // scope constraint
+    ["parent_session", "<parent_session_event_id>"],
+    ["guardian_approval_ref", "<approval_event_id>"],             // guardian approved delegation
+    ["exp", "1740586400"]
+  ],
+  "content": "Delegate web research sub-task to specialist agent."
+}
+```
+
+### Delegation Rules
+
+1. **SKL Manifest Required:** The sub-agent MUST hold a valid, non-revoked SKL manifest (`kind:33400`). The parent agent SHOULD verify this before delegating.
+
+2. **OSCE Scope Propagation:** The sub-agent's budget (`max_amount`) MUST NOT exceed the parent OSCE's remaining balance. The sub-agent's `allowed_skills` MUST be a subset of the parent OSCE's `allowed_skills`.
+
+3. **Audit Chain:** The sub-agent's audit events (`kind:39250`) MUST reference the parent session via the `parent_session` tag. This creates a traceable chain from sub-agent actions back to the originating task.
+
+4. **Guardian Threshold:** The parent agent's `guardian_threshold` applies to the delegation decision itself. If the parent requires guardian approval for high-value operations, delegation to a sub-agent is a high-value operation.
+
+5. **Authentication:** The parent agent SHOULD issue an SKL authentication challenge (`kind:33410`) to the sub-agent before delegating, to verify the sub-agent currently holds its declared key.
+
+6. **Expiry:** Delegations MUST include an `exp` tag. Sub-agents MUST cease work after the delegation expires.
+
+### Normative Requirements
+
+- Agents that spawn sub-agents MUST publish `kind:39260` delegation events.
+- Sub-agents MUST NOT exceed the scope constraints specified in the delegation event.
+- Sub-agents MUST reference the parent session in their audit trail.
+- Single-agent deployments that do not delegate are not affected by this section.
 
 ## Skill Protection
 
@@ -949,3 +1080,12 @@ class AgentRunner {
 - NIP-SKL (this repo): Agent Skill Registry
 - NIP-EE: MLS encryption (private trajectory groups) (draft / external)
 - [FROSTR](https://github.com/FROSTR-ORG): Threshold signatures for Nostr
+
+## Changelog
+
+**v4 (2026-03-05) — NIST AI Agent Standards Alignment**
+
+- Added Security Posture Declaration to agent profile (§Security Posture Declaration) — OPTIONAL `security_posture` object declaring instruction/data separation, guardian-gated tool use, and hijacking resistance tier.
+- Added Audit Trail event kind (`kind:39250`) for structured action logging (§Audit Trail) — SHOULD for OSCE-funded agents.
+- Added Agent Delegation specification (`kind:39260`) for sub-agent task forwarding with scope propagation, audit chain integrity, and SKL manifest verification (§Agent Delegation) — MUST for agents that spawn sub-agents.
+- Satisfies requirements from: NIST CAISI Blog on Agent Hijacking (Jan 2025), CAISI RFI NIST-2025-0035 (Jan 2026), NCCoE AI Agent Identity Concept Paper (Feb 2026).

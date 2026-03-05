@@ -66,6 +66,7 @@ This NIP reserves the following event kinds (in the NIP-SA neighborhood):
 | 39243 | Credit Spend Authorization | Ephemeral   |
 | 39244 | Credit Settlement Receipt  | Regular     |
 | 39245 | Credit Default Notice      | Regular     |
+| 39246 | Credit Cancel Spend        | Regular     |
 
 > Note: if your NIP-SA range shifts, these can shift too. The important part is the protocol shape, not exact numbers.
 
@@ -202,6 +203,45 @@ An **addressable** event that defines the enforceable credit capability.
 ```
 
 Issuers MAY include `spend_rail` and (optionally) `spend_rail_keyset` tags in the envelope to declare the provider-facing spending rail. This is distinct from `repay`, which defines the agent's repayment rail back to the issuer or LP. When `spend_rail` is absent, implementations SHOULD assume `lightning` (bolt11).
+
+### Conditional Reversibility (Hold Period)
+
+Envelopes MAY include a `hold_period_secs` tag to create a reversibility window for consequential spends:
+
+```jsonc
+["hold_period_secs", "300"]
+```
+
+When present, credit spends against this envelope follow a two-phase commit:
+
+1. **Hold phase:** After a `kind:39243` Spend Authorization is published, the spend is **committed but not finalized** for `hold_period_secs` seconds. During this window, the guardian or issuer MAY publish a `kind:39246` Cancel Spend event to reclaim the committed tokens.
+
+2. **Finalization:** After the hold period expires without cancellation, the spend is final and irreversible.
+
+#### Cancel Spend Event (`kind:39246`)
+
+```jsonc
+{
+  "kind": 39246,
+  "pubkey": "<guardian_or_issuer_pubkey>",
+  "created_at": 1740500150,
+  "tags": [
+    ["e", "<spend_authorization_event_id>"],
+    ["credit", "<envelope_id>"],
+    ["reason", "suspicious_tool_invocation"]
+  ],
+  "content": ""
+}
+```
+
+The cancel event MUST be published before `spend_authorization.created_at + hold_period_secs`. Providers MUST NOT deliver resources during the hold period unless they accept the risk of cancellation. After the hold period expires, cancel events MUST be ignored.
+
+#### Normative Requirements
+
+- Envelopes with `max` above a locally configurable threshold SHOULD include `hold_period_secs`.
+- Providers receiving spend authorizations against hold-period envelopes SHOULD wait for the hold period to expire before delivering irreversible resources.
+- Guardians and issuers MAY publish `kind:39246` cancel events during the hold window.
+- Implementations MUST treat the hold period as a soft escrow — the tokens are committed (deducted from remaining cap) but not transferred until finalization.
 
 Acceptance / revocation rules:
 
@@ -504,11 +544,20 @@ Optional constraint tags (include when applicable):
 * `["approval_threshold","<sats>"]` — envelope-level spend threshold above which guardian approval fires
 * `["spend_rail","<rail>"]` — provider-facing payment rail (defaults to `lightning` / bolt11 when absent)
 * `["revoke_reason","<reason>","<detail>"]` — include on replacement event when revoking
+* `["hold_period_secs","<seconds>"]` — reversibility window for consequential spends (see §Conditional Reversibility)
 
 ## Appendix C: Canonical Proof Hashes
 
 * `fedimint` ecash redemption proof: SHA-256 of `(federation_id, ecash_note_id, amount_msats, spend_timestamp)` in deterministic JSON (stable key ordering, no whitespace). This provides a canonical proof reference that can be verified against the federation's public keysets without revealing the ecash note itself. Use this value for the `<ecash-redemption-hash>` element in `repay` fedimint tags and for `payment_proof` in `kind:39220` Skill License events (see NIP-SA).
 * `bolt12` payment proof: SHA-256 of the canonical offer bytes as defined in BOLT 12. Use this value for the `<offer-hash-pointer>` element in `repay` bolt12 tags and for `payment_proof` in `kind:39220` Skill License events (see NIP-SA).
+
+## Changelog
+
+**v4 (2026-03-05) — NIST AI Agent Standards Alignment**
+
+- Added Conditional Reversibility / Hold Period (`hold_period_secs` tag, `kind:39246` Cancel Spend event) for two-phase commit on consequential spends (§Conditional Reversibility).
+- Added `hold_period_secs` to Appendix B optional tag checklist.
+- Satisfies requirements from: CAISI RFI NIST-2025-0035 (Jan 2026) — rollback/undo for unwanted agent actions.
 
 ## References
 
