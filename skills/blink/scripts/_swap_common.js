@@ -1,8 +1,15 @@
 /**
  * Blink swap helpers for BTC <-> USD internal conversions.
  *
- * This module intentionally keeps logic deterministic and machine-parseable
- * for autonomous goal runners.
+ * This module provides deterministic, machine-parseable swap quote estimation
+ * and execution using Blink's intra-ledger transfer mutations.
+ *
+ * Originally authored by @AtlantisPleb (Christopher David) for the OpenAgents
+ * project (https://github.com/OpenAgentsInc/openagents) under the Apache
+ * License 2.0. Ported to blink-skill with modifications for v1.0.0 CLI
+ * integration. See NOTICE file for full attribution.
+ *
+ * Zero external dependencies — Node.js 18+ built-ins only.
  */
 
 const {
@@ -12,8 +19,12 @@ const {
   getAllWallets,
 } = require('./_blink_client');
 
+// ── Constants ────────────────────────────────────────────────────────────────
+
 const DIRECTION_BTC_TO_USD = 'BTC_TO_USD';
 const DIRECTION_USD_TO_BTC = 'USD_TO_BTC';
+
+// ── GraphQL mutations ────────────────────────────────────────────────────────
 
 const SATS_TO_USD_MUTATION = `
   mutation IntraLedgerPaymentSend($input: IntraLedgerPaymentSendInput!) {
@@ -47,6 +58,14 @@ const USD_TO_SATS_MUTATION = `
   }
 `;
 
+// ── Direction / unit parsing ─────────────────────────────────────────────────
+
+/**
+ * Normalise a user-supplied direction string.
+ * Accepts: btc-to-usd, sell-btc, buy-usd, usd-to-btc, sell-usd, buy-btc.
+ * @param {string} value
+ * @returns {string|null}
+ */
 function normalizeDirection(value) {
   if (!value) return null;
   const normalized = value.trim().toLowerCase().replace(/_/g, '-');
@@ -59,6 +78,11 @@ function normalizeDirection(value) {
   return null;
 }
 
+/**
+ * Normalise a unit string to 'sats' or 'cents'.
+ * @param {string} value
+ * @returns {string|null}
+ */
 function parseUnit(value) {
   if (!value) return null;
   const normalized = value.trim().toLowerCase();
@@ -71,10 +95,21 @@ function parseUnit(value) {
   return null;
 }
 
+/**
+ * Default unit for a given direction.
+ * @param {string} direction
+ * @returns {string}
+ */
 function defaultUnitForDirection(direction) {
   return direction === DIRECTION_BTC_TO_USD ? 'sats' : 'cents';
 }
 
+/**
+ * Parse a string as a positive integer or throw.
+ * @param {string} raw
+ * @param {string} fieldName
+ * @returns {number}
+ */
 function parsePositiveInt(raw, fieldName) {
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -83,6 +118,14 @@ function parsePositiveInt(raw, fieldName) {
   return parsed;
 }
 
+// ── Arg parsing ──────────────────────────────────────────────────────────────
+
+/**
+ * Parse swap-specific CLI arguments from an argv array.
+ *
+ * @param {string[]} argv  Typically `process.argv.slice(2)`.
+ * @returns {object} Parsed args or `{ error }` on invalid input.
+ */
 function parseCommonSwapArgs(argv) {
   if (argv.length < 2) {
     return {
@@ -154,6 +197,8 @@ function parseCommonSwapArgs(argv) {
   };
 }
 
+// ── Wallet helpers ───────────────────────────────────────────────────────────
+
 function assertSupportedDirectionUnit(direction, unit) {
   if (direction === DIRECTION_BTC_TO_USD && unit !== 'sats' && unit !== 'cents') {
     throw new Error(`Unsupported unit ${unit} for BTC->USD swap`);
@@ -163,6 +208,13 @@ function assertSupportedDirectionUnit(direction, unit) {
   }
 }
 
+/**
+ * Resolve both BTC and USD wallets.
+ * @param {object} opts
+ * @param {string} opts.apiKey
+ * @param {string} opts.apiUrl
+ * @returns {{ btcWallet: object, usdWallet: object }}
+ */
 async function getWalletPair({ apiKey, apiUrl }) {
   const wallets = await getAllWallets({ apiKey, apiUrl });
   const btcWallet = wallets.find((w) => w.walletCurrency === 'BTC');
@@ -172,6 +224,8 @@ async function getWalletPair({ apiKey, apiUrl }) {
   }
   return { btcWallet, usdWallet };
 }
+
+// ── Estimation helpers ───────────────────────────────────────────────────────
 
 async function estimateSatsForUsdAmount({ usdAmountFloat, apiKey, apiUrl }) {
   const data = await graphqlRequest({
@@ -202,6 +256,14 @@ async function estimateOneDollarRate({ apiKey, apiUrl }) {
   return oneDollar.sats;
 }
 
+// ── Snapshot / delta ─────────────────────────────────────────────────────────
+
+/**
+ * Build a balance snapshot object from wallet pairs.
+ * @param {object} btcWallet
+ * @param {object} usdWallet
+ * @returns {object}
+ */
 function walletSnapshot(btcWallet, usdWallet) {
   return {
     btcWalletId: btcWallet.id,
@@ -212,6 +274,34 @@ function walletSnapshot(btcWallet, usdWallet) {
   };
 }
 
+/**
+ * Compute the balance delta between pre- and post-swap snapshots.
+ * @param {object} preBalance
+ * @param {object} postBalance
+ * @returns {{ btcDeltaSats: number, usdDeltaCents: number }}
+ */
+function computeBalanceDelta(preBalance, postBalance) {
+  return {
+    btcDeltaSats: postBalance.btcBalanceSats - preBalance.btcBalanceSats,
+    usdDeltaCents: postBalance.usdBalanceCents - preBalance.usdBalanceCents,
+  };
+}
+
+// ── Quote estimation ─────────────────────────────────────────────────────────
+
+/**
+ * Estimate a swap quote with current exchange rates and wallet balances.
+ *
+ * @param {object}  opts
+ * @param {string}  opts.direction
+ * @param {number}  opts.amount
+ * @param {string}  opts.unit
+ * @param {number}  opts.ttlSeconds
+ * @param {boolean} opts.immediateExecution
+ * @param {string}  opts.apiKey
+ * @param {string}  opts.apiUrl
+ * @returns {{ preBalance: object, quote: object }}
+ */
 async function estimateSwapQuote({
   direction,
   amount,
@@ -260,6 +350,7 @@ async function estimateSwapQuote({
     }
   }
 
+  // Clean up: only keep the relevant in/out for the direction
   if (direction === DIRECTION_BTC_TO_USD) {
     amountOutSats = null;
     amountInCents = null;
@@ -305,13 +396,19 @@ async function estimateSwapQuote({
   };
 }
 
-function computeBalanceDelta(preBalance, postBalance) {
-  return {
-    btcDeltaSats: postBalance.btcBalanceSats - preBalance.btcBalanceSats,
-    usdDeltaCents: postBalance.usdBalanceCents - preBalance.usdBalanceCents,
-  };
-}
+// ── Swap execution ───────────────────────────────────────────────────────────
 
+/**
+ * Execute a swap between BTC and USD wallets.
+ *
+ * @param {object}  opts
+ * @param {string}  opts.direction
+ * @param {object}  opts.quote       Quote object from estimateSwapQuote.
+ * @param {string|null} opts.memo
+ * @param {string}  opts.apiKey
+ * @param {string}  opts.apiUrl
+ * @returns {{ status: string, transactionId: string|null, preBalance: object, postBalance: object, balanceDelta: object }}
+ */
 async function executeSwap({
   direction,
   quote,
@@ -324,8 +421,7 @@ async function executeSwap({
 
   const senderWalletId = direction === DIRECTION_BTC_TO_USD ? btcWallet.id : usdWallet.id;
   const recipientWalletId = direction === DIRECTION_BTC_TO_USD ? usdWallet.id : btcWallet.id;
-  const amount =
-    direction === DIRECTION_BTC_TO_USD ? quote.amountIn.value : quote.amountIn.value;
+  const amount = quote.amountIn.value;
 
   const input = {
     walletId: senderWalletId,
@@ -354,6 +450,7 @@ async function executeSwap({
     throw new Error(`Swap failed: ${errMsg}`);
   }
 
+  // Re-fetch wallets to get post-swap balances
   const refreshed = await getWalletPair({ apiKey, apiUrl });
   const postBalance = walletSnapshot(refreshed.btcWallet, refreshed.usdWallet);
 
@@ -366,13 +463,35 @@ async function executeSwap({
   };
 }
 
+// ── Exports ──────────────────────────────────────────────────────────────────
+
 module.exports = {
+  // Constants
   DIRECTION_BTC_TO_USD,
   DIRECTION_USD_TO_BTC,
+  SATS_TO_USD_MUTATION,
+  USD_TO_SATS_MUTATION,
+
+  // Parsing
+  normalizeDirection,
+  parseUnit,
+  defaultUnitForDirection,
+  parsePositiveInt,
   parseCommonSwapArgs,
-  estimateSwapQuote,
-  executeSwap,
+  assertSupportedDirectionUnit,
+
+  // Wallet
   getWalletPair,
+
+  // Estimation
+  estimateSatsForUsdAmount,
+  estimateOneDollarRate,
+
+  // Snapshot
   walletSnapshot,
   computeBalanceDelta,
+
+  // Core
+  estimateSwapQuote,
+  executeSwap,
 };
