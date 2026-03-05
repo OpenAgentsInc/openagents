@@ -4,7 +4,8 @@ use crate::app_state::{
 };
 use crate::economy_kernel_receipts::{
     Asset, AuthAssuranceLevel, EvidenceRef, FeedbackLatencyClass, Money, MoneyAmount,
-    PolicyContext, Receipt, ReceiptBuilder, ReceiptHints, SeverityClass, TraceContext,
+    PolicyContext, ProvenanceAttestationKind, ProvenanceGrade, Receipt, ReceiptBuilder,
+    ReceiptHints, SeverityClass, TraceContext,
 };
 use crate::state::job_inbox::{JobInboxNetworkRequest, JobInboxRequest};
 use bitcoin::hashes::{sha256, Hash};
@@ -23,6 +24,7 @@ const REASON_CODE_JOB_FAILED: &str = "JOB_FAILED";
 const REASON_CODE_POLICY_PREFLIGHT_REJECTED: &str = "POLICY_PREFLIGHT_REJECTED";
 const REASON_CODE_PAYMENT_POINTER_NON_AUTHORITATIVE: &str = "PAYMENT_POINTER_NON_AUTHORITATIVE";
 const REASON_CODE_AUTH_ASSURANCE_INSUFFICIENT: &str = "AUTH_ASSURANCE_INSUFFICIENT";
+const REASON_CODE_PROVENANCE_REQUIREMENTS_UNMET: &str = "PROVENANCE_REQUIREMENTS_UNMET";
 const REASON_CODE_IDEMPOTENCY_CONFLICT: &str = "IDEMPOTENCY_CONFLICT";
 const REASON_CODE_POLICY_THROTTLE_TRIGGERED: &str = "POLICY_THROTTLE_TRIGGERED";
 
@@ -65,6 +67,21 @@ struct AuthenticationPolicyRule {
     min_auth_assurance: Option<String>,
     #[serde(default)]
     require_personhood: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+struct ProvenancePolicyRule {
+    rule_id: String,
+    #[serde(flatten)]
+    slice: PolicySliceRule,
+    #[serde(default)]
+    min_grade: Option<ProvenanceGrade>,
+    #[serde(default)]
+    require_provenance_bundle: bool,
+    #[serde(default)]
+    require_permissioning_refs: bool,
+    #[serde(default)]
+    required_attestation_kinds: Vec<ProvenanceAttestationKind>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -158,6 +175,8 @@ struct PolicyBundleConfig {
     #[serde(default)]
     authentication_rules: Vec<AuthenticationPolicyRule>,
     #[serde(default)]
+    provenance_rules: Vec<ProvenancePolicyRule>,
+    #[serde(default)]
     monitoring_rules: Vec<MonitoringPolicyRule>,
     #[serde(default)]
     risk_pricing_rules: Vec<RiskPricingPolicyRule>,
@@ -184,6 +203,14 @@ struct TriggeredPolicyAction {
     rule_kind: &'static str,
     action: ThrottleActionKind,
     notes: String,
+}
+
+#[derive(Clone, Default)]
+struct ProvenanceFeatures {
+    has_provenance_bundle: bool,
+    data_source_ref_count: u64,
+    permissioning_ref_count: u64,
+    attestation_kinds: BTreeSet<ProvenanceAttestationKind>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -619,6 +646,23 @@ impl EarnKernelReceiptState {
         } else {
             None
         };
+        let mut provenance_probe_evidence = Vec::<EvidenceRef>::new();
+        append_provenance_evidence_for_job_stage(&mut provenance_probe_evidence, job, stage);
+        let observed_provenance_grade = provenance_grade_from_features(
+            &provenance_features_from_evidence(provenance_probe_evidence.as_slice()),
+        );
+        let stage_provenance_gate = if stage == JobLifecycleStage::Paid {
+            evaluate_provenance_gate(
+                &policy_bundle,
+                metadata.category.as_str(),
+                metadata.tfb_class,
+                metadata.severity,
+                provenance_probe_evidence.as_slice(),
+            )
+            .err()
+        } else {
+            None
+        };
         let (receipt_type, reason_code, status, policy_decision): (
             &'static str,
             Option<&'static str>,
@@ -631,6 +675,16 @@ impl EarnKernelReceiptState {
                 Some(REASON_CODE_AUTH_ASSURANCE_INSUFFICIENT),
                 "withheld",
                 stage_auth_gate.clone().expect("auth gate checked"),
+            )
+        } else if stage == JobLifecycleStage::Paid && stage_provenance_gate.is_some() {
+            authority_key = format!("withheld-provenance:{}", job.request_id);
+            (
+                "earn.job.withheld.v1",
+                Some(REASON_CODE_PROVENANCE_REQUIREMENTS_UNMET),
+                "withheld",
+                stage_provenance_gate
+                    .clone()
+                    .expect("provenance gate checked"),
             )
         } else if stage == JobLifecycleStage::Paid && !paid_pointer_authoritative {
             authority_key = format!("withheld:{}", job.request_id);
@@ -693,6 +747,7 @@ impl EarnKernelReceiptState {
                 digest_for_text(event_id),
             ));
         }
+        append_provenance_evidence_for_job_stage(&mut evidence, job, stage);
         if stage == JobLifecycleStage::Paid && paid_pointer_authoritative {
             evidence.push(EvidenceRef::new(
                 "wallet_settlement_proof",
@@ -725,6 +780,13 @@ impl EarnKernelReceiptState {
                 auth_assurance,
             ));
         }
+        if stage == JobLifecycleStage::Paid && stage_provenance_gate.is_some() {
+            evidence.push(EvidenceRef::new(
+                "withheld_reason",
+                format!("oa://earn/jobs/{}/withheld_provenance", job.job_id),
+                digest_for_text(REASON_CODE_PROVENANCE_REQUIREMENTS_UNMET),
+            ));
+        }
         if stage == JobLifecycleStage::Failed {
             let reason = job
                 .failure_reason
@@ -748,7 +810,7 @@ impl EarnKernelReceiptState {
             severity: Some(metadata.severity),
             achieved_verification_tier: None,
             verification_correlated: None,
-            provenance_grade: None,
+            provenance_grade: Some(observed_provenance_grade),
             auth_assurance_level: Some(auth_assurance),
             personhood_proved: Some(personhood_proved),
             reason_code: reason_code.map(ToString::to_string),
@@ -828,6 +890,27 @@ impl EarnKernelReceiptState {
         } else {
             None
         };
+        let mut history_provenance_probe = Vec::<EvidenceRef>::new();
+        append_provenance_evidence_for_history(
+            &mut history_provenance_probe,
+            row,
+            JobLifecycleStage::Paid,
+        );
+        let observed_provenance_grade = provenance_grade_from_features(
+            &provenance_features_from_evidence(history_provenance_probe.as_slice()),
+        );
+        let history_provenance_gate = if row.status == JobHistoryStatus::Succeeded {
+            evaluate_provenance_gate(
+                &policy_bundle,
+                metadata.category.as_str(),
+                metadata.tfb_class,
+                metadata.severity,
+                history_provenance_probe.as_slice(),
+            )
+            .err()
+        } else {
+            None
+        };
         let payment_pointer_authoritative =
             is_wallet_authoritative_payment_pointer(Some(row.payment_pointer.as_str()));
         let (stage, receipt_type, reason_code, status, authority_key, policy_decision): (
@@ -848,6 +931,20 @@ impl EarnKernelReceiptState {
                 "withheld",
                 format!("withheld-auth:{request_id}"),
                 history_auth_gate.clone().expect("auth gate checked"),
+            )
+        } else if row.status == JobHistoryStatus::Succeeded
+            && payment_pointer_authoritative
+            && history_provenance_gate.is_some()
+        {
+            (
+                JobLifecycleStage::Paid,
+                "earn.job.withheld.v1",
+                Some(REASON_CODE_PROVENANCE_REQUIREMENTS_UNMET),
+                "withheld",
+                format!("withheld-provenance:{request_id}"),
+                history_provenance_gate
+                    .clone()
+                    .expect("provenance gate checked"),
             )
         } else if row.status == JobHistoryStatus::Succeeded && payment_pointer_authoritative {
             (
@@ -937,6 +1034,7 @@ impl EarnKernelReceiptState {
                 format!("oa://earn/jobs/{}/result", row.job_id),
                 normalize_digest(row.result_hash.as_str()),
             )];
+            append_provenance_evidence_for_history(&mut evidence, row, stage);
             if stage == JobLifecycleStage::Paid && payment_pointer_authoritative {
                 evidence.push(EvidenceRef::new(
                     "wallet_settlement_proof",
@@ -954,6 +1052,14 @@ impl EarnKernelReceiptState {
                 evidence.push(credential_ref_for_identity(
                     "history_projection",
                     auth_assurance,
+                ));
+            } else if stage == JobLifecycleStage::Paid
+                && reason_code == Some(REASON_CODE_PROVENANCE_REQUIREMENTS_UNMET)
+            {
+                evidence.push(EvidenceRef::new(
+                    "withheld_reason",
+                    format!("oa://earn/jobs/{}/withheld_provenance", row.job_id),
+                    digest_for_text(REASON_CODE_PROVENANCE_REQUIREMENTS_UNMET),
                 ));
             } else if stage == JobLifecycleStage::Paid {
                 evidence.push(EvidenceRef::new(
@@ -982,7 +1088,7 @@ impl EarnKernelReceiptState {
             severity: Some(metadata.severity),
             achieved_verification_tier: None,
             verification_correlated: None,
-            provenance_grade: None,
+            provenance_grade: Some(observed_provenance_grade),
             auth_assurance_level: Some(auth_assurance),
             personhood_proved: Some(personhood_proved),
             reason_code: reason_code.map(ToString::to_string),
@@ -2315,6 +2421,21 @@ fn default_policy_bundle() -> PolicyBundleConfig {
             min_auth_assurance: Some("authenticated".to_string()),
             require_personhood: false,
         }],
+        provenance_rules: vec![ProvenancePolicyRule {
+            rule_id: "policy.earn.provenance.high_severity.v1".to_string(),
+            slice: PolicySliceRule {
+                category: Some("compute".to_string()),
+                tfb_class: None,
+                severity: Some(SeverityClass::High),
+            },
+            min_grade: Some(ProvenanceGrade::P2Lineage),
+            require_provenance_bundle: true,
+            require_permissioning_refs: true,
+            required_attestation_kinds: vec![
+                ProvenanceAttestationKind::ModelVersion,
+                ProvenanceAttestationKind::RuntimeIntegrity,
+            ],
+        }],
         monitoring_rules: vec![MonitoringPolicyRule {
             rule_id: "policy.earn.monitoring.default_drift.v1".to_string(),
             slice: PolicySliceRule {
@@ -2407,6 +2528,9 @@ fn default_policy_bundle() -> PolicyBundleConfig {
 fn normalize_policy_bundle(mut bundle: PolicyBundleConfig) -> PolicyBundleConfig {
     bundle
         .authentication_rules
+        .sort_by(|lhs, rhs| lhs.rule_id.cmp(&rhs.rule_id));
+    bundle
+        .provenance_rules
         .sort_by(|lhs, rhs| lhs.rule_id.cmp(&rhs.rule_id));
     bundle
         .monitoring_rules
@@ -2670,6 +2794,260 @@ fn evaluate_authentication_gate(
         decision: "withhold",
         notes,
     })
+}
+
+fn select_provenance_rule<'a>(
+    bundle: &'a PolicyBundleConfig,
+    category: &str,
+    tfb_class: FeedbackLatencyClass,
+    severity: SeverityClass,
+) -> Option<&'a ProvenancePolicyRule> {
+    select_best_slice_rule(
+        bundle.provenance_rules.as_slice(),
+        category,
+        tfb_class,
+        severity,
+        |rule| &rule.slice,
+        |rule| rule.rule_id.as_str(),
+    )
+    .map(|(rule, _)| rule)
+}
+
+fn provenance_features_from_evidence(evidence: &[EvidenceRef]) -> ProvenanceFeatures {
+    let mut features = ProvenanceFeatures::default();
+    for evidence_ref in evidence {
+        match evidence_ref.kind.as_str() {
+            "provenance_bundle" => {
+                features.has_provenance_bundle = true;
+            }
+            "data_source_ref" => {
+                features.data_source_ref_count = features.data_source_ref_count.saturating_add(1);
+            }
+            "permissioning_ref" => {
+                features.permissioning_ref_count =
+                    features.permissioning_ref_count.saturating_add(1);
+            }
+            kind => {
+                if let Some(attestation_kind) = provenance_attestation_kind_from_evidence_kind(kind)
+                {
+                    features.attestation_kinds.insert(attestation_kind);
+                }
+            }
+        }
+    }
+    features
+}
+
+fn provenance_attestation_kind_from_evidence_kind(kind: &str) -> Option<ProvenanceAttestationKind> {
+    match kind {
+        "attestation:model_version" => Some(ProvenanceAttestationKind::ModelVersion),
+        "attestation:runtime_integrity" => Some(ProvenanceAttestationKind::RuntimeIntegrity),
+        _ => None,
+    }
+}
+
+fn provenance_grade_from_features(features: &ProvenanceFeatures) -> ProvenanceGrade {
+    if !features.has_provenance_bundle {
+        return ProvenanceGrade::P0Minimal;
+    }
+    if features.data_source_ref_count == 0 {
+        return ProvenanceGrade::P0Minimal;
+    }
+    if features.permissioning_ref_count == 0 {
+        return ProvenanceGrade::P1Toolchain;
+    }
+    if features
+        .attestation_kinds
+        .contains(&ProvenanceAttestationKind::ModelVersion)
+        && features
+            .attestation_kinds
+            .contains(&ProvenanceAttestationKind::RuntimeIntegrity)
+    {
+        return ProvenanceGrade::P3Attested;
+    }
+    ProvenanceGrade::P2Lineage
+}
+
+fn evaluate_provenance_gate(
+    bundle: &PolicyBundleConfig,
+    category: &str,
+    tfb_class: FeedbackLatencyClass,
+    severity: SeverityClass,
+    evidence: &[EvidenceRef],
+) -> Result<ProvenanceGrade, PolicyDecision> {
+    let features = provenance_features_from_evidence(evidence);
+    let observed_grade = provenance_grade_from_features(&features);
+    let Some(rule) = select_provenance_rule(bundle, category, tfb_class, severity) else {
+        return Ok(observed_grade);
+    };
+    if rule.require_provenance_bundle && !features.has_provenance_bundle {
+        return Err(PolicyDecision {
+            rule_id: rule.rule_id.clone(),
+            decision: "withhold",
+            notes: format!(
+                "policy_rule={} missing provenance_bundle category={} tfb={} severity={}",
+                rule.rule_id,
+                category,
+                tfb_class.label(),
+                severity.label(),
+            ),
+        });
+    }
+    if rule.require_permissioning_refs && features.permissioning_ref_count == 0 {
+        return Err(PolicyDecision {
+            rule_id: rule.rule_id.clone(),
+            decision: "withhold",
+            notes: format!(
+                "policy_rule={} missing permissioning_ref category={} tfb={} severity={}",
+                rule.rule_id,
+                category,
+                tfb_class.label(),
+                severity.label(),
+            ),
+        });
+    }
+    let missing_attestation = rule
+        .required_attestation_kinds
+        .iter()
+        .find(|required| !features.attestation_kinds.contains(required))
+        .copied();
+    if let Some(missing_attestation) = missing_attestation {
+        return Err(PolicyDecision {
+            rule_id: rule.rule_id.clone(),
+            decision: "withhold",
+            notes: format!(
+                "policy_rule={} missing required_attestation={:?} category={} tfb={} severity={}",
+                rule.rule_id,
+                missing_attestation,
+                category,
+                tfb_class.label(),
+                severity.label(),
+            ),
+        });
+    }
+    if let Some(min_grade) = rule.min_grade {
+        if observed_grade < min_grade {
+            return Err(PolicyDecision {
+                rule_id: rule.rule_id.clone(),
+                decision: "withhold",
+                notes: format!(
+                    "policy_rule={} observed_provenance_grade={:?} below min_grade={:?} category={} tfb={} severity={}",
+                    rule.rule_id,
+                    observed_grade,
+                    min_grade,
+                    category,
+                    tfb_class.label(),
+                    severity.label(),
+                ),
+            });
+        }
+    }
+    Ok(observed_grade)
+}
+
+fn append_provenance_evidence_for_job_stage(
+    evidence: &mut Vec<EvidenceRef>,
+    job: &ActiveJobRecord,
+    stage: JobLifecycleStage,
+) {
+    if !matches!(
+        stage,
+        JobLifecycleStage::Running | JobLifecycleStage::Delivered | JobLifecycleStage::Paid
+    ) {
+        return;
+    }
+    let stage_label = stage.label();
+    evidence.push(EvidenceRef::new(
+        "provenance_bundle",
+        format!(
+            "oa://provenance/jobs/{}/{stage_label}",
+            normalize_key(job.job_id.as_str())
+        ),
+        digest_for_text(format!("{}:{}:{}", job.job_id, stage_label, job.capability).as_str()),
+    ));
+    evidence.push(EvidenceRef::new(
+        "data_source_ref",
+        format!("oa://nip90/request/{}", job.request_id),
+        digest_for_text(job.request_id.as_str()),
+    ));
+    evidence.push(EvidenceRef::new(
+        "permissioning_ref",
+        format!(
+            "oa://permissions/capabilities/{}",
+            normalize_key(job.capability.as_str())
+        ),
+        digest_for_text(job.capability.as_str()),
+    ));
+    evidence.push(EvidenceRef::new(
+        "attestation:model_version",
+        format!(
+            "oa://attestations/model/{}",
+            normalize_key(job.capability.as_str())
+        ),
+        digest_for_text(format!("model-version:{}:v1", job.capability).as_str()),
+    ));
+    if stage == JobLifecycleStage::Paid {
+        evidence.push(EvidenceRef::new(
+            "attestation:runtime_integrity",
+            format!(
+                "oa://attestations/runtime/{}",
+                normalize_key(job.job_id.as_str())
+            ),
+            digest_for_text(format!("runtime-integrity:{}:v1", job.job_id).as_str()),
+        ));
+    }
+}
+
+fn append_provenance_evidence_for_history(
+    evidence: &mut Vec<EvidenceRef>,
+    row: &JobHistoryReceiptRow,
+    stage: JobLifecycleStage,
+) {
+    if !matches!(stage, JobLifecycleStage::Paid | JobLifecycleStage::Failed) {
+        return;
+    }
+    evidence.push(EvidenceRef::new(
+        "provenance_bundle",
+        format!(
+            "oa://provenance/jobs/{}/history",
+            normalize_key(row.job_id.as_str())
+        ),
+        digest_for_text(format!("{}:history", row.job_id).as_str()),
+    ));
+    evidence.push(EvidenceRef::new(
+        "data_source_ref",
+        format!(
+            "oa://earn/jobs/{}/result",
+            normalize_key(row.job_id.as_str())
+        ),
+        normalize_digest(row.result_hash.as_str()),
+    ));
+    evidence.push(EvidenceRef::new(
+        "permissioning_ref",
+        format!(
+            "oa://permissions/history_projection/{}",
+            normalize_key(row.job_id.as_str())
+        ),
+        digest_for_text("history_projection"),
+    ));
+    evidence.push(EvidenceRef::new(
+        "attestation:model_version",
+        format!(
+            "oa://attestations/model/history/{}",
+            normalize_key(row.job_id.as_str())
+        ),
+        digest_for_text(format!("history-model:{}:v1", row.job_id).as_str()),
+    ));
+    if stage == JobLifecycleStage::Paid {
+        evidence.push(EvidenceRef::new(
+            "attestation:runtime_integrity",
+            format!(
+                "oa://attestations/runtime/history/{}",
+                normalize_key(row.job_id.as_str())
+            ),
+            digest_for_text(format!("history-runtime:{}:v1", row.job_id).as_str()),
+        ));
+    }
 }
 
 fn select_monitoring_rule<'a>(
@@ -3420,6 +3798,10 @@ mod tests {
             Some(FeedbackLatencyClass::Short)
         );
         assert_eq!(settlement.hints.severity, Some(SeverityClass::Low));
+        assert_eq!(
+            settlement.hints.provenance_grade,
+            Some(ProvenanceGrade::P3Attested)
+        );
         let work_unit = state
             .work_units
             .get("job-req-123")
@@ -3898,6 +4280,128 @@ mod tests {
         )
         .expect("global fallback should match");
         assert_eq!(selected_global.rule_id, "rule.global");
+    }
+
+    #[test]
+    fn provenance_grade_is_deterministic_for_equivalent_evidence_sets() {
+        let evidence_a = vec![
+            EvidenceRef::new(
+                "provenance_bundle",
+                "oa://provenance/a",
+                "sha256:bundle_a".to_string(),
+            ),
+            EvidenceRef::new("data_source_ref", "oa://data/source", "sha256:data"),
+            EvidenceRef::new(
+                "permissioning_ref",
+                "oa://permissions/capability/text_generation",
+                "sha256:perm",
+            ),
+            EvidenceRef::new(
+                "attestation:model_version",
+                "oa://attestation/model",
+                "sha256:model",
+            ),
+            EvidenceRef::new(
+                "attestation:runtime_integrity",
+                "oa://attestation/runtime",
+                "sha256:runtime",
+            ),
+        ];
+        let evidence_b = vec![
+            EvidenceRef::new(
+                "attestation:runtime_integrity",
+                "oa://attestation/runtime",
+                "sha256:runtime",
+            ),
+            EvidenceRef::new(
+                "permissioning_ref",
+                "oa://permissions/capability/text_generation",
+                "sha256:perm",
+            ),
+            EvidenceRef::new(
+                "provenance_bundle",
+                "oa://provenance/a",
+                "sha256:bundle_a".to_string(),
+            ),
+            EvidenceRef::new(
+                "attestation:model_version",
+                "oa://attestation/model",
+                "sha256:model",
+            ),
+            EvidenceRef::new("data_source_ref", "oa://data/source", "sha256:data"),
+        ];
+
+        let grade_a = provenance_grade_from_features(&provenance_features_from_evidence(
+            evidence_a.as_slice(),
+        ));
+        let grade_b = provenance_grade_from_features(&provenance_features_from_evidence(
+            evidence_b.as_slice(),
+        ));
+        assert_eq!(grade_a, ProvenanceGrade::P3Attested);
+        assert_eq!(grade_b, ProvenanceGrade::P3Attested);
+        assert_eq!(grade_a, grade_b);
+    }
+
+    #[test]
+    fn provenance_policy_enforcement_requires_attestations_and_permissioning() {
+        let bundle = PolicyBundleConfig {
+            provenance_rules: vec![ProvenancePolicyRule {
+                rule_id: "policy.test.provenance.requirements.v1".to_string(),
+                slice: PolicySliceRule {
+                    category: Some("compute".to_string()),
+                    tfb_class: Some(FeedbackLatencyClass::Short),
+                    severity: Some(SeverityClass::High),
+                },
+                min_grade: Some(ProvenanceGrade::P3Attested),
+                require_provenance_bundle: true,
+                require_permissioning_refs: true,
+                required_attestation_kinds: vec![
+                    ProvenanceAttestationKind::ModelVersion,
+                    ProvenanceAttestationKind::RuntimeIntegrity,
+                ],
+            }],
+            ..PolicyBundleConfig::default()
+        };
+        let missing_runtime = vec![
+            EvidenceRef::new("provenance_bundle", "oa://provenance/a", "sha256:bundle"),
+            EvidenceRef::new("data_source_ref", "oa://data/source", "sha256:data"),
+            EvidenceRef::new(
+                "permissioning_ref",
+                "oa://permissions/capability/text_generation",
+                "sha256:perm",
+            ),
+            EvidenceRef::new(
+                "attestation:model_version",
+                "oa://attestation/model",
+                "sha256:model",
+            ),
+        ];
+        let failed = evaluate_provenance_gate(
+            &bundle,
+            "compute",
+            FeedbackLatencyClass::Short,
+            SeverityClass::High,
+            missing_runtime.as_slice(),
+        );
+        assert!(failed.is_err());
+        assert!(failed
+            .err()
+            .is_some_and(|decision| decision.rule_id == "policy.test.provenance.requirements.v1"));
+
+        let mut complete = missing_runtime;
+        complete.push(EvidenceRef::new(
+            "attestation:runtime_integrity",
+            "oa://attestation/runtime",
+            "sha256:runtime",
+        ));
+        let passed = evaluate_provenance_gate(
+            &bundle,
+            "compute",
+            FeedbackLatencyClass::Short,
+            SeverityClass::High,
+            complete.as_slice(),
+        );
+        assert_eq!(passed.ok(), Some(ProvenanceGrade::P3Attested));
     }
 
     #[test]

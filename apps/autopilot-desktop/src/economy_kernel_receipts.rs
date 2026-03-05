@@ -54,6 +54,14 @@ pub enum ProvenanceGrade {
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[serde(rename_all = "snake_case")]
+pub enum ProvenanceAttestationKind {
+    ProvenanceAttestationKindUnspecified,
+    ModelVersion,
+    RuntimeIntegrity,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[serde(rename_all = "snake_case")]
 pub enum AuthAssuranceLevel {
     AuthAssuranceLevelUnspecified,
     Anon,
