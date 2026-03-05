@@ -5543,6 +5543,15 @@ pub(super) fn refresh_network_aggregate_counters(
             compute_result.snapshot.drift_alerts_24h,
             compute_result.snapshot.drift_signals,
             compute_result.snapshot.top_drift_signals,
+            compute_result.snapshot.rollback_attempts_24h,
+            compute_result.snapshot.rollback_successes_24h,
+            compute_result.snapshot.rollback_success_rate,
+            compute_result
+                .snapshot
+                .top_rollback_reason_codes
+                .into_iter()
+                .map(|row| (row.reason_code, row.count_24h))
+                .collect(),
             compute_result.input_evidence,
             "economy.snapshot.minute",
         );

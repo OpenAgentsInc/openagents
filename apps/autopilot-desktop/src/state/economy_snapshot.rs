@@ -57,6 +57,12 @@ pub struct IncidentBucketRow {
     pub near_miss_rate: f64,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct RollbackReasonCodeRow {
+    pub reason_code: String,
+    pub count_24h: u64,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct EconomySnapshot {
     pub snapshot_id: String,
@@ -89,6 +95,14 @@ pub struct EconomySnapshot {
     pub top_drift_signals: Vec<DriftSignalSummary>,
     #[serde(default)]
     pub incident_buckets: Vec<IncidentBucketRow>,
+    #[serde(default)]
+    pub rollback_attempts_24h: u64,
+    #[serde(default)]
+    pub rollback_successes_24h: u64,
+    #[serde(default)]
+    pub rollback_success_rate: f64,
+    #[serde(default)]
+    pub top_rollback_reason_codes: Vec<RollbackReasonCodeRow>,
     pub sv_breakdown: Vec<SvBreakdownRow>,
     pub inputs: Vec<EvidenceRef>,
 }
@@ -371,11 +385,39 @@ fn build_snapshot(
         .copied()
         .filter(|receipt| is_breaker_or_throttle_receipt(receipt))
         .count() as u64;
-    let rollback_signal_count = scoped_receipts
+    let rollback_receipts = scoped_receipts
         .iter()
         .copied()
         .filter(|receipt| is_rollback_receipt(receipt))
+        .collect::<Vec<_>>();
+    let rollback_signal_count = rollback_receipts.len() as u64;
+    let rollback_successes_24h = rollback_receipts
+        .iter()
+        .copied()
+        .filter(|receipt| is_successful_rollback_receipt(receipt))
         .count() as u64;
+    let rollback_success_rate = ratio(rollback_successes_24h, rollback_signal_count);
+    let mut rollback_reason_counts = BTreeMap::<String, u64>::new();
+    for receipt in &rollback_receipts {
+        let redacted_reason_code = redacted_rollback_reason_code(receipt);
+        let entry = rollback_reason_counts
+            .entry(redacted_reason_code)
+            .or_insert(0);
+        *entry = entry.saturating_add(1);
+    }
+    let mut top_rollback_reason_codes = rollback_reason_counts
+        .into_iter()
+        .map(|(reason_code, count_24h)| RollbackReasonCodeRow {
+            reason_code,
+            count_24h,
+        })
+        .collect::<Vec<_>>();
+    top_rollback_reason_codes.sort_by(|lhs, rhs| {
+        rhs.count_24h
+            .cmp(&lhs.count_24h)
+            .then_with(|| lhs.reason_code.cmp(&rhs.reason_code))
+    });
+    top_rollback_reason_codes.truncate(DRIFT_SIGNAL_TOP_LIMIT);
     let claims_paid_sats = scoped_receipts
         .iter()
         .copied()
@@ -523,6 +565,10 @@ fn build_snapshot(
         drift_signals.as_slice(),
         top_drift_signals.as_slice(),
         incident_buckets.as_slice(),
+        rollback_signal_count,
+        rollback_successes_24h,
+        rollback_success_rate,
+        top_rollback_reason_codes.as_slice(),
         auth_assurance_distribution.as_slice(),
         sv_breakdown.as_slice(),
         inputs.as_slice(),
@@ -555,6 +601,10 @@ fn build_snapshot(
         drift_signals,
         top_drift_signals,
         incident_buckets,
+        rollback_attempts_24h: rollback_signal_count,
+        rollback_successes_24h,
+        rollback_success_rate,
+        top_rollback_reason_codes,
         sv_breakdown,
         inputs,
     })
@@ -668,6 +718,39 @@ fn is_rollback_receipt(receipt: &Receipt) -> bool {
         let lower = reason.to_ascii_lowercase();
         lower.contains("rollback") || lower.contains("compensating")
     })
+}
+
+fn is_successful_rollback_receipt(receipt: &Receipt) -> bool {
+    matches!(
+        receipt.receipt_type.as_str(),
+        "economy.rollback.executed.v1" | "economy.compensating_action.executed.v1"
+    ) || receipt.hints.reason_code.as_deref().is_some_and(|reason| {
+        matches!(reason, "ROLLBACK_EXECUTED" | "COMPENSATING_ACTION_EXECUTED")
+    })
+}
+
+fn redacted_rollback_reason_code(receipt: &Receipt) -> String {
+    let reason_code = receipt
+        .hints
+        .reason_code
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("UNKNOWN_ROLLBACK_REASON")
+        .to_ascii_uppercase();
+    match reason_code.as_str() {
+        "ROLLBACK_EXECUTED" | "ROLLBACK_FAILED" | "COMPENSATING_ACTION_EXECUTED" => reason_code,
+        _ => {
+            let digest = digest_for_text(reason_code.as_str());
+            let suffix = digest
+                .strip_prefix("sha256:")
+                .unwrap_or(digest.as_str())
+                .chars()
+                .take(12)
+                .collect::<String>();
+            format!("redacted:{suffix}")
+        }
+    }
 }
 
 fn quote_delivery_variance_share(scoped_receipts: &[&Receipt]) -> f64 {
@@ -818,6 +901,10 @@ struct CanonicalSnapshotPayload<'a> {
     drift_signals: &'a [DriftSignalSummary],
     top_drift_signals: &'a [DriftSignalSummary],
     incident_buckets: &'a [IncidentBucketRow],
+    rollback_attempts_24h: u64,
+    rollback_successes_24h: u64,
+    rollback_success_rate: f64,
+    top_rollback_reason_codes: &'a [RollbackReasonCodeRow],
     auth_assurance_distribution: &'a [AuthAssuranceDistributionRow],
     sv_breakdown: &'a [SvBreakdownRow],
     inputs: &'a [EvidenceRef],
@@ -849,6 +936,10 @@ fn snapshot_hash_for(
     drift_signals: &[DriftSignalSummary],
     top_drift_signals: &[DriftSignalSummary],
     incident_buckets: &[IncidentBucketRow],
+    rollback_attempts_24h: u64,
+    rollback_successes_24h: u64,
+    rollback_success_rate: f64,
+    top_rollback_reason_codes: &[RollbackReasonCodeRow],
     auth_assurance_distribution: &[AuthAssuranceDistributionRow],
     sv_breakdown: &[SvBreakdownRow],
     inputs: &[EvidenceRef],
@@ -878,6 +969,10 @@ fn snapshot_hash_for(
         drift_signals,
         top_drift_signals,
         incident_buckets,
+        rollback_attempts_24h,
+        rollback_successes_24h,
+        rollback_success_rate,
+        top_rollback_reason_codes,
         auth_assurance_distribution,
         sv_breakdown,
         inputs,
@@ -1397,6 +1492,24 @@ mod tests {
         receipt
     }
 
+    fn fixture_rollback_receipt(
+        receipt_id: &str,
+        receipt_type: &str,
+        created_at_ms: i64,
+        work_unit_id: &str,
+        reason_code: &str,
+    ) -> Receipt {
+        let mut receipt =
+            fixture_receipt(receipt_id, receipt_type, created_at_ms, work_unit_id, false);
+        receipt.hints.reason_code = Some(reason_code.to_string());
+        receipt.evidence.push(EvidenceRef::new(
+            "rollback_plan_ref",
+            format!("oa://rollback/plans/{work_unit_id}"),
+            digest_for_text(work_unit_id),
+        ));
+        receipt
+    }
+
     #[test]
     fn computes_minute_snapshot_once_and_reuses_same_snapshot_id() {
         let temp_dir = tempfile::tempdir().expect("tempdir");
@@ -1512,6 +1625,10 @@ mod tests {
         assert!(!snapshot.drift_signals.is_empty());
         assert!(!snapshot.top_drift_signals.is_empty());
         assert!(snapshot.top_drift_signals.len() <= snapshot.drift_signals.len());
+        assert_eq!(snapshot.rollback_attempts_24h, 0);
+        assert_eq!(snapshot.rollback_successes_24h, 0);
+        assert_eq!(snapshot.rollback_success_rate, 0.0);
+        assert!(snapshot.top_rollback_reason_codes.is_empty());
     }
 
     #[test]
@@ -1743,6 +1860,65 @@ mod tests {
         assert_eq!(bucket.near_misses_24h, 1);
         assert!((bucket.incident_rate - 1.0).abs() < 1e-9);
         assert!((bucket.near_miss_rate - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn snapshot_aggregates_rollback_attempts_success_rate_and_reason_codes() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let path = temp_dir.path().join("snapshots-rollbacks.json");
+        let mut state = EconomySnapshotState::from_snapshot_path_for_tests(path);
+        let paid = fixture_receipt(
+            "receipt-paid-rollback-bucket",
+            "earn.job.settlement_observed.v1",
+            1_762_000_010_000,
+            "job-rollback-bucket",
+            true,
+        );
+        let rollback_executed = fixture_rollback_receipt(
+            "receipt-rollback-executed-1",
+            "economy.rollback.executed.v1",
+            1_762_000_012_000,
+            "job-rollback-bucket",
+            "ROLLBACK_EXECUTED",
+        );
+        let rollback_failed = fixture_rollback_receipt(
+            "receipt-rollback-failed-1",
+            "economy.rollback.failed.v1",
+            1_762_000_013_000,
+            "job-rollback-bucket",
+            "ROLLBACK_FAILED",
+        );
+        let compensating = fixture_rollback_receipt(
+            "receipt-compensating-action-1",
+            "economy.compensating_action.executed.v1",
+            1_762_000_014_000,
+            "job-rollback-bucket",
+            "COMPENSATING_ACTION_EXECUTED",
+        );
+
+        let snapshot = state
+            .compute_minute_snapshot(
+                1_762_000_060_000,
+                &[paid, rollback_executed, rollback_failed, compensating],
+            )
+            .expect("snapshot should compute")
+            .snapshot;
+        assert_eq!(snapshot.rollback_attempts_24h, 3);
+        assert_eq!(snapshot.rollback_successes_24h, 2);
+        assert!((snapshot.rollback_success_rate - (2.0 / 3.0)).abs() < 1e-9);
+        assert_eq!(snapshot.top_rollback_reason_codes.len(), 3);
+        assert!(
+            snapshot
+                .top_rollback_reason_codes
+                .iter()
+                .any(|row| row.reason_code == "ROLLBACK_EXECUTED" && row.count_24h == 1)
+        );
+        assert!(
+            snapshot
+                .top_rollback_reason_codes
+                .iter()
+                .any(|row| row.reason_code == "ROLLBACK_FAILED" && row.count_24h == 1)
+        );
     }
 
     #[test]
