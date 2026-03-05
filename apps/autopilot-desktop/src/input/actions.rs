@@ -4125,9 +4125,13 @@ const RECIPROCAL_LOOP_REQUEST_TYPE: &str = "loop.pingpong.10sat";
 
 pub(super) fn run_reciprocal_loop_engine_tick(state: &mut crate::app_state::RenderState) -> bool {
     let mut changed = false;
+    let now_epoch_seconds = current_epoch_seconds();
     if sync_reciprocal_loop_identity_and_peer(state) {
         changed = true;
     }
+
+    let outbound_failed_before = state.reciprocal_loop.local_to_peer_failed;
+    let inbound_failed_before = state.reciprocal_loop.peer_to_local_failed;
     if state
         .reciprocal_loop
         .reconcile_outbound_terminal_statuses(state.network_requests.submitted.as_slice())
@@ -4141,8 +4145,148 @@ pub(super) fn run_reciprocal_loop_engine_tick(state: &mut crate::app_state::Rend
         changed = true;
     }
 
-    if !state.reciprocal_loop.running && reciprocal_loop_autostart_enabled() {
+    if state.reciprocal_loop.local_to_peer_failed > outbound_failed_before {
+        let detail = state
+            .reciprocal_loop
+            .last_failure_detail
+            .clone()
+            .unwrap_or_else(|| "reciprocal loop outbound payment failed".to_string());
+        let terminal = state.reciprocal_loop.record_recoverable_failure(
+            crate::app_state::ReciprocalLoopFailureClass::Payment,
+            detail.as_str(),
+            now_epoch_seconds,
+        );
+        set_reciprocal_loop_runtime_failure(
+            state,
+            crate::app_state::ReciprocalLoopFailureClass::Payment,
+            if terminal {
+                crate::app_state::ReciprocalLoopFailureDisposition::Terminal
+            } else {
+                crate::app_state::ReciprocalLoopFailureDisposition::Recoverable
+            },
+            crate::app_state::EarnFailureClass::Payment,
+            detail.as_str(),
+        );
+        changed = true;
+    }
+
+    if state.reciprocal_loop.peer_to_local_failed > inbound_failed_before {
+        let detail = state
+            .reciprocal_loop
+            .last_failure_detail
+            .clone()
+            .unwrap_or_else(|| "reciprocal loop inbound job failed".to_string());
+        let terminal = state.reciprocal_loop.record_recoverable_failure(
+            crate::app_state::ReciprocalLoopFailureClass::Job,
+            detail.as_str(),
+            now_epoch_seconds,
+        );
+        set_reciprocal_loop_runtime_failure(
+            state,
+            crate::app_state::ReciprocalLoopFailureClass::Job,
+            if terminal {
+                crate::app_state::ReciprocalLoopFailureDisposition::Terminal
+            } else {
+                crate::app_state::ReciprocalLoopFailureDisposition::Recoverable
+            },
+            crate::app_state::EarnFailureClass::Reconciliation,
+            detail.as_str(),
+        );
+        changed = true;
+    }
+
+    if state
+        .reciprocal_loop
+        .clear_retry_backoff_if_elapsed(now_epoch_seconds)
+    {
+        changed = true;
+    }
+    state
+        .reciprocal_loop
+        .mark_peer_wait_started(now_epoch_seconds);
+
+    if state
+        .reciprocal_loop
+        .outbound_stale_timed_out(now_epoch_seconds)
+        && let Some(request_id) = state.reciprocal_loop.mark_outbound_stale_timeout()
+    {
+        let detail = format!(
+            "outbound request {} exceeded stale timeout ({}s)",
+            request_id, state.reciprocal_loop.stale_timeout_seconds
+        );
+        let terminal = state.reciprocal_loop.record_recoverable_failure(
+            crate::app_state::ReciprocalLoopFailureClass::Dispatch,
+            detail.as_str(),
+            now_epoch_seconds,
+        );
+        set_reciprocal_loop_runtime_failure(
+            state,
+            crate::app_state::ReciprocalLoopFailureClass::Dispatch,
+            if terminal {
+                crate::app_state::ReciprocalLoopFailureDisposition::Terminal
+            } else {
+                crate::app_state::ReciprocalLoopFailureDisposition::Recoverable
+            },
+            crate::app_state::EarnFailureClass::Execution,
+            detail.as_str(),
+        );
+        changed = true;
+    }
+
+    if state
+        .reciprocal_loop
+        .inbound_wait_timed_out(now_epoch_seconds)
+    {
+        state.reciprocal_loop.mark_inbound_stale_timeout();
+        let detail = format!(
+            "peer inbound wait exceeded stale timeout ({}s)",
+            state.reciprocal_loop.stale_timeout_seconds
+        );
+        let terminal = state.reciprocal_loop.record_recoverable_failure(
+            crate::app_state::ReciprocalLoopFailureClass::Job,
+            detail.as_str(),
+            now_epoch_seconds,
+        );
+        set_reciprocal_loop_runtime_failure(
+            state,
+            crate::app_state::ReciprocalLoopFailureClass::Job,
+            if terminal {
+                crate::app_state::ReciprocalLoopFailureDisposition::Terminal
+            } else {
+                crate::app_state::ReciprocalLoopFailureDisposition::Recoverable
+            },
+            crate::app_state::EarnFailureClass::Reconciliation,
+            detail.as_str(),
+        );
+        changed = true;
+    }
+
+    if let Some(limit_violation) = state.reciprocal_loop.in_flight_limit_violation() {
+        state.reciprocal_loop.record_terminal_failure(
+            crate::app_state::ReciprocalLoopFailureClass::Dispatch,
+            limit_violation.as_str(),
+        );
+        set_reciprocal_loop_runtime_failure(
+            state,
+            crate::app_state::ReciprocalLoopFailureClass::Dispatch,
+            crate::app_state::ReciprocalLoopFailureDisposition::Terminal,
+            crate::app_state::EarnFailureClass::Execution,
+            limit_violation.as_str(),
+        );
+        changed = true;
+        return changed;
+    }
+
+    if state.reciprocal_loop.in_backoff_window(now_epoch_seconds) {
+        return changed;
+    }
+
+    if !state.reciprocal_loop.running
+        && !state.reciprocal_loop.kill_switch_active
+        && reciprocal_loop_autostart_enabled()
+    {
         if state.reciprocal_loop.start().is_ok() {
+            state.provider_runtime.last_result = Some("reciprocal loop autostarted".to_string());
             changed = true;
         }
     }
@@ -4163,7 +4307,6 @@ pub(super) fn run_reciprocal_loop_engine_tick(state: &mut crate::app_state::Rend
         .local_to_peer_dispatched
         .saturating_add(1);
     let payload = reciprocal_loop_payload(peer_pubkey.as_str(), amount_sats, sequence);
-    let now_epoch_seconds = current_epoch_seconds();
 
     match submit_signed_network_request(
         state,
@@ -4188,20 +4331,112 @@ pub(super) fn run_reciprocal_loop_engine_tick(state: &mut crate::app_state::Rend
             {
                 state.provider_runtime.last_authoritative_error_class = None;
             }
+            state.provider_runtime.last_authoritative_status = Some("ok".to_string());
             changed = true;
         }
         Err(error) => {
-            state.reciprocal_loop.mark_dispatch_failed(error.as_str());
-            state.provider_runtime.last_error_detail = Some(error.clone());
-            state.provider_runtime.last_result =
-                Some(format!("reciprocal loop dispatch failed: {error}"));
-            state.provider_runtime.last_authoritative_error_class =
-                Some(EarnFailureClass::Execution);
+            let (failure_class, disposition, earn_failure_class) =
+                classify_reciprocal_loop_dispatch_error(error.as_str());
+            match disposition {
+                crate::app_state::ReciprocalLoopFailureDisposition::Recoverable => {
+                    let terminal = state.reciprocal_loop.record_recoverable_failure(
+                        failure_class,
+                        error.as_str(),
+                        now_epoch_seconds,
+                    );
+                    set_reciprocal_loop_runtime_failure(
+                        state,
+                        failure_class,
+                        if terminal {
+                            crate::app_state::ReciprocalLoopFailureDisposition::Terminal
+                        } else {
+                            crate::app_state::ReciprocalLoopFailureDisposition::Recoverable
+                        },
+                        earn_failure_class,
+                        error.as_str(),
+                    );
+                }
+                crate::app_state::ReciprocalLoopFailureDisposition::Terminal => {
+                    state
+                        .reciprocal_loop
+                        .record_terminal_failure(failure_class, error.as_str());
+                    set_reciprocal_loop_runtime_failure(
+                        state,
+                        failure_class,
+                        crate::app_state::ReciprocalLoopFailureDisposition::Terminal,
+                        earn_failure_class,
+                        error.as_str(),
+                    );
+                }
+            }
             changed = true;
         }
     }
 
     changed
+}
+
+fn set_reciprocal_loop_runtime_failure(
+    state: &mut crate::app_state::RenderState,
+    class: crate::app_state::ReciprocalLoopFailureClass,
+    disposition: crate::app_state::ReciprocalLoopFailureDisposition,
+    earn_failure_class: crate::app_state::EarnFailureClass,
+    detail: &str,
+) {
+    let detail = detail.trim();
+    let detail = if detail.is_empty() {
+        "reciprocal loop runtime failure"
+    } else {
+        detail
+    };
+    state.provider_runtime.last_error_detail = Some(detail.to_string());
+    state.provider_runtime.last_result = Some(format!(
+        "reciprocal loop {} failure class={} detail={}",
+        disposition.label(),
+        class.label(),
+        detail
+    ));
+    state.provider_runtime.last_authoritative_status = Some(disposition.label().to_string());
+    state.provider_runtime.last_authoritative_error_class = Some(earn_failure_class);
+}
+
+fn classify_reciprocal_loop_dispatch_error(
+    error: &str,
+) -> (
+    crate::app_state::ReciprocalLoopFailureClass,
+    crate::app_state::ReciprocalLoopFailureDisposition,
+    crate::app_state::EarnFailureClass,
+) {
+    let normalized = error.to_ascii_lowercase();
+    let relay_markers = ["relay", "websocket", "tls", "publish", "connection"];
+    if relay_markers
+        .iter()
+        .any(|marker| normalized.contains(marker))
+    {
+        return (
+            crate::app_state::ReciprocalLoopFailureClass::Dispatch,
+            crate::app_state::ReciprocalLoopFailureDisposition::Recoverable,
+            crate::app_state::EarnFailureClass::Relay,
+        );
+    }
+
+    let wallet_markers = ["wallet", "spark", "invoice", "payment", "bolt11"];
+    if wallet_markers
+        .iter()
+        .any(|marker| normalized.contains(marker))
+    {
+        return (
+            crate::app_state::ReciprocalLoopFailureClass::Payment,
+            crate::app_state::ReciprocalLoopFailureDisposition::Recoverable,
+            crate::app_state::EarnFailureClass::Payment,
+        );
+    }
+
+    (
+        crate::app_state::ReciprocalLoopFailureClass::Dispatch,
+        crate::app_state::ReciprocalLoopFailureDisposition::Terminal,
+        crate::app_state::EarnFailureClass::Execution,
+    )
 }
 
 fn sync_reciprocal_loop_identity_and_peer(state: &mut crate::app_state::RenderState) -> bool {
@@ -4266,6 +4501,7 @@ pub(super) fn run_reciprocal_loop_action(
             Ok(()) => {
                 state.provider_runtime.last_result =
                     Some("reciprocal loop started from pane".to_string());
+                state.provider_runtime.last_authoritative_status = Some("running".to_string());
             }
             Err(error) => {
                 state.provider_runtime.last_error_detail = Some(error.clone());
@@ -4279,6 +4515,7 @@ pub(super) fn run_reciprocal_loop_action(
                 .stop("operator requested stop from pane");
             state.provider_runtime.last_result =
                 Some("reciprocal loop stopped from pane".to_string());
+            state.provider_runtime.last_authoritative_status = Some("stopped".to_string());
         }
         ReciprocalLoopPaneAction::Reset => {
             state.reciprocal_loop.reset_counters();

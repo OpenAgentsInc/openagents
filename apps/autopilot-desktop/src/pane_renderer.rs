@@ -1422,6 +1422,50 @@ fn paint_reciprocal_loop_pane(
         paint,
         content_bounds.origin.x + 12.0,
         line_y,
+        "Kill switch",
+        if reciprocal_loop.kill_switch_active {
+            "engaged"
+        } else {
+            "open"
+        },
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "Retry attempts",
+        &format!(
+            "{}/{}",
+            reciprocal_loop.retry_attempts, reciprocal_loop.max_retry_attempts
+        ),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "Backoff until",
+        &reciprocal_loop
+            .retry_backoff_until_epoch_seconds
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "none".to_string()),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "In-flight limits",
+        &format!(
+            "local {}/{} peer {}/{}",
+            reciprocal_loop.in_flight_local_to_peer(),
+            reciprocal_loop.max_in_flight_local_to_peer,
+            reciprocal_loop.in_flight_peer_to_local(),
+            reciprocal_loop.max_in_flight_peer_to_local
+        ),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
         "A->B dispatched",
         &reciprocal_loop.local_to_peer_dispatched.to_string(),
     );
@@ -1469,6 +1513,23 @@ fn paint_reciprocal_loop_pane(
         line_y,
         "Last payment",
         &compact_value(reciprocal_loop.last_payment_pointer.as_deref()),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "Failure class",
+        &format!(
+            "{} / {}",
+            reciprocal_loop
+                .last_failure_class
+                .map(|value| value.label())
+                .unwrap_or("none"),
+            reciprocal_loop
+                .last_failure_disposition
+                .map(|value| value.label())
+                .unwrap_or("none")
+        ),
     );
     let _ = paint_multiline_phrase(
         paint,

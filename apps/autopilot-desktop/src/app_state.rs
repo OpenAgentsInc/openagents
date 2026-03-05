@@ -1659,9 +1659,10 @@ macro_rules! impl_pane_status_access {
 #[allow(unused_imports)]
 pub use crate::state::operations::{
     NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState, ReciprocalLoopDirection,
-    ReciprocalLoopFailureClass, ReciprocalLoopState, RelayConnectionRow, RelayConnectionStatus,
-    RelayConnectionsState, StarterJobRow, StarterJobStatus, StarterJobsState,
-    SubmittedNetworkRequest, SyncHealthState, SyncRecoveryPhase,
+    ReciprocalLoopFailureClass, ReciprocalLoopFailureDisposition, ReciprocalLoopState,
+    RelayConnectionRow, RelayConnectionStatus, RelayConnectionsState, StarterJobRow,
+    StarterJobStatus, StarterJobsState, SubmittedNetworkRequest, SyncHealthState,
+    SyncRecoveryPhase,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -3967,8 +3968,9 @@ mod tests {
         JobInboxNetworkRequest, JobInboxState, JobInboxValidation, JobLifecycleStage,
         NetworkAggregateCountersState, NetworkRequestStatus, NetworkRequestSubmission,
         NetworkRequestsState, NostrSecretState, ProviderMode, ProviderRuntimeState,
-        ReciprocalLoopDirection, ReciprocalLoopState, RecoveryAlertRow, RelayConnectionStatus,
-        RelayConnectionsState, RelaySecuritySimulationPaneState, SettingsState, SparkPaneState,
+        ReciprocalLoopDirection, ReciprocalLoopFailureClass, ReciprocalLoopFailureDisposition,
+        ReciprocalLoopState, RecoveryAlertRow, RelayConnectionStatus, RelayConnectionsState,
+        RelaySecuritySimulationPaneState, SettingsState, SparkPaneState,
         StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
         SubmittedNetworkRequest, SyncHealthState, SyncRecoveryPhase,
         TreasuryExchangeSimulationPaneState,
@@ -5738,6 +5740,118 @@ mod tests {
         assert_eq!(
             reciprocal_loop.peer_to_local_paid, 1,
             "inbound terminal event should be counted exactly once"
+        );
+    }
+
+    #[test]
+    fn reciprocal_loop_stop_engages_kill_switch_and_blocks_dispatch() {
+        let mut reciprocal_loop = ReciprocalLoopState::default();
+        reciprocal_loop.set_local_pubkey(Some("11".repeat(32).as_str()));
+        reciprocal_loop.set_peer_pubkey(Some("22".repeat(32).as_str()));
+        reciprocal_loop.start().expect("loop should start");
+        assert!(reciprocal_loop.ready_to_dispatch());
+
+        reciprocal_loop.stop("operator stop");
+        assert!(!reciprocal_loop.running);
+        assert!(reciprocal_loop.kill_switch_active);
+        assert!(!reciprocal_loop.ready_to_dispatch());
+    }
+
+    #[test]
+    fn reciprocal_loop_retry_backoff_is_bounded_and_escalates_to_terminal() {
+        let mut reciprocal_loop = ReciprocalLoopState::default();
+        reciprocal_loop.set_local_pubkey(Some("11".repeat(32).as_str()));
+        reciprocal_loop.set_peer_pubkey(Some("22".repeat(32).as_str()));
+        reciprocal_loop.start().expect("loop should start");
+        reciprocal_loop.max_retry_attempts = 2;
+        reciprocal_loop.retry_backoff_seconds = 1;
+        reciprocal_loop.retry_backoff_max_seconds = 4;
+
+        assert!(!reciprocal_loop.record_recoverable_failure(
+            ReciprocalLoopFailureClass::Dispatch,
+            "relay timeout",
+            100
+        ));
+        assert_eq!(reciprocal_loop.retry_attempts, 1);
+        assert_eq!(
+            reciprocal_loop.last_failure_disposition,
+            Some(ReciprocalLoopFailureDisposition::Recoverable)
+        );
+        assert_eq!(reciprocal_loop.retry_backoff_until_epoch_seconds, Some(101));
+        assert!(reciprocal_loop.in_backoff_window(100));
+        assert!(reciprocal_loop.clear_retry_backoff_if_elapsed(101));
+        assert!(!reciprocal_loop.in_backoff_window(101));
+
+        assert!(!reciprocal_loop.record_recoverable_failure(
+            ReciprocalLoopFailureClass::Dispatch,
+            "relay timeout",
+            200
+        ));
+        assert_eq!(reciprocal_loop.retry_attempts, 2);
+        assert_eq!(reciprocal_loop.retry_backoff_until_epoch_seconds, Some(202));
+
+        assert!(reciprocal_loop.record_recoverable_failure(
+            ReciprocalLoopFailureClass::Dispatch,
+            "relay timeout",
+            300
+        ));
+        assert!(!reciprocal_loop.running);
+        assert!(reciprocal_loop.kill_switch_active);
+        assert_eq!(
+            reciprocal_loop.last_failure_disposition,
+            Some(ReciprocalLoopFailureDisposition::Terminal)
+        );
+    }
+
+    #[test]
+    fn reciprocal_loop_outbound_stale_timeout_marks_request_terminal_once() {
+        let local_pubkey = "11".repeat(32);
+        let peer_pubkey = "22".repeat(32);
+        let mut reciprocal_loop = ReciprocalLoopState::default();
+        reciprocal_loop.set_local_pubkey(Some(local_pubkey.as_str()));
+        reciprocal_loop.set_peer_pubkey(Some(peer_pubkey.as_str()));
+        reciprocal_loop.start().expect("loop should start");
+        reciprocal_loop.register_outbound_dispatch("loop-req-stale-001", 1_762_800_000);
+
+        assert!(!reciprocal_loop.outbound_stale_timed_out(1_762_800_060));
+        assert!(reciprocal_loop.outbound_stale_timed_out(1_762_800_150));
+        let timed_out = reciprocal_loop
+            .mark_outbound_stale_timeout()
+            .expect("stale request should be marked");
+        assert_eq!(timed_out, "loop-req-stale-001");
+        assert_eq!(reciprocal_loop.local_to_peer_failed, 1);
+        assert!(reciprocal_loop.in_flight_request_id.is_none());
+
+        let late_paid = fixture_loop_submitted_request(
+            "loop-req-stale-001",
+            NetworkRequestStatus::Paid,
+            peer_pubkey.as_str(),
+            reciprocal_loop.skill_scope_id.as_str(),
+        );
+        assert!(
+            !reciprocal_loop.reconcile_outbound_terminal_statuses(std::slice::from_ref(&late_paid))
+        );
+        assert_eq!(reciprocal_loop.local_to_peer_paid, 0);
+    }
+
+    #[test]
+    fn reciprocal_loop_peer_wait_timeout_recovers_to_local_dispatch_turn() {
+        let mut reciprocal_loop = ReciprocalLoopState::default();
+        reciprocal_loop.set_local_pubkey(Some("22".repeat(32).as_str()));
+        reciprocal_loop.set_peer_pubkey(Some("11".repeat(32).as_str()));
+        reciprocal_loop.start().expect("loop should start");
+        assert_eq!(
+            reciprocal_loop.next_direction,
+            ReciprocalLoopDirection::PeerToLocal
+        );
+        reciprocal_loop.mark_peer_wait_started(1_762_800_000);
+        assert!(!reciprocal_loop.inbound_wait_timed_out(1_762_800_060));
+        assert!(reciprocal_loop.inbound_wait_timed_out(1_762_800_150));
+        reciprocal_loop.mark_inbound_stale_timeout();
+        assert_eq!(reciprocal_loop.peer_to_local_failed, 1);
+        assert_eq!(
+            reciprocal_loop.next_direction,
+            ReciprocalLoopDirection::LocalToPeer
         );
     }
 
