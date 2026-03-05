@@ -22,6 +22,7 @@ const EARN_WORK_UNIT_METADATA_ROW_LIMIT: usize = 2048;
 const EARN_IDEMPOTENCY_RECORD_ROW_LIMIT: usize = 4096;
 const INCIDENT_OBJECT_ROW_LIMIT: usize = 4096;
 const INCIDENT_TAXONOMY_ROW_LIMIT: usize = 1024;
+const OUTCOME_REGISTRY_ROW_LIMIT: usize = 4096;
 const AUDIT_LINKAGE_ROW_LIMIT: usize = 65_536;
 const REASON_CODE_JOB_FAILED: &str = "JOB_FAILED";
 const REASON_CODE_POLICY_PREFLIGHT_REJECTED: &str = "POLICY_PREFLIGHT_REJECTED";
@@ -40,6 +41,8 @@ const REASON_CODE_COMPENSATING_ACTION_EXECUTED: &str = "COMPENSATING_ACTION_EXEC
 const REASON_CODE_DRIFT_SIGNAL_EMITTED: &str = "DRIFT_SIGNAL_EMITTED";
 const REASON_CODE_DRIFT_ALERT_RAISED: &str = "DRIFT_ALERT_RAISED";
 const REASON_CODE_DRIFT_FALSE_POSITIVE_CONFIRMED: &str = "DRIFT_FALSE_POSITIVE_CONFIRMED";
+const REASON_CODE_OUTCOME_REGISTRY_CREATED: &str = "OUTCOME_REGISTRY_CREATED";
+const REASON_CODE_OUTCOME_REGISTRY_UPDATED: &str = "OUTCOME_REGISTRY_UPDATED";
 const DEFAULT_PRICING_SNAPSHOT_ID: &str = "snapshot.economy:unavailable";
 const DEFAULT_PRICING_SNAPSHOT_HASH: &str = "sha256:unavailable";
 const DRIFT_WINDOW_MS: i64 = 86_400_000;
@@ -267,6 +270,8 @@ struct EarnKernelReceiptDocumentV1 {
     #[serde(default)]
     incident_objects: Vec<IncidentObject>,
     #[serde(default)]
+    outcome_registry_entries: Vec<OutcomeRegistryEntry>,
+    #[serde(default)]
     incident_taxonomy_registry: Vec<IncidentTaxonomyEntry>,
 }
 
@@ -397,6 +402,56 @@ pub struct IncidentResolutionDraft {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct OutcomeRegistryEntry {
+    pub entry_id: String,
+    pub entry_digest: String,
+    pub revision: u32,
+    pub category: String,
+    pub tfb_class: FeedbackLatencyClass,
+    pub severity: SeverityClass,
+    pub verdict_outcome: String,
+    pub settlement_outcome: String,
+    pub claim_outcome: Option<String>,
+    pub remedy_outcome: Option<String>,
+    pub incident_tags: Vec<String>,
+    pub linked_receipt_ids: Vec<String>,
+    pub evidence_digests: Vec<String>,
+    pub reported_at_ms: i64,
+    pub updated_at_ms: i64,
+    pub policy_bundle_id: String,
+    pub policy_version: String,
+    pub supersedes_digest: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct OutcomeRegistryEntryDraft {
+    pub idempotency_key: String,
+    pub category: String,
+    pub tfb_class: FeedbackLatencyClass,
+    pub severity: SeverityClass,
+    pub verdict_outcome: String,
+    pub settlement_outcome: String,
+    pub claim_outcome: Option<String>,
+    pub remedy_outcome: Option<String>,
+    pub incident_tags: Vec<String>,
+    pub linked_receipt_ids: Vec<String>,
+    pub evidence_digests: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct OutcomeRegistryUpdateDraft {
+    pub entry_id: String,
+    pub idempotency_key: String,
+    pub verdict_outcome: Option<String>,
+    pub settlement_outcome: Option<String>,
+    pub claim_outcome: Option<String>,
+    pub remedy_outcome: Option<String>,
+    pub incident_tags: Vec<String>,
+    pub linked_receipt_ids: Vec<String>,
+    pub evidence_digests: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct IncidentAuditPackage {
     pub schema_version: u16,
     pub generated_at_ms: i64,
@@ -431,6 +486,22 @@ pub struct AuditOutcomeRegistryEntry {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct AuditOutcomeRegistryObject {
+    pub entry_id: String,
+    pub entry_digest: String,
+    pub revision: u32,
+    pub category: String,
+    pub tfb_class: FeedbackLatencyClass,
+    pub severity: SeverityClass,
+    pub verdict_outcome: String,
+    pub settlement_outcome: String,
+    pub claim_outcome: Option<String>,
+    pub remedy_outcome: Option<String>,
+    pub incident_tags: Vec<String>,
+    pub linked_receipt_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct AuditSnapshotBinding {
     pub snapshot_id: String,
     pub snapshot_hash: String,
@@ -456,12 +527,14 @@ pub struct AuditPackage {
     pub incident_count: usize,
     pub certification_count: usize,
     pub outcome_registry_count: usize,
+    pub outcome_registry_object_count: usize,
     pub snapshot_binding_count: usize,
     pub linkage_edge_count: usize,
     pub receipts: Vec<Receipt>,
     pub incidents: Vec<IncidentObject>,
     pub certifications: Vec<AuditCertificationEntry>,
     pub outcome_registry_entries: Vec<AuditOutcomeRegistryEntry>,
+    pub outcome_registry_objects: Vec<AuditOutcomeRegistryObject>,
     pub snapshot_bindings: Vec<AuditSnapshotBinding>,
     pub linkage_edges: Vec<AuditLinkageEdge>,
     pub package_hash: String,
@@ -514,6 +587,7 @@ struct LoadedReceiptState {
     work_units: BTreeMap<String, WorkUnitMetadata>,
     idempotency_index: BTreeMap<String, IdempotencyRecord>,
     incident_objects: Vec<IncidentObject>,
+    outcome_registry_entries: Vec<OutcomeRegistryEntry>,
     incident_taxonomy_registry: BTreeMap<String, IncidentTaxonomyEntry>,
 }
 
@@ -527,6 +601,7 @@ pub struct EarnKernelReceiptState {
     pub work_units: BTreeMap<String, WorkUnitMetadata>,
     pub idempotency_index: BTreeMap<String, IdempotencyRecord>,
     pub incident_objects: Vec<IncidentObject>,
+    pub outcome_registry_entries: Vec<OutcomeRegistryEntry>,
     pub incident_taxonomy_registry: BTreeMap<String, IncidentTaxonomyEntry>,
     receipt_file_path: PathBuf,
 }
@@ -554,6 +629,7 @@ impl EarnKernelReceiptState {
                         work_units: BTreeMap::new(),
                         idempotency_index: BTreeMap::new(),
                         incident_objects: Vec::new(),
+                        outcome_registry_entries: Vec::new(),
                         incident_taxonomy_registry: default_incident_taxonomy_registry(),
                     },
                     PaneLoadState::Error,
@@ -571,6 +647,7 @@ impl EarnKernelReceiptState {
             work_units: loaded.work_units,
             idempotency_index: loaded.idempotency_index,
             incident_objects: loaded.incident_objects,
+            outcome_registry_entries: loaded.outcome_registry_entries,
             incident_taxonomy_registry: loaded.incident_taxonomy_registry,
             receipt_file_path,
         }
@@ -2490,6 +2567,18 @@ impl EarnKernelReceiptState {
         rows
     }
 
+    fn normalized_outcome_registry_entries(&self) -> Vec<OutcomeRegistryEntry> {
+        let mut rows = self.outcome_registry_entries.clone();
+        rows.sort_by(|lhs, rhs| {
+            lhs.entry_id
+                .cmp(&rhs.entry_id)
+                .then_with(|| rhs.revision.cmp(&lhs.revision))
+                .then_with(|| rhs.updated_at_ms.cmp(&lhs.updated_at_ms))
+        });
+        rows.truncate(OUTCOME_REGISTRY_ROW_LIMIT);
+        rows
+    }
+
     fn persist_current_state(&mut self) -> Result<(), String> {
         persist_earn_kernel_receipts(
             self.receipt_file_path.as_path(),
@@ -2497,6 +2586,7 @@ impl EarnKernelReceiptState {
             self.normalized_work_units().as_slice(),
             self.normalized_idempotency_records().as_slice(),
             self.incident_objects.as_slice(),
+            self.normalized_outcome_registry_entries().as_slice(),
             self.normalized_incident_taxonomy_entries().as_slice(),
         )
     }
@@ -2644,13 +2734,52 @@ impl EarnKernelReceiptState {
             .collect::<Vec<_>>();
         outcome_registry_entries.sort_by(|lhs, rhs| lhs.receipt_id.cmp(&rhs.receipt_id));
 
+        let mut outcome_registry_objects = self
+            .outcome_registry_entries
+            .iter()
+            .filter(|entry| {
+                entry
+                    .linked_receipt_ids
+                    .iter()
+                    .any(|receipt_id| included_receipt_ids.contains(receipt_id))
+            })
+            .cloned()
+            .map(|entry| AuditOutcomeRegistryObject {
+                entry_id: entry.entry_id,
+                entry_digest: entry.entry_digest,
+                revision: entry.revision,
+                category: entry.category,
+                tfb_class: entry.tfb_class,
+                severity: entry.severity,
+                verdict_outcome: entry.verdict_outcome,
+                settlement_outcome: entry.settlement_outcome,
+                claim_outcome: entry.claim_outcome,
+                remedy_outcome: entry.remedy_outcome,
+                incident_tags: entry.incident_tags,
+                linked_receipt_ids: entry.linked_receipt_ids,
+            })
+            .collect::<Vec<_>>();
+        outcome_registry_objects.sort_by(|lhs, rhs| {
+            lhs.entry_id
+                .cmp(&rhs.entry_id)
+                .then_with(|| rhs.revision.cmp(&lhs.revision))
+                .then_with(|| lhs.entry_digest.cmp(&rhs.entry_digest))
+        });
+
         let snapshot_bindings = audit_snapshot_bindings(receipts.as_slice());
-        let linkage_edges = audit_linkage_edges(receipts.as_slice(), incidents.as_slice());
+        let linkage_edges = audit_linkage_edges(
+            receipts.as_slice(),
+            incidents.as_slice(),
+            outcome_registry_objects.as_slice(),
+        );
 
         let mut package_receipts = receipts.clone();
         if tier == AuditExportRedactionTier::Public {
             redact_receipts_for_public_export(&mut package_receipts);
             redact_incidents_for_public_export(&mut incidents);
+            for outcome in &mut outcome_registry_objects {
+                outcome.linked_receipt_ids.clear();
+            }
         }
 
         let package_hash = hash_audit_package(
@@ -2660,6 +2789,7 @@ impl EarnKernelReceiptState {
             incidents.as_slice(),
             certifications.as_slice(),
             outcome_registry_entries.as_slice(),
+            outcome_registry_objects.as_slice(),
             snapshot_bindings.as_slice(),
             linkage_edges.as_slice(),
         )?;
@@ -2674,12 +2804,14 @@ impl EarnKernelReceiptState {
             incident_count: incidents.len(),
             certification_count: certifications.len(),
             outcome_registry_count: outcome_registry_entries.len(),
+            outcome_registry_object_count: outcome_registry_objects.len(),
             snapshot_binding_count: snapshot_bindings.len(),
             linkage_edge_count: linkage_edges.len(),
             receipts: package_receipts,
             incidents,
             certifications,
             outcome_registry_entries,
+            outcome_registry_objects,
             snapshot_bindings,
             linkage_edges,
             package_hash,
@@ -3163,6 +3295,186 @@ impl EarnKernelReceiptState {
         Ok(draft.incident_id)
     }
 
+    pub fn record_outcome_registry_entry(
+        &mut self,
+        draft: OutcomeRegistryEntryDraft,
+        recorded_at_ms: i64,
+        source_tag: &str,
+    ) -> Result<String, String> {
+        if draft.idempotency_key.trim().is_empty() {
+            return Err("outcome registry idempotency_key cannot be empty".to_string());
+        }
+        self.validate_incident_draft_linkage(draft.linked_receipt_ids.as_slice(), &[], true)?;
+        let category = canonical_outcome_value(draft.category.as_str())
+            .ok_or_else(|| "outcome registry category cannot be empty".to_string())?;
+        let verdict_outcome = canonical_outcome_value(draft.verdict_outcome.as_str())
+            .ok_or_else(|| "verdict_outcome cannot be empty".to_string())?;
+        let settlement_outcome = canonical_outcome_value(draft.settlement_outcome.as_str())
+            .ok_or_else(|| "settlement_outcome cannot be empty".to_string())?;
+        let claim_outcome = canonical_optional_outcome_value(draft.claim_outcome.as_deref());
+        let remedy_outcome = canonical_optional_outcome_value(draft.remedy_outcome.as_deref());
+        let incident_tags = canonical_incident_tags(draft.incident_tags.as_slice());
+        let linked_receipt_ids = canonical_receipt_ids(draft.linked_receipt_ids.as_slice());
+        let evidence_digests = canonical_evidence_digests(draft.evidence_digests.as_slice())?;
+        let policy = current_policy_context();
+        let entry_id = format!("outcome:{}", normalize_key(draft.idempotency_key.as_str()));
+        let entry = OutcomeRegistryEntry {
+            entry_id: entry_id.clone(),
+            entry_digest: outcome_registry_digest_for(
+                entry_id.as_str(),
+                1,
+                category.as_str(),
+                draft.tfb_class,
+                draft.severity,
+                verdict_outcome.as_str(),
+                settlement_outcome.as_str(),
+                claim_outcome.as_deref(),
+                remedy_outcome.as_deref(),
+                incident_tags.as_slice(),
+                linked_receipt_ids.as_slice(),
+                evidence_digests.as_slice(),
+                recorded_at_ms.max(0),
+                recorded_at_ms.max(0),
+                policy.policy_bundle_id.as_str(),
+                policy.policy_version.as_str(),
+                None,
+            ),
+            revision: 1,
+            category,
+            tfb_class: draft.tfb_class,
+            severity: draft.severity,
+            verdict_outcome,
+            settlement_outcome,
+            claim_outcome,
+            remedy_outcome,
+            incident_tags,
+            linked_receipt_ids,
+            evidence_digests,
+            reported_at_ms: recorded_at_ms.max(0),
+            updated_at_ms: recorded_at_ms.max(0),
+            policy_bundle_id: policy.policy_bundle_id.clone(),
+            policy_version: policy.policy_version.clone(),
+            supersedes_digest: None,
+        };
+        if let Some(existing) = self.latest_outcome_registry_entry_by_id(entry_id.as_str()) {
+            if existing.entry_digest == entry.entry_digest {
+                return Ok(entry_id);
+            }
+            return Err(format!(
+                "outcome registry idempotency conflict for {}",
+                entry_id
+            ));
+        }
+        self.emit_outcome_registry_receipt(
+            "economy.outcome_registry.created.v1",
+            REASON_CODE_OUTCOME_REGISTRY_CREATED,
+            entry.clone(),
+            draft.idempotency_key.as_str(),
+            source_tag,
+        )?;
+        self.persist_outcome_registry_entry(entry)?;
+        Ok(entry_id)
+    }
+
+    pub fn update_outcome_registry_entry(
+        &mut self,
+        draft: OutcomeRegistryUpdateDraft,
+        updated_at_ms: i64,
+        source_tag: &str,
+    ) -> Result<String, String> {
+        if draft.idempotency_key.trim().is_empty() {
+            return Err("outcome registry update idempotency_key cannot be empty".to_string());
+        }
+        let latest = self
+            .latest_outcome_registry_entry_by_id(draft.entry_id.as_str())
+            .cloned()
+            .ok_or_else(|| format!("unknown outcome registry entry_id {}", draft.entry_id))?;
+        let linked_receipt_ids = if draft.linked_receipt_ids.is_empty() {
+            latest.linked_receipt_ids.clone()
+        } else {
+            canonical_receipt_ids(draft.linked_receipt_ids.as_slice())
+        };
+        self.validate_incident_draft_linkage(linked_receipt_ids.as_slice(), &[], true)?;
+        let verdict_outcome = draft
+            .verdict_outcome
+            .as_deref()
+            .and_then(canonical_outcome_value)
+            .unwrap_or_else(|| latest.verdict_outcome.clone());
+        let settlement_outcome = draft
+            .settlement_outcome
+            .as_deref()
+            .and_then(canonical_outcome_value)
+            .unwrap_or_else(|| latest.settlement_outcome.clone());
+        let claim_outcome = if draft.claim_outcome.is_some() {
+            canonical_optional_outcome_value(draft.claim_outcome.as_deref())
+        } else {
+            latest.claim_outcome.clone()
+        };
+        let remedy_outcome = if draft.remedy_outcome.is_some() {
+            canonical_optional_outcome_value(draft.remedy_outcome.as_deref())
+        } else {
+            latest.remedy_outcome.clone()
+        };
+        let incident_tags = if draft.incident_tags.is_empty() {
+            latest.incident_tags.clone()
+        } else {
+            canonical_incident_tags(draft.incident_tags.as_slice())
+        };
+        let evidence_digests = if draft.evidence_digests.is_empty() {
+            latest.evidence_digests.clone()
+        } else {
+            canonical_evidence_digests(draft.evidence_digests.as_slice())?
+        };
+        let policy = current_policy_context();
+        let entry = OutcomeRegistryEntry {
+            entry_id: latest.entry_id.clone(),
+            entry_digest: outcome_registry_digest_for(
+                latest.entry_id.as_str(),
+                latest.revision.saturating_add(1),
+                latest.category.as_str(),
+                latest.tfb_class,
+                latest.severity,
+                verdict_outcome.as_str(),
+                settlement_outcome.as_str(),
+                claim_outcome.as_deref(),
+                remedy_outcome.as_deref(),
+                incident_tags.as_slice(),
+                linked_receipt_ids.as_slice(),
+                evidence_digests.as_slice(),
+                latest.reported_at_ms,
+                updated_at_ms.max(0),
+                policy.policy_bundle_id.as_str(),
+                policy.policy_version.as_str(),
+                Some(latest.entry_digest.as_str()),
+            ),
+            revision: latest.revision.saturating_add(1),
+            category: latest.category.clone(),
+            tfb_class: latest.tfb_class,
+            severity: latest.severity,
+            verdict_outcome,
+            settlement_outcome,
+            claim_outcome,
+            remedy_outcome,
+            incident_tags,
+            linked_receipt_ids,
+            evidence_digests,
+            reported_at_ms: latest.reported_at_ms,
+            updated_at_ms: updated_at_ms.max(0),
+            policy_bundle_id: policy.policy_bundle_id.clone(),
+            policy_version: policy.policy_version.clone(),
+            supersedes_digest: Some(latest.entry_digest),
+        };
+        self.emit_outcome_registry_receipt(
+            "economy.outcome_registry.updated.v1",
+            REASON_CODE_OUTCOME_REGISTRY_UPDATED,
+            entry.clone(),
+            draft.idempotency_key.as_str(),
+            source_tag,
+        )?;
+        self.persist_outcome_registry_entry(entry)?;
+        Ok(draft.entry_id)
+    }
+
     pub fn export_incident_audit_package(
         &self,
         tier: IncidentExportRedactionTier,
@@ -3264,6 +3576,17 @@ impl EarnKernelReceiptState {
             })
     }
 
+    fn latest_outcome_registry_entry_by_id(&self, entry_id: &str) -> Option<&OutcomeRegistryEntry> {
+        self.outcome_registry_entries
+            .iter()
+            .filter(|entry| entry.entry_id == entry_id)
+            .max_by(|lhs, rhs| {
+                lhs.revision
+                    .cmp(&rhs.revision)
+                    .then_with(|| lhs.updated_at_ms.cmp(&rhs.updated_at_ms))
+            })
+    }
+
     fn validate_incident_draft_linkage(
         &self,
         linked_receipt_ids: &[String],
@@ -3319,6 +3642,32 @@ impl EarnKernelReceiptState {
         }
         self.last_error = None;
         self.last_action = Some("Incident object persisted".to_string());
+        self.load_state = PaneLoadState::Ready;
+        Ok(())
+    }
+
+    fn persist_outcome_registry_entry(
+        &mut self,
+        entry: OutcomeRegistryEntry,
+    ) -> Result<(), String> {
+        if self
+            .outcome_registry_entries
+            .iter()
+            .any(|existing| existing.entry_digest == entry.entry_digest)
+        {
+            return Ok(());
+        }
+        self.outcome_registry_entries.push(entry);
+        self.outcome_registry_entries =
+            normalize_outcome_registry_entries(std::mem::take(&mut self.outcome_registry_entries));
+        if let Err(error) = self.persist_current_state() {
+            self.last_error = Some(error.clone());
+            self.last_action = Some("Outcome registry entry persist failed".to_string());
+            self.load_state = PaneLoadState::Error;
+            return Err(error);
+        }
+        self.last_error = None;
+        self.last_action = Some("Outcome registry entry persisted".to_string());
         self.load_state = PaneLoadState::Ready;
         Ok(())
     }
@@ -3413,6 +3762,107 @@ impl EarnKernelReceiptState {
                 .last_error
                 .clone()
                 .unwrap_or_else(|| "incident receipt append failed".to_string()));
+        }
+        Ok(())
+    }
+
+    fn emit_outcome_registry_receipt(
+        &mut self,
+        receipt_type: &str,
+        reason_code: &str,
+        entry: OutcomeRegistryEntry,
+        idempotency_key: &str,
+        source_tag: &str,
+    ) -> Result<(), String> {
+        if idempotency_key.trim().is_empty() {
+            return Err("outcome registry receipt idempotency_key cannot be empty".to_string());
+        }
+        let entry_id = entry.entry_id.clone();
+        let entry_digest = entry.entry_digest.clone();
+        let revision = entry.revision;
+        let category = entry.category.clone();
+        let tfb_class = entry.tfb_class;
+        let severity = entry.severity;
+        let verdict_outcome = entry.verdict_outcome.clone();
+        let settlement_outcome = entry.settlement_outcome.clone();
+        let claim_outcome = entry.claim_outcome.clone();
+        let remedy_outcome = entry.remedy_outcome.clone();
+        let incident_tags = entry.incident_tags.clone();
+        let linked_receipt_ids = entry.linked_receipt_ids.clone();
+        let evidence_digests = entry.evidence_digests.clone();
+        let mut evidence = vec![outcome_registry_entry_evidence(&entry)];
+        self.append_receipt_reference_links(&mut evidence, linked_receipt_ids.as_slice());
+        let receipt = ReceiptBuilder::new(
+            format!(
+                "receipt.economy.outcome_registry:{}:{}:{}",
+                normalize_key(receipt_type),
+                normalize_key(entry_id.as_str()),
+                revision
+            ),
+            receipt_type,
+            entry.updated_at_ms.max(0),
+            format!(
+                "idemp.economy.outcome_registry:{}:{}",
+                normalize_key(receipt_type),
+                normalize_key(idempotency_key)
+            ),
+            TraceContext {
+                session_id: None,
+                trajectory_hash: None,
+                job_hash: None,
+                run_id: Some(format!(
+                    "economy_outcome_registry:{}:{}",
+                    entry_id, revision
+                )),
+                work_unit_id: linked_receipt_ids.first().cloned(),
+                contract_id: None,
+                claim_id: None,
+            },
+            current_policy_context(),
+        )
+        .with_inputs_payload(json!({
+            "entry_id": entry_id,
+            "entry_digest": entry_digest,
+            "revision": revision,
+            "category": category,
+            "tfb_class": tfb_class.label(),
+            "severity": severity.label(),
+            "verdict_outcome": verdict_outcome,
+            "settlement_outcome": settlement_outcome,
+            "claim_outcome": claim_outcome,
+            "remedy_outcome": remedy_outcome,
+            "incident_tags": incident_tags,
+            "linked_receipt_ids": linked_receipt_ids,
+            "evidence_digests": evidence_digests,
+        }))
+        .with_outputs_payload(json!({
+            "status": "recorded",
+            "entry_id": entry.entry_id,
+            "entry_digest": entry.entry_digest,
+            "revision": entry.revision,
+            "source_tag": source_tag,
+        }))
+        .with_evidence(evidence)
+        .with_hints(ReceiptHints {
+            category: Some(entry.category),
+            tfb_class: Some(entry.tfb_class),
+            severity: Some(entry.severity),
+            achieved_verification_tier: None,
+            verification_correlated: None,
+            provenance_grade: None,
+            auth_assurance_level: Some(AuthAssuranceLevel::Authenticated),
+            personhood_proved: Some(false),
+            reason_code: Some(reason_code.to_string()),
+            notional: None,
+            liability_premium: None,
+        })
+        .build();
+        self.append_receipt(receipt, source_tag);
+        if self.load_state == PaneLoadState::Error {
+            return Err(self
+                .last_error
+                .clone()
+                .unwrap_or_else(|| "outcome registry receipt append failed".to_string()));
         }
         Ok(())
     }
@@ -3678,6 +4128,7 @@ impl EarnKernelReceiptState {
                 self.normalized_work_units().as_slice(),
                 self.normalized_idempotency_records().as_slice(),
                 self.incident_objects.as_slice(),
+                self.normalized_outcome_registry_entries().as_slice(),
                 self.normalized_incident_taxonomy_entries().as_slice(),
             ) {
                 self.last_error = Some(error);
@@ -3714,6 +4165,7 @@ impl EarnKernelReceiptState {
             self.normalized_work_units().as_slice(),
             self.normalized_idempotency_records().as_slice(),
             self.incident_objects.as_slice(),
+            self.normalized_outcome_registry_entries().as_slice(),
             self.normalized_incident_taxonomy_entries().as_slice(),
         ) {
             self.last_error = Some(error);
@@ -5227,14 +5679,37 @@ fn canonical_evidence_digests(values: &[String]) -> Result<Vec<String>, String> 
         .filter(|value| !value.is_empty())
         .collect::<Vec<_>>();
     if rows.is_empty() {
-        return Err("incident evidence_digests cannot be empty".to_string());
+        return Err("evidence_digests cannot be empty".to_string());
     }
     rows.sort();
     rows.dedup();
     if rows.iter().any(|value| !value.starts_with("sha256:")) {
-        return Err("incident evidence_digests must be sha256 digests".to_string());
+        return Err("evidence_digests must be sha256 digests".to_string());
     }
     Ok(rows)
+}
+
+fn canonical_outcome_value(value: &str) -> Option<String> {
+    let normalized = normalize_key(value);
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized)
+    }
+}
+
+fn canonical_optional_outcome_value(value: Option<&str>) -> Option<String> {
+    value.and_then(canonical_outcome_value)
+}
+
+fn canonical_incident_tags(values: &[String]) -> Vec<String> {
+    let mut rows = values
+        .iter()
+        .filter_map(|value| canonical_outcome_value(value.as_str()))
+        .collect::<Vec<_>>();
+    rows.sort();
+    rows.dedup();
+    rows
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -5317,6 +5792,102 @@ fn incident_object_evidence(incident: &IncidentObject) -> EvidenceRef {
     evidence.meta.insert(
         "taxonomy_code".to_string(),
         json!(incident.taxonomy_code.clone()),
+    );
+    evidence
+}
+
+#[allow(clippy::too_many_arguments)]
+fn outcome_registry_digest_for(
+    entry_id: &str,
+    revision: u32,
+    category: &str,
+    tfb_class: FeedbackLatencyClass,
+    severity: SeverityClass,
+    verdict_outcome: &str,
+    settlement_outcome: &str,
+    claim_outcome: Option<&str>,
+    remedy_outcome: Option<&str>,
+    incident_tags: &[String],
+    linked_receipt_ids: &[String],
+    evidence_digests: &[String],
+    reported_at_ms: i64,
+    updated_at_ms: i64,
+    policy_bundle_id: &str,
+    policy_version: &str,
+    supersedes_digest: Option<&str>,
+) -> String {
+    digest_for_text(
+        format!(
+            "{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
+            entry_id,
+            revision,
+            category,
+            tfb_class.label(),
+            severity.label(),
+            verdict_outcome,
+            settlement_outcome,
+            claim_outcome.unwrap_or("none"),
+            remedy_outcome.unwrap_or("none"),
+            incident_tags.join("|"),
+            linked_receipt_ids.join("|"),
+            evidence_digests.join("|"),
+            reported_at_ms.max(0),
+            updated_at_ms.max(0),
+            policy_bundle_id,
+            policy_version,
+            supersedes_digest.unwrap_or("none")
+        )
+        .as_str(),
+    )
+}
+
+fn outcome_registry_entry_evidence(entry: &OutcomeRegistryEntry) -> EvidenceRef {
+    let mut evidence = EvidenceRef::new(
+        "outcome_registry_entry_ref",
+        format!(
+            "oa://economy/outcome_registry/{}/revisions/{}",
+            entry.entry_id, entry.revision
+        ),
+        entry.entry_digest.clone(),
+    );
+    evidence
+        .meta
+        .insert("entry_id".to_string(), json!(entry.entry_id.clone()));
+    evidence
+        .meta
+        .insert("revision".to_string(), json!(entry.revision));
+    evidence
+        .meta
+        .insert("category".to_string(), json!(entry.category.clone()));
+    evidence
+        .meta
+        .insert("tfb_class".to_string(), json!(entry.tfb_class.label()));
+    evidence
+        .meta
+        .insert("severity".to_string(), json!(entry.severity.label()));
+    evidence.meta.insert(
+        "verdict_outcome".to_string(),
+        json!(entry.verdict_outcome.clone()),
+    );
+    evidence.meta.insert(
+        "settlement_outcome".to_string(),
+        json!(entry.settlement_outcome.clone()),
+    );
+    evidence.meta.insert(
+        "claim_outcome".to_string(),
+        json!(entry.claim_outcome.clone()),
+    );
+    evidence.meta.insert(
+        "remedy_outcome".to_string(),
+        json!(entry.remedy_outcome.clone()),
+    );
+    evidence.meta.insert(
+        "incident_tags".to_string(),
+        json!(entry.incident_tags.clone()),
+    );
+    evidence.meta.insert(
+        "linked_receipt_ids".to_string(),
+        json!(entry.linked_receipt_ids.clone()),
     );
     evidence
 }
@@ -5827,9 +6398,7 @@ fn audit_snapshot_bindings(receipts: &[Receipt]) -> Vec<AuditSnapshotBinding> {
             let (Some(snapshot_id), Some(snapshot_hash)) = (snapshot_id, snapshot_hash) else {
                 continue;
             };
-            let entry = bindings
-                .entry((snapshot_id, snapshot_hash))
-                .or_default();
+            let entry = bindings.entry((snapshot_id, snapshot_hash)).or_default();
             entry.insert(receipt.receipt_id.clone());
         }
     }
@@ -5851,7 +6420,11 @@ fn audit_snapshot_bindings(receipts: &[Receipt]) -> Vec<AuditSnapshotBinding> {
     rows
 }
 
-fn audit_linkage_edges(receipts: &[Receipt], incidents: &[IncidentObject]) -> Vec<AuditLinkageEdge> {
+fn audit_linkage_edges(
+    receipts: &[Receipt],
+    incidents: &[IncidentObject],
+    outcomes: &[AuditOutcomeRegistryObject],
+) -> Vec<AuditLinkageEdge> {
     let mut edges = BTreeSet::<(String, String, String)>::new();
     for receipt in receipts {
         for evidence in &receipt.evidence {
@@ -5882,13 +6455,24 @@ fn audit_linkage_edges(receipts: &[Receipt], incidents: &[IncidentObject]) -> Ve
             ));
         }
     }
+    for outcome in outcomes {
+        for receipt_id in &outcome.linked_receipt_ids {
+            edges.insert((
+                format!("outcome_registry:{}", outcome.entry_id),
+                receipt_id.clone(),
+                "outcome_linked_receipt".to_string(),
+            ));
+        }
+    }
     let mut rows = edges
         .into_iter()
-        .map(|(from_receipt_id, to_receipt_id, relation_kind)| AuditLinkageEdge {
-            from_receipt_id,
-            to_receipt_id,
-            relation_kind,
-        })
+        .map(
+            |(from_receipt_id, to_receipt_id, relation_kind)| AuditLinkageEdge {
+                from_receipt_id,
+                to_receipt_id,
+                relation_kind,
+            },
+        )
         .collect::<Vec<_>>();
     rows.sort_by(|lhs, rhs| {
         lhs.from_receipt_id
@@ -5980,6 +6564,7 @@ struct CanonicalAuditPackagePayload<'a> {
     incidents: &'a [IncidentObject],
     certifications: &'a [AuditCertificationEntry],
     outcome_registry_entries: &'a [AuditOutcomeRegistryEntry],
+    outcome_registry_objects: &'a [AuditOutcomeRegistryObject],
     snapshot_bindings: &'a [AuditSnapshotBinding],
     linkage_edges: &'a [AuditLinkageEdge],
 }
@@ -5992,6 +6577,7 @@ fn hash_audit_package(
     incidents: &[IncidentObject],
     certifications: &[AuditCertificationEntry],
     outcome_registry_entries: &[AuditOutcomeRegistryEntry],
+    outcome_registry_objects: &[AuditOutcomeRegistryObject],
     snapshot_bindings: &[AuditSnapshotBinding],
     linkage_edges: &[AuditLinkageEdge],
 ) -> Result<String, String> {
@@ -6002,6 +6588,7 @@ fn hash_audit_package(
         incidents,
         certifications,
         outcome_registry_entries,
+        outcome_registry_objects,
         snapshot_bindings,
         linkage_edges,
     })
@@ -6079,6 +6666,19 @@ fn normalize_incident_objects(mut incidents: Vec<IncidentObject>) -> Vec<Inciden
     });
     incidents.truncate(INCIDENT_OBJECT_ROW_LIMIT);
     incidents
+}
+
+fn normalize_outcome_registry_entries(
+    mut entries: Vec<OutcomeRegistryEntry>,
+) -> Vec<OutcomeRegistryEntry> {
+    entries.sort_by(|lhs, rhs| {
+        rhs.updated_at_ms
+            .cmp(&lhs.updated_at_ms)
+            .then_with(|| lhs.entry_id.cmp(&rhs.entry_id))
+            .then_with(|| lhs.revision.cmp(&rhs.revision))
+    });
+    entries.truncate(OUTCOME_REGISTRY_ROW_LIMIT);
+    entries
 }
 
 fn normalize_incident_taxonomy_registry(registry: &mut BTreeMap<String, IncidentTaxonomyEntry>) {
@@ -6168,6 +6768,7 @@ fn persist_earn_kernel_receipts(
     work_units: &[WorkUnitMetadata],
     idempotency_records: &[IdempotencyRecord],
     incident_objects: &[IncidentObject],
+    outcome_registry_entries: &[OutcomeRegistryEntry],
     incident_taxonomy_registry: &[IncidentTaxonomyEntry],
 ) -> Result<(), String> {
     if let Some(parent) = path.parent() {
@@ -6183,6 +6784,9 @@ fn persist_earn_kernel_receipts(
         work_units: work_units.to_vec(),
         idempotency_records: idempotency_records.to_vec(),
         incident_objects: normalize_incident_objects(incident_objects.to_vec()),
+        outcome_registry_entries: normalize_outcome_registry_entries(
+            outcome_registry_entries.to_vec(),
+        ),
         incident_taxonomy_registry: incident_taxonomy_registry.to_vec(),
     };
     let payload = serde_json::to_string_pretty(&document)
@@ -6204,6 +6808,7 @@ fn load_earn_kernel_receipts(path: &Path) -> Result<LoadedReceiptState, String> 
                 work_units: BTreeMap::new(),
                 idempotency_index: BTreeMap::new(),
                 incident_objects: Vec::new(),
+                outcome_registry_entries: Vec::new(),
                 incident_taxonomy_registry: default_incident_taxonomy_registry(),
             });
         }
@@ -6253,6 +6858,8 @@ fn load_earn_kernel_receipts(path: &Path) -> Result<LoadedReceiptState, String> 
         .collect::<BTreeMap<_, _>>();
     normalize_idempotency_records(&mut idempotency_index);
     let incident_objects = normalize_incident_objects(document.incident_objects);
+    let outcome_registry_entries =
+        normalize_outcome_registry_entries(document.outcome_registry_entries);
     let mut incident_taxonomy_registry = default_incident_taxonomy_registry();
     for entry in document.incident_taxonomy_registry {
         upsert_incident_taxonomy_entry(&mut incident_taxonomy_registry, entry)?;
@@ -6263,6 +6870,7 @@ fn load_earn_kernel_receipts(path: &Path) -> Result<LoadedReceiptState, String> 
         work_units,
         idempotency_index,
         incident_objects,
+        outcome_registry_entries,
         incident_taxonomy_registry,
     })
 }
@@ -6369,6 +6977,25 @@ mod tests {
             linked_receipt_ids: vec![linked_receipt_id.to_string()],
             rollback_receipt_ids: vec![],
             evidence_digests: vec!["sha256:evidence-1".to_string()],
+        }
+    }
+
+    fn fixture_outcome_registry_draft(
+        linked_receipt_id: &str,
+        idempotency_key: &str,
+    ) -> OutcomeRegistryEntryDraft {
+        OutcomeRegistryEntryDraft {
+            idempotency_key: idempotency_key.to_string(),
+            category: "compute".to_string(),
+            tfb_class: FeedbackLatencyClass::Short,
+            severity: SeverityClass::High,
+            verdict_outcome: "verified".to_string(),
+            settlement_outcome: "settled".to_string(),
+            claim_outcome: Some("none".to_string()),
+            remedy_outcome: Some("none".to_string()),
+            incident_tags: vec!["ops.execution_failure".to_string()],
+            linked_receipt_ids: vec![linked_receipt_id.to_string()],
+            evidence_digests: vec!["sha256:outcome-evidence-1".to_string()],
         }
     }
 
@@ -6702,7 +7329,11 @@ mod tests {
 
         let query = ReceiptQuery::default();
         let first = state
-            .export_audit_package(&query, AuditExportRedactionTier::Restricted, 1_762_000_090_000)
+            .export_audit_package(
+                &query,
+                AuditExportRedactionTier::Restricted,
+                1_762_000_090_000,
+            )
             .expect("first audit package export");
         let second = state
             .export_audit_package(
@@ -6718,14 +7349,18 @@ mod tests {
         assert_eq!(first.redaction_tier, AuditExportRedactionTier::Restricted);
         assert_eq!(first.certification_count, 1);
         assert_eq!(first.outcome_registry_count, 1);
-        assert!(first
-            .certifications
-            .iter()
-            .any(|entry| entry.receipt_id == certification_receipt_id));
-        assert!(first
-            .outcome_registry_entries
-            .iter()
-            .any(|entry| entry.receipt_id == outcome_receipt_id));
+        assert!(
+            first
+                .certifications
+                .iter()
+                .any(|entry| entry.receipt_id == certification_receipt_id)
+        );
+        assert!(
+            first
+                .outcome_registry_entries
+                .iter()
+                .any(|entry| entry.receipt_id == outcome_receipt_id)
+        );
         assert!(first.linkage_edges.iter().any(|edge| {
             edge.from_receipt_id == verdict_receipt_id
                 && edge.to_receipt_id == contract_receipt_id
@@ -6781,22 +7416,28 @@ mod tests {
             .expect("public audit package export");
 
         assert_ne!(restricted.package_hash, public.package_hash);
-        assert!(restricted
-            .receipts
-            .iter()
-            .flat_map(|receipt| receipt.evidence.iter())
-            .filter(|evidence| evidence.kind == "wallet_settlement_proof")
-            .all(|evidence| evidence.uri != "oa://redacted"));
-        assert!(public
-            .receipts
-            .iter()
-            .flat_map(|receipt| receipt.evidence.iter())
-            .filter(|evidence| evidence.kind == "wallet_settlement_proof")
-            .all(|evidence| evidence.uri == "oa://redacted"));
-        assert!(restricted
-            .incidents
-            .iter()
-            .all(|incident| incident.summary != "[redacted]"));
+        assert!(
+            restricted
+                .receipts
+                .iter()
+                .flat_map(|receipt| receipt.evidence.iter())
+                .filter(|evidence| evidence.kind == "wallet_settlement_proof")
+                .all(|evidence| evidence.uri != "oa://redacted")
+        );
+        assert!(
+            public
+                .receipts
+                .iter()
+                .flat_map(|receipt| receipt.evidence.iter())
+                .filter(|evidence| evidence.kind == "wallet_settlement_proof")
+                .all(|evidence| evidence.uri == "oa://redacted")
+        );
+        assert!(
+            restricted
+                .incidents
+                .iter()
+                .all(|incident| incident.summary != "[redacted]")
+        );
         assert!(public.incidents.iter().all(|incident| {
             incident.summary == "[redacted]"
                 && incident.linked_receipt_ids.is_empty()
@@ -7451,6 +8092,147 @@ mod tests {
         assert_eq!(latest.incident_status, IncidentStatus::Resolved);
         assert_eq!(latest.revision, 3);
         assert!(latest.supersedes_digest.is_some());
+    }
+
+    #[test]
+    fn outcome_registry_entries_are_deterministic_and_emit_update_receipts() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        state.record_history_receipt(
+            &fixture_history_row("wallet-payment-outcome"),
+            1_762_000_010,
+            "test.history",
+        );
+        let linked_receipt_id = state
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_type == "earn.job.settlement_observed.v1")
+            .expect("settlement receipt")
+            .receipt_id
+            .clone();
+        let draft = fixture_outcome_registry_draft(linked_receipt_id.as_str(), "outcome-alpha");
+
+        let first_entry_id = state
+            .record_outcome_registry_entry(draft.clone(), 1_762_000_060_000, "test.outcome.create")
+            .expect("outcome entry should be recorded");
+        let replay_entry_id = state
+            .record_outcome_registry_entry(draft, 1_762_000_060_000, "test.outcome.replay")
+            .expect("outcome entry replay should be idempotent");
+        assert_eq!(first_entry_id, replay_entry_id);
+
+        let latest_before_update = state
+            .latest_outcome_registry_entry_by_id(first_entry_id.as_str())
+            .expect("latest outcome entry")
+            .clone();
+        assert_eq!(latest_before_update.revision, 1);
+        assert_eq!(latest_before_update.verdict_outcome, "verified");
+
+        state
+            .update_outcome_registry_entry(
+                OutcomeRegistryUpdateDraft {
+                    entry_id: first_entry_id.clone(),
+                    idempotency_key: "outcome-alpha-update".to_string(),
+                    verdict_outcome: Some("contested".to_string()),
+                    settlement_outcome: Some("paid".to_string()),
+                    claim_outcome: Some("paid".to_string()),
+                    remedy_outcome: Some("rollback_executed".to_string()),
+                    incident_tags: vec!["finance.claim_dispute".to_string()],
+                    linked_receipt_ids: vec![linked_receipt_id.clone()],
+                    evidence_digests: vec!["sha256:outcome-evidence-2".to_string()],
+                },
+                1_762_000_090_000,
+                "test.outcome.update",
+            )
+            .expect("outcome entry update");
+        let latest_after_update = state
+            .latest_outcome_registry_entry_by_id(first_entry_id.as_str())
+            .expect("latest updated outcome entry")
+            .clone();
+        assert_eq!(latest_after_update.revision, 2);
+        assert_eq!(latest_after_update.verdict_outcome, "contested");
+        assert_eq!(latest_after_update.settlement_outcome, "paid");
+        assert_eq!(latest_after_update.claim_outcome.as_deref(), Some("paid"));
+        assert_eq!(
+            latest_after_update.remedy_outcome.as_deref(),
+            Some("rollback_executed")
+        );
+        assert_eq!(
+            latest_after_update.incident_tags,
+            vec!["finance.claim_dispute".to_string()]
+        );
+        assert!(latest_after_update.supersedes_digest.is_some());
+        assert!(
+            state
+                .receipts
+                .iter()
+                .any(|receipt| receipt.receipt_type == "economy.outcome_registry.created.v1")
+        );
+        assert!(
+            state
+                .receipts
+                .iter()
+                .any(|receipt| receipt.receipt_type == "economy.outcome_registry.updated.v1")
+        );
+    }
+
+    #[test]
+    fn audit_export_includes_outcome_registry_objects_with_public_redaction() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        state.record_history_receipt(
+            &fixture_history_row("wallet-payment-outcome-export"),
+            1_762_000_010,
+            "test.history",
+        );
+        let linked_receipt_id = state
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_type == "earn.job.settlement_observed.v1")
+            .expect("settlement receipt")
+            .receipt_id
+            .clone();
+        state
+            .record_outcome_registry_entry(
+                fixture_outcome_registry_draft(linked_receipt_id.as_str(), "outcome-export-object"),
+                1_762_000_060_000,
+                "test.outcome.export",
+            )
+            .expect("outcome entry recorded");
+
+        let query = ReceiptQuery::default();
+        let restricted = state
+            .export_audit_package(
+                &query,
+                AuditExportRedactionTier::Restricted,
+                1_762_000_090_000,
+            )
+            .expect("restricted audit export");
+        let public = state
+            .export_audit_package(&query, AuditExportRedactionTier::Public, 1_762_000_090_000)
+            .expect("public audit export");
+        assert_eq!(restricted.outcome_registry_object_count, 1);
+        assert_eq!(public.outcome_registry_object_count, 1);
+        assert!(
+            restricted
+                .outcome_registry_objects
+                .iter()
+                .all(|object| !object.linked_receipt_ids.is_empty())
+        );
+        assert!(
+            public
+                .outcome_registry_objects
+                .iter()
+                .all(|object| object.linked_receipt_ids.is_empty())
+        );
+        assert!(restricted.linkage_edges.iter().any(|edge| {
+            edge.relation_kind == "outcome_linked_receipt"
+                && edge
+                    .from_receipt_id
+                    .starts_with("outcome_registry:outcome:")
+                && edge.to_receipt_id == linked_receipt_id
+        }));
     }
 
     #[test]
