@@ -13,9 +13,9 @@ pub(super) use cad::CadChatPromptApplyOutcome;
 use crate::app_state::RenderState;
 use crate::pane_system::{
     ActiveJobPaneAction, AgentProfileStatePaneAction, AgentScheduleTickPaneAction,
-    CadDemoPaneAction, CreditDeskPaneAction, CreditSettlementLedgerPaneAction, JobHistoryPaneAction,
-    JobInboxPaneAction, SkillRegistryPaneAction, SkillTrustRevocationPaneAction,
-    TrajectoryAuditPaneAction,
+    CadDemoPaneAction, CreditDeskPaneAction, CreditSettlementLedgerPaneAction,
+    JobHistoryPaneAction, JobInboxPaneAction, SkillRegistryPaneAction,
+    SkillTrustRevocationPaneAction, TrajectoryAuditPaneAction,
 };
 use crate::runtime_lanes::{
     AcLaneUpdate, RuntimeCommandResponse, RuntimeCommandStatus, RuntimeLane, SaLaneUpdate,

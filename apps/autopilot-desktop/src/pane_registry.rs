@@ -699,8 +699,7 @@ const PANE_SPECS: [PaneSpec; 41] = [
         command: Some(PaneCommandSpec {
             id: "pane.stablesats_simulation",
             label: "StableSats Wallet Simulation",
-            description:
-                "Open Blink-style BTC/USD balance switching simulation for multiple agents",
+            description: "Open Blink-style BTC/USD balance switching simulation for multiple agents",
             keybinding: None,
         }),
         hotbar: None,

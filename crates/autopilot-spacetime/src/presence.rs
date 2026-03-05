@@ -2,7 +2,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use bitcoin::secp256k1::{Keypair, Message, Secp256k1, SecretKey, XOnlyPublicKey, schnorr::Signature};
+use bitcoin::secp256k1::{
+    Keypair, Message, Secp256k1, SecretKey, XOnlyPublicKey, schnorr::Signature,
+};
 use sha2::{Digest, Sha256};
 
 pub const NOSTR_PRESENCE_BIND_DOMAIN: &str = "openagents:nostr-presence-bind:v1";
@@ -179,9 +181,7 @@ impl ProviderPresenceRegistry {
         require_non_empty(node_id, "node_id")?;
         let nonce = self.next_nonce;
         self.next_nonce = self.next_nonce.saturating_add(1);
-        let challenge = format!(
-            "{NOSTR_PRESENCE_BIND_DOMAIN}:{node_id}:{now_unix_ms}:{nonce}"
-        );
+        let challenge = format!("{NOSTR_PRESENCE_BIND_DOMAIN}:{node_id}:{now_unix_ms}:{nonce}");
         let row = NostrBindChallenge {
             node_id: node_id.to_string(),
             challenge,
@@ -256,7 +256,9 @@ impl ProviderPresenceRegistry {
             challenge_signature_hex: request.challenge_signature_hex.trim().to_string(),
             connected_at_unix_ms: connected_at,
             last_seen_unix_ms: request.now_unix_ms,
-            expires_at_unix_ms: request.now_unix_ms.saturating_add(self.policy.stale_after_ms),
+            expires_at_unix_ms: request
+                .now_unix_ms
+                .saturating_add(self.policy.stale_after_ms),
             offline_reason: None,
         };
         self.rows.insert(request.node_id, row.clone());
@@ -372,13 +374,10 @@ pub fn sign_nostr_presence_challenge(
     require_non_empty(node_id, "node_id")?;
     require_non_empty(challenge, "challenge")?;
 
-    let private_key_bytes =
-        hex::decode(private_key_hex.trim()).map_err(|error| PresenceError::InvalidPrivateKey(
-            error.to_string(),
-        ))?;
-    let secret_key = SecretKey::from_slice(private_key_bytes.as_slice()).map_err(|error| {
-        PresenceError::InvalidPrivateKey(error.to_string())
-    })?;
+    let private_key_bytes = hex::decode(private_key_hex.trim())
+        .map_err(|error| PresenceError::InvalidPrivateKey(error.to_string()))?;
+    let secret_key = SecretKey::from_slice(private_key_bytes.as_slice())
+        .map_err(|error| PresenceError::InvalidPrivateKey(error.to_string()))?;
     let secp = Secp256k1::signing_only();
     let keypair = Keypair::from_secret_key(&secp, &secret_key);
     let message = Message::from_digest(challenge_digest(node_id, challenge));
@@ -397,13 +396,10 @@ pub fn verify_nostr_presence_challenge_signature(
     require_non_empty(challenge, "challenge")?;
     require_non_empty(signature_hex, "challenge_signature_hex")?;
 
-    let pubkey_bytes =
-        hex::decode(nostr_pubkey_hex.trim()).map_err(|error| PresenceError::InvalidPublicKey(
-            error.to_string(),
-        ))?;
-    let pubkey = XOnlyPublicKey::from_slice(pubkey_bytes.as_slice()).map_err(|error| {
-        PresenceError::InvalidPublicKey(error.to_string())
-    })?;
+    let pubkey_bytes = hex::decode(nostr_pubkey_hex.trim())
+        .map_err(|error| PresenceError::InvalidPublicKey(error.to_string()))?;
+    let pubkey = XOnlyPublicKey::from_slice(pubkey_bytes.as_slice())
+        .map_err(|error| PresenceError::InvalidPublicKey(error.to_string()))?;
     let signature_bytes = hex::decode(signature_hex.trim())
         .map_err(|error| PresenceError::InvalidSignature(error.to_string()))?;
     let signature = Signature::from_slice(signature_bytes.as_slice())
@@ -489,10 +485,7 @@ mod tests {
             })
             .expect("online registration should pass");
         assert_eq!(row.status, PresenceStatus::Online);
-        assert_eq!(
-            registry.providers_online(PresenceCardinality::Identity),
-            1
-        );
+        assert_eq!(registry.providers_online(PresenceCardinality::Identity), 1);
 
         let heartbeat = registry
             .heartbeat("node-a", 2_000)
@@ -508,10 +501,7 @@ mod tests {
             offline.offline_reason.as_deref(),
             Some(OFFLINE_REASON_EXPLICIT)
         );
-        assert_eq!(
-            registry.providers_online(PresenceCardinality::Identity),
-            0
-        );
+        assert_eq!(registry.providers_online(PresenceCardinality::Identity), 0);
     }
 
     #[test]
@@ -535,7 +525,10 @@ mod tests {
                 now_unix_ms: 1_500,
             })
             .expect_err("missing challenge should fail");
-        assert!(matches!(error, super::PresenceError::ChallengeMissing { .. }));
+        assert!(matches!(
+            error,
+            super::PresenceError::ChallengeMissing { .. }
+        ));
     }
 
     #[test]

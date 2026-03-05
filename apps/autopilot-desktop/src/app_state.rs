@@ -2922,8 +2922,7 @@ impl NetworkAggregateCountersState {
             Some("Spacetime presence unavailable".to_string())
         } else if spacetime_presence.node_offline_reason.as_deref() == Some("ttl_expired") {
             self.providers_online_source_tag = "spacetime.presence.stale".to_string();
-            self.providers_online_source_detail =
-                Some("Provider presence TTL expired".to_string());
+            self.providers_online_source_detail = Some("Provider presence TTL expired".to_string());
             None
         } else {
             None
@@ -2971,9 +2970,8 @@ impl NetworkAggregateCountersState {
                 Some(existing) => Some(format!("{existing}; {issue}")),
                 None => Some(issue),
             };
-            self.last_action = Some(
-                "Aggregate counters degraded due to Spacetime presence source".to_string(),
-            );
+            self.last_action =
+                Some("Aggregate counters degraded due to Spacetime presence source".to_string());
         } else if self.providers_online_source_tag == "spacetime.presence.stale" {
             self.source_tag = "aggregate.stale.spacetime-presence".to_string();
             self.last_action = Some(
@@ -3146,6 +3144,9 @@ pub struct RenderState {
     pub sync_health: SyncHealthState,
     pub sync_bootstrap_note: Option<String>,
     pub sync_bootstrap_error: Option<String>,
+    pub sync_lifecycle_worker_id: String,
+    pub sync_lifecycle: crate::sync_lifecycle::RuntimeSyncLifecycleManager,
+    pub sync_lifecycle_snapshot: Option<crate::sync_lifecycle::RuntimeSyncHealthSnapshot>,
     pub spacetime_presence: crate::spacetime_presence::SpacetimePresenceRuntime,
     pub spacetime_presence_snapshot: crate::spacetime_presence::SpacetimePresenceSnapshot,
     pub network_requests: NetworkRequestsState,
@@ -3361,8 +3362,8 @@ mod tests {
         JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest, JobInboxState,
         JobInboxValidation, JobLifecycleStage, NetworkAggregateCountersState, NetworkRequestStatus,
         NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderMode,
-        ProviderRuntimeState, RecoveryAlertRow, RelayConnectionRow, RelayConnectionStatus,
-        RelayConnectionsState, RelaySecuritySimulationPaneState, SettingsState, SparkPaneState,
+        ProviderRuntimeState, RecoveryAlertRow, RelayConnectionStatus, RelayConnectionsState,
+        RelaySecuritySimulationPaneState, SettingsState, SparkPaneState,
         StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
         SyncHealthState, SyncRecoveryPhase, TreasuryExchangeSimulationPaneState,
     };
@@ -4458,22 +4459,26 @@ mod tests {
 
     #[test]
     fn sync_health_detects_stale_cursor_and_rebootstrap() {
-        let mut provider = ProviderRuntimeState::default();
-        provider.mode = ProviderMode::Online;
-        let mut relays = RelayConnectionsState::default();
-        relays.relays.push(RelayConnectionRow {
-            url: "wss://relay-a.example".to_string(),
-            status: RelayConnectionStatus::Connected,
-            latency_ms: Some(42),
-            last_seen_seconds_ago: Some(0),
-            last_error: None,
-        });
+        let worker_id = "desktopw:test:sync";
+        let mut lifecycle = crate::sync_lifecycle::RuntimeSyncLifecycleManager::default();
+        lifecycle.mark_connecting(worker_id);
+        lifecycle.mark_replay_bootstrap(worker_id, 42, Some(42));
+        lifecycle.mark_live(worker_id, Some(120));
         let mut sync = SyncHealthState::default();
+        sync.last_applied_event_seq = 42;
+        let snapshot = lifecycle
+            .snapshot(worker_id)
+            .expect("snapshot should exist");
 
-        sync.cursor_last_advanced_seconds_ago = sync.cursor_stale_after_seconds + 5;
-        sync.refresh_from_runtime(std::time::Instant::now(), &provider, &relays);
+        let now = std::time::Instant::now();
+        sync.refresh_from_lifecycle(now, Some(&snapshot));
+        sync.refresh_from_lifecycle(
+            now + std::time::Duration::from_secs(sync.cursor_stale_after_seconds + 5),
+            Some(&snapshot),
+        );
         assert_eq!(sync.load_state, super::PaneLoadState::Error);
         assert_eq!(sync.recovery_phase, SyncRecoveryPhase::Reconnecting);
+        assert!(sync.stale_cursor_reason.is_some());
 
         sync.rebootstrap();
         assert_eq!(sync.load_state, super::PaneLoadState::Ready);
@@ -4482,47 +4487,39 @@ mod tests {
     }
 
     #[test]
-    fn sync_health_does_not_mark_stale_while_provider_is_offline() {
-        let provider = ProviderRuntimeState::default();
-        let mut relays = RelayConnectionsState::default();
-        relays.relays.push(RelayConnectionRow {
-            url: "wss://relay-a.example".to_string(),
-            status: RelayConnectionStatus::Connected,
-            latency_ms: Some(42),
-            last_seen_seconds_ago: Some(0),
-            last_error: None,
-        });
+    fn sync_health_stays_idle_without_lifecycle_snapshot() {
         let mut sync = SyncHealthState::default();
-
-        sync.cursor_last_advanced_seconds_ago = sync.cursor_stale_after_seconds + 5;
-        sync.refresh_from_runtime(std::time::Instant::now(), &provider, &relays);
-
-        assert_eq!(sync.load_state, super::PaneLoadState::Ready);
+        sync.refresh_from_lifecycle(std::time::Instant::now(), None);
+        assert_eq!(sync.load_state, super::PaneLoadState::Loading);
         assert_eq!(sync.recovery_phase, SyncRecoveryPhase::Idle);
         assert_eq!(sync.last_error, None);
         assert_eq!(sync.cursor_last_advanced_seconds_ago, 0);
     }
 
     #[test]
-    fn sync_health_marks_resubscribing_when_relays_are_lost() {
-        let provider = ProviderRuntimeState::default();
-        let mut relays = RelayConnectionsState::default();
-        relays.relays.push(RelayConnectionRow {
-            url: "wss://relay-a.example".to_string(),
-            status: RelayConnectionStatus::Connected,
-            latency_ms: Some(42),
-            last_seen_seconds_ago: Some(0),
-            last_error: None,
-        });
+    fn sync_health_marks_resubscribing_when_lifecycle_enters_backoff() {
+        let worker_id = "desktopw:test:backoff";
+        let mut lifecycle = crate::sync_lifecycle::RuntimeSyncLifecycleManager::default();
+        lifecycle.mark_connecting(worker_id);
+        lifecycle.mark_live(worker_id, Some(30));
+        let _ = lifecycle.mark_disconnect(
+            worker_id,
+            crate::sync_lifecycle::RuntimeSyncDisconnectReason::Network,
+            Some("relay dropped connection".to_string()),
+        );
+        let snapshot = lifecycle
+            .snapshot(worker_id)
+            .expect("snapshot should exist");
         let mut sync = SyncHealthState::default();
 
-        sync.refresh_from_runtime(std::time::Instant::now(), &provider, &relays);
-        assert_eq!(sync.subscription_state, "subscribed");
-
-        relays.relays[0].status = RelayConnectionStatus::Error;
-        relays.relays[0].last_error = Some("relay dropped connection".to_string());
-        sync.refresh_from_runtime(std::time::Instant::now(), &provider, &relays);
+        sync.refresh_from_lifecycle(std::time::Instant::now(), Some(&snapshot));
         assert_eq!(sync.subscription_state, "resubscribing");
+        assert_eq!(sync.recovery_phase, SyncRecoveryPhase::Reconnecting);
+        assert_eq!(sync.disconnect_reason.as_deref(), Some("network"));
+        assert!(
+            sync.reconnect_posture.starts_with("backoff"),
+            "reconnect posture should expose backoff details"
+        );
     }
 
     #[test]
@@ -5209,12 +5206,8 @@ mod tests {
     #[test]
     fn network_aggregate_counters_surface_spacetime_presence_degraded_state() {
         let mut counters = NetworkAggregateCountersState::default();
-        let presence = fixture_presence_snapshot(
-            0,
-            "unregistered",
-            Some("presence query timeout"),
-            None,
-        );
+        let presence =
+            fixture_presence_snapshot(0, "unregistered", Some("presence query timeout"), None);
         let history = JobHistoryState::default();
         let mut spark = SparkPaneState::default();
         spark.balance = Some(openagents_spark::Balance {
@@ -5255,7 +5248,10 @@ mod tests {
 
         assert_eq!(counters.load_state, super::PaneLoadState::Ready);
         assert_eq!(counters.source_tag, "aggregate.stale.spacetime-presence");
-        assert_eq!(counters.providers_online_source_tag, "spacetime.presence.stale");
+        assert_eq!(
+            counters.providers_online_source_tag,
+            "spacetime.presence.stale"
+        );
         assert!(
             counters
                 .last_action

@@ -8,9 +8,12 @@ const ENV_CONTROL_BASE_URL_KEYS: [&str; 3] = [
     "OA_CONTROL_BASE_URL",
     "OA_OPENAGENTS_CONTROL_BASE_URL",
 ];
-const ENV_SPACETIME_BASE_URL_KEYS: [&str; 2] =
-    ["OA_SPACETIME_HTTP_BASE_URL", "OA_SPACETIME_DEV_HTTP_BASE_URL"];
-const ENV_SPACETIME_DATABASE_KEYS: [&str; 2] = ["OA_SPACETIME_DATABASE", "OA_SPACETIME_DEV_DATABASE"];
+const ENV_SPACETIME_BASE_URL_KEYS: [&str; 2] = [
+    "OA_SPACETIME_HTTP_BASE_URL",
+    "OA_SPACETIME_DEV_HTTP_BASE_URL",
+];
+const ENV_SPACETIME_DATABASE_KEYS: [&str; 2] =
+    ["OA_SPACETIME_DATABASE", "OA_SPACETIME_DEV_DATABASE"];
 
 const LEGACY_SYNC_TOKEN_PATHS: [&str; 3] = [
     "/api/spacetime/token",
@@ -205,7 +208,10 @@ fn parse_sync_token_lease(raw: &str) -> Result<SyncTokenLease, String> {
     if let Some(value) = transport.as_deref()
         && value != "spacetime_ws"
     {
-        return Err(format!("unexpected sync transport '{}'; expected spacetime_ws", value));
+        return Err(format!(
+            "unexpected sync transport '{}'; expected spacetime_ws",
+            value
+        ));
     }
 
     let protocol_version = payload
@@ -272,9 +278,9 @@ fn truncate_body(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use reqwest::blocking::Client;
     use std::io::{Read, Write};
     use std::net::{SocketAddr, TcpListener};
-    use reqwest::blocking::Client;
 
     use super::{
         SyncTokenLease, bootstrap_sync_session, canonical_sync_token_endpoint,
@@ -368,7 +374,10 @@ mod tests {
         .expect("bootstrap should succeed");
 
         assert_eq!(result.token_lease.token, "bootstrap-token");
-        assert_eq!(result.control_token_endpoint, format!("http://{addr}/api/sync/token"));
+        assert_eq!(
+            result.control_token_endpoint,
+            format!("http://{addr}/api/sync/token")
+        );
         assert_eq!(
             result.target.subscribe_url,
             "https://sync.example.com/v1/database/autopilot/subscribe"

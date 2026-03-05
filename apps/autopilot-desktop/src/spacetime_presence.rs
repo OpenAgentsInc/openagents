@@ -170,8 +170,7 @@ impl SpacetimePresenceRuntime {
             match self.registry.heartbeat(self.node_id.as_str(), now_unix_ms) {
                 Ok(_) => {
                     self.last_error = None;
-                    self.last_action =
-                        Some("Registered provider presence heartbeat".to_string());
+                    self.last_action = Some("Registered provider presence heartbeat".to_string());
                     changed = true;
                 }
                 Err(error) => {
@@ -230,15 +229,15 @@ fn now_unix_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::SpacetimePresenceRuntime;
+    use crate::state::provider_runtime::ProviderMode;
     use autopilot_spacetime::presence::PresenceStatus;
     use bitcoin::secp256k1::{Keypair, Secp256k1, SecretKey};
-    use crate::state::provider_runtime::ProviderMode;
     use nostr::NostrIdentity;
     use std::path::PathBuf;
 
     fn fixture_identity() -> NostrIdentity {
-        let secret_key = SecretKey::from_slice(&[0x11_u8; 32])
-            .expect("fixture secret key should be valid");
+        let secret_key =
+            SecretKey::from_slice(&[0x11_u8; 32]).expect("fixture secret key should be valid");
         let secp = Secp256k1::signing_only();
         let keypair = Keypair::from_secret_key(&secp, &secret_key);
         let (x_only, _) = keypair.x_only_public_key();
@@ -266,7 +265,10 @@ mod tests {
         let offline = runtime.register_offline();
         assert!(offline.is_ok());
         let snapshot_offline = runtime.snapshot();
-        assert_eq!(snapshot_offline.node_status, PresenceStatus::Offline.label());
+        assert_eq!(
+            snapshot_offline.node_status,
+            PresenceStatus::Offline.label()
+        );
         assert_eq!(snapshot_offline.providers_online, 0);
     }
 

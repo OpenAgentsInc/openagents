@@ -109,6 +109,14 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
 
     match event {
         WindowEvent::CloseRequested => {
+            let worker_id = state.sync_lifecycle_worker_id.clone();
+            let _ = state.sync_lifecycle.mark_disconnect(
+                worker_id.as_str(),
+                crate::sync_lifecycle::RuntimeSyncDisconnectReason::StreamClosed,
+                Some("desktop shutdown requested".to_string()),
+            );
+            state.sync_lifecycle.mark_idle(worker_id.as_str());
+            state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
             let _ = state.spacetime_presence.register_offline();
             state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
             let _ = state.spark_worker.cancel_pending();
@@ -2370,11 +2378,19 @@ pub(super) fn run_pane_hit_action(
                 state.provider_runtime.mode,
                 ProviderMode::Offline | ProviderMode::Degraded
             );
+            let worker_id = state.sync_lifecycle_worker_id.clone();
             if wants_online {
+                state.sync_lifecycle.mark_connecting(worker_id.as_str());
                 if let Err(error) = state
                     .spacetime_presence
                     .register_online(state.nostr_identity.as_ref())
                 {
+                    let reason = crate::sync_lifecycle::classify_disconnect_reason(error.as_str());
+                    let _ = state.sync_lifecycle.mark_disconnect(
+                        worker_id.as_str(),
+                        reason,
+                        Some(error.clone()),
+                    );
                     state.provider_runtime.last_result = Some(error.clone());
                     state.provider_runtime.last_error_detail = Some(error);
                     state.provider_runtime.mode = ProviderMode::Degraded;
@@ -2383,10 +2399,18 @@ pub(super) fn run_pane_hit_action(
                     state.provider_runtime.last_authoritative_error_class =
                         Some(EarnFailureClass::Execution);
                     state.provider_runtime.mode_changed_at = std::time::Instant::now();
+                    state.sync_lifecycle_snapshot =
+                        state.sync_lifecycle.snapshot(worker_id.as_str());
                     state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
                     return true;
                 }
             } else {
+                let _ = state.sync_lifecycle.mark_disconnect(
+                    worker_id.as_str(),
+                    crate::sync_lifecycle::RuntimeSyncDisconnectReason::StreamClosed,
+                    Some("operator toggled provider offline".to_string()),
+                );
+                state.sync_lifecycle.mark_idle(worker_id.as_str());
                 let _ = state.spacetime_presence.register_offline();
             }
             state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
@@ -2400,6 +2424,12 @@ pub(super) fn run_pane_hit_action(
                     online: wants_online,
                 })
             {
+                let reason = crate::sync_lifecycle::classify_disconnect_reason(error.as_str());
+                let _ = state.sync_lifecycle.mark_disconnect(
+                    worker_id.as_str(),
+                    reason,
+                    Some(error.clone()),
+                );
                 state.provider_runtime.last_result = Some(error.clone());
                 state.provider_runtime.last_error_detail = Some(error);
                 state.provider_runtime.mode = ProviderMode::Degraded;
@@ -2418,8 +2448,25 @@ pub(super) fn run_pane_hit_action(
                     state.provider_runtime.last_authoritative_status = Some("pending".to_string());
                     state.provider_runtime.last_authoritative_event_id = None;
                     state.provider_runtime.last_authoritative_error_class = None;
+                    if wants_online {
+                        let refresh_after = state
+                            .sync_lifecycle
+                            .snapshot(worker_id.as_str())
+                            .and_then(|snapshot| snapshot.token_refresh_after_in_seconds);
+                        state
+                            .sync_lifecycle
+                            .mark_live(worker_id.as_str(), refresh_after);
+                    } else {
+                        state.sync_lifecycle.mark_idle(worker_id.as_str());
+                    }
                 }
                 Err(error) => {
+                    let reason = crate::sync_lifecycle::classify_disconnect_reason(error.as_str());
+                    let _ = state.sync_lifecycle.mark_disconnect(
+                        worker_id.as_str(),
+                        reason,
+                        Some(error.clone()),
+                    );
                     state.provider_runtime.last_result = Some(error.clone());
                     state.provider_runtime.last_error_detail = Some(error);
                     state.provider_runtime.mode = ProviderMode::Degraded;
@@ -2433,6 +2480,7 @@ pub(super) fn run_pane_hit_action(
                         Some(EarnFailureClass::Execution);
                 }
             }
+            state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
             true
         }
         PaneHitAction::CodexAccount(action) => run_codex_account_action(state, action),
