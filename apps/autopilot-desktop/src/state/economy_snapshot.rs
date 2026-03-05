@@ -83,6 +83,12 @@ pub struct CertificationDistributionRow {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct AnchorBackendStatusRow {
+    pub anchor_backend: String,
+    pub publications_24h: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct OutcomeDistributionRow {
     pub category: String,
     pub tfb_class: FeedbackLatencyClass,
@@ -156,6 +162,12 @@ pub struct EconomySnapshot {
     pub exportable_simulation_scenarios: u64,
     #[serde(default)]
     pub simulation_scenario_backlog: u64,
+    #[serde(default)]
+    pub anchor_publications_24h: u64,
+    #[serde(default)]
+    pub anchored_snapshots_24h: u64,
+    #[serde(default)]
+    pub anchor_backend_distribution: Vec<AnchorBackendStatusRow>,
     #[serde(default)]
     pub outcome_distribution: Vec<OutcomeDistributionRow>,
     #[serde(default)]
@@ -595,6 +607,34 @@ fn build_snapshot(
     let uncertified_block_rate = ratio(uncertified_block_count_24h, total_work_units);
     let (exportable_simulation_scenarios, simulation_scenario_backlog) =
         simulation_scenario_backlog_counts(receipts, as_of_ms);
+    let anchor_publications_24h = scoped_receipts
+        .iter()
+        .copied()
+        .filter(|receipt| is_anchor_publication_receipt(receipt))
+        .count() as u64;
+    let mut anchored_snapshots = BTreeSet::<String>::new();
+    let mut anchor_backend_counts = BTreeMap::<String, u64>::new();
+    for receipt in scoped_receipts
+        .iter()
+        .copied()
+        .filter(|receipt| is_anchor_publication_receipt(receipt))
+    {
+        let backend = anchor_backend_for_receipt(receipt).unwrap_or_else(|| "unknown".to_string());
+        let entry = anchor_backend_counts.entry(backend).or_insert(0);
+        *entry = entry.saturating_add(1);
+        if let Some(snapshot_id) = anchor_snapshot_id_for_receipt(receipt) {
+            anchored_snapshots.insert(snapshot_id);
+        }
+    }
+    let anchored_snapshots_24h = anchored_snapshots.len() as u64;
+    let mut anchor_backend_distribution = anchor_backend_counts
+        .into_iter()
+        .map(|(anchor_backend, publications_24h)| AnchorBackendStatusRow {
+            anchor_backend,
+            publications_24h,
+        })
+        .collect::<Vec<_>>();
+    anchor_backend_distribution.sort_by(|lhs, rhs| lhs.anchor_backend.cmp(&rhs.anchor_backend));
     let mut outcome_distribution_counts = BTreeMap::<
         (
             String,
@@ -837,6 +877,9 @@ fn build_snapshot(
         uncertified_block_rate,
         exportable_simulation_scenarios,
         simulation_scenario_backlog,
+        anchor_publications_24h,
+        anchored_snapshots_24h,
+        anchor_backend_distribution.as_slice(),
         outcome_distribution.as_slice(),
         outcome_key_rates.as_slice(),
         rollback_signal_count,
@@ -883,6 +926,9 @@ fn build_snapshot(
         uncertified_block_rate,
         exportable_simulation_scenarios,
         simulation_scenario_backlog,
+        anchor_publications_24h,
+        anchored_snapshots_24h,
+        anchor_backend_distribution,
         outcome_distribution,
         outcome_key_rates,
         rollback_attempts_24h: rollback_signal_count,
@@ -1460,6 +1506,9 @@ struct CanonicalSnapshotPayload<'a> {
     uncertified_block_rate: f64,
     exportable_simulation_scenarios: u64,
     simulation_scenario_backlog: u64,
+    anchor_publications_24h: u64,
+    anchored_snapshots_24h: u64,
+    anchor_backend_distribution: &'a [AnchorBackendStatusRow],
     outcome_distribution: &'a [OutcomeDistributionRow],
     outcome_key_rates: &'a [OutcomeKeyRateRow],
     rollback_attempts_24h: u64,
@@ -1505,6 +1554,9 @@ fn snapshot_hash_for(
     uncertified_block_rate: f64,
     exportable_simulation_scenarios: u64,
     simulation_scenario_backlog: u64,
+    anchor_publications_24h: u64,
+    anchored_snapshots_24h: u64,
+    anchor_backend_distribution: &[AnchorBackendStatusRow],
     outcome_distribution: &[OutcomeDistributionRow],
     outcome_key_rates: &[OutcomeKeyRateRow],
     rollback_attempts_24h: u64,
@@ -1548,6 +1600,9 @@ fn snapshot_hash_for(
         uncertified_block_rate,
         exportable_simulation_scenarios,
         simulation_scenario_backlog,
+        anchor_publications_24h,
+        anchored_snapshots_24h,
+        anchor_backend_distribution,
         outcome_distribution,
         outcome_key_rates,
         rollback_attempts_24h,
@@ -1963,6 +2018,38 @@ fn exported_ground_truth_case_refs_from_receipt(receipt: &Receipt) -> Vec<(Strin
     refs.sort_by(|lhs, rhs| lhs.0.cmp(&rhs.0).then_with(|| lhs.1.cmp(&rhs.1)));
     refs.dedup();
     refs
+}
+
+fn is_anchor_publication_receipt(receipt: &Receipt) -> bool {
+    receipt.receipt_type == "economy.anchor.published.v1"
+        || receipt
+            .evidence
+            .iter()
+            .any(|evidence| evidence.kind == "anchor_proof_ref")
+}
+
+fn anchor_backend_for_receipt(receipt: &Receipt) -> Option<String> {
+    receipt
+        .evidence
+        .iter()
+        .find(|evidence| evidence.kind == "anchor_proof_ref")
+        .and_then(|evidence| evidence.meta.get("anchor_backend"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase())
+}
+
+fn anchor_snapshot_id_for_receipt(receipt: &Receipt) -> Option<String> {
+    receipt
+        .evidence
+        .iter()
+        .find(|evidence| evidence.kind == "snapshot_ref")
+        .and_then(|evidence| evidence.uri.strip_prefix("oa://economy/snapshots/"))
+        .map(|suffix| suffix.split('/').next().unwrap_or(suffix))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2446,6 +2533,45 @@ mod tests {
             serde_json::json!(ground_truth_case_digest),
         );
         receipt.evidence.push(scenario_ref);
+        receipt
+    }
+
+    fn fixture_anchor_publication_receipt(
+        receipt_id: &str,
+        created_at_ms: i64,
+        anchor_backend: &str,
+        snapshot_id: &str,
+    ) -> Receipt {
+        let mut receipt = fixture_receipt(
+            receipt_id,
+            "economy.anchor.published.v1",
+            created_at_ms,
+            "anchor-work-unit",
+            false,
+        );
+        receipt.evidence.push(EvidenceRef::new(
+            "snapshot_ref",
+            format!("oa://economy/snapshots/{snapshot_id}"),
+            digest_for_text(format!("{snapshot_id}:{receipt_id}").as_str()),
+        ));
+        let mut proof_ref = EvidenceRef::new(
+            "anchor_proof_ref",
+            format!(
+                "oa://anchors/{}/proof/{}",
+                anchor_backend,
+                digest_for_text(receipt_id)
+            ),
+            digest_for_text(format!("proof:{receipt_id}").as_str()),
+        );
+        proof_ref.meta.insert(
+            "anchor_backend".to_string(),
+            serde_json::json!(anchor_backend),
+        );
+        proof_ref.meta.insert(
+            "snapshot_id".to_string(),
+            serde_json::json!(snapshot_id),
+        );
+        receipt.evidence.push(proof_ref);
         receipt
     }
 
@@ -3163,6 +3289,47 @@ mod tests {
             .snapshot;
         assert_eq!(snapshot.exportable_simulation_scenarios, 2);
         assert_eq!(snapshot.simulation_scenario_backlog, 1);
+    }
+
+    #[test]
+    fn snapshot_aggregates_anchor_publication_status() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let path = temp_dir.path().join("snapshots-anchor-status.json");
+        let mut state = EconomySnapshotState::from_snapshot_path_for_tests(path);
+        let paid = fixture_receipt(
+            "receipt-paid-anchor-status",
+            "earn.job.settlement_observed.v1",
+            1_762_000_010_000,
+            "job-anchor-status",
+            true,
+        );
+        let anchor_a = fixture_anchor_publication_receipt(
+            "receipt-anchor-bitcoin-1",
+            1_762_000_011_000,
+            "bitcoin",
+            "snapshot.economy:1762000060000",
+        );
+        let anchor_b = fixture_anchor_publication_receipt(
+            "receipt-anchor-nostr-1",
+            1_762_000_012_000,
+            "nostr",
+            "snapshot.economy:1762000120000",
+        );
+
+        let snapshot = state
+            .compute_minute_snapshot(1_762_000_120_000, &[paid, anchor_a, anchor_b])
+            .expect("snapshot should compute")
+            .snapshot;
+        assert_eq!(snapshot.anchor_publications_24h, 2);
+        assert_eq!(snapshot.anchored_snapshots_24h, 2);
+        assert!(snapshot
+            .anchor_backend_distribution
+            .iter()
+            .any(|row| row.anchor_backend == "bitcoin" && row.publications_24h == 1));
+        assert!(snapshot
+            .anchor_backend_distribution
+            .iter()
+            .any(|row| row.anchor_backend == "nostr" && row.publications_24h == 1));
     }
 
     #[test]
