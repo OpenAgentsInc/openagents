@@ -10,13 +10,14 @@ use crate::state::job_inbox::{JobInboxNetworkRequest, JobInboxRequest};
 use bitcoin::hashes::{Hash, sha256};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::{HashSet, VecDeque};
+use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 
 const EARN_KERNEL_RECEIPT_SCHEMA_VERSION: u16 = 1;
 const EARN_KERNEL_RECEIPT_STREAM_ID: &str = "stream.earn_kernel_receipts.v1";
 const EARN_KERNEL_RECEIPT_AUTHORITY: &str = "kernel.authority";
 const EARN_KERNEL_RECEIPT_ROW_LIMIT: usize = 2048;
+const EARN_WORK_UNIT_METADATA_ROW_LIMIT: usize = 2048;
 const REASON_CODE_JOB_FAILED: &str = "JOB_FAILED";
 const REASON_CODE_POLICY_PREFLIGHT_REJECTED: &str = "POLICY_PREFLIGHT_REJECTED";
 const REASON_CODE_PAYMENT_POINTER_NON_AUTHORITATIVE: &str = "PAYMENT_POINTER_NON_AUTHORITATIVE";
@@ -43,7 +44,32 @@ struct EarnKernelReceiptDocumentV1 {
     schema_version: u16,
     stream_id: String,
     authority: String,
+    #[serde(default)]
     receipts: Vec<Receipt>,
+    #[serde(default)]
+    work_units: Vec<WorkUnitMetadata>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct WorkUnitMetadata {
+    pub work_unit_id: String,
+    pub category: String,
+    pub tfb_class: FeedbackLatencyClass,
+    pub severity: SeverityClass,
+    pub verification_budget_hint_sats: u64,
+}
+
+#[derive(Clone)]
+struct ResolvedWorkMetadata {
+    category: String,
+    tfb_class: FeedbackLatencyClass,
+    severity: SeverityClass,
+    verification_budget_hint_sats: u64,
+}
+
+struct LoadedReceiptState {
+    receipts: Vec<Receipt>,
+    work_units: BTreeMap<String, WorkUnitMetadata>,
 }
 
 pub struct EarnKernelReceiptState {
@@ -53,6 +79,7 @@ pub struct EarnKernelReceiptState {
     pub stream_id: String,
     pub authority: String,
     pub receipts: Vec<Receipt>,
+    pub work_units: BTreeMap<String, WorkUnitMetadata>,
     receipt_file_path: PathBuf,
 }
 
@@ -65,16 +92,19 @@ impl Default for EarnKernelReceiptState {
 
 impl EarnKernelReceiptState {
     fn from_receipt_file_path(receipt_file_path: PathBuf) -> Self {
-        let (receipts, load_state, last_error, last_action) =
+        let (loaded, load_state, last_error, last_action) =
             match load_earn_kernel_receipts(receipt_file_path.as_path()) {
-                Ok(receipts) => (
-                    receipts,
+                Ok(loaded) => (
+                    loaded,
                     PaneLoadState::Ready,
                     None,
                     Some("Loaded economy-kernel receipt stream".to_string()),
                 ),
                 Err(error) => (
-                    Vec::new(),
+                    LoadedReceiptState {
+                        receipts: Vec::new(),
+                        work_units: BTreeMap::new(),
+                    },
                     PaneLoadState::Error,
                     Some(error),
                     Some("Economy-kernel receipt stream load failed".to_string()),
@@ -86,7 +116,8 @@ impl EarnKernelReceiptState {
             last_action,
             stream_id: EARN_KERNEL_RECEIPT_STREAM_ID.to_string(),
             authority: EARN_KERNEL_RECEIPT_AUTHORITY.to_string(),
-            receipts,
+            receipts: loaded.receipts,
+            work_units: loaded.work_units,
             receipt_file_path,
         }
     }
@@ -98,8 +129,12 @@ impl EarnKernelReceiptState {
         source_tag: &str,
     ) {
         let job_id = format!("job-{}", request.request_id);
-        let category = work_category_for_demand_source(request.demand_source);
-        let severity = severity_for_notional_sats(request.price_sats);
+        let metadata = self.resolve_or_create_work_unit_metadata(
+            job_id.as_str(),
+            request.demand_source,
+            request.price_sats,
+            Some(request.ttl_seconds),
+        );
         let receipt_id = lifecycle_receipt_id(
             job_id.as_str(),
             JobLifecycleStage::Received,
@@ -130,12 +165,13 @@ impl EarnKernelReceiptState {
             ));
         }
 
-        let policy_decision = allow_policy_decision("ingress", category, severity);
+        let policy_decision =
+            allow_policy_decision("ingress", metadata.category.as_str(), metadata.severity);
 
         let hints = ReceiptHints {
-            category: Some(category.to_string()),
-            tfb_class: Some(tfb_class_for_ttl_seconds(request.ttl_seconds)),
-            severity: Some(severity),
+            category: Some(metadata.category.clone()),
+            tfb_class: Some(metadata.tfb_class),
+            severity: Some(metadata.severity),
             achieved_verification_tier: None,
             verification_correlated: None,
             provenance_grade: None,
@@ -169,11 +205,13 @@ impl EarnKernelReceiptState {
             "ttl_seconds": request.ttl_seconds,
             "skill_scope_id": request.skill_scope_id,
             "ac_envelope_event_id": request.ac_envelope_event_id,
+            "work_unit": work_unit_metadata_payload(job_id.as_str(), &metadata),
         }))
         .with_outputs_payload(json!({
             "stage": JobLifecycleStage::Received.label(),
             "source_tag": source_tag,
             "status": "accepted_for_inbox_projection",
+            "work_unit": work_unit_metadata_payload(job_id.as_str(), &metadata),
             "policy_rule_id": policy_decision.rule_id,
             "policy_decision": policy_decision.decision,
             "policy_notes": policy_decision.notes,
@@ -244,13 +282,17 @@ impl EarnKernelReceiptState {
         link_ingress_receipt: bool,
     ) {
         let job_id = format!("job-{request_id}");
-        let category = work_category_for_demand_source(demand_source);
-        let severity = severity_for_notional_sats(price_sats);
+        let metadata = self.resolve_or_create_work_unit_metadata(
+            job_id.as_str(),
+            demand_source,
+            price_sats,
+            Some(ttl_seconds),
+        );
         let rule_action = "preflight_reject";
         let policy_decision = deny_policy_decision(
             rule_action,
-            category,
-            severity,
+            metadata.category.as_str(),
+            metadata.severity,
             REASON_CODE_POLICY_PREFLIGHT_REJECTED,
         );
         let authority_key = format!("preflight-reject:{request_id}");
@@ -296,21 +338,23 @@ impl EarnKernelReceiptState {
             "price_sats": price_sats,
             "ttl_seconds": ttl_seconds,
             "preflight_reason": reason,
+            "work_unit": work_unit_metadata_payload(job_id.as_str(), &metadata),
         }))
         .with_outputs_payload(json!({
             "stage": JobLifecycleStage::Received.label(),
             "source_tag": source_tag,
             "status": "denied",
             "reason_code": REASON_CODE_POLICY_PREFLIGHT_REJECTED,
+            "work_unit": work_unit_metadata_payload(job_id.as_str(), &metadata),
             "policy_rule_id": policy_decision.rule_id,
             "policy_decision": policy_decision.decision,
             "policy_notes": policy_decision.notes,
         }))
         .with_evidence(evidence)
         .with_hints(ReceiptHints {
-            category: Some(category.to_string()),
-            tfb_class: Some(tfb_class_for_ttl_seconds(ttl_seconds)),
-            severity: Some(severity),
+            category: Some(metadata.category.clone()),
+            tfb_class: Some(metadata.tfb_class),
+            severity: Some(metadata.severity),
             achieved_verification_tier: None,
             verification_correlated: None,
             provenance_grade: None,
@@ -362,8 +406,12 @@ impl EarnKernelReceiptState {
         let paid_pointer_authoritative =
             is_wallet_authoritative_payment_pointer(Some(payment_pointer));
 
-        let category = work_category_for_demand_source(job.demand_source);
-        let severity = severity_for_notional_sats(job.quoted_price_sats);
+        let metadata = self.resolve_or_create_work_unit_metadata(
+            job.job_id.as_str(),
+            job.demand_source,
+            job.quoted_price_sats,
+            None,
+        );
         let (receipt_type, reason_code, status, policy_decision): (
             &'static str,
             Option<&'static str>,
@@ -377,8 +425,8 @@ impl EarnKernelReceiptState {
                 "withheld",
                 withhold_policy_decision(
                     "paid_transition_requires_wallet_proof",
-                    category,
-                    severity,
+                    metadata.category.as_str(),
+                    metadata.severity,
                     REASON_CODE_PAYMENT_POINTER_NON_AUTHORITATIVE,
                 ),
             )
@@ -389,8 +437,8 @@ impl EarnKernelReceiptState {
                 "failed",
                 deny_policy_decision(
                     "execution_failure",
-                    category,
-                    severity,
+                    metadata.category.as_str(),
+                    metadata.severity,
                     REASON_CODE_JOB_FAILED,
                 ),
             )
@@ -406,7 +454,7 @@ impl EarnKernelReceiptState {
                 },
                 None,
                 "ok",
-                allow_policy_decision(stage.label(), category, severity),
+                allow_policy_decision(stage.label(), metadata.category.as_str(), metadata.severity),
             )
         };
         let receipt_id = lifecycle_receipt_id(job.job_id.as_str(), stage, authority_key.as_str());
@@ -469,9 +517,9 @@ impl EarnKernelReceiptState {
         evidence.push(policy_decision_evidence(&policy_decision));
 
         let hints = ReceiptHints {
-            category: Some(category.to_string()),
-            tfb_class: None,
-            severity: Some(severity),
+            category: Some(metadata.category.clone()),
+            tfb_class: Some(metadata.tfb_class),
+            severity: Some(metadata.severity),
             achieved_verification_tier: None,
             verification_correlated: None,
             provenance_grade: None,
@@ -503,12 +551,14 @@ impl EarnKernelReceiptState {
             "stage": stage.label(),
             "quoted_price_sats": job.quoted_price_sats,
             "payment_pointer": if payment_pointer.is_empty() { None::<String> } else { Some(payment_pointer.to_string()) },
+            "work_unit": work_unit_metadata_payload(job.job_id.as_str(), &metadata),
         }))
         .with_outputs_payload(json!({
             "stage": stage.label(),
             "source_tag": source_tag,
             "status": status,
             "reason_code": reason_code,
+            "work_unit": work_unit_metadata_payload(job.job_id.as_str(), &metadata),
             "policy_rule_id": policy_decision.rule_id,
             "policy_decision": policy_decision.decision,
             "policy_notes": policy_decision.notes,
@@ -527,8 +577,12 @@ impl EarnKernelReceiptState {
         source_tag: &str,
     ) {
         let request_id = infer_request_id_from_job_id(row.job_id.as_str());
-        let category = work_category_for_demand_source(row.demand_source);
-        let severity = severity_for_notional_sats(row.payout_sats);
+        let metadata = self.resolve_or_create_work_unit_metadata(
+            row.job_id.as_str(),
+            row.demand_source,
+            row.payout_sats,
+            None,
+        );
         let payment_pointer_authoritative =
             is_wallet_authoritative_payment_pointer(Some(row.payment_pointer.as_str()));
         let (stage, receipt_type, reason_code, status, authority_key, policy_decision): (
@@ -545,7 +599,11 @@ impl EarnKernelReceiptState {
                 None,
                 "succeeded",
                 row.payment_pointer.clone(),
-                allow_policy_decision("history_paid", category, severity),
+                allow_policy_decision(
+                    "history_paid",
+                    metadata.category.as_str(),
+                    metadata.severity,
+                ),
             )
         } else if row.status == JobHistoryStatus::Succeeded {
             (
@@ -556,8 +614,8 @@ impl EarnKernelReceiptState {
                 format!("withheld:{request_id}"),
                 withhold_policy_decision(
                     "history_paid_requires_wallet_proof",
-                    category,
-                    severity,
+                    metadata.category.as_str(),
+                    metadata.severity,
                     REASON_CODE_PAYMENT_POINTER_NON_AUTHORITATIVE,
                 ),
             )
@@ -568,7 +626,12 @@ impl EarnKernelReceiptState {
                 Some(REASON_CODE_JOB_FAILED),
                 "failed",
                 row.result_hash.clone(),
-                deny_policy_decision("history_failed", category, severity, REASON_CODE_JOB_FAILED),
+                deny_policy_decision(
+                    "history_failed",
+                    metadata.category.as_str(),
+                    metadata.severity,
+                    REASON_CODE_JOB_FAILED,
+                ),
             )
         };
         let link_candidates =
@@ -598,6 +661,7 @@ impl EarnKernelReceiptState {
             "payment_pointer": row.payment_pointer,
             "result_hash": row.result_hash,
             "failure_reason": row.failure_reason,
+            "work_unit": work_unit_metadata_payload(row.job_id.as_str(), &metadata),
         }))
         .with_outputs_payload(json!({
             "stage": stage.label(),
@@ -605,6 +669,7 @@ impl EarnKernelReceiptState {
             "status": status,
             "wallet_settlement_authoritative": payment_pointer_authoritative,
             "reason_code": reason_code,
+            "work_unit": work_unit_metadata_payload(row.job_id.as_str(), &metadata),
             "policy_rule_id": policy_decision.rule_id,
             "policy_decision": policy_decision.decision,
             "policy_notes": policy_decision.notes,
@@ -643,9 +708,9 @@ impl EarnKernelReceiptState {
             evidence
         })
         .with_hints(ReceiptHints {
-            category: Some(category.to_string()),
-            tfb_class: None,
-            severity: Some(severity),
+            category: Some(metadata.category.clone()),
+            tfb_class: Some(metadata.tfb_class),
+            severity: Some(metadata.severity),
             achieved_verification_tier: None,
             verification_correlated: None,
             provenance_grade: None,
@@ -741,6 +806,53 @@ impl EarnKernelReceiptState {
         self.append_receipt(receipt, source_tag);
     }
 
+    fn resolve_or_create_work_unit_metadata(
+        &mut self,
+        work_unit_id: &str,
+        demand_source: JobDemandSource,
+        notional_sats: u64,
+        ttl_seconds: Option<u64>,
+    ) -> ResolvedWorkMetadata {
+        if let Some(existing) = self.work_units.get(work_unit_id) {
+            return ResolvedWorkMetadata {
+                category: existing.category.clone(),
+                tfb_class: existing.tfb_class,
+                severity: existing.severity,
+                verification_budget_hint_sats: existing.verification_budget_hint_sats,
+            };
+        }
+
+        let category = work_category_for_demand_source(demand_source).to_string();
+        let tfb_class = ttl_seconds.map_or(FeedbackLatencyClass::Short, tfb_class_for_ttl_seconds);
+        let severity = severity_for_notional_sats(notional_sats);
+        let verification_budget_hint_sats =
+            verification_budget_hint_sats(category.as_str(), tfb_class, severity);
+        self.work_units.insert(
+            work_unit_id.to_string(),
+            WorkUnitMetadata {
+                work_unit_id: work_unit_id.to_string(),
+                category: category.clone(),
+                tfb_class,
+                severity,
+                verification_budget_hint_sats,
+            },
+        );
+        normalize_work_units(&mut self.work_units);
+        ResolvedWorkMetadata {
+            category,
+            tfb_class,
+            severity,
+            verification_budget_hint_sats,
+        }
+    }
+
+    fn normalized_work_units(&self) -> Vec<WorkUnitMetadata> {
+        let mut rows = self.work_units.values().cloned().collect::<Vec<_>>();
+        rows.sort_by(|lhs, rhs| lhs.work_unit_id.cmp(&rhs.work_unit_id));
+        rows.truncate(EARN_WORK_UNIT_METADATA_ROW_LIMIT);
+        rows
+    }
+
     pub fn get_receipt(&self, receipt_id: &str) -> Option<&Receipt> {
         self.receipts
             .iter()
@@ -805,6 +917,15 @@ impl EarnKernelReceiptState {
             .iter()
             .any(|existing| existing.receipt_id == receipt.receipt_id)
         {
+            if let Err(error) = persist_earn_kernel_receipts(
+                self.receipt_file_path.as_path(),
+                self.receipts.as_slice(),
+                self.normalized_work_units().as_slice(),
+            ) {
+                self.last_error = Some(error);
+                self.load_state = PaneLoadState::Error;
+                return;
+            }
             self.last_error = None;
             self.load_state = PaneLoadState::Ready;
             self.last_action = Some(format!(
@@ -816,9 +937,11 @@ impl EarnKernelReceiptState {
 
         self.receipts.push(receipt.clone());
         self.receipts = normalize_receipts(std::mem::take(&mut self.receipts));
-        if let Err(error) =
-            persist_earn_kernel_receipts(self.receipt_file_path.as_path(), self.receipts.as_slice())
-        {
+        if let Err(error) = persist_earn_kernel_receipts(
+            self.receipt_file_path.as_path(),
+            self.receipts.as_slice(),
+            self.normalized_work_units().as_slice(),
+        ) {
             self.last_error = Some(error);
             self.load_state = PaneLoadState::Error;
             return;
@@ -863,6 +986,47 @@ fn work_category_for_demand_source(source: JobDemandSource) -> &'static str {
     match source {
         JobDemandSource::OpenNetwork | JobDemandSource::StarterDemand => "compute",
     }
+}
+
+fn work_unit_metadata_payload(
+    work_unit_id: &str,
+    metadata: &ResolvedWorkMetadata,
+) -> serde_json::Value {
+    json!({
+        "work_unit_id": work_unit_id,
+        "category": metadata.category.as_str(),
+        "tfb_class": metadata.tfb_class.label(),
+        "severity": metadata.severity.label(),
+        "verification_budget_hint": {
+            "asset": "btc",
+            "amount_sats": metadata.verification_budget_hint_sats,
+        }
+    })
+}
+
+fn verification_budget_hint_sats(
+    category: &str,
+    tfb_class: FeedbackLatencyClass,
+    severity: SeverityClass,
+) -> u64 {
+    let base: u64 = match severity {
+        SeverityClass::SeverityClassUnspecified | SeverityClass::Low => 100,
+        SeverityClass::Medium => 250,
+        SeverityClass::High => 1_000,
+        SeverityClass::Critical => 2_500,
+    };
+    let tfb_multiplier: u64 = match tfb_class {
+        FeedbackLatencyClass::FeedbackLatencyClassUnspecified | FeedbackLatencyClass::Short => 1,
+        FeedbackLatencyClass::Instant => 1,
+        FeedbackLatencyClass::Medium => 2,
+        FeedbackLatencyClass::Long => 3,
+    };
+    let category_multiplier: u64 = match category {
+        "compute" => 1,
+        _ => 2,
+    };
+    base.saturating_mul(tfb_multiplier)
+        .saturating_mul(category_multiplier)
 }
 
 fn allow_policy_decision(action: &str, category: &str, severity: SeverityClass) -> PolicyDecision {
@@ -1144,6 +1308,18 @@ fn severity_for_notional_sats(amount_sats: u64) -> SeverityClass {
     }
 }
 
+impl FeedbackLatencyClass {
+    fn label(self) -> &'static str {
+        match self {
+            FeedbackLatencyClass::FeedbackLatencyClassUnspecified => "unspecified",
+            FeedbackLatencyClass::Instant => "instant",
+            FeedbackLatencyClass::Short => "short",
+            FeedbackLatencyClass::Medium => "medium",
+            FeedbackLatencyClass::Long => "long",
+        }
+    }
+}
+
 impl SeverityClass {
     fn label(self) -> &'static str {
         match self {
@@ -1343,7 +1519,23 @@ fn normalize_receipts(mut receipts: Vec<Receipt>) -> Vec<Receipt> {
     receipts
 }
 
-fn persist_earn_kernel_receipts(path: &Path, receipts: &[Receipt]) -> Result<(), String> {
+fn normalize_work_units(work_units: &mut BTreeMap<String, WorkUnitMetadata>) {
+    if work_units.len() <= EARN_WORK_UNIT_METADATA_ROW_LIMIT {
+        return;
+    }
+    let mut keys = work_units.keys().cloned().collect::<Vec<_>>();
+    keys.sort();
+    let to_remove = keys.len().saturating_sub(EARN_WORK_UNIT_METADATA_ROW_LIMIT);
+    for key in keys.into_iter().take(to_remove) {
+        work_units.remove(key.as_str());
+    }
+}
+
+fn persist_earn_kernel_receipts(
+    path: &Path,
+    receipts: &[Receipt],
+    work_units: &[WorkUnitMetadata],
+) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|error| format!("Failed to create economy-kernel receipt dir: {error}"))?;
@@ -1354,6 +1546,7 @@ fn persist_earn_kernel_receipts(path: &Path, receipts: &[Receipt]) -> Result<(),
         stream_id: EARN_KERNEL_RECEIPT_STREAM_ID.to_string(),
         authority: EARN_KERNEL_RECEIPT_AUTHORITY.to_string(),
         receipts: normalize_receipts(receipts.to_vec()),
+        work_units: work_units.to_vec(),
     };
     let payload = serde_json::to_string_pretty(&document)
         .map_err(|error| format!("Failed to encode economy-kernel receipts: {error}"))?;
@@ -1365,10 +1558,15 @@ fn persist_earn_kernel_receipts(path: &Path, receipts: &[Receipt]) -> Result<(),
     Ok(())
 }
 
-fn load_earn_kernel_receipts(path: &Path) -> Result<Vec<Receipt>, String> {
+fn load_earn_kernel_receipts(path: &Path) -> Result<LoadedReceiptState, String> {
     let raw = match std::fs::read_to_string(path) {
         Ok(raw) => raw,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(LoadedReceiptState {
+                receipts: Vec::new(),
+                work_units: BTreeMap::new(),
+            });
+        }
         Err(error) => {
             return Err(format!("Failed to read economy-kernel receipts: {error}"));
         }
@@ -1393,7 +1591,17 @@ fn load_earn_kernel_receipts(path: &Path) -> Result<Vec<Receipt>, String> {
             document.authority
         ));
     }
-    Ok(normalize_receipts(document.receipts))
+    let mut work_units = document
+        .work_units
+        .into_iter()
+        .filter(|metadata| !metadata.work_unit_id.trim().is_empty())
+        .map(|metadata| (metadata.work_unit_id.clone(), metadata))
+        .collect::<BTreeMap<_, _>>();
+    normalize_work_units(&mut work_units);
+    Ok(LoadedReceiptState {
+        receipts: normalize_receipts(document.receipts),
+        work_units,
+    })
 }
 
 #[cfg(test)]
@@ -1534,6 +1742,38 @@ mod tests {
                 .iter()
                 .any(|evidence| evidence.kind == "wallet_settlement_proof")
         );
+        assert_eq!(
+            settlement.hints.tfb_class,
+            Some(FeedbackLatencyClass::Short)
+        );
+        assert_eq!(settlement.hints.severity, Some(SeverityClass::Low));
+        let work_unit = state
+            .work_units
+            .get("job-req-123")
+            .expect("work-unit metadata");
+        assert_eq!(work_unit.category, "compute");
+        assert_eq!(work_unit.tfb_class, FeedbackLatencyClass::Short);
+        assert_eq!(work_unit.severity, SeverityClass::Low);
+        assert_eq!(work_unit.verification_budget_hint_sats, 100);
+    }
+
+    #[test]
+    fn work_unit_metadata_persists_across_restarts() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path.clone());
+        let ingress = fixture_ingress_request();
+        state.record_ingress_request(&ingress, 1_762_000_000, "test.ingress");
+
+        let reloaded = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        let work_unit = reloaded
+            .work_units
+            .get("job-req-123")
+            .expect("work-unit metadata");
+        assert_eq!(work_unit.category, "compute");
+        assert_eq!(work_unit.tfb_class, FeedbackLatencyClass::Short);
+        assert_eq!(work_unit.severity, SeverityClass::Low);
+        assert_eq!(work_unit.verification_budget_hint_sats, 100);
     }
 
     #[test]
