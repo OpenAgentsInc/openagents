@@ -404,3 +404,425 @@ The repo today is:
 If you stay within the current MVP, that is acceptable.
 
 If you want to realize the kernel plans as written, then the missing work is not just "wire up Spacetime." It is the addition of real backend services, with Spacetime kept as a focused app-db/sync substrate rather than the whole economy kernel.
+
+## Addendum: Recommended Rust Backend on Google Cloud
+
+This addendum assumes:
+
+- backend business logic is written in Rust,
+- infrastructure is hosted on Google Cloud,
+- the goal is to move from today's desktop-local kernel modeling toward a real shared backend without throwing away the current MVP.
+
+## Recommended architectural stance
+
+Use three different runtime classes, not one:
+
+1. Stateless Rust HTTP services on Cloud Run.
+2. Stateful SpacetimeDB on GKE.
+3. Managed data stores for canonical persistence and caching.
+
+The main mistake to avoid is trying to force all of these concerns into one platform:
+
+- Cloud Run is good for stateless Rust APIs.
+- SpacetimeDB is good for live sync and selected shared state domains.
+- PostgreSQL is still the right canonical store for economic authority and audit history.
+
+## Recommended service split
+
+### 1) `control-api` Rust service
+
+Role:
+
+- issue `POST /api/sync/token`,
+- own desktop auth/session integration,
+- mint scoped sync leases for Spacetime,
+- expose minimal control-plane endpoints the desktop needs.
+
+Deployment:
+
+- Cloud Run
+- private service-to-service auth with IAM for internal callers
+- external ingress only through Google Cloud load balancing
+
+Should use Spacetime:
+
+- no
+
+Why:
+
+- this is token/control-plane logic, not a shared projection domain.
+
+### 2) `kernel-authority` Rust service
+
+Role:
+
+- accept authoritative mutations,
+- persist canonical receipts,
+- enforce idempotency,
+- write work/settlement/incident/outcome state,
+- own append-only economic truth.
+
+Deployment:
+
+- Cloud Run for initial rollout
+- move to GKE only if sustained concurrency, custom networking, or worker colocation requires it
+
+Should use Spacetime:
+
+- no for authority storage
+- yes only for publishing derived projections after commit
+
+Why:
+
+- this is the system of record and should sit on canonical transactional storage, not on reducers/procedures.
+
+### 3) `stats-projector` Rust worker
+
+Role:
+
+- consume committed receipts,
+- compute minute snapshots,
+- materialize `/stats` tables and public-safe aggregates,
+- optionally mirror selected counters into Spacetime projections.
+
+Deployment:
+
+- Cloud Run job for backfills and compaction
+- Cloud Run service or long-lived worker for continuous projection
+
+Should use Spacetime:
+
+- not as authority
+- yes as optional projection target for live non-monetary counters
+
+### 4) `treasury-router` Rust service
+
+Role:
+
+- policy planning,
+- route selection,
+- approval/budget decisions,
+- choose which authority operation to call.
+
+Deployment:
+
+- Cloud Run
+
+Should use Spacetime:
+
+- no
+
+Why:
+
+- planner/policy services should be stateless and call the authority layer over authenticated HTTP.
+
+Important sequencing note:
+
+Do not build `treasury-router` first. Build it only after `kernel-authority` exists. Right now the repo needs a real authority service more than it needs a separate planner.
+
+### 5) `verification-worker` and `integration-worker` Rust services
+
+Role:
+
+- long-running verification,
+- third-party calls,
+- webhook/outbox delivery,
+- liability/coverage integrations,
+- async retries and compensating actions.
+
+Deployment:
+
+- Cloud Run if request/worker lifetimes are short and idempotent
+- GKE if workloads become long-lived, connection-heavy, GPU-backed, or operationally noisy
+
+Should use Spacetime:
+
+- no
+
+Why:
+
+- these are external side-effect and integration workloads, which are a weak fit for reducers and only a mediocre fit for procedures.
+
+## Recommended data and infrastructure stack
+
+### Canonical transactional store
+
+Start with:
+
+- Cloud SQL for PostgreSQL, regional HA, private IP
+
+Upgrade to:
+
+- AlloyDB only if receipt volume, read-scaling pressure, or recovery/replica demands outgrow Cloud SQL
+
+Why this split:
+
+- Cloud SQL is the simpler starting point for a new Rust backend with moderate operational load.
+- AlloyDB is the better fit once the economic ledger and snapshot workload become more demanding.
+
+Store here:
+
+- receipts,
+- work units,
+- contracts,
+- intents,
+- settlement state,
+- incidents,
+- outcomes,
+- snapshot rows,
+- idempotency records,
+- audit export manifests.
+
+### Cache and hot coordination
+
+Use:
+
+- Memorystore for Redis
+
+Store here:
+
+- short TTL idempotency hot keys,
+- rate-limit counters,
+- replay locks,
+- projector cursors that do not need to be canonical,
+- ephemeral throttling state.
+
+Do not treat Redis as source of truth.
+
+### Blob and evidence storage
+
+Use:
+
+- Cloud Storage
+
+Store here:
+
+- large audit bundles,
+- exported evidence packages,
+- redacted public packages,
+- non-relational receipt attachments,
+- verification artifacts too large for PostgreSQL rows.
+
+### Async transport
+
+Use:
+
+- Pub/Sub for durable async fan-out between services
+
+Use it for:
+
+- receipt-committed events,
+- projection triggers,
+- verification tasks,
+- retryable integration work.
+
+Do not use Pub/Sub as the canonical ledger. It is transport, not truth.
+
+### Container and secrets baseline
+
+Use:
+
+- Artifact Registry for images
+- Secret Manager for credentials and signing material that cannot live only in GCP workload identity
+- Cloud Logging, Cloud Monitoring, and trace export from all Rust services
+
+## Where Spacetime should be used
+
+Use Spacetime for domains that match ADR-0001 and the current rollout direction:
+
+1. `session_presence` and provider/device liveness.
+2. replay checkpoints and cursor continuity.
+3. append-only sync/projection streams for activity and job-state views.
+4. selected non-monetary counters that benefit from live subscriptions.
+5. eventually, `provider_capability` and projection-grade `compute_assignment` views if you want live fleet visibility.
+
+These are all domains where:
+
+- direct subscriptions matter,
+- eventual projection is acceptable,
+- money/policy authority must not drift.
+
+## Where Spacetime should not be used
+
+Do not use Spacetime as primary authority for:
+
+1. wallet balances, sends, receives, and settlement truth,
+2. canonical receipts and audit ledger,
+3. `kernel-authority`,
+4. `treasury-router`,
+5. `/stats` authority,
+6. policy bundle evaluation that must be bound to canonical receipt history,
+7. long-running verification or external execution,
+8. liability/claims/coverage orchestration,
+9. sync token issuance and control-plane auth.
+
+Spacetime may mirror some of this state after commit, but it should not own it.
+
+## Recommended GCP deployment shape
+
+### Public edge
+
+Use:
+
+- Google Cloud external Application Load Balancer
+- Cloud Armor
+
+Expose through it:
+
+- public API hostname for desktop control/auth flows
+- public API hostname for kernel/stat endpoints if needed
+
+Keep internal-only services private where possible.
+
+### Stateless Rust service runtime
+
+Use:
+
+- Cloud Run for `control-api`, `kernel-authority`, `treasury-router`, `stats-api`, and lightweight workers
+
+Why:
+
+- clean Rust container deployment,
+- IAM-based service-to-service auth,
+- good fit for HTTP APIs,
+- no need to manage node pools for stateless components.
+
+### Spacetime runtime
+
+Use:
+
+- GKE StatefulSet for SpacetimeDB
+
+Preferred cluster mode:
+
+- GKE Standard rather than Autopilot for the first production Spacetime deployment
+
+Why:
+
+- SpacetimeDB behaves like a database plus application server,
+- it needs persistent volumes and stable operational tuning,
+- it will hold long-lived client connections,
+- you will want more control than Cloud Run gives and usually more control than Autopilot gives for first deployment.
+
+Autopilot is not impossible, but Standard is the safer starting choice for a stateful direct-connection service.
+
+## Recommended implementation sequence
+
+### Phase 0: extract shared logic before deploying services
+
+Create a shared Rust crate, for example `crates/economy-kernel-core`, and move into it the pure logic from:
+
+- `apps/autopilot-desktop/src/economy_kernel_receipts.rs`
+- `apps/autopilot-desktop/src/state/earn_kernel_receipts.rs`
+- `apps/autopilot-desktop/src/state/economy_snapshot.rs`
+
+Move only pure domain logic first:
+
+- receipt models,
+- policy bundle parsing and normalization,
+- snapshot computation,
+- redaction/export rules,
+- reason-code taxonomies.
+
+Do not move desktop UI or local file persistence into that crate.
+
+This is the most important first step because it prevents logic drift between desktop and backend.
+
+### Phase 1: ship the minimal real backend
+
+Build and deploy:
+
+1. `control-api`
+2. `kernel-authority`
+3. Cloud SQL PostgreSQL
+4. Redis
+5. Artifact Registry and Secret Manager baseline
+
+At this phase:
+
+- desktop still keeps local fallback state,
+- authoritative mutations start hitting `kernel-authority`,
+- receipts become server-persisted,
+- desktop reads back truth rather than inventing it locally.
+
+### Phase 2: make Spacetime real for the domains it already fits
+
+Deploy:
+
+- `autopilot-sync` Spacetime module on GKE
+
+Then wire desktop to:
+
+- mint real sync tokens from `control-api`,
+- subscribe to real Spacetime streams,
+- ack checkpoints remotely,
+- use server-backed presence rather than local presence registry.
+
+This is the point where current Phase 1 mirror/proxy semantics become real Phase 2.
+
+### Phase 3: add projector and `/stats`
+
+Build:
+
+- `stats-projector`
+- `stats-api`
+
+Flow:
+
+1. `kernel-authority` commits receipt.
+2. receipt-committed event is published.
+3. projector computes minute snapshot and materialized aggregates.
+4. `/stats` serves from materialized snapshot tables.
+
+If you want live dashboards, mirror selected public-safe counters into Spacetime after the canonical projector commit.
+
+### Phase 4: add `treasury-router`
+
+Only after the authority layer is stable:
+
+- extract planner logic into its own Rust service,
+- keep it stateless,
+- require every planned operation to call `kernel-authority`,
+- never let it mutate canonical state directly.
+
+### Phase 5: add specialized workers
+
+Add:
+
+- verification workers,
+- coverage/claims adapters,
+- outbox/webhook relays,
+- compensation and reconciliation jobs.
+
+Keep these asynchronous and idempotent from day one.
+
+## Recommended simplifications
+
+Do not start with a large microservice fleet.
+
+Start with these Rust deployables:
+
+1. `control-api`
+2. `kernel-authority`
+3. `stats-projector` plus `stats-api`
+4. SpacetimeDB `autopilot-sync`
+
+Everything else can initially remain:
+
+- inside `kernel-authority`, or
+- as background workers in the same codebase with separate binaries.
+
+This keeps the first production backend small while still respecting the right authority split.
+
+## Concrete recommendation
+
+If I were setting this up now, I would do this:
+
+1. Extract receipt/snapshot/policy logic from desktop into a shared Rust crate.
+2. Stand up `kernel-authority` on Cloud Run backed by Cloud SQL PostgreSQL.
+3. Stand up `control-api` on Cloud Run for sync token issuance and control-plane auth.
+4. Deploy SpacetimeDB on GKE Standard only for presence/checkpoints/projection streams.
+5. Add `stats-projector` and `/stats` once receipts are server-persisted.
+6. Add `treasury-router` only when policy planning actually needs its own service boundary.
+
+That path gets you to a real Rust backend on Google Cloud without overusing Spacetime and without prematurely building the entire economy-kernel service graph.
