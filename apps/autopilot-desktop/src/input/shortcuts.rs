@@ -234,9 +234,7 @@ pub(super) fn dispatch_command_palette_actions(state: &mut crate::app_state::Ren
                     .any(|pane| pane.kind == crate::app_state::PaneKind::ActivityFeed);
                 let _ = PaneController::create_for_kind(state, spec.kind);
                 if !was_open {
-                    state
-                        .activity_feed
-                        .record_refresh(build_activity_feed_snapshot_events(state));
+                    let _ = state.activity_feed.reload_projection();
                 }
                 changed = true;
             }

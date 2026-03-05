@@ -1,10 +1,11 @@
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{cell::RefCell, rc::Rc};
 
 use nostr::NostrIdentity;
+use serde::{Deserialize, Serialize};
 use wgpui::components::TextInput;
 use wgpui::components::hud::{CommandPalette, Hotbar, PaneFrame, ResizablePane, ResizeEdge};
 use wgpui::renderer::Renderer;
@@ -1661,7 +1662,7 @@ pub use crate::state::operations::{
     StarterJobsState, SubmittedNetworkRequest, SyncHealthState, SyncRecoveryPhase,
 };
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ActivityEventDomain {
     Chat,
     Cad,
@@ -1765,7 +1766,7 @@ impl ActivityFeedFilter {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ActivityEventRow {
     pub event_id: String,
     pub domain: ActivityEventDomain,
@@ -1775,6 +1776,17 @@ pub struct ActivityEventRow {
     pub detail: String,
 }
 
+const ACTIVITY_PROJECTION_SCHEMA_VERSION: u16 = 1;
+const ACTIVITY_PROJECTION_STREAM_ID: &str = "stream.activity_projection.v1";
+const ACTIVITY_PROJECTION_ROW_LIMIT: usize = 96;
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ActivityProjectionDocumentV1 {
+    schema_version: u16,
+    stream_id: String,
+    rows: Vec<ActivityEventRow>,
+}
+
 pub struct ActivityFeedState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
@@ -1782,22 +1794,52 @@ pub struct ActivityFeedState {
     pub active_filter: ActivityFeedFilter,
     pub rows: Vec<ActivityEventRow>,
     pub selected_event_id: Option<String>,
+    pub projection_stream_id: String,
+    projection_file_path: PathBuf,
 }
 
 impl Default for ActivityFeedState {
     fn default() -> Self {
-        Self {
-            load_state: PaneLoadState::Loading,
-            last_error: None,
-            last_action: Some("Waiting for activity feed lane snapshot".to_string()),
-            active_filter: ActivityFeedFilter::All,
-            rows: Vec::new(),
-            selected_event_id: None,
-        }
+        let projection_file_path = activity_projection_file_path();
+        Self::from_projection_file_path(projection_file_path)
     }
 }
 
 impl ActivityFeedState {
+    fn from_projection_file_path(projection_file_path: PathBuf) -> Self {
+        let (rows, load_state, last_error, last_action) =
+            match load_activity_projection_rows(projection_file_path.as_path()) {
+                Ok(rows) => (
+                    rows,
+                    PaneLoadState::Ready,
+                    None,
+                    Some("Loaded activity projection stream".to_string()),
+                ),
+                Err(error) => (
+                    Vec::new(),
+                    PaneLoadState::Error,
+                    Some(error),
+                    Some("Activity projection stream load failed".to_string()),
+                ),
+            };
+        let selected_event_id = rows.first().map(|row| row.event_id.clone());
+        Self {
+            load_state,
+            last_error,
+            last_action: last_action.map(|action| format!("{action} ({} rows)", rows.len())),
+            active_filter: ActivityFeedFilter::All,
+            rows,
+            selected_event_id,
+            projection_stream_id: ACTIVITY_PROJECTION_STREAM_ID.to_string(),
+            projection_file_path,
+        }
+    }
+
+    #[cfg(test)]
+    fn from_projection_path_for_tests(projection_file_path: PathBuf) -> Self {
+        Self::from_projection_file_path(projection_file_path)
+    }
+
     pub fn visible_rows(&self) -> Vec<&ActivityEventRow> {
         self.rows
             .iter()
@@ -1844,29 +1886,99 @@ impl ActivityFeedState {
         } else {
             self.rows.push(row);
         }
-
-        self.rows.sort_by(|lhs, rhs| {
-            rhs.occurred_at_epoch_seconds
-                .cmp(&lhs.occurred_at_epoch_seconds)
-                .then_with(|| lhs.event_id.cmp(&rhs.event_id))
-        });
-        self.rows.truncate(96);
-    }
-
-    pub fn record_refresh(&mut self, rows: Vec<ActivityEventRow>) {
-        for row in rows {
-            self.upsert_event(row);
-        }
-
+        self.rows = normalize_activity_projection_rows(std::mem::take(&mut self.rows));
         if self.selected().is_none() {
             self.selected_event_id = self.visible_rows().first().map(|row| row.event_id.clone());
         }
 
+        if let Err(error) = persist_activity_projection_rows(
+            self.projection_file_path.as_path(),
+            self.rows.as_slice(),
+        ) {
+            self.last_error = Some(error);
+            self.load_state = PaneLoadState::Error;
+        } else {
+            self.load_state = PaneLoadState::Ready;
+            self.last_error = None;
+        }
+    }
+
+    pub fn reload_projection(&mut self) -> Result<(), String> {
+        let rows = load_activity_projection_rows(self.projection_file_path.as_path())
+            .map_err(|error| self.pane_set_error(error))?;
+        self.rows = rows;
+        if self.selected().is_none() {
+            self.selected_event_id = self.visible_rows().first().map(|row| row.event_id.clone());
+        }
         self.pane_set_ready(format!(
-            "Activity feed refreshed ({} events)",
+            "Activity projection reloaded ({} events)",
             self.rows.len()
         ));
+        Ok(())
     }
+}
+
+fn activity_projection_file_path() -> PathBuf {
+    std::env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join(".openagents")
+        .join("autopilot-activity-projection-v1.json")
+}
+
+fn normalize_activity_projection_rows(mut rows: Vec<ActivityEventRow>) -> Vec<ActivityEventRow> {
+    rows.sort_by(|lhs, rhs| {
+        rhs.occurred_at_epoch_seconds
+            .cmp(&lhs.occurred_at_epoch_seconds)
+            .then_with(|| lhs.event_id.cmp(&rhs.event_id))
+    });
+    let mut seen_event_ids = HashSet::new();
+    rows.retain(|row| seen_event_ids.insert(row.event_id.clone()));
+    rows.truncate(ACTIVITY_PROJECTION_ROW_LIMIT);
+    rows
+}
+
+fn persist_activity_projection_rows(path: &Path, rows: &[ActivityEventRow]) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("Failed to create activity projection dir: {error}"))?;
+    }
+    let document = ActivityProjectionDocumentV1 {
+        schema_version: ACTIVITY_PROJECTION_SCHEMA_VERSION,
+        stream_id: ACTIVITY_PROJECTION_STREAM_ID.to_string(),
+        rows: normalize_activity_projection_rows(rows.to_vec()),
+    };
+    let payload = serde_json::to_string_pretty(&document)
+        .map_err(|error| format!("Failed to encode activity projection rows: {error}"))?;
+    let temp_path = path.with_extension("tmp");
+    std::fs::write(&temp_path, payload)
+        .map_err(|error| format!("Failed to write activity projection temp file: {error}"))?;
+    std::fs::rename(&temp_path, path)
+        .map_err(|error| format!("Failed to persist activity projection rows: {error}"))?;
+    Ok(())
+}
+
+fn load_activity_projection_rows(path: &Path) -> Result<Vec<ActivityEventRow>, String> {
+    let raw = match std::fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(format!("Failed to read activity projection rows: {error}")),
+    };
+    let document = serde_json::from_str::<ActivityProjectionDocumentV1>(&raw)
+        .map_err(|error| format!("Failed to parse activity projection rows: {error}"))?;
+    if document.schema_version != ACTIVITY_PROJECTION_SCHEMA_VERSION {
+        return Err(format!(
+            "Unsupported activity projection schema version: {}",
+            document.schema_version
+        ));
+    }
+    if document.stream_id != ACTIVITY_PROJECTION_STREAM_ID {
+        return Err(format!(
+            "Unsupported activity projection stream id: {}",
+            document.stream_id
+        ));
+    }
+    Ok(normalize_activity_projection_rows(document.rows))
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -3509,6 +3621,23 @@ mod tests {
         }
     }
 
+    fn activity_feed_projection_test_path(name: &str) -> std::path::PathBuf {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "openagents-activity-feed-{name}-{}-{nonce}.json",
+            std::process::id()
+        ))
+    }
+
+    fn activity_feed_state_for_tests(name: &str) -> ActivityFeedState {
+        let path = activity_feed_projection_test_path(name);
+        let _ = std::fs::remove_file(path.as_path());
+        ActivityFeedState::from_projection_path_for_tests(path)
+    }
+
     fn fixture_alert(
         alert_id: &str,
         domain: AlertDomain,
@@ -4859,7 +4988,7 @@ mod tests {
 
     #[test]
     fn activity_feed_upsert_deduplicates_stable_event_ids() {
-        let mut feed = ActivityFeedState::default();
+        let mut feed = activity_feed_state_for_tests("dedupe");
         feed.upsert_event(fixture_activity_event(
             "wallet:payment:latest",
             ActivityEventDomain::Wallet,
@@ -4891,6 +5020,68 @@ mod tests {
                 .into_iter()
                 .all(|row| row.domain == ActivityEventDomain::Cad)
         );
+    }
+
+    #[test]
+    fn activity_feed_projection_rows_survive_restart() {
+        let path = activity_feed_projection_test_path("restart");
+        let _ = std::fs::remove_file(path.as_path());
+        let mut feed = ActivityFeedState::from_projection_path_for_tests(path.clone());
+        feed.upsert_event(fixture_activity_event(
+            "chat:turn:42",
+            ActivityEventDomain::Chat,
+            1_761_920_301,
+        ));
+        feed.upsert_event(fixture_activity_event(
+            "job:receipt:42",
+            ActivityEventDomain::Job,
+            1_761_920_311,
+        ));
+        let expected_rows = feed.rows.clone();
+
+        let reloaded = ActivityFeedState::from_projection_path_for_tests(path.clone());
+        assert_eq!(reloaded.rows, expected_rows);
+        assert_eq!(
+            reloaded.selected_event_id.as_deref(),
+            reloaded.rows.first().map(|row| row.event_id.as_str())
+        );
+        let _ = std::fs::remove_file(path.as_path());
+    }
+
+    #[test]
+    fn activity_feed_reload_projection_refreshes_from_projection_stream() {
+        let path = activity_feed_projection_test_path("reload");
+        let _ = std::fs::remove_file(path.as_path());
+        let mut primary = ActivityFeedState::from_projection_path_for_tests(path.clone());
+        primary.upsert_event(fixture_activity_event(
+            "network:request:1",
+            ActivityEventDomain::Network,
+            1_761_920_340,
+        ));
+
+        let mut secondary = ActivityFeedState::from_projection_path_for_tests(path.clone());
+        secondary.upsert_event(fixture_activity_event(
+            "sync:checkpoint:2",
+            ActivityEventDomain::Sync,
+            1_761_920_360,
+        ));
+
+        assert!(
+            primary
+                .rows
+                .iter()
+                .all(|row| row.event_id != "sync:checkpoint:2")
+        );
+        primary
+            .reload_projection()
+            .expect("projection reload should reconcile rows");
+        assert!(
+            primary
+                .rows
+                .iter()
+                .any(|row| row.event_id == "sync:checkpoint:2")
+        );
+        let _ = std::fs::remove_file(path.as_path());
     }
 
     #[test]

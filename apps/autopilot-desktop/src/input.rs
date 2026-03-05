@@ -34,9 +34,9 @@ use winit::keyboard::{
 use winit::window::Fullscreen;
 
 use crate::app_state::{
-    ActivityEventDomain, ActivityEventRow, AlertDomain, App, CadCameraDragMode, CadCameraDragState,
-    CadHotkeyAction, ChatTranscriptSelectionDragState, EarnFailureClass, JobInboxNetworkRequest,
-    JobInboxValidation, NetworkRequestSubmission, PaneKind, ProviderMode,
+    AlertDomain, App, CadCameraDragMode, CadCameraDragState, CadHotkeyAction,
+    ChatTranscriptSelectionDragState, EarnFailureClass, JobInboxNetworkRequest, JobInboxValidation,
+    NetworkRequestSubmission, PaneKind, ProviderMode,
 };
 use crate::hotbar::{
     HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_SPARK_WALLET, activate_hotbar_slot,
