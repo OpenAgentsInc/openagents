@@ -103,6 +103,14 @@ pub(super) fn apply_ingressed_request(state: &mut RenderState, request: JobInbox
         let now_epoch_seconds = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |duration| duration.as_secs());
+        let parsed_shape = request
+            .parsed_event_shape
+            .as_deref()
+            .unwrap_or("shape unavailable");
+        let raw_json = request
+            .raw_event_json
+            .as_deref()
+            .unwrap_or("raw event json unavailable");
         state.earn_job_lifecycle_projection.record_ingress_request(
             &request,
             now_epoch_seconds,
@@ -114,8 +122,13 @@ pub(super) fn apply_ingressed_request(state: &mut RenderState, request: JobInbox
             source_tag: "nip90.relay".to_string(),
             summary: format!("Live request {} arrived", request.capability),
             detail: format!(
-                "request={} requester={} price_sats={} ttl_seconds={}",
-                request.request_id, request.requester, request.price_sats, request.ttl_seconds
+                "request={} requester={} price_sats={} ttl_seconds={}\n\nshape:\n{}\n\nraw_event_json:\n{}",
+                request.request_id,
+                request.requester,
+                request.price_sats,
+                request.ttl_seconds,
+                parsed_shape,
+                raw_json,
             ),
             occurred_at_epoch_seconds: now_epoch_seconds,
         });
@@ -207,12 +220,20 @@ pub(super) fn apply_publish_outcome(state: &mut RenderState, outcome: ProviderNi
             format!("Failed NIP-90 {} publish", outcome.role.label())
         },
         detail: format!(
-            "request={} event_id={} accepted_relays={} rejected_relays={} error={}",
+            "request={} event_id={} accepted_relays={} rejected_relays={} error={}\n\nshape:\n{}\n\nraw_event_json:\n{}",
             outcome.request_id,
             outcome.event_id,
             outcome.accepted_relays,
             outcome.rejected_relays,
-            outcome.first_error.as_deref().unwrap_or("none")
+            outcome.first_error.as_deref().unwrap_or("none"),
+            outcome
+                .parsed_event_shape
+                .as_deref()
+                .unwrap_or("shape unavailable"),
+            outcome
+                .raw_event_json
+                .as_deref()
+                .unwrap_or("raw event json unavailable"),
         ),
         occurred_at_epoch_seconds: now_epoch_seconds,
     });

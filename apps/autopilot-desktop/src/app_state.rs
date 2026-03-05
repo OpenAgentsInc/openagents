@@ -1717,10 +1717,11 @@ pub enum ActivityFeedFilter {
     Sa,
     Skl,
     Ac,
+    Nip90,
 }
 
 impl ActivityFeedFilter {
-    pub const fn all() -> [Self; 10] {
+    pub const fn all() -> [Self; 11] {
         [
             Self::All,
             Self::Chat,
@@ -1732,6 +1733,7 @@ impl ActivityFeedFilter {
             Self::Sa,
             Self::Skl,
             Self::Ac,
+            Self::Nip90,
         ]
     }
 
@@ -1747,10 +1749,21 @@ impl ActivityFeedFilter {
             Self::Sa => "sa",
             Self::Skl => "skl",
             Self::Ac => "ac",
+            Self::Nip90 => "nip90",
         }
     }
 
-    pub fn matches(self, domain: ActivityEventDomain) -> bool {
+    pub fn matches_row(self, row: &ActivityEventRow) -> bool {
+        if !self.matches_domain(row.domain) {
+            return false;
+        }
+        match self {
+            Self::Nip90 => row.source_tag.starts_with("nip90."),
+            _ => true,
+        }
+    }
+
+    pub fn matches_domain(self, domain: ActivityEventDomain) -> bool {
         match self {
             Self::All => true,
             Self::Chat => domain == ActivityEventDomain::Chat,
@@ -1762,6 +1775,7 @@ impl ActivityFeedFilter {
             Self::Sa => domain == ActivityEventDomain::Sa,
             Self::Skl => domain == ActivityEventDomain::Skl,
             Self::Ac => domain == ActivityEventDomain::Ac,
+            Self::Nip90 => domain == ActivityEventDomain::Network,
         }
     }
 }
@@ -1778,7 +1792,10 @@ pub struct ActivityEventRow {
 
 const ACTIVITY_PROJECTION_SCHEMA_VERSION: u16 = 1;
 const ACTIVITY_PROJECTION_STREAM_ID: &str = "stream.activity_projection.v1";
-const ACTIVITY_PROJECTION_ROW_LIMIT: usize = 96;
+const ACTIVITY_PROJECTION_ROW_LIMIT: usize = 256;
+const ACTIVITY_FEED_PAGE_SIZE: usize = 8;
+const ACTIVITY_FEED_NIP90_WINDOW_SIZE: usize = 50;
+const ACTIVITY_FEED_SCROLL_NOTCH_PIXELS: f32 = 24.0;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ActivityProjectionDocumentV1 {
@@ -1792,8 +1809,10 @@ pub struct ActivityFeedState {
     pub last_error: Option<String>,
     pub last_action: Option<String>,
     pub active_filter: ActivityFeedFilter,
+    pub page: usize,
     pub rows: Vec<ActivityEventRow>,
     pub selected_event_id: Option<String>,
+    pub detail_scroll_line_offset: usize,
     pub projection_stream_id: String,
     projection_file_path: PathBuf,
 }
@@ -1828,8 +1847,10 @@ impl ActivityFeedState {
             last_error,
             last_action: last_action.map(|action| format!("{action} ({} rows)", rows.len())),
             active_filter: ActivityFeedFilter::All,
+            page: 0,
             rows,
             selected_event_id,
+            detail_scroll_line_offset: 0,
             projection_stream_id: ACTIVITY_PROJECTION_STREAM_ID.to_string(),
             projection_file_path,
         }
@@ -1841,10 +1862,83 @@ impl ActivityFeedState {
     }
 
     pub fn visible_rows(&self) -> Vec<&ActivityEventRow> {
-        self.rows
+        let filtered = self.filtered_rows();
+        let page = self.page.min(self.total_pages().saturating_sub(1));
+        let start = page.saturating_mul(ACTIVITY_FEED_PAGE_SIZE);
+        let end = (start + ACTIVITY_FEED_PAGE_SIZE).min(filtered.len());
+        filtered[start..end].to_vec()
+    }
+
+    fn filtered_rows(&self) -> Vec<&ActivityEventRow> {
+        let mut rows = self
+            .rows
             .iter()
-            .filter(|row| self.active_filter.matches(row.domain))
-            .collect()
+            .filter(|row| self.active_filter.matches_row(row))
+            .collect::<Vec<_>>();
+        if self.active_filter == ActivityFeedFilter::Nip90 {
+            rows.truncate(ACTIVITY_FEED_NIP90_WINDOW_SIZE);
+        }
+        rows
+    }
+
+    pub fn filtered_row_count(&self) -> usize {
+        self.filtered_rows().len()
+    }
+
+    pub fn total_pages(&self) -> usize {
+        let filtered = self.filtered_rows();
+        ((filtered.len() + ACTIVITY_FEED_PAGE_SIZE.saturating_sub(1))
+            / ACTIVITY_FEED_PAGE_SIZE.max(1))
+        .max(1)
+    }
+
+    pub fn previous_page(&mut self) {
+        if self.page > 0 {
+            self.page -= 1;
+            self.ensure_selected_visible();
+            self.reset_detail_scroll();
+            self.pane_set_ready(format!(
+                "Activity page -> {}/{}",
+                self.page.saturating_add(1),
+                self.total_pages()
+            ));
+        }
+    }
+
+    pub fn next_page(&mut self) {
+        let total_pages = self.total_pages();
+        if self.page + 1 < total_pages {
+            self.page += 1;
+            self.ensure_selected_visible();
+            self.reset_detail_scroll();
+            self.pane_set_ready(format!(
+                "Activity page -> {}/{}",
+                self.page.saturating_add(1),
+                total_pages
+            ));
+        }
+    }
+
+    fn clamp_page(&mut self) {
+        self.page = self.page.min(self.total_pages().saturating_sub(1));
+    }
+
+    fn ensure_selected_visible(&mut self) {
+        let (selected_visible, first_visible_id) = {
+            let visible = self.visible_rows();
+            let selected_visible = self
+                .selected_event_id
+                .as_deref()
+                .is_some_and(|selected| visible.iter().any(|row| row.event_id == selected));
+            let first_visible_id = visible.first().map(|row| row.event_id.clone());
+            (selected_visible, first_visible_id)
+        };
+        if !selected_visible {
+            if self.selected_event_id != first_visible_id {
+                self.reset_detail_scroll();
+            }
+            self.selected_event_id = first_visible_id;
+        }
     }
 
     pub fn selected(&self) -> Option<&ActivityEventRow> {
@@ -1860,6 +1954,7 @@ impl ActivityFeedState {
         else {
             return false;
         };
+        self.reset_detail_scroll();
         self.selected_event_id = Some(event_id);
         self.pane_clear_error();
         true
@@ -1867,13 +1962,59 @@ impl ActivityFeedState {
 
     pub fn set_filter(&mut self, filter: ActivityFeedFilter) {
         self.active_filter = filter;
-        if self
-            .selected()
-            .is_none_or(|row| !filter.matches(row.domain))
-        {
-            self.selected_event_id = self.visible_rows().first().map(|row| row.event_id.clone());
-        }
+        self.page = 0;
+        self.reset_detail_scroll();
+        self.ensure_selected_visible();
         self.pane_set_ready(format!("Activity filter -> {}", filter.label()));
+    }
+
+    pub fn detail_scroll_offset_for(&self, total_lines: usize, visible_lines: usize) -> usize {
+        let visible_lines = visible_lines.max(1);
+        let max_start = total_lines.saturating_sub(visible_lines);
+        self.detail_scroll_line_offset.min(max_start)
+    }
+
+    pub fn scroll_detail_lines_by(
+        &mut self,
+        delta_pixels: f32,
+        total_lines: usize,
+        visible_lines: usize,
+    ) -> bool {
+        if !delta_pixels.is_finite() || delta_pixels.abs() <= f32::EPSILON {
+            return false;
+        }
+        let visible_lines = visible_lines.max(1);
+        let max_start = total_lines.saturating_sub(visible_lines);
+        if max_start == 0 {
+            if self.detail_scroll_line_offset != 0 {
+                self.detail_scroll_line_offset = 0;
+                return true;
+            }
+            return false;
+        }
+
+        let mut line_delta = (delta_pixels / ACTIVITY_FEED_SCROLL_NOTCH_PIXELS).round() as isize;
+        if line_delta == 0 {
+            line_delta = if delta_pixels.is_sign_positive() {
+                1
+            } else {
+                -1
+            };
+        }
+
+        let next = (self
+            .detail_scroll_offset_for(total_lines, visible_lines)
+            .saturating_add_signed(line_delta))
+        .min(max_start);
+        if next == self.detail_scroll_line_offset {
+            return false;
+        }
+        self.detail_scroll_line_offset = next;
+        true
+    }
+
+    pub fn reset_detail_scroll(&mut self) {
+        self.detail_scroll_line_offset = 0;
     }
 
     pub fn upsert_event(&mut self, row: ActivityEventRow) {
@@ -1887,9 +2028,8 @@ impl ActivityFeedState {
             self.rows.push(row);
         }
         self.rows = normalize_activity_projection_rows(std::mem::take(&mut self.rows));
-        if self.selected().is_none() {
-            self.selected_event_id = self.visible_rows().first().map(|row| row.event_id.clone());
-        }
+        self.clamp_page();
+        self.ensure_selected_visible();
 
         if let Err(error) = persist_activity_projection_rows(
             self.projection_file_path.as_path(),
@@ -1907,9 +2047,8 @@ impl ActivityFeedState {
         let rows = load_activity_projection_rows(self.projection_file_path.as_path())
             .map_err(|error| self.pane_set_error(error))?;
         self.rows = rows;
-        if self.selected().is_none() {
-            self.selected_event_id = self.visible_rows().first().map(|row| row.event_id.clone());
-        }
+        self.clamp_page();
+        self.ensure_selected_visible();
         self.pane_set_ready(format!(
             "Activity projection reloaded ({} events)",
             self.rows.len()
@@ -3861,6 +4000,8 @@ mod tests {
             demand_source,
             request_kind: 5050,
             capability: capability.to_string(),
+            parsed_event_shape: None,
+            raw_event_json: None,
             skill_scope_id: None,
             skl_manifest_a: None,
             skl_manifest_event_id: None,
@@ -5380,6 +5521,140 @@ mod tests {
                 .into_iter()
                 .all(|row| row.domain == ActivityEventDomain::Cad)
         );
+    }
+
+    #[test]
+    fn activity_feed_nip90_filter_limits_to_latest_fifty_events() {
+        let mut feed = activity_feed_state_for_tests("nip90-limit");
+        for index in 0..60_u64 {
+            let mut row = fixture_activity_event(
+                format!("nip90:req:{index}").as_str(),
+                ActivityEventDomain::Network,
+                1_761_920_700 + index,
+            );
+            row.source_tag = if index % 2 == 0 {
+                "nip90.relay".to_string()
+            } else {
+                "nip90.publish".to_string()
+            };
+            feed.upsert_event(row);
+        }
+        for index in 0..5_u64 {
+            let mut row = fixture_activity_event(
+                format!("network:other:{index}").as_str(),
+                ActivityEventDomain::Network,
+                1_761_921_000 + index,
+            );
+            row.source_tag = "network.manual".to_string();
+            feed.upsert_event(row);
+        }
+
+        feed.set_filter(ActivityFeedFilter::Nip90);
+        let visible = feed.visible_rows();
+        assert_eq!(feed.filtered_row_count(), 50);
+        assert_eq!(feed.total_pages(), 7);
+        assert_eq!(visible.len(), 8);
+        assert!(
+            visible
+                .iter()
+                .all(|row| row.source_tag.starts_with("nip90.")),
+            "nip90 filter should exclude non-nip90 network rows"
+        );
+        assert_eq!(
+            visible.first().map(|row| row.event_id.as_str()),
+            Some("nip90:req:59")
+        );
+        assert_eq!(
+            visible.last().map(|row| row.event_id.as_str()),
+            Some("nip90:req:52")
+        );
+    }
+
+    #[test]
+    fn activity_feed_pagination_moves_through_filtered_rows() {
+        let mut feed = activity_feed_state_for_tests("paging");
+        for index in 0..18_u64 {
+            feed.upsert_event(fixture_activity_event(
+                format!("job:event:{index}").as_str(),
+                ActivityEventDomain::Job,
+                1_761_922_000 + index,
+            ));
+        }
+        feed.set_filter(ActivityFeedFilter::Job);
+        assert_eq!(feed.page, 0);
+        assert_eq!(feed.total_pages(), 3);
+        assert_eq!(
+            feed.visible_rows().first().map(|row| row.event_id.as_str()),
+            Some("job:event:17")
+        );
+
+        feed.next_page();
+        assert_eq!(feed.page, 1);
+        assert_eq!(
+            feed.visible_rows().first().map(|row| row.event_id.as_str()),
+            Some("job:event:9")
+        );
+        assert_eq!(feed.selected_event_id.as_deref(), Some("job:event:9"));
+
+        feed.next_page();
+        assert_eq!(feed.page, 2);
+        assert_eq!(
+            feed.visible_rows().first().map(|row| row.event_id.as_str()),
+            Some("job:event:1")
+        );
+        assert_eq!(feed.selected_event_id.as_deref(), Some("job:event:1"));
+
+        feed.next_page();
+        assert_eq!(feed.page, 2);
+
+        feed.previous_page();
+        assert_eq!(feed.page, 1);
+        assert_eq!(
+            feed.visible_rows().first().map(|row| row.event_id.as_str()),
+            Some("job:event:9")
+        );
+    }
+
+    #[test]
+    fn activity_feed_detail_scroll_clamps_and_resets_on_navigation() {
+        let mut feed = activity_feed_state_for_tests("detail-scroll");
+        for index in 0..12_u64 {
+            let mut row = fixture_activity_event(
+                format!("network:event:{index}").as_str(),
+                ActivityEventDomain::Network,
+                1_761_922_300 + index,
+            );
+            row.detail = (0..18)
+                .map(|line| format!("line-{line} {}", row.event_id))
+                .collect::<Vec<_>>()
+                .join("\n");
+            feed.upsert_event(row);
+        }
+        feed.set_filter(ActivityFeedFilter::Network);
+        assert!(feed.select_visible_row(0));
+        assert_eq!(feed.detail_scroll_line_offset, 0);
+
+        let total_lines = 18;
+        let visible_lines = 5;
+        assert!(feed.scroll_detail_lines_by(9_999.0, total_lines, visible_lines));
+        assert_eq!(
+            feed.detail_scroll_offset_for(total_lines, visible_lines),
+            13
+        );
+        assert!(feed.scroll_detail_lines_by(-9_999.0, total_lines, visible_lines));
+        assert_eq!(feed.detail_scroll_line_offset, 0);
+
+        assert!(feed.scroll_detail_lines_by(240.0, total_lines, visible_lines));
+        assert!(feed.detail_scroll_line_offset > 0);
+        assert!(feed.select_visible_row(1));
+        assert_eq!(feed.detail_scroll_line_offset, 0);
+
+        assert!(feed.scroll_detail_lines_by(240.0, total_lines, visible_lines));
+        feed.next_page();
+        assert_eq!(feed.detail_scroll_line_offset, 0);
+        assert!(feed.scroll_detail_lines_by(240.0, total_lines, visible_lines));
+        feed.previous_page();
+        assert_eq!(feed.detail_scroll_line_offset, 0);
     }
 
     #[test]

@@ -3677,6 +3677,8 @@ pub(super) fn run_network_requests_action(
                                             crate::app_state::JobDemandSource::OpenNetwork,
                                         request_kind: nostr::nip90::KIND_JOB_TEXT_GENERATION,
                                         capability: "local.injected.request".to_string(),
+                                        parsed_event_shape: None,
+                                        raw_event_json: None,
                                         skill_scope_id: None,
                                         skl_manifest_a: None,
                                         skl_manifest_event_id: None,
@@ -3839,6 +3841,8 @@ fn queue_starter_demand_request(
         demand_source: crate::app_state::JobDemandSource::StarterDemand,
         request_kind: nostr::nip90::KIND_JOB_TEXT_GENERATION,
         capability: "starter.quest.dispatch".to_string(),
+        parsed_event_shape: None,
+        raw_event_json: None,
         skill_scope_id: None,
         skl_manifest_a: None,
         skl_manifest_event_id: None,
@@ -4060,6 +4064,14 @@ pub(super) fn run_activity_feed_action(
     match action {
         ActivityFeedPaneAction::Refresh => {
             let _ = state.activity_feed.reload_projection();
+            true
+        }
+        ActivityFeedPaneAction::PreviousPage => {
+            state.activity_feed.previous_page();
+            true
+        }
+        ActivityFeedPaneAction::NextPage => {
+            state.activity_feed.next_page();
             true
         }
         ActivityFeedPaneAction::SetFilter(filter) => {

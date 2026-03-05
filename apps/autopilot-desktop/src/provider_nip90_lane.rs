@@ -145,6 +145,8 @@ pub struct ProviderNip90PublishOutcome {
     pub accepted_relays: usize,
     pub rejected_relays: usize,
     pub first_error: Option<String>,
+    pub parsed_event_shape: Option<String>,
+    pub raw_event_json: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -402,6 +404,8 @@ fn handle_publish_event(
     event: Event,
 ) {
     let event_id = event.id.clone();
+    let parsed_event_shape = Some(format_generic_event_shape(&event));
+    let raw_event_json = serde_json::to_string_pretty(&event).ok();
 
     if !state.wants_online {
         let message = "Cannot publish NIP-90 event while provider lane is offline".to_string();
@@ -416,6 +420,8 @@ fn handle_publish_event(
                 accepted_relays: 0,
                 rejected_relays: 0,
                 first_error: Some(message),
+                parsed_event_shape,
+                raw_event_json,
             },
         ));
         return;
@@ -435,6 +441,8 @@ fn handle_publish_event(
                 accepted_relays: 0,
                 rejected_relays: 0,
                 first_error: Some(message),
+                parsed_event_shape,
+                raw_event_json,
             },
         ));
         return;
@@ -454,6 +462,8 @@ fn handle_publish_event(
                 accepted_relays: 0,
                 rejected_relays: 0,
                 first_error: Some(message),
+                parsed_event_shape,
+                raw_event_json,
             },
         ));
         return;
@@ -492,6 +502,8 @@ fn handle_publish_event(
                     accepted_relays,
                     rejected_relays,
                     first_error,
+                    parsed_event_shape,
+                    raw_event_json,
                 },
             ));
         }
@@ -508,6 +520,8 @@ fn handle_publish_event(
                     accepted_relays: 0,
                     rejected_relays: 0,
                     first_error: Some(message),
+                    parsed_event_shape,
+                    raw_event_json,
                 },
             ));
         }
@@ -913,29 +927,47 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
     }
 
     let parsed = JobRequest::from_event(event);
-    let (skill_scope_id, price_sats, ttl_seconds, validation) = match parsed.as_ref() {
-        Ok(request) => {
-            let bid_msats = request.bid.unwrap_or(0);
-            let price_sats = msats_to_sats_ceil(bid_msats);
-            let ttl_seconds = extract_ttl_seconds(request).unwrap_or(DEFAULT_TTL_SECONDS);
-            let skill_scope_id = extract_param(request, "skill_scope_id")
-                .or_else(|| extract_param(request, "skill_scope"));
-            let validation = if request.content.trim().is_empty() && request.inputs.is_empty() {
-                JobInboxValidation::Invalid("request missing content/input payload".to_string())
-            } else if request.bid.is_none() || price_sats == 0 {
-                JobInboxValidation::Pending
-            } else {
-                JobInboxValidation::Valid
-            };
-            (skill_scope_id, price_sats, ttl_seconds, validation)
-        }
-        Err(error) => (
-            None,
-            0,
-            DEFAULT_TTL_SECONDS,
-            JobInboxValidation::Invalid(format!("invalid NIP-90 request tags: {error}")),
-        ),
-    };
+    let raw_event_json = serde_json::to_string_pretty(event).ok();
+    let (skill_scope_id, price_sats, ttl_seconds, validation, parsed_event_shape) =
+        match parsed.as_ref() {
+            Ok(request) => {
+                let bid_msats = request.bid.unwrap_or(0);
+                let price_sats = msats_to_sats_ceil(bid_msats);
+                let ttl_seconds = extract_ttl_seconds(request).unwrap_or(DEFAULT_TTL_SECONDS);
+                let skill_scope_id = extract_param(request, "skill_scope_id")
+                    .or_else(|| extract_param(request, "skill_scope"));
+                let validation = if request.content.trim().is_empty() && request.inputs.is_empty() {
+                    JobInboxValidation::Invalid("request missing content/input payload".to_string())
+                } else if request.bid.is_none() || price_sats == 0 {
+                    JobInboxValidation::Pending
+                } else {
+                    JobInboxValidation::Valid
+                };
+                let parsed_event_shape = Some(format_nip90_request_shape(
+                    event,
+                    request,
+                    price_sats,
+                    ttl_seconds,
+                ));
+                (
+                    skill_scope_id,
+                    price_sats,
+                    ttl_seconds,
+                    validation,
+                    parsed_event_shape,
+                )
+            }
+            Err(error) => (
+                None,
+                0,
+                DEFAULT_TTL_SECONDS,
+                JobInboxValidation::Invalid(format!("invalid NIP-90 request tags: {error}")),
+                Some(format!(
+                    "request.parse_error={error}\n{}",
+                    format_generic_event_shape(event)
+                )),
+            ),
+        };
 
     Some(JobInboxNetworkRequest {
         request_id: event.id.clone(),
@@ -943,6 +975,8 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
         demand_source: crate::app_state::JobDemandSource::OpenNetwork,
         request_kind: event.kind,
         capability: capability_for_kind(event.kind),
+        parsed_event_shape,
+        raw_event_json,
         skill_scope_id,
         skl_manifest_a: None,
         skl_manifest_event_id: None,
@@ -954,6 +988,84 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
         ttl_seconds,
         validation,
     })
+}
+
+fn format_nip90_request_shape(
+    event: &Event,
+    request: &JobRequest,
+    price_sats: u64,
+    ttl_seconds: u64,
+) -> String {
+    let input_types = request
+        .inputs
+        .iter()
+        .map(|input| input.input_type.as_str().to_string())
+        .collect::<Vec<_>>();
+    let param_keys = request
+        .params
+        .iter()
+        .map(|param| param.key.clone())
+        .collect::<Vec<_>>();
+    let relays = request.relays.clone();
+    let service_providers = request.service_providers.clone();
+
+    format!(
+        "{}\nrequest.kind={} result.kind={} capability={}\nrequest.inputs={} input.types=[{}]\nrequest.params={} param.keys=[{}]\nrequest.output={} request.bid_msats={} request.price_sats={} request.ttl_seconds={}\nrequest.relays={} request.service_providers={} request.encrypted={} content_bytes={}",
+        format_generic_event_shape(event),
+        request.kind,
+        request.result_kind(),
+        capability_for_kind(request.kind),
+        request.inputs.len(),
+        summarize_string_list(input_types.as_slice(), 6),
+        request.params.len(),
+        summarize_string_list(param_keys.as_slice(), 6),
+        request.output.as_deref().unwrap_or("none"),
+        request.bid.unwrap_or(0),
+        price_sats,
+        ttl_seconds,
+        summarize_string_list(relays.as_slice(), 4),
+        summarize_string_list(service_providers.as_slice(), 4),
+        request.encrypted,
+        request.content.len(),
+    )
+}
+
+fn format_generic_event_shape(event: &Event) -> String {
+    let tag_names = event
+        .tags
+        .iter()
+        .filter_map(|tag| tag.first().cloned())
+        .collect::<Vec<_>>();
+    format!(
+        "event.id={} event.kind={} event.created_at={} event.pubkey={} event.tags={} event.tag_names=[{}] event.content_bytes={} event.sig_hex_len={}",
+        event.id,
+        event.kind,
+        event.created_at,
+        event.pubkey,
+        event.tags.len(),
+        summarize_string_list(tag_names.as_slice(), 8),
+        event.content.len(),
+        event.sig.len(),
+    )
+}
+
+fn summarize_string_list(values: &[String], max_items: usize) -> String {
+    if values.is_empty() {
+        return "none".to_string();
+    }
+    let limit = max_items.max(1);
+    let visible = values
+        .iter()
+        .take(limit)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(",");
+    let hidden = values.len().saturating_sub(limit);
+    if hidden > 0 {
+        format!("{visible},+{hidden}more")
+    } else {
+        visible
+    }
 }
 
 fn extract_param(request: &JobRequest, key: &str) -> Option<String> {
@@ -1068,6 +1180,16 @@ mod tests {
             Some("33400:npub1agent:summarize-text:0.1.0".to_string())
         );
         assert_eq!(row.sa_tick_request_event_id.as_deref(), Some("req-001"));
+        assert!(
+            row.parsed_event_shape
+                .as_deref()
+                .is_some_and(|value| value.contains("request.kind=5050"))
+        );
+        assert!(
+            row.raw_event_json
+                .as_deref()
+                .is_some_and(|value| value.contains("\"kind\": 5050"))
+        );
     }
 
     #[test]

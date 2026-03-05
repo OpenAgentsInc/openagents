@@ -17,7 +17,9 @@ use crate::app_state::{
 };
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
-    activity_feed_filter_button_bounds, activity_feed_refresh_button_bounds,
+    activity_feed_detail_viewport_bounds, activity_feed_details_bounds,
+    activity_feed_filter_button_bounds, activity_feed_next_page_button_bounds,
+    activity_feed_prev_page_button_bounds, activity_feed_refresh_button_bounds,
     activity_feed_row_bounds, activity_feed_visible_row_count, alerts_recovery_ack_button_bounds,
     alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
     alerts_recovery_row_bounds, alerts_recovery_visible_row_count,
@@ -1285,7 +1287,11 @@ fn paint_activity_feed_pane(
     paint_source_badge(content_bounds, &activity_feed.projection_stream_id, paint);
 
     let refresh_bounds = activity_feed_refresh_button_bounds(content_bounds);
+    let prev_bounds = activity_feed_prev_page_button_bounds(content_bounds);
+    let next_bounds = activity_feed_next_page_button_bounds(content_bounds);
     paint_action_button(refresh_bounds, "Reload stream", paint);
+    paint_action_button(prev_bounds, "Prev", paint);
+    paint_action_button(next_bounds, "Next", paint);
 
     let filters = ActivityFeedFilter::all();
     for (index, filter) in filters.into_iter().enumerate() {
@@ -1297,18 +1303,34 @@ fn paint_activity_feed_pane(
         );
     }
 
+    let page = activity_feed
+        .page
+        .min(activity_feed.total_pages().saturating_sub(1))
+        + 1;
+    let filtered_rows = activity_feed.filtered_row_count();
     let y = paint_state_summary(
         paint,
         content_bounds.origin.x + 12.0,
         activity_feed_filter_button_bounds(content_bounds, 0).max_y() + 10.0,
         activity_feed.load_state,
         &format!(
-            "State: {} | Filter: {}",
+            "State: {} | Filter: {} | Page {page}/{}",
             activity_feed.load_state.label(),
-            activity_feed.active_filter.label()
+            activity_feed.active_filter.label(),
+            activity_feed.total_pages()
         ),
         activity_feed.last_action.as_deref(),
         activity_feed.last_error.as_deref(),
+    );
+    let y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Rows",
+        &match activity_feed.active_filter {
+            ActivityFeedFilter::Nip90 => format!("{filtered_rows} (latest 50)"),
+            _ => filtered_rows.to_string(),
+        },
     );
 
     let visible = activity_feed.visible_rows();
@@ -1353,32 +1375,63 @@ fn paint_activity_feed_pane(
     }
 
     if let Some(selected) = activity_feed.selected()
-        && activity_feed.active_filter.matches(selected.domain)
+        && activity_feed.active_filter.matches_row(selected)
     {
-        let details_top =
-            activity_feed_row_bounds(content_bounds, visible_rows.saturating_sub(1)).max_y() + 10.0;
-        let mut details_y = details_top;
-        details_y = paint_label_line(
-            paint,
-            content_bounds.origin.x + 12.0,
-            details_y,
-            "Event ID",
-            &selected.event_id,
-        );
-        details_y = paint_label_line(
-            paint,
-            content_bounds.origin.x + 12.0,
-            details_y,
-            "Source",
-            &selected.source_tag,
-        );
-        let _ = paint_multiline_phrase(
-            paint,
-            content_bounds.origin.x + 12.0,
-            details_y,
-            "Detail",
-            &selected.detail,
-        );
+        let Some(details_bounds) = activity_feed_details_bounds(content_bounds, visible_rows)
+        else {
+            return;
+        };
+        let details_x = details_bounds.origin.x + 12.0;
+        let mut details_y = details_bounds.origin.y;
+        details_y = paint_label_line(paint, details_x, details_y, "Event ID", &selected.event_id);
+        details_y = paint_label_line(paint, details_x, details_y, "Source", &selected.source_tag);
+        paint.scene.draw_text(paint.text.layout(
+            "Detail:",
+            Point::new(details_x, details_y),
+            11.0,
+            theme::text::MUTED,
+        ));
+        let Some(detail_viewport) =
+            activity_feed_detail_viewport_bounds(content_bounds, visible_rows)
+        else {
+            return;
+        };
+        let detail_lines = split_text_for_display(&selected.detail, 72);
+        let visible_line_capacity = ((detail_viewport.size.height / 16.0).floor() as usize).max(1);
+        let start_line =
+            activity_feed.detail_scroll_offset_for(detail_lines.len(), visible_line_capacity);
+        let end_line = (start_line + visible_line_capacity).min(detail_lines.len());
+
+        paint.scene.push_clip(detail_viewport);
+        let mut line_y = detail_viewport.origin.y;
+        for line in detail_lines
+            .iter()
+            .skip(start_line)
+            .take(end_line - start_line)
+        {
+            paint.scene.draw_text(paint.text.layout_mono(
+                line,
+                Point::new(detail_viewport.origin.x, line_y),
+                11.0,
+                theme::text::PRIMARY,
+            ));
+            line_y += 16.0;
+        }
+        paint.scene.pop_clip();
+
+        if detail_lines.len() > visible_line_capacity {
+            paint.scene.draw_text(paint.text.layout_mono(
+                &format!(
+                    "Detail lines {}-{} / {} (scroll)",
+                    start_line.saturating_add(1),
+                    end_line,
+                    detail_lines.len()
+                ),
+                Point::new(details_x, details_bounds.max_y() - 8.0),
+                10.0,
+                theme::text::MUTED,
+            ));
+        }
     }
 }
 
@@ -2816,18 +2869,31 @@ pub(crate) fn split_text_for_display(text: &str, chunk_len: usize) -> Vec<String
         return vec![String::new()];
     }
 
-    let chars: Vec<char> = text.chars().collect();
-    chars
-        .chunks(chunk_len.max(1))
-        .map(|chunk| chunk.iter().collect())
-        .collect()
+    let mut chunks = Vec::new();
+    let chunk_len = chunk_len.max(1);
+    for line in text.lines() {
+        let line_chars = line.chars().collect::<Vec<_>>();
+        if line_chars.is_empty() {
+            chunks.push(String::new());
+            continue;
+        }
+        chunks.extend(
+            line_chars
+                .chunks(chunk_len)
+                .map(|chunk| chunk.iter().collect::<String>()),
+        );
+    }
+    if text.ends_with('\n') {
+        chunks.push(String::new());
+    }
+    chunks
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
         create_invoice_view_state, nostr_identity_view_state, pay_invoice_view_state,
-        payment_terminal_status, spark_wallet_view_state,
+        payment_terminal_status, spark_wallet_view_state, split_text_for_display,
     };
     use crate::app_state::PaneLoadState;
     use crate::spark_wallet::SparkPaneState;
@@ -2901,6 +2967,20 @@ mod tests {
         assert_eq!(
             nostr_identity_view_state(Some(&identity), Some("corrupt mnemonic")),
             PaneLoadState::Error
+        );
+    }
+
+    #[test]
+    fn split_text_for_display_preserves_newline_boundaries() {
+        let chunks = split_text_for_display("shape:\nline-1\n\nraw:{\"x\":1}", 12);
+        assert_eq!(
+            chunks,
+            vec![
+                "shape:".to_string(),
+                "line-1".to_string(),
+                "".to_string(),
+                "raw:{\"x\":1}".to_string(),
+            ]
         );
     }
 }
