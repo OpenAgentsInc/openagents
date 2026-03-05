@@ -49,6 +49,7 @@ bitcoin = { workspace = true }
 
 [dev-dependencies]
 futures-util = "0.3"
+tempfile = "3"
 tokio-tungstenite = "0.24"
 
 [package.metadata.bundle]

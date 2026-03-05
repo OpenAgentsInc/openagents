@@ -293,6 +293,8 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             job_history: crate::app_state::JobHistoryState::default(),
             earn_job_lifecycle_projection:
                 crate::app_state::EarnJobLifecycleProjectionState::default(),
+            earn_kernel_receipts:
+                crate::state::earn_kernel_receipts::EarnKernelReceiptState::default(),
             agent_profile_state: crate::app_state::AgentProfileStatePaneState::default(),
             agent_schedule_tick: crate::app_state::AgentScheduleTickPaneState::default(),
             trajectory_audit: crate::app_state::TrajectoryAuditPaneState::default(),

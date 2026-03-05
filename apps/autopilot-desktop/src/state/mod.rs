@@ -3,6 +3,7 @@
 pub mod alerts_recovery;
 pub mod autopilot_goals;
 pub mod cron_schedule;
+pub mod earn_kernel_receipts;
 pub mod earnings_gate;
 pub mod goal_conditions;
 pub mod goal_loop_executor;
