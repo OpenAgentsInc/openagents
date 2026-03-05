@@ -10344,6 +10344,7 @@ mod tests {
             demand_source: JobDemandSource::OpenNetwork,
             request_kind: 5000,
             capability: "text_generation".to_string(),
+            execution_input: Some("Generate text for req-123".to_string()),
             target_provider_pubkeys: vec!["npub1target".to_string()],
             encrypted: false,
             encrypted_payload: None,
@@ -10395,6 +10396,7 @@ mod tests {
             skl_manifest_event_id: None,
             sa_tick_request_event_id: Some("request-evt".to_string()),
             sa_tick_result_event_id: Some("result-evt".to_string()),
+            execution_input: Some("Generate text for req-123".to_string()),
             sa_trajectory_session_id: Some("traj:123".to_string()),
             ac_envelope_event_id: Some("ac-env-1".to_string()),
             ac_settlement_event_id: Some("fb-evt".to_string()),
@@ -10404,6 +10406,7 @@ mod tests {
             invoice_id: None,
             payment_id: Some(payment_pointer.to_string()),
             failure_reason: None,
+            ttl_seconds: 120,
             events: Vec::new(),
         }
     }
@@ -11662,6 +11665,7 @@ mod tests {
             capability: "text_generation".to_string(),
             skill_scope_id: None,
             skl_manifest_a: None,
+            execution_input: Some("Rejectable execution payload".to_string()),
             skl_manifest_event_id: None,
             sa_tick_request_event_id: None,
             sa_tick_result_event_id: None,

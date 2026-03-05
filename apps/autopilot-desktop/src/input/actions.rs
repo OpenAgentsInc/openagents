@@ -3758,6 +3758,10 @@ fn submit_signed_network_request(
                 demand_source: crate::app_state::JobDemandSource::OpenNetwork,
                 request_kind: nostr::nip90::KIND_JOB_TEXT_GENERATION,
                 capability: "local.injected.request".to_string(),
+                execution_input: Some(state.network_requests.submitted.last().map_or_else(
+                    || "Execute the injected local network request payload.".to_string(),
+                    |request| request.payload.clone(),
+                )),
                 target_provider_pubkeys,
                 encrypted: false,
                 encrypted_payload: None,
@@ -4045,6 +4049,10 @@ fn queue_starter_demand_request(
         demand_source: crate::app_state::JobDemandSource::StarterDemand,
         request_kind: nostr::nip90::KIND_JOB_TEXT_GENERATION,
         capability: "starter.quest.dispatch".to_string(),
+        execution_input: Some(format!(
+            "Starter quest {}\n\n{}",
+            starter_job.job_id, starter_job.summary
+        )),
         target_provider_pubkeys: Vec::new(),
         encrypted: false,
         encrypted_payload: None,
@@ -4685,13 +4693,20 @@ pub(super) fn run_open_network_paid_transition_reconciliation(
     state: &mut crate::app_state::RenderState,
     now: std::time::Instant,
 ) -> bool {
-    let Some(job) = state.active_job.job.as_ref() else {
+    let Some((request_id, demand_source)) = state
+        .active_job
+        .job
+        .as_ref()
+        .map(|job| (job.request_id.clone(), job.demand_source))
+    else {
         return false;
     };
-    if job.stage != crate::app_state::JobLifecycleStage::Delivered {
-        return false;
-    }
-    if job.demand_source != crate::app_state::JobDemandSource::OpenNetwork {
+    if state
+        .active_job
+        .job
+        .as_ref()
+        .is_none_or(|job| job.stage != crate::app_state::JobLifecycleStage::Delivered)
+    {
         return false;
     }
 
@@ -4702,7 +4717,7 @@ pub(super) fn run_open_network_paid_transition_reconciliation(
         .and_then(|job| job.payment_id.clone());
     let wallet_pointer = maybe_existing_pointer.or_else(|| {
         resolve_wallet_settlement_pointer_for_open_network_job(
-            job,
+            state.active_job.job.as_ref()?,
             state.job_history.rows.as_slice(),
             state.spark_wallet.recent_payments.as_slice(),
         )
@@ -4710,8 +4725,9 @@ pub(super) fn run_open_network_paid_transition_reconciliation(
 
     let Some(wallet_pointer) = wallet_pointer else {
         let missing_detail = format!(
-            "open-network delivered job {} is waiting for wallet-authoritative payment evidence",
-            job.request_id
+            "{} delivered job {} is waiting for wallet-authoritative payment evidence",
+            demand_source.label(),
+            request_id
         );
         if state.active_job.last_error.as_deref() != Some(missing_detail.as_str()) {
             state.active_job.last_error = Some(missing_detail.clone());
@@ -4726,40 +4742,26 @@ pub(super) fn run_open_network_paid_transition_reconciliation(
         active_job.payment_id = Some(wallet_pointer.clone());
     }
     state.active_job.append_event(format!(
-        "wallet-authoritative payment pointer {} observed for delivered open-network job",
-        wallet_pointer
+        "wallet-authoritative payment pointer {} observed for delivered {} job",
+        wallet_pointer,
+        demand_source.label()
     ));
 
-    match state.active_job.advance_stage() {
+    match super::reducers::transition_active_job_to_paid(
+        state,
+        "active_job.wallet_paid_transition",
+        now,
+    ) {
         Ok(crate::app_state::JobLifecycleStage::Paid) => {
-            state.provider_runtime.queue_depth = state.active_job.inflight_job_count();
-            state.provider_runtime.last_completed_job_at = Some(now);
             state.provider_runtime.last_result = Some(format!(
-                "open-network job paid with wallet pointer {}",
+                "{} job paid with wallet pointer {}",
+                demand_source.label(),
                 wallet_pointer
             ));
             if state.provider_runtime.last_authoritative_error_class
                 == Some(EarnFailureClass::Payment)
             {
                 state.provider_runtime.last_authoritative_error_class = None;
-            }
-            if let Some(active_job) = state.active_job.job.as_ref() {
-                state.job_history.record_from_active_job(
-                    active_job,
-                    crate::app_state::JobHistoryStatus::Succeeded,
-                );
-                state.earn_job_lifecycle_projection.record_active_job_stage(
-                    active_job,
-                    crate::app_state::JobLifecycleStage::Paid,
-                    current_epoch_seconds(),
-                    "active_job.wallet_paid_transition",
-                );
-                state.earn_kernel_receipts.record_active_job_stage(
-                    active_job,
-                    crate::app_state::JobLifecycleStage::Paid,
-                    current_epoch_seconds(),
-                    "active_job.wallet_paid_transition",
-                );
             }
             true
         }
@@ -6105,6 +6107,7 @@ mod tests {
             demand_source: crate::app_state::JobDemandSource::OpenNetwork,
             request_kind: nostr::nip90::KIND_JOB_TEXT_GENERATION,
             capability: "text.generation".to_string(),
+            execution_input: Some("Return the generated text result.".to_string()),
             skill_scope_id: None,
             skl_manifest_a: None,
             skl_manifest_event_id: None,
@@ -6115,6 +6118,7 @@ mod tests {
             ac_settlement_event_id: None,
             ac_default_event_id: None,
             quoted_price_sats,
+            ttl_seconds: 75,
             stage: crate::app_state::JobLifecycleStage::Delivered,
             invoice_id: None,
             payment_id: None,

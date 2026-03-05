@@ -3676,9 +3676,6 @@ fn pane_hit_action_for_pane(
             None
         }
         PaneKind::ActiveJob => {
-            if active_job_advance_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::ActiveJob(ActiveJobPaneAction::AdvanceStage));
-            }
             if state.active_job.runtime_supports_abort
                 && active_job_abort_button_bounds(content_bounds).contains(point)
             {

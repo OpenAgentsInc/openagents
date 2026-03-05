@@ -41,6 +41,46 @@ pub(super) fn run_job_inbox_auto_admission_tick(state: &mut RenderState) -> bool
     jobs::run_job_inbox_auto_admission_tick(state)
 }
 
+pub(super) fn run_active_job_execution_tick(state: &mut RenderState) -> bool {
+    jobs::run_active_job_execution_tick(state)
+}
+
+pub(super) fn active_job_owns_codex_command_response(
+    state: &RenderState,
+    command_seq: u64,
+) -> bool {
+    jobs::active_job_owns_codex_command_response(state, command_seq)
+}
+
+pub(super) fn apply_active_job_codex_command_response(
+    state: &mut RenderState,
+    response: &crate::codex_lane::CodexLaneCommandResponse,
+) {
+    jobs::apply_active_job_codex_command_response(state, response)
+}
+
+pub(super) fn apply_active_job_codex_notification(
+    state: &mut RenderState,
+    notification: &crate::codex_lane::CodexLaneNotification,
+) -> bool {
+    jobs::apply_active_job_codex_notification(state, notification)
+}
+
+pub(super) fn apply_active_job_publish_outcome(
+    state: &mut RenderState,
+    outcome: &crate::provider_nip90_lane::ProviderNip90PublishOutcome,
+) {
+    jobs::apply_active_job_publish_outcome(state, outcome)
+}
+
+pub(super) fn transition_active_job_to_paid(
+    state: &mut RenderState,
+    source: &str,
+    now: std::time::Instant,
+) -> Result<crate::app_state::JobLifecycleStage, String> {
+    jobs::transition_active_job_to_paid(state, source, now)
+}
+
 pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
     let mut changed = false;
 
