@@ -5244,6 +5244,67 @@ mod tests {
     }
 
     #[test]
+    fn network_requests_record_auto_payment_pointer_and_timestamps() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-pay-001".to_string()),
+                request_type: "summarize.text".to_string(),
+                payload: "{\"prompt\":\"hello\"}".to_string(),
+                target_provider_pubkeys: vec!["11".repeat(32)],
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: 10,
+                timeout_seconds: 60,
+                authority_command_seq: 12,
+            })
+            .expect("request should queue");
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            "22".repeat(32).as_str(),
+            "feedback-pay-001",
+            Some("payment-required"),
+            Some("pay to continue"),
+        );
+
+        let prepared = requests
+            .prepare_auto_payment_attempt(
+                request_id.as_str(),
+                "lnbc1paymentrequired",
+                Some(10_000),
+                1_762_700_010,
+            )
+            .expect("auto-payment should prepare");
+        assert_eq!(prepared.0, "lnbc1paymentrequired");
+        assert_eq!(prepared.1, Some(10));
+        assert_eq!(
+            requests.pending_auto_payment_request_id.as_deref(),
+            Some(request_id.as_str())
+        );
+
+        requests.mark_auto_payment_sent(
+            request_id.as_str(),
+            "wallet-payment-req-pay-001",
+            1_762_700_012,
+        );
+
+        let row = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request row should remain present");
+        assert_eq!(row.status, NetworkRequestStatus::Paid);
+        assert_eq!(
+            row.last_payment_pointer.as_deref(),
+            Some("wallet-payment-req-pay-001")
+        );
+        assert_eq!(row.payment_required_at_epoch_seconds, Some(1_762_700_010));
+        assert_eq!(row.payment_sent_at_epoch_seconds, Some(1_762_700_012));
+        assert_eq!(row.payment_failed_at_epoch_seconds, None);
+        assert_eq!(row.payment_error, None);
+    }
+
+    #[test]
     fn agent_network_simulation_rounds_generate_channel_skill_and_credit_events() {
         let mut state = AgentNetworkSimulationPaneState::default();
         state
