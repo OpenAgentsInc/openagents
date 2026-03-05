@@ -239,6 +239,7 @@ message ReceiptHints {
   VerificationTier achieved_verification_tier = 4;
   bool verification_correlated = 5;
   ProvenanceGrade provenance_grade = 6;
+  string reason_code = 7; // stable code, e.g. QUOTE_EXPIRED, BREAKER_ACTIVE, INSUFFICIENT_BUDGET
 
   // Optional: for economics rollups.
   Money notional = 10;
@@ -954,7 +955,7 @@ message EnvelopeRule {
 
   // Envelope caps/expiries and fees.
   openagents.common.v1.Money max_amount = 10;
-  uint64 expiry_ms = 11;
+  uint64 ttl_ms = 11; // duration from issuance; authority receipts bind absolute expiry_ms
   uint32 fee_bps = 12;
 
   // Whether verdict is required for settlement (pay-after-verify default).
@@ -1070,7 +1071,7 @@ Every rule uses `(category, tfb_class, severity)` matching with wildcards. Match
 4. wildcard category + exact tfb/severity
 5. wildcard everything (global default)
 
-If multiple rules match at the same precedence, the kernel MUST choose deterministically (e.g., lexicographic by rule id) and include that rule id in receipt evidence/tags.
+If multiple rules match at the same precedence, the kernel MUST choose deterministically (e.g., lexicographic by rule id) and include that rule id in hash-bound receipt evidence and/or hash-bound receipt payload (not only non-normative tags).
 
 #### B) Verification gating
 
