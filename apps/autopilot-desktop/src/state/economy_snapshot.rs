@@ -1,7 +1,7 @@
 use crate::app_state::PaneLoadState;
 use crate::economy_kernel_receipts::{
-    AuthAssuranceLevel, EvidenceRef, FeedbackLatencyClass, ProvenanceGrade, Receipt, SeverityClass,
-    VerificationTier,
+    Asset, AuthAssuranceLevel, EvidenceRef, FeedbackLatencyClass, Money, MoneyAmount,
+    ProvenanceGrade, Receipt, SeverityClass, VerificationTier,
 };
 use bitcoin::hashes::{sha256, Hash};
 use serde::{Deserialize, Serialize};
@@ -57,6 +57,12 @@ pub struct EconomySnapshot {
     pub provenance_p3_share: f64,
     pub auth_assurance_distribution: Vec<AuthAssuranceDistributionRow>,
     pub personhood_verified_share: f64,
+    pub liability_premiums_collected_24h: Money,
+    pub claims_paid_24h: Money,
+    pub bonded_exposure_24h: Money,
+    pub capital_reserves_24h: Money,
+    pub loss_ratio: f64,
+    pub capital_coverage_ratio: f64,
     pub sv_breakdown: Vec<SvBreakdownRow>,
     pub inputs: Vec<EvidenceRef>,
 }
@@ -250,6 +256,8 @@ fn build_snapshot(
     let mut provenance_counts = [0u64; 4];
     let mut auth_assurance_counts = BTreeMap::<AuthAssuranceLevel, u64>::new();
     let mut personhood_verified = 0u64;
+    let mut liability_premiums_collected_sats = 0u64;
+    let mut bonded_exposure_sats = 0u64;
 
     for receipt in terminal_by_work_unit.values() {
         total_work_units = total_work_units.saturating_add(1);
@@ -271,6 +279,10 @@ fn build_snapshot(
         if receipt.hints.personhood_proved.unwrap_or(false) {
             personhood_verified = personhood_verified.saturating_add(1);
         }
+        bonded_exposure_sats =
+            bonded_exposure_sats.saturating_add(money_as_sats(receipt.hints.notional.as_ref()));
+        liability_premiums_collected_sats = liability_premiums_collected_sats
+            .saturating_add(money_as_sats(receipt.hints.liability_premium.as_ref()));
 
         let key = metric_key_for_receipt(receipt);
         let entry = breakdown.entry(key).or_insert((0, 0));
@@ -306,6 +318,23 @@ fn build_snapshot(
         })
         .collect::<Vec<_>>();
     let personhood_verified_share = ratio(personhood_verified, total_work_units);
+    let claims_paid_sats = scoped_receipts
+        .iter()
+        .copied()
+        .filter(|receipt| is_claim_paid_receipt(receipt))
+        .map(|receipt| money_as_sats(receipt.hints.notional.as_ref()))
+        .fold(0u64, u64::saturating_add);
+    let capital_reserves_sats = liability_premiums_collected_sats.saturating_sub(claims_paid_sats);
+    let loss_ratio = if liability_premiums_collected_sats == 0 {
+        0.0
+    } else {
+        claims_paid_sats as f64 / liability_premiums_collected_sats as f64
+    };
+    let capital_coverage_ratio = if bonded_exposure_sats == 0 {
+        1.0
+    } else {
+        capital_reserves_sats as f64 / bonded_exposure_sats as f64
+    };
 
     let inputs = snapshot_input_evidence(window_start_ms, as_of_ms, scoped_receipts.as_slice());
     let snapshot_hash = snapshot_hash_for(
@@ -323,6 +352,12 @@ fn build_snapshot(
         provenance_p2_share,
         provenance_p3_share,
         personhood_verified_share,
+        liability_premiums_collected_sats,
+        claims_paid_sats,
+        bonded_exposure_sats,
+        capital_reserves_sats,
+        loss_ratio,
+        capital_coverage_ratio,
         auth_assurance_distribution.as_slice(),
         sv_breakdown.as_slice(),
         inputs.as_slice(),
@@ -345,6 +380,12 @@ fn build_snapshot(
         provenance_p3_share,
         auth_assurance_distribution,
         personhood_verified_share,
+        liability_premiums_collected_24h: btc_sats_money(liability_premiums_collected_sats),
+        claims_paid_24h: btc_sats_money(claims_paid_sats),
+        bonded_exposure_24h: btc_sats_money(bonded_exposure_sats),
+        capital_reserves_24h: btc_sats_money(capital_reserves_sats),
+        loss_ratio,
+        capital_coverage_ratio,
         sv_breakdown,
         inputs,
     })
@@ -455,6 +496,12 @@ struct CanonicalSnapshotPayload<'a> {
     provenance_p2_share: f64,
     provenance_p3_share: f64,
     personhood_verified_share: f64,
+    liability_premiums_collected_24h_sats: u64,
+    claims_paid_24h_sats: u64,
+    bonded_exposure_24h_sats: u64,
+    capital_reserves_24h_sats: u64,
+    loss_ratio: f64,
+    capital_coverage_ratio: f64,
     auth_assurance_distribution: &'a [AuthAssuranceDistributionRow],
     sv_breakdown: &'a [SvBreakdownRow],
     inputs: &'a [EvidenceRef],
@@ -476,6 +523,12 @@ fn snapshot_hash_for(
     provenance_p2_share: f64,
     provenance_p3_share: f64,
     personhood_verified_share: f64,
+    liability_premiums_collected_24h_sats: u64,
+    claims_paid_24h_sats: u64,
+    bonded_exposure_24h_sats: u64,
+    capital_reserves_24h_sats: u64,
+    loss_ratio: f64,
+    capital_coverage_ratio: f64,
     auth_assurance_distribution: &[AuthAssuranceDistributionRow],
     sv_breakdown: &[SvBreakdownRow],
     inputs: &[EvidenceRef],
@@ -495,6 +548,12 @@ fn snapshot_hash_for(
         provenance_p2_share,
         provenance_p3_share,
         personhood_verified_share,
+        liability_premiums_collected_24h_sats,
+        claims_paid_24h_sats,
+        bonded_exposure_24h_sats,
+        capital_reserves_24h_sats,
+        loss_ratio,
+        capital_coverage_ratio,
         auth_assurance_distribution,
         sv_breakdown,
         inputs,
@@ -509,6 +568,38 @@ fn ratio(numerator: u64, denominator: u64) -> f64 {
         return 0.0;
     }
     numerator as f64 / denominator as f64
+}
+
+fn money_as_sats(value: Option<&Money>) -> u64 {
+    let Some(value) = value else {
+        return 0;
+    };
+    if value.asset != Asset::Btc {
+        return 0;
+    }
+    match value.amount {
+        MoneyAmount::AmountSats(sats) => sats,
+        MoneyAmount::AmountMsats(msats) => msats / 1_000,
+    }
+}
+
+fn btc_sats_money(amount_sats: u64) -> Money {
+    Money {
+        asset: Asset::Btc,
+        amount: MoneyAmount::AmountSats(amount_sats),
+    }
+}
+
+fn is_claim_paid_receipt(receipt: &Receipt) -> bool {
+    matches!(
+        receipt.receipt_type.as_str(),
+        "earn.claim.paid.v1"
+            | "earn.claim.settlement_paid.v1"
+            | "earn.job.rollback_compensation_paid.v1"
+    ) || receipt
+        .evidence
+        .iter()
+        .any(|evidence| evidence.kind == "claim_payout_proof")
 }
 
 fn floor_to_minute_utc(value_ms: i64) -> i64 {
@@ -682,6 +773,7 @@ mod tests {
             personhood_proved: Some(false),
             reason_code: None,
             notional: None,
+            liability_premium: None,
         })
         .build()
         .expect("fixture receipt should build")
@@ -723,29 +815,51 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("tempdir");
         let path = temp_dir.path().join("snapshots.json");
         let mut state = EconomySnapshotState::from_snapshot_path_for_tests(path);
-        let receipts = vec![
-            fixture_receipt(
-                "receipt-paid-1",
-                "earn.job.settlement_observed.v1",
-                1_762_000_010_000,
-                "job-1",
-                true,
-            ),
-            fixture_receipt(
-                "receipt-paid-2",
-                "earn.job.settlement_observed.v1",
-                1_762_000_011_000,
-                "job-2",
-                true,
-            ),
-            fixture_receipt(
-                "receipt-failed-1",
-                "earn.job.failed.v1",
-                1_762_000_012_000,
-                "job-3",
-                false,
-            ),
-        ];
+        let mut receipt_paid_1 = fixture_receipt(
+            "receipt-paid-1",
+            "earn.job.settlement_observed.v1",
+            1_762_000_010_000,
+            "job-1",
+            true,
+        );
+        receipt_paid_1.hints.notional = Some(btc_sats_money(200));
+        receipt_paid_1.hints.liability_premium = Some(btc_sats_money(20));
+
+        let mut receipt_paid_2 = fixture_receipt(
+            "receipt-paid-2",
+            "earn.job.settlement_observed.v1",
+            1_762_000_011_000,
+            "job-2",
+            true,
+        );
+        receipt_paid_2.hints.notional = Some(btc_sats_money(100));
+        receipt_paid_2.hints.liability_premium = Some(btc_sats_money(10));
+
+        let mut receipt_failed_1 = fixture_receipt(
+            "receipt-failed-1",
+            "earn.job.failed.v1",
+            1_762_000_012_000,
+            "job-3",
+            false,
+        );
+        receipt_failed_1.hints.notional = Some(btc_sats_money(50));
+        receipt_failed_1.hints.liability_premium = Some(btc_sats_money(0));
+
+        let mut claim_paid = fixture_receipt(
+            "receipt-claim-1",
+            "earn.claim.paid.v1",
+            1_762_000_012_500,
+            "claim-1",
+            false,
+        );
+        claim_paid.hints.notional = Some(btc_sats_money(15));
+        claim_paid.evidence.push(EvidenceRef::new(
+            "claim_payout_proof",
+            "oa://claims/payout/receipt-claim-1",
+            "sha256:claim",
+        ));
+
+        let receipts = vec![receipt_paid_1, receipt_paid_2, receipt_failed_1, claim_paid];
 
         let computed = state
             .compute_minute_snapshot(1_762_000_060_000, receipts.as_slice())
@@ -765,6 +879,15 @@ mod tests {
         );
         assert_eq!(snapshot.auth_assurance_distribution[0].count, 3);
         assert_eq!(snapshot.personhood_verified_share, 0.0);
+        assert_eq!(
+            snapshot.liability_premiums_collected_24h,
+            btc_sats_money(30)
+        );
+        assert_eq!(snapshot.claims_paid_24h, btc_sats_money(15));
+        assert_eq!(snapshot.bonded_exposure_24h, btc_sats_money(350));
+        assert_eq!(snapshot.capital_reserves_24h, btc_sats_money(15));
+        assert!((snapshot.loss_ratio - 0.5).abs() < 1e-9);
+        assert!((snapshot.capital_coverage_ratio - (15.0 / 350.0)).abs() < 1e-9);
     }
 
     #[test]

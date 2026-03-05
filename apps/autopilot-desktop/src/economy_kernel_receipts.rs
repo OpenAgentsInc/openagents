@@ -134,6 +134,7 @@ pub struct ReceiptHints {
     pub personhood_proved: Option<bool>,
     pub reason_code: Option<String>,
     pub notional: Option<Money>,
+    pub liability_premium: Option<Money>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -387,6 +388,7 @@ mod tests {
                 asset: Asset::Btc,
                 amount: MoneyAmount::AmountSats(42),
             }),
+            liability_premium: None,
         })
     }
 
