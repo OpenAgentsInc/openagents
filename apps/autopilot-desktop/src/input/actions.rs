@@ -4256,6 +4256,39 @@ fn reciprocal_loop_autostart_enabled() -> bool {
         .unwrap_or(false)
 }
 
+pub(super) fn run_reciprocal_loop_action(
+    state: &mut crate::app_state::RenderState,
+    action: ReciprocalLoopPaneAction,
+) -> bool {
+    let _ = sync_reciprocal_loop_identity_and_peer(state);
+    match action {
+        ReciprocalLoopPaneAction::Start => match state.reciprocal_loop.start() {
+            Ok(()) => {
+                state.provider_runtime.last_result =
+                    Some("reciprocal loop started from pane".to_string());
+            }
+            Err(error) => {
+                state.provider_runtime.last_error_detail = Some(error.clone());
+                state.provider_runtime.last_result =
+                    Some(format!("reciprocal loop start failed: {error}"));
+            }
+        },
+        ReciprocalLoopPaneAction::Stop => {
+            state
+                .reciprocal_loop
+                .stop("operator requested stop from pane");
+            state.provider_runtime.last_result =
+                Some("reciprocal loop stopped from pane".to_string());
+        }
+        ReciprocalLoopPaneAction::Reset => {
+            state.reciprocal_loop.reset_counters();
+            state.provider_runtime.last_result =
+                Some("reciprocal loop counters reset from pane".to_string());
+        }
+    }
+    true
+}
+
 pub(super) fn run_starter_jobs_action(
     state: &mut crate::app_state::RenderState,
     action: StarterJobsPaneAction,

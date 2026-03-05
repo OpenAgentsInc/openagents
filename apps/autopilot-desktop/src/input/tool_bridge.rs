@@ -31,10 +31,10 @@ use crate::pane_system::{
     CodexModelsPaneAction, CredentialsPaneAction, CreditDeskPaneAction,
     CreditSettlementLedgerPaneAction, EarningsScoreboardPaneAction, JobHistoryPaneAction,
     JobInboxPaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction,
-    RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction, SettingsPaneAction,
-    SkillRegistryPaneAction, SkillTrustRevocationPaneAction, StableSatsSimulationPaneAction,
-    StarterJobsPaneAction, SyncHealthPaneAction, TrajectoryAuditPaneAction,
-    TreasuryExchangeSimulationPaneAction,
+    ReciprocalLoopPaneAction, RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction,
+    SettingsPaneAction, SkillRegistryPaneAction, SkillTrustRevocationPaneAction,
+    StableSatsSimulationPaneAction, StarterJobsPaneAction, SyncHealthPaneAction,
+    TrajectoryAuditPaneAction, TreasuryExchangeSimulationPaneAction,
 };
 use crate::runtime_lanes::SaLifecycleCommand;
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
@@ -1138,6 +1138,18 @@ fn pane_action_to_hit_action(
             )),
             "select_row" => Ok(PaneHitAction::StarterJobs(
                 StarterJobsPaneAction::SelectRow(require_index(action)?),
+            )),
+            _ => unsupported(),
+        },
+        PaneKind::ReciprocalLoop => match action {
+            "start" => Ok(PaneHitAction::ReciprocalLoop(
+                ReciprocalLoopPaneAction::Start,
+            )),
+            "stop" => Ok(PaneHitAction::ReciprocalLoop(
+                ReciprocalLoopPaneAction::Stop,
+            )),
+            "reset" => Ok(PaneHitAction::ReciprocalLoop(
+                ReciprocalLoopPaneAction::Reset,
             )),
             _ => unsupported(),
         },
@@ -4538,6 +4550,7 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
         PaneKind::SparkCreateInvoice => &["create_invoice", "invoice_create"],
         PaneKind::SparkPayInvoice => &["pay_invoice", "invoice_pay"],
         PaneKind::NostrIdentity => &["identity", "identity_keys", "nostr"],
+        PaneKind::ReciprocalLoop => &["reciprocal_loop", "earn_loop", "pingpong_loop"],
         PaneKind::CadDemo => &["cad", "cad_demo"],
         PaneKind::CastControl => &["cast", "cast_control"],
         _ => &[],
@@ -4562,6 +4575,7 @@ fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::SyncHealth => "sync_health",
         PaneKind::NetworkRequests => "network_requests",
         PaneKind::StarterJobs => "starter_jobs",
+        PaneKind::ReciprocalLoop => "reciprocal_loop",
         PaneKind::ActivityFeed => "activity_feed",
         PaneKind::AlertsRecovery => "alerts_recovery",
         PaneKind::Settings => "settings",

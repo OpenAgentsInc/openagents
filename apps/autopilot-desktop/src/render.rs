@@ -814,6 +814,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &state.sync_health,
             &state.network_requests,
             &state.starter_jobs,
+            &state.reciprocal_loop,
             &state.activity_feed,
             &state.alerts_recovery,
             &state.settings,
@@ -1181,6 +1182,9 @@ mod tests {
         }));
         assert!(commands.iter().any(|command| {
             command.id == "pane.starter_jobs" && command.label == "Starter Jobs"
+        }));
+        assert!(commands.iter().any(|command| {
+            command.id == "pane.reciprocal_loop" && command.label == "Reciprocal Loop"
         }));
         assert!(commands.iter().any(|command| {
             command.id == "pane.activity_feed" && command.label == "Activity Feed"

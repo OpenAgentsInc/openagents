@@ -9,11 +9,11 @@ use crate::app_state::{
     EarnJobLifecycleProjectionState, EarningsScoreboardState, JobHistoryPaneInputs,
     JobHistoryState, JobInboxState, JobLifecycleStage, NetworkRequestStatus,
     NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
-    PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, RelayConnectionsPaneInputs,
-    RelayConnectionsState, RelaySecuritySimulationPaneState, SettingsPaneInputs, SettingsState,
-    SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs,
-    StableSatsSimulationPaneState, StarterJobStatus, StarterJobsState, SyncHealthState,
-    TrajectoryAuditPaneState, TreasuryExchangeSimulationPaneState,
+    PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, ReciprocalLoopState,
+    RelayConnectionsPaneInputs, RelayConnectionsState, RelaySecuritySimulationPaneState,
+    SettingsPaneInputs, SettingsState, SkillRegistryPaneState, SkillTrustRevocationPaneState,
+    SparkPaneInputs, StableSatsSimulationPaneState, StarterJobStatus, StarterJobsState,
+    SyncHealthState, TrajectoryAuditPaneState, TreasuryExchangeSimulationPaneState,
 };
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
@@ -39,8 +39,9 @@ use crate::pane_system::{
     network_requests_skill_scope_input_bounds, network_requests_submit_button_bounds,
     network_requests_timeout_input_bounds, network_requests_type_input_bounds,
     nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds, nostr_reveal_button_bounds,
-    pane_content_bounds, settings_provider_queue_input_bounds, settings_relay_input_bounds,
-    settings_reset_button_bounds, settings_save_button_bounds,
+    pane_content_bounds, reciprocal_loop_reset_button_bounds, reciprocal_loop_start_button_bounds,
+    reciprocal_loop_stop_button_bounds, settings_provider_queue_input_bounds,
+    settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
     settings_wallet_default_input_bounds, starter_jobs_complete_button_bounds,
     starter_jobs_kill_switch_button_bounds, starter_jobs_row_bounds,
     starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
@@ -85,6 +86,7 @@ impl PaneRenderer {
         sync_health: &SyncHealthState,
         network_requests: &NetworkRequestsState,
         starter_jobs: &StarterJobsState,
+        reciprocal_loop: &ReciprocalLoopState,
         activity_feed: &ActivityFeedState,
         alerts_recovery: &AlertsRecoveryState,
         settings: &SettingsState,
@@ -222,6 +224,15 @@ impl PaneRenderer {
                 }
                 PaneKind::StarterJobs => {
                     paint_starter_jobs_pane(content_bounds, starter_jobs, paint);
+                }
+                PaneKind::ReciprocalLoop => {
+                    paint_reciprocal_loop_pane(
+                        content_bounds,
+                        reciprocal_loop,
+                        provider_runtime,
+                        spark_wallet,
+                        paint,
+                    );
                 }
                 PaneKind::ActivityFeed => {
                     paint_activity_feed_pane(content_bounds, activity_feed, paint);
@@ -1307,6 +1318,168 @@ fn paint_starter_jobs_pane(
             selected.payout_pointer.as_deref().unwrap_or("pending"),
         );
     }
+}
+
+fn paint_reciprocal_loop_pane(
+    content_bounds: Bounds,
+    reciprocal_loop: &ReciprocalLoopState,
+    provider_runtime: &ProviderRuntimeState,
+    spark_wallet: &SparkPaneState,
+    paint: &mut PaintContext,
+) {
+    paint_source_badge(content_bounds, "runtime", paint);
+
+    let start_bounds = reciprocal_loop_start_button_bounds(content_bounds);
+    let stop_bounds = reciprocal_loop_stop_button_bounds(content_bounds);
+    let reset_bounds = reciprocal_loop_reset_button_bounds(content_bounds);
+    if reciprocal_loop.running {
+        paint_disabled_button(start_bounds, "Start", paint);
+        paint_action_button(stop_bounds, "Stop", paint);
+    } else {
+        paint_action_button(start_bounds, "Start", paint);
+        paint_disabled_button(stop_bounds, "Stop", paint);
+    }
+    paint_action_button(reset_bounds, "Reset", paint);
+
+    let relay_health = match provider_runtime.mode {
+        crate::app_state::ProviderMode::Online => "online",
+        crate::app_state::ProviderMode::Connecting => "connecting",
+        crate::app_state::ProviderMode::Degraded => "degraded",
+        crate::app_state::ProviderMode::Offline => "offline",
+    };
+    let wallet_health = if spark_wallet.last_error.is_some() {
+        "degraded"
+    } else {
+        spark_wallet.network_status_label()
+    };
+    let loop_mode = if reciprocal_loop.running {
+        "running"
+    } else {
+        "stopped"
+    };
+    let y = paint_state_summary(
+        paint,
+        content_bounds.origin.x + 12.0,
+        start_bounds.max_y() + 12.0,
+        reciprocal_loop.load_state,
+        &format!(
+            "Loop: {} | Next: {}",
+            loop_mode,
+            reciprocal_loop.next_direction.label()
+        ),
+        reciprocal_loop.last_action.as_deref(),
+        reciprocal_loop.last_error.as_deref(),
+    );
+
+    let health_color = if relay_health == "degraded" || wallet_health == "degraded" {
+        theme::status::ERROR
+    } else if relay_health == "online" && wallet_health == "connected" {
+        theme::status::SUCCESS
+    } else {
+        theme::text::MUTED
+    };
+    let compact_value = |raw: Option<&str>| -> String {
+        let value = raw.unwrap_or("missing");
+        if value.len() > 24 {
+            format!("{}..{}", &value[..12], &value[value.len() - 8..])
+        } else {
+            value.to_string()
+        }
+    };
+    paint.scene.draw_text(paint.text.layout_mono(
+        &format!("Health relay={} wallet={}", relay_health, wallet_health),
+        Point::new(content_bounds.origin.x + 12.0, y + 10.0),
+        10.0,
+        health_color,
+    ));
+
+    let mut line_y = y + 28.0;
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "Local pubkey",
+        &compact_value(reciprocal_loop.local_pubkey.as_deref()),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "Peer pubkey",
+        &compact_value(reciprocal_loop.peer_pubkey.as_deref()),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "In-flight",
+        reciprocal_loop
+            .in_flight_request_id
+            .as_deref()
+            .unwrap_or("none"),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "A->B dispatched",
+        &reciprocal_loop.local_to_peer_dispatched.to_string(),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "A->B paid",
+        &reciprocal_loop.local_to_peer_paid.to_string(),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "B->A paid",
+        &reciprocal_loop.peer_to_local_paid.to_string(),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "A->B failed",
+        &reciprocal_loop.local_to_peer_failed.to_string(),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "B->A failed",
+        &reciprocal_loop.peer_to_local_failed.to_string(),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "Sats sent/received",
+        &format!(
+            "{}/{}",
+            reciprocal_loop.sats_sent, reciprocal_loop.sats_received
+        ),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "Last payment",
+        &compact_value(reciprocal_loop.last_payment_pointer.as_deref()),
+    );
+    let _ = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "Failure detail",
+        reciprocal_loop
+            .last_failure_detail
+            .as_deref()
+            .unwrap_or("none"),
+    );
 }
 
 fn paint_activity_feed_pane(
