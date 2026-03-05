@@ -503,7 +503,9 @@ By default, kernel authority semantics are post-match execution semantics.
 
 **Where TreasuryRouter and the Kernel run.** They are **server-side services** (backend infrastructure), not on the user’s machine and not on Nostr or Spacetime. The desktop app (Autopilot) runs on the user’s computer and sends authority requests over HTTPS to TreasuryRouter; TreasuryRouter and the Kernel Authority API run in an environment the client can reach (e.g. operator-hosted or self-hosted). Nostr is used for coordination and identity; Spacetime for sync/presence. Authority lives only in that HTTP-accessible backend.
 
-**Kernel services are execution, not product UI.** The kernel is invoked by Autopilot, Marketplace, and TreasuryRouter; it does not define UI behavior.
+**Runtime vs Kernel.** The OpenAgents Runtime is the worker-side execution environment where jobs run and provenance is produced. The kernel is distinct: it evaluates runtime-produced evidence, applies policy, settles value, and emits canonical receipts. Runtime-local execution state MUST NOT by itself finalize verdicts or mutate economic truth.
+
+**Kernel services are authority execution, not product UI.** The kernel is invoked by Autopilot, Marketplace, and TreasuryRouter; it does not define UI behavior.
 
 **Wallet Executor is the custody boundary.** Kernel receipts may reference wallet-executor receipts as settlement proofs. The kernel must not assume payment occurred without canonical proof.
 

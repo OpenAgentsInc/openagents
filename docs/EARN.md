@@ -57,6 +57,13 @@ It requires explicit user opt-in because it introduces capital commitment and ro
 - **MVP behavior:** available to earn via compute jobs.
 - **Future behavior:** available to earn via any enabled provider modules (compute first, liquidity solver only when explicitly enabled).
 
+## Runtime vs Kernel
+
+- `OpenAgents Runtime`: the provider-side execution environment in the desktop app where jobs run, local state advances, and provenance is produced.
+- `OpenAgents Kernel`: the authority layer that verifies outcomes, settles value, and emits canonical receipts.
+
+In the current MVP, the desktop embeds the runtime. Kernel authority is represented in the product by receipt/reconciliation semantics today, while the full server-side kernel remains planned infrastructure.
+
 ## What Is Authoritative
 
 For payout and earnings numbers, authoritative sources are:
