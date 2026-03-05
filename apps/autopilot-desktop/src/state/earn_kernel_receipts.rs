@@ -23,6 +23,7 @@ const EARN_IDEMPOTENCY_RECORD_ROW_LIMIT: usize = 4096;
 const INCIDENT_OBJECT_ROW_LIMIT: usize = 4096;
 const INCIDENT_TAXONOMY_ROW_LIMIT: usize = 1024;
 const OUTCOME_REGISTRY_ROW_LIMIT: usize = 4096;
+const CERTIFICATION_OBJECT_ROW_LIMIT: usize = 4096;
 const SAFETY_SIGNAL_ROW_LIMIT: usize = 8192;
 const SAFETY_SIGNAL_BUCKET_ROW_LIMIT: usize = 2048;
 const AUDIT_LINKAGE_ROW_LIMIT: usize = 65_536;
@@ -32,6 +33,8 @@ const REASON_CODE_PAYMENT_POINTER_NON_AUTHORITATIVE: &str = "PAYMENT_POINTER_NON
 const REASON_CODE_AUTH_ASSURANCE_INSUFFICIENT: &str = "AUTH_ASSURANCE_INSUFFICIENT";
 const REASON_CODE_PROVENANCE_REQUIREMENTS_UNMET: &str = "PROVENANCE_REQUIREMENTS_UNMET";
 const REASON_CODE_ROLLBACK_PLAN_REQUIRED: &str = "ROLLBACK_PLAN_REQUIRED";
+const REASON_CODE_CERTIFICATION_REQUIRED: &str = "CERTIFICATION_REQUIRED";
+const REASON_CODE_DIGITAL_BORDER_BLOCK_UNCERTIFIED: &str = "DIGITAL_BORDER_BLOCK_UNCERTIFIED";
 const REASON_CODE_IDEMPOTENCY_CONFLICT: &str = "IDEMPOTENCY_CONFLICT";
 const REASON_CODE_POLICY_THROTTLE_TRIGGERED: &str = "POLICY_THROTTLE_TRIGGERED";
 const REASON_CODE_INCIDENT_REPORTED: &str = "INCIDENT_REPORTED";
@@ -48,6 +51,8 @@ const REASON_CODE_OUTCOME_REGISTRY_UPDATED: &str = "OUTCOME_REGISTRY_UPDATED";
 const DEFAULT_PRICING_SNAPSHOT_ID: &str = "snapshot.economy:unavailable";
 const DEFAULT_PRICING_SNAPSHOT_HASH: &str = "sha256:unavailable";
 const DRIFT_WINDOW_MS: i64 = 86_400_000;
+const SAFE_HARBOR_LIABILITY_PREMIUM_DISCOUNT_NUMERATOR: u64 = 80;
+const SAFE_HARBOR_LIABILITY_PREMIUM_DISCOUNT_DENOMINATOR: u64 = 100;
 
 #[derive(Clone)]
 struct PolicyDecision {
@@ -240,6 +245,11 @@ struct LiabilityPricingBreakdown {
     xa_multiplier: f64,
     drift_multiplier: f64,
     correlated_share_multiplier: f64,
+    safe_harbor_relaxation_applied: bool,
+    safe_harbor_discount_numerator: u64,
+    safe_harbor_discount_denominator: u64,
+    certification_id: Option<String>,
+    certification_level: Option<String>,
 }
 
 #[derive(Clone)]
@@ -256,6 +266,19 @@ struct ProvenanceFeatures {
     data_source_ref_count: u64,
     permissioning_ref_count: u64,
     attestation_kinds: BTreeSet<ProvenanceAttestationKind>,
+}
+
+#[derive(Clone)]
+struct CertificationGateContext {
+    decision: PolicyDecision,
+    certification: SafetyCertification,
+    safe_harbor_relaxation_applied: bool,
+}
+
+#[derive(Clone)]
+struct CertificationGateFailure {
+    decision: PolicyDecision,
+    reason_code: &'static str,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -388,6 +411,71 @@ pub struct SafetySignalFeed {
     pub signals: Vec<SafetySignal>,
     pub buckets: Vec<SafetySignalBucketRow>,
     pub package_hash: String,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq, Ord, PartialOrd)]
+#[serde(rename_all = "snake_case")]
+pub enum CertificationState {
+    CertificationStateUnspecified,
+    Active,
+    Revoked,
+    Expired,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct CertificationScope {
+    pub category: String,
+    pub tfb_class: FeedbackLatencyClass,
+    pub min_severity: SeverityClass,
+    pub max_severity: SeverityClass,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct SafetyCertification {
+    pub certification_id: String,
+    pub certification_digest: String,
+    pub revision: u32,
+    pub state: CertificationState,
+    pub certification_level: String,
+    pub scope: Vec<CertificationScope>,
+    pub valid_from_ms: i64,
+    pub valid_until_ms: i64,
+    pub issuer_credential_kind: String,
+    pub issuer_credential_digest: String,
+    pub required_evidence_digests: Vec<String>,
+    pub linked_receipt_ids: Vec<String>,
+    pub issued_at_ms: i64,
+    pub updated_at_ms: i64,
+    pub revoked_reason_code: Option<String>,
+    pub policy_bundle_id: String,
+    pub policy_version: String,
+    pub supersedes_digest: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct SafetyCertificationDraft {
+    pub certification_id: String,
+    pub idempotency_key: String,
+    pub certification_level: String,
+    pub scope: Vec<CertificationScope>,
+    pub valid_from_ms: i64,
+    pub valid_until_ms: i64,
+    pub issuer_identity: String,
+    #[serde(default)]
+    pub issuer_auth_assurance_level: Option<AuthAssuranceLevel>,
+    #[serde(default)]
+    pub required_evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub linked_receipt_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct SafetyCertificationRevocationDraft {
+    pub certification_id: String,
+    pub idempotency_key: String,
+    pub reason_code: String,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -528,6 +616,26 @@ pub struct AuditCertificationEntry {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct AuditCertificationObject {
+    pub certification_id: String,
+    pub certification_digest: String,
+    pub revision: u32,
+    pub state: CertificationState,
+    pub certification_level: String,
+    pub scope: Vec<CertificationScope>,
+    pub valid_from_ms: i64,
+    pub valid_until_ms: i64,
+    pub issuer_credential_kind: String,
+    pub issuer_credential_digest: String,
+    pub required_evidence_digests: Vec<String>,
+    pub linked_receipt_ids: Vec<String>,
+    pub revoked_reason_code: Option<String>,
+    pub policy_bundle_id: String,
+    pub policy_version: String,
+    pub supersedes_digest: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct AuditOutcomeRegistryEntry {
     pub receipt_id: String,
     pub receipt_type: String,
@@ -578,6 +686,7 @@ pub struct AuditPackage {
     pub receipt_count: usize,
     pub incident_count: usize,
     pub certification_count: usize,
+    pub certification_object_count: usize,
     pub outcome_registry_count: usize,
     pub outcome_registry_object_count: usize,
     pub snapshot_binding_count: usize,
@@ -585,6 +694,7 @@ pub struct AuditPackage {
     pub receipts: Vec<Receipt>,
     pub incidents: Vec<IncidentObject>,
     pub certifications: Vec<AuditCertificationEntry>,
+    pub certification_objects: Vec<AuditCertificationObject>,
     pub outcome_registry_entries: Vec<AuditOutcomeRegistryEntry>,
     pub outcome_registry_objects: Vec<AuditOutcomeRegistryObject>,
     pub snapshot_bindings: Vec<AuditSnapshotBinding>,
@@ -1005,6 +1115,24 @@ impl EarnKernelReceiptState {
         let personhood_proved =
             personhood_proved_for_identity(job.requester.as_str(), auth_assurance);
         let policy_bundle = current_policy_bundle();
+        let stage_certification_eval = if stage == JobLifecycleStage::Paid {
+            Some(evaluate_certification_gate(
+                &policy_bundle,
+                self.receipts.as_slice(),
+                metadata.category.as_str(),
+                metadata.tfb_class,
+                metadata.severity,
+                epoch_seconds_to_ms(occurred_at_epoch_seconds),
+            ))
+        } else {
+            None
+        };
+        let stage_certification_gate = stage_certification_eval
+            .as_ref()
+            .and_then(|evaluation| evaluation.as_ref().err().cloned());
+        let stage_certification_context = stage_certification_eval
+            .as_ref()
+            .and_then(|evaluation| evaluation.as_ref().ok().cloned());
         let stage_auth_gate = if stage == JobLifecycleStage::Paid {
             evaluate_authentication_gate(
                 &policy_bundle,
@@ -1058,6 +1186,7 @@ impl EarnKernelReceiptState {
                 metadata.severity,
                 job.quoted_price_sats,
                 metadata.verification_budget_hint_sats,
+                stage_certification_context.as_ref(),
             ))
         } else {
             None
@@ -1067,7 +1196,24 @@ impl EarnKernelReceiptState {
             Option<&'static str>,
             &'static str,
             PolicyDecision,
-        ) = if stage == JobLifecycleStage::Paid && stage_auth_gate.is_some() {
+        ) = if stage == JobLifecycleStage::Paid && stage_certification_gate.is_some() {
+            authority_key = format!("withheld-certification:{}", job.request_id);
+            (
+                "earn.job.withheld.v1",
+                Some(
+                    stage_certification_gate
+                        .as_ref()
+                        .map(|failure| failure.reason_code)
+                        .expect("certification gate checked"),
+                ),
+                "withheld",
+                stage_certification_gate
+                    .as_ref()
+                    .expect("certification gate checked")
+                    .decision
+                    .clone(),
+            )
+        } else if stage == JobLifecycleStage::Paid && stage_auth_gate.is_some() {
             authority_key = format!("withheld-auth:{}", job.request_id);
             (
                 "earn.job.withheld.v1",
@@ -1178,6 +1324,33 @@ impl EarnKernelReceiptState {
                 "withheld_reason",
                 format!("oa://earn/jobs/{}/withheld", job.job_id),
                 digest_for_text(REASON_CODE_PAYMENT_POINTER_NON_AUTHORITATIVE),
+            ));
+        }
+        if let Some(context) = stage_certification_context.as_ref() {
+            evidence.push(certification_reference_evidence(&context.certification));
+            if context.safe_harbor_relaxation_applied {
+                evidence.push(EvidenceRef::new(
+                    "safe_harbor_relaxation",
+                    format!(
+                        "oa://economy/certifications/{}/safe_harbor",
+                        context.certification.certification_id
+                    ),
+                    digest_for_text(
+                        format!(
+                            "{}:{}",
+                            context.certification.certification_id,
+                            context.certification.certification_level
+                        )
+                        .as_str(),
+                    ),
+                ));
+            }
+        }
+        if let Some(failure) = stage_certification_gate.as_ref() {
+            evidence.push(EvidenceRef::new(
+                "withheld_reason",
+                format!("oa://earn/jobs/{}/withheld_certification", job.job_id),
+                digest_for_text(failure.reason_code),
             ));
         }
         if stage == JobLifecycleStage::Paid && stage_auth_gate.is_some() {
@@ -1296,6 +1469,24 @@ impl EarnKernelReceiptState {
         let auth_assurance = AuthAssuranceLevel::Authenticated;
         let personhood_proved = false;
         let policy_bundle = current_policy_bundle();
+        let history_certification_eval = if row.status == JobHistoryStatus::Succeeded {
+            Some(evaluate_certification_gate(
+                &policy_bundle,
+                self.receipts.as_slice(),
+                metadata.category.as_str(),
+                metadata.tfb_class,
+                metadata.severity,
+                epoch_seconds_to_ms(occurred_at_epoch_seconds),
+            ))
+        } else {
+            None
+        };
+        let history_certification_gate = history_certification_eval
+            .as_ref()
+            .and_then(|evaluation| evaluation.as_ref().err().cloned());
+        let history_certification_context = history_certification_eval
+            .as_ref()
+            .and_then(|evaluation| evaluation.as_ref().ok().cloned());
         let history_auth_gate = if row.status == JobHistoryStatus::Succeeded {
             evaluate_authentication_gate(
                 &policy_bundle,
@@ -1355,6 +1546,7 @@ impl EarnKernelReceiptState {
                 metadata.severity,
                 row.payout_sats,
                 metadata.verification_budget_hint_sats,
+                history_certification_context.as_ref(),
             ))
         } else {
             None
@@ -1367,6 +1559,27 @@ impl EarnKernelReceiptState {
             String,
             PolicyDecision,
         ) = if row.status == JobHistoryStatus::Succeeded
+            && payment_pointer_authoritative
+            && history_certification_gate.is_some()
+        {
+            (
+                JobLifecycleStage::Paid,
+                "earn.job.withheld.v1",
+                Some(
+                    history_certification_gate
+                        .as_ref()
+                        .map(|failure| failure.reason_code)
+                        .expect("certification gate checked"),
+                ),
+                "withheld",
+                format!("withheld-certification:{request_id}"),
+                history_certification_gate
+                    .as_ref()
+                    .expect("certification gate checked")
+                    .decision
+                    .clone(),
+            )
+        } else if row.status == JobHistoryStatus::Succeeded
             && payment_pointer_authoritative
             && history_auth_gate.is_some()
         {
@@ -1501,11 +1714,43 @@ impl EarnKernelReceiptState {
             if let Some(pricing) = history_pricing.as_ref() {
                 append_pricing_evidence(&mut evidence, pricing);
             }
+            if let Some(context) = history_certification_context.as_ref() {
+                evidence.push(certification_reference_evidence(&context.certification));
+                if context.safe_harbor_relaxation_applied {
+                    evidence.push(EvidenceRef::new(
+                        "safe_harbor_relaxation",
+                        format!(
+                            "oa://economy/certifications/{}/safe_harbor",
+                            context.certification.certification_id
+                        ),
+                        digest_for_text(
+                            format!(
+                                "{}:{}",
+                                context.certification.certification_id,
+                                context.certification.certification_level
+                            )
+                            .as_str(),
+                        ),
+                    ));
+                }
+            }
             if stage == JobLifecycleStage::Paid && payment_pointer_authoritative {
                 evidence.push(EvidenceRef::new(
                     "wallet_settlement_proof",
                     format!("oa://wallet/payments/{}", row.payment_pointer),
                     digest_for_text(row.payment_pointer.as_str()),
+                ));
+            } else if stage == JobLifecycleStage::Paid
+                && history_certification_gate.is_some()
+            {
+                let reason = history_certification_gate
+                    .as_ref()
+                    .map(|failure| failure.reason_code)
+                    .unwrap_or(REASON_CODE_DIGITAL_BORDER_BLOCK_UNCERTIFIED);
+                evidence.push(EvidenceRef::new(
+                    "withheld_reason",
+                    format!("oa://earn/jobs/{}/withheld_certification", row.job_id),
+                    digest_for_text(reason),
                 ));
             } else if stage == JobLifecycleStage::Paid
                 && reason_code == Some(REASON_CODE_AUTH_ASSURANCE_INSUFFICIENT)
@@ -2767,6 +3012,42 @@ impl EarnKernelReceiptState {
             })
             .collect::<Vec<_>>();
         certifications.sort_by(|lhs, rhs| lhs.receipt_id.cmp(&rhs.receipt_id));
+        let mut certification_objects = latest_certification_objects_as_of(
+            self.receipts.as_slice(),
+            generated_at_ms.max(0),
+        )
+        .into_iter()
+        .filter(|certification| {
+            certification
+                .linked_receipt_ids
+                .iter()
+                .any(|receipt_id| included_receipt_ids.contains(receipt_id))
+        })
+        .map(|certification| AuditCertificationObject {
+            certification_id: certification.certification_id,
+            certification_digest: certification.certification_digest,
+            revision: certification.revision,
+            state: certification.state,
+            certification_level: certification.certification_level,
+            scope: certification.scope,
+            valid_from_ms: certification.valid_from_ms,
+            valid_until_ms: certification.valid_until_ms,
+            issuer_credential_kind: certification.issuer_credential_kind,
+            issuer_credential_digest: certification.issuer_credential_digest,
+            required_evidence_digests: certification.required_evidence_digests,
+            linked_receipt_ids: certification.linked_receipt_ids,
+            revoked_reason_code: certification.revoked_reason_code,
+            policy_bundle_id: certification.policy_bundle_id,
+            policy_version: certification.policy_version,
+            supersedes_digest: certification.supersedes_digest,
+        })
+        .collect::<Vec<_>>();
+        certification_objects.sort_by(|lhs, rhs| {
+            lhs.certification_id
+                .cmp(&rhs.certification_id)
+                .then_with(|| rhs.revision.cmp(&lhs.revision))
+                .then_with(|| lhs.certification_digest.cmp(&rhs.certification_digest))
+        });
 
         let mut outcome_registry_entries = receipts
             .iter()
@@ -2822,6 +3103,7 @@ impl EarnKernelReceiptState {
         let linkage_edges = audit_linkage_edges(
             receipts.as_slice(),
             incidents.as_slice(),
+            certification_objects.as_slice(),
             outcome_registry_objects.as_slice(),
         );
 
@@ -2829,6 +3111,10 @@ impl EarnKernelReceiptState {
         if tier == AuditExportRedactionTier::Public {
             redact_receipts_for_public_export(&mut package_receipts);
             redact_incidents_for_public_export(&mut incidents);
+            for certification in &mut certification_objects {
+                certification.linked_receipt_ids.clear();
+                certification.issuer_credential_digest = digest_for_text("redacted");
+            }
             for outcome in &mut outcome_registry_objects {
                 outcome.linked_receipt_ids.clear();
             }
@@ -2840,6 +3126,7 @@ impl EarnKernelReceiptState {
             package_receipts.as_slice(),
             incidents.as_slice(),
             certifications.as_slice(),
+            certification_objects.as_slice(),
             outcome_registry_entries.as_slice(),
             outcome_registry_objects.as_slice(),
             snapshot_bindings.as_slice(),
@@ -2855,6 +3142,7 @@ impl EarnKernelReceiptState {
             receipt_count: package_receipts.len(),
             incident_count: incidents.len(),
             certification_count: certifications.len(),
+            certification_object_count: certification_objects.len(),
             outcome_registry_count: outcome_registry_entries.len(),
             outcome_registry_object_count: outcome_registry_objects.len(),
             snapshot_binding_count: snapshot_bindings.len(),
@@ -2862,6 +3150,7 @@ impl EarnKernelReceiptState {
             receipts: package_receipts,
             incidents,
             certifications,
+            certification_objects,
             outcome_registry_entries,
             outcome_registry_objects,
             snapshot_bindings,
@@ -2967,6 +3256,338 @@ impl EarnKernelReceiptState {
         std::fs::rename(&temp_path, path)
             .map_err(|error| format!("Failed to persist safety signal feed: {error}"))?;
         Ok(feed)
+    }
+
+    pub fn issue_safety_certification(
+        &mut self,
+        draft: SafetyCertificationDraft,
+        occurred_at_ms: i64,
+        source_tag: &str,
+    ) -> Result<String, String> {
+        let certification_id = draft.certification_id.trim();
+        if certification_id.is_empty() {
+            return Err("certification_id cannot be empty".to_string());
+        }
+        let idempotency_key = draft.idempotency_key.trim();
+        if idempotency_key.is_empty() {
+            return Err("idempotency_key cannot be empty".to_string());
+        }
+        let certification_level = normalize_key(draft.certification_level.as_str());
+        if certification_level.is_empty() {
+            return Err("certification_level cannot be empty".to_string());
+        }
+        let scope = normalize_certification_scopes(draft.scope.as_slice())?;
+        if scope.is_empty() {
+            return Err("certification scope cannot be empty".to_string());
+        }
+        if draft.valid_until_ms <= draft.valid_from_ms {
+            return Err("valid_until_ms must be greater than valid_from_ms".to_string());
+        }
+        let issuer_identity = draft.issuer_identity.trim();
+        if issuer_identity.is_empty() {
+            return Err("issuer_identity cannot be empty".to_string());
+        }
+        let linked_receipt_ids = canonical_receipt_ids(draft.linked_receipt_ids.as_slice());
+        for receipt_id in &linked_receipt_ids {
+            if self.get_receipt(receipt_id.as_str()).is_none() {
+                return Err(format!("linked receipt {receipt_id} not found"));
+            }
+        }
+
+        let as_of_ms = occurred_at_ms.max(0);
+        let latest_existing = latest_certification_objects_as_of(self.receipts.as_slice(), as_of_ms)
+            .into_iter()
+            .find(|certification| certification.certification_id == certification_id);
+        let revision = latest_existing
+            .as_ref()
+            .map_or(1, |certification| certification.revision.saturating_add(1));
+        let supersedes_digest = latest_existing
+            .as_ref()
+            .map(|certification| certification.certification_digest.clone());
+
+        let receipt_id = format!(
+            "receipt.economy.certification.issue:{}:{}",
+            normalize_key(certification_id),
+            normalize_key(idempotency_key),
+        );
+        let issuer_auth_assurance = draft
+            .issuer_auth_assurance_level
+            .unwrap_or_else(|| auth_assurance_for_identity(issuer_identity));
+        let issuer_credential_ref = credential_ref_for_identity(issuer_identity, issuer_auth_assurance);
+        let mut required_evidence = draft.required_evidence.clone();
+        required_evidence.sort_by(|lhs, rhs| {
+            lhs.kind
+                .cmp(&rhs.kind)
+                .then_with(|| lhs.digest.cmp(&rhs.digest))
+                .then_with(|| lhs.uri.cmp(&rhs.uri))
+        });
+        let required_evidence_digests = required_evidence
+            .iter()
+            .map(|evidence| normalize_digest(evidence.digest.as_str()))
+            .collect::<Vec<_>>();
+        let mut certification_linked_receipt_ids = linked_receipt_ids.clone();
+        certification_linked_receipt_ids.push(receipt_id.clone());
+        certification_linked_receipt_ids = canonical_receipt_ids(certification_linked_receipt_ids.as_slice());
+        let policy = current_policy_context();
+        let mut certification = SafetyCertification {
+            certification_id: certification_id.to_string(),
+            certification_digest: String::new(),
+            revision,
+            state: CertificationState::Active,
+            certification_level: certification_level.clone(),
+            scope: scope.clone(),
+            valid_from_ms: draft.valid_from_ms.max(0),
+            valid_until_ms: draft.valid_until_ms.max(0),
+            issuer_credential_kind: issuer_credential_ref.kind.clone(),
+            issuer_credential_digest: issuer_credential_ref.digest.clone(),
+            required_evidence_digests,
+            linked_receipt_ids: certification_linked_receipt_ids,
+            issued_at_ms: as_of_ms,
+            updated_at_ms: as_of_ms,
+            revoked_reason_code: None,
+            policy_bundle_id: policy.policy_bundle_id.clone(),
+            policy_version: policy.policy_version.clone(),
+            supersedes_digest,
+        };
+        certification.certification_digest = certification_digest_for(
+            certification.certification_id.as_str(),
+            certification.revision,
+            certification.state,
+            certification.certification_level.as_str(),
+            certification.scope.as_slice(),
+            certification.valid_from_ms,
+            certification.valid_until_ms,
+            certification.issuer_credential_kind.as_str(),
+            certification.issuer_credential_digest.as_str(),
+            certification.required_evidence_digests.as_slice(),
+            certification.linked_receipt_ids.as_slice(),
+            certification.issued_at_ms,
+            certification.updated_at_ms,
+            certification.revoked_reason_code.as_deref(),
+            certification.policy_bundle_id.as_str(),
+            certification.policy_version.as_str(),
+            certification.supersedes_digest.as_deref(),
+        );
+        let certification_evidence = certification_object_evidence(&certification);
+        let (hint_category, hint_tfb_class, hint_severity) =
+            certification_hint_fields(certification.scope.as_slice());
+
+        let mut evidence = Vec::<EvidenceRef>::new();
+        evidence.push(certification_evidence);
+        evidence.push(issuer_credential_ref);
+        evidence.extend(required_evidence);
+        self.append_receipt_reference_links(&mut evidence, linked_receipt_ids.as_slice());
+
+        let receipt = ReceiptBuilder::new(
+            receipt_id.clone(),
+            "economy.certification.issued.v1",
+            as_of_ms,
+            idempotency_key.to_string(),
+            TraceContext {
+                session_id: None,
+                trajectory_hash: None,
+                job_hash: None,
+                run_id: Some(format!(
+                    "economy_certification_issue:{}",
+                    normalize_key(certification_id)
+                )),
+                work_unit_id: None,
+                contract_id: None,
+                claim_id: None,
+            },
+            policy,
+        )
+        .with_inputs_payload(json!({
+            "certification_id": certification_id,
+            "certification_level": certification_level,
+            "scope": certification_scope_payload(certification.scope.as_slice()),
+            "valid_from_ms": certification.valid_from_ms,
+            "valid_until_ms": certification.valid_until_ms,
+            "issuer_identity_ref": normalize_key(issuer_identity),
+            "required_evidence_count": certification.required_evidence_digests.len(),
+            "linked_receipt_ids": linked_receipt_ids,
+        }))
+        .with_outputs_payload(json!({
+            "status": "issued",
+            "state": certification.state.label(),
+            "revision": certification.revision,
+            "certification_digest": certification.certification_digest,
+            "safe_harbor_eligible": false,
+            "source_tag": source_tag,
+        }))
+        .with_evidence(evidence)
+        .with_hints(ReceiptHints {
+            category: hint_category,
+            tfb_class: hint_tfb_class,
+            severity: hint_severity,
+            achieved_verification_tier: None,
+            verification_correlated: None,
+            provenance_grade: None,
+            auth_assurance_level: Some(issuer_auth_assurance),
+            personhood_proved: Some(personhood_proved_for_identity(
+                issuer_identity,
+                issuer_auth_assurance,
+            )),
+            reason_code: None,
+            notional: None,
+            liability_premium: None,
+        })
+        .build();
+        self.append_receipt(receipt, source_tag);
+        if self.load_state == PaneLoadState::Error {
+            return Err(self.last_error.clone().unwrap_or_else(|| {
+                "failed to emit certification issuance receipt".to_string()
+            }));
+        }
+        Ok(receipt_id)
+    }
+
+    pub fn revoke_safety_certification(
+        &mut self,
+        draft: SafetyCertificationRevocationDraft,
+        occurred_at_ms: i64,
+        source_tag: &str,
+    ) -> Result<String, String> {
+        let certification_id = draft.certification_id.trim();
+        if certification_id.is_empty() {
+            return Err("certification_id cannot be empty".to_string());
+        }
+        let idempotency_key = draft.idempotency_key.trim();
+        if idempotency_key.is_empty() {
+            return Err("idempotency_key cannot be empty".to_string());
+        }
+        let revoked_reason_code = canonical_reason_code(draft.reason_code.as_str());
+        if revoked_reason_code.is_empty() {
+            return Err("reason_code cannot be empty".to_string());
+        }
+
+        let as_of_ms = occurred_at_ms.max(0);
+        let latest_existing = latest_certification_objects_as_of(self.receipts.as_slice(), as_of_ms)
+            .into_iter()
+            .find(|certification| certification.certification_id == certification_id)
+            .ok_or_else(|| format!("certification {certification_id} not found"))?;
+        let revision = latest_existing.revision.saturating_add(1);
+        let receipt_id = format!(
+            "receipt.economy.certification.revoke:{}:{}",
+            normalize_key(certification_id),
+            normalize_key(idempotency_key),
+        );
+        let mut linked_receipt_ids = latest_existing.linked_receipt_ids.clone();
+        linked_receipt_ids.push(receipt_id.clone());
+        linked_receipt_ids = canonical_receipt_ids(linked_receipt_ids.as_slice());
+
+        let policy = current_policy_context();
+        let mut certification = SafetyCertification {
+            certification_id: certification_id.to_string(),
+            certification_digest: String::new(),
+            revision,
+            state: CertificationState::Revoked,
+            certification_level: latest_existing.certification_level.clone(),
+            scope: latest_existing.scope.clone(),
+            valid_from_ms: latest_existing.valid_from_ms,
+            valid_until_ms: latest_existing.valid_until_ms,
+            issuer_credential_kind: latest_existing.issuer_credential_kind.clone(),
+            issuer_credential_digest: latest_existing.issuer_credential_digest.clone(),
+            required_evidence_digests: latest_existing.required_evidence_digests.clone(),
+            linked_receipt_ids,
+            issued_at_ms: latest_existing.issued_at_ms,
+            updated_at_ms: as_of_ms,
+            revoked_reason_code: Some(revoked_reason_code.clone()),
+            policy_bundle_id: policy.policy_bundle_id.clone(),
+            policy_version: policy.policy_version.clone(),
+            supersedes_digest: Some(latest_existing.certification_digest.clone()),
+        };
+        certification.certification_digest = certification_digest_for(
+            certification.certification_id.as_str(),
+            certification.revision,
+            certification.state,
+            certification.certification_level.as_str(),
+            certification.scope.as_slice(),
+            certification.valid_from_ms,
+            certification.valid_until_ms,
+            certification.issuer_credential_kind.as_str(),
+            certification.issuer_credential_digest.as_str(),
+            certification.required_evidence_digests.as_slice(),
+            certification.linked_receipt_ids.as_slice(),
+            certification.issued_at_ms,
+            certification.updated_at_ms,
+            certification.revoked_reason_code.as_deref(),
+            certification.policy_bundle_id.as_str(),
+            certification.policy_version.as_str(),
+            certification.supersedes_digest.as_deref(),
+        );
+        let certification_evidence = certification_object_evidence(&certification);
+        let (hint_category, hint_tfb_class, hint_severity) =
+            certification_hint_fields(certification.scope.as_slice());
+
+        let mut evidence = Vec::<EvidenceRef>::new();
+        evidence.push(certification_evidence);
+        self.append_receipt_reference_links(
+            &mut evidence,
+            latest_existing.linked_receipt_ids.as_slice(),
+        );
+        for evidence_ref in draft.evidence {
+            evidence.push(evidence_ref);
+        }
+        evidence.push(EvidenceRef::new(
+            "certification_revocation_reason",
+            format!("oa://economy/certifications/{certification_id}/revocation"),
+            digest_for_text(revoked_reason_code.as_str()),
+        ));
+
+        let receipt = ReceiptBuilder::new(
+            receipt_id.clone(),
+            "economy.certification.revoked.v1",
+            as_of_ms,
+            idempotency_key.to_string(),
+            TraceContext {
+                session_id: None,
+                trajectory_hash: None,
+                job_hash: None,
+                run_id: Some(format!(
+                    "economy_certification_revoke:{}",
+                    normalize_key(certification_id)
+                )),
+                work_unit_id: None,
+                contract_id: None,
+                claim_id: None,
+            },
+            policy,
+        )
+        .with_inputs_payload(json!({
+            "certification_id": certification_id,
+            "reason_code": revoked_reason_code,
+        }))
+        .with_outputs_payload(json!({
+            "status": "revoked",
+            "state": certification.state.label(),
+            "revision": certification.revision,
+            "certification_digest": certification.certification_digest,
+            "reason_code": certification.revoked_reason_code,
+            "source_tag": source_tag,
+        }))
+        .with_evidence(evidence)
+        .with_hints(ReceiptHints {
+            category: hint_category,
+            tfb_class: hint_tfb_class,
+            severity: hint_severity,
+            achieved_verification_tier: None,
+            verification_correlated: None,
+            provenance_grade: None,
+            auth_assurance_level: Some(AuthAssuranceLevel::Authenticated),
+            personhood_proved: Some(false),
+            reason_code: Some(revoked_reason_code),
+            notional: None,
+            liability_premium: None,
+        })
+        .build();
+        self.append_receipt(receipt, source_tag);
+        if self.load_state == PaneLoadState::Error {
+            return Err(self.last_error.clone().unwrap_or_else(|| {
+                "failed to emit certification revocation receipt".to_string()
+            }));
+        }
+        Ok(receipt_id)
     }
 
     pub fn record_rollback_action(
@@ -5515,6 +6136,7 @@ fn compute_liability_pricing_for_settlement(
     severity: SeverityClass,
     execution_price_sats: u64,
     verification_budget_hint_sats: u64,
+    certification_context: Option<&CertificationGateContext>,
 ) -> LiabilityPricingBreakdown {
     let snapshot_context = latest_pricing_snapshot_context(receipts);
     let (
@@ -5551,7 +6173,16 @@ fn compute_liability_pricing_for_settlement(
                 .correlated_verification_share
                 .max(0.0)))
     .max(0.0);
+    let safe_harbor_relaxation_applied = certification_context
+        .is_some_and(|context| context.safe_harbor_relaxation_applied);
+    let safe_harbor_multiplier = if safe_harbor_relaxation_applied {
+        SAFE_HARBOR_LIABILITY_PREMIUM_DISCOUNT_NUMERATOR as f64
+            / SAFE_HARBOR_LIABILITY_PREMIUM_DISCOUNT_DENOMINATOR as f64
+    } else {
+        1.0
+    };
     let effective_liability_premium_bps = ((base_liability_premium_bps as f64) * dynamic_multiplier)
+        .mul_add(safe_harbor_multiplier, 0.0)
         .round()
         .clamp(0.0, u32::MAX as f64) as u32;
     let liability_premium_sats =
@@ -5573,6 +6204,13 @@ fn compute_liability_pricing_for_settlement(
         xa_multiplier,
         drift_multiplier,
         correlated_share_multiplier,
+        safe_harbor_relaxation_applied,
+        safe_harbor_discount_numerator: SAFE_HARBOR_LIABILITY_PREMIUM_DISCOUNT_NUMERATOR,
+        safe_harbor_discount_denominator: SAFE_HARBOR_LIABILITY_PREMIUM_DISCOUNT_DENOMINATOR,
+        certification_id: certification_context
+            .map(|context| context.certification.certification_id.clone()),
+        certification_level: certification_context
+            .map(|context| context.certification.certification_level.clone()),
     }
 }
 
@@ -5645,6 +6283,13 @@ fn pricing_payload(pricing: &LiabilityPricingBreakdown) -> serde_json::Value {
             "xa_multiplier": pricing.xa_multiplier,
             "drift_multiplier": pricing.drift_multiplier,
             "correlated_share_multiplier": pricing.correlated_share_multiplier,
+        },
+        "safe_harbor": {
+            "relaxation_applied": pricing.safe_harbor_relaxation_applied,
+            "discount_numerator": pricing.safe_harbor_discount_numerator,
+            "discount_denominator": pricing.safe_harbor_discount_denominator,
+            "certification_id": pricing.certification_id,
+            "certification_level": pricing.certification_level,
         }
     })
 }
@@ -6034,6 +6679,482 @@ fn outcome_registry_entry_evidence(entry: &OutcomeRegistryEntry) -> EvidenceRef 
     evidence
 }
 
+fn normalize_certification_scopes(scopes: &[CertificationScope]) -> Result<Vec<CertificationScope>, String> {
+    let mut rows = scopes
+        .iter()
+        .map(|scope| CertificationScope {
+            category: normalize_key(scope.category.as_str()),
+            tfb_class: scope.tfb_class,
+            min_severity: scope.min_severity,
+            max_severity: scope.max_severity,
+        })
+        .collect::<Vec<_>>();
+    if rows.iter().any(|scope| scope.category.is_empty()) {
+        return Err("certification scope category cannot be empty".to_string());
+    }
+    if rows
+        .iter()
+        .any(|scope| scope.min_severity > scope.max_severity)
+    {
+        return Err("certification scope min_severity must be <= max_severity".to_string());
+    }
+    rows.sort_by(|lhs, rhs| {
+        lhs.category
+            .cmp(&rhs.category)
+            .then_with(|| lhs.tfb_class.cmp(&rhs.tfb_class))
+            .then_with(|| lhs.min_severity.cmp(&rhs.min_severity))
+            .then_with(|| lhs.max_severity.cmp(&rhs.max_severity))
+    });
+    rows.dedup();
+    Ok(rows)
+}
+
+fn certification_scope_payload(scopes: &[CertificationScope]) -> Vec<serde_json::Value> {
+    scopes
+        .iter()
+        .map(|scope| {
+            json!({
+                "category": scope.category,
+                "tfb_class": scope.tfb_class.label(),
+                "min_severity": scope.min_severity.label(),
+                "max_severity": scope.max_severity.label(),
+            })
+        })
+        .collect::<Vec<_>>()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn certification_digest_for(
+    certification_id: &str,
+    revision: u32,
+    state: CertificationState,
+    certification_level: &str,
+    scope: &[CertificationScope],
+    valid_from_ms: i64,
+    valid_until_ms: i64,
+    issuer_credential_kind: &str,
+    issuer_credential_digest: &str,
+    required_evidence_digests: &[String],
+    linked_receipt_ids: &[String],
+    issued_at_ms: i64,
+    updated_at_ms: i64,
+    revoked_reason_code: Option<&str>,
+    policy_bundle_id: &str,
+    policy_version: &str,
+    supersedes_digest: Option<&str>,
+) -> String {
+    let scope_material = scope
+        .iter()
+        .map(|scope| {
+            format!(
+                "{}:{}:{}:{}",
+                scope.category,
+                scope.tfb_class.label(),
+                scope.min_severity.label(),
+                scope.max_severity.label(),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("|");
+    digest_for_text(
+        format!(
+            "{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
+            certification_id,
+            revision,
+            state.label(),
+            certification_level,
+            scope_material,
+            valid_from_ms.max(0),
+            valid_until_ms.max(0),
+            issuer_credential_kind,
+            issuer_credential_digest,
+            required_evidence_digests.join("|"),
+            linked_receipt_ids.join("|"),
+            issued_at_ms.max(0),
+            updated_at_ms.max(0),
+            revoked_reason_code.unwrap_or("none"),
+            policy_bundle_id,
+            policy_version,
+            supersedes_digest.unwrap_or("none"),
+        )
+        .as_str(),
+    )
+}
+
+fn certification_object_evidence(certification: &SafetyCertification) -> EvidenceRef {
+    let mut evidence = EvidenceRef::new(
+        "certification_object_ref",
+        format!(
+            "oa://economy/certifications/{}/revisions/{}",
+            certification.certification_id, certification.revision
+        ),
+        certification.certification_digest.clone(),
+    );
+    evidence.meta.insert(
+        "certification_id".to_string(),
+        json!(certification.certification_id.clone()),
+    );
+    evidence
+        .meta
+        .insert("revision".to_string(), json!(certification.revision));
+    evidence.meta.insert(
+        "state".to_string(),
+        json!(certification.state.label().to_string()),
+    );
+    evidence.meta.insert(
+        "certification_level".to_string(),
+        json!(certification.certification_level.clone()),
+    );
+    evidence.meta.insert(
+        "scope".to_string(),
+        json!(certification_scope_payload(certification.scope.as_slice())),
+    );
+    evidence
+        .meta
+        .insert("valid_from_ms".to_string(), json!(certification.valid_from_ms));
+    evidence
+        .meta
+        .insert("valid_until_ms".to_string(), json!(certification.valid_until_ms));
+    evidence.meta.insert(
+        "issuer_credential_kind".to_string(),
+        json!(certification.issuer_credential_kind.clone()),
+    );
+    evidence.meta.insert(
+        "issuer_credential_digest".to_string(),
+        json!(certification.issuer_credential_digest.clone()),
+    );
+    evidence.meta.insert(
+        "required_evidence_digests".to_string(),
+        json!(certification.required_evidence_digests.clone()),
+    );
+    evidence.meta.insert(
+        "linked_receipt_ids".to_string(),
+        json!(certification.linked_receipt_ids.clone()),
+    );
+    evidence
+        .meta
+        .insert("issued_at_ms".to_string(), json!(certification.issued_at_ms));
+    evidence
+        .meta
+        .insert("updated_at_ms".to_string(), json!(certification.updated_at_ms));
+    evidence.meta.insert(
+        "revoked_reason_code".to_string(),
+        json!(certification.revoked_reason_code.clone()),
+    );
+    evidence.meta.insert(
+        "policy_bundle_id".to_string(),
+        json!(certification.policy_bundle_id.clone()),
+    );
+    evidence.meta.insert(
+        "policy_version".to_string(),
+        json!(certification.policy_version.clone()),
+    );
+    evidence.meta.insert(
+        "supersedes_digest".to_string(),
+        json!(certification.supersedes_digest.clone()),
+    );
+    evidence
+}
+
+fn certification_reference_evidence(certification: &SafetyCertification) -> EvidenceRef {
+    let mut evidence = EvidenceRef::new(
+        "certification_ref",
+        format!(
+            "oa://economy/certifications/{}",
+            certification.certification_id
+        ),
+        certification.certification_digest.clone(),
+    );
+    evidence.meta.insert(
+        "certification_id".to_string(),
+        json!(certification.certification_id.clone()),
+    );
+    evidence.meta.insert(
+        "certification_level".to_string(),
+        json!(certification.certification_level.clone()),
+    );
+    evidence.meta.insert(
+        "state".to_string(),
+        json!(certification.state.label().to_string()),
+    );
+    evidence
+}
+
+fn certification_hint_fields(
+    scope: &[CertificationScope],
+) -> (
+    Option<String>,
+    Option<FeedbackLatencyClass>,
+    Option<SeverityClass>,
+) {
+    let mut normalized = scope.to_vec();
+    normalized.sort_by(|lhs, rhs| {
+        lhs.category
+            .cmp(&rhs.category)
+            .then_with(|| lhs.tfb_class.cmp(&rhs.tfb_class))
+            .then_with(|| lhs.min_severity.cmp(&rhs.min_severity))
+            .then_with(|| lhs.max_severity.cmp(&rhs.max_severity))
+    });
+    if let Some(primary) = normalized.first() {
+        return (
+            Some(primary.category.clone()),
+            Some(primary.tfb_class),
+            Some(primary.max_severity),
+        );
+    }
+    (None, None, None)
+}
+
+fn latest_certification_objects_as_of(receipts: &[Receipt], as_of_ms: i64) -> Vec<SafetyCertification> {
+    let mut ordered = receipts
+        .iter()
+        .filter(|receipt| receipt.created_at_ms <= as_of_ms)
+        .collect::<Vec<_>>();
+    ordered.sort_by(|lhs, rhs| {
+        lhs.created_at_ms
+            .cmp(&rhs.created_at_ms)
+            .then_with(|| lhs.receipt_id.cmp(&rhs.receipt_id))
+    });
+    let mut latest = BTreeMap::<String, SafetyCertification>::new();
+    for receipt in ordered {
+        let Some(candidate) = certification_object_from_receipt(receipt) else {
+            continue;
+        };
+        let keep_new = latest
+            .get(candidate.certification_id.as_str())
+            .is_none_or(|existing| {
+                candidate.revision > existing.revision
+                    || (candidate.revision == existing.revision
+                        && candidate.updated_at_ms > existing.updated_at_ms)
+                    || (candidate.revision == existing.revision
+                        && candidate.updated_at_ms == existing.updated_at_ms
+                        && candidate.certification_digest > existing.certification_digest)
+            });
+        if keep_new {
+            latest.insert(candidate.certification_id.clone(), candidate);
+        }
+    }
+
+    let mut rows = latest.into_values().collect::<Vec<_>>();
+    rows.sort_by(|lhs, rhs| {
+        lhs.certification_id
+            .cmp(&rhs.certification_id)
+            .then_with(|| rhs.revision.cmp(&lhs.revision))
+            .then_with(|| lhs.certification_digest.cmp(&rhs.certification_digest))
+    });
+    rows.truncate(CERTIFICATION_OBJECT_ROW_LIMIT);
+    rows
+}
+
+fn certification_object_from_receipt(receipt: &Receipt) -> Option<SafetyCertification> {
+    let evidence = receipt
+        .evidence
+        .iter()
+        .find(|evidence| evidence.kind == "certification_object_ref")?;
+    let certification_id = evidence.meta.get("certification_id")?.as_str()?.trim();
+    if certification_id.is_empty() {
+        return None;
+    }
+    let revision = evidence
+        .meta
+        .get("revision")
+        .and_then(Value::as_u64)
+        .unwrap_or(0)
+        .min(u32::MAX as u64) as u32;
+    let state = evidence
+        .meta
+        .get("state")
+        .and_then(Value::as_str)
+        .and_then(certification_state_from_label)
+        .unwrap_or(CertificationState::CertificationStateUnspecified);
+    let certification_level = evidence
+        .meta
+        .get("certification_level")
+        .and_then(Value::as_str)
+        .map(normalize_key)
+        .unwrap_or_else(|| "unknown".to_string());
+    let scope = evidence
+        .meta
+        .get("scope")
+        .and_then(Value::as_array)
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|value| {
+                    let obj = value.as_object()?;
+                    let category = obj.get("category")?.as_str().map(normalize_key)?;
+                    let tfb_class = obj
+                        .get("tfb_class")
+                        .and_then(Value::as_str)
+                        .and_then(tfb_class_from_label)
+                        .unwrap_or(FeedbackLatencyClass::FeedbackLatencyClassUnspecified);
+                    let min_severity = obj
+                        .get("min_severity")
+                        .and_then(Value::as_str)
+                        .and_then(severity_from_label_strict)
+                        .unwrap_or(SeverityClass::SeverityClassUnspecified);
+                    let max_severity = obj
+                        .get("max_severity")
+                        .and_then(Value::as_str)
+                        .and_then(severity_from_label_strict)
+                        .unwrap_or(SeverityClass::SeverityClassUnspecified);
+                    Some(CertificationScope {
+                        category,
+                        tfb_class,
+                        min_severity,
+                        max_severity,
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let valid_from_ms = evidence
+        .meta
+        .get("valid_from_ms")
+        .and_then(Value::as_i64)
+        .unwrap_or(0)
+        .max(0);
+    let valid_until_ms = evidence
+        .meta
+        .get("valid_until_ms")
+        .and_then(Value::as_i64)
+        .unwrap_or(0)
+        .max(0);
+    let issuer_credential_kind = evidence
+        .meta
+        .get("issuer_credential_kind")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(|| "credential_ref_anonymous".to_string());
+    let issuer_credential_digest = evidence
+        .meta
+        .get("issuer_credential_digest")
+        .and_then(Value::as_str)
+        .map(normalize_digest)
+        .unwrap_or_else(|| digest_for_text("unknown_issuer"));
+    let required_evidence_digests = evidence
+        .meta
+        .get("required_evidence_digests")
+        .and_then(Value::as_array)
+        .map(|rows| {
+            rows.iter()
+                .filter_map(Value::as_str)
+                .map(normalize_digest)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let linked_receipt_ids = evidence
+        .meta
+        .get("linked_receipt_ids")
+        .and_then(Value::as_array)
+        .map(|rows| {
+            rows.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_else(|| vec![receipt.receipt_id.clone()]);
+    let issued_at_ms = evidence
+        .meta
+        .get("issued_at_ms")
+        .and_then(Value::as_i64)
+        .unwrap_or(receipt.created_at_ms)
+        .max(0);
+    let updated_at_ms = evidence
+        .meta
+        .get("updated_at_ms")
+        .and_then(Value::as_i64)
+        .unwrap_or(receipt.created_at_ms)
+        .max(0);
+    let revoked_reason_code = evidence
+        .meta
+        .get("revoked_reason_code")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(canonical_reason_code);
+    let policy_bundle_id = evidence
+        .meta
+        .get("policy_bundle_id")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| receipt.policy.policy_bundle_id.clone());
+    let policy_version = evidence
+        .meta
+        .get("policy_version")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| receipt.policy.policy_version.clone());
+    let supersedes_digest = evidence
+        .meta
+        .get("supersedes_digest")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(normalize_digest);
+    Some(SafetyCertification {
+        certification_id: certification_id.to_string(),
+        certification_digest: evidence.digest.clone(),
+        revision,
+        state,
+        certification_level,
+        scope,
+        valid_from_ms,
+        valid_until_ms,
+        issuer_credential_kind,
+        issuer_credential_digest,
+        required_evidence_digests,
+        linked_receipt_ids: canonical_receipt_ids(linked_receipt_ids.as_slice()),
+        issued_at_ms,
+        updated_at_ms,
+        revoked_reason_code,
+        policy_bundle_id,
+        policy_version,
+        supersedes_digest,
+    })
+}
+
+fn certification_state_from_label(value: &str) -> Option<CertificationState> {
+    match normalize_key(value).as_str() {
+        "active" => Some(CertificationState::Active),
+        "revoked" => Some(CertificationState::Revoked),
+        "expired" => Some(CertificationState::Expired),
+        "certification_state_unspecified" | "unspecified" => {
+            Some(CertificationState::CertificationStateUnspecified)
+        }
+        _ => None,
+    }
+}
+
+fn tfb_class_from_label(value: &str) -> Option<FeedbackLatencyClass> {
+    match normalize_key(value).as_str() {
+        "instant" => Some(FeedbackLatencyClass::Instant),
+        "short" => Some(FeedbackLatencyClass::Short),
+        "medium" => Some(FeedbackLatencyClass::Medium),
+        "long" => Some(FeedbackLatencyClass::Long),
+        "feedback_latency_class_unspecified" | "unspecified" => {
+            Some(FeedbackLatencyClass::FeedbackLatencyClassUnspecified)
+        }
+        _ => None,
+    }
+}
+
+fn severity_from_label_strict(value: &str) -> Option<SeverityClass> {
+    match normalize_key(value).as_str() {
+        "low" => Some(SeverityClass::Low),
+        "medium" => Some(SeverityClass::Medium),
+        "high" => Some(SeverityClass::High),
+        "critical" => Some(SeverityClass::Critical),
+        "severity_class_unspecified" | "unspecified" => {
+            Some(SeverityClass::SeverityClassUnspecified)
+        }
+        _ => None,
+    }
+}
+
+fn canonical_reason_code(value: &str) -> String {
+    normalize_key(value).to_ascii_uppercase()
+}
+
 fn select_certification_rule<'a>(
     bundle: &'a PolicyBundleConfig,
     category: &str,
@@ -6049,6 +7170,223 @@ fn select_certification_rule<'a>(
         |rule| rule.rule_id.as_str(),
     )
     .map(|(rule, _)| rule)
+}
+
+fn evaluate_certification_gate(
+    bundle: &PolicyBundleConfig,
+    receipts: &[Receipt],
+    category: &str,
+    tfb_class: FeedbackLatencyClass,
+    severity: SeverityClass,
+    as_of_ms: i64,
+) -> Result<CertificationGateContext, CertificationGateFailure> {
+    let Some(rule) = select_certification_rule(bundle, category, tfb_class, severity) else {
+        let certification = fallback_certification(category, tfb_class, severity, as_of_ms);
+        return Ok(CertificationGateContext {
+            decision: PolicyDecision {
+                rule_id: format!(
+                    "policy.earn.certification.fallback.{}.{}.{}",
+                    normalize_key(category),
+                    tfb_class.label(),
+                    severity.label()
+                ),
+                decision: "allow",
+                notes: format!(
+                    "No certification rule matched; allowing category={} tfb={} severity={} (fallback deterministic mapping)",
+                    category,
+                    tfb_class.label(),
+                    severity.label(),
+                ),
+            },
+            certification,
+            safe_harbor_relaxation_applied: false,
+        });
+    };
+
+    let certifications = latest_certification_objects_as_of(receipts, as_of_ms.max(0));
+    let mut matching = certifications
+        .into_iter()
+        .filter(|certification| {
+            certification.state == CertificationState::Active
+                && certification.scope.iter().any(|scope| {
+                    certification_scope_matches(scope, category, tfb_class, severity)
+                })
+        })
+        .collect::<Vec<_>>();
+    matching.sort_by(|lhs, rhs| {
+        lhs.certification_id
+            .cmp(&rhs.certification_id)
+            .then_with(|| rhs.revision.cmp(&lhs.revision))
+            .then_with(|| lhs.certification_level.cmp(&rhs.certification_level))
+    });
+
+    if !rule.require_certification {
+        let certification = matching
+            .first()
+            .cloned()
+            .unwrap_or_else(|| fallback_certification(category, tfb_class, severity, as_of_ms));
+        return Ok(CertificationGateContext {
+            decision: PolicyDecision {
+                rule_id: rule.rule_id.clone(),
+                decision: "allow",
+                notes: format!(
+                    "policy_rule={} certification_optional=true category={} tfb={} severity={} certification_count={}",
+                    rule.rule_id,
+                    category,
+                    tfb_class.label(),
+                    severity.label(),
+                    matching.len(),
+                ),
+            },
+            certification,
+            safe_harbor_relaxation_applied: false,
+        });
+    }
+
+    if matching.is_empty() {
+        return Err(CertificationGateFailure {
+            decision: PolicyDecision {
+                rule_id: rule.rule_id.clone(),
+                decision: "withhold",
+                notes: format!(
+                    "policy_rule={} missing_active_certification category={} tfb={} severity={}",
+                    rule.rule_id,
+                    category,
+                    tfb_class.label(),
+                    severity.label(),
+                ),
+            },
+            reason_code: REASON_CODE_DIGITAL_BORDER_BLOCK_UNCERTIFIED,
+        });
+    }
+
+    let accepted_levels = rule
+        .accepted_levels
+        .iter()
+        .map(|value| normalize_key(value))
+        .filter(|value| !value.is_empty())
+        .collect::<BTreeSet<_>>();
+    let accepted = if accepted_levels.is_empty() {
+        matching.first().cloned()
+    } else {
+        matching
+            .iter()
+            .find(|certification| accepted_levels.contains(&certification.certification_level))
+            .cloned()
+    };
+    let Some(certification) = accepted else {
+        return Err(CertificationGateFailure {
+            decision: PolicyDecision {
+                rule_id: rule.rule_id.clone(),
+                decision: "withhold",
+                notes: format!(
+                    "policy_rule={} certification_level_not_accepted accepted_levels={} category={} tfb={} severity={}",
+                    rule.rule_id,
+                    accepted_levels.iter().cloned().collect::<Vec<_>>().join("|"),
+                    category,
+                    tfb_class.label(),
+                    severity.label(),
+                ),
+            },
+            reason_code: REASON_CODE_CERTIFICATION_REQUIRED,
+        });
+    };
+
+    let safe_harbor_relaxation_applied = rule.enable_safe_harbor_relaxations;
+    Ok(CertificationGateContext {
+        decision: PolicyDecision {
+            rule_id: rule.rule_id.clone(),
+            decision: "allow",
+            notes: format!(
+                "policy_rule={} certification_id={} certification_level={} safe_harbor_relaxation_applied={} category={} tfb={} severity={}",
+                rule.rule_id,
+                certification.certification_id,
+                certification.certification_level,
+                safe_harbor_relaxation_applied,
+                category,
+                tfb_class.label(),
+                severity.label(),
+            ),
+        },
+        certification,
+        safe_harbor_relaxation_applied,
+    })
+}
+
+fn fallback_certification(
+    category: &str,
+    tfb_class: FeedbackLatencyClass,
+    severity: SeverityClass,
+    as_of_ms: i64,
+) -> SafetyCertification {
+    let scope = vec![CertificationScope {
+        category: category.to_string(),
+        tfb_class,
+        min_severity: severity,
+        max_severity: severity,
+    }];
+    let valid_from_ms = as_of_ms.max(0);
+    let valid_until_ms = as_of_ms.max(0);
+    let certification_id = format!(
+        "certification.fallback.{}.{}.{}",
+        normalize_key(category),
+        tfb_class.label(),
+        severity.label(),
+    );
+    let certification_level = "none".to_string();
+    let linked_receipt_ids = Vec::<String>::new();
+    let required_evidence_digests = Vec::<String>::new();
+    let digest = certification_digest_for(
+        certification_id.as_str(),
+        0,
+        CertificationState::CertificationStateUnspecified,
+        certification_level.as_str(),
+        scope.as_slice(),
+        valid_from_ms,
+        valid_until_ms,
+        "credential_ref_anonymous",
+        digest_for_text("fallback").as_str(),
+        required_evidence_digests.as_slice(),
+        linked_receipt_ids.as_slice(),
+        valid_from_ms,
+        valid_from_ms,
+        None,
+        "policy.earn.default",
+        "1",
+        None,
+    );
+    SafetyCertification {
+        certification_id,
+        certification_digest: digest,
+        revision: 0,
+        state: CertificationState::CertificationStateUnspecified,
+        certification_level,
+        scope,
+        valid_from_ms,
+        valid_until_ms,
+        issuer_credential_kind: "credential_ref_anonymous".to_string(),
+        issuer_credential_digest: digest_for_text("fallback"),
+        required_evidence_digests,
+        linked_receipt_ids,
+        issued_at_ms: valid_from_ms,
+        updated_at_ms: valid_from_ms,
+        revoked_reason_code: None,
+        policy_bundle_id: "policy.earn.default".to_string(),
+        policy_version: "1".to_string(),
+        supersedes_digest: None,
+    }
+}
+
+fn certification_scope_matches(
+    scope: &CertificationScope,
+    category: &str,
+    tfb_class: FeedbackLatencyClass,
+    severity: SeverityClass,
+) -> bool {
+    scope.category == category
+        && scope.tfb_class == tfb_class
+        && severity >= scope.min_severity
+        && severity <= scope.max_severity
 }
 
 fn select_rollback_rule<'a>(
@@ -6290,6 +7628,17 @@ impl SeverityClass {
             SeverityClass::Medium => "medium",
             SeverityClass::High => "high",
             SeverityClass::Critical => "critical",
+        }
+    }
+}
+
+impl CertificationState {
+    fn label(self) -> &'static str {
+        match self {
+            CertificationState::CertificationStateUnspecified => "unspecified",
+            CertificationState::Active => "active",
+            CertificationState::Revoked => "revoked",
+            CertificationState::Expired => "expired",
         }
     }
 }
@@ -6565,6 +7914,7 @@ fn audit_snapshot_bindings(receipts: &[Receipt]) -> Vec<AuditSnapshotBinding> {
 fn audit_linkage_edges(
     receipts: &[Receipt],
     incidents: &[IncidentObject],
+    certifications: &[AuditCertificationObject],
     outcomes: &[AuditOutcomeRegistryObject],
 ) -> Vec<AuditLinkageEdge> {
     let mut edges = BTreeSet::<(String, String, String)>::new();
@@ -6603,6 +7953,15 @@ fn audit_linkage_edges(
                 format!("outcome_registry:{}", outcome.entry_id),
                 receipt_id.clone(),
                 "outcome_linked_receipt".to_string(),
+            ));
+        }
+    }
+    for certification in certifications {
+        for receipt_id in &certification.linked_receipt_ids {
+            edges.insert((
+                format!("certification:{}", certification.certification_id),
+                receipt_id.clone(),
+                "certification_linked_receipt".to_string(),
             ));
         }
     }
@@ -6705,6 +8064,7 @@ struct CanonicalAuditPackagePayload<'a> {
     receipts: &'a [Receipt],
     incidents: &'a [IncidentObject],
     certifications: &'a [AuditCertificationEntry],
+    certification_objects: &'a [AuditCertificationObject],
     outcome_registry_entries: &'a [AuditOutcomeRegistryEntry],
     outcome_registry_objects: &'a [AuditOutcomeRegistryObject],
     snapshot_bindings: &'a [AuditSnapshotBinding],
@@ -6718,6 +8078,7 @@ fn hash_audit_package(
     receipts: &[Receipt],
     incidents: &[IncidentObject],
     certifications: &[AuditCertificationEntry],
+    certification_objects: &[AuditCertificationObject],
     outcome_registry_entries: &[AuditOutcomeRegistryEntry],
     outcome_registry_objects: &[AuditOutcomeRegistryObject],
     snapshot_bindings: &[AuditSnapshotBinding],
@@ -6729,6 +8090,7 @@ fn hash_audit_package(
         receipts,
         incidents,
         certifications,
+        certification_objects,
         outcome_registry_entries,
         outcome_registry_objects,
         snapshot_bindings,
@@ -7631,6 +8993,40 @@ mod tests {
         }
     }
 
+    fn fixture_certification_draft(
+        certification_id: &str,
+        idempotency_key: &str,
+    ) -> SafetyCertificationDraft {
+        SafetyCertificationDraft {
+            certification_id: certification_id.to_string(),
+            idempotency_key: idempotency_key.to_string(),
+            certification_level: "level_2".to_string(),
+            scope: vec![CertificationScope {
+                category: "compute".to_string(),
+                tfb_class: FeedbackLatencyClass::Short,
+                min_severity: SeverityClass::High,
+                max_severity: SeverityClass::Critical,
+            }],
+            valid_from_ms: 1_762_000_000_000,
+            valid_until_ms: 1_762_010_000_000,
+            issuer_identity: "npub1auditorpersonhood".to_string(),
+            issuer_auth_assurance_level: Some(AuthAssuranceLevel::Personhood),
+            required_evidence: vec![
+                EvidenceRef::new(
+                    "audit_attestation_ref",
+                    "oa://audits/high-severity/attestation",
+                    digest_for_text("audit_attestation_ref"),
+                ),
+                EvidenceRef::new(
+                    "incident_history_summary",
+                    "oa://economy/incidents/summary/compute/high",
+                    digest_for_text("incident_history_summary"),
+                ),
+            ],
+            linked_receipt_ids: vec![],
+        }
+    }
+
     fn fixture_drift_signals(alert: bool) -> Vec<DriftSignalSummary> {
         vec![DriftSignalSummary {
             detector_id: "detector.drift.sv_floor".to_string(),
@@ -8187,6 +9583,67 @@ mod tests {
     }
 
     #[test]
+    fn audit_package_exports_certification_objects_and_redacts_issuer_digest() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        state.record_history_receipt(
+            &fixture_history_row("wallet-payment-cert-audit"),
+            1_762_000_010,
+            "test.history",
+        );
+        let settlement_receipt_id = state
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_type == "earn.job.settlement_observed.v1")
+            .expect("settlement receipt")
+            .receipt_id
+            .clone();
+        let mut draft = fixture_certification_draft("cert.audit.export", "issue-cert-audit-export");
+        draft.linked_receipt_ids = vec![settlement_receipt_id.clone()];
+        state
+            .issue_safety_certification(draft, 1_762_000_020_000, "test.cert.issue")
+            .expect("certification issued");
+
+        let restricted = state
+            .export_audit_package(
+                &ReceiptQuery::default(),
+                AuditExportRedactionTier::Restricted,
+                1_762_000_090_000,
+            )
+            .expect("restricted audit package");
+        let public = state
+            .export_audit_package(
+                &ReceiptQuery::default(),
+                AuditExportRedactionTier::Public,
+                1_762_000_090_000,
+            )
+            .expect("public audit package");
+
+        assert_eq!(restricted.certification_object_count, 1);
+        assert_eq!(public.certification_object_count, 1);
+        let restricted_object = restricted
+            .certification_objects
+            .iter()
+            .find(|object| object.certification_id == "cert.audit.export")
+            .expect("restricted certification object");
+        let public_object = public
+            .certification_objects
+            .iter()
+            .find(|object| object.certification_id == "cert.audit.export")
+            .expect("public certification object");
+        assert_ne!(
+            restricted_object.issuer_credential_digest,
+            digest_for_text("redacted")
+        );
+        assert_eq!(
+            public_object.issuer_credential_digest,
+            digest_for_text("redacted")
+        );
+        assert!(public_object.linked_receipt_ids.is_empty());
+    }
+
+    #[test]
     fn publish_result_replay_conflict_returns_idempotency_conflict() {
         let temp_dir = tempfile::tempdir().expect("tempdir");
         let state_path = temp_dir.path().join("receipts.json");
@@ -8347,6 +9804,33 @@ mod tests {
         let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
         let mut high_severity_job = fixture_active_job("wallet-payment-high-severity");
         high_severity_job.quoted_price_sats = 10_000;
+        state
+            .issue_safety_certification(
+                SafetyCertificationDraft {
+                    certification_id: "cert.high-severity-compute".to_string(),
+                    idempotency_key: "issue-cert-high-severity-rollback-test".to_string(),
+                    certification_level: "level_2".to_string(),
+                    scope: vec![CertificationScope {
+                        category: "compute".to_string(),
+                        tfb_class: FeedbackLatencyClass::Short,
+                        min_severity: SeverityClass::High,
+                        max_severity: SeverityClass::Critical,
+                    }],
+                    valid_from_ms: 1_762_000_000_000,
+                    valid_until_ms: 1_762_010_000_000,
+                    issuer_identity: "npub1auditorpersonhood".to_string(),
+                    issuer_auth_assurance_level: Some(AuthAssuranceLevel::Personhood),
+                    required_evidence: vec![EvidenceRef::new(
+                        "audit_attestation_ref",
+                        "oa://audits/cert.high-severity-compute",
+                        digest_for_text("audit:cert.high-severity-compute"),
+                    )],
+                    linked_receipt_ids: vec![],
+                },
+                1_762_000_000_500,
+                "test.certification.issue",
+            )
+            .expect("certification issued");
 
         state.record_active_job_stage(
             &high_severity_job,
@@ -8400,6 +9884,189 @@ mod tests {
                 .evidence
                 .iter()
                 .any(|evidence| evidence.kind == "rollback_plan_ref")
+        );
+    }
+
+    #[test]
+    fn safety_certification_issue_and_revoke_emit_append_only_receipts() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+
+        let issue_receipt_id = state
+            .issue_safety_certification(
+                fixture_certification_draft(
+                    "cert.issue-revoke.append-only",
+                    "issue-cert-issue-revoke-1",
+                ),
+                1_762_000_100_000,
+                "test.certification.issue",
+            )
+            .expect("certification issue receipt");
+        let issue_replay_receipt_id = state
+            .issue_safety_certification(
+                fixture_certification_draft(
+                    "cert.issue-revoke.append-only",
+                    "issue-cert-issue-revoke-1",
+                ),
+                1_762_000_100_500,
+                "test.certification.issue.replay",
+            )
+            .expect("certification issue replay");
+        assert_eq!(issue_receipt_id, issue_replay_receipt_id);
+        assert_eq!(
+            state
+                .receipts
+                .iter()
+                .filter(|receipt| receipt.receipt_type == "economy.certification.issued.v1")
+                .count(),
+            1
+        );
+
+        let revoke_receipt_id = state
+            .revoke_safety_certification(
+                SafetyCertificationRevocationDraft {
+                    certification_id: "cert.issue-revoke.append-only".to_string(),
+                    idempotency_key: "revoke-cert-issue-revoke-1".to_string(),
+                    reason_code: "issuer_revoked".to_string(),
+                    evidence: vec![EvidenceRef::new(
+                        "revocation_notice",
+                        "oa://audits/revocations/cert.issue-revoke.append-only",
+                        digest_for_text("revocation_notice"),
+                    )],
+                },
+                1_762_000_101_000,
+                "test.certification.revoke",
+            )
+            .expect("certification revoke receipt");
+        let revoked = state
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_id == revoke_receipt_id)
+            .expect("revoke receipt should exist");
+        assert_eq!(revoked.receipt_type, "economy.certification.revoked.v1");
+
+        let latest = latest_certification_objects_as_of(state.receipts.as_slice(), 1_762_000_102_000)
+            .into_iter()
+            .find(|certification| certification.certification_id == "cert.issue-revoke.append-only")
+            .expect("latest certification state");
+        assert_eq!(latest.state, CertificationState::Revoked);
+        assert_eq!(latest.revision, 2);
+        assert_eq!(
+            latest.revoked_reason_code.as_deref(),
+            Some("ISSUER_REVOKED")
+        );
+    }
+
+    #[test]
+    fn high_severity_settlement_without_certification_is_border_blocked() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        let mut high_severity_job = fixture_active_job("wallet-payment-high-severity-no-cert");
+        high_severity_job.quoted_price_sats = 10_000;
+        state.record_active_job_stage(
+            &high_severity_job,
+            JobLifecycleStage::Accepted,
+            1_762_000_109,
+            "test.accepted",
+        );
+
+        state
+            .set_work_unit_rollback_terms(
+                high_severity_job.job_id.as_str(),
+                Some("oa://rollback/plans/high-severity"),
+                None,
+            )
+            .expect("rollback terms set");
+        state.record_active_job_stage(
+            &high_severity_job,
+            JobLifecycleStage::Paid,
+            1_762_000_110,
+            "test.certification.withhold",
+        );
+
+        let withheld = state
+            .receipts
+            .iter()
+            .find(|receipt| {
+                receipt.receipt_type == "earn.job.withheld.v1"
+                    && receipt.hints.reason_code.as_deref()
+                        == Some(REASON_CODE_DIGITAL_BORDER_BLOCK_UNCERTIFIED)
+            })
+            .expect("withheld certification receipt");
+        assert!(
+            withheld
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "policy_decision")
+        );
+    }
+
+    #[test]
+    fn certified_high_severity_settlement_emits_safe_harbor_and_certification_refs() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        let mut high_severity_job = fixture_active_job("wallet-payment-high-severity-certified");
+        high_severity_job.quoted_price_sats = 10_000;
+        state.record_active_job_stage(
+            &high_severity_job,
+            JobLifecycleStage::Accepted,
+            1_762_000_119,
+            "test.accepted",
+        );
+
+        state
+            .set_work_unit_rollback_terms(
+                high_severity_job.job_id.as_str(),
+                Some("oa://rollback/plans/high-severity"),
+                None,
+            )
+            .expect("rollback terms set");
+        state
+            .issue_safety_certification(
+                fixture_certification_draft(
+                    "cert.high-severity.safe-harbor",
+                    "issue-cert-safe-harbor-1",
+                ),
+                1_762_000_120_000,
+                "test.certification.issue",
+            )
+            .expect("certification issue");
+
+        state.record_active_job_stage(
+            &high_severity_job,
+            JobLifecycleStage::Paid,
+            1_762_000_121,
+            "test.certification.safe_harbor",
+        );
+        let settlement = state
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_type == "earn.job.settlement_observed.v1")
+            .expect("settlement receipt");
+        assert!(
+            settlement
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "certification_ref")
+        );
+        assert!(
+            settlement
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "safe_harbor_relaxation")
+        );
+        assert!(
+            settlement
+                .hints
+                .liability_premium
+                .as_ref()
+                .is_some_and(|premium| match premium.amount {
+                    MoneyAmount::AmountSats(value) => value > 0,
+                    MoneyAmount::AmountMsats(value) => value > 0,
+                })
         );
     }
 
@@ -9474,6 +11141,7 @@ mod tests {
             SeverityClass::Low,
             10_000,
             1_000,
+            None,
         );
         let second = compute_liability_pricing_for_settlement(
             state.receipts.as_slice(),
@@ -9483,6 +11151,7 @@ mod tests {
             SeverityClass::Low,
             10_000,
             1_000,
+            None,
         );
 
         assert_eq!(first.liability_premium_sats, second.liability_premium_sats);
