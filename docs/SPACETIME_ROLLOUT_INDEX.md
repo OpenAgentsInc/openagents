@@ -2,6 +2,10 @@
 
 This is the canonical operator/documentation index for Spacetime rollout phases, acceptance criteria, and verification commands.
 
+## Program Status
+
+As of 2026-03-05, the audit-driven Spacetime reintegration program backlog (`#2916` through `#2930`) is complete and merged on `main`.
+
 ## Source Audits
 
 - `docs/audits/2026-03-04-earn-device-online-state-spacetime-audit.md`
