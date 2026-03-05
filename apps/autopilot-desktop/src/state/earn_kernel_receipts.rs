@@ -51,6 +51,7 @@ const REASON_CODE_OUTCOME_REGISTRY_CREATED: &str = "OUTCOME_REGISTRY_CREATED";
 const REASON_CODE_OUTCOME_REGISTRY_UPDATED: &str = "OUTCOME_REGISTRY_UPDATED";
 const REASON_CODE_SIMULATION_SCENARIO_EXPORTED: &str = "SIMULATION_SCENARIO_EXPORTED";
 const REASON_CODE_REDACTION_POLICY_APPLIED: &str = "REDACTION_POLICY_APPLIED";
+const REASON_CODE_ANCHOR_PUBLISHED: &str = "ANCHOR_PUBLISHED";
 const DEFAULT_PRICING_SNAPSHOT_ID: &str = "snapshot.economy:unavailable";
 const DEFAULT_PRICING_SNAPSHOT_HASH: &str = "sha256:unavailable";
 const DRIFT_WINDOW_MS: i64 = 86_400_000;
@@ -200,6 +201,14 @@ struct AutonomyPolicyRule {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
+struct AnchoringPolicyConfig {
+    #[serde(default)]
+    enabled: bool,
+    #[serde(default)]
+    allowed_backends: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 struct PolicyBundleConfig {
     #[serde(default)]
     authentication_rules: Vec<AuthenticationPolicyRule>,
@@ -215,6 +224,8 @@ struct PolicyBundleConfig {
     rollback_rules: Vec<RollbackPolicyRule>,
     #[serde(default)]
     autonomy_rules: Vec<AutonomyPolicyRule>,
+    #[serde(default)]
+    anchoring: AnchoringPolicyConfig,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -652,6 +663,26 @@ pub struct SimulationScenarioPackage {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct AnchorPublicationDraft {
+    pub snapshot_id: String,
+    pub snapshot_hash: String,
+    pub anchor_backend: String,
+    pub external_anchor_reference: String,
+    #[serde(default)]
+    pub receipt_root_hash: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct AuditAnchorEntry {
+    pub receipt_id: String,
+    pub anchor_backend: String,
+    pub snapshot_id: String,
+    pub snapshot_hash: String,
+    pub receipt_root_hash: Option<String>,
+    pub anchor_proof_ref: EvidenceRef,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct AuditCertificationEntry {
     pub receipt_id: String,
     pub receipt_type: String,
@@ -732,6 +763,7 @@ pub struct AuditPackage {
     pub incident_count: usize,
     pub certification_count: usize,
     pub certification_object_count: usize,
+    pub anchor_count: usize,
     pub outcome_registry_count: usize,
     pub outcome_registry_object_count: usize,
     pub snapshot_binding_count: usize,
@@ -740,6 +772,7 @@ pub struct AuditPackage {
     pub incidents: Vec<IncidentObject>,
     pub certifications: Vec<AuditCertificationEntry>,
     pub certification_objects: Vec<AuditCertificationObject>,
+    pub anchors: Vec<AuditAnchorEntry>,
     pub outcome_registry_entries: Vec<AuditOutcomeRegistryEntry>,
     pub outcome_registry_objects: Vec<AuditOutcomeRegistryObject>,
     pub snapshot_bindings: Vec<AuditSnapshotBinding>,
@@ -3093,6 +3126,12 @@ impl EarnKernelReceiptState {
                 .then_with(|| rhs.revision.cmp(&lhs.revision))
                 .then_with(|| lhs.certification_digest.cmp(&rhs.certification_digest))
         });
+        let mut anchors = receipts
+            .iter()
+            .filter(|receipt| receipt.receipt_type == "economy.anchor.published.v1")
+            .filter_map(audit_anchor_entry_from_receipt)
+            .collect::<Vec<_>>();
+        anchors.sort_by(|lhs, rhs| lhs.receipt_id.cmp(&rhs.receipt_id));
 
         let mut outcome_registry_entries = receipts
             .iter()
@@ -3149,6 +3188,7 @@ impl EarnKernelReceiptState {
             receipts.as_slice(),
             incidents.as_slice(),
             certification_objects.as_slice(),
+            anchors.as_slice(),
             outcome_registry_objects.as_slice(),
         );
 
@@ -3172,6 +3212,7 @@ impl EarnKernelReceiptState {
             incidents.as_slice(),
             certifications.as_slice(),
             certification_objects.as_slice(),
+            anchors.as_slice(),
             outcome_registry_entries.as_slice(),
             outcome_registry_objects.as_slice(),
             snapshot_bindings.as_slice(),
@@ -3188,6 +3229,7 @@ impl EarnKernelReceiptState {
             incident_count: incidents.len(),
             certification_count: certifications.len(),
             certification_object_count: certification_objects.len(),
+            anchor_count: anchors.len(),
             outcome_registry_count: outcome_registry_entries.len(),
             outcome_registry_object_count: outcome_registry_objects.len(),
             snapshot_binding_count: snapshot_bindings.len(),
@@ -3196,6 +3238,7 @@ impl EarnKernelReceiptState {
             incidents,
             certifications,
             certification_objects,
+            anchors,
             outcome_registry_entries,
             outcome_registry_objects,
             snapshot_bindings,
@@ -3532,6 +3575,137 @@ impl EarnKernelReceiptState {
         std::fs::rename(&temp_path, path)
             .map_err(|error| format!("Failed to persist simulation scenario package: {error}"))?;
         Ok(package)
+    }
+
+    pub fn publish_anchor_receipt(
+        &mut self,
+        draft: AnchorPublicationDraft,
+        occurred_at_ms: i64,
+        source_tag: &str,
+    ) -> Result<String, String> {
+        let snapshot_id = draft.snapshot_id.trim();
+        if snapshot_id.is_empty() {
+            return Err("snapshot_id cannot be empty".to_string());
+        }
+        let snapshot_hash = normalize_digest(draft.snapshot_hash.as_str());
+        if !snapshot_hash.starts_with("sha256:") {
+            return Err("snapshot_hash must be a sha256 digest".to_string());
+        }
+        let anchor_backend = normalize_key(draft.anchor_backend.as_str());
+        if anchor_backend.is_empty() {
+            return Err("anchor_backend cannot be empty".to_string());
+        }
+        let policy_bundle = current_policy_bundle();
+        if !anchoring_backend_allowed(&policy_bundle, anchor_backend.as_str()) {
+            return Err(format!(
+                "anchoring backend {anchor_backend} is not allowed by policy"
+            ));
+        }
+        let external_anchor_reference = draft.external_anchor_reference.trim();
+        if external_anchor_reference.is_empty() {
+            return Err("external_anchor_reference cannot be empty".to_string());
+        }
+        let external_anchor_digest = if external_anchor_reference.starts_with("sha256:") {
+            normalize_digest(external_anchor_reference)
+        } else {
+            digest_for_text(external_anchor_reference)
+        };
+        let receipt_root_hash = draft.receipt_root_hash.and_then(|value| {
+            let normalized = normalize_digest(value.as_str());
+            if normalized.starts_with("sha256:") {
+                Some(normalized)
+            } else {
+                None
+            }
+        });
+        let receipt_id = format!(
+            "receipt.economy.anchor.published:{}:{}",
+            anchor_backend,
+            normalize_key(snapshot_id)
+        );
+        let idempotency_key = format!(
+            "economy_anchor_publish:{}:{}",
+            anchor_backend,
+            normalize_key(snapshot_id)
+        );
+        let policy_decision = allow_policy_decision("anchor_publish", "safety", SeverityClass::Low);
+        let mut evidence = vec![
+            policy_decision_evidence(&policy_decision),
+            EvidenceRef::new(
+                "snapshot_ref",
+                format!("oa://economy/snapshots/{snapshot_id}"),
+                snapshot_hash.clone(),
+            ),
+        ];
+        if let Some(root_hash) = receipt_root_hash.clone() {
+            evidence.push(EvidenceRef::new(
+                "receipt_root_ref",
+                format!("oa://economy/receipt_roots/{snapshot_id}"),
+                root_hash,
+            ));
+        }
+        let mut anchor_proof_ref = EvidenceRef::new(
+            "anchor_proof_ref",
+            format!("oa://anchors/{anchor_backend}/proof/{external_anchor_digest}"),
+            external_anchor_digest.clone(),
+        );
+        anchor_proof_ref
+            .meta
+            .insert("anchor_backend".to_string(), json!(anchor_backend.clone()));
+        anchor_proof_ref.meta.insert(
+            "snapshot_id".to_string(),
+            json!(snapshot_id.to_string()),
+        );
+        anchor_proof_ref
+            .meta
+            .insert("snapshot_hash".to_string(), json!(snapshot_hash.clone()));
+        evidence.push(anchor_proof_ref);
+
+        let receipt = ReceiptBuilder::new(
+            receipt_id.clone(),
+            "economy.anchor.published.v1",
+            occurred_at_ms.max(0),
+            idempotency_key,
+            trace_for_job("work_unit:economy.anchor_publish", None, None),
+            current_policy_context(),
+        )
+        .with_inputs_payload(json!({
+            "snapshot_id": snapshot_id,
+            "snapshot_hash": snapshot_hash,
+            "anchor_backend": anchor_backend,
+            "external_anchor_digest": external_anchor_digest,
+            "receipt_root_hash": receipt_root_hash,
+        }))
+        .with_outputs_payload(json!({
+            "status": "anchor_published",
+            "reason_code": REASON_CODE_ANCHOR_PUBLISHED,
+            "policy_rule_id": policy_decision.rule_id,
+            "policy_decision": policy_decision.decision,
+            "policy_notes": policy_decision.notes,
+        }))
+        .with_evidence(evidence)
+        .with_hints(ReceiptHints {
+            category: Some("safety".to_string()),
+            tfb_class: Some(FeedbackLatencyClass::Long),
+            severity: Some(SeverityClass::Low),
+            achieved_verification_tier: Some(VerificationTier::Tier1Correlated),
+            verification_correlated: Some(true),
+            provenance_grade: Some(ProvenanceGrade::P1Toolchain),
+            auth_assurance_level: Some(AuthAssuranceLevel::Authenticated),
+            personhood_proved: Some(false),
+            reason_code: Some(REASON_CODE_ANCHOR_PUBLISHED.to_string()),
+            notional: None,
+            liability_premium: None,
+        })
+        .build();
+        self.append_receipt(receipt, source_tag);
+        if self.load_state == PaneLoadState::Error {
+            return Err(self
+                .last_error
+                .clone()
+                .unwrap_or_else(|| "failed to publish anchor receipt".to_string()));
+        }
+        Ok(receipt_id)
     }
 
     pub fn issue_safety_certification(
@@ -5689,6 +5863,10 @@ fn default_policy_bundle() -> PolicyBundleConfig {
                 ],
             },
         ],
+        anchoring: AnchoringPolicyConfig {
+            enabled: true,
+            allowed_backends: vec!["bitcoin".to_string(), "nostr".to_string()],
+        },
     }
 }
 
@@ -5714,7 +5892,31 @@ fn normalize_policy_bundle(mut bundle: PolicyBundleConfig) -> PolicyBundleConfig
     bundle
         .autonomy_rules
         .sort_by(|lhs, rhs| lhs.rule_id.cmp(&rhs.rule_id));
+    bundle.anchoring.allowed_backends = bundle
+        .anchoring
+        .allowed_backends
+        .iter()
+        .map(|backend| normalize_key(backend))
+        .filter(|backend| !backend.is_empty())
+        .collect::<Vec<_>>();
+    bundle.anchoring.allowed_backends.sort();
+    bundle.anchoring.allowed_backends.dedup();
     bundle
+}
+
+fn anchoring_backend_allowed(bundle: &PolicyBundleConfig, anchor_backend: &str) -> bool {
+    if !bundle.anchoring.enabled {
+        return false;
+    }
+    let normalized_backend = normalize_key(anchor_backend);
+    if normalized_backend.is_empty() {
+        return false;
+    }
+    bundle
+        .anchoring
+        .allowed_backends
+        .iter()
+        .any(|backend| backend == &normalized_backend)
 }
 
 fn slice_rule_precedence(
@@ -8483,10 +8685,51 @@ fn audit_snapshot_bindings(receipts: &[Receipt]) -> Vec<AuditSnapshotBinding> {
     rows
 }
 
+fn audit_anchor_entry_from_receipt(receipt: &Receipt) -> Option<AuditAnchorEntry> {
+    let snapshot_ref = receipt
+        .evidence
+        .iter()
+        .find(|evidence| evidence.kind == "snapshot_ref")?;
+    let snapshot_id = snapshot_ref
+        .uri
+        .strip_prefix("oa://economy/snapshots/")
+        .map(|value| value.split('/').next().unwrap_or(value).to_string())
+        .filter(|value| !value.trim().is_empty())?;
+    if !snapshot_ref.digest.starts_with("sha256:") {
+        return None;
+    }
+    let anchor_proof_ref = receipt
+        .evidence
+        .iter()
+        .find(|evidence| evidence.kind == "anchor_proof_ref")
+        .cloned()?;
+    let anchor_backend = anchor_proof_ref
+        .meta
+        .get("anchor_backend")
+        .and_then(Value::as_str)
+        .map(normalize_key)
+        .filter(|value| !value.is_empty())?;
+    let receipt_root_hash = receipt
+        .evidence
+        .iter()
+        .find(|evidence| evidence.kind == "receipt_root_ref")
+        .map(|evidence| normalize_digest(evidence.digest.as_str()))
+        .filter(|digest| digest.starts_with("sha256:"));
+    Some(AuditAnchorEntry {
+        receipt_id: receipt.receipt_id.clone(),
+        anchor_backend,
+        snapshot_id,
+        snapshot_hash: normalize_digest(snapshot_ref.digest.as_str()),
+        receipt_root_hash,
+        anchor_proof_ref,
+    })
+}
+
 fn audit_linkage_edges(
     receipts: &[Receipt],
     incidents: &[IncidentObject],
     certifications: &[AuditCertificationObject],
+    anchors: &[AuditAnchorEntry],
     outcomes: &[AuditOutcomeRegistryObject],
 ) -> Vec<AuditLinkageEdge> {
     let mut edges = BTreeSet::<(String, String, String)>::new();
@@ -8534,6 +8777,20 @@ fn audit_linkage_edges(
                 format!("certification:{}", certification.certification_id),
                 receipt_id.clone(),
                 "certification_linked_receipt".to_string(),
+            ));
+        }
+    }
+    for anchor in anchors {
+        edges.insert((
+            format!("anchor:{}", anchor.receipt_id),
+            format!("snapshot:{}", anchor.snapshot_id),
+            "anchor_snapshot".to_string(),
+        ));
+        if let Some(receipt_root_hash) = &anchor.receipt_root_hash {
+            edges.insert((
+                format!("anchor:{}", anchor.receipt_id),
+                format!("receipt_root:{receipt_root_hash}"),
+                "anchor_receipt_root".to_string(),
             ));
         }
     }
@@ -8637,6 +8894,7 @@ struct CanonicalAuditPackagePayload<'a> {
     incidents: &'a [IncidentObject],
     certifications: &'a [AuditCertificationEntry],
     certification_objects: &'a [AuditCertificationObject],
+    anchors: &'a [AuditAnchorEntry],
     outcome_registry_entries: &'a [AuditOutcomeRegistryEntry],
     outcome_registry_objects: &'a [AuditOutcomeRegistryObject],
     snapshot_bindings: &'a [AuditSnapshotBinding],
@@ -8651,6 +8909,7 @@ fn hash_audit_package(
     incidents: &[IncidentObject],
     certifications: &[AuditCertificationEntry],
     certification_objects: &[AuditCertificationObject],
+    anchors: &[AuditAnchorEntry],
     outcome_registry_entries: &[AuditOutcomeRegistryEntry],
     outcome_registry_objects: &[AuditOutcomeRegistryObject],
     snapshot_bindings: &[AuditSnapshotBinding],
@@ -8663,6 +8922,7 @@ fn hash_audit_package(
         incidents,
         certifications,
         certification_objects,
+        anchors,
         outcome_registry_entries,
         outcome_registry_objects,
         snapshot_bindings,
@@ -9698,6 +9958,21 @@ mod tests {
         draft.taxonomy_code = "safety.ground_truth_case".to_string();
         draft.summary = "ground truth replay case for simulation export".to_string();
         draft
+    }
+
+    fn fixture_anchor_publication_draft(
+        snapshot_id: &str,
+        snapshot_hash: &str,
+        backend: &str,
+        external_anchor_reference: &str,
+    ) -> AnchorPublicationDraft {
+        AnchorPublicationDraft {
+            snapshot_id: snapshot_id.to_string(),
+            snapshot_hash: snapshot_hash.to_string(),
+            anchor_backend: backend.to_string(),
+            external_anchor_reference: external_anchor_reference.to_string(),
+            receipt_root_hash: Some("sha256:receipt-root-proof".to_string()),
+        }
     }
 
     fn fixture_outcome_registry_draft(
@@ -11574,6 +11849,96 @@ mod tests {
             restricted_scenario.linked_receipt_digests,
             public_scenario.linked_receipt_digests
         );
+    }
+
+    #[test]
+    fn anchor_publication_receipt_is_idempotent_per_snapshot_backend() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        let draft = fixture_anchor_publication_draft(
+            "snapshot.economy:1762000060000",
+            "sha256:snapshot-anchor",
+            "bitcoin",
+            "txid:abc123",
+        );
+
+        let first_receipt_id = state
+            .publish_anchor_receipt(draft.clone(), 1_762_000_120_000, "test.anchor")
+            .expect("first anchor publication");
+        let second_receipt_id = state
+            .publish_anchor_receipt(draft, 1_762_000_120_000, "test.anchor.replay")
+            .expect("anchor replay");
+        assert_eq!(first_receipt_id, second_receipt_id);
+        assert_eq!(
+            state
+                .receipts
+                .iter()
+                .filter(|receipt| receipt.receipt_type == "economy.anchor.published.v1")
+                .count(),
+            1
+        );
+        let receipt = state
+            .get_receipt(first_receipt_id.as_str())
+            .expect("anchor receipt");
+        assert_eq!(
+            receipt.hints.reason_code.as_deref(),
+            Some(REASON_CODE_ANCHOR_PUBLISHED)
+        );
+        let anchor_proof_ref = receipt
+            .evidence
+            .iter()
+            .find(|evidence| evidence.kind == "anchor_proof_ref")
+            .expect("anchor proof ref");
+        assert!(anchor_proof_ref.digest.starts_with("sha256:"));
+        assert!(!anchor_proof_ref.uri.contains("txid:abc123"));
+    }
+
+    #[test]
+    fn audit_export_includes_anchor_entries_and_preserves_hash_stability() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        state
+            .publish_anchor_receipt(
+                fixture_anchor_publication_draft(
+                    "snapshot.economy:1762000060000",
+                    "sha256:snapshot-anchor",
+                    "bitcoin",
+                    "txid:anchor-proof-1",
+                ),
+                1_762_000_120_000,
+                "test.anchor.audit",
+            )
+            .expect("anchor publication");
+
+        let query = ReceiptQuery::default();
+        let first = state
+            .export_audit_package(
+                &query,
+                AuditExportRedactionTier::Restricted,
+                1_762_000_180_000,
+            )
+            .expect("first restricted audit export");
+        let second = state
+            .export_audit_package(
+                &query,
+                AuditExportRedactionTier::Restricted,
+                1_762_000_180_000,
+            )
+            .expect("second restricted audit export");
+        assert_eq!(first.package_hash, second.package_hash);
+        assert_eq!(first.anchor_count, 1);
+        assert_eq!(first.anchors.len(), 1);
+        let anchor = first.anchors.first().expect("anchor entry");
+        assert_eq!(anchor.anchor_backend, "bitcoin");
+        assert_eq!(anchor.snapshot_id, "snapshot.economy:1762000060000");
+        assert!(anchor.snapshot_hash.starts_with("sha256:"));
+        assert!(anchor.anchor_proof_ref.digest.starts_with("sha256:"));
+        assert!(first
+            .linkage_edges
+            .iter()
+            .any(|edge| edge.relation_kind == "anchor_snapshot"));
     }
 
     #[test]
