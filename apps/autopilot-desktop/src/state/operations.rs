@@ -1185,8 +1185,29 @@ impl ReciprocalLoopFailureClass {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReciprocalLoopFailureDisposition {
+    Recoverable,
+    Terminal,
+}
+
+impl ReciprocalLoopFailureDisposition {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Recoverable => "recoverable",
+            Self::Terminal => "terminal",
+        }
+    }
+}
+
 const RECIPROCAL_LOOP_DEFAULT_AMOUNT_SATS: u64 = 10;
 const RECIPROCAL_LOOP_DEFAULT_TIMEOUT_SECONDS: u64 = 90;
+const RECIPROCAL_LOOP_DEFAULT_STALE_TIMEOUT_SECONDS: u64 = 120;
+const RECIPROCAL_LOOP_DEFAULT_MAX_RETRY_ATTEMPTS: u32 = 6;
+const RECIPROCAL_LOOP_DEFAULT_RETRY_BACKOFF_SECONDS: u64 = 2;
+const RECIPROCAL_LOOP_DEFAULT_RETRY_BACKOFF_MAX_SECONDS: u64 = 60;
+const RECIPROCAL_LOOP_DEFAULT_MAX_IN_FLIGHT_LOCAL_TO_PEER: u8 = 1;
+const RECIPROCAL_LOOP_DEFAULT_MAX_IN_FLIGHT_PEER_TO_LOCAL: u8 = 1;
 const RECIPROCAL_LOOP_SCOPE_ID: &str = "earn.loop.pingpong.v1";
 
 pub struct ReciprocalLoopState {
@@ -1194,14 +1215,24 @@ pub struct ReciprocalLoopState {
     pub last_error: Option<String>,
     pub last_action: Option<String>,
     pub running: bool,
+    pub kill_switch_active: bool,
     pub amount_sats: u64,
     pub timeout_seconds: u64,
+    pub stale_timeout_seconds: u64,
     pub skill_scope_id: String,
     pub local_pubkey: Option<String>,
     pub peer_pubkey: Option<String>,
     pub next_direction: ReciprocalLoopDirection,
+    pub max_in_flight_local_to_peer: u8,
+    pub max_in_flight_peer_to_local: u8,
     pub in_flight_request_id: Option<String>,
     pub in_flight_since_epoch_seconds: Option<u64>,
+    pub peer_wait_since_epoch_seconds: Option<u64>,
+    pub retry_attempts: u32,
+    pub max_retry_attempts: u32,
+    pub retry_backoff_seconds: u64,
+    pub retry_backoff_max_seconds: u64,
+    pub retry_backoff_until_epoch_seconds: Option<u64>,
     pub local_to_peer_dispatched: u64,
     pub local_to_peer_paid: u64,
     pub local_to_peer_failed: u64,
@@ -1211,6 +1242,7 @@ pub struct ReciprocalLoopState {
     pub sats_received: u64,
     pub last_payment_pointer: Option<String>,
     pub last_failure_class: Option<ReciprocalLoopFailureClass>,
+    pub last_failure_disposition: Option<ReciprocalLoopFailureDisposition>,
     pub last_failure_detail: Option<String>,
     seen_terminal_outbound_request_ids: HashSet<String>,
     seen_terminal_inbound_job_ids: HashSet<String>,
@@ -1223,14 +1255,24 @@ impl Default for ReciprocalLoopState {
             last_error: None,
             last_action: Some("Reciprocal loop is idle".to_string()),
             running: false,
+            kill_switch_active: false,
             amount_sats: RECIPROCAL_LOOP_DEFAULT_AMOUNT_SATS,
             timeout_seconds: RECIPROCAL_LOOP_DEFAULT_TIMEOUT_SECONDS,
+            stale_timeout_seconds: RECIPROCAL_LOOP_DEFAULT_STALE_TIMEOUT_SECONDS,
             skill_scope_id: RECIPROCAL_LOOP_SCOPE_ID.to_string(),
             local_pubkey: None,
             peer_pubkey: None,
             next_direction: ReciprocalLoopDirection::LocalToPeer,
+            max_in_flight_local_to_peer: RECIPROCAL_LOOP_DEFAULT_MAX_IN_FLIGHT_LOCAL_TO_PEER,
+            max_in_flight_peer_to_local: RECIPROCAL_LOOP_DEFAULT_MAX_IN_FLIGHT_PEER_TO_LOCAL,
             in_flight_request_id: None,
             in_flight_since_epoch_seconds: None,
+            peer_wait_since_epoch_seconds: None,
+            retry_attempts: 0,
+            max_retry_attempts: RECIPROCAL_LOOP_DEFAULT_MAX_RETRY_ATTEMPTS,
+            retry_backoff_seconds: RECIPROCAL_LOOP_DEFAULT_RETRY_BACKOFF_SECONDS,
+            retry_backoff_max_seconds: RECIPROCAL_LOOP_DEFAULT_RETRY_BACKOFF_MAX_SECONDS,
+            retry_backoff_until_epoch_seconds: None,
             local_to_peer_dispatched: 0,
             local_to_peer_paid: 0,
             local_to_peer_failed: 0,
@@ -1240,6 +1282,7 @@ impl Default for ReciprocalLoopState {
             sats_received: 0,
             last_payment_pointer: None,
             last_failure_class: None,
+            last_failure_disposition: None,
             last_failure_detail: None,
             seen_terminal_outbound_request_ids: HashSet::new(),
             seen_terminal_inbound_job_ids: HashSet::new(),
@@ -1278,12 +1321,19 @@ impl ReciprocalLoopState {
         }
 
         self.running = true;
+        self.kill_switch_active = false;
         self.next_direction = if local <= peer {
             ReciprocalLoopDirection::LocalToPeer
         } else {
             ReciprocalLoopDirection::PeerToLocal
         };
+        self.in_flight_request_id = None;
+        self.in_flight_since_epoch_seconds = None;
+        self.peer_wait_since_epoch_seconds = None;
+        self.retry_attempts = 0;
+        self.retry_backoff_until_epoch_seconds = None;
         self.last_failure_class = None;
+        self.last_failure_disposition = None;
         self.last_failure_detail = None;
         self.pane_set_ready(format!(
             "Reciprocal loop started (peer={} next={})",
@@ -1295,8 +1345,11 @@ impl ReciprocalLoopState {
 
     pub fn stop(&mut self, reason: &str) {
         self.running = false;
+        self.kill_switch_active = true;
         self.in_flight_request_id = None;
         self.in_flight_since_epoch_seconds = None;
+        self.peer_wait_since_epoch_seconds = None;
+        self.retry_backoff_until_epoch_seconds = None;
         self.pane_set_ready(format!(
             "Reciprocal loop stopped ({})",
             reason.trim().to_string()
@@ -1306,6 +1359,7 @@ impl ReciprocalLoopState {
     pub fn reset_counters(&mut self) {
         self.in_flight_request_id = None;
         self.in_flight_since_epoch_seconds = None;
+        self.peer_wait_since_epoch_seconds = None;
         self.local_to_peer_dispatched = 0;
         self.local_to_peer_paid = 0;
         self.local_to_peer_failed = 0;
@@ -1313,18 +1367,213 @@ impl ReciprocalLoopState {
         self.peer_to_local_failed = 0;
         self.sats_sent = 0;
         self.sats_received = 0;
+        self.retry_attempts = 0;
+        self.retry_backoff_until_epoch_seconds = None;
         self.last_payment_pointer = None;
         self.last_failure_class = None;
+        self.last_failure_disposition = None;
         self.last_failure_detail = None;
         self.seen_terminal_outbound_request_ids.clear();
         self.seen_terminal_inbound_job_ids.clear();
         self.pane_set_ready("Reciprocal loop counters reset");
     }
 
+    pub fn in_flight_local_to_peer(&self) -> u8 {
+        if self.in_flight_request_id.is_some() {
+            1
+        } else {
+            0
+        }
+    }
+
+    pub fn in_flight_peer_to_local(&self) -> u8 {
+        if self.running
+            && self.in_flight_request_id.is_none()
+            && self.next_direction == ReciprocalLoopDirection::PeerToLocal
+        {
+            1
+        } else {
+            0
+        }
+    }
+
     pub fn ready_to_dispatch(&self) -> bool {
         self.running
+            && !self.kill_switch_active
             && self.next_direction == ReciprocalLoopDirection::LocalToPeer
+            && self.in_flight_local_to_peer() < self.max_in_flight_local_to_peer.max(1)
+            && self.in_flight_peer_to_local() < self.max_in_flight_peer_to_local.max(1)
             && self.in_flight_request_id.is_none()
+            && self.retry_backoff_until_epoch_seconds.is_none()
+    }
+
+    pub fn clear_retry_backoff_if_elapsed(&mut self, now_epoch_seconds: u64) -> bool {
+        let Some(until) = self.retry_backoff_until_epoch_seconds else {
+            return false;
+        };
+        if now_epoch_seconds < until {
+            return false;
+        }
+        self.retry_backoff_until_epoch_seconds = None;
+        self.pane_set_ready("Reciprocal loop backoff elapsed; dispatch may resume");
+        true
+    }
+
+    pub fn in_backoff_window(&self, now_epoch_seconds: u64) -> bool {
+        self.retry_backoff_until_epoch_seconds
+            .is_some_and(|until| now_epoch_seconds < until)
+    }
+
+    pub fn mark_peer_wait_started(&mut self, now_epoch_seconds: u64) {
+        if self.running
+            && self.next_direction == ReciprocalLoopDirection::PeerToLocal
+            && self.in_flight_request_id.is_none()
+            && self.peer_wait_since_epoch_seconds.is_none()
+        {
+            self.peer_wait_since_epoch_seconds = Some(now_epoch_seconds);
+        }
+    }
+
+    pub fn outbound_stale_timed_out(&self, now_epoch_seconds: u64) -> bool {
+        let Some(since) = self.in_flight_since_epoch_seconds else {
+            return false;
+        };
+        now_epoch_seconds.saturating_sub(since) >= self.stale_timeout_seconds
+    }
+
+    pub fn inbound_wait_timed_out(&self, now_epoch_seconds: u64) -> bool {
+        if !self.running
+            || self.next_direction != ReciprocalLoopDirection::PeerToLocal
+            || self.in_flight_request_id.is_some()
+        {
+            return false;
+        }
+        let Some(since) = self.peer_wait_since_epoch_seconds else {
+            return false;
+        };
+        now_epoch_seconds.saturating_sub(since) >= self.stale_timeout_seconds
+    }
+
+    pub fn mark_outbound_stale_timeout(&mut self) -> Option<String> {
+        let request_id = self.in_flight_request_id.take();
+        let Some(request_id) = request_id else {
+            return None;
+        };
+        self.seen_terminal_outbound_request_ids
+            .insert(request_id.clone());
+        self.local_to_peer_failed = self.local_to_peer_failed.saturating_add(1);
+        self.in_flight_since_epoch_seconds = None;
+        self.next_direction = ReciprocalLoopDirection::LocalToPeer;
+        self.peer_wait_since_epoch_seconds = None;
+        Some(request_id)
+    }
+
+    pub fn mark_inbound_stale_timeout(&mut self) {
+        self.peer_to_local_failed = self.peer_to_local_failed.saturating_add(1);
+        self.next_direction = ReciprocalLoopDirection::LocalToPeer;
+        self.peer_wait_since_epoch_seconds = None;
+    }
+
+    pub fn in_flight_limit_violation(&self) -> Option<String> {
+        let local_in_flight = self.in_flight_local_to_peer();
+        if local_in_flight > self.max_in_flight_local_to_peer.max(1) {
+            return Some(format!(
+                "local->peer in-flight {} exceeds max {}",
+                local_in_flight, self.max_in_flight_local_to_peer
+            ));
+        }
+        let peer_in_flight = self.in_flight_peer_to_local();
+        if peer_in_flight > self.max_in_flight_peer_to_local.max(1) {
+            return Some(format!(
+                "peer->local in-flight {} exceeds max {}",
+                peer_in_flight, self.max_in_flight_peer_to_local
+            ));
+        }
+        None
+    }
+
+    pub fn clear_retry_state_after_success(&mut self) {
+        self.retry_attempts = 0;
+        self.retry_backoff_until_epoch_seconds = None;
+        self.last_failure_class = None;
+        self.last_failure_disposition = None;
+        self.last_failure_detail = None;
+    }
+
+    pub fn record_recoverable_failure(
+        &mut self,
+        class: ReciprocalLoopFailureClass,
+        detail: &str,
+        now_epoch_seconds: u64,
+    ) -> bool {
+        let detail = detail.trim();
+        let detail = if detail.is_empty() {
+            "recoverable loop runtime error"
+        } else {
+            detail
+        };
+        self.last_failure_class = Some(class);
+        self.last_failure_disposition = Some(ReciprocalLoopFailureDisposition::Recoverable);
+        self.last_failure_detail = Some(detail.to_string());
+
+        self.retry_attempts = self.retry_attempts.saturating_add(1);
+        if self.retry_attempts > self.max_retry_attempts {
+            self.record_terminal_failure(
+                class,
+                format!(
+                    "{} (retry budget exceeded {}/{})",
+                    detail, self.retry_attempts, self.max_retry_attempts
+                )
+                .as_str(),
+            );
+            return true;
+        }
+
+        let retry_index = self.retry_attempts.saturating_sub(1).min(20);
+        let backoff_multiplier = 1u64.checked_shl(retry_index).unwrap_or(u64::MAX);
+        let backoff_seconds = self
+            .retry_backoff_seconds
+            .saturating_mul(backoff_multiplier)
+            .clamp(1, self.retry_backoff_max_seconds.max(1));
+        self.retry_backoff_until_epoch_seconds =
+            Some(now_epoch_seconds.saturating_add(backoff_seconds));
+        self.next_direction = ReciprocalLoopDirection::LocalToPeer;
+        self.in_flight_request_id = None;
+        self.in_flight_since_epoch_seconds = None;
+        self.peer_wait_since_epoch_seconds = None;
+        let _ = self.pane_set_error(format!(
+            "Reciprocal loop recoverable failure class={} retry={}/{} backoff={}s detail={}",
+            class.label(),
+            self.retry_attempts,
+            self.max_retry_attempts,
+            backoff_seconds,
+            detail
+        ));
+        false
+    }
+
+    pub fn record_terminal_failure(&mut self, class: ReciprocalLoopFailureClass, detail: &str) {
+        let detail = detail.trim();
+        let detail = if detail.is_empty() {
+            "terminal loop runtime error"
+        } else {
+            detail
+        };
+        self.running = false;
+        self.kill_switch_active = true;
+        self.next_direction = ReciprocalLoopDirection::LocalToPeer;
+        self.in_flight_request_id = None;
+        self.in_flight_since_epoch_seconds = None;
+        self.peer_wait_since_epoch_seconds = None;
+        self.retry_backoff_until_epoch_seconds = None;
+        self.last_failure_class = Some(class);
+        self.last_failure_disposition = Some(ReciprocalLoopFailureDisposition::Terminal);
+        self.last_failure_detail = Some(detail.to_string());
+        let _ = self.pane_set_error(format!(
+            "Reciprocal loop terminal failure class={} detail={}",
+            class.label(),
+            detail
+        ));
     }
 
     pub fn register_outbound_dispatch(&mut self, request_id: &str, now_epoch_seconds: u64) {
@@ -1336,19 +1585,13 @@ impl ReciprocalLoopState {
         self.local_to_peer_dispatched = self.local_to_peer_dispatched.saturating_add(1);
         self.in_flight_request_id = Some(request_id.to_string());
         self.in_flight_since_epoch_seconds = Some(now_epoch_seconds);
+        self.peer_wait_since_epoch_seconds = None;
         self.next_direction = ReciprocalLoopDirection::PeerToLocal;
-        self.last_failure_class = None;
-        self.last_failure_detail = None;
+        self.clear_retry_state_after_success();
         self.pane_set_ready(format!(
             "Reciprocal loop dispatched request {} ({} sats)",
             request_id, self.amount_sats
         ));
-    }
-
-    pub fn mark_dispatch_failed(&mut self, detail: &str) {
-        self.last_failure_class = Some(ReciprocalLoopFailureClass::Dispatch);
-        self.last_failure_detail = Some(detail.to_string());
-        let _ = self.pane_set_error(format!("Reciprocal loop dispatch failed: {}", detail));
     }
 
     pub fn match_outbound_request(&self, request: &SubmittedNetworkRequest) -> bool {
@@ -1397,8 +1640,8 @@ impl ReciprocalLoopState {
                         self.in_flight_since_epoch_seconds = None;
                     }
                     self.next_direction = ReciprocalLoopDirection::PeerToLocal;
-                    self.last_failure_class = None;
-                    self.last_failure_detail = None;
+                    self.peer_wait_since_epoch_seconds = None;
+                    self.clear_retry_state_after_success();
                     self.pane_set_ready(format!(
                         "Reciprocal loop outbound settled request {} pointer={}",
                         request.request_id,
@@ -1415,7 +1658,10 @@ impl ReciprocalLoopState {
                         self.in_flight_since_epoch_seconds = None;
                     }
                     self.next_direction = ReciprocalLoopDirection::LocalToPeer;
+                    self.peer_wait_since_epoch_seconds = None;
                     self.last_failure_class = Some(ReciprocalLoopFailureClass::Payment);
+                    self.last_failure_disposition =
+                        Some(ReciprocalLoopFailureDisposition::Recoverable);
                     self.last_failure_detail = request.payment_error.clone().or_else(|| {
                         Some("loop outbound request reached failed status".to_string())
                     });
@@ -1463,8 +1709,8 @@ impl ReciprocalLoopState {
                         self.last_payment_pointer = Some(row.payment_pointer.clone());
                     }
                     self.next_direction = ReciprocalLoopDirection::LocalToPeer;
-                    self.last_failure_class = None;
-                    self.last_failure_detail = None;
+                    self.peer_wait_since_epoch_seconds = None;
+                    self.clear_retry_state_after_success();
                     self.pane_set_ready(format!(
                         "Reciprocal loop inbound settled job {} pointer={}",
                         row.job_id, row.payment_pointer
@@ -1474,7 +1720,10 @@ impl ReciprocalLoopState {
                 crate::app_state::JobHistoryStatus::Failed => {
                     self.peer_to_local_failed = self.peer_to_local_failed.saturating_add(1);
                     self.next_direction = ReciprocalLoopDirection::LocalToPeer;
+                    self.peer_wait_since_epoch_seconds = None;
                     self.last_failure_class = Some(ReciprocalLoopFailureClass::Job);
+                    self.last_failure_disposition =
+                        Some(ReciprocalLoopFailureDisposition::Recoverable);
                     self.last_failure_detail = row.failure_reason.clone().or_else(|| {
                         Some("loop inbound job finished with failed history receipt".to_string())
                     });
