@@ -1269,10 +1269,10 @@ fn paint_activity_feed_pane(
     activity_feed: &ActivityFeedState,
     paint: &mut PaintContext,
 ) {
-    paint_source_badge(content_bounds, "runtime+wallet+local", paint);
+    paint_source_badge(content_bounds, &activity_feed.projection_stream_id, paint);
 
     let refresh_bounds = activity_feed_refresh_button_bounds(content_bounds);
-    paint_action_button(refresh_bounds, "Refresh feed", paint);
+    paint_action_button(refresh_bounds, "Reload stream", paint);
 
     let filters = ActivityFeedFilter::all();
     for (index, filter) in filters.into_iter().enumerate() {
