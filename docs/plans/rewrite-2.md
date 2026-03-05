@@ -262,6 +262,10 @@ The Economy Kernel MUST NOT evolve into any of the following:
 4. **Client-side custody.** Client/UI code MUST NOT be entrusted with authority to move pooled funds; custody boundaries remain server-side and receipt-driven.
 5. **Unscoped credit lines.** Credit remains bounded envelopes only (see §1.4 / §4.2).
 
+#### 1.8 Normative language
+
+The keywords **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, and **MAY** are to be interpreted as normative requirements (RFC 2119-style). When in conflict, **MUST/MUST NOT** take precedence over **SHOULD/SHOULD NOT**.
+
 ---
 
 ## 2. Kernel Objects, Roles, and Economy State Variables
@@ -318,6 +322,10 @@ The Economy Kernel is operated by distinct roles. These roles exist to make auth
 ### 2.2 Required WorkUnit metadata (new)
 
 To implement verification-as-bottleneck correctly, every WorkUnit MUST include:
+
+0. **Work category (`category`)**
+
+* A stable, machine-readable category label used for policy matching and `/stats` breakdowns (e.g., `compute`, `autopilot`, `legal`, `ops`, `security`).
 
 1. **Feedback latency classification (`tfb`)**
 
@@ -717,6 +725,14 @@ Idempotency is not “best effort”; it defines replay safety.
 4. **Terminality is explicit.**
    If an action is already finalized (e.g., contract already settled, claim already resolved), replay attempts MUST return a deterministic “already finalized” response, not a new effect.
 
+**Idempotency key scope (normative)**
+Idempotency MUST be evaluated within a deterministic scope consisting of:
+
+* the authority endpoint/action name, and
+* the authenticated caller identity.
+
+Reusing an `idempotency_key` outside this scope MUST NOT collide. Reusing the same key within this scope with different normalized request inputs MUST trigger `IDEMPOTENCY_CONFLICT`.
+
 ### 5.8 Correlation risk flags (new)
 
 Receipts MUST include correlation-risk flags when applicable:
@@ -725,6 +741,10 @@ Receipts MUST include correlation-risk flags when applicable:
 * whether achieved tier satisfied policy’s heterogeneity requirements
 
 This prevents “measured sv” from being inflated by low-quality verification.
+
+### 5.9 Reason codes (normative)
+
+Any `reason_code` referenced in this spec MUST come from a **versioned, documented, machine-readable code set** (e.g., an enum in the proto wire contract or an equivalent versioned registry). Reason codes MUST be stable over time; new codes may be added, but existing codes MUST NOT change meaning.
 
 ---
 
@@ -933,6 +953,7 @@ Reputation is an internal measurement derived strictly from receipts. It is not 
 * UI MUST consume the snapshot via the system’s realtime subscription mechanism (server-pushed updates), not polling.
 * Snapshot computation MUST be **idempotent and receipted** (authority-like): recomputing the same minute snapshot must yield the same `snapshot_id`/`snapshot_hash` (or a stable reference) and must not produce conflicting snapshots for the same time boundary.
 * Any breaker activation, autonomy mode transition, or `WITHHELD/EXPIRED` decision driven by `sv`, `Δm_hat`, `XA_hat`, or correlated-verification share MUST reference the **specific** `snapshot_id` and `snapshot_hash` used to make that decision (recorded in the corresponding receipt).
+* The snapshot time boundary MUST be deterministic: `as_of_ms` MUST be rounded down to the start of the minute (UTC), and the same boundary MUST be used across the system.
 
 ### 7.2 Tables and required metrics (expanded)
 
