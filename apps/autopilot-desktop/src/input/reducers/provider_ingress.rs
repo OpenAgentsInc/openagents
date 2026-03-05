@@ -268,6 +268,18 @@ fn apply_ignored_ingress_request(
     request: &JobInboxNetworkRequest,
     reason: &str,
 ) {
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs());
+    state
+        .earn_kernel_receipts
+        .record_network_preflight_rejection(
+            request,
+            reason,
+            now_epoch_seconds,
+            "nip90.relay.ingress.reject",
+        );
+
     state.job_inbox.load_state = PaneLoadState::Ready;
     state.job_inbox.last_error = None;
     state.job_inbox.last_action = Some(format!(

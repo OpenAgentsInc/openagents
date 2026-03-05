@@ -99,6 +99,20 @@ pub(super) fn run_job_inbox_action(state: &mut RenderState, action: JobInboxPane
                     state.job_inbox.load_state = PaneLoadState::Ready;
                     state.provider_runtime.last_result =
                         Some(format!("runtime rejected request {request_id}"));
+                    let rejected_request = state
+                        .job_inbox
+                        .requests
+                        .iter()
+                        .find(|request| request.request_id == request_id)
+                        .cloned();
+                    if let Some(request) = rejected_request.as_ref() {
+                        state.earn_kernel_receipts.record_preflight_rejection(
+                            request,
+                            "failed policy preflight",
+                            current_epoch_seconds(),
+                            "job.inbox.reject",
+                        );
+                    }
                 }
                 Err(error) => {
                     state.job_inbox.last_error = Some(error);
