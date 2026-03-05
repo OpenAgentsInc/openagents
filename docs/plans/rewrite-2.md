@@ -134,16 +134,17 @@ These invariants apply to all modules, flows, and extensions.
 
 3. **Every authority request MUST include:**
 
+* `authenticated caller identity (service principal, agent identity, or operator identity)`
 * `idempotency_key`
 * `policy_bundle_id`
-* trace context (`session_id`, `trajectory_hash`, `job_hash`, etc.)
+* `trace context (session_id, trajectory_hash, job_hash, etc.)`
 
 ### 1.2 Determinism, receipts, replay safety
 
 1. **Every authority mutation MUST be idempotent.**
-   Replaying the same request with the same idempotency key MUST not duplicate effects.
+   Replaying the same request with the same idempotency key MUST not duplicate effects and MUST return the same terminal result and the same receipt (or a stable reference to it).
 
-2. **Every authority mutation MUST emit a deterministic Receipt** (see §5).
+2. **Every authority mutation MUST emit a deterministic Receipt** (see §5), including failure and withheld paths.
    Receipts are the only truth source for:
 
 * underwriting
@@ -155,6 +156,13 @@ These invariants apply to all modules, flows, and extensions.
 3. **Failure MUST be explicit.**
    No silent retries that change outcomes without durable receipts. If a step is retried, the retry must be a receipted state transition.
 
+4. **Any non-deterministic external dependency MUST be snapshotted or bound before execution.**
+   Examples:
+
+* `LN payments bind fee ceilings/expiry via quote → execute.`
+* `FX binds selection via rfq → quote → select → settle.`
+* `Verification binds the decision via a declared plan and evidence digests.`
+
 ### 1.3 Policy-bounded execution
 
 1. **Every authority mutation MUST execute under an explicit PolicyBundle** (`policy_bundle_id`).
@@ -162,7 +170,10 @@ These invariants apply to all modules, flows, and extensions.
 
 2. **Denials and withholds MUST be receipted** with typed reasons (fee cap, expiry, breaker, insufficient budget, etc.).
 
-### 1.4 No unscoped credit
+3. **Policy evaluation MUST be explainable.**
+   Receipts MUST include policy notes (as evidence refs or stable tags) sufficient to explain why an action was allowed, denied, or withheld.
+
+### 1.4 Credit and risk posture
 
 1. The system MUST NOT provide open-ended lines of credit.
    All credit is via **bounded envelopes** with:
@@ -171,6 +182,12 @@ These invariants apply to all modules, flows, and extensions.
 * strict cap
 * strict expiry
 * explicit settlement conditions
+
+2. **Circuit breakers MUST be explicit and receipted.**
+   Breakers are not hidden throttles. When a breaker changes behavior, it must be observable and explainable.
+
+3. **Risk is partitioned, not implicit.**
+   Pool and collateral exposures must be attributable to partitions (liquidity, credit, bonds, reserves) so subsidies and losses are legible.
 
 ### 1.5 Verification is production infrastructure
 
@@ -323,6 +340,12 @@ The system’s success metric is **NV**, not N.
 * **Kernel:** performs authority actions and emits receipts
 * **Wallet Executor:** canonical custody boundary, produces settlement proofs
 * **Liquidity backends:** internal plumbing; never the external interface
+
+**Kernel services are execution, not product UI.** The kernel is invoked by Autopilot, Marketplace, and TreasuryRouter; it does not define UI behavior.
+
+**Wallet Executor is the custody boundary.** Kernel receipts may reference wallet-executor receipts as settlement proofs. The kernel must not assume payment occurred without canonical proof.
+
+**Liquidity backends are plumbing, not the interface.** The kernel exposes quote/execute semantics and receipts; node ops and backend details remain internal.
 
 ### 3.3 Trust zones
 
@@ -481,6 +504,8 @@ All receipts MUST include:
 * trace context (session/run/trajectory/job/work_unit/contract ids)
 * `inputs_hash`, `outputs_hash`
 * evidence refs with digests
+
+Receipts MAY include non-normative tags/metadata that do not affect canonical hashing.
 
 ### 5.2 Cross-receipt linkage rules (normative)
 
@@ -748,6 +773,7 @@ Synthetic practice is not optional: it is how verification capacity scales over 
 
   * receipts
   * signed pool snapshots (where applicable)
+* The minute snapshot MUST be persisted durably and retrievable by snapshot id for audit/replay.
 * UI MUST consume the snapshot via the system’s realtime subscription mechanism (server-pushed updates), not polling.
 
 ### 7.2 Tables and required metrics (expanded)
