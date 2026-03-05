@@ -21,6 +21,7 @@ const DRIFT_THRESHOLD_PAYOUT_SUCCESS_MIN: f64 = 0.80;
 const DRIFT_THRESHOLD_DISPUTE_CLAIM_SHARE_MAX: f64 = 0.08;
 const DRIFT_THRESHOLD_INCIDENT_SHARE_MAX: f64 = 0.05;
 const DRIFT_THRESHOLD_XA_MAX: f64 = 0.25;
+const SV_EFFECTIVE_LINEAGE_OFFSET_WEIGHT: f64 = 0.5;
 const REASON_CODE_DIGITAL_BORDER_BLOCK_UNCERTIFIED: &str = "DIGITAL_BORDER_BLOCK_UNCERTIFIED";
 const REASON_CODE_CERTIFICATION_REQUIRED: &str = "CERTIFICATION_REQUIRED";
 
@@ -124,7 +125,11 @@ pub struct EconomySnapshot {
     pub as_of_ms: i64,
     pub snapshot_hash: String,
     pub sv: f64,
+    #[serde(default)]
+    pub sv_effective: f64,
     pub rho: f64,
+    #[serde(default)]
+    pub rho_effective: f64,
     pub n: u64,
     pub nv: f64,
     pub delta_m_hat: f64,
@@ -429,13 +434,20 @@ fn build_snapshot(
         })
         .collect::<Vec<_>>();
     let sv = ratio(verified_work_units, total_work_units);
-    let rho = sv;
-    let nv = rho * (total_work_units as f64);
     let correlated_verification_share = ratio(correlated_verified, verified_work_units);
     let provenance_p0_share = ratio(provenance_counts[0], total_work_units);
     let provenance_p1_share = ratio(provenance_counts[1], total_work_units);
     let provenance_p2_share = ratio(provenance_counts[2], total_work_units);
     let provenance_p3_share = ratio(provenance_counts[3], total_work_units);
+    let sv_effective = correlation_adjusted_sv_effective(
+        sv,
+        correlated_verification_share,
+        provenance_p2_share,
+        provenance_p3_share,
+    );
+    let rho = sv;
+    let rho_effective = sv_effective;
+    let nv = rho * (total_work_units as f64);
     let auth_assurance_distribution = auth_assurance_counts
         .into_iter()
         .map(|(level, count)| AuthAssuranceDistributionRow {
@@ -850,7 +862,9 @@ fn build_snapshot(
         snapshot_id,
         as_of_ms,
         sv,
+        sv_effective,
         rho,
+        rho_effective,
         total_work_units,
         nv,
         delta_m_hat,
@@ -898,7 +912,9 @@ fn build_snapshot(
         as_of_ms,
         snapshot_hash,
         sv,
+        sv_effective,
         rho,
+        rho_effective,
         n: total_work_units,
         nv,
         delta_m_hat,
@@ -1479,7 +1495,9 @@ struct CanonicalSnapshotPayload<'a> {
     snapshot_id: &'a str,
     as_of_ms: i64,
     sv: f64,
+    sv_effective: f64,
     rho: f64,
+    rho_effective: f64,
     n: u64,
     nv: f64,
     delta_m_hat: f64,
@@ -1527,7 +1545,9 @@ fn snapshot_hash_for(
     snapshot_id: &str,
     as_of_ms: i64,
     sv: f64,
+    sv_effective: f64,
     rho: f64,
+    rho_effective: f64,
     n: u64,
     nv: f64,
     delta_m_hat: f64,
@@ -1573,7 +1593,9 @@ fn snapshot_hash_for(
         snapshot_id,
         as_of_ms,
         sv,
+        sv_effective,
         rho,
+        rho_effective,
         n,
         nv,
         delta_m_hat,
@@ -1632,6 +1654,22 @@ fn ratio_f64(numerator: f64, denominator: f64) -> f64 {
         return 0.0;
     }
     numerator / denominator
+}
+
+fn correlation_adjusted_sv_effective(
+    sv: f64,
+    correlated_verification_share: f64,
+    provenance_p2_share: f64,
+    provenance_p3_share: f64,
+) -> f64 {
+    let normalized_sv = clamp_unit_interval(sv);
+    let normalized_correlated_share = clamp_unit_interval(correlated_verification_share);
+    let lineage_diversity = clamp_unit_interval(provenance_p2_share + provenance_p3_share);
+    let correlation_penalty = clamp_unit_interval(
+        normalized_correlated_share
+            * (1.0 - (SV_EFFECTIVE_LINEAGE_OFFSET_WEIGHT * lineage_diversity)),
+    );
+    clamp_unit_interval(normalized_sv * (1.0 - correlation_penalty))
 }
 
 fn clamp_unit_interval(value: f64) -> f64 {
@@ -2833,6 +2871,8 @@ mod tests {
         let snapshot = computed.snapshot;
         assert_eq!(snapshot.n, 3);
         assert!((snapshot.sv - (2.0 / 3.0)).abs() < 1e-9);
+        assert!((snapshot.sv_effective - snapshot.sv).abs() < 1e-9);
+        assert!((snapshot.rho_effective - snapshot.sv_effective).abs() < 1e-9);
         assert_eq!(snapshot.sv_breakdown.len(), 1);
         assert_eq!(snapshot.sv_breakdown[0].total_work_units, 3);
         assert_eq!(snapshot.sv_breakdown[0].verified_work_units, 2);
@@ -2862,6 +2902,66 @@ mod tests {
         assert_eq!(snapshot.rollback_successes_24h, 0);
         assert_eq!(snapshot.rollback_success_rate, 0.0);
         assert!(snapshot.top_rollback_reason_codes.is_empty());
+    }
+
+    #[test]
+    fn sv_effective_discount_function_handles_edge_cases() {
+        let no_correlation = correlation_adjusted_sv_effective(1.0, 0.0, 0.0, 0.0);
+        assert!((no_correlation - 1.0).abs() < 1e-9);
+
+        let maximal_penalty = correlation_adjusted_sv_effective(1.0, 1.0, 0.0, 0.0);
+        assert!((maximal_penalty - 0.0).abs() < 1e-9);
+
+        let lineage_offset = correlation_adjusted_sv_effective(0.8, 0.5, 0.5, 0.5);
+        assert!((lineage_offset - 0.6).abs() < 1e-9);
+
+        let clamped = correlation_adjusted_sv_effective(1.5, 2.0, 2.0, 2.0);
+        assert!((clamped - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn snapshot_applies_correlation_adjusted_sv_effective() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let path = temp_dir.path().join("snapshots-sv-effective.json");
+        let mut state = EconomySnapshotState::from_snapshot_path_for_tests(path);
+
+        let mut paid_correlated = fixture_receipt(
+            "receipt-paid-correlated",
+            "earn.job.settlement_observed.v1",
+            1_762_000_010_000,
+            "job-correlated",
+            true,
+        );
+        paid_correlated.hints.verification_correlated = Some(true);
+
+        let paid_uncorrelated = fixture_receipt(
+            "receipt-paid-uncorrelated",
+            "earn.job.settlement_observed.v1",
+            1_762_000_011_000,
+            "job-uncorrelated",
+            true,
+        );
+        let failed = fixture_receipt(
+            "receipt-failed-uncorrelated",
+            "earn.job.failed.v1",
+            1_762_000_012_000,
+            "job-failed",
+            false,
+        );
+
+        let snapshot = state
+            .compute_minute_snapshot(
+                1_762_000_060_000,
+                &[paid_correlated, paid_uncorrelated, failed],
+            )
+            .expect("snapshot should compute")
+            .snapshot;
+
+        assert!((snapshot.sv - (2.0 / 3.0)).abs() < 1e-9);
+        assert!((snapshot.correlated_verification_share - 0.5).abs() < 1e-9);
+        assert!((snapshot.sv_effective - (1.0 / 3.0)).abs() < 1e-9);
+        assert!(snapshot.sv_effective < snapshot.sv);
+        assert!((snapshot.rho_effective - snapshot.sv_effective).abs() < 1e-9);
     }
 
     #[test]

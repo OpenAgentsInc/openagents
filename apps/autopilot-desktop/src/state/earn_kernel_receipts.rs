@@ -189,6 +189,8 @@ struct AutonomyPolicyRule {
     #[serde(default)]
     min_sv: Option<f64>,
     #[serde(default)]
+    min_sv_effective: Option<f64>,
+    #[serde(default)]
     max_xa_hat: Option<f64>,
     #[serde(default)]
     max_delta_m_hat: Option<f64>,
@@ -231,6 +233,8 @@ struct PolicyBundleConfig {
 #[derive(Clone, Copy, Default)]
 struct SnapshotPolicyMetrics {
     sv: f64,
+    sv_effective: f64,
+    rho_effective: f64,
     xa_hat: f64,
     delta_m_hat: f64,
     correlated_verification_share: f64,
@@ -1906,7 +1910,9 @@ impl EarnKernelReceiptState {
         as_of_ms: i64,
         snapshot_hash: &str,
         sv: f64,
+        sv_effective: f64,
         rho: f64,
+        rho_effective: f64,
         n: u64,
         nv: f64,
         delta_m_hat: f64,
@@ -1945,7 +1951,7 @@ impl EarnKernelReceiptState {
         ));
         let snapshot_metrics_digest = digest_for_text(
             format!(
-                "{snapshot_id}:{sv}:{rho}:{n}:{nv}:{delta_m_hat}:{xa_hat}:{correlated_verification_share}:{liability_premiums_collected_24h_sats}:{claims_paid_24h_sats}:{bonded_exposure_24h_sats}:{capital_reserves_24h_sats}:{loss_ratio}:{capital_coverage_ratio}:{drift_alerts_24h}:{rollback_attempts_24h}:{rollback_successes_24h}:{rollback_success_rate}:{}:{}:{audit_package_public_digest}:{audit_package_restricted_digest}"
+                "{snapshot_id}:{sv}:{sv_effective}:{rho}:{rho_effective}:{n}:{nv}:{delta_m_hat}:{xa_hat}:{correlated_verification_share}:{liability_premiums_collected_24h_sats}:{claims_paid_24h_sats}:{bonded_exposure_24h_sats}:{capital_reserves_24h_sats}:{loss_ratio}:{capital_coverage_ratio}:{drift_alerts_24h}:{rollback_attempts_24h}:{rollback_successes_24h}:{rollback_success_rate}:{}:{}:{audit_package_public_digest}:{audit_package_restricted_digest}"
                 ,
                 drift_signal_digest_material(drift_signals.as_slice()),
                 top_rollback_reason_codes
@@ -1962,7 +1968,13 @@ impl EarnKernelReceiptState {
             snapshot_metrics_digest,
         );
         snapshot_metrics.meta.insert("sv".to_string(), json!(sv));
+        snapshot_metrics
+            .meta
+            .insert("sv_effective".to_string(), json!(sv_effective));
         snapshot_metrics.meta.insert("rho".to_string(), json!(rho));
+        snapshot_metrics
+            .meta
+            .insert("rho_effective".to_string(), json!(rho_effective));
         snapshot_metrics.meta.insert("n".to_string(), json!(n));
         snapshot_metrics.meta.insert("nv".to_string(), json!(nv));
         snapshot_metrics
@@ -2060,7 +2072,9 @@ impl EarnKernelReceiptState {
             "as_of_ms": as_of_ms,
             "status": "computed",
             "sv": sv,
+            "sv_effective": sv_effective,
             "rho": rho,
+            "rho_effective": rho_effective,
             "N": n,
             "NV": nv,
             "delta_m_hat": delta_m_hat,
@@ -2120,6 +2134,7 @@ impl EarnKernelReceiptState {
             as_of_ms,
             snapshot_hash,
             sv,
+            sv_effective,
             xa_hat,
             delta_m_hat,
             correlated_verification_share,
@@ -2405,6 +2420,7 @@ impl EarnKernelReceiptState {
         as_of_ms: i64,
         snapshot_hash: &str,
         sv: f64,
+        sv_effective: f64,
         xa_hat: f64,
         delta_m_hat: f64,
         correlated_verification_share: f64,
@@ -2428,6 +2444,8 @@ impl EarnKernelReceiptState {
             severity,
             SnapshotPolicyMetrics {
                 sv,
+                sv_effective,
+                rho_effective: sv_effective,
                 xa_hat,
                 delta_m_hat,
                 correlated_verification_share,
@@ -2482,6 +2500,7 @@ impl EarnKernelReceiptState {
                 "snapshot_id": snapshot_id,
                 "snapshot_hash": snapshot_hash,
                 "sv": sv,
+                "sv_effective": sv_effective,
                 "xa_hat": xa_hat,
                 "delta_m_hat": delta_m_hat,
                 "correlated_verification_share": correlated_verification_share,
@@ -5833,6 +5852,7 @@ fn default_policy_bundle() -> PolicyBundleConfig {
                     severity: None,
                 },
                 min_sv: None,
+                min_sv_effective: None,
                 max_xa_hat: Some(0.15),
                 max_delta_m_hat: None,
                 max_correlated_share: Some(0.60),
@@ -5851,6 +5871,7 @@ fn default_policy_bundle() -> PolicyBundleConfig {
                     severity: Some(SeverityClass::High),
                 },
                 min_sv: Some(0.40),
+                min_sv_effective: Some(0.40),
                 max_xa_hat: Some(0.40),
                 max_delta_m_hat: Some(0.35),
                 max_correlated_share: Some(0.85),
@@ -6579,6 +6600,10 @@ fn pricing_snapshot_context_from_receipt(receipt: &Receipt) -> Option<PricingSna
         .find(|evidence| evidence.kind == "snapshot_metrics")
     {
         metrics.sv = extract_f64_meta(metrics_evidence, "sv").unwrap_or(0.0);
+        metrics.sv_effective =
+            extract_f64_meta(metrics_evidence, "sv_effective").unwrap_or(metrics.sv);
+        metrics.rho_effective = extract_f64_meta(metrics_evidence, "rho_effective")
+            .unwrap_or(metrics.sv_effective);
         metrics.xa_hat = extract_f64_meta(metrics_evidence, "xa_hat").unwrap_or(0.0);
         metrics.delta_m_hat = extract_f64_meta(metrics_evidence, "delta_m_hat").unwrap_or(0.0);
         metrics.correlated_verification_share =
@@ -6750,6 +6775,8 @@ fn pricing_payload(pricing: &LiabilityPricingBreakdown) -> serde_json::Value {
         },
         "pricing_metrics": {
             "sv": pricing.pricing_metrics.sv,
+            "sv_effective": pricing.pricing_metrics.sv_effective,
+            "rho_effective": pricing.pricing_metrics.rho_effective,
             "xa_hat": pricing.pricing_metrics.xa_hat,
             "delta_m_hat": pricing.pricing_metrics.delta_m_hat,
             "correlated_verification_share": pricing.pricing_metrics.correlated_verification_share,
@@ -8177,7 +8204,13 @@ fn autonomy_rule_triggered(rule: &AutonomyPolicyRule, metrics: SnapshotPolicyMet
 
     if let Some(min_sv) = rule.min_sv {
         has_threshold = true;
-        if metrics.sv < min_sv {
+        if metrics.sv_effective < min_sv {
+            triggered = true;
+        }
+    }
+    if let Some(min_sv_effective) = rule.min_sv_effective {
+        has_threshold = true;
+        if metrics.sv_effective < min_sv_effective {
             triggered = true;
         }
     }
@@ -11049,6 +11082,8 @@ mod tests {
             "sha256:snapshot",
             0.5,
             0.5,
+            0.5,
+            0.5,
             2,
             1.0,
             0.0,
@@ -11101,6 +11136,8 @@ mod tests {
                 .get("liability_premiums_collected_24h_sats"),
             Some(&json!(125))
         );
+        assert_eq!(snapshot_metrics.meta.get("sv_effective"), Some(&json!(0.5)));
+        assert_eq!(snapshot_metrics.meta.get("rho_effective"), Some(&json!(0.5)));
         assert_eq!(
             snapshot_metrics.meta.get("claims_paid_24h_sats"),
             Some(&json!(25))
@@ -11955,6 +11992,8 @@ mod tests {
             "sha256:snapshot",
             0.5,
             0.5,
+            0.5,
+            0.5,
             2,
             1.0,
             0.0,
@@ -11982,6 +12021,8 @@ mod tests {
             "snapshot.economy:1762000060000",
             1_762_000_060_000,
             "sha256:snapshot",
+            0.5,
+            0.5,
             0.5,
             0.5,
             2,
@@ -12068,6 +12109,8 @@ mod tests {
             "sha256:snapshot-a",
             0.5,
             0.5,
+            0.5,
+            0.5,
             2,
             1.0,
             0.0,
@@ -12097,6 +12140,8 @@ mod tests {
             "snapshot.economy:1762000120000",
             1_762_000_120_000,
             "sha256:snapshot-b",
+            0.8,
+            0.8,
             0.8,
             0.8,
             2,
@@ -12156,6 +12201,8 @@ mod tests {
             "snapshot.economy:1762000060000",
             1_762_000_060_000,
             "sha256:snapshot",
+            0.55,
+            0.55,
             0.55,
             0.55,
             4,
@@ -12266,6 +12313,8 @@ mod tests {
             "snapshot.economy:1762000060000",
             1_762_000_060_000,
             "sha256:snapshot",
+            0.5,
+            0.5,
             0.5,
             0.5,
             2,
@@ -12526,6 +12575,7 @@ mod tests {
                     severity: Some(SeverityClass::High),
                 },
                 min_sv: Some(0.80),
+                min_sv_effective: Some(0.80),
                 max_xa_hat: Some(0.10),
                 max_delta_m_hat: None,
                 max_correlated_share: None,
@@ -12560,6 +12610,8 @@ mod tests {
             SeverityClass::High,
             SnapshotPolicyMetrics {
                 sv: 0.30,
+                sv_effective: 0.30,
+                rho_effective: 0.30,
                 xa_hat: 0.20,
                 delta_m_hat: 0.0,
                 correlated_verification_share: 0.0,
@@ -12584,6 +12636,46 @@ mod tests {
     }
 
     #[test]
+    fn autonomy_thresholds_use_sv_effective_not_raw_sv() {
+        let bundle = PolicyBundleConfig {
+            autonomy_rules: vec![AutonomyPolicyRule {
+                rule_id: "policy.autonomy.sv_effective_floor.v1".to_string(),
+                slice: PolicySliceRule {
+                    category: Some("compute".to_string()),
+                    tfb_class: Some(FeedbackLatencyClass::Short),
+                    severity: Some(SeverityClass::High),
+                },
+                min_sv: Some(0.80),
+                min_sv_effective: Some(0.80),
+                max_xa_hat: None,
+                max_delta_m_hat: None,
+                max_correlated_share: None,
+                max_drift_alerts_24h: None,
+                actions: vec![ThrottleActionKind::SetModeDegraded],
+            }],
+            ..PolicyBundleConfig::default()
+        };
+
+        let actions = evaluate_triggered_policy_actions(
+            &bundle,
+            "compute",
+            FeedbackLatencyClass::Short,
+            SeverityClass::High,
+            SnapshotPolicyMetrics {
+                sv: 0.95,
+                sv_effective: 0.50,
+                rho_effective: 0.50,
+                xa_hat: 0.0,
+                delta_m_hat: 0.0,
+                correlated_verification_share: 0.0,
+                drift_alerts_24h: 0,
+            },
+        );
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].action, ThrottleActionKind::SetModeDegraded);
+    }
+
+    #[test]
     fn policy_throttle_receipts_are_snapshot_bound_and_receipted() {
         let temp_dir = tempfile::tempdir().expect("tempdir");
         let state_path = temp_dir.path().join("receipts.json");
@@ -12597,6 +12689,7 @@ mod tests {
                     severity: Some(SeverityClass::High),
                 },
                 min_sv: Some(0.90),
+                min_sv_effective: Some(0.90),
                 max_xa_hat: None,
                 max_delta_m_hat: None,
                 max_correlated_share: None,
@@ -12611,6 +12704,7 @@ mod tests {
             1_762_000_060_000,
             "sha256:snapshot",
             0.2,
+            0.0,
             0.0,
             0.0,
             0.0,
