@@ -248,7 +248,6 @@ impl CredentialRepository {
         pairs.sort_by_key(|entry| entry.0.clone());
         Ok(pairs)
     }
-
 }
 
 pub fn is_valid_env_var_name(raw: &str) -> bool {

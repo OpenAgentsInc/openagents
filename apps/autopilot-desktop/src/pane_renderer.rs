@@ -26,12 +26,12 @@ use crate::pane_system::{
     credentials_scope_codex_button_bounds, credentials_scope_global_button_bounds,
     credentials_scope_skills_button_bounds, credentials_scope_spark_button_bounds,
     credentials_toggle_enabled_button_bounds, credentials_value_input_bounds,
-    credentials_visible_row_count,
-    earnings_scoreboard_refresh_button_bounds, go_online_toggle_button_bounds,
-    job_history_next_page_button_bounds, job_history_prev_page_button_bounds,
-    job_history_search_input_bounds, job_history_status_button_bounds,
-    job_history_time_button_bounds, job_inbox_accept_button_bounds, job_inbox_reject_button_bounds,
-    job_inbox_row_bounds, job_inbox_visible_row_count, network_requests_budget_input_bounds,
+    credentials_visible_row_count, earnings_scoreboard_refresh_button_bounds,
+    go_online_toggle_button_bounds, job_history_next_page_button_bounds,
+    job_history_prev_page_button_bounds, job_history_search_input_bounds,
+    job_history_status_button_bounds, job_history_time_button_bounds,
+    job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
+    job_inbox_visible_row_count, network_requests_budget_input_bounds,
     network_requests_credit_envelope_input_bounds, network_requests_payload_input_bounds,
     network_requests_skill_scope_input_bounds, network_requests_submit_button_bounds,
     network_requests_timeout_input_bounds, network_requests_type_input_bounds,
@@ -45,8 +45,8 @@ use crate::pane_system::{
 use crate::panes::{
     agent as agent_pane, cad as cad_pane, calculator as calculator_pane, cast as cast_pane,
     chat as chat_pane, codex as codex_pane, credit as credit_pane,
-    relay_connections as relay_connections_pane, simulation as simulation_pane, skill as skill_pane,
-    wallet as wallet_pane,
+    relay_connections as relay_connections_pane, simulation as simulation_pane,
+    skill as skill_pane, wallet as wallet_pane,
 };
 use crate::spark_wallet::SparkPaneState;
 use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
@@ -788,7 +788,7 @@ fn paint_sync_health_pane(
     sync_health: &SyncHealthState,
     paint: &mut PaintContext,
 ) {
-    paint_source_badge(content_bounds, "runtime", paint);
+    paint_source_badge(content_bounds, sync_health.source_tag.as_str(), paint);
 
     let rebootstrap_bounds = sync_health_rebootstrap_button_bounds(content_bounds);
     paint_action_button(rebootstrap_bounds, "Rebootstrap sync", paint);
@@ -830,6 +830,13 @@ fn paint_sync_health_pane(
         paint,
         content_bounds.origin.x + 12.0,
         y,
+        "Source",
+        &sync_health.source_tag,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
         "Spacetime connection",
         &sync_health.spacetime_connection,
     );
@@ -844,8 +851,22 @@ fn paint_sync_health_pane(
         paint,
         content_bounds.origin.x + 12.0,
         y,
+        "Reconnect posture",
+        &sync_health.reconnect_posture,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
         "Cursor position",
         &sync_health.cursor_position.to_string(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Cursor target",
+        &sync_health.cursor_target_position.to_string(),
     );
     y = paint_label_line(
         paint,
@@ -886,6 +907,56 @@ fn paint_sync_health_pane(
         y,
         "Recovery phase",
         sync_health.recovery_phase.label(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Replay progress",
+        &sync_health
+            .replay_progress_percent
+            .map_or_else(|| "n/a".to_string(), |value| format!("{value}%")),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Replay lag",
+        &sync_health
+            .replay_lag_seq
+            .map_or_else(|| "n/a".to_string(), |value| value.to_string()),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Next retry (ms)",
+        &sync_health
+            .next_retry_ms
+            .map_or_else(|| "n/a".to_string(), |value| value.to_string()),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Token refresh (s)",
+        &sync_health
+            .token_refresh_after_in_seconds
+            .map_or_else(|| "n/a".to_string(), |value| value.to_string()),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Disconnect reason",
+        sync_health.disconnect_reason.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Stale reason",
+        sync_health.stale_cursor_reason.as_deref().unwrap_or("n/a"),
     );
     y = paint_label_line(
         paint,

@@ -2,8 +2,9 @@
 
 use std::time::Instant;
 
-use crate::app_state::{PaneLoadState, PaneStatusAccess, ProviderMode, ProviderRuntimeState};
+use crate::app_state::{PaneLoadState, PaneStatusAccess};
 use crate::runtime_lanes::RuntimeCommandResponse;
+use crate::sync_lifecycle::{RuntimeSyncConnectionState, RuntimeSyncHealthSnapshot};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RelayConnectionStatus {
@@ -156,15 +157,25 @@ pub struct SyncHealthState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
     pub last_action: Option<String>,
+    pub source_tag: String,
     pub spacetime_connection: String,
     pub subscription_state: String,
+    pub reconnect_posture: String,
+    pub stale_cursor_reason: Option<String>,
     pub cursor_position: u64,
+    pub cursor_target_position: u64,
     pub cursor_stale_after_seconds: u64,
     pub cursor_last_advanced_seconds_ago: u64,
     pub recovery_phase: SyncRecoveryPhase,
     pub last_applied_event_seq: u64,
     pub duplicate_drop_count: u64,
     pub replay_count: u32,
+    pub replay_progress_percent: Option<u8>,
+    pub replay_lag_seq: Option<u64>,
+    pub next_retry_ms: Option<u64>,
+    pub token_refresh_after_in_seconds: Option<u64>,
+    pub disconnect_reason: Option<String>,
+    cursor_last_advanced_at: Option<Instant>,
 }
 
 impl Default for SyncHealthState {
@@ -173,15 +184,25 @@ impl Default for SyncHealthState {
             load_state: PaneLoadState::Loading,
             last_error: None,
             last_action: Some("Waiting for sync lane telemetry".to_string()),
+            source_tag: "spacetime.sync.lifecycle".to_string(),
             spacetime_connection: "unknown".to_string(),
             subscription_state: "unsubscribed".to_string(),
+            reconnect_posture: "none".to_string(),
+            stale_cursor_reason: None,
             cursor_position: 0,
+            cursor_target_position: 0,
             cursor_stale_after_seconds: 12,
             cursor_last_advanced_seconds_ago: 0,
             recovery_phase: SyncRecoveryPhase::Idle,
             last_applied_event_seq: 0,
             duplicate_drop_count: 0,
             replay_count: 0,
+            replay_progress_percent: None,
+            replay_lag_seq: None,
+            next_retry_ms: None,
+            token_refresh_after_in_seconds: None,
+            disconnect_reason: None,
+            cursor_last_advanced_at: Some(Instant::now()),
         }
     }
 }
@@ -195,61 +216,135 @@ impl SyncHealthState {
         self.replay_count = self.replay_count.saturating_add(1);
         self.recovery_phase = SyncRecoveryPhase::Replaying;
         self.cursor_position = self.last_applied_event_seq;
+        self.cursor_target_position = self.cursor_position;
         self.cursor_last_advanced_seconds_ago = 0;
+        self.cursor_last_advanced_at = Some(Instant::now());
+        self.stale_cursor_reason = None;
+        self.disconnect_reason = None;
         self.pane_set_ready(format!(
             "Rebootstrapped sync stream (attempt #{})",
             self.replay_count
         ));
     }
 
-    pub fn refresh_from_runtime(
+    pub fn refresh_from_lifecycle(
         &mut self,
         now: Instant,
-        provider_runtime: &ProviderRuntimeState,
-        relay_connections: &RelayConnectionsState,
+        lifecycle: Option<&RuntimeSyncHealthSnapshot>,
     ) {
-        self.spacetime_connection = provider_runtime.mode.label().to_string();
-        let connected_relays = relay_connections
-            .relays
-            .iter()
-            .filter(|relay| relay.status == RelayConnectionStatus::Connected)
-            .count();
-        self.subscription_state = if connected_relays > 0 {
-            "subscribed".to_string()
-        } else {
-            "resubscribing".to_string()
+        self.source_tag = "spacetime.sync.lifecycle".to_string();
+        self.cursor_position = self.cursor_position.max(self.last_applied_event_seq);
+        self.cursor_target_position = self.cursor_target_position.max(self.cursor_position);
+
+        let Some(snapshot) = lifecycle else {
+            self.spacetime_connection = "unknown".to_string();
+            self.subscription_state = "unsubscribed".to_string();
+            self.reconnect_posture = "none".to_string();
+            self.next_retry_ms = None;
+            self.replay_progress_percent = None;
+            self.replay_lag_seq = None;
+            self.token_refresh_after_in_seconds = None;
+            self.disconnect_reason = None;
+            self.stale_cursor_reason = None;
+            self.cursor_last_advanced_seconds_ago = 0;
+            self.cursor_last_advanced_at = Some(now);
+            self.recovery_phase = SyncRecoveryPhase::Idle;
+            *self.pane_load_state_mut() = PaneLoadState::Loading;
+            self.pane_clear_error();
+            return;
         };
-        let monitor_staleness = connected_relays > 0
-            && matches!(
-                provider_runtime.mode,
-                ProviderMode::Online | ProviderMode::Degraded
-            );
-        if monitor_staleness {
-            if let Some(age) = provider_runtime.heartbeat_age_seconds(now) {
-                self.cursor_last_advanced_seconds_ago = age;
-            } else {
-                self.cursor_last_advanced_seconds_ago =
-                    self.cursor_last_advanced_seconds_ago.saturating_add(1);
+
+        self.spacetime_connection = snapshot.state.as_str().to_string();
+        self.next_retry_ms = snapshot.next_retry_ms;
+        self.token_refresh_after_in_seconds = snapshot.token_refresh_after_in_seconds;
+        self.disconnect_reason = snapshot
+            .last_disconnect_reason
+            .map(|reason| reason.as_str().to_string());
+        self.last_error = snapshot.last_error.clone();
+
+        self.subscription_state = match snapshot.state {
+            RuntimeSyncConnectionState::Live => {
+                if snapshot.replay_lag_seq.unwrap_or(0) > 0 {
+                    "replaying".to_string()
+                } else {
+                    "subscribed".to_string()
+                }
             }
+            RuntimeSyncConnectionState::Connecting => "subscribing".to_string(),
+            RuntimeSyncConnectionState::Backoff => "resubscribing".to_string(),
+            RuntimeSyncConnectionState::Idle => "idle".to_string(),
+        };
+        self.reconnect_posture = if snapshot.state == RuntimeSyncConnectionState::Backoff {
+            snapshot.next_retry_ms.map_or_else(
+                || "backoff".to_string(),
+                |delay| format!("backoff ({delay}ms)"),
+            )
+        } else if snapshot.state == RuntimeSyncConnectionState::Connecting {
+            "connecting".to_string()
+        } else {
+            "none".to_string()
+        };
+
+        let previous_cursor = self.cursor_position;
+        let next_cursor = snapshot
+            .replay_cursor_seq
+            .unwrap_or(self.last_applied_event_seq)
+            .max(self.last_applied_event_seq);
+        self.cursor_position = next_cursor;
+        self.cursor_target_position = snapshot
+            .replay_target_seq
+            .unwrap_or(self.cursor_target_position)
+            .max(self.cursor_position);
+        self.replay_lag_seq = snapshot.replay_lag_seq;
+        self.replay_progress_percent = snapshot.replay_progress_pct;
+
+        if self.cursor_position > previous_cursor {
+            self.cursor_last_advanced_at = Some(now);
+        }
+
+        let monitor_staleness = matches!(snapshot.state, RuntimeSyncConnectionState::Live)
+            && self.subscription_state != "replaying";
+        if monitor_staleness {
+            let last_advanced_at = self.cursor_last_advanced_at.get_or_insert(now);
+            self.cursor_last_advanced_seconds_ago = now
+                .checked_duration_since(*last_advanced_at)
+                .map_or(0, |duration| duration.as_secs());
         } else {
             self.cursor_last_advanced_seconds_ago = 0;
+            self.cursor_last_advanced_at = Some(now);
         }
 
         if monitor_staleness && self.cursor_is_stale() {
             self.recovery_phase = SyncRecoveryPhase::Reconnecting;
+            self.stale_cursor_reason = Some(format!(
+                "cursor stalled for {}s (> {}s threshold)",
+                self.cursor_last_advanced_seconds_ago, self.cursor_stale_after_seconds
+            ));
             let _ = self.pane_set_error("Cursor stalled beyond stale threshold");
             return;
         }
+        self.stale_cursor_reason = None;
 
-        if self.recovery_phase != SyncRecoveryPhase::Replaying {
-            self.recovery_phase = if monitor_staleness {
-                SyncRecoveryPhase::Ready
-            } else {
-                SyncRecoveryPhase::Idle
-            };
+        self.recovery_phase = match snapshot.state {
+            RuntimeSyncConnectionState::Backoff | RuntimeSyncConnectionState::Connecting => {
+                SyncRecoveryPhase::Reconnecting
+            }
+            RuntimeSyncConnectionState::Live => {
+                if self.subscription_state == "replaying" {
+                    SyncRecoveryPhase::Replaying
+                } else {
+                    SyncRecoveryPhase::Ready
+                }
+            }
+            RuntimeSyncConnectionState::Idle => SyncRecoveryPhase::Idle,
+        };
+
+        if self.last_error.is_some() {
+            *self.pane_load_state_mut() = PaneLoadState::Error;
+        } else {
+            *self.pane_load_state_mut() = PaneLoadState::Ready;
+            self.pane_clear_error();
         }
-        *self.pane_load_state_mut() = PaneLoadState::Ready;
-        self.pane_clear_error();
     }
 }
 

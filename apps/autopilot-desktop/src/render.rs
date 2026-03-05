@@ -255,6 +255,9 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             sync_health: crate::app_state::SyncHealthState::default(),
             sync_bootstrap_note: None,
             sync_bootstrap_error: None,
+            sync_lifecycle_worker_id: "desktopw:sync".to_string(),
+            sync_lifecycle: crate::sync_lifecycle::RuntimeSyncLifecycleManager::default(),
+            sync_lifecycle_snapshot: None,
             spacetime_presence,
             spacetime_presence_snapshot,
             network_requests: crate::app_state::NetworkRequestsState::default(),
@@ -308,15 +311,26 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
 fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
     state.sync_bootstrap_note = None;
     state.sync_bootstrap_error = None;
+    let worker_id = state.sync_lifecycle_worker_id.clone();
+    state.sync_lifecycle.mark_idle(worker_id.as_str());
+    state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
 
     let client = match reqwest::blocking::Client::builder().build() {
         Ok(value) => value,
         Err(error) => {
             let message = format!("Sync token client initialization failed: {error}");
             state.sync_bootstrap_error = Some(message.clone());
-            state.sync_health.load_state = crate::app_state::PaneLoadState::Error;
-            state.sync_health.spacetime_connection = "error".to_string();
-            state.sync_health.subscription_state = "unsubscribed".to_string();
+            let reason = crate::sync_lifecycle::classify_disconnect_reason(message.as_str());
+            let _ = state.sync_lifecycle.mark_disconnect(
+                worker_id.as_str(),
+                reason,
+                Some(message.clone()),
+            );
+            state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
+            state.sync_health.refresh_from_lifecycle(
+                std::time::Instant::now(),
+                state.sync_lifecycle_snapshot.as_ref(),
+            );
             state.sync_health.last_action = Some("Spacetime bootstrap failed".to_string());
             state.sync_health.last_error = Some(message);
             return;
@@ -330,28 +344,48 @@ fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
                 result.control_token_endpoint, result.target.subscribe_url
             );
             state.sync_bootstrap_note = Some(note.clone());
-            state.sync_health.load_state = crate::app_state::PaneLoadState::Ready;
-            state.sync_health.spacetime_connection = "connecting".to_string();
-            state.sync_health.subscription_state = "bootstrapping".to_string();
+            state.sync_lifecycle.mark_connecting(worker_id.as_str());
+            state
+                .sync_lifecycle
+                .mark_replay_bootstrap(worker_id.as_str(), 0, Some(0));
+            state.sync_lifecycle.mark_live(
+                worker_id.as_str(),
+                result.token_lease.refresh_after_in_seconds,
+            );
+            state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
+            state.sync_health.refresh_from_lifecycle(
+                std::time::Instant::now(),
+                state.sync_lifecycle_snapshot.as_ref(),
+            );
             state.sync_health.last_error = None;
             state.sync_health.last_action = Some(note);
         }
         Ok(None) => {
             let note =
-                "Spacetime bootstrap disabled (set OPENAGENTS_ENABLE_SPACETIME_SYNC=1)"
-                    .to_string();
+                "Spacetime bootstrap disabled (set OPENAGENTS_ENABLE_SPACETIME_SYNC=1)".to_string();
             state.sync_bootstrap_note = Some(note.clone());
-            state.sync_health.load_state = crate::app_state::PaneLoadState::Ready;
-            state.sync_health.spacetime_connection = "disabled".to_string();
-            state.sync_health.subscription_state = "disabled".to_string();
+            state.sync_lifecycle.mark_idle(worker_id.as_str());
+            state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
+            state.sync_health.refresh_from_lifecycle(
+                std::time::Instant::now(),
+                state.sync_lifecycle_snapshot.as_ref(),
+            );
             state.sync_health.last_error = None;
             state.sync_health.last_action = Some(note);
         }
         Err(error) => {
             state.sync_bootstrap_error = Some(error.clone());
-            state.sync_health.load_state = crate::app_state::PaneLoadState::Error;
-            state.sync_health.spacetime_connection = "error".to_string();
-            state.sync_health.subscription_state = "unsubscribed".to_string();
+            let reason = crate::sync_lifecycle::classify_disconnect_reason(error.as_str());
+            let _ = state.sync_lifecycle.mark_disconnect(
+                worker_id.as_str(),
+                reason,
+                Some(error.clone()),
+            );
+            state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
+            state.sync_health.refresh_from_lifecycle(
+                std::time::Instant::now(),
+                state.sync_lifecycle_snapshot.as_ref(),
+            );
             state.sync_health.last_action = Some("Spacetime bootstrap failed".to_string());
             state.sync_health.last_error = Some(error);
         }

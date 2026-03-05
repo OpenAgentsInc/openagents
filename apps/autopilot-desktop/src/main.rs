@@ -18,12 +18,13 @@ mod render;
 mod runtime_lanes;
 mod skill_autoload;
 mod skills_registry;
+mod spacetime_presence;
 mod spark_pane;
 mod spark_wallet;
-mod spacetime_presence;
 mod stablesats_blink_worker;
 mod state;
 mod sync_bootstrap;
+mod sync_lifecycle;
 
 use anyhow::{Context, Result};
 use app_state::App;

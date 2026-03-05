@@ -3567,6 +3567,19 @@ pub(super) fn run_sync_health_action(
     match action {
         SyncHealthPaneAction::Rebootstrap => {
             state.sync_health.rebootstrap();
+            let worker_id = state.sync_lifecycle_worker_id.clone();
+            let _ = state.sync_lifecycle.mark_disconnect(
+                worker_id.as_str(),
+                crate::sync_lifecycle::RuntimeSyncDisconnectReason::StaleCursor,
+                Some("manual sync rebootstrap requested".to_string()),
+            );
+            state.sync_lifecycle.mark_replay_bootstrap(
+                worker_id.as_str(),
+                state.sync_health.cursor_position,
+                Some(state.sync_health.cursor_position),
+            );
+            state.sync_lifecycle.mark_connecting(worker_id.as_str());
+            state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
             state.provider_runtime.last_result = state.sync_health.last_action.clone();
             refresh_sync_health(state);
             true
@@ -4248,7 +4261,17 @@ pub(super) fn run_settings_action(
                         .set_value(state.settings.document.wallet_default_send_sats.to_string());
                     state.provider_runtime.last_result = state.settings.last_action.clone();
                     if state.settings.document.reconnect_required {
-                        state.sync_health.subscription_state = "resubscribing".to_string();
+                        let worker_id = state.sync_lifecycle_worker_id.clone();
+                        let _ = state.sync_lifecycle.mark_disconnect(
+                            worker_id.as_str(),
+                            crate::sync_lifecycle::RuntimeSyncDisconnectReason::Network,
+                            Some(
+                                "settings updated connectivity; sync reconnect required"
+                                    .to_string(),
+                            ),
+                        );
+                        state.sync_lifecycle_snapshot =
+                            state.sync_lifecycle.snapshot(worker_id.as_str());
                         state.sync_health.last_action = Some(
                             "Settings changed connectivity lanes; reconnect required".to_string(),
                         );
@@ -4899,23 +4922,97 @@ pub(super) fn refresh_network_aggregate_counters(
 }
 
 pub(super) fn refresh_sync_health(state: &mut crate::app_state::RenderState) {
-    state.sync_health.refresh_from_runtime(
-        std::time::Instant::now(),
-        &state.provider_runtime,
-        &state.relay_connections,
+    let now = std::time::Instant::now();
+    let worker_id = state.sync_lifecycle_worker_id.clone();
+
+    state.sync_lifecycle.mark_replay_progress(
+        worker_id.as_str(),
+        state.sync_health.last_applied_event_seq,
+        Some(state.sync_health.last_applied_event_seq),
     );
 
     if let Some(error) = state.sync_bootstrap_error.as_deref() {
-        state.sync_health.load_state = crate::app_state::PaneLoadState::Error;
-        state.sync_health.spacetime_connection = "error".to_string();
-        state.sync_health.subscription_state = "unsubscribed".to_string();
-        state.sync_health.last_action = Some("Spacetime bootstrap failed".to_string());
-        state.sync_health.last_error = Some(error.to_string());
-        return;
+        let reason = crate::sync_lifecycle::classify_disconnect_reason(error);
+        let already_marked = state
+            .sync_lifecycle
+            .snapshot(worker_id.as_str())
+            .is_some_and(|snapshot| {
+                snapshot.state == crate::sync_lifecycle::RuntimeSyncConnectionState::Backoff
+                    && snapshot.last_disconnect_reason == Some(reason)
+                    && snapshot.last_error.as_deref() == Some(error)
+            });
+        if !already_marked {
+            let _ = state.sync_lifecycle.mark_disconnect(
+                worker_id.as_str(),
+                reason,
+                Some(error.to_string()),
+            );
+        }
+    } else if state
+        .sync_bootstrap_note
+        .as_deref()
+        .is_some_and(|note| note.contains("disabled"))
+    {
+        state.sync_lifecycle.mark_idle(worker_id.as_str());
+    } else {
+        let current = state.sync_lifecycle.snapshot(worker_id.as_str());
+        if !current.as_ref().is_some_and(|snapshot| {
+            matches!(
+                snapshot.state,
+                crate::sync_lifecycle::RuntimeSyncConnectionState::Live
+                    | crate::sync_lifecycle::RuntimeSyncConnectionState::Backoff
+            )
+        }) {
+            let refresh_after = current
+                .as_ref()
+                .and_then(|snapshot| snapshot.token_refresh_after_in_seconds);
+            state.sync_lifecycle.mark_connecting(worker_id.as_str());
+            state
+                .sync_lifecycle
+                .mark_live(worker_id.as_str(), refresh_after);
+        }
     }
 
-    if let Some(note) = state.sync_bootstrap_note.as_deref() {
-        state.sync_health.last_action = Some(note.to_string());
+    state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
+    state
+        .sync_health
+        .refresh_from_lifecycle(now, state.sync_lifecycle_snapshot.as_ref());
+
+    let stale_backoff_already_marked =
+        state
+            .sync_lifecycle_snapshot
+            .as_ref()
+            .is_some_and(|snapshot| {
+                snapshot.state == crate::sync_lifecycle::RuntimeSyncConnectionState::Backoff
+                    && snapshot.last_disconnect_reason
+                        == Some(crate::sync_lifecycle::RuntimeSyncDisconnectReason::StaleCursor)
+            });
+    if state.sync_health.cursor_is_stale() && !stale_backoff_already_marked {
+        let _ = state.sync_lifecycle.mark_disconnect(
+            worker_id.as_str(),
+            crate::sync_lifecycle::RuntimeSyncDisconnectReason::StaleCursor,
+            Some("sync cursor stale; replay rebootstrap required".to_string()),
+        );
+        state.sync_lifecycle.mark_replay_bootstrap(
+            worker_id.as_str(),
+            state.sync_health.cursor_position,
+            Some(state.sync_health.cursor_position),
+        );
+        state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
+        state
+            .sync_health
+            .refresh_from_lifecycle(now, state.sync_lifecycle_snapshot.as_ref());
+        state.sync_health.last_action =
+            Some("Spacetime cursor stale; click Rebootstrap sync".to_string());
+    }
+
+    if let Some(error) = state.sync_bootstrap_error.as_deref() {
+        state.sync_health.last_action = Some("Spacetime bootstrap failed".to_string());
+        state.sync_health.last_error = Some(error.to_string());
+    } else if let Some(note) = state.sync_bootstrap_note.as_deref() {
+        if state.sync_health.last_action.is_none() {
+            state.sync_health.last_action = Some(note.to_string());
+        }
     }
 }
 
