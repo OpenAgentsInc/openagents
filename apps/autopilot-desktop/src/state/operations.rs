@@ -883,7 +883,7 @@ const STARTER_DEMAND_TEMPLATES: [StarterDemandTemplate; 4] = [
 
 const STARTER_DEMAND_DEFAULT_BUDGET_SATS: u64 = 5_000;
 const STARTER_DEMAND_DEFAULT_DISPATCH_INTERVAL_SECONDS: u64 = 12;
-const STARTER_DEMAND_DEFAULT_MAX_INFLIGHT_JOBS: usize = 3;
+const STARTER_DEMAND_DEFAULT_MAX_INFLIGHT_JOBS: usize = 1;
 
 pub struct StarterJobsState {
     pub load_state: PaneLoadState,
@@ -955,7 +955,7 @@ impl StarterJobsState {
     ) {
         let budget_cap_sats = budget_cap_sats.max(1);
         let dispatch_interval_seconds = dispatch_interval_seconds.clamp(1, 3600);
-        let max_inflight_jobs = max_inflight_jobs.clamp(1, 12);
+        let max_inflight_jobs = max_inflight_jobs.clamp(1, 1);
         if self.budget_cap_sats == budget_cap_sats
             && self.dispatch_interval_seconds == dispatch_interval_seconds
             && self.max_inflight_jobs == max_inflight_jobs

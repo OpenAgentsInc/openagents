@@ -203,16 +203,16 @@ impl JobInboxState {
             .find(|request| request.request_id == selected_id)
     }
 
-    pub fn decide_selected(&mut self, accepted: bool, reason: &str) -> Result<String, String> {
-        let selected_id = self
-            .selected_request_id
-            .as_deref()
-            .ok_or_else(|| "Select a request first".to_string())?
-            .to_string();
+    pub fn decide_request(
+        &mut self,
+        request_id: &str,
+        accepted: bool,
+        reason: &str,
+    ) -> Result<String, String> {
         let Some(request) = self
             .requests
             .iter_mut()
-            .find(|request| request.request_id == selected_id)
+            .find(|request| request.request_id == request_id)
         else {
             return Err("Selected request no longer exists".to_string());
         };
@@ -234,6 +234,15 @@ impl JobInboxState {
             format!("Rejected {} ({decision_reason})", request.request_id)
         });
         Ok(request.request_id.clone())
+    }
+
+    pub fn decide_selected(&mut self, accepted: bool, reason: &str) -> Result<String, String> {
+        let selected_id = self
+            .selected_request_id
+            .as_deref()
+            .ok_or_else(|| "Select a request first".to_string())?
+            .to_string();
+        self.decide_request(selected_id.as_str(), accepted, reason)
     }
 }
 

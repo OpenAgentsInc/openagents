@@ -2140,7 +2140,7 @@ impl Default for SettingsDocumentV1 {
             relay_url: "wss://relay.damus.io".to_string(),
             identity_path: settings_identity_path(),
             wallet_default_send_sats: 1000,
-            provider_max_queue_depth: 4,
+            provider_max_queue_depth: 1,
             reconnect_required: false,
         }
     }
@@ -2233,8 +2233,10 @@ impl SettingsState {
             .trim()
             .parse::<u32>()
             .map_err(|error| format!("Provider max queue depth must be an integer: {error}"))?;
-        if provider_max_queue_depth == 0 || provider_max_queue_depth > 512 {
-            return Err(self.pane_set_error("Provider max queue depth must be between 1 and 512"));
+        if provider_max_queue_depth != 1 {
+            return Err(
+                self.pane_set_error("MVP currently supports exactly 1 inflight provider job")
+            );
         }
 
         let reconnect_required = relay_url != self.document.relay_url
@@ -2382,6 +2384,7 @@ fn parse_settings_document(raw: &str) -> Result<SettingsDocumentV1, String> {
 
     // Identity path authority is the resolved mnemonic path.
     document.identity_path = settings_identity_path();
+    document.provider_max_queue_depth = 1;
 
     Ok(document)
 }
@@ -2406,6 +2409,10 @@ impl JobLifecycleStage {
             Self::Paid => "paid",
             Self::Failed => "failed",
         }
+    }
+
+    pub const fn is_terminal(self) -> bool {
+        matches!(self, Self::Paid | Self::Failed)
     }
 }
 
@@ -2463,6 +2470,13 @@ impl Default for ActiveJobState {
 }
 
 impl ActiveJobState {
+    pub fn inflight_job_count(&self) -> u32 {
+        self.job
+            .as_ref()
+            .filter(|job| !job.stage.is_terminal())
+            .map_or(0, |_| 1)
+    }
+
     pub fn start_from_request(&mut self, request: &JobInboxRequest) {
         let job_id = format!("job-{}", request.request_id);
         self.job = Some(ActiveJobRecord {
@@ -4779,6 +4793,39 @@ mod tests {
     }
 
     #[test]
+    fn active_job_inflight_count_drops_to_zero_for_terminal_stages() {
+        let mut inbox = seed_job_inbox(vec![fixture_inbox_request(
+            "req-inflight",
+            "summarize.text",
+            1500,
+            300,
+            JobInboxValidation::Valid,
+        )]);
+        assert!(inbox.select_by_index(0));
+        let request = inbox
+            .selected_request()
+            .expect("request should exist")
+            .clone();
+
+        let mut active = ActiveJobState::default();
+        active.start_from_request(&request);
+        assert_eq!(active.inflight_job_count(), 1);
+        active
+            .advance_stage()
+            .expect("accepted->running should succeed");
+        assert_eq!(active.inflight_job_count(), 1);
+        active
+            .advance_stage()
+            .expect("running->delivered should succeed");
+        active.job.as_mut().expect("active job exists").payment_id =
+            Some("wallet:payment:req-inflight".to_string());
+        active
+            .advance_stage()
+            .expect("delivered->paid should succeed");
+        assert_eq!(active.inflight_job_count(), 0);
+    }
+
+    #[test]
     fn job_history_rejects_unconfirmed_success_settlement_from_active_job() {
         let mut inbox = seed_job_inbox(vec![fixture_inbox_request(
             "req-unconfirmed",
@@ -5853,27 +5900,30 @@ mod tests {
             .expect("interval check should not error");
         assert!(blocked_by_interval.is_none());
 
-        let second = starter_jobs
+        let blocked_by_cap = starter_jobs
             .dispatch_next_if_due(now + std::time::Duration::from_secs(1))
-            .expect("second dispatch should not error")
-            .expect("second starter quest should dispatch");
-        assert_eq!(starter_jobs.inflight_jobs(), 2);
-        assert!(starter_jobs.budget_allocated_sats <= starter_jobs.budget_cap_sats);
-
-        let exhausted = starter_jobs
-            .dispatch_next_if_due(now + std::time::Duration::from_secs(2))
-            .expect("budget check should not error");
-        assert!(exhausted.is_none());
+            .expect("second dispatch check should not error");
+        assert!(blocked_by_cap.is_none());
+        assert_eq!(starter_jobs.inflight_jobs(), 1);
         assert!(
             starter_jobs
                 .last_action
                 .as_deref()
-                .is_some_and(|value| value.contains("budget exhausted"))
+                .is_some_and(|value| value.contains("max=1"))
         );
 
-        assert!(starter_jobs.rollback_dispatched_job(&second.job_id));
+        assert!(starter_jobs.rollback_dispatched_job(&first.job_id));
+        assert_eq!(starter_jobs.inflight_jobs(), 0);
+
+        let second = starter_jobs
+            .dispatch_next_if_due(now + std::time::Duration::from_secs(2))
+            .expect("dispatch after rollback should not error")
+            .expect("second starter quest should dispatch after inflight slot opens");
         assert_eq!(starter_jobs.inflight_jobs(), 1);
-        assert_eq!(starter_jobs.budget_allocated_sats, first.payout_sats);
+
+        assert!(starter_jobs.rollback_dispatched_job(&second.job_id));
+        assert_eq!(starter_jobs.inflight_jobs(), 0);
+        assert_eq!(starter_jobs.budget_allocated_sats, 0);
     }
 
     #[test]
@@ -6498,11 +6548,11 @@ mod tests {
     fn settings_updates_validate_ranges_and_reconnect_notice() {
         let mut settings = SettingsState::default();
         settings
-            .apply_updates_internal("wss://relay.primal.net", "2500", "8", false)
+            .apply_updates_internal("wss://relay.primal.net", "2500", "1", false)
             .expect("valid settings update should apply");
         assert_eq!(settings.document.relay_url, "wss://relay.primal.net");
         assert_eq!(settings.document.wallet_default_send_sats, 2500);
-        assert_eq!(settings.document.provider_max_queue_depth, 8);
+        assert_eq!(settings.document.provider_max_queue_depth, 1);
         assert!(settings.document.reconnect_required);
 
         let invalid = settings.apply_updates_internal("https://bad-relay", "0", "0", false);
@@ -6522,6 +6572,7 @@ mod tests {
         let document = super::parse_settings_document(raw).expect("settings parse should succeed");
         assert_ne!(document.identity_path, "~/.openagents/nostr/identity.json");
         assert!(document.identity_path.contains("identity.mnemonic"));
+        assert_eq!(document.provider_max_queue_depth, 1);
     }
 
     #[test]
