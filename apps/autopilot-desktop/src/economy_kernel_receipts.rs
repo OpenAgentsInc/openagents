@@ -1,4 +1,4 @@
-use bitcoin::hashes::{Hash, sha256};
+use bitcoin::hashes::{sha256, Hash};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -50,6 +50,18 @@ pub enum ProvenanceGrade {
     P1Toolchain,
     P2Lineage,
     P3Attested,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthAssuranceLevel {
+    AuthAssuranceLevelUnspecified,
+    Anon,
+    Authenticated,
+    OrgKyc,
+    Personhood,
+    GovId,
+    HardwareBound,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Ord, PartialOrd)]
@@ -110,6 +122,8 @@ pub struct ReceiptHints {
     pub achieved_verification_tier: Option<VerificationTier>,
     pub verification_correlated: Option<bool>,
     pub provenance_grade: Option<ProvenanceGrade>,
+    pub auth_assurance_level: Option<AuthAssuranceLevel>,
+    pub personhood_proved: Option<bool>,
     pub reason_code: Option<String>,
     pub notional: Option<Money>,
 }
@@ -358,6 +372,8 @@ mod tests {
             achieved_verification_tier: None,
             verification_correlated: None,
             provenance_grade: None,
+            auth_assurance_level: None,
+            personhood_proved: None,
             reason_code: None,
             notional: Some(Money {
                 asset: Asset::Btc,
