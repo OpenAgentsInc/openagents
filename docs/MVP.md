@@ -235,6 +235,12 @@ Canonical rollout/runbook index:
 
 This MVP is a money-moving, network-participating desktop app. That means the system’s guarantees matter. There are a few invariants we will not violate because they protect determinism, safety, and our ability to evolve without breaking users:
 
+Terminology in this spec:
+
+- `OpenAgents Runtime` is the execution environment on the user/provider node where jobs run, local state advances, and provenance is produced.
+- `OpenAgents Kernel` is the authority layer that verifies outcomes, settles value, and emits canonical receipts.
+- For this MVP, the desktop embeds the runtime in `apps/autopilot-desktop`; the full server-authoritative kernel remains planned infrastructure rather than an in-repo service.
+
 * The retained implementation is Rust-only. We do not ship a split-brain authority system.
 * Cross-boundary contracts are proto-first. The desktop app and services talk in typed, versioned contracts.
 * Spacetime is the retained live sync transport. Desktop sync must not depend on legacy websocket/Phoenix frames.
@@ -353,7 +359,7 @@ The primary app surface is `apps/autopilot-desktop` (WGPUI). It owns the moment-
 
 `apps/openagents.com` remains retained for desktop-facing auth/session flows and sync token issuance (`POST /api/sync/token`) and any minimal control endpoints the desktop needs.
 
-`apps/runtime` remains the retained authority for execution boundaries and any projection publishing necessary for sync.
+`apps/autopilot-desktop` currently contains the embedded OpenAgents Runtime for MVP execution boundaries, provider lifecycle, and any sync-facing projection publishing the desktop needs.
 
 Core crates remain as previously enumerated (wgpui, autopilot_ui/app/core, client-core, codex control, spacetime client, pylon provider runtime, spark wallet integration, nostr client/core, proto/protocol). The key requirement is that these crates expose outcomes in a way that the UI can render as legible state transitions, not just logs.
 

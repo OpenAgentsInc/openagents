@@ -252,6 +252,57 @@ If the runtime writes local receipts in MVP, those should be described as:
 - client-side receipt recording compatible with future kernel authority,
 - not proof that the runtime and kernel are the same component.
 
+## Separate Crate Consideration
+
+### Does it make sense to extract runtime code into a separate crate?
+
+Potentially later, yes. Right now, probably not as an MVP-wide move.
+
+The current code layout still supports the earlier placement decision:
+
+- `docs/AUTOPILOT_EARN_RUNTIME_PLACEMENT_DECISION.md` keeps provider runtime ownership in `apps/autopilot-desktop` for MVP.
+- `docs/OWNERSHIP.md` says `apps/autopilot-desktop` owns app wiring, pane orchestration, and product behavior.
+- Search results show the current runtime code is heavily consumed inside `apps/autopilot-desktop` and not by other apps or crates.
+
+In practice, today’s runtime implementation is still strongly entangled with:
+
+- Mission Control UX and pane state,
+- app-level reducers and event routing,
+- job inbox / active job / job history projections,
+- payout and reconciliation behavior,
+- local receipt/projection recording used by the desktop UX.
+
+That is not a clean reusable crate boundary yet.
+
+### What could be extracted later
+
+If runtime code is extracted later, the best candidates are the product-agnostic parts:
+
+- sync lifecycle state machines like `RuntimeSyncLifecycleManager`,
+- generic execution-health and worker-lifecycle types,
+- execution attestation helpers tied to provenance/runtime-integrity semantics,
+- protocol-agnostic job execution contracts if they can be detached from pane/app-state concerns.
+
+### What should stay app-owned
+
+These areas should remain in `apps/autopilot-desktop` unless the product architecture changes materially:
+
+- Mission Control orchestration,
+- pane-facing `job_inbox` / `active_job` / payout UX state,
+- desktop-specific reducer wiring,
+- app-local projections and receipt mirroring used to render product behavior.
+
+### Recommended extraction posture
+
+The right posture is:
+
+- keep runtime ownership in `apps/autopilot-desktop` for the current MVP,
+- avoid reviving a large legacy runtime crate just to create a named abstraction,
+- extract a crate only when there is a clearly product-agnostic core and at least one additional consumer or a strong testability boundary,
+- if extraction happens, prefer a narrow crate such as `crates/openagents-runtime-core` rather than a broad product-runtime crate.
+
+That would preserve the runtime/kernel conceptual split without violating current MVP ownership boundaries.
+
 ## Recommended Terminology
 
 ### Preferred naming
@@ -302,7 +353,7 @@ The kernel plans correctly treat wallet execution as the custody boundary. The r
 
 ## Documentation Gaps Found During Audit
 
-### 1. `apps/runtime` language in `docs/MVP.md` is stale
+### 1. `apps/runtime` language in `docs/MVP.md` was stale at audit time
 
 `docs/MVP.md` still says:
 
@@ -310,9 +361,9 @@ The kernel plans correctly treat wallet execution as the custody boundary. The r
 
 But this pruned repo has only `apps/autopilot-desktop`, and `docs/AUTOPILOT_EARN_RUNTIME_PLACEMENT_DECISION.md` explicitly keeps provider runtime ownership in that app.
 
-That does not block defining the runtime, but it does mean current docs already need a terminology cleanup.
+That did not block defining the runtime, but it did require terminology cleanup. Follow-up doc edits now align MVP wording with the current repo layout.
 
-### 2. The runtime concept is real, but implicit
+### 2. The runtime concept was real, but implicit at audit time
 
 The repo has:
 
@@ -322,11 +373,11 @@ The repo has:
 - runtime attestations,
 - runtime event logs.
 
-What it lacks is one explicit doc sentence saying what `runtime` means in OpenAgents.
+At audit time, what it lacked was one explicit doc sentence saying what `runtime` means in OpenAgents. Follow-up doc edits now add that wording to the primary docs.
 
-### 3. `kernel` and `runtime` are currently separated by usage, not by glossary
+### 3. `kernel` and `runtime` were separated by usage more than glossary
 
-The split is visible if you read across docs and code, but it is not yet written down as a first-class architectural distinction. That is the gap this definition closes.
+The split was visible if you read across docs and code, but it was not written down as a first-class architectural distinction. That was the gap this definition was meant to close.
 
 ## Final Recommendation
 
@@ -343,5 +394,7 @@ Deployment implication:
 - runtimes may be embedded desktop runtimes in MVP,
 - future runtimes may also include dedicated worker or sandbox environments,
 - but the authority boundary should remain kernel-side.
+
+For code organization, keep runtime ownership app-local for MVP and extract only a narrow, product-agnostic runtime-core crate if and when a real reusable core emerges.
 
 This naming fits the codebase as it exists today, reduces ambiguity in the Earn/kernel docs, and creates a clean mental model for future server-authoritative kernel work without pretending the runtime already is that authority.
