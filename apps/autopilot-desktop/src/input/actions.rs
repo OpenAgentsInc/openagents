@@ -3636,149 +3636,149 @@ pub(super) fn run_network_requests_action(
                 }
             };
             let target_provider_pubkeys = extract_target_provider_pubkeys(payload.as_str());
-            let configured_relays = state.configured_provider_relay_urls();
-            let request_event = match build_nip90_request_event_for_network_submission(
-                state.nostr_identity.as_ref(),
-                request_type.as_str(),
-                payload.as_str(),
-                skill_scope_id.as_deref(),
-                credit_envelope_ref.as_deref(),
+            if let Err(error) = submit_signed_network_request(
+                state,
+                request_type,
+                payload,
+                skill_scope_id,
+                credit_envelope_ref,
                 budget_sats,
                 timeout_seconds,
-                configured_relays.as_slice(),
-                target_provider_pubkeys.as_slice(),
+                target_provider_pubkeys,
             ) {
-                Ok(event) => event,
-                Err(error) => {
-                    state.network_requests.last_error = Some(error);
-                    state.network_requests.load_state = crate::app_state::PaneLoadState::Error;
-                    return true;
-                }
-            };
-            let published_request_id = request_event.id.clone();
-
-            let scope = if let Some(skill_scope) = skill_scope_id.as_deref() {
-                format!("skill:{skill_scope}:constraints")
-            } else {
-                format!("network:{request_type}:{budget_sats}")
-            };
-            let queue_result = state.queue_ac_command(AcCreditCommand::PublishCreditIntent {
-                scope,
-                request_type: request_type.clone(),
-                payload: payload.clone(),
-                skill_scope_id: skill_scope_id.clone(),
-                credit_envelope_ref: credit_envelope_ref.clone(),
-                requested_sats: budget_sats,
-                timeout_seconds,
-            });
-            match queue_result {
-                Ok(command_seq) => {
-                    match state.network_requests.queue_request_submission(
-                        NetworkRequestSubmission {
-                            request_id: Some(published_request_id.clone()),
-                            request_type,
-                            payload,
-                            target_provider_pubkeys: target_provider_pubkeys.clone(),
-                            skill_scope_id,
-                            credit_envelope_ref,
-                            budget_sats,
-                            timeout_seconds,
-                            authority_command_seq: command_seq,
-                        },
-                    ) {
-                        Ok(request_id) => {
-                            state.provider_runtime.last_result =
-                                Some(format!("Queued network request {request_id}"));
-                            let tracked_request_ids = state
-                                .network_requests
-                                .submitted
-                                .iter()
-                                .map(|request| request.request_id.clone())
-                                .collect::<Vec<_>>();
-                            if let Err(error) = state.queue_provider_nip90_lane_command(
-                                crate::provider_nip90_lane::ProviderNip90LaneCommand::TrackBuyerRequestIds {
-                                    request_ids: tracked_request_ids,
-                                },
-                            ) {
-                                state.provider_runtime.last_error_detail = Some(error.clone());
-                                state.provider_runtime.last_result = Some(format!(
-                                    "failed to track buyer request id {} for relay correlation: {}",
-                                    request_id, error
-                                ));
-                            }
-                            if let Err(error) = state.queue_provider_nip90_lane_command(
-                                crate::provider_nip90_lane::ProviderNip90LaneCommand::PublishEvent {
-                                    request_id: request_id.clone(),
-                                    role: crate::provider_nip90_lane::ProviderNip90PublishRole::Request,
-                                    event: Box::new(request_event),
-                                },
-                            ) {
-                                state.network_requests.apply_nip90_request_publish_outcome(
-                                    request_id.as_str(),
-                                    request_id.as_str(),
-                                    0,
-                                    0,
-                                    Some(error.as_str()),
-                                );
-                                state.provider_runtime.last_error_detail = Some(error.clone());
-                                state.provider_runtime.last_result = Some(format!(
-                                    "failed to queue NIP-90 request publish for {}: {}",
-                                    request_id, error
-                                ));
-                            } else {
-                                state.provider_runtime.last_result = Some(format!(
-                                    "Queued NIP-90 request {} -> AC cmd#{}",
-                                    request_id, command_seq
-                                ));
-                            }
-                            if local_network_request_inject_enabled() {
-                                state
-                                    .job_inbox
-                                    .upsert_network_request(JobInboxNetworkRequest {
-                                        request_id: request_id.clone(),
-                                        requester: "network-buyer".to_string(),
-                                        demand_source:
-                                            crate::app_state::JobDemandSource::OpenNetwork,
-                                        request_kind: nostr::nip90::KIND_JOB_TEXT_GENERATION,
-                                        capability: "local.injected.request".to_string(),
-                                        target_provider_pubkeys: target_provider_pubkeys.clone(),
-                                        encrypted: false,
-                                        encrypted_payload: None,
-                                        parsed_event_shape: None,
-                                        raw_event_json: None,
-                                        skill_scope_id: None,
-                                        skl_manifest_a: None,
-                                        skl_manifest_event_id: None,
-                                        sa_tick_request_event_id: Some(request_id.clone()),
-                                        sa_tick_result_event_id: None,
-                                        ac_envelope_event_id: None,
-                                        price_sats: budget_sats,
-                                        ttl_seconds: timeout_seconds,
-                                        validation: JobInboxValidation::Pending,
-                                    });
-                            }
-                            state.sync_health.last_applied_event_seq =
-                                state.sync_health.last_applied_event_seq.saturating_add(1);
-                            state.sync_health.cursor_last_advanced_seconds_ago = 0;
-                            refresh_sync_health(state);
-                        }
-                        Err(error) => {
-                            state.network_requests.last_error = Some(error);
-                        }
-                    }
-                }
-                Err(error) => {
-                    state.network_requests.last_error = Some(error.clone());
-                    state.network_requests.mark_authority_enqueue_failure(
-                        state.next_runtime_command_seq.saturating_sub(1),
-                        RuntimeCommandErrorClass::Transport.label(),
-                        &error,
-                    );
-                }
+                state.network_requests.last_error = Some(error);
+                state.network_requests.load_state = crate::app_state::PaneLoadState::Error;
             }
             true
         }
     }
+}
+
+fn submit_signed_network_request(
+    state: &mut crate::app_state::RenderState,
+    request_type: String,
+    payload: String,
+    skill_scope_id: Option<String>,
+    credit_envelope_ref: Option<String>,
+    budget_sats: u64,
+    timeout_seconds: u64,
+    target_provider_pubkeys: Vec<String>,
+) -> Result<String, String> {
+    let configured_relays = state.configured_provider_relay_urls();
+    let request_event = build_nip90_request_event_for_network_submission(
+        state.nostr_identity.as_ref(),
+        request_type.as_str(),
+        payload.as_str(),
+        skill_scope_id.as_deref(),
+        credit_envelope_ref.as_deref(),
+        budget_sats,
+        timeout_seconds,
+        configured_relays.as_slice(),
+        target_provider_pubkeys.as_slice(),
+    )?;
+    let published_request_id = request_event.id.clone();
+    let scope = if let Some(skill_scope) = skill_scope_id.as_deref() {
+        format!("skill:{skill_scope}:constraints")
+    } else {
+        format!("network:{request_type}:{budget_sats}")
+    };
+    let command_seq = state.queue_ac_command(AcCreditCommand::PublishCreditIntent {
+        scope,
+        request_type: request_type.clone(),
+        payload: payload.clone(),
+        skill_scope_id: skill_scope_id.clone(),
+        credit_envelope_ref: credit_envelope_ref.clone(),
+        requested_sats: budget_sats,
+        timeout_seconds,
+    })?;
+    let request_id = state
+        .network_requests
+        .queue_request_submission(NetworkRequestSubmission {
+            request_id: Some(published_request_id.clone()),
+            request_type,
+            payload,
+            target_provider_pubkeys: target_provider_pubkeys.clone(),
+            skill_scope_id,
+            credit_envelope_ref,
+            budget_sats,
+            timeout_seconds,
+            authority_command_seq: command_seq,
+        })?;
+    state.provider_runtime.last_result = Some(format!("Queued network request {request_id}"));
+
+    let tracked_request_ids = state
+        .network_requests
+        .submitted
+        .iter()
+        .map(|request| request.request_id.clone())
+        .collect::<Vec<_>>();
+    if let Err(error) = state.queue_provider_nip90_lane_command(
+        crate::provider_nip90_lane::ProviderNip90LaneCommand::TrackBuyerRequestIds {
+            request_ids: tracked_request_ids,
+        },
+    ) {
+        state.provider_runtime.last_error_detail = Some(error.clone());
+        state.provider_runtime.last_result = Some(format!(
+            "failed to track buyer request id {} for relay correlation: {}",
+            request_id, error
+        ));
+    }
+    if let Err(error) = state.queue_provider_nip90_lane_command(
+        crate::provider_nip90_lane::ProviderNip90LaneCommand::PublishEvent {
+            request_id: request_id.clone(),
+            role: crate::provider_nip90_lane::ProviderNip90PublishRole::Request,
+            event: Box::new(request_event),
+        },
+    ) {
+        state.network_requests.apply_nip90_request_publish_outcome(
+            request_id.as_str(),
+            request_id.as_str(),
+            0,
+            0,
+            Some(error.as_str()),
+        );
+        state.provider_runtime.last_error_detail = Some(error.clone());
+        state.provider_runtime.last_result = Some(format!(
+            "failed to queue NIP-90 request publish for {}: {}",
+            request_id, error
+        ));
+        return Err(error);
+    }
+    state.provider_runtime.last_result = Some(format!(
+        "Queued NIP-90 request {} -> AC cmd#{}",
+        request_id, command_seq
+    ));
+
+    if local_network_request_inject_enabled() {
+        state
+            .job_inbox
+            .upsert_network_request(JobInboxNetworkRequest {
+                request_id: request_id.clone(),
+                requester: "network-buyer".to_string(),
+                demand_source: crate::app_state::JobDemandSource::OpenNetwork,
+                request_kind: nostr::nip90::KIND_JOB_TEXT_GENERATION,
+                capability: "local.injected.request".to_string(),
+                target_provider_pubkeys,
+                encrypted: false,
+                encrypted_payload: None,
+                parsed_event_shape: None,
+                raw_event_json: None,
+                skill_scope_id: None,
+                skl_manifest_a: None,
+                skl_manifest_event_id: None,
+                sa_tick_request_event_id: Some(request_id.clone()),
+                sa_tick_result_event_id: None,
+                ac_envelope_event_id: None,
+                price_sats: budget_sats,
+                ttl_seconds: timeout_seconds,
+                validation: JobInboxValidation::Pending,
+            });
+    }
+    state.sync_health.last_applied_event_seq =
+        state.sync_health.last_applied_event_seq.saturating_add(1);
+    state.sync_health.cursor_last_advanced_seconds_ago = 0;
+    refresh_sync_health(state);
+    Ok(request_id)
 }
 
 fn local_network_request_inject_enabled() -> bool {
@@ -4117,6 +4117,143 @@ fn parse_env_u64_with_default(key: &str, default: u64, min: u64, max: u64) -> u6
         .and_then(|raw| raw.trim().parse::<u64>().ok())
         .map(|value| value.clamp(min, max))
         .unwrap_or(default)
+}
+
+const RECIPROCAL_LOOP_AUTOSTART_ENV: &str = "OPENAGENTS_RECIPROCAL_LOOP_AUTOSTART";
+const RECIPROCAL_LOOP_PEER_PUBKEY_ENV: &str = "OPENAGENTS_RECIPROCAL_LOOP_PEER_PUBKEY";
+const RECIPROCAL_LOOP_REQUEST_TYPE: &str = "loop.pingpong.10sat";
+
+pub(super) fn run_reciprocal_loop_engine_tick(state: &mut crate::app_state::RenderState) -> bool {
+    let mut changed = false;
+    if sync_reciprocal_loop_identity_and_peer(state) {
+        changed = true;
+    }
+    if state
+        .reciprocal_loop
+        .reconcile_outbound_terminal_statuses(state.network_requests.submitted.as_slice())
+    {
+        changed = true;
+    }
+    if state
+        .reciprocal_loop
+        .reconcile_inbound_history(state.job_history.rows.as_slice())
+    {
+        changed = true;
+    }
+
+    if !state.reciprocal_loop.running && reciprocal_loop_autostart_enabled() {
+        if state.reciprocal_loop.start().is_ok() {
+            changed = true;
+        }
+    }
+
+    if !state.reciprocal_loop.ready_to_dispatch() {
+        return changed;
+    }
+
+    let Some(peer_pubkey) = state.reciprocal_loop.peer_pubkey.clone() else {
+        return changed;
+    };
+    let amount_sats = state.reciprocal_loop.amount_sats;
+    let timeout_seconds = state.reciprocal_loop.timeout_seconds;
+    let skill_scope_id = Some(state.reciprocal_loop.skill_scope_id.clone());
+    let credit_envelope_ref = state.ac_lane.envelope_event_id.clone();
+    let sequence = state
+        .reciprocal_loop
+        .local_to_peer_dispatched
+        .saturating_add(1);
+    let payload = reciprocal_loop_payload(peer_pubkey.as_str(), amount_sats, sequence);
+    let now_epoch_seconds = current_epoch_seconds();
+
+    match submit_signed_network_request(
+        state,
+        RECIPROCAL_LOOP_REQUEST_TYPE.to_string(),
+        payload,
+        skill_scope_id,
+        credit_envelope_ref,
+        amount_sats,
+        timeout_seconds,
+        vec![peer_pubkey],
+    ) {
+        Ok(request_id) => {
+            state
+                .reciprocal_loop
+                .register_outbound_dispatch(request_id.as_str(), now_epoch_seconds);
+            state.provider_runtime.last_result = Some(format!(
+                "reciprocal loop dispatched {} sats request {}",
+                amount_sats, request_id
+            ));
+            if state.provider_runtime.last_authoritative_error_class
+                == Some(EarnFailureClass::Execution)
+            {
+                state.provider_runtime.last_authoritative_error_class = None;
+            }
+            changed = true;
+        }
+        Err(error) => {
+            state.reciprocal_loop.mark_dispatch_failed(error.as_str());
+            state.provider_runtime.last_error_detail = Some(error.clone());
+            state.provider_runtime.last_result =
+                Some(format!("reciprocal loop dispatch failed: {error}"));
+            state.provider_runtime.last_authoritative_error_class =
+                Some(EarnFailureClass::Execution);
+            changed = true;
+        }
+    }
+
+    changed
+}
+
+fn sync_reciprocal_loop_identity_and_peer(state: &mut crate::app_state::RenderState) -> bool {
+    let mut changed = false;
+    let before_local = state.reciprocal_loop.local_pubkey.clone();
+    let local_pubkey = state
+        .nostr_identity
+        .as_ref()
+        .map(|identity| identity.public_key_hex.as_str());
+    state.reciprocal_loop.set_local_pubkey(local_pubkey);
+    if before_local != state.reciprocal_loop.local_pubkey {
+        changed = true;
+    }
+
+    if state.reciprocal_loop.peer_pubkey.is_none()
+        && let Some(peer_pubkey) = reciprocal_loop_peer_pubkey_from_env()
+    {
+        state
+            .reciprocal_loop
+            .set_peer_pubkey(Some(peer_pubkey.as_str()));
+        changed = true;
+    }
+
+    changed
+}
+
+fn reciprocal_loop_payload(peer_pubkey: &str, amount_sats: u64, sequence: u64) -> String {
+    serde_json::json!({
+        "prompt": format!(
+            "Reciprocal loop task #{}: respond with 'pong' and include the sequence id.",
+            sequence
+        ),
+        "loop_scope": "earn.loop.pingpong.v1",
+        "loop_amount_sats": amount_sats,
+        "loop_sequence": sequence,
+        "target_provider_pubkeys": [peer_pubkey],
+    })
+    .to_string()
+}
+
+fn reciprocal_loop_peer_pubkey_from_env() -> Option<String> {
+    std::env::var(RECIPROCAL_LOOP_PEER_PUBKEY_ENV)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn reciprocal_loop_autostart_enabled() -> bool {
+    std::env::var(RECIPROCAL_LOOP_AUTOSTART_ENV)
+        .ok()
+        .map(|value| matches!(value.trim(), "1" | "true" | "TRUE" | "yes" | "on"))
+        .unwrap_or(false)
 }
 
 pub(super) fn run_starter_jobs_action(

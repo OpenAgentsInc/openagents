@@ -283,6 +283,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             spacetime_presence_snapshot,
             network_requests: crate::app_state::NetworkRequestsState::default(),
             starter_jobs: crate::app_state::StarterJobsState::default(),
+            reciprocal_loop: crate::app_state::ReciprocalLoopState::default(),
             activity_feed: crate::app_state::ActivityFeedState::default(),
             alerts_recovery: crate::app_state::AlertsRecoveryState::default(),
             settings,

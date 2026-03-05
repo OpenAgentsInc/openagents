@@ -1657,9 +1657,10 @@ macro_rules! impl_pane_status_access {
 
 #[allow(unused_imports)]
 pub use crate::state::operations::{
-    NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState, RelayConnectionRow,
-    RelayConnectionStatus, RelayConnectionsState, StarterJobRow, StarterJobStatus,
-    StarterJobsState, SubmittedNetworkRequest, SyncHealthState, SyncRecoveryPhase,
+    NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState, ReciprocalLoopDirection,
+    ReciprocalLoopFailureClass, ReciprocalLoopState, RelayConnectionRow, RelayConnectionStatus,
+    RelayConnectionsState, StarterJobRow, StarterJobStatus, StarterJobsState,
+    SubmittedNetworkRequest, SyncHealthState, SyncRecoveryPhase,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -3651,6 +3652,7 @@ impl_pane_status_access!(
     SyncHealthState,
     NetworkRequestsState,
     StarterJobsState,
+    ReciprocalLoopState,
     ActivityFeedState,
     AlertsRecoveryState,
     SettingsState,
@@ -3750,6 +3752,7 @@ pub struct RenderState {
     pub spacetime_presence_snapshot: crate::spacetime_presence::SpacetimePresenceSnapshot,
     pub network_requests: NetworkRequestsState,
     pub starter_jobs: StarterJobsState,
+    pub reciprocal_loop: ReciprocalLoopState,
     pub activity_feed: ActivityFeedState,
     pub alerts_recovery: AlertsRecoveryState,
     pub settings: SettingsState,
@@ -3963,10 +3966,11 @@ mod tests {
         JobInboxNetworkRequest, JobInboxState, JobInboxValidation, JobLifecycleStage,
         NetworkAggregateCountersState, NetworkRequestStatus, NetworkRequestSubmission,
         NetworkRequestsState, NostrSecretState, ProviderMode, ProviderRuntimeState,
-        RecoveryAlertRow, RelayConnectionStatus, RelayConnectionsState,
-        RelaySecuritySimulationPaneState, SettingsState, SparkPaneState,
+        ReciprocalLoopDirection, ReciprocalLoopState, RecoveryAlertRow, RelayConnectionStatus,
+        RelayConnectionsState, RelaySecuritySimulationPaneState, SettingsState, SparkPaneState,
         StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
-        SyncHealthState, SyncRecoveryPhase, TreasuryExchangeSimulationPaneState,
+        SubmittedNetworkRequest, SyncHealthState, SyncRecoveryPhase,
+        TreasuryExchangeSimulationPaneState,
     };
 
     fn fixture_inbox_request(
@@ -4096,6 +4100,41 @@ mod tests {
             eligible,
             status,
             payout_pointer: None,
+        }
+    }
+
+    fn fixture_loop_submitted_request(
+        request_id: &str,
+        status: NetworkRequestStatus,
+        target_peer_pubkey: &str,
+        skill_scope_id: &str,
+    ) -> SubmittedNetworkRequest {
+        SubmittedNetworkRequest {
+            request_id: request_id.to_string(),
+            published_request_event_id: Some(request_id.to_string()),
+            request_type: "loop.pingpong.10sat".to_string(),
+            payload: "{}".to_string(),
+            target_provider_pubkeys: vec![target_peer_pubkey.to_string()],
+            last_provider_pubkey: Some(target_peer_pubkey.to_string()),
+            last_feedback_status: None,
+            last_feedback_event_id: None,
+            last_result_event_id: None,
+            last_payment_pointer: Some(format!("wallet:{request_id}")),
+            payment_required_at_epoch_seconds: Some(1_762_800_000),
+            payment_sent_at_epoch_seconds: Some(1_762_800_001),
+            payment_failed_at_epoch_seconds: None,
+            payment_error: None,
+            pending_bolt11: None,
+            skill_scope_id: Some(skill_scope_id.to_string()),
+            credit_envelope_ref: Some("ac:envelope:test".to_string()),
+            budget_sats: 10,
+            timeout_seconds: 90,
+            response_stream_id: format!("stream:{request_id}"),
+            status,
+            authority_command_seq: 1,
+            authority_status: Some("accepted".to_string()),
+            authority_event_id: Some(request_id.to_string()),
+            authority_error_class: None,
         }
     }
 
@@ -5612,6 +5651,93 @@ mod tests {
             .expect("job should remain present");
         assert_eq!(job.status, StarterJobStatus::Completed);
         assert_eq!(job.payout_pointer.as_deref(), Some(pointer.as_str()));
+    }
+
+    #[test]
+    fn reciprocal_loop_start_direction_is_deterministic_per_identity_pair() {
+        let mut loop_a = ReciprocalLoopState::default();
+        loop_a.set_local_pubkey(Some("11".repeat(32).as_str()));
+        loop_a.set_peer_pubkey(Some("22".repeat(32).as_str()));
+        loop_a.start().expect("loop A should start");
+        assert_eq!(loop_a.next_direction, ReciprocalLoopDirection::LocalToPeer);
+
+        let mut loop_b = ReciprocalLoopState::default();
+        loop_b.set_local_pubkey(Some("22".repeat(32).as_str()));
+        loop_b.set_peer_pubkey(Some("11".repeat(32).as_str()));
+        loop_b.start().expect("loop B should start");
+        assert_eq!(loop_b.next_direction, ReciprocalLoopDirection::PeerToLocal);
+    }
+
+    #[test]
+    fn reciprocal_loop_reconciles_outbound_and_inbound_paid_events_once() {
+        let local_pubkey = "11".repeat(32);
+        let peer_pubkey = "22".repeat(32);
+        let mut reciprocal_loop = ReciprocalLoopState::default();
+        reciprocal_loop.set_local_pubkey(Some(local_pubkey.as_str()));
+        reciprocal_loop.set_peer_pubkey(Some(peer_pubkey.as_str()));
+        reciprocal_loop.start().expect("loop should start");
+
+        reciprocal_loop.register_outbound_dispatch("loop-req-001", 1_762_800_000);
+        assert_eq!(reciprocal_loop.local_to_peer_dispatched, 1);
+        assert_eq!(
+            reciprocal_loop.in_flight_request_id.as_deref(),
+            Some("loop-req-001")
+        );
+
+        let outbound = fixture_loop_submitted_request(
+            "loop-req-001",
+            NetworkRequestStatus::Paid,
+            peer_pubkey.as_str(),
+            reciprocal_loop.skill_scope_id.as_str(),
+        );
+        assert!(
+            reciprocal_loop.reconcile_outbound_terminal_statuses(std::slice::from_ref(&outbound))
+        );
+        assert_eq!(reciprocal_loop.local_to_peer_paid, 1);
+        assert_eq!(reciprocal_loop.sats_sent, 10);
+        assert!(reciprocal_loop.in_flight_request_id.is_none());
+        assert_eq!(
+            reciprocal_loop.next_direction,
+            ReciprocalLoopDirection::PeerToLocal
+        );
+        assert_eq!(
+            reciprocal_loop.last_payment_pointer.as_deref(),
+            Some("wallet:loop-req-001")
+        );
+        assert!(
+            !reciprocal_loop.reconcile_outbound_terminal_statuses(std::slice::from_ref(&outbound))
+        );
+        assert_eq!(
+            reciprocal_loop.local_to_peer_paid, 1,
+            "outbound terminal event should be counted exactly once"
+        );
+
+        let mut inbound = fixture_history_row(
+            "loop-job-001",
+            JobHistoryStatus::Succeeded,
+            1_762_800_010,
+            10,
+        );
+        inbound.demand_source = JobDemandSource::OpenNetwork;
+        inbound.skill_scope_id = Some(reciprocal_loop.skill_scope_id.clone());
+        inbound.payment_pointer = "wallet:loop-inbound-001".to_string();
+
+        assert!(reciprocal_loop.reconcile_inbound_history(std::slice::from_ref(&inbound)));
+        assert_eq!(reciprocal_loop.peer_to_local_paid, 1);
+        assert_eq!(reciprocal_loop.sats_received, 10);
+        assert_eq!(
+            reciprocal_loop.next_direction,
+            ReciprocalLoopDirection::LocalToPeer
+        );
+        assert_eq!(
+            reciprocal_loop.last_payment_pointer.as_deref(),
+            Some("wallet:loop-inbound-001")
+        );
+        assert!(!reciprocal_loop.reconcile_inbound_history(&[inbound]));
+        assert_eq!(
+            reciprocal_loop.peer_to_local_paid, 1,
+            "inbound terminal event should be counted exactly once"
+        );
     }
 
     #[test]
