@@ -337,6 +337,7 @@ dependencies = [
  "anyhow",
  "autopilot-spacetime",
  "base64",
+ "bitcoin",
  "chrono",
  "codex-client",
  "dirs 6.0.0",
@@ -364,8 +365,11 @@ dependencies = [
 name = "autopilot-spacetime"
 version = "0.1.0"
 dependencies = [
+ "bitcoin",
+ "hex",
  "reqwest",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]

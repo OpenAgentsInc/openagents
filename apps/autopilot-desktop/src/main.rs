@@ -20,6 +20,7 @@ mod skill_autoload;
 mod skills_registry;
 mod spark_pane;
 mod spark_wallet;
+mod spacetime_presence;
 mod stablesats_blink_worker;
 mod state;
 mod sync_bootstrap;
