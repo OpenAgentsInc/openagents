@@ -205,6 +205,16 @@ These invariants apply to all modules, flows, and extensions.
 2. `/stats` MUST be computed once per minute and cached (same view for all).
 3. UI delivery MUST be subscription-driven via the system’s realtime sync mechanism (server-pushed updates), not polling.
 
+#### 1.7 Non-goals (Normative)
+
+The Economy Kernel MUST NOT evolve into any of the following:
+
+1. **A token-dependent system.** No governance token, emissions, or token-gated safety properties are required for correctness or security.
+2. **Opaque execution.** The kernel MUST NOT silently retry, reroute, batch, or net actions without explicit state transitions and receipts.
+3. **Hidden fees.** All fees and spreads that affect settlement outcomes MUST be explicit in quotes, selections, and receipts.
+4. **Client-side custody.** Client/UI code MUST NOT be entrusted with authority to move pooled funds; custody boundaries remain server-side and receipt-driven.
+5. **Unscoped credit lines.** Credit remains bounded envelopes only (see §1.4 / §4.2).
+
 ---
 
 ## 2. Kernel Objects, Roles, and Economy State Variables
@@ -377,9 +387,20 @@ Rules:
 
 * Rails with uncertainty MUST use quote→execute.
 * Quote linkage is mandatory. When a rail uses `quote → execute`, every terminal payment receipt (PAID / WITHHELD / FAILED) MUST reference the quote receipt (or quote hash) that bound fee ceilings and expiry.
+* **Typed reason codes are mandatory.** Any `WITHHELD`, `FAILED`, `REVOKED`, `EXPIRED`, or denied transition MUST include a stable, machine-readable `reason_code` (not only prose), and that code MUST be recorded in the corresponding receipt.
 * `WITHHELD` MUST be used for policy/constraint denials (expiry, fee cap, breaker, budget).
 * `FAILED` MUST be used for allowed executions that fail operationally.
 * Receipts MUST include underlying proof when PAID (preimage/txid/etc.)
+
+### 4.1.1 Time semantics (deadlines and expiries)
+
+1. **All expiries and deadlines MUST be absolute epoch milliseconds.** Relative durations may be used in policy, but authority actions must bind absolute `expiry_ms` / `deadline_ms` values into receipts.
+2. **Post-expiry behavior is constrained.** Once an action’s bound expiry/deadline has passed:
+
+   * settlement MUST transition to `WITHHELD` or `EXPIRED` (as appropriate),
+   * the system MUST NOT “try anyway” under a stale quote/envelope,
+   * and the receipt MUST include `reason_code = QUOTE_EXPIRED` / `ENVELOPE_EXPIRED` (or equivalent stable code).
+3. **Expiry must be bound.** Any quote/envelope/selection that can expire MUST be explicitly bound to an expiry field and referenced by later receipts.
 
 ### 4.2 Credit Envelope state machine
 
@@ -397,6 +418,7 @@ Rules:
 
 * No envelope is valid without scope/cap/expiry.
 * Allowed destinations MUST be explicit. Every envelope MUST specify destination/payee constraints (e.g., whitelisted payees, invoice domain constraints, route class constraints). An envelope cannot be “cap only.”
+* **Typed reason codes are mandatory.** Any `WITHHELD`, `FAILED`, `REVOKED`, `EXPIRED`, or denied transition MUST include a stable, machine-readable `reason_code` (not only prose), and that code MUST be recorded in the corresponding receipt.
 * Settlement MUST bind to explicit conditions (often a verdict receipt hash).
 * No rolling credit lines. Envelopes MUST be short-lived by default and MUST NOT roll automatically. Renewal requires an explicit new issuance under policy, with a new receipt.
 * Commit binds an envelope to a specific settlement intent. COMMITTED state MUST identify the intended payee/recipient/invoice (or destination constraint snapshot) so settlement cannot drift into a different target.
@@ -507,7 +529,17 @@ All receipts MUST include:
 
 Receipts MAY include non-normative tags/metadata that do not affect canonical hashing.
 
-### 5.2 Cross-receipt linkage rules (normative)
+### 5.2 Receipt immutability and correction
+
+1. **Receipts are append-only.** Once emitted, a receipt MUST NOT be mutated or overwritten.
+2. **Corrections are new receipts.** If an earlier receipt must be superseded (e.g., reclassification, post-facto evidence, administrative reversal), the system MUST emit a new receipt that:
+
+   * references the prior receipt(s) by `ReceiptRef`,
+   * explains the correction as evidence/policy notes,
+   * and results in an explicit state transition (never silent edits).
+3. **Receipts are durable.** Receipts MUST remain retrievable by `receipt_id` for audit and replay (retention policy may be time-bounded, but must be explicitly documented and consistent).
+
+### 5.3 Cross-receipt linkage rules (normative)
 
 Receipts must form a navigable graph so any party (human or agent) can answer: **what happened, why, and what evidence justified it** without private logs.
 
@@ -544,7 +576,7 @@ The following linkages are REQUIRED:
 **Transitive navigability requirement**
 Given any settlement receipt, it MUST be possible to reach (by following receipt references) the contract terms, the governing verdict (if any), and the evidence digests that justified the verdict and/or claim resolution.
 
-### 5.3 Provenance bundles (new, required for higher stakes)
+### 5.4 Provenance bundles (new, required for higher stakes)
 
 For medium/high severity (or policy-defined thresholds), the kernel MUST require a **ProvenanceBundle** evidence type containing:
 
@@ -554,7 +586,7 @@ For medium/high severity (or policy-defined thresholds), the kernel MUST require
 * optional signer/approval attestations
 * optional hardware/runtime attestations (where supported)
 
-### 5.4 Provenance grade (`Pgrade`) (new)
+### 5.5 Provenance grade (`Pgrade`) (new)
 
 The kernel MUST compute a deterministic provenance grade from attached evidence:
 
@@ -569,7 +601,7 @@ The kernel MUST compute a deterministic provenance grade from attached evidence:
 * in contract summaries
 * in `/stats`
 
-### 5.5 Canonical hashing rules (concrete)
+### 5.6 Canonical hashing rules (concrete)
 
 Canonical hashing MUST be stable across platforms, languages, and execution environments.
 
@@ -594,7 +626,7 @@ Minimum requirements:
 6. **Hash encoding.**
    All digests MUST be encoded as `sha256:<hex>` (or a versioned equivalent) consistently.
 
-### 5.6 Idempotency conflict and error semantics
+### 5.7 Idempotency conflict and error semantics
 
 Idempotency is not “best effort”; it defines replay safety.
 
@@ -602,12 +634,14 @@ Idempotency is not “best effort”; it defines replay safety.
    If a request with an `idempotency_key` has already completed, the kernel MUST return the same terminal result and the same receipt (or a stable reference to it) regardless of retry timing.
 2. **Same key, different inputs MUST deterministically error.**
    If the same `idempotency_key` is reused with materially different inputs, the kernel MUST return a deterministic `IDEMPOTENCY_CONFLICT` error and MUST NOT execute any effect.
+
+   * **Idempotency conflicts must be coded.** `IDEMPOTENCY_CONFLICT` MUST be returned as a typed error with a stable `reason_code` and MUST reference the original receipt or action id that claimed the idempotency key.
 3. **No silent partial success.**
    Partial outcomes must be representable as explicit states with receipts. The kernel MUST NOT “partially do the thing” and then return an opaque error.
 4. **Terminality is explicit.**
    If an action is already finalized (e.g., contract already settled, claim already resolved), replay attempts MUST return a deterministic “already finalized” response, not a new effect.
 
-### 5.7 Correlation risk flags (new)
+### 5.8 Correlation risk flags (new)
 
 Receipts MUST include correlation-risk flags when applicable:
 
@@ -861,7 +895,15 @@ Every metric row published in `/stats` MUST be derivable from:
 
 If a metric cannot be derived from receipts/snapshots (or cannot be explained by them), it does not belong in `/stats`.
 
-### 7.4 Schema evolution
+### 7.4 Public data safety and redaction
+
+`/stats` is public, but it MUST NOT leak secrets or sensitive payloads. Therefore:
+
+1. `/stats` MUST NOT include raw payment proofs (e.g., LN preimages), raw invoices, private evidence URIs, or any credential material.
+2. `/stats` SHOULD publish only aggregated metrics and, when identifiers are necessary (e.g., top-N concentration), MUST publish only policy-approved identifiers (e.g., public agent ids) or hashed/pseudonymous forms.
+3. Any metric requiring access to non-public evidence MUST be represented in `/stats` only via aggregate counts or derived indicators, not direct links.
+
+### 7.5 Schema evolution
 
 * Columns may be added; existing columns must not change meaning without versioning.
 * If incompatible changes are required, bump snapshot schema version and publish both formats for a transition period.
