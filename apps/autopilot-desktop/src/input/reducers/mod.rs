@@ -37,6 +37,10 @@ pub(super) fn run_job_history_action(
     jobs::run_job_history_action(state, action)
 }
 
+pub(super) fn run_job_inbox_auto_admission_tick(state: &mut RenderState) -> bool {
+    jobs::run_job_inbox_auto_admission_tick(state)
+}
+
 pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
     let mut changed = false;
 

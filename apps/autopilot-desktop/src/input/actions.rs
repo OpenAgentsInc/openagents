@@ -4053,7 +4053,7 @@ fn queue_starter_demand_request(
         skill_scope_id: None,
         skl_manifest_a: None,
         skl_manifest_event_id: None,
-        sa_tick_request_event_id: None,
+        sa_tick_request_event_id: Some(request_id.clone()),
         sa_tick_result_event_id: None,
         ac_envelope_event_id: state.ac_lane.envelope_event_id.clone(),
         price_sats: starter_job.payout_sats,
@@ -4113,7 +4113,7 @@ fn starter_demand_dispatch_interval_seconds() -> u64 {
 }
 
 fn starter_demand_max_inflight_jobs() -> usize {
-    parse_env_u64_with_default(STARTER_DEMAND_MAX_INFLIGHT_ENV, 3, 1, 12) as usize
+    parse_env_u64_with_default(STARTER_DEMAND_MAX_INFLIGHT_ENV, 1, 1, 1) as usize
 }
 
 fn parse_env_u64_with_default(key: &str, default: u64, min: u64, max: u64) -> u64 {
@@ -4732,8 +4732,7 @@ pub(super) fn run_open_network_paid_transition_reconciliation(
 
     match state.active_job.advance_stage() {
         Ok(crate::app_state::JobLifecycleStage::Paid) => {
-            state.provider_runtime.queue_depth =
-                state.provider_runtime.queue_depth.saturating_sub(1);
+            state.provider_runtime.queue_depth = state.active_job.inflight_job_count();
             state.provider_runtime.last_completed_job_at = Some(now);
             state.provider_runtime.last_result = Some(format!(
                 "open-network job paid with wallet pointer {}",
