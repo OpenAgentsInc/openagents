@@ -230,6 +230,13 @@ pub enum StarterJobsPaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReciprocalLoopPaneAction {
+    Start,
+    Stop,
+    Reset,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ActivityFeedPaneAction {
     Refresh,
     PreviousPage,
@@ -704,6 +711,7 @@ pub enum PaneHitAction {
     SyncHealth(SyncHealthPaneAction),
     NetworkRequests(NetworkRequestsPaneAction),
     StarterJobs(StarterJobsPaneAction),
+    ReciprocalLoop(ReciprocalLoopPaneAction),
     ActivityFeed(ActivityFeedPaneAction),
     AlertsRecovery(AlertsRecoveryPaneAction),
     Settings(SettingsPaneAction),
@@ -1151,6 +1159,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::EarningsScoreboard
             | PaneKind::SyncHealth
             | PaneKind::StarterJobs
+            | PaneKind::ReciprocalLoop
             | PaneKind::ActivityFeed
             | PaneKind::AlertsRecovery
             | PaneKind::NostrIdentity
@@ -1751,6 +1760,35 @@ pub fn starter_jobs_kill_switch_button_bounds(content_bounds: Bounds) -> Bounds 
         complete.origin.y,
         (content_bounds.size.width * 0.28).clamp(160.0, 240.0),
         complete.size.height,
+    )
+}
+
+pub fn reciprocal_loop_start_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.24).clamp(140.0, 210.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn reciprocal_loop_stop_button_bounds(content_bounds: Bounds) -> Bounds {
+    let start = reciprocal_loop_start_button_bounds(content_bounds);
+    Bounds::new(
+        start.max_x() + JOB_INBOX_BUTTON_GAP,
+        start.origin.y,
+        start.size.width,
+        start.size.height,
+    )
+}
+
+pub fn reciprocal_loop_reset_button_bounds(content_bounds: Bounds) -> Bounds {
+    let stop = reciprocal_loop_stop_button_bounds(content_bounds);
+    Bounds::new(
+        stop.max_x() + JOB_INBOX_BUTTON_GAP,
+        stop.origin.y,
+        stop.size.width,
+        stop.size.height,
     )
 }
 
@@ -3472,6 +3510,24 @@ fn pane_hit_action_for_pane(
             }
             None
         }
+        PaneKind::ReciprocalLoop => {
+            if reciprocal_loop_start_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ReciprocalLoop(
+                    ReciprocalLoopPaneAction::Start,
+                ));
+            }
+            if reciprocal_loop_stop_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ReciprocalLoop(
+                    ReciprocalLoopPaneAction::Stop,
+                ));
+            }
+            if reciprocal_loop_reset_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ReciprocalLoop(
+                    ReciprocalLoopPaneAction::Reset,
+                ));
+            }
+            None
+        }
         PaneKind::ActivityFeed => {
             if activity_feed_refresh_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::ActivityFeed(ActivityFeedPaneAction::Refresh));
@@ -4483,6 +4539,8 @@ mod tests {
         nostr_reveal_button_bounds, pane_content_bounds, relay_connections_add_button_bounds,
         relay_connections_remove_button_bounds, relay_connections_retry_button_bounds,
         relay_connections_row_bounds, relay_connections_url_input_bounds,
+        reciprocal_loop_reset_button_bounds, reciprocal_loop_start_button_bounds,
+        reciprocal_loop_stop_button_bounds,
         settings_provider_queue_input_bounds, settings_relay_input_bounds,
         settings_reset_button_bounds, settings_save_button_bounds,
         settings_wallet_default_input_bounds, skill_registry_discover_button_bounds,
@@ -4714,6 +4772,18 @@ mod tests {
         assert!(complete.max_x() < kill_switch.min_x());
         assert!(complete.max_y() < row0.min_y());
         assert!(row0.max_y() < row1.min_y());
+    }
+
+    #[test]
+    fn reciprocal_loop_controls_are_ordered() {
+        let content = Bounds::new(0.0, 0.0, 860.0, 440.0);
+        let start = reciprocal_loop_start_button_bounds(content);
+        let stop = reciprocal_loop_stop_button_bounds(content);
+        let reset = reciprocal_loop_reset_button_bounds(content);
+
+        assert!(start.max_x() < stop.min_x());
+        assert!(stop.max_x() < reset.min_x());
+        assert!(start.origin.y == stop.origin.y && stop.origin.y == reset.origin.y);
     }
 
     #[test]

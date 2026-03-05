@@ -108,7 +108,7 @@ pub fn pane_enabled_in_runtime(kind: PaneKind, simulation_panes_enabled: bool) -
     simulation_panes_enabled || !is_simulation_pane(kind)
 }
 
-const PANE_SPECS: [PaneSpec; 41] = [
+const PANE_SPECS: [PaneSpec; 42] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -345,6 +345,21 @@ const PANE_SPECS: [PaneSpec; 41] = [
             id: "pane.starter_jobs",
             label: "Starter Jobs",
             description: "Open starter-demand queue and completion payouts pane",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::ReciprocalLoop,
+        title: "Reciprocal Loop",
+        default_width: 860.0,
+        default_height: 440.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.reciprocal_loop",
+            label: "Reciprocal Loop",
+            description: "Open two-key 10-sat ping-pong loop controls and metrics",
             keybinding: None,
         }),
         hotbar: None,

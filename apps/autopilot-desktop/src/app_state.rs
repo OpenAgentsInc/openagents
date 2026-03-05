@@ -71,6 +71,7 @@ pub enum PaneKind {
     SyncHealth,
     NetworkRequests,
     StarterJobs,
+    ReciprocalLoop,
     ActivityFeed,
     AlertsRecovery,
     Settings,
