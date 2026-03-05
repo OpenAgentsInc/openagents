@@ -2244,7 +2244,7 @@ fn parse_settings_document(raw: &str) -> Result<SettingsDocumentV1, String> {
     Ok(document)
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum JobLifecycleStage {
     Received,
     Accepted,
@@ -2817,6 +2817,353 @@ fn is_settled_wallet_payment_status(status: &str) -> bool {
     )
 }
 
+const EARN_JOB_LIFECYCLE_PROJECTION_SCHEMA_VERSION: u16 = 1;
+const EARN_JOB_LIFECYCLE_PROJECTION_STREAM_ID: &str = "stream.earn_job_lifecycle_projection.v1";
+const EARN_JOB_LIFECYCLE_PROJECTION_AUTHORITY: &str = "non-authoritative";
+const EARN_JOB_LIFECYCLE_PROJECTION_ROW_LIMIT: usize = 256;
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct EarnJobLifecycleProjectionRow {
+    pub stream_seq: u64,
+    pub event_id: String,
+    pub job_id: String,
+    pub request_id: String,
+    pub stage: JobLifecycleStage,
+    pub source_tag: String,
+    pub occurred_at_epoch_seconds: u64,
+    pub quoted_price_sats: u64,
+    pub payment_pointer: Option<String>,
+    pub settlement_authority: String,
+    pub settlement_authoritative: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct EarnJobLifecycleProjectionDocumentV1 {
+    schema_version: u16,
+    stream_id: String,
+    authority: String,
+    rows: Vec<EarnJobLifecycleProjectionRow>,
+}
+
+pub struct EarnJobLifecycleProjectionState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub stream_id: String,
+    pub authority: String,
+    pub rows: Vec<EarnJobLifecycleProjectionRow>,
+    projection_file_path: PathBuf,
+}
+
+impl Default for EarnJobLifecycleProjectionState {
+    fn default() -> Self {
+        let projection_file_path = earn_job_lifecycle_projection_file_path();
+        Self::from_projection_file_path(projection_file_path)
+    }
+}
+
+impl EarnJobLifecycleProjectionState {
+    fn from_projection_file_path(projection_file_path: PathBuf) -> Self {
+        let (rows, load_state, last_error, last_action) =
+            match load_earn_job_lifecycle_projection_rows(projection_file_path.as_path()) {
+                Ok(rows) => (
+                    rows,
+                    PaneLoadState::Ready,
+                    None,
+                    Some("Loaded earn lifecycle projection stream".to_string()),
+                ),
+                Err(error) => (
+                    Vec::new(),
+                    PaneLoadState::Error,
+                    Some(error),
+                    Some("Earn lifecycle projection stream load failed".to_string()),
+                ),
+            };
+        Self {
+            load_state,
+            last_error,
+            last_action: last_action.map(|action| format!("{action} ({} rows)", rows.len())),
+            stream_id: EARN_JOB_LIFECYCLE_PROJECTION_STREAM_ID.to_string(),
+            authority: EARN_JOB_LIFECYCLE_PROJECTION_AUTHORITY.to_string(),
+            rows,
+            projection_file_path,
+        }
+    }
+
+    #[cfg(test)]
+    fn from_projection_path_for_tests(projection_file_path: PathBuf) -> Self {
+        Self::from_projection_file_path(projection_file_path)
+    }
+
+    pub fn record_ingress_request(
+        &mut self,
+        request: &JobInboxNetworkRequest,
+        occurred_at_epoch_seconds: u64,
+        source_tag: &str,
+    ) {
+        let job_id = format!("job-{}", request.request_id);
+        let authority_key = request.request_id.as_str();
+        let (settlement_authority, settlement_authoritative) = settle_authority_for_pointer(None);
+        let row = EarnJobLifecycleProjectionRow {
+            stream_seq: 0,
+            event_id: earn_job_lifecycle_event_id(
+                job_id.as_str(),
+                JobLifecycleStage::Received,
+                authority_key,
+            ),
+            job_id,
+            request_id: request.request_id.clone(),
+            stage: JobLifecycleStage::Received,
+            source_tag: source_tag.to_string(),
+            occurred_at_epoch_seconds,
+            quoted_price_sats: request.price_sats,
+            payment_pointer: None,
+            settlement_authority,
+            settlement_authoritative,
+        };
+        self.upsert_row(row);
+    }
+
+    pub fn record_active_job_stage(
+        &mut self,
+        job: &ActiveJobRecord,
+        stage: JobLifecycleStage,
+        occurred_at_epoch_seconds: u64,
+        source_tag: &str,
+    ) {
+        let payment_pointer = job.payment_id.clone().or_else(|| job.invoice_id.clone());
+        let (settlement_authority, settlement_authoritative) =
+            settle_authority_for_pointer(payment_pointer.as_deref());
+        let authority_key = match stage {
+            JobLifecycleStage::Received | JobLifecycleStage::Accepted => job.request_id.as_str(),
+            JobLifecycleStage::Running => job
+                .sa_tick_request_event_id
+                .as_deref()
+                .unwrap_or(job.request_id.as_str()),
+            JobLifecycleStage::Delivered => job
+                .sa_tick_result_event_id
+                .as_deref()
+                .unwrap_or(job.request_id.as_str()),
+            JobLifecycleStage::Paid => payment_pointer
+                .as_deref()
+                .or(job.ac_settlement_event_id.as_deref())
+                .or(job.sa_tick_result_event_id.as_deref())
+                .unwrap_or(job.request_id.as_str()),
+            JobLifecycleStage::Failed => job
+                .ac_default_event_id
+                .as_deref()
+                .or(job.failure_reason.as_deref())
+                .unwrap_or(job.request_id.as_str()),
+        };
+        let row = EarnJobLifecycleProjectionRow {
+            stream_seq: 0,
+            event_id: earn_job_lifecycle_event_id(job.job_id.as_str(), stage, authority_key),
+            job_id: job.job_id.clone(),
+            request_id: job.request_id.clone(),
+            stage,
+            source_tag: source_tag.to_string(),
+            occurred_at_epoch_seconds,
+            quoted_price_sats: job.quoted_price_sats,
+            payment_pointer,
+            settlement_authority,
+            settlement_authoritative,
+        };
+        self.upsert_row(row);
+    }
+
+    pub fn record_history_receipt(
+        &mut self,
+        row: &JobHistoryReceiptRow,
+        occurred_at_epoch_seconds: u64,
+        source_tag: &str,
+    ) {
+        let stage = if row.status == JobHistoryStatus::Succeeded {
+            JobLifecycleStage::Paid
+        } else {
+            JobLifecycleStage::Failed
+        };
+        let payment_pointer = Some(row.payment_pointer.clone());
+        let (settlement_authority, settlement_authoritative) =
+            settle_authority_for_pointer(payment_pointer.as_deref());
+        let authority_key = if stage == JobLifecycleStage::Paid {
+            row.payment_pointer.as_str()
+        } else {
+            row.result_hash.as_str()
+        };
+        let request_id = infer_request_id_from_job_id(row.job_id.as_str());
+        let projection_row = EarnJobLifecycleProjectionRow {
+            stream_seq: 0,
+            event_id: earn_job_lifecycle_event_id(row.job_id.as_str(), stage, authority_key),
+            job_id: row.job_id.clone(),
+            request_id,
+            stage,
+            source_tag: source_tag.to_string(),
+            occurred_at_epoch_seconds,
+            quoted_price_sats: row.payout_sats,
+            payment_pointer,
+            settlement_authority,
+            settlement_authoritative,
+        };
+        self.upsert_row(projection_row);
+    }
+
+    fn upsert_row(&mut self, mut row: EarnJobLifecycleProjectionRow) {
+        if let Some(existing) = self
+            .rows
+            .iter_mut()
+            .find(|existing| existing.event_id == row.event_id)
+        {
+            row.stream_seq = existing.stream_seq;
+            *existing = row;
+        } else {
+            row.stream_seq = self
+                .rows
+                .iter()
+                .map(|existing| existing.stream_seq)
+                .max()
+                .unwrap_or(0)
+                .saturating_add(1);
+            self.rows.push(row);
+        }
+        self.rows = normalize_earn_job_lifecycle_projection_rows(std::mem::take(&mut self.rows));
+        if let Some(latest) = self.rows.first() {
+            self.last_action = Some(format!(
+                "Projected {} stage {} ({})",
+                latest.job_id,
+                latest.stage.label(),
+                latest.source_tag
+            ));
+        }
+        if let Err(error) = persist_earn_job_lifecycle_projection_rows(
+            self.projection_file_path.as_path(),
+            self.rows.as_slice(),
+        ) {
+            self.last_error = Some(error);
+            self.load_state = PaneLoadState::Error;
+        } else {
+            self.last_error = None;
+            self.load_state = PaneLoadState::Ready;
+        }
+    }
+}
+
+fn earn_job_lifecycle_projection_file_path() -> PathBuf {
+    std::env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join(".openagents")
+        .join("autopilot-earn-job-lifecycle-projection-v1.json")
+}
+
+fn earn_job_lifecycle_event_id(
+    job_id: &str,
+    stage: JobLifecycleStage,
+    authority_key: &str,
+) -> String {
+    format!(
+        "earn.lifecycle:{}:{}:{}",
+        job_id.trim(),
+        stage.label(),
+        normalize_projection_key(authority_key)
+    )
+}
+
+fn normalize_projection_key(value: &str) -> String {
+    value
+        .trim()
+        .chars()
+        .map(|ch| if ch.is_whitespace() { '_' } else { ch })
+        .collect()
+}
+
+fn infer_request_id_from_job_id(job_id: &str) -> String {
+    job_id
+        .strip_prefix("job-")
+        .map(ToString::to_string)
+        .unwrap_or_else(|| job_id.to_string())
+}
+
+fn settle_authority_for_pointer(payment_pointer: Option<&str>) -> (String, bool) {
+    if is_authoritative_payment_pointer(payment_pointer) {
+        ("wallet.reconciliation".to_string(), true)
+    } else {
+        ("projection.non_authoritative".to_string(), false)
+    }
+}
+
+fn normalize_earn_job_lifecycle_projection_rows(
+    mut rows: Vec<EarnJobLifecycleProjectionRow>,
+) -> Vec<EarnJobLifecycleProjectionRow> {
+    rows.sort_by(|lhs, rhs| {
+        rhs.stream_seq
+            .cmp(&lhs.stream_seq)
+            .then_with(|| lhs.event_id.cmp(&rhs.event_id))
+    });
+    let mut seen_event_ids = HashSet::new();
+    rows.retain(|row| seen_event_ids.insert(row.event_id.clone()));
+    rows.truncate(EARN_JOB_LIFECYCLE_PROJECTION_ROW_LIMIT);
+    rows
+}
+
+fn persist_earn_job_lifecycle_projection_rows(
+    path: &Path,
+    rows: &[EarnJobLifecycleProjectionRow],
+) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("Failed to create earn lifecycle projection dir: {error}"))?;
+    }
+    let document = EarnJobLifecycleProjectionDocumentV1 {
+        schema_version: EARN_JOB_LIFECYCLE_PROJECTION_SCHEMA_VERSION,
+        stream_id: EARN_JOB_LIFECYCLE_PROJECTION_STREAM_ID.to_string(),
+        authority: EARN_JOB_LIFECYCLE_PROJECTION_AUTHORITY.to_string(),
+        rows: normalize_earn_job_lifecycle_projection_rows(rows.to_vec()),
+    };
+    let payload = serde_json::to_string_pretty(&document)
+        .map_err(|error| format!("Failed to encode earn lifecycle projection rows: {error}"))?;
+    let temp_path = path.with_extension("tmp");
+    std::fs::write(&temp_path, payload)
+        .map_err(|error| format!("Failed to write earn lifecycle projection temp file: {error}"))?;
+    std::fs::rename(&temp_path, path)
+        .map_err(|error| format!("Failed to persist earn lifecycle projection rows: {error}"))?;
+    Ok(())
+}
+
+fn load_earn_job_lifecycle_projection_rows(
+    path: &Path,
+) -> Result<Vec<EarnJobLifecycleProjectionRow>, String> {
+    let raw = match std::fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => {
+            return Err(format!(
+                "Failed to read earn lifecycle projection rows: {error}"
+            ));
+        }
+    };
+    let document = serde_json::from_str::<EarnJobLifecycleProjectionDocumentV1>(&raw)
+        .map_err(|error| format!("Failed to parse earn lifecycle projection rows: {error}"))?;
+    if document.schema_version != EARN_JOB_LIFECYCLE_PROJECTION_SCHEMA_VERSION {
+        return Err(format!(
+            "Unsupported earn lifecycle projection schema version: {}",
+            document.schema_version
+        ));
+    }
+    if document.stream_id != EARN_JOB_LIFECYCLE_PROJECTION_STREAM_ID {
+        return Err(format!(
+            "Unsupported earn lifecycle projection stream id: {}",
+            document.stream_id
+        ));
+    }
+    if document.authority != EARN_JOB_LIFECYCLE_PROJECTION_AUTHORITY {
+        return Err(format!(
+            "Unsupported earn lifecycle projection authority marker: {}",
+            document.authority
+        ));
+    }
+    Ok(normalize_earn_job_lifecycle_projection_rows(document.rows))
+}
+
 pub struct EarningsScoreboardState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
@@ -3271,6 +3618,7 @@ pub struct RenderState {
     pub job_inbox: JobInboxState,
     pub active_job: ActiveJobState,
     pub job_history: JobHistoryState,
+    pub earn_job_lifecycle_projection: EarnJobLifecycleProjectionState,
     pub agent_profile_state: AgentProfileStatePaneState,
     pub agent_schedule_tick: AgentScheduleTickPaneState,
     pub trajectory_audit: TrajectoryAuditPaneState,
@@ -3470,12 +3818,13 @@ mod tests {
         CadBuildFailureClass, CadBuildSessionPhase, CadCameraViewSnap, CadContextMenuTargetKind,
         CadDemoPaneState, CadDemoWarningState, CadDrawingViewDirection, CadDrawingViewMode,
         CadHiddenLineMode, CadHotkeyAction, CadProjectionMode, CadSectionAxis, CadSnapMode,
-        CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile, EarningsScoreboardState,
-        JobDemandSource, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
-        JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest, JobInboxState,
-        JobInboxValidation, JobLifecycleStage, NetworkAggregateCountersState, NetworkRequestStatus,
-        NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderMode,
-        ProviderRuntimeState, RecoveryAlertRow, RelayConnectionStatus, RelayConnectionsState,
+        CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile,
+        EarnJobLifecycleProjectionState, EarningsScoreboardState, JobDemandSource, JobHistoryState,
+        JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision,
+        JobInboxNetworkRequest, JobInboxState, JobInboxValidation, JobLifecycleStage,
+        NetworkAggregateCountersState, NetworkRequestStatus, NetworkRequestSubmission,
+        NetworkRequestsState, NostrSecretState, ProviderMode, ProviderRuntimeState,
+        RecoveryAlertRow, RelayConnectionStatus, RelayConnectionsState,
         RelaySecuritySimulationPaneState, SettingsState, SparkPaneState,
         StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
         SyncHealthState, SyncRecoveryPhase, TreasuryExchangeSimulationPaneState,
@@ -3636,6 +3985,17 @@ mod tests {
         let path = activity_feed_projection_test_path(name);
         let _ = std::fs::remove_file(path.as_path());
         ActivityFeedState::from_projection_path_for_tests(path)
+    }
+
+    fn earn_projection_test_path(name: &str) -> std::path::PathBuf {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "openagents-earn-projection-{name}-{}-{nonce}.json",
+            std::process::id()
+        ))
     }
 
     fn fixture_alert(
@@ -5080,6 +5440,117 @@ mod tests {
                 .rows
                 .iter()
                 .any(|row| row.event_id == "sync:checkpoint:2")
+        );
+        let _ = std::fs::remove_file(path.as_path());
+    }
+
+    #[test]
+    fn earn_projection_replays_and_dedupes_job_lifecycle_rows() {
+        let path = earn_projection_test_path("replay-dedupe");
+        let _ = std::fs::remove_file(path.as_path());
+        let mut projection =
+            EarnJobLifecycleProjectionState::from_projection_path_for_tests(path.clone());
+        let request = fixture_inbox_request(
+            "req-projection",
+            "summarize.text",
+            700,
+            120,
+            JobInboxValidation::Valid,
+        );
+        projection.record_ingress_request(&request, 1_761_920_400, "nip90.relay.ingress");
+
+        let mut inbox = seed_job_inbox(vec![request]);
+        assert!(inbox.select_by_index(0));
+        let selected = inbox
+            .selected_request()
+            .expect("selected request should exist")
+            .clone();
+        let mut active = ActiveJobState::default();
+        active.start_from_request(&selected);
+        let job = active.job.as_ref().expect("active job should exist");
+        projection.record_active_job_stage(
+            job,
+            JobLifecycleStage::Accepted,
+            1_761_920_420,
+            "job.inbox.accept",
+        );
+        projection.record_active_job_stage(
+            job,
+            JobLifecycleStage::Accepted,
+            1_761_920_421,
+            "job.inbox.accept.duplicate",
+        );
+
+        let accepted_rows = projection
+            .rows
+            .iter()
+            .filter(|row| row.stage == JobLifecycleStage::Accepted)
+            .count();
+        assert_eq!(accepted_rows, 1);
+
+        let reloaded =
+            EarnJobLifecycleProjectionState::from_projection_path_for_tests(path.clone());
+        assert_eq!(reloaded.rows, projection.rows);
+        assert_eq!(
+            reloaded.authority,
+            super::EARN_JOB_LIFECYCLE_PROJECTION_AUTHORITY
+        );
+        let _ = std::fs::remove_file(path.as_path());
+    }
+
+    #[test]
+    fn earn_projection_marks_settlement_authority_without_changing_wallet_truth() {
+        let path = earn_projection_test_path("authority");
+        let _ = std::fs::remove_file(path.as_path());
+        let mut projection =
+            EarnJobLifecycleProjectionState::from_projection_path_for_tests(path.clone());
+
+        let mut non_authoritative = fixture_history_row(
+            "job-non-authoritative",
+            JobHistoryStatus::Succeeded,
+            1_761_920_450,
+            50,
+        );
+        non_authoritative.payment_pointer = "pending:req-non-authoritative".to_string();
+        projection.record_history_receipt(
+            &non_authoritative,
+            non_authoritative.completed_at_epoch_seconds,
+            "earn.history.non_authoritative",
+        );
+
+        let mut authoritative = fixture_history_row(
+            "job-authoritative",
+            JobHistoryStatus::Succeeded,
+            1_761_920_470,
+            75,
+        );
+        authoritative.payment_pointer = "wallet-payment-777".to_string();
+        projection.record_history_receipt(
+            &authoritative,
+            authoritative.completed_at_epoch_seconds,
+            "earn.history.wallet_authoritative",
+        );
+
+        let non_authoritative_row = projection
+            .rows
+            .iter()
+            .find(|row| row.job_id == "job-non-authoritative")
+            .expect("non-authoritative projection row should exist");
+        assert!(!non_authoritative_row.settlement_authoritative);
+        assert_eq!(
+            non_authoritative_row.settlement_authority,
+            "projection.non_authoritative"
+        );
+
+        let authoritative_row = projection
+            .rows
+            .iter()
+            .find(|row| row.job_id == "job-authoritative")
+            .expect("authoritative projection row should exist");
+        assert!(authoritative_row.settlement_authoritative);
+        assert_eq!(
+            authoritative_row.settlement_authority,
+            "wallet.reconciliation"
         );
         let _ = std::fs::remove_file(path.as_path());
     }

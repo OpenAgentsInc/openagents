@@ -290,6 +290,8 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             job_inbox: crate::app_state::JobInboxState::default(),
             active_job: crate::app_state::ActiveJobState::default(),
             job_history: crate::app_state::JobHistoryState::default(),
+            earn_job_lifecycle_projection:
+                crate::app_state::EarnJobLifecycleProjectionState::default(),
             agent_profile_state: crate::app_state::AgentProfileStatePaneState::default(),
             agent_schedule_tick: crate::app_state::AgentScheduleTickPaneState::default(),
             trajectory_audit: crate::app_state::TrajectoryAuditPaneState::default(),
@@ -818,6 +820,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &state.job_inbox,
             &state.active_job,
             &state.job_history,
+            &state.earn_job_lifecycle_projection,
             &state.agent_profile_state,
             &state.agent_schedule_tick,
             &state.trajectory_audit,
