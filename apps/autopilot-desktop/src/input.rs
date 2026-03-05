@@ -109,6 +109,8 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
 
     match event {
         WindowEvent::CloseRequested => {
+            let _ = state.spacetime_presence.register_offline();
+            state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
             let _ = state.spark_worker.cancel_pending();
             if let Some(mut process) = state.cast_control_process.take() {
                 let _ = process.child.kill();
@@ -480,6 +482,10 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     if run_auto_starter_demand_generator(state, now) {
         changed = true;
     }
+    if state.spacetime_presence.tick(state.provider_runtime.mode) {
+        changed = true;
+    }
+    state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
     refresh_network_aggregate_counters(state, now);
     refresh_earnings_scoreboard(state, now);
     refresh_sync_health(state);
@@ -2364,6 +2370,27 @@ pub(super) fn run_pane_hit_action(
                 state.provider_runtime.mode,
                 ProviderMode::Offline | ProviderMode::Degraded
             );
+            if wants_online {
+                if let Err(error) = state
+                    .spacetime_presence
+                    .register_online(state.nostr_identity.as_ref())
+                {
+                    state.provider_runtime.last_result = Some(error.clone());
+                    state.provider_runtime.last_error_detail = Some(error);
+                    state.provider_runtime.mode = ProviderMode::Degraded;
+                    state.provider_runtime.degraded_reason_code =
+                        Some("SPACETIME_PRESENCE_BIND_FAILED".to_string());
+                    state.provider_runtime.last_authoritative_error_class =
+                        Some(EarnFailureClass::Execution);
+                    state.provider_runtime.mode_changed_at = std::time::Instant::now();
+                    state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
+                    return true;
+                }
+            } else {
+                let _ = state.spacetime_presence.register_offline();
+            }
+            state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
+
             if wants_online {
                 queue_spark_command(state, SparkWalletCommand::Refresh);
                 let _ = state.sync_provider_nip90_lane_relays();

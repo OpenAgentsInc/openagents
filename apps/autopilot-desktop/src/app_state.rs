@@ -3096,6 +3096,8 @@ pub struct RenderState {
     pub sync_health: SyncHealthState,
     pub sync_bootstrap_note: Option<String>,
     pub sync_bootstrap_error: Option<String>,
+    pub spacetime_presence: crate::spacetime_presence::SpacetimePresenceRuntime,
+    pub spacetime_presence_snapshot: crate::spacetime_presence::SpacetimePresenceSnapshot,
     pub network_requests: NetworkRequestsState,
     pub starter_jobs: StarterJobsState,
     pub activity_feed: ActivityFeedState,

@@ -157,6 +157,9 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             Ok(identity) => (Some(identity), None),
             Err(err) => (None, Some(err.to_string())),
         };
+        let spacetime_presence =
+            crate::spacetime_presence::SpacetimePresenceRuntime::new(nostr_identity.as_ref());
+        let spacetime_presence_snapshot = spacetime_presence.snapshot();
 
         let spark_wallet = crate::spark_wallet::SparkPaneState::default();
         let spark_worker = crate::spark_wallet::SparkWalletWorker::spawn(spark_wallet.network);
@@ -252,6 +255,8 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             sync_health: crate::app_state::SyncHealthState::default(),
             sync_bootstrap_note: None,
             sync_bootstrap_error: None,
+            spacetime_presence,
+            spacetime_presence_snapshot,
             network_requests: crate::app_state::NetworkRequestsState::default(),
             starter_jobs: crate::app_state::StarterJobsState::default(),
             activity_feed: crate::app_state::ActivityFeedState::default(),
