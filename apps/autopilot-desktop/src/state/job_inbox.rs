@@ -76,6 +76,8 @@ pub struct JobInboxNetworkRequest {
     pub demand_source: JobDemandSource,
     pub request_kind: u16,
     pub capability: String,
+    pub parsed_event_shape: Option<String>,
+    pub raw_event_json: Option<String>,
     pub skill_scope_id: Option<String>,
     pub skl_manifest_a: Option<String>,
     pub skl_manifest_event_id: Option<String>,

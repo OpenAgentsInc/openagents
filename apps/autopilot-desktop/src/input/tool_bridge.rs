@@ -1143,6 +1143,12 @@ fn pane_action_to_hit_action(
         },
         PaneKind::ActivityFeed => match action {
             "refresh" => Ok(PaneHitAction::ActivityFeed(ActivityFeedPaneAction::Refresh)),
+            "previous_page" | "prev_page" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::PreviousPage,
+            )),
+            "next_page" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::NextPage,
+            )),
             "select_row" => Ok(PaneHitAction::ActivityFeed(
                 ActivityFeedPaneAction::SelectRow(require_index(action)?),
             )),
@@ -1151,6 +1157,9 @@ fn pane_action_to_hit_action(
             )),
             "filter_chat" => Ok(PaneHitAction::ActivityFeed(
                 ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Chat),
+            )),
+            "filter_cad" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Cad),
             )),
             "filter_job" => Ok(PaneHitAction::ActivityFeed(
                 ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Job),
@@ -1163,6 +1172,18 @@ fn pane_action_to_hit_action(
             )),
             "filter_sync" => Ok(PaneHitAction::ActivityFeed(
                 ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Sync),
+            )),
+            "filter_sa" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Sa),
+            )),
+            "filter_skl" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Skl),
+            )),
+            "filter_ac" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Ac),
+            )),
+            "filter_nip90" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Nip90),
             )),
             _ => unsupported(),
         },
@@ -4602,8 +4623,7 @@ mod tests {
         PaneKind,
     };
     use crate::pane_system::{
-        CadDemoPaneAction, CredentialsPaneAction, PaneHitAction, RelayConnectionsPaneAction,
-        SettingsPaneAction,
+        CadDemoPaneAction, PaneHitAction, RelayConnectionsPaneAction, SettingsPaneAction,
     };
     use crate::spark_pane::SparkPaneAction;
     use crate::state::autopilot_goals::GoalRolloutStage;

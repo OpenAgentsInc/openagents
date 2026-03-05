@@ -242,8 +242,7 @@ impl RelayConnection {
 
     /// Register and send subscription request.
     pub async fn subscribe(&self, subscription: Subscription) -> Result<()> {
-        self.send_json(&json!(["REQ", subscription.id, subscription.filters]))
-            .await?;
+        self.send_json(&build_req_payload(&subscription)).await?;
         self.subscriptions
             .lock()
             .await
@@ -289,6 +288,14 @@ impl RelayConnection {
             .await
             .map_err(|error| ClientError::WebSocket(error.to_string()))
     }
+}
+
+fn build_req_payload(subscription: &Subscription) -> Value {
+    let mut frame = Vec::with_capacity(subscription.filters.len().saturating_add(2));
+    frame.push(Value::String("REQ".to_string()));
+    frame.push(Value::String(subscription.id.clone()));
+    frame.extend(subscription.filters.iter().cloned());
+    Value::Array(frame)
 }
 
 /// Parse relay protocol JSON text message into typed relay message.
@@ -469,6 +476,27 @@ mod tests {
         let parsed = parse_relay_message(r#"["UNKNOWN","data"]"#)?;
         assert!(parsed.is_none());
         Ok(())
+    }
+
+    #[test]
+    fn build_req_payload_flattens_filters() {
+        let subscription = Subscription::new(
+            "sub-1".to_string(),
+            vec![
+                json!({"kinds":[5300], "limit": 20}),
+                json!({"authors":["npub1test"]}),
+            ],
+        );
+        let payload = build_req_payload(&subscription);
+        assert_eq!(
+            payload,
+            json!([
+                "REQ",
+                "sub-1",
+                {"kinds":[5300], "limit": 20},
+                {"authors":["npub1test"]}
+            ])
+        );
     }
 
     #[test]
