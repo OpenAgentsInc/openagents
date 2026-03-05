@@ -5498,6 +5498,30 @@ pub(super) fn refresh_network_aggregate_counters(
         &state.job_history,
         &state.spark_wallet,
     );
+
+    let now_epoch_ms = current_epoch_millis().min(i64::MAX as u64) as i64;
+    let computed_snapshot = {
+        let receipts = state.earn_kernel_receipts.receipts.as_slice();
+        state
+            .economy_snapshot
+            .compute_minute_snapshot(now_epoch_ms, receipts)
+    };
+    if let Some(compute_result) = computed_snapshot {
+        state.earn_kernel_receipts.record_economy_snapshot_receipt(
+            compute_result.snapshot.snapshot_id.as_str(),
+            compute_result.snapshot.as_of_ms,
+            compute_result.snapshot.snapshot_hash.as_str(),
+            compute_result.snapshot.sv,
+            compute_result.snapshot.rho,
+            compute_result.snapshot.n,
+            compute_result.snapshot.nv,
+            compute_result.snapshot.delta_m_hat,
+            compute_result.snapshot.xa_hat,
+            compute_result.snapshot.correlated_verification_share,
+            compute_result.input_evidence,
+            "economy.snapshot.minute",
+        );
+    }
 }
 
 pub(super) fn refresh_sync_health(state: &mut crate::app_state::RenderState) {

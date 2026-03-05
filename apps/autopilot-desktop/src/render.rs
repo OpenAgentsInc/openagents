@@ -295,6 +295,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
                 crate::app_state::EarnJobLifecycleProjectionState::default(),
             earn_kernel_receipts:
                 crate::state::earn_kernel_receipts::EarnKernelReceiptState::default(),
+            economy_snapshot: crate::state::economy_snapshot::EconomySnapshotState::default(),
             agent_profile_state: crate::app_state::AgentProfileStatePaneState::default(),
             agent_schedule_tick: crate::app_state::AgentScheduleTickPaneState::default(),
             trajectory_audit: crate::app_state::TrajectoryAuditPaneState::default(),
@@ -691,6 +692,35 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
                 10.0,
                 theme::text::PRIMARY,
             ));
+            y += 14.0;
+            if let Some(snapshot) = state.economy_snapshot.latest_snapshot.as_ref() {
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &format!("sv: {:.2}% | N: {}", snapshot.sv * 100.0, snapshot.n),
+                    Point::new(left, y),
+                    10.0,
+                    theme::text::PRIMARY,
+                ));
+                y += 14.0;
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &format!(
+                        "Snapshot: {}",
+                        snapshot
+                            .snapshot_id
+                            .strip_prefix("snapshot.economy:")
+                            .unwrap_or(snapshot.snapshot_id.as_str())
+                    ),
+                    Point::new(left, y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+            } else {
+                paint.scene.draw_text(paint.text.layout_mono(
+                    "Snapshot: pending",
+                    Point::new(left, y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+            }
 
             y += 20.0;
             paint.scene.draw_text(paint.text.layout(

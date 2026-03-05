@@ -660,6 +660,87 @@ impl EarnKernelReceiptState {
         self.append_receipt(receipt, source_tag);
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_economy_snapshot_receipt(
+        &mut self,
+        snapshot_id: &str,
+        as_of_ms: i64,
+        snapshot_hash: &str,
+        sv: f64,
+        rho: f64,
+        n: u64,
+        nv: f64,
+        delta_m_hat: f64,
+        xa_hat: f64,
+        correlated_verification_share: f64,
+        mut input_evidence: Vec<EvidenceRef>,
+        source_tag: &str,
+    ) {
+        if snapshot_id.trim().is_empty() || snapshot_hash.trim().is_empty() {
+            self.last_error =
+                Some("Cannot emit economy snapshot receipt: missing snapshot id/hash".to_string());
+            self.load_state = PaneLoadState::Error;
+            return;
+        }
+        let receipt_id = format!("receipt.economy.snapshot:{}", as_of_ms.max(0));
+        let idempotency_key = format!("idemp.economy.snapshot:{}", as_of_ms.max(0));
+        input_evidence.push(EvidenceRef::new(
+            "economy_snapshot_artifact",
+            format!("oa://economy/snapshots/{snapshot_id}"),
+            snapshot_hash.to_string(),
+        ));
+
+        let receipt = ReceiptBuilder::new(
+            receipt_id,
+            "economy.stats.snapshot_receipt.v1",
+            as_of_ms.max(0),
+            idempotency_key,
+            TraceContext {
+                session_id: None,
+                trajectory_hash: None,
+                job_hash: None,
+                run_id: Some(format!("economy_snapshot:{as_of_ms}")),
+                work_unit_id: None,
+                contract_id: None,
+                claim_id: None,
+            },
+            current_policy_context(),
+        )
+        .with_inputs_payload(json!({
+            "snapshot_id": snapshot_id,
+            "as_of_ms": as_of_ms,
+            "inputs_count": input_evidence.len(),
+        }))
+        .with_outputs_payload(json!({
+            "snapshot_id": snapshot_id,
+            "snapshot_hash": snapshot_hash,
+            "as_of_ms": as_of_ms,
+            "status": "computed",
+            "sv": sv,
+            "rho": rho,
+            "N": n,
+            "NV": nv,
+            "delta_m_hat": delta_m_hat,
+            "xa_hat": xa_hat,
+            "correlated_verification_share": correlated_verification_share,
+            "source_tag": source_tag,
+        }))
+        .with_evidence(input_evidence)
+        .with_hints(ReceiptHints {
+            category: Some("compute".to_string()),
+            tfb_class: None,
+            severity: None,
+            achieved_verification_tier: None,
+            verification_correlated: None,
+            provenance_grade: None,
+            reason_code: None,
+            notional: None,
+        })
+        .build();
+
+        self.append_receipt(receipt, source_tag);
+    }
+
     pub fn get_receipt(&self, receipt_id: &str) -> Option<&Receipt> {
         self.receipts
             .iter()
@@ -1557,5 +1638,54 @@ mod tests {
         );
         assert_eq!(rejection.policy.policy_bundle_id, "policy.earn.default");
         assert_eq!(rejection.policy.policy_version, "1");
+    }
+
+    #[test]
+    fn economy_snapshot_receipt_is_emitted_with_input_refs() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        let input = EvidenceRef::new(
+            "receipt_window",
+            "oa://receipts/window/1762000000000-1762000060000",
+            "sha256:window",
+        );
+
+        state.record_economy_snapshot_receipt(
+            "snapshot.economy:1762000060000",
+            1_762_000_060_000,
+            "sha256:snapshot",
+            0.5,
+            0.5,
+            2,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            vec![input],
+            "test.snapshot",
+        );
+
+        let receipt = state
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_type == "economy.stats.snapshot_receipt.v1")
+            .expect("snapshot receipt");
+        assert!(
+            receipt
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "receipt_window")
+        );
+        assert!(
+            receipt
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "economy_snapshot_artifact")
+        );
+        assert_eq!(
+            receipt.idempotency_key,
+            "idemp.economy.snapshot:1762000060000"
+        );
     }
 }
