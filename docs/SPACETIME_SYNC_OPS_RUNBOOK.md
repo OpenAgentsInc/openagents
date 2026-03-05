@@ -9,6 +9,7 @@ Applies to:
 - `scripts/spacetime/verify-autopilot-sync-contract.sh`
 - `scripts/spacetime/publish-promote.sh`
 - `scripts/spacetime/maincloud-handshake-smoke.sh`
+- `docs/adr/ADR-0002-provider-presence-cardinality-and-ttl-policy.md`
 
 ## Prerequisites
 
