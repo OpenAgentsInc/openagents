@@ -23,6 +23,7 @@ mod spark_pane;
 mod spark_wallet;
 mod stablesats_blink_worker;
 mod state;
+mod sync_apply;
 mod sync_bootstrap;
 mod sync_lifecycle;
 

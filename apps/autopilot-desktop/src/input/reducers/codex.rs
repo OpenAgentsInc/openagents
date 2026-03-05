@@ -140,6 +140,10 @@ pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: CodexLaneSn
 }
 
 pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLaneCommandResponse) {
+    if !super::apply_stream_event_seq(state, "codex.command", response.command_seq) {
+        return;
+    }
+
     let response_error = response.error.clone();
     increment_diagnostics_count(
         &mut state.codex_diagnostics.notification_counts,
@@ -358,9 +362,6 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
         response.status.label()
     ));
     state.record_codex_command_response(response);
-    state.sync_health.last_applied_event_seq =
-        state.sync_health.last_applied_event_seq.saturating_add(1);
-    state.sync_health.cursor_last_advanced_seconds_ago = 0;
 }
 
 fn queue_skills_list_refresh(state: &mut RenderState) {

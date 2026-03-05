@@ -179,6 +179,26 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let provider_nip90_lane_worker =
             ProviderNip90LaneWorker::spawn(vec![initial_relay_url.clone()]);
         let simulation_panes_enabled = simulation_panes_enabled_from_env();
+        let sync_apply_engine = match crate::sync_apply::SyncApplyEngine::load_or_new_default() {
+            Ok(engine) => engine,
+            Err(error) => {
+                tracing::warn!("sync apply checkpoint load failed: {}", error);
+                crate::sync_apply::SyncApplyEngine::load_or_new(
+                    std::env::temp_dir().join("openagents-sync-checkpoints-fallback.json"),
+                    crate::sync_apply::SyncApplyPolicy::default(),
+                )
+                .map_err(|fallback_error| {
+                    anyhow::anyhow!(
+                        "failed to initialize fallback sync apply checkpoint engine: {}",
+                        fallback_error
+                    )
+                })?
+            }
+        };
+        let mut sync_health = crate::app_state::SyncHealthState::default();
+        sync_health.last_applied_event_seq = sync_apply_engine.max_checkpoint_seq();
+        sync_health.cursor_position = sync_health.last_applied_event_seq;
+        sync_health.cursor_target_position = sync_health.last_applied_event_seq;
         let command_palette_actions = Rc::new(RefCell::new(Vec::<String>::new()));
         let mut command_palette = CommandPalette::new()
             .mono(true)
@@ -252,9 +272,10 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             earnings_scoreboard: crate::app_state::EarningsScoreboardState::default(),
             network_aggregate_counters: crate::app_state::NetworkAggregateCountersState::default(),
             relay_connections: crate::app_state::RelayConnectionsState::default(),
-            sync_health: crate::app_state::SyncHealthState::default(),
+            sync_health,
             sync_bootstrap_note: None,
             sync_bootstrap_error: None,
+            sync_apply_engine,
             sync_lifecycle_worker_id: "desktopw:sync".to_string(),
             sync_lifecycle: crate::sync_lifecycle::RuntimeSyncLifecycleManager::default(),
             sync_lifecycle_snapshot: None,
@@ -345,9 +366,12 @@ fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
             );
             state.sync_bootstrap_note = Some(note.clone());
             state.sync_lifecycle.mark_connecting(worker_id.as_str());
-            state
-                .sync_lifecycle
-                .mark_replay_bootstrap(worker_id.as_str(), 0, Some(0));
+            let replay_cursor = state.sync_apply_engine.max_checkpoint_seq();
+            state.sync_lifecycle.mark_replay_bootstrap(
+                worker_id.as_str(),
+                replay_cursor,
+                Some(replay_cursor),
+            );
             state.sync_lifecycle.mark_live(
                 worker_id.as_str(),
                 result.token_lease.refresh_after_in_seconds,

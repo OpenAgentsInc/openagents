@@ -3144,6 +3144,7 @@ pub struct RenderState {
     pub sync_health: SyncHealthState,
     pub sync_bootstrap_note: Option<String>,
     pub sync_bootstrap_error: Option<String>,
+    pub sync_apply_engine: crate::sync_apply::SyncApplyEngine,
     pub sync_lifecycle_worker_id: String,
     pub sync_lifecycle: crate::sync_lifecycle::RuntimeSyncLifecycleManager,
     pub sync_lifecycle_snapshot: Option<crate::sync_lifecycle::RuntimeSyncHealthSnapshot>,
