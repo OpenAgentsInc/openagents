@@ -7,6 +7,7 @@ use crate::provider_nip90_lane::{
     ProviderNip90LaneSnapshot, ProviderNip90PublishOutcome, ProviderNip90PublishRole,
     ProviderNip90RelayStatus,
 };
+use crate::spark_wallet::SparkWalletCommand;
 use crate::state::job_inbox::{JobInboxNetworkRequest, JobInboxValidation};
 
 pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: ProviderNip90LaneSnapshot) {
@@ -415,6 +416,9 @@ pub(super) fn apply_buyer_response_event(
     state: &mut RenderState,
     event: ProviderNip90BuyerResponseEvent,
 ) {
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs());
     match event.kind {
         ProviderNip90BuyerResponseKind::Feedback => {
             state.network_requests.apply_nip90_buyer_feedback_event(
@@ -424,6 +428,7 @@ pub(super) fn apply_buyer_response_event(
                 event.status.as_deref(),
                 event.status_extra.as_deref(),
             );
+            queue_auto_payment_for_feedback(state, &event, now_epoch_seconds);
         }
         ProviderNip90BuyerResponseKind::Result => {
             state.network_requests.apply_nip90_buyer_result_event(
@@ -448,9 +453,6 @@ pub(super) fn apply_buyer_response_event(
         .map(|status| format!("buyer.{}", status));
     state.provider_runtime.last_authoritative_event_id = Some(event.event_id.clone());
 
-    let now_epoch_seconds = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_secs());
     state.activity_feed.upsert_event(ActivityEventRow {
         event_id: format!("nip90:buyer:{}:{}", event.kind.label(), event.event_id),
         domain: ActivityEventDomain::Network,
@@ -489,6 +491,50 @@ pub(super) fn apply_buyer_response_event(
     state.sync_health.last_applied_event_seq =
         state.sync_health.last_applied_event_seq.saturating_add(1);
     state.sync_health.cursor_last_advanced_seconds_ago = 0;
+}
+
+fn queue_auto_payment_for_feedback(
+    state: &mut RenderState,
+    event: &ProviderNip90BuyerResponseEvent,
+    now_epoch_seconds: u64,
+) {
+    let status = event
+        .status
+        .as_deref()
+        .map(str::trim)
+        .map(str::to_ascii_lowercase);
+    if status.as_deref() != Some("payment-required") {
+        return;
+    }
+
+    let Some(bolt11) = event.bolt11.as_deref() else {
+        state.network_requests.mark_auto_payment_failed(
+            event.request_id.as_str(),
+            "provider returned payment-required without bolt11 invoice",
+            now_epoch_seconds,
+        );
+        return;
+    };
+
+    let Some((payment_request, amount_sats)) = state.network_requests.prepare_auto_payment_attempt(
+        event.request_id.as_str(),
+        bolt11,
+        event.amount_msats,
+        now_epoch_seconds,
+    ) else {
+        return;
+    };
+
+    if let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::SendPayment {
+        payment_request,
+        amount_sats,
+    }) {
+        state.network_requests.mark_auto_payment_failed(
+            event.request_id.as_str(),
+            format!("failed to enqueue Spark payment command: {error}").as_str(),
+            now_epoch_seconds,
+        );
+    }
 }
 
 pub(super) fn apply_publish_outcome(state: &mut RenderState, outcome: ProviderNip90PublishOutcome) {

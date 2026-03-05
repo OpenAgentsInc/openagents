@@ -1143,7 +1143,7 @@ fn paint_network_requests_pane(
             NetworkRequestStatus::Failed => theme::status::ERROR,
         };
         let summary = format!(
-            "{} {} targets:{} scope:{} env:{} budget:{} timeout:{}s stream:{} published:{} feedback:{} result:{} provider:{} [{}|{}|{}|{}]",
+            "{} {} targets:{} scope:{} env:{} budget:{} timeout:{}s stream:{} published:{} feedback:{} result:{} provider:{} payment:{} required_at:{} sent_at:{} failed_at:{} pay_error:{} [{}|{}|{}|{}]",
             request.request_id,
             request.request_type,
             if request.target_provider_pubkeys.is_empty() {
@@ -1163,6 +1163,20 @@ fn paint_network_requests_pane(
             request.last_feedback_status.as_deref().unwrap_or("none"),
             request.last_result_event_id.as_deref().unwrap_or("none"),
             request.last_provider_pubkey.as_deref().unwrap_or("none"),
+            request.last_payment_pointer.as_deref().unwrap_or("none"),
+            request
+                .payment_required_at_epoch_seconds
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "none".to_string()),
+            request
+                .payment_sent_at_epoch_seconds
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "none".to_string()),
+            request
+                .payment_failed_at_epoch_seconds
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "none".to_string()),
+            request.payment_error.as_deref().unwrap_or("none"),
             request.status.label(),
             request.authority_status.as_deref().unwrap_or("pending"),
             request.authority_event_id.as_deref().unwrap_or("event:n/a"),

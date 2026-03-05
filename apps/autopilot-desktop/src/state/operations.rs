@@ -386,6 +386,12 @@ pub struct SubmittedNetworkRequest {
     pub last_feedback_status: Option<String>,
     pub last_feedback_event_id: Option<String>,
     pub last_result_event_id: Option<String>,
+    pub last_payment_pointer: Option<String>,
+    pub payment_required_at_epoch_seconds: Option<u64>,
+    pub payment_sent_at_epoch_seconds: Option<u64>,
+    pub payment_failed_at_epoch_seconds: Option<u64>,
+    pub payment_error: Option<String>,
+    pub pending_bolt11: Option<String>,
     pub skill_scope_id: Option<String>,
     pub credit_envelope_ref: Option<String>,
     pub budget_sats: u64,
@@ -416,6 +422,7 @@ pub struct NetworkRequestsState {
     pub last_error: Option<String>,
     pub last_action: Option<String>,
     pub submitted: Vec<SubmittedNetworkRequest>,
+    pub pending_auto_payment_request_id: Option<String>,
     next_request_seq: u64,
 }
 
@@ -426,6 +433,7 @@ impl Default for NetworkRequestsState {
             last_error: None,
             last_action: Some("Waiting for request lane snapshot".to_string()),
             submitted: Vec::new(),
+            pending_auto_payment_request_id: None,
             next_request_seq: 0,
         }
     }
@@ -494,6 +502,12 @@ impl NetworkRequestsState {
                 last_feedback_status: None,
                 last_feedback_event_id: None,
                 last_result_event_id: None,
+                last_payment_pointer: None,
+                payment_required_at_epoch_seconds: None,
+                payment_sent_at_epoch_seconds: None,
+                payment_failed_at_epoch_seconds: None,
+                payment_error: None,
+                pending_bolt11: None,
                 skill_scope_id,
                 credit_envelope_ref,
                 budget_sats,
@@ -621,6 +635,128 @@ impl NetworkRequestsState {
         ));
     }
 
+    pub fn prepare_auto_payment_attempt(
+        &mut self,
+        request_id: &str,
+        bolt11: &str,
+        amount_msats: Option<u64>,
+        now_epoch_seconds: u64,
+    ) -> Option<(String, Option<u64>)> {
+        let bolt11 = bolt11.trim();
+        if bolt11.is_empty() {
+            self.mark_auto_payment_failed(
+                request_id,
+                "provider feedback is missing bolt11 invoice",
+                now_epoch_seconds,
+            );
+            return None;
+        }
+
+        if let Some(active_request_id) = self.pending_auto_payment_request_id.as_deref() {
+            if active_request_id != request_id {
+                self.pane_set_ready(format!(
+                    "Deferred auto-payment for {} while {} is still in-flight",
+                    request_id, active_request_id
+                ));
+                return None;
+            }
+            return None;
+        }
+
+        let Some(request) = self
+            .submitted
+            .iter_mut()
+            .find(|request| request.request_id == request_id)
+        else {
+            return None;
+        };
+
+        if request.last_payment_pointer.is_some() {
+            return None;
+        }
+
+        request.pending_bolt11 = Some(bolt11.to_string());
+        request
+            .payment_required_at_epoch_seconds
+            .get_or_insert(now_epoch_seconds);
+        request.payment_error = None;
+        request.payment_failed_at_epoch_seconds = None;
+        request.status = NetworkRequestStatus::PaymentRequired;
+        self.pending_auto_payment_request_id = Some(request_id.to_string());
+
+        let amount_sats = amount_msats
+            .map(msats_to_sats_ceil)
+            .filter(|amount| *amount > 0);
+        self.pane_set_ready(format!(
+            "Request {} received payment-required invoice; queueing Spark payment",
+            request_id
+        ));
+        Some((bolt11.to_string(), amount_sats))
+    }
+
+    pub fn mark_auto_payment_sent(
+        &mut self,
+        request_id: &str,
+        payment_pointer: &str,
+        now_epoch_seconds: u64,
+    ) {
+        let payment_pointer = payment_pointer.trim();
+        if payment_pointer.is_empty() {
+            self.mark_auto_payment_failed(
+                request_id,
+                "Spark payment succeeded but payment pointer is empty",
+                now_epoch_seconds,
+            );
+            return;
+        }
+
+        if let Some(request) = self
+            .submitted
+            .iter_mut()
+            .find(|request| request.request_id == request_id)
+        {
+            request.last_payment_pointer = Some(payment_pointer.to_string());
+            request.payment_sent_at_epoch_seconds = Some(now_epoch_seconds);
+            request.payment_error = None;
+            request.pending_bolt11 = None;
+            request.status = NetworkRequestStatus::Paid;
+        }
+        self.pending_auto_payment_request_id = None;
+        self.pane_set_ready(format!(
+            "Request {} settled buyer payment pointer {}",
+            request_id, payment_pointer
+        ));
+    }
+
+    pub fn mark_auto_payment_failed(
+        &mut self,
+        request_id: &str,
+        error: &str,
+        now_epoch_seconds: u64,
+    ) {
+        let error = error.trim();
+        let error = if error.is_empty() {
+            "Spark payment flow failed without explicit detail"
+        } else {
+            error
+        };
+
+        if let Some(request) = self
+            .submitted
+            .iter_mut()
+            .find(|request| request.request_id == request_id)
+        {
+            request.status = NetworkRequestStatus::Failed;
+            request.payment_error = Some(error.to_string());
+            request.payment_failed_at_epoch_seconds = Some(now_epoch_seconds);
+            request.pending_bolt11 = None;
+        }
+        if self.pending_auto_payment_request_id.as_deref() == Some(request_id) {
+            self.pending_auto_payment_request_id = None;
+        }
+        let _ = self.pane_set_error(format!("Request {} payment failed: {}", request_id, error));
+    }
+
     pub fn apply_authority_response(&mut self, response: &RuntimeCommandResponse) {
         let Some(request) = self
             .submitted
@@ -683,6 +819,13 @@ impl NetworkRequestsState {
         }
         let _ = self.pane_set_error(message.to_string());
     }
+}
+
+fn msats_to_sats_ceil(msats: u64) -> u64 {
+    if msats == 0 {
+        return 0;
+    }
+    msats.saturating_add(999) / 1000
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
