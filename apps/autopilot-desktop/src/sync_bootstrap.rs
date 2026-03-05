@@ -1,6 +1,8 @@
+use reqwest::StatusCode;
 use reqwest::Url;
 use reqwest::blocking::Client;
 use serde_json::Value;
+use std::collections::BTreeSet;
 
 const ENV_ENABLE_SPACETIME_SYNC: &str = "OPENAGENTS_ENABLE_SPACETIME_SYNC";
 const ENV_CONTROL_BASE_URL_KEYS: [&str; 3] = [
@@ -14,11 +16,17 @@ const ENV_SPACETIME_BASE_URL_KEYS: [&str; 2] = [
 ];
 const ENV_SPACETIME_DATABASE_KEYS: [&str; 2] =
     ["OA_SPACETIME_DATABASE", "OA_SPACETIME_DEV_DATABASE"];
+const ENV_REQUIRED_STREAM_GRANTS: &str = "OA_SYNC_REQUIRED_STREAM_GRANTS";
 
 const LEGACY_SYNC_TOKEN_PATHS: [&str; 3] = [
     "/api/spacetime/token",
     "/api/v1/spacetime/token",
     "/api/v1/sync/token",
+];
+const REQUIRED_SYNC_SCOPE: &str = "sync.subscribe";
+const DEFAULT_REQUIRED_STREAM_GRANTS: [&str; 2] = [
+    "stream.activity_projection.v1",
+    "stream.earn_job_lifecycle_projection.v1",
 ];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -35,6 +43,13 @@ pub struct SyncTokenLease {
     pub protocol_version: Option<String>,
     pub refresh_after_in_seconds: Option<u64>,
     pub refresh_after: Option<String>,
+    pub scopes: Vec<String>,
+    pub stream_grants: Vec<String>,
+    pub issued_at_unix_ms: Option<u64>,
+    pub not_before_unix_ms: Option<u64>,
+    pub expires_at_unix_ms: Option<u64>,
+    pub revoked: bool,
+    pub rotation_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -142,14 +157,15 @@ pub fn mint_sync_token_blocking(
         .unwrap_or_else(|_| "<unreadable-body>".to_string());
 
     if !status.is_success() {
-        return Err(format!(
-            "sync token mint failed status={} body={}",
-            status,
-            truncate_body(body.as_str())
-        ));
+        return Err(classify_sync_token_http_error(status, body.as_str()));
     }
 
-    parse_sync_token_lease(body.as_str())
+    let required_stream_grants = required_stream_grants_from_env();
+    parse_sync_token_lease(
+        body.as_str(),
+        now_unix_ms(),
+        required_stream_grants.as_slice(),
+    )
 }
 
 pub fn bootstrap_sync_session_from_env(
@@ -189,9 +205,14 @@ pub fn bootstrap_sync_session(
     })
 }
 
-fn parse_sync_token_lease(raw: &str) -> Result<SyncTokenLease, String> {
+fn parse_sync_token_lease(
+    raw: &str,
+    now_unix_ms: u64,
+    required_stream_grants: &[String],
+) -> Result<SyncTokenLease, String> {
     let payload: Value =
         serde_json::from_str(raw).map_err(|error| format!("invalid token payload: {error}"))?;
+    let claims = payload.get("claims");
 
     let token = payload
         .get("token")
@@ -232,6 +253,92 @@ fn parse_sync_token_lease(raw: &str) -> Result<SyncTokenLease, String> {
         .get("refresh_after")
         .and_then(Value::as_str)
         .map(|value| value.to_string());
+    if matches!(refresh_after_in_seconds, Some(0)) {
+        return Err(auth_error_unauthorized("refresh_after_in_invalid"));
+    }
+
+    let scopes =
+        collect_claim_values(&payload, claims, &["scope", "scopes", "sync_scopes"]).into_iter();
+    let scopes: Vec<String> = scopes.collect();
+    if !scopes.iter().any(|scope| scope == REQUIRED_SYNC_SCOPE) {
+        return Err(auth_error_forbidden(format!(
+            "missing_scope:{REQUIRED_SYNC_SCOPE}"
+        )));
+    }
+
+    let stream_grants = collect_claim_values(
+        &payload,
+        claims,
+        &["stream_grants", "allowed_streams", "streams"],
+    )
+    .into_iter();
+    let stream_grants: Vec<String> = stream_grants.collect();
+    if stream_grants.is_empty() {
+        return Err(auth_error_forbidden("stream_grants_missing"));
+    }
+    for stream_id in required_stream_grants {
+        if !stream_grants
+            .iter()
+            .any(|grant| stream_grant_allows(grant.as_str(), stream_id.as_str()))
+        {
+            return Err(auth_error_forbidden(format!(
+                "stream_not_granted:{stream_id}"
+            )));
+        }
+    }
+
+    let issued_at_unix_ms =
+        claim_timestamp_ms(&payload, claims, &["issued_at_unix_ms", "issued_at", "iat"]);
+    let not_before_unix_ms = claim_timestamp_ms(
+        &payload,
+        claims,
+        &["not_before_unix_ms", "not_before", "nbf"],
+    );
+    let expires_at_unix_ms = claim_timestamp_ms(
+        &payload,
+        claims,
+        &["expires_at_unix_ms", "expires_at", "exp"],
+    );
+
+    let revoked = claim_bool(&payload, claims, &["revoked", "token_revoked"]).unwrap_or(false);
+    if revoked {
+        return Err(auth_error_forbidden("token_revoked"));
+    }
+    if let Some(status) = claim_string(&payload, claims, &["token_status", "status"]) {
+        let normalized = status.to_ascii_lowercase();
+        if normalized.contains("revoked") {
+            return Err(auth_error_forbidden("token_revoked"));
+        }
+        if normalized.contains("expired") {
+            return Err(auth_error_expired("token_expired"));
+        }
+        if normalized.contains("not_yet_valid") || normalized.contains("not yet valid") {
+            return Err(auth_error_not_yet_valid("token_not_yet_valid"));
+        }
+    }
+    if let Some(not_before) = not_before_unix_ms
+        && now_unix_ms < not_before
+    {
+        return Err(auth_error_not_yet_valid("token_not_yet_valid"));
+    }
+    if let Some(expires_at) = expires_at_unix_ms
+        && now_unix_ms >= expires_at
+    {
+        return Err(auth_error_expired("token_expired"));
+    }
+    if let (Some(refresh_after), Some(expires_at)) = (refresh_after_in_seconds, expires_at_unix_ms)
+    {
+        let refresh_deadline = now_unix_ms.saturating_add(refresh_after.saturating_mul(1_000));
+        if refresh_deadline >= expires_at {
+            return Err(auth_error_expired("refresh_boundary_exceeds_expiry"));
+        }
+    }
+
+    let rotation_id = claim_string(&payload, claims, &["rotation_id", "token_id"]);
+    let rotation_required = claim_bool(&payload, claims, &["rotation_required"]).unwrap_or(false);
+    if rotation_required && rotation_id.is_none() {
+        return Err(auth_error_forbidden("rotation_id_missing"));
+    }
 
     Ok(SyncTokenLease {
         token,
@@ -239,7 +346,212 @@ fn parse_sync_token_lease(raw: &str) -> Result<SyncTokenLease, String> {
         protocol_version,
         refresh_after_in_seconds,
         refresh_after,
+        scopes,
+        stream_grants,
+        issued_at_unix_ms,
+        not_before_unix_ms,
+        expires_at_unix_ms,
+        revoked,
+        rotation_id,
     })
+}
+
+fn classify_sync_token_http_error(status: StatusCode, body: &str) -> String {
+    let normalized = body.to_ascii_lowercase();
+    let truncated = truncate_body(body);
+    match status {
+        StatusCode::UNAUTHORIZED => {
+            if normalized.contains("token_expired") || normalized.contains("expired") {
+                return format!(
+                    "{} status={} body={}",
+                    auth_error_expired("token_expired"),
+                    status.as_u16(),
+                    truncated
+                );
+            }
+            if normalized.contains("token_not_yet_valid") || normalized.contains("not_yet_valid") {
+                return format!(
+                    "{} status={} body={}",
+                    auth_error_not_yet_valid("token_not_yet_valid"),
+                    status.as_u16(),
+                    truncated
+                );
+            }
+            format!(
+                "{} status={} body={}",
+                auth_error_unauthorized("status_401"),
+                status.as_u16(),
+                truncated
+            )
+        }
+        StatusCode::FORBIDDEN => {
+            if normalized.contains("token_revoked") || normalized.contains("revoked") {
+                return format!(
+                    "{} status={} body={}",
+                    auth_error_forbidden("token_revoked"),
+                    status.as_u16(),
+                    truncated
+                );
+            }
+            if normalized.contains("missing_scope") {
+                return format!(
+                    "{} status={} body={}",
+                    auth_error_forbidden("missing_scope"),
+                    status.as_u16(),
+                    truncated
+                );
+            }
+            format!(
+                "{} status={} body={}",
+                auth_error_forbidden("status_403"),
+                status.as_u16(),
+                truncated
+            )
+        }
+        _ => format!(
+            "sync token mint failed status={} body={}",
+            status.as_u16(),
+            truncated
+        ),
+    }
+}
+
+fn auth_error_unauthorized(reason: impl AsRef<str>) -> String {
+    format!("sync_auth:unauthorized:{}", reason.as_ref())
+}
+
+fn auth_error_forbidden(reason: impl AsRef<str>) -> String {
+    format!("sync_auth:forbidden:{}", reason.as_ref())
+}
+
+fn auth_error_expired(reason: impl AsRef<str>) -> String {
+    format!("sync_auth:expired:{}", reason.as_ref())
+}
+
+fn auth_error_not_yet_valid(reason: impl AsRef<str>) -> String {
+    format!("sync_auth:not_yet_valid:{}", reason.as_ref())
+}
+
+fn required_stream_grants_from_env() -> Vec<String> {
+    if let Ok(value) = std::env::var(ENV_REQUIRED_STREAM_GRANTS) {
+        let parsed = value
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .collect::<Vec<_>>();
+        if !parsed.is_empty() {
+            return parsed;
+        }
+    }
+    DEFAULT_REQUIRED_STREAM_GRANTS
+        .iter()
+        .map(|value| value.to_string())
+        .collect()
+}
+
+fn claim_string(payload: &Value, claims: Option<&Value>, keys: &[&str]) -> Option<String> {
+    keys.iter()
+        .find_map(|key| extract_claim_field(payload, claims, key))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .map(ToOwned::to_owned)
+        .filter(|value| !value.is_empty())
+}
+
+fn claim_bool(payload: &Value, claims: Option<&Value>, keys: &[&str]) -> Option<bool> {
+    keys.iter()
+        .find_map(|key| extract_claim_field(payload, claims, key))
+        .and_then(|value| match value {
+            Value::Bool(flag) => Some(*flag),
+            Value::String(raw) => match raw.trim().to_ascii_lowercase().as_str() {
+                "true" | "1" | "yes" | "on" => Some(true),
+                "false" | "0" | "no" | "off" => Some(false),
+                _ => None,
+            },
+            _ => None,
+        })
+}
+
+fn claim_timestamp_ms(payload: &Value, claims: Option<&Value>, keys: &[&str]) -> Option<u64> {
+    keys.iter()
+        .find_map(|key| extract_claim_field(payload, claims, key))
+        .and_then(timestamp_value_as_ms)
+}
+
+fn collect_claim_values(
+    payload: &Value,
+    claims: Option<&Value>,
+    keys: &[&str],
+) -> BTreeSet<String> {
+    let mut values = BTreeSet::new();
+    for key in keys {
+        if let Some(field) = extract_claim_field(payload, claims, key) {
+            collect_string_claims(field, &mut values);
+        }
+    }
+    values
+}
+
+fn extract_claim_field<'a>(
+    payload: &'a Value,
+    claims: Option<&'a Value>,
+    key: &str,
+) -> Option<&'a Value> {
+    claims
+        .and_then(|value| value.get(key))
+        .or_else(|| payload.get(key))
+}
+
+fn collect_string_claims(value: &Value, target: &mut BTreeSet<String>) {
+    match value {
+        Value::String(raw) => {
+            for part in raw.split([',', ' ']) {
+                let trimmed = part.trim();
+                if !trimmed.is_empty() {
+                    target.insert(trimmed.to_string());
+                }
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                if let Some(raw) = item.as_str() {
+                    let trimmed = raw.trim();
+                    if !trimmed.is_empty() {
+                        target.insert(trimmed.to_string());
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn timestamp_value_as_ms(value: &Value) -> Option<u64> {
+    let raw = match value {
+        Value::Number(number) => number.as_u64()?,
+        Value::String(raw) => raw.trim().parse::<u64>().ok()?,
+        _ => return None,
+    };
+    if raw < 1_000_000_000_000 {
+        Some(raw.saturating_mul(1_000))
+    } else {
+        Some(raw)
+    }
+}
+
+fn stream_grant_allows(grant: &str, stream_id: &str) -> bool {
+    let grant = grant.trim();
+    if grant.is_empty() {
+        return false;
+    }
+    if grant == "*" || grant.eq_ignore_ascii_case("all") {
+        return true;
+    }
+    if let Some(prefix) = grant.strip_suffix('*') {
+        return stream_id.starts_with(prefix);
+    }
+    grant == stream_id
 }
 
 fn resolve_env_any(keys: &[&str], err: &str) -> Result<String, String> {
@@ -267,6 +579,12 @@ fn normalize_http_base_url(value: &str) -> Result<String, String> {
     Ok(trimmed.trim_end_matches('/').to_string())
 }
 
+fn now_unix_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_millis() as u64)
+}
+
 fn truncate_body(value: &str) -> String {
     const MAX: usize = 240;
     if value.len() <= MAX {
@@ -284,12 +602,41 @@ mod tests {
 
     use super::{
         SyncTokenLease, bootstrap_sync_session, canonical_sync_token_endpoint,
-        mint_sync_token_blocking, resolve_subscribe_target,
+        mint_sync_token_blocking, parse_sync_token_lease, resolve_subscribe_target,
     };
 
-    fn run_single_response_server(response: &'static str) -> std::net::SocketAddr {
+    fn required_streams() -> Vec<String> {
+        vec![
+            "stream.activity_projection.v1".to_string(),
+            "stream.earn_job_lifecycle_projection.v1".to_string(),
+        ]
+    }
+
+    fn valid_token_payload() -> String {
+        r#"{
+  "token":"sync-token",
+  "transport":"spacetime_ws",
+  "protocol_version":"spacetime.sync.v1",
+  "refresh_after_in":120,
+  "rotation_id":"rotation-1",
+  "claims":{
+    "scope":"sync.subscribe sync.append",
+    "stream_grants":["stream.activity_projection.v1","stream.earn_job_lifecycle_projection.v1"],
+    "issued_at_unix_ms":1700000000000,
+    "not_before_unix_ms":1700000000000,
+    "expires_at_unix_ms":4700000000000
+  }
+}"#
+        .to_string()
+    }
+
+    fn run_json_response_server(status: &str, body: &str) -> std::net::SocketAddr {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind should succeed");
         let addr = listener.local_addr().expect("local addr should exist");
+        let response = format!(
+            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
 
         std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().expect("accept should succeed");
@@ -328,14 +675,8 @@ mod tests {
 
     #[test]
     fn mint_sync_token_hits_canonical_endpoint_and_parses_payload() {
-        let response = concat!(
-            "HTTP/1.1 200 OK\r\n",
-            "Content-Type: application/json\r\n",
-            "Content-Length: 88\r\n",
-            "Connection: close\r\n\r\n",
-            "{\"token\":\"sync-token\",\"transport\":\"spacetime_ws\",\"protocol_version\":\"spacetime.sync.v1\"}"
-        );
-        let addr: SocketAddr = run_single_response_server(response);
+        let body = valid_token_payload();
+        let addr: SocketAddr = run_json_response_server("200 OK", body.as_str());
         let client = Client::builder().build().expect("client should build");
 
         let lease = mint_sync_token_blocking(&client, format!("http://{addr}").as_str(), None)
@@ -346,22 +687,26 @@ mod tests {
                 token: "sync-token".to_string(),
                 transport: Some("spacetime_ws".to_string()),
                 protocol_version: Some("spacetime.sync.v1".to_string()),
-                refresh_after_in_seconds: None,
+                refresh_after_in_seconds: Some(120),
                 refresh_after: None,
+                scopes: vec!["sync.append".to_string(), "sync.subscribe".to_string()],
+                stream_grants: vec![
+                    "stream.activity_projection.v1".to_string(),
+                    "stream.earn_job_lifecycle_projection.v1".to_string()
+                ],
+                issued_at_unix_ms: Some(1_700_000_000_000),
+                not_before_unix_ms: Some(1_700_000_000_000),
+                expires_at_unix_ms: Some(4_700_000_000_000),
+                revoked: false,
+                rotation_id: Some("rotation-1".to_string()),
             }
         );
     }
 
     #[test]
     fn bootstrap_sync_session_performs_token_mint_and_target_resolution() {
-        let response = concat!(
-            "HTTP/1.1 200 OK\r\n",
-            "Content-Type: application/json\r\n",
-            "Content-Length: 93\r\n",
-            "Connection: close\r\n\r\n",
-            "{\"token\":\"bootstrap-token\",\"transport\":\"spacetime_ws\",\"protocol_version\":\"spacetime.sync.v1\"}"
-        );
-        let addr: SocketAddr = run_single_response_server(response);
+        let payload = valid_token_payload().replace("sync-token", "bootstrap-token");
+        let addr: SocketAddr = run_json_response_server("200 OK", payload.as_str());
         let client = Client::builder().build().expect("client should build");
 
         let result = bootstrap_sync_session(
@@ -382,5 +727,134 @@ mod tests {
             result.target.subscribe_url,
             "https://sync.example.com/v1/database/autopilot/subscribe"
         );
+    }
+
+    #[test]
+    fn parse_sync_token_rejects_expired_claims() {
+        let raw = r#"{
+  "token":"sync-token",
+  "transport":"spacetime_ws",
+  "protocol_version":"spacetime.sync.v1",
+  "claims":{
+    "scope":"sync.subscribe",
+    "stream_grants":["stream.activity_projection.v1","stream.earn_job_lifecycle_projection.v1"],
+    "expires_at_unix_ms":1700000000000
+  }
+}"#;
+        let error = parse_sync_token_lease(raw, 1_700_000_000_001, required_streams().as_slice())
+            .expect_err("expired token should fail");
+        assert!(error.starts_with("sync_auth:expired:token_expired"));
+    }
+
+    #[test]
+    fn parse_sync_token_rejects_not_yet_valid_claims() {
+        let raw = r#"{
+  "token":"sync-token",
+  "transport":"spacetime_ws",
+  "protocol_version":"spacetime.sync.v1",
+  "claims":{
+    "scope":"sync.subscribe",
+    "stream_grants":["stream.activity_projection.v1","stream.earn_job_lifecycle_projection.v1"],
+    "not_before_unix_ms":2000,
+    "expires_at_unix_ms":5000
+  }
+}"#;
+        let error = parse_sync_token_lease(raw, 1_999, required_streams().as_slice())
+            .expect_err("not yet valid token should fail");
+        assert!(error.starts_with("sync_auth:not_yet_valid:token_not_yet_valid"));
+    }
+
+    #[test]
+    fn parse_sync_token_rejects_revoked_claims() {
+        let raw = r#"{
+  "token":"sync-token",
+  "transport":"spacetime_ws",
+  "protocol_version":"spacetime.sync.v1",
+  "claims":{
+    "scope":"sync.subscribe",
+    "stream_grants":["stream.activity_projection.v1","stream.earn_job_lifecycle_projection.v1"],
+    "revoked":true,
+    "expires_at_unix_ms":5000
+  }
+}"#;
+        let error = parse_sync_token_lease(raw, 2_000, required_streams().as_slice())
+            .expect_err("revoked token should fail");
+        assert!(error.starts_with("sync_auth:forbidden:token_revoked"));
+    }
+
+    #[test]
+    fn parse_sync_token_rejects_scope_mismatch() {
+        let raw = r#"{
+  "token":"sync-token",
+  "transport":"spacetime_ws",
+  "protocol_version":"spacetime.sync.v1",
+  "claims":{
+    "scope":"sync.append",
+    "stream_grants":["stream.activity_projection.v1","stream.earn_job_lifecycle_projection.v1"],
+    "expires_at_unix_ms":5000
+  }
+}"#;
+        let error = parse_sync_token_lease(raw, 2_000, required_streams().as_slice())
+            .expect_err("scope mismatch should fail");
+        assert!(error.starts_with("sync_auth:forbidden:missing_scope:sync.subscribe"));
+    }
+
+    #[test]
+    fn parse_sync_token_rejects_stream_grant_mismatch() {
+        let raw = r#"{
+  "token":"sync-token",
+  "transport":"spacetime_ws",
+  "protocol_version":"spacetime.sync.v1",
+  "claims":{
+    "scope":"sync.subscribe",
+    "stream_grants":["stream.activity_projection.v1"],
+    "expires_at_unix_ms":5000
+  }
+}"#;
+        let error = parse_sync_token_lease(raw, 2_000, required_streams().as_slice())
+            .expect_err("stream grant mismatch should fail");
+        assert!(error.starts_with(
+            "sync_auth:forbidden:stream_not_granted:stream.earn_job_lifecycle_projection.v1"
+        ));
+    }
+
+    #[test]
+    fn parse_sync_token_rejects_invalid_refresh_window() {
+        let raw = r#"{
+  "token":"sync-token",
+  "transport":"spacetime_ws",
+  "protocol_version":"spacetime.sync.v1",
+  "refresh_after_in":120,
+  "claims":{
+    "scope":"sync.subscribe",
+    "stream_grants":["stream.activity_projection.v1","stream.earn_job_lifecycle_projection.v1"],
+    "expires_at_unix_ms":1000000120000
+  }
+}"#;
+        let error = parse_sync_token_lease(raw, 1_000_000_000_000, required_streams().as_slice())
+            .expect_err("refresh boundary violation should fail");
+        assert!(error.starts_with("sync_auth:expired:refresh_boundary_exceeds_expiry"));
+    }
+
+    #[test]
+    fn mint_sync_token_classifies_auth_http_failures() {
+        let unauthorized_addr =
+            run_json_response_server("401 Unauthorized", "{\"error\":\"token_expired\"}");
+        let forbidden_addr =
+            run_json_response_server("403 Forbidden", "{\"error\":\"missing_scope\"}");
+        let client = Client::builder().build().expect("client should build");
+
+        let unauthorized_error = mint_sync_token_blocking(
+            &client,
+            format!("http://{unauthorized_addr}").as_str(),
+            None,
+        )
+        .expect_err("401 should fail");
+        assert!(unauthorized_error.starts_with("sync_auth:expired:token_expired"));
+
+        let forbidden_error =
+            mint_sync_token_blocking(&client, format!("http://{forbidden_addr}").as_str(), None)
+                .expect_err("403 should fail");
+        assert!(forbidden_error.starts_with("sync_auth:forbidden:missing_scope"));
     }
 }
