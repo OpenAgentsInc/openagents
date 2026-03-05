@@ -4904,6 +4904,19 @@ pub(super) fn refresh_sync_health(state: &mut crate::app_state::RenderState) {
         &state.provider_runtime,
         &state.relay_connections,
     );
+
+    if let Some(error) = state.sync_bootstrap_error.as_deref() {
+        state.sync_health.load_state = crate::app_state::PaneLoadState::Error;
+        state.sync_health.spacetime_connection = "error".to_string();
+        state.sync_health.subscription_state = "unsubscribed".to_string();
+        state.sync_health.last_action = Some("Spacetime bootstrap failed".to_string());
+        state.sync_health.last_error = Some(error.to_string());
+        return;
+    }
+
+    if let Some(note) = state.sync_bootstrap_note.as_deref() {
+        state.sync_health.last_action = Some(note.to_string());
+    }
 }
 
 pub(super) fn upsert_runtime_incident_alert(

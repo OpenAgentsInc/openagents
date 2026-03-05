@@ -250,6 +250,8 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             network_aggregate_counters: crate::app_state::NetworkAggregateCountersState::default(),
             relay_connections: crate::app_state::RelayConnectionsState::default(),
             sync_health: crate::app_state::SyncHealthState::default(),
+            sync_bootstrap_note: None,
+            sync_bootstrap_error: None,
             network_requests: crate::app_state::NetworkRequestsState::default(),
             starter_jobs: crate::app_state::StarterJobsState::default(),
             activity_feed: crate::app_state::ActivityFeedState::default(),
@@ -290,11 +292,65 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             command_palette,
             command_palette_actions,
         };
+        apply_spacetime_sync_bootstrap(&mut state);
         bootstrap_runtime_lanes(&mut state);
         let _ = state.sync_provider_nip90_lane_relays();
         open_startup_panes(&mut state);
         Ok(state)
     })
+}
+
+fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
+    state.sync_bootstrap_note = None;
+    state.sync_bootstrap_error = None;
+
+    let client = match reqwest::blocking::Client::builder().build() {
+        Ok(value) => value,
+        Err(error) => {
+            let message = format!("Sync token client initialization failed: {error}");
+            state.sync_bootstrap_error = Some(message.clone());
+            state.sync_health.load_state = crate::app_state::PaneLoadState::Error;
+            state.sync_health.spacetime_connection = "error".to_string();
+            state.sync_health.subscription_state = "unsubscribed".to_string();
+            state.sync_health.last_action = Some("Spacetime bootstrap failed".to_string());
+            state.sync_health.last_error = Some(message);
+            return;
+        }
+    };
+
+    match crate::sync_bootstrap::bootstrap_sync_session_from_env(&client, None) {
+        Ok(Some(result)) => {
+            let note = format!(
+                "Minted sync token via {} and prepared subscribe target {}",
+                result.control_token_endpoint, result.target.subscribe_url
+            );
+            state.sync_bootstrap_note = Some(note.clone());
+            state.sync_health.load_state = crate::app_state::PaneLoadState::Ready;
+            state.sync_health.spacetime_connection = "connecting".to_string();
+            state.sync_health.subscription_state = "bootstrapping".to_string();
+            state.sync_health.last_error = None;
+            state.sync_health.last_action = Some(note);
+        }
+        Ok(None) => {
+            let note =
+                "Spacetime bootstrap disabled (set OPENAGENTS_ENABLE_SPACETIME_SYNC=1)"
+                    .to_string();
+            state.sync_bootstrap_note = Some(note.clone());
+            state.sync_health.load_state = crate::app_state::PaneLoadState::Ready;
+            state.sync_health.spacetime_connection = "disabled".to_string();
+            state.sync_health.subscription_state = "disabled".to_string();
+            state.sync_health.last_error = None;
+            state.sync_health.last_action = Some(note);
+        }
+        Err(error) => {
+            state.sync_bootstrap_error = Some(error.clone());
+            state.sync_health.load_state = crate::app_state::PaneLoadState::Error;
+            state.sync_health.spacetime_connection = "error".to_string();
+            state.sync_health.subscription_state = "unsubscribed".to_string();
+            state.sync_health.last_action = Some("Spacetime bootstrap failed".to_string());
+            state.sync_health.last_error = Some(error);
+        }
+    }
 }
 
 fn bootstrap_runtime_lanes(state: &mut RenderState) {

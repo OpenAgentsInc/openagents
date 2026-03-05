@@ -22,6 +22,7 @@ mod spark_pane;
 mod spark_wallet;
 mod stablesats_blink_worker;
 mod state;
+mod sync_bootstrap;
 
 use anyhow::{Context, Result};
 use app_state::App;
