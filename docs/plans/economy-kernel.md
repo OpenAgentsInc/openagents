@@ -722,6 +722,19 @@ All receipts MUST include:
 
 Receipts MAY include non-normative tags/metadata that do not affect canonical hashing.
 
+### 5.1.1 Evidence immutability contract (normative)
+
+1. Evidence referenced by receipts MUST resolve to immutable, content-addressed artifacts.
+2. `EvidenceRef.digest` (for example `sha256:<hex>`) is authoritative; `EvidenceRef.uri` is only a transport pointer.
+3. If retrieved bytes do not match the declared digest, the evidence is invalid for authority decisions and audit replay.
+4. Evidence corrections/supersession MUST be represented as new evidence objects and new receipts; prior evidence links are never overwritten.
+
+### 5.1.2 Evidence size and embedding guidance (normative)
+
+1. Large evidence payloads SHOULD be externalized and referenced by digest + URI.
+2. Receipts SHOULD avoid embedding large opaque payload bodies directly in normative fields.
+3. When compact summaries are embedded, they MUST still link to the full externalized evidence artifact for replay/audit.
+
 ### 5.2 Receipt immutability and correction
 
 1. **Receipts are append-only.** Once emitted, a receipt MUST NOT be mutated or overwritten.
@@ -864,6 +877,8 @@ Idempotency MUST be evaluated within a deterministic scope consisting of:
 
 * the authority endpoint/action name, and
 * the authenticated caller identity.
+
+The endpoint/action name MUST be canonicalized exactly as stored in the idempotency index (for example stable RPC full-name or normalized HTTP method+route). Equivalent aliases MUST normalize to the same action identity before idempotency lookup.
 
 Reusing an `idempotency_key` outside this scope MUST NOT collide. Reusing the same key within this scope with different normalized request inputs MUST trigger `IDEMPOTENCY_CONFLICT`.
 
@@ -1233,6 +1248,7 @@ Minimum requirements:
 * Snapshot computation MUST be **idempotent and receipted** (authority-like): recomputing the same minute snapshot must yield the same `snapshot_id`/`snapshot_hash` (or a stable reference) and must not produce conflicting snapshots for the same time boundary.
 * Any breaker activation, autonomy mode transition, or `WITHHELD` decision driven by `sv`, `Δm_hat`, `XA_hat`, or correlated-verification share MUST reference the **specific** `snapshot_id` and `snapshot_hash` used to make that decision (recorded in the corresponding receipt).
 * The snapshot time boundary MUST be deterministic: `as_of_ms` MUST be rounded down to the start of the minute (UTC), and the same boundary MUST be used across the system.
+* Snapshot derivation MUST use a deterministic total order over included receipts: default order is ascending `created_at_ms`, then ascending `receipt_id` as stable tie-break.
 
 ### 7.2 Tables and required metrics (expanded)
 

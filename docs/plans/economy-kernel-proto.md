@@ -200,8 +200,8 @@ message ArtifactRef {
 
 message EvidenceRef {
   string kind = 1;      // e.g. "replay_bundle", "test_report", "provenance_bundle"
-  string uri = 2;
-  string digest = 3;    // "sha256:<hex>"
+  string uri = 2;       // transport pointer only
+  string digest = 3;    // "sha256:<hex>" (authoritative identity)
   google.protobuf.Struct meta = 10;
 }
 
@@ -1347,6 +1347,7 @@ message ComputeSnapshotResponse {
 * `sv_effective`/`rho_effective` are the policy-gating trust variables when correlated checker risk is non-trivial.
 * coverage-backed and cost-proof metrics are optional modifiers; they are policy inputs and MUST NOT bypass explicit resolution-path invariants.
 * Snapshot receipts and any throttle/withhold actions MUST reference the exact `snapshot_id`/`snapshot_hash` used to make the decision.
+* Snapshot computation MUST sort included receipts deterministically by `(created_at_ms ASC, receipt_id ASC)` before aggregation/hashing.
 
 ### 1.10 New: `proto/openagents/aegis/markets/v1/liability_market.proto` (optional extension)
 
@@ -1842,6 +1843,11 @@ Every rule uses `(category, tfb_class, severity)` matching with wildcards. Match
 
 If multiple rules match at the same precedence, the kernel MUST choose deterministically (e.g., lexicographic by rule id) and include that rule id in hash-bound receipt evidence and/or hash-bound receipt payload (not only non-normative tags).
 
+Idempotency scope alignment requirement:
+
+* idempotency lookup MUST be scoped by canonicalized authority action identity (stable RPC full-name or normalized HTTP method+route) plus authenticated caller identity.
+* aliases for the same action MUST normalize to the same scope key before lookup.
+
 #### B) Verification gating
 
 When creating a Contract or starting Verification, Aegis MUST:
@@ -1967,5 +1973,12 @@ Verification services MUST enforce assignment semantics deterministically:
   * default posture: non-liable economically, reputationally accountable,
   * if `VerifierLiabilityPolicy.economic_liability_enabled=true`, verifier-bond/slash receipts MUST be explicit and slash conditions MUST be hash-bound via `slash_policy_ref`.
 * Worker/verifier discovery and matching are out-of-kernel mutation scope unless an optional market module is enabled; kernel authority semantics remain post-match and receipt-driven.
+
+#### M) Evidence immutability and sizing semantics
+
+* `EvidenceRef.digest` is authoritative identity; `EvidenceRef.uri` is transport only.
+* If fetched bytes do not match `digest`, the evidence MUST be rejected for authority decisions and replay.
+* Evidence supersession MUST be append-only (new digest + new receipt linkage), never in-place mutation.
+* Large evidence payloads SHOULD be externalized and referenced by digest/URI; receipts SHOULD carry compact summaries plus references, not bulk opaque payload bodies.
 
 ---
