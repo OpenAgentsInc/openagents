@@ -123,5 +123,9 @@ Failure behavior:
 1. `scripts/spacetime/verify-autopilot-sync-contract.sh`
 2. `scripts/spacetime/publish-promote.sh publish --env dev`
 3. `scripts/spacetime/maincloud-handshake-smoke.sh --db "$OA_SPACETIME_DEV_DATABASE"`
-4. `scripts/spacetime/publish-promote.sh promote --from-env dev --to-env staging`
-5. `scripts/spacetime/maincloud-handshake-smoke.sh --db "$OA_SPACETIME_STAGING_DATABASE"`
+4. `scripts/spacetime/parity-chaos-gate.sh`
+5. `scripts/spacetime/publish-promote.sh promote --from-env dev --to-env staging`
+6. `scripts/spacetime/maincloud-handshake-smoke.sh --db "$OA_SPACETIME_STAGING_DATABASE"`
+
+Release-gate policy and artifact requirements:
+- `docs/SPACETIME_SYNC_RELEASE_GATES.md`
