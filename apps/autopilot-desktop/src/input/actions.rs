@@ -5518,6 +5518,28 @@ pub(super) fn refresh_network_aggregate_counters(
             compute_result.snapshot.delta_m_hat,
             compute_result.snapshot.xa_hat,
             compute_result.snapshot.correlated_verification_share,
+            match compute_result
+                .snapshot
+                .liability_premiums_collected_24h
+                .amount
+            {
+                crate::economy_kernel_receipts::MoneyAmount::AmountSats(value) => value,
+                crate::economy_kernel_receipts::MoneyAmount::AmountMsats(value) => value / 1_000,
+            },
+            match compute_result.snapshot.claims_paid_24h.amount {
+                crate::economy_kernel_receipts::MoneyAmount::AmountSats(value) => value,
+                crate::economy_kernel_receipts::MoneyAmount::AmountMsats(value) => value / 1_000,
+            },
+            match compute_result.snapshot.bonded_exposure_24h.amount {
+                crate::economy_kernel_receipts::MoneyAmount::AmountSats(value) => value,
+                crate::economy_kernel_receipts::MoneyAmount::AmountMsats(value) => value / 1_000,
+            },
+            match compute_result.snapshot.capital_reserves_24h.amount {
+                crate::economy_kernel_receipts::MoneyAmount::AmountSats(value) => value,
+                crate::economy_kernel_receipts::MoneyAmount::AmountMsats(value) => value / 1_000,
+            },
+            compute_result.snapshot.loss_ratio,
+            compute_result.snapshot.capital_coverage_ratio,
             compute_result.input_evidence,
             "economy.snapshot.minute",
         );

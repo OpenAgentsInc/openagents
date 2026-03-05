@@ -10,7 +10,7 @@ use crate::economy_kernel_receipts::{
 use crate::state::job_inbox::{JobInboxNetworkRequest, JobInboxRequest};
 use bitcoin::hashes::{sha256, Hash};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 
@@ -27,6 +27,8 @@ const REASON_CODE_AUTH_ASSURANCE_INSUFFICIENT: &str = "AUTH_ASSURANCE_INSUFFICIE
 const REASON_CODE_PROVENANCE_REQUIREMENTS_UNMET: &str = "PROVENANCE_REQUIREMENTS_UNMET";
 const REASON_CODE_IDEMPOTENCY_CONFLICT: &str = "IDEMPOTENCY_CONFLICT";
 const REASON_CODE_POLICY_THROTTLE_TRIGGERED: &str = "POLICY_THROTTLE_TRIGGERED";
+const DEFAULT_PRICING_SNAPSHOT_ID: &str = "snapshot.economy:unavailable";
+const DEFAULT_PRICING_SNAPSHOT_HASH: &str = "sha256:unavailable";
 
 #[derive(Clone)]
 struct PolicyDecision {
@@ -188,13 +190,37 @@ struct PolicyBundleConfig {
     autonomy_rules: Vec<AutonomyPolicyRule>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 struct SnapshotPolicyMetrics {
     sv: f64,
     xa_hat: f64,
     delta_m_hat: f64,
     correlated_verification_share: f64,
     drift_alerts_24h: u64,
+}
+
+#[derive(Clone)]
+struct PricingSnapshotContext {
+    snapshot_id: String,
+    snapshot_hash: String,
+    metrics: SnapshotPolicyMetrics,
+}
+
+#[derive(Clone)]
+struct LiabilityPricingBreakdown {
+    execution_price_sats: u64,
+    verification_fee_sats: Option<u64>,
+    liability_premium_sats: u64,
+    risk_charge_sats: u64,
+    effective_liability_premium_bps: u32,
+    pricing_snapshot_id: String,
+    pricing_snapshot_hash: String,
+    pricing_metrics: SnapshotPolicyMetrics,
+    risk_pricing_rule_id: String,
+    base_liability_premium_bps: u32,
+    xa_multiplier: f64,
+    drift_multiplier: f64,
+    correlated_share_multiplier: f64,
 }
 
 #[derive(Clone)]
@@ -394,6 +420,7 @@ impl EarnKernelReceiptState {
                 asset: Asset::Btc,
                 amount: MoneyAmount::AmountSats(request.price_sats),
             }),
+            liability_premium: None,
         };
         evidence.push(policy_decision_evidence(&policy_decision));
 
@@ -579,6 +606,7 @@ impl EarnKernelReceiptState {
                 asset: Asset::Btc,
                 amount: MoneyAmount::AmountSats(price_sats),
             }),
+            liability_premium: None,
         })
         .build();
         self.append_receipt(receipt, source_tag);
@@ -660,6 +688,19 @@ impl EarnKernelReceiptState {
                 provenance_probe_evidence.as_slice(),
             )
             .err()
+        } else {
+            None
+        };
+        let stage_pricing = if stage == JobLifecycleStage::Paid {
+            Some(compute_liability_pricing_for_settlement(
+                self.receipts.as_slice(),
+                &policy_bundle,
+                metadata.category.as_str(),
+                metadata.tfb_class,
+                metadata.severity,
+                job.quoted_price_sats,
+                metadata.verification_budget_hint_sats,
+            ))
         } else {
             None
         };
@@ -748,6 +789,9 @@ impl EarnKernelReceiptState {
             ));
         }
         append_provenance_evidence_for_job_stage(&mut evidence, job, stage);
+        if let Some(pricing) = stage_pricing.as_ref() {
+            append_pricing_evidence(&mut evidence, pricing);
+        }
         if stage == JobLifecycleStage::Paid && paid_pointer_authoritative {
             evidence.push(EvidenceRef::new(
                 "wallet_settlement_proof",
@@ -814,10 +858,10 @@ impl EarnKernelReceiptState {
             auth_assurance_level: Some(auth_assurance),
             personhood_proved: Some(personhood_proved),
             reason_code: reason_code.map(ToString::to_string),
-            notional: Some(Money {
-                asset: Asset::Btc,
-                amount: MoneyAmount::AmountSats(job.quoted_price_sats),
-            }),
+            notional: Some(btc_sats_money(job.quoted_price_sats)),
+            liability_premium: stage_pricing
+                .as_ref()
+                .map(|pricing| btc_sats_money(pricing.liability_premium_sats)),
         };
 
         let receipt = ReceiptBuilder::new(
@@ -842,6 +886,7 @@ impl EarnKernelReceiptState {
             "quoted_price_sats": job.quoted_price_sats,
             "payment_pointer": if payment_pointer.is_empty() { None::<String> } else { Some(payment_pointer.to_string()) },
             "work_unit": work_unit_metadata_payload(job.job_id.as_str(), &metadata),
+            "liability_pricing": stage_pricing.as_ref().map(pricing_payload),
         }))
         .with_outputs_payload(json!({
             "stage": stage.label(),
@@ -852,6 +897,7 @@ impl EarnKernelReceiptState {
             "policy_rule_id": policy_decision.rule_id,
             "policy_decision": policy_decision.decision,
             "policy_notes": policy_decision.notes,
+            "liability_pricing": stage_pricing.as_ref().map(pricing_payload),
         }))
         .with_evidence(evidence)
         .with_hints(hints)
@@ -913,6 +959,19 @@ impl EarnKernelReceiptState {
         };
         let payment_pointer_authoritative =
             is_wallet_authoritative_payment_pointer(Some(row.payment_pointer.as_str()));
+        let history_pricing = if row.status == JobHistoryStatus::Succeeded {
+            Some(compute_liability_pricing_for_settlement(
+                self.receipts.as_slice(),
+                &policy_bundle,
+                metadata.category.as_str(),
+                metadata.tfb_class,
+                metadata.severity,
+                row.payout_sats,
+                metadata.verification_budget_hint_sats,
+            ))
+        } else {
+            None
+        };
         let (stage, receipt_type, reason_code, status, authority_key, policy_decision): (
             JobLifecycleStage,
             &'static str,
@@ -1016,6 +1075,7 @@ impl EarnKernelReceiptState {
             "result_hash": row.result_hash,
             "failure_reason": row.failure_reason,
             "work_unit": work_unit_metadata_payload(row.job_id.as_str(), &metadata),
+            "liability_pricing": history_pricing.as_ref().map(pricing_payload),
         }))
         .with_outputs_payload(json!({
             "stage": stage.label(),
@@ -1027,6 +1087,7 @@ impl EarnKernelReceiptState {
             "policy_rule_id": policy_decision.rule_id,
             "policy_decision": policy_decision.decision,
             "policy_notes": policy_decision.notes,
+            "liability_pricing": history_pricing.as_ref().map(pricing_payload),
         }))
         .with_evidence({
             let mut evidence = vec![EvidenceRef::new(
@@ -1035,6 +1096,9 @@ impl EarnKernelReceiptState {
                 normalize_digest(row.result_hash.as_str()),
             )];
             append_provenance_evidence_for_history(&mut evidence, row, stage);
+            if let Some(pricing) = history_pricing.as_ref() {
+                append_pricing_evidence(&mut evidence, pricing);
+            }
             if stage == JobLifecycleStage::Paid && payment_pointer_authoritative {
                 evidence.push(EvidenceRef::new(
                     "wallet_settlement_proof",
@@ -1092,10 +1156,10 @@ impl EarnKernelReceiptState {
             auth_assurance_level: Some(auth_assurance),
             personhood_proved: Some(personhood_proved),
             reason_code: reason_code.map(ToString::to_string),
-            notional: Some(Money {
-                asset: Asset::Btc,
-                amount: MoneyAmount::AmountSats(row.payout_sats),
-            }),
+            notional: Some(btc_sats_money(row.payout_sats)),
+            liability_premium: history_pricing
+                .as_ref()
+                .map(|pricing| btc_sats_money(pricing.liability_premium_sats)),
         })
         .build();
 
@@ -1115,6 +1179,12 @@ impl EarnKernelReceiptState {
         delta_m_hat: f64,
         xa_hat: f64,
         correlated_verification_share: f64,
+        liability_premiums_collected_24h_sats: u64,
+        claims_paid_24h_sats: u64,
+        bonded_exposure_24h_sats: u64,
+        capital_reserves_24h_sats: u64,
+        loss_ratio: f64,
+        capital_coverage_ratio: f64,
         mut input_evidence: Vec<EvidenceRef>,
         source_tag: &str,
     ) {
@@ -1131,6 +1201,58 @@ impl EarnKernelReceiptState {
             format!("oa://economy/snapshots/{snapshot_id}"),
             snapshot_hash.to_string(),
         ));
+        let snapshot_metrics_digest = digest_for_text(
+            format!(
+                "{snapshot_id}:{sv}:{rho}:{n}:{nv}:{delta_m_hat}:{xa_hat}:{correlated_verification_share}:{liability_premiums_collected_24h_sats}:{claims_paid_24h_sats}:{bonded_exposure_24h_sats}:{capital_reserves_24h_sats}:{loss_ratio}:{capital_coverage_ratio}"
+            )
+            .as_str(),
+        );
+        let mut snapshot_metrics = EvidenceRef::new(
+            "snapshot_metrics",
+            format!("oa://economy/snapshots/{snapshot_id}/metrics"),
+            snapshot_metrics_digest,
+        );
+        snapshot_metrics.meta.insert("sv".to_string(), json!(sv));
+        snapshot_metrics.meta.insert("rho".to_string(), json!(rho));
+        snapshot_metrics.meta.insert("n".to_string(), json!(n));
+        snapshot_metrics.meta.insert("nv".to_string(), json!(nv));
+        snapshot_metrics
+            .meta
+            .insert("delta_m_hat".to_string(), json!(delta_m_hat));
+        snapshot_metrics
+            .meta
+            .insert("xa_hat".to_string(), json!(xa_hat));
+        snapshot_metrics.meta.insert(
+            "correlated_verification_share".to_string(),
+            json!(correlated_verification_share),
+        );
+        snapshot_metrics.meta.insert(
+            "liability_premiums_collected_24h_sats".to_string(),
+            json!(liability_premiums_collected_24h_sats),
+        );
+        snapshot_metrics.meta.insert(
+            "claims_paid_24h_sats".to_string(),
+            json!(claims_paid_24h_sats),
+        );
+        snapshot_metrics.meta.insert(
+            "bonded_exposure_24h_sats".to_string(),
+            json!(bonded_exposure_24h_sats),
+        );
+        snapshot_metrics.meta.insert(
+            "capital_reserves_24h_sats".to_string(),
+            json!(capital_reserves_24h_sats),
+        );
+        snapshot_metrics
+            .meta
+            .insert("loss_ratio".to_string(), json!(loss_ratio));
+        snapshot_metrics.meta.insert(
+            "capital_coverage_ratio".to_string(),
+            json!(capital_coverage_ratio),
+        );
+        snapshot_metrics
+            .meta
+            .insert("drift_alerts_24h".to_string(), json!(0u64));
+        input_evidence.push(snapshot_metrics);
 
         let receipt = ReceiptBuilder::new(
             receipt_id,
@@ -1165,6 +1287,12 @@ impl EarnKernelReceiptState {
             "delta_m_hat": delta_m_hat,
             "xa_hat": xa_hat,
             "correlated_verification_share": correlated_verification_share,
+            "liability_premiums_collected_24h_sats": liability_premiums_collected_24h_sats,
+            "claims_paid_24h_sats": claims_paid_24h_sats,
+            "bonded_exposure_24h_sats": bonded_exposure_24h_sats,
+            "capital_reserves_24h_sats": capital_reserves_24h_sats,
+            "loss_ratio": loss_ratio,
+            "capital_coverage_ratio": capital_coverage_ratio,
             "source_tag": source_tag,
         }))
         .with_evidence(input_evidence)
@@ -1179,6 +1307,7 @@ impl EarnKernelReceiptState {
             personhood_proved: Some(false),
             reason_code: None,
             notional: None,
+            liability_premium: None,
         })
         .build();
 
@@ -1320,6 +1449,7 @@ impl EarnKernelReceiptState {
                 personhood_proved: Some(false),
                 reason_code: Some(REASON_CODE_POLICY_THROTTLE_TRIGGERED.to_string()),
                 notional: None,
+                liability_premium: None,
             })
             .build();
             self.append_receipt(receipt, source_tag);
@@ -1464,6 +1594,7 @@ impl EarnKernelReceiptState {
                             amount: MoneyAmount::AmountSats(amount_sats),
                         })
                     },
+                    liability_premium: None,
                 })
                 .build();
                 self.append_receipt(withheld_receipt, source_tag);
@@ -1529,6 +1660,7 @@ impl EarnKernelReceiptState {
                     amount: MoneyAmount::AmountSats(amount_sats),
                 })
             },
+            liability_premium: None,
         })
         .build();
         self.append_receipt(receipt, source_tag);
@@ -1619,6 +1751,7 @@ impl EarnKernelReceiptState {
             personhood_proved: Some(false),
             reason_code: None,
             notional: None,
+            liability_premium: None,
         })
         .build();
 
@@ -1918,6 +2051,7 @@ impl EarnKernelReceiptState {
             personhood_proved: exemplar.hints.personhood_proved,
             reason_code: Some("RECEIPT_SUPERSEDED".to_string()),
             notional: exemplar.hints.notional.clone(),
+            liability_premium: exemplar.hints.liability_premium.clone(),
         })
         .build();
 
@@ -3084,6 +3218,219 @@ fn select_risk_pricing_rule<'a>(
     .map(|(rule, _)| rule)
 }
 
+fn pricing_snapshot_context_from_receipt(receipt: &Receipt) -> Option<PricingSnapshotContext> {
+    if receipt.receipt_type != "economy.stats.snapshot_receipt.v1" {
+        return None;
+    }
+
+    let artifact = receipt
+        .evidence
+        .iter()
+        .find(|evidence| evidence.kind == "economy_snapshot_artifact")?;
+    let snapshot_id = parse_snapshot_id_from_uri(artifact.uri.as_str())
+        .unwrap_or(DEFAULT_PRICING_SNAPSHOT_ID)
+        .to_string();
+    let snapshot_hash = if artifact.digest.trim().is_empty() {
+        DEFAULT_PRICING_SNAPSHOT_HASH.to_string()
+    } else {
+        artifact.digest.clone()
+    };
+    let mut metrics = SnapshotPolicyMetrics::default();
+    if let Some(metrics_evidence) = receipt
+        .evidence
+        .iter()
+        .find(|evidence| evidence.kind == "snapshot_metrics")
+    {
+        metrics.sv = extract_f64_meta(metrics_evidence, "sv").unwrap_or(0.0);
+        metrics.xa_hat = extract_f64_meta(metrics_evidence, "xa_hat").unwrap_or(0.0);
+        metrics.delta_m_hat = extract_f64_meta(metrics_evidence, "delta_m_hat").unwrap_or(0.0);
+        metrics.correlated_verification_share =
+            extract_f64_meta(metrics_evidence, "correlated_verification_share").unwrap_or(0.0);
+        metrics.drift_alerts_24h =
+            extract_u64_meta(metrics_evidence, "drift_alerts_24h").unwrap_or(0);
+    }
+
+    Some(PricingSnapshotContext {
+        snapshot_id,
+        snapshot_hash,
+        metrics,
+    })
+}
+
+fn latest_pricing_snapshot_context(receipts: &[Receipt]) -> PricingSnapshotContext {
+    receipts
+        .iter()
+        .rev()
+        .find_map(pricing_snapshot_context_from_receipt)
+        .unwrap_or_else(|| PricingSnapshotContext {
+            snapshot_id: DEFAULT_PRICING_SNAPSHOT_ID.to_string(),
+            snapshot_hash: DEFAULT_PRICING_SNAPSHOT_HASH.to_string(),
+            metrics: SnapshotPolicyMetrics::default(),
+        })
+}
+
+fn compute_liability_pricing_for_settlement(
+    receipts: &[Receipt],
+    policy_bundle: &PolicyBundleConfig,
+    category: &str,
+    tfb_class: FeedbackLatencyClass,
+    severity: SeverityClass,
+    execution_price_sats: u64,
+    verification_budget_hint_sats: u64,
+) -> LiabilityPricingBreakdown {
+    let snapshot_context = latest_pricing_snapshot_context(receipts);
+    let (
+        risk_pricing_rule_id,
+        base_liability_premium_bps,
+        xa_multiplier,
+        drift_multiplier,
+        correlated_share_multiplier,
+    ) = if let Some(rule) = select_risk_pricing_rule(policy_bundle, category, tfb_class, severity) {
+        (
+            rule.rule_id.clone(),
+            rule.base_liability_premium_bps.unwrap_or(0),
+            rule.xa_multiplier.unwrap_or(0.0),
+            rule.drift_multiplier.unwrap_or(0.0),
+            rule.correlated_share_multiplier.unwrap_or(0.0),
+        )
+    } else {
+        (
+            "policy.earn.risk_pricing.none".to_string(),
+            0,
+            0.0,
+            0.0,
+            0.0,
+        )
+    };
+
+    let normalized_drift = (snapshot_context.metrics.drift_alerts_24h as f64 / 100.0).max(0.0);
+    let dynamic_multiplier = (1.0
+        + (xa_multiplier * snapshot_context.metrics.xa_hat.max(0.0))
+        + (drift_multiplier * normalized_drift)
+        + (correlated_share_multiplier
+            * snapshot_context
+                .metrics
+                .correlated_verification_share
+                .max(0.0)))
+    .max(0.0);
+    let effective_liability_premium_bps = ((base_liability_premium_bps as f64) * dynamic_multiplier)
+        .round()
+        .clamp(0.0, u32::MAX as f64) as u32;
+    let liability_premium_sats =
+        compute_bps_charge_sats(execution_price_sats, effective_liability_premium_bps);
+    let verification_fee_sats =
+        compute_verification_fee_sats(execution_price_sats, verification_budget_hint_sats);
+
+    LiabilityPricingBreakdown {
+        execution_price_sats,
+        verification_fee_sats,
+        liability_premium_sats,
+        risk_charge_sats: liability_premium_sats,
+        effective_liability_premium_bps,
+        pricing_snapshot_id: snapshot_context.snapshot_id,
+        pricing_snapshot_hash: snapshot_context.snapshot_hash,
+        pricing_metrics: snapshot_context.metrics,
+        risk_pricing_rule_id,
+        base_liability_premium_bps,
+        xa_multiplier,
+        drift_multiplier,
+        correlated_share_multiplier,
+    }
+}
+
+fn compute_bps_charge_sats(amount_sats: u64, bps: u32) -> u64 {
+    if amount_sats == 0 || bps == 0 {
+        return 0;
+    }
+    let numerator = (amount_sats as u128)
+        .saturating_mul(bps as u128)
+        .saturating_add(9_999);
+    let sats = numerator / 10_000;
+    sats.min(u64::MAX as u128) as u64
+}
+
+fn compute_verification_fee_sats(
+    execution_price_sats: u64,
+    verification_budget_hint_sats: u64,
+) -> Option<u64> {
+    if execution_price_sats == 0 || verification_budget_hint_sats == 0 {
+        return None;
+    }
+    let baseline = (execution_price_sats / 20).max(1);
+    Some(baseline.min(verification_budget_hint_sats))
+}
+
+fn btc_sats_money(amount_sats: u64) -> Money {
+    Money {
+        asset: Asset::Btc,
+        amount: MoneyAmount::AmountSats(amount_sats),
+    }
+}
+
+fn append_pricing_evidence(evidence: &mut Vec<EvidenceRef>, pricing: &LiabilityPricingBreakdown) {
+    evidence.push(EvidenceRef::new(
+        "pricing_snapshot_ref",
+        format!("oa://economy/snapshots/{}", pricing.pricing_snapshot_id),
+        pricing.pricing_snapshot_hash.clone(),
+    ));
+    evidence.push(EvidenceRef::new(
+        "risk_pricing_rule_ref",
+        format!(
+            "oa://policy/risk_pricing/{}",
+            normalize_key(pricing.risk_pricing_rule_id.as_str())
+        ),
+        digest_for_text(pricing.risk_pricing_rule_id.as_str()),
+    ));
+}
+
+fn pricing_payload(pricing: &LiabilityPricingBreakdown) -> serde_json::Value {
+    json!({
+        "execution_price_sats": pricing.execution_price_sats,
+        "verification_fee_sats": pricing.verification_fee_sats,
+        "liability_premium_sats": pricing.liability_premium_sats,
+        "risk_charge_sats": pricing.risk_charge_sats,
+        "effective_liability_premium_bps": pricing.effective_liability_premium_bps,
+        "pricing_snapshot_ref": {
+            "snapshot_id": pricing.pricing_snapshot_id,
+            "snapshot_hash": pricing.pricing_snapshot_hash,
+        },
+        "pricing_metrics": {
+            "sv": pricing.pricing_metrics.sv,
+            "xa_hat": pricing.pricing_metrics.xa_hat,
+            "delta_m_hat": pricing.pricing_metrics.delta_m_hat,
+            "correlated_verification_share": pricing.pricing_metrics.correlated_verification_share,
+            "drift_alerts_24h": pricing.pricing_metrics.drift_alerts_24h,
+        },
+        "risk_pricing_rule": {
+            "rule_id": pricing.risk_pricing_rule_id,
+            "base_liability_premium_bps": pricing.base_liability_premium_bps,
+            "xa_multiplier": pricing.xa_multiplier,
+            "drift_multiplier": pricing.drift_multiplier,
+            "correlated_share_multiplier": pricing.correlated_share_multiplier,
+        }
+    })
+}
+
+fn parse_snapshot_id_from_uri(uri: &str) -> Option<&str> {
+    uri.strip_prefix("oa://economy/snapshots/")
+        .and_then(|suffix| {
+            let value = suffix.split('/').next().unwrap_or(suffix);
+            if value.trim().is_empty() {
+                None
+            } else {
+                Some(value)
+            }
+        })
+}
+
+fn extract_f64_meta(evidence: &EvidenceRef, key: &str) -> Option<f64> {
+    evidence.meta.get(key).and_then(Value::as_f64)
+}
+
+fn extract_u64_meta(evidence: &EvidenceRef, key: &str) -> Option<u64> {
+    evidence.meta.get(key).and_then(Value::as_u64)
+}
+
 fn select_certification_rule<'a>(
     bundle: &'a PolicyBundleConfig,
     category: &str,
@@ -3793,6 +4140,14 @@ mod tests {
             .evidence
             .iter()
             .any(|evidence| evidence.kind == "wallet_settlement_proof"));
+        assert!(settlement
+            .evidence
+            .iter()
+            .any(|evidence| evidence.kind == "pricing_snapshot_ref"));
+        assert!(settlement
+            .evidence
+            .iter()
+            .any(|evidence| evidence.kind == "risk_pricing_rule_ref"));
         assert_eq!(
             settlement.hints.tfb_class,
             Some(FeedbackLatencyClass::Short)
@@ -3802,6 +4157,7 @@ mod tests {
             settlement.hints.provenance_grade,
             Some(ProvenanceGrade::P3Attested)
         );
+        assert!(settlement.hints.liability_premium.is_some());
         let work_unit = state
             .work_units
             .get("job-req-123")
@@ -4197,6 +4553,12 @@ mod tests {
             0.0,
             0.0,
             0.0,
+            125,
+            25,
+            2_000,
+            100,
+            0.2,
+            0.05,
             vec![input],
             "test.snapshot",
         );
@@ -4214,10 +4576,144 @@ mod tests {
             .evidence
             .iter()
             .any(|evidence| evidence.kind == "economy_snapshot_artifact"));
+        let snapshot_metrics = receipt
+            .evidence
+            .iter()
+            .find(|evidence| evidence.kind == "snapshot_metrics")
+            .expect("snapshot metrics evidence");
+        assert_eq!(
+            snapshot_metrics
+                .meta
+                .get("liability_premiums_collected_24h_sats"),
+            Some(&json!(125))
+        );
+        assert_eq!(
+            snapshot_metrics.meta.get("claims_paid_24h_sats"),
+            Some(&json!(25))
+        );
         assert_eq!(
             receipt.idempotency_key,
             "idemp.economy.snapshot:1762000060000"
         );
+    }
+
+    #[test]
+    fn liability_pricing_is_deterministic_given_snapshot_and_policy_inputs() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+
+        state.record_economy_snapshot_receipt(
+            "snapshot.economy:1762000060000",
+            1_762_000_060_000,
+            "sha256:snapshot",
+            0.55,
+            0.55,
+            4,
+            2.2,
+            0.1,
+            0.2,
+            0.3,
+            400,
+            100,
+            2_000,
+            300,
+            0.25,
+            0.15,
+            vec![],
+            "test.snapshot",
+        );
+        let bundle = default_policy_bundle();
+        let first = compute_liability_pricing_for_settlement(
+            state.receipts.as_slice(),
+            &bundle,
+            "compute",
+            FeedbackLatencyClass::Short,
+            SeverityClass::Low,
+            10_000,
+            1_000,
+        );
+        let second = compute_liability_pricing_for_settlement(
+            state.receipts.as_slice(),
+            &bundle,
+            "compute",
+            FeedbackLatencyClass::Short,
+            SeverityClass::Low,
+            10_000,
+            1_000,
+        );
+
+        assert_eq!(first.liability_premium_sats, second.liability_premium_sats);
+        assert_eq!(
+            first.effective_liability_premium_bps,
+            second.effective_liability_premium_bps
+        );
+        assert_eq!(first.pricing_snapshot_id, second.pricing_snapshot_id);
+        assert_eq!(first.pricing_snapshot_hash, second.pricing_snapshot_hash);
+        assert_eq!(first.risk_pricing_rule_id, second.risk_pricing_rule_id);
+        assert_eq!(
+            first.pricing_snapshot_id,
+            "snapshot.economy:1762000060000".to_string()
+        );
+        assert_eq!(first.pricing_snapshot_hash, "sha256:snapshot".to_string());
+        assert!(first.liability_premium_sats > 0);
+    }
+
+    #[test]
+    fn exported_settlement_bundle_keeps_pricing_refs_digest_only() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        state.record_economy_snapshot_receipt(
+            "snapshot.economy:1762000060000",
+            1_762_000_060_000,
+            "sha256:snapshot",
+            0.5,
+            0.5,
+            2,
+            1.0,
+            0.0,
+            0.1,
+            0.2,
+            125,
+            25,
+            2_000,
+            100,
+            0.2,
+            0.05,
+            vec![],
+            "test.snapshot",
+        );
+        state.record_history_receipt(
+            &fixture_history_row("wallet-payment-1"),
+            1_762_000_010,
+            "test.history",
+        );
+
+        let query = ReceiptQuery {
+            start_inclusive_ms: Some(1_762_000_000_000),
+            end_inclusive_ms: Some(1_762_000_080_000),
+            work_unit_id: Some("job-req-123".to_string()),
+            receipt_type: Some("earn.job.settlement_observed.v1".to_string()),
+        };
+        let bundle = state
+            .export_receipt_bundle(&query, 1_762_000_090_000)
+            .expect("bundle export");
+        assert_eq!(bundle.receipt_count, 1);
+        let settlement = &bundle.receipts[0];
+        assert!(settlement
+            .evidence
+            .iter()
+            .any(|evidence| evidence.kind == "pricing_snapshot_ref"));
+        assert!(settlement
+            .evidence
+            .iter()
+            .any(|evidence| evidence.kind == "risk_pricing_rule_ref"));
+        assert!(!settlement
+            .evidence
+            .iter()
+            .any(|evidence| evidence.kind == "snapshot_metrics"));
+        assert!(settlement.hints.liability_premium.is_some());
     }
 
     #[test]
