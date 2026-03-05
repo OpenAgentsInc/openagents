@@ -3689,6 +3689,23 @@ pub(super) fn run_network_requests_action(
                         Ok(request_id) => {
                             state.provider_runtime.last_result =
                                 Some(format!("Queued network request {request_id}"));
+                            let tracked_request_ids = state
+                                .network_requests
+                                .submitted
+                                .iter()
+                                .map(|request| request.request_id.clone())
+                                .collect::<Vec<_>>();
+                            if let Err(error) = state.queue_provider_nip90_lane_command(
+                                crate::provider_nip90_lane::ProviderNip90LaneCommand::TrackBuyerRequestIds {
+                                    request_ids: tracked_request_ids,
+                                },
+                            ) {
+                                state.provider_runtime.last_error_detail = Some(error.clone());
+                                state.provider_runtime.last_result = Some(format!(
+                                    "failed to track buyer request id {} for relay correlation: {}",
+                                    request_id, error
+                                ));
+                            }
                             if let Err(error) = state.queue_provider_nip90_lane_command(
                                 crate::provider_nip90_lane::ProviderNip90LaneCommand::PublishEvent {
                                     request_id: request_id.clone(),

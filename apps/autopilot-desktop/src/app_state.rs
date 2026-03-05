@@ -5183,6 +5183,67 @@ mod tests {
     }
 
     #[test]
+    fn network_requests_track_buyer_feedback_and_result_correlation() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-001".to_string()),
+                request_type: "summarize.text".to_string(),
+                payload: "{\"prompt\":\"hello\"}".to_string(),
+                target_provider_pubkeys: vec!["11".repeat(32)],
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: 10,
+                timeout_seconds: 60,
+                authority_command_seq: 9,
+            })
+            .expect("request should queue");
+        let provider_pubkey = "22".repeat(32);
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            provider_pubkey.as_str(),
+            "feedback-001",
+            Some("payment-required"),
+            Some("pay invoice"),
+        );
+        let after_feedback = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request should exist after feedback");
+        assert_eq!(after_feedback.status, NetworkRequestStatus::PaymentRequired);
+        assert_eq!(
+            after_feedback.last_feedback_status.as_deref(),
+            Some("payment-required")
+        );
+        assert_eq!(
+            after_feedback.last_feedback_event_id.as_deref(),
+            Some("feedback-001")
+        );
+        assert_eq!(
+            after_feedback.last_provider_pubkey.as_deref(),
+            Some(provider_pubkey.as_str())
+        );
+
+        requests.apply_nip90_buyer_result_event(
+            request_id.as_str(),
+            provider_pubkey.as_str(),
+            "result-001",
+            Some("success"),
+        );
+        let after_result = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request should exist after result");
+        assert_eq!(after_result.status, NetworkRequestStatus::ResultReceived);
+        assert_eq!(
+            after_result.last_result_event_id.as_deref(),
+            Some("result-001")
+        );
+    }
+
+    #[test]
     fn agent_network_simulation_rounds_generate_channel_skill_and_credit_events() {
         let mut state = AgentNetworkSimulationPaneState::default();
         state

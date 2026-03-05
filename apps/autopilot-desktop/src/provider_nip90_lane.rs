@@ -1,10 +1,12 @@
 use crate::state::job_inbox::{JobInboxNetworkRequest, JobInboxValidation};
 use nostr::Event;
 use nostr::nip90::{
-    JOB_REQUEST_KIND_MAX, JOB_REQUEST_KIND_MIN, JobRequest, KIND_JOB_CODE_REVIEW,
-    KIND_JOB_IMAGE_GENERATION, KIND_JOB_PATCH_GEN, KIND_JOB_REPO_INDEX, KIND_JOB_RLM_SUBQUERY,
-    KIND_JOB_SANDBOX_RUN, KIND_JOB_SPEECH_TO_TEXT, KIND_JOB_SUMMARIZATION,
-    KIND_JOB_TEXT_EXTRACTION, KIND_JOB_TEXT_GENERATION, KIND_JOB_TRANSLATION, is_job_request_kind,
+    JOB_REQUEST_KIND_MAX, JOB_REQUEST_KIND_MIN, JOB_RESULT_KIND_MAX, JOB_RESULT_KIND_MIN,
+    JobRequest, JobResult, KIND_JOB_CODE_REVIEW, KIND_JOB_FEEDBACK, KIND_JOB_IMAGE_GENERATION,
+    KIND_JOB_PATCH_GEN, KIND_JOB_REPO_INDEX, KIND_JOB_RLM_SUBQUERY, KIND_JOB_SANDBOX_RUN,
+    KIND_JOB_SPEECH_TO_TEXT, KIND_JOB_SUMMARIZATION, KIND_JOB_TEXT_EXTRACTION,
+    KIND_JOB_TEXT_GENERATION, KIND_JOB_TRANSLATION, is_job_feedback_kind, is_job_request_kind,
+    is_job_result_kind,
 };
 use nostr_client::{ConnectionState, PoolConfig, RelayMessage, RelayPool};
 use serde_json::json;
@@ -120,6 +122,9 @@ pub enum ProviderNip90LaneCommand {
         role: ProviderNip90PublishRole,
         event: Box<Event>,
     },
+    TrackBuyerRequestIds {
+        request_ids: Vec<String>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -151,10 +156,40 @@ pub struct ProviderNip90PublishOutcome {
     pub raw_event_json: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProviderNip90BuyerResponseKind {
+    Feedback,
+    Result,
+}
+
+impl ProviderNip90BuyerResponseKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Feedback => "feedback",
+            Self::Result => "result",
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ProviderNip90BuyerResponseEvent {
+    pub request_id: String,
+    pub provider_pubkey: String,
+    pub event_id: String,
+    pub kind: ProviderNip90BuyerResponseKind,
+    pub status: Option<String>,
+    pub status_extra: Option<String>,
+    pub amount_msats: Option<u64>,
+    pub bolt11: Option<String>,
+    pub parsed_event_shape: Option<String>,
+    pub raw_event_json: Option<String>,
+}
+
 #[derive(Clone, Debug)]
 pub enum ProviderNip90LaneUpdate {
     Snapshot(Box<ProviderNip90LaneSnapshot>),
     IngressedRequest(JobInboxNetworkRequest),
+    BuyerResponseEvent(ProviderNip90BuyerResponseEvent),
     PublishOutcome(ProviderNip90PublishOutcome),
 }
 
@@ -195,6 +230,7 @@ struct ProviderNip90LaneState {
     snapshot: ProviderNip90LaneSnapshot,
     wants_online: bool,
     pool: Option<Arc<RelayPool>>,
+    tracked_buyer_request_ids: Vec<String>,
     relay_last_seen: HashMap<String, Instant>,
     relay_latency_ms: HashMap<String, u32>,
     relay_last_error: HashMap<String, String>,
@@ -236,6 +272,7 @@ fn run_lane_loop(
         snapshot: ProviderNip90LaneSnapshot::with_relays(initial_relays),
         wants_online: false,
         pool: None,
+        tracked_buyer_request_ids: Vec::new(),
         relay_last_seen: HashMap::new(),
         relay_latency_ms: HashMap::new(),
         relay_last_error: HashMap::new(),
@@ -251,7 +288,8 @@ fn run_lane_loop(
             Ok(command) => {
                 match command {
                     ProviderNip90LaneCommand::ConfigureRelays { .. }
-                    | ProviderNip90LaneCommand::SetOnline { .. } => {
+                    | ProviderNip90LaneCommand::SetOnline { .. }
+                    | ProviderNip90LaneCommand::TrackBuyerRequestIds { .. } => {
                         handle_command(&runtime, &mut state, command);
                     }
                     ProviderNip90LaneCommand::PublishEvent {
@@ -299,7 +337,10 @@ fn run_lane_loop(
         };
 
         let relay_health_before_poll = state.snapshot.relay_health.clone();
-        let outcome = runtime.block_on(poll_ingress(pool));
+        let outcome = runtime.block_on(poll_ingress(
+            pool,
+            state.tracked_buyer_request_ids.as_slice(),
+        ));
         apply_poll_outcome_telemetry(&mut state, &outcome);
         refresh_relay_health_snapshot(&runtime, &mut state);
 
@@ -338,6 +379,20 @@ fn run_lane_loop(
                 request.request_id
             ));
             let _ = update_tx.send(ProviderNip90LaneUpdate::IngressedRequest(request));
+            let _ = update_tx.send(ProviderNip90LaneUpdate::Snapshot(Box::new(
+                state.snapshot.clone(),
+            )));
+        }
+
+        for buyer_event in outcome.buyer_events {
+            state.snapshot.last_error = None;
+            state.snapshot.last_action = Some(format!(
+                "ingressed buyer {} event {} for request {}",
+                buyer_event.kind.label(),
+                buyer_event.event_id,
+                buyer_event.request_id
+            ));
+            let _ = update_tx.send(ProviderNip90LaneUpdate::BuyerResponseEvent(buyer_event));
             let _ = update_tx.send(ProviderNip90LaneUpdate::Snapshot(Box::new(
                 state.snapshot.clone(),
             )));
@@ -390,6 +445,21 @@ fn handle_command(
                 state.snapshot.last_error = None;
                 state.relay_last_error.clear();
                 state.snapshot.last_action = Some("Provider relay ingress offline".to_string());
+            }
+            refresh_relay_health_snapshot(runtime, state);
+        }
+        ProviderNip90LaneCommand::TrackBuyerRequestIds { request_ids } => {
+            let normalized = normalize_request_ids(request_ids);
+            if normalized == state.tracked_buyer_request_ids {
+                return;
+            }
+            state.tracked_buyer_request_ids = normalized;
+            state.snapshot.last_action = Some(format!(
+                "Tracking buyer response events for {} request id(s)",
+                state.tracked_buyer_request_ids.len()
+            ));
+            if let Some(pool) = state.pool.as_ref().cloned() {
+                resubscribe_ingress_filters(runtime, state, pool);
             }
             refresh_relay_health_snapshot(runtime, state);
         }
@@ -588,7 +658,7 @@ fn ensure_online_pool(
             }
         }
 
-        let filters = build_ingress_filters();
+        let filters = build_ingress_filters(state.tracked_buyer_request_ids.as_slice());
         for relay in &state.snapshot.configured_relays {
             let relay_key = relay_map_key(relay);
             let connect_started = Instant::now();
@@ -679,7 +749,7 @@ fn reconnect_disconnected_relays(
     pool: Arc<RelayPool>,
 ) {
     runtime.block_on(async {
-        let filters = build_ingress_filters();
+        let filters = build_ingress_filters(state.tracked_buyer_request_ids.as_slice());
         for relay in &state.snapshot.configured_relays {
             let relay_key = relay_map_key(relay);
             let Some(connection) = pool.relay(relay).await else {
@@ -723,11 +793,53 @@ fn reconnect_disconnected_relays(
     });
 }
 
-fn build_ingress_filters() -> Vec<serde_json::Value> {
+fn resubscribe_ingress_filters(
+    runtime: &tokio::runtime::Runtime,
+    state: &mut ProviderNip90LaneState,
+    pool: Arc<RelayPool>,
+) {
+    runtime.block_on(async {
+        let filters = build_ingress_filters(state.tracked_buyer_request_ids.as_slice());
+        for relay in &state.snapshot.configured_relays {
+            let relay_key = relay_map_key(relay);
+            let Some(connection) = pool.relay(relay).await else {
+                continue;
+            };
+            if connection.state().await != ConnectionState::Connected {
+                continue;
+            }
+            if let Err(error) = connection
+                .subscribe_filters(SUBSCRIPTION_ID, filters.clone())
+                .await
+            {
+                state.relay_last_error.insert(
+                    relay_key.clone(),
+                    format!("Failed refreshing provider ingress filters for {relay}: {error}"),
+                );
+            } else {
+                state.relay_last_error.remove(&relay_key);
+            }
+        }
+    });
+}
+
+fn build_ingress_filters(tracked_buyer_request_ids: &[String]) -> Vec<serde_json::Value> {
     let kinds = (JOB_REQUEST_KIND_MIN..=JOB_REQUEST_KIND_MAX)
         .map(serde_json::Value::from)
         .collect::<Vec<_>>();
-    vec![json!({"kinds": kinds, "limit": 256})]
+    let mut filters = vec![json!({"kinds": kinds, "limit": 256})];
+    if !tracked_buyer_request_ids.is_empty() {
+        let response_kinds = (JOB_RESULT_KIND_MIN..=JOB_RESULT_KIND_MAX)
+            .map(serde_json::Value::from)
+            .chain(std::iter::once(serde_json::Value::from(KIND_JOB_FEEDBACK)))
+            .collect::<Vec<_>>();
+        filters.push(json!({
+            "kinds": response_kinds,
+            "#e": tracked_buyer_request_ids,
+            "limit": 256
+        }));
+    }
+    filters
 }
 
 fn elapsed_millis_u32(duration: Duration) -> u32 {
@@ -858,6 +970,7 @@ fn apply_poll_outcome_telemetry(state: &mut ProviderNip90LaneState, outcome: &Po
 
 struct PollOutcome {
     requests: Vec<JobInboxNetworkRequest>,
+    buyer_events: Vec<ProviderNip90BuyerResponseEvent>,
     connected_relays: usize,
     last_error: Option<String>,
     relay_errors: Vec<(String, String)>,
@@ -865,14 +978,19 @@ struct PollOutcome {
     relay_latency_ms: Vec<(String, u32)>,
 }
 
-async fn poll_ingress(pool: Arc<RelayPool>) -> PollOutcome {
+async fn poll_ingress(pool: Arc<RelayPool>, tracked_buyer_request_ids: &[String]) -> PollOutcome {
     let relays = pool.relays().await;
     let mut requests = Vec::new();
+    let mut buyer_events = Vec::new();
     let mut connected_relays = 0usize;
     let mut last_error = None;
     let mut relay_errors = Vec::new();
     let mut relay_seen = Vec::new();
     let mut relay_latency_ms = Vec::new();
+    let tracked_buyer_request_ids = tracked_buyer_request_ids
+        .iter()
+        .cloned()
+        .collect::<HashSet<_>>();
 
     for relay in relays {
         let relay_url = relay_map_key(relay.url());
@@ -891,6 +1009,10 @@ async fn poll_ingress(pool: Arc<RelayPool>) -> PollOutcome {
                     ));
                     if let Some(request) = event_to_inbox_request(&event) {
                         requests.push(request);
+                    } else if let Some(buyer_event) =
+                        event_to_buyer_response_event(&event, &tracked_buyer_request_ids)
+                    {
+                        buyer_events.push(buyer_event);
                     }
                 }
                 Ok(Ok(Some(_))) => {
@@ -915,6 +1037,7 @@ async fn poll_ingress(pool: Arc<RelayPool>) -> PollOutcome {
 
     PollOutcome {
         requests,
+        buyer_events,
         connected_relays,
         last_error,
         relay_errors,
@@ -1019,6 +1142,146 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
         ttl_seconds,
         validation,
     })
+}
+
+fn event_to_buyer_response_event(
+    event: &Event,
+    tracked_buyer_request_ids: &HashSet<String>,
+) -> Option<ProviderNip90BuyerResponseEvent> {
+    if is_job_feedback_kind(event.kind) {
+        let feedback = parse_feedback_event(event)?;
+        if !tracked_buyer_request_ids.contains(feedback.request_id.as_str()) {
+            return None;
+        }
+        return Some(feedback);
+    }
+    if is_job_result_kind(event.kind) {
+        let result = JobResult::from_event(event).ok()?;
+        if !tracked_buyer_request_ids.contains(result.request_id.as_str()) {
+            return None;
+        }
+        let (status, status_extra) = parse_status_tags(event.tags.as_slice());
+        let parsed_event_shape = Some(format_buyer_response_event_shape(
+            event,
+            ProviderNip90BuyerResponseKind::Result,
+            result.request_id.as_str(),
+            status.as_deref(),
+            status_extra.as_deref(),
+            result.amount,
+            result.bolt11.as_deref(),
+        ));
+        let raw_event_json = serde_json::to_string_pretty(event).ok();
+        return Some(ProviderNip90BuyerResponseEvent {
+            request_id: result.request_id,
+            provider_pubkey: event.pubkey.clone(),
+            event_id: event.id.clone(),
+            kind: ProviderNip90BuyerResponseKind::Result,
+            status,
+            status_extra,
+            amount_msats: result.amount,
+            bolt11: result.bolt11,
+            parsed_event_shape,
+            raw_event_json,
+        });
+    }
+    None
+}
+
+fn parse_feedback_event(event: &Event) -> Option<ProviderNip90BuyerResponseEvent> {
+    let mut request_id = None::<String>;
+    let (status, status_extra) = parse_status_tags(event.tags.as_slice());
+    let mut amount_msats = None::<u64>;
+    let mut bolt11 = None::<String>;
+
+    for tag in &event.tags {
+        if tag.len() < 2 {
+            continue;
+        }
+        match tag[0].as_str() {
+            "e" => request_id = Some(tag[1].clone()),
+            "amount" => {
+                amount_msats = tag[1].parse::<u64>().ok();
+                if tag.len() >= 3 {
+                    bolt11 = Some(tag[2].clone());
+                }
+            }
+            "bolt11" => {
+                bolt11 = Some(tag[1].clone());
+            }
+            _ => {}
+        }
+    }
+
+    let request_id = request_id?;
+    let parsed_event_shape = Some(format_buyer_response_event_shape(
+        event,
+        ProviderNip90BuyerResponseKind::Feedback,
+        request_id.as_str(),
+        status.as_deref(),
+        status_extra.as_deref(),
+        amount_msats,
+        bolt11.as_deref(),
+    ));
+    let raw_event_json = serde_json::to_string_pretty(event).ok();
+
+    Some(ProviderNip90BuyerResponseEvent {
+        request_id,
+        provider_pubkey: event.pubkey.clone(),
+        event_id: event.id.clone(),
+        kind: ProviderNip90BuyerResponseKind::Feedback,
+        status,
+        status_extra,
+        amount_msats,
+        bolt11,
+        parsed_event_shape,
+        raw_event_json,
+    })
+}
+
+fn parse_status_tags(tags: &[Vec<String>]) -> (Option<String>, Option<String>) {
+    for tag in tags {
+        if tag.first().is_some_and(|value| value == "status") {
+            let status = tag.get(1).map(ToString::to_string);
+            let status_extra = tag.get(2).map(ToString::to_string);
+            return (status, status_extra);
+        }
+    }
+    (None, None)
+}
+
+fn format_buyer_response_event_shape(
+    event: &Event,
+    kind: ProviderNip90BuyerResponseKind,
+    request_id: &str,
+    status: Option<&str>,
+    status_extra: Option<&str>,
+    amount_msats: Option<u64>,
+    bolt11: Option<&str>,
+) -> String {
+    format!(
+        "{}\nbuyer_response.kind={} request_id={} provider_pubkey={} status={} status_extra={} amount_msats={} bolt11={}",
+        format_generic_event_shape(event),
+        kind.label(),
+        request_id,
+        event.pubkey,
+        status.unwrap_or("none"),
+        status_extra.unwrap_or("none"),
+        amount_msats
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "none".to_string()),
+        bolt11
+            .map(|value| truncate_summary_value(value, 64))
+            .unwrap_or_else(|| "none".to_string()),
+    )
+}
+
+fn truncate_summary_value(value: &str, max_chars: usize) -> String {
+    if value.len() <= max_chars {
+        return value.to_string();
+    }
+    let mut truncated = value.chars().take(max_chars).collect::<String>();
+    truncated.push_str("...");
+    truncated
 }
 
 fn normalize_provider_keys(values: &[String]) -> Vec<String> {
@@ -1150,6 +1413,17 @@ fn capability_for_kind(kind: u16) -> String {
     .to_string()
 }
 
+fn normalize_request_ids(request_ids: Vec<String>) -> Vec<String> {
+    let mut normalized = request_ids
+        .into_iter()
+        .map(|request_id| request_id.trim().to_string())
+        .filter(|request_id| !request_id.is_empty())
+        .collect::<Vec<_>>();
+    normalized.sort();
+    normalized.dedup();
+    normalized
+}
+
 fn normalize_relays(relays: Vec<String>) -> Vec<String> {
     let mut seen = HashSet::<String>::new();
     let mut normalized = Vec::new();
@@ -1171,8 +1445,9 @@ fn normalize_relays(relays: Vec<String>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ProviderNip90LaneCommand, ProviderNip90LaneUpdate, ProviderNip90LaneWorker,
-        ProviderNip90PublishRole, ProviderNip90RelayStatus, event_to_inbox_request,
+        ProviderNip90BuyerResponseKind, ProviderNip90LaneCommand, ProviderNip90LaneUpdate,
+        ProviderNip90LaneWorker, ProviderNip90PublishRole, ProviderNip90RelayStatus,
+        event_to_buyer_response_event, event_to_inbox_request,
     };
     use crate::app_state::{
         ActiveJobState, EarningsScoreboardState, JobHistoryState, JobHistoryStatus, JobInboxState,
@@ -1279,11 +1554,89 @@ mod tests {
 
         let row = event_to_inbox_request(&event).expect("event should map to inbox row");
         assert!(row.encrypted);
-        assert_eq!(
-            row.encrypted_payload.as_deref(),
-            Some("nip44-ciphertext")
-        );
+        assert_eq!(row.encrypted_payload.as_deref(), Some("nip44-ciphertext"));
         assert_eq!(row.target_provider_pubkeys, vec!["aa".repeat(32)]);
+    }
+
+    #[test]
+    fn maps_tracked_buyer_feedback_event() {
+        let event = Event {
+            id: "feedback-001".to_string(),
+            pubkey: "11".repeat(32),
+            created_at: 1_760_000_130,
+            kind: 7000,
+            tags: vec![
+                vec!["status".to_string(), "payment-required".to_string()],
+                vec!["e".to_string(), "req-001".to_string()],
+                vec![
+                    "amount".to_string(),
+                    "10000".to_string(),
+                    "lnbc10n1...".to_string(),
+                ],
+                vec!["p".to_string(), "22".repeat(32)],
+            ],
+            content: "pay to continue".to_string(),
+            sig: "55".repeat(64),
+        };
+        let tracked = std::collections::HashSet::from(["req-001".to_string()]);
+        let buyer_event =
+            event_to_buyer_response_event(&event, &tracked).expect("feedback should map");
+        assert_eq!(buyer_event.kind, ProviderNip90BuyerResponseKind::Feedback);
+        assert_eq!(buyer_event.request_id, "req-001");
+        assert_eq!(buyer_event.status.as_deref(), Some("payment-required"));
+        assert_eq!(buyer_event.amount_msats, Some(10_000));
+        assert_eq!(buyer_event.bolt11.as_deref(), Some("lnbc10n1..."));
+    }
+
+    #[test]
+    fn maps_tracked_buyer_result_event() {
+        let event = Event {
+            id: "result-001".to_string(),
+            pubkey: "33".repeat(32),
+            created_at: 1_760_000_131,
+            kind: 6050,
+            tags: vec![
+                vec!["status".to_string(), "success".to_string()],
+                vec!["e".to_string(), "req-001".to_string()],
+                vec!["p".to_string(), "44".repeat(32)],
+                vec![
+                    "amount".to_string(),
+                    "10000".to_string(),
+                    "lnbc10n1...".to_string(),
+                ],
+            ],
+            content: "{\"result\":\"done\"}".to_string(),
+            sig: "66".repeat(64),
+        };
+        let tracked = std::collections::HashSet::from(["req-001".to_string()]);
+        let buyer_event =
+            event_to_buyer_response_event(&event, &tracked).expect("result should map");
+        assert_eq!(buyer_event.kind, ProviderNip90BuyerResponseKind::Result);
+        assert_eq!(buyer_event.request_id, "req-001");
+        assert_eq!(buyer_event.status.as_deref(), Some("success"));
+        assert_eq!(buyer_event.amount_msats, Some(10_000));
+        assert_eq!(buyer_event.bolt11.as_deref(), Some("lnbc10n1..."));
+    }
+
+    #[test]
+    fn ignores_untracked_buyer_response_event() {
+        let event = Event {
+            id: "feedback-ignored".to_string(),
+            pubkey: "11".repeat(32),
+            created_at: 1_760_000_132,
+            kind: 7000,
+            tags: vec![
+                vec!["status".to_string(), "processing".to_string()],
+                vec!["e".to_string(), "req-unknown".to_string()],
+            ],
+            content: "processing".to_string(),
+            sig: "77".repeat(64),
+        };
+        let tracked = std::collections::HashSet::from(["req-001".to_string()]);
+        assert!(
+            event_to_buyer_response_event(&event, &tracked).is_none(),
+            "untracked request ids should not emit buyer response events"
+        );
     }
 
     #[test]
