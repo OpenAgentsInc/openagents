@@ -525,6 +525,37 @@ message ProvenanceRequirement {
   bool require_attestation = 3;
 }
 
+enum VerificationAssignmentMode {
+  VERIFICATION_ASSIGNMENT_MODE_UNSPECIFIED = 0;
+  POLICY_SELECTED_SET = 1;
+  BUYER_SELECTED = 2;
+  VERIFIER_MARKET = 3; // optional lane; policy-gated
+}
+
+message VerificationAssignment {
+  VerificationAssignmentMode mode = 1;
+
+  // Explicitly assigned verifier/adjudicator identities for direct-assignment modes.
+  repeated string verifier_ids = 2;
+
+  // Hash-bound reference to the assignment receipt/object used for verdict gating.
+  openagents.common.v1.ReceiptRef assignment_ref = 3;
+
+  // Optional market match reference when mode == VERIFIER_MARKET.
+  openagents.common.v1.EvidenceRef market_match_ref = 4;
+
+  int64 assigned_at_ms = 10;
+}
+
+message VerifierLiabilityPolicy {
+  // Default false: verifier is economically non-liable (reputationally accountable only).
+  bool economic_liability_enabled = 1;
+
+  // Required when economic_liability_enabled=true.
+  openagents.common.v1.Money max_exposure = 2;
+  openagents.common.v1.EvidenceRef slash_policy_ref = 3;
+}
+
 message VerificationPlan {
   VerifiabilityClass verifiability = 1;
 
@@ -557,6 +588,8 @@ message OutcomeContract {
 
   VerificationPlan verification_plan = 30;
   repeated BondRequirement bond_requirements = 31;
+  VerificationAssignment verification_assignment = 32;
+  VerifierLiabilityPolicy verifier_liability_policy = 33;
 
   bool warranty_enabled = 40;
   WarrantyTerms warranty_terms = 41;
@@ -687,6 +720,8 @@ message CreateContractRequest {
 
   VerificationPlan verification_plan = 30;
   repeated BondRequirement bond_requirements = 31;
+  VerificationAssignment verification_assignment = 32;
+  VerifierLiabilityPolicy verifier_liability_policy = 33;
 
   bool warranty_enabled = 40;
   WarrantyTerms warranty_terms = 41;
@@ -1920,5 +1955,17 @@ For compute-like slices:
 * `min_cost_attestation_level` MUST be enforced deterministically by slice.
 * cost anomalies above policy thresholds MUST emit explicit anomaly/drift receipts (for example `economy.cost.anomaly_detected.v1`) and feed the same deterministic throttle order.
 * `min_provider_cost_integrity_score` (if set) MAY be used only as a policy prior; it MUST NOT bypass resolution-path requirements.
+
+#### L) Verifier assignment, payout linkage, and liability posture
+
+Verification services MUST enforce assignment semantics deterministically:
+
+* `VerificationAssignment.mode` defaults to `POLICY_SELECTED_SET` when unspecified.
+* `FinalizeVerdict` MUST require `verification_assignment.assignment_ref` (or equivalent hash-bound linkage). Missing linkage MUST fail with stable reason `VERIFICATION_ASSIGNMENT_MISSING`.
+* When verifier work is compensated, payout receipts MUST link to both assignment and verdict receipts and MUST debit the explicit `verification_fee` lane.
+* Verifier economic liability is opt-in policy behavior:
+  * default posture: non-liable economically, reputationally accountable,
+  * if `VerifierLiabilityPolicy.economic_liability_enabled=true`, verifier-bond/slash receipts MUST be explicit and slash conditions MUST be hash-bound via `slash_policy_ref`.
+* Worker/verifier discovery and matching are out-of-kernel mutation scope unless an optional market module is enabled; kernel authority semantics remain post-match and receipt-driven.
 
 ---
