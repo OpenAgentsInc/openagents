@@ -103,6 +103,10 @@ pub struct EconomySnapshot {
     pub rollback_success_rate: f64,
     #[serde(default)]
     pub top_rollback_reason_codes: Vec<RollbackReasonCodeRow>,
+    #[serde(default)]
+    pub audit_package_public_digest: String,
+    #[serde(default)]
+    pub audit_package_restricted_digest: String,
     pub sv_breakdown: Vec<SvBreakdownRow>,
     pub inputs: Vec<EvidenceRef>,
 }
@@ -538,6 +542,10 @@ fn build_snapshot(
     } else {
         capital_reserves_sats as f64 / bonded_exposure_sats as f64
     };
+    let audit_package_public_digest =
+        snapshot_audit_package_digest(scoped_receipts.as_slice(), "public");
+    let audit_package_restricted_digest =
+        snapshot_audit_package_digest(scoped_receipts.as_slice(), "restricted");
 
     let inputs = snapshot_input_evidence(window_start_ms, as_of_ms, scoped_receipts.as_slice());
     let snapshot_hash = snapshot_hash_for(
@@ -569,6 +577,8 @@ fn build_snapshot(
         rollback_successes_24h,
         rollback_success_rate,
         top_rollback_reason_codes.as_slice(),
+        audit_package_public_digest.as_str(),
+        audit_package_restricted_digest.as_str(),
         auth_assurance_distribution.as_slice(),
         sv_breakdown.as_slice(),
         inputs.as_slice(),
@@ -605,6 +615,8 @@ fn build_snapshot(
         rollback_successes_24h,
         rollback_success_rate,
         top_rollback_reason_codes,
+        audit_package_public_digest,
+        audit_package_restricted_digest,
         sv_breakdown,
         inputs,
     })
@@ -875,6 +887,15 @@ fn snapshot_input_evidence(
     vec![evidence]
 }
 
+fn snapshot_audit_package_digest(scoped_receipts: &[&Receipt], redaction_tier: &str) -> String {
+    let canonical_material = scoped_receipts
+        .iter()
+        .map(|receipt| format!("{}:{}", receipt.receipt_id, receipt.canonical_hash))
+        .collect::<Vec<_>>()
+        .join("|");
+    digest_for_text(format!("{redaction_tier}:{canonical_material}").as_str())
+}
+
 #[derive(Serialize)]
 struct CanonicalSnapshotPayload<'a> {
     snapshot_id: &'a str,
@@ -905,6 +926,8 @@ struct CanonicalSnapshotPayload<'a> {
     rollback_successes_24h: u64,
     rollback_success_rate: f64,
     top_rollback_reason_codes: &'a [RollbackReasonCodeRow],
+    audit_package_public_digest: &'a str,
+    audit_package_restricted_digest: &'a str,
     auth_assurance_distribution: &'a [AuthAssuranceDistributionRow],
     sv_breakdown: &'a [SvBreakdownRow],
     inputs: &'a [EvidenceRef],
@@ -940,6 +963,8 @@ fn snapshot_hash_for(
     rollback_successes_24h: u64,
     rollback_success_rate: f64,
     top_rollback_reason_codes: &[RollbackReasonCodeRow],
+    audit_package_public_digest: &str,
+    audit_package_restricted_digest: &str,
     auth_assurance_distribution: &[AuthAssuranceDistributionRow],
     sv_breakdown: &[SvBreakdownRow],
     inputs: &[EvidenceRef],
@@ -973,6 +998,8 @@ fn snapshot_hash_for(
         rollback_successes_24h,
         rollback_success_rate,
         top_rollback_reason_codes,
+        audit_package_public_digest,
+        audit_package_restricted_digest,
         auth_assurance_distribution,
         sv_breakdown,
         inputs,
