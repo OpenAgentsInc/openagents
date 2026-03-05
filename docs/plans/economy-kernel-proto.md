@@ -22,6 +22,8 @@ I’m keeping this aligned with your existing `openagents/*/v1` naming and with 
 * Add a canonical **EconomySnapshot** artifact emitted once per minute with a receipt (your “sv/Δm/XA metrics receipts”) so `/stats` is derived from receipts/snapshots exactly as the spec says.
 * Add proto-first **incident reporting**, **safety signals**, **certification**, and **audit package exports** so insurability and interoperability are machine-legible.
 * Add explicit **insurance-boundary pricing** fields (execution vs liability premium/risk charge) and **rollback/monitoring** contract hooks.
+* Add optional **liability markets** (coverage-first) as bounded, receipted verification-capacity instruments.
+* Add first-class **proof-of-cost** evidence to make compute integrity machine-legible for pricing, drift, and underwriting.
 * Add a separate **policy package** that defines the PolicyBundle schema (see Part 2).
 
 ### 1.2 Proposed file layout
@@ -30,11 +32,13 @@ I’m keeping this aligned with your existing `openagents/*/v1` naming and with 
 proto/
   openagents/
     common/v1/
-      common.proto                 # existing + expanded (tfb, severity, tiers, provenance, identity assurance)
+      common.proto                 # existing + expanded (tfb, severity, tiers, provenance, identity assurance, cost proofs)
     hydra/v1/
       abp_bonds.proto              # ABP reserve/release/draw (unchanged except minor links)
     aegis/outcomes/v1/
-      outcomes_work.proto          # WorkUnit/Contract updated for pricing split, rollback, monitoring, provenance, independence
+      outcomes_work.proto          # WorkUnit/Contract updated for pricing split, rollback, monitoring, provenance, independence, cost-proof linkage
+    aegis/markets/v1/
+      liability_market.proto       # optional coverage market (coverage offers/bindings/settlement)
     aegis/incidents/v1/
       incidents.proto              # IncidentReport/NearMiss/GroundTruthCase + taxonomy linkage
     audit/v1/
@@ -117,6 +121,14 @@ enum AuthAssuranceLevel {
   HARDWARE_BOUND = 6;
 }
 
+enum CostAttestationLevel {
+  COST_ATTESTATION_LEVEL_UNSPECIFIED = 0;
+  C0_SELF_REPORTED = 1;
+  C1_METERED = 2;
+  C2_HARDWARE_ATTESTED = 3;
+  C3_ZK_PROVEN = 4; // optional/future
+}
+
 // -----------------------------
 // Money and trace/policy context
 // -----------------------------
@@ -160,6 +172,18 @@ message IdentityAssurance {
   string subject_id = 1;
   AuthAssuranceLevel level = 2;
   CredentialRef credential = 3;
+}
+
+message ComputeCost {
+  uint64 gpu_ms = 1;
+  uint64 cpu_ms = 2;
+  uint64 ram_byte_ms = 3;
+  uint64 disk_byte_ms = 4;
+  uint64 egress_bytes = 5;
+  uint64 ingress_bytes = 6;
+  uint64 tokens_in = 10;  // optional
+  uint64 tokens_out = 11; // optional
+  google.protobuf.Struct meta = 20;
 }
 
 // -----------------------------
@@ -234,6 +258,21 @@ message ProvenanceBundle {
   repeated IdentityAssurance identities_involved = 10;
 
   google.protobuf.Struct meta = 20;
+}
+
+message CostProofBundle {
+  string bundle_id = 1;
+  string digest = 2; // "sha256:<hex>"
+  CostAttestationLevel level = 3;
+
+  ComputeCost cost = 10;
+
+  // Bind cost proof to a specific execution identity.
+  TraceContext trace = 20;
+
+  // Meter/runtime logs and attestations are content-addressed.
+  repeated EvidenceRef meter_logs = 30;
+  repeated AttestationRef attestations = 31;
 }
 
 // -----------------------------
@@ -544,6 +583,9 @@ message Submission {
 
   // REQUIRED when provenance_requirement.require_provenance_bundle = true
   openagents.common.v1.EvidenceRef provenance_bundle = 3; // kind must be "provenance_bundle"
+
+  // REQUIRED when policy requires proof-of-cost for compute-like lanes.
+  openagents.common.v1.EvidenceRef cost_proof_bundle = 4; // kind must be "cost_proof_bundle"
 
   int64 submitted_at_ms = 10;
 }
@@ -1186,6 +1228,11 @@ message DriftSignalRow {
   bool alert = 7;
 }
 
+message RollbackReasonCodeRow {
+  string reason_code = 1; // stable or redacted public-safe bucket label
+  uint64 count_24h = 2;
+}
+
 message EconomySnapshot {
   string snapshot_id = 1;
   int64 as_of_ms = 2;
@@ -1216,11 +1263,32 @@ message EconomySnapshot {
   uint64 rollback_attempts_24h = 51;
   uint64 rollback_successes_24h = 52;
   repeated DriftSignalRow top_drift_signals = 53;
+  double rollback_success_rate = 54;
+  repeated RollbackReasonCodeRow top_rollback_reason_codes = 55;
 
   repeated IncidentBucket incident_buckets = 60;
   repeated DistributionRow auth_assurance_distribution = 61;
   double personhood_verified_share = 62;
   repeated DistributionRow certification_distribution = 63;
+
+  // Market-backed verification-capacity and liability signals.
+  double coverage_bound_share = 64;
+  double avg_underwriters_per_contract = 65;
+  double coverage_concentration_hhi = 66;
+  double implied_fail_prob_p50 = 67;
+  double implied_fail_prob_p95 = 68;
+  double market_calibration_24h = 69;
+
+  // Cost-proof and compute-integrity signals.
+  double cost_proof_share = 70;
+  repeated DistributionRow cost_attestation_distribution = 71;
+  double cost_anomaly_rate_24h = 72;
+  double cost_variance_p50 = 73;
+  double cost_variance_p95 = 74;
+  double price_vs_cost_spread_bps = 75;
+  double market_disagreement_rate_24h = 76;
+  uint64 market_manipulation_flags_24h = 77;
+  double provider_cost_integrity_score = 78;
 
   repeated SvBreakdownRow sv_breakdown = 100;
   repeated openagents.common.v1.EvidenceRef inputs = 200;
@@ -1242,7 +1310,138 @@ message ComputeSnapshotResponse {
 **Notes:**
 
 * `sv_effective`/`rho_effective` are the policy-gating trust variables when correlated checker risk is non-trivial.
+* coverage-backed and cost-proof metrics are optional modifiers; they are policy inputs and MUST NOT bypass explicit resolution-path invariants.
 * Snapshot receipts and any throttle/withhold actions MUST reference the exact `snapshot_id`/`snapshot_hash` used to make the decision.
+
+### 1.10 New: `proto/openagents/aegis/markets/v1/liability_market.proto` (optional extension)
+
+This adds an optional, policy-gated liability market surface that treats prediction markets as bounded, receipted underwriting capacity.
+
+Coverage-first posture:
+
+* implement deterministic collateralized coverage offers/bindings first,
+* keep continuous belief-market mechanics optional and separable.
+* when matching/clearing multiple offers, prefer deterministic minute-batch clearing and emit explicit clearing receipts.
+
+```proto
+syntax = "proto3";
+
+package openagents.aegis.markets.v1;
+
+import "google/api/annotations.proto";
+import "openagents/common/v1/common.proto";
+
+option java_multiple_files = true;
+
+enum CoverageState {
+  COVERAGE_STATE_UNSPECIFIED = 0;
+  OFFERING_OPEN = 1;
+  BINDING_PROPOSED = 2;
+  BOUND = 3;
+  ACTIVE = 4;
+  CLAIM_TRIGGERED = 5;
+  EXPIRED = 6;
+  SETTLED = 7;
+}
+
+message ResolutionRef {
+  oneof ref {
+    openagents.common.v1.ReceiptRef verdict_receipt = 1;
+    openagents.common.v1.ReceiptRef claim_resolution_receipt = 2;
+    openagents.common.v1.EvidenceRef objective_harness_ref = 3;
+    openagents.common.v1.ReceiptRef human_underwrite_receipt = 4;
+  }
+}
+
+message CoverageOffer {
+  string offer_id = 1;
+  string contract_id = 2;
+  string underwriter_id = 3;
+
+  openagents.common.v1.Money coverage_cap = 10;
+  uint32 premium_bps = 11;
+
+  // Collateral linkage (ABP reserve/draw/release receipts referenced in evidence).
+  string bond_id = 20;
+  repeated string correlation_groups = 30;
+  uint64 expires_at_ms = 40;
+}
+
+message CoverageBinding {
+  string binding_id = 1;
+  string contract_id = 2;
+  CoverageState state = 3;
+
+  repeated CoverageOffer accepted_offers = 10;
+  openagents.common.v1.Money total_coverage_cap = 20;
+  uint32 blended_premium_bps = 21;
+
+  ResolutionRef resolution = 30;
+  uint64 warranty_window_ms = 31;
+}
+
+message MarketSignal {
+  string contract_id = 1;
+  double implied_fail_probability = 10;
+  double confidence = 11;
+  double calibration_score_24h = 12;
+  double disagreement_rate_24h = 13;
+}
+
+message PlaceCoverageOfferRequest {
+  CoverageOffer offer = 1;
+  string idempotency_key = 10;
+  openagents.common.v1.TraceContext trace = 11;
+  openagents.common.v1.PolicyContext policy = 12;
+}
+
+message PlaceCoverageOfferResponse {
+  CoverageOffer offer = 1;
+  openagents.common.v1.Receipt receipt = 2; // market.coverage_offer.placed.v1
+}
+
+message BindCoverageRequest {
+  string contract_id = 1;
+  ResolutionRef resolution = 2;
+  uint64 warranty_window_ms = 3;
+  string idempotency_key = 10;
+  openagents.common.v1.TraceContext trace = 11;
+  openagents.common.v1.PolicyContext policy = 12;
+}
+
+message BindCoverageResponse {
+  CoverageBinding binding = 1;
+  openagents.common.v1.Receipt receipt = 2; // market.coverage.bound.v1
+  MarketSignal signal = 3;
+}
+
+message SettleCoverageRequest {
+  string binding_id = 1;
+  ResolutionRef final_resolution = 2;
+  string idempotency_key = 10;
+  openagents.common.v1.TraceContext trace = 11;
+  openagents.common.v1.PolicyContext policy = 12;
+}
+
+message SettleCoverageResponse {
+  CoverageBinding binding = 1;
+  openagents.common.v1.Receipt receipt = 2; // market.coverage.settled.v1
+}
+
+service LiabilityMarketService {
+  rpc PlaceCoverageOffer(PlaceCoverageOfferRequest) returns (PlaceCoverageOfferResponse) {
+    option (google.api.http) = { post: "/v1/aegis/markets/coverage_offers" body: "*" };
+  }
+
+  rpc BindCoverage(BindCoverageRequest) returns (BindCoverageResponse) {
+    option (google.api.http) = { post: "/v1/aegis/markets/contracts/{contract_id}/coverage:bind" body: "*" };
+  }
+
+  rpc SettleCoverage(SettleCoverageRequest) returns (SettleCoverageResponse) {
+    option (google.api.http) = { post: "/v1/aegis/markets/coverage/{binding_id}:settle" body: "*" };
+  }
+}
+```
 
 ---
 
@@ -1305,7 +1504,21 @@ At minimum, a PolicyBundle must let you set:
 * mandatory rollback or compensating-action plans for irreversible effect classes
 * safe-harbor relaxations only when certification + observed metrics satisfy policy
 
-9. **Interpretation rules**
+9. **Markets and coverage requirements**
+
+* minimum coverage caps and maximum premium bounds by slice
+* underwriter diversity/concentration constraints
+* maximum implied fail probability and minimum calibration score for safe-harbor relaxations
+* optional safe-harbor relaxations only when market calibration and concentration constraints pass
+
+10. **Cost-proof requirements**
+
+* minimum cost attestation level by slice (`C0`–`C3`)
+* anomaly thresholds and actions for measured-vs-expected cost drift
+* optional minimum provider cost-integrity score thresholds for underwriting/routing priors
+* whether cost proof is required to unlock settlement/warranty in compute-like lanes
+
+11. **Interpretation rules**
 
 * which time windows to use (5m/1h/24h) for gating
 * hysteresis / cooldown to avoid flapping breakers
@@ -1516,6 +1729,35 @@ message RollbackRule {
   bool allow_compensating_action_only = 11;
 }
 
+message MarketCoverageRule {
+  string rule_id = 1;
+  string category = 2;
+  openagents.common.v1.FeedbackLatencyClass tfb_class = 3;
+  openagents.common.v1.SeverityClass severity = 4;
+
+  bool require_coverage_binding = 10;
+  openagents.common.v1.Money min_coverage_cap = 11;
+  uint32 max_premium_bps = 12;
+  uint32 min_distinct_underwriters = 13;
+  double max_coverage_concentration_hhi = 14;
+  double max_implied_fail_probability = 15;
+  double min_market_calibration_24h = 16;
+  repeated string disallowed_correlation_groups = 17;
+  bool allow_safe_harbor_relaxation = 18;
+}
+
+message CostProofRule {
+  string rule_id = 1;
+  string category = 2;
+  openagents.common.v1.FeedbackLatencyClass tfb_class = 3;
+  openagents.common.v1.SeverityClass severity = 4;
+
+  bool require_cost_proof_bundle = 10;
+  openagents.common.v1.CostAttestationLevel min_cost_attestation_level = 11;
+  double max_cost_variance_ratio = 12;
+  double min_provider_cost_integrity_score = 13;
+}
+
 message PolicyBundle {
   string policy_bundle_id = 1;
   string name = 2;
@@ -1538,6 +1780,8 @@ message PolicyBundle {
   repeated RiskPricingRule risk_pricing_rules = 34;
   repeated CertificationRule certification_rules = 35;
   repeated RollbackRule rollback_rules = 36;
+  repeated MarketCoverageRule market_coverage_rules = 37;
+  repeated CostProofRule cost_proof_rules = 38;
 
   // Dynamic gating
   AutonomyThrottlePolicy autonomy = 40;
@@ -1650,6 +1894,31 @@ For high-severity or irreversible slices:
 
 * `CertificationRule.require_certification=true` MUST block uncertified actions (`WITHHELD` / border-block reason code).
 * `RollbackRule.require_rollback_plan=true` MUST require rollback or compensating-action plan references before authority mutation.
+* missing rollback/compensating plans MUST withhold with stable reason code `ROLLBACK_PLAN_REQUIRED` and policy decision evidence.
+* rollback action receipts MUST use stable types:
+  * `economy.rollback.executed.v1`
+  * `economy.rollback.failed.v1`
+  * `economy.compensating_action.executed.v1`
 * safe-harbor relaxations are allowed only when certification validity + observed risk metrics satisfy policy.
+
+#### J) Markets and coverage enforcement
+
+Where coverage markets are enabled:
+
+* `MarketCoverageRule.require_coverage_binding=true` MUST block warranty-bearing actions unless a valid `CoverageBinding` exists.
+* coverage relaxations MUST require policy checks for concentration/diversity/calibration/implied-fail-probability/correlation constraints.
+* any verification/provenance relaxation due to market-backed coverage MUST be:
+  * receipted as a policy action,
+  * bound to `snapshot_id`/`snapshot_hash`,
+  * explainable via hash-bound policy evidence.
+
+#### K) Cost-proof enforcement
+
+For compute-like slices:
+
+* `CostProofRule.require_cost_proof_bundle=true` MUST require `Submission.cost_proof_bundle`.
+* `min_cost_attestation_level` MUST be enforced deterministically by slice.
+* cost anomalies above policy thresholds MUST emit explicit anomaly/drift receipts (for example `economy.cost.anomaly_detected.v1`) and feed the same deterministic throttle order.
+* `min_provider_cost_integrity_score` (if set) MAY be used only as a policy prior; it MUST NOT bypass resolution-path requirements.
 
 ---

@@ -15,6 +15,8 @@ These diagrams are intended to be **comprehensive** and to cover:
   * exportable synthetic practice packages
   * correlation-adjusted “effective verified share” metrics
   * continuous monitoring + drift detection as a policy input
+  * prediction markets as bounded liability coverage instruments
+  * proof-of-cost signals for compute integrity and underwriting inputs
 
 Where a lane is *optional*, it is labeled as such; the diagrams still show how it plugs into the same receipts/snapshot/policy substrate.
 
@@ -59,11 +61,13 @@ flowchart LR
     ABP[Bonds and Collateral<br/>reserve draw release]
     VE[Verification Engine<br/>plan to evidence to verdict]
     LE[Liability Engine<br/>warranty claims remedies]
+    MKT[Liability Markets optional<br/>coverage auction and belief signals]
     FX[FX RFQ and Settlement<br/>rfq quote select settle]
     RR[Routing and Risk<br/>breakers and autonomy modes]
     GT[GroundTruth and Synthetic Practice<br/>cases to scenarios]
     RB[Rollback and Comp Actions<br/>machine legible remedies]
     MD[Monitoring and Drift<br/>drift receipts]
+    CI[Cost Integrity<br/>cost proof checks and anomalies]
     SI[Safety Certification Interop<br/>identity certs exports]
     RI[Reputation Index<br/>receipt derived priors]
   end
@@ -108,11 +112,13 @@ flowchart LR
   K --> ABP
   K --> VE
   K --> LE
+  K --> MKT
   K --> FX
   K --> RR
   K --> GT
   K --> RB
   K --> MD
+  K --> CI
   K --> SI
   K --> RI
 
@@ -162,6 +168,7 @@ sequenceDiagram
   participant Policy as PolicyBundle Eval
   participant ID as Identity/Assurance Gate
   participant UW as Underwriter (optional)
+  participant Market as Liability Markets optional
   participant Worker as Worker/Provider
   participant Verifier as Verifier/Adjudicator
   participant Wallet as Wallet Executor
@@ -204,8 +211,18 @@ sequenceDiagram
     Kernel-->>Receipts: coverage/bond receipts (policy-linked)
   end
 
+  %% --- Optional market coverage binding lane ---
+  opt Coverage market enabled for slice
+    UW->>Market: PlaceCoverageOffer collateralized
+    Market->>Kernel: BindCoverage contract and resolution ref
+    Kernel->>Policy: Check safe harbor thresholds for this slice
+    Policy-->>Kernel: Allow or deny relaxation
+    Kernel-->>Receipts: market.coverage_offer.placed / market.coverage.bound
+    Kernel-->>Receipts: policy.relaxation.applied or policy.relaxation.denied
+  end
+
   %% --- Submission / provenance ---
-  Worker->>TR: Submit outputs + evidence + provenance bundle ref (digest)
+  Worker->>TR: Submit outputs + evidence + provenance ref + cost proof ref
   TR->>Kernel: Authority request
   Kernel-->>Receipts: submission.received (provenance refs recorded)
 
@@ -223,13 +240,15 @@ sequenceDiagram
       Kernel-->>Receipts: warranty.issued / warranty.active (terms hash, window)
     end
   else Verdict recorded but settlement withheld
-    Kernel-->>Receipts: settlement.withheld (reason_code = VERIFICATION_INSUFFICIENT / CORRELATION_VIOLATION / PROVENANCE_TOO_LOW)
+    Kernel-->>Receipts: settlement.withheld (reason_code = VERIFICATION_INSUFFICIENT or PROVENANCE_TOO_LOW or COVERAGE_INSUFFICIENT or COST_PROOF_MISSING)
   end
 
   %% --- Monitoring / drift detection (continuous) ---
   par Monitoring runs during warranty window / long feedback loops
     Monitor->>Kernel: Emit drift signals (policy-gated)
     Kernel-->>Receipts: drift.signal / drift.alert (typed + trace-linked)
+    Monitor->>Kernel: Emit cost anomaly signal if variance breach
+    Kernel-->>Receipts: economy.cost.anomaly_detected
   and Snapshot loop
     Snap->>Kernel: ComputeSnapshot(as_of_ms minute boundary UTC, idempotency_key)
     Kernel-->>Receipts: snapshot.emitted (receipt)
@@ -276,6 +295,7 @@ flowchart TB
   CT --> SUB[Submission<br/>outputs evidence provenance ref]
 
   SUB --> PBNDL[ProvenanceBundle<br/>toolchain lineage attestations correlation]
+  SUB --> CPB[CostProofBundle<br/>attestation level usage metering]
   SUB --> EVD[Evidence Bundles<br/>harness rubric adjudication drift]
 
   SUB --> VR[Verdict Receipt<br/>tier Pgrade independence correlation]
@@ -284,6 +304,9 @@ flowchart TB
   CT --> INT[Intent Envelope Bond intents]
   INT --> SET[Settlement Receipt<br/>paid withheld failed<br/>reason_code proofs]
   INT --> BOND[Bond Receipts<br/>reserve draw release]
+  CT --> COV[CoverageBinding<br/>cap premium window resolution]
+  COV --> MKS[MarketSignal<br/>implied fail calibration disagreement]
+  COV --> BOND
 
   VR --> WRY[Warranty Receipts<br/>issued active expired]
   WRY --> CLM[Claim Receipts<br/>open review resolution]
@@ -304,7 +327,9 @@ flowchart TB
   CT --> POC[ProofOfCoverageRef<br/>insurance captive reserve]
   CT --> CERT[SafetyCertification Ref<br/>issued revoked receipts]
 
-  RS[(Receipt Stream)] --> SNAP[EconomySnapshot<br/>sv sv_effective Δm_hat XA_hat<br/>loss ratio auth cert shares]
+  RS[(Receipt Stream)] --> SNAP[EconomySnapshot<br/>sv sv_effective Δm_hat XA_hat<br/>coverage calibration concentration<br/>cost integrity anomalies<br/>loss ratio auth cert shares]
+  MKS --> SNAP
+  CPB --> SNAP
   SNAP --> STATS[stats public<br/>redacted]
 
   VR --> APKG[AuditPackage<br/>versioned export schema<br/>redaction mode]
@@ -373,6 +398,24 @@ flowchart TB
     X_INIT --> X_FAIL[FAILED]
   end
 
+  subgraph MarketCoverage_SM[Optional Markets Coverage Binding]
+    M_OPEN[OFFERING_OPEN] --> M_PROP[BINDING_PROPOSED]
+    M_PROP --> M_BOUND[BOUND]
+    M_BOUND --> M_ACTIVE[ACTIVE]
+    M_ACTIVE --> M_CLAIM[CLAIM_TRIGGERED]
+    M_ACTIVE --> M_EXP[EXPIRED]
+    M_CLAIM --> M_SET[SETTLED]
+    M_EXP --> M_SET
+  end
+
+  subgraph BeliefPos_SM[Optional Markets Belief Position]
+    BP_OPEN[OPEN] --> BP_LOCK[MARGIN_LOCKED]
+    BP_LOCK --> BP_REDUCED[REDUCED]
+    BP_LOCK --> BP_CLOSED[CLOSED]
+    BP_REDUCED --> BP_CLOSED
+    BP_CLOSED --> BP_SETTLED[SETTLED]
+  end
+
   %% Warranty
   subgraph Warranty_SM[Warranty]
     W_ISSUED[ISSUED] --> W_ACTIVE[ACTIVE]
@@ -396,6 +439,12 @@ flowchart TB
     D_ALERT --> D_ACK[ACKNOWLEDGED]
     D_ACK --> D_RES[RESOLVED]
     D_RES --> D_MON
+  end
+
+  subgraph CostProof_SM[Cost Integrity]
+    CP_SUB[SUBMITTED] --> CP_VER[VERIFIED]
+    CP_VER --> CP_OK[ACCEPTED]
+    CP_VER --> CP_FLAG[ANOMALY_FLAGGED]
   end
 
   subgraph Incident_SM[Incident GroundTruth]
@@ -433,10 +482,10 @@ flowchart TD
   R[(Receipt Stream canonical append only)] --> SNAP[Compute EconomySnapshot<br/>UTC minute boundary<br/>idempotent and receipted]
   P[(Signed Pool Snapshots LP mode optional)] --> SNAP
 
-  SNAP --> M[Metrics table first<br/>sv sv_effective rho_effective<br/>Δm_hat XA_hat<br/>correlated share<br/>loss ratio claims rate<br/>incident rate taxonomy<br/>drift alerts<br/>auth distribution<br/>cert and coverage share<br/>capital coverage ratios]
+  SNAP --> M[Metrics table first<br/>sv sv_effective rho_effective<br/>Δm_hat XA_hat<br/>correlated share<br/>coverage share concentration<br/>implied fail and calibration<br/>cost proof share anomalies<br/>cost integrity score spread<br/>incident and drift rates<br/>auth and cert distribution<br/>capital coverage ratios]
 
   M --> POL[PolicyBundle evaluation deterministic<br/>category tfb severity precedence<br/>deterministic tie break<br/>record rule ids]
-  POL --> ACT[Deterministic action order<br/>1 autonomy mode<br/>2 raise tier require human step<br/>3 raise provenance require attestations<br/>4 tighten or halt envelopes<br/>5 disable or cap warranty<br/>6 require identity cert coverage gates]
+  POL --> ACT[Deterministic action order<br/>1 autonomy mode<br/>2 raise tier require human step<br/>3 raise provenance require attestations<br/>4 tighten or halt envelopes<br/>5 disable or cap warranty<br/>6 enforce identity cert coverage gates<br/>7 apply or deny market safe harbor<br/>8 enforce cost proof level and anomaly actions]
 
   ACT --> DEC[Authority decisions<br/>allow withhold fail<br/>typed reason_code<br/>bind snapshot_id and snapshot_hash]
   DEC --> R
@@ -470,7 +519,9 @@ flowchart LR
   subgraph Kernel
     POL[PolicyBundle gates<br/>identity cert coverage]
     CT[Contract creation<br/>precondition checks]
+    MKT[Liability markets optional<br/>coverage bind signals]
     LE[Liability engine<br/>premiums claims]
+    CI[Cost integrity lane<br/>cost proof validation]
     IR[Incident and groundtruth<br/>taxonomy and linkage]
     OR[Outcome registry<br/>aggregated entries]
     SF[Safety signals<br/>public and restricted]
@@ -489,6 +540,10 @@ flowchart LR
   POL -->|require certification| CERT[SafetyCertification<br/>issued revoked receipts]
   POL -->|require identity assurance| IDG[AuthAssuranceLevel<br/>personhood org vetted etc]
 
+  WRK -->|cost proof bundle ref| CI
+  CI -->|integrity and anomaly signals| LE
+  CT --> MKT
+  MKT --> LE
   CT --> LE
   LE -->|claims and remedies| IR
   IR --> OR
@@ -513,10 +568,11 @@ This extends your proto plan with the minimal additional packages required by th
 ```mermaid
 flowchart LR
   COMMON[common/v1/common.proto<br/>trace money receipts<br/>provenance identity hints]
-  OUT[aegis/outcomes/v1/outcomes_work.proto<br/>work contract verdict claims]
+  OUT[aegis/outcomes/v1/outcomes_work.proto<br/>work contract verdict claims cost proof ref]
+  MKT[aegis/markets/v1/liability_market.proto<br/>coverage offers bindings signals]
   INC[aegis/incidents/v1/incidents.proto<br/>incident near miss<br/>ground truth taxonomy]
   POL[policy/v1/policy_bundle.proto<br/>tiers provenance autonomy<br/>identity cert coverage gates]
-  SNAP[economy/v1/economy_snapshot.proto<br/>sv_effective xa_hat<br/>drift incident loss auth cert stats]
+  SNAP[economy/v1/economy_snapshot.proto<br/>sv_effective xa_hat<br/>drift incident loss auth cert stats<br/>market and cost integrity stats]
   HYDRA[hydra/v1/abp_bonds.proto]
 
   ID[identity/v1/identity.proto<br/>assurance levels<br/>credential refs]
@@ -529,6 +585,7 @@ flowchart LR
   RBK[remedy/v1/rollback.proto<br/>rollback and comp action receipts]
 
   COMMON --> OUT
+  COMMON --> MKT
   COMMON --> INC
   COMMON --> POL
   COMMON --> SNAP
@@ -543,7 +600,9 @@ flowchart LR
 
   HYDRA --> OUT
   POL --> OUT
+  POL --> MKT
   OUT --> SNAP
+  MKT --> SNAP
   INC --> SNAP
   MON --> SNAP
   REG --> SNAP
@@ -593,7 +652,7 @@ flowchart TB
   K --> SS
 
   %% Receipt stream and snapshot: where they come from
-  RS -.->|sync or HTTP tail optional<br/>MVP: local file| EKR
+  RS -.->|subscription sync or HTTP tail optional<br/>MVP: local file| EKR
   SS -.->|stats public optional<br/>MVP: local compute| ESN
   EKR -->|receipts as input| ESN
   ESN -->|compute_minute_snapshot<br/>idempotent per UTC minute| ESN
@@ -611,19 +670,19 @@ flowchart TB
 
 **In plain English:**
 
-- **Autopilot’s local state**  
+- **Autopilot’s local state**
   The app keeps an **earn kernel receipt stream** (load/save from a local file), an **economy snapshot** state (snapshots loaded/saved and/or **computed from receipts** at UTC minute boundaries), and an **earn job lifecycle projection** (derived from the same events for the job/earnings UI). Job inbox, active job, job history, and provider ingress feed into both the projection and the receipt state.
 
-- **Authority path (intended)**  
+- **Authority path (intended)**
   User actions (create work, create contract, fund, submit, etc.) are sent over **authenticated HTTP to TreasuryRouter**, which talks to the Kernel Authority API. The kernel writes to the canonical **Receipt Stream** and **EconomySnapshot Store**. The app does not mutate kernel state except via these commands.
 
-- **How the app gets kernel data**  
-  In the full design the app can **sync or poll** a tail of the receipt stream and/or the **stats public** snapshot (redacted). In the **current MVP** the receipt stream is a **local file** (same schema as the kernel’s); the app **computes** economy snapshots locally from that receipt stream and persists them, and may later replace this with kernel-published stats or receipt tail.
+- **How the app gets kernel data**
+  In the full design the app can use **subscription-driven sync** and/or a receipt-stream HTTP tail, and consume the **stats public** snapshot (redacted) without polling loops. In the **current MVP** the receipt stream is a **local file** (same schema as the kernel’s); the app **computes** economy snapshots locally from that receipt stream and persists them, and may later replace this with kernel-published stats or receipt tail.
 
-- **Local receipt recording**  
+- **Local receipt recording**
   The app **records receipts locally** for job-lifecycle events (ingress request, active job stage, preflight rejection, history receipt, swap execute attempt, economy snapshot receipt). That keeps a single receipt stream and projection consistent on the client; when the kernel is authoritative, those events would be produced by the kernel after the app sends commands, and the app would consume kernel receipts instead of (or in addition to) writing its own.
 
-- **Projection path**  
+- **Projection path**
   Autopilot and the kernel (or other services) can use **WS Nostr Spacetime** for **progress and coordination only**—no authority for money, verdicts, or state. The diagram shows the desktop app and this projection plane as separate from the authority path.
 
 ---
