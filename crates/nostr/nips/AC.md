@@ -18,6 +18,7 @@ This NIP is designed to **fit alongside NIP-SA** (Sovereign Agents) and existing
 * NIP-44 / NIP-59: encryption / gift wrap (private terms and receipts)
 * NIP-57: Lightning zaps (optional repayment / fees)
 * NIP-60 / NIP-61 / NIP-87: Cashu / nutzaps / mint discovery (optional settlement rails)
+* Fedimint: federation ecash rails (federation discovery follows NIP-SA `federation` tag conventions; no dedicated NIP at time of writing)
 * NIP-90: Data Vending Machines (primary "outcome" rail)
 * NIP-98: HTTP Auth (useful for L402-ish flows)
 
@@ -95,9 +96,25 @@ This NIP defines these tags:
 
   * `zap` (NIP-57)
   * `bolt11` (invoice string hash pointer)
+  * `bolt12` (offer string hash pointer)
   * `cashu` (mint url + token event id)
+  * `fedimint` (federation-id@domain + ecash redemption hash)
   * `internal` (off-chain accounting, discouraged unless explicitly trusted)
+* `["spend_rail", "<rail>", "<reference>"]` ΓÇö provider-facing spending rail (distinct from `repay`)
+  rails:
+
+  * `lightning` (bare default; implies bolt11 when `spend_rail` is absent ΓÇö backwards compatible)
+  * `bolt11` (explicit: invoice hash pointer)
+  * `bolt12` (offer hash pointer)
+  * `cashu` (mint url)
+  * `fedimint` (federation-id@domain)
+* `["spend_rail_keyset", "<keyset-id>"]` — optional keyset pin for `cashu` or `fedimint` spend rails
+* `["guardian", "<pubkey>"]` — guardian pubkey required to co-approve high-spend ticks (SA-Guardian Profile)
+* `["approval_threshold", "<sats>"]` — spend amount in sats above which `guardian` approval is required at the envelope level
+* `["revoke_reason", "<reason>", "<detail>"]` — machine-readable reason for envelope revocation (e.g., `skl-safety-label`)
 * `["status", "offered|accepted|revoked|spent|settled|defaulted"]`
+
+Providers SHOULD declare the spending rails they accept on their NIP-90 `kind:31990` service announcements. Issuers MUST verify that the agent's declared `spend_rail` is accepted by the target provider before issuing an envelope. If `spend_rail=cashu`, the provider MUST accept Cashu tokens at the declared mint as payment for job results, and the agent MUST NOT use a different mint than declared in the envelope. When `spend_rail` is absent, `lightning` (bolt11) is assumed for backwards compatibility; implementations SHOULD prefer `bolt12` where supported. Parsers MUST handle `repay` and `spend_rail` tags with 3 or more elements and MUST NOT reject events containing additional elements.
 
 ## Kind 39240: Credit Intent
 
@@ -114,7 +131,14 @@ An agent requests credit for a specific scope.
     ["scope", "nip90", "<job_hash_or_request_id>"],
     ["max", "35000"],
     ["exp", "1703003600"],
-    ["provider", "<preferred_provider_pubkey>"]
+    ["provider", "<preferred_provider_pubkey>"],
+
+    // optional: declare preferred spending rail
+    ["spend_rail", "lightning"],              // default ΓÇö implies bolt11
+    // or: ["spend_rail", "bolt11", "<invoice-hash-pointer>"]  // explicit bolt11
+    // or: ["spend_rail", "bolt12", "<offer-hash-pointer>"]
+    // or: ["spend_rail", "cashu", "<mint-url>"]
+    // or: ["spend_rail", "fedimint", "<federation-id>@<domain>"]
   ]
 }
 ```
@@ -168,10 +192,16 @@ An **addressable** event that defines the enforceable credit capability.
     ["exp", "1703003600"],
     ["status", "accepted"],
 
-    ["repay", "zap", "<zap_target_or_pointer>"]
+    ["repay", "cashu", "<mint-url>", "<token-event-id>"],  // repayment rail back to issuer/LP
+
+    // optional: provider-facing spending rail
+    ["spend_rail", "cashu", "<mint-url>"],
+    ["spend_rail_keyset", "<keyset-id>"]
   ]
 }
 ```
+
+Issuers MAY include `spend_rail` and (optionally) `spend_rail_keyset` tags in the envelope to declare the provider-facing spending rail. This is distinct from `repay`, which defines the agent's repayment rail back to the issuer or LP. When `spend_rail` is absent, implementations SHOULD assume `lightning` (bolt11).
 
 Acceptance / revocation rules:
 
@@ -213,7 +243,7 @@ Receipts SHOULD link:
 
 * the envelope id
 * the scope id
-* the payment rail reference (bolt11 preimage hash pointer, zap event id, cashu token event id, etc.)
+* the payment rail reference (bolt11 invoice hash, bolt12 offer hash, cashu token event id, fedimint redemption hash, etc.)
 * the outcome artifact reference (e.g., NIP-90 job result id)
 
 ```jsonc
@@ -230,7 +260,11 @@ Receipts SHOULD link:
     ["scope", "nip90", "<job_hash_or_request_id>"],
     ["e", "<nip90_job_result_event_id>", "<relay>", "root"],
 
-    ["repay", "bolt11", "<invoice_hash_pointer>"],
+    // repayment rails (use one per receipt):
+    ["repay", "bolt11", "<invoice-hash-pointer>"],
+    // or: ["repay", "bolt12", "<offer-hash-pointer>"]          // computed per Appendix C
+    // or: ["repay", "cashu", "<mint-url>", "<token-event-id>"]
+    // or: ["repay", "fedimint", "<federation-id>@<domain>", "<ecash-redemption-hash>"]  // computed per Appendix C
     ["status", "settled"]
   ]
 }
@@ -369,6 +403,29 @@ Higher-stakes envelopes MAY require:
 * a designated verifier pubkey
 * multiple verifiers (2-of-3 attestations) using multiple receipts/labels
 
+### SKL Safety Label Revocation Trigger
+
+When an agent holds a `scope=skill` envelope and a NIP-32 safety label (`kind:1985`) is published against the referenced skill manifest with a negative label value (for example, `malicious-confirmed`, `prompt-injection`, or `capability-violation`), issuers SHOULD treat this as a revocation trigger for any active envelopes scoped to that skill.
+
+Issuers implementing this policy SHOULD:
+
+1. Subscribe to `kind:1985` events referencing skill addresses they have issued envelopes against:
+
+   ```json
+   {"kinds": [1985], "#a": ["33400:<skill_pubkey>:<d-tag>"]}
+   ```
+
+2. On receipt of a negative label from a trusted labeler (per local quorum policy), publish a replacement `kind:39242` with `status=revoked` and include:
+
+   ```jsonc
+   ["revoke_reason", "skl-safety-label", "<label-value>"],
+   ["e", "<kind:1985-label-event-id>"]
+   ```
+
+3. Publish a `kind:39245` Credit Default Notice if the envelope was partially spent.
+
+This connects NIP-SKL's third-party safety attestation layer directly to NIP-AC's economic enforcement layer without changing either NIP's core semantics.
+
 ## Compatibility with NIP-SA
 
 This NIP is intended as an **extension** to NIP-SA.
@@ -397,6 +454,28 @@ When `scope_type=skill`, implementations SHOULD use NIP-SKL canonical manifest i
 
 This keeps AC envelopes aligned to a specific SKL manifest version and prevents ambiguous credit authorization across upgraded skill versions.
 
+### Guardian-gated envelopes (SA-Guardian Profile)
+
+When an agent operates under a NIP-SA guardian approval profile, credit envelopes MAY be issued with a guardian constraint:
+
+```jsonc
+{
+  "kind": 39242,
+  "tags": [
+    // ... existing tags ...
+    ["guardian", "<guardian-pubkey>"],      // required co-approver
+    ["approval_threshold", "5000"]          // sats above which gate fires (envelope-level)
+  ]
+}
+```
+
+Providers receiving a `kind:39243` Spend Authorization that references a guardian-gated envelope MUST verify that either:
+
+1. The spend amount is below `approval_threshold`, or
+2. A valid `kind:39213` Guardian Approval event (defined in NIP-SA) exists, signed by the declared `guardian` pubkey, referencing the spend authorization event.
+
+This allows credit issuers to enforce human-in-the-loop approval without changing the core NIP-AC event flow: the guardian gate is a constraint on the envelope, not a protocol change.
+
 ## Appendix A: Canonical scope hashes
 
 For interop, implementations SHOULD define canonical hashes for scope ids:
@@ -419,6 +498,18 @@ A valid envelope (39242) SHOULD include:
 * `["exp","<unix_ts>"]`
 * `["status","accepted"]`
 
+Optional constraint tags (include when applicable):
+
+* `["guardian","<pubkey>"]` — SA-Guardian Profile co-approver
+* `["approval_threshold","<sats>"]` — envelope-level spend threshold above which guardian approval fires
+* `["spend_rail","<rail>"]` — provider-facing payment rail (defaults to `lightning` / bolt11 when absent)
+* `["revoke_reason","<reason>","<detail>"]` — include on replacement event when revoking
+
+## Appendix C: Canonical Proof Hashes
+
+* `fedimint` ecash redemption proof: SHA-256 of `(federation_id, ecash_note_id, amount_msats, spend_timestamp)` in deterministic JSON (stable key ordering, no whitespace). This provides a canonical proof reference that can be verified against the federation's public keysets without revealing the ecash note itself. Use this value for the `<ecash-redemption-hash>` element in `repay` fedimint tags and for `payment_proof` in `kind:39220` Skill License events (see NIP-SA).
+* `bolt12` payment proof: SHA-256 of the canonical offer bytes as defined in BOLT 12. Use this value for the `<offer-hash-pointer>` element in `repay` bolt12 tags and for `payment_proof` in `kind:39220` Skill License events (see NIP-SA).
+
 ## References
 
 * NIP-01: Basic protocol
@@ -430,3 +521,5 @@ A valid envelope (39242) SHOULD include:
 * NIP-90: Data Vending Machines
 * NIP-98: HTTP Auth
 * NIP-SA: Sovereign Agents (proposed)
+* NIP-SKL: Agent Skill Registry (proposed)
+* BOLT 12: Lightning offers specification (https://bolt12.org)
