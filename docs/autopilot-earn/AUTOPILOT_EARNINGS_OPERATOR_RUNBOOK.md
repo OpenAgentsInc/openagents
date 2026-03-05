@@ -167,4 +167,4 @@ Keep a retained copy of:
 
 For two-key/two-wallet bilateral 10-sat loop setup, pane operation flow, and pass/fail troubleshooting:
 
-- `docs/AUTOPILOT_EARN_RECIPROCAL_LOOP_RUNBOOK.md`
+- `AUTOPILOT_EARN_RECIPROCAL_LOOP_RUNBOOK.md`

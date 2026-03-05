@@ -10,7 +10,7 @@ Scope note: this log is compute-lane specific (NIP-90 provider earnings). It doe
 Role: historical evidence appendix only. This file is not a live status board.
 
 Current-status note: this file is an evidence ledger, not a completion assertion. Canonical live status is tracked in:
-- `docs/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md`
+- `AUTOPILOT_EARN_MVP_EPIC_TRACKER.md`
 
 ## Reconciliation Addendum (2026-03-04)
 
@@ -35,12 +35,12 @@ Follow-on issues created from audit gap analysis:
 
 ## Program + Backroom
 
-- #2815 Backroom harvest audit: `docs/AUTOPILOT_EARN_BACKROOM_HARVEST_AUDIT.md`
+- #2815 Backroom harvest audit: `AUTOPILOT_EARN_BACKROOM_HARVEST_AUDIT.md`
 - #2816 Provider domain port patterns: `apps/autopilot-desktop/src/state/provider_runtime.rs`, `apps/autopilot-desktop/src/render.rs`
 - #2817 Wallet bridge port patterns: `apps/autopilot-desktop/src/spark_wallet.rs`, `apps/autopilot-desktop/src/state/earnings_gate.rs`, `apps/autopilot-desktop/src/state/wallet_reconciliation.rs`
 - #2818 NIP-90 submit+await helper: `crates/nostr/client/src/dvm.rs`, `crates/nostr/client/src/pool.rs`
-- #2819 Runtime placement decision: `docs/AUTOPILOT_EARN_RUNTIME_PLACEMENT_DECISION.md`
-- #2820 Provenance notes: `docs/AUTOPILOT_EARN_BACKROOM_PROVENANCE.md`
+- #2819 Runtime placement decision: `AUTOPILOT_EARN_RUNTIME_PLACEMENT_DECISION.md`
+- #2820 Provenance notes: `AUTOPILOT_EARN_BACKROOM_PROVENANCE.md`
 
 ## Mission Control Surface
 
@@ -81,18 +81,18 @@ Follow-on issues created from audit gap analysis:
 ## Seed Demand + Buyer Lane
 
 - #2848 Seed demand buyer service: `apps/autopilot-desktop/src/state/operations.rs`, `apps/autopilot-desktop/src/pane_renderer.rs`
-- #2849 Seed job templates/pricing: `apps/autopilot-desktop/src/state/operations.rs`, `docs/AUTOPILOT_EARN_MVP.md`
-- #2850 Seed pool budget/kill switch: `docs/AUTOPILOT_EARNINGS_ROLLOUT_PLAN.md`, `docs/AUTOPILOT_EARNINGS_OPERATOR_RUNBOOK.md`
-- #2851 Starter vs open-network labeling: `apps/autopilot-desktop/src/pane_renderer.rs`, `docs/MVP.md`
-- #2852 First-earnings SLA monitor: `docs/AUTOPILOT_EARNINGS_ROLLOUT_PLAN.md`, `docs/AUTOPILOT_EARNINGS_OPERATOR_RUNBOOK.md`
-- #2853 Seed demand backpressure: `docs/AUTOPILOT_EARNINGS_AUTOMATION.md`, `docs/AUTOPILOT_EARNINGS_ROLLOUT_PLAN.md`
+- #2849 Seed job templates/pricing: `apps/autopilot-desktop/src/state/operations.rs`, `AUTOPILOT_EARN_MVP.md`
+- #2850 Seed pool budget/kill switch: `AUTOPILOT_EARNINGS_ROLLOUT_PLAN.md`, `AUTOPILOT_EARNINGS_OPERATOR_RUNBOOK.md`
+- #2851 Starter vs open-network labeling: `apps/autopilot-desktop/src/pane_renderer.rs`, `../MVP.md`
+- #2852 First-earnings SLA monitor: `AUTOPILOT_EARNINGS_ROLLOUT_PLAN.md`, `AUTOPILOT_EARNINGS_OPERATOR_RUNBOOK.md`
+- #2853 Seed demand backpressure: `AUTOPILOT_EARNINGS_AUTOMATION.md`, `AUTOPILOT_EARNINGS_ROLLOUT_PLAN.md`
 
 ## Metrics + Public Beacon
 
-- #2854 Canonical metrics schema: `docs/MVP.md`, `docs/PANES.md`, `apps/autopilot-desktop/src/app_state.rs`
+- #2854 Canonical metrics schema: `../MVP.md`, `../PANES.md`, `apps/autopilot-desktop/src/app_state.rs`
 - #2855 Metrics emission desktop+buyer: `apps/autopilot-desktop/src/app_state.rs`, `apps/autopilot-desktop/src/state/operations.rs`
-- #2856 Stats aggregation contract: `docs/AUTOPILOT_EARN_MVP.md`, `docs/AUTOPILOT_EARNINGS_ROLLOUT_PLAN.md`
-- #2857 openagents.com/stats implementation contract: `docs/AUTOPILOT_EARN_MVP.md`
+- #2856 Stats aggregation contract: `AUTOPILOT_EARN_MVP.md`, `AUTOPILOT_EARNINGS_ROLLOUT_PLAN.md`
+- #2857 openagents.com/stats implementation contract: `AUTOPILOT_EARN_MVP.md`
 - #2858 In-app stats hydration: `apps/autopilot-desktop/src/render.rs`, `apps/autopilot-desktop/src/app_state.rs`
 - #2859 Global earnings today computation: `apps/autopilot-desktop/src/render.rs`, `apps/autopilot-desktop/src/state/earnings_gate.rs`
 - #2860 Metric integrity checks: `apps/autopilot-desktop/src/state/earnings_gate.rs`, `apps/autopilot-desktop/src/state/wallet_reconciliation.rs`
@@ -100,21 +100,21 @@ Follow-on issues created from audit gap analysis:
 ## Reliability + Operations
 
 - #2861 Replay-safe apply: `apps/autopilot-desktop/src/state/operations.rs`, `apps/autopilot-desktop/src/state/wallet_reconciliation.rs`
-- #2862 Duplicate suppression keys: `apps/autopilot-desktop/src/state/operations.rs`, `docs/NIP_SA_SKL_AC_TEST_MATRIX_RUNBOOK.md`
+- #2862 Duplicate suppression keys: `apps/autopilot-desktop/src/state/operations.rs`, `../NIP_SA_SKL_AC_TEST_MATRIX_RUNBOOK.md`
 - #2863 Stale cursor rebootstrap: `apps/autopilot-desktop/src/state/operations.rs`
-- #2864 Crash recovery in-flight jobs: `apps/autopilot-desktop/src/state/autopilot_goals.rs`, `docs/AUTOPILOT_EARNINGS_AUTOMATION.md`
+- #2864 Crash recovery in-flight jobs: `apps/autopilot-desktop/src/state/autopilot_goals.rs`, `AUTOPILOT_EARNINGS_AUTOMATION.md`
 - #2865 Relay outage degraded UX: `apps/autopilot-desktop/src/state/provider_runtime.rs`, `apps/autopilot-desktop/src/render.rs`
-- #2866 Payout mismatch runbook: `docs/AUTOPILOT_EARNINGS_OPERATOR_RUNBOOK.md`
-- #2867 Rollout flags/cohorts: `docs/AUTOPILOT_EARNINGS_ROLLOUT_PLAN.md`
+- #2866 Payout mismatch runbook: `AUTOPILOT_EARNINGS_OPERATOR_RUNBOOK.md`
+- #2867 Rollout flags/cohorts: `AUTOPILOT_EARNINGS_ROLLOUT_PLAN.md`
 
 ## Tests + Launch Gates
 
 - #2868 NIP-90 builder/parser unit coverage: `crates/nostr/core/src/nip90/tests.rs`, `crates/nostr/core/tests/nip90_integration.rs`
 - #2869 Integration request->result->payment: `apps/autopilot-desktop/src/state/earnings_gate.rs` tests + `apps/autopilot-desktop/src/state/wallet_reconciliation.rs` tests
 - #2870 Mission Control state tests: `apps/autopilot-desktop/src/app_state.rs` tests
-- #2871 E2E first sats moment: `docs/AUTOPILOT_EARN_MVP.md` acceptance + app lane state tests
-- #2872 Chaos relay loss/recovery: `apps/autopilot-desktop/src/state/operations.rs` + `docs/NIP_SA_SKL_AC_TEST_MATRIX_RUNBOOK.md`
+- #2871 E2E first sats moment: `AUTOPILOT_EARN_MVP.md` acceptance + app lane state tests
+- #2872 Chaos relay loss/recovery: `apps/autopilot-desktop/src/state/operations.rs` + `../NIP_SA_SKL_AC_TEST_MATRIX_RUNBOOK.md`
 - #2873 Chaos wallet error/recovery: `apps/autopilot-desktop/src/spark_wallet.rs` + `apps/autopilot-desktop/src/state/earnings_gate.rs`
-- #2874 Stress harness 3s cadence: `docs/AUTOPILOT_EARN_MVP.md` cadence contract + starter job lane controls
+- #2874 Stress harness 3s cadence: `AUTOPILOT_EARN_MVP.md` cadence contract + starter job lane controls
 - #2875 Merge gate script: `scripts/lint/clippy-regression-check.sh`, `scripts/lint/ownership-boundary-check.sh`
-- #2876 Launch rehearsal + signoff: `docs/AUTOPILOT_EARNINGS_OPERATOR_RUNBOOK.md`, `docs/AUTOPILOT_EARNINGS_ROLLOUT_PLAN.md`
+- #2876 Launch rehearsal + signoff: `AUTOPILOT_EARNINGS_OPERATOR_RUNBOOK.md`, `AUTOPILOT_EARNINGS_ROLLOUT_PLAN.md`

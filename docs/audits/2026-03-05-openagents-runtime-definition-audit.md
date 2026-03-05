@@ -32,10 +32,10 @@ Product and authority docs:
 
 - `docs/MVP.md`
 - `docs/OWNERSHIP.md`
-- `docs/EARN.md`
-- `docs/AUTOPILOT_EARN_MVP.md`
+- `docs/autopilot-earn/README.md`
+- `docs/autopilot-earn/AUTOPILOT_EARN_MVP.md`
 - `docs/PANES.md`
-- `docs/AUTOPILOT_EARN_RUNTIME_PLACEMENT_DECISION.md`
+- `docs/autopilot-earn/AUTOPILOT_EARN_RUNTIME_PLACEMENT_DECISION.md`
 - `docs/adr/ADR-0001-spacetime-domain-authority-matrix.md`
 
 Kernel-plan docs:
@@ -104,7 +104,7 @@ The most direct signals are in `apps/autopilot-desktop`:
 - `ProviderRuntimeState` models `offline / connecting / online / degraded`, heartbeat freshness, queue depth, last result, and runtime failure classes.
 - `RuntimeSyncConnectionState` and `RuntimeSyncLifecycleManager` model connection, replay, token refresh, backoff, and reconnect behavior.
 - `docs/MVP.md` says `Go Online` initializes the embedded Autopilot provider runtime and provider identity.
-- `docs/AUTOPILOT_EARN_RUNTIME_PLACEMENT_DECISION.md` keeps provider runtime ownership in `apps/autopilot-desktop`.
+- `docs/autopilot-earn/AUTOPILOT_EARN_RUNTIME_PLACEMENT_DECISION.md` keeps provider runtime ownership in `apps/autopilot-desktop`.
 - `docs/PANES.md` uses `runtime` as the source for provider status, relay connections, network requests, alerts, job intake, and other execution-facing panes.
 
 This is all “where work runs / how the app stays live” language.
@@ -209,7 +209,7 @@ For the current MVP repo, the practical mapping is:
 
 That matches:
 
-- `docs/AUTOPILOT_EARN_RUNTIME_PLACEMENT_DECISION.md`
+- `docs/autopilot-earn/AUTOPILOT_EARN_RUNTIME_PLACEMENT_DECISION.md`
 - `docs/PANES.md`
 - `docs/MVP.md` section 9.2
 - `docs/plans/economy-kernel.md`
@@ -260,7 +260,7 @@ Potentially later, yes. Right now, probably not as an MVP-wide move.
 
 The current code layout still supports the earlier placement decision:
 
-- `docs/AUTOPILOT_EARN_RUNTIME_PLACEMENT_DECISION.md` keeps provider runtime ownership in `apps/autopilot-desktop` for MVP.
+- `docs/autopilot-earn/AUTOPILOT_EARN_RUNTIME_PLACEMENT_DECISION.md` keeps provider runtime ownership in `apps/autopilot-desktop` for MVP.
 - `docs/OWNERSHIP.md` says `apps/autopilot-desktop` owns app wiring, pane orchestration, and product behavior.
 - Search results show the current runtime code is heavily consumed inside `apps/autopilot-desktop` and not by other apps or crates.
 
@@ -359,7 +359,7 @@ The kernel plans correctly treat wallet execution as the custody boundary. The r
 
 - `apps/runtime` remains the retained authority for execution boundaries and projection publishing.
 
-But this pruned repo has only `apps/autopilot-desktop`, and `docs/AUTOPILOT_EARN_RUNTIME_PLACEMENT_DECISION.md` explicitly keeps provider runtime ownership in that app.
+But this pruned repo has only `apps/autopilot-desktop`, and `docs/autopilot-earn/AUTOPILOT_EARN_RUNTIME_PLACEMENT_DECISION.md` explicitly keeps provider runtime ownership in that app.
 
 That did not block defining the runtime, but it did require terminology cleanup. Follow-up doc edits now align MVP wording with the current repo layout.
 

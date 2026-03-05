@@ -26,8 +26,8 @@ This audit is aligned to the current product authority in `docs/MVP.md`, not onl
 Product and ownership authority:
 
 - `docs/MVP.md`
-- `docs/AUTOPILOT_EARN_MVP.md`
-- `docs/EARN.md`
+- `docs/autopilot-earn/AUTOPILOT_EARN_MVP.md`
+- `docs/autopilot-earn/README.md`
 - `docs/OWNERSHIP.md`
 - `docs/PANES.md`
 - `docs/PROTOCOL_SURFACE.md`
@@ -109,6 +109,18 @@ Broader Spacetime ecosystem review:
 5. After reviewing the broader Spacetime ecosystem, the stronger conclusion is: SpacetimeDB can clearly host much larger server-side state machines than this repo currently uses it for, but it is still not the recommended place to put the entire OpenAgents economy backend. It remains a strong fit for presence, checkpoints, projections, and selected pure coordination state. It remains a weak fit for money-moving settlement, external routing, underwriting, verification pipelines, and OpenAgents-specific authority and audit surfaces.
 6. After reviewing the in-repo Nostr implementation and the canonical NIPs, the protocol boundary is clearer: Nostr is the correct open-market and interoperability layer for jobs, provider discovery, and portable public artifacts. It is not the correct authority layer for settlement truth, treasury/policy, sync continuity, or canonical audit state.
 
+Terminology clarification from current product direction:
+
+- `Pylon` should no longer be treated as a separate product surface. Its provider role is being folded into `Autopilot`.
+- `Nexus` is the intended name for the opinionated, open-source, self-hostable server-authoritative stack that OpenAgents will run by default and that users or organizations should be able to run themselves.
+- Current product direction also wants `Nexus` to expose a Nostr relay surface so Autopilot can use it as the default primary relay, with a curated default public relay set alongside it. That default should not restrict normal marketplace discovery or intake: Autopilot is expected to ingest NIP-90 demand from the full configured reachable relay set and deduplicate across relays. The initial relay set should be chosen pragmatically from relays where OpenAgents observes meaningful recent NIP-90 job activity.
+- Current product direction further narrows the bootstrap story: starter jobs / seed demand come from the OpenAgents-hosted Nexus only at first, not from every self-hosted Nexus deployment.
+- Self-hosted Nexus should still be public/open by default. Closed/private Nexus modes are later roadmap work rather than near-term scope.
+- The OpenAgents-hosted Nexus should remain anon/open for general marketplace traffic, while buyer-side policy can target preferred or required OpenAgents participants; OpenAgents seed jobs are intended to target Autopilot users only.
+- OpenAgents starter jobs are not federated across third-party Nexus deployments in MVP. A provider must be connected to the OpenAgents-hosted Nexus itself to be eligible for OpenAgents-funded starter demand.
+- NIP-89's `client` tag is optional and privacy-sensitive, so it is a weak basis for seed-job eligibility on its own. NIP-42 relay auth proves key possession to the relay, not that the software is Autopilot. The accepted MVP proof path is OpenAgents-hosted-Nexus session/auth evidence plus bound Nostr identity; stronger anti-spoofing attestation should be treated as later hardening work.
+- MVP payout routing is intentionally simple: all provider earnings should land in the built-in Spark wallet first, and users move funds to an external wallet by withdrawing later. There is no MVP requirement for arbitrary external invoice configuration as the provider receive sink.
+
 ## MVP Alignment
 
 Against `docs/MVP.md`, the current system is much closer to correct than the kernel plans alone would suggest:
@@ -135,7 +147,7 @@ The deeper Nostr review does not weaken the backend conclusion from the rest of 
 
 Nostr should carry the open protocol surfaces where interoperability and market visibility matter:
 
-- NIP-90 job requests, feedback, and results. This is already the MVP path in `docs/MVP.md`, `docs/AUTOPILOT_EARN_MVP.md`, `crates/nostr/core/src/nip90/mod.rs`, `crates/nostr/client/src/dvm.rs`, and `apps/autopilot-desktop/src/provider_nip90_lane.rs`.
+- NIP-90 job requests, feedback, and results. This is already the MVP path in `docs/MVP.md`, `docs/autopilot-earn/AUTOPILOT_EARN_MVP.md`, `crates/nostr/core/src/nip90/mod.rs`, `crates/nostr/client/src/dvm.rs`, and `apps/autopilot-desktop/src/provider_nip90_lane.rs`.
 - NIP-89 capability and handler discovery for providers and future app/skill handlers.
 - NIP-65 relay list metadata and NIP-42 relay authentication, because those are relay-transport concerns.
 - Public or portable artifacts from the repo's intended protocol surface where third-party clients should be able to observe or reuse them:
@@ -210,7 +222,9 @@ OpenAgents backend services should own the authenticated authority and external 
 - seed-demand buyer services that post paid NIP-90 work into the market,
 - any NIP-98-protected HTTP endpoints used for OpenAgents-specific control or settlement flows.
 
-OpenAgents infra may also choose to operate relay or indexer infrastructure for product quality, moderation, or latency. That is still Nostr transport infrastructure, not a replacement for authority services.
+OpenAgents infra may also choose to operate relay or indexer infrastructure for product quality, moderation, or latency. Current product direction specifically points toward `Nexus` including a relay role so the default OpenAgents deployment is both the authority stack and the primary relay path. Starter jobs / seed demand are currently part of that OpenAgents-hosted deployment, not a required feature of third-party Nexus operators. Third-party Nexus operators are still expected to be public/open by default unless and until private-mode features are intentionally added later. The hosted Nexus can remain anon/open at the relay level while using buyer-side policy to target OpenAgents participants and Autopilot users for specific jobs such as starter demand. Ordinary NIP-90 intake, however, should still span the whole configured reachable relay set rather than being treated as hosted-Nexus-only. That is still Nostr transport infrastructure, not a replacement for authority services.
+
+Product naming note: this backend authority layer can be packaged and described as the `Nexus` stack. In practical terms, the `control-api`, `kernel-authority`, stats surfaces, and relay/index components are the deployable parts of that Nexus role.
 
 ### What should live on desktop
 
@@ -602,6 +616,8 @@ The main mistake to avoid is trying to force all of these concerns into one plat
 - Cloud Run is good for stateless Rust APIs.
 - SpacetimeDB is good for live sync and selected shared state domains.
 - PostgreSQL is still the right canonical store for economic authority and audit history.
+
+In product terms, this entire authority plane should be thought of as the default OpenAgents-hosted `Nexus`: open source, opinionated, self-hostable, and also exposing the default primary Nostr relay path, with Autopilot pointing to OpenAgents' Nexus by default and other relays acting as backup transport.
 
 ## Recommended service split
 

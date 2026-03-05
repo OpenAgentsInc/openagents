@@ -193,8 +193,8 @@ File:
 - `scripts/lint/autopilot-earn-doc-reconciliation-check.sh`
 
 What it covers:
-- enforces one canonical current-status source (`docs/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md`),
-- enforces historical-log demotion to appendix role (`docs/AUTOPILOT_EARN_MVP_IMPLEMENTATION_LOG.md`),
+- enforces one canonical current-status source (`AUTOPILOT_EARN_MVP_EPIC_TRACKER.md`),
+- enforces historical-log demotion to appendix role (`AUTOPILOT_EARN_MVP_IMPLEMENTATION_LOG.md`),
 - verifies reconciliation issue-state tables stay synchronized with latest closed/open truth.
 
 Primary assertions:

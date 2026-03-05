@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-TRACKER="$ROOT_DIR/docs/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md"
-IMPLEMENTATION_LOG="$ROOT_DIR/docs/AUTOPILOT_EARN_MVP_IMPLEMENTATION_LOG.md"
+TRACKER="$ROOT_DIR/docs/autopilot-earn/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md"
+IMPLEMENTATION_LOG="$ROOT_DIR/docs/autopilot-earn/AUTOPILOT_EARN_MVP_IMPLEMENTATION_LOG.md"
 
 require_contains() {
     local file="$1"
