@@ -124,6 +124,17 @@ These invariants apply to all modules, flows, and extensions.
 * `policy_bundle_id`
 * `trace context (session_id, trajectory_hash, job_hash, etc.)`
 
+#### 1.X Proto-first source of truth
+
+The **normative wire contract** for the Economy Kernel is the proto schema under `proto/openagents/**/v1/` (and generated artifacts derived from it).
+This markdown document defines **normative semantics** (state machines, invariants, receipt linkage, and required behaviors), but it MUST NOT become a second schema source of truth.
+
+Rules:
+
+1. **If the proto and the markdown disagree on wire shape, the proto wins.**
+2. **Do not duplicate proto messages in this doc.** Reference the proto package and describe semantics here.
+3. Any change to externally observable fields, states, or receipts MUST be implemented in proto first, then reflected here.
+
 ### 1.2 Determinism, receipts, replay safety
 
 1. **Every authority mutation MUST be idempotent.**
@@ -158,6 +169,53 @@ These invariants apply to all modules, flows, and extensions.
 3. **Policy evaluation MUST be explainable.**
    Receipts MUST include policy notes (as evidence refs or stable tags) sufficient to explain why an action was allowed, denied, or withheld.
 
+#### 1.X PolicyBundle minimum capabilities and flapping control
+
+PolicyBundles are not cosmetic. At minimum, a PolicyBundle MUST be able to express:
+
+1. **Verification and provenance requirements** by `category × tfb × severity`:
+
+   * minimum verification tier
+   * independence/heterogeneity constraints
+   * minimum provenance grade / provenance bundle requirements
+2. **Autonomy modes** (e.g., normal / degraded / approval-required / halt) and the conditions that trigger mode transitions.
+3. **Envelope and bond knobs** by `category × severity`:
+
+   * envelope caps, expiries, and settlement conditions
+   * bond sizing rules (self-bond, underwriter bond, dispute bond)
+4. **Breaker windows and anti-flapping controls**:
+
+   * evaluation windows (e.g., rolling 5m/1h/24h)
+   * hysteresis thresholds and/or minimum-duration requirements before triggering
+   * cooldown periods after triggering to prevent oscillation
+
+All policy-triggered mode changes, breaker transitions, and throttles MUST be receipted and visible in `/stats`.
+
+#### 1.X PolicyBundle deterministic evaluation semantics (normative)
+
+To prevent divergent “compliant” implementations, policy evaluation MUST be deterministic.
+
+**Rule matching precedence**
+When matching policy rules by `category × tfb × severity`, implementations MUST use the following precedence order:
+
+1. exact category + exact tfb + exact severity
+2. exact category + exact severity + wildcard tfb
+3. exact category + wildcard severity + wildcard tfb
+4. wildcard category + exact tfb/severity
+5. wildcard everything (global default)
+
+**Tie-breaking**
+If multiple rules match at the same precedence, the implementation MUST choose deterministically (e.g., lexicographic by rule id). The chosen rule identifier MUST be recorded in receipts as policy notes/tags so auditors can reproduce the decision.
+
+**Autonomy throttle action order**
+When policy triggers multiple actions (mode changes, tier raises, provenance raises, envelope tightening, warranty disabling), they MUST be applied in this deterministic order:
+
+1. autonomy mode transition (normal → degraded → approval-required → halt)
+2. raise required verification tier / require human step
+3. raise required provenance grade / require attestations
+4. tighten or halt envelope issuance
+5. disable warranties or cap warranty coverage
+
 ### 1.4 Credit and risk posture
 
 1. The system MUST NOT provide open-ended lines of credit.
@@ -183,6 +241,10 @@ These invariants apply to all modules, flows, and extensions.
 * correlation risk
 * measured loss/claim signals
   (See §2.4 and §6.8.)
+
+#### 1.X Outcome resolution-path invariant
+
+No outcome may become “settled truth” (i.e., unlock settlement, warranty issuance, or finalization) without an explicit resolution path: **objective harness**, **declared adjudication policy**, or **explicit human underwriting**. If resolution is ambiguous or long-latency, that ambiguity MUST be disclosed in the contract terms and priced via stricter tiers, collateral, or warranty exclusions.
 
 ### 1.6 Observability posture
 
@@ -230,6 +292,28 @@ Collateral backing a claim: worker self-bond, underwriter bond, dispute bond, wa
 
 **Receipt**
 Canonical record of any authority effect (normative in §5).
+
+### 2.1.1 Roles and authority boundaries (normative)
+
+The Economy Kernel is operated by distinct roles. These roles exist to make authority boundaries explicit and auditable.
+
+**Roles**
+
+* **Buyer / Operator:** creates WorkUnits, initiates Contracts, funds escrow/envelopes, and chooses policy posture. May open claims.
+* **Worker / Provider:** submits outputs and evidence; may post a self-bond and/or offer warranties (if policy allows).
+* **Verifier:** performs verification steps and produces/verifies evidence; cannot directly move money. Verdict finalization is an authority action but is performed only under policy and must be receipted.
+* **Underwriter / Predictor:** posts collateral to back warranties/outcomes; earns premiums when outcomes hold; pays when claims are upheld.
+* **Claimant / Respondent:** parties to a claim/dispute (often Buyer vs Worker; Underwriter may become Respondent).
+* **Adjudicator:** resolves disputed outcomes under a declared adjudication policy; claim resolution is an authority action and must be receipted.
+* **Pool Operator:** operates liquidity backends and executes operational actions under strict policy (no ad-hoc admin); cannot bypass receipts.
+* **Signer Set:** threshold-controlled authority for high-impact treasury actions (e.g., large withdrawals, pool parameter changes); actions must be explicit and receipted.
+
+**Authority mapping**
+
+* **Money movement (settlement/refunds/bond draws):** MUST be executed only by kernel authority endpoints under policy and MUST emit receipts.
+* **Verification:** Verifiers may produce evidence, but **only the kernel’s verdict finalization** may unlock settlement/warranty.
+* **Disputes:** Claims may be opened by Buyer/Operator (and others if policy allows), but resolution MUST be performed by Adjudicator policy lanes and must emit claim-resolution receipts.
+* **Pool-impacting actions:** MUST be guarded by Signer Set thresholds when above policy-defined risk limits.
 
 ### 2.2 Required WorkUnit metadata (new)
 
@@ -496,6 +580,13 @@ This section defines an optional extension for intent-driven routing across rail
 3. **No silent reroutes.**
    Any reroute, retry, or fallback is a state transition with a receipt, not an implicit background behavior.
 
+**Extension invariants (non-negotiable)**
+
+1. **Intent/effect separation.** Intents are messages (requests and plans). **Settlement effects** (actual money movement, escrow changes, refunds) are authority actions and MUST occur only via authenticated HTTP with receipts.
+2. **Adapter purity and provenance.** Rail adapters MUST yield canonical receipts for every external action they cause. Any helper/relayer calls MUST be receipted with provenance (what was called, why, and what proof came back).
+3. **Solver accountability from receipts.** Solver performance MUST be measured from receipts (fills, latency, failures, refunds, slippage vs quoted). Solver selection and continued eligibility MUST be policy-driven using those receipt-derived metrics.
+4. **Failure is explicit.** Refunds, timeouts, expiries, and retries are first-class states with receipts. No hidden “best effort” reroutes.
+
 ---
 
 ## 5. Receipts, Provenance, and Canonical Hashing (Normative)
@@ -656,6 +747,22 @@ Maintains:
 * reserve/rebalance partition (optional but modeled)
 * signed snapshots (required if LP mode exists)
 
+#### 6.2.1 LP-mode solvency and withdrawal guardrails (normative)
+
+Operator-funded pools are permitted. However, if external liquidity providers (LPs) can deposit/withdraw, the following guardrails are mandatory:
+
+1. **Partitioned accounting is enforced.** Liquidity, credit exposure, bonds/collateral, and reserves MUST be tracked in distinct partitions so risk is legible.
+2. **Share mint/burn and marking posture is explicit.** If LP shares exist, the rules for minting/burning shares and updating share price MUST be explicit and receipted (no opaque revaluations).
+3. **Withdrawals are queued and throttled.** LP withdrawals MUST use a queue with bounded delay and MUST be throttleable based on:
+
+   * solvency bands / reserve thresholds
+   * outstanding envelope commitments
+   * outstanding bonded exposure
+   * active breakers or failure spikes
+     Throttle state must be visible in `/stats`.
+4. **High-impact treasury actions require Signer Set thresholds.** Actions such as large withdrawals, pool parameter changes, channel open/close sweeps, and reserve reallocation above policy thresholds MUST require Signer Set approval and must emit receipts.
+5. **No hidden insolvency.** If solvency bands are breached, the system MUST enter an explicit breaker mode that halts or throttles withdrawals and publishes the state in `/stats`.
+
 ### 6.3 Credit Envelopes
 
 Provides:
@@ -748,6 +855,8 @@ Provides:
   * degrade autonomy (approval-required mode)
   * publish breaker state in `/stats`
 
+* All `sv`/`XA_hat`-driven gating actions MUST be bound to a specific `/stats` snapshot (by `snapshot_id`/`snapshot_hash`) and that binding MUST be included in the emitted receipts.
+
 ### 6.9 Markets (optional module; still kernel-native)
 
 **Work Outcome Markets**
@@ -779,7 +888,35 @@ The kernel MUST maintain:
   * qualifications by domain
   * simulation throughput and performance scores
 
+**GroundTruthCase linkage requirements (audit-grade)**
+Every GroundTruthCase MUST link to:
+
+* replay artifacts (or deterministic replay bundle digests)
+* the relevant verification receipts (verdicts and checker evidence)
+* the relevant settlement receipts (payments/refunds/bond draws/releases)
+* the PolicyBundle id and version in effect at the time of the event
+* any follow-on correction/supersession receipts (if applicable)
+
+A SimulationScenario derived from a GroundTruthCase MUST reference the GroundTruthCase id and the same underlying evidence digests.
+
 Synthetic practice is not optional: it is how verification capacity scales over time.
+
+### 6.11 Reputation index (receipt-derived priors)
+
+Reputation is an internal measurement derived strictly from receipts. It is not social scoring and MUST NOT be treated as a governance or identity system.
+
+**Normative constraints**
+
+1. **Receipt-derived only.** Reputation signals MUST be computed only from receipted outcomes (settlement success/latency, envelope settle integrity, claim/chargeback rates, slippage vs quote, dispute outcomes, failure spikes).
+2. **Used only as priors.** Reputation MAY be used as an input prior for:
+
+   * routing decisions
+   * envelope underwriting limits
+   * warranty pricing and eligibility
+     It MUST NOT directly unlock authority mutations without policy checks.
+3. **Explainable and auditable.** Any decision that materially depends on reputation SHOULD include a receipt note pointing to the relevant measurement window(s) and the metrics used.
+4. **Non-transferable meaning.** Reputation metrics are contextual (category/tfb/severity) and MUST NOT be collapsed into a single “trust score” that ignores domain differences.
+5. **Interop is summary-only.** If mirrored externally, only summary labels/aggregates may be exported; raw internal evidence pointers must not be exposed.
 
 ---
 
@@ -794,6 +931,8 @@ Synthetic practice is not optional: it is how verification capacity scales over 
   * signed pool snapshots (where applicable)
 * The minute snapshot MUST be persisted durably and retrievable by snapshot id for audit/replay.
 * UI MUST consume the snapshot via the system’s realtime subscription mechanism (server-pushed updates), not polling.
+* Snapshot computation MUST be **idempotent and receipted** (authority-like): recomputing the same minute snapshot must yield the same `snapshot_id`/`snapshot_hash` (or a stable reference) and must not produce conflicting snapshots for the same time boundary.
+* Any breaker activation, autonomy mode transition, or `WITHHELD/EXPIRED` decision driven by `sv`, `Δm_hat`, `XA_hat`, or correlated-verification share MUST reference the **specific** `snapshot_id` and `snapshot_hash` used to make that decision (recorded in the corresponding receipt).
 
 ### 7.2 Tables and required metrics (expanded)
 
