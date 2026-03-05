@@ -120,6 +120,8 @@ These invariants apply to all modules, flows, and extensions.
 3. **Every authority request MUST include:**
 
 * `authenticated caller identity (service principal, agent identity, or operator identity)`
+* `auth_assurance_level` (for actions where policy requires identity gating)
+* `credential/proof references` (for actions where policy requires personhood/org proof)
 * `idempotency_key`
 * `policy_bundle_id`
 * `policy_version`
@@ -189,6 +191,22 @@ PolicyBundles are not cosmetic. At minimum, a PolicyBundle MUST be able to expre
    * evaluation windows (e.g., rolling 5m/1h/24h)
    * hysteresis thresholds and/or minimum-duration requirements before triggering
    * cooldown periods after triggering to prevent oscillation
+5. **Identity assurance requirements** by `category x tfb x severity` and by role:
+
+   * minimum authentication assurance level
+   * whether personhood / org-vetting proofs are mandatory
+6. **Monitoring and drift rules**:
+
+   * required drift detectors/signals by slice
+   * drift thresholds and policy actions when breached
+7. **Liability pricing and insurability controls**:
+
+   * liability premium/risk-charge parameters by slice
+   * proof-of-coverage / disclosure preconditions where required
+8. **Certification and rollback requirements**:
+
+   * certification requirements and safe-harbor relaxations by slice
+   * rollback/compensating-action plan requirements for high-severity lanes
 
 All policy-triggered mode changes, breaker transitions, and throttles MUST be receipted and visible in `/stats`.
 
@@ -717,6 +735,20 @@ Minimum requirements:
 6. **Hash encoding.**
    All digests MUST be encoded as `sha256:<hex>` (or a versioned equivalent) consistently.
 
+#### 5.6.1 Optional neutral-ledger anchoring (normative, policy-gated)
+
+The kernel MAY publish snapshot hashes and/or receipt Merkle roots to a neutral public ledger (or equivalent immutable substrate) to increase cross-org trust.
+
+If anchoring is enabled:
+
+1. Anchoring actions MUST emit append-only anchoring receipts with:
+
+   * anchored object reference (`snapshot_id` or receipt-root identifier)
+   * anchored hash
+   * external proof reference (txid/event id or equivalent)
+2. Anchoring receipts MUST NOT include secrets or private payloads; hashes/proof references only.
+3. Anchoring MUST be policy-gated and idempotent per anchored object.
+
 ### 5.7 Idempotency conflict and error semantics
 
 Idempotency is not “best effort”; it defines replay safety.
@@ -755,6 +787,20 @@ Any `reason_code` referenced in this spec MUST come from a **versioned, document
 
 **Hashed-decision requirement (normative)**
 Any data required by this spec to justify or reproduce a decision (e.g., `reason_code`, selected policy rule id(s), snapshot bindings, solver match selection, breaker trigger details) MUST be recorded in the **normative, hash-bound portion** of the receipt payload (i.e., it MUST affect `inputs_hash`/`outputs_hash` and thus `canonical_hash`), or be recorded as a hash-bound `EvidenceRef` / `ReceiptRef`. It MUST NOT be stored only in non-normative `tags`.
+
+### 5.10 Interoperable audit exports (normative)
+
+Anything required for underwriting, incident forensics, certification, or dispute replay MUST be exportable in an open, versioned format with deterministic hashing and explicit redaction tiers.
+
+At minimum, export formats MUST cover:
+
+* receipts and snapshot bindings
+* incident/near-miss records and taxonomy codes
+* outcome registry entries
+* certification state transitions
+* policy decision linkage needed to reproduce allow/deny/withhold outcomes
+
+Public exports MUST use redacted aggregate-safe views; restricted exports MAY include additional references, but still MUST avoid secret credential material.
 
 ---
 
@@ -835,6 +881,13 @@ Provides:
 * claim open and resolve
 * dispute arbitration policies (when needed)
 * executes remedies via settlement + bond draws with receipts
+
+**Insurance-boundary requirements (normative)**
+
+1. Contracts MUST separate execution price from liability premium/risk charge.
+2. Liability premium/risk charge MUST be policy-derived and reproducible from receipted inputs.
+3. When pricing is dynamic, pricing receipts MUST bind to the specific snapshot window/hash used.
+4. `/stats` MUST expose insurer-relevant aggregate metrics (premiums collected, claims paid, loss ratio, capital coverage posture) without leaking sensitive payloads.
 
 ### 6.7 FX RFQ & Settlement
 
@@ -931,7 +984,48 @@ A SimulationScenario derived from a GroundTruthCase MUST reference the GroundTru
 
 Synthetic practice is not optional: it is how verification capacity scales over time.
 
-### 6.11 Reputation index (receipt-derived priors)
+**Standardized incident reporting requirements (normative)**
+
+GroundTruthCase and related incident records MUST be proto-first, versioned objects with:
+
+* versioned incident taxonomy codes
+* incident/near-miss classification
+* mandatory linkage to receipts/evidence digests and policy version
+* explicit rollback-attempt fields for lanes where rollback applies
+
+Incident reporting and GroundTruthCase records are insurability prerequisites; implementations MUST NOT rely on unstructured postmortem prose as the sole source of truth.
+
+### 6.11 Rollback and compensating actions (normative)
+
+For high-severity categories, contracts MUST include at least one of:
+
+* objective rollback plan
+* compensating-action plan
+* explicit human underwriting with disclosed exclusions
+
+Rollback or compensating action attempts MUST emit explicit receipts (executed/failed) with stable reason codes and receipt linkage to the triggering incident/claim.
+
+### 6.12 Monitoring and drift detection (normative)
+
+The kernel MUST support continuous drift detection as a first-class control loop.
+
+Minimum requirements:
+
+1. Drift signals and alerts MUST be receipted as deterministic state transitions.
+2. Drift-triggered policy actions MUST follow the same deterministic throttle action order defined in Section 1.
+3. Drift-triggered actions MUST bind to the specific snapshot id/hash used.
+4. Drift signals and alert rates MUST be visible in `/stats`.
+
+### 6.13 Safety signals, certification, and interoperability (normative)
+
+The kernel MUST support interoperability-focused public safety infrastructure:
+
+* privacy-preserving safety signals (public aggregate + restricted sharing modes)
+* certification objects with issuance/revocation receipts
+* outcome registry entries linkable to verdict/settlement/incident records
+* synthetic practice scenario packages exportable under policy-gated redaction rules
+
+### 6.14 Reputation index (receipt-derived priors)
 
 Reputation is an internal measurement derived strictly from receipts. It is not social scoring and MUST NOT be treated as a governance or identity system.
 
@@ -980,6 +1074,7 @@ Reputation is an internal measurement derived strictly from receipts. It is not 
 * `Δm_hat`
 * `XA_hat`
 * `ρ` and `NV = ρN`
+* correlation-adjusted `sv_effective` (or equivalent `ρ_effective`)
 
 #### B) Settlement Health
 
@@ -1026,6 +1121,8 @@ Reputation is an internal measurement derived strictly from receipts. It is not 
 * claims opened/resolved (24h)
 * claims paid + rolling loss rate
 * adjudication latency p50/p95
+* liability premiums/risk charges collected (5m/1h/24h)
+* capital coverage ratio (reserves/capital vs bonded and claim exposure)
 
 #### H) Risk & Breakers
 
@@ -1033,13 +1130,25 @@ Reputation is an internal measurement derived strictly from receipts. It is not 
 * concentration metrics (HHI/top share)
 * failure spikes
 * autonomy throttle state (normal/degraded/approval-required)
+* drift alert counts and active drift alerts by slice
 
-#### I) Verifier Capacity & Synthetic Practice (new)
+#### I) Incidents, Rollback, and Certification (new)
+
+* incident and near-miss rates by taxonomy + severity
+* rollback/compensating-action attempt and success rates
+* certification distribution and uncertified-block counts by slice
+
+#### J) Verifier Capacity & Synthetic Practice (new)
 
 * number of qualified verifiers by domain
 * simulation scenarios completed (rolling)
 * verifier performance score distribution (calibration/time-to-detect)
 * backlog of ground-truth cases not yet converted to simulations
+
+#### K) Identity Assurance (new)
+
+* authentication assurance distribution by role and slice
+* personhood-verified share for policy-gated lanes
 
 ### 7.3 Data provenance rule (hard requirement)
 
