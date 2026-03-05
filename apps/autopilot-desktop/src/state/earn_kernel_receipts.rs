@@ -52,6 +52,10 @@ const REASON_CODE_OUTCOME_REGISTRY_UPDATED: &str = "OUTCOME_REGISTRY_UPDATED";
 const REASON_CODE_SIMULATION_SCENARIO_EXPORTED: &str = "SIMULATION_SCENARIO_EXPORTED";
 const REASON_CODE_REDACTION_POLICY_APPLIED: &str = "REDACTION_POLICY_APPLIED";
 const REASON_CODE_ANCHOR_PUBLISHED: &str = "ANCHOR_PUBLISHED";
+const REASON_CODE_WORK_UNIT_TEMPLATE_REGISTERED: &str = "WORK_UNIT_TEMPLATE_REGISTERED";
+const REASON_CODE_BOUNTY_DISPUTE_OPENED: &str = "BOUNTY_DISPUTE_OPENED";
+const REASON_CODE_BOUNTY_SETTLEMENT_FINALIZED: &str = "BOUNTY_SETTLEMENT_FINALIZED";
+const REASON_CODE_BOUNTY_SETTLEMENT_WITHHELD: &str = "BOUNTY_SETTLEMENT_WITHHELD";
 const DEFAULT_PRICING_SNAPSHOT_ID: &str = "snapshot.economy:unavailable";
 const DEFAULT_PRICING_SNAPSHOT_HASH: &str = "sha256:unavailable";
 const DRIFT_WINDOW_MS: i64 = 86_400_000;
@@ -326,9 +330,76 @@ pub struct WorkUnitMetadata {
     pub severity: SeverityClass,
     pub verification_budget_hint_sats: u64,
     #[serde(default)]
+    pub template_kind: Option<WhiteHatWorkUnitKind>,
+    #[serde(default)]
+    pub acceptance_criteria_ref: Option<String>,
+    #[serde(default)]
+    pub coordinated_disclosure_ref: Option<String>,
+    #[serde(default)]
+    pub mandatory_provenance: bool,
+    #[serde(default)]
     pub rollback_plan_ref: Option<String>,
     #[serde(default)]
     pub compensating_action_plan_ref: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq, Ord, PartialOrd)]
+#[serde(rename_all = "snake_case")]
+pub enum WhiteHatWorkUnitKind {
+    Audit,
+    Redteam,
+    IncidentRepro,
+}
+
+impl WhiteHatWorkUnitKind {
+    fn label(self) -> &'static str {
+        match self {
+            WhiteHatWorkUnitKind::Audit => "audit",
+            WhiteHatWorkUnitKind::Redteam => "redteam",
+            WhiteHatWorkUnitKind::IncidentRepro => "incident_repro",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct WhiteHatWorkUnitTemplateDraft {
+    pub work_unit_id: String,
+    pub idempotency_key: String,
+    pub kind: WhiteHatWorkUnitKind,
+    pub tfb_class: FeedbackLatencyClass,
+    pub severity: SeverityClass,
+    pub acceptance_criteria_ref: String,
+    pub coordinated_disclosure_ref: String,
+    #[serde(default)]
+    pub mandatory_provenance: bool,
+    #[serde(default)]
+    pub verification_budget_hint_sats: Option<u64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct WhiteHatBountySettlementDraft {
+    pub work_unit_id: String,
+    pub idempotency_key: String,
+    pub finding_id: String,
+    pub verdict_receipt_id: String,
+    pub payout_sats: u64,
+    pub dispute_bond_sats: u64,
+    #[serde(default)]
+    pub disputed: bool,
+    #[serde(default)]
+    pub dispute_reason: Option<String>,
+    #[serde(default)]
+    pub escrow_receipt_id: Option<String>,
+    #[serde(default)]
+    pub incident_report: Option<IncidentReportDraft>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct WhiteHatBountySettlementResult {
+    pub settlement_receipt_id: String,
+    pub dispute_receipt_id: Option<String>,
+    pub outcome_entry_id: String,
+    pub incident_id: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq, Ord, PartialOrd)]
@@ -822,6 +893,10 @@ struct ResolvedWorkMetadata {
     tfb_class: FeedbackLatencyClass,
     severity: SeverityClass,
     verification_budget_hint_sats: u64,
+    template_kind: Option<WhiteHatWorkUnitKind>,
+    acceptance_criteria_ref: Option<String>,
+    coordinated_disclosure_ref: Option<String>,
+    mandatory_provenance: bool,
     rollback_plan_ref: Option<String>,
     compensating_action_plan_ref: Option<String>,
 }
@@ -2864,6 +2939,10 @@ impl EarnKernelReceiptState {
                 tfb_class: existing.tfb_class,
                 severity: existing.severity,
                 verification_budget_hint_sats: existing.verification_budget_hint_sats,
+                template_kind: existing.template_kind,
+                acceptance_criteria_ref: existing.acceptance_criteria_ref.clone(),
+                coordinated_disclosure_ref: existing.coordinated_disclosure_ref.clone(),
+                mandatory_provenance: existing.mandatory_provenance,
                 rollback_plan_ref: existing.rollback_plan_ref.clone(),
                 compensating_action_plan_ref: existing.compensating_action_plan_ref.clone(),
             };
@@ -2882,6 +2961,10 @@ impl EarnKernelReceiptState {
                 tfb_class,
                 severity,
                 verification_budget_hint_sats,
+                template_kind: None,
+                acceptance_criteria_ref: None,
+                coordinated_disclosure_ref: None,
+                mandatory_provenance: false,
                 rollback_plan_ref: None,
                 compensating_action_plan_ref: None,
             },
@@ -2892,6 +2975,10 @@ impl EarnKernelReceiptState {
             tfb_class,
             severity,
             verification_budget_hint_sats,
+            template_kind: None,
+            acceptance_criteria_ref: None,
+            coordinated_disclosure_ref: None,
+            mandatory_provenance: false,
             rollback_plan_ref: None,
             compensating_action_plan_ref: None,
         }
@@ -2930,6 +3017,450 @@ impl EarnKernelReceiptState {
             work_unit_id
         ));
         Ok(())
+    }
+
+    pub fn register_white_hat_work_unit_template(
+        &mut self,
+        draft: WhiteHatWorkUnitTemplateDraft,
+        registered_at_ms: i64,
+        source_tag: &str,
+    ) -> Result<String, String> {
+        let work_unit_id = draft.work_unit_id.trim();
+        if work_unit_id.is_empty() {
+            return Err("work_unit_id cannot be empty".to_string());
+        }
+        let idempotency_key = draft.idempotency_key.trim();
+        if idempotency_key.is_empty() {
+            return Err("idempotency_key cannot be empty".to_string());
+        }
+        if !draft.mandatory_provenance {
+            return Err("white-hat template requires mandatory_provenance=true".to_string());
+        }
+        let acceptance_criteria_ref = sanitize_optional_ref(Some(draft.acceptance_criteria_ref.as_str()))
+            .ok_or_else(|| "acceptance_criteria_ref cannot be empty".to_string())?;
+        let coordinated_disclosure_ref =
+            sanitize_optional_ref(Some(draft.coordinated_disclosure_ref.as_str()))
+                .ok_or_else(|| "coordinated_disclosure_ref cannot be empty".to_string())?;
+        let category = draft.kind.label().to_string();
+        let verification_budget_hint_sats = draft.verification_budget_hint_sats.unwrap_or_else(|| {
+            verification_budget_hint_sats(category.as_str(), draft.tfb_class, draft.severity)
+        });
+        let metadata = WorkUnitMetadata {
+            work_unit_id: work_unit_id.to_string(),
+            category: category.clone(),
+            tfb_class: draft.tfb_class,
+            severity: draft.severity,
+            verification_budget_hint_sats,
+            template_kind: Some(draft.kind),
+            acceptance_criteria_ref: Some(acceptance_criteria_ref.clone()),
+            coordinated_disclosure_ref: Some(coordinated_disclosure_ref.clone()),
+            mandatory_provenance: true,
+            rollback_plan_ref: None,
+            compensating_action_plan_ref: None,
+        };
+        if let Some(existing) = self.work_units.get(work_unit_id)
+            && existing != &metadata
+        {
+            return Err(format!(
+                "work_unit {} already exists with conflicting template metadata",
+                work_unit_id
+            ));
+        }
+        self.work_units.insert(work_unit_id.to_string(), metadata.clone());
+        normalize_work_units(&mut self.work_units);
+
+        let policy_decision = allow_policy_decision(
+            "white_hat_template_register",
+            category.as_str(),
+            draft.severity,
+        );
+        let mut evidence = vec![policy_decision_evidence(&policy_decision)];
+        evidence.push(EvidenceRef::new(
+            "acceptance_criteria_ref",
+            acceptance_criteria_ref.clone(),
+            digest_for_text(acceptance_criteria_ref.as_str()),
+        ));
+        evidence.push(EvidenceRef::new(
+            "coordinated_disclosure_ref",
+            coordinated_disclosure_ref.clone(),
+            digest_for_text(coordinated_disclosure_ref.as_str()),
+        ));
+
+        let receipt_id = format!(
+            "receipt.economy.work_unit.template:{}:{}",
+            normalize_key(category.as_str()),
+            normalize_key(work_unit_id)
+        );
+        let resolved_metadata = ResolvedWorkMetadata {
+            category: metadata.category.clone(),
+            tfb_class: metadata.tfb_class,
+            severity: metadata.severity,
+            verification_budget_hint_sats: metadata.verification_budget_hint_sats,
+            template_kind: metadata.template_kind,
+            acceptance_criteria_ref: metadata.acceptance_criteria_ref.clone(),
+            coordinated_disclosure_ref: metadata.coordinated_disclosure_ref.clone(),
+            mandatory_provenance: metadata.mandatory_provenance,
+            rollback_plan_ref: metadata.rollback_plan_ref.clone(),
+            compensating_action_plan_ref: metadata.compensating_action_plan_ref.clone(),
+        };
+        let receipt = ReceiptBuilder::new(
+            receipt_id.clone(),
+            "economy.work_unit.template_registered.v1",
+            registered_at_ms.max(0),
+            format!(
+                "idemp.economy.work_unit.template:{}",
+                normalize_key(idempotency_key)
+            ),
+            TraceContext {
+                session_id: None,
+                trajectory_hash: None,
+                job_hash: None,
+                run_id: Some(format!("white_hat_template:{work_unit_id}")),
+                work_unit_id: Some(work_unit_id.to_string()),
+                contract_id: None,
+                claim_id: None,
+            },
+            current_policy_context(),
+        )
+        .with_inputs_payload(json!({
+            "work_unit_id": work_unit_id,
+            "template_kind": draft.kind.label(),
+            "acceptance_criteria_digest": digest_for_text(acceptance_criteria_ref.as_str()),
+            "coordinated_disclosure_digest": digest_for_text(coordinated_disclosure_ref.as_str()),
+            "mandatory_provenance": true,
+            "work_unit": work_unit_metadata_payload(work_unit_id, &resolved_metadata),
+        }))
+        .with_outputs_payload(json!({
+            "status": "template_registered",
+            "work_unit_id": work_unit_id,
+            "template_kind": draft.kind.label(),
+            "source_tag": source_tag,
+        }))
+        .with_evidence(evidence)
+        .with_hints(ReceiptHints {
+            category: Some(category),
+            tfb_class: Some(draft.tfb_class),
+            severity: Some(draft.severity),
+            achieved_verification_tier: Some(VerificationTier::Tier2Heterogeneous),
+            verification_correlated: Some(false),
+            provenance_grade: Some(ProvenanceGrade::P2Lineage),
+            auth_assurance_level: Some(AuthAssuranceLevel::Authenticated),
+            personhood_proved: Some(false),
+            reason_code: Some(REASON_CODE_WORK_UNIT_TEMPLATE_REGISTERED.to_string()),
+            notional: None,
+            liability_premium: None,
+        })
+        .build();
+        self.append_receipt(receipt, source_tag);
+        if self.load_state == PaneLoadState::Error {
+            return Err(self
+                .last_error
+                .clone()
+                .unwrap_or_else(|| "failed to register white-hat work unit template".to_string()));
+        }
+        Ok(receipt_id)
+    }
+
+    pub fn settle_white_hat_bounty(
+        &mut self,
+        draft: WhiteHatBountySettlementDraft,
+        settled_at_ms: i64,
+        source_tag: &str,
+    ) -> Result<WhiteHatBountySettlementResult, String> {
+        let work_unit_id = draft.work_unit_id.trim();
+        if work_unit_id.is_empty() {
+            return Err("work_unit_id cannot be empty".to_string());
+        }
+        let idempotency_key = draft.idempotency_key.trim();
+        if idempotency_key.is_empty() {
+            return Err("idempotency_key cannot be empty".to_string());
+        }
+        let finding_id = draft.finding_id.trim();
+        if finding_id.is_empty() {
+            return Err("finding_id cannot be empty".to_string());
+        }
+        if draft.verdict_receipt_id.trim().is_empty() {
+            return Err("verdict_receipt_id cannot be empty".to_string());
+        }
+        if !draft.disputed && draft.payout_sats == 0 {
+            return Err("payout_sats must be > 0 for non-disputed bounty settlement".to_string());
+        }
+        if draft.disputed {
+            if draft.dispute_bond_sats == 0 {
+                return Err("disputed bounty settlement requires dispute_bond_sats > 0".to_string());
+            }
+            if draft
+                .dispute_reason
+                .as_deref()
+                .map(str::trim)
+                .is_none_or(str::is_empty)
+            {
+                return Err("disputed bounty settlement requires dispute_reason".to_string());
+            }
+        }
+        let metadata = self
+            .work_units
+            .get(work_unit_id)
+            .cloned()
+            .ok_or_else(|| format!("work_unit metadata not found for {work_unit_id}"))?;
+        if !is_white_hat_category(metadata.category.as_str()) {
+            return Err(format!(
+                "work_unit {} is not a white-hat template category",
+                work_unit_id
+            ));
+        }
+        if !metadata.mandatory_provenance {
+            return Err(format!(
+                "work_unit {} does not enforce mandatory provenance",
+                work_unit_id
+            ));
+        }
+        let verdict_receipt = self
+            .get_receipt(draft.verdict_receipt_id.as_str())
+            .cloned()
+            .ok_or_else(|| format!("verdict receipt {} not found", draft.verdict_receipt_id))?;
+        if !is_verdict_receipt_type(verdict_receipt.receipt_type.as_str()) {
+            return Err(format!(
+                "receipt {} is not a verdict receipt",
+                draft.verdict_receipt_id
+            ));
+        }
+        let escrow_receipt_id = sanitize_optional_ref(draft.escrow_receipt_id.as_deref());
+        if let Some(escrow_receipt_id) = escrow_receipt_id.as_deref()
+            && self.get_receipt(escrow_receipt_id).is_none()
+        {
+            return Err(format!("escrow receipt {} not found", escrow_receipt_id));
+        }
+
+        let settled_at_ms = settled_at_ms.max(0);
+        let finding_digest = digest_for_text(finding_id);
+        let finding_key = finding_digest.strip_prefix("sha256:").unwrap_or("finding");
+        let normalized_work_unit_id = normalize_key(work_unit_id);
+        let normalized_idempotency_key = normalize_key(idempotency_key);
+        let policy_decision =
+            allow_policy_decision("white_hat_bounty_settlement", metadata.category.as_str(), metadata.severity);
+
+        let mut dispute_receipt_id = None::<String>;
+        if draft.disputed {
+            let dispute_id = format!(
+                "receipt.economy.bounty.dispute:{}:{}",
+                normalized_work_unit_id, finding_key
+            );
+            let dispute_reason = draft.dispute_reason.as_deref().unwrap_or_default().trim();
+            let mut evidence = vec![
+                policy_decision_evidence(&policy_decision),
+                EvidenceRef::new(
+                    "finding_ref",
+                    format!("oa://economy/findings/{finding_digest}"),
+                    finding_digest.clone(),
+                ),
+            ];
+            let mut linked = vec![draft.verdict_receipt_id.clone()];
+            if let Some(escrow_receipt_id) = escrow_receipt_id.as_deref() {
+                linked.push(escrow_receipt_id.to_string());
+            }
+            self.append_receipt_reference_links(&mut evidence, linked.as_slice());
+            let dispute_receipt = ReceiptBuilder::new(
+                dispute_id.clone(),
+                "economy.bounty.dispute.opened.v1",
+                settled_at_ms,
+                format!(
+                    "idemp.economy.bounty.dispute:{}:{}",
+                    normalized_idempotency_key, finding_key
+                ),
+                TraceContext {
+                    session_id: None,
+                    trajectory_hash: None,
+                    job_hash: None,
+                    run_id: Some(format!("white_hat_bounty_dispute:{work_unit_id}:{finding_key}")),
+                    work_unit_id: Some(work_unit_id.to_string()),
+                    contract_id: None,
+                    claim_id: None,
+                },
+                current_policy_context(),
+            )
+            .with_inputs_payload(json!({
+                "work_unit_id": work_unit_id,
+                "finding_digest": finding_digest,
+                "verdict_receipt_id": draft.verdict_receipt_id,
+                "escrow_receipt_id": escrow_receipt_id,
+                "dispute_reason": dispute_reason,
+                "dispute_bond_sats": draft.dispute_bond_sats,
+            }))
+            .with_outputs_payload(json!({
+                "status": "dispute_opened",
+                "work_unit_id": work_unit_id,
+                "finding_digest": finding_digest,
+                "source_tag": source_tag,
+            }))
+            .with_evidence(evidence)
+            .with_hints(ReceiptHints {
+                category: Some(metadata.category.clone()),
+                tfb_class: Some(metadata.tfb_class),
+                severity: Some(metadata.severity),
+                achieved_verification_tier: Some(VerificationTier::Tier2Heterogeneous),
+                verification_correlated: Some(false),
+                provenance_grade: Some(ProvenanceGrade::P2Lineage),
+                auth_assurance_level: Some(AuthAssuranceLevel::Authenticated),
+                personhood_proved: Some(false),
+                reason_code: Some(REASON_CODE_BOUNTY_DISPUTE_OPENED.to_string()),
+                notional: Some(btc_sats_money(draft.dispute_bond_sats)),
+                liability_premium: None,
+            })
+            .build();
+            self.append_receipt(dispute_receipt, source_tag);
+            if self.load_state == PaneLoadState::Error {
+                return Err(self
+                    .last_error
+                    .clone()
+                    .unwrap_or_else(|| "failed to emit bounty dispute receipt".to_string()));
+            }
+            dispute_receipt_id = Some(dispute_id);
+        }
+
+        let settlement_outcome = if draft.disputed { "withheld" } else { "paid" };
+        let settlement_reason_code = if draft.disputed {
+            REASON_CODE_BOUNTY_SETTLEMENT_WITHHELD
+        } else {
+            REASON_CODE_BOUNTY_SETTLEMENT_FINALIZED
+        };
+        let payout_sats = if draft.disputed { 0 } else { draft.payout_sats };
+        let settlement_receipt_id = format!(
+            "receipt.economy.bounty.settlement:{}:{}",
+            normalized_work_unit_id, finding_key
+        );
+        let mut settlement_evidence = vec![
+            policy_decision_evidence(&policy_decision),
+            EvidenceRef::new(
+                "finding_ref",
+                format!("oa://economy/findings/{finding_digest}"),
+                finding_digest.clone(),
+            ),
+        ];
+        let mut linked_receipt_ids = vec![draft.verdict_receipt_id.clone()];
+        if let Some(dispute_receipt_id) = dispute_receipt_id.as_ref() {
+            linked_receipt_ids.push(dispute_receipt_id.clone());
+        }
+        if let Some(escrow_receipt_id) = escrow_receipt_id.as_ref() {
+            linked_receipt_ids.push(escrow_receipt_id.clone());
+        }
+        self.append_receipt_reference_links(&mut settlement_evidence, linked_receipt_ids.as_slice());
+        let settlement_receipt = ReceiptBuilder::new(
+            settlement_receipt_id.clone(),
+            "economy.bounty.settlement.finalized.v1",
+            settled_at_ms,
+            format!(
+                "idemp.economy.bounty.settlement:{}:{}",
+                normalized_idempotency_key, finding_key
+            ),
+            TraceContext {
+                session_id: None,
+                trajectory_hash: None,
+                job_hash: None,
+                run_id: Some(format!("white_hat_bounty_settlement:{work_unit_id}:{finding_key}")),
+                work_unit_id: Some(work_unit_id.to_string()),
+                contract_id: None,
+                claim_id: None,
+            },
+            current_policy_context(),
+        )
+        .with_inputs_payload(json!({
+            "work_unit_id": work_unit_id,
+            "finding_digest": finding_digest,
+            "verdict_receipt_id": draft.verdict_receipt_id,
+            "dispute_receipt_id": dispute_receipt_id,
+            "escrow_receipt_id": escrow_receipt_id,
+            "payout_requested_sats": draft.payout_sats,
+            "dispute_bond_sats": draft.dispute_bond_sats,
+            "disputed": draft.disputed,
+        }))
+        .with_outputs_payload(json!({
+            "status": "settlement_finalized",
+            "work_unit_id": work_unit_id,
+            "finding_digest": finding_digest,
+            "settlement_outcome": settlement_outcome,
+            "payout_sats": payout_sats,
+            "source_tag": source_tag,
+        }))
+        .with_evidence(settlement_evidence)
+        .with_hints(ReceiptHints {
+            category: Some(metadata.category.clone()),
+            tfb_class: Some(metadata.tfb_class),
+            severity: Some(metadata.severity),
+            achieved_verification_tier: Some(VerificationTier::Tier2Heterogeneous),
+            verification_correlated: Some(false),
+            provenance_grade: Some(ProvenanceGrade::P2Lineage),
+            auth_assurance_level: Some(AuthAssuranceLevel::Authenticated),
+            personhood_proved: Some(false),
+            reason_code: Some(settlement_reason_code.to_string()),
+            notional: Some(btc_sats_money(payout_sats)),
+            liability_premium: None,
+        })
+        .build();
+        self.append_receipt(settlement_receipt, source_tag);
+        if self.load_state == PaneLoadState::Error {
+            return Err(self
+                .last_error
+                .clone()
+                .unwrap_or_else(|| "failed to emit bounty settlement receipt".to_string()));
+        }
+
+        let mut incident_tags = vec!["safety.white_hat_finding".to_string()];
+        if draft.disputed {
+            incident_tags.push("finance.claim_dispute".to_string());
+        }
+        let outcome_entry_id = self.record_outcome_registry_entry(
+            OutcomeRegistryEntryDraft {
+                idempotency_key: format!("{idempotency_key}:bounty_outcome"),
+                category: metadata.category.clone(),
+                tfb_class: metadata.tfb_class,
+                severity: metadata.severity,
+                verdict_outcome: if draft.disputed {
+                    "finding_disputed".to_string()
+                } else {
+                    "finding_verified".to_string()
+                },
+                settlement_outcome: settlement_outcome.to_string(),
+                claim_outcome: Some(if draft.disputed {
+                    "disputed".to_string()
+                } else {
+                    "none".to_string()
+                }),
+                remedy_outcome: Some(if draft.disputed {
+                    "dispute_open".to_string()
+                } else {
+                    "bounty_paid".to_string()
+                }),
+                incident_tags,
+                linked_receipt_ids: linked_receipt_ids
+                    .into_iter()
+                    .chain([settlement_receipt_id.clone()])
+                    .collect::<Vec<_>>(),
+                evidence_digests: vec![finding_digest.clone()],
+            },
+            settled_at_ms,
+            source_tag,
+        )?;
+
+        let incident_id = if let Some(mut incident_report) = draft.incident_report {
+            let mut incident_links = incident_report.linked_receipt_ids.clone();
+            incident_links.push(settlement_receipt_id.clone());
+            incident_links.push(draft.verdict_receipt_id.clone());
+            if let Some(dispute_receipt_id) = dispute_receipt_id.as_ref() {
+                incident_links.push(dispute_receipt_id.clone());
+            }
+            incident_report.linked_receipt_ids = canonical_receipt_ids(incident_links.as_slice());
+            Some(self.report_incident(incident_report, settled_at_ms, source_tag)?)
+        } else {
+            None
+        };
+
+        Ok(WhiteHatBountySettlementResult {
+            settlement_receipt_id,
+            dispute_receipt_id,
+            outcome_entry_id,
+            incident_id,
+        })
     }
 
     fn normalized_work_units(&self) -> Vec<WorkUnitMetadata> {
@@ -4112,6 +4643,10 @@ impl EarnKernelReceiptState {
             tfb_class: metadata.tfb_class,
             severity: metadata.severity,
             verification_budget_hint_sats: metadata.verification_budget_hint_sats,
+            template_kind: metadata.template_kind,
+            acceptance_criteria_ref: metadata.acceptance_criteria_ref,
+            coordinated_disclosure_ref: metadata.coordinated_disclosure_ref,
+            mandatory_provenance: metadata.mandatory_provenance,
             rollback_plan_ref: metadata.rollback_plan_ref,
             compensating_action_plan_ref: metadata.compensating_action_plan_ref,
         };
@@ -5433,6 +5968,17 @@ fn work_category_for_demand_source(source: JobDemandSource) -> &'static str {
     }
 }
 
+fn is_white_hat_category(category: &str) -> bool {
+    matches!(
+        normalize_key(category).as_str(),
+        "audit" | "redteam" | "incident_repro"
+    )
+}
+
+fn is_verdict_receipt_type(receipt_type: &str) -> bool {
+    normalize_key(receipt_type).contains("verdict")
+}
+
 fn idempotency_scope_for_receipt(receipt: &Receipt) -> String {
     format!(
         "{}:{}",
@@ -5462,6 +6008,10 @@ fn work_unit_metadata_payload(
             "asset": "btc",
             "amount_sats": metadata.verification_budget_hint_sats,
         },
+        "template_kind": metadata.template_kind.map(WhiteHatWorkUnitKind::label),
+        "acceptance_criteria_ref": metadata.acceptance_criteria_ref.clone(),
+        "coordinated_disclosure_ref": metadata.coordinated_disclosure_ref.clone(),
+        "mandatory_provenance": metadata.mandatory_provenance,
         "rollback_plan_ref": metadata.rollback_plan_ref.clone(),
         "compensating_action_plan_ref": metadata.compensating_action_plan_ref.clone(),
     })
@@ -10027,6 +10577,90 @@ mod tests {
         }
     }
 
+    fn fixture_white_hat_template_draft(
+        work_unit_id: &str,
+        idempotency_key: &str,
+        kind: WhiteHatWorkUnitKind,
+    ) -> WhiteHatWorkUnitTemplateDraft {
+        WhiteHatWorkUnitTemplateDraft {
+            work_unit_id: work_unit_id.to_string(),
+            idempotency_key: idempotency_key.to_string(),
+            kind,
+            tfb_class: FeedbackLatencyClass::Long,
+            severity: SeverityClass::High,
+            acceptance_criteria_ref: format!("oa://audits/{work_unit_id}/acceptance"),
+            coordinated_disclosure_ref: format!("oa://audits/{work_unit_id}/disclosure"),
+            mandatory_provenance: true,
+            verification_budget_hint_sats: Some(2_000),
+        }
+    }
+
+    fn fixture_white_hat_bounty_settlement_draft(
+        work_unit_id: &str,
+        idempotency_key: &str,
+        verdict_receipt_id: &str,
+    ) -> WhiteHatBountySettlementDraft {
+        WhiteHatBountySettlementDraft {
+            work_unit_id: work_unit_id.to_string(),
+            idempotency_key: idempotency_key.to_string(),
+            finding_id: format!("finding:{work_unit_id}:critical-path"),
+            verdict_receipt_id: verdict_receipt_id.to_string(),
+            payout_sats: 1_500,
+            dispute_bond_sats: 250,
+            disputed: false,
+            dispute_reason: None,
+            escrow_receipt_id: None,
+            incident_report: None,
+        }
+    }
+
+    fn append_synthetic_verdict_receipt(
+        state: &mut EarnKernelReceiptState,
+        receipt_id: &str,
+        work_unit_id: &str,
+        created_at_ms: i64,
+    ) {
+        let receipt = ReceiptBuilder::new(
+            receipt_id.to_string(),
+            "economy.verdict.finalized.v1".to_string(),
+            created_at_ms,
+            format!("idemp.synthetic.verdict:{receipt_id}"),
+            TraceContext {
+                work_unit_id: Some(work_unit_id.to_string()),
+                ..TraceContext::default()
+            },
+            current_policy_context(),
+        )
+        .with_inputs_payload(json!({
+            "work_unit_id": work_unit_id,
+            "verdict": "finding_verified",
+        }))
+        .with_outputs_payload(json!({
+            "status": "finalized",
+        }))
+        .with_evidence(vec![EvidenceRef::new(
+            "verdict_evidence_ref",
+            format!("oa://verdicts/{receipt_id}"),
+            digest_for_text(receipt_id),
+        )])
+        .with_hints(ReceiptHints {
+            category: Some("audit".to_string()),
+            tfb_class: Some(FeedbackLatencyClass::Long),
+            severity: Some(SeverityClass::High),
+            achieved_verification_tier: Some(VerificationTier::Tier2Heterogeneous),
+            verification_correlated: Some(false),
+            provenance_grade: Some(ProvenanceGrade::P2Lineage),
+            auth_assurance_level: Some(AuthAssuranceLevel::Authenticated),
+            personhood_proved: Some(false),
+            reason_code: None,
+            notional: None,
+            liability_premium: None,
+        })
+        .build();
+        state.append_receipt(receipt, "test.synthetic.verdict");
+        assert_eq!(state.load_state, PaneLoadState::Ready);
+    }
+
     fn append_synthetic_linked_receipt(
         state: &mut EarnKernelReceiptState,
         receipt_id: &str,
@@ -11976,6 +12610,193 @@ mod tests {
             .linkage_edges
             .iter()
             .any(|edge| edge.relation_kind == "anchor_snapshot"));
+    }
+
+    #[test]
+    fn white_hat_template_registration_is_idempotent_and_receipted() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        let draft = fixture_white_hat_template_draft(
+            "work-unit:audit:001",
+            "white-hat-template-audit-001",
+            WhiteHatWorkUnitKind::Audit,
+        );
+
+        let first_receipt_id = state
+            .register_white_hat_work_unit_template(
+                draft.clone(),
+                1_762_000_090_000,
+                "test.white_hat.template",
+            )
+            .expect("template registration");
+        let second_receipt_id = state
+            .register_white_hat_work_unit_template(
+                draft,
+                1_762_000_090_000,
+                "test.white_hat.template.replay",
+            )
+            .expect("template idempotent replay");
+        assert_eq!(first_receipt_id, second_receipt_id);
+        assert_eq!(
+            state
+                .receipts
+                .iter()
+                .filter(|receipt| receipt.receipt_type == "economy.work_unit.template_registered.v1")
+                .count(),
+            1
+        );
+        let metadata = state
+            .work_units
+            .get("work-unit:audit:001")
+            .expect("work unit metadata");
+        assert_eq!(metadata.category, "audit");
+        assert_eq!(metadata.template_kind, Some(WhiteHatWorkUnitKind::Audit));
+        assert!(metadata.mandatory_provenance);
+        assert!(metadata.acceptance_criteria_ref.is_some());
+        assert!(metadata.coordinated_disclosure_ref.is_some());
+    }
+
+    #[test]
+    fn white_hat_bounty_dispute_flow_links_receipts_and_exports_outcomes() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        state
+            .register_white_hat_work_unit_template(
+                fixture_white_hat_template_draft(
+                    "work-unit:redteam:001",
+                    "white-hat-template-redteam-001",
+                    WhiteHatWorkUnitKind::Redteam,
+                ),
+                1_762_000_100_000,
+                "test.white_hat.template",
+            )
+            .expect("template registration");
+        append_synthetic_verdict_receipt(
+            &mut state,
+            "receipt.verdict.whitehat.001",
+            "work-unit:redteam:001",
+            1_762_000_110_000,
+        );
+
+        let mut draft = fixture_white_hat_bounty_settlement_draft(
+            "work-unit:redteam:001",
+            "white-hat-bounty-settlement-001",
+            "receipt.verdict.whitehat.001",
+        );
+        draft.disputed = true;
+        draft.dispute_reason = Some("potential duplicate finding; opening dispute".to_string());
+        draft.incident_report = Some(fixture_incident_draft(
+            "receipt.verdict.whitehat.001",
+            "white-hat-dispute-incident-001",
+        ));
+
+        let result = state
+            .settle_white_hat_bounty(draft, 1_762_000_120_000, "test.white_hat.bounty")
+            .expect("bounty settlement");
+        let dispute_receipt_id = result
+            .dispute_receipt_id
+            .clone()
+            .expect("dispute receipt should exist");
+        let settlement_receipt = state
+            .get_receipt(result.settlement_receipt_id.as_str())
+            .expect("settlement receipt");
+        assert_eq!(
+            settlement_receipt.hints.reason_code.as_deref(),
+            Some(REASON_CODE_BOUNTY_SETTLEMENT_WITHHELD)
+        );
+        assert!(settlement_receipt.evidence.iter().any(|evidence| {
+            evidence.kind == "receipt_ref"
+                && evidence.uri == "oa://receipts/receipt.verdict.whitehat.001"
+        }));
+        assert!(settlement_receipt.evidence.iter().any(|evidence| {
+            evidence.kind == "receipt_ref"
+                && evidence.uri == format!("oa://receipts/{dispute_receipt_id}")
+        }));
+        let dispute_receipt = state
+            .get_receipt(dispute_receipt_id.as_str())
+            .expect("dispute receipt");
+        assert_eq!(
+            dispute_receipt.hints.reason_code.as_deref(),
+            Some(REASON_CODE_BOUNTY_DISPUTE_OPENED)
+        );
+        let outcome = state
+            .latest_outcome_registry_entry_by_id(result.outcome_entry_id.as_str())
+            .expect("outcome entry");
+        assert_eq!(outcome.settlement_outcome, "withheld");
+        assert_eq!(outcome.claim_outcome.as_deref(), Some("disputed"));
+        assert!(
+            outcome
+                .linked_receipt_ids
+                .iter()
+                .any(|receipt_id| receipt_id == result.settlement_receipt_id.as_str())
+        );
+        let incident_id = result.incident_id.expect("incident export");
+        assert!(state.latest_incident_by_id(incident_id.as_str()).is_some());
+    }
+
+    #[test]
+    fn white_hat_bounty_settlement_is_idempotent() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        state
+            .register_white_hat_work_unit_template(
+                fixture_white_hat_template_draft(
+                    "work-unit:incident-repro:001",
+                    "white-hat-template-incident-repro-001",
+                    WhiteHatWorkUnitKind::IncidentRepro,
+                ),
+                1_762_000_100_000,
+                "test.white_hat.template",
+            )
+            .expect("template registration");
+        append_synthetic_verdict_receipt(
+            &mut state,
+            "receipt.verdict.whitehat.002",
+            "work-unit:incident-repro:001",
+            1_762_000_110_000,
+        );
+        let draft = fixture_white_hat_bounty_settlement_draft(
+            "work-unit:incident-repro:001",
+            "white-hat-bounty-settlement-002",
+            "receipt.verdict.whitehat.002",
+        );
+
+        let first = state
+            .settle_white_hat_bounty(
+                draft.clone(),
+                1_762_000_120_000,
+                "test.white_hat.bounty",
+            )
+            .expect("first settlement");
+        let second = state
+            .settle_white_hat_bounty(
+                draft,
+                1_762_000_120_000,
+                "test.white_hat.bounty.replay",
+            )
+            .expect("settlement replay");
+        assert_eq!(first.settlement_receipt_id, second.settlement_receipt_id);
+        assert_eq!(first.outcome_entry_id, second.outcome_entry_id);
+        assert_eq!(first.dispute_receipt_id, None);
+        assert_eq!(
+            state
+                .receipts
+                .iter()
+                .filter(|receipt| receipt.receipt_type == "economy.bounty.settlement.finalized.v1")
+                .count(),
+            1
+        );
+        assert_eq!(
+            state
+                .outcome_registry_entries
+                .iter()
+                .filter(|entry| entry.entry_id == first.outcome_entry_id)
+                .count(),
+            1
+        );
     }
 
     #[test]
