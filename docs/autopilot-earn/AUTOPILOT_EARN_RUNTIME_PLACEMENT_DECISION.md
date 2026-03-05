@@ -18,7 +18,7 @@ Terminology note:
 
 ## Rationale
 
-- `docs/OWNERSHIP.md` assigns product workflow/state authority to `apps/autopilot-desktop`.
+- `../OWNERSHIP.md` assigns product workflow/state authority to `apps/autopilot-desktop`.
 - Existing runtime state lanes (`provider_runtime`, `job_inbox`, `active_job`, `job_history`, `wallet_reconciliation`) are already app-owned and integrated with UI behavior.
 - Pulling archived `pylon`/`compute` crates back into this pruned repo would re-expand scope and violate MVP simplification goals.
 

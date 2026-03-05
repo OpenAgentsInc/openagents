@@ -14,17 +14,17 @@ This is not a full Hydra/Aegis build plan. It is a kernel-alignment audit: recei
 
 Earn/MVP product authority:
 - `docs/MVP.md`
-- `docs/EARN.md`
-- `docs/AUTOPILOT_EARN_MVP.md`
+- `docs/autopilot-earn/README.md`
+- `docs/autopilot-earn/AUTOPILOT_EARN_MVP.md`
 
 Canonical Earn implementation status + evidence:
-- `docs/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md` (canonical status authority)
-- `docs/AUTOPILOT_EARN_MVP_IMPLEMENTATION_LOG.md` (historical evidence appendix)
-- `docs/AUTOPILOT_EARN_MVP_TEST_HARNESS.md`
-- `docs/AUTOPILOT_EARN_RECIPROCAL_LOOP_RUNBOOK.md`
-- `docs/AUTOPILOT_EARNINGS_AUTOMATION.md`
-- `docs/AUTOPILOT_EARNINGS_OPERATOR_RUNBOOK.md`
-- `docs/AUTOPILOT_EARNINGS_ROLLOUT_PLAN.md`
+- `docs/autopilot-earn/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md` (canonical status authority)
+- `docs/autopilot-earn/AUTOPILOT_EARN_MVP_IMPLEMENTATION_LOG.md` (historical evidence appendix)
+- `docs/autopilot-earn/AUTOPILOT_EARN_MVP_TEST_HARNESS.md`
+- `docs/autopilot-earn/AUTOPILOT_EARN_RECIPROCAL_LOOP_RUNBOOK.md`
+- `docs/autopilot-earn/AUTOPILOT_EARNINGS_AUTOMATION.md`
+- `docs/autopilot-earn/AUTOPILOT_EARNINGS_OPERATOR_RUNBOOK.md`
+- `docs/autopilot-earn/AUTOPILOT_EARNINGS_ROLLOUT_PLAN.md`
 
 Authority + sync posture:
 - `docs/adr/ADR-0001-spacetime-domain-authority-matrix.md`
@@ -37,7 +37,7 @@ Economy Kernel normative targets (this repo’s kernel spec/proto plan):
 
 ## Earn MVP Loop (What Must Be True)
 
-From `docs/MVP.md` and `docs/AUTOPILOT_EARN_MVP.md`, the Earn MVP “proof loop” is:
+From `docs/MVP.md` and `docs/autopilot-earn/AUTOPILOT_EARN_MVP.md`, the Earn MVP “proof loop” is:
 
 1. User presses `Go Online`.
 2. Desktop receives at least one paid NIP-90 job and executes it.
@@ -94,7 +94,7 @@ This section is “what we can claim is implemented” based on the repo’s can
 
 ### 1) Earn MVP loop completion is claimed as implemented
 
-`docs/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md` asserts all acceptance gates are implemented and closed:
+`docs/autopilot-earn/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md` asserts all acceptance gates are implemented and closed:
 - Mission Control first-run loop
 - Relay-backed NIP-90 provider runtime (request/result/feedback)
 - Wallet-confirmed payout gate
@@ -109,9 +109,9 @@ Docs are consistent that payout truth comes from:
 - reconciliation rules that reject synthetic pointers.
 
 Evidence surfaces:
-- `docs/EARN.md` (“authoritative sources” section)
-- `docs/AUTOPILOT_EARN_MVP_TEST_HARNESS.md` (wallet-confirmed payout gating harness)
-- `docs/AUTOPILOT_EARNINGS_OPERATOR_RUNBOOK.md` (false-success incident definition + containment)
+- `docs/autopilot-earn/README.md` (“authoritative sources” section)
+- `docs/autopilot-earn/AUTOPILOT_EARN_MVP_TEST_HARNESS.md` (wallet-confirmed payout gating harness)
+- `docs/autopilot-earn/AUTOPILOT_EARNINGS_OPERATOR_RUNBOOK.md` (false-success incident definition + containment)
 
 ### 3) Deterministic provider state machine exists (Earn-specific)
 
@@ -122,7 +122,7 @@ Panes and harness docs describe an explicit Earn state machine:
 
 Evidence surfaces:
 - `docs/PANES.md` (pane contracts and explicit state machines)
-- `docs/AUTOPILOT_EARN_MVP_TEST_HARNESS.md` (replay-safe apply, duplicate suppression, crash recovery, relay loss recovery harnesses)
+- `docs/autopilot-earn/AUTOPILOT_EARN_MVP_TEST_HARNESS.md` (replay-safe apply, duplicate suppression, crash recovery, relay loss recovery harnesses)
 
 ### 4) Presence/online counters are treated as authority-scoped
 

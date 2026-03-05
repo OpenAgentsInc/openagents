@@ -18,15 +18,15 @@ Documents:
 
 - `docs/MVP.md`
 - `docs/OWNERSHIP.md`
-- `docs/EARN.md`
-- `docs/AUTOPILOT_EARN_MVP.md`
-- `docs/AUTOPILOT_EARNINGS_AUTOMATION.md`
-- `docs/AUTOPILOT_EARNINGS_OPERATOR_RUNBOOK.md`
-- `docs/AUTOPILOT_EARNINGS_ROLLOUT_PLAN.md`
+- `docs/autopilot-earn/README.md`
+- `docs/autopilot-earn/AUTOPILOT_EARN_MVP.md`
+- `docs/autopilot-earn/AUTOPILOT_EARNINGS_AUTOMATION.md`
+- `docs/autopilot-earn/AUTOPILOT_EARNINGS_OPERATOR_RUNBOOK.md`
+- `docs/autopilot-earn/AUTOPILOT_EARNINGS_ROLLOUT_PLAN.md`
 - `docs/SOLVER.md`
-- `docs/AUTOPILOT_EARN_MVP_IMPLEMENTATION_LOG.md`
-- `docs/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md`
-- `docs/AUTOPILOT_EARN_MVP_TEST_HARNESS.md`
+- `docs/autopilot-earn/AUTOPILOT_EARN_MVP_IMPLEMENTATION_LOG.md`
+- `docs/autopilot-earn/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md`
+- `docs/autopilot-earn/AUTOPILOT_EARN_MVP_TEST_HARNESS.md`
 - `docs/plans/hydra-x.md`
 - `docs/plans/hydra-liquidity-engine.md`
 - `docs/plans/aegis.md`
@@ -102,14 +102,14 @@ Red:
   - Added full-loop desktop integration harness test covering relay ingress, local job lifecycle progression, result/feedback publishing, and wallet-confirmed scoreboard settlement in one path (`apps/autopilot-desktop/src/provider_nip90_lane.rs`: `desktop_earn_harness_relay_execute_publish_wallet_confirm_end_to_end`).
   - Added relay mock harness helper that supports both live request delivery and publish-event capture/ack in a single websocket session (`apps/autopilot-desktop/src/provider_nip90_lane.rs`).
   - Wired the new harness into the Earn regression gate so this loop is continuously enforced (`scripts/lint/autopilot-earnings-epic-test-gate.sh`).
-  - Updated harness documentation to reflect the new end-to-end desktop flow coverage (`docs/AUTOPILOT_EARN_MVP_TEST_HARNESS.md`).
+  - Updated harness documentation to reflect the new end-to-end desktop flow coverage (`docs/autopilot-earn/AUTOPILOT_EARN_MVP_TEST_HARNESS.md`).
 - 2026-03-04: `#2882` (starter-demand generator with budget/kill-switch controls) implemented.
   - Added deterministic starter-demand dispatch state with explicit controls for sats budget cap, dispatch interval, max inflight quests, and a manual kill switch (`apps/autopilot-desktop/src/state/operations.rs`).
   - Added automatic starter-demand generator tick in desktop background loop that dispatches starter quests only while provider is online and relay ingress is connected (`apps/autopilot-desktop/src/input.rs`, `apps/autopilot-desktop/src/input/actions.rs`).
   - Added controlled starter-demand request publication path that queues AC credit intent, records network request submission, and injects starter ingress requests into the provider inbox (`apps/autopilot-desktop/src/input/actions.rs`).
   - Added starter-pane kill-switch UI action and status rendering (`apps/autopilot-desktop/src/pane_system.rs`, `apps/autopilot-desktop/src/pane_renderer.rs`, `apps/autopilot-desktop/src/input/tool_bridge.rs`).
   - Added automated coverage for budget/interval/kill-switch/rollback behavior and wired it into the earnings epic gate (`apps/autopilot-desktop/src/app_state.rs`, `scripts/lint/autopilot-earnings-epic-test-gate.sh`).
-  - Updated harness documentation with starter-demand controls coverage (`docs/AUTOPILOT_EARN_MVP_TEST_HARNESS.md`).
+  - Updated harness documentation with starter-demand controls coverage (`docs/autopilot-earn/AUTOPILOT_EARN_MVP_TEST_HARNESS.md`).
 - 2026-03-04: `#2883` (starter job provenance and receipt tagging) implemented.
   - Added explicit demand-source tagging across job ingest and lifecycle records (`open-network` vs `starter-demand`) in inbox, active-job, and job-history state models (`apps/autopilot-desktop/src/state/job_inbox.rs`, `apps/autopilot-desktop/src/app_state.rs`).
   - Wired source tagging on ingress paths: live relay requests are tagged open-network, while seeded starter dispatch requests are tagged starter-demand (`apps/autopilot-desktop/src/provider_nip90_lane.rs`, `apps/autopilot-desktop/src/input/actions.rs`).
@@ -128,9 +128,9 @@ Red:
   - Relay retry action now sets `connecting` only and queues reconnect sync, leaving connected/latency state to transport authority (`apps/autopilot-desktop/src/state/operations.rs`, `apps/autopilot-desktop/src/input/actions.rs`).
   - Added/updated automated coverage for transport relay snapshot wiring and retry semantics; wired relay-retry regression into the earnings gate script (`apps/autopilot-desktop/src/provider_nip90_lane.rs`, `apps/autopilot-desktop/src/app_state.rs`, `scripts/lint/autopilot-earnings-epic-test-gate.sh`).
 - 2026-03-04: `#2886` (epic tracker + implementation log reconciliation) implemented.
-  - Updated `docs/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md` with a reconciled gate-status matrix and explicit follow-on issue state table for `#2877` through `#2890`.
+  - Updated `docs/autopilot-earn/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md` with a reconciled gate-status matrix and explicit follow-on issue state table for `#2877` through `#2890`.
   - Clarified the original `#2814`-`#2876` list as historical scope and documented that open reconciliation issues block final completion claims.
-  - Updated `docs/AUTOPILOT_EARN_MVP_IMPLEMENTATION_LOG.md` header/claims to separate historical evidence from live completion status, plus added reconciliation addendum coverage for `#2877`-`#2890`.
+  - Updated `docs/autopilot-earn/AUTOPILOT_EARN_MVP_IMPLEMENTATION_LOG.md` header/claims to separate historical evidence from live completion status, plus added reconciliation addendum coverage for `#2877`-`#2890`.
 - 2026-03-04: `#2887` (failure taxonomy + user-facing diagnostics) implemented.
   - Added canonical provider failure classes (`relay`, `execution`, `payment`, `reconciliation`) as typed runtime state and surfaced them in Provider Status diagnostics (`apps/autopilot-desktop/src/state/provider_runtime.rs`, `apps/autopilot-desktop/src/pane_renderer.rs`).
   - Wired deterministic failure classification with precedence in scoreboard refresh path so operator diagnostics consistently map relay, execution, wallet/payment, and reconciliation mismatch failures (`apps/autopilot-desktop/src/input/actions.rs`).
@@ -146,8 +146,8 @@ Red:
   - Restricted tool-bridge pane resolution/listing so simulation panes are not discoverable/actionable unless explicitly enabled (`apps/autopilot-desktop/src/input/tool_bridge.rs`).
   - Added deterministic coverage for runtime simulation-gate predicates and command/bridge isolation behavior; wired checks into the earnings epic gate (`apps/autopilot-desktop/src/pane_registry.rs`, `apps/autopilot-desktop/src/render.rs`, `apps/autopilot-desktop/src/input/tool_bridge.rs`, `scripts/lint/autopilot-earnings-epic-test-gate.sh`).
 - 2026-03-04: `#2890` (docs consolidation for canonical status) implemented.
-  - Declared `docs/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md` as the single canonical current-status source and aligned reconciliation gate language to fully closed stream state.
-  - Demoted `docs/AUTOPILOT_EARN_MVP_IMPLEMENTATION_LOG.md` to explicit historical appendix role and removed live-status ambiguity.
+  - Declared `docs/autopilot-earn/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md` as the single canonical current-status source and aligned reconciliation gate language to fully closed stream state.
+  - Demoted `docs/autopilot-earn/AUTOPILOT_EARN_MVP_IMPLEMENTATION_LOG.md` to explicit historical appendix role and removed live-status ambiguity.
   - Added canonical-status assertions to docs reconciliation lint checks and retained them in the earnings epic gate to prevent status-authority drift (`scripts/lint/autopilot-earn-doc-reconciliation-check.sh`, `scripts/lint/autopilot-earnings-epic-test-gate.sh`).
 
 ## MVP Requirement Matrix (from `docs/MVP.md`)
@@ -292,9 +292,9 @@ Impact:
 ## 8) Doc/issue closure drift vs code reality
 
 - Epic tracker marks #2814-#2876 closed.
-- Evidence: `docs/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md:28-90`.
+- Evidence: `docs/autopilot-earn/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md:28-90`.
 - Acceptance gate still requires relay-backed provider runtime and live public stats.
-- Evidence: `docs/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md:15-23`.
+- Evidence: `docs/autopilot-earn/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md:15-23`.
 - Code evidence above indicates those requirements are only partial.
 
 Impact:
@@ -416,7 +416,7 @@ Autopilot Earn MVP should be considered complete when all are true:
 
 Docs correctly frame compute as the MVP revenue lane and liquidity solving as future lane:
 
-- `docs/EARN.md:10-16`
+- `docs/autopilot-earn/README.md:10-16`
 - `docs/plans/hydra-x.md:7-11`
 - `docs/plans/hydra-x.md:71-76`
 
