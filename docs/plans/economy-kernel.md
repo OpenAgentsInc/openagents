@@ -103,7 +103,7 @@ These invariants apply to all modules, flows, and extensions.
 
 ### 1.1 Authority transport
 
-1. **All authority mutations MUST occur via authenticated HTTP only.**
+1. **All authority mutations MUST occur via authenticated HTTP only**, to TreasuryRouter or to the Kernel Authority API. (Clients such as Autopilot call TreasuryRouter; TreasuryRouter calls the Kernel Authority API.)
    Authority mutation includes any action that changes:
 
 * payments, settlement, refunds, escrow, FX settlement
@@ -344,6 +344,27 @@ The Economy Kernel is operated by distinct roles. These roles exist to make auth
 * **Disputes:** Claims may be opened by Buyer/Operator (and others if policy allows), but resolution MUST be performed by Adjudicator policy lanes and must emit claim-resolution receipts.
 * **Pool-impacting actions:** MUST be guarded by Signer Set thresholds when above policy-defined risk limits.
 
+### 2.1.2 Verifier assignment, payout linkage, and liability posture (normative)
+
+Verification assignment MUST be explicit, deterministic, and hash-bound before verdict finalization.
+
+**VerificationAssignment modes**
+
+* `POLICY_SELECTED_SET` (default if unspecified)
+* `BUYER_SELECTED`
+* `VERIFIER_MARKET` (optional lane, policy-gated)
+
+**Required semantics**
+
+1. Before `FinalizeVerdict`, the contract MUST reference an assignment object/receipt (or equivalent hash-bound reference) that includes assignment mode, assigned verifier/adjudicator identities (or market binding ref), and assignment timestamp.
+2. Finalizing a verdict without assignment linkage MUST be denied/withheld with stable `reason_code = VERIFICATION_ASSIGNMENT_MISSING`.
+3. Where verifier work is paid, payout receipts MUST link to both the assignment reference and the final verdict receipt.
+4. Verifier compensation MUST debit the explicit `verification_fee` lane (or explicitly record zero-fee policy posture); implicit payouts are not allowed.
+5. Verifier liability posture MUST be explicit per slice:
+   * default posture: verifier is economically non-liable and reputationally accountable only,
+   * optional posture: verifier bond/slash enabled by policy, with explicit reserve/draw/release receipts and stable slash reason codes.
+6. If verifier bond/slash posture is enabled, contract/policy terms MUST include exposure cap and slash-policy linkage; otherwise verifier liability defaults to non-liable.
+
 ### 2.2 Required WorkUnit metadata (new)
 
 To implement verification-as-bottleneck correctly, every WorkUnit MUST include:
@@ -455,12 +476,22 @@ These modifiers MUST be receipt-derived, policy-bounded, and traceable to snapsh
 8. Claims/disputes (optional)
 9. Finalize and release remaining collateral
 
+### 3.1.1 Matching boundary (normative)
+
+By default, kernel authority semantics are post-match execution semantics.
+
+1. Worker/verifier discovery or matchmaking protocols are out of kernel mutation scope unless an optional market module is explicitly enabled by policy.
+2. Regardless of discovery path, authority actions MUST receive explicit worker and verifier-assignment identities/references as immutable request inputs.
+3. Discovery/matching events MUST NOT mutate money, liability, verdict, breaker state, or snapshot state unless they are converted into authenticated HTTP authority actions with receipts.
+
 ### 3.2 Service responsibilities
 
 * **TreasuryRouter:** decides what should happen under policy
 * **Kernel:** performs authority actions and emits receipts
 * **Wallet Executor:** canonical custody boundary, produces settlement proofs
 * **Liquidity backends:** internal plumbing; never the external interface
+
+**Where TreasuryRouter and the Kernel run.** They are **server-side services** (backend infrastructure), not on the user’s machine and not on Nostr or Spacetime. The desktop app (Autopilot) runs on the user’s computer and sends authority requests over HTTPS to TreasuryRouter; TreasuryRouter and the Kernel Authority API run in an environment the client can reach (e.g. operator-hosted or self-hosted). Nostr is used for coordination and identity; Spacetime for sync/presence. Authority lives only in that HTTP-accessible backend.
 
 **Kernel services are execution, not product UI.** The kernel is invoked by Autopilot, Marketplace, and TreasuryRouter; it does not define UI behavior.
 
@@ -936,6 +967,13 @@ Provides:
 * tiered verification planning
 * verdict finalization with evidence and independence metadata
 * emits verification receipts that gate settlement
+
+**Verifier assignment and payment requirements (normative)**
+
+1. Verification execution MUST bind to an explicit assignment reference created before verdict finalization.
+2. Verdict receipts MUST include hash-bound assignment linkage.
+3. If verification compensation is enabled, settlement receipts MUST include verifier payout linkage and explicit `verification_fee` accounting.
+4. Verifier liability posture (non-liable default or bond/slash-enabled) MUST be policy-addressable and receipted.
 
 ### 6.6 Liability Engine (Warranties + Claims)
 
