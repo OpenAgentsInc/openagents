@@ -57,6 +57,30 @@ pub struct IncidentBucketRow {
     pub near_miss_rate: f64,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct OutcomeDistributionRow {
+    pub category: String,
+    pub tfb_class: FeedbackLatencyClass,
+    pub severity: SeverityClass,
+    pub verdict_outcome: String,
+    pub settlement_outcome: String,
+    pub claim_outcome: String,
+    pub remedy_outcome: String,
+    pub count_24h: u64,
+    pub share_24h: f64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct OutcomeKeyRateRow {
+    pub category: String,
+    pub tfb_class: FeedbackLatencyClass,
+    pub severity: SeverityClass,
+    pub entries_24h: u64,
+    pub settlement_success_rate: f64,
+    pub claim_rate: f64,
+    pub remedy_rate: f64,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct RollbackReasonCodeRow {
     pub reason_code: String,
@@ -95,6 +119,10 @@ pub struct EconomySnapshot {
     pub top_drift_signals: Vec<DriftSignalSummary>,
     #[serde(default)]
     pub incident_buckets: Vec<IncidentBucketRow>,
+    #[serde(default)]
+    pub outcome_distribution: Vec<OutcomeDistributionRow>,
+    #[serde(default)]
+    pub outcome_key_rates: Vec<OutcomeKeyRateRow>,
     #[serde(default)]
     pub rollback_attempts_24h: u64,
     #[serde(default)]
@@ -479,6 +507,148 @@ fn build_snapshot(
             .cmp(&rhs.taxonomy_code)
             .then_with(|| lhs.severity.cmp(&rhs.severity))
     });
+    let mut outcome_distribution_counts = BTreeMap::<
+        (
+            String,
+            FeedbackLatencyClass,
+            SeverityClass,
+            String,
+            String,
+            String,
+            String,
+        ),
+        u64,
+    >::new();
+    let mut outcome_key_rate_counts =
+        BTreeMap::<(String, FeedbackLatencyClass, SeverityClass), (u64, u64, u64, u64)>::new();
+    for receipt in scoped_receipts
+        .iter()
+        .copied()
+        .filter(|receipt| is_outcome_registry_receipt(receipt))
+    {
+        let Some(meta) = outcome_meta_for_receipt(receipt) else {
+            continue;
+        };
+        let category = receipt
+            .hints
+            .category
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string());
+        let tfb_class = receipt
+            .hints
+            .tfb_class
+            .unwrap_or(FeedbackLatencyClass::FeedbackLatencyClassUnspecified);
+        let severity = receipt
+            .hints
+            .severity
+            .unwrap_or(SeverityClass::SeverityClassUnspecified);
+        let claim_outcome = meta
+            .claim_outcome
+            .clone()
+            .unwrap_or_else(|| "none".to_string());
+        let remedy_outcome = meta
+            .remedy_outcome
+            .clone()
+            .unwrap_or_else(|| "none".to_string());
+        let distribution_key = (
+            category.clone(),
+            tfb_class,
+            severity,
+            meta.verdict_outcome.clone(),
+            meta.settlement_outcome.clone(),
+            claim_outcome,
+            remedy_outcome,
+        );
+        let distribution_entry = outcome_distribution_counts
+            .entry(distribution_key)
+            .or_insert(0);
+        *distribution_entry = distribution_entry.saturating_add(1);
+
+        let rates_entry = outcome_key_rate_counts
+            .entry((category, tfb_class, severity))
+            .or_insert((0, 0, 0, 0));
+        rates_entry.0 = rates_entry.0.saturating_add(1);
+        if is_success_outcome_label(meta.settlement_outcome.as_str()) {
+            rates_entry.1 = rates_entry.1.saturating_add(1);
+        }
+        if meta
+            .claim_outcome
+            .as_deref()
+            .is_some_and(is_present_outcome_label)
+        {
+            rates_entry.2 = rates_entry.2.saturating_add(1);
+        }
+        if meta
+            .remedy_outcome
+            .as_deref()
+            .is_some_and(is_present_outcome_label)
+        {
+            rates_entry.3 = rates_entry.3.saturating_add(1);
+        }
+    }
+    let total_outcome_entries = outcome_distribution_counts
+        .values()
+        .copied()
+        .fold(0u64, u64::saturating_add);
+    let mut outcome_distribution = outcome_distribution_counts
+        .into_iter()
+        .map(
+            |(
+                (
+                    category,
+                    tfb_class,
+                    severity,
+                    verdict_outcome,
+                    settlement_outcome,
+                    claim_outcome,
+                    remedy_outcome,
+                ),
+                count_24h,
+            )| OutcomeDistributionRow {
+                category,
+                tfb_class,
+                severity,
+                verdict_outcome,
+                settlement_outcome,
+                claim_outcome,
+                remedy_outcome,
+                count_24h,
+                share_24h: ratio(count_24h, total_outcome_entries),
+            },
+        )
+        .collect::<Vec<_>>();
+    outcome_distribution.sort_by(|lhs, rhs| {
+        lhs.category
+            .cmp(&rhs.category)
+            .then_with(|| lhs.tfb_class.cmp(&rhs.tfb_class))
+            .then_with(|| lhs.severity.cmp(&rhs.severity))
+            .then_with(|| lhs.verdict_outcome.cmp(&rhs.verdict_outcome))
+            .then_with(|| lhs.settlement_outcome.cmp(&rhs.settlement_outcome))
+            .then_with(|| lhs.claim_outcome.cmp(&rhs.claim_outcome))
+            .then_with(|| lhs.remedy_outcome.cmp(&rhs.remedy_outcome))
+    });
+    let mut outcome_key_rates = outcome_key_rate_counts
+        .into_iter()
+        .map(
+            |((category, tfb_class, severity), (entries_24h, settled, claims, remedies))| {
+                OutcomeKeyRateRow {
+                    category,
+                    tfb_class,
+                    severity,
+                    entries_24h,
+                    settlement_success_rate: ratio(settled, entries_24h),
+                    claim_rate: ratio(claims, entries_24h),
+                    remedy_rate: ratio(remedies, entries_24h),
+                }
+            },
+        )
+        .collect::<Vec<_>>();
+    outcome_key_rates.sort_by(|lhs, rhs| {
+        lhs.category
+            .cmp(&rhs.category)
+            .then_with(|| lhs.tfb_class.cmp(&rhs.tfb_class))
+            .then_with(|| lhs.severity.cmp(&rhs.severity))
+    });
     let total_scoped_receipts = scoped_receipts.len() as u64;
     let long_feedback_share = ratio(long_feedback_terminal_count, total_work_units);
     let unverified_share = ratio(
@@ -573,6 +743,8 @@ fn build_snapshot(
         drift_signals.as_slice(),
         top_drift_signals.as_slice(),
         incident_buckets.as_slice(),
+        outcome_distribution.as_slice(),
+        outcome_key_rates.as_slice(),
         rollback_signal_count,
         rollback_successes_24h,
         rollback_success_rate,
@@ -611,6 +783,8 @@ fn build_snapshot(
         drift_signals,
         top_drift_signals,
         incident_buckets,
+        outcome_distribution,
+        outcome_key_rates,
         rollback_attempts_24h: rollback_signal_count,
         rollback_successes_24h,
         rollback_success_rate,
@@ -922,6 +1096,8 @@ struct CanonicalSnapshotPayload<'a> {
     drift_signals: &'a [DriftSignalSummary],
     top_drift_signals: &'a [DriftSignalSummary],
     incident_buckets: &'a [IncidentBucketRow],
+    outcome_distribution: &'a [OutcomeDistributionRow],
+    outcome_key_rates: &'a [OutcomeKeyRateRow],
     rollback_attempts_24h: u64,
     rollback_successes_24h: u64,
     rollback_success_rate: f64,
@@ -959,6 +1135,8 @@ fn snapshot_hash_for(
     drift_signals: &[DriftSignalSummary],
     top_drift_signals: &[DriftSignalSummary],
     incident_buckets: &[IncidentBucketRow],
+    outcome_distribution: &[OutcomeDistributionRow],
+    outcome_key_rates: &[OutcomeKeyRateRow],
     rollback_attempts_24h: u64,
     rollback_successes_24h: u64,
     rollback_success_rate: f64,
@@ -994,6 +1172,8 @@ fn snapshot_hash_for(
         drift_signals,
         top_drift_signals,
         incident_buckets,
+        outcome_distribution,
+        outcome_key_rates,
         rollback_attempts_24h,
         rollback_successes_24h,
         rollback_success_rate,
@@ -1302,6 +1482,80 @@ fn incident_severity_for_receipt(receipt: &Receipt) -> SeverityClass {
         .unwrap_or(SeverityClass::SeverityClassUnspecified)
 }
 
+#[derive(Clone, Debug)]
+struct OutcomeReceiptMeta {
+    verdict_outcome: String,
+    settlement_outcome: String,
+    claim_outcome: Option<String>,
+    remedy_outcome: Option<String>,
+}
+
+fn is_outcome_registry_receipt(receipt: &Receipt) -> bool {
+    receipt
+        .receipt_type
+        .starts_with("economy.outcome_registry.")
+        || receipt
+            .evidence
+            .iter()
+            .any(|evidence| evidence.kind == "outcome_registry_entry_ref")
+}
+
+fn outcome_meta_for_receipt(receipt: &Receipt) -> Option<OutcomeReceiptMeta> {
+    let evidence = receipt
+        .evidence
+        .iter()
+        .find(|evidence| evidence.kind == "outcome_registry_entry_ref")?;
+    let verdict_outcome = evidence
+        .meta
+        .get("verdict_outcome")
+        .and_then(Value::as_str)
+        .and_then(normalized_outcome_label)?;
+    let settlement_outcome = evidence
+        .meta
+        .get("settlement_outcome")
+        .and_then(Value::as_str)
+        .and_then(normalized_outcome_label)?;
+    let claim_outcome = evidence
+        .meta
+        .get("claim_outcome")
+        .and_then(Value::as_str)
+        .and_then(normalized_outcome_label);
+    let remedy_outcome = evidence
+        .meta
+        .get("remedy_outcome")
+        .and_then(Value::as_str)
+        .and_then(normalized_outcome_label);
+    Some(OutcomeReceiptMeta {
+        verdict_outcome,
+        settlement_outcome,
+        claim_outcome,
+        remedy_outcome,
+    })
+}
+
+fn normalized_outcome_label(value: &str) -> Option<String> {
+    let normalized = value.trim().to_ascii_lowercase().replace(' ', "_");
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized)
+    }
+}
+
+fn is_success_outcome_label(value: &str) -> bool {
+    matches!(
+        value,
+        "settled" | "paid" | "success" | "succeeded" | "completed"
+    )
+}
+
+fn is_present_outcome_label(value: &str) -> bool {
+    !matches!(
+        value,
+        "none" | "unknown" | "not_applicable" | "not-applicable" | "no_claim" | "no_remedy"
+    )
+}
+
 fn floor_to_minute_utc(value_ms: i64) -> i64 {
     value_ms.div_euclid(60_000) * 60_000
 }
@@ -1534,6 +1788,49 @@ mod tests {
             format!("oa://rollback/plans/{work_unit_id}"),
             digest_for_text(work_unit_id),
         ));
+        receipt
+    }
+
+    fn fixture_outcome_registry_receipt(
+        receipt_id: &str,
+        created_at_ms: i64,
+        work_unit_id: &str,
+        verdict_outcome: &str,
+        settlement_outcome: &str,
+        claim_outcome: Option<&str>,
+        remedy_outcome: Option<&str>,
+    ) -> Receipt {
+        let mut receipt = fixture_receipt(
+            receipt_id,
+            "economy.outcome_registry.created.v1",
+            created_at_ms,
+            work_unit_id,
+            false,
+        );
+        let mut outcome_ref = EvidenceRef::new(
+            "outcome_registry_entry_ref",
+            format!("oa://economy/outcome_registry/{receipt_id}/revisions/1"),
+            digest_for_text(receipt_id),
+        );
+        outcome_ref.meta.insert(
+            "verdict_outcome".to_string(),
+            serde_json::json!(verdict_outcome),
+        );
+        outcome_ref.meta.insert(
+            "settlement_outcome".to_string(),
+            serde_json::json!(settlement_outcome),
+        );
+        if let Some(value) = claim_outcome {
+            outcome_ref
+                .meta
+                .insert("claim_outcome".to_string(), serde_json::json!(value));
+        }
+        if let Some(value) = remedy_outcome {
+            outcome_ref
+                .meta
+                .insert("remedy_outcome".to_string(), serde_json::json!(value));
+        }
+        receipt.evidence.push(outcome_ref);
         receipt
     }
 
@@ -1946,6 +2243,59 @@ mod tests {
                 .iter()
                 .any(|row| row.reason_code == "ROLLBACK_FAILED" && row.count_24h == 1)
         );
+    }
+
+    #[test]
+    fn snapshot_aggregates_outcome_distribution_and_key_rates() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let path = temp_dir.path().join("snapshots-outcomes.json");
+        let mut state = EconomySnapshotState::from_snapshot_path_for_tests(path);
+        let paid = fixture_receipt(
+            "receipt-paid-outcome-bucket",
+            "earn.job.settlement_observed.v1",
+            1_762_000_010_000,
+            "job-outcome-bucket",
+            true,
+        );
+        let outcome_a = fixture_outcome_registry_receipt(
+            "receipt-outcome-a",
+            1_762_000_011_000,
+            "job-outcome-bucket",
+            "verified",
+            "settled",
+            Some("none"),
+            Some("none"),
+        );
+        let outcome_b = fixture_outcome_registry_receipt(
+            "receipt-outcome-b",
+            1_762_000_012_000,
+            "job-outcome-bucket",
+            "contested",
+            "failed",
+            Some("paid"),
+            Some("rollback_executed"),
+        );
+
+        let snapshot = state
+            .compute_minute_snapshot(1_762_000_060_000, &[paid, outcome_a, outcome_b])
+            .expect("snapshot should compute")
+            .snapshot;
+        assert_eq!(snapshot.outcome_distribution.len(), 2);
+        assert!(
+            snapshot
+                .outcome_distribution
+                .iter()
+                .all(|row| (row.share_24h - 0.5).abs() < 1e-9)
+        );
+        assert_eq!(snapshot.outcome_key_rates.len(), 1);
+        let row = &snapshot.outcome_key_rates[0];
+        assert_eq!(row.category, "compute");
+        assert_eq!(row.tfb_class, FeedbackLatencyClass::Short);
+        assert_eq!(row.severity, SeverityClass::Low);
+        assert_eq!(row.entries_24h, 2);
+        assert!((row.settlement_success_rate - 0.5).abs() < 1e-9);
+        assert!((row.claim_rate - 0.5).abs() < 1e-9);
+        assert!((row.remedy_rate - 0.5).abs() < 1e-9);
     }
 
     #[test]
