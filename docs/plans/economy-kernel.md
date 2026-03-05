@@ -195,6 +195,7 @@ PolicyBundles are not cosmetic. At minimum, a PolicyBundle MUST be able to expre
 
    * minimum authentication assurance level
    * whether personhood / org-vetting proofs are mandatory
+   * trusted issuer/revocation trust-profile reference rules (or explicit external verification reference requirements)
 6. **Monitoring and drift rules**:
 
    * required drift detectors/signals by slice
@@ -234,6 +235,15 @@ When policy triggers multiple actions (mode changes, tier raises, provenance rai
 3. raise required provenance grade / require attestations
 4. tighten or halt envelope issuance
 5. disable warranties or cap warranty coverage
+
+**Policy complexity and failure guardrails**
+
+Implementations MUST enforce deterministic policy evaluation guardrails, including:
+
+1. configured maximum active rules and/or maximum match candidates per evaluation,
+2. configured maximum evaluation time budget per authority action,
+3. deterministic failure behavior when limits are exceeded (`WITHHELD`/deny with stable reason code such as `POLICY_EVAL_LIMIT_EXCEEDED`, plus hash-bound policy evidence),
+4. deterministic fallback posture (fail-closed for authority mutations unless policy explicitly declares a safer bounded fallback lane).
 
 ### 1.4 Credit and risk posture
 
@@ -1218,6 +1228,19 @@ The kernel MUST support interoperability-focused public safety infrastructure:
 * outcome registry entries linkable to verdict/settlement/incident records
 * synthetic practice scenario packages exportable under policy-gated redaction rules
 
+**Outcome registry privacy profile (normative)**
+
+1. Public outcome-registry exports MUST include only redacted/aggregate-safe fields (for example slice keys, normalized outcomes, taxonomy buckets, counts, and non-sensitive timestamps).
+2. Restricted exports MAY include linked receipt refs and evidence digests needed for independent verification, but MUST still exclude secret credentials, raw private payloads, and sensitive external identifiers unless policy explicitly permits and receipts record that allowance.
+3. Export tier selection (`public` vs `restricted`) MUST be explicit, policy-gated, and receipted.
+
+**Identity trust-profile boundary (normative)**
+
+Trusted issuer lists and revocation-check responsibility MUST be explicit:
+
+* either the kernel policy requires a trust-profile reference (`trust_profile_id` or equivalent) and enforces it in authority decisions,
+* or trust verification is performed out-of-kernel, in which case authority receipts MUST include hash-bound proof references to the external trust/revocation check used.
+
 ### 6.14 Reputation index (receipt-derived priors)
 
 Reputation is an internal measurement derived strictly from receipts. It is not social scoring and MUST NOT be treated as a governance or identity system.
@@ -1231,9 +1254,10 @@ Reputation is an internal measurement derived strictly from receipts. It is not 
    * envelope underwriting limits
    * warranty pricing and eligibility
      It MUST NOT directly unlock authority mutations without policy checks.
-3. **Explainable and auditable.** Any decision that materially depends on reputation SHOULD include a receipt note pointing to the relevant measurement window(s) and the metrics used.
-4. **Non-transferable meaning.** Reputation metrics are contextual (category/tfb/severity) and MUST NOT be collapsed into a single “trust score” that ignores domain differences.
-5. **Interop is summary-only.** If mirrored externally, only summary labels/aggregates may be exported; raw internal evidence pointers must not be exposed.
+3. **Formula boundary is policy-defined.** Reputation formula, decay, and weighting are policy-defined and non-universal; implementations MUST NOT assume a global canonical reputation function.
+4. **Explainable and auditable.** Any decision that materially depends on reputation MUST include receipt linkage to the relevant measurement window(s), metric set, and policy rule reference used.
+5. **Non-transferable meaning.** Reputation metrics are contextual (category/tfb/severity) and MUST NOT be collapsed into a single “trust score” that ignores domain differences.
+6. **Interop is summary-only.** If mirrored externally, only summary labels/aggregates may be exported; raw internal evidence pointers must not be exposed.
 
 ### 6.15 Cost Integrity and Proof-of-Cost (normative)
 
