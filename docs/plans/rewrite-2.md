@@ -353,6 +353,7 @@ States:
 Rules:
 
 * Rails with uncertainty MUST use quote→execute.
+* Quote linkage is mandatory. When a rail uses `quote → execute`, every terminal payment receipt (PAID / WITHHELD / FAILED) MUST reference the quote receipt (or quote hash) that bound fee ceilings and expiry.
 * `WITHHELD` MUST be used for policy/constraint denials (expiry, fee cap, breaker, budget).
 * `FAILED` MUST be used for allowed executions that fail operationally.
 * Receipts MUST include underlying proof when PAID (preimage/txid/etc.)
@@ -372,7 +373,10 @@ States:
 Rules:
 
 * No envelope is valid without scope/cap/expiry.
+* Allowed destinations MUST be explicit. Every envelope MUST specify destination/payee constraints (e.g., whitelisted payees, invoice domain constraints, route class constraints). An envelope cannot be “cap only.”
 * Settlement MUST bind to explicit conditions (often a verdict receipt hash).
+* No rolling credit lines. Envelopes MUST be short-lived by default and MUST NOT roll automatically. Renewal requires an explicit new issuance under policy, with a new receipt.
+* Commit binds an envelope to a specific settlement intent. COMMITTED state MUST identify the intended payee/recipient/invoice (or destination constraint snapshot) so settlement cannot drift into a different target.
 * Underwriting MUST enforce per-agent exposure caps and global breaker posture.
 
 ### 4.3 Contract state machine
@@ -436,6 +440,32 @@ Policy MUST be able to require:
 * “Tier 1 cannot unlock warranty issuance above X”
 * “LONG tfb + HIGH severity requires Tier 4 unless objective harness exists”
 
+### 4.6 Optional Extension: Solver / Cross-Rail Routing (Intent → Match → Settle)
+
+This section defines an optional extension for intent-driven routing across rails and/or solver providers. It is **not required** for the core kernel to function and must remain **policy-gated**. No roadmap item depends on any third-party solver network openness.
+
+**Lifecycle (minimum canonical state machine)**
+`INTENT_CREATED → MATCHED → INITIATED → (REDEEMED | REFUNDED | EXPIRED | FAILED)`
+
+* **INTENT_CREATED:** intent is accepted with constraints (asset pair, amount, deadline, max fee/slippage), trace context, and policy bundle.
+* **MATCHED:** a solver/provider and route plan are selected.
+* **INITIATED:** source-side initiation has occurred (e.g., HTLC created, on-chain tx broadcast, LN payment attempt started) and is receipted.
+* **REDEEMED:** destination-side value transfer completes and is proven.
+* **REFUNDED:** funds are returned due to timeout, failure, or policy-driven unwind.
+* **EXPIRED:** intent times out before initiation or before completion under declared deadlines.
+* **FAILED:** operational failure not recovered by refund semantics (must be explicit and receipted).
+
+**Normative requirements**
+
+1. **Match decisions MUST be receipted and trace-linked.**
+   The match receipt must include solver/provider identity, route plan, constraint snapshot, and a stable explanation (“policy notes”) sufficient to audit why the match was selected.
+2. **Atomicity and refund semantics MUST be explicit.**
+
+   * If the route is atomic (e.g., HTLC/preimage-based), receipts must encode the atomic primitive used and link proofs.
+   * If the route is not atomic, the spec requires first-class **REFUNDED** and **EXPIRED** behavior with bounded timeouts, explicit compensating actions, and receipts for each transition.
+3. **No silent reroutes.**
+   Any reroute, retry, or fallback is a state transition with a receipt, not an implicit background behavior.
+
 ---
 
 ## 5. Receipts, Provenance, and Canonical Hashing (Normative)
@@ -452,7 +482,44 @@ All receipts MUST include:
 * `inputs_hash`, `outputs_hash`
 * evidence refs with digests
 
-### 5.2 Provenance bundles (new, required for higher stakes)
+### 5.2 Cross-receipt linkage rules (normative)
+
+Receipts must form a navigable graph so any party (human or agent) can answer: **what happened, why, and what evidence justified it** without private logs.
+
+The following linkages are REQUIRED:
+
+**A) Verdict / Verification receipt MUST reference**
+
+* `work_unit_id` and `contract_id`
+* achieved verification tier and independence report (including correlation flags)
+* artifact digests for submitted outputs (or a pointer to a bundle with digest)
+* verification evidence digests (objective harness output, adjudication notes, checker summaries)
+* computed provenance grade (when provenance requirements apply)
+
+**B) Settlement (payment/refund) receipt MUST reference**
+
+* `contract_id` if contract-driven
+* the verdict receipt hash when settlement is gated by verification
+* the quote receipt reference when the rail uses `quote → execute`
+* the underlying rail proof when PAID (e.g., LN preimage, on-chain txid)
+
+**C) Bond (reserve/release/draw) receipt MUST reference**
+
+* related `contract_id` / `work_unit_id` / `claim_id` (as applicable)
+* bond party role and bond reason
+* amount reserved/drawn/released and remaining available amount after the action
+
+**D) Claim resolution receipt MUST reference**
+
+* contract terms hash (warranty terms + exclusions + window)
+* evidence digests submitted with the claim
+* which bonds were drawn (bond ids + amounts) and which were released
+* which settlement receipts executed (refunds, damages, rework credits), as receipt references
+
+**Transitive navigability requirement**
+Given any settlement receipt, it MUST be possible to reach (by following receipt references) the contract terms, the governing verdict (if any), and the evidence digests that justified the verdict and/or claim resolution.
+
+### 5.3 Provenance bundles (new, required for higher stakes)
 
 For medium/high severity (or policy-defined thresholds), the kernel MUST require a **ProvenanceBundle** evidence type containing:
 
@@ -462,7 +529,7 @@ For medium/high severity (or policy-defined thresholds), the kernel MUST require
 * optional signer/approval attestations
 * optional hardware/runtime attestations (where supported)
 
-### 5.3 Provenance grade (`Pgrade`) (new)
+### 5.4 Provenance grade (`Pgrade`) (new)
 
 The kernel MUST compute a deterministic provenance grade from attached evidence:
 
@@ -477,13 +544,45 @@ The kernel MUST compute a deterministic provenance grade from attached evidence:
 * in contract summaries
 * in `/stats`
 
-### 5.4 Canonical hashing rules
+### 5.5 Canonical hashing rules (concrete)
 
-* Canonical projection rules MUST be stable across platforms.
-* Tags/metadata MUST NOT affect canonical hash.
-* Receipts MUST be sufficient to reconstruct “why money moved” without private logs.
+Canonical hashing MUST be stable across platforms, languages, and execution environments.
 
-### 5.5 Correlation risk flags (new)
+Minimum requirements:
+
+1. **Normalize empty/optional fields.**
+   Empty strings, unset optionals, and empty arrays must canonicalize deterministically (no “sometimes absent, sometimes empty” ambiguity).
+2. **Stable ordering.**
+
+   * Field order must be deterministic.
+   * Map keys MUST be sorted.
+   * Repeated fields that represent sets MUST be sorted by a deterministic key (or encoded as ordered lists by definition).
+3. **Exclude non-normative metadata.**
+   Any `tags`, UI metadata, debugging notes, or non-normative attributes MUST NOT affect `canonical_hash`.
+4. **Separate hashes with distinct meanings.**
+
+   * `inputs_hash` = hash of normalized request inputs (including bound references like quote id).
+   * `outputs_hash` = hash of normalized outputs (state changes, proofs, ids).
+   * `canonical_hash` = hash of the normalized receipt envelope + normative payload.
+5. **No nondeterministic fields.**
+   Fields that can vary nondeterministically (log ordering, transient error strings, internal timestamps beyond `created_at_ms`) MUST NOT affect canonical hashing.
+6. **Hash encoding.**
+   All digests MUST be encoded as `sha256:<hex>` (or a versioned equivalent) consistently.
+
+### 5.6 Idempotency conflict and error semantics
+
+Idempotency is not “best effort”; it defines replay safety.
+
+1. **Same key, same result.**
+   If a request with an `idempotency_key` has already completed, the kernel MUST return the same terminal result and the same receipt (or a stable reference to it) regardless of retry timing.
+2. **Same key, different inputs MUST deterministically error.**
+   If the same `idempotency_key` is reused with materially different inputs, the kernel MUST return a deterministic `IDEMPOTENCY_CONFLICT` error and MUST NOT execute any effect.
+3. **No silent partial success.**
+   Partial outcomes must be representable as explicit states with receipts. The kernel MUST NOT “partially do the thing” and then return an opaque error.
+4. **Terminality is explicit.**
+   If an action is already finalized (e.g., contract already settled, claim already resolved), replay attempts MUST return a deterministic “already finalized” response, not a new effect.
+
+### 5.7 Correlation risk flags (new)
 
 Receipts MUST include correlation-risk flags when applicable:
 
@@ -503,6 +602,7 @@ Provides:
 * quote/execute/status
 * explicit fee caps, expiries, withholds
 * canonical settlement receipts with proofs
+* quote linkage (when `quote → execute` is used, terminal receipts MUST reference the quote receipt or quote hash)
 
 ### 6.2 Liquidity & Reserves
 
@@ -519,6 +619,8 @@ Provides:
 * intent → offer → envelope → commit → settle
 * underwriting and exposure caps
 * default pay-after-verify coupling for objective lanes
+* destination/payee constraints (envelopes cannot be “cap only”)
+* non-rolling issuance posture (envelopes MUST NOT roll automatically)
 
 ### 6.4 Bonds & Collateral (ABP)
 
@@ -558,6 +660,9 @@ Provides:
 Provides:
 
 * rfq → quote → select → settle with provenance receipts
+* RFQ binding is required (amount, asset pair, deadline/expiry, selection constraints)
+* quote selection is explicit (no silent “best quote”; selection is an action with a receipt under policy)
+* provenance receipts must record selection rationale (“policy notes”) and settlement proof references
 * explicit quote expiry withhold behavior (no hidden reroutes)
 * deterministic/idempotent settlement receipts
 
@@ -567,6 +672,22 @@ Provides:
 
 * deterministic routing scores and selection notes
 * circuit breakers and throttles
+
+**Additional normative requirements:**
+
+* Routing outputs are machine-readable. The routing scorer MUST output at least:
+
+  * expected fee (or fee range)
+  * confidence / success probability estimate
+  * liquidity/health score (where applicable)
+  * explicit policy notes explaining constraints and blockers
+    These outputs MUST be trace-linked, and any “selected route” decision SHOULD emit (or reference) a receipt so it’s auditable.
+* Exposure controls exist at three granularities:
+
+  1. per-agent exposure (credit + settlement rate limits)
+  2. per-route/provider exposure (solver/provider caps, peer caps, FX provider caps)
+  3. per-partition exposure (LLP vs CEP vs ABP vs reserves)
+     Breaches MUST trigger explicit withholds/breakers with receipts and must be visible in `/stats`.
 
 **New normative gating rules:**
 
@@ -705,14 +826,16 @@ Synthetic practice is not optional: it is how verification capacity scales over 
 * verifier performance score distribution (calibration/time-to-detect)
 * backlog of ground-truth cases not yet converted to simulations
 
-### 7.3 Schema evolution
+### 7.3 Data provenance rule (hard requirement)
+
+Every metric row published in `/stats` MUST be derivable from:
+
+* receipt streams (canonical, append-only), and
+* signed snapshots (where applicable for pool accounting).
+
+If a metric cannot be derived from receipts/snapshots (or cannot be explained by them), it does not belong in `/stats`.
+
+### 7.4 Schema evolution
 
 * Columns may be added; existing columns must not change meaning without versioning.
 * If incompatible changes are required, bump snapshot schema version and publish both formats for a transition period.
-
----
-
-If you want, I can now do the next two “implementation-facing” rewrites that usually matter most after a spec rewrite:
-
-1. **Rewrite the proto plan** to include the new required fields (`tfb`, severity, verification budget hints, provenance bundles, correlation groups, sv/Δm/XA metrics receipts), and
-2. Rewrite the **policy bundle schema** expectations (what knobs a PolicyBundle must expose to gate autonomy based on sv/XA and correlation risk).
