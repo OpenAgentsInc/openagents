@@ -2746,7 +2746,7 @@ fn paint_active_job_pane(
 
     let advance_bounds = active_job_advance_button_bounds(content_bounds);
     let abort_bounds = active_job_abort_button_bounds(content_bounds);
-    paint_action_button(advance_bounds, "Advance stage", paint);
+    paint_disabled_button(advance_bounds, "Execution auto", paint);
     if active_job.runtime_supports_abort {
         paint_action_button(abort_bounds, "Abort job", paint);
     } else {

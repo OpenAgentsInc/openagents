@@ -1165,6 +1165,7 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
         target_provider_pubkeys,
         encrypted,
         encrypted_payload,
+        execution_input,
         validation,
         parsed_event_shape,
     ) = match parsed.as_ref() {
@@ -1181,6 +1182,11 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
                 Some(event.content.clone())
             } else {
                 None
+            };
+            let execution_input = if encrypted {
+                None
+            } else {
+                execution_input_from_request(request)
             };
             let validation = if request.content.trim().is_empty() && request.inputs.is_empty() {
                 JobInboxValidation::Invalid("request missing content/input payload".to_string())
@@ -1206,6 +1212,7 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
                 target_provider_pubkeys,
                 encrypted,
                 encrypted_payload,
+                execution_input,
                 validation,
                 parsed_event_shape,
             )
@@ -1216,6 +1223,7 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
             DEFAULT_TTL_SECONDS,
             Vec::new(),
             false,
+            None,
             None,
             JobInboxValidation::Invalid(format!("invalid NIP-90 request tags: {error}")),
             Some(format!(
@@ -1231,6 +1239,7 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
         demand_source: crate::app_state::JobDemandSource::OpenNetwork,
         request_kind: event.kind,
         capability: capability_for_kind(event.kind),
+        execution_input,
         target_provider_pubkeys,
         encrypted,
         encrypted_payload,
@@ -1247,6 +1256,69 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
         ttl_seconds,
         validation,
     })
+}
+
+fn execution_input_from_request(request: &JobRequest) -> Option<String> {
+    let mut sections = Vec::<String>::new();
+
+    let content = request.content.trim();
+    if !content.is_empty() {
+        sections.push(format!("Content:\n{content}"));
+    }
+
+    if !request.inputs.is_empty() {
+        let inputs = request
+            .inputs
+            .iter()
+            .map(|input| {
+                let mut line = format!("- {}: {}", input.input_type.as_str(), input.data.trim());
+                if let Some(marker) = input
+                    .marker
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    line.push_str(format!(" [marker={marker}]").as_str());
+                }
+                if let Some(relay) = input
+                    .relay
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    line.push_str(format!(" [relay={relay}]").as_str());
+                }
+                line
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        sections.push(format!("Inputs:\n{inputs}"));
+    }
+
+    if !request.params.is_empty() {
+        let params = request
+            .params
+            .iter()
+            .map(|param| format!("- {}={}", param.key.trim(), param.value.trim()))
+            .collect::<Vec<_>>()
+            .join("\n");
+        sections.push(format!("Parameters:\n{params}"));
+    }
+
+    if let Some(output) = request
+        .output
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        sections.push(format!("Requested output: {output}"));
+    }
+
+    if sections.is_empty() {
+        None
+    } else {
+        Some(sections.join("\n\n"))
+    }
 }
 
 fn event_to_buyer_response_event(
@@ -1552,7 +1624,7 @@ mod tests {
     use super::{
         ProviderNip90BuyerResponseKind, ProviderNip90LaneCommand, ProviderNip90LaneUpdate,
         ProviderNip90LaneWorker, ProviderNip90PublishRole, ProviderNip90RelayStatus,
-        event_to_buyer_response_event, event_to_inbox_request,
+        event_to_buyer_response_event, event_to_inbox_request, execution_input_from_request,
     };
     use crate::app_state::{
         ActiveJobState, EarningsScoreboardState, JobHistoryState, JobHistoryStatus, JobInboxState,
@@ -1560,6 +1632,7 @@ mod tests {
     };
     use futures_util::{SinkExt, StreamExt};
     use nostr::Event;
+    use nostr::nip90::{JobInput, JobRequest, KIND_JOB_TEXT_GENERATION};
     use openagents_spark::{Balance, PaymentSummary};
     use serde_json::Value;
     use std::collections::HashSet;
@@ -2166,6 +2239,24 @@ mod tests {
 
         let _ = worker.enqueue(ProviderNip90LaneCommand::SetOnline { online: false });
         relay_task.abort();
+    }
+
+    #[test]
+    fn execution_input_from_request_preserves_content_inputs_and_params() {
+        let request = JobRequest::new(KIND_JOB_TEXT_GENERATION)
+            .expect("request kind should be valid")
+            .add_input(JobInput::text("Attachment text"))
+            .add_param("temperature", "0.1")
+            .with_output("text/plain");
+        let mut request = request;
+        request.content = "Summarize the attachment.".to_string();
+
+        let execution_input =
+            execution_input_from_request(&request).expect("execution input should be captured");
+        assert!(execution_input.contains("Summarize the attachment."));
+        assert!(execution_input.contains("Attachment text"));
+        assert!(execution_input.contains("temperature=0.1"));
+        assert!(execution_input.contains("Requested output: text/plain"));
     }
 
     async fn spawn_mock_relay_with_request() -> (String, JoinHandle<()>) {

@@ -57,6 +57,7 @@ pub struct JobInboxRequest {
     pub demand_source: JobDemandSource,
     pub request_kind: u16,
     pub capability: String,
+    pub execution_input: Option<String>,
     pub skill_scope_id: Option<String>,
     pub skl_manifest_a: Option<String>,
     pub skl_manifest_event_id: Option<String>,
@@ -91,6 +92,7 @@ pub struct JobInboxNetworkRequest {
     pub demand_source: JobDemandSource,
     pub request_kind: u16,
     pub capability: String,
+    pub execution_input: Option<String>,
     pub target_provider_pubkeys: Vec<String>,
     pub encrypted: bool,
     pub encrypted_payload: Option<String>,
@@ -148,6 +150,7 @@ impl JobInboxState {
             existing.demand_source = request.demand_source;
             existing.request_kind = request.request_kind;
             existing.capability = request.capability;
+            existing.execution_input = request.execution_input;
             existing.skill_scope_id = request.skill_scope_id;
             existing.skl_manifest_a = request.skl_manifest_a;
             existing.skl_manifest_event_id = request.skl_manifest_event_id;
@@ -168,6 +171,7 @@ impl JobInboxState {
             demand_source: request.demand_source,
             request_kind: request.request_kind,
             capability: request.capability,
+            execution_input: request.execution_input,
             skill_scope_id: request.skill_scope_id,
             skl_manifest_a: request.skl_manifest_a,
             skl_manifest_event_id: request.skl_manifest_event_id,
@@ -261,6 +265,7 @@ mod tests {
             demand_source: JobDemandSource::OpenNetwork,
             request_kind: 5050,
             capability: "summarize.text".to_string(),
+            execution_input: Some("Summarize the attached text payload.".to_string()),
             skill_scope_id: None,
             skl_manifest_a: None,
             skl_manifest_event_id: None,

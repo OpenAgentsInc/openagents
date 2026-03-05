@@ -494,6 +494,9 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     if reducers::run_job_inbox_auto_admission_tick(state) {
         changed = true;
     }
+    if reducers::run_active_job_execution_tick(state) {
+        changed = true;
+    }
     if run_reciprocal_loop_engine_tick(state) {
         changed = true;
     }

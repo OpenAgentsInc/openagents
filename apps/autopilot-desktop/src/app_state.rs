@@ -2430,6 +2430,7 @@ pub struct ActiveJobRecord {
     pub demand_source: JobDemandSource,
     pub request_kind: u16,
     pub capability: String,
+    pub execution_input: Option<String>,
     pub skill_scope_id: Option<String>,
     pub skl_manifest_a: Option<String>,
     pub skl_manifest_event_id: Option<String>,
@@ -2440,6 +2441,7 @@ pub struct ActiveJobRecord {
     pub ac_settlement_event_id: Option<String>,
     pub ac_default_event_id: Option<String>,
     pub quoted_price_sats: u64,
+    pub ttl_seconds: u64,
     pub stage: JobLifecycleStage,
     pub invoice_id: Option<String>,
     pub payment_id: Option<String>,
@@ -2452,6 +2454,15 @@ pub struct ActiveJobState {
     pub last_error: Option<String>,
     pub last_action: Option<String>,
     pub runtime_supports_abort: bool,
+    pub execution_thread_id: Option<String>,
+    pub execution_turn_id: Option<String>,
+    pub execution_output: Option<String>,
+    pub execution_turn_completed: bool,
+    pub execution_thread_start_command_seq: Option<u64>,
+    pub execution_turn_start_command_seq: Option<u64>,
+    pub execution_turn_interrupt_command_seq: Option<u64>,
+    pub execution_deadline_epoch_seconds: Option<u64>,
+    pub result_publish_in_flight: bool,
     pub job: Option<ActiveJobRecord>,
     next_event_seq: u64,
 }
@@ -2463,6 +2474,15 @@ impl Default for ActiveJobState {
             last_error: None,
             last_action: Some("Waiting for active job lane snapshot".to_string()),
             runtime_supports_abort: false,
+            execution_thread_id: None,
+            execution_turn_id: None,
+            execution_output: None,
+            execution_turn_completed: false,
+            execution_thread_start_command_seq: None,
+            execution_turn_start_command_seq: None,
+            execution_turn_interrupt_command_seq: None,
+            execution_deadline_epoch_seconds: None,
+            result_publish_in_flight: false,
             job: None,
             next_event_seq: 1,
         }
@@ -2486,6 +2506,7 @@ impl ActiveJobState {
             demand_source: request.demand_source,
             request_kind: request.request_kind,
             capability: request.capability.clone(),
+            execution_input: request.execution_input.clone(),
             skill_scope_id: request.skill_scope_id.clone(),
             skl_manifest_a: request.skl_manifest_a.clone(),
             skl_manifest_event_id: request.skl_manifest_event_id.clone(),
@@ -2496,6 +2517,7 @@ impl ActiveJobState {
             ac_settlement_event_id: None,
             ac_default_event_id: None,
             quoted_price_sats: request.price_sats,
+            ttl_seconds: request.ttl_seconds,
             stage: JobLifecycleStage::Accepted,
             invoice_id: None,
             payment_id: None,
@@ -2503,6 +2525,16 @@ impl ActiveJobState {
             events: Vec::new(),
         });
         self.next_event_seq = 1;
+        self.runtime_supports_abort = false;
+        self.execution_thread_id = None;
+        self.execution_turn_id = None;
+        self.execution_output = None;
+        self.execution_turn_completed = false;
+        self.execution_thread_start_command_seq = None;
+        self.execution_turn_start_command_seq = None;
+        self.execution_turn_interrupt_command_seq = None;
+        self.execution_deadline_epoch_seconds = None;
+        self.result_publish_in_flight = false;
         self.append_event("received request from inbox");
         self.append_event("accepted request and queued runtime execution");
         self.load_state = PaneLoadState::Ready;
@@ -2607,6 +2639,10 @@ impl ActiveJobState {
             self.load_state = PaneLoadState::Error;
             return Err("Abort unavailable".to_string());
         }
+        self.mark_failed(reason, "Aborted active job")
+    }
+
+    pub fn mark_failed(&mut self, reason: &str, action_label: &str) -> Result<(), String> {
         let Some(job) = self.job.as_mut() else {
             self.last_error = Some("No active job selected".to_string());
             self.load_state = PaneLoadState::Error;
@@ -2616,10 +2652,12 @@ impl ActiveJobState {
         let reason_text = reason.trim().to_string();
         job.stage = JobLifecycleStage::Failed;
         job.failure_reason = Some(reason_text.clone());
-        self.append_event(format!("job aborted: {reason_text}"));
+        self.append_event(format!("job failed: {reason_text}"));
         self.last_error = None;
         self.load_state = PaneLoadState::Ready;
-        self.last_action = Some("Aborted active job".to_string());
+        self.runtime_supports_abort = false;
+        self.execution_turn_interrupt_command_seq = None;
+        self.last_action = Some(action_label.to_string());
         Ok(())
     }
 }
@@ -4023,6 +4061,9 @@ mod tests {
             demand_source,
             request_kind: 5050,
             capability: capability.to_string(),
+            execution_input: Some(format!(
+                "Execute capability `{capability}` for request `{request_id}`."
+            )),
             target_provider_pubkeys: Vec::new(),
             encrypted: false,
             encrypted_payload: None,
@@ -4823,6 +4864,33 @@ mod tests {
             .advance_stage()
             .expect("delivered->paid should succeed");
         assert_eq!(active.inflight_job_count(), 0);
+    }
+
+    #[test]
+    fn active_job_start_copies_execution_input_and_ttl() {
+        let mut inbox = seed_job_inbox(vec![fixture_inbox_request(
+            "req-exec",
+            "summarize.text",
+            1500,
+            91,
+            JobInboxValidation::Valid,
+        )]);
+        assert!(inbox.select_by_index(0));
+        let request = inbox
+            .selected_request()
+            .expect("request should exist")
+            .clone();
+
+        let mut active = ActiveJobState::default();
+        active.start_from_request(&request);
+        let job = active.job.as_ref().expect("active job should exist");
+        assert_eq!(job.ttl_seconds, 91);
+        assert_eq!(
+            job.execution_input.as_deref(),
+            Some("Execute capability `summarize.text` for request `req-exec`.")
+        );
+        assert!(active.execution_thread_id.is_none());
+        assert!(!active.runtime_supports_abort);
     }
 
     #[test]

@@ -224,6 +224,7 @@ fn apply_encrypted_request_handling(state: &RenderState, request: &mut JobInboxN
     ) {
         Ok(plaintext) => {
             let preview = sanitize_payload_preview(plaintext.as_str(), 220);
+            request.execution_input = Some(format!("Encrypted request content:\n{plaintext}"));
             append_parsed_shape_line(
                 &mut request.parsed_event_shape,
                 format!(
@@ -668,6 +669,8 @@ pub(super) fn apply_publish_outcome(state: &mut RenderState, outcome: ProviderNi
             outcome.rejected_relays
         ));
     }
+
+    super::apply_active_job_publish_outcome(state, &outcome);
 
     if outcome.role == ProviderNip90PublishRole::Request {
         state.network_requests.apply_nip90_request_publish_outcome(
