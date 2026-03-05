@@ -904,6 +904,9 @@ Normative implementation notes:
 * Export surfaces MUST support at least `public` and `restricted` redaction tiers for incident audit packages.
 * Long-latency external truth inputs MUST be represented as explicit `GroundTruthEvidence` objects with source identity, digest-bound evidence ref, and `received_at_ms`.
 * Dispute truth finalization MUST be receipted and may resolve only via objective harness, adjudication policy, or explicit human underwriting.
+* Outcome registry export posture is tiered:
+  * `public` exports include aggregate-safe fields only (slice keys, normalized outcomes, taxonomy buckets, counts/timestamps),
+  * `restricted` exports may include linked receipt refs and evidence digests needed for audit replay.
 
 ```proto
 syntax = "proto3";
@@ -1005,9 +1008,9 @@ message OutcomeRegistryEntry {
   string claim_outcome = 12;
   string remedy_outcome = 13;
 
-  repeated IncidentTaxonomyCode incident_tags = 20;
-  repeated openagents.common.v1.ReceiptRef linked_receipts = 21;
-  repeated openagents.common.v1.EvidenceRef evidence_digests = 22;
+  repeated IncidentTaxonomyCode incident_tags = 20;             // public-safe bucket labels
+  repeated openagents.common.v1.ReceiptRef linked_receipts = 21; // restricted tier
+  repeated openagents.common.v1.EvidenceRef evidence_digests = 22; // restricted tier
 }
 
 message ReportIncidentRequest {
@@ -1738,6 +1741,8 @@ message AuthenticationRule {
 
   openagents.common.v1.AuthAssuranceLevel min_auth_assurance = 10;
   bool require_personhood = 11;
+  string trust_profile_id = 12; // issuer/revocation trust profile reference
+  bool require_external_trust_proof_ref = 13; // when trust checks are out-of-kernel
 }
 
 message MonitoringRule {
@@ -1815,6 +1820,19 @@ message CostProofRule {
   double min_provider_cost_integrity_score = 13;
 }
 
+enum PolicyEvalFailureMode {
+  POLICY_EVAL_FAILURE_MODE_UNSPECIFIED = 0;
+  FAIL_CLOSED = 1;
+  FAIL_BOUNDED_FALLBACK = 2;
+}
+
+message PolicyEvaluationGuardrails {
+  uint32 max_rule_evaluations = 1;
+  uint64 max_eval_time_ms = 2;
+  PolicyEvalFailureMode failure_mode = 3;
+  string limit_exceeded_reason_code = 4; // e.g. POLICY_EVAL_LIMIT_EXCEEDED
+}
+
 message PolicyBundle {
   string policy_bundle_id = 1;
   string name = 2;
@@ -1842,6 +1860,7 @@ message PolicyBundle {
 
   // Dynamic gating
   AutonomyThrottlePolicy autonomy = 40;
+  PolicyEvaluationGuardrails evaluation_guardrails = 41;
 
   // Non-normative metadata
   map<string, string> tags = 50;
@@ -2011,5 +2030,23 @@ Verification services MUST enforce assignment semantics deterministically:
   * receipted derivation linkage (source incident digest(s), generator identity, timestamp),
   * receipted validation linkage (validator identity + posture),
   * export bundles carrying derivation/validation refs for replay.
+
+#### O) Identity trust-profile ownership semantics
+
+* `AuthenticationRule.trust_profile_id` indicates kernel-owned issuer/revocation verification policy for the slice/role.
+* If trust verification is external, `require_external_trust_proof_ref=true` requires hash-bound proof references in authority receipts.
+* Missing required trust-profile linkage or missing external trust proof references MUST deterministically deny/withhold with stable reason codes.
+
+#### P) Policy complexity guardrails and deterministic fallback
+
+* `PolicyEvaluationGuardrails` MUST bound evaluation complexity (`max_rule_evaluations`, `max_eval_time_ms`).
+* Guardrail breaches MUST produce deterministic failure behavior according to `failure_mode` with stable reason code (`limit_exceeded_reason_code`).
+* Authority actions MUST default to fail-closed unless policy explicitly configures a bounded fallback and that fallback remains receipted/auditable.
+
+#### Q) Reputation and outcome-export boundary semantics
+
+* Reputation formula/decay/weighting are policy-defined and non-universal; interoperable consumers must not assume one global trust function.
+* Any authority decision materially depending on reputation MUST include measurement-window and metric references in hash-bound receipt linkage.
+* Outcome registry public exports remain aggregate-safe; restricted exports carry linkage needed for independent audit replay.
 
 ---
