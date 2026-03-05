@@ -3094,6 +3094,8 @@ pub struct RenderState {
     pub network_aggregate_counters: NetworkAggregateCountersState,
     pub relay_connections: RelayConnectionsState,
     pub sync_health: SyncHealthState,
+    pub sync_bootstrap_note: Option<String>,
+    pub sync_bootstrap_error: Option<String>,
     pub network_requests: NetworkRequestsState,
     pub starter_jobs: StarterJobsState,
     pub activity_feed: ActivityFeedState,
