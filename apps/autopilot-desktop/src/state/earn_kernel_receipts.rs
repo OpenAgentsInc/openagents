@@ -27,11 +27,15 @@ const REASON_CODE_POLICY_PREFLIGHT_REJECTED: &str = "POLICY_PREFLIGHT_REJECTED";
 const REASON_CODE_PAYMENT_POINTER_NON_AUTHORITATIVE: &str = "PAYMENT_POINTER_NON_AUTHORITATIVE";
 const REASON_CODE_AUTH_ASSURANCE_INSUFFICIENT: &str = "AUTH_ASSURANCE_INSUFFICIENT";
 const REASON_CODE_PROVENANCE_REQUIREMENTS_UNMET: &str = "PROVENANCE_REQUIREMENTS_UNMET";
+const REASON_CODE_ROLLBACK_PLAN_REQUIRED: &str = "ROLLBACK_PLAN_REQUIRED";
 const REASON_CODE_IDEMPOTENCY_CONFLICT: &str = "IDEMPOTENCY_CONFLICT";
 const REASON_CODE_POLICY_THROTTLE_TRIGGERED: &str = "POLICY_THROTTLE_TRIGGERED";
 const REASON_CODE_INCIDENT_REPORTED: &str = "INCIDENT_REPORTED";
 const REASON_CODE_INCIDENT_UPDATED: &str = "INCIDENT_UPDATED";
 const REASON_CODE_INCIDENT_RESOLVED: &str = "INCIDENT_RESOLVED";
+const REASON_CODE_ROLLBACK_EXECUTED: &str = "ROLLBACK_EXECUTED";
+const REASON_CODE_ROLLBACK_FAILED: &str = "ROLLBACK_FAILED";
+const REASON_CODE_COMPENSATING_ACTION_EXECUTED: &str = "COMPENSATING_ACTION_EXECUTED";
 const REASON_CODE_DRIFT_SIGNAL_EMITTED: &str = "DRIFT_SIGNAL_EMITTED";
 const REASON_CODE_DRIFT_ALERT_RAISED: &str = "DRIFT_ALERT_RAISED";
 const REASON_CODE_DRIFT_FALSE_POSITIVE_CONFIRMED: &str = "DRIFT_FALSE_POSITIVE_CONFIRMED";
@@ -272,6 +276,29 @@ pub struct WorkUnitMetadata {
     pub tfb_class: FeedbackLatencyClass,
     pub severity: SeverityClass,
     pub verification_budget_hint_sats: u64,
+    #[serde(default)]
+    pub rollback_plan_ref: Option<String>,
+    #[serde(default)]
+    pub compensating_action_plan_ref: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq, Ord, PartialOrd)]
+#[serde(rename_all = "snake_case")]
+pub enum RollbackReceiptType {
+    RollbackExecuted,
+    RollbackFailed,
+    CompensatingActionExecuted,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct RollbackActionDraft {
+    pub work_unit_id: String,
+    pub idempotency_key: String,
+    pub rollback_receipt_type: RollbackReceiptType,
+    pub incident_id: Option<String>,
+    pub linked_receipt_ids: Vec<String>,
+    pub reason_code: Option<String>,
+    pub summary: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq, Ord, PartialOrd)]
@@ -414,6 +441,8 @@ struct ResolvedWorkMetadata {
     tfb_class: FeedbackLatencyClass,
     severity: SeverityClass,
     verification_budget_hint_sats: u64,
+    rollback_plan_ref: Option<String>,
+    compensating_action_plan_ref: Option<String>,
 }
 
 struct LoadedReceiptState {
@@ -814,6 +843,19 @@ impl EarnKernelReceiptState {
         } else {
             None
         };
+        let stage_rollback_gate = if stage == JobLifecycleStage::Paid {
+            evaluate_rollback_gate(
+                &policy_bundle,
+                metadata.category.as_str(),
+                metadata.tfb_class,
+                metadata.severity,
+                job.job_id.as_str(),
+                &metadata,
+            )
+            .err()
+        } else {
+            None
+        };
         let stage_pricing = if stage == JobLifecycleStage::Paid {
             Some(compute_liability_pricing_for_settlement(
                 self.receipts.as_slice(),
@@ -849,6 +891,14 @@ impl EarnKernelReceiptState {
                 stage_provenance_gate
                     .clone()
                     .expect("provenance gate checked"),
+            )
+        } else if stage == JobLifecycleStage::Paid && stage_rollback_gate.is_some() {
+            authority_key = format!("withheld-rollback:{}", job.request_id);
+            (
+                "earn.job.withheld.v1",
+                Some(REASON_CODE_ROLLBACK_PLAN_REQUIRED),
+                "withheld",
+                stage_rollback_gate.clone().expect("rollback gate checked"),
             )
         } else if stage == JobLifecycleStage::Paid && !paid_pointer_authoritative {
             authority_key = format!("withheld:{}", job.request_id);
@@ -912,6 +962,7 @@ impl EarnKernelReceiptState {
             ));
         }
         append_provenance_evidence_for_job_stage(&mut evidence, job, stage);
+        append_rollback_plan_evidence(&mut evidence, job.job_id.as_str(), &metadata);
         if let Some(pricing) = stage_pricing.as_ref() {
             append_pricing_evidence(&mut evidence, pricing);
         }
@@ -952,6 +1003,13 @@ impl EarnKernelReceiptState {
                 "withheld_reason",
                 format!("oa://earn/jobs/{}/withheld_provenance", job.job_id),
                 digest_for_text(REASON_CODE_PROVENANCE_REQUIREMENTS_UNMET),
+            ));
+        }
+        if stage == JobLifecycleStage::Paid && stage_rollback_gate.is_some() {
+            evidence.push(EvidenceRef::new(
+                "withheld_reason",
+                format!("oa://earn/jobs/{}/withheld_rollback", job.job_id),
+                digest_for_text(REASON_CODE_ROLLBACK_PLAN_REQUIRED),
             ));
         }
         if stage == JobLifecycleStage::Failed {
@@ -1080,6 +1138,19 @@ impl EarnKernelReceiptState {
         } else {
             None
         };
+        let history_rollback_gate = if row.status == JobHistoryStatus::Succeeded {
+            evaluate_rollback_gate(
+                &policy_bundle,
+                metadata.category.as_str(),
+                metadata.tfb_class,
+                metadata.severity,
+                row.job_id.as_str(),
+                &metadata,
+            )
+            .err()
+        } else {
+            None
+        };
         let payment_pointer_authoritative =
             is_wallet_authoritative_payment_pointer(Some(row.payment_pointer.as_str()));
         let history_pricing = if row.status == JobHistoryStatus::Succeeded {
@@ -1127,6 +1198,20 @@ impl EarnKernelReceiptState {
                 history_provenance_gate
                     .clone()
                     .expect("provenance gate checked"),
+            )
+        } else if row.status == JobHistoryStatus::Succeeded
+            && payment_pointer_authoritative
+            && history_rollback_gate.is_some()
+        {
+            (
+                JobLifecycleStage::Paid,
+                "earn.job.withheld.v1",
+                Some(REASON_CODE_ROLLBACK_PLAN_REQUIRED),
+                "withheld",
+                format!("withheld-rollback:{request_id}"),
+                history_rollback_gate
+                    .clone()
+                    .expect("rollback gate checked"),
             )
         } else if row.status == JobHistoryStatus::Succeeded && payment_pointer_authoritative {
             (
@@ -1219,6 +1304,7 @@ impl EarnKernelReceiptState {
                 normalize_digest(row.result_hash.as_str()),
             )];
             append_provenance_evidence_for_history(&mut evidence, row, stage);
+            append_rollback_plan_evidence(&mut evidence, row.job_id.as_str(), &metadata);
             if let Some(pricing) = history_pricing.as_ref() {
                 append_pricing_evidence(&mut evidence, pricing);
             }
@@ -1247,6 +1333,14 @@ impl EarnKernelReceiptState {
                     "withheld_reason",
                     format!("oa://earn/jobs/{}/withheld_provenance", row.job_id),
                     digest_for_text(REASON_CODE_PROVENANCE_REQUIREMENTS_UNMET),
+                ));
+            } else if stage == JobLifecycleStage::Paid
+                && reason_code == Some(REASON_CODE_ROLLBACK_PLAN_REQUIRED)
+            {
+                evidence.push(EvidenceRef::new(
+                    "withheld_reason",
+                    format!("oa://earn/jobs/{}/withheld_rollback", row.job_id),
+                    digest_for_text(REASON_CODE_ROLLBACK_PLAN_REQUIRED),
                 ));
             } else if stage == JobLifecycleStage::Paid {
                 evidence.push(EvidenceRef::new(
@@ -1311,6 +1405,10 @@ impl EarnKernelReceiptState {
         drift_alerts_24h: u64,
         drift_signals: Vec<DriftSignalSummary>,
         top_drift_signals: Vec<DriftSignalSummary>,
+        rollback_attempts_24h: u64,
+        rollback_successes_24h: u64,
+        rollback_success_rate: f64,
+        top_rollback_reason_codes: Vec<(String, u64)>,
         mut input_evidence: Vec<EvidenceRef>,
         source_tag: &str,
     ) {
@@ -1329,9 +1427,14 @@ impl EarnKernelReceiptState {
         ));
         let snapshot_metrics_digest = digest_for_text(
             format!(
-                "{snapshot_id}:{sv}:{rho}:{n}:{nv}:{delta_m_hat}:{xa_hat}:{correlated_verification_share}:{liability_premiums_collected_24h_sats}:{claims_paid_24h_sats}:{bonded_exposure_24h_sats}:{capital_reserves_24h_sats}:{loss_ratio}:{capital_coverage_ratio}:{drift_alerts_24h}:{}"
+                "{snapshot_id}:{sv}:{rho}:{n}:{nv}:{delta_m_hat}:{xa_hat}:{correlated_verification_share}:{liability_premiums_collected_24h_sats}:{claims_paid_24h_sats}:{bonded_exposure_24h_sats}:{capital_reserves_24h_sats}:{loss_ratio}:{capital_coverage_ratio}:{drift_alerts_24h}:{rollback_attempts_24h}:{rollback_successes_24h}:{rollback_success_rate}:{}:{}"
                 ,
-                drift_signal_digest_material(drift_signals.as_slice())
+                drift_signal_digest_material(drift_signals.as_slice()),
+                top_rollback_reason_codes
+                    .iter()
+                    .map(|(code, count)| format!("{code}:{count}"))
+                    .collect::<Vec<_>>()
+                    .join("|")
             )
             .as_str(),
         );
@@ -1386,6 +1489,22 @@ impl EarnKernelReceiptState {
         snapshot_metrics
             .meta
             .insert("top_drift_signals".to_string(), json!(top_drift_signals));
+        snapshot_metrics.meta.insert(
+            "rollback_attempts_24h".to_string(),
+            json!(rollback_attempts_24h),
+        );
+        snapshot_metrics.meta.insert(
+            "rollback_successes_24h".to_string(),
+            json!(rollback_successes_24h),
+        );
+        snapshot_metrics.meta.insert(
+            "rollback_success_rate".to_string(),
+            json!(rollback_success_rate),
+        );
+        snapshot_metrics.meta.insert(
+            "top_rollback_reason_codes".to_string(),
+            json!(top_rollback_reason_codes),
+        );
         input_evidence.push(snapshot_metrics);
 
         let receipt = ReceiptBuilder::new(
@@ -1429,6 +1548,10 @@ impl EarnKernelReceiptState {
             "capital_coverage_ratio": capital_coverage_ratio,
             "drift_alerts_24h": drift_alerts_24h,
             "top_drift_signals": top_drift_signals,
+            "rollback_attempts_24h": rollback_attempts_24h,
+            "rollback_successes_24h": rollback_successes_24h,
+            "rollback_success_rate": rollback_success_rate,
+            "top_rollback_reason_codes": top_rollback_reason_codes,
             "source_tag": source_tag,
         }))
         .with_evidence(input_evidence)
@@ -2194,6 +2317,8 @@ impl EarnKernelReceiptState {
                 tfb_class: existing.tfb_class,
                 severity: existing.severity,
                 verification_budget_hint_sats: existing.verification_budget_hint_sats,
+                rollback_plan_ref: existing.rollback_plan_ref.clone(),
+                compensating_action_plan_ref: existing.compensating_action_plan_ref.clone(),
             };
         }
 
@@ -2210,6 +2335,8 @@ impl EarnKernelReceiptState {
                 tfb_class,
                 severity,
                 verification_budget_hint_sats,
+                rollback_plan_ref: None,
+                compensating_action_plan_ref: None,
             },
         );
         normalize_work_units(&mut self.work_units);
@@ -2218,7 +2345,44 @@ impl EarnKernelReceiptState {
             tfb_class,
             severity,
             verification_budget_hint_sats,
+            rollback_plan_ref: None,
+            compensating_action_plan_ref: None,
         }
+    }
+
+    pub fn set_work_unit_rollback_terms(
+        &mut self,
+        work_unit_id: &str,
+        rollback_plan_ref: Option<&str>,
+        compensating_action_plan_ref: Option<&str>,
+    ) -> Result<(), String> {
+        let work_unit_id = work_unit_id.trim();
+        if work_unit_id.is_empty() {
+            return Err("work_unit_id cannot be empty".to_string());
+        }
+        let rollback_plan_ref = sanitize_optional_ref(rollback_plan_ref);
+        let compensating_action_plan_ref = sanitize_optional_ref(compensating_action_plan_ref);
+        if rollback_plan_ref.is_none() && compensating_action_plan_ref.is_none() {
+            return Err(
+                "at least one rollback or compensating_action plan reference is required"
+                    .to_string(),
+            );
+        }
+
+        let Some(metadata) = self.work_units.get_mut(work_unit_id) else {
+            return Err(format!("work_unit metadata not found for {work_unit_id}"));
+        };
+        metadata.rollback_plan_ref = rollback_plan_ref;
+        metadata.compensating_action_plan_ref = compensating_action_plan_ref;
+        normalize_work_units(&mut self.work_units);
+        self.persist_current_state()?;
+        self.last_error = None;
+        self.load_state = PaneLoadState::Ready;
+        self.last_action = Some(format!(
+            "Configured rollback terms for work unit {}",
+            work_unit_id
+        ));
+        Ok(())
     }
 
     fn normalized_work_units(&self) -> Vec<WorkUnitMetadata> {
@@ -2338,6 +2502,189 @@ impl EarnKernelReceiptState {
         std::fs::rename(&temp_path, path)
             .map_err(|error| format!("Failed to persist receipt bundle: {error}"))?;
         Ok(bundle)
+    }
+
+    pub fn record_rollback_action(
+        &mut self,
+        draft: RollbackActionDraft,
+        occurred_at_ms: i64,
+        source_tag: &str,
+    ) -> Result<String, String> {
+        let work_unit_id = draft.work_unit_id.trim();
+        if work_unit_id.is_empty() {
+            return Err("rollback action work_unit_id cannot be empty".to_string());
+        }
+        let idempotency_key = draft.idempotency_key.trim();
+        if idempotency_key.is_empty() {
+            return Err("rollback action idempotency_key cannot be empty".to_string());
+        }
+
+        let linked_receipt_ids = canonical_receipt_ids(draft.linked_receipt_ids.as_slice());
+        let incident_id = draft
+            .incident_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
+        if incident_id.is_none() && linked_receipt_ids.is_empty() {
+            return Err(
+                "rollback action requires incident_id or at least one linked_receipt_id"
+                    .to_string(),
+            );
+        }
+
+        for receipt_id in &linked_receipt_ids {
+            if self.get_receipt(receipt_id.as_str()).is_none() {
+                return Err(format!("linked receipt {receipt_id} not found"));
+            }
+        }
+        let incident = if let Some(incident_id) = incident_id.as_deref() {
+            Some(
+                self.latest_incident_by_id(incident_id)
+                    .cloned()
+                    .ok_or_else(|| format!("incident {incident_id} not found"))?,
+            )
+        } else {
+            None
+        };
+        let metadata = self
+            .work_units
+            .get(work_unit_id)
+            .cloned()
+            .ok_or_else(|| format!("work_unit metadata not found for {work_unit_id}"))?;
+        let resolved_metadata = ResolvedWorkMetadata {
+            category: metadata.category,
+            tfb_class: metadata.tfb_class,
+            severity: metadata.severity,
+            verification_budget_hint_sats: metadata.verification_budget_hint_sats,
+            rollback_plan_ref: metadata.rollback_plan_ref,
+            compensating_action_plan_ref: metadata.compensating_action_plan_ref,
+        };
+
+        let expected_reason_code = draft.rollback_receipt_type.reason_code();
+        if draft
+            .reason_code
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|provided| provided != expected_reason_code)
+        {
+            return Err(format!(
+                "rollback action reason_code must be {expected_reason_code}"
+            ));
+        }
+        let canonical_summary = draft
+            .summary
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| draft.rollback_receipt_type.default_summary());
+        let linkage_material = format!(
+            "{}:{}:{}:{}",
+            work_unit_id,
+            draft.rollback_receipt_type.label(),
+            incident_id.clone().unwrap_or_else(|| "none".to_string()),
+            linked_receipt_ids.join("|")
+        );
+        let receipt_key = normalize_key(digest_for_text(linkage_material.as_str()).as_str());
+        let receipt_id = format!(
+            "receipt.economy.rollback:{}:{}:{}",
+            draft.rollback_receipt_type.label(),
+            normalize_key(work_unit_id),
+            receipt_key
+        );
+        let mut evidence = Vec::<EvidenceRef>::new();
+        append_rollback_plan_evidence(&mut evidence, work_unit_id, &resolved_metadata);
+        evidence.push(EvidenceRef::new(
+            "rollback_summary",
+            format!(
+                "oa://economy/rollback/{}/summary",
+                normalize_key(work_unit_id)
+            ),
+            digest_for_text(canonical_summary),
+        ));
+        if let Some(incident) = incident.as_ref() {
+            evidence.push(incident_object_evidence(incident));
+        }
+        self.append_receipt_reference_links(&mut evidence, linked_receipt_ids.as_slice());
+        for receipt_id in &linked_receipt_ids {
+            let Some(receipt) = self.get_receipt(receipt_id.as_str()) else {
+                continue;
+            };
+            if receipt.receipt_type.to_ascii_lowercase().contains("claim") {
+                evidence.push(EvidenceRef::new(
+                    "trigger_claim_ref",
+                    format!("oa://receipts/{}", receipt.receipt_id),
+                    receipt.canonical_hash.clone(),
+                ));
+            }
+        }
+        let linked_claim_id = linked_receipt_ids.iter().find_map(|receipt_id| {
+            self.get_receipt(receipt_id.as_str())
+                .and_then(|receipt| receipt.trace.claim_id.clone())
+        });
+
+        let receipt = ReceiptBuilder::new(
+            receipt_id.clone(),
+            draft.rollback_receipt_type.receipt_type(),
+            occurred_at_ms.max(0),
+            format!(
+                "idemp.economy.rollback:{}:{}",
+                draft.rollback_receipt_type.label(),
+                normalize_key(idempotency_key)
+            ),
+            TraceContext {
+                session_id: None,
+                trajectory_hash: None,
+                job_hash: None,
+                run_id: Some(format!(
+                    "rollback:{}:{}",
+                    normalize_key(work_unit_id),
+                    draft.rollback_receipt_type.label()
+                )),
+                work_unit_id: Some(work_unit_id.to_string()),
+                contract_id: None,
+                claim_id: linked_claim_id,
+            },
+            current_policy_context(),
+        )
+        .with_inputs_payload(json!({
+            "work_unit_id": work_unit_id,
+            "incident_id": incident_id,
+            "linked_receipt_ids": linked_receipt_ids,
+            "rollback_receipt_type": draft.rollback_receipt_type.label(),
+            "summary": canonical_summary,
+            "work_unit": work_unit_metadata_payload(work_unit_id, &resolved_metadata),
+        }))
+        .with_outputs_payload(json!({
+            "work_unit_id": work_unit_id,
+            "rollback_receipt_type": draft.rollback_receipt_type.label(),
+            "status": draft.rollback_receipt_type.status_label(),
+            "reason_code": expected_reason_code,
+            "source_tag": source_tag,
+        }))
+        .with_evidence(evidence)
+        .with_hints(ReceiptHints {
+            category: Some(resolved_metadata.category.clone()),
+            tfb_class: Some(resolved_metadata.tfb_class),
+            severity: Some(resolved_metadata.severity),
+            achieved_verification_tier: None,
+            verification_correlated: None,
+            provenance_grade: None,
+            auth_assurance_level: Some(AuthAssuranceLevel::Authenticated),
+            personhood_proved: Some(false),
+            reason_code: Some(expected_reason_code.to_string()),
+            notional: None,
+            liability_premium: None,
+        })
+        .build();
+        self.append_receipt(receipt, source_tag);
+        if self.load_state == PaneLoadState::Error {
+            return Err(self
+                .last_error
+                .clone()
+                .unwrap_or_else(|| "failed to emit rollback action receipt".to_string()));
+        }
+        Ok(receipt_id)
     }
 
     pub fn register_incident_taxonomy_entry(
@@ -2627,12 +2974,27 @@ impl EarnKernelReceiptState {
             }
         }
         let mut taxonomy_registry = self.normalized_incident_taxonomy_entries();
-        let mut incident_receipts = self
+        let mut incident_receipt_map = self
             .receipts
             .iter()
             .filter(|receipt| receipt.receipt_type.starts_with("economy.incident."))
-            .cloned()
-            .collect::<Vec<_>>();
+            .map(|receipt| (receipt.receipt_id.clone(), receipt.clone()))
+            .collect::<BTreeMap<_, _>>();
+        for incident in &incidents {
+            for rollback_receipt_id in &incident.rollback_receipt_ids {
+                if let Some(receipt) = self.get_receipt(rollback_receipt_id.as_str()) {
+                    incident_receipt_map.insert(receipt.receipt_id.clone(), receipt.clone());
+                }
+            }
+            for linked_receipt_id in &incident.linked_receipt_ids {
+                if let Some(receipt) = self.get_receipt(linked_receipt_id.as_str()) {
+                    if receipt.receipt_type.to_ascii_lowercase().contains("claim") {
+                        incident_receipt_map.insert(receipt.receipt_id.clone(), receipt.clone());
+                    }
+                }
+            }
+        }
+        let mut incident_receipts = incident_receipt_map.into_values().collect::<Vec<_>>();
         incident_receipts.sort_by(|lhs, rhs| {
             lhs.created_at_ms
                 .cmp(&rhs.created_at_ms)
@@ -3224,7 +3586,9 @@ fn work_unit_metadata_payload(
         "verification_budget_hint": {
             "asset": "btc",
             "amount_sats": metadata.verification_budget_hint_sats,
-        }
+        },
+        "rollback_plan_ref": metadata.rollback_plan_ref.clone(),
+        "compensating_action_plan_ref": metadata.compensating_action_plan_ref.clone(),
     })
 }
 
@@ -3406,6 +3770,15 @@ fn policy_rules() -> &'static [PolicyRule] {
             note: "Historical paid rows require wallet-authoritative payment pointers.",
         },
         PolicyRule {
+            rule_id: "policy.earn.compute.rollback_plan_required.v1",
+            decision: "withhold",
+            action: Some("paid_transition_requires_rollback_plan"),
+            category: Some("compute"),
+            severity: Some(SeverityClass::High),
+            reason_code: Some(REASON_CODE_ROLLBACK_PLAN_REQUIRED),
+            note: "High-severity paid transitions require rollback or compensating-action plans.",
+        },
+        PolicyRule {
             rule_id: "policy.earn.compute.allow_ingress.v1",
             decision: "allow",
             action: Some("ingress"),
@@ -3560,16 +3933,28 @@ fn default_policy_bundle() -> PolicyBundleConfig {
             accepted_levels: vec!["level_2".to_string(), "level_3".to_string()],
             enable_safe_harbor_relaxations: true,
         }],
-        rollback_rules: vec![RollbackPolicyRule {
-            rule_id: "policy.earn.rollback.high_severity.v1".to_string(),
-            slice: PolicySliceRule {
-                category: Some("compute".to_string()),
-                tfb_class: None,
-                severity: Some(SeverityClass::High),
+        rollback_rules: vec![
+            RollbackPolicyRule {
+                rule_id: "policy.earn.rollback.high_severity.v1".to_string(),
+                slice: PolicySliceRule {
+                    category: Some("compute".to_string()),
+                    tfb_class: None,
+                    severity: Some(SeverityClass::High),
+                },
+                require_rollback_plan: true,
+                allow_compensating_action_only: false,
             },
-            require_rollback_plan: true,
-            allow_compensating_action_only: false,
-        }],
+            RollbackPolicyRule {
+                rule_id: "policy.earn.rollback.critical_severity.v1".to_string(),
+                slice: PolicySliceRule {
+                    category: Some("compute".to_string()),
+                    tfb_class: None,
+                    severity: Some(SeverityClass::Critical),
+                },
+                require_rollback_plan: true,
+                allow_compensating_action_only: false,
+            },
+        ],
         autonomy_rules: vec![
             AutonomyPolicyRule {
                 rule_id: "policy.earn.autonomy.xa_elevated.v1".to_string(),
@@ -3740,6 +4125,13 @@ fn parse_auth_assurance_level(value: &str) -> Option<AuthAssuranceLevel> {
         "hardware_bound" | "hardware-bound" | "hw_bound" => Some(AuthAssuranceLevel::HardwareBound),
         _ => None,
     }
+}
+
+fn sanitize_optional_ref(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|candidate| !candidate.is_empty())
+        .map(ToString::to_string)
 }
 
 fn auth_assurance_rank(level: AuthAssuranceLevel) -> u8 {
@@ -4030,6 +4422,101 @@ fn evaluate_provenance_gate(
         }
     }
     Ok(observed_grade)
+}
+
+fn evaluate_rollback_gate(
+    bundle: &PolicyBundleConfig,
+    category: &str,
+    tfb_class: FeedbackLatencyClass,
+    severity: SeverityClass,
+    work_unit_id: &str,
+    metadata: &ResolvedWorkMetadata,
+) -> Result<PolicyDecision, PolicyDecision> {
+    let Some(rule) = select_rollback_rule(bundle, category, tfb_class, severity) else {
+        return Ok(PolicyDecision {
+            rule_id: format!(
+                "policy.earn.rollback.fallback.{}.{}.{}",
+                normalize_key(category),
+                tfb_class.label(),
+                severity.label()
+            ),
+            decision: "allow",
+            notes: format!(
+                "No rollback rule matched; allowing category={} tfb={} severity={} work_unit={}",
+                category,
+                tfb_class.label(),
+                severity.label(),
+                work_unit_id,
+            ),
+        });
+    };
+    if !rule.require_rollback_plan {
+        return Ok(PolicyDecision {
+            rule_id: rule.rule_id.clone(),
+            decision: "allow",
+            notes: format!(
+                "policy_rule={} rollback_plan_not_required category={} tfb={} severity={} work_unit={}",
+                rule.rule_id,
+                category,
+                tfb_class.label(),
+                severity.label(),
+                work_unit_id,
+            ),
+        });
+    }
+
+    let has_rollback_plan = metadata.rollback_plan_ref.is_some();
+    let has_compensating_action_plan = metadata.compensating_action_plan_ref.is_some();
+    let plans_satisfy_rule = if rule.allow_compensating_action_only {
+        has_compensating_action_plan
+    } else {
+        has_rollback_plan || has_compensating_action_plan
+    };
+    let notes = format!(
+        "policy_rule={} require_rollback_plan={} allow_compensating_action_only={} has_rollback_plan={} has_compensating_action_plan={} category={} tfb={} severity={} work_unit={}",
+        rule.rule_id,
+        rule.require_rollback_plan,
+        rule.allow_compensating_action_only,
+        has_rollback_plan,
+        has_compensating_action_plan,
+        category,
+        tfb_class.label(),
+        severity.label(),
+        work_unit_id,
+    );
+    if plans_satisfy_rule {
+        return Ok(PolicyDecision {
+            rule_id: rule.rule_id.clone(),
+            decision: "allow",
+            notes,
+        });
+    }
+    Err(PolicyDecision {
+        rule_id: rule.rule_id.clone(),
+        decision: "withhold",
+        notes,
+    })
+}
+
+fn append_rollback_plan_evidence(
+    evidence: &mut Vec<EvidenceRef>,
+    work_unit_id: &str,
+    metadata: &ResolvedWorkMetadata,
+) {
+    if let Some(rollback_plan_ref) = metadata.rollback_plan_ref.as_deref() {
+        evidence.push(EvidenceRef::new(
+            "rollback_plan_ref",
+            rollback_plan_ref,
+            digest_for_text(format!("{}:{}", work_unit_id, rollback_plan_ref).as_str()),
+        ));
+    }
+    if let Some(compensating_action_plan_ref) = metadata.compensating_action_plan_ref.as_deref() {
+        evidence.push(EvidenceRef::new(
+            "compensating_action_plan_ref",
+            compensating_action_plan_ref,
+            digest_for_text(format!("{}:{}", work_unit_id, compensating_action_plan_ref).as_str()),
+        ));
+    }
 }
 
 fn append_provenance_evidence_for_job_stage(
@@ -4907,6 +5394,54 @@ impl IncidentStatus {
             IncidentStatus::IncidentStatusUnspecified => "unspecified",
             IncidentStatus::Open => "open",
             IncidentStatus::Resolved => "resolved",
+        }
+    }
+}
+
+impl RollbackReceiptType {
+    fn label(self) -> &'static str {
+        match self {
+            RollbackReceiptType::RollbackExecuted => "rollback_executed",
+            RollbackReceiptType::RollbackFailed => "rollback_failed",
+            RollbackReceiptType::CompensatingActionExecuted => "compensating_action_executed",
+        }
+    }
+
+    fn receipt_type(self) -> &'static str {
+        match self {
+            RollbackReceiptType::RollbackExecuted => "economy.rollback.executed.v1",
+            RollbackReceiptType::RollbackFailed => "economy.rollback.failed.v1",
+            RollbackReceiptType::CompensatingActionExecuted => {
+                "economy.compensating_action.executed.v1"
+            }
+        }
+    }
+
+    fn reason_code(self) -> &'static str {
+        match self {
+            RollbackReceiptType::RollbackExecuted => REASON_CODE_ROLLBACK_EXECUTED,
+            RollbackReceiptType::RollbackFailed => REASON_CODE_ROLLBACK_FAILED,
+            RollbackReceiptType::CompensatingActionExecuted => {
+                REASON_CODE_COMPENSATING_ACTION_EXECUTED
+            }
+        }
+    }
+
+    fn status_label(self) -> &'static str {
+        match self {
+            RollbackReceiptType::RollbackExecuted => "rollback_executed",
+            RollbackReceiptType::RollbackFailed => "rollback_failed",
+            RollbackReceiptType::CompensatingActionExecuted => "compensating_action_executed",
+        }
+    }
+
+    fn default_summary(self) -> &'static str {
+        match self {
+            RollbackReceiptType::RollbackExecuted => "Rollback executed against incident/claim.",
+            RollbackReceiptType::RollbackFailed => "Rollback attempt failed.",
+            RollbackReceiptType::CompensatingActionExecuted => {
+                "Compensating action executed against incident/claim."
+            }
         }
     }
 }
@@ -5804,6 +6339,69 @@ mod tests {
     }
 
     #[test]
+    fn high_severity_settlement_requires_rollback_terms() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        let mut high_severity_job = fixture_active_job("wallet-payment-high-severity");
+        high_severity_job.quoted_price_sats = 10_000;
+
+        state.record_active_job_stage(
+            &high_severity_job,
+            JobLifecycleStage::Paid,
+            1_762_000_010,
+            "test.rollback_gate.without_terms",
+        );
+        let withheld = state
+            .receipts
+            .iter()
+            .find(|receipt| {
+                receipt.receipt_type == "earn.job.withheld.v1"
+                    && receipt.hints.reason_code.as_deref()
+                        == Some(REASON_CODE_ROLLBACK_PLAN_REQUIRED)
+            })
+            .expect("rollback withhold receipt");
+        assert!(
+            withheld
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "policy_decision")
+        );
+        assert!(
+            !withheld
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "rollback_plan_ref")
+        );
+
+        state
+            .set_work_unit_rollback_terms(
+                high_severity_job.job_id.as_str(),
+                Some("oa://rollback/plans/high-severity"),
+                None,
+            )
+            .expect("rollback terms set");
+        state.record_active_job_stage(
+            &high_severity_job,
+            JobLifecycleStage::Paid,
+            1_762_000_011,
+            "test.rollback_gate.with_terms",
+        );
+
+        let settled = state
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_type == "earn.job.settlement_observed.v1")
+            .expect("settlement receipt");
+        assert!(
+            settled
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "rollback_plan_ref")
+        );
+    }
+
+    #[test]
     fn settlement_receipt_contains_receipt_refs_and_transitive_lineage() {
         let temp_dir = tempfile::tempdir().expect("tempdir");
         let state_path = temp_dir.path().join("receipts.json");
@@ -5938,6 +6536,10 @@ mod tests {
             0,
             vec![],
             vec![],
+            0,
+            0,
+            0.0,
+            vec![],
             vec![input],
             "test.snapshot",
         );
@@ -5980,6 +6582,18 @@ mod tests {
         );
         assert_eq!(
             snapshot_metrics.meta.get("top_drift_signals"),
+            Some(&json!([]))
+        );
+        assert_eq!(
+            snapshot_metrics.meta.get("rollback_attempts_24h"),
+            Some(&json!(0))
+        );
+        assert_eq!(
+            snapshot_metrics.meta.get("rollback_successes_24h"),
+            Some(&json!(0))
+        );
+        assert_eq!(
+            snapshot_metrics.meta.get("top_rollback_reason_codes"),
             Some(&json!([]))
         );
         assert_eq!(
@@ -6044,6 +6658,80 @@ mod tests {
         let unknown =
             state.report_incident(unknown_taxonomy, 1_762_000_062_000, "test.incident.unknown");
         assert!(unknown.is_err());
+    }
+
+    #[test]
+    fn rollback_action_receipts_are_idempotent_and_linked() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        state.record_history_receipt(
+            &fixture_history_row("wallet-payment-rollback"),
+            1_762_000_010,
+            "test.history",
+        );
+        let linked_receipt_id = state
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_type == "earn.job.settlement_observed.v1")
+            .expect("settlement receipt")
+            .receipt_id
+            .clone();
+        state
+            .set_work_unit_rollback_terms(
+                "job-req-123",
+                Some("oa://rollback/plans/default"),
+                Some("oa://rollback/compensating/default"),
+            )
+            .expect("rollback terms configured");
+        let incident_id = state
+            .report_incident(
+                fixture_incident_draft(linked_receipt_id.as_str(), "incident-rollback"),
+                1_762_000_060_000,
+                "test.incident",
+            )
+            .expect("incident report");
+
+        let draft = RollbackActionDraft {
+            work_unit_id: "job-req-123".to_string(),
+            idempotency_key: "rollback-action-1".to_string(),
+            rollback_receipt_type: RollbackReceiptType::RollbackExecuted,
+            incident_id: Some(incident_id),
+            linked_receipt_ids: vec![linked_receipt_id],
+            reason_code: Some(REASON_CODE_ROLLBACK_EXECUTED.to_string()),
+            summary: Some("rollback executed via automation playbook".to_string()),
+        };
+        let first = state
+            .record_rollback_action(draft.clone(), 1_762_000_120_000, "test.rollback")
+            .expect("first rollback receipt");
+        let second = state
+            .record_rollback_action(draft, 1_762_000_120_250, "test.rollback.replay")
+            .expect("idempotent rollback replay");
+
+        assert_eq!(first, second);
+        let rollback_receipts = state
+            .receipts
+            .iter()
+            .filter(|receipt| receipt.receipt_type == "economy.rollback.executed.v1")
+            .collect::<Vec<_>>();
+        assert_eq!(rollback_receipts.len(), 1);
+        let rollback_receipt = rollback_receipts[0];
+        assert_eq!(
+            rollback_receipt.hints.reason_code.as_deref(),
+            Some(REASON_CODE_ROLLBACK_EXECUTED)
+        );
+        assert!(
+            rollback_receipt
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "incident_object_ref")
+        );
+        assert!(
+            rollback_receipt
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "receipt_ref")
+        );
     }
 
     #[test]
@@ -6160,13 +6848,42 @@ mod tests {
             .expect("settlement receipt")
             .receipt_id
             .clone();
-        state
+        let incident_id = state
             .report_incident(
                 fixture_incident_draft(linked_receipt_id.as_str(), "incident-export"),
                 1_762_000_060_000,
                 "test.incident.report",
             )
             .expect("incident report");
+        let rollback_receipt_id = state
+            .record_rollback_action(
+                RollbackActionDraft {
+                    work_unit_id: "job-req-123".to_string(),
+                    idempotency_key: "rollback-export-link".to_string(),
+                    rollback_receipt_type: RollbackReceiptType::RollbackExecuted,
+                    incident_id: Some(incident_id.clone()),
+                    linked_receipt_ids: vec![linked_receipt_id.clone()],
+                    reason_code: Some(REASON_CODE_ROLLBACK_EXECUTED.to_string()),
+                    summary: Some("rollback executed for export linkage".to_string()),
+                },
+                1_762_000_120_000,
+                "test.rollback.export",
+            )
+            .expect("rollback receipt");
+        state
+            .update_incident(
+                IncidentUpdateDraft {
+                    incident_id,
+                    idempotency_key: "incident-export-link-rollback".to_string(),
+                    summary: None,
+                    linked_receipt_ids: vec![linked_receipt_id.clone()],
+                    rollback_receipt_ids: vec![rollback_receipt_id.clone()],
+                    evidence_digests: vec!["sha256:incident-export-link".to_string()],
+                },
+                1_762_000_150_000,
+                "test.incident.link.rollback",
+            )
+            .expect("incident linkage update");
 
         let restricted = state
             .export_incident_audit_package(
@@ -6190,6 +6907,12 @@ mod tests {
                 .incidents
                 .iter()
                 .all(|incident| incident.summary == "[redacted]")
+        );
+        assert!(
+            restricted
+                .incident_receipts
+                .iter()
+                .any(|receipt| receipt.receipt_id == rollback_receipt_id)
         );
         assert!(public.incident_receipts.iter().all(|receipt| {
             receipt
@@ -6227,6 +6950,10 @@ mod tests {
             3,
             drift_signals.clone(),
             top_drift_signals.clone(),
+            0,
+            0,
+            0.0,
+            vec![],
             vec![],
             "test.snapshot",
         );
@@ -6250,6 +6977,10 @@ mod tests {
             3,
             drift_signals,
             top_drift_signals,
+            0,
+            0,
+            0.0,
+            vec![],
             vec![],
             "test.snapshot.replay",
         );
@@ -6328,6 +7059,10 @@ mod tests {
             3,
             active_signals.clone(),
             active_signals,
+            0,
+            0,
+            0.0,
+            vec![],
             vec![],
             "test.snapshot.a",
         );
@@ -6352,6 +7087,10 @@ mod tests {
             0.05,
             0,
             cleared_signals,
+            vec![],
+            0,
+            0,
+            0.0,
             vec![],
             vec![],
             "test.snapshot.b",
@@ -6444,6 +7183,10 @@ mod tests {
                     alert: true,
                 },
             ],
+            0,
+            0,
+            0.0,
+            vec![],
             vec![],
             "test.snapshot",
         );
@@ -6507,6 +7250,10 @@ mod tests {
             0.05,
             0,
             vec![],
+            vec![],
+            0,
+            0,
+            0.0,
             vec![],
             vec![],
             "test.snapshot",
