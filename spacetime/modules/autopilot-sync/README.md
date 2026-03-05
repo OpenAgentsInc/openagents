@@ -61,3 +61,4 @@ scripts/spacetime/verify-autopilot-sync-contract.sh
 Operational publish/promote and handshake smoke procedures are documented in:
 
 - `docs/SPACETIME_SYNC_OPS_RUNBOOK.md`
+- `docs/SPACETIME_SYNC_RELEASE_GATES.md`
