@@ -6,7 +6,7 @@ use crate::economy_kernel_receipts::{
     Asset, EvidenceRef, FeedbackLatencyClass, Money, MoneyAmount, PolicyContext, Receipt,
     ReceiptBuilder, ReceiptHints, SeverityClass, TraceContext,
 };
-use crate::state::job_inbox::JobInboxNetworkRequest;
+use crate::state::job_inbox::{JobInboxNetworkRequest, JobInboxRequest};
 use bitcoin::hashes::{Hash, sha256};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -17,6 +17,26 @@ const EARN_KERNEL_RECEIPT_SCHEMA_VERSION: u16 = 1;
 const EARN_KERNEL_RECEIPT_STREAM_ID: &str = "stream.earn_kernel_receipts.v1";
 const EARN_KERNEL_RECEIPT_AUTHORITY: &str = "kernel.authority";
 const EARN_KERNEL_RECEIPT_ROW_LIMIT: usize = 2048;
+const REASON_CODE_JOB_FAILED: &str = "JOB_FAILED";
+const REASON_CODE_POLICY_PREFLIGHT_REJECTED: &str = "POLICY_PREFLIGHT_REJECTED";
+const REASON_CODE_PAYMENT_POINTER_NON_AUTHORITATIVE: &str = "PAYMENT_POINTER_NON_AUTHORITATIVE";
+
+struct PolicyDecision {
+    rule_id: String,
+    decision: &'static str,
+    notes: String,
+}
+
+#[derive(Clone, Copy)]
+struct PolicyRule {
+    rule_id: &'static str,
+    decision: &'static str,
+    action: Option<&'static str>,
+    category: Option<&'static str>,
+    severity: Option<SeverityClass>,
+    reason_code: Option<&'static str>,
+    note: &'static str,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct EarnKernelReceiptDocumentV1 {
@@ -78,6 +98,8 @@ impl EarnKernelReceiptState {
         source_tag: &str,
     ) {
         let job_id = format!("job-{}", request.request_id);
+        let category = work_category_for_demand_source(request.demand_source);
+        let severity = severity_for_notional_sats(request.price_sats);
         let receipt_id = lifecycle_receipt_id(
             job_id.as_str(),
             JobLifecycleStage::Received,
@@ -108,10 +130,12 @@ impl EarnKernelReceiptState {
             ));
         }
 
+        let policy_decision = allow_policy_decision("ingress", category, severity);
+
         let hints = ReceiptHints {
-            category: Some(work_category_for_demand_source(request.demand_source).to_string()),
+            category: Some(category.to_string()),
             tfb_class: Some(tfb_class_for_ttl_seconds(request.ttl_seconds)),
-            severity: Some(severity_for_notional_sats(request.price_sats)),
+            severity: Some(severity),
             achieved_verification_tier: None,
             verification_correlated: None,
             provenance_grade: None,
@@ -121,6 +145,7 @@ impl EarnKernelReceiptState {
                 amount: MoneyAmount::AmountSats(request.price_sats),
             }),
         };
+        evidence.push(policy_decision_evidence(&policy_decision));
 
         let receipt = ReceiptBuilder::new(
             receipt_id,
@@ -149,11 +174,153 @@ impl EarnKernelReceiptState {
             "stage": JobLifecycleStage::Received.label(),
             "source_tag": source_tag,
             "status": "accepted_for_inbox_projection",
+            "policy_rule_id": policy_decision.rule_id,
+            "policy_decision": policy_decision.decision,
+            "policy_notes": policy_decision.notes,
         }))
         .with_evidence(evidence)
         .with_hints(hints)
         .build();
 
+        self.append_receipt(receipt, source_tag);
+    }
+
+    pub fn record_network_preflight_rejection(
+        &mut self,
+        request: &JobInboxNetworkRequest,
+        reason: &str,
+        occurred_at_epoch_seconds: u64,
+        source_tag: &str,
+    ) {
+        self.record_preflight_rejection_common(
+            request.request_id.as_str(),
+            request.requester.as_str(),
+            request.demand_source,
+            request.request_kind,
+            request.capability.as_str(),
+            request.price_sats,
+            request.ttl_seconds,
+            reason,
+            occurred_at_epoch_seconds,
+            source_tag,
+            false,
+        );
+    }
+
+    pub fn record_preflight_rejection(
+        &mut self,
+        request: &JobInboxRequest,
+        reason: &str,
+        occurred_at_epoch_seconds: u64,
+        source_tag: &str,
+    ) {
+        self.record_preflight_rejection_common(
+            request.request_id.as_str(),
+            request.requester.as_str(),
+            request.demand_source,
+            request.request_kind,
+            request.capability.as_str(),
+            request.price_sats,
+            request.ttl_seconds,
+            reason,
+            occurred_at_epoch_seconds,
+            source_tag,
+            true,
+        );
+    }
+
+    fn record_preflight_rejection_common(
+        &mut self,
+        request_id: &str,
+        requester: &str,
+        demand_source: JobDemandSource,
+        request_kind: u16,
+        capability: &str,
+        price_sats: u64,
+        ttl_seconds: u64,
+        reason: &str,
+        occurred_at_epoch_seconds: u64,
+        source_tag: &str,
+        link_ingress_receipt: bool,
+    ) {
+        let job_id = format!("job-{request_id}");
+        let category = work_category_for_demand_source(demand_source);
+        let severity = severity_for_notional_sats(price_sats);
+        let rule_action = "preflight_reject";
+        let policy_decision = deny_policy_decision(
+            rule_action,
+            category,
+            severity,
+            REASON_CODE_POLICY_PREFLIGHT_REJECTED,
+        );
+        let authority_key = format!("preflight-reject:{request_id}");
+
+        let mut evidence = vec![
+            EvidenceRef::new(
+                "nostr_request",
+                format!("oa://nip90/request/{request_id}"),
+                digest_for_text(request_id),
+            ),
+            EvidenceRef::new(
+                "preflight_reason",
+                format!("oa://earn/jobs/{job_id}/preflight_reject"),
+                digest_for_text(reason),
+            ),
+            policy_decision_evidence(&policy_decision),
+        ];
+        if link_ingress_receipt {
+            let ingress_receipt_id =
+                lifecycle_receipt_id(job_id.as_str(), JobLifecycleStage::Received, request_id);
+            self.append_receipt_reference_links(&mut evidence, &[ingress_receipt_id]);
+        }
+
+        let receipt = ReceiptBuilder::new(
+            lifecycle_receipt_id(
+                job_id.as_str(),
+                JobLifecycleStage::Received,
+                authority_key.as_str(),
+            ),
+            "earn.job.preflight_rejected.v1",
+            epoch_seconds_to_ms(occurred_at_epoch_seconds),
+            lifecycle_idempotency_key("preflight_reject", job_id.as_str(), request_id),
+            trace_for_job(job_id.as_str(), Some(request_id), None),
+            current_policy_context(),
+        )
+        .with_inputs_payload(json!({
+            "job_id": job_id,
+            "request_id": request_id,
+            "requester": requester,
+            "demand_source": demand_source.label(),
+            "request_kind": request_kind,
+            "capability": capability,
+            "price_sats": price_sats,
+            "ttl_seconds": ttl_seconds,
+            "preflight_reason": reason,
+        }))
+        .with_outputs_payload(json!({
+            "stage": JobLifecycleStage::Received.label(),
+            "source_tag": source_tag,
+            "status": "denied",
+            "reason_code": REASON_CODE_POLICY_PREFLIGHT_REJECTED,
+            "policy_rule_id": policy_decision.rule_id,
+            "policy_decision": policy_decision.decision,
+            "policy_notes": policy_decision.notes,
+        }))
+        .with_evidence(evidence)
+        .with_hints(ReceiptHints {
+            category: Some(category.to_string()),
+            tfb_class: Some(tfb_class_for_ttl_seconds(ttl_seconds)),
+            severity: Some(severity),
+            achieved_verification_tier: None,
+            verification_correlated: None,
+            provenance_grade: None,
+            reason_code: Some(REASON_CODE_POLICY_PREFLIGHT_REJECTED.to_string()),
+            notional: Some(Money {
+                asset: Asset::Btc,
+                amount: MoneyAmount::AmountSats(price_sats),
+            }),
+        })
+        .build();
         self.append_receipt(receipt, source_tag);
     }
 
@@ -164,7 +331,7 @@ impl EarnKernelReceiptState {
         occurred_at_epoch_seconds: u64,
         source_tag: &str,
     ) {
-        let authority_key = match stage {
+        let mut authority_key = match stage {
             JobLifecycleStage::Received | JobLifecycleStage::Accepted => job.request_id.as_str(),
             JobLifecycleStage::Running => job
                 .sa_tick_request_event_id
@@ -184,33 +351,65 @@ impl EarnKernelReceiptState {
                 .as_deref()
                 .or(job.failure_reason.as_deref())
                 .unwrap_or(job.request_id.as_str()),
-        };
-        let receipt_id = lifecycle_receipt_id(job.job_id.as_str(), stage, authority_key);
-
-        let (receipt_type, reason_code) = match stage {
-            JobLifecycleStage::Accepted => ("earn.job.accepted.v1", None),
-            JobLifecycleStage::Running => ("earn.job.executed.v1", None),
-            JobLifecycleStage::Delivered => ("earn.job.result_published.v1", None),
-            JobLifecycleStage::Paid => ("earn.job.settlement_observed.v1", None),
-            JobLifecycleStage::Failed => ("earn.job.failed.v1", Some("JOB_FAILED")),
-            JobLifecycleStage::Received => ("earn.job.received.v1", None),
-        };
+        }
+        .to_string();
 
         let payment_pointer = job
             .payment_id
             .as_deref()
             .or(job.invoice_id.as_deref())
             .unwrap_or("");
-        if stage == JobLifecycleStage::Paid
-            && !is_wallet_authoritative_payment_pointer(Some(payment_pointer))
-        {
-            self.last_error = Some(format!(
-                "Skipping paid receipt for {}: missing wallet-authoritative payment pointer",
-                job.job_id
-            ));
-            self.load_state = PaneLoadState::Error;
-            return;
-        }
+        let paid_pointer_authoritative =
+            is_wallet_authoritative_payment_pointer(Some(payment_pointer));
+
+        let category = work_category_for_demand_source(job.demand_source);
+        let severity = severity_for_notional_sats(job.quoted_price_sats);
+        let (receipt_type, reason_code, status, policy_decision): (
+            &'static str,
+            Option<&'static str>,
+            &'static str,
+            PolicyDecision,
+        ) = if stage == JobLifecycleStage::Paid && !paid_pointer_authoritative {
+            authority_key = format!("withheld:{}", job.request_id);
+            (
+                "earn.job.withheld.v1",
+                Some(REASON_CODE_PAYMENT_POINTER_NON_AUTHORITATIVE),
+                "withheld",
+                withhold_policy_decision(
+                    "paid_transition_requires_wallet_proof",
+                    category,
+                    severity,
+                    REASON_CODE_PAYMENT_POINTER_NON_AUTHORITATIVE,
+                ),
+            )
+        } else if stage == JobLifecycleStage::Failed {
+            (
+                "earn.job.failed.v1",
+                Some(REASON_CODE_JOB_FAILED),
+                "failed",
+                deny_policy_decision(
+                    "execution_failure",
+                    category,
+                    severity,
+                    REASON_CODE_JOB_FAILED,
+                ),
+            )
+        } else {
+            (
+                match stage {
+                    JobLifecycleStage::Accepted => "earn.job.accepted.v1",
+                    JobLifecycleStage::Running => "earn.job.executed.v1",
+                    JobLifecycleStage::Delivered => "earn.job.result_published.v1",
+                    JobLifecycleStage::Paid => "earn.job.settlement_observed.v1",
+                    JobLifecycleStage::Received => "earn.job.received.v1",
+                    JobLifecycleStage::Failed => "earn.job.failed.v1",
+                },
+                None,
+                "ok",
+                allow_policy_decision(stage.label(), category, severity),
+            )
+        };
+        let receipt_id = lifecycle_receipt_id(job.job_id.as_str(), stage, authority_key.as_str());
 
         let mut evidence = vec![EvidenceRef::new(
             "request_id",
@@ -231,7 +430,7 @@ impl EarnKernelReceiptState {
                 digest_for_text(event_id),
             ));
         }
-        if stage == JobLifecycleStage::Paid {
+        if stage == JobLifecycleStage::Paid && paid_pointer_authoritative {
             evidence.push(EvidenceRef::new(
                 "wallet_settlement_proof",
                 format!("oa://wallet/payments/{payment_pointer}"),
@@ -244,6 +443,13 @@ impl EarnKernelReceiptState {
                     digest_for_text(event_id),
                 ));
             }
+        }
+        if stage == JobLifecycleStage::Paid && !paid_pointer_authoritative {
+            evidence.push(EvidenceRef::new(
+                "withheld_reason",
+                format!("oa://earn/jobs/{}/withheld", job.job_id),
+                digest_for_text(REASON_CODE_PAYMENT_POINTER_NON_AUTHORITATIVE),
+            ));
         }
         if stage == JobLifecycleStage::Failed {
             let reason = job
@@ -260,11 +466,12 @@ impl EarnKernelReceiptState {
             &mut evidence,
             active_job_link_candidate_receipt_ids(job, stage).as_slice(),
         );
+        evidence.push(policy_decision_evidence(&policy_decision));
 
         let hints = ReceiptHints {
-            category: Some(work_category_for_demand_source(job.demand_source).to_string()),
+            category: Some(category.to_string()),
             tfb_class: None,
-            severity: Some(severity_for_notional_sats(job.quoted_price_sats)),
+            severity: Some(severity),
             achieved_verification_tier: None,
             verification_correlated: None,
             provenance_grade: None,
@@ -279,7 +486,7 @@ impl EarnKernelReceiptState {
             receipt_id,
             receipt_type,
             epoch_seconds_to_ms(occurred_at_epoch_seconds),
-            lifecycle_idempotency_key(stage.label(), job.job_id.as_str(), authority_key),
+            lifecycle_idempotency_key(stage.label(), job.job_id.as_str(), authority_key.as_str()),
             trace_for_job(
                 job.job_id.as_str(),
                 Some(job.request_id.as_str()),
@@ -300,8 +507,11 @@ impl EarnKernelReceiptState {
         .with_outputs_payload(json!({
             "stage": stage.label(),
             "source_tag": source_tag,
-            "status": if stage == JobLifecycleStage::Failed { "failed" } else { "ok" },
+            "status": status,
             "reason_code": reason_code,
+            "policy_rule_id": policy_decision.rule_id,
+            "policy_decision": policy_decision.decision,
+            "policy_notes": policy_decision.notes,
         }))
         .with_evidence(evidence)
         .with_hints(hints)
@@ -316,45 +526,63 @@ impl EarnKernelReceiptState {
         occurred_at_epoch_seconds: u64,
         source_tag: &str,
     ) {
-        let stage = if row.status == JobHistoryStatus::Succeeded {
-            JobLifecycleStage::Paid
-        } else {
-            JobLifecycleStage::Failed
-        };
-        let authority_key = if stage == JobLifecycleStage::Paid {
-            row.payment_pointer.as_str()
-        } else {
-            row.result_hash.as_str()
-        };
-        if stage == JobLifecycleStage::Paid
-            && !is_wallet_authoritative_payment_pointer(Some(row.payment_pointer.as_str()))
-        {
-            self.last_error = Some(format!(
-                "Skipping paid history receipt for {}: non-authoritative payment pointer",
-                row.job_id
-            ));
-            self.load_state = PaneLoadState::Error;
-            return;
-        }
-
-        let reason_code = if stage == JobLifecycleStage::Failed {
-            Some("JOB_FAILED")
-        } else {
-            None
-        };
         let request_id = infer_request_id_from_job_id(row.job_id.as_str());
+        let category = work_category_for_demand_source(row.demand_source);
+        let severity = severity_for_notional_sats(row.payout_sats);
+        let payment_pointer_authoritative =
+            is_wallet_authoritative_payment_pointer(Some(row.payment_pointer.as_str()));
+        let (stage, receipt_type, reason_code, status, authority_key, policy_decision): (
+            JobLifecycleStage,
+            &'static str,
+            Option<&'static str>,
+            &'static str,
+            String,
+            PolicyDecision,
+        ) = if row.status == JobHistoryStatus::Succeeded && payment_pointer_authoritative {
+            (
+                JobLifecycleStage::Paid,
+                "earn.job.settlement_observed.v1",
+                None,
+                "succeeded",
+                row.payment_pointer.clone(),
+                allow_policy_decision("history_paid", category, severity),
+            )
+        } else if row.status == JobHistoryStatus::Succeeded {
+            (
+                JobLifecycleStage::Paid,
+                "earn.job.withheld.v1",
+                Some(REASON_CODE_PAYMENT_POINTER_NON_AUTHORITATIVE),
+                "withheld",
+                format!("withheld:{request_id}"),
+                withhold_policy_decision(
+                    "history_paid_requires_wallet_proof",
+                    category,
+                    severity,
+                    REASON_CODE_PAYMENT_POINTER_NON_AUTHORITATIVE,
+                ),
+            )
+        } else {
+            (
+                JobLifecycleStage::Failed,
+                "earn.job.failed.v1",
+                Some(REASON_CODE_JOB_FAILED),
+                "failed",
+                row.result_hash.clone(),
+                deny_policy_decision("history_failed", category, severity, REASON_CODE_JOB_FAILED),
+            )
+        };
         let link_candidates =
             history_row_link_candidate_receipt_ids(row, stage, request_id.as_str());
 
         let receipt = ReceiptBuilder::new(
-            lifecycle_receipt_id(row.job_id.as_str(), stage, authority_key),
-            if stage == JobLifecycleStage::Paid {
-                "earn.job.settlement_observed.v1"
-            } else {
-                "earn.job.failed.v1"
-            },
+            lifecycle_receipt_id(row.job_id.as_str(), stage, authority_key.as_str()),
+            receipt_type,
             epoch_seconds_to_ms(occurred_at_epoch_seconds),
-            lifecycle_idempotency_key("history_receipt", row.job_id.as_str(), authority_key),
+            lifecycle_idempotency_key(
+                "history_receipt",
+                row.job_id.as_str(),
+                authority_key.as_str(),
+            ),
             trace_for_job(
                 row.job_id.as_str(),
                 Some(request_id.as_str()),
@@ -374,46 +602,50 @@ impl EarnKernelReceiptState {
         .with_outputs_payload(json!({
             "stage": stage.label(),
             "source_tag": source_tag,
-            "status": row.status.label(),
-            "wallet_settlement_authoritative": stage == JobLifecycleStage::Paid,
+            "status": status,
+            "wallet_settlement_authoritative": payment_pointer_authoritative,
             "reason_code": reason_code,
+            "policy_rule_id": policy_decision.rule_id,
+            "policy_decision": policy_decision.decision,
+            "policy_notes": policy_decision.notes,
         }))
         .with_evidence({
-            let mut evidence = vec![
-                EvidenceRef::new(
-                    "history_result_hash",
-                    format!("oa://earn/jobs/{}/result", row.job_id),
-                    normalize_digest(row.result_hash.as_str()),
-                ),
-                EvidenceRef::new(
-                    if stage == JobLifecycleStage::Paid {
-                        "wallet_settlement_proof"
-                    } else {
-                        "failure_reason"
-                    },
-                    if stage == JobLifecycleStage::Paid {
-                        format!("oa://wallet/payments/{}", row.payment_pointer)
-                    } else {
-                        format!("oa://earn/jobs/{}/failure", row.job_id)
-                    },
-                    if stage == JobLifecycleStage::Paid {
-                        digest_for_text(row.payment_pointer.as_str())
-                    } else {
-                        digest_for_text(
-                            row.failure_reason
-                                .as_deref()
-                                .unwrap_or("unknown_failure_reason"),
-                        )
-                    },
-                ),
-            ];
+            let mut evidence = vec![EvidenceRef::new(
+                "history_result_hash",
+                format!("oa://earn/jobs/{}/result", row.job_id),
+                normalize_digest(row.result_hash.as_str()),
+            )];
+            if stage == JobLifecycleStage::Paid && payment_pointer_authoritative {
+                evidence.push(EvidenceRef::new(
+                    "wallet_settlement_proof",
+                    format!("oa://wallet/payments/{}", row.payment_pointer),
+                    digest_for_text(row.payment_pointer.as_str()),
+                ));
+            } else if stage == JobLifecycleStage::Paid {
+                evidence.push(EvidenceRef::new(
+                    "withheld_reason",
+                    format!("oa://earn/jobs/{}/withheld", row.job_id),
+                    digest_for_text(REASON_CODE_PAYMENT_POINTER_NON_AUTHORITATIVE),
+                ));
+            } else {
+                evidence.push(EvidenceRef::new(
+                    "failure_reason",
+                    format!("oa://earn/jobs/{}/failure", row.job_id),
+                    digest_for_text(
+                        row.failure_reason
+                            .as_deref()
+                            .unwrap_or("unknown_failure_reason"),
+                    ),
+                ));
+            }
             self.append_receipt_reference_links(&mut evidence, link_candidates.as_slice());
+            evidence.push(policy_decision_evidence(&policy_decision));
             evidence
         })
         .with_hints(ReceiptHints {
-            category: Some(work_category_for_demand_source(row.demand_source).to_string()),
+            category: Some(category.to_string()),
             tfb_class: None,
-            severity: Some(severity_for_notional_sats(row.payout_sats)),
+            severity: Some(severity),
             achieved_verification_tier: None,
             verification_correlated: None,
             provenance_grade: None,
@@ -552,6 +784,261 @@ fn work_category_for_demand_source(source: JobDemandSource) -> &'static str {
     }
 }
 
+fn allow_policy_decision(action: &str, category: &str, severity: SeverityClass) -> PolicyDecision {
+    evaluate_policy_decision(action, category, severity, None, "allow")
+}
+
+fn deny_policy_decision(
+    action: &str,
+    category: &str,
+    severity: SeverityClass,
+    reason_code: &'static str,
+) -> PolicyDecision {
+    evaluate_policy_decision(action, category, severity, Some(reason_code), "deny")
+}
+
+fn withhold_policy_decision(
+    action: &str,
+    category: &str,
+    severity: SeverityClass,
+    reason_code: &'static str,
+) -> PolicyDecision {
+    evaluate_policy_decision(action, category, severity, Some(reason_code), "withhold")
+}
+
+fn evaluate_policy_decision(
+    action: &str,
+    category: &str,
+    severity: SeverityClass,
+    reason_code: Option<&str>,
+    decision: &'static str,
+) -> PolicyDecision {
+    let selected = policy_rules()
+        .iter()
+        .filter(|rule| rule.decision == decision)
+        .filter(|rule| match rule.action {
+            Some(rule_action) => rule_action == action,
+            None => true,
+        })
+        .filter(|rule| match rule.category {
+            Some(rule_category) => rule_category == category,
+            None => true,
+        })
+        .filter(|rule| match rule.severity {
+            Some(rule_severity) => rule_severity == severity,
+            None => true,
+        })
+        .filter(|rule| match (rule.reason_code, reason_code) {
+            (Some(rule_reason_code), Some(input_reason_code)) => {
+                rule_reason_code == input_reason_code
+            }
+            (Some(_), None) => false,
+            (None, _) => true,
+        })
+        .map(|rule| {
+            let precedence = policy_rule_precedence(rule, action, category, severity, reason_code);
+            (precedence, rule)
+        })
+        .min_by(|lhs, rhs| {
+            lhs.0
+                .cmp(&rhs.0)
+                .then_with(|| lhs.1.rule_id.cmp(rhs.1.rule_id))
+        });
+
+    let (rule_id, notes) = if let Some((precedence, rule)) = selected {
+        (
+            rule.rule_id.to_string(),
+            format!(
+                "policy_rule={} precedence={} decision={} action={} category={} severity={} reason_code={} note={}",
+                rule.rule_id,
+                precedence,
+                decision,
+                action,
+                category,
+                severity.label(),
+                reason_code.unwrap_or("NONE"),
+                rule.note,
+            ),
+        )
+    } else {
+        let synthesized_rule = format!(
+            "policy.earn.{}.{}.{}.{}",
+            decision,
+            normalize_key(category),
+            normalize_key(action),
+            normalize_key(reason_code.unwrap_or("none")),
+        );
+        (
+            synthesized_rule.clone(),
+            format!(
+                "policy_rule={} precedence=fallback decision={} action={} category={} severity={} reason_code={} note=fallback deterministic mapping",
+                synthesized_rule,
+                decision,
+                action,
+                category,
+                severity.label(),
+                reason_code.unwrap_or("NONE"),
+            ),
+        )
+    };
+
+    PolicyDecision {
+        rule_id,
+        decision,
+        notes,
+    }
+}
+
+fn policy_rules() -> &'static [PolicyRule] {
+    &[
+        PolicyRule {
+            rule_id: "policy.earn.compute.preflight_reject.v1",
+            decision: "deny",
+            action: Some("preflight_reject"),
+            category: Some("compute"),
+            severity: None,
+            reason_code: Some(REASON_CODE_POLICY_PREFLIGHT_REJECTED),
+            note: "Reject requests that fail policy preflight checks.",
+        },
+        PolicyRule {
+            rule_id: "policy.earn.compute.execution_failure.v1",
+            decision: "deny",
+            action: Some("execution_failure"),
+            category: Some("compute"),
+            severity: None,
+            reason_code: Some(REASON_CODE_JOB_FAILED),
+            note: "Record failed execution outcomes for accountability.",
+        },
+        PolicyRule {
+            rule_id: "policy.earn.compute.history_failed.v1",
+            decision: "deny",
+            action: Some("history_failed"),
+            category: Some("compute"),
+            severity: None,
+            reason_code: Some(REASON_CODE_JOB_FAILED),
+            note: "Replay historical failures as explicit denied outcomes.",
+        },
+        PolicyRule {
+            rule_id: "policy.earn.compute.paid_requires_wallet_proof.v1",
+            decision: "withhold",
+            action: Some("paid_transition_requires_wallet_proof"),
+            category: Some("compute"),
+            severity: None,
+            reason_code: Some(REASON_CODE_PAYMENT_POINTER_NON_AUTHORITATIVE),
+            note: "Do not mark settlement paid without wallet-authoritative proof.",
+        },
+        PolicyRule {
+            rule_id: "policy.earn.compute.history_paid_requires_wallet_proof.v1",
+            decision: "withhold",
+            action: Some("history_paid_requires_wallet_proof"),
+            category: Some("compute"),
+            severity: None,
+            reason_code: Some(REASON_CODE_PAYMENT_POINTER_NON_AUTHORITATIVE),
+            note: "Historical paid rows require wallet-authoritative payment pointers.",
+        },
+        PolicyRule {
+            rule_id: "policy.earn.compute.allow_ingress.v1",
+            decision: "allow",
+            action: Some("ingress"),
+            category: Some("compute"),
+            severity: None,
+            reason_code: None,
+            note: "Allow ingress into the provider inbox under default earn policy.",
+        },
+        PolicyRule {
+            rule_id: "policy.earn.compute.allow_history_paid.v1",
+            decision: "allow",
+            action: Some("history_paid"),
+            category: Some("compute"),
+            severity: None,
+            reason_code: None,
+            note: "Allow paid history projection when settlement proof is authoritative.",
+        },
+        PolicyRule {
+            rule_id: "policy.earn.compute.allow_stage.v1",
+            decision: "allow",
+            action: None,
+            category: Some("compute"),
+            severity: None,
+            reason_code: None,
+            note: "Allow standard compute lifecycle transitions by default.",
+        },
+        PolicyRule {
+            rule_id: "policy.earn.default.allow.v1",
+            decision: "allow",
+            action: None,
+            category: None,
+            severity: None,
+            reason_code: None,
+            note: "Global fallback allow.",
+        },
+        PolicyRule {
+            rule_id: "policy.earn.default.deny.v1",
+            decision: "deny",
+            action: None,
+            category: None,
+            severity: None,
+            reason_code: None,
+            note: "Global fallback deny.",
+        },
+        PolicyRule {
+            rule_id: "policy.earn.default.withhold.v1",
+            decision: "withhold",
+            action: None,
+            category: None,
+            severity: None,
+            reason_code: None,
+            note: "Global fallback withhold.",
+        },
+    ]
+}
+
+fn policy_rule_precedence(
+    rule: &PolicyRule,
+    action: &str,
+    category: &str,
+    severity: SeverityClass,
+    reason_code: Option<&str>,
+) -> u8 {
+    let mut score = 0u8;
+    if rule.action == Some(action) {
+        score = score.saturating_add(1);
+    }
+    if rule.category == Some(category) {
+        score = score.saturating_add(1);
+    }
+    if rule.severity == Some(severity) {
+        score = score.saturating_add(1);
+    }
+    if let (Some(rule_reason_code), Some(input_reason_code)) = (rule.reason_code, reason_code) {
+        if rule_reason_code == input_reason_code {
+            score = score.saturating_add(1);
+        }
+    }
+    10u8.saturating_sub(score)
+}
+
+fn policy_decision_evidence(decision: &PolicyDecision) -> EvidenceRef {
+    let mut evidence = EvidenceRef::new(
+        "policy_decision",
+        format!("oa://policy/rules/{}", decision.rule_id),
+        digest_for_text(decision.notes.as_str()),
+    );
+    evidence.meta.insert(
+        "rule_id".to_string(),
+        serde_json::Value::String(decision.rule_id.clone()),
+    );
+    evidence.meta.insert(
+        "decision".to_string(),
+        serde_json::Value::String(decision.decision.to_string()),
+    );
+    evidence.meta.insert(
+        "notes".to_string(),
+        serde_json::Value::String(decision.notes.clone()),
+    );
+    evidence
+}
+
 fn tfb_class_for_ttl_seconds(ttl_seconds: u64) -> FeedbackLatencyClass {
     if ttl_seconds <= 60 {
         FeedbackLatencyClass::Instant
@@ -573,6 +1060,18 @@ fn severity_for_notional_sats(amount_sats: u64) -> SeverityClass {
         SeverityClass::Medium
     } else {
         SeverityClass::Low
+    }
+}
+
+impl SeverityClass {
+    fn label(self) -> &'static str {
+        match self {
+            SeverityClass::SeverityClassUnspecified => "unspecified",
+            SeverityClass::Low => "low",
+            SeverityClass::Medium => "medium",
+            SeverityClass::High => "high",
+            SeverityClass::Critical => "critical",
+        }
     }
 }
 
@@ -892,7 +1391,7 @@ mod tests {
     }
 
     #[test]
-    fn paid_history_receipt_requires_wallet_authoritative_pointer() {
+    fn paid_history_receipt_without_wallet_proof_is_withheld() {
         let temp_dir = tempfile::tempdir().expect("tempdir");
         let state_path = temp_dir.path().join("receipts.json");
         let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
@@ -903,9 +1402,22 @@ mod tests {
             "test.history",
         );
 
-        assert!(state.receipts.is_empty());
-        assert!(state.last_error.is_some());
-        assert_eq!(state.load_state, PaneLoadState::Error);
+        assert_eq!(state.load_state, PaneLoadState::Ready);
+        let withheld = state
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_type == "earn.job.withheld.v1")
+            .expect("withheld receipt");
+        assert_eq!(
+            withheld.hints.reason_code.as_deref(),
+            Some(REASON_CODE_PAYMENT_POINTER_NON_AUTHORITATIVE)
+        );
+        assert!(
+            withheld
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "policy_decision")
+        );
     }
 
     #[test]
@@ -995,5 +1507,55 @@ mod tests {
         assert!(lineage.contains(&ingress_receipt_id));
         assert!(lineage.contains(&settlement_receipt.receipt_id));
         assert!(lineage.len() >= 4);
+    }
+
+    #[test]
+    fn preflight_rejection_emits_coded_denial_receipt() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        let request = JobInboxRequest {
+            request_id: "req-preflight".to_string(),
+            requester: "npub1reject".to_string(),
+            demand_source: JobDemandSource::OpenNetwork,
+            request_kind: 5000,
+            capability: "text_generation".to_string(),
+            skill_scope_id: None,
+            skl_manifest_a: None,
+            skl_manifest_event_id: None,
+            sa_tick_request_event_id: None,
+            sa_tick_result_event_id: None,
+            ac_envelope_event_id: None,
+            price_sats: 75,
+            ttl_seconds: 60,
+            validation: crate::state::job_inbox::JobInboxValidation::Valid,
+            arrival_seq: 1,
+            decision: crate::state::job_inbox::JobInboxDecision::Pending,
+        };
+
+        state.record_preflight_rejection(
+            &request,
+            "failed policy preflight",
+            1_762_000_000,
+            "test.reject",
+        );
+
+        let rejection = state
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_type == "earn.job.preflight_rejected.v1")
+            .expect("preflight rejection receipt");
+        assert_eq!(
+            rejection.hints.reason_code.as_deref(),
+            Some(REASON_CODE_POLICY_PREFLIGHT_REJECTED)
+        );
+        assert!(
+            rejection
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "policy_decision")
+        );
+        assert_eq!(rejection.policy.policy_bundle_id, "policy.earn.default");
+        assert_eq!(rejection.policy.policy_version, "1");
     }
 }
