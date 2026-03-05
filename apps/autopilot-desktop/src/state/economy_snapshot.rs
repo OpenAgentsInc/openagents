@@ -7,7 +7,7 @@ use bitcoin::hashes::{Hash, sha256};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::cmp::Ordering;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 const ECONOMY_SNAPSHOT_SCHEMA_VERSION: u16 = 1;
@@ -152,6 +152,10 @@ pub struct EconomySnapshot {
     pub uncertified_block_count_24h: u64,
     #[serde(default)]
     pub uncertified_block_rate: f64,
+    #[serde(default)]
+    pub exportable_simulation_scenarios: u64,
+    #[serde(default)]
+    pub simulation_scenario_backlog: u64,
     #[serde(default)]
     pub outcome_distribution: Vec<OutcomeDistributionRow>,
     #[serde(default)]
@@ -589,6 +593,8 @@ fn build_snapshot(
         .filter(|receipt| is_uncertified_border_block_receipt(receipt))
         .count() as u64;
     let uncertified_block_rate = ratio(uncertified_block_count_24h, total_work_units);
+    let (exportable_simulation_scenarios, simulation_scenario_backlog) =
+        simulation_scenario_backlog_counts(receipts, as_of_ms);
     let mut outcome_distribution_counts = BTreeMap::<
         (
             String,
@@ -829,6 +835,8 @@ fn build_snapshot(
         certification_distribution.as_slice(),
         uncertified_block_count_24h,
         uncertified_block_rate,
+        exportable_simulation_scenarios,
+        simulation_scenario_backlog,
         outcome_distribution.as_slice(),
         outcome_key_rates.as_slice(),
         rollback_signal_count,
@@ -873,6 +881,8 @@ fn build_snapshot(
         certification_distribution,
         uncertified_block_count_24h,
         uncertified_block_rate,
+        exportable_simulation_scenarios,
+        simulation_scenario_backlog,
         outcome_distribution,
         outcome_key_rates,
         rollback_attempts_24h: rollback_signal_count,
@@ -1448,6 +1458,8 @@ struct CanonicalSnapshotPayload<'a> {
     certification_distribution: &'a [CertificationDistributionRow],
     uncertified_block_count_24h: u64,
     uncertified_block_rate: f64,
+    exportable_simulation_scenarios: u64,
+    simulation_scenario_backlog: u64,
     outcome_distribution: &'a [OutcomeDistributionRow],
     outcome_key_rates: &'a [OutcomeKeyRateRow],
     rollback_attempts_24h: u64,
@@ -1491,6 +1503,8 @@ fn snapshot_hash_for(
     certification_distribution: &[CertificationDistributionRow],
     uncertified_block_count_24h: u64,
     uncertified_block_rate: f64,
+    exportable_simulation_scenarios: u64,
+    simulation_scenario_backlog: u64,
     outcome_distribution: &[OutcomeDistributionRow],
     outcome_key_rates: &[OutcomeKeyRateRow],
     rollback_attempts_24h: u64,
@@ -1532,6 +1546,8 @@ fn snapshot_hash_for(
         certification_distribution,
         uncertified_block_count_24h,
         uncertified_block_rate,
+        exportable_simulation_scenarios,
+        simulation_scenario_backlog,
         outcome_distribution,
         outcome_key_rates,
         rollback_attempts_24h,
@@ -1840,6 +1856,113 @@ fn incident_severity_for_receipt(receipt: &Receipt) -> SeverityClass {
         .hints
         .severity
         .unwrap_or(SeverityClass::SeverityClassUnspecified)
+}
+
+fn simulation_scenario_backlog_counts(receipts: &[Receipt], as_of_ms: i64) -> (u64, u64) {
+    let mut ordered = receipts
+        .iter()
+        .filter(|receipt| receipt.created_at_ms <= as_of_ms)
+        .collect::<Vec<_>>();
+    ordered.sort_by(|lhs, rhs| {
+        lhs.created_at_ms
+            .cmp(&rhs.created_at_ms)
+            .then_with(|| lhs.receipt_id.cmp(&rhs.receipt_id))
+    });
+    let mut latest_ground_truth_case_by_id = BTreeMap::<String, String>::new();
+    for receipt in ordered.iter().copied().filter(|receipt| is_incident_receipt(receipt)) {
+        if incident_kind_for_receipt(receipt) != IncidentReceiptKind::GroundTruthCase {
+            continue;
+        }
+        let Some((ground_truth_case_id, ground_truth_case_digest)) =
+            ground_truth_case_ref_for_receipt(receipt)
+        else {
+            continue;
+        };
+        latest_ground_truth_case_by_id.insert(ground_truth_case_id, ground_truth_case_digest);
+    }
+    let mut exported_ground_truth_case_ids = BTreeSet::<String>::new();
+    for receipt in ordered
+        .iter()
+        .copied()
+        .filter(|receipt| is_simulation_scenario_export_receipt(receipt))
+    {
+        for (ground_truth_case_id, ground_truth_case_digest) in
+            exported_ground_truth_case_refs_from_receipt(receipt)
+        {
+            if latest_ground_truth_case_by_id
+                .get(ground_truth_case_id.as_str())
+                .is_some_and(|current_digest| current_digest == &ground_truth_case_digest)
+            {
+                exported_ground_truth_case_ids.insert(ground_truth_case_id);
+            }
+        }
+    }
+    let exportable_simulation_scenarios = latest_ground_truth_case_by_id.len() as u64;
+    let simulation_scenario_backlog = exportable_simulation_scenarios.saturating_sub(
+        exported_ground_truth_case_ids.len().min(u64::MAX as usize) as u64,
+    );
+    (
+        exportable_simulation_scenarios,
+        simulation_scenario_backlog,
+    )
+}
+
+fn ground_truth_case_ref_for_receipt(receipt: &Receipt) -> Option<(String, String)> {
+    let incident_ref = receipt
+        .evidence
+        .iter()
+        .find(|evidence| evidence.kind == "incident_object_ref")?;
+    let incident_id = incident_ref
+        .meta
+        .get("incident_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?
+        .to_string();
+    let incident_digest = incident_ref
+        .digest
+        .trim()
+        .to_string();
+    if incident_digest.is_empty() {
+        return None;
+    }
+    Some((incident_id, incident_digest))
+}
+
+fn is_simulation_scenario_export_receipt(receipt: &Receipt) -> bool {
+    receipt.receipt_type == "economy.simulation_scenario.exported.v1"
+        || receipt
+            .evidence
+            .iter()
+            .any(|evidence| evidence.kind == "simulation_scenario_ref")
+}
+
+fn exported_ground_truth_case_refs_from_receipt(receipt: &Receipt) -> Vec<(String, String)> {
+    let mut refs = receipt
+        .evidence
+        .iter()
+        .filter(|evidence| evidence.kind == "simulation_scenario_ref")
+        .filter_map(|evidence| {
+            let ground_truth_case_id = evidence
+                .meta
+                .get("ground_truth_case_id")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())?
+                .to_string();
+            let ground_truth_case_digest = evidence
+                .meta
+                .get("ground_truth_case_digest")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())?
+                .to_string();
+            Some((ground_truth_case_id, ground_truth_case_digest))
+        })
+        .collect::<Vec<_>>();
+    refs.sort_by(|lhs, rhs| lhs.0.cmp(&rhs.0).then_with(|| lhs.1.cmp(&rhs.1)));
+    refs.dedup();
+    refs
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2282,6 +2405,10 @@ mod tests {
             serde_json::json!(incident_kind),
         );
         incident_ref.meta.insert(
+            "incident_id".to_string(),
+            serde_json::json!(format!("incident:{receipt_id}")),
+        );
+        incident_ref.meta.insert(
             "taxonomy_code".to_string(),
             serde_json::json!(taxonomy_code),
         );
@@ -2289,6 +2416,36 @@ mod tests {
             .meta
             .insert("severity".to_string(), serde_json::json!(severity_label));
         receipt.evidence.push(incident_ref);
+        receipt
+    }
+
+    fn fixture_simulation_scenario_export_receipt(
+        receipt_id: &str,
+        created_at_ms: i64,
+        ground_truth_case_id: &str,
+        ground_truth_case_digest: &str,
+    ) -> Receipt {
+        let mut receipt = fixture_receipt(
+            receipt_id,
+            "economy.simulation_scenario.exported.v1",
+            created_at_ms,
+            "simulation-work-unit",
+            false,
+        );
+        let mut scenario_ref = EvidenceRef::new(
+            "simulation_scenario_ref",
+            format!("oa://economy/simulation_scenarios/{receipt_id}"),
+            digest_for_text(receipt_id),
+        );
+        scenario_ref.meta.insert(
+            "ground_truth_case_id".to_string(),
+            serde_json::json!(ground_truth_case_id),
+        );
+        scenario_ref.meta.insert(
+            "ground_truth_case_digest".to_string(),
+            serde_json::json!(ground_truth_case_digest),
+        );
+        receipt.evidence.push(scenario_ref);
         receipt
     }
 
@@ -2945,6 +3102,67 @@ mod tests {
         assert_eq!(total_active, 1);
         assert_eq!(total_revoked, 1);
         assert_eq!(total_expired, 1);
+    }
+
+    #[test]
+    fn snapshot_aggregates_simulation_scenario_exportable_and_backlog_counts() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let path = temp_dir.path().join("snapshots-simulation-scenarios.json");
+        let mut state = EconomySnapshotState::from_snapshot_path_for_tests(path);
+        let paid = fixture_receipt(
+            "receipt-paid-simulation-scenario-counts",
+            "earn.job.settlement_observed.v1",
+            1_762_000_010_000,
+            "job-simulation-scenario-counts",
+            true,
+        );
+        let mut ground_truth_a = fixture_incident_receipt(
+            "receipt-ground-truth-a",
+            1_762_000_011_000,
+            "ground_truth_case",
+            "safety.ground_truth_case",
+            "high",
+        );
+        let mut ground_truth_b = fixture_incident_receipt(
+            "receipt-ground-truth-b",
+            1_762_000_012_000,
+            "ground_truth_case",
+            "safety.ground_truth_case",
+            "medium",
+        );
+        let ground_truth_a_ref = ground_truth_a
+            .evidence
+            .iter_mut()
+            .find(|evidence| evidence.kind == "incident_object_ref")
+            .expect("ground truth A incident ref");
+        ground_truth_a_ref
+            .meta
+            .insert("incident_id".to_string(), serde_json::json!("ground_truth.case.a"));
+        let ground_truth_a_digest = ground_truth_a_ref.digest.clone();
+        let ground_truth_b_ref = ground_truth_b
+            .evidence
+            .iter_mut()
+            .find(|evidence| evidence.kind == "incident_object_ref")
+            .expect("ground truth B incident ref");
+        ground_truth_b_ref
+            .meta
+            .insert("incident_id".to_string(), serde_json::json!("ground_truth.case.b"));
+        let export_a = fixture_simulation_scenario_export_receipt(
+            "receipt-simulation-export-a",
+            1_762_000_013_000,
+            "ground_truth.case.a",
+            ground_truth_a_digest.as_str(),
+        );
+
+        let snapshot = state
+            .compute_minute_snapshot(
+                1_762_000_120_000,
+                &[paid, ground_truth_a, ground_truth_b, export_a],
+            )
+            .expect("snapshot should compute")
+            .snapshot;
+        assert_eq!(snapshot.exportable_simulation_scenarios, 2);
+        assert_eq!(snapshot.simulation_scenario_backlog, 1);
     }
 
     #[test]
