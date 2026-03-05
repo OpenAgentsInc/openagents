@@ -186,7 +186,7 @@ These invariants apply to all modules, flows, and extensions.
 
 1. `/stats` MUST be public and operator-grade.
 2. `/stats` MUST be computed once per minute and cached (same view for all).
-3. UI delivery MUST use Convex realtime subscriptions (no polling).
+3. UI delivery MUST be subscription-driven via the system’s realtime sync mechanism (server-pushed updates), not polling.
 
 ---
 
@@ -748,7 +748,7 @@ Synthetic practice is not optional: it is how verification capacity scales over 
 
   * receipts
   * signed pool snapshots (where applicable)
-* UI MUST consume the snapshot via Convex realtime subscription (no polling).
+* UI MUST consume the snapshot via the system’s realtime subscription mechanism (server-pushed updates), not polling.
 
 ### 7.2 Tables and required metrics (expanded)
 
