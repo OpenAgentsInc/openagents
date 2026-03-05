@@ -8,6 +8,7 @@ This repository exists to deliver that loop with clear authority, deterministic 
 
 The product authority is [docs/MVP.md](docs/MVP.md).
 Ownership boundaries are defined in [docs/OWNERSHIP.md](docs/OWNERSHIP.md).
+Docs are indexed in [docs/README.md](docs/README.md).
 
 ## Earning Bitcoin (WIP)
 
