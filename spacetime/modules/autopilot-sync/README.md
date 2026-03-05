@@ -57,3 +57,7 @@ Run the in-repo schema/reducer contract check:
 ```bash
 scripts/spacetime/verify-autopilot-sync-contract.sh
 ```
+
+Operational publish/promote and handshake smoke procedures are documented in:
+
+- `docs/SPACETIME_SYNC_OPS_RUNBOOK.md`
