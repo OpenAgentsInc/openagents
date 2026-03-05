@@ -18,9 +18,11 @@ const EARN_KERNEL_RECEIPT_STREAM_ID: &str = "stream.earn_kernel_receipts.v1";
 const EARN_KERNEL_RECEIPT_AUTHORITY: &str = "kernel.authority";
 const EARN_KERNEL_RECEIPT_ROW_LIMIT: usize = 2048;
 const EARN_WORK_UNIT_METADATA_ROW_LIMIT: usize = 2048;
+const EARN_IDEMPOTENCY_RECORD_ROW_LIMIT: usize = 4096;
 const REASON_CODE_JOB_FAILED: &str = "JOB_FAILED";
 const REASON_CODE_POLICY_PREFLIGHT_REJECTED: &str = "POLICY_PREFLIGHT_REJECTED";
 const REASON_CODE_PAYMENT_POINTER_NON_AUTHORITATIVE: &str = "PAYMENT_POINTER_NON_AUTHORITATIVE";
+const REASON_CODE_IDEMPOTENCY_CONFLICT: &str = "IDEMPOTENCY_CONFLICT";
 
 struct PolicyDecision {
     rule_id: String,
@@ -48,6 +50,8 @@ struct EarnKernelReceiptDocumentV1 {
     receipts: Vec<Receipt>,
     #[serde(default)]
     work_units: Vec<WorkUnitMetadata>,
+    #[serde(default)]
+    idempotency_records: Vec<IdempotencyRecord>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -80,6 +84,17 @@ pub struct ReceiptBundle {
     pub receipts: Vec<Receipt>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct IdempotencyRecord {
+    pub scope: String,
+    pub idempotency_key: String,
+    pub inputs_hash: String,
+    pub receipt_id: String,
+    pub receipt_type: String,
+    pub canonical_hash: String,
+    pub created_at_ms: i64,
+}
+
 #[derive(Clone)]
 struct ResolvedWorkMetadata {
     category: String,
@@ -91,6 +106,7 @@ struct ResolvedWorkMetadata {
 struct LoadedReceiptState {
     receipts: Vec<Receipt>,
     work_units: BTreeMap<String, WorkUnitMetadata>,
+    idempotency_index: BTreeMap<String, IdempotencyRecord>,
 }
 
 pub struct EarnKernelReceiptState {
@@ -101,6 +117,7 @@ pub struct EarnKernelReceiptState {
     pub authority: String,
     pub receipts: Vec<Receipt>,
     pub work_units: BTreeMap<String, WorkUnitMetadata>,
+    pub idempotency_index: BTreeMap<String, IdempotencyRecord>,
     receipt_file_path: PathBuf,
 }
 
@@ -125,6 +142,7 @@ impl EarnKernelReceiptState {
                     LoadedReceiptState {
                         receipts: Vec::new(),
                         work_units: BTreeMap::new(),
+                        idempotency_index: BTreeMap::new(),
                     },
                     PaneLoadState::Error,
                     Some(error),
@@ -139,6 +157,7 @@ impl EarnKernelReceiptState {
             authority: EARN_KERNEL_RECEIPT_AUTHORITY.to_string(),
             receipts: loaded.receipts,
             work_units: loaded.work_units,
+            idempotency_index: loaded.idempotency_index,
             receipt_file_path,
         }
     }
@@ -827,6 +846,193 @@ impl EarnKernelReceiptState {
         self.append_receipt(receipt, source_tag);
     }
 
+    pub fn record_wallet_withdraw_send_attempt(
+        &mut self,
+        caller_identity: &str,
+        payment_request: &str,
+        amount_sats: Option<u64>,
+        occurred_at_epoch_ms: i64,
+        source_tag: &str,
+    ) -> Result<String, String> {
+        let caller_identity = caller_identity.trim();
+        if caller_identity.is_empty() {
+            return Err("caller_identity cannot be empty".to_string());
+        }
+        let payment_request = payment_request.trim();
+        if payment_request.is_empty() {
+            return Err("payment_request cannot be empty".to_string());
+        }
+
+        let payment_request_digest = digest_for_text(payment_request);
+        let amount_sats = amount_sats.unwrap_or(0);
+        let idempotency_key = format!(
+            "idemp.wallet.withdraw_send:{}:{}",
+            normalize_key(caller_identity),
+            normalize_key(payment_request_digest.as_str()),
+        );
+        let receipt_id = format!(
+            "receipt.earn:wallet_withdraw:{}:{}",
+            normalize_key(caller_identity),
+            normalize_key(payment_request_digest.as_str())
+        );
+        let mut policy = current_policy_context();
+        policy.approved_by = caller_identity.to_string();
+
+        let receipt = ReceiptBuilder::new(
+            receipt_id.clone(),
+            "earn.wallet.withdraw_submitted.v1",
+            occurred_at_epoch_ms.max(0),
+            idempotency_key,
+            TraceContext {
+                session_id: None,
+                trajectory_hash: None,
+                job_hash: None,
+                run_id: Some(format!("wallet_withdraw:{caller_identity}")),
+                work_unit_id: None,
+                contract_id: None,
+                claim_id: None,
+            },
+            policy,
+        )
+        .with_inputs_payload(json!({
+            "caller_identity": caller_identity,
+            "payment_request_digest": payment_request_digest,
+            "amount_sats": if amount_sats == 0 { None::<u64> } else { Some(amount_sats) },
+        }))
+        .with_outputs_payload(json!({
+            "status": "submitted",
+            "source_tag": source_tag,
+        }))
+        .with_evidence(vec![EvidenceRef::new(
+            "wallet_send_request",
+            format!("oa://wallet/withdraw/{caller_identity}"),
+            payment_request_digest,
+        )])
+        .with_hints(ReceiptHints {
+            category: Some("compute".to_string()),
+            tfb_class: Some(FeedbackLatencyClass::Instant),
+            severity: Some(if amount_sats >= 100_000 {
+                SeverityClass::Critical
+            } else if amount_sats >= 10_000 {
+                SeverityClass::High
+            } else if amount_sats >= 1_000 {
+                SeverityClass::Medium
+            } else {
+                SeverityClass::Low
+            }),
+            achieved_verification_tier: None,
+            verification_correlated: None,
+            provenance_grade: None,
+            reason_code: None,
+            notional: if amount_sats == 0 {
+                None
+            } else {
+                Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(amount_sats),
+                })
+            },
+        })
+        .build();
+        self.append_receipt(receipt, source_tag);
+        if self.load_state == PaneLoadState::Error {
+            return Err(self
+                .last_error
+                .clone()
+                .unwrap_or_else(|| "failed to emit wallet withdraw receipt".to_string()));
+        }
+        Ok(receipt_id)
+    }
+
+    pub fn record_swap_execute_attempt(
+        &mut self,
+        caller_identity: &str,
+        goal_id: &str,
+        quote_id: &str,
+        worker_request_id: u64,
+        occurred_at_epoch_ms: i64,
+        source_tag: &str,
+    ) -> Result<String, String> {
+        let caller_identity = caller_identity.trim();
+        if caller_identity.is_empty() {
+            return Err("caller_identity cannot be empty".to_string());
+        }
+        let goal_id = goal_id.trim();
+        if goal_id.is_empty() {
+            return Err("goal_id cannot be empty".to_string());
+        }
+        let quote_id = quote_id.trim();
+        if quote_id.is_empty() {
+            return Err("quote_id cannot be empty".to_string());
+        }
+
+        let action_digest = digest_for_text(format!("{goal_id}:{quote_id}").as_str());
+        let idempotency_key = format!(
+            "idemp.swap.execute:{}:{}",
+            normalize_key(caller_identity),
+            normalize_key(action_digest.as_str())
+        );
+        let receipt_id = format!(
+            "receipt.earn:swap_execute:{}:{}",
+            normalize_key(goal_id),
+            normalize_key(quote_id)
+        );
+        let mut policy = current_policy_context();
+        policy.approved_by = caller_identity.to_string();
+
+        let receipt = ReceiptBuilder::new(
+            receipt_id.clone(),
+            "earn.swap.execute_submitted.v1",
+            occurred_at_epoch_ms.max(0),
+            idempotency_key,
+            TraceContext {
+                session_id: None,
+                trajectory_hash: None,
+                job_hash: None,
+                run_id: Some(format!("swap_execute:{goal_id}:{quote_id}")),
+                work_unit_id: None,
+                contract_id: None,
+                claim_id: None,
+            },
+            policy,
+        )
+        .with_inputs_payload(json!({
+            "caller_identity": caller_identity,
+            "goal_id": goal_id,
+            "quote_id": quote_id,
+            "worker_request_id": worker_request_id,
+        }))
+        .with_outputs_payload(json!({
+            "status": "submitted",
+            "source_tag": source_tag,
+        }))
+        .with_evidence(vec![EvidenceRef::new(
+            "swap_execute_intent",
+            format!("oa://swap/execute/{goal_id}/{quote_id}"),
+            action_digest,
+        )])
+        .with_hints(ReceiptHints {
+            category: Some("compute".to_string()),
+            tfb_class: Some(FeedbackLatencyClass::Short),
+            severity: Some(SeverityClass::Medium),
+            achieved_verification_tier: None,
+            verification_correlated: None,
+            provenance_grade: None,
+            reason_code: None,
+            notional: None,
+        })
+        .build();
+
+        self.append_receipt(receipt, source_tag);
+        if self.load_state == PaneLoadState::Error {
+            return Err(self
+                .last_error
+                .clone()
+                .unwrap_or_else(|| "failed to emit swap execute receipt".to_string()));
+        }
+        Ok(receipt_id)
+    }
+
     fn resolve_or_create_work_unit_metadata(
         &mut self,
         work_unit_id: &str,
@@ -871,6 +1077,17 @@ impl EarnKernelReceiptState {
         let mut rows = self.work_units.values().cloned().collect::<Vec<_>>();
         rows.sort_by(|lhs, rhs| lhs.work_unit_id.cmp(&rhs.work_unit_id));
         rows.truncate(EARN_WORK_UNIT_METADATA_ROW_LIMIT);
+        rows
+    }
+
+    fn normalized_idempotency_records(&self) -> Vec<IdempotencyRecord> {
+        let mut rows = self.idempotency_index.values().cloned().collect::<Vec<_>>();
+        rows.sort_by(|lhs, rhs| {
+            lhs.scope
+                .cmp(&rhs.scope)
+                .then_with(|| lhs.idempotency_key.cmp(&rhs.idempotency_key))
+        });
+        rows.truncate(EARN_IDEMPOTENCY_RECORD_ROW_LIMIT);
         rows
     }
 
@@ -1158,16 +1375,58 @@ impl EarnKernelReceiptState {
                 return;
             }
         };
+        let scope = idempotency_scope_for_receipt(&receipt);
+        let idempotency_lookup_key =
+            idempotency_lookup_key(scope.as_str(), receipt.idempotency_key.as_str());
+        if let Some(existing) = self.idempotency_index.get(idempotency_lookup_key.as_str()) {
+            if existing.inputs_hash == receipt.inputs_hash {
+                self.last_error = None;
+                self.load_state = PaneLoadState::Ready;
+                self.last_action = Some(format!(
+                    "Idempotent replay for {} -> {} ({})",
+                    receipt.idempotency_key, existing.receipt_id, existing.receipt_type
+                ));
+                return;
+            }
+            self.last_error = Some(format!(
+                "{}: scope={} idempotency_key={} original_receipt_id={} original_receipt_type={}",
+                REASON_CODE_IDEMPOTENCY_CONFLICT,
+                scope,
+                receipt.idempotency_key,
+                existing.receipt_id,
+                existing.receipt_type
+            ));
+            self.last_action = Some(format!(
+                "Rejected {} via {} due to idempotency conflict with {}",
+                receipt.receipt_type, source_tag, existing.receipt_id
+            ));
+            self.load_state = PaneLoadState::Error;
+            return;
+        }
 
         if self
             .receipts
             .iter()
             .any(|existing| existing.receipt_id == receipt.receipt_id)
         {
+            self.idempotency_index.insert(
+                idempotency_lookup_key.clone(),
+                IdempotencyRecord {
+                    scope,
+                    idempotency_key: receipt.idempotency_key.clone(),
+                    inputs_hash: receipt.inputs_hash.clone(),
+                    receipt_id: receipt.receipt_id.clone(),
+                    receipt_type: receipt.receipt_type.clone(),
+                    canonical_hash: receipt.canonical_hash.clone(),
+                    created_at_ms: receipt.created_at_ms,
+                },
+            );
+            normalize_idempotency_records(&mut self.idempotency_index);
             if let Err(error) = persist_earn_kernel_receipts(
                 self.receipt_file_path.as_path(),
                 self.receipts.as_slice(),
                 self.normalized_work_units().as_slice(),
+                self.normalized_idempotency_records().as_slice(),
             ) {
                 self.last_error = Some(error);
                 self.load_state = PaneLoadState::Error;
@@ -1184,10 +1443,24 @@ impl EarnKernelReceiptState {
 
         self.receipts.push(receipt.clone());
         self.receipts = normalize_receipts(std::mem::take(&mut self.receipts));
+        self.idempotency_index.insert(
+            idempotency_lookup_key,
+            IdempotencyRecord {
+                scope,
+                idempotency_key: receipt.idempotency_key.clone(),
+                inputs_hash: receipt.inputs_hash.clone(),
+                receipt_id: receipt.receipt_id.clone(),
+                receipt_type: receipt.receipt_type.clone(),
+                canonical_hash: receipt.canonical_hash.clone(),
+                created_at_ms: receipt.created_at_ms,
+            },
+        );
+        normalize_idempotency_records(&mut self.idempotency_index);
         if let Err(error) = persist_earn_kernel_receipts(
             self.receipt_file_path.as_path(),
             self.receipts.as_slice(),
             self.normalized_work_units().as_slice(),
+            self.normalized_idempotency_records().as_slice(),
         ) {
             self.last_error = Some(error);
             self.load_state = PaneLoadState::Error;
@@ -1233,6 +1506,22 @@ fn work_category_for_demand_source(source: JobDemandSource) -> &'static str {
     match source {
         JobDemandSource::OpenNetwork | JobDemandSource::StarterDemand => "compute",
     }
+}
+
+fn idempotency_scope_for_receipt(receipt: &Receipt) -> String {
+    format!(
+        "{}:{}",
+        normalize_key(receipt.receipt_type.as_str()),
+        normalize_key(receipt.policy.approved_by.as_str())
+    )
+}
+
+fn idempotency_lookup_key(scope: &str, idempotency_key: &str) -> String {
+    format!(
+        "{}:{}",
+        normalize_key(scope),
+        normalize_key(idempotency_key)
+    )
 }
 
 fn work_unit_metadata_payload(
@@ -1793,10 +2082,23 @@ fn normalize_work_units(work_units: &mut BTreeMap<String, WorkUnitMetadata>) {
     }
 }
 
+fn normalize_idempotency_records(records: &mut BTreeMap<String, IdempotencyRecord>) {
+    if records.len() <= EARN_IDEMPOTENCY_RECORD_ROW_LIMIT {
+        return;
+    }
+    let mut keys = records.keys().cloned().collect::<Vec<_>>();
+    keys.sort();
+    let to_remove = keys.len().saturating_sub(EARN_IDEMPOTENCY_RECORD_ROW_LIMIT);
+    for key in keys.into_iter().take(to_remove) {
+        records.remove(key.as_str());
+    }
+}
+
 fn persist_earn_kernel_receipts(
     path: &Path,
     receipts: &[Receipt],
     work_units: &[WorkUnitMetadata],
+    idempotency_records: &[IdempotencyRecord],
 ) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
@@ -1809,6 +2111,7 @@ fn persist_earn_kernel_receipts(
         authority: EARN_KERNEL_RECEIPT_AUTHORITY.to_string(),
         receipts: normalize_receipts(receipts.to_vec()),
         work_units: work_units.to_vec(),
+        idempotency_records: idempotency_records.to_vec(),
     };
     let payload = serde_json::to_string_pretty(&document)
         .map_err(|error| format!("Failed to encode economy-kernel receipts: {error}"))?;
@@ -1827,6 +2130,7 @@ fn load_earn_kernel_receipts(path: &Path) -> Result<LoadedReceiptState, String> 
             return Ok(LoadedReceiptState {
                 receipts: Vec::new(),
                 work_units: BTreeMap::new(),
+                idempotency_index: BTreeMap::new(),
             });
         }
         Err(error) => {
@@ -1860,9 +2164,24 @@ fn load_earn_kernel_receipts(path: &Path) -> Result<LoadedReceiptState, String> 
         .map(|metadata| (metadata.work_unit_id.clone(), metadata))
         .collect::<BTreeMap<_, _>>();
     normalize_work_units(&mut work_units);
+    let mut idempotency_index = document
+        .idempotency_records
+        .into_iter()
+        .filter(|record| {
+            !record.scope.trim().is_empty() && !record.idempotency_key.trim().is_empty()
+        })
+        .map(|record| {
+            (
+                idempotency_lookup_key(record.scope.as_str(), record.idempotency_key.as_str()),
+                record,
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    normalize_idempotency_records(&mut idempotency_index);
     Ok(LoadedReceiptState {
         receipts: normalize_receipts(document.receipts),
         work_units,
+        idempotency_index,
     })
 }
 
@@ -2132,6 +2451,85 @@ mod tests {
         assert_eq!(first.receipt_ids, second.receipt_ids);
         assert_eq!(first.receipt_count, second.receipt_count);
         assert!(bundle_path.exists());
+    }
+
+    #[test]
+    fn publish_result_replay_conflict_returns_idempotency_conflict() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        let baseline = fixture_active_job("wallet-payment-1");
+        state.record_active_job_stage(
+            &baseline,
+            JobLifecycleStage::Delivered,
+            1_762_000_010,
+            "test.delivered",
+        );
+        let receipt_count = state.receipts.len();
+
+        let mut conflicting = baseline.clone();
+        conflicting.capability = "different-capability".to_string();
+        state.record_active_job_stage(
+            &conflicting,
+            JobLifecycleStage::Delivered,
+            1_762_000_011,
+            "test.delivered.conflict",
+        );
+
+        assert_eq!(state.receipts.len(), receipt_count);
+        assert!(state.last_error.as_deref().is_some_and(|error| {
+            error.contains(REASON_CODE_IDEMPOTENCY_CONFLICT)
+                && error.contains("earn.job.result_published.v1")
+        }));
+    }
+
+    #[test]
+    fn wallet_withdraw_send_replay_and_conflict_follow_idempotency_contract() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        let payment_request = "lnbc1exampleinvoice";
+        let caller = "npub1walletuser";
+        let first_receipt_id = state
+            .record_wallet_withdraw_send_attempt(
+                caller,
+                payment_request,
+                Some(1_000),
+                1_762_000_010_000,
+                "test.wallet.send",
+            )
+            .expect("first wallet send receipt");
+        let receipt_count = state.receipts.len();
+        let reloaded_state_path = state.receipt_file_path.clone();
+        drop(state);
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(reloaded_state_path);
+        assert_eq!(state.receipts.len(), receipt_count);
+
+        let replay_receipt_id = state
+            .record_wallet_withdraw_send_attempt(
+                caller,
+                payment_request,
+                Some(1_000),
+                1_762_000_010_200,
+                "test.wallet.send.replay",
+            )
+            .expect("idempotent replay");
+        assert_eq!(replay_receipt_id, first_receipt_id);
+        assert_eq!(state.receipts.len(), receipt_count);
+
+        let conflict = state.record_wallet_withdraw_send_attempt(
+            caller,
+            payment_request,
+            Some(2_000),
+            1_762_000_010_400,
+            "test.wallet.send.conflict",
+        );
+        assert!(conflict.is_err());
+        assert_eq!(state.receipts.len(), receipt_count);
+        assert!(state.last_error.as_deref().is_some_and(|error| {
+            error.contains(REASON_CODE_IDEMPOTENCY_CONFLICT)
+                && error.contains("earn.wallet.withdraw_submitted.v1")
+        }));
     }
 
     #[test]

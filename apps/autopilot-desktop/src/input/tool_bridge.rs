@@ -2749,6 +2749,31 @@ fn execute_swap_execute(
         parse_version: BLINK_SWAP_PARSE_VERSION.to_string(),
     };
     let worker_request_id = state.stable_sats_simulation.reserve_worker_request_id();
+    let caller_identity = state
+        .nostr_identity
+        .as_ref()
+        .map(|identity| identity.npub.as_str())
+        .unwrap_or("autopilot-desktop");
+    let now_epoch_ms = now_epoch_seconds.saturating_mul(1_000) as i64;
+    if let Err(error) = state.earn_kernel_receipts.record_swap_execute_attempt(
+        caller_identity,
+        goal_id,
+        quote_id,
+        worker_request_id,
+        now_epoch_ms,
+        "tool_bridge.swap_execute",
+    ) {
+        return ToolBridgeResultEnvelope::error(
+            "OA-SWAP-EXECUTE-IDEMPOTENCY-CONFLICT",
+            format!("Swap execute rejected by idempotency policy: {error}"),
+            json!({
+                "goal_id": goal_id,
+                "quote_id": quote_id,
+                "worker_request_id": worker_request_id,
+                "reason_code": "IDEMPOTENCY_CONFLICT",
+            }),
+        );
+    }
     state
         .stable_sats_simulation
         .record_treasury_operation_queued(

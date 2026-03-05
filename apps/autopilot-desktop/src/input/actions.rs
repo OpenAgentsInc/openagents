@@ -5947,6 +5947,33 @@ pub(super) fn queue_spark_command(
     command: SparkWalletCommand,
 ) {
     state.spark_wallet.last_error = None;
+    if let SparkWalletCommand::SendPayment {
+        payment_request,
+        amount_sats,
+    } = &command
+    {
+        let caller_identity = state
+            .nostr_identity
+            .as_ref()
+            .map(|identity| identity.npub.as_str())
+            .unwrap_or("autopilot-desktop");
+        let now_epoch_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |duration| duration.as_millis() as i64);
+        if let Err(error) = state
+            .earn_kernel_receipts
+            .record_wallet_withdraw_send_attempt(
+                caller_identity,
+                payment_request.as_str(),
+                *amount_sats,
+                now_epoch_ms,
+                "spark.send_payment",
+            )
+        {
+            state.spark_wallet.last_error = Some(error);
+            return;
+        }
+    }
     if let Err(error) = state.spark_worker.enqueue(command) {
         state.spark_wallet.last_error = Some(error);
     }
