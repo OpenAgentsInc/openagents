@@ -215,7 +215,19 @@ Chat threads, job history, activity feeds, and key state must be robust against:
 * Cursor staleness
 * Partial failures
 
-Spacetime is the retained live sync lane. The desktop app must subscribe, bootstrap, and apply events with replay safety and strict idempotency. This is not a “maybe later” correctness feature; it is how we prevent phantom jobs, double-counted earnings, and confusing state resets that destroy trust.
+Spacetime is the retained live sync lane. Rollout semantics are phase-scoped and must stay explicit:
+
+* **Current (Phase 1, mirror/proxy semantics):**
+  * Desktop enforces canonical sync bootstrap/token contract (`POST /api/sync/token`, retained subscribe target form).
+  * Replay-safe local apply/checkpoint discipline is active for deterministic restart/reconnect behavior.
+  * Presence/projection panes use Spacetime-shaped local state (`spacetime.presence`, projection stream ids) while preserving authority boundaries.
+* **Target (Phase 2, live remote semantics):**
+  * Presence/checkpoints/projections run against live Spacetime subscriptions/reducers for ADR-approved domains.
+  * Release parity/chaos gates and handshake smoke checks are required before promotion.
+
+Canonical rollout/runbook index:
+
+* `docs/SPACETIME_ROLLOUT_INDEX.md`
 
 ---
 
@@ -294,7 +306,8 @@ This MVP is ship-ready when it can reliably demonstrate the money-printing loop 
 * At least one NIP-90 job lifecycle succeeds end-to-end while online, resulting in real sats received.
 * The wallet balance increases and the user can withdraw by paying a Lightning invoice.
 * Chat and activity state remain coherent through disconnect/reconnect and app restart, with replay-safe behavior and no duplicates.
-* Desktop sync path rejects legacy websocket/Phoenix frames and uses retained Spacetime forms only.
+* Desktop sync bootstrap rejects legacy token endpoint forms and enforces retained Spacetime token/claim contracts.
+* Phase-appropriate sync gates are green per `docs/SPACETIME_ROLLOUT_INDEX.md`.
 
 If any one of these fails in a first-run flow, we treat it as a product failure, not a “later improvement.”
 
@@ -327,8 +340,8 @@ For MVP, every user-facing feature must be reachable by one command-palette comm
 
 Current implementation note:
 
-* Already present in app: `Nostr Keys (NIP-06)`, `Spark Lightning Wallet`, `Pay Lightning Invoice`.
-* Remaining panes above are MVP backlog and should be implemented with the exact pane/command labels listed.
+* The pane inventory above is retained as canonical surface naming for MVP.
+* Truth-source semantics for current rollout phase are tracked in `docs/PANES.md` and `docs/SPACETIME_ROLLOUT_INDEX.md`.
 
 ---
 

@@ -2,6 +2,9 @@
 
 This runbook is the operator entrypoint for Spacetime module publish/promote, schema/reducer contract validation, and active-connection handshake smoke checks.
 
+Canonical rollout index:
+- `docs/SPACETIME_ROLLOUT_INDEX.md`
+
 ## Scope
 
 Applies to:

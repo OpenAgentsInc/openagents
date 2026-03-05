@@ -4,6 +4,19 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
 
 Simulation-only pane flows are isolated from the default production UX route and require explicit opt-in via `OPENAGENTS_ENABLE_SIMULATION_PANES=1`.
 
+## Spacetime Rollout Semantics
+
+Current docs reflect **Phase 1 (mirror/proxy semantics)** from `docs/SPACETIME_ROLLOUT_INDEX.md`:
+
+- Sync bootstrap/token contracts are real and enforced.
+- Replay-safe apply/checkpoint behavior is real and enforced.
+- Presence/projection panes expose Spacetime-shaped state and stream ids while remote live subscription cutover completes.
+
+Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approved domains) are tracked in:
+
+- `docs/SPACETIME_ROLLOUT_INDEX.md`
+- `docs/SPACETIME_SYNC_RELEASE_GATES.md`
+
 ## Pane Inventory
 
 - `Autopilot Chat`
@@ -25,7 +38,7 @@ Simulation-only pane flows are isolated from the default production UX route and
   - Codex protocol observability pane with raw events, method counters, failure snapshots, and wire-log controls.
 - `Go Online`
   - Provider mode toggle pane with explicit state machine (`offline`, `connecting`, `online`, `degraded`) and preflight blockers.
-  - Mission Control network/global counters are hydrated via aggregate-counters service state (provider ingress connectivity + wallet-reconciled payout evidence), not ad-hoc render-only projections.
+  - `providers_online` is sourced from Spacetime presence snapshots (`spacetime.presence:*` source tags) with identity-cardinality semantics from ADR-0002.
   - Action: toggle online/offline.
 - `Provider Status`
   - Runtime status pane for heartbeat freshness, uptime, queue depth, and dependency state.
@@ -38,6 +51,7 @@ Simulation-only pane flows are isolated from the default production UX route and
   - Explicit pane state machine: `loading`, `ready`, `error`.
 - `Sync Health`
   - Spacetime sync diagnostics for connection state, subscription state, cursor progress, stale detection, replay count, and duplicate-drop count.
+  - Source is lifecycle/apply telemetry (`spacetime.sync.lifecycle`) in current rollout phase.
   - Action: `Rebootstrap sync` for deterministic recovery lifecycle reset.
   - Explicit pane state machine: `loading`, `ready`, `error`.
 - `Network Requests`
@@ -53,6 +67,7 @@ Simulation-only pane flows are isolated from the default production UX route and
   - Explicit pane state machine: `loading`, `ready`, `error`.
 - `Activity Feed`
   - Unified event stream across chat, jobs, wallet, network, and sync lanes.
+  - Source badge is projection stream id (`stream.activity_projection.v1`), replay-safe and deduplicated.
   - Event rows carry stable event IDs and deterministic source tags to avoid duplicate replay rows.
   - Filters by domain (`all`, `chat`, `job`, `wallet`, `network`, `sync`) with selected-row details.
   - Explicit pane state machine: `loading`, `ready`, `error`.
@@ -78,10 +93,12 @@ Simulation-only pane flows are isolated from the default production UX route and
   - Actions: select request, accept selected (with reason), reject selected (with reason).
 - `Active Job`
   - In-flight job lifecycle pane for one selected job (`received -> accepted -> running -> delivered -> paid`).
+  - Source badge is lifecycle projection stream id (`stream.earn_job_lifecycle_projection.v1`), non-authoritative for settlement.
   - Shows append-only execution log events, request demand source, invoice/payment linkage, and failure reason when present.
   - Actions: advance stage, abort job (disabled when runtime lane does not support cancel).
 - `Job History`
   - Deterministic receipt/history pane for completed/failed jobs with immutable metadata.
+  - Source badge is lifecycle projection stream id (`stream.earn_job_lifecycle_projection.v1`), while wallet reconciliation remains payout truth.
   - Includes status/time filters, job-id search, and pagination.
   - Row model includes `job_id`, `status`, `demand source`, `completed timestamp`, `result hash`, and `payment pointer`.
 - `Agent Profile and State`
@@ -154,6 +171,10 @@ Badge semantics:
   - Values combine runtime snapshots and local operator state.
 - `source: runtime+wallet+local`
   - Values aggregate multiple lanes plus local app events.
+- `source: spacetime.sync.lifecycle`
+  - Values are derived from sync lifecycle/apply telemetry state.
+- `source: stream.*`
+  - Values are backed by replay-safe projection stream rows for the named stream id.
 
 Current pane badge mapping:
 
@@ -169,15 +190,15 @@ Current pane badge mapping:
 - `Provider Status`: `source: runtime`
 - `Earnings Scoreboard`: `source: runtime+wallet`
 - `Relay Connections`: `source: runtime`
-- `Sync Health`: `source: runtime`
+- `Sync Health`: `source: spacetime.sync.lifecycle`
 - `Network Requests`: `source: runtime`
 - `Starter Jobs`: `source: runtime`
-- `Activity Feed`: `source: runtime+wallet+local`
+- `Activity Feed`: `source: stream.activity_projection.v1`
 - `Alerts and Recovery`: `source: runtime`
 - `Settings`: `source: local`
 - `Job Inbox`: `source: runtime`
-- `Active Job`: `source: runtime`
-- `Job History`: `source: runtime`
+- `Active Job`: `source: stream.earn_job_lifecycle_projection.v1`
+- `Job History`: `source: stream.earn_job_lifecycle_projection.v1`
 - `Nostr Keys (NIP-06)`: `source: local`
 - `Agent Profile and State`: `source: runtime`
 - `Agent Schedule and Tick`: `source: runtime`
