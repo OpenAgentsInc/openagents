@@ -4892,7 +4892,7 @@ pub(super) fn refresh_network_aggregate_counters(
 ) {
     state.network_aggregate_counters.refresh_from_sources(
         now,
-        &state.provider_nip90_lane,
+        &state.spacetime_presence_snapshot,
         &state.job_history,
         &state.spark_wallet,
     );

@@ -2866,6 +2866,8 @@ pub struct NetworkAggregateCountersState {
     pub last_error: Option<String>,
     pub last_action: Option<String>,
     pub source_tag: String,
+    pub providers_online_source_tag: String,
+    pub providers_online_source_detail: Option<String>,
     pub providers_online: u64,
     pub jobs_completed: u64,
     pub sats_paid: u64,
@@ -2881,6 +2883,8 @@ impl Default for NetworkAggregateCountersState {
             last_error: None,
             last_action: Some("Waiting for aggregate counters service refresh".to_string()),
             source_tag: "aggregate.pending".to_string(),
+            providers_online_source_tag: "spacetime.presence.pending".to_string(),
+            providers_online_source_detail: None,
             providers_online: 0,
             jobs_completed: 0,
             sats_paid: 0,
@@ -2895,12 +2899,35 @@ impl NetworkAggregateCountersState {
     pub fn refresh_from_sources(
         &mut self,
         now: Instant,
-        provider_nip90_lane: &ProviderNip90LaneSnapshot,
+        spacetime_presence: &crate::spacetime_presence::SpacetimePresenceSnapshot,
         job_history: &JobHistoryState,
         spark_wallet: &SparkPaneState,
     ) {
         self.last_refreshed_at = Some(now);
-        self.providers_online = provider_nip90_lane.connected_relays as u64;
+        self.providers_online = spacetime_presence.providers_online;
+        self.providers_online_source_tag = format!(
+            "spacetime.presence.{}",
+            spacetime_presence.counter_cardinality
+        );
+        self.providers_online_source_detail = None;
+
+        let presence_issue = if let Some(error) = spacetime_presence.last_error.as_deref() {
+            self.providers_online_source_tag = "spacetime.presence.degraded".to_string();
+            self.providers_online_source_detail = Some(error.to_string());
+            Some(format!("Spacetime presence error: {error}"))
+        } else if spacetime_presence.node_status == "unregistered" {
+            self.providers_online_source_tag = "spacetime.presence.unavailable".to_string();
+            self.providers_online_source_detail =
+                Some("Provider presence not registered".to_string());
+            Some("Spacetime presence unavailable".to_string())
+        } else if spacetime_presence.node_offline_reason.as_deref() == Some("ttl_expired") {
+            self.providers_online_source_tag = "spacetime.presence.stale".to_string();
+            self.providers_online_source_detail =
+                Some("Provider presence TTL expired".to_string());
+            None
+        } else {
+            None
+        };
 
         let reconciled_payout_rows = job_history.wallet_reconciled_payout_rows(spark_wallet);
         let threshold = job_history.reference_epoch_seconds.saturating_sub(86_400);
@@ -2927,9 +2954,32 @@ impl NetworkAggregateCountersState {
             self.source_tag = "aggregate.pending.wallet".to_string();
         } else {
             self.load_state = PaneLoadState::Ready;
-            self.last_action =
-                Some("Aggregate counters refreshed from wallet-reconciled payouts".to_string());
-            self.source_tag = "aggregate.wallet-reconciled.local".to_string();
+            self.last_action = Some(
+                "Aggregate counters refreshed from wallet-reconciled payouts and Spacetime presence"
+                    .to_string(),
+            );
+            self.source_tag = "aggregate.wallet-reconciled.spacetime-presence".to_string();
+        }
+
+        if let Some(issue) = presence_issue {
+            if self.load_state == PaneLoadState::Ready {
+                self.load_state = PaneLoadState::Error;
+                self.source_tag = "aggregate.degraded.spacetime-presence".to_string();
+            }
+
+            self.last_error = match self.last_error.take() {
+                Some(existing) => Some(format!("{existing}; {issue}")),
+                None => Some(issue),
+            };
+            self.last_action = Some(
+                "Aggregate counters degraded due to Spacetime presence source".to_string(),
+            );
+        } else if self.providers_online_source_tag == "spacetime.presence.stale" {
+            self.source_tag = "aggregate.stale.spacetime-presence".to_string();
+            self.last_action = Some(
+                "Aggregate counters refreshed; providers_online source is stale (TTL expiry)"
+                    .to_string(),
+            );
         }
     }
 
@@ -3404,6 +3454,26 @@ mod tests {
             history.upsert_row(row);
         }
         history
+    }
+
+    fn fixture_presence_snapshot(
+        providers_online: u64,
+        node_status: &str,
+        last_error: Option<&str>,
+        offline_reason: Option<&str>,
+    ) -> crate::spacetime_presence::SpacetimePresenceSnapshot {
+        crate::spacetime_presence::SpacetimePresenceSnapshot {
+            providers_online,
+            counter_source: "spacetime.presence".to_string(),
+            counter_cardinality: "identity".to_string(),
+            node_id: "device:test".to_string(),
+            session_id: "sess:test".to_string(),
+            node_status: node_status.to_string(),
+            node_last_seen_unix_ms: Some(1_761_920_000_000),
+            node_offline_reason: offline_reason.map(ToString::to_string),
+            last_error: last_error.map(ToString::to_string),
+            last_action: Some("fixture presence snapshot".to_string()),
+        }
     }
 
     fn fixture_starter_job(
@@ -5044,8 +5114,7 @@ mod tests {
     #[test]
     fn network_aggregate_counters_refreshes_from_wallet_reconciled_payouts() {
         let mut counters = NetworkAggregateCountersState::default();
-        let mut provider_lane = crate::provider_nip90_lane::ProviderNip90LaneSnapshot::default();
-        provider_lane.connected_relays = 7;
+        let presence = fixture_presence_snapshot(7, "online", None, None);
         let mut row = fixture_history_row(
             "job-network-aggregate-001",
             JobHistoryStatus::Succeeded,
@@ -5071,11 +5140,18 @@ mod tests {
             });
 
         let now = std::time::Instant::now();
-        counters.refresh_from_sources(now, &provider_lane, &history, &spark);
+        counters.refresh_from_sources(now, &presence, &history, &spark);
 
         assert_eq!(counters.load_state, super::PaneLoadState::Ready);
-        assert_eq!(counters.source_tag, "aggregate.wallet-reconciled.local");
+        assert_eq!(
+            counters.source_tag,
+            "aggregate.wallet-reconciled.spacetime-presence"
+        );
         assert_eq!(counters.providers_online, 7);
+        assert_eq!(
+            counters.providers_online_source_tag,
+            "spacetime.presence.identity"
+        );
         assert_eq!(counters.jobs_completed, 1);
         assert_eq!(counters.sats_paid, 2100);
         assert_eq!(counters.global_earnings_today_sats, 2100);
@@ -5085,8 +5161,7 @@ mod tests {
     #[test]
     fn network_aggregate_counters_ignore_unreconciled_history_rows() {
         let mut counters = NetworkAggregateCountersState::default();
-        let mut provider_lane = crate::provider_nip90_lane::ProviderNip90LaneSnapshot::default();
-        provider_lane.connected_relays = 3;
+        let presence = fixture_presence_snapshot(3, "online", None, None);
         let mut row = fixture_history_row(
             "job-network-aggregate-002",
             JobHistoryStatus::Succeeded,
@@ -5102,7 +5177,7 @@ mod tests {
             onchain_sats: 0,
         });
 
-        counters.refresh_from_sources(std::time::Instant::now(), &provider_lane, &history, &spark);
+        counters.refresh_from_sources(std::time::Instant::now(), &presence, &history, &spark);
 
         assert_eq!(counters.load_state, super::PaneLoadState::Ready);
         assert_eq!(counters.providers_online, 3);
@@ -5114,12 +5189,12 @@ mod tests {
     #[test]
     fn network_aggregate_counters_surface_wallet_errors() {
         let mut counters = NetworkAggregateCountersState::default();
-        let provider_lane = crate::provider_nip90_lane::ProviderNip90LaneSnapshot::default();
+        let presence = fixture_presence_snapshot(2, "online", None, None);
         let history = JobHistoryState::default();
         let mut spark = SparkPaneState::default();
         spark.last_error = Some("wallet service unavailable".to_string());
 
-        counters.refresh_from_sources(std::time::Instant::now(), &provider_lane, &history, &spark);
+        counters.refresh_from_sources(std::time::Instant::now(), &presence, &history, &spark);
 
         assert_eq!(counters.load_state, super::PaneLoadState::Error);
         assert_eq!(counters.source_tag, "aggregate.degraded.wallet");
@@ -5128,6 +5203,64 @@ mod tests {
                 .last_error
                 .as_deref()
                 .is_some_and(|error| error.contains("wallet service unavailable"))
+        );
+    }
+
+    #[test]
+    fn network_aggregate_counters_surface_spacetime_presence_degraded_state() {
+        let mut counters = NetworkAggregateCountersState::default();
+        let presence = fixture_presence_snapshot(
+            0,
+            "unregistered",
+            Some("presence query timeout"),
+            None,
+        );
+        let history = JobHistoryState::default();
+        let mut spark = SparkPaneState::default();
+        spark.balance = Some(openagents_spark::Balance {
+            spark_sats: 0,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+
+        counters.refresh_from_sources(std::time::Instant::now(), &presence, &history, &spark);
+
+        assert_eq!(counters.load_state, super::PaneLoadState::Error);
+        assert_eq!(counters.source_tag, "aggregate.degraded.spacetime-presence");
+        assert_eq!(
+            counters.providers_online_source_tag,
+            "spacetime.presence.degraded"
+        );
+        assert!(
+            counters
+                .last_error
+                .as_deref()
+                .is_some_and(|error| error.contains("presence query timeout"))
+        );
+    }
+
+    #[test]
+    fn network_aggregate_counters_surface_spacetime_presence_stale_state() {
+        let mut counters = NetworkAggregateCountersState::default();
+        let presence = fixture_presence_snapshot(0, "offline", None, Some("ttl_expired"));
+        let history = JobHistoryState::default();
+        let mut spark = SparkPaneState::default();
+        spark.balance = Some(openagents_spark::Balance {
+            spark_sats: 0,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+
+        counters.refresh_from_sources(std::time::Instant::now(), &presence, &history, &spark);
+
+        assert_eq!(counters.load_state, super::PaneLoadState::Ready);
+        assert_eq!(counters.source_tag, "aggregate.stale.spacetime-presence");
+        assert_eq!(counters.providers_online_source_tag, "spacetime.presence.stale");
+        assert!(
+            counters
+                .last_action
+                .as_deref()
+                .is_some_and(|action| action.contains("stale"))
         );
     }
 

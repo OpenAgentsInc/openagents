@@ -606,6 +606,16 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             ));
             y += 14.0;
             paint.scene.draw_text(paint.text.layout_mono(
+                &format!(
+                    "Providers Source: {}",
+                    state.network_aggregate_counters.providers_online_source_tag
+                ),
+                Point::new(left, y),
+                9.0,
+                theme::text::MUTED,
+            ));
+            y += 14.0;
+            paint.scene.draw_text(paint.text.layout_mono(
                 &format!("Jobs Completed: {jobs_completed}"),
                 Point::new(left, y),
                 10.0,
