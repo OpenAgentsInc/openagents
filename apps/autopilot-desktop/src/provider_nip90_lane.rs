@@ -930,46 +930,72 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
 
     let parsed = JobRequest::from_event(event);
     let raw_event_json = serde_json::to_string_pretty(event).ok();
-    let (skill_scope_id, price_sats, ttl_seconds, validation, parsed_event_shape) =
-        match parsed.as_ref() {
-            Ok(request) => {
-                let bid_msats = request.bid.unwrap_or(0);
-                let price_sats = msats_to_sats_ceil(bid_msats);
-                let ttl_seconds = extract_ttl_seconds(request).unwrap_or(DEFAULT_TTL_SECONDS);
-                let skill_scope_id = extract_param(request, "skill_scope_id")
-                    .or_else(|| extract_param(request, "skill_scope"));
-                let validation = if request.content.trim().is_empty() && request.inputs.is_empty() {
-                    JobInboxValidation::Invalid("request missing content/input payload".to_string())
-                } else if request.bid.is_none() || price_sats == 0 {
-                    JobInboxValidation::Pending
-                } else {
-                    JobInboxValidation::Valid
-                };
-                let parsed_event_shape = Some(format_nip90_request_shape(
-                    event,
-                    request,
-                    price_sats,
-                    ttl_seconds,
-                ));
-                (
-                    skill_scope_id,
-                    price_sats,
-                    ttl_seconds,
-                    validation,
-                    parsed_event_shape,
+    let (
+        skill_scope_id,
+        price_sats,
+        ttl_seconds,
+        target_provider_pubkeys,
+        encrypted,
+        encrypted_payload,
+        validation,
+        parsed_event_shape,
+    ) = match parsed.as_ref() {
+        Ok(request) => {
+            let bid_msats = request.bid.unwrap_or(0);
+            let price_sats = msats_to_sats_ceil(bid_msats);
+            let ttl_seconds = extract_ttl_seconds(request).unwrap_or(DEFAULT_TTL_SECONDS);
+            let skill_scope_id = extract_param(request, "skill_scope_id")
+                .or_else(|| extract_param(request, "skill_scope"));
+            let target_provider_pubkeys =
+                normalize_provider_keys(request.service_providers.as_slice());
+            let encrypted = request.encrypted;
+            let encrypted_payload = if encrypted {
+                Some(event.content.clone())
+            } else {
+                None
+            };
+            let validation = if request.content.trim().is_empty() && request.inputs.is_empty() {
+                JobInboxValidation::Invalid("request missing content/input payload".to_string())
+            } else if encrypted && event.content.trim().is_empty() {
+                JobInboxValidation::Invalid(
+                    "request marked encrypted but content payload is empty".to_string(),
                 )
-            }
-            Err(error) => (
-                None,
-                0,
-                DEFAULT_TTL_SECONDS,
-                JobInboxValidation::Invalid(format!("invalid NIP-90 request tags: {error}")),
-                Some(format!(
-                    "request.parse_error={error}\n{}",
-                    format_generic_event_shape(event)
-                )),
-            ),
-        };
+            } else if request.bid.is_none() || price_sats == 0 {
+                JobInboxValidation::Pending
+            } else {
+                JobInboxValidation::Valid
+            };
+            let parsed_event_shape = Some(format_nip90_request_shape(
+                event,
+                request,
+                price_sats,
+                ttl_seconds,
+            ));
+            (
+                skill_scope_id,
+                price_sats,
+                ttl_seconds,
+                target_provider_pubkeys,
+                encrypted,
+                encrypted_payload,
+                validation,
+                parsed_event_shape,
+            )
+        }
+        Err(error) => (
+            None,
+            0,
+            DEFAULT_TTL_SECONDS,
+            Vec::new(),
+            false,
+            None,
+            JobInboxValidation::Invalid(format!("invalid NIP-90 request tags: {error}")),
+            Some(format!(
+                "request.parse_error={error}\n{}",
+                format_generic_event_shape(event)
+            )),
+        ),
+    };
 
     Some(JobInboxNetworkRequest {
         request_id: event.id.clone(),
@@ -977,6 +1003,9 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
         demand_source: crate::app_state::JobDemandSource::OpenNetwork,
         request_kind: event.kind,
         capability: capability_for_kind(event.kind),
+        target_provider_pubkeys,
+        encrypted,
+        encrypted_payload,
         parsed_event_shape,
         raw_event_json,
         skill_scope_id,
@@ -990,6 +1019,17 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
         ttl_seconds,
         validation,
     })
+}
+
+fn normalize_provider_keys(values: &[String]) -> Vec<String> {
+    let mut normalized = values
+        .iter()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+    normalized.sort();
+    normalized.dedup();
+    normalized
 }
 
 fn format_nip90_request_shape(
@@ -1159,6 +1199,7 @@ mod tests {
             tags: vec![
                 vec!["bid".to_string(), "25000".to_string()],
                 vec!["param".to_string(), "ttl".to_string(), "90".to_string()],
+                vec!["p".to_string(), "npub1localprovider".to_string()],
                 vec![
                     "param".to_string(),
                     "skill_scope_id".to_string(),
@@ -1177,6 +1218,12 @@ mod tests {
         assert_eq!(row.request_kind, 5050);
         assert_eq!(row.price_sats, 25);
         assert_eq!(row.ttl_seconds, 90);
+        assert_eq!(
+            row.target_provider_pubkeys,
+            vec!["npub1localprovider".to_string()]
+        );
+        assert!(!row.encrypted);
+        assert!(row.encrypted_payload.is_none());
         assert_eq!(
             row.skill_scope_id,
             Some("33400:npub1agent:summarize-text:0.1.0".to_string())
@@ -1212,6 +1259,31 @@ mod tests {
             row.validation,
             crate::state::job_inbox::JobInboxValidation::Pending
         ));
+    }
+
+    #[test]
+    fn maps_encrypted_nip90_requests_with_payload_metadata() {
+        let event = Event {
+            id: "req-enc-001".to_string(),
+            pubkey: "11".repeat(32),
+            created_at: 1_760_000_102,
+            kind: 5050,
+            tags: vec![
+                vec!["bid".to_string(), "10000".to_string()],
+                vec!["encrypted".to_string()],
+                vec!["p".to_string(), "aa".repeat(32)],
+            ],
+            content: "nip44-ciphertext".to_string(),
+            sig: "33".repeat(64),
+        };
+
+        let row = event_to_inbox_request(&event).expect("event should map to inbox row");
+        assert!(row.encrypted);
+        assert_eq!(
+            row.encrypted_payload.as_deref(),
+            Some("nip44-ciphertext")
+        );
+        assert_eq!(row.target_provider_pubkeys, vec!["aa".repeat(32)]);
     }
 
     #[test]
