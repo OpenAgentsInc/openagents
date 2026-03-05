@@ -5,7 +5,7 @@ use crate::app_state::{
 use crate::economy_kernel_receipts::{
     Asset, AuthAssuranceLevel, DriftSignalSummary, EvidenceRef, FeedbackLatencyClass, Money,
     MoneyAmount, PolicyContext, ProvenanceAttestationKind, ProvenanceGrade, Receipt,
-    ReceiptBuilder, ReceiptHints, SeverityClass, TraceContext,
+    ReceiptBuilder, ReceiptHints, SeverityClass, TraceContext, VerificationTier,
 };
 use crate::state::job_inbox::{JobInboxNetworkRequest, JobInboxRequest};
 use bitcoin::hashes::{Hash, sha256};
@@ -24,6 +24,7 @@ const INCIDENT_OBJECT_ROW_LIMIT: usize = 4096;
 const INCIDENT_TAXONOMY_ROW_LIMIT: usize = 1024;
 const OUTCOME_REGISTRY_ROW_LIMIT: usize = 4096;
 const CERTIFICATION_OBJECT_ROW_LIMIT: usize = 4096;
+const SIMULATION_SCENARIO_ROW_LIMIT: usize = 8192;
 const SAFETY_SIGNAL_ROW_LIMIT: usize = 8192;
 const SAFETY_SIGNAL_BUCKET_ROW_LIMIT: usize = 2048;
 const AUDIT_LINKAGE_ROW_LIMIT: usize = 65_536;
@@ -48,6 +49,8 @@ const REASON_CODE_DRIFT_ALERT_RAISED: &str = "DRIFT_ALERT_RAISED";
 const REASON_CODE_DRIFT_FALSE_POSITIVE_CONFIRMED: &str = "DRIFT_FALSE_POSITIVE_CONFIRMED";
 const REASON_CODE_OUTCOME_REGISTRY_CREATED: &str = "OUTCOME_REGISTRY_CREATED";
 const REASON_CODE_OUTCOME_REGISTRY_UPDATED: &str = "OUTCOME_REGISTRY_UPDATED";
+const REASON_CODE_SIMULATION_SCENARIO_EXPORTED: &str = "SIMULATION_SCENARIO_EXPORTED";
+const REASON_CODE_REDACTION_POLICY_APPLIED: &str = "REDACTION_POLICY_APPLIED";
 const DEFAULT_PRICING_SNAPSHOT_ID: &str = "snapshot.economy:unavailable";
 const DEFAULT_PRICING_SNAPSHOT_HASH: &str = "sha256:unavailable";
 const DRIFT_WINDOW_MS: i64 = 86_400_000;
@@ -365,6 +368,13 @@ pub enum AuditExportRedactionTier {
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq, Ord, PartialOrd)]
 #[serde(rename_all = "snake_case")]
+pub enum SimulationScenarioExportRedactionTier {
+    Public,
+    Restricted,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq, Ord, PartialOrd)]
+#[serde(rename_all = "snake_case")]
 pub enum SafetySignalExportMode {
     PublicAggregate,
     RestrictedFeed,
@@ -603,6 +613,41 @@ pub struct IncidentAuditPackage {
     pub incidents: Vec<IncidentObject>,
     pub taxonomy_registry: Vec<IncidentTaxonomyEntry>,
     pub incident_receipts: Vec<Receipt>,
+    pub package_hash: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct SimulationScenario {
+    pub scenario_id: String,
+    pub scenario_digest: String,
+    pub ground_truth_case_id: String,
+    pub ground_truth_case_digest: String,
+    pub taxonomy_id: String,
+    pub taxonomy_version: String,
+    pub taxonomy_code: String,
+    pub severity: SeverityClass,
+    pub evidence_digests: Vec<String>,
+    pub linked_receipt_ids: Vec<String>,
+    pub linked_receipt_digests: Vec<String>,
+    pub rollback_receipt_ids: Vec<String>,
+    pub rollback_receipt_digests: Vec<String>,
+    pub harness_ref: EvidenceRef,
+    pub scoring_rubric_ref: EvidenceRef,
+    pub derived_from_receipt_ids: Vec<String>,
+    pub derived_from_receipt_digests: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct SimulationScenarioPackage {
+    pub schema_version: u16,
+    pub generated_at_ms: i64,
+    pub stream_id: String,
+    pub authority: String,
+    pub redaction_tier: SimulationScenarioExportRedactionTier,
+    pub redaction_policy_receipt_id: String,
+    pub export_receipt_id: String,
+    pub scenario_count: usize,
+    pub scenarios: Vec<SimulationScenario>,
     pub package_hash: String,
 }
 
@@ -3256,6 +3301,237 @@ impl EarnKernelReceiptState {
         std::fs::rename(&temp_path, path)
             .map_err(|error| format!("Failed to persist safety signal feed: {error}"))?;
         Ok(feed)
+    }
+
+    pub fn export_simulation_scenario_package(
+        &mut self,
+        tier: SimulationScenarioExportRedactionTier,
+        generated_at_ms: i64,
+        source_tag: &str,
+    ) -> Result<SimulationScenarioPackage, String> {
+        let as_of_ms = generated_at_ms.max(0);
+        let scenarios = simulation_scenarios_as_of(
+            self.incident_objects.as_slice(),
+            self.receipts.as_slice(),
+            as_of_ms,
+        );
+        let scenarios = normalize_simulation_scenarios(scenarios);
+        let scenario_digests = scenarios
+            .iter()
+            .map(|scenario| scenario.scenario_digest.clone())
+            .collect::<Vec<_>>();
+        let export_seed_digest = digest_for_text(
+            format!("{}:{}", tier.label(), scenario_digests.join("|")).as_str(),
+        );
+        let export_seed = normalize_key(export_seed_digest.as_str());
+        let redaction_receipt_id = format!(
+            "receipt.economy.simulation_scenario.redaction:{}:{}",
+            tier.label(),
+            export_seed
+        );
+        let export_receipt_id = format!(
+            "receipt.economy.simulation_scenario.export:{}:{}",
+            tier.label(),
+            export_seed
+        );
+        let package_scenarios = redact_simulation_scenarios(scenarios.as_slice(), tier);
+        let package_hash = hash_simulation_scenario_package(
+            tier,
+            package_scenarios.as_slice(),
+            redaction_receipt_id.as_str(),
+            export_receipt_id.as_str(),
+        )?;
+        let policy = current_policy_context();
+        let policy_decision =
+            allow_policy_decision("simulation_scenario_export", "safety", SeverityClass::Medium);
+        let redaction_receipt = ReceiptBuilder::new(
+            redaction_receipt_id.clone(),
+            "economy.simulation_scenario.redaction_policy_applied.v1",
+            as_of_ms,
+            format!("simulation_scenario_redaction:{}:{}", tier.label(), export_seed),
+            trace_for_job("work_unit:economy.simulation_scenario_export", None, None),
+            policy.clone(),
+        )
+        .with_inputs_payload(json!({
+            "redaction_tier": tier.label(),
+            "scenario_count": package_scenarios.len(),
+            "scenario_digests": scenario_digests,
+        }))
+        .with_outputs_payload(json!({
+            "status": "applied",
+            "reason_code": REASON_CODE_REDACTION_POLICY_APPLIED,
+            "redaction_profile": {
+                "redact_linked_receipt_ids": tier == SimulationScenarioExportRedactionTier::Public,
+                "redact_rollback_receipt_ids": tier == SimulationScenarioExportRedactionTier::Public,
+                "redact_derived_receipt_ids": tier == SimulationScenarioExportRedactionTier::Public,
+            },
+            "policy_rule_id": policy_decision.rule_id.clone(),
+            "policy_decision": policy_decision.decision,
+            "policy_notes": policy_decision.notes.clone(),
+        }))
+        .with_evidence(vec![
+            policy_decision_evidence(&policy_decision),
+            EvidenceRef::new(
+                "redaction_policy_ref",
+                format!(
+                    "oa://economy/redaction/simulation_scenario/tier/{}",
+                    tier.label()
+                ),
+                digest_for_text(
+                    format!("simulation_scenario_redaction_policy:{}", tier.label()).as_str(),
+                ),
+            ),
+            EvidenceRef::new(
+                "simulation_scenario_package_seed",
+                format!("oa://economy/simulation_scenario_package_seed/{export_seed}"),
+                export_seed_digest.clone(),
+            ),
+        ])
+        .with_hints(ReceiptHints {
+            category: Some("safety".to_string()),
+            tfb_class: Some(FeedbackLatencyClass::Long),
+            severity: Some(SeverityClass::Medium),
+            achieved_verification_tier: None,
+            verification_correlated: None,
+            provenance_grade: Some(ProvenanceGrade::P2Lineage),
+            auth_assurance_level: Some(AuthAssuranceLevel::Authenticated),
+            personhood_proved: Some(false),
+            reason_code: Some(REASON_CODE_REDACTION_POLICY_APPLIED.to_string()),
+            notional: None,
+            liability_premium: None,
+        })
+        .build();
+        self.append_receipt(redaction_receipt, source_tag);
+        if self.load_state == PaneLoadState::Error {
+            return Err(self
+                .last_error
+                .clone()
+                .unwrap_or_else(|| "failed to emit simulation redaction receipt".to_string()));
+        }
+        let redaction_receipt_digest = self
+            .get_receipt(redaction_receipt_id.as_str())
+            .map(|receipt| receipt.canonical_hash.clone())
+            .unwrap_or_else(|| digest_for_text(redaction_receipt_id.as_str()));
+
+        let mut export_evidence = vec![
+            policy_decision_evidence(&policy_decision),
+            EvidenceRef::new(
+                "redaction_policy_receipt_ref",
+                format!("oa://receipts/{redaction_receipt_id}"),
+                redaction_receipt_digest,
+            ),
+            EvidenceRef::new(
+                "simulation_scenario_package_ref",
+                format!("oa://economy/simulation_scenario_packages/{export_seed}"),
+                package_hash.clone(),
+            ),
+        ];
+        for scenario in &package_scenarios {
+            let mut scenario_ref = EvidenceRef::new(
+                "simulation_scenario_ref",
+                format!("oa://economy/simulation_scenarios/{}", scenario.scenario_id),
+                scenario.scenario_digest.clone(),
+            );
+            scenario_ref.meta.insert(
+                "ground_truth_case_id".to_string(),
+                json!(scenario.ground_truth_case_id.clone()),
+            );
+            scenario_ref.meta.insert(
+                "ground_truth_case_digest".to_string(),
+                json!(scenario.ground_truth_case_digest.clone()),
+            );
+            scenario_ref
+                .meta
+                .insert("taxonomy_code".to_string(), json!(scenario.taxonomy_code.clone()));
+            scenario_ref
+                .meta
+                .insert("severity".to_string(), json!(scenario.severity.label()));
+            scenario_ref
+                .meta
+                .insert("redaction_tier".to_string(), json!(tier.label()));
+            export_evidence.push(scenario_ref);
+        }
+
+        let export_receipt = ReceiptBuilder::new(
+            export_receipt_id.clone(),
+            "economy.simulation_scenario.exported.v1",
+            as_of_ms,
+            format!("simulation_scenario_export:{}:{}", tier.label(), export_seed),
+            trace_for_job("work_unit:economy.simulation_scenario_export", None, None),
+            policy,
+        )
+        .with_inputs_payload(json!({
+            "redaction_tier": tier.label(),
+            "scenario_count": package_scenarios.len(),
+            "redaction_policy_receipt_id": redaction_receipt_id,
+        }))
+        .with_outputs_payload(json!({
+            "status": "exported",
+            "package_hash": package_hash,
+            "reason_code": REASON_CODE_SIMULATION_SCENARIO_EXPORTED,
+            "policy_rule_id": policy_decision.rule_id.clone(),
+            "policy_decision": policy_decision.decision,
+            "policy_notes": policy_decision.notes.clone(),
+        }))
+        .with_evidence(export_evidence)
+        .with_hints(ReceiptHints {
+            category: Some("safety".to_string()),
+            tfb_class: Some(FeedbackLatencyClass::Long),
+            severity: Some(SeverityClass::Medium),
+            achieved_verification_tier: Some(VerificationTier::Tier2Heterogeneous),
+            verification_correlated: Some(false),
+            provenance_grade: Some(ProvenanceGrade::P2Lineage),
+            auth_assurance_level: Some(AuthAssuranceLevel::Authenticated),
+            personhood_proved: Some(false),
+            reason_code: Some(REASON_CODE_SIMULATION_SCENARIO_EXPORTED.to_string()),
+            notional: None,
+            liability_premium: None,
+        })
+        .build();
+        self.append_receipt(export_receipt, source_tag);
+        if self.load_state == PaneLoadState::Error {
+            return Err(self
+                .last_error
+                .clone()
+                .unwrap_or_else(|| "failed to emit simulation export receipt".to_string()));
+        }
+
+        Ok(SimulationScenarioPackage {
+            schema_version: EARN_KERNEL_RECEIPT_SCHEMA_VERSION,
+            generated_at_ms: as_of_ms,
+            stream_id: self.stream_id.clone(),
+            authority: self.authority.clone(),
+            redaction_tier: tier,
+            redaction_policy_receipt_id: redaction_receipt_id,
+            export_receipt_id,
+            scenario_count: package_scenarios.len(),
+            scenarios: package_scenarios,
+            package_hash,
+        })
+    }
+
+    pub fn export_simulation_scenario_package_to_path(
+        &mut self,
+        tier: SimulationScenarioExportRedactionTier,
+        generated_at_ms: i64,
+        source_tag: &str,
+        path: &Path,
+    ) -> Result<SimulationScenarioPackage, String> {
+        let package = self.export_simulation_scenario_package(tier, generated_at_ms, source_tag)?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|error| {
+                format!("Failed to create simulation scenario package dir: {error}")
+            })?;
+        }
+        let payload = serde_json::to_string_pretty(&package)
+            .map_err(|error| format!("Failed to encode simulation scenario package: {error}"))?;
+        let temp_path = path.with_extension("tmp");
+        std::fs::write(&temp_path, payload).map_err(|error| {
+            format!("Failed to write simulation scenario package temp file: {error}")
+        })?;
+        std::fs::rename(&temp_path, path)
+            .map_err(|error| format!("Failed to persist simulation scenario package: {error}"))?;
+        Ok(package)
     }
 
     pub fn issue_safety_certification(
@@ -6583,6 +6859,293 @@ fn incident_object_evidence(incident: &IncidentObject) -> EvidenceRef {
     evidence
 }
 
+fn simulation_scenarios_as_of(
+    incidents: &[IncidentObject],
+    receipts: &[Receipt],
+    as_of_ms: i64,
+) -> Vec<SimulationScenario> {
+    let mut latest_ground_truth_cases = BTreeMap::<String, IncidentObject>::new();
+    for incident in incidents
+        .iter()
+        .filter(|incident| {
+            incident.incident_kind == IncidentKind::GroundTruthCase
+                && incident.updated_at_ms <= as_of_ms.max(0)
+        })
+        .cloned()
+    {
+        let keep_new = latest_ground_truth_cases
+            .get(incident.incident_id.as_str())
+            .is_none_or(|existing| {
+                incident.revision > existing.revision
+                    || (incident.revision == existing.revision
+                        && incident.updated_at_ms > existing.updated_at_ms)
+            });
+        if keep_new {
+            latest_ground_truth_cases.insert(incident.incident_id.clone(), incident);
+        }
+    }
+    let receipt_digest_by_id = receipts
+        .iter()
+        .filter(|receipt| receipt.created_at_ms <= as_of_ms.max(0))
+        .map(|receipt| (receipt.receipt_id.clone(), receipt.canonical_hash.clone()))
+        .collect::<BTreeMap<_, _>>();
+    let mut receipt_refs_by_ground_truth_case = BTreeMap::<String, BTreeSet<String>>::new();
+    for receipt in receipts
+        .iter()
+        .filter(|receipt| receipt.created_at_ms <= as_of_ms.max(0))
+    {
+        if !receipt.receipt_type.starts_with("economy.incident.") {
+            continue;
+        }
+        let Some(incident_ref) = receipt
+            .evidence
+            .iter()
+            .find(|evidence| evidence.kind == "incident_object_ref")
+        else {
+            continue;
+        };
+        let Some(incident_kind) = incident_ref
+            .meta
+            .get("incident_kind")
+            .and_then(Value::as_str)
+        else {
+            continue;
+        };
+        if incident_kind != "ground_truth_case" {
+            continue;
+        }
+        let Some(incident_id) = incident_ref.meta.get("incident_id").and_then(Value::as_str) else {
+            continue;
+        };
+        let entry = receipt_refs_by_ground_truth_case
+            .entry(incident_id.to_string())
+            .or_default();
+        entry.insert(receipt.receipt_id.clone());
+    }
+
+    let mut scenarios = latest_ground_truth_cases
+        .into_values()
+        .map(|ground_truth_case| {
+            let linked_receipt_ids = canonical_receipt_ids(ground_truth_case.linked_receipt_ids.as_slice());
+            let rollback_receipt_ids =
+                canonical_receipt_ids(ground_truth_case.rollback_receipt_ids.as_slice());
+            let linked_receipt_digests = linked_receipt_ids
+                .iter()
+                .filter_map(|receipt_id| receipt_digest_by_id.get(receipt_id).cloned())
+                .collect::<Vec<_>>();
+            let rollback_receipt_digests = rollback_receipt_ids
+                .iter()
+                .filter_map(|receipt_id| receipt_digest_by_id.get(receipt_id).cloned())
+                .collect::<Vec<_>>();
+            let derived_from_receipt_ids = receipt_refs_by_ground_truth_case
+                .get(ground_truth_case.incident_id.as_str())
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .collect::<Vec<_>>();
+            let derived_from_receipt_digests = derived_from_receipt_ids
+                .iter()
+                .filter_map(|receipt_id| receipt_digest_by_id.get(receipt_id).cloned())
+                .collect::<Vec<_>>();
+            let harness_ref = simulation_harness_ref(&ground_truth_case);
+            let scoring_rubric_ref = simulation_scoring_rubric_ref(&ground_truth_case);
+            let scenario_id = format!(
+                "simulation:{}:rev{}",
+                normalize_key(ground_truth_case.incident_id.as_str()),
+                ground_truth_case.revision
+            );
+            let scenario_digest = simulation_scenario_digest(
+                scenario_id.as_str(),
+                ground_truth_case.incident_id.as_str(),
+                ground_truth_case.incident_digest.as_str(),
+                ground_truth_case.taxonomy_id.as_str(),
+                ground_truth_case.taxonomy_version.as_str(),
+                ground_truth_case.taxonomy_code.as_str(),
+                ground_truth_case.severity,
+                ground_truth_case.evidence_digests.as_slice(),
+                linked_receipt_digests.as_slice(),
+                rollback_receipt_digests.as_slice(),
+                harness_ref.digest.as_str(),
+                scoring_rubric_ref.digest.as_str(),
+                derived_from_receipt_digests.as_slice(),
+            );
+            SimulationScenario {
+                scenario_id,
+                scenario_digest,
+                ground_truth_case_id: ground_truth_case.incident_id,
+                ground_truth_case_digest: ground_truth_case.incident_digest,
+                taxonomy_id: ground_truth_case.taxonomy_id,
+                taxonomy_version: ground_truth_case.taxonomy_version,
+                taxonomy_code: ground_truth_case.taxonomy_code,
+                severity: ground_truth_case.severity,
+                evidence_digests: ground_truth_case.evidence_digests,
+                linked_receipt_ids,
+                linked_receipt_digests,
+                rollback_receipt_ids,
+                rollback_receipt_digests,
+                harness_ref,
+                scoring_rubric_ref,
+                derived_from_receipt_ids,
+                derived_from_receipt_digests,
+            }
+        })
+        .collect::<Vec<_>>();
+    scenarios.sort_by(|lhs, rhs| {
+        lhs.scenario_id
+            .cmp(&rhs.scenario_id)
+            .then_with(|| lhs.ground_truth_case_id.cmp(&rhs.ground_truth_case_id))
+    });
+    scenarios.truncate(SIMULATION_SCENARIO_ROW_LIMIT);
+    scenarios
+}
+
+fn simulation_harness_ref(ground_truth_case: &IncidentObject) -> EvidenceRef {
+    let mut harness_ref = EvidenceRef::new(
+        "simulation_harness_ref",
+        format!(
+            "oa://benchmarks/harness/{}/{}/{}",
+            normalize_key(ground_truth_case.taxonomy_id.as_str()),
+            normalize_key(ground_truth_case.taxonomy_version.as_str()),
+            normalize_key(ground_truth_case.taxonomy_code.as_str()),
+        ),
+        digest_for_text(
+            format!(
+                "simulation_harness:{}:{}:{}",
+                ground_truth_case.taxonomy_id,
+                ground_truth_case.taxonomy_version,
+                ground_truth_case.taxonomy_code
+            )
+            .as_str(),
+        ),
+    );
+    harness_ref.meta.insert(
+        "taxonomy_code".to_string(),
+        json!(ground_truth_case.taxonomy_code.clone()),
+    );
+    harness_ref
+}
+
+fn simulation_scoring_rubric_ref(ground_truth_case: &IncidentObject) -> EvidenceRef {
+    let mut rubric_ref = EvidenceRef::new(
+        "simulation_scoring_rubric_ref",
+        format!(
+            "oa://benchmarks/rubric/{}/{}/{}",
+            normalize_key(ground_truth_case.taxonomy_id.as_str()),
+            normalize_key(ground_truth_case.taxonomy_version.as_str()),
+            normalize_key(ground_truth_case.taxonomy_code.as_str()),
+        ),
+        digest_for_text(
+            format!(
+                "simulation_scoring_rubric:{}:{}:{}:{}",
+                ground_truth_case.taxonomy_id,
+                ground_truth_case.taxonomy_version,
+                ground_truth_case.taxonomy_code,
+                ground_truth_case.severity.label(),
+            )
+            .as_str(),
+        ),
+    );
+    rubric_ref.meta.insert(
+        "severity".to_string(),
+        json!(ground_truth_case.severity.label()),
+    );
+    rubric_ref
+}
+
+#[allow(clippy::too_many_arguments)]
+fn simulation_scenario_digest(
+    scenario_id: &str,
+    ground_truth_case_id: &str,
+    ground_truth_case_digest: &str,
+    taxonomy_id: &str,
+    taxonomy_version: &str,
+    taxonomy_code: &str,
+    severity: SeverityClass,
+    evidence_digests: &[String],
+    linked_receipt_digests: &[String],
+    rollback_receipt_digests: &[String],
+    harness_digest: &str,
+    scoring_rubric_digest: &str,
+    derived_from_receipt_digests: &[String],
+) -> String {
+    digest_for_text(
+        format!(
+            "{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
+            scenario_id,
+            ground_truth_case_id,
+            ground_truth_case_digest,
+            taxonomy_id,
+            taxonomy_version,
+            taxonomy_code,
+            severity.label(),
+            evidence_digests.join("|"),
+            linked_receipt_digests.join("|"),
+            rollback_receipt_digests.join("|"),
+            harness_digest,
+            format!(
+                "{}:{}",
+                scoring_rubric_digest,
+                derived_from_receipt_digests.join("|")
+            ),
+        )
+        .as_str(),
+    )
+}
+
+fn normalize_simulation_scenarios(mut scenarios: Vec<SimulationScenario>) -> Vec<SimulationScenario> {
+    scenarios.sort_by(|lhs, rhs| {
+        lhs.scenario_id
+            .cmp(&rhs.scenario_id)
+            .then_with(|| lhs.scenario_digest.cmp(&rhs.scenario_digest))
+    });
+    scenarios.dedup_by(|lhs, rhs| lhs.scenario_digest == rhs.scenario_digest);
+    scenarios.truncate(SIMULATION_SCENARIO_ROW_LIMIT);
+    scenarios
+}
+
+fn redact_simulation_scenarios(
+    scenarios: &[SimulationScenario],
+    tier: SimulationScenarioExportRedactionTier,
+) -> Vec<SimulationScenario> {
+    let mut redacted = scenarios.to_vec();
+    if tier == SimulationScenarioExportRedactionTier::Public {
+        for scenario in &mut redacted {
+            scenario.linked_receipt_ids.clear();
+            scenario.rollback_receipt_ids.clear();
+            scenario.derived_from_receipt_ids.clear();
+        }
+    }
+    redacted
+}
+
+#[derive(Serialize)]
+struct CanonicalSimulationScenarioPackagePayload<'a> {
+    redaction_tier: SimulationScenarioExportRedactionTier,
+    redaction_policy_receipt_id: &'a str,
+    export_receipt_id: &'a str,
+    scenarios: &'a [SimulationScenario],
+}
+
+fn hash_simulation_scenario_package(
+    tier: SimulationScenarioExportRedactionTier,
+    scenarios: &[SimulationScenario],
+    redaction_policy_receipt_id: &str,
+    export_receipt_id: &str,
+) -> Result<String, String> {
+    let payload = CanonicalSimulationScenarioPackagePayload {
+        redaction_tier: tier,
+        redaction_policy_receipt_id,
+        export_receipt_id,
+        scenarios,
+    };
+    let value = serde_json::to_value(payload)
+        .map_err(|error| format!("Failed to encode simulation scenario package payload: {error}"))?;
+    let bytes = serde_json::to_vec(&value)
+        .map_err(|error| format!("Failed to encode simulation scenario package hash payload: {error}"))?;
+    let digest = sha256::Hash::hash(bytes.as_slice());
+    Ok(format!("sha256:{digest}"))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn outcome_registry_digest_for(
     entry_id: &str,
@@ -7660,6 +8223,15 @@ impl IncidentStatus {
             IncidentStatus::IncidentStatusUnspecified => "unspecified",
             IncidentStatus::Open => "open",
             IncidentStatus::Resolved => "resolved",
+        }
+    }
+}
+
+impl SimulationScenarioExportRedactionTier {
+    fn label(self) -> &'static str {
+        match self {
+            SimulationScenarioExportRedactionTier::Public => "public",
+            SimulationScenarioExportRedactionTier::Restricted => "restricted",
         }
     }
 }
@@ -9115,6 +9687,17 @@ mod tests {
             rollback_receipt_ids: vec![],
             evidence_digests: vec!["sha256:evidence-1".to_string()],
         }
+    }
+
+    fn fixture_ground_truth_case_draft(
+        linked_receipt_id: &str,
+        idempotency_key: &str,
+    ) -> IncidentReportDraft {
+        let mut draft = fixture_incident_draft(linked_receipt_id, idempotency_key);
+        draft.incident_kind = IncidentKind::GroundTruthCase;
+        draft.taxonomy_code = "safety.ground_truth_case".to_string();
+        draft.summary = "ground truth replay case for simulation export".to_string();
+        draft
     }
 
     fn fixture_outcome_registry_draft(
@@ -10852,6 +11435,145 @@ mod tests {
                 .iter()
                 .all(|evidence| evidence.uri == "oa://redacted")
         }));
+    }
+
+    #[test]
+    fn simulation_scenario_export_is_deterministic_and_receipted() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        state.record_history_receipt(
+            &fixture_history_row("wallet-payment-simulation-export"),
+            1_762_000_010,
+            "test.history",
+        );
+        let linked_receipt_id = state
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_type == "earn.job.settlement_observed.v1")
+            .expect("settlement receipt")
+            .receipt_id
+            .clone();
+        let ground_truth_case_id = state
+            .report_incident(
+                fixture_ground_truth_case_draft(
+                    linked_receipt_id.as_str(),
+                    "ground-truth-case-sim-export",
+                ),
+                1_762_000_060_000,
+                "test.incident.ground_truth",
+            )
+            .expect("ground truth case");
+
+        let first = state
+            .export_simulation_scenario_package(
+                SimulationScenarioExportRedactionTier::Restricted,
+                1_762_000_120_000,
+                "test.simulation.export",
+            )
+            .expect("first simulation export");
+        let second = state
+            .export_simulation_scenario_package(
+                SimulationScenarioExportRedactionTier::Restricted,
+                1_762_000_120_000,
+                "test.simulation.export.replay",
+            )
+            .expect("replay simulation export");
+        assert_eq!(first.package_hash, second.package_hash);
+        assert_eq!(first.scenario_count, 1);
+        assert_eq!(first.redaction_tier, SimulationScenarioExportRedactionTier::Restricted);
+        let scenario = first.scenarios.first().expect("scenario should exist");
+        assert_eq!(scenario.ground_truth_case_id, ground_truth_case_id);
+        assert_eq!(scenario.linked_receipt_ids, vec![linked_receipt_id.clone()]);
+        assert!(!scenario.linked_receipt_digests.is_empty());
+        assert!(!scenario.derived_from_receipt_ids.is_empty());
+
+        let redaction_receipt = state
+            .get_receipt(first.redaction_policy_receipt_id.as_str())
+            .expect("redaction policy receipt");
+        assert_eq!(
+            redaction_receipt.receipt_type,
+            "economy.simulation_scenario.redaction_policy_applied.v1"
+        );
+        assert_eq!(
+            redaction_receipt.hints.reason_code.as_deref(),
+            Some(REASON_CODE_REDACTION_POLICY_APPLIED)
+        );
+        let export_receipt = state
+            .get_receipt(first.export_receipt_id.as_str())
+            .expect("simulation export receipt");
+        assert_eq!(
+            export_receipt.receipt_type,
+            "economy.simulation_scenario.exported.v1"
+        );
+        assert_eq!(
+            export_receipt.hints.reason_code.as_deref(),
+            Some(REASON_CODE_SIMULATION_SCENARIO_EXPORTED)
+        );
+        assert!(export_receipt
+            .evidence
+            .iter()
+            .any(|evidence| evidence.kind == "redaction_policy_receipt_ref"));
+        assert!(export_receipt
+            .evidence
+            .iter()
+            .any(|evidence| evidence.kind == "simulation_scenario_ref"));
+    }
+
+    #[test]
+    fn simulation_scenario_export_public_tier_redacts_receipt_ids() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        state.record_history_receipt(
+            &fixture_history_row("wallet-payment-simulation-redaction"),
+            1_762_000_010,
+            "test.history",
+        );
+        let linked_receipt_id = state
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_type == "earn.job.settlement_observed.v1")
+            .expect("settlement receipt")
+            .receipt_id
+            .clone();
+        state
+            .report_incident(
+                fixture_ground_truth_case_draft(
+                    linked_receipt_id.as_str(),
+                    "ground-truth-case-sim-redaction",
+                ),
+                1_762_000_060_000,
+                "test.incident.ground_truth",
+            )
+            .expect("ground truth case");
+
+        let restricted = state
+            .export_simulation_scenario_package(
+                SimulationScenarioExportRedactionTier::Restricted,
+                1_762_000_120_000,
+                "test.simulation.restricted",
+            )
+            .expect("restricted simulation export");
+        let public = state
+            .export_simulation_scenario_package(
+                SimulationScenarioExportRedactionTier::Public,
+                1_762_000_120_000,
+                "test.simulation.public",
+            )
+            .expect("public simulation export");
+        assert_eq!(restricted.scenario_count, public.scenario_count);
+        assert_ne!(restricted.package_hash, public.package_hash);
+        let restricted_scenario = restricted.scenarios.first().expect("restricted scenario");
+        let public_scenario = public.scenarios.first().expect("public scenario");
+        assert!(!restricted_scenario.linked_receipt_ids.is_empty());
+        assert!(public_scenario.linked_receipt_ids.is_empty());
+        assert!(public_scenario.rollback_receipt_ids.is_empty());
+        assert!(public_scenario.derived_from_receipt_ids.is_empty());
+        assert_eq!(
+            restricted_scenario.linked_receipt_digests,
+            public_scenario.linked_receipt_digests
+        );
     }
 
     #[test]
