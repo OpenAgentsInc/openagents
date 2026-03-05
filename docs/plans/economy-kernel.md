@@ -313,6 +313,12 @@ An Intent is a request to move value under constraints (pay, reserve bond, settl
 **Bond**
 Collateral backing a claim: worker self-bond, underwriter bond, dispute bond, warranty reserve.
 
+**CoverageBinding (market instrument)**
+A CoverageBinding is a policy-gated liability instrument that binds underwriter offers, collateral, premium terms, and a deterministic resolution path to a specific contract/warranty window.
+
+**CostProofBundle**
+A CostProofBundle is a content-addressed evidence object for compute-integrity metering (resource usage + runtime/attestation linkage) that can be required by policy for compute-like lanes.
+
 **Receipt**
 Canonical record of any authority effect (normative in §5).
 
@@ -424,6 +430,14 @@ Define:
 * `NV = ρN`: verified throughput / verified scale
 
 The system’s success metric is **NV**, not N.
+
+**2.4.5 Market-backed and cost-backed modifiers (new)**
+The kernel MAY use two additional machine-legible modifiers to improve verification capacity and measurability where policy allows:
+
+* **coverage-backed confidence modifiers** derived from bounded underwriting markets (coverage depth, concentration, calibration),
+* **cost-integrity modifiers** derived from CostProofBundle evidence (attestation level, anomaly rates, variance bands).
+
+These modifiers MUST be receipt-derived, policy-bounded, and traceable to snapshot evidence; they MUST NOT bypass explicit resolution-path requirements.
 
 ---
 
@@ -620,6 +634,45 @@ This section defines an optional extension for intent-driven routing across rail
 3. **Solver accountability from receipts.** Solver performance MUST be measured from receipts (fills, latency, failures, refunds, slippage vs quoted). Solver selection and continued eligibility MUST be policy-driven using those receipt-derived metrics.
 4. **Failure is explicit.** Refunds, timeouts, expiries, and retries are first-class states with receipts. No hidden “best effort” reroutes.
 
+### 4.7 Optional Extension: Liability Markets and Cost Integrity
+
+This section defines optional extensions that remain policy-gated:
+
+* **MKT (liability markets):** coverage auctions and optional belief markets for bounded, receipted risk pricing.
+* **cost integrity lane:** compute cost proofs as first-class evidence for pricing, drift, and fraud detection.
+
+**Coverage Binding lifecycle (minimum canonical state machine)**
+`OFFERING_OPEN → BINDING_PROPOSED → BOUND → ACTIVE → (CLAIM_TRIGGERED | EXPIRED) → SETTLED`
+
+**Belief position lifecycle (optional later instrument)**
+`OPEN → MARGIN_LOCKED → REDUCED/CLOSED → SETTLED`
+
+**Normative requirements**
+
+1. **Resolution MUST be contract-native and unambiguous.**
+   Any market payoff or coverage settlement MUST bind to a deterministic `ResolutionRef` that resolves via objective harness evidence, verdict receipts, claim resolution receipts, or explicit human underwriting receipts.
+2. **Coverage is bounded liability, not open credit.**
+   Coverage offers/bindings MUST declare coverage caps, premium terms, warranty window binding, and collateral linkage via bond receipts.
+3. **No non-receipted market transitions.**
+   Offer placement, binding, activation, claim trigger, and settlement MUST be authority actions with receipts.
+4. **Deterministic clearing is required.**
+   If order/offer books are used, clearing MUST be deterministic. Recommended default is minute-batch clearing with canonical offer ordering by price, timestamp, and stable tie-break.
+5. **Safe-harbor relaxations are policy-bounded.**
+   Any verification/provenance relaxation using market-backed signals MUST be explicitly policy-triggered, bound to snapshot references, and receipted.
+
+**Safe-harbor constraints (minimum checklist)**
+
+Market-backed verification relaxations MAY be applied only when all required policy thresholds pass for the active slice (`category × tfb × severity`), including:
+
+* minimum bound coverage cap,
+* minimum distinct underwriters,
+* no disallowed correlation-group violations,
+* maximum implied failure probability,
+* minimum market calibration score,
+* maximum coverage concentration.
+
+Any applied relaxation MUST be recorded as a policy action receipt and MUST reference the snapshot id/hash used for the decision.
+
 ---
 
 ## 5. Receipts, Provenance, and Canonical Hashing (Normative)
@@ -709,6 +762,17 @@ The kernel MUST compute a deterministic provenance grade from attached evidence:
 * in verification receipts
 * in contract summaries
 * in `/stats`
+
+#### 5.5.1 CostProof bundles (compute-integrity evidence)
+
+For compute-like WorkUnit lanes, policy MAY require a **CostProofBundle** evidence type.
+
+Minimum requirements:
+
+* cost proof MUST be content-addressed (`sha256:<hex>`) and trace-bound to `work_unit_id`/`contract_id`/`job_hash` as applicable,
+* cost proof MUST include attestation posture (`C0_SELF_REPORTED`, `C1_METERED`, `C2_HARDWARE_ATTESTED`, optional `C3_ZK_PROVEN`),
+* policy MAY require minimum cost-proof level by `category × tfb × severity`,
+* cost anomalies MUST be representable as explicit drift/evidence signals (no hidden heuristics).
 
 ### 5.6 Canonical hashing rules (concrete)
 
@@ -942,17 +1006,34 @@ Provides:
 
 ### 6.9 Markets (optional module; still kernel-native)
 
-**Work Outcome Markets**
+Markets in this kernel are **liability and verification-capacity instruments**, not unbounded speculation.
 
-* contracts with self-bonds and underwriting
-* pricing of warranty premiums based on:
+**Instrument 1: Coverage auction (recommended first instrument)**
 
-  * tfb, severity, tier, independence, provenance grade, historical loss
+* underwriters post collateralized coverage offers for a contract/warranty lane,
+* binding selects a deterministic set of offers into a CoverageBinding with explicit cap/premium terms,
+* premiums and claim payouts are executed via authority receipts and bond draws/releases.
 
-**Belief Markets**
+**Instrument 2: Belief market (optional later instrument)**
 
-* internal markets with deterministic resolution and receipts
-* optional LMSR/CLOB; never required for core kernel function
+* bounded PASS/FAIL positions collateralized under policy,
+* payoff resolution MUST bind to deterministic `ResolutionRef` outcomes,
+* outputs include market-implied failure probability, confidence, and calibration signals.
+
+**Normative requirements**
+
+1. **Coverage and market actions MUST be receipt-native.**
+   Placement, cancellation, binding, clearing, activation, and settlement are authority actions with receipts.
+2. **Resolution references are mandatory.**
+   Coverage and belief settlement MUST bind to objective/verdict/claim/human-underwrite resolution references.
+3. **Concentration/correlation controls apply.**
+   Policy MUST be able to enforce minimum underwriter diversity and concentration ceilings before safe-harbor relaxations are allowed.
+4. **Deterministic clearing is mandatory.**
+   When clearing books, implement deterministic ordering and emit clearing receipts.
+
+**Verification-capacity posture**
+
+Policy MAY treat market-backed coverage as a partial substitute for high-cost verification only when explicit thresholds pass (coverage cap, diversity, concentration, calibration, and implied risk posture). Any relaxation MUST be bound to snapshot ids/hashes and receipted.
 
 ### 6.10 Ground Truth + Synthetic Practice (promoted to core)
 
@@ -1014,6 +1095,14 @@ For high-severity categories, contracts MUST include at least one of:
 
 Rollback or compensating action attempts MUST emit explicit receipts (executed/failed) with stable reason codes and receipt linkage to the triggering incident/claim.
 
+Required rollback receipt types:
+
+* `economy.rollback.executed.v1`
+* `economy.rollback.failed.v1`
+* `economy.compensating_action.executed.v1`
+
+For slices where rollback plans are required, missing rollback/compensating plans MUST withhold authority mutation with a stable reason code (`ROLLBACK_PLAN_REQUIRED`) and hash-bound policy evidence.
+
 ### 6.12 Monitoring and drift detection (normative)
 
 The kernel MUST support continuous drift detection as a first-class control loop.
@@ -1072,6 +1161,23 @@ Reputation is an internal measurement derived strictly from receipts. It is not 
 3. **Explainable and auditable.** Any decision that materially depends on reputation SHOULD include a receipt note pointing to the relevant measurement window(s) and the metrics used.
 4. **Non-transferable meaning.** Reputation metrics are contextual (category/tfb/severity) and MUST NOT be collapsed into a single “trust score” that ignores domain differences.
 5. **Interop is summary-only.** If mirrored externally, only summary labels/aggregates may be exported; raw internal evidence pointers must not be exposed.
+
+### 6.15 Cost Integrity and Proof-of-Cost (normative)
+
+Proof-of-cost is a machine-legible compute-integrity signal, not proof-of-work.
+
+Minimum requirements:
+
+1. **CostProofBundle is first-class evidence.**
+   For policy-gated compute lanes, submissions MUST include a cost proof reference with attestation level and resource-usage measurements.
+2. **Cost proofs are trace-bound and hash-bound.**
+   Cost proof evidence MUST bind to execution identity (work unit/contract/job trace) and be represented via immutable digests.
+3. **Cost anomalies are explicit signals.**
+   Significant variance between expected and measured cost MUST emit explicit anomaly/drift signals with receipts.
+4. **Cost signals are policy inputs only.**
+   Cost integrity MAY influence pricing, underwriting limits, and throttles, but MUST NOT bypass resolution-path invariants.
+5. **Cost anomalies require explicit receipts.**
+   Breaches of policy-defined expected-vs-measured variance MUST emit a typed anomaly/drift receipt (for example `economy.cost.anomaly_detected.v1`) with stable reason codes.
 
 ---
 
@@ -1167,6 +1273,7 @@ Reputation is an internal measurement derived strictly from receipts. It is not 
 
 * incident and near-miss rates by taxonomy + severity
 * rollback/compensating-action attempt and success rates
+* top rollback reason codes (public-redacted)
 * certification distribution and uncertified-block counts by slice
 
 #### J) Verifier Capacity & Synthetic Practice (new)
@@ -1180,6 +1287,26 @@ Reputation is an internal measurement derived strictly from receipts. It is not 
 
 * authentication assurance distribution by role and slice
 * personhood-verified share for policy-gated lanes
+
+#### L) Markets and Coverage (new)
+
+* `coverage_bound_share` by slice
+* average underwriters per bound contract
+* coverage concentration (`hhi` / top share)
+* implied fail probability p50/p95 (where belief instrument is enabled)
+* market calibration score (windowed)
+* coverage premiums collected and coverage claims paid (24h/7d)
+* market disagreement rate (market signal vs verdict/claim outcome)
+* market manipulation flags (24h)
+
+#### M) Cost Proofs and Compute Integrity (new)
+
+* cost-proof share by slice
+* cost attestation level distribution (`C0`–`C3`)
+* cost anomaly rate (24h)
+* measured-vs-expected cost variance p50/p95
+* provider cost-integrity score distribution
+* price-vs-cost spread bps bands
 
 ### 7.3 Data provenance rule (hard requirement)
 
