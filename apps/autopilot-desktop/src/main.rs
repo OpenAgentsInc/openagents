@@ -4,6 +4,7 @@ mod app_state;
 mod cad_rebuild_worker;
 mod codex_lane;
 mod credentials;
+mod economy_kernel_receipts;
 mod hotbar;
 mod input;
 mod logging;
