@@ -22,6 +22,7 @@ const EARN_WORK_UNIT_METADATA_ROW_LIMIT: usize = 2048;
 const EARN_IDEMPOTENCY_RECORD_ROW_LIMIT: usize = 4096;
 const INCIDENT_OBJECT_ROW_LIMIT: usize = 4096;
 const INCIDENT_TAXONOMY_ROW_LIMIT: usize = 1024;
+const AUDIT_LINKAGE_ROW_LIMIT: usize = 65_536;
 const REASON_CODE_JOB_FAILED: &str = "JOB_FAILED";
 const REASON_CODE_POLICY_PREFLIGHT_REJECTED: &str = "POLICY_PREFLIGHT_REJECTED";
 const REASON_CODE_PAYMENT_POINTER_NON_AUTHORITATIVE: &str = "PAYMENT_POINTER_NON_AUTHORITATIVE";
@@ -325,6 +326,13 @@ pub enum IncidentExportRedactionTier {
     Restricted,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq, Ord, PartialOrd)]
+#[serde(rename_all = "snake_case")]
+pub enum AuditExportRedactionTier {
+    Public,
+    Restricted,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct IncidentTaxonomyEntry {
     pub taxonomy_id: String,
@@ -400,6 +408,62 @@ pub struct IncidentAuditPackage {
     pub incidents: Vec<IncidentObject>,
     pub taxonomy_registry: Vec<IncidentTaxonomyEntry>,
     pub incident_receipts: Vec<Receipt>,
+    pub package_hash: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct AuditCertificationEntry {
+    pub receipt_id: String,
+    pub receipt_type: String,
+    pub category: Option<String>,
+    pub severity: Option<SeverityClass>,
+    pub digest: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct AuditOutcomeRegistryEntry {
+    pub receipt_id: String,
+    pub receipt_type: String,
+    pub category: Option<String>,
+    pub tfb_class: Option<FeedbackLatencyClass>,
+    pub severity: Option<SeverityClass>,
+    pub digest: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct AuditSnapshotBinding {
+    pub snapshot_id: String,
+    pub snapshot_hash: String,
+    pub linked_receipt_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct AuditLinkageEdge {
+    pub from_receipt_id: String,
+    pub to_receipt_id: String,
+    pub relation_kind: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct AuditPackage {
+    pub schema_version: u16,
+    pub generated_at_ms: i64,
+    pub stream_id: String,
+    pub authority: String,
+    pub redaction_tier: AuditExportRedactionTier,
+    pub query: ReceiptQuery,
+    pub receipt_count: usize,
+    pub incident_count: usize,
+    pub certification_count: usize,
+    pub outcome_registry_count: usize,
+    pub snapshot_binding_count: usize,
+    pub linkage_edge_count: usize,
+    pub receipts: Vec<Receipt>,
+    pub incidents: Vec<IncidentObject>,
+    pub certifications: Vec<AuditCertificationEntry>,
+    pub outcome_registry_entries: Vec<AuditOutcomeRegistryEntry>,
+    pub snapshot_bindings: Vec<AuditSnapshotBinding>,
+    pub linkage_edges: Vec<AuditLinkageEdge>,
     pub package_hash: String,
 }
 
@@ -1409,6 +1473,8 @@ impl EarnKernelReceiptState {
         rollback_successes_24h: u64,
         rollback_success_rate: f64,
         top_rollback_reason_codes: Vec<(String, u64)>,
+        audit_package_public_digest: String,
+        audit_package_restricted_digest: String,
         mut input_evidence: Vec<EvidenceRef>,
         source_tag: &str,
     ) {
@@ -1427,7 +1493,7 @@ impl EarnKernelReceiptState {
         ));
         let snapshot_metrics_digest = digest_for_text(
             format!(
-                "{snapshot_id}:{sv}:{rho}:{n}:{nv}:{delta_m_hat}:{xa_hat}:{correlated_verification_share}:{liability_premiums_collected_24h_sats}:{claims_paid_24h_sats}:{bonded_exposure_24h_sats}:{capital_reserves_24h_sats}:{loss_ratio}:{capital_coverage_ratio}:{drift_alerts_24h}:{rollback_attempts_24h}:{rollback_successes_24h}:{rollback_success_rate}:{}:{}"
+                "{snapshot_id}:{sv}:{rho}:{n}:{nv}:{delta_m_hat}:{xa_hat}:{correlated_verification_share}:{liability_premiums_collected_24h_sats}:{claims_paid_24h_sats}:{bonded_exposure_24h_sats}:{capital_reserves_24h_sats}:{loss_ratio}:{capital_coverage_ratio}:{drift_alerts_24h}:{rollback_attempts_24h}:{rollback_successes_24h}:{rollback_success_rate}:{}:{}:{audit_package_public_digest}:{audit_package_restricted_digest}"
                 ,
                 drift_signal_digest_material(drift_signals.as_slice()),
                 top_rollback_reason_codes
@@ -1505,6 +1571,14 @@ impl EarnKernelReceiptState {
             "top_rollback_reason_codes".to_string(),
             json!(top_rollback_reason_codes),
         );
+        snapshot_metrics.meta.insert(
+            "audit_package_public_digest".to_string(),
+            json!(audit_package_public_digest),
+        );
+        snapshot_metrics.meta.insert(
+            "audit_package_restricted_digest".to_string(),
+            json!(audit_package_restricted_digest),
+        );
         input_evidence.push(snapshot_metrics);
 
         let receipt = ReceiptBuilder::new(
@@ -1552,6 +1626,8 @@ impl EarnKernelReceiptState {
             "rollback_successes_24h": rollback_successes_24h,
             "rollback_success_rate": rollback_success_rate,
             "top_rollback_reason_codes": top_rollback_reason_codes,
+            "audit_package_public_digest": audit_package_public_digest,
+            "audit_package_restricted_digest": audit_package_restricted_digest,
             "source_tag": source_tag,
         }))
         .with_evidence(input_evidence)
@@ -2502,6 +2578,134 @@ impl EarnKernelReceiptState {
         std::fs::rename(&temp_path, path)
             .map_err(|error| format!("Failed to persist receipt bundle: {error}"))?;
         Ok(bundle)
+    }
+
+    pub fn export_audit_package(
+        &self,
+        query: &ReceiptQuery,
+        tier: AuditExportRedactionTier,
+        generated_at_ms: i64,
+    ) -> Result<AuditPackage, String> {
+        let receipts = self
+            .query_receipts(query)
+            .into_iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        let included_receipt_ids = receipts
+            .iter()
+            .map(|receipt| receipt.receipt_id.clone())
+            .collect::<BTreeSet<_>>();
+
+        let mut incidents = self
+            .incident_objects
+            .iter()
+            .filter(|incident| {
+                incident
+                    .linked_receipt_ids
+                    .iter()
+                    .any(|receipt_id| included_receipt_ids.contains(receipt_id))
+                    || incident
+                        .rollback_receipt_ids
+                        .iter()
+                        .any(|receipt_id| included_receipt_ids.contains(receipt_id))
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        incidents = normalize_incident_objects(incidents);
+
+        let mut certifications = receipts
+            .iter()
+            .filter(|receipt| receipt.receipt_type.starts_with("economy.certification."))
+            .map(|receipt| AuditCertificationEntry {
+                receipt_id: receipt.receipt_id.clone(),
+                receipt_type: receipt.receipt_type.clone(),
+                category: receipt.hints.category.clone(),
+                severity: receipt.hints.severity,
+                digest: receipt.canonical_hash.clone(),
+            })
+            .collect::<Vec<_>>();
+        certifications.sort_by(|lhs, rhs| lhs.receipt_id.cmp(&rhs.receipt_id));
+
+        let mut outcome_registry_entries = receipts
+            .iter()
+            .filter(|receipt| {
+                receipt
+                    .receipt_type
+                    .starts_with("economy.outcome_registry.")
+            })
+            .map(|receipt| AuditOutcomeRegistryEntry {
+                receipt_id: receipt.receipt_id.clone(),
+                receipt_type: receipt.receipt_type.clone(),
+                category: receipt.hints.category.clone(),
+                tfb_class: receipt.hints.tfb_class,
+                severity: receipt.hints.severity,
+                digest: receipt.canonical_hash.clone(),
+            })
+            .collect::<Vec<_>>();
+        outcome_registry_entries.sort_by(|lhs, rhs| lhs.receipt_id.cmp(&rhs.receipt_id));
+
+        let snapshot_bindings = audit_snapshot_bindings(receipts.as_slice());
+        let linkage_edges = audit_linkage_edges(receipts.as_slice(), incidents.as_slice());
+
+        let mut package_receipts = receipts.clone();
+        if tier == AuditExportRedactionTier::Public {
+            redact_receipts_for_public_export(&mut package_receipts);
+            redact_incidents_for_public_export(&mut incidents);
+        }
+
+        let package_hash = hash_audit_package(
+            query,
+            tier,
+            package_receipts.as_slice(),
+            incidents.as_slice(),
+            certifications.as_slice(),
+            outcome_registry_entries.as_slice(),
+            snapshot_bindings.as_slice(),
+            linkage_edges.as_slice(),
+        )?;
+        Ok(AuditPackage {
+            schema_version: EARN_KERNEL_RECEIPT_SCHEMA_VERSION,
+            generated_at_ms: generated_at_ms.max(0),
+            stream_id: self.stream_id.clone(),
+            authority: self.authority.clone(),
+            redaction_tier: tier,
+            query: query.clone(),
+            receipt_count: package_receipts.len(),
+            incident_count: incidents.len(),
+            certification_count: certifications.len(),
+            outcome_registry_count: outcome_registry_entries.len(),
+            snapshot_binding_count: snapshot_bindings.len(),
+            linkage_edge_count: linkage_edges.len(),
+            receipts: package_receipts,
+            incidents,
+            certifications,
+            outcome_registry_entries,
+            snapshot_bindings,
+            linkage_edges,
+            package_hash,
+        })
+    }
+
+    pub fn export_audit_package_to_path(
+        &self,
+        query: &ReceiptQuery,
+        tier: AuditExportRedactionTier,
+        generated_at_ms: i64,
+        path: &Path,
+    ) -> Result<AuditPackage, String> {
+        let package = self.export_audit_package(query, tier, generated_at_ms)?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("Failed to create audit package dir: {error}"))?;
+        }
+        let payload = serde_json::to_string_pretty(&package)
+            .map_err(|error| format!("Failed to encode audit package: {error}"))?;
+        let temp_path = path.with_extension("tmp");
+        std::fs::write(&temp_path, payload)
+            .map_err(|error| format!("Failed to write audit package temp file: {error}"))?;
+        std::fs::rename(&temp_path, path)
+            .map_err(|error| format!("Failed to persist audit package: {error}"))?;
+        Ok(package)
     }
 
     pub fn record_rollback_action(
@@ -5614,6 +5818,200 @@ fn hash_receipt_bundle(query: &ReceiptQuery, receipts: &[Receipt]) -> Result<Str
     Ok(format!("sha256:{digest}"))
 }
 
+fn audit_snapshot_bindings(receipts: &[Receipt]) -> Vec<AuditSnapshotBinding> {
+    let mut bindings = BTreeMap::<(String, String), BTreeSet<String>>::new();
+    for receipt in receipts {
+        for evidence in &receipt.evidence {
+            let snapshot_id = parse_snapshot_id_for_audit(evidence);
+            let snapshot_hash = parse_snapshot_hash_for_audit(evidence);
+            let (Some(snapshot_id), Some(snapshot_hash)) = (snapshot_id, snapshot_hash) else {
+                continue;
+            };
+            let entry = bindings
+                .entry((snapshot_id, snapshot_hash))
+                .or_default();
+            entry.insert(receipt.receipt_id.clone());
+        }
+    }
+    let mut rows = bindings
+        .into_iter()
+        .map(
+            |((snapshot_id, snapshot_hash), linked_receipt_ids)| AuditSnapshotBinding {
+                snapshot_id,
+                snapshot_hash,
+                linked_receipt_ids: linked_receipt_ids.into_iter().collect::<Vec<_>>(),
+            },
+        )
+        .collect::<Vec<_>>();
+    rows.sort_by(|lhs, rhs| {
+        lhs.snapshot_id
+            .cmp(&rhs.snapshot_id)
+            .then_with(|| lhs.snapshot_hash.cmp(&rhs.snapshot_hash))
+    });
+    rows
+}
+
+fn audit_linkage_edges(receipts: &[Receipt], incidents: &[IncidentObject]) -> Vec<AuditLinkageEdge> {
+    let mut edges = BTreeSet::<(String, String, String)>::new();
+    for receipt in receipts {
+        for evidence in &receipt.evidence {
+            if evidence.kind == "receipt_ref" {
+                if let Some(to_receipt_id) = parse_receipt_ref_uri(evidence.uri.as_str()) {
+                    edges.insert((
+                        receipt.receipt_id.clone(),
+                        to_receipt_id.to_string(),
+                        "receipt_ref".to_string(),
+                    ));
+                }
+            }
+        }
+    }
+    for incident in incidents {
+        for receipt_id in &incident.linked_receipt_ids {
+            edges.insert((
+                format!("incident:{}", incident.incident_id),
+                receipt_id.clone(),
+                "incident_linked_receipt".to_string(),
+            ));
+        }
+        for receipt_id in &incident.rollback_receipt_ids {
+            edges.insert((
+                format!("incident:{}", incident.incident_id),
+                receipt_id.clone(),
+                "incident_rollback_receipt".to_string(),
+            ));
+        }
+    }
+    let mut rows = edges
+        .into_iter()
+        .map(|(from_receipt_id, to_receipt_id, relation_kind)| AuditLinkageEdge {
+            from_receipt_id,
+            to_receipt_id,
+            relation_kind,
+        })
+        .collect::<Vec<_>>();
+    rows.sort_by(|lhs, rhs| {
+        lhs.from_receipt_id
+            .cmp(&rhs.from_receipt_id)
+            .then_with(|| lhs.to_receipt_id.cmp(&rhs.to_receipt_id))
+            .then_with(|| lhs.relation_kind.cmp(&rhs.relation_kind))
+    });
+    rows.truncate(AUDIT_LINKAGE_ROW_LIMIT);
+    rows
+}
+
+fn parse_snapshot_id_for_audit(evidence: &EvidenceRef) -> Option<String> {
+    if evidence.kind == "snapshot_ref" || evidence.kind == "economy_snapshot_artifact" {
+        return evidence
+            .uri
+            .strip_prefix("oa://economy/snapshots/")
+            .map(|value| value.split('/').next().unwrap_or(value).to_string())
+            .filter(|value| !value.trim().is_empty());
+    }
+    if evidence.kind == "pricing_snapshot_ref" {
+        if let Some(snapshot_id) = evidence.meta.get("snapshot_id").and_then(Value::as_str) {
+            if !snapshot_id.trim().is_empty() {
+                return Some(snapshot_id.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn parse_snapshot_hash_for_audit(evidence: &EvidenceRef) -> Option<String> {
+    if evidence.kind == "snapshot_ref" || evidence.kind == "economy_snapshot_artifact" {
+        if evidence.digest.starts_with("sha256:") {
+            return Some(evidence.digest.clone());
+        }
+    }
+    if evidence.kind == "pricing_snapshot_ref" {
+        if let Some(snapshot_hash) = evidence.meta.get("snapshot_hash").and_then(Value::as_str) {
+            if snapshot_hash.starts_with("sha256:") {
+                return Some(snapshot_hash.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn redact_receipts_for_public_export(receipts: &mut [Receipt]) {
+    for receipt in receipts {
+        for evidence in &mut receipt.evidence {
+            if should_redact_public_evidence_uri(evidence.kind.as_str()) {
+                evidence.uri = "oa://redacted".to_string();
+            }
+        }
+    }
+}
+
+fn redact_incidents_for_public_export(incidents: &mut [IncidentObject]) {
+    for incident in incidents {
+        incident.summary = "[redacted]".to_string();
+        incident.linked_receipt_ids.clear();
+        incident.rollback_receipt_ids.clear();
+    }
+}
+
+fn should_redact_public_evidence_uri(kind: &str) -> bool {
+    matches!(
+        kind,
+        "wallet_settlement_proof"
+            | "wallet_send_request"
+            | "credential_ref_anonymous"
+            | "credential_ref_authenticated"
+            | "credential_ref_org_kyc"
+            | "credential_ref_personhood"
+            | "credential_ref_gov_id"
+            | "credential_ref_hardware_bound"
+            | "withheld_reason"
+            | "rollback_summary"
+            | "snapshot_metrics"
+            | "request_id"
+            | "nostr_request"
+            | "request_shape"
+    ) || kind.starts_with("credential_ref_")
+}
+
+#[derive(Serialize)]
+struct CanonicalAuditPackagePayload<'a> {
+    query: &'a ReceiptQuery,
+    redaction_tier: AuditExportRedactionTier,
+    receipts: &'a [Receipt],
+    incidents: &'a [IncidentObject],
+    certifications: &'a [AuditCertificationEntry],
+    outcome_registry_entries: &'a [AuditOutcomeRegistryEntry],
+    snapshot_bindings: &'a [AuditSnapshotBinding],
+    linkage_edges: &'a [AuditLinkageEdge],
+}
+
+#[allow(clippy::too_many_arguments)]
+fn hash_audit_package(
+    query: &ReceiptQuery,
+    redaction_tier: AuditExportRedactionTier,
+    receipts: &[Receipt],
+    incidents: &[IncidentObject],
+    certifications: &[AuditCertificationEntry],
+    outcome_registry_entries: &[AuditOutcomeRegistryEntry],
+    snapshot_bindings: &[AuditSnapshotBinding],
+    linkage_edges: &[AuditLinkageEdge],
+) -> Result<String, String> {
+    let value = serde_json::to_value(CanonicalAuditPackagePayload {
+        query,
+        redaction_tier,
+        receipts,
+        incidents,
+        certifications,
+        outcome_registry_entries,
+        snapshot_bindings,
+        linkage_edges,
+    })
+    .map_err(|error| format!("Failed to encode audit package payload: {error}"))?;
+    let payload = serde_json::to_vec(&value)
+        .map_err(|error| format!("Failed to encode audit package hash payload: {error}"))?;
+    let digest = sha256::Hash::hash(payload.as_slice());
+    Ok(format!("sha256:{digest}"))
+}
+
 fn parse_receipt_ref_uri(uri: &str) -> Option<&str> {
     uri.strip_prefix("oa://receipts/")
 }
@@ -5974,6 +6372,69 @@ mod tests {
         }
     }
 
+    fn append_synthetic_linked_receipt(
+        state: &mut EarnKernelReceiptState,
+        receipt_id: &str,
+        receipt_type: &str,
+        created_at_ms: i64,
+        linked_receipt_ids: &[&str],
+    ) {
+        let mut evidence = linked_receipt_ids
+            .iter()
+            .map(|receipt_ref_id| {
+                let linked = state
+                    .get_receipt(receipt_ref_id)
+                    .expect("linked receipt should exist for synthetic fixture");
+                let mut meta = std::collections::BTreeMap::new();
+                meta.insert(
+                    "receipt_type".to_string(),
+                    serde_json::Value::String(linked.receipt_type.clone()),
+                );
+                EvidenceRef {
+                    kind: "receipt_ref".to_string(),
+                    uri: format!("oa://receipts/{}", linked.receipt_id),
+                    digest: linked.canonical_hash.clone(),
+                    meta,
+                }
+            })
+            .collect::<Vec<_>>();
+        evidence.push(EvidenceRef::new(
+            "synthetic_evidence",
+            format!("oa://evidence/{receipt_id}"),
+            digest_for_text(receipt_type),
+        ));
+
+        state.append_receipt(
+            ReceiptBuilder::new(
+                receipt_id.to_string(),
+                receipt_type.to_string(),
+                created_at_ms,
+                format!("idemp.synthetic:{receipt_id}"),
+                TraceContext {
+                    work_unit_id: Some("job-req-123".to_string()),
+                    ..TraceContext::default()
+                },
+                current_policy_context(),
+            )
+            .with_inputs_payload(json!({
+                "fixture": "synthetic_linked_receipt",
+                "receipt_id": receipt_id,
+            }))
+            .with_outputs_payload(json!({
+                "receipt_type": receipt_type,
+            }))
+            .with_evidence(evidence)
+            .with_hints(ReceiptHints {
+                category: Some("compute".to_string()),
+                tfb_class: Some(FeedbackLatencyClass::Short),
+                severity: Some(SeverityClass::High),
+                ..ReceiptHints::default()
+            })
+            .build(),
+            "test.synthetic",
+        );
+    }
+
     #[test]
     fn paid_history_receipt_without_wallet_proof_is_withheld() {
         let temp_dir = tempfile::tempdir().expect("tempdir");
@@ -6182,6 +6643,165 @@ mod tests {
         assert_eq!(first.receipt_ids, second.receipt_ids);
         assert_eq!(first.receipt_count, second.receipt_count);
         assert!(bundle_path.exists());
+    }
+
+    #[test]
+    fn export_audit_package_is_deterministic_and_preserves_linkage_invariants() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+
+        let contract_receipt_id = "receipt.contract.synthetic";
+        let verdict_receipt_id = "receipt.verdict.synthetic";
+        let settlement_receipt_id = "receipt.settlement.synthetic";
+        let certification_receipt_id = "receipt.certification.synthetic";
+        let outcome_receipt_id = "receipt.outcome.synthetic";
+
+        append_synthetic_linked_receipt(
+            &mut state,
+            contract_receipt_id,
+            "economy.contract.created.v1",
+            1_762_000_000_000,
+            &[],
+        );
+        append_synthetic_linked_receipt(
+            &mut state,
+            verdict_receipt_id,
+            "economy.verdict.finalized.v1",
+            1_762_000_010_000,
+            &[contract_receipt_id],
+        );
+        append_synthetic_linked_receipt(
+            &mut state,
+            settlement_receipt_id,
+            "economy.settlement.finalized.v1",
+            1_762_000_020_000,
+            &[verdict_receipt_id],
+        );
+        let incident_id = state
+            .report_incident(
+                fixture_incident_draft(settlement_receipt_id, "incident-audit-linkage"),
+                1_762_000_030_000,
+                "test.incident.audit.linkage",
+            )
+            .expect("incident report should succeed");
+        append_synthetic_linked_receipt(
+            &mut state,
+            certification_receipt_id,
+            "economy.certification.issued.v1",
+            1_762_000_040_000,
+            &[settlement_receipt_id],
+        );
+        append_synthetic_linked_receipt(
+            &mut state,
+            outcome_receipt_id,
+            "economy.outcome_registry.recorded.v1",
+            1_762_000_050_000,
+            &[settlement_receipt_id],
+        );
+
+        let query = ReceiptQuery::default();
+        let first = state
+            .export_audit_package(&query, AuditExportRedactionTier::Restricted, 1_762_000_090_000)
+            .expect("first audit package export");
+        let second = state
+            .export_audit_package(
+                &query,
+                AuditExportRedactionTier::Restricted,
+                1_762_000_120_000,
+            )
+            .expect("second audit package export");
+
+        assert_eq!(first.schema_version, EARN_KERNEL_RECEIPT_SCHEMA_VERSION);
+        assert_eq!(first.package_hash, second.package_hash);
+        assert_ne!(first.generated_at_ms, second.generated_at_ms);
+        assert_eq!(first.redaction_tier, AuditExportRedactionTier::Restricted);
+        assert_eq!(first.certification_count, 1);
+        assert_eq!(first.outcome_registry_count, 1);
+        assert!(first
+            .certifications
+            .iter()
+            .any(|entry| entry.receipt_id == certification_receipt_id));
+        assert!(first
+            .outcome_registry_entries
+            .iter()
+            .any(|entry| entry.receipt_id == outcome_receipt_id));
+        assert!(first.linkage_edges.iter().any(|edge| {
+            edge.from_receipt_id == verdict_receipt_id
+                && edge.to_receipt_id == contract_receipt_id
+                && edge.relation_kind == "receipt_ref"
+        }));
+        assert!(first.linkage_edges.iter().any(|edge| {
+            edge.from_receipt_id == settlement_receipt_id
+                && edge.to_receipt_id == verdict_receipt_id
+                && edge.relation_kind == "receipt_ref"
+        }));
+        assert!(first.linkage_edges.iter().any(|edge| {
+            edge.from_receipt_id == format!("incident:{incident_id}")
+                && edge.to_receipt_id == settlement_receipt_id
+                && edge.relation_kind == "incident_linked_receipt"
+        }));
+    }
+
+    #[test]
+    fn export_audit_package_public_tier_redacts_sensitive_fields() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        state.record_history_receipt(
+            &fixture_history_row("wallet-payment-public-redaction"),
+            1_762_000_010,
+            "test.history",
+        );
+        let linked_receipt_id = state
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_type == "earn.job.settlement_observed.v1")
+            .expect("settlement receipt")
+            .receipt_id
+            .clone();
+        state
+            .report_incident(
+                fixture_incident_draft(linked_receipt_id.as_str(), "incident-audit-redaction"),
+                1_762_000_060_000,
+                "test.incident.report",
+            )
+            .expect("incident report");
+
+        let query = ReceiptQuery::default();
+        let restricted = state
+            .export_audit_package(
+                &query,
+                AuditExportRedactionTier::Restricted,
+                1_762_000_090_000,
+            )
+            .expect("restricted audit package export");
+        let public = state
+            .export_audit_package(&query, AuditExportRedactionTier::Public, 1_762_000_090_000)
+            .expect("public audit package export");
+
+        assert_ne!(restricted.package_hash, public.package_hash);
+        assert!(restricted
+            .receipts
+            .iter()
+            .flat_map(|receipt| receipt.evidence.iter())
+            .filter(|evidence| evidence.kind == "wallet_settlement_proof")
+            .all(|evidence| evidence.uri != "oa://redacted"));
+        assert!(public
+            .receipts
+            .iter()
+            .flat_map(|receipt| receipt.evidence.iter())
+            .filter(|evidence| evidence.kind == "wallet_settlement_proof")
+            .all(|evidence| evidence.uri == "oa://redacted"));
+        assert!(restricted
+            .incidents
+            .iter()
+            .all(|incident| incident.summary != "[redacted]"));
+        assert!(public.incidents.iter().all(|incident| {
+            incident.summary == "[redacted]"
+                && incident.linked_receipt_ids.is_empty()
+                && incident.rollback_receipt_ids.is_empty()
+        }));
     }
 
     #[test]
@@ -6540,6 +7160,8 @@ mod tests {
             0,
             0.0,
             vec![],
+            "sha256:audit-public".to_string(),
+            "sha256:audit-restricted".to_string(),
             vec![input],
             "test.snapshot",
         );
@@ -6954,6 +7576,8 @@ mod tests {
             0,
             0.0,
             vec![],
+            "sha256:audit-public".to_string(),
+            "sha256:audit-restricted".to_string(),
             vec![],
             "test.snapshot",
         );
@@ -6981,6 +7605,8 @@ mod tests {
             0,
             0.0,
             vec![],
+            "sha256:audit-public".to_string(),
+            "sha256:audit-restricted".to_string(),
             vec![],
             "test.snapshot.replay",
         );
@@ -7063,6 +7689,8 @@ mod tests {
             0,
             0.0,
             vec![],
+            "sha256:audit-public".to_string(),
+            "sha256:audit-restricted".to_string(),
             vec![],
             "test.snapshot.a",
         );
@@ -7092,6 +7720,8 @@ mod tests {
             0,
             0.0,
             vec![],
+            "sha256:audit-public".to_string(),
+            "sha256:audit-restricted".to_string(),
             vec![],
             "test.snapshot.b",
         );
@@ -7187,6 +7817,8 @@ mod tests {
             0,
             0.0,
             vec![],
+            "sha256:audit-public".to_string(),
+            "sha256:audit-restricted".to_string(),
             vec![],
             "test.snapshot",
         );
@@ -7255,6 +7887,8 @@ mod tests {
             0,
             0.0,
             vec![],
+            "sha256:audit-public".to_string(),
+            "sha256:audit-restricted".to_string(),
             vec![],
             "test.snapshot",
         );

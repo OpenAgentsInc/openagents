@@ -5552,6 +5552,8 @@ pub(super) fn refresh_network_aggregate_counters(
                 .into_iter()
                 .map(|row| (row.reason_code, row.count_24h))
                 .collect(),
+            compute_result.snapshot.audit_package_public_digest,
+            compute_result.snapshot.audit_package_restricted_digest,
             compute_result.input_evidence,
             "economy.snapshot.minute",
         );
