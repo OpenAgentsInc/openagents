@@ -1,19 +1,4 @@
-Below is a **comprehensive rewrite** of the **introductory overview essay** plus **Sections 1–7** of the consolidated Economy Kernel spec, updated to fully embody the paper’s framework:
-
-* **Verification bandwidth is the bottleneck**
-* **Verifiable share (`sv`) is the control variable**
-* **Measurability gap (`Δm`) is the pressure**
-* **Trojan Horse externality (`XA`) is the failure mode**
-* **AI-verifies-AI correlation risk must be explicit**
-* **Cryptographic provenance is priced (a provenance premium)**
-* **Synthetic practice is core infrastructure (not optional)**
-* **Scale is defined as “verified scale” (`NV = ρN`)**, not raw throughput
-
-I’m writing this as the *new* canonical doc header + normative Sections 1–7.
-
----
-
-# Introductory Overview (Layperson-Friendly)
+# Introduction
 
 OpenAgents is building an economy where software can hire software.
 
