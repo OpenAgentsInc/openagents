@@ -59,6 +59,27 @@ pub struct WorkUnitMetadata {
     pub verification_budget_hint_sats: u64,
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct ReceiptQuery {
+    pub start_inclusive_ms: Option<i64>,
+    pub end_inclusive_ms: Option<i64>,
+    pub work_unit_id: Option<String>,
+    pub receipt_type: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct ReceiptBundle {
+    pub schema_version: u16,
+    pub generated_at_ms: i64,
+    pub stream_id: String,
+    pub authority: String,
+    pub query: ReceiptQuery,
+    pub receipt_count: usize,
+    pub receipt_ids: Vec<String>,
+    pub bundle_hash: String,
+    pub receipts: Vec<Receipt>,
+}
+
 #[derive(Clone)]
 struct ResolvedWorkMetadata {
     category: String,
@@ -859,11 +880,237 @@ impl EarnKernelReceiptState {
             .find(|receipt| receipt.receipt_id == receipt_id)
     }
 
-    pub fn receipts_for_job(&self, job_id: &str) -> Vec<&Receipt> {
-        self.receipts
+    pub fn query_receipts<'a>(&'a self, query: &ReceiptQuery) -> Vec<&'a Receipt> {
+        let start = query.start_inclusive_ms.unwrap_or(i64::MIN);
+        let end = query.end_inclusive_ms.unwrap_or(i64::MAX);
+        let work_unit_id = query.work_unit_id.as_deref().map(str::trim);
+        let receipt_type = query.receipt_type.as_deref().map(str::trim);
+        let mut rows = self
+            .receipts
             .iter()
-            .filter(|receipt| receipt.trace.work_unit_id.as_deref() == Some(job_id))
-            .collect()
+            .filter(|receipt| receipt.created_at_ms >= start && receipt.created_at_ms <= end)
+            .filter(|receipt| {
+                work_unit_id.is_none_or(|value| {
+                    receipt.trace.work_unit_id.as_deref().map(str::trim) == Some(value)
+                })
+            })
+            .filter(|receipt| receipt_type.is_none_or(|value| receipt.receipt_type == value))
+            .collect::<Vec<_>>();
+        rows.sort_by(|lhs, rhs| {
+            lhs.created_at_ms
+                .cmp(&rhs.created_at_ms)
+                .then_with(|| lhs.receipt_id.cmp(&rhs.receipt_id))
+        });
+        rows
+    }
+
+    pub fn export_receipt_bundle(
+        &self,
+        query: &ReceiptQuery,
+        generated_at_ms: i64,
+    ) -> Result<ReceiptBundle, String> {
+        let receipts = self
+            .query_receipts(query)
+            .into_iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        let receipt_ids = receipts
+            .iter()
+            .map(|receipt| receipt.receipt_id.clone())
+            .collect::<Vec<_>>();
+        let bundle_hash = hash_receipt_bundle(query, receipts.as_slice())?;
+        Ok(ReceiptBundle {
+            schema_version: EARN_KERNEL_RECEIPT_SCHEMA_VERSION,
+            generated_at_ms: generated_at_ms.max(0),
+            stream_id: self.stream_id.clone(),
+            authority: self.authority.clone(),
+            query: query.clone(),
+            receipt_count: receipts.len(),
+            receipt_ids,
+            bundle_hash,
+            receipts,
+        })
+    }
+
+    pub fn export_receipt_bundle_to_path(
+        &self,
+        query: &ReceiptQuery,
+        generated_at_ms: i64,
+        path: &Path,
+    ) -> Result<ReceiptBundle, String> {
+        let bundle = self.export_receipt_bundle(query, generated_at_ms)?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("Failed to create receipt bundle dir: {error}"))?;
+        }
+        let payload = serde_json::to_string_pretty(&bundle)
+            .map_err(|error| format!("Failed to encode receipt bundle: {error}"))?;
+        let temp_path = path.with_extension("tmp");
+        std::fs::write(&temp_path, payload)
+            .map_err(|error| format!("Failed to write receipt bundle temp file: {error}"))?;
+        std::fs::rename(&temp_path, path)
+            .map_err(|error| format!("Failed to persist receipt bundle: {error}"))?;
+        Ok(bundle)
+    }
+
+    pub fn receipts_for_job(&self, job_id: &str) -> Vec<&Receipt> {
+        self.query_receipts(&ReceiptQuery {
+            start_inclusive_ms: None,
+            end_inclusive_ms: None,
+            work_unit_id: Some(job_id.to_string()),
+            receipt_type: None,
+        })
+    }
+
+    pub fn record_correction_receipt(
+        &mut self,
+        superseded_receipt_ids: &[String],
+        correction_note: &str,
+        occurred_at_epoch_ms: i64,
+        source_tag: &str,
+    ) -> Result<String, String> {
+        if superseded_receipt_ids.is_empty() {
+            return Err("superseded_receipt_ids cannot be empty".to_string());
+        }
+        let correction_note = correction_note.trim();
+        if correction_note.is_empty() {
+            return Err("correction_note cannot be empty".to_string());
+        }
+
+        let mut canonical_superseded = superseded_receipt_ids
+            .iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        canonical_superseded.sort();
+        canonical_superseded.dedup();
+        if canonical_superseded.is_empty() {
+            return Err("superseded_receipt_ids cannot be empty".to_string());
+        }
+
+        let linked_receipts = canonical_superseded
+            .iter()
+            .map(|receipt_id| {
+                self.get_receipt(receipt_id.as_str())
+                    .cloned()
+                    .ok_or_else(|| format!("missing superseded receipt {receipt_id}"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let exemplar = linked_receipts
+            .first()
+            .ok_or_else(|| "missing superseded receipt exemplar".to_string())?;
+
+        let correction_token = digest_for_text(
+            format!(
+                "{}|{}",
+                canonical_superseded.join("|"),
+                correction_note.to_ascii_lowercase()
+            )
+            .as_str(),
+        );
+        let correction_key = normalize_key(correction_token.as_str());
+        let occurred_at_epoch_ms = occurred_at_epoch_ms.max(0);
+        let receipt_id = format!("receipt.earn:correction:{correction_key}");
+        let mut evidence = vec![EvidenceRef::new(
+            "correction_note",
+            format!("oa://receipts/{receipt_id}/correction"),
+            digest_for_text(correction_note),
+        )];
+        for prior in &linked_receipts {
+            let mut meta = std::collections::BTreeMap::new();
+            meta.insert(
+                "receipt_type".to_string(),
+                serde_json::Value::String(prior.receipt_type.clone()),
+            );
+            evidence.push(EvidenceRef {
+                kind: "receipt_ref".to_string(),
+                uri: format!("oa://receipts/{}", prior.receipt_id),
+                digest: prior.canonical_hash.clone(),
+                meta,
+            });
+        }
+
+        let metadata = self.resolve_or_create_work_unit_metadata(
+            exemplar
+                .trace
+                .work_unit_id
+                .as_deref()
+                .unwrap_or("work-unit:correction"),
+            JobDemandSource::OpenNetwork,
+            exemplar
+                .hints
+                .notional
+                .as_ref()
+                .and_then(|value| match value.amount {
+                    MoneyAmount::AmountSats(sats) => Some(sats),
+                    MoneyAmount::AmountMsats(msats) => Some(msats / 1_000),
+                })
+                .unwrap_or(0),
+            None,
+        );
+
+        let receipt = ReceiptBuilder::new(
+            receipt_id.clone(),
+            "earn.receipt.correction.v1",
+            occurred_at_epoch_ms,
+            format!("idemp.earn:receipt_correction:{correction_key}"),
+            TraceContext {
+                session_id: exemplar.trace.session_id.clone(),
+                trajectory_hash: exemplar.trace.trajectory_hash.clone(),
+                job_hash: exemplar.trace.job_hash.clone(),
+                run_id: Some(format!("correction:{correction_key}")),
+                work_unit_id: exemplar.trace.work_unit_id.clone(),
+                contract_id: exemplar.trace.contract_id.clone(),
+                claim_id: exemplar.trace.claim_id.clone(),
+            },
+            current_policy_context(),
+        )
+        .with_inputs_payload(json!({
+            "superseded_receipt_ids": canonical_superseded,
+            "correction_note": correction_note,
+            "work_unit": work_unit_metadata_payload(
+                exemplar
+                    .trace
+                    .work_unit_id
+                    .as_deref()
+                    .unwrap_or("work-unit:correction"),
+                &metadata,
+            ),
+        }))
+        .with_outputs_payload(json!({
+            "status": "superseded",
+            "reason_code": "RECEIPT_SUPERSEDED",
+            "source_tag": source_tag,
+            "work_unit": work_unit_metadata_payload(
+                exemplar
+                    .trace
+                    .work_unit_id
+                    .as_deref()
+                    .unwrap_or("work-unit:correction"),
+                &metadata,
+            ),
+        }))
+        .with_evidence(evidence)
+        .with_hints(ReceiptHints {
+            category: Some(metadata.category.clone()),
+            tfb_class: Some(metadata.tfb_class),
+            severity: Some(metadata.severity),
+            achieved_verification_tier: exemplar.hints.achieved_verification_tier,
+            verification_correlated: exemplar.hints.verification_correlated,
+            provenance_grade: exemplar.hints.provenance_grade,
+            reason_code: Some("RECEIPT_SUPERSEDED".to_string()),
+            notional: exemplar.hints.notional.clone(),
+        })
+        .build();
+
+        self.append_receipt(receipt, source_tag);
+        if self.load_state == PaneLoadState::Error {
+            return Err(self
+                .last_error
+                .clone()
+                .unwrap_or_else(|| "failed to emit correction receipt".to_string()));
+        }
+        Ok(receipt_id)
     }
 
     pub fn settlement_lineage_receipt_ids(
@@ -1485,6 +1732,21 @@ fn normalize_digest(value: &str) -> String {
     }
 }
 
+#[derive(Serialize)]
+struct CanonicalReceiptBundlePayload<'a> {
+    query: &'a ReceiptQuery,
+    receipts: &'a [Receipt],
+}
+
+fn hash_receipt_bundle(query: &ReceiptQuery, receipts: &[Receipt]) -> Result<String, String> {
+    let value = serde_json::to_value(CanonicalReceiptBundlePayload { query, receipts })
+        .map_err(|error| format!("Failed to encode receipt bundle payload: {error}"))?;
+    let payload = serde_json::to_vec(&value)
+        .map_err(|error| format!("Failed to encode receipt bundle hash payload: {error}"))?;
+    let digest = sha256::Hash::hash(payload.as_slice());
+    Ok(format!("sha256:{digest}"))
+}
+
 fn parse_receipt_ref_uri(uri: &str) -> Option<&str> {
     uri.strip_prefix("oa://receipts/")
 }
@@ -1774,6 +2036,102 @@ mod tests {
         assert_eq!(work_unit.tfb_class, FeedbackLatencyClass::Short);
         assert_eq!(work_unit.severity, SeverityClass::Low);
         assert_eq!(work_unit.verification_budget_hint_sats, 100);
+    }
+
+    #[test]
+    fn receipt_lookup_by_id_survives_restart() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path.clone());
+        let ingress = fixture_ingress_request();
+        state.record_ingress_request(&ingress, 1_762_000_000, "test.ingress");
+
+        let receipt_id = state
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_type == "earn.job.ingress_request.v1")
+            .expect("ingress receipt")
+            .receipt_id
+            .clone();
+        let reloaded = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        assert!(reloaded.get_receipt(receipt_id.as_str()).is_some());
+    }
+
+    #[test]
+    fn correction_receipt_supersedes_prior_receipts_without_mutation() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+
+        let ingress = fixture_ingress_request();
+        state.record_ingress_request(&ingress, 1_762_000_000, "test.ingress");
+        state.record_history_receipt(
+            &fixture_history_row("wallet-payment-1"),
+            1_762_000_010,
+            "test.history",
+        );
+        let original_receipt_id = state
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_type == "earn.job.settlement_observed.v1")
+            .expect("settlement receipt")
+            .receipt_id
+            .clone();
+        let prior_count = state.receipts.len();
+
+        let correction_receipt_id = state
+            .record_correction_receipt(
+                &[original_receipt_id.clone()],
+                "wallet proof reclassified after reconciliation",
+                1_762_000_020_000,
+                "test.correction",
+            )
+            .expect("correction receipt");
+
+        assert_eq!(state.receipts.len(), prior_count + 1);
+        let correction = state
+            .get_receipt(correction_receipt_id.as_str())
+            .expect("correction receipt exists");
+        assert_eq!(correction.receipt_type, "earn.receipt.correction.v1");
+        assert!(correction.evidence.iter().any(|evidence| {
+            evidence.kind == "receipt_ref"
+                && evidence.uri == format!("oa://receipts/{original_receipt_id}")
+        }));
+        assert!(state.get_receipt(original_receipt_id.as_str()).is_some());
+    }
+
+    #[test]
+    fn export_receipt_bundle_is_deterministic() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let bundle_path = temp_dir.path().join("bundle.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+
+        let ingress = fixture_ingress_request();
+        state.record_ingress_request(&ingress, 1_762_000_000, "test.ingress");
+        state.record_history_receipt(
+            &fixture_history_row("wallet-payment-1"),
+            1_762_000_010,
+            "test.history",
+        );
+
+        let query = ReceiptQuery {
+            start_inclusive_ms: Some(1_762_000_000_000),
+            end_inclusive_ms: Some(1_762_000_020_000),
+            work_unit_id: Some("job-req-123".to_string()),
+            receipt_type: None,
+        };
+        let first = state
+            .export_receipt_bundle_to_path(&query, 1_762_000_030_000, bundle_path.as_path())
+            .expect("bundle export");
+        let second = state
+            .export_receipt_bundle(&query, 1_762_000_030_000)
+            .expect("bundle export");
+
+        assert_eq!(first.bundle_hash, second.bundle_hash);
+        assert_eq!(first.receipt_ids, second.receipt_ids);
+        assert_eq!(first.receipt_count, second.receipt_count);
+        assert!(bundle_path.exists());
     }
 
     #[test]
