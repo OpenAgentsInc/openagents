@@ -69,8 +69,8 @@ use crate::render::{
     wallet_balance_chip_bounds,
 };
 use crate::runtime_lanes::{
-    AcCreditCommand, RuntimeCommandErrorClass, RuntimeCommandResponse, RuntimeCommandStatus,
-    RuntimeLane, SaLifecycleCommand, SklDiscoveryTrustCommand,
+    AcCreditCommand, RuntimeCommandResponse, RuntimeCommandStatus, RuntimeLane, SaLifecycleCommand,
+    SklDiscoveryTrustCommand,
 };
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
 use crate::spark_wallet::SparkWalletCommand;
@@ -489,6 +489,9 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
         }
     }
     if run_auto_starter_demand_generator(state, now) {
+        changed = true;
+    }
+    if run_reciprocal_loop_engine_tick(state) {
         changed = true;
     }
     if run_open_network_paid_transition_reconciliation(state, now) {

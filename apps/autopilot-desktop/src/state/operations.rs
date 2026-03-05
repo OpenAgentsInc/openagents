@@ -1,5 +1,6 @@
 //! Relay/sync/network/starter-job pane state extracted from `app_state.rs`.
 
+use std::collections::HashSet;
 use std::time::Instant;
 
 use crate::app_state::{PaneLoadState, PaneStatusAccess};
@@ -1149,5 +1150,342 @@ impl StarterJobsState {
             }
         }
         None
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReciprocalLoopDirection {
+    LocalToPeer,
+    PeerToLocal,
+}
+
+impl ReciprocalLoopDirection {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::LocalToPeer => "local->peer",
+            Self::PeerToLocal => "peer->local",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReciprocalLoopFailureClass {
+    Dispatch,
+    Payment,
+    Job,
+}
+
+impl ReciprocalLoopFailureClass {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Dispatch => "dispatch",
+            Self::Payment => "payment",
+            Self::Job => "job",
+        }
+    }
+}
+
+const RECIPROCAL_LOOP_DEFAULT_AMOUNT_SATS: u64 = 10;
+const RECIPROCAL_LOOP_DEFAULT_TIMEOUT_SECONDS: u64 = 90;
+const RECIPROCAL_LOOP_SCOPE_ID: &str = "earn.loop.pingpong.v1";
+
+pub struct ReciprocalLoopState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub running: bool,
+    pub amount_sats: u64,
+    pub timeout_seconds: u64,
+    pub skill_scope_id: String,
+    pub local_pubkey: Option<String>,
+    pub peer_pubkey: Option<String>,
+    pub next_direction: ReciprocalLoopDirection,
+    pub in_flight_request_id: Option<String>,
+    pub in_flight_since_epoch_seconds: Option<u64>,
+    pub local_to_peer_dispatched: u64,
+    pub local_to_peer_paid: u64,
+    pub local_to_peer_failed: u64,
+    pub peer_to_local_paid: u64,
+    pub peer_to_local_failed: u64,
+    pub sats_sent: u64,
+    pub sats_received: u64,
+    pub last_payment_pointer: Option<String>,
+    pub last_failure_class: Option<ReciprocalLoopFailureClass>,
+    pub last_failure_detail: Option<String>,
+    seen_terminal_outbound_request_ids: HashSet<String>,
+    seen_terminal_inbound_job_ids: HashSet<String>,
+}
+
+impl Default for ReciprocalLoopState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Reciprocal loop is idle".to_string()),
+            running: false,
+            amount_sats: RECIPROCAL_LOOP_DEFAULT_AMOUNT_SATS,
+            timeout_seconds: RECIPROCAL_LOOP_DEFAULT_TIMEOUT_SECONDS,
+            skill_scope_id: RECIPROCAL_LOOP_SCOPE_ID.to_string(),
+            local_pubkey: None,
+            peer_pubkey: None,
+            next_direction: ReciprocalLoopDirection::LocalToPeer,
+            in_flight_request_id: None,
+            in_flight_since_epoch_seconds: None,
+            local_to_peer_dispatched: 0,
+            local_to_peer_paid: 0,
+            local_to_peer_failed: 0,
+            peer_to_local_paid: 0,
+            peer_to_local_failed: 0,
+            sats_sent: 0,
+            sats_received: 0,
+            last_payment_pointer: None,
+            last_failure_class: None,
+            last_failure_detail: None,
+            seen_terminal_outbound_request_ids: HashSet::new(),
+            seen_terminal_inbound_job_ids: HashSet::new(),
+        }
+    }
+}
+
+impl ReciprocalLoopState {
+    pub fn normalized_pubkey(value: &str) -> String {
+        value.trim().to_ascii_lowercase()
+    }
+
+    pub fn set_local_pubkey(&mut self, pubkey: Option<&str>) {
+        self.local_pubkey = pubkey
+            .map(Self::normalized_pubkey)
+            .filter(|value| !value.is_empty());
+    }
+
+    pub fn set_peer_pubkey(&mut self, pubkey: Option<&str>) {
+        self.peer_pubkey = pubkey
+            .map(Self::normalized_pubkey)
+            .filter(|value| !value.is_empty());
+    }
+
+    pub fn start(&mut self) -> Result<(), String> {
+        let Some(local) = self.local_pubkey.as_deref() else {
+            return Err(self.pane_set_error("Reciprocal loop start requires local identity pubkey"));
+        };
+        let Some(peer) = self.peer_pubkey.as_deref() else {
+            return Err(self.pane_set_error("Reciprocal loop start requires peer pubkey"));
+        };
+        if local == peer {
+            return Err(
+                self.pane_set_error("Reciprocal loop peer pubkey must differ from local pubkey")
+            );
+        }
+
+        self.running = true;
+        self.next_direction = if local <= peer {
+            ReciprocalLoopDirection::LocalToPeer
+        } else {
+            ReciprocalLoopDirection::PeerToLocal
+        };
+        self.last_failure_class = None;
+        self.last_failure_detail = None;
+        self.pane_set_ready(format!(
+            "Reciprocal loop started (peer={} next={})",
+            peer,
+            self.next_direction.label()
+        ));
+        Ok(())
+    }
+
+    pub fn stop(&mut self, reason: &str) {
+        self.running = false;
+        self.in_flight_request_id = None;
+        self.in_flight_since_epoch_seconds = None;
+        self.pane_set_ready(format!(
+            "Reciprocal loop stopped ({})",
+            reason.trim().to_string()
+        ));
+    }
+
+    pub fn reset_counters(&mut self) {
+        self.in_flight_request_id = None;
+        self.in_flight_since_epoch_seconds = None;
+        self.local_to_peer_dispatched = 0;
+        self.local_to_peer_paid = 0;
+        self.local_to_peer_failed = 0;
+        self.peer_to_local_paid = 0;
+        self.peer_to_local_failed = 0;
+        self.sats_sent = 0;
+        self.sats_received = 0;
+        self.last_payment_pointer = None;
+        self.last_failure_class = None;
+        self.last_failure_detail = None;
+        self.seen_terminal_outbound_request_ids.clear();
+        self.seen_terminal_inbound_job_ids.clear();
+        self.pane_set_ready("Reciprocal loop counters reset");
+    }
+
+    pub fn ready_to_dispatch(&self) -> bool {
+        self.running
+            && self.next_direction == ReciprocalLoopDirection::LocalToPeer
+            && self.in_flight_request_id.is_none()
+    }
+
+    pub fn register_outbound_dispatch(&mut self, request_id: &str, now_epoch_seconds: u64) {
+        let request_id = request_id.trim();
+        if request_id.is_empty() {
+            return;
+        }
+
+        self.local_to_peer_dispatched = self.local_to_peer_dispatched.saturating_add(1);
+        self.in_flight_request_id = Some(request_id.to_string());
+        self.in_flight_since_epoch_seconds = Some(now_epoch_seconds);
+        self.next_direction = ReciprocalLoopDirection::PeerToLocal;
+        self.last_failure_class = None;
+        self.last_failure_detail = None;
+        self.pane_set_ready(format!(
+            "Reciprocal loop dispatched request {} ({} sats)",
+            request_id, self.amount_sats
+        ));
+    }
+
+    pub fn mark_dispatch_failed(&mut self, detail: &str) {
+        self.last_failure_class = Some(ReciprocalLoopFailureClass::Dispatch);
+        self.last_failure_detail = Some(detail.to_string());
+        let _ = self.pane_set_error(format!("Reciprocal loop dispatch failed: {}", detail));
+    }
+
+    pub fn match_outbound_request(&self, request: &SubmittedNetworkRequest) -> bool {
+        if request.budget_sats != self.amount_sats
+            || request.skill_scope_id.as_deref() != Some(self.skill_scope_id.as_str())
+        {
+            return false;
+        }
+        let Some(peer) = self.peer_pubkey.as_deref() else {
+            return false;
+        };
+        request
+            .target_provider_pubkeys
+            .iter()
+            .map(|provider| Self::normalized_pubkey(provider.as_str()))
+            .any(|provider| provider == peer)
+    }
+
+    pub fn reconcile_outbound_terminal_statuses(
+        &mut self,
+        submitted_requests: &[SubmittedNetworkRequest],
+    ) -> bool {
+        let mut changed = false;
+        for request in submitted_requests {
+            if !self.match_outbound_request(request) {
+                continue;
+            }
+            if self
+                .seen_terminal_outbound_request_ids
+                .contains(request.request_id.as_str())
+            {
+                continue;
+            }
+
+            match request.status {
+                NetworkRequestStatus::Paid | NetworkRequestStatus::Completed => {
+                    self.seen_terminal_outbound_request_ids
+                        .insert(request.request_id.clone());
+                    self.local_to_peer_paid = self.local_to_peer_paid.saturating_add(1);
+                    self.sats_sent = self.sats_sent.saturating_add(self.amount_sats);
+                    if let Some(pointer) = request.last_payment_pointer.as_deref() {
+                        self.last_payment_pointer = Some(pointer.to_string());
+                    }
+                    if self.in_flight_request_id.as_deref() == Some(request.request_id.as_str()) {
+                        self.in_flight_request_id = None;
+                        self.in_flight_since_epoch_seconds = None;
+                    }
+                    self.next_direction = ReciprocalLoopDirection::PeerToLocal;
+                    self.last_failure_class = None;
+                    self.last_failure_detail = None;
+                    self.pane_set_ready(format!(
+                        "Reciprocal loop outbound settled request {} pointer={}",
+                        request.request_id,
+                        request.last_payment_pointer.as_deref().unwrap_or("none")
+                    ));
+                    changed = true;
+                }
+                NetworkRequestStatus::Failed => {
+                    self.seen_terminal_outbound_request_ids
+                        .insert(request.request_id.clone());
+                    self.local_to_peer_failed = self.local_to_peer_failed.saturating_add(1);
+                    if self.in_flight_request_id.as_deref() == Some(request.request_id.as_str()) {
+                        self.in_flight_request_id = None;
+                        self.in_flight_since_epoch_seconds = None;
+                    }
+                    self.next_direction = ReciprocalLoopDirection::LocalToPeer;
+                    self.last_failure_class = Some(ReciprocalLoopFailureClass::Payment);
+                    self.last_failure_detail = request.payment_error.clone().or_else(|| {
+                        Some("loop outbound request reached failed status".to_string())
+                    });
+                    let _ = self.pane_set_error(format!(
+                        "Reciprocal loop outbound failed request {}",
+                        request.request_id
+                    ));
+                    changed = true;
+                }
+                _ => {}
+            }
+        }
+        changed
+    }
+
+    pub fn match_inbound_history_row(&self, row: &crate::app_state::JobHistoryReceiptRow) -> bool {
+        row.demand_source == crate::app_state::JobDemandSource::OpenNetwork
+            && row.payout_sats == self.amount_sats
+            && row.skill_scope_id.as_deref() == Some(self.skill_scope_id.as_str())
+    }
+
+    pub fn reconcile_inbound_history(
+        &mut self,
+        history_rows: &[crate::app_state::JobHistoryReceiptRow],
+    ) -> bool {
+        let mut changed = false;
+        for row in history_rows {
+            if !self.match_inbound_history_row(row) {
+                continue;
+            }
+            if self
+                .seen_terminal_inbound_job_ids
+                .contains(row.job_id.as_str())
+            {
+                continue;
+            }
+
+            self.seen_terminal_inbound_job_ids
+                .insert(row.job_id.clone());
+            match row.status {
+                crate::app_state::JobHistoryStatus::Succeeded => {
+                    self.peer_to_local_paid = self.peer_to_local_paid.saturating_add(1);
+                    self.sats_received = self.sats_received.saturating_add(row.payout_sats);
+                    if !row.payment_pointer.trim().is_empty() {
+                        self.last_payment_pointer = Some(row.payment_pointer.clone());
+                    }
+                    self.next_direction = ReciprocalLoopDirection::LocalToPeer;
+                    self.last_failure_class = None;
+                    self.last_failure_detail = None;
+                    self.pane_set_ready(format!(
+                        "Reciprocal loop inbound settled job {} pointer={}",
+                        row.job_id, row.payment_pointer
+                    ));
+                    changed = true;
+                }
+                crate::app_state::JobHistoryStatus::Failed => {
+                    self.peer_to_local_failed = self.peer_to_local_failed.saturating_add(1);
+                    self.next_direction = ReciprocalLoopDirection::LocalToPeer;
+                    self.last_failure_class = Some(ReciprocalLoopFailureClass::Job);
+                    self.last_failure_detail = row.failure_reason.clone().or_else(|| {
+                        Some("loop inbound job finished with failed history receipt".to_string())
+                    });
+                    let _ = self.pane_set_error(format!(
+                        "Reciprocal loop inbound failed job {}",
+                        row.job_id
+                    ));
+                    changed = true;
+                }
+            }
+        }
+        changed
     }
 }
