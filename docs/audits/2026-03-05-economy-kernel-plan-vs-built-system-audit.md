@@ -61,13 +61,24 @@ SpacetimeDB feasibility review:
 - `/Users/christopherdavid/code/SpacetimeDB/crates/bindings/src/lib.rs`
 - `/Users/christopherdavid/code/SpacetimeDB/crates/bindings/src/http.rs`
 
+Broader Spacetime ecosystem review:
+
+- `/Users/christopherdavid/code/spacetime/README.md`
+- `/Users/christopherdavid/code/spacetime/BitCraftPublic/README.md`
+- `/Users/christopherdavid/code/spacetime/spacetimedb-minecraft/README.md`
+- `/Users/christopherdavid/code/spacetime/spacetimedb-cookbook/web-request-example/README.md`
+- `/Users/christopherdavid/code/spacetime/spacetime-docs/docs/deploying/spacetimedb-standalone.md`
+- `/Users/christopherdavid/code/spacetime/SpacetimeDB/docs/docs/00300-resources/00100-how-to/00100-deploy/00200-self-hosting.md`
+- `/Users/christopherdavid/code/spacetime/SpacetimeDB/docs/docs/00200-core-concepts/00500-authentication.md`
+- `/Users/christopherdavid/code/spacetime/spacetime-docs/docs/http/authorization.md`
+
 ## Executive Verdict
 
 1. We do not currently have a repo-local backend implementation of the kernel-plan systems. There is no `TreasuryRouter`, no `Kernel Authority API`, no kernel HTTP service, no proto package tree, and no public `/stats` service in this workspace.
 2. What we do have is substantial desktop-local kernel modeling inside `apps/autopilot-desktop`: receipts, policy bundle parsing, incident tracking, outcome registry, audit export, safety feed export, rollback tracking, and minute-level economy snapshots.
 3. We also have real Spacetime work, but it is narrowly scoped. The active remote artifact is the `autopilot-sync` Spacetime module for presence/checkpoints/sync events. The desktop still mostly operates in Phase 1 mirror/proxy semantics with local stand-ins.
 4. If you want the system described in the kernel-plan docs as written, then yes: `TreasuryRouter` and `Kernel Authority API` need backend deployment. The plan docs explicitly place them server-side and outside Nostr/Spacetime.
-5. No, it is not a good fit to do all of it in SpacetimeDB. Spacetime is a strong fit for presence, checkpoints, append-only projections, and some pure state machines. It is a weak fit for money-moving settlement, external routing, underwriting, verification pipelines, and plan-defined authenticated HTTP authority surfaces.
+5. After reviewing the broader Spacetime ecosystem, the stronger conclusion is: SpacetimeDB can clearly host much larger server-side state machines than this repo currently uses it for, but it is still not the recommended place to put the entire OpenAgents economy backend. It remains a strong fit for presence, checkpoints, projections, and selected pure coordination state. It remains a weak fit for money-moving settlement, external routing, underwriting, verification pipelines, and OpenAgents-specific authority and audit surfaces.
 
 ## MVP Alignment
 
@@ -292,7 +303,19 @@ So the right answer is conditional:
 
 ## Could We Do All of It With SpacetimeDB?
 
-Short answer: no, not cleanly.
+Short answer: not as the recommended design, even though it is more technically plausible than a narrow reading of this repo alone would suggest.
+
+## What changed after reviewing the wider Spacetime ecosystem
+
+The additional Clockwork Labs repos change the interpretation in two useful ways:
+
+1. `BitCraftPublic` is a real example of a large, complex server-side application structured as SpacetimeDB modules with substantial state and coordination logic. That means "large backend in Spacetime" is not theoretical.
+2. `spacetimedb-minecraft` and the cookbook `web-request-example` both reinforce the opposite boundary: when you need protocol bridging or external side effects, Spacetime-based systems still commonly rely on external proxy servers or special clients/workers.
+
+So the revised view is:
+
+- more of a pure stateful OpenAgents backend could technically live inside Spacetime than this audit first emphasized,
+- but the specific OpenAgents domains that matter most economically still push the design toward a hybrid backend.
 
 ## What SpacetimeDB is good at here
 
@@ -308,6 +331,12 @@ That matches both:
 
 - the repo ADRs, and
 - the actual `autopilot-sync` module already built.
+
+It also matches broader Spacetime usage patterns:
+
+- `BitCraftPublic` shows large-scale game/server state can live in Spacetime tables and reducers,
+- `spacetimedb-minecraft` shows external protocol translation can sit outside the module,
+- `web-request-example` shows effectful integrations are often better modeled as queue tables plus external privileged workers.
 
 ## Why it is not a good fit for the whole kernel
 
@@ -327,11 +356,13 @@ Those constraints make Spacetime a poor primary home for:
 - verification pipelines that may take materially longer than 500 ms,
 - authenticated public/private HTTP authority surfaces defined in the kernel plan.
 
-You could force more of the kernel into Spacetime procedures, but you would be fighting:
+You could force more of the kernel into Spacetime procedures or special-client patterns, and the wider ecosystem shows that this can work for some classes of application logic. But for OpenAgents you would still be fighting:
 
 - the actual platform constraints,
 - the repo's current ADR boundaries,
 - and the kernel docs themselves, which place these roles in server-side HTTP services.
+
+The special-client pattern is especially telling. It is useful for queue-driven external effects, but once you are relying on privileged side workers to do the hard parts, you are effectively back in a hybrid architecture. At that point, canonical money and audit authority should stay in conventional backend services.
 
 ## Recommended deployment split if the kernel plan becomes active work
 
@@ -418,7 +449,7 @@ This addendum assumes:
 Use three different runtime classes, not one:
 
 1. Stateless Rust HTTP services on Cloud Run.
-2. Stateful SpacetimeDB on GKE.
+2. Self-hosted SpacetimeDB on GCP for the sync/presence domains that need it.
 3. Managed data stores for canonical persistence and caching.
 
 The main mistake to avoid is trying to force all of these concerns into one platform:
@@ -435,7 +466,7 @@ Role:
 
 - issue `POST /api/sync/token`,
 - own desktop auth/session integration,
-- mint scoped sync leases for Spacetime,
+- mint or broker OpenAgents-scoped sync leases for Spacetime,
 - expose minimal control-plane endpoints the desktop needs.
 
 Deployment:
@@ -450,7 +481,7 @@ Should use Spacetime:
 
 Why:
 
-- this is token/control-plane logic, not a shared projection domain.
+- this is OpenAgents token/control-plane logic, not a shared projection domain.
 
 ### 2) `kernel-authority` Rust service
 
@@ -542,6 +573,8 @@ Should use Spacetime:
 Why:
 
 - these are external side-effect and integration workloads, which are a weak fit for reducers and only a mediocre fit for procedures.
+
+This recommendation is reinforced by the cookbook `web-request-example`, which handles external requests through a privileged external client listening to module state rather than trying to keep the whole integration inside reducers.
 
 ## Recommended data and infrastructure stack
 
@@ -635,6 +668,7 @@ Use Spacetime for domains that match ADR-0001 and the current rollout direction:
 3. append-only sync/projection streams for activity and job-state views.
 4. selected non-monetary counters that benefit from live subscriptions.
 5. eventually, `provider_capability` and projection-grade `compute_assignment` views if you want live fleet visibility.
+6. possibly additional pure coordination state machines if they remain non-monetary, replay-friendly, and free of slow external side effects.
 
 These are all domains where:
 
@@ -657,6 +691,22 @@ Do not use Spacetime as primary authority for:
 9. sync token issuance and control-plane auth.
 
 Spacetime may mirror some of this state after commit, but it should not own it.
+
+## Spacetime auth and edge posture
+
+The wider Spacetime docs also change one implementation detail in the recommendation:
+
+- Spacetime already supports OIDC-compatible JWTs directly.
+- Service-to-service access to Spacetime can therefore use normal OIDC service credentials.
+- You do not need a bespoke OpenAgents auth system for every Spacetime-only surface.
+
+What you still need `control-api` for is:
+
+- OpenAgents-specific session/control policy,
+- the repo's explicit `POST /api/sync/token` contract,
+- brokering/scoping the access pattern the desktop already expects.
+
+For self-hosted Spacetime, keep a restrictive reverse proxy in front of it and expose only the routes the product actually needs. The official self-hosting docs explicitly show exposing only selected routes like subscribe and identity instead of the full management surface.
 
 ## Recommended GCP deployment shape
 
@@ -689,22 +739,30 @@ Why:
 
 ### Spacetime runtime
 
-Use:
+Use first:
 
-- GKE StatefulSet for SpacetimeDB
-
-Preferred cluster mode:
-
-- GKE Standard rather than Autopilot for the first production Spacetime deployment
+- dedicated Compute Engine VM or small VM pair for SpacetimeDB self-hosting,
+- Nginx reverse proxy in front,
+- persistent disk for the Spacetime root dir/data.
 
 Why:
 
-- SpacetimeDB behaves like a database plus application server,
-- it needs persistent volumes and stable operational tuning,
-- it will hold long-lived client connections,
-- you will want more control than Cloud Run gives and usually more control than Autopilot gives for first deployment.
+- the official self-hosting guidance is VM + systemd + Nginx centric,
+- it is the simplest path for a stateful direct-connection service,
+- it matches Spacetime's documented route-restriction model,
+- it avoids introducing Kubernetes complexity before you know your Spacetime operational envelope.
 
-Autopilot is not impossible, but Standard is the safer starting choice for a stateful direct-connection service.
+Use later, if needed:
+
+- GKE Standard for SpacetimeDB
+
+When GKE makes sense:
+
+- you want containerized operational standardization,
+- you need more controlled rolling operations across environments,
+- your platform team already manages stateful workloads in Kubernetes.
+
+I would no longer recommend GKE as the default first Spacetime deployment. On GCP, a hardened GCE VM is the better first move unless you already have a strong Kubernetes operating model.
 
 ## Recommended implementation sequence
 
@@ -749,7 +807,7 @@ At this phase:
 
 Deploy:
 
-- `autopilot-sync` Spacetime module on GKE
+- `autopilot-sync` Spacetime module on the self-hosted SpacetimeDB instance
 
 Then wire desktop to:
 
@@ -821,7 +879,7 @@ If I were setting this up now, I would do this:
 1. Extract receipt/snapshot/policy logic from desktop into a shared Rust crate.
 2. Stand up `kernel-authority` on Cloud Run backed by Cloud SQL PostgreSQL.
 3. Stand up `control-api` on Cloud Run for sync token issuance and control-plane auth.
-4. Deploy SpacetimeDB on GKE Standard only for presence/checkpoints/projection streams.
+4. Deploy SpacetimeDB on a hardened GCE VM first, only for presence/checkpoints/projection streams, with a restrictive reverse proxy and OIDC-backed access.
 5. Add `stats-projector` and `/stats` once receipts are server-persisted.
 6. Add `treasury-router` only when policy planning actually needs its own service boundary.
 
