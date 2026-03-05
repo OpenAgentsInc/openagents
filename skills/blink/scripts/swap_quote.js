@@ -13,6 +13,11 @@
  *   node swap_quote.js btc-to-usd 1000
  *   node swap_quote.js usd-to-btc 500 --unit cents
  *   node swap_quote.js btc-to-usd 1000 --immediate --ttl-seconds 45
+ *
+ * Originally authored by @AtlantisPleb (Christopher David) for the OpenAgents
+ * project under the Apache License 2.0. See NOTICE file for full attribution.
+ *
+ * Dependencies: None (uses Node.js built-in fetch)
  */
 
 const { getApiKey, getApiUrl } = require('./_blink_client');
@@ -27,6 +32,8 @@ async function main() {
 
   const apiKey = getApiKey();
   const apiUrl = getApiUrl();
+
+  console.error(`Estimating swap quote: ${parsed.direction} ${parsed.amount} ${parsed.unit}...`);
 
   const quoteResult = await estimateSwapQuote({
     direction: parsed.direction,
@@ -47,10 +54,15 @@ async function main() {
     generatedAtEpochSeconds: Math.floor(Date.now() / 1000),
   };
 
+  console.error('Quote generated successfully.');
   console.log(JSON.stringify(output, null, 2));
 }
 
-main().catch((error) => {
-  console.error('Error:', error.message);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((e) => {
+    console.error('Error:', e.message);
+    process.exit(1);
+  });
+}
+
+module.exports = { main };
