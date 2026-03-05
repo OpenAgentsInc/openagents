@@ -15,9 +15,13 @@ I’m keeping this aligned with your existing `openagents/*/v1` naming and with 
 **What changes vs your earlier protos:**
 
 * Move *kernel-wide* enums/types (verification tiers, `tfb`, severity, provenance grade, independence/correlation metadata) into **common** so every service can attach consistent hints into receipts.
+* Add **identity assurance** and credential-proof references as first-class receipt/policy inputs (including personhood/org-vetting gates where policy requires them).
 * Make provenance a **first-class typed bundle** (not just “some evidence ref”), so you can compute a deterministic `Pgrade`.
+* Make provenance explicitly carry **data source** and **permissioning** references and support policy-gated verifiable inference/execution attestations.
 * Make verification independence a **first-class constraint and report** (lineages + correlation groups + min distinct lineages).
 * Add a canonical **EconomySnapshot** artifact emitted once per minute with a receipt (your “sv/Δm/XA metrics receipts”) so `/stats` is derived from receipts/snapshots exactly as the spec says.
+* Add proto-first **incident reporting**, **safety signals**, **certification**, and **audit package exports** so insurability and interoperability are machine-legible.
+* Add explicit **insurance-boundary pricing** fields (execution vs liability premium/risk charge) and **rollback/monitoring** contract hooks.
 * Add a separate **policy package** that defines the PolicyBundle schema (see Part 2).
 
 ### 1.2 Proposed file layout
@@ -26,15 +30,23 @@ I’m keeping this aligned with your existing `openagents/*/v1` naming and with 
 proto/
   openagents/
     common/v1/
-      common.proto                 # existing + expanded (tfb, severity, tiers, provenance, independence)
+      common.proto                 # existing + expanded (tfb, severity, tiers, provenance, identity assurance)
     hydra/v1/
       abp_bonds.proto              # ABP reserve/release/draw (unchanged except minor links)
     aegis/outcomes/v1/
-      outcomes_work.proto          # WorkUnit/Contract updated to include tfb/severity/budget/provenance/independence
+      outcomes_work.proto          # WorkUnit/Contract updated for pricing split, rollback, monitoring, provenance, independence
+    aegis/incidents/v1/
+      incidents.proto              # IncidentReport/NearMiss/GroundTruthCase + taxonomy linkage
+    audit/v1/
+      audit_package.proto          # deterministic export bundles + redaction tiers
+    compliance/v1/
+      certification.proto          # SafetyCertification issuance/revocation
+    safety/v1/
+      safety_signals.proto         # public aggregate + restricted signal feed
     economy/v1/
-      economy_snapshot.proto       # minute snapshots: sv, Δm_hat, XA_hat, ρ, NV, plus breakdowns
+      economy_snapshot.proto       # minute snapshots: sv/sv_effective, Δm_hat, XA_hat, insurer + drift + identity metrics
     policy/v1/
-      policy_bundle.proto          # (see Part 2)
+      policy_bundle.proto          # auth, monitoring, risk pricing, certification, rollback knobs
 ```
 
 ### 1.3 Updated `proto/openagents/common/v1/common.proto`
@@ -95,6 +107,16 @@ enum ProvenanceGrade {
   P3_ATTESTED = 4;  // + attestations (signers/hardware/runtime)
 }
 
+enum AuthAssuranceLevel {
+  AUTH_ASSURANCE_LEVEL_UNSPECIFIED = 0;
+  ANON = 1;
+  AUTHENTICATED = 2;
+  ORG_KYC = 3;
+  PERSONHOOD = 4;
+  GOV_ID = 5;
+  HARDWARE_BOUND = 6;
+}
+
 // -----------------------------
 // Money and trace/policy context
 // -----------------------------
@@ -123,6 +145,21 @@ message PolicyContext {
   string policy_bundle_id = 1;
   string policy_version = 2;
   string approved_by = 3; // npub / org id / service principal
+}
+
+message CredentialRef {
+  string issuer = 1;
+  string subject = 2;
+  string credential_type = 3; // did_vc, org_kyc, personhood_proof, gov_id, hardware_attestation
+  string uri = 4;
+  string digest = 5; // "sha256:<hex>"
+  google.protobuf.Struct meta = 10;
+}
+
+message IdentityAssurance {
+  string subject_id = 1;
+  AuthAssuranceLevel level = 2;
+  CredentialRef credential = 3;
 }
 
 // -----------------------------
@@ -191,6 +228,11 @@ message ProvenanceBundle {
 
   repeated AttestationRef attestations = 7;
 
+  // Explicit process-verification references.
+  repeated EvidenceRef data_source_refs = 8;
+  repeated EvidenceRef permissioning_refs = 9;
+  repeated IdentityAssurance identities_involved = 10;
+
   google.protobuf.Struct meta = 20;
 }
 
@@ -239,10 +281,13 @@ message ReceiptHints {
   VerificationTier achieved_verification_tier = 4;
   bool verification_correlated = 5;
   ProvenanceGrade provenance_grade = 6;
-  string reason_code = 7; // stable code, e.g. QUOTE_EXPIRED, BREAKER_ACTIVE, INSUFFICIENT_BUDGET
+  AuthAssuranceLevel auth_assurance_level = 7;
+  bool personhood_proved = 8;
+  string reason_code = 9; // stable code, e.g. QUOTE_EXPIRED, BREAKER_ACTIVE, INSUFFICIENT_BUDGET
 
   // Optional: for economics rollups.
   Money notional = 10;
+  Money liability_premium = 11;
 }
 
 message Receipt {
@@ -279,6 +324,13 @@ message VerificationBudgetHint {
   google.protobuf.Struct meta = 10;
 }
 ```
+
+Additional requirement for attestation semantics:
+
+* `AttestationRef.kind` and/or `CredentialRef.credential_type` MUST support named classes for:
+  * model version attestation (verifiable inference)
+  * runtime integrity attestation (execution attestation)
+  so policy can require them by `category/tfb/severity` deterministically.
 
 ---
 
@@ -344,6 +396,8 @@ enum RemedyType {
   REFUND = 1;
   REWORK_CREDIT = 2;
   DAMAGES = 3;
+  ROLLBACK = 4;
+  COMPENSATING_ACTION = 5;
 }
 
 enum ClaimState {
@@ -367,6 +421,21 @@ message AcceptanceCriteria {
 
   repeated openagents.common.v1.ArtifactRef required_artifacts = 20;
   repeated openagents.common.v1.EvidenceRef required_evidence = 21;
+
+  // Required by policy for high-severity irreversible lanes.
+  RollbackPlan rollback_plan = 30;
+  MonitoringPlan monitoring_plan = 31;
+}
+
+message RollbackPlan {
+  bool required = 1;
+  openagents.common.v1.EvidenceRef playbook_ref = 2;
+  uint64 deadline_ms = 3;
+}
+
+message MonitoringPlan {
+  repeated openagents.common.v1.EvidenceRef drift_detectors = 1;
+  repeated string monitored_metrics = 2;
 }
 
 message WorkUnit {
@@ -441,8 +510,11 @@ message OutcomeContract {
   string worker_id = 11;
   string underwriter_group_id = 12;
 
-  openagents.common.v1.Money price = 20;
-  openagents.common.v1.Money warranty_premium = 21;
+  // Explicit pricing split (insurance boundary).
+  openagents.common.v1.Money execution_price = 20;
+  openagents.common.v1.Money verification_fee = 21;
+  openagents.common.v1.Money liability_premium = 22;
+  openagents.common.v1.ReceiptRef pricing_snapshot_ref = 23;
 
   VerificationPlan verification_plan = 30;
   repeated BondRequirement bond_requirements = 31;
@@ -566,14 +638,16 @@ message CreateContractRequest {
   string buyer_id = 10;
   string worker_id = 11;
 
-  openagents.common.v1.Money price = 20;
+  openagents.common.v1.Money execution_price = 20;
+  openagents.common.v1.Money verification_fee = 21;
+  openagents.common.v1.Money liability_premium = 22;
+  openagents.common.v1.ReceiptRef pricing_snapshot_ref = 23;
 
   VerificationPlan verification_plan = 30;
   repeated BondRequirement bond_requirements = 31;
 
   bool warranty_enabled = 40;
   WarrantyTerms warranty_terms = 41;
-  openagents.common.v1.Money warranty_premium = 42;
 
   string idempotency_key = 60;
   openagents.common.v1.TraceContext trace = 61;
@@ -742,9 +816,318 @@ service OutcomesWorkService {
 
 ---
 
-### 1.5 New: `proto/openagents/economy/v1/economy_snapshot.proto` (sv / Δm_hat / XA_hat receipts)
+### 1.5 New: `proto/openagents/aegis/incidents/v1/incidents.proto`
 
-This is the “metrics receipts” piece. It lets you produce a deterministic snapshot every minute, store it, and serve it to `/stats`. The snapshot generation is an internal authority-like action (idempotent + receipted) even though it doesn’t move money—because you want auditability and stable provenance.
+This makes incident reporting proto-first and insurability-ready (versioned taxonomy + mandatory receipt/evidence linkage + outcome registry entries).
+
+```proto
+syntax = "proto3";
+
+package openagents.aegis.incidents.v1;
+
+import "google/api/annotations.proto";
+import "openagents/common/v1/common.proto";
+
+option java_multiple_files = true;
+
+enum IncidentKind {
+  INCIDENT_KIND_UNSPECIFIED = 0;
+  INCIDENT = 1;
+  NEAR_MISS = 2;
+  GROUND_TRUTH_CASE = 3;
+}
+
+enum IncidentState {
+  INCIDENT_STATE_UNSPECIFIED = 0;
+  OPEN = 1;
+  TRIAGED = 2;
+  MITIGATED = 3;
+  RESOLVED = 4;
+}
+
+message IncidentTaxonomyCode {
+  string taxonomy_id = 1;      // "oa.incident.taxonomy"
+  string taxonomy_version = 2; // "2026.02"
+  string code = 3;             // e.g. PAYOUT_POINTER_MISMATCH
+  string label = 4;
+}
+
+message DisclosureBundleRef {
+  openagents.common.v1.EvidenceRef disclosure_artifact = 1;
+  string schema_version = 2;
+}
+
+message RollbackAttemptRef {
+  string rollback_receipt_id = 1;
+  string rollback_reason_code = 2;
+  bool rollback_succeeded = 3;
+}
+
+message IncidentReport {
+  string incident_id = 1;
+  IncidentKind kind = 2;
+  IncidentState state = 3;
+  IncidentTaxonomyCode taxonomy = 4;
+  openagents.common.v1.SeverityClass severity = 5;
+  string category = 6;
+  openagents.common.v1.FeedbackLatencyClass tfb_class = 7;
+
+  int64 occurred_at_ms = 10;
+  int64 reported_at_ms = 11;
+  int64 resolved_at_ms = 12;
+
+  string summary = 20;
+  string impact_notes = 21;
+  double estimated_loss_ratio_delta = 22;
+
+  repeated openagents.common.v1.ReceiptRef linked_receipts = 30;   // contract/verdict/settlement
+  repeated openagents.common.v1.EvidenceRef evidence_digests = 31; // no raw payload
+  repeated RollbackAttemptRef rollback_attempts = 32;
+  DisclosureBundleRef disclosure_bundle = 33;
+
+  openagents.common.v1.PolicyContext policy = 40;
+  map<string, string> tags = 50;
+}
+
+message OutcomeRegistryEntry {
+  string entry_id = 1;
+  string work_unit_id = 2;
+  string category = 3;
+  openagents.common.v1.FeedbackLatencyClass tfb_class = 4;
+  openagents.common.v1.SeverityClass severity = 5;
+
+  string verdict_outcome = 10;
+  string settlement_outcome = 11;
+  string claim_outcome = 12;
+  string remedy_outcome = 13;
+
+  repeated IncidentTaxonomyCode incident_tags = 20;
+  repeated openagents.common.v1.ReceiptRef linked_receipts = 21;
+  repeated openagents.common.v1.EvidenceRef evidence_digests = 22;
+}
+
+message ReportIncidentRequest {
+  IncidentReport incident = 1;
+  string idempotency_key = 10;
+  openagents.common.v1.TraceContext trace = 11;
+  openagents.common.v1.PolicyContext policy = 12;
+}
+
+message ReportIncidentResponse {
+  IncidentReport incident = 1;
+  openagents.common.v1.Receipt receipt = 2; // economy.incident.reported.v1 / updated / resolved
+}
+
+message UpsertOutcomeRegistryEntryRequest {
+  OutcomeRegistryEntry entry = 1;
+  string idempotency_key = 10;
+  openagents.common.v1.TraceContext trace = 11;
+  openagents.common.v1.PolicyContext policy = 12;
+}
+
+message UpsertOutcomeRegistryEntryResponse {
+  OutcomeRegistryEntry entry = 1;
+  openagents.common.v1.Receipt receipt = 2; // economy.outcome_registry.upserted.v1
+}
+
+service IncidentService {
+  rpc ReportIncident(ReportIncidentRequest) returns (ReportIncidentResponse) {
+    option (google.api.http) = { post: "/v1/aegis/incidents:report" body: "*" };
+  }
+
+  rpc UpsertOutcomeRegistryEntry(UpsertOutcomeRegistryEntryRequest)
+      returns (UpsertOutcomeRegistryEntryResponse) {
+    option (google.api.http) = { post: "/v1/aegis/incidents/outcome_registry:upsert" body: "*" };
+  }
+}
+```
+
+---
+
+### 1.6 New: `proto/openagents/compliance/v1/certification.proto`
+
+This adds first-class certification state that can be enforced by policy and exported for cross-border/safe-harbor checks.
+
+```proto
+syntax = "proto3";
+
+package openagents.compliance.v1;
+
+import "google/api/annotations.proto";
+import "openagents/common/v1/common.proto";
+
+option java_multiple_files = true;
+
+enum CertificationState {
+  CERTIFICATION_STATE_UNSPECIFIED = 0;
+  ACTIVE = 1;
+  REVOKED = 2;
+  EXPIRED = 3;
+}
+
+message CertificationScope {
+  string category = 1;
+  openagents.common.v1.FeedbackLatencyClass tfb_class = 2;
+  openagents.common.v1.SeverityClass min_severity = 3;
+  openagents.common.v1.SeverityClass max_severity = 4;
+}
+
+message SafetyCertification {
+  string certification_id = 1;
+  CertificationState state = 2;
+  string certification_level = 3;
+  repeated CertificationScope scope = 4;
+
+  int64 valid_from_ms = 10;
+  int64 valid_until_ms = 11;
+
+  openagents.common.v1.CredentialRef issuer = 20;
+  repeated openagents.common.v1.EvidenceRef required_evidence = 21; // audits/provenance/incidents summary
+
+  openagents.common.v1.PolicyContext policy = 30;
+  map<string, string> tags = 40;
+}
+
+message IssueCertificationRequest {
+  SafetyCertification certification = 1;
+  string idempotency_key = 10;
+  openagents.common.v1.TraceContext trace = 11;
+  openagents.common.v1.PolicyContext policy = 12;
+}
+
+message IssueCertificationResponse {
+  SafetyCertification certification = 1;
+  openagents.common.v1.Receipt receipt = 2; // economy.certification.issued.v1
+}
+
+message RevokeCertificationRequest {
+  string certification_id = 1;
+  string reason_code = 2;
+  repeated openagents.common.v1.EvidenceRef evidence = 10;
+  string idempotency_key = 20;
+  openagents.common.v1.TraceContext trace = 21;
+  openagents.common.v1.PolicyContext policy = 22;
+}
+
+message RevokeCertificationResponse {
+  SafetyCertification certification = 1;
+  openagents.common.v1.Receipt receipt = 2; // economy.certification.revoked.v1
+}
+```
+
+---
+
+### 1.7 New: `proto/openagents/safety/v1/safety_signals.proto`
+
+This enables privacy-preserving safety signal sharing: public aggregates and restricted feeds from the same deterministic source objects.
+
+```proto
+syntax = "proto3";
+
+package openagents.safety.v1;
+
+import "google/api/annotations.proto";
+import "openagents/common/v1/common.proto";
+
+option java_multiple_files = true;
+
+enum SafetySignalVisibility {
+  SAFETY_SIGNAL_VISIBILITY_UNSPECIFIED = 0;
+  PUBLIC_AGGREGATE = 1;
+  RESTRICTED_FEED = 2;
+}
+
+message SafetySignal {
+  string signal_id = 1;
+  int64 emitted_at_ms = 2;
+
+  string category = 10;
+  openagents.common.v1.FeedbackLatencyClass tfb_class = 11;
+  openagents.common.v1.SeverityClass severity = 12;
+  string incident_taxonomy_code = 13;
+
+  repeated string hashed_indicators = 20; // no raw payloads
+  repeated openagents.common.v1.ReceiptRef source_receipts = 21;
+  repeated openagents.common.v1.EvidenceRef source_evidence = 22;
+
+  SafetySignalVisibility visibility = 30;
+  string restricted_audience_class = 31; // auditor / underwriter / verifier
+}
+
+message PublishSafetySignalRequest {
+  SafetySignal signal = 1;
+  string idempotency_key = 10;
+  openagents.common.v1.TraceContext trace = 11;
+  openagents.common.v1.PolicyContext policy = 12;
+}
+
+message PublishSafetySignalResponse {
+  SafetySignal signal = 1;
+  openagents.common.v1.Receipt receipt = 2; // economy.safety_signal.published.v1
+}
+```
+
+---
+
+### 1.8 New: `proto/openagents/audit/v1/audit_package.proto`
+
+This defines deterministic interoperable exports (public/restricted redaction tiers) for underwriting, incident forensics, and certification replay.
+
+```proto
+syntax = "proto3";
+
+package openagents.audit.v1;
+
+import "google/api/annotations.proto";
+import "openagents/common/v1/common.proto";
+import "openagents/aegis/incidents/v1/incidents.proto";
+import "openagents/compliance/v1/certification.proto";
+
+option java_multiple_files = true;
+
+enum AuditRedactionTier {
+  AUDIT_REDACTION_TIER_UNSPECIFIED = 0;
+  PUBLIC = 1;
+  RESTRICTED = 2;
+}
+
+message AuditPackage {
+  string package_id = 1;
+  string package_hash = 2; // deterministic hash over canonical export payload
+  int64 generated_at_ms = 3;
+  AuditRedactionTier redaction_tier = 4;
+
+  repeated openagents.common.v1.Receipt receipts = 10;
+  repeated openagents.aegis.incidents.v1.IncidentReport incidents = 11;
+  repeated openagents.aegis.incidents.v1.OutcomeRegistryEntry outcome_registry_entries = 12;
+  repeated openagents.compliance.v1.SafetyCertification certifications = 13;
+
+  repeated openagents.common.v1.EvidenceRef snapshot_refs = 20;
+  repeated openagents.common.v1.EvidenceRef anchor_refs = 21; // hash-only anchoring proofs
+}
+
+message ExportAuditPackageRequest {
+  int64 start_inclusive_ms = 1;
+  int64 end_inclusive_ms = 2;
+  string category = 3;
+  AuditRedactionTier redaction_tier = 4;
+
+  string idempotency_key = 10;
+  openagents.common.v1.TraceContext trace = 11;
+  openagents.common.v1.PolicyContext policy = 12;
+}
+
+message ExportAuditPackageResponse {
+  AuditPackage package = 1;
+  openagents.common.v1.Receipt receipt = 2; // economy.audit_package.exported.v1
+}
+```
+
+---
+
+### 1.9 Updated: `proto/openagents/economy/v1/economy_snapshot.proto` (sv / Δm_hat / XA_hat receipts)
+
+This expands the minute snapshot to include insurer/monitoring/interoperability metrics and the correlation-adjusted trust headline used for autonomy gating.
 
 ```proto
 syntax = "proto3";
@@ -758,100 +1141,89 @@ option java_multiple_files = true;
 
 message MetricKey {
   string category = 1;
-
   openagents.common.v1.FeedbackLatencyClass tfb_class = 2;
   openagents.common.v1.SeverityClass severity = 3;
-
   openagents.common.v1.VerificationTier verification_tier = 4;
   bool verification_correlated = 5;
-
   openagents.common.v1.ProvenanceGrade provenance_grade = 6;
 }
 
 message SvBreakdownRow {
   MetricKey key = 1;
-
-  // Work unit counts in window.
   uint64 total_work_units = 2;
   uint64 verified_work_units = 3;
-
-  // Verified share for this key.
   double sv = 4;
+}
+
+message DistributionRow {
+  string label = 1;
+  uint64 count = 2;
+  double share = 3;
+}
+
+message IncidentBucket {
+  string taxonomy_code = 1;
+  openagents.common.v1.SeverityClass severity = 2;
+  uint64 incidents_24h = 3;
+  uint64 near_misses_24h = 4;
 }
 
 message EconomySnapshot {
   string snapshot_id = 1;
   int64 as_of_ms = 2;
-
-  // Canonical hash of the snapshot payload (separate from receipt hash).
   string snapshot_hash = 3; // "sha256:<hex>"
 
-  // --- Core variables ---
-  double sv = 10;           // verifiable share
-  double rho = 11;          // authenticated share (may be stricter than sv)
-  uint64 N = 12;            // gross work units
-  double NV = 13;           // verified scale = rho * N
+  double sv = 10;
+  double sv_effective = 11; // correlation-adjusted verifiable share
+  double rho = 12;
+  double rho_effective = 13;
+  uint64 N = 14;
+  double NV = 15;
 
-  double delta_m_hat = 20;  // measurability gap estimate
-  double xa_hat = 21;       // Trojan Horse externality estimate
+  double delta_m_hat = 20;
+  double xa_hat = 21;
+  double correlated_verification_share = 22;
 
-  // Correlation risk signal (fraction of verification that is correlated).
-  double correlated_verification_share = 30;
+  double provenance_p0_share = 30;
+  double provenance_p1_share = 31;
+  double provenance_p2_share = 32;
+  double provenance_p3_share = 33;
 
-  // Provenance distribution headline.
-  double provenance_p0_share = 40;
-  double provenance_p1_share = 41;
-  double provenance_p2_share = 42;
-  double provenance_p3_share = 43;
+  openagents.common.v1.Money liability_premiums_collected_24h = 40;
+  openagents.common.v1.Money claims_paid_24h = 41;
+  double loss_ratio = 42;
+  double capital_coverage_ratio = 43;
 
-  // Breakdown rows (table-first).
+  uint64 drift_alerts_24h = 50;
+  uint64 rollback_attempts_24h = 51;
+  uint64 rollback_successes_24h = 52;
+
+  repeated IncidentBucket incident_buckets = 60;
+  repeated DistributionRow auth_assurance_distribution = 61;
+  double personhood_verified_share = 62;
+  repeated DistributionRow certification_distribution = 63;
+
   repeated SvBreakdownRow sv_breakdown = 100;
-
-  // Optional: pointers to the receipt ranges / snapshot inputs used to compute this.
   repeated openagents.common.v1.EvidenceRef inputs = 200;
 }
 
 message ComputeSnapshotRequest {
-  int64 as_of_ms = 1; // typically “now rounded down to minute”
+  int64 as_of_ms = 1;
   string idempotency_key = 10;
-
   openagents.common.v1.TraceContext trace = 11;
-  openagents.common.v1.PolicyContext policy = 12; // policy governs which windows/thresholds are used
+  openagents.common.v1.PolicyContext policy = 12;
 }
 
 message ComputeSnapshotResponse {
   EconomySnapshot snapshot = 1;
-
-  // Receipt for snapshot emission (economy.stats.snapshot_receipt.v1).
-  openagents.common.v1.Receipt receipt = 2;
-}
-
-message GetLatestSnapshotRequest {}
-message GetLatestSnapshotResponse { EconomySnapshot snapshot = 1; }
-
-message GetSnapshotRequest { string snapshot_id = 1; }
-message GetSnapshotResponse { EconomySnapshot snapshot = 1; }
-
-service EconomySnapshotService {
-  // Called by a scheduler once per minute; produces the canonical /stats backing artifact.
-  rpc ComputeSnapshot(ComputeSnapshotRequest) returns (ComputeSnapshotResponse) {
-    option (google.api.http) = { post: "/internal/v1/economy/snapshots/compute" body: "*" };
-  }
-
-  rpc GetLatestSnapshot(GetLatestSnapshotRequest) returns (GetLatestSnapshotResponse) {
-    option (google.api.http) = { get: "/v1/economy/snapshots/latest" };
-  }
-
-  rpc GetSnapshot(GetSnapshotRequest) returns (GetSnapshotResponse) {
-    option (google.api.http) = { get: "/v1/economy/snapshots/{snapshot_id}" };
-  }
+  openagents.common.v1.Receipt receipt = 2; // economy.stats.snapshot_receipt.v1
 }
 ```
 
 **Notes:**
 
-* This snapshot object is what your web `/stats` endpoint should render (plus Hydra liquidity/FX/CEP stats that can be included here later or joined server-side).
-* The snapshot receipt’s `hints` should include `notional` if you also want volume-weighted versions of sv / loss rates.
+* `sv_effective`/`rho_effective` are the policy-gating trust variables when correlated checker risk is non-trivial.
+* Snapshot receipts and any throttle/withhold actions MUST reference the exact `snapshot_id`/`snapshot_hash` used to make the decision.
 
 ---
 
@@ -877,7 +1249,7 @@ At minimum, a PolicyBundle must let you set:
 
 3. **Autonomy throttle rules** (the paper’s key enforcement)
 
-* thresholds on `sv`, `xa_hat`, `delta_m_hat`, correlated verification share
+* thresholds on `sv`, `sv_effective`, `xa_hat`, `delta_m_hat`, correlated verification share, drift alerts
 * actions when thresholds are crossed:
 
   * increase required tier
@@ -892,7 +1264,29 @@ At minimum, a PolicyBundle must let you set:
 * envelope caps, expiries, fee bps by category/severity
 * bond multipliers for warranties and disputes
 
-5. **Interpretation rules**
+5. **Authentication and personhood gates**
+
+* minimum `AuthAssuranceLevel` by `(category, tfb, severity)` and by role (`VERIFIER`, `UNDERWRITER`, `OPERATOR`, `REQUESTER`)
+* explicit personhood requirement for sensitive actions (e.g. verdict finalization, high-severity settlement/withdraw)
+
+6. **Risk pricing / insurance boundary**
+
+* base liability premium (bps) and dynamic multipliers keyed to snapshot metrics
+* reserve/capital requirements by slice and autonomy mode
+* explicit linkage to `pricing_snapshot_ref`
+
+7. **Monitoring / drift rules**
+
+* detector requirements by slice
+* deterministic trigger thresholds and action ordering for drift-induced throttles
+
+8. **Certification + rollback requirements**
+
+* required certification scopes for high-severity slices (“digital border”)
+* mandatory rollback or compensating-action plans for irreversible effect classes
+* safe-harbor relaxations only when certification + observed metrics satisfy policy
+
+9. **Interpretation rules**
 
 * which time windows to use (5m/1h/24h) for gating
 * hysteresis / cooldown to avoid flapping breakers
@@ -914,6 +1308,15 @@ enum AutonomyMode {
   DEGRADED = 2;           // tighter caps, higher tiers
   APPROVAL_REQUIRED = 3;  // human approvals for certain classes
   HALT = 4;               // stop new work in a domain/category
+}
+
+enum ActorRole {
+  ACTOR_ROLE_UNSPECIFIED = 0;
+  REQUESTER = 1;
+  WORKER = 2;
+  VERIFIER = 3;
+  UNDERWRITER = 4;
+  OPERATOR = 5;
 }
 
 message WindowSpec {
@@ -981,9 +1384,11 @@ message AutonomyCondition {
 
   // Thresholds (if unset, ignored).
   double min_sv = 10;                    // if sv falls below this
-  double max_xa_hat = 11;                // if xa exceeds this
-  double max_delta_m_hat = 12;           // if measurability gap too high
-  double max_correlated_share = 13;      // if correlated verification share too high
+  double min_sv_effective = 11;          // correlation-adjusted trust floor
+  double max_xa_hat = 12;                // if xa exceeds this
+  double max_delta_m_hat = 13;           // if measurability gap too high
+  double max_correlated_share = 14;      // if correlated verification share too high
+  uint64 max_drift_alerts_24h = 15;      // drift detector pressure
 
   // Optional: enforce by severity/tfb slice (if set).
   openagents.common.v1.FeedbackLatencyClass tfb_class = 20;
@@ -1025,12 +1430,71 @@ message AutonomyThrottlePolicy {
 
   // Default global thresholds.
   double global_min_sv = 10;
-  double global_max_xa_hat = 11;
-  double global_max_delta_m_hat = 12;
-  double global_max_correlated_share = 13;
+  double global_min_sv_effective = 11;
+  double global_max_xa_hat = 12;
+  double global_max_delta_m_hat = 13;
+  double global_max_correlated_share = 14;
+  uint64 global_max_drift_alerts_24h = 15;
 
   // Domain/category rules.
   repeated AutonomyRule rules = 20;
+}
+
+message AuthenticationRule {
+  string rule_id = 1;
+  string category = 2;
+  openagents.common.v1.FeedbackLatencyClass tfb_class = 3;
+  openagents.common.v1.SeverityClass severity = 4;
+  ActorRole role = 5;
+
+  openagents.common.v1.AuthAssuranceLevel min_auth_assurance = 10;
+  bool require_personhood = 11;
+}
+
+message MonitoringRule {
+  string rule_id = 1;
+  string category = 2;
+  openagents.common.v1.FeedbackLatencyClass tfb_class = 3;
+  openagents.common.v1.SeverityClass severity = 4;
+
+  repeated string required_detectors = 10;
+  uint64 drift_alert_threshold_24h = 11;
+  repeated AutonomyAction threshold_actions = 12; // deterministic action order applies
+}
+
+message RiskPricingRule {
+  string rule_id = 1;
+  string category = 2;
+  openagents.common.v1.FeedbackLatencyClass tfb_class = 3;
+  openagents.common.v1.SeverityClass severity = 4;
+
+  uint32 base_liability_premium_bps = 10;
+  double xa_multiplier = 11;
+  double drift_multiplier = 12;
+  double correlated_share_multiplier = 13;
+
+  double min_capital_coverage_ratio = 20;
+}
+
+message CertificationRule {
+  string rule_id = 1;
+  string category = 2;
+  openagents.common.v1.FeedbackLatencyClass tfb_class = 3;
+  openagents.common.v1.SeverityClass severity = 4;
+
+  bool require_certification = 10;
+  repeated string accepted_certification_levels = 11;
+  bool enable_safe_harbor_relaxations = 12;
+}
+
+message RollbackRule {
+  string rule_id = 1;
+  string category = 2;
+  openagents.common.v1.FeedbackLatencyClass tfb_class = 3;
+  openagents.common.v1.SeverityClass severity = 4;
+
+  bool require_rollback_plan = 10;
+  bool allow_compensating_action_only = 11;
 }
 
 message PolicyBundle {
@@ -1048,6 +1512,13 @@ message PolicyBundle {
   // Capital rules
   repeated EnvelopeRule envelope_rules = 30;
   repeated BondRule bond_rules = 31;
+
+  // Identity / monitoring / pricing / certification controls
+  repeated AuthenticationRule authentication_rules = 32;
+  repeated MonitoringRule monitoring_rules = 33;
+  repeated RiskPricingRule risk_pricing_rules = 34;
+  repeated CertificationRule certification_rules = 35;
+  repeated RollbackRule rollback_rules = 36;
 
   // Dynamic gating
   AutonomyThrottlePolicy autonomy = 40;
@@ -1099,7 +1570,7 @@ When accepting submission, Aegis MUST:
 
 The autonomy throttle is the runtime bridge from the paper’s variables to behavior.
 
-* The EconomySnapshot job computes `sv`, `xa_hat`, `delta_m_hat`, and correlated share per slice.
+* The EconomySnapshot job computes `sv`, `sv_effective`, `xa_hat`, `delta_m_hat`, correlated share, and drift alert pressure per slice.
 * TreasuryRouter and/or the kernel services MUST read the latest snapshot.
 * When conditions match, actions apply in a deterministic order:
 
@@ -1113,6 +1584,7 @@ All triggered actions MUST be:
 
 * recorded in a breaker/throttle state object
 * included in receipts as policy notes
+* bound to the exact `snapshot_id`/`snapshot_hash`
 * surfaced in `/stats` (“autonomy mode” and breaker states)
 
 #### E) Envelope enforcement
@@ -1125,10 +1597,36 @@ Hydra MUST enforce envelope rules using:
 
 If policy says “halt_new_envelopes” for a category, Hydra MUST respond `WITHHELD` and emit a receipt with the exact reason and snapshot id.
 
+#### F) Authentication/personhood enforcement
+
+For actions with an `ActorRole` and category slice:
+
+* the selected `AuthenticationRule` MUST be deterministic using the same precedence rules.
+* kernel services MUST compare `ReceiptHints.auth_assurance_level` and `personhood_proved` against policy.
+* if insufficient, action MUST be denied/withheld with stable reason code `AUTH_ASSURANCE_INSUFFICIENT`, plus hash-bound policy decision evidence.
+
+#### G) Monitoring/drift enforcement
+
+When drift signals breach `MonitoringRule.drift_alert_threshold_24h`:
+
+* services MUST emit deterministic drift receipts (idempotency keyed by detector + snapshot window),
+* then apply `threshold_actions` in the same deterministic autonomy action order,
+* and include triggering detector ids in receipt evidence.
+
+#### H) Risk pricing enforcement
+
+For contract creation/update:
+
+* `RiskPricingRule` MUST compute liability premium deterministically from snapshot values and configured multipliers.
+* contract and settlement receipts MUST separate `execution_price`, `verification_fee`, and `liability_premium`.
+* receipts MUST include `pricing_snapshot_ref` so underwriters can reproduce pricing inputs.
+
+#### I) Certification and rollback enforcement
+
+For high-severity or irreversible slices:
+
+* `CertificationRule.require_certification=true` MUST block uncertified actions (`WITHHELD` / border-block reason code).
+* `RollbackRule.require_rollback_plan=true` MUST require rollback or compensating-action plan references before authority mutation.
+* safe-harbor relaxations are allowed only when certification validity + observed risk metrics satisfy policy.
+
 ---
-
-If you want, next I can do the very concrete “wiring plan” that ties these new proto fields to your existing runtime lanes:
-
-* which services stamp `Receipt.hints` and how,
-* how `ComputeSnapshot` queries receipts efficiently using the system’s receipt index and rollups,
-* and the exact `/stats` tables derived from `EconomySnapshot` + existing Hydra metrics.
