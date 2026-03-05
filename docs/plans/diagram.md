@@ -46,7 +46,7 @@ flowchart LR
   end
 
   subgraph Z3_PROJ[Projection and Coordination Plane<br/>non authoritative]
-    WS[WS Nostr Spacetime lanes<br/>progress and coordination only]
+    WS[WebSocket / Nostr / Spacetime<br/>progress and coordination only]
   end
 
   subgraph Z4_AUTH[Authority Plane HTTP only]
@@ -642,7 +642,7 @@ flowchart TB
   end
 
   subgraph PROJ[Projection Plane non authoritative]
-    WS[WS Nostr Spacetime<br/>progress and coordination only]
+    WS[WebSocket / Nostr / Spacetime<br/>progress and coordination only]
   end
 
   %% User actions: future HTTP commands to kernel
@@ -683,7 +683,7 @@ flowchart TB
   The app **records receipts locally** for job-lifecycle events (ingress request, active job stage, preflight rejection, history receipt, swap execute attempt, economy snapshot receipt). That keeps a single receipt stream and projection consistent on the client; when the kernel is authoritative, those events would be produced by the kernel after the app sends commands, and the app would consume kernel receipts instead of (or in addition to) writing its own.
 
 - **Projection path**
-  Autopilot and the kernel (or other services) can use **WS Nostr Spacetime** for **progress and coordination only**—no authority for money, verdicts, or state. The diagram shows the desktop app and this projection plane as separate from the authority path.
+  Autopilot and the kernel (or other services) can use **WebSocket, Nostr, or Spacetime** for **progress and coordination only**—no authority for money, verdicts, or state. (Nostr = protocol for relays/identity/job coordination; Spacetime = sync/presence/projection backend.) The diagram shows the desktop app and this projection plane as separate from the authority path.
 
 ---
 
