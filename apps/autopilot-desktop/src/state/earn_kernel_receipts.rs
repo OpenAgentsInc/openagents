@@ -7,10 +7,10 @@ use crate::economy_kernel_receipts::{
     ReceiptBuilder, ReceiptHints, SeverityClass, TraceContext,
 };
 use crate::state::job_inbox::{JobInboxNetworkRequest, JobInboxRequest};
-use bitcoin::hashes::{Hash, sha256};
+use bitcoin::hashes::{sha256, Hash};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::{BTreeMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 
 const EARN_KERNEL_RECEIPT_SCHEMA_VERSION: u16 = 1;
@@ -23,6 +23,7 @@ const REASON_CODE_JOB_FAILED: &str = "JOB_FAILED";
 const REASON_CODE_POLICY_PREFLIGHT_REJECTED: &str = "POLICY_PREFLIGHT_REJECTED";
 const REASON_CODE_PAYMENT_POINTER_NON_AUTHORITATIVE: &str = "PAYMENT_POINTER_NON_AUTHORITATIVE";
 const REASON_CODE_IDEMPOTENCY_CONFLICT: &str = "IDEMPOTENCY_CONFLICT";
+const REASON_CODE_POLICY_THROTTLE_TRIGGERED: &str = "POLICY_THROTTLE_TRIGGERED";
 
 struct PolicyDecision {
     rule_id: String,
@@ -39,6 +40,148 @@ struct PolicyRule {
     severity: Option<SeverityClass>,
     reason_code: Option<&'static str>,
     note: &'static str,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+struct PolicySliceRule {
+    #[serde(default)]
+    category: Option<String>,
+    #[serde(default)]
+    tfb_class: Option<FeedbackLatencyClass>,
+    #[serde(default)]
+    severity: Option<SeverityClass>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+struct AuthenticationPolicyRule {
+    rule_id: String,
+    #[serde(flatten)]
+    slice: PolicySliceRule,
+    #[serde(default)]
+    role: Option<String>,
+    #[serde(default)]
+    min_auth_assurance: Option<String>,
+    #[serde(default)]
+    require_personhood: bool,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[serde(rename_all = "snake_case")]
+enum ThrottleActionKind {
+    SetModeDegraded,
+    SetModeApprovalRequired,
+    SetModeHalt,
+    RaiseRequiredTier,
+    RequireHumanStep,
+    RaiseProvenanceGrade,
+    TightenEnvelope,
+    HaltNewEnvelopes,
+    DisableWarranties,
+    CapWarrantyCoverage,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+struct MonitoringPolicyRule {
+    rule_id: String,
+    #[serde(flatten)]
+    slice: PolicySliceRule,
+    #[serde(default)]
+    required_detectors: Vec<String>,
+    #[serde(default)]
+    drift_alert_threshold_24h: Option<u64>,
+    #[serde(default)]
+    actions: Vec<ThrottleActionKind>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+struct RiskPricingPolicyRule {
+    rule_id: String,
+    #[serde(flatten)]
+    slice: PolicySliceRule,
+    #[serde(default)]
+    base_liability_premium_bps: Option<u32>,
+    #[serde(default)]
+    xa_multiplier: Option<f64>,
+    #[serde(default)]
+    drift_multiplier: Option<f64>,
+    #[serde(default)]
+    correlated_share_multiplier: Option<f64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+struct CertificationPolicyRule {
+    rule_id: String,
+    #[serde(flatten)]
+    slice: PolicySliceRule,
+    #[serde(default)]
+    require_certification: bool,
+    #[serde(default)]
+    accepted_levels: Vec<String>,
+    #[serde(default)]
+    enable_safe_harbor_relaxations: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+struct RollbackPolicyRule {
+    rule_id: String,
+    #[serde(flatten)]
+    slice: PolicySliceRule,
+    #[serde(default)]
+    require_rollback_plan: bool,
+    #[serde(default)]
+    allow_compensating_action_only: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+struct AutonomyPolicyRule {
+    rule_id: String,
+    #[serde(flatten)]
+    slice: PolicySliceRule,
+    #[serde(default)]
+    min_sv: Option<f64>,
+    #[serde(default)]
+    max_xa_hat: Option<f64>,
+    #[serde(default)]
+    max_delta_m_hat: Option<f64>,
+    #[serde(default)]
+    max_correlated_share: Option<f64>,
+    #[serde(default)]
+    max_drift_alerts_24h: Option<u64>,
+    #[serde(default)]
+    actions: Vec<ThrottleActionKind>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+struct PolicyBundleConfig {
+    #[serde(default)]
+    authentication_rules: Vec<AuthenticationPolicyRule>,
+    #[serde(default)]
+    monitoring_rules: Vec<MonitoringPolicyRule>,
+    #[serde(default)]
+    risk_pricing_rules: Vec<RiskPricingPolicyRule>,
+    #[serde(default)]
+    certification_rules: Vec<CertificationPolicyRule>,
+    #[serde(default)]
+    rollback_rules: Vec<RollbackPolicyRule>,
+    #[serde(default)]
+    autonomy_rules: Vec<AutonomyPolicyRule>,
+}
+
+#[derive(Clone, Copy)]
+struct SnapshotPolicyMetrics {
+    sv: f64,
+    xa_hat: f64,
+    delta_m_hat: f64,
+    correlated_verification_share: f64,
+    drift_alerts_24h: u64,
+}
+
+#[derive(Clone)]
+struct TriggeredPolicyAction {
+    rule_id: String,
+    rule_kind: &'static str,
+    action: ThrottleActionKind,
+    notes: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -844,6 +987,147 @@ impl EarnKernelReceiptState {
         .build();
 
         self.append_receipt(receipt, source_tag);
+        if self.load_state == PaneLoadState::Error {
+            return;
+        }
+
+        let policy_bundle = current_policy_bundle();
+        self.emit_policy_throttle_receipts_for_snapshot(
+            snapshot_id,
+            as_of_ms,
+            snapshot_hash,
+            sv,
+            xa_hat,
+            delta_m_hat,
+            correlated_verification_share,
+            0,
+            &policy_bundle,
+            source_tag,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn emit_policy_throttle_receipts_for_snapshot(
+        &mut self,
+        snapshot_id: &str,
+        as_of_ms: i64,
+        snapshot_hash: &str,
+        sv: f64,
+        xa_hat: f64,
+        delta_m_hat: f64,
+        correlated_verification_share: f64,
+        drift_alerts_24h: u64,
+        policy_bundle: &PolicyBundleConfig,
+        source_tag: &str,
+    ) {
+        let category = "compute";
+        let tfb_class = FeedbackLatencyClass::Short;
+        let severity = SeverityClass::High;
+        let _ = select_authentication_rule(policy_bundle, category, tfb_class, severity);
+        let _ = select_monitoring_rule(policy_bundle, category, tfb_class, severity);
+        let _ = select_risk_pricing_rule(policy_bundle, category, tfb_class, severity);
+        let _ = select_certification_rule(policy_bundle, category, tfb_class, severity);
+        let _ = select_rollback_rule(policy_bundle, category, tfb_class, severity);
+        let actions = evaluate_triggered_policy_actions(
+            policy_bundle,
+            category,
+            tfb_class,
+            severity,
+            SnapshotPolicyMetrics {
+                sv,
+                xa_hat,
+                delta_m_hat,
+                correlated_verification_share,
+                drift_alerts_24h,
+            },
+        );
+        if actions.is_empty() {
+            return;
+        }
+
+        for (index, action) in actions.into_iter().enumerate() {
+            let decision = PolicyDecision {
+                rule_id: action.rule_id.clone(),
+                decision: "throttle",
+                notes: format!(
+                    "{} action={} snapshot_id={} snapshot_hash={} source_tag={} order={}",
+                    action.notes,
+                    action.action.label(),
+                    snapshot_id,
+                    snapshot_hash,
+                    source_tag,
+                    index,
+                ),
+            };
+            let receipt = ReceiptBuilder::new(
+                format!(
+                    "receipt.economy.policy_throttle:{}:{}:{}",
+                    normalize_key(snapshot_id),
+                    normalize_key(action.rule_id.as_str()),
+                    action.action.label(),
+                ),
+                "economy.policy.throttle_action_applied.v1",
+                as_of_ms.max(0),
+                format!(
+                    "idemp.economy.policy_throttle:{}:{}:{}",
+                    normalize_key(snapshot_id),
+                    normalize_key(action.rule_id.as_str()),
+                    action.action.label(),
+                ),
+                TraceContext {
+                    session_id: None,
+                    trajectory_hash: None,
+                    job_hash: None,
+                    run_id: Some(format!("economy_policy_throttle:{snapshot_id}")),
+                    work_unit_id: None,
+                    contract_id: None,
+                    claim_id: None,
+                },
+                current_policy_context(),
+            )
+            .with_inputs_payload(json!({
+                "snapshot_id": snapshot_id,
+                "snapshot_hash": snapshot_hash,
+                "sv": sv,
+                "xa_hat": xa_hat,
+                "delta_m_hat": delta_m_hat,
+                "correlated_verification_share": correlated_verification_share,
+                "drift_alerts_24h": drift_alerts_24h,
+            }))
+            .with_outputs_payload(json!({
+                "status": "triggered",
+                "action_order": index,
+                "policy_rule_id": action.rule_id,
+                "policy_rule_kind": action.rule_kind,
+                "policy_action": action.action.label(),
+                "snapshot_id": snapshot_id,
+                "snapshot_hash": snapshot_hash,
+                "source_tag": source_tag,
+            }))
+            .with_evidence(vec![
+                EvidenceRef::new(
+                    "snapshot_ref",
+                    format!("oa://economy/snapshots/{snapshot_id}"),
+                    snapshot_hash,
+                ),
+                policy_decision_evidence(&decision),
+            ])
+            .with_hints(ReceiptHints {
+                category: Some(category.to_string()),
+                tfb_class: Some(tfb_class),
+                severity: Some(severity),
+                achieved_verification_tier: None,
+                verification_correlated: Some(correlated_verification_share > 0.0),
+                provenance_grade: None,
+                reason_code: Some(REASON_CODE_POLICY_THROTTLE_TRIGGERED.to_string()),
+                notional: None,
+            })
+            .build();
+            self.append_receipt(receipt, source_tag);
+            if self.load_state == PaneLoadState::Error {
+                return;
+            }
+        }
     }
 
     pub fn record_wallet_withdraw_send_attempt(
@@ -1799,6 +2083,444 @@ fn policy_rule_precedence(
     10u8.saturating_sub(score)
 }
 
+fn current_policy_bundle() -> PolicyBundleConfig {
+    let parsed = std::env::var("OPENAGENTS_EARN_POLICY_BUNDLE_JSON")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .and_then(|value| serde_json::from_str::<PolicyBundleConfig>(&value).ok());
+    normalize_policy_bundle(parsed.unwrap_or_else(default_policy_bundle))
+}
+
+fn default_policy_bundle() -> PolicyBundleConfig {
+    PolicyBundleConfig {
+        authentication_rules: vec![AuthenticationPolicyRule {
+            rule_id: "policy.earn.auth.default.operator.v1".to_string(),
+            slice: PolicySliceRule {
+                category: Some("compute".to_string()),
+                tfb_class: None,
+                severity: None,
+            },
+            role: Some("operator".to_string()),
+            min_auth_assurance: Some("authenticated".to_string()),
+            require_personhood: false,
+        }],
+        monitoring_rules: vec![MonitoringPolicyRule {
+            rule_id: "policy.earn.monitoring.default_drift.v1".to_string(),
+            slice: PolicySliceRule {
+                category: Some("compute".to_string()),
+                tfb_class: None,
+                severity: None,
+            },
+            required_detectors: vec!["detector.drift.core".to_string()],
+            drift_alert_threshold_24h: Some(50),
+            actions: vec![
+                ThrottleActionKind::SetModeDegraded,
+                ThrottleActionKind::RequireHumanStep,
+            ],
+        }],
+        risk_pricing_rules: vec![RiskPricingPolicyRule {
+            rule_id: "policy.earn.risk_pricing.default.compute.v1".to_string(),
+            slice: PolicySliceRule {
+                category: Some("compute".to_string()),
+                tfb_class: None,
+                severity: None,
+            },
+            base_liability_premium_bps: Some(150),
+            xa_multiplier: Some(1.0),
+            drift_multiplier: Some(0.5),
+            correlated_share_multiplier: Some(0.75),
+        }],
+        certification_rules: vec![CertificationPolicyRule {
+            rule_id: "policy.earn.certification.high_severity.v1".to_string(),
+            slice: PolicySliceRule {
+                category: Some("compute".to_string()),
+                tfb_class: None,
+                severity: Some(SeverityClass::High),
+            },
+            require_certification: true,
+            accepted_levels: vec!["level_2".to_string(), "level_3".to_string()],
+            enable_safe_harbor_relaxations: true,
+        }],
+        rollback_rules: vec![RollbackPolicyRule {
+            rule_id: "policy.earn.rollback.high_severity.v1".to_string(),
+            slice: PolicySliceRule {
+                category: Some("compute".to_string()),
+                tfb_class: None,
+                severity: Some(SeverityClass::High),
+            },
+            require_rollback_plan: true,
+            allow_compensating_action_only: false,
+        }],
+        autonomy_rules: vec![
+            AutonomyPolicyRule {
+                rule_id: "policy.earn.autonomy.xa_elevated.v1".to_string(),
+                slice: PolicySliceRule {
+                    category: Some("compute".to_string()),
+                    tfb_class: None,
+                    severity: None,
+                },
+                min_sv: None,
+                max_xa_hat: Some(0.15),
+                max_delta_m_hat: None,
+                max_correlated_share: Some(0.60),
+                max_drift_alerts_24h: None,
+                actions: vec![
+                    ThrottleActionKind::SetModeDegraded,
+                    ThrottleActionKind::RaiseRequiredTier,
+                    ThrottleActionKind::TightenEnvelope,
+                ],
+            },
+            AutonomyPolicyRule {
+                rule_id: "policy.earn.autonomy.xa_critical.v1".to_string(),
+                slice: PolicySliceRule {
+                    category: Some("compute".to_string()),
+                    tfb_class: None,
+                    severity: Some(SeverityClass::High),
+                },
+                min_sv: Some(0.40),
+                max_xa_hat: Some(0.40),
+                max_delta_m_hat: Some(0.35),
+                max_correlated_share: Some(0.85),
+                max_drift_alerts_24h: Some(150),
+                actions: vec![
+                    ThrottleActionKind::SetModeApprovalRequired,
+                    ThrottleActionKind::RequireHumanStep,
+                    ThrottleActionKind::HaltNewEnvelopes,
+                    ThrottleActionKind::DisableWarranties,
+                ],
+            },
+        ],
+    }
+}
+
+fn normalize_policy_bundle(mut bundle: PolicyBundleConfig) -> PolicyBundleConfig {
+    bundle
+        .authentication_rules
+        .sort_by(|lhs, rhs| lhs.rule_id.cmp(&rhs.rule_id));
+    bundle
+        .monitoring_rules
+        .sort_by(|lhs, rhs| lhs.rule_id.cmp(&rhs.rule_id));
+    bundle
+        .risk_pricing_rules
+        .sort_by(|lhs, rhs| lhs.rule_id.cmp(&rhs.rule_id));
+    bundle
+        .certification_rules
+        .sort_by(|lhs, rhs| lhs.rule_id.cmp(&rhs.rule_id));
+    bundle
+        .rollback_rules
+        .sort_by(|lhs, rhs| lhs.rule_id.cmp(&rhs.rule_id));
+    bundle
+        .autonomy_rules
+        .sort_by(|lhs, rhs| lhs.rule_id.cmp(&rhs.rule_id));
+    bundle
+}
+
+fn slice_rule_precedence(
+    slice: &PolicySliceRule,
+    category: &str,
+    tfb_class: FeedbackLatencyClass,
+    severity: SeverityClass,
+) -> Option<u8> {
+    if slice
+        .category
+        .as_deref()
+        .is_some_and(|rule_category| rule_category != category)
+    {
+        return None;
+    }
+    if slice
+        .tfb_class
+        .is_some_and(|rule_tfb_class| rule_tfb_class != tfb_class)
+    {
+        return None;
+    }
+    if slice
+        .severity
+        .is_some_and(|rule_severity| rule_severity != severity)
+    {
+        return None;
+    }
+
+    let mut specificity = 0u8;
+    if slice.category.is_some() {
+        specificity = specificity.saturating_add(1);
+    }
+    if slice.tfb_class.is_some() {
+        specificity = specificity.saturating_add(1);
+    }
+    if slice.severity.is_some() {
+        specificity = specificity.saturating_add(1);
+    }
+    Some(10u8.saturating_sub(specificity))
+}
+
+fn select_best_slice_rule<'a, T, FSlice, FId>(
+    rules: &'a [T],
+    category: &str,
+    tfb_class: FeedbackLatencyClass,
+    severity: SeverityClass,
+    slice_of: FSlice,
+    id_of: FId,
+) -> Option<(&'a T, u8)>
+where
+    FSlice: Fn(&T) -> &PolicySliceRule,
+    FId: Fn(&T) -> &str,
+{
+    rules
+        .iter()
+        .filter_map(|rule| {
+            let precedence = slice_rule_precedence(slice_of(rule), category, tfb_class, severity)?;
+            Some((rule, precedence))
+        })
+        .min_by(|lhs, rhs| {
+            lhs.1
+                .cmp(&rhs.1)
+                .then_with(|| id_of(lhs.0).cmp(id_of(rhs.0)))
+        })
+}
+
+fn select_authentication_rule<'a>(
+    bundle: &'a PolicyBundleConfig,
+    category: &str,
+    tfb_class: FeedbackLatencyClass,
+    severity: SeverityClass,
+) -> Option<&'a AuthenticationPolicyRule> {
+    select_best_slice_rule(
+        bundle.authentication_rules.as_slice(),
+        category,
+        tfb_class,
+        severity,
+        |rule| &rule.slice,
+        |rule| rule.rule_id.as_str(),
+    )
+    .map(|(rule, _)| rule)
+}
+
+fn select_monitoring_rule<'a>(
+    bundle: &'a PolicyBundleConfig,
+    category: &str,
+    tfb_class: FeedbackLatencyClass,
+    severity: SeverityClass,
+) -> Option<&'a MonitoringPolicyRule> {
+    select_best_slice_rule(
+        bundle.monitoring_rules.as_slice(),
+        category,
+        tfb_class,
+        severity,
+        |rule| &rule.slice,
+        |rule| rule.rule_id.as_str(),
+    )
+    .map(|(rule, _)| rule)
+}
+
+fn select_risk_pricing_rule<'a>(
+    bundle: &'a PolicyBundleConfig,
+    category: &str,
+    tfb_class: FeedbackLatencyClass,
+    severity: SeverityClass,
+) -> Option<&'a RiskPricingPolicyRule> {
+    select_best_slice_rule(
+        bundle.risk_pricing_rules.as_slice(),
+        category,
+        tfb_class,
+        severity,
+        |rule| &rule.slice,
+        |rule| rule.rule_id.as_str(),
+    )
+    .map(|(rule, _)| rule)
+}
+
+fn select_certification_rule<'a>(
+    bundle: &'a PolicyBundleConfig,
+    category: &str,
+    tfb_class: FeedbackLatencyClass,
+    severity: SeverityClass,
+) -> Option<&'a CertificationPolicyRule> {
+    select_best_slice_rule(
+        bundle.certification_rules.as_slice(),
+        category,
+        tfb_class,
+        severity,
+        |rule| &rule.slice,
+        |rule| rule.rule_id.as_str(),
+    )
+    .map(|(rule, _)| rule)
+}
+
+fn select_rollback_rule<'a>(
+    bundle: &'a PolicyBundleConfig,
+    category: &str,
+    tfb_class: FeedbackLatencyClass,
+    severity: SeverityClass,
+) -> Option<&'a RollbackPolicyRule> {
+    select_best_slice_rule(
+        bundle.rollback_rules.as_slice(),
+        category,
+        tfb_class,
+        severity,
+        |rule| &rule.slice,
+        |rule| rule.rule_id.as_str(),
+    )
+    .map(|(rule, _)| rule)
+}
+
+fn autonomy_rule_triggered(rule: &AutonomyPolicyRule, metrics: SnapshotPolicyMetrics) -> bool {
+    let mut has_threshold = false;
+    let mut triggered = false;
+
+    if let Some(min_sv) = rule.min_sv {
+        has_threshold = true;
+        if metrics.sv < min_sv {
+            triggered = true;
+        }
+    }
+    if let Some(max_xa_hat) = rule.max_xa_hat {
+        has_threshold = true;
+        if metrics.xa_hat > max_xa_hat {
+            triggered = true;
+        }
+    }
+    if let Some(max_delta_m_hat) = rule.max_delta_m_hat {
+        has_threshold = true;
+        if metrics.delta_m_hat > max_delta_m_hat {
+            triggered = true;
+        }
+    }
+    if let Some(max_correlated_share) = rule.max_correlated_share {
+        has_threshold = true;
+        if metrics.correlated_verification_share > max_correlated_share {
+            triggered = true;
+        }
+    }
+    if let Some(max_drift_alerts_24h) = rule.max_drift_alerts_24h {
+        has_threshold = true;
+        if metrics.drift_alerts_24h > max_drift_alerts_24h {
+            triggered = true;
+        }
+    }
+
+    has_threshold && triggered
+}
+
+fn evaluate_triggered_policy_actions(
+    bundle: &PolicyBundleConfig,
+    category: &str,
+    tfb_class: FeedbackLatencyClass,
+    severity: SeverityClass,
+    metrics: SnapshotPolicyMetrics,
+) -> Vec<TriggeredPolicyAction> {
+    let mut triggered = Vec::<TriggeredPolicyAction>::new();
+    let mut matched_autonomy_rules = bundle
+        .autonomy_rules
+        .iter()
+        .filter_map(|rule| {
+            let precedence = slice_rule_precedence(&rule.slice, category, tfb_class, severity)?;
+            if !autonomy_rule_triggered(rule, metrics) {
+                return None;
+            }
+            Some((precedence, rule))
+        })
+        .collect::<Vec<_>>();
+    matched_autonomy_rules.sort_by(|lhs, rhs| {
+        lhs.0
+            .cmp(&rhs.0)
+            .then_with(|| lhs.1.rule_id.cmp(&rhs.1.rule_id))
+    });
+    for (_, rule) in matched_autonomy_rules {
+        for action in &rule.actions {
+            triggered.push(TriggeredPolicyAction {
+                rule_id: rule.rule_id.clone(),
+                rule_kind: "autonomy_rule",
+                action: *action,
+                notes: format!(
+                    "matched autonomy rule {} for category={} tfb={} severity={}",
+                    rule.rule_id,
+                    category,
+                    tfb_class.label(),
+                    severity.label()
+                ),
+            });
+        }
+    }
+
+    let mut matched_monitoring_rules = bundle
+        .monitoring_rules
+        .iter()
+        .filter_map(|rule| {
+            let precedence = slice_rule_precedence(&rule.slice, category, tfb_class, severity)?;
+            if rule
+                .drift_alert_threshold_24h
+                .is_none_or(|threshold| metrics.drift_alerts_24h <= threshold)
+            {
+                return None;
+            }
+            Some((precedence, rule))
+        })
+        .collect::<Vec<_>>();
+    matched_monitoring_rules.sort_by(|lhs, rhs| {
+        lhs.0
+            .cmp(&rhs.0)
+            .then_with(|| lhs.1.rule_id.cmp(&rhs.1.rule_id))
+    });
+    for (_, rule) in matched_monitoring_rules {
+        for action in &rule.actions {
+            triggered.push(TriggeredPolicyAction {
+                rule_id: rule.rule_id.clone(),
+                rule_kind: "monitoring_rule",
+                action: *action,
+                notes: format!(
+                    "matched monitoring rule {} drift_alerts_24h={} threshold={}",
+                    rule.rule_id,
+                    metrics.drift_alerts_24h,
+                    rule.drift_alert_threshold_24h.unwrap_or(0)
+                ),
+            });
+        }
+    }
+
+    let mut seen = BTreeSet::<(String, ThrottleActionKind)>::new();
+    triggered.retain(|action| seen.insert((action.rule_id.clone(), action.action)));
+    triggered.sort_by(|lhs, rhs| {
+        throttle_action_order(lhs.action)
+            .cmp(&throttle_action_order(rhs.action))
+            .then_with(|| lhs.rule_id.cmp(&rhs.rule_id))
+            .then_with(|| lhs.rule_kind.cmp(rhs.rule_kind))
+    });
+    triggered
+}
+
+fn throttle_action_order(action: ThrottleActionKind) -> u8 {
+    match action {
+        ThrottleActionKind::SetModeDegraded => 10,
+        ThrottleActionKind::SetModeApprovalRequired => 11,
+        ThrottleActionKind::SetModeHalt => 12,
+        ThrottleActionKind::RaiseRequiredTier => 20,
+        ThrottleActionKind::RequireHumanStep => 21,
+        ThrottleActionKind::RaiseProvenanceGrade => 30,
+        ThrottleActionKind::TightenEnvelope => 40,
+        ThrottleActionKind::HaltNewEnvelopes => 41,
+        ThrottleActionKind::DisableWarranties => 50,
+        ThrottleActionKind::CapWarrantyCoverage => 51,
+    }
+}
+
+impl ThrottleActionKind {
+    fn label(self) -> &'static str {
+        match self {
+            ThrottleActionKind::SetModeDegraded => "set_mode_degraded",
+            ThrottleActionKind::SetModeApprovalRequired => "set_mode_approval_required",
+            ThrottleActionKind::SetModeHalt => "set_mode_halt",
+            ThrottleActionKind::RaiseRequiredTier => "raise_required_tier",
+            ThrottleActionKind::RequireHumanStep => "require_human_step",
+            ThrottleActionKind::RaiseProvenanceGrade => "raise_provenance_grade",
+            ThrottleActionKind::TightenEnvelope => "tighten_envelope",
+            ThrottleActionKind::HaltNewEnvelopes => "halt_new_envelopes",
+            ThrottleActionKind::DisableWarranties => "disable_warranties",
+            ThrottleActionKind::CapWarrantyCoverage => "cap_warranty_coverage",
+        }
+    }
+}
+
 fn policy_decision_evidence(decision: &PolicyDecision) -> EvidenceRef {
     let mut evidence = EvidenceRef::new(
         "policy_decision",
@@ -2282,12 +3004,10 @@ mod tests {
             withheld.hints.reason_code.as_deref(),
             Some(REASON_CODE_PAYMENT_POINTER_NON_AUTHORITATIVE)
         );
-        assert!(
-            withheld
-                .evidence
-                .iter()
-                .any(|evidence| evidence.kind == "policy_decision")
-        );
+        assert!(withheld
+            .evidence
+            .iter()
+            .any(|evidence| evidence.kind == "policy_decision"));
     }
 
     #[test]
@@ -2306,23 +3026,19 @@ mod tests {
 
         assert_eq!(state.load_state, PaneLoadState::Ready);
         assert_eq!(state.receipts.len(), 2);
-        assert!(
-            state
-                .receipts
-                .iter()
-                .any(|receipt| receipt.receipt_type == "earn.job.ingress_request.v1")
-        );
+        assert!(state
+            .receipts
+            .iter()
+            .any(|receipt| receipt.receipt_type == "earn.job.ingress_request.v1"));
         let settlement = state
             .receipts
             .iter()
             .find(|receipt| receipt.receipt_type == "earn.job.settlement_observed.v1")
             .expect("settlement receipt");
-        assert!(
-            settlement
-                .evidence
-                .iter()
-                .any(|evidence| evidence.kind == "wallet_settlement_proof")
-        );
+        assert!(settlement
+            .evidence
+            .iter()
+            .any(|evidence| evidence.kind == "wallet_settlement_proof"));
         assert_eq!(
             settlement.hints.tfb_class,
             Some(FeedbackLatencyClass::Short)
@@ -2566,12 +3282,10 @@ mod tests {
             .iter()
             .find(|receipt| receipt.receipt_type == "earn.job.settlement_observed.v1")
             .expect("settlement receipt");
-        assert!(
-            settlement_receipt
-                .evidence
-                .iter()
-                .any(|evidence| evidence.kind == "receipt_ref")
-        );
+        assert!(settlement_receipt
+            .evidence
+            .iter()
+            .any(|evidence| evidence.kind == "receipt_ref"));
 
         let lineage = state
             .settlement_lineage_receipt_ids(settlement_receipt.receipt_id.as_str())
@@ -2626,12 +3340,10 @@ mod tests {
             rejection.hints.reason_code.as_deref(),
             Some(REASON_CODE_POLICY_PREFLIGHT_REJECTED)
         );
-        assert!(
-            rejection
-                .evidence
-                .iter()
-                .any(|evidence| evidence.kind == "policy_decision")
-        );
+        assert!(rejection
+            .evidence
+            .iter()
+            .any(|evidence| evidence.kind == "policy_decision"));
         assert_eq!(rejection.policy.policy_bundle_id, "policy.earn.default");
         assert_eq!(rejection.policy.policy_version, "1");
     }
@@ -2667,21 +3379,202 @@ mod tests {
             .iter()
             .find(|receipt| receipt.receipt_type == "economy.stats.snapshot_receipt.v1")
             .expect("snapshot receipt");
-        assert!(
-            receipt
-                .evidence
-                .iter()
-                .any(|evidence| evidence.kind == "receipt_window")
-        );
-        assert!(
-            receipt
-                .evidence
-                .iter()
-                .any(|evidence| evidence.kind == "economy_snapshot_artifact")
-        );
+        assert!(receipt
+            .evidence
+            .iter()
+            .any(|evidence| evidence.kind == "receipt_window"));
+        assert!(receipt
+            .evidence
+            .iter()
+            .any(|evidence| evidence.kind == "economy_snapshot_artifact"));
         assert_eq!(
             receipt.idempotency_key,
             "idemp.economy.snapshot:1762000060000"
+        );
+    }
+
+    #[test]
+    fn policy_rule_selection_prefers_specificity_then_rule_id() {
+        let bundle = PolicyBundleConfig {
+            authentication_rules: vec![
+                AuthenticationPolicyRule {
+                    rule_id: "rule.global".to_string(),
+                    slice: PolicySliceRule {
+                        category: None,
+                        tfb_class: None,
+                        severity: None,
+                    },
+                    role: Some("operator".to_string()),
+                    min_auth_assurance: Some("authenticated".to_string()),
+                    require_personhood: false,
+                },
+                AuthenticationPolicyRule {
+                    rule_id: "rule.specific.b".to_string(),
+                    slice: PolicySliceRule {
+                        category: Some("compute".to_string()),
+                        tfb_class: Some(FeedbackLatencyClass::Short),
+                        severity: Some(SeverityClass::High),
+                    },
+                    role: Some("operator".to_string()),
+                    min_auth_assurance: Some("personhood".to_string()),
+                    require_personhood: true,
+                },
+                AuthenticationPolicyRule {
+                    rule_id: "rule.specific.a".to_string(),
+                    slice: PolicySliceRule {
+                        category: Some("compute".to_string()),
+                        tfb_class: Some(FeedbackLatencyClass::Short),
+                        severity: Some(SeverityClass::High),
+                    },
+                    role: Some("operator".to_string()),
+                    min_auth_assurance: Some("personhood".to_string()),
+                    require_personhood: true,
+                },
+            ],
+            ..PolicyBundleConfig::default()
+        };
+
+        let selected_specific = select_authentication_rule(
+            &bundle,
+            "compute",
+            FeedbackLatencyClass::Short,
+            SeverityClass::High,
+        )
+        .expect("specific rule should match");
+        assert_eq!(selected_specific.rule_id, "rule.specific.a");
+
+        let selected_global = select_authentication_rule(
+            &bundle,
+            "router",
+            FeedbackLatencyClass::Instant,
+            SeverityClass::Low,
+        )
+        .expect("global fallback should match");
+        assert_eq!(selected_global.rule_id, "rule.global");
+    }
+
+    #[test]
+    fn triggered_policy_actions_follow_deterministic_order() {
+        let bundle = PolicyBundleConfig {
+            autonomy_rules: vec![AutonomyPolicyRule {
+                rule_id: "policy.autonomy.a".to_string(),
+                slice: PolicySliceRule {
+                    category: Some("compute".to_string()),
+                    tfb_class: Some(FeedbackLatencyClass::Short),
+                    severity: Some(SeverityClass::High),
+                },
+                min_sv: Some(0.80),
+                max_xa_hat: Some(0.10),
+                max_delta_m_hat: None,
+                max_correlated_share: None,
+                max_drift_alerts_24h: None,
+                actions: vec![
+                    ThrottleActionKind::DisableWarranties,
+                    ThrottleActionKind::SetModeDegraded,
+                    ThrottleActionKind::RaiseRequiredTier,
+                ],
+            }],
+            monitoring_rules: vec![MonitoringPolicyRule {
+                rule_id: "policy.monitoring.z".to_string(),
+                slice: PolicySliceRule {
+                    category: Some("compute".to_string()),
+                    tfb_class: Some(FeedbackLatencyClass::Short),
+                    severity: Some(SeverityClass::High),
+                },
+                required_detectors: vec!["detector.core".to_string()],
+                drift_alert_threshold_24h: Some(5),
+                actions: vec![
+                    ThrottleActionKind::HaltNewEnvelopes,
+                    ThrottleActionKind::RequireHumanStep,
+                ],
+            }],
+            ..PolicyBundleConfig::default()
+        };
+
+        let actions = evaluate_triggered_policy_actions(
+            &bundle,
+            "compute",
+            FeedbackLatencyClass::Short,
+            SeverityClass::High,
+            SnapshotPolicyMetrics {
+                sv: 0.30,
+                xa_hat: 0.20,
+                delta_m_hat: 0.0,
+                correlated_verification_share: 0.0,
+                drift_alerts_24h: 20,
+            },
+        );
+
+        let labels = actions
+            .into_iter()
+            .map(|action| action.action.label().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            labels,
+            vec![
+                "set_mode_degraded".to_string(),
+                "raise_required_tier".to_string(),
+                "require_human_step".to_string(),
+                "halt_new_envelopes".to_string(),
+                "disable_warranties".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn policy_throttle_receipts_are_snapshot_bound_and_receipted() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        let bundle = PolicyBundleConfig {
+            autonomy_rules: vec![AutonomyPolicyRule {
+                rule_id: "policy.autonomy.trigger.v1".to_string(),
+                slice: PolicySliceRule {
+                    category: Some("compute".to_string()),
+                    tfb_class: Some(FeedbackLatencyClass::Short),
+                    severity: Some(SeverityClass::High),
+                },
+                min_sv: Some(0.90),
+                max_xa_hat: None,
+                max_delta_m_hat: None,
+                max_correlated_share: None,
+                max_drift_alerts_24h: None,
+                actions: vec![ThrottleActionKind::SetModeDegraded],
+            }],
+            ..PolicyBundleConfig::default()
+        };
+
+        state.emit_policy_throttle_receipts_for_snapshot(
+            "snapshot.economy:1762000060000",
+            1_762_000_060_000,
+            "sha256:snapshot",
+            0.2,
+            0.0,
+            0.0,
+            0.0,
+            0,
+            &bundle,
+            "test.throttle",
+        );
+
+        let throttle_receipts = state
+            .receipts
+            .iter()
+            .filter(|receipt| receipt.receipt_type == "economy.policy.throttle_action_applied.v1")
+            .collect::<Vec<_>>();
+        assert_eq!(throttle_receipts.len(), 1);
+        let throttle = throttle_receipts[0];
+        assert!(throttle
+            .evidence
+            .iter()
+            .any(|evidence| evidence.kind == "snapshot_ref"));
+        assert!(throttle
+            .evidence
+            .iter()
+            .any(|evidence| evidence.kind == "policy_decision"));
+        assert_eq!(
+            throttle.hints.reason_code.as_deref(),
+            Some(REASON_CODE_POLICY_THROTTLE_TRIGGERED)
         );
     }
 }
