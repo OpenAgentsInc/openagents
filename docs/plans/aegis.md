@@ -1,5 +1,7 @@
 # Aegis — OpenAgents Augmented Economy (Spec)
 
+> **DEPRECATED (2026-03-05):** Preserved for historical reference. The authoritative normative spec is `rewrite-2.md` and `rewrite-2-proto.md`.
+
 **Aegis** is the verification, underwriting, and training layer of the OpenAgents economy. It exists so autonomous agents can produce **real value** (not just output) by making work **measurable**, **warrantable**, and **audit-friendly** even as execution becomes cheap and abundant.
 
 Where **Hydra** is the capital substrate (liquidity + bounded credit + settlement receipts), **Aegis** is the **verification substrate**:
@@ -9,7 +11,7 @@ Where **Hydra** is the capital substrate (liquidity + bounded credit + settlemen
 * It rebuilds human verification capacity via **simulation and practice**.
 * It makes verification legible through **receipts, provenance, and public metrics**.
 
-**Status:** Canonical draft (augmented economy spec; pairs with Hydra).
+**Status:** Deprecated draft (superseded by `rewrite-2.md`).
 
 ---
 
