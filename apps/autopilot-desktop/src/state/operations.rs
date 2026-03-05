@@ -352,6 +352,10 @@ impl SyncHealthState {
 pub enum NetworkRequestStatus {
     Submitted,
     Streaming,
+    Processing,
+    PaymentRequired,
+    ResultReceived,
+    Paid,
     Completed,
     Failed,
 }
@@ -361,6 +365,10 @@ impl NetworkRequestStatus {
         match self {
             Self::Submitted => "submitted",
             Self::Streaming => "streaming",
+            Self::Processing => "processing",
+            Self::PaymentRequired => "payment-required",
+            Self::ResultReceived => "result-received",
+            Self::Paid => "paid",
             Self::Completed => "completed",
             Self::Failed => "failed",
         }
@@ -375,6 +383,9 @@ pub struct SubmittedNetworkRequest {
     pub payload: String,
     pub target_provider_pubkeys: Vec<String>,
     pub last_provider_pubkey: Option<String>,
+    pub last_feedback_status: Option<String>,
+    pub last_feedback_event_id: Option<String>,
+    pub last_result_event_id: Option<String>,
     pub skill_scope_id: Option<String>,
     pub credit_envelope_ref: Option<String>,
     pub budget_sats: u64,
@@ -480,6 +491,9 @@ impl NetworkRequestsState {
                 payload: payload.to_string(),
                 target_provider_pubkeys,
                 last_provider_pubkey: None,
+                last_feedback_status: None,
+                last_feedback_event_id: None,
+                last_result_event_id: None,
                 skill_scope_id,
                 credit_envelope_ref,
                 budget_sats,
@@ -535,6 +549,76 @@ impl NetworkRequestsState {
                 request_id, error
             ));
         }
+    }
+
+    pub fn apply_nip90_buyer_feedback_event(
+        &mut self,
+        request_id: &str,
+        provider_pubkey: &str,
+        event_id: &str,
+        status: Option<&str>,
+        status_extra: Option<&str>,
+    ) {
+        let Some(request) = self
+            .submitted
+            .iter_mut()
+            .find(|request| request.request_id == request_id)
+        else {
+            return;
+        };
+
+        request.last_provider_pubkey = Some(provider_pubkey.to_string());
+        request.last_feedback_event_id = Some(event_id.to_string());
+        request.last_feedback_status = status.map(ToString::to_string);
+        request.status = match status
+            .map(str::trim)
+            .map(str::to_ascii_lowercase)
+            .as_deref()
+        {
+            Some("processing") => NetworkRequestStatus::Processing,
+            Some("payment-required") => NetworkRequestStatus::PaymentRequired,
+            Some("success") | Some("partial") => NetworkRequestStatus::Streaming,
+            Some("error") => NetworkRequestStatus::Failed,
+            _ => NetworkRequestStatus::Streaming,
+        };
+
+        let status_label = status.unwrap_or("unknown");
+        let status_extra = status_extra.unwrap_or("none");
+        self.pane_set_ready(format!(
+            "Request {} feedback={} provider={} detail={}",
+            request_id, status_label, provider_pubkey, status_extra
+        ));
+    }
+
+    pub fn apply_nip90_buyer_result_event(
+        &mut self,
+        request_id: &str,
+        provider_pubkey: &str,
+        event_id: &str,
+        status: Option<&str>,
+    ) {
+        let Some(request) = self
+            .submitted
+            .iter_mut()
+            .find(|request| request.request_id == request_id)
+        else {
+            return;
+        };
+
+        request.last_provider_pubkey = Some(provider_pubkey.to_string());
+        request.last_result_event_id = Some(event_id.to_string());
+        request.status = match status
+            .map(str::trim)
+            .map(str::to_ascii_lowercase)
+            .as_deref()
+        {
+            Some("error") => NetworkRequestStatus::Failed,
+            _ => NetworkRequestStatus::ResultReceived,
+        };
+        self.pane_set_ready(format!(
+            "Request {} result event {} from provider {}",
+            request_id, event_id, provider_pubkey
+        ));
     }
 
     pub fn apply_authority_response(&mut self, response: &RuntimeCommandResponse) {

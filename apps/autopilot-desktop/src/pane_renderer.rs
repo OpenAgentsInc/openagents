@@ -1135,11 +1135,15 @@ fn paint_network_requests_pane(
         let status_color = match request.status {
             NetworkRequestStatus::Submitted => theme::accent::PRIMARY,
             NetworkRequestStatus::Streaming => theme::status::SUCCESS,
+            NetworkRequestStatus::Processing => theme::accent::SECONDARY,
+            NetworkRequestStatus::PaymentRequired => theme::status::WARNING,
+            NetworkRequestStatus::ResultReceived => theme::status::SUCCESS,
+            NetworkRequestStatus::Paid => theme::status::SUCCESS,
             NetworkRequestStatus::Completed => theme::status::SUCCESS,
             NetworkRequestStatus::Failed => theme::status::ERROR,
         };
         let summary = format!(
-            "{} {} targets:{} scope:{} env:{} budget:{} timeout:{}s stream:{} published:{} [{}|{}|{}|{}]",
+            "{} {} targets:{} scope:{} env:{} budget:{} timeout:{}s stream:{} published:{} feedback:{} result:{} provider:{} [{}|{}|{}|{}]",
             request.request_id,
             request.request_type,
             if request.target_provider_pubkeys.is_empty() {
@@ -1156,6 +1160,9 @@ fn paint_network_requests_pane(
                 .published_request_event_id
                 .as_deref()
                 .unwrap_or("n/a"),
+            request.last_feedback_status.as_deref().unwrap_or("none"),
+            request.last_result_event_id.as_deref().unwrap_or("none"),
+            request.last_provider_pubkey.as_deref().unwrap_or("none"),
             request.status.label(),
             request.authority_status.as_deref().unwrap_or("pending"),
             request.authority_event_id.as_deref().unwrap_or("event:n/a"),

@@ -3,8 +3,9 @@ use crate::app_state::{
     RelayConnectionRow, RelayConnectionStatus, RenderState,
 };
 use crate::provider_nip90_lane::{
-    ProviderNip90LaneMode, ProviderNip90LaneSnapshot, ProviderNip90PublishOutcome,
-    ProviderNip90PublishRole, ProviderNip90RelayStatus,
+    ProviderNip90BuyerResponseEvent, ProviderNip90BuyerResponseKind, ProviderNip90LaneMode,
+    ProviderNip90LaneSnapshot, ProviderNip90PublishOutcome, ProviderNip90PublishRole,
+    ProviderNip90RelayStatus,
 };
 use crate::state::job_inbox::{JobInboxNetworkRequest, JobInboxValidation};
 
@@ -408,6 +409,86 @@ fn decode_xonly_pubkey_hex(sender_pubkey_hex: &str) -> Result<Vec<u8>, String> {
         ));
     }
     Ok(bytes)
+}
+
+pub(super) fn apply_buyer_response_event(
+    state: &mut RenderState,
+    event: ProviderNip90BuyerResponseEvent,
+) {
+    match event.kind {
+        ProviderNip90BuyerResponseKind::Feedback => {
+            state.network_requests.apply_nip90_buyer_feedback_event(
+                event.request_id.as_str(),
+                event.provider_pubkey.as_str(),
+                event.event_id.as_str(),
+                event.status.as_deref(),
+                event.status_extra.as_deref(),
+            );
+        }
+        ProviderNip90BuyerResponseKind::Result => {
+            state.network_requests.apply_nip90_buyer_result_event(
+                event.request_id.as_str(),
+                event.provider_pubkey.as_str(),
+                event.event_id.as_str(),
+                event.status.as_deref(),
+            );
+        }
+    }
+
+    state.provider_runtime.last_result = Some(format!(
+        "buyer request {} received {} event {} from {}",
+        event.request_id,
+        event.kind.label(),
+        event.event_id,
+        event.provider_pubkey
+    ));
+    state.provider_runtime.last_authoritative_status = event
+        .status
+        .as_ref()
+        .map(|status| format!("buyer.{}", status));
+    state.provider_runtime.last_authoritative_event_id = Some(event.event_id.clone());
+
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs());
+    state.activity_feed.upsert_event(ActivityEventRow {
+        event_id: format!("nip90:buyer:{}:{}", event.kind.label(), event.event_id),
+        domain: ActivityEventDomain::Network,
+        source_tag: "nip90.buyer".to_string(),
+        summary: format!(
+            "Buyer request {} {} update",
+            event.request_id,
+            event.kind.label()
+        ),
+        detail: format!(
+            "request={} provider={} event_id={} kind={} status={} status_extra={} amount_msats={} bolt11={}\n\nshape:\n{}\n\nraw_event_json:\n{}",
+            event.request_id,
+            event.provider_pubkey,
+            event.event_id,
+            event.kind.label(),
+            event.status.as_deref().unwrap_or("none"),
+            event.status_extra.as_deref().unwrap_or("none"),
+            event
+                .amount_msats
+                .map(|amount| amount.to_string())
+                .unwrap_or_else(|| "none".to_string()),
+            event.bolt11.as_deref().unwrap_or("none"),
+            event
+                .parsed_event_shape
+                .as_deref()
+                .unwrap_or("shape unavailable"),
+            event
+                .raw_event_json
+                .as_deref()
+                .unwrap_or("raw event json unavailable"),
+        ),
+        occurred_at_epoch_seconds: now_epoch_seconds,
+    });
+    state.activity_feed.load_state = PaneLoadState::Ready;
+
+    state.sync_health.last_applied_event_seq =
+        state.sync_health.last_applied_event_seq.saturating_add(1);
+    state.sync_health.cursor_last_advanced_seconds_ago = 0;
 }
 
 pub(super) fn apply_publish_outcome(state: &mut RenderState, outcome: ProviderNip90PublishOutcome) {
