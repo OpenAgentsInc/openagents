@@ -66,6 +66,14 @@ pub(super) fn run_job_inbox_action(state: &mut RenderState, action: JobInboxPane
                         .cloned();
                     if let Some(request) = selected_request.as_ref() {
                         state.active_job.start_from_request(request);
+                        if let Some(job) = state.active_job.job.as_ref() {
+                            state.earn_job_lifecycle_projection.record_active_job_stage(
+                                job,
+                                JobLifecycleStage::Accepted,
+                                current_epoch_seconds(),
+                                "job.inbox.accept",
+                            );
+                        }
                         let _ = PaneController::create_for_kind(state, PaneKind::ActiveJob);
                     }
                 }
@@ -187,6 +195,14 @@ pub(super) fn run_active_job_action(state: &mut RenderState, action: ActiveJobPa
                             .record_from_active_job(job, JobHistoryStatus::Succeeded);
                     }
                 }
+                if let Some(job) = state.active_job.job.as_ref() {
+                    state.earn_job_lifecycle_projection.record_active_job_stage(
+                        job,
+                        stage,
+                        current_epoch_seconds(),
+                        "active_job.advance_stage",
+                    );
+                }
             }
             super::super::refresh_earnings_scoreboard(state, now);
             true
@@ -237,6 +253,12 @@ pub(super) fn run_active_job_action(state: &mut RenderState, action: ActiveJobPa
                     state
                         .job_history
                         .record_from_active_job(job, JobHistoryStatus::Failed);
+                    state.earn_job_lifecycle_projection.record_active_job_stage(
+                        job,
+                        JobLifecycleStage::Failed,
+                        current_epoch_seconds(),
+                        "active_job.abort",
+                    );
                 }
             }
             super::super::refresh_earnings_scoreboard(state, now);
@@ -389,4 +411,10 @@ fn set_active_job_action_error(state: &mut RenderState, error: impl Into<String>
     state.provider_runtime.last_error_detail = Some(error.clone());
     state.provider_runtime.last_authoritative_error_class = Some(EarnFailureClass::Execution);
     state.provider_runtime.last_result = Some(format!("active job advance blocked: {error}"));
+}
+
+fn current_epoch_seconds() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs())
 }

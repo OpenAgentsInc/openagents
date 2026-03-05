@@ -5,8 +5,9 @@ use crate::app_state::{
     CastControlPaneState, ChatPaneInputs, CodexAccountPaneState, CodexAppsPaneState,
     CodexConfigPaneState, CodexDiagnosticsPaneState, CodexLabsPaneState, CodexMcpPaneState,
     CodexModelsPaneState, CreateInvoicePaneInputs, CredentialsPaneInputs, CredentialsState,
-    CreditDeskPaneState, CreditSettlementLedgerPaneState, DesktopPane, EarningsScoreboardState,
-    JobHistoryPaneInputs, JobHistoryState, JobInboxState, JobLifecycleStage, NetworkRequestStatus,
+    CreditDeskPaneState, CreditSettlementLedgerPaneState, DesktopPane,
+    EarnJobLifecycleProjectionState, EarningsScoreboardState, JobHistoryPaneInputs,
+    JobHistoryState, JobInboxState, JobLifecycleStage, NetworkRequestStatus,
     NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
     PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, RelayConnectionsPaneInputs,
     RelayConnectionsState, RelaySecuritySimulationPaneState, SettingsPaneInputs, SettingsState,
@@ -89,6 +90,7 @@ impl PaneRenderer {
         job_inbox: &JobInboxState,
         active_job: &ActiveJobState,
         job_history: &JobHistoryState,
+        earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
         agent_profile_state: &AgentProfileStatePaneState,
         agent_schedule_tick: &AgentScheduleTickPaneState,
         trajectory_audit: &TrajectoryAuditPaneState,
@@ -235,10 +237,21 @@ impl PaneRenderer {
                     paint_job_inbox_pane(content_bounds, job_inbox, paint);
                 }
                 PaneKind::ActiveJob => {
-                    paint_active_job_pane(content_bounds, active_job, paint);
+                    paint_active_job_pane(
+                        content_bounds,
+                        active_job,
+                        earn_job_lifecycle_projection,
+                        paint,
+                    );
                 }
                 PaneKind::JobHistory => {
-                    paint_job_history_pane(content_bounds, job_history, job_history_inputs, paint);
+                    paint_job_history_pane(
+                        content_bounds,
+                        job_history,
+                        earn_job_lifecycle_projection,
+                        job_history_inputs,
+                        paint,
+                    );
                 }
                 PaneKind::AgentProfileState => {
                     agent_pane::paint_agent_profile_state_pane(
@@ -2123,9 +2136,14 @@ fn paint_job_inbox_pane(
 fn paint_active_job_pane(
     content_bounds: Bounds,
     active_job: &ActiveJobState,
+    earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
     paint: &mut PaintContext,
 ) {
-    paint_source_badge(content_bounds, "runtime", paint);
+    paint_source_badge(
+        content_bounds,
+        &earn_job_lifecycle_projection.stream_id,
+        paint,
+    );
 
     let advance_bounds = active_job_advance_button_bounds(content_bounds);
     let abort_bounds = active_job_abort_button_bounds(content_bounds);
@@ -2212,6 +2230,13 @@ fn paint_active_job_pane(
         y,
         "Stage",
         job.stage.label(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Projection authority",
+        &earn_job_lifecycle_projection.authority,
     );
 
     let stage_flow = [
@@ -2349,10 +2374,15 @@ fn paint_active_job_pane(
 fn paint_job_history_pane(
     content_bounds: Bounds,
     job_history: &JobHistoryState,
+    earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
     job_history_inputs: &mut JobHistoryPaneInputs,
     paint: &mut PaintContext,
 ) {
-    paint_source_badge(content_bounds, "runtime", paint);
+    paint_source_badge(
+        content_bounds,
+        &earn_job_lifecycle_projection.stream_id,
+        paint,
+    );
 
     let search_bounds = job_history_search_input_bounds(content_bounds);
     let status_bounds = job_history_status_button_bounds(content_bounds);
@@ -2404,6 +2434,17 @@ fn paint_job_history_pane(
         + 1;
     paint.scene.draw_text(paint.text.layout(
         &format!("Page {page}/{}", job_history.total_pages()),
+        Point::new(content_bounds.origin.x + 12.0, y),
+        10.0,
+        theme::text::MUTED,
+    ));
+    y += 16.0;
+    paint.scene.draw_text(paint.text.layout(
+        &format!(
+            "Projection: {} (rows={})",
+            earn_job_lifecycle_projection.authority,
+            earn_job_lifecycle_projection.rows.len()
+        ),
         Point::new(content_bounds.origin.x + 12.0, y),
         10.0,
         theme::text::MUTED,

@@ -103,6 +103,11 @@ pub(super) fn apply_ingressed_request(state: &mut RenderState, request: JobInbox
         let now_epoch_seconds = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |duration| duration.as_secs());
+        state.earn_job_lifecycle_projection.record_ingress_request(
+            &request,
+            now_epoch_seconds,
+            "nip90.relay.ingress",
+        );
         state.activity_feed.upsert_event(ActivityEventRow {
             event_id: format!("nip90:req:{}", request.request_id),
             domain: ActivityEventDomain::Network,

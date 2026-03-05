@@ -3833,24 +3833,30 @@ fn queue_starter_demand_request(
             authority_command_seq: command_seq,
         })?;
 
+    let starter_request = JobInboxNetworkRequest {
+        request_id: request_id.clone(),
+        requester: "starter-demand".to_string(),
+        demand_source: crate::app_state::JobDemandSource::StarterDemand,
+        request_kind: nostr::nip90::KIND_JOB_TEXT_GENERATION,
+        capability: "starter.quest.dispatch".to_string(),
+        skill_scope_id: None,
+        skl_manifest_a: None,
+        skl_manifest_event_id: None,
+        sa_tick_request_event_id: None,
+        sa_tick_result_event_id: None,
+        ac_envelope_event_id: state.ac_lane.envelope_event_id.clone(),
+        price_sats: starter_job.payout_sats,
+        ttl_seconds: timeout_seconds,
+        validation: JobInboxValidation::Valid,
+    };
     state
         .job_inbox
-        .upsert_network_request(JobInboxNetworkRequest {
-            request_id: request_id.clone(),
-            requester: "starter-demand".to_string(),
-            demand_source: crate::app_state::JobDemandSource::StarterDemand,
-            request_kind: nostr::nip90::KIND_JOB_TEXT_GENERATION,
-            capability: "starter.quest.dispatch".to_string(),
-            skill_scope_id: None,
-            skl_manifest_a: None,
-            skl_manifest_event_id: None,
-            sa_tick_request_event_id: None,
-            sa_tick_result_event_id: None,
-            ac_envelope_event_id: state.ac_lane.envelope_event_id.clone(),
-            price_sats: starter_job.payout_sats,
-            ttl_seconds: timeout_seconds,
-            validation: JobInboxValidation::Valid,
-        });
+        .upsert_network_request(starter_request.clone());
+    state.earn_job_lifecycle_projection.record_ingress_request(
+        &starter_request,
+        now_epoch_seconds,
+        "starter.quest.ingress",
+    );
     state.sync_health.last_applied_event_seq =
         state.sync_health.last_applied_event_seq.saturating_add(1);
     state.sync_health.cursor_last_advanced_seconds_ago = 0;
@@ -3953,41 +3959,40 @@ pub(super) fn run_starter_jobs_action(
                             ));
                             state.provider_runtime.last_result =
                                 Some(format!("completed starter quest {}", job_id));
-                            state
-                                .job_history
-                                .upsert_row(crate::app_state::JobHistoryReceiptRow {
-                                    job_id: job_id.clone(),
-                                    status: crate::app_state::JobHistoryStatus::Succeeded,
-                                    demand_source: crate::app_state::JobDemandSource::StarterDemand,
-                                    completed_at_epoch_seconds: state
-                                        .job_history
-                                        .reference_epoch_seconds
-                                        .saturating_add(state.job_history.rows.len() as u64 * 19),
-                                    skill_scope_id: state
-                                        .network_requests
-                                        .submitted
-                                        .first()
-                                        .and_then(|request| request.skill_scope_id.clone()),
-                                    skl_manifest_a: state.skl_lane.manifest_a.clone(),
-                                    skl_manifest_event_id: state.skl_lane.manifest_event_id.clone(),
-                                    sa_tick_result_event_id: state
-                                        .sa_lane
-                                        .last_tick_result_event_id
-                                        .clone(),
-                                    sa_trajectory_session_id: Some(
-                                        "traj:starter-quest".to_string(),
-                                    ),
-                                    ac_envelope_event_id: state.ac_lane.envelope_event_id.clone(),
-                                    ac_settlement_event_id: state
-                                        .ac_lane
-                                        .settlement_event_id
-                                        .clone(),
-                                    ac_default_event_id: None,
-                                    payout_sats,
-                                    result_hash: "sha256:starter-quest-job".to_string(),
-                                    payment_pointer: payout_pointer.clone(),
-                                    failure_reason: None,
-                                });
+                            let receipt_row = crate::app_state::JobHistoryReceiptRow {
+                                job_id: job_id.clone(),
+                                status: crate::app_state::JobHistoryStatus::Succeeded,
+                                demand_source: crate::app_state::JobDemandSource::StarterDemand,
+                                completed_at_epoch_seconds: state
+                                    .job_history
+                                    .reference_epoch_seconds
+                                    .saturating_add(state.job_history.rows.len() as u64 * 19),
+                                skill_scope_id: state
+                                    .network_requests
+                                    .submitted
+                                    .first()
+                                    .and_then(|request| request.skill_scope_id.clone()),
+                                skl_manifest_a: state.skl_lane.manifest_a.clone(),
+                                skl_manifest_event_id: state.skl_lane.manifest_event_id.clone(),
+                                sa_tick_result_event_id: state
+                                    .sa_lane
+                                    .last_tick_result_event_id
+                                    .clone(),
+                                sa_trajectory_session_id: Some("traj:starter-quest".to_string()),
+                                ac_envelope_event_id: state.ac_lane.envelope_event_id.clone(),
+                                ac_settlement_event_id: state.ac_lane.settlement_event_id.clone(),
+                                ac_default_event_id: None,
+                                payout_sats,
+                                result_hash: "sha256:starter-quest-job".to_string(),
+                                payment_pointer: payout_pointer.clone(),
+                                failure_reason: None,
+                            };
+                            state.job_history.upsert_row(receipt_row.clone());
+                            state.earn_job_lifecycle_projection.record_history_receipt(
+                                &receipt_row,
+                                receipt_row.completed_at_epoch_seconds,
+                                "starter.quest.settlement",
+                            );
                             state
                                 .activity_feed
                                 .upsert_event(crate::app_state::ActivityEventRow {
