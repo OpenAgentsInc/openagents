@@ -993,6 +993,15 @@ GroundTruthCase and related incident records MUST be proto-first, versioned obje
 * mandatory linkage to receipts/evidence digests and policy version
 * explicit rollback-attempt fields for lanes where rollback applies
 
+Incident object lifecycle requirements:
+
+* incident objects MUST be append-only and hash-addressed (`incident_digest`) with deterministic revisioning
+* taxonomy key (`taxonomy_id + taxonomy_version + code`) meanings are immutable once registered
+* lifecycle receipts MUST exist for report/update/resolve transitions and include hash-bound incident object linkage:
+  * `economy.incident.reported.v1`
+  * `economy.incident.updated.v1`
+  * `economy.incident.resolved.v1`
+
 Incident reporting and GroundTruthCase records are insurability prerequisites; implementations MUST NOT rely on unstructured postmortem prose as the sole source of truth.
 
 ### 6.11 Rollback and compensating actions (normative)

@@ -48,6 +48,16 @@ pub struct AuthAssuranceDistributionRow {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct IncidentBucketRow {
+    pub taxonomy_code: String,
+    pub severity: SeverityClass,
+    pub incident_reports_24h: u64,
+    pub near_misses_24h: u64,
+    pub incident_rate: f64,
+    pub near_miss_rate: f64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct EconomySnapshot {
     pub snapshot_id: String,
     pub as_of_ms: i64,
@@ -77,6 +87,8 @@ pub struct EconomySnapshot {
     pub drift_signals: Vec<DriftSignalSummary>,
     #[serde(default)]
     pub top_drift_signals: Vec<DriftSignalSummary>,
+    #[serde(default)]
+    pub incident_buckets: Vec<IncidentBucketRow>,
     pub sv_breakdown: Vec<SvBreakdownRow>,
     pub inputs: Vec<EvidenceRef>,
 }
@@ -380,6 +392,47 @@ fn build_snapshot(
         .copied()
         .filter(|receipt| is_dispute_or_claim_receipt(receipt))
         .count() as u64;
+    let mut incident_bucket_counts = BTreeMap::<(String, SeverityClass), (u64, u64)>::new();
+    for receipt in scoped_receipts
+        .iter()
+        .copied()
+        .filter(|receipt| is_incident_receipt(receipt))
+    {
+        let taxonomy_code =
+            incident_taxonomy_code_for_receipt(receipt).unwrap_or_else(|| "unknown".to_string());
+        let severity = incident_severity_for_receipt(receipt);
+        let key = (taxonomy_code, severity);
+        let entry = incident_bucket_counts.entry(key).or_insert((0, 0));
+        match incident_kind_for_receipt(receipt) {
+            IncidentReceiptKind::NearMiss => {
+                entry.1 = entry.1.saturating_add(1);
+            }
+            IncidentReceiptKind::Incident | IncidentReceiptKind::GroundTruthCase => {
+                entry.0 = entry.0.saturating_add(1);
+            }
+            IncidentReceiptKind::Unknown => {}
+        }
+    }
+    let mut incident_buckets = incident_bucket_counts
+        .into_iter()
+        .map(
+            |((taxonomy_code, severity), (incident_reports_24h, near_misses_24h))| {
+                IncidentBucketRow {
+                    taxonomy_code,
+                    severity,
+                    incident_reports_24h,
+                    near_misses_24h,
+                    incident_rate: ratio(incident_reports_24h, total_work_units),
+                    near_miss_rate: ratio(near_misses_24h, total_work_units),
+                }
+            },
+        )
+        .collect::<Vec<_>>();
+    incident_buckets.sort_by(|lhs, rhs| {
+        lhs.taxonomy_code
+            .cmp(&rhs.taxonomy_code)
+            .then_with(|| lhs.severity.cmp(&rhs.severity))
+    });
     let total_scoped_receipts = scoped_receipts.len() as u64;
     let long_feedback_share = ratio(long_feedback_terminal_count, total_work_units);
     let unverified_share = ratio(
@@ -469,6 +522,7 @@ fn build_snapshot(
         drift_alerts_24h,
         drift_signals.as_slice(),
         top_drift_signals.as_slice(),
+        incident_buckets.as_slice(),
         auth_assurance_distribution.as_slice(),
         sv_breakdown.as_slice(),
         inputs.as_slice(),
@@ -500,6 +554,7 @@ fn build_snapshot(
         drift_alerts_24h,
         drift_signals,
         top_drift_signals,
+        incident_buckets,
         sv_breakdown,
         inputs,
     })
@@ -762,6 +817,7 @@ struct CanonicalSnapshotPayload<'a> {
     drift_alerts_24h: u64,
     drift_signals: &'a [DriftSignalSummary],
     top_drift_signals: &'a [DriftSignalSummary],
+    incident_buckets: &'a [IncidentBucketRow],
     auth_assurance_distribution: &'a [AuthAssuranceDistributionRow],
     sv_breakdown: &'a [SvBreakdownRow],
     inputs: &'a [EvidenceRef],
@@ -792,6 +848,7 @@ fn snapshot_hash_for(
     drift_alerts_24h: u64,
     drift_signals: &[DriftSignalSummary],
     top_drift_signals: &[DriftSignalSummary],
+    incident_buckets: &[IncidentBucketRow],
     auth_assurance_distribution: &[AuthAssuranceDistributionRow],
     sv_breakdown: &[SvBreakdownRow],
     inputs: &[EvidenceRef],
@@ -820,6 +877,7 @@ fn snapshot_hash_for(
         drift_alerts_24h,
         drift_signals,
         top_drift_signals,
+        incident_buckets,
         auth_assurance_distribution,
         sv_breakdown,
         inputs,
@@ -1032,6 +1090,96 @@ fn is_dispute_or_claim_receipt(receipt: &Receipt) -> bool {
     })
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum IncidentReceiptKind {
+    Incident,
+    NearMiss,
+    GroundTruthCase,
+    Unknown,
+}
+
+fn is_incident_receipt(receipt: &Receipt) -> bool {
+    receipt.receipt_type.starts_with("economy.incident.")
+        || receipt
+            .evidence
+            .iter()
+            .any(|evidence| evidence.kind == "incident_object_ref")
+}
+
+fn incident_kind_for_receipt(receipt: &Receipt) -> IncidentReceiptKind {
+    let from_meta = receipt
+        .evidence
+        .iter()
+        .find(|evidence| evidence.kind == "incident_object_ref")
+        .and_then(|evidence| evidence.meta.get("incident_kind"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    match from_meta {
+        "near_miss" => IncidentReceiptKind::NearMiss,
+        "ground_truth_case" => IncidentReceiptKind::GroundTruthCase,
+        "incident" => IncidentReceiptKind::Incident,
+        _ => {
+            let lower_type = receipt.receipt_type.to_ascii_lowercase();
+            if lower_type.contains("near_miss") {
+                IncidentReceiptKind::NearMiss
+            } else if lower_type.contains("ground_truth") {
+                IncidentReceiptKind::GroundTruthCase
+            } else if lower_type.contains("incident") {
+                IncidentReceiptKind::Incident
+            } else {
+                IncidentReceiptKind::Unknown
+            }
+        }
+    }
+}
+
+fn incident_taxonomy_code_for_receipt(receipt: &Receipt) -> Option<String> {
+    let from_meta = receipt
+        .evidence
+        .iter()
+        .find(|evidence| evidence.kind == "incident_object_ref")
+        .and_then(|evidence| evidence.meta.get("taxonomy_code"))
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    if from_meta
+        .as_ref()
+        .is_some_and(|value| !value.trim().is_empty())
+    {
+        return from_meta;
+    }
+    receipt
+        .hints
+        .reason_code
+        .as_ref()
+        .and_then(|reason| reason.strip_prefix("incident_taxonomy:"))
+        .map(ToString::to_string)
+}
+
+fn incident_severity_for_receipt(receipt: &Receipt) -> SeverityClass {
+    if let Some(value) = receipt
+        .evidence
+        .iter()
+        .find(|evidence| evidence.kind == "incident_object_ref")
+        .and_then(|evidence| evidence.meta.get("severity"))
+        .and_then(Value::as_str)
+    {
+        return match value {
+            "critical" => SeverityClass::Critical,
+            "high" => SeverityClass::High,
+            "medium" => SeverityClass::Medium,
+            "low" => SeverityClass::Low,
+            _ => receipt
+                .hints
+                .severity
+                .unwrap_or(SeverityClass::SeverityClassUnspecified),
+        };
+    }
+    receipt
+        .hints
+        .severity
+        .unwrap_or(SeverityClass::SeverityClassUnspecified)
+}
+
 fn floor_to_minute_utc(value_ms: i64) -> i64 {
     value_ms.div_euclid(60_000) * 60_000
 }
@@ -1207,6 +1355,46 @@ mod tests {
         })
         .build()
         .expect("fixture receipt should build")
+    }
+
+    fn fixture_incident_receipt(
+        receipt_id: &str,
+        created_at_ms: i64,
+        incident_kind: &str,
+        taxonomy_code: &str,
+        severity_label: &str,
+    ) -> Receipt {
+        let mut receipt = fixture_receipt(
+            receipt_id,
+            "economy.incident.reported.v1",
+            created_at_ms,
+            "incident-work-unit",
+            false,
+        );
+        receipt.hints.severity = Some(match severity_label {
+            "critical" => SeverityClass::Critical,
+            "high" => SeverityClass::High,
+            "medium" => SeverityClass::Medium,
+            _ => SeverityClass::Low,
+        });
+        let mut incident_ref = EvidenceRef::new(
+            "incident_object_ref",
+            format!("oa://economy/incidents/{receipt_id}/revisions/1"),
+            digest_for_text(receipt_id),
+        );
+        incident_ref.meta.insert(
+            "incident_kind".to_string(),
+            serde_json::json!(incident_kind),
+        );
+        incident_ref.meta.insert(
+            "taxonomy_code".to_string(),
+            serde_json::json!(taxonomy_code),
+        );
+        incident_ref
+            .meta
+            .insert("severity".to_string(), serde_json::json!(severity_label));
+        receipt.evidence.push(incident_ref);
+        receipt
     }
 
     #[test]
@@ -1515,6 +1703,46 @@ mod tests {
             assert!(signal.score <= previous + 1e-9);
             previous = signal.score;
         }
+    }
+
+    #[test]
+    fn snapshot_aggregates_incident_buckets_by_taxonomy_and_severity() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let path = temp_dir.path().join("snapshots-incident-buckets.json");
+        let mut state = EconomySnapshotState::from_snapshot_path_for_tests(path);
+        let paid = fixture_receipt(
+            "receipt-paid-incident-bucket",
+            "earn.job.settlement_observed.v1",
+            1_762_000_010_000,
+            "job-incident-bucket",
+            true,
+        );
+        let incident = fixture_incident_receipt(
+            "receipt-incident-1",
+            1_762_000_011_000,
+            "incident",
+            "ops.execution_failure",
+            "high",
+        );
+        let near_miss = fixture_incident_receipt(
+            "receipt-near-miss-1",
+            1_762_000_012_000,
+            "near_miss",
+            "ops.execution_failure",
+            "high",
+        );
+        let snapshot = state
+            .compute_minute_snapshot(1_762_000_060_000, &[paid, incident, near_miss])
+            .expect("snapshot should compute")
+            .snapshot;
+        assert_eq!(snapshot.incident_buckets.len(), 1);
+        let bucket = &snapshot.incident_buckets[0];
+        assert_eq!(bucket.taxonomy_code, "ops.execution_failure");
+        assert_eq!(bucket.severity, SeverityClass::High);
+        assert_eq!(bucket.incident_reports_24h, 1);
+        assert_eq!(bucket.near_misses_24h, 1);
+        assert!((bucket.incident_rate - 1.0).abs() < 1e-9);
+        assert!((bucket.near_miss_rate - 1.0).abs() < 1e-9);
     }
 
     #[test]
