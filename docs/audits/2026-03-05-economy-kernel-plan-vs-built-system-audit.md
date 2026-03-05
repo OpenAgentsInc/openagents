@@ -26,7 +26,11 @@ This audit is aligned to the current product authority in `docs/MVP.md`, not onl
 Product and ownership authority:
 
 - `docs/MVP.md`
+- `docs/AUTOPILOT_EARN_MVP.md`
+- `docs/EARN.md`
 - `docs/OWNERSHIP.md`
+- `docs/PANES.md`
+- `docs/PROTOCOL_SURFACE.md`
 - `docs/adr/ADR-0001-spacetime-domain-authority-matrix.md`
 - `docs/SPACETIME_ROLLOUT_INDEX.md`
 
@@ -40,8 +44,12 @@ Current repo implementation:
 
 - `Cargo.toml`
 - `apps/autopilot-desktop/src/economy_kernel_receipts.rs`
+- `apps/autopilot-desktop/src/input/actions.rs`
+- `apps/autopilot-desktop/src/input/reducers/jobs.rs`
+- `apps/autopilot-desktop/src/input/reducers/provider_ingress.rs`
 - `apps/autopilot-desktop/src/state/earn_kernel_receipts.rs`
 - `apps/autopilot-desktop/src/state/economy_snapshot.rs`
+- `apps/autopilot-desktop/src/state/operations.rs`
 - `apps/autopilot-desktop/src/sync_bootstrap.rs`
 - `apps/autopilot-desktop/src/sync_apply.rs`
 - `apps/autopilot-desktop/src/spacetime_presence.rs`
@@ -52,8 +60,28 @@ Current repo implementation:
 - `crates/autopilot-spacetime/src/reducers.rs`
 - `crates/autopilot-spacetime/src/schema.rs`
 - `crates/autopilot-spacetime/src/auth.rs`
+- `crates/nostr/core/src/nip42.rs`
+- `crates/nostr/core/src/nip57.rs`
+- `crates/nostr/core/src/nip65.rs`
+- `crates/nostr/core/src/nip89.rs`
+- `crates/nostr/core/src/nip90/mod.rs`
+- `crates/nostr/core/src/nip98.rs`
+- `crates/nostr/client/src/dvm.rs`
+- `crates/nostr/nips/SA.md`
+- `crates/nostr/nips/SKL.md`
+- `crates/nostr/nips/AC.md`
 - `spacetime/modules/autopilot-sync/README.md`
 - `spacetime/modules/autopilot-sync/spacetimedb/src/lib.rs`
+
+Official Nostr protocol review:
+
+- `/Users/christopherdavid/code/nips/README.md`
+- `/Users/christopherdavid/code/nips/01.md`
+- `/Users/christopherdavid/code/nips/42.md`
+- `/Users/christopherdavid/code/nips/57.md`
+- `/Users/christopherdavid/code/nips/65.md`
+- `/Users/christopherdavid/code/nips/89.md`
+- `/Users/christopherdavid/code/nips/90.md`
 
 SpacetimeDB feasibility review:
 
@@ -79,16 +107,124 @@ Broader Spacetime ecosystem review:
 3. We also have real Spacetime work, but it is narrowly scoped. The active remote artifact is the `autopilot-sync` Spacetime module for presence/checkpoints/sync events. The desktop still mostly operates in Phase 1 mirror/proxy semantics with local stand-ins.
 4. If you want the system described in the kernel-plan docs as written, then yes: `TreasuryRouter` and `Kernel Authority API` need backend deployment. The plan docs explicitly place them server-side and outside Nostr/Spacetime.
 5. After reviewing the broader Spacetime ecosystem, the stronger conclusion is: SpacetimeDB can clearly host much larger server-side state machines than this repo currently uses it for, but it is still not the recommended place to put the entire OpenAgents economy backend. It remains a strong fit for presence, checkpoints, projections, and selected pure coordination state. It remains a weak fit for money-moving settlement, external routing, underwriting, verification pipelines, and OpenAgents-specific authority and audit surfaces.
+6. After reviewing the in-repo Nostr implementation and the canonical NIPs, the protocol boundary is clearer: Nostr is the correct open-market and interoperability layer for jobs, provider discovery, and portable public artifacts. It is not the correct authority layer for settlement truth, treasury/policy, sync continuity, or canonical audit state.
 
 ## MVP Alignment
 
 Against `docs/MVP.md`, the current system is much closer to correct than the kernel plans alone would suggest:
 
 - MVP ships desktop-first compute-provider flow.
+- MVP explicitly puts the open job marketplace on Nostr relays via NIP-90.
 - Wallet and settlement truth remain local command-authoritative.
 - Spacetime is only expected to own ADR-approved domains such as presence, checkpoints, and projection/sync continuity.
 
 So the missing backend kernel services are a gap against the broad kernel-plan docs, but not necessarily a blocker for the current MVP.
+
+## Protocol Boundary: Nostr vs Spacetime vs Infra vs Desktop
+
+The deeper Nostr review does not weaken the backend conclusion from the rest of this audit. It sharpens the split:
+
+| Substrate | Canonical role |
+| --- | --- |
+| Nostr | Open job marketplace, relay transport, public discovery, and portable protocol artifacts |
+| Spacetime | Live shared app-db for presence, checkpoints, and non-monetary projections |
+| OpenAgents infra | Authenticated authority, canonical receipts, policy, payment reconciliation, and external integrations |
+| Desktop | Key custody, signing, local execution, wallet UX, and MVP-local truth/cache |
+
+### What should live on Nostr
+
+Nostr should carry the open protocol surfaces where interoperability and market visibility matter:
+
+- NIP-90 job requests, feedback, and results. This is already the MVP path in `docs/MVP.md`, `docs/AUTOPILOT_EARN_MVP.md`, `crates/nostr/core/src/nip90/mod.rs`, `crates/nostr/client/src/dvm.rs`, and `apps/autopilot-desktop/src/provider_nip90_lane.rs`.
+- NIP-89 capability and handler discovery for providers and future app/skill handlers.
+- NIP-65 relay list metadata and NIP-42 relay authentication, because those are relay-transport concerns.
+- Public or portable artifacts from the repo's intended protocol surface where third-party clients should be able to observe or reuse them:
+  - NIP-SA public agent identity, goals, schedules, and trajectory surfaces.
+  - NIP-SKL skill manifests, version logs, labels, and revocations.
+  - NIP-AC intents, offers, envelopes, spend auth references, settlement notices, and default notices as portable market artifacts.
+- Optional social/payment signaling such as zap receipts.
+
+For NIP-AC specifically, the Nostr events should be treated as interoperable market artifacts and attestations. Actual credit capacity, risk accounting, settlement truth, and default handling should remain in OpenAgents authority services and canonical receipts.
+
+Why:
+
+- NIP-01 defines a relay pub/sub event fabric, not a private authority database.
+- NIP-90 explicitly frames Nostr as the marketplace for on-demand compute.
+- NIP-89 is a discovery layer.
+- NIP-65 and NIP-42 are relay-routing and relay-access primitives.
+
+### What should not live on Nostr
+
+Nostr should not be the canonical owner of:
+
+- wallet balances and settlement truth,
+- treasury routing, underwriting, risk policy, and verification verdicts,
+- canonical receipt storage and `/stats` source of truth,
+- replay checkpoints, presence counters, and retained app-db continuity,
+- private desktop execution state and wallet command history.
+
+Why:
+
+- NIP-90 `amount` and `bolt11` tags signal a payment request, but the actual Lightning payment happens off-relay.
+- NIP-57 zap requests are sent over HTTP to LNURL callbacks, and zap receipts are explicitly not a strong proof of payment.
+- NIP-42 authenticates a client to a relay, not to OpenAgents authority surfaces.
+- NIP-98 can sign HTTP requests with Nostr keys, but the authority still lives in the HTTP service that verifies the request.
+
+The practical rule is: use Nostr for market-facing protocol objects and cross-client portability, not for final economic truth.
+
+### What should live in Spacetime
+
+Spacetime should own the shared live app-db domains already approved by `ADR-0001`:
+
+- provider/device online registration and liveness,
+- sync replay checkpoints and cursor continuity,
+- non-monetary job/activity projections,
+- aggregated counters derived from Spacetime-authoritative domains,
+- optionally mirrored projections of Nostr or backend events after they are applied elsewhere.
+
+This is consistent with:
+
+- `docs/adr/ADR-0001-spacetime-domain-authority-matrix.md`,
+- `docs/SPACETIME_ROLLOUT_INDEX.md`,
+- `spacetime/modules/autopilot-sync`,
+- the current local bootstrap/checkpoint code in `sync_bootstrap.rs` and `sync_apply.rs`.
+
+Spacetime should not own:
+
+- public Nostr marketplace traffic,
+- payment execution or settlement truth,
+- treasury/policy/verification authority,
+- canonical receipts or `/stats` publication authority.
+
+### What should live in OpenAgents backend infrastructure
+
+OpenAgents backend services should own the authenticated authority and external side-effect surfaces:
+
+- `control-api` and sync token issuance,
+- `kernel-authority`,
+- `TreasuryRouter`,
+- canonical receipt ingestion/storage,
+- minute snapshot computation and `/stats`,
+- wallet payment verification and reconciliation,
+- incident, claims, coverage, and verification services,
+- seed-demand buyer services that post paid NIP-90 work into the market,
+- any NIP-98-protected HTTP endpoints used for OpenAgents-specific control or settlement flows.
+
+OpenAgents infra may also choose to operate relay or indexer infrastructure for product quality, moderation, or latency. That is still Nostr transport infrastructure, not a replacement for authority services.
+
+### What should live on desktop
+
+The desktop should remain the user-controlled edge for:
+
+- Nostr key custody and event signing,
+- relay configuration and relay health UX,
+- local job execution on the user's machine,
+- wallet UX and local wallet command flow,
+- deterministic local caches, receipts, and replay-safe fallback state for MVP,
+- publishing to and subscribing from Nostr,
+- presenting mirrored Spacetime and backend state without pretending those sources are local truth.
+
+The desktop should not be treated as the long-term shared authority for multi-user policy, treasury, or public stats. But for the current MVP it is still the real authority for local execution and wallet-connected earning state.
 
 ## Current Built Topology
 
@@ -373,6 +509,13 @@ Use Spacetime for:
 - append-only projection streams,
 - shared counters that are explicitly non-monetary.
 
+Use Nostr for:
+
+- open NIP-90 job-market traffic,
+- NIP-89 provider/application discovery,
+- relay list and relay auth metadata,
+- public and portable protocol artifacts for SA/SKL/AC where interoperability matters.
+
 Use conventional backend services for:
 
 - `TreasuryRouter`,
@@ -383,6 +526,8 @@ Use conventional backend services for:
 - sync token minting and any authenticated control-plane endpoints.
 
 Keep desktop-local authority for MVP-critical local execution and wallet UX until a real backend replacement is intentionally designed and shipped.
+
+When the same business object appears on both Nostr and backend infra, treat the Nostr event as the open protocol artifact and the backend record as the canonical authority record.
 
 ## What Is Still Missing If You Wanted the Plan Docs for Real
 
@@ -428,7 +573,7 @@ That does not change the deployment conclusion, but it does mean the most advanc
 The repo today is:
 
 - strong on desktop-local kernel modeling,
-- real on wallet/NIP-90 earning flow,
+- real on wallet/NIP-90 earning flow and Nostr relay integration,
 - real but still partial on Spacetime sync/presence infrastructure,
 - missing the backend service layer described by the kernel-plan docs.
 
