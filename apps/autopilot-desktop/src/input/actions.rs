@@ -3635,6 +3635,27 @@ pub(super) fn run_network_requests_action(
                     return true;
                 }
             };
+            let target_provider_pubkeys = extract_target_provider_pubkeys(payload.as_str());
+            let configured_relays = state.configured_provider_relay_urls();
+            let request_event = match build_nip90_request_event_for_network_submission(
+                state.nostr_identity.as_ref(),
+                request_type.as_str(),
+                payload.as_str(),
+                skill_scope_id.as_deref(),
+                credit_envelope_ref.as_deref(),
+                budget_sats,
+                timeout_seconds,
+                configured_relays.as_slice(),
+                target_provider_pubkeys.as_slice(),
+            ) {
+                Ok(event) => event,
+                Err(error) => {
+                    state.network_requests.last_error = Some(error);
+                    state.network_requests.load_state = crate::app_state::PaneLoadState::Error;
+                    return true;
+                }
+            };
+            let published_request_id = request_event.id.clone();
 
             let scope = if let Some(skill_scope) = skill_scope_id.as_deref() {
                 format!("skill:{skill_scope}:constraints")
@@ -3654,8 +3675,10 @@ pub(super) fn run_network_requests_action(
                 Ok(command_seq) => {
                     match state.network_requests.queue_request_submission(
                         NetworkRequestSubmission {
+                            request_id: Some(published_request_id.clone()),
                             request_type,
                             payload,
+                            target_provider_pubkeys: target_provider_pubkeys.clone(),
                             skill_scope_id,
                             credit_envelope_ref,
                             budget_sats,
@@ -3664,9 +3687,33 @@ pub(super) fn run_network_requests_action(
                         },
                     ) {
                         Ok(request_id) => {
-                            state.provider_runtime.last_result = Some(format!(
-                                "Queued network request {request_id} -> AC cmd#{command_seq}"
-                            ));
+                            state.provider_runtime.last_result =
+                                Some(format!("Queued network request {request_id}"));
+                            if let Err(error) = state.queue_provider_nip90_lane_command(
+                                crate::provider_nip90_lane::ProviderNip90LaneCommand::PublishEvent {
+                                    request_id: request_id.clone(),
+                                    role: crate::provider_nip90_lane::ProviderNip90PublishRole::Request,
+                                    event: Box::new(request_event),
+                                },
+                            ) {
+                                state.network_requests.apply_nip90_request_publish_outcome(
+                                    request_id.as_str(),
+                                    request_id.as_str(),
+                                    0,
+                                    0,
+                                    Some(error.as_str()),
+                                );
+                                state.provider_runtime.last_error_detail = Some(error.clone());
+                                state.provider_runtime.last_result = Some(format!(
+                                    "failed to queue NIP-90 request publish for {}: {}",
+                                    request_id, error
+                                ));
+                            } else {
+                                state.provider_runtime.last_result = Some(format!(
+                                    "Queued NIP-90 request {} -> AC cmd#{}",
+                                    request_id, command_seq
+                                ));
+                            }
                             if local_network_request_inject_enabled() {
                                 state
                                     .job_inbox
@@ -3682,7 +3729,7 @@ pub(super) fn run_network_requests_action(
                                         skill_scope_id: None,
                                         skl_manifest_a: None,
                                         skl_manifest_event_id: None,
-                                        sa_tick_request_event_id: None,
+                                        sa_tick_request_event_id: Some(request_id.clone()),
                                         sa_tick_result_event_id: None,
                                         ac_envelope_event_id: None,
                                         price_sats: budget_sats,
@@ -3719,6 +3766,141 @@ fn local_network_request_inject_enabled() -> bool {
         .ok()
         .map(|value| matches!(value.trim(), "1" | "true" | "TRUE" | "yes" | "on"))
         .unwrap_or(false)
+}
+
+fn extract_target_provider_pubkeys(payload: &str) -> Vec<String> {
+    let mut providers = Vec::<String>::new();
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(payload) else {
+        return providers;
+    };
+
+    if let Some(provider) = value
+        .get("target_provider_pubkey")
+        .and_then(serde_json::Value::as_str)
+    {
+        providers.push(provider.to_string());
+    }
+    if let Some(provider) = value
+        .get("target_provider")
+        .and_then(serde_json::Value::as_str)
+    {
+        providers.push(provider.to_string());
+    }
+    if let Some(provider_list) = value
+        .get("target_provider_pubkeys")
+        .and_then(serde_json::Value::as_array)
+    {
+        providers.extend(
+            provider_list
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(ToString::to_string),
+        );
+    }
+
+    providers = providers
+        .into_iter()
+        .map(|provider| provider.trim().to_string())
+        .filter(|provider| !provider.is_empty())
+        .collect::<Vec<_>>();
+    providers.sort();
+    providers.dedup();
+    providers
+}
+
+fn build_nip90_request_event_for_network_submission(
+    identity: Option<&nostr::NostrIdentity>,
+    request_type: &str,
+    payload: &str,
+    skill_scope_id: Option<&str>,
+    credit_envelope_ref: Option<&str>,
+    budget_sats: u64,
+    timeout_seconds: u64,
+    relay_urls: &[String],
+    target_provider_pubkeys: &[String],
+) -> Result<nostr::Event, String> {
+    let Some(identity) = identity else {
+        return Err("Cannot publish NIP-90 request: Nostr identity unavailable".to_string());
+    };
+
+    let request_kind = nip90_request_kind_for_request_type(request_type);
+    let mut request = nostr::nip90::JobRequest::new(request_kind)
+        .map_err(|error| format!("Cannot build NIP-90 request: {error}"))?
+        .add_input(nostr::nip90::JobInput::text(payload))
+        .add_param("request_type", request_type)
+        .add_param("timeout_seconds", timeout_seconds.to_string())
+        .with_bid(budget_sats.saturating_mul(1000));
+    if let Some(scope_id) = skill_scope_id {
+        let scope_id = scope_id.trim();
+        if !scope_id.is_empty() {
+            request = request.add_param("skill_scope_id", scope_id);
+        }
+    }
+    if let Some(envelope_ref) = credit_envelope_ref {
+        let envelope_ref = envelope_ref.trim();
+        if !envelope_ref.is_empty() {
+            request = request.add_param("credit_envelope_ref", envelope_ref);
+        }
+    }
+    let normalized_relays = relay_urls
+        .iter()
+        .map(|relay| relay.trim().to_string())
+        .filter(|relay| !relay.is_empty())
+        .collect::<Vec<_>>();
+    if normalized_relays.is_empty() {
+        return Err(
+            "Cannot publish NIP-90 request: no relay URLs configured for request publication"
+                .to_string(),
+        );
+    }
+    for relay in normalized_relays {
+        request = request.add_relay(relay);
+    }
+    for provider in target_provider_pubkeys {
+        let provider = provider.trim();
+        if !provider.is_empty() {
+            request = request.add_service_provider(provider.to_string());
+        }
+    }
+
+    let template = nostr::nip90::create_job_request_event(&request);
+    sign_nip90_template(identity, &template)
+}
+
+fn nip90_request_kind_for_request_type(request_type: &str) -> u16 {
+    let request_type = request_type.trim().to_ascii_lowercase();
+    if request_type.contains("summary") || request_type.contains("summariz") {
+        nostr::nip90::KIND_JOB_SUMMARIZATION
+    } else if request_type.contains("translate") {
+        nostr::nip90::KIND_JOB_TRANSLATION
+    } else if request_type.contains("extract") {
+        nostr::nip90::KIND_JOB_TEXT_EXTRACTION
+    } else {
+        nostr::nip90::KIND_JOB_TEXT_GENERATION
+    }
+}
+
+fn sign_nip90_template(
+    identity: &nostr::NostrIdentity,
+    template: &nostr::EventTemplate,
+) -> Result<nostr::Event, String> {
+    let private_key = parse_nostr_private_key_hex(identity.private_key_hex.as_str())?;
+    nostr::finalize_event(template, &private_key)
+        .map_err(|error| format!("Cannot sign NIP-90 request: {error}"))
+}
+
+fn parse_nostr_private_key_hex(private_key_hex: &str) -> Result<[u8; 32], String> {
+    let key_bytes = hex::decode(private_key_hex.trim())
+        .map_err(|error| format!("invalid identity private_key_hex: {error}"))?;
+    if key_bytes.len() != 32 {
+        return Err(format!(
+            "invalid identity private_key_hex length {}, expected 32 bytes",
+            key_bytes.len()
+        ));
+    }
+    let mut key = [0u8; 32];
+    key.copy_from_slice(key_bytes.as_slice());
+    Ok(key)
 }
 
 const STARTER_DEMAND_BUDGET_SATS_ENV: &str = "OPENAGENTS_STARTER_DEMAND_BUDGET_SATS";
@@ -3826,8 +4008,10 @@ fn queue_starter_demand_request(
     let request_id = state
         .network_requests
         .queue_request_submission(NetworkRequestSubmission {
+            request_id: None,
             request_type,
             payload,
+            target_provider_pubkeys: Vec::new(),
             skill_scope_id: None,
             credit_envelope_ref: state.ac_lane.envelope_event_id.clone(),
             budget_sats: starter_job.payout_sats,
@@ -5199,8 +5383,9 @@ pub(super) fn parse_positive_amount_str(raw: &str, label: &str) -> Result<u64, S
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_provider_failure, is_taxonomy_failure_detail, loop_integrity_alert_specs,
-        resolve_wallet_blink_env_from_secure_values,
+        build_nip90_request_event_for_network_submission, classify_provider_failure,
+        extract_target_provider_pubkeys, is_taxonomy_failure_detail, loop_integrity_alert_specs,
+        nip90_request_kind_for_request_type, resolve_wallet_blink_env_from_secure_values,
         stable_sats_period_convert_totals_from_receipts,
         stable_sats_real_round_phase_from_operation_count, taxonomy_failure_detail,
     };
@@ -5247,6 +5432,68 @@ mod tests {
                 has_value: true,
             },
         ]
+    }
+
+    fn fixture_identity() -> nostr::NostrIdentity {
+        nostr::NostrIdentity {
+            identity_path: std::path::PathBuf::from("/tmp/test-identity.mnemonic"),
+            mnemonic: "test mnemonic".to_string(),
+            npub: "npub-test".to_string(),
+            nsec: "nsec-test".to_string(),
+            public_key_hex: "11".repeat(32),
+            private_key_hex: "22".repeat(32),
+        }
+    }
+
+    #[test]
+    fn extracts_optional_target_provider_pubkeys_from_payload_json() {
+        let payload = serde_json::json!({
+            "target_provider_pubkey": "pubkey-a",
+            "target_provider_pubkeys": ["pubkey-b", "pubkey-a", ""]
+        })
+        .to_string();
+        let providers = extract_target_provider_pubkeys(payload.as_str());
+        assert_eq!(
+            providers,
+            vec!["pubkey-a".to_string(), "pubkey-b".to_string()]
+        );
+    }
+
+    #[test]
+    fn builds_signed_nip90_request_event_with_targeting_and_relays() {
+        let identity = fixture_identity();
+        let event = build_nip90_request_event_for_network_submission(
+            Some(&identity),
+            "summarize.text",
+            "{\"prompt\":\"hello\"}",
+            Some("scope-1"),
+            Some("ac-env-1"),
+            10,
+            60,
+            &["wss://relay.one".to_string(), "wss://relay.two".to_string()],
+            &["provider-pubkey-1".to_string()],
+        )
+        .expect("request event should build");
+        assert_eq!(
+            event.kind,
+            nip90_request_kind_for_request_type("summarize.text")
+        );
+        let request = nostr::nip90::JobRequest::from_event(&event).expect("request should parse");
+        assert_eq!(request.bid, Some(10_000));
+        assert_eq!(request.relays.len(), 2);
+        assert_eq!(
+            request.service_providers,
+            vec!["provider-pubkey-1".to_string()]
+        );
+        assert_eq!(request.inputs.len(), 1);
+        assert_eq!(
+            request
+                .params
+                .iter()
+                .filter(|p| p.key == "request_type")
+                .count(),
+            1
+        );
     }
 
     #[test]

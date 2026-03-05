@@ -124,6 +124,7 @@ pub enum ProviderNip90LaneCommand {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProviderNip90PublishRole {
+    Request,
     Feedback,
     Result,
 }
@@ -131,6 +132,7 @@ pub enum ProviderNip90PublishRole {
 impl ProviderNip90PublishRole {
     pub const fn label(self) -> &'static str {
         match self {
+            Self::Request => "request",
             Self::Feedback => "feedback",
             Self::Result => "result",
         }
@@ -1491,6 +1493,7 @@ mod tests {
                         outcome.accepted_relays
                     );
                     match outcome.role {
+                        ProviderNip90PublishRole::Request => {}
                         ProviderNip90PublishRole::Feedback => feedback_outcome_seen = true,
                         ProviderNip90PublishRole::Result => result_outcome_seen = true,
                     }

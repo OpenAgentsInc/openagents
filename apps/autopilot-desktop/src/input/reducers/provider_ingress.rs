@@ -180,6 +180,7 @@ pub(super) fn apply_publish_outcome(state: &mut RenderState, outcome: ProviderNi
     {
         if publish_succeeded {
             match outcome.role {
+                ProviderNip90PublishRole::Request => {}
                 ProviderNip90PublishRole::Result => {
                     if job.sa_tick_result_event_id.is_none() {
                         job.sa_tick_result_event_id = Some(outcome.event_id.clone());
@@ -205,6 +206,16 @@ pub(super) fn apply_publish_outcome(state: &mut RenderState, outcome: ProviderNi
             outcome.accepted_relays,
             outcome.rejected_relays
         ));
+    }
+
+    if outcome.role == ProviderNip90PublishRole::Request {
+        state.network_requests.apply_nip90_request_publish_outcome(
+            outcome.request_id.as_str(),
+            outcome.event_id.as_str(),
+            outcome.accepted_relays,
+            outcome.rejected_relays,
+            outcome.first_error.as_deref(),
+        );
     }
 
     let now_epoch_seconds = std::time::SystemTime::now()
