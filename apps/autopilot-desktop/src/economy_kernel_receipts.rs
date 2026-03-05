@@ -1,4 +1,4 @@
-use bitcoin::hashes::{sha256, Hash};
+use bitcoin::hashes::{Hash, sha256};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -135,6 +135,17 @@ pub struct ReceiptHints {
     pub reason_code: Option<String>,
     pub notional: Option<Money>,
     pub liability_premium: Option<Money>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct DriftSignalSummary {
+    pub detector_id: String,
+    pub signal_code: String,
+    pub count_24h: u64,
+    pub ratio: f64,
+    pub threshold: f64,
+    pub score: f64,
+    pub alert: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]

@@ -1168,6 +1168,16 @@ message IncidentBucket {
   uint64 near_misses_24h = 4;
 }
 
+message DriftSignalRow {
+  string detector_id = 1;
+  string signal_code = 2;
+  uint64 count_24h = 3;
+  double ratio = 4;
+  double threshold = 5;
+  double score = 6;
+  bool alert = 7;
+}
+
 message EconomySnapshot {
   string snapshot_id = 1;
   int64 as_of_ms = 2;
@@ -1197,6 +1207,7 @@ message EconomySnapshot {
   uint64 drift_alerts_24h = 50;
   uint64 rollback_attempts_24h = 51;
   uint64 rollback_successes_24h = 52;
+  repeated DriftSignalRow top_drift_signals = 53;
 
   repeated IncidentBucket incident_buckets = 60;
   repeated DistributionRow auth_assurance_distribution = 61;
@@ -1609,9 +1620,13 @@ For actions with an `ActorRole` and category slice:
 
 When drift signals breach `MonitoringRule.drift_alert_threshold_24h`:
 
-* services MUST emit deterministic drift receipts (idempotency keyed by detector + snapshot window),
+* services MUST emit deterministic drift receipts:
+  * `economy.drift.signal_emitted.v1`
+  * `economy.drift.alert_raised.v1`
+  * `economy.drift.false_positive_confirmed.v1`
+* idempotency MUST be keyed by `(detector_id + snapshot window + receipt_type)`,
 * then apply `threshold_actions` in the same deterministic autonomy action order,
-* and include triggering detector ids in receipt evidence.
+* and include triggering detector ids in hash-bound receipt evidence.
 
 #### H) Risk pricing enforcement
 
