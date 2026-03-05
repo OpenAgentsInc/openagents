@@ -122,6 +122,7 @@ These invariants apply to all modules, flows, and extensions.
 * `authenticated caller identity (service principal, agent identity, or operator identity)`
 * `idempotency_key`
 * `policy_bundle_id`
+* `policy_version`
 * `trace context (session_id, trajectory_hash, job_hash, etc.)`
 
 #### 1.X Proto-first source of truth
@@ -167,7 +168,7 @@ Rules:
 2. **Denials and withholds MUST be receipted** with typed reasons (fee cap, expiry, breaker, insufficient budget, etc.).
 
 3. **Policy evaluation MUST be explainable.**
-   Receipts MUST include policy notes (as evidence refs or stable tags) sufficient to explain why an action was allowed, denied, or withheld.
+   Receipts MUST include policy notes as hash-bound fields and/or hash-bound `EvidenceRef` / `ReceiptRef` sufficient to explain why an action was allowed, denied, or withheld.
 
 #### 1.X PolicyBundle minimum capabilities and flapping control
 
@@ -205,7 +206,7 @@ When matching policy rules by `category × tfb × severity`, implementations MUS
 5. wildcard everything (global default)
 
 **Tie-breaking**
-If multiple rules match at the same precedence, the implementation MUST choose deterministically (e.g., lexicographic by rule id). The chosen rule identifier MUST be recorded in receipts as policy notes/tags so auditors can reproduce the decision.
+If multiple rules match at the same precedence, the implementation MUST choose deterministically (e.g., lexicographic by rule id). The chosen rule identifier MUST be recorded in receipts as hash-bound policy notes so auditors can reproduce the decision.
 
 **Autonomy throttle action order**
 When policy triggers multiple actions (mode changes, tier raises, provenance raises, envelope tightening, warranty disabling), they MUST be applied in this deterministic order:
@@ -339,6 +340,7 @@ To implement verification-as-bottleneck correctly, every WorkUnit MUST include:
 * `LOW` (limited blast radius)
 * `MEDIUM`
 * `HIGH` (security, funds, legal, irreversible actions)
+* `CRITICAL` (catastrophic blast radius; default policy should require Tier 4 or objective harness + strong provenance/attestation)
 
 3. **Verification budget hint (`B`)**
 
@@ -464,7 +466,7 @@ Rules:
 
 * Rails with uncertainty MUST use quote→execute.
 * Quote linkage is mandatory. When a rail uses `quote → execute`, every terminal payment receipt (PAID / WITHHELD / FAILED) MUST reference the quote receipt (or quote hash) that bound fee ceilings and expiry.
-* **Typed reason codes are mandatory.** Any `WITHHELD`, `FAILED`, `REVOKED`, `EXPIRED`, or denied transition MUST include a stable, machine-readable `reason_code` (not only prose), and that code MUST be recorded in the corresponding receipt.
+* **Typed reason codes are mandatory.** Any denied attempt, and any `WITHHELD` or `FAILED` transition, MUST include a stable, machine-readable `reason_code` (not only prose), and that code MUST be recorded in the corresponding receipt.
 * `WITHHELD` MUST be used for policy/constraint denials (expiry, fee cap, breaker, budget).
 * `FAILED` MUST be used for allowed executions that fail operationally.
 * Receipts MUST include underlying proof when PAID (preimage/txid/etc.)
@@ -474,7 +476,7 @@ Rules:
 1. **All expiries and deadlines MUST be absolute epoch milliseconds.** Relative durations may be used in policy, but authority actions must bind absolute `expiry_ms` / `deadline_ms` values into receipts.
 2. **Post-expiry behavior is constrained.** Once an action’s bound expiry/deadline has passed:
 
-   * settlement MUST transition to `WITHHELD` or `EXPIRED` (as appropriate),
+   * settlement MUST transition to `WITHHELD`,
    * the system MUST NOT “try anyway” under a stale quote/envelope,
    * and the receipt MUST include `reason_code = QUOTE_EXPIRED` / `ENVELOPE_EXPIRED` (or equivalent stable code).
 3. **Expiry must be bound.** Any quote/envelope/selection that can expire MUST be explicitly bound to an expiry field and referenced by later receipts.
@@ -495,7 +497,7 @@ Rules:
 
 * No envelope is valid without scope/cap/expiry.
 * Allowed destinations MUST be explicit. Every envelope MUST specify destination/payee constraints (e.g., whitelisted payees, invoice domain constraints, route class constraints). An envelope cannot be “cap only.”
-* **Typed reason codes are mandatory.** Any `WITHHELD`, `FAILED`, `REVOKED`, `EXPIRED`, or denied transition MUST include a stable, machine-readable `reason_code` (not only prose), and that code MUST be recorded in the corresponding receipt.
+* **Typed reason codes are mandatory for denials and terminal transitions.** Any denied issuance/commit/settle attempt, and any `REVOKED` or `EXPIRED` transition, MUST include a stable, machine-readable `reason_code` recorded in the corresponding receipt.
 * Settlement MUST bind to explicit conditions (often a verdict receipt hash).
 * No rolling credit lines. Envelopes MUST be short-lived by default and MUST NOT roll automatically. Renewal requires an explicit new issuance under policy, with a new receipt.
 * Commit binds an envelope to a specific settlement intent. COMMITTED state MUST identify the intended payee/recipient/invoice (or destination constraint snapshot) so settlement cannot drift into a different target.
@@ -514,6 +516,11 @@ States:
 * `SETTLED`
 * `WARRANTY_ACTIVE` (optional)
 * `FINALIZED`
+
+**Additional states (wire-visible)**
+
+* `CLAIM_OPEN` MAY be used as a derived/summary state indicating at least one claim exists in `OPEN` or `UNDER_REVIEW`. It MUST NOT unlock settlement or alter verification requirements.
+* `CANCELLED` MAY be used only under explicit policy-defined cancellation rules. Cancellation MUST be receipted and MUST NOT result in hidden netting; any refunds/withholds/bond releases required by cancellation MUST be explicit authority actions with receipts.
 
 Rules:
 
@@ -554,13 +561,13 @@ Tier semantics:
 * Tier 1: correlated AI checks (allowed only for low severity / short tfb unless overridden)
 * Tier 2: heterogeneous checks (required for many subjective/medium risk lanes)
 * Tier 3: redundancy + adjudication (required for contested subjective lanes)
-* Tier 4: human underwriting/sampling (required for high severity or long tfb without objective harness)
+* Tier 4: human underwriting/sampling (required for HIGH/CRITICAL severity or long tfb without objective harness)
 
 Policy MUST be able to require:
 
 * “Tier 2 must include ≥2 distinct checker lineages”
 * “Tier 1 cannot unlock warranty issuance above X”
-* “LONG tfb + HIGH severity requires Tier 4 unless objective harness exists”
+* “LONG tfb + HIGH/CRITICAL severity requires Tier 4 unless objective harness exists”
 
 ### 4.6 Optional Extension: Solver / Cross-Rail Routing (Intent → Match → Settle)
 
@@ -745,6 +752,9 @@ This prevents “measured sv” from being inflated by low-quality verification.
 ### 5.9 Reason codes (normative)
 
 Any `reason_code` referenced in this spec MUST come from a **versioned, documented, machine-readable code set** (e.g., an enum in the proto wire contract or an equivalent versioned registry). Reason codes MUST be stable over time; new codes may be added, but existing codes MUST NOT change meaning.
+
+**Hashed-decision requirement (normative)**
+Any data required by this spec to justify or reproduce a decision (e.g., `reason_code`, selected policy rule id(s), snapshot bindings, solver match selection, breaker trigger details) MUST be recorded in the **normative, hash-bound portion** of the receipt payload (i.e., it MUST affect `inputs_hash`/`outputs_hash` and thus `canonical_hash`), or be recorded as a hash-bound `EvidenceRef` / `ReceiptRef`. It MUST NOT be stored only in non-normative `tags`.
 
 ---
 
@@ -952,7 +962,7 @@ Reputation is an internal measurement derived strictly from receipts. It is not 
 * The minute snapshot MUST be persisted durably and retrievable by snapshot id for audit/replay.
 * UI MUST consume the snapshot via the system’s realtime subscription mechanism (server-pushed updates), not polling.
 * Snapshot computation MUST be **idempotent and receipted** (authority-like): recomputing the same minute snapshot must yield the same `snapshot_id`/`snapshot_hash` (or a stable reference) and must not produce conflicting snapshots for the same time boundary.
-* Any breaker activation, autonomy mode transition, or `WITHHELD/EXPIRED` decision driven by `sv`, `Δm_hat`, `XA_hat`, or correlated-verification share MUST reference the **specific** `snapshot_id` and `snapshot_hash` used to make that decision (recorded in the corresponding receipt).
+* Any breaker activation, autonomy mode transition, or `WITHHELD` decision driven by `sv`, `Δm_hat`, `XA_hat`, or correlated-verification share MUST reference the **specific** `snapshot_id` and `snapshot_hash` used to make that decision (recorded in the corresponding receipt).
 * The snapshot time boundary MUST be deterministic: `as_of_ms` MUST be rounded down to the start of the minute (UTC), and the same boundary MUST be used across the system.
 
 ### 7.2 Tables and required metrics (expanded)
