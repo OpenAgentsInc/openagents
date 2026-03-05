@@ -24,103 +24,85 @@ Where a lane is *optional*, it is labeled as such; the diagrams still show how i
 
 ```mermaid
 flowchart LR
-  %% -----------------------------
-  %% TRUST ZONES
-  %% -----------------------------
-
   subgraph Z0_PUBLIC[Public Zone]
-    STATS[/stats (public)\nminute snapshot view/]
-    OUTREG[(Public Outcome Registry\n(aggregated, redacted))]
+    STATS[stats public<br/>minute snapshot view]
+    OUTREG[(Public Outcome Registry<br/>aggregated redacted)]
   end
 
-  subgraph Z1_RESTRICTED[Restricted Zone (Certified Parties)]
-    SAFEF[Safety Signals Feed\n(restricted, policy-gated)]
-    AUDITDL[AuditPackage Export Feed\n(restricted modes)]
+  subgraph Z1_RESTRICTED[Restricted Zone Certified Parties]
+    SAFEF[Safety Signals Feed<br/>restricted policy gated]
+    AUDITDL[AuditPackage Export Feed<br/>restricted modes]
   end
 
-  subgraph Z2_CLIENTS[Clients / Product Surfaces]
+  subgraph Z2_CLIENTS[Clients and Product Surfaces]
     AP[Autopilot Desktop]
-    MP[Marketplace / Other Surfaces]
-    VUI[Verifier / Adjudicator UI]
-    UWI[Underwriter Tools]
-    AUI[Auditor Tools]
-    LPU[LP Portal (optional)]
+    MP[Marketplace and other surfaces]
+    VUI[Verifier and adjudicator UI]
+    UWI[Underwriter tools]
+    AUI[Auditor tools]
+    LPU[LP portal optional]
   end
 
-  subgraph Z3_PROJ[Projection / Coordination Plane\n(non-authoritative)]
-    WS[WS/Nostr/Spacetime lanes\nprogress + coordination only]
+  subgraph Z3_PROJ[Projection and Coordination Plane<br/>non authoritative]
+    WS[WS Nostr Spacetime lanes<br/>progress and coordination only]
   end
 
-  subgraph Z4_AUTH[Authority Plane (HTTP-only)]
-    TR[TreasuryRouter\n(policy-driven planner)]
-    K[Economy Kernel Authority API\n(idempotent mutations + receipts)]
-    SIG[Signer Set\n(threshold approval for high-impact actions)]
+  subgraph Z4_AUTH[Authority Plane HTTP only]
+    TR[TreasuryRouter<br/>policy driven planner]
+    K[Kernel Authority API<br/>idempotent mutations and receipts]
+    SIG[Signer Set<br/>threshold approval for high impact actions]
   end
 
-  %% -----------------------------
-  %% KERNEL MODULES (NORMATIVE + EXTENSIONS)
-  %% -----------------------------
   subgraph MODS[Kernel Modules]
-    SE[Settlement Engine\nquote→execute + proofs]
-    CE[Credit Envelopes\nbounded credit]
-    ABP[Bonds & Collateral\nreserve/draw/release]
-    VE[Verification Engine\nplan→evidence→verdict]
-    LE[Liability Engine\nwarranty/claims/remedies]
-    FX[FX RFQ & Settlement\nrfq→quote→select→settle]
-    RR[Routing & Risk\nbreakers + autonomy modes]
-    GT[GroundTruth + Synthetic Practice\ncases→scenarios]
-    RB[Rollback + Compensating Actions\n(machine-legible remedies)]
-    MD[Monitoring + Drift Detection\n(drift receipts)]
-    SI[Safety / Certification / Interop\n(identity, certs, exports)]
-    RI[Reputation Index\n(receipt-derived priors)]
+    SE[Settlement Engine<br/>quote to execute plus proofs]
+    CE[Credit Envelopes<br/>bounded credit]
+    ABP[Bonds and Collateral<br/>reserve draw release]
+    VE[Verification Engine<br/>plan to evidence to verdict]
+    LE[Liability Engine<br/>warranty claims remedies]
+    FX[FX RFQ and Settlement<br/>rfq quote select settle]
+    RR[Routing and Risk<br/>breakers and autonomy modes]
+    GT[GroundTruth and Synthetic Practice<br/>cases to scenarios]
+    RB[Rollback and Comp Actions<br/>machine legible remedies]
+    MD[Monitoring and Drift<br/>drift receipts]
+    SI[Safety Certification Interop<br/>identity certs exports]
+    RI[Reputation Index<br/>receipt derived priors]
   end
 
-  %% -----------------------------
-  %% DATA / STORAGE SUBSTRATE
-  %% -----------------------------
-  subgraph DATA[Canonical Substrate (Append-only + Deterministic)]
-    RS[(Append-only Receipt Stream)]
-    EV[(Evidence Store\n(artifacts, bundles, attestations))]
-    PB[(PolicyBundle Store\n(versioned))]
-    CR[(Certification Registry\n(issued/revoked receipts))]
-    IR[(Incident / GroundTruth Registry\n(taxonomy-coded))]
-    OR[(Outcome Registry Store\n(linkable entries))]
-    SS[(EconomySnapshot Store\n(snapshot_id + snapshot_hash))]
-    EXP[(AuditPackage Store\n(export bundles + redaction mode))]
+  subgraph DATA[Canonical Substrate Append only Deterministic]
+    RS[(Receipt Stream append only)]
+    EV[(Evidence Store<br/>artifacts bundles attestations)]
+    PB[(PolicyBundle Store<br/>versioned)]
+    CR[(Certification Registry<br/>issued revoked receipts)]
+    IR[(Incident and GroundTruth Registry<br/>taxonomy coded)]
+    OR[(Outcome Registry Store<br/>linkable entries)]
+    SS[(EconomySnapshot Store<br/>snapshot_id snapshot_hash)]
+    EXP[(AuditPackage Store<br/>export bundles redaction mode)]
   end
 
   subgraph SNAPLANE[Deterministic Minute Snapshot Lane]
-    SCH[Scheduler\n(once/min)]
-    SNAP[ComputeSnapshot\n(idempotent + receipted)]
+    SCH[Scheduler once per minute]
+    SNAP[ComputeSnapshot<br/>idempotent and receipted]
   end
 
   subgraph CUSTODY[Custody Boundary]
-    WE[Wallet Executor\n(canonical custody)]
-    RAILS[(LN / Onchain / FX / Optional Solver Rails)]
+    WE[Wallet Executor<br/>canonical custody]
+    RAILS[(LN Onchain FX Optional Solver Rails)]
   end
 
-  subgraph ANCHOR[Optional Anchoring (Privacy-Preserving)]
-    ANC[Anchor Service\n(publish hashes only)]
-    CHAIN[(Neutral Public Ledger\n(optional))]
+  subgraph ANCHOR[Optional Anchoring Privacy Preserving]
+    ANC[Anchor Service<br/>publish hashes only]
+    CHAIN[(Neutral Public Ledger<br/>optional)]
   end
 
-  %% -----------------------------
-  %% FLOWS
-  %% -----------------------------
-
-  %% Authority requests
-  AP -->|Authenticated HTTP\n(idempotency_key + policy_bundle_id + trace)| TR
+  AP -->|Authenticated HTTP| TR
   MP -->|Authenticated HTTP| TR
   VUI -->|Authenticated HTTP| TR
   UWI -->|Authenticated HTTP| TR
-  LPU -->|Authenticated HTTP (optional)| TR
+  LPU -->|Authenticated HTTP optional| TR
 
-  TR -->|Policy-bounded commands| K
+  TR -->|Policy bounded commands| K
+  SIG -->|Threshold approval| K
 
-  %% Signer set for high-impact actions
-  SIG -->|Threshold approval\n(high-impact treasury actions)| K
-
-  %% Kernel to modules
   K --> SE
   K --> CE
   K --> ABP
@@ -134,12 +116,10 @@ flowchart LR
   K --> SI
   K --> RI
 
-  %% Custody
   SE --> WE
   FX --> WE
   WE --> RAILS
 
-  %% Canonical substrate
   K --> RS
   K --> EV
   K --> PB
@@ -148,26 +128,22 @@ flowchart LR
   K --> OR
   K --> EXP
 
-  %% Snapshots
   SCH --> SNAP
   RS --> SNAP
   SNAP --> SS
 
-  %% Public / restricted publication (subscription-driven)
   SS --> STATS
   OR --> OUTREG
   SS --> SAFEF
   EXP --> AUDITDL
 
-  %% Projection/coordination only (non-authoritative)
-  K -. progress + coordination only .-> WS
-  AP <-->|subscriptions / progress| WS
-  MP <-->|subscriptions / progress| WS
-  VUI <-->|subscriptions / progress| WS
+  K -. projection only .-> WS
+  AP <-->|progress only| WS
+  MP <-->|progress only| WS
+  VUI <-->|progress only| WS
 
-  %% Optional anchoring
-  SS -. snapshot_hash / merkle roots only .-> ANC
-  RS -. receipt merkle roots only .-> ANC
+  SS -. hashes only .-> ANC
+  RS -. hashes only .-> ANC
   ANC --> CHAIN
 ```
 
@@ -296,52 +272,42 @@ This diagram is the “what happened / why / evidence” graph your spec require
 
 ```mermaid
 flowchart TB
-  %% Core objects
-  WU[WorkUnit\n(category, tfb, severity, B)] --> CT[Contract\n(terms hash)]
-  CT --> SUB[Submission\n(outputs + evidence + provenance ref)]
+  WU[WorkUnit<br/>category tfb severity B] --> CT[Contract<br/>terms hash]
+  CT --> SUB[Submission<br/>outputs evidence provenance ref]
 
-  %% Evidence/provenance
-  SUB --> PBNDL[ProvenanceBundle\n(toolchain, model lineage,\nattestations, correlation groups)]
-  SUB --> EVD[Evidence Bundles\n(harness output, rubric,\nadjudication notes, drift proofs)]
+  SUB --> PBNDL[ProvenanceBundle<br/>toolchain lineage attestations correlation]
+  SUB --> EVD[Evidence Bundles<br/>harness rubric adjudication drift]
 
-  %% Verification
-  SUB --> VR[Verdict Receipt\n(achieved tier, Pgrade,\nIndependenceReport,\ncorrelation flags)]
+  SUB --> VR[Verdict Receipt<br/>tier Pgrade independence correlation]
   VR --> EVD
 
-  %% Settlement / bonds
-  CT --> INT[Intent/Envelope/Bond Intents]
-  INT --> SET[Settlement Receipt\n(PAID/WITHHELD/FAILED\n+ reason_code + proofs)]
-  INT --> BOND[Bond Receipts\n(reserve/draw/release)]
+  CT --> INT[Intent Envelope Bond intents]
+  INT --> SET[Settlement Receipt<br/>paid withheld failed<br/>reason_code proofs]
+  INT --> BOND[Bond Receipts<br/>reserve draw release]
 
-  %% Warranty / claims
-  VR --> WRY[Warranty Receipts\n(issued/active/expired)]
-  WRY --> CLM[Claim Receipts\n(open/review/resolution)]
-  CLM --> REM[Remedy Receipts\n(refund/damages/rework\n+ rollback/comp-action)]
+  VR --> WRY[Warranty Receipts<br/>issued active expired]
+  WRY --> CLM[Claim Receipts<br/>open review resolution]
+  CLM --> REM[Remedy Receipts<br/>refund damages rework<br/>rollback comp action]
   REM --> SET
   REM --> BOND
 
-  %% Monitoring / drift
-  CT --> DR[Drift Receipts\n(signal/alert/resolved)]
+  CT --> DR[Drift Receipts<br/>signal alert resolved]
   DR --> CLM
 
-  %% Incidents / ground truth / synthetic practice
-  CLM --> IRPT[IncidentReport / GroundTruthCase\n(taxonomy-coded)]
-  IRPT --> GTLINK[Required Linkage:\nreplay bundle digests\nverdict receipts\nsettlement receipts\npolicy bundle version]
-  IRPT --> SIM[SimulationScenario\n(derived, redacted package)]
-  SIM --> VCAP[Verifier Capacity\n(quals + performance)]
+  CLM --> IRPT[IncidentReport or GroundTruthCase<br/>taxonomy coded]
+  IRPT --> GTLINK[Required Linkage<br/>replay digests verdict receipts<br/>settlement receipts policy version]
+  IRPT --> SIM[SimulationScenario<br/>derived redacted package]
+  SIM --> VCAP[Verifier Capacity<br/>quals and performance]
 
-  %% Outcome registry / certification / identity
-  VR --> ORG[OutcomeRegistryEntry\n(aggregated + linkable)]
-  CT --> DISC[DisclosureBundleRef\n(risk/system card,\ncoverage/exclusions)]
-  CT --> POC[ProofOfCoverageRef\n(insurance/captive reserve)]
-  CT --> CERT[SafetyCertification Ref\n(issued/revoked receipts)]
+  VR --> ORG[OutcomeRegistryEntry<br/>aggregated linkable]
+  CT --> DISC[DisclosureBundleRef<br/>risk card coverage exclusions]
+  CT --> POC[ProofOfCoverageRef<br/>insurance captive reserve]
+  CT --> CERT[SafetyCertification Ref<br/>issued revoked receipts]
 
-  %% Snapshots and /stats
-  RS[(Receipt Stream)] --> SNAP[EconomySnapshot\n(sv, sv_effective,\nΔm_hat, XA_hat,\nloss ratio, auth/cert shares)]
-  SNAP --> STATS[/stats public\n(redacted)]
+  RS[(Receipt Stream)] --> SNAP[EconomySnapshot<br/>sv sv_effective Δm_hat XA_hat<br/>loss ratio auth cert shares]
+  SNAP --> STATS[stats public<br/>redacted]
 
-  %% Interop export
-  VR --> APKG[AuditPackage\n(versioned export schema\n+ redaction mode)]
+  VR --> APKG[AuditPackage<br/>versioned export schema<br/>redaction mode]
   SET --> APKG
   CLM --> APKG
   IRPT --> APKG
@@ -357,15 +323,13 @@ This expands beyond the base spec state machines to include: warranty, rollback,
 
 ```mermaid
 flowchart TB
-  %% Settlement
-  subgraph Settlement_4_1[Settlement]
+  subgraph Settlement_SM[Settlement]
     S_QUOTED[QUOTED] --> S_PAID[PAID]
     S_QUOTED --> S_WITHHELD[WITHHELD]
     S_QUOTED --> S_FAILED[FAILED]
   end
 
-  %% Envelope
-  subgraph Envelope_4_2[Credit Envelope]
+  subgraph Envelope_SM[Credit Envelope]
     E_INTENT[INTENT_CREATED] --> E_OFFERED[OFFERED]
     E_OFFERED --> E_ISSUED[ENVELOPE_ISSUED]
     E_ISSUED --> E_COMMITTED[COMMITTED]
@@ -374,8 +338,7 @@ flowchart TB
     E_COMMITTED --> E_REVOKED[REVOKED]
   end
 
-  %% Contract
-  subgraph Contract_4_3[Contract]
+  subgraph Contract_SM[Contract]
     C_CREATED[CREATED] --> C_FUNDED[FUNDED]
     C_FUNDED --> C_BONDED[BONDED]
     C_BONDED --> C_SUBMITTED[SUBMITTED]
@@ -387,11 +350,10 @@ flowchart TB
     C_SETTLED --> C_WARRANTY[WARRANTY_ACTIVE optional]
     C_SETTLED --> C_FINAL[FINALIZED]
     C_WARRANTY --> C_FINAL
-    C_CREATED --> C_CANCEL[CANCELLED policy-gated]
+    C_CREATED --> C_CANCEL[CANCELLED policy gated]
   end
 
-  %% Claims
-  subgraph Claims_4_4[Claims]
+  subgraph Claims_SM[Claims]
     CL_OPEN[OPEN] --> CL_REVIEW[UNDER_REVIEW]
     CL_REVIEW --> CL_APP[APPROVED]
     CL_REVIEW --> CL_DEN[DENIED]
@@ -402,8 +364,7 @@ flowchart TB
     CL_PAID --> CL_CLOSED
   end
 
-  %% Optional Solver/Cross-rail
-  subgraph Solver_4_6_Optional[Optional Solver / Cross-Rail]
+  subgraph Solver_SM[Optional Solver Cross Rail]
     X_INTENT[INTENT_CREATED] --> X_MATCH[MATCHED]
     X_MATCH --> X_INIT[INITIATED]
     X_INIT --> X_RED[REDEEMED]
@@ -421,8 +382,7 @@ flowchart TB
     W_CLAIMED --> W_CLOSED[CLOSED]
   end
 
-  %% Rollback / compensating actions
-  subgraph Remedy_SM[Rollback / Compensating Action]
+  subgraph Remedy_SM[Rollback Comp Action]
     R_PLANNED[PLANNED] --> R_INIT[INITIATED]
     R_INIT --> R_OK[EXECUTED]
     R_INIT --> R_BAD[FAILED]
@@ -430,8 +390,7 @@ flowchart TB
     R_BAD --> R_DONE
   end
 
-  %% Monitoring / drift
-  subgraph Drift_SM[Monitoring / Drift]
+  subgraph Drift_SM[Monitoring Drift]
     D_BASE[BASELINE] --> D_MON[MONITORING]
     D_MON --> D_ALERT[ALERT_RAISED]
     D_ALERT --> D_ACK[ACKNOWLEDGED]
@@ -439,8 +398,7 @@ flowchart TB
     D_RES --> D_MON
   end
 
-  %% Incidents / ground truth
-  subgraph Incident_SM[Incident / GroundTruth]
+  subgraph Incident_SM[Incident GroundTruth]
     I_OPEN[OPEN] --> I_TRIAGE[TRIAGED]
     I_TRIAGE --> I_CONF[CONFIRMED]
     I_CONF --> I_ROOT[ROOT_CAUSED]
@@ -449,14 +407,12 @@ flowchart TB
     I_SCEN --> I_CLOSED[CLOSED]
   end
 
-  %% Snapshot compute
   subgraph Snapshot_SM[EconomySnapshot Compute]
     N_SCHED[SCHEDULED] --> N_COMP[COMPUTED]
     N_COMP --> N_PUB[PUBLISHED]
-    N_COMP --> N_WITHH[WITHHELD (input missing)]
+    N_COMP --> N_WITHH[WITHHELD_INPUT_MISSING]
   end
 
-  %% Certification
   subgraph Cert_SM[Safety Certification]
     C_REQ[REQUESTED] --> C_REVIEW[EVIDENCE_REVIEW]
     C_REVIEW --> C_ISS[ISSUED]
@@ -474,30 +430,24 @@ This is the core “governor” loop, extended to include: identity/cert/coverag
 
 ```mermaid
 flowchart TD
-  %% Inputs
-  R[(Canonical Receipt Stream\n(append-only, hash-stable))] --> SNAP[Compute EconomySnapshot\n(as_of_ms UTC minute boundary)\n(idempotent + receipted)]
-  P[(Signed Pool Snapshots\n(LP mode optional))] --> SNAP
+  R[(Receipt Stream canonical append only)] --> SNAP[Compute EconomySnapshot<br/>UTC minute boundary<br/>idempotent and receipted]
+  P[(Signed Pool Snapshots LP mode optional)] --> SNAP
 
-  %% Snapshot outputs
-  SNAP --> M[Metrics (table-first)\nsv, sv_effective/rho_effective\nΔm_hat, XA_hat\ncorrelated share\nloss ratio / claims rate\nincident rate (taxonomy)\ndrift alerts\nauth assurance distribution\ncertified/covered share\ncapital coverage ratios]
+  SNAP --> M[Metrics table first<br/>sv sv_effective rho_effective<br/>Δm_hat XA_hat<br/>correlated share<br/>loss ratio claims rate<br/>incident rate taxonomy<br/>drift alerts<br/>auth distribution<br/>cert and coverage share<br/>capital coverage ratios]
 
-  %% Deterministic policy eval
-  M --> POL[Deterministic PolicyBundle Evaluation\n(category×tfb×severity precedence)\n+ deterministic tie-break\n+ record rule ids]
-  POL --> ACT[Deterministic Action Order\n1 autonomy mode\n2 raise tier / require human step\n3 raise provenance / attestations\n4 tighten/halt envelopes\n5 disable/cap warranty\n6 require identity/cert/coverage gates]
+  M --> POL[PolicyBundle evaluation deterministic<br/>category tfb severity precedence<br/>deterministic tie break<br/>record rule ids]
+  POL --> ACT[Deterministic action order<br/>1 autonomy mode<br/>2 raise tier require human step<br/>3 raise provenance require attestations<br/>4 tighten or halt envelopes<br/>5 disable or cap warranty<br/>6 require identity cert coverage gates]
 
-  %% Authority decisions
-  ACT --> DEC[Authority Decisions\nALLOW / WITHHOLD / FAIL\nTyped reason_code\nBind snapshot_id/hash\nRecord identity/cert/coverage gates]
+  ACT --> DEC[Authority decisions<br/>allow withhold fail<br/>typed reason_code<br/>bind snapshot_id and snapshot_hash]
   DEC --> R
 
-  %% Publication
-  SNAP --> PUB[/stats public snapshot\n(redacted, cached)]
-  SNAP --> RESTR[Restricted Safety Signals Feed\n(policy-gated)]
-  R --> AUD[AuditPackage Export\n(versioned + redaction mode)]
+  SNAP --> PUB[stats public snapshot<br/>redacted cached]
+  SNAP --> RESTR[Restricted safety signals feed<br/>policy gated]
+  R --> AUD[AuditPackage export<br/>versioned redaction mode]
   AUD --> RESTR
 
-  %% Optional anchoring
-  SNAP -. snapshot_hash only .-> ANC[Optional Anchoring Receipt]
-  R -. receipt merkle root only .-> ANC
+  SNAP -. hashes only .-> ANC[Optional anchoring receipt]
+  R -. hashes only .-> ANC
 ```
 
 ---
@@ -508,47 +458,43 @@ This diagram makes explicit the “insurance boundary” and certification gates
 
 ```mermaid
 flowchart LR
-  %% Actors
   subgraph Actors
-    BUY[Buyer/Operator]
-    WRK[Worker/Provider]
-    VER[Verifier/Adjudicator]
-    UW[Underwriter/Insurer (optional)]
-    AUDR[Auditor (optional)]
-    ISS[Credential/Cert Issuers\n(optional external)]
+    BUY[Buyer Operator]
+    WRK[Worker Provider]
+    VER[Verifier Adjudicator]
+    UW[Underwriter Insurer optional]
+    AUDR[Auditor optional]
+    ISS[Credential and cert issuers<br/>optional external]
   end
 
   subgraph Kernel
-    POL[PolicyBundle\n(identity/cert/coverage gates)]
-    CT[Contract Creation\n(precondition checks)]
-    LE[Liability Engine\n(premiums/claims)]
-    IR[Incident/GroundTruth\n(taxonomy + linkage)]
-    OR[Outcome Registry\n(aggregated entries)]
-    SF[Safety Signals\n(public + restricted)]
-    EXP[AuditPackage Export\n(versioned + redaction)]
+    POL[PolicyBundle gates<br/>identity cert coverage]
+    CT[Contract creation<br/>precondition checks]
+    LE[Liability engine<br/>premiums claims]
+    IR[Incident and groundtruth<br/>taxonomy and linkage]
+    OR[Outcome registry<br/>aggregated entries]
+    SF[Safety signals<br/>public and restricted]
+    EXP[AuditPackage export<br/>versioned redaction]
   end
 
-  %% Preconditions / gates
-  WRK -->|Credential proofs| ISS
-  VER -->|Credential proofs| ISS
-  UW -->|Coverage evidence| ISS
+  WRK -->|credential proofs| ISS
+  VER -->|credential proofs| ISS
+  UW -->|coverage evidence| ISS
 
   BUY --> CT
   CT --> POL
 
-  POL -->|require disclosure| DISC[DisclosureBundleRef\n(risk/system card,\ncoverage/exclusions)]
-  POL -->|require proof-of-coverage| POC[ProofOfCoverageRef\n(insurance/captive reserve)]
-  POL -->|require certification| CERT[SafetyCertification\n(issued/revoked receipts)]
-  POL -->|require identity assurance| IDG[AuthAssuranceLevel\n(personhood/org-vetted/etc.)]
+  POL -->|require disclosure| DISC[DisclosureBundleRef<br/>risk card coverage exclusions]
+  POL -->|require proof of coverage| POC[ProofOfCoverageRef<br/>insurance captive reserve]
+  POL -->|require certification| CERT[SafetyCertification<br/>issued revoked receipts]
+  POL -->|require identity assurance| IDG[AuthAssuranceLevel<br/>personhood org vetted etc]
 
-  %% Outcomes and actuarial substrate
   CT --> LE
-  LE -->|claims/remedies| IR
+  LE -->|claims and remedies| IR
   IR --> OR
   IR --> SF
   OR --> SF
 
-  %% Export / interop
   IR --> EXP
   OR --> EXP
   CERT --> EXP
@@ -566,23 +512,22 @@ This extends your proto plan with the minimal additional packages required by th
 
 ```mermaid
 flowchart LR
-  COMMON[common/v1/common.proto\n(trace, money, receipts,\nprovenance, identity hints)]
-  OUT[aegis/outcomes/v1/outcomes_work.proto\n(work/contract/verdict/claims)]
-  INC[aegis/incidents/v1/incidents.proto\n(incident, near-miss,\nground truth, taxonomy)]
-  POL[policy/v1/policy_bundle.proto\n(tiers/provenance/autonomy\n+ identity/cert/coverage gates)]
-  SNAP[economy/v1/economy_snapshot.proto\n(sv_effective, xa_hat,\ndrift/incident/loss/auth/cert stats)]
+  COMMON[common/v1/common.proto<br/>trace money receipts<br/>provenance identity hints]
+  OUT[aegis/outcomes/v1/outcomes_work.proto<br/>work contract verdict claims]
+  INC[aegis/incidents/v1/incidents.proto<br/>incident near miss<br/>ground truth taxonomy]
+  POL[policy/v1/policy_bundle.proto<br/>tiers provenance autonomy<br/>identity cert coverage gates]
+  SNAP[economy/v1/economy_snapshot.proto<br/>sv_effective xa_hat<br/>drift incident loss auth cert stats]
   HYDRA[hydra/v1/abp_bonds.proto]
 
-  ID[identity/v1/identity.proto\n(assurance levels,\ncredential refs)]
-  CERT[compliance/v1/certification.proto\n(issue/revoke receipts)]
-  SAFE[safety/v1/safety_signals.proto\n(public aggregates + restricted feed)]
-  AUD[audit/v1/audit_package.proto\n(versioned export + redaction)]
-  REG[registry/v1/outcome_registry.proto\n(linkable entries)]
-  MON[monitoring/v1/drift.proto\n(drift receipts + detectors)]
-  DISC[interop/v1/disclosure.proto\n(disclosure bundle,\nproof-of-coverage refs)]
-  RBK[remedy/v1/rollback.proto\n(rollback/comp-action receipts)]
+  ID[identity/v1/identity.proto<br/>assurance levels<br/>credential refs]
+  CERT[compliance/v1/certification.proto<br/>issue revoke receipts]
+  SAFE[safety/v1/safety_signals.proto<br/>public aggregates<br/>restricted feed]
+  AUD[audit/v1/audit_package.proto<br/>versioned export<br/>redaction]
+  REG[registry/v1/outcome_registry.proto<br/>linkable entries]
+  MON[monitoring/v1/drift.proto<br/>drift receipts detectors]
+  DISC[interop/v1/disclosure.proto<br/>disclosure bundle<br/>proof of coverage refs]
+  RBK[remedy/v1/rollback.proto<br/>rollback and comp action receipts]
 
-  %% Dependencies
   COMMON --> OUT
   COMMON --> INC
   COMMON --> POL
