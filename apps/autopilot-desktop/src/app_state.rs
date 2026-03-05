@@ -4141,6 +4141,50 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct DeterministicRelayFixture {
+        targeted_ingress: std::collections::BTreeMap<String, std::collections::VecDeque<String>>,
+        feedback_event_ids: Vec<String>,
+        result_event_ids: Vec<String>,
+    }
+
+    impl DeterministicRelayFixture {
+        fn queue_targeted_request(&mut self, request_id: &str, target_pubkey: &str) {
+            self.targeted_ingress
+                .entry(target_pubkey.to_string())
+                .or_default()
+                .push_back(request_id.to_string());
+        }
+
+        fn take_next_for(&mut self, target_pubkey: &str) -> Option<String> {
+            self.targeted_ingress
+                .get_mut(target_pubkey)
+                .and_then(std::collections::VecDeque::pop_front)
+        }
+
+        fn publish_feedback(
+            &mut self,
+            request_id: &str,
+            from_pubkey: &str,
+            to_pubkey: &str,
+        ) -> String {
+            let event_id = format!("feedback:{request_id}:{from_pubkey}:{to_pubkey}");
+            self.feedback_event_ids.push(event_id.clone());
+            event_id
+        }
+
+        fn publish_result(
+            &mut self,
+            request_id: &str,
+            from_pubkey: &str,
+            to_pubkey: &str,
+        ) -> String {
+            let event_id = format!("result:{request_id}:{from_pubkey}:{to_pubkey}");
+            self.result_event_ids.push(event_id.clone());
+            event_id
+        }
+    }
+
     fn fixture_activity_event(
         event_id: &str,
         domain: ActivityEventDomain,
@@ -4989,6 +5033,224 @@ mod tests {
         assert_eq!(score.load_state, super::PaneLoadState::Ready);
         assert!(score.sats_today >= 50);
         assert_eq!(score.jobs_today, 1);
+    }
+
+    #[test]
+    fn reciprocal_loop_two_identity_relay_harness_runs_bidirectional_paid_cycles() {
+        let pubkey_a = "11".repeat(32);
+        let pubkey_b = "22".repeat(32);
+
+        let mut loop_a = ReciprocalLoopState::default();
+        loop_a.set_local_pubkey(Some(pubkey_a.as_str()));
+        loop_a.set_peer_pubkey(Some(pubkey_b.as_str()));
+        loop_a.start().expect("loop A should start");
+
+        let mut loop_b = ReciprocalLoopState::default();
+        loop_b.set_local_pubkey(Some(pubkey_b.as_str()));
+        loop_b.set_peer_pubkey(Some(pubkey_a.as_str()));
+        loop_b.start().expect("loop B should start");
+
+        let mut relay = DeterministicRelayFixture::default();
+        let mut submitted_a = Vec::<SubmittedNetworkRequest>::new();
+        let mut submitted_b = Vec::<SubmittedNetworkRequest>::new();
+        let mut history_a = Vec::<super::JobHistoryReceiptRow>::new();
+        let mut history_b = Vec::<super::JobHistoryReceiptRow>::new();
+        let mut request_routes = Vec::<(String, char)>::new();
+        let cycles = 4u64;
+        let mut now_epoch_seconds = 1_762_900_000u64;
+
+        for cycle in 0..cycles {
+            let a_ready = loop_a.ready_to_dispatch();
+            let b_ready = loop_b.ready_to_dispatch();
+            assert_ne!(
+                a_ready, b_ready,
+                "exactly one loop side must be dispatch-ready per cycle"
+            );
+
+            if a_ready {
+                let request_id = format!("req-a-to-b-{:02}", cycle + 1);
+                request_routes.push((request_id.clone(), 'a'));
+                loop_a.register_outbound_dispatch(request_id.as_str(), now_epoch_seconds);
+                relay.queue_targeted_request(request_id.as_str(), pubkey_b.as_str());
+                assert_eq!(
+                    relay.take_next_for(pubkey_b.as_str()).as_deref(),
+                    Some(request_id.as_str())
+                );
+                assert!(
+                    relay.take_next_for(pubkey_a.as_str()).is_none(),
+                    "targeted relay ingestion should not deliver sender's own request"
+                );
+
+                let mut outbound = fixture_loop_submitted_request(
+                    request_id.as_str(),
+                    NetworkRequestStatus::Paid,
+                    pubkey_b.as_str(),
+                    loop_a.skill_scope_id.as_str(),
+                );
+                outbound.last_payment_pointer = Some(format!("wallet:pay:{request_id}"));
+                submitted_a.push(outbound);
+                assert!(
+                    loop_a.reconcile_outbound_terminal_statuses(submitted_a.as_slice()),
+                    "outbound paid status should reconcile once for A->B cycle"
+                );
+
+                let job_id = format!("job-{request_id}");
+                let mut inbound = fixture_history_row(
+                    job_id.as_str(),
+                    JobHistoryStatus::Succeeded,
+                    now_epoch_seconds,
+                    10,
+                );
+                inbound.skill_scope_id = Some(loop_b.skill_scope_id.clone());
+                inbound.payment_pointer = format!("wallet:recv:{request_id}");
+                history_b.push(inbound);
+                assert!(
+                    loop_b.reconcile_inbound_history(history_b.as_slice()),
+                    "inbound paid receipt should reconcile once for A->B cycle"
+                );
+
+                let feedback = relay.publish_feedback(
+                    request_id.as_str(),
+                    pubkey_b.as_str(),
+                    pubkey_a.as_str(),
+                );
+                let result =
+                    relay.publish_result(request_id.as_str(), pubkey_b.as_str(), pubkey_a.as_str());
+                assert!(feedback.contains(request_id.as_str()));
+                assert!(result.contains(request_id.as_str()));
+            } else {
+                let request_id = format!("req-b-to-a-{:02}", cycle + 1);
+                request_routes.push((request_id.clone(), 'b'));
+                loop_b.register_outbound_dispatch(request_id.as_str(), now_epoch_seconds);
+                relay.queue_targeted_request(request_id.as_str(), pubkey_a.as_str());
+                assert_eq!(
+                    relay.take_next_for(pubkey_a.as_str()).as_deref(),
+                    Some(request_id.as_str())
+                );
+                assert!(
+                    relay.take_next_for(pubkey_b.as_str()).is_none(),
+                    "targeted relay ingestion should not deliver sender's own request"
+                );
+
+                let mut outbound = fixture_loop_submitted_request(
+                    request_id.as_str(),
+                    NetworkRequestStatus::Paid,
+                    pubkey_a.as_str(),
+                    loop_b.skill_scope_id.as_str(),
+                );
+                outbound.last_payment_pointer = Some(format!("wallet:pay:{request_id}"));
+                submitted_b.push(outbound);
+                assert!(
+                    loop_b.reconcile_outbound_terminal_statuses(submitted_b.as_slice()),
+                    "outbound paid status should reconcile once for B->A cycle"
+                );
+
+                let job_id = format!("job-{request_id}");
+                let mut inbound = fixture_history_row(
+                    job_id.as_str(),
+                    JobHistoryStatus::Succeeded,
+                    now_epoch_seconds,
+                    10,
+                );
+                inbound.skill_scope_id = Some(loop_a.skill_scope_id.clone());
+                inbound.payment_pointer = format!("wallet:recv:{request_id}");
+                history_a.push(inbound);
+                assert!(
+                    loop_a.reconcile_inbound_history(history_a.as_slice()),
+                    "inbound paid receipt should reconcile once for B->A cycle"
+                );
+
+                let feedback = relay.publish_feedback(
+                    request_id.as_str(),
+                    pubkey_a.as_str(),
+                    pubkey_b.as_str(),
+                );
+                let result =
+                    relay.publish_result(request_id.as_str(), pubkey_a.as_str(), pubkey_b.as_str());
+                assert!(feedback.contains(request_id.as_str()));
+                assert!(result.contains(request_id.as_str()));
+            }
+            now_epoch_seconds = now_epoch_seconds.saturating_add(1);
+        }
+
+        assert_eq!(relay.feedback_event_ids.len() as u64, cycles);
+        assert_eq!(relay.result_event_ids.len() as u64, cycles);
+        assert_eq!(loop_a.local_to_peer_paid, 2);
+        assert_eq!(loop_a.peer_to_local_paid, 2);
+        assert_eq!(loop_b.local_to_peer_paid, 2);
+        assert_eq!(loop_b.peer_to_local_paid, 2);
+        assert_eq!(loop_a.sats_sent, 20);
+        assert_eq!(loop_a.sats_received, 20);
+        assert_eq!(loop_b.sats_sent, 20);
+        assert_eq!(loop_b.sats_received, 20);
+
+        for (request_id, sender) in request_routes {
+            match sender {
+                'a' => {
+                    let outbound = submitted_a
+                        .iter()
+                        .find(|request| request.request_id == request_id)
+                        .expect("A outbound request should be tracked");
+                    assert_eq!(outbound.status, NetworkRequestStatus::Paid);
+                    assert!(
+                        outbound
+                            .last_payment_pointer
+                            .as_deref()
+                            .is_some_and(|pointer| pointer.starts_with("wallet:pay:")),
+                        "A outbound payment must be wallet-authoritative"
+                    );
+                    let inbound = history_b
+                        .iter()
+                        .find(|row| row.job_id == format!("job-{request_id}"))
+                        .expect("B inbound history row should correlate to outbound request");
+                    assert_eq!(inbound.status, JobHistoryStatus::Succeeded);
+                    assert!(
+                        inbound.payment_pointer.starts_with("wallet:recv:"),
+                        "B inbound payout pointer must be wallet-authoritative"
+                    );
+                }
+                'b' => {
+                    let outbound = submitted_b
+                        .iter()
+                        .find(|request| request.request_id == request_id)
+                        .expect("B outbound request should be tracked");
+                    assert_eq!(outbound.status, NetworkRequestStatus::Paid);
+                    assert!(
+                        outbound
+                            .last_payment_pointer
+                            .as_deref()
+                            .is_some_and(|pointer| pointer.starts_with("wallet:pay:")),
+                        "B outbound payment must be wallet-authoritative"
+                    );
+                    let inbound = history_a
+                        .iter()
+                        .find(|row| row.job_id == format!("job-{request_id}"))
+                        .expect("A inbound history row should correlate to outbound request");
+                    assert_eq!(inbound.status, JobHistoryStatus::Succeeded);
+                    assert!(
+                        inbound.payment_pointer.starts_with("wallet:recv:"),
+                        "A inbound payout pointer must be wallet-authoritative"
+                    );
+                }
+                _ => panic!("unexpected sender tag"),
+            }
+        }
+
+        let dispatches_before_stop = loop_a.local_to_peer_dispatched;
+        loop_a.stop("operator stop test");
+        assert!(loop_a.kill_switch_active);
+        assert!(!loop_a.ready_to_dispatch());
+        if loop_a.ready_to_dispatch() {
+            loop_a.register_outbound_dispatch("req-after-stop", now_epoch_seconds);
+        }
+        assert_eq!(
+            loop_a.local_to_peer_dispatched, dispatches_before_stop,
+            "stop should halt post-stop dispatches"
+        );
+        loop_a
+            .start()
+            .expect("loop should restart after explicit operator start");
+        assert!(!loop_a.kill_switch_active);
     }
 
     #[test]
