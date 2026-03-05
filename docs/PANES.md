@@ -39,6 +39,7 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
 - `Go Online`
   - Provider mode toggle pane with explicit state machine (`offline`, `connecting`, `online`, `degraded`) and preflight blockers.
   - `providers_online` is sourced from Spacetime presence snapshots (`spacetime.presence:*` source tags) with identity-cardinality semantics from ADR-0002.
+  - Online mode never auto-restores on launch in MVP; each app session requires a fresh explicit click before work intake begins.
   - Action: toggle online/offline.
 - `Provider Status`
   - Runtime status pane for heartbeat freshness, uptime, queue depth, and dependency state.
@@ -46,6 +47,11 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Action: read-only operational visibility.
 - `Relay Connections`
   - Configured relay list with per-relay state (`connected`, `connecting`, `disconnected`, `error`), latency, last-seen, and last-error fields derived from provider-lane transport snapshots.
+  - The default configuration should preinstall the OpenAgents-hosted Nexus as the primary relay, with a curated default public relay set visible and manageable alongside it.
+  - Provider-mode NIP-90 intake should span the full configured reachable relay set and deduplicate repeated requests across relays; it is not restricted to Nexus-originated jobs.
+  - Provider capability, feedback, and result events should fan out to every healthy configured relay by default; relay publish is best-effort and partial failures must remain visible.
+  - The initial default public relay set should be chosen from relays where OpenAgents observes moderate-to-high recent NIP-90 job volume.
+  - User-run Nexus deployments are assumed to be public/open relays by default. Closed/private relay posture is a future configuration path, not near-term product scope.
   - Inputs/actions: add relay (`wss://` validation), select row, retry selected, remove selected.
   - Retry is a reconnect attempt (`connecting`) only; connected state is set by relay transport health, not pane-local simulation.
   - Explicit pane state machine: `loading`, `ready`, `error`.
@@ -57,11 +63,17 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
 - `Network Requests`
   - Buyer-side request composer for network submission.
   - Inputs: request type, payload, budget sats, timeout seconds (validated before submit).
+  - MVP OpenAgents-posted public jobs should default to `race` resolution mode; future `windowed` mode can be added later for quality-sensitive jobs.
   - Output: submitted request rows with request id and response stream linkage.
   - Explicit pane state machine: `loading`, `ready`, `error`.
 - `Starter Jobs`
-  - Seed-demand queue focused on first-earnings path, explicitly separated from open-network job intake.
+  - Secondary detail/debug pane for seed-demand metadata; starter jobs still appear in the normal `Job Inbox`, `Active Job`, and `Job History` surfaces with a visible source marker and are not separated from the main earn flow.
+  - Initially this pane is populated only when connected to the OpenAgents-hosted Nexus; connecting through a third-party Nexus does not qualify for OpenAgents starter jobs.
+  - Eligibility is determined by starter-demand policy; initial OpenAgents starter jobs target Autopilot users only.
+  - Eligibility should come from OpenAgents-hosted-Nexus proof where available, not solely from a user-supplied Nostr client tag.
+  - Stronger anti-spoofing attestation is roadmap hardening, not an MVP prerequisite for this pane.
   - Shows eligibility and payout sats per starter job.
+  - Shows assignment lease state, aggressive start-confirm timer, and reassignment timer for hosted starter jobs when available.
   - Tracks completion with payout pointer linkage for wallet/history visibility.
   - Includes explicit dispatch safety controls: sats budget cap telemetry, inflight cap telemetry, and immediate kill-switch toggle.
   - Explicit pane state machine: `loading`, `ready`, `error`.
@@ -77,7 +89,7 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Actions: run selected recovery, acknowledge selected alert, resolve selected alert.
   - Explicit pane state machine: `loading`, `ready`, `error`.
 - `Settings`
-  - MVP settings for relay URL, wallet send-default sats, and provider queue-depth default.
+  - MVP settings for primary Nexus/relay URL, backup relay set, wallet send-default sats, and provider queue-depth default (`1` active job initially).
   - Includes schema/version and identity path visibility.
   - Validation blocks invalid relay URL prefixes and impossible numeric ranges before save.
   - Save flow persists schema-backed settings and explicitly flags reconnect-required changes.
@@ -89,8 +101,9 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Actions: refresh metrics and stale-state visibility.
 - `Job Inbox`
   - Deterministic intake pane for incoming NIP-90 requests with stable request IDs and replay-safe ordering.
-  - Shows requester, capability, demand source (`open-network` vs `starter-demand`), price, ttl, validation state, and decision state per request.
-  - Actions: select request, accept selected (with reason), reject selected (with reason).
+  - Shows requester, capability, demand source (`open-network` vs `starter-demand`) with a visible source badge or star, price, ttl, validation state, and decision state per request.
+  - Auto-accept is the default provider policy for matching jobs while online.
+  - Actions: select request, view why it auto-accepted/rejected, and apply manual accept/reject override only for debug, hold, or policy-tuning cases.
 - `Active Job`
   - In-flight job lifecycle pane for one selected job (`received -> accepted -> running -> delivered -> paid`).
   - Source badge is lifecycle projection stream id (`stream.earn_job_lifecycle_projection.v1`), non-authoritative for settlement.
@@ -100,7 +113,7 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Deterministic receipt/history pane for completed/failed jobs with immutable metadata.
   - Source badge is lifecycle projection stream id (`stream.earn_job_lifecycle_projection.v1`), while wallet reconciliation remains payout truth.
   - Includes status/time filters, job-id search, and pagination.
-  - Row model includes `job_id`, `status`, `demand source`, `completed timestamp`, `result hash`, and `payment pointer`.
+  - Row model includes `job_id`, `status`, `demand source` with visible marker, `completed timestamp`, `result hash`, `payment pointer`, and unpaid/lost-race reason when present.
 - `Agent Profile and State`
   - SA profile/state/goals pane for `39200`, `39201`, and `39203` event visibility.
   - Actions: publish profile, publish encrypted state, update goals snapshot.
@@ -141,6 +154,7 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Actions: regenerate keys, reveal/hide secrets, copy `nsec`.
 - `Spark Lightning Wallet`
   - Shows wallet connectivity, balances, addresses, invoice creation, payment sending, and recent payment status.
+  - All provider earnings settle into this wallet first in MVP; external wallet usage happens through withdraw/pay-invoice flow rather than payout routing configuration.
   - Explicit pane state machine: `loading` (awaiting first refresh), `ready`, `error`.
   - Actions: refresh wallet, generate receive addresses, copy Spark address, create invoice, send payment.
 - `Create Lightning Invoice`
@@ -151,6 +165,7 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
 - `Pay Lightning Invoice`
   - Dedicated payment pane for paying a Lightning invoice/payment request.
   - Inputs: payment request (required), send sats (optional).
+  - Available regardless of provider online/offline state; withdraw does not require leaving earn mode first.
   - Explicit pane state machine: `loading`, `ready`, `error`.
   - Action: pay invoice (`Enter` submit and button submit are equivalent).
 

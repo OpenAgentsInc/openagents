@@ -46,7 +46,7 @@ Autopilot Earn is a provider marketplace with multiple revenue lanes:
 1. **Compute provider** (this MVP): execute paid NIP-90 jobs.
 2. **Liquidity solver** (future Hydra lane): fill liquidity intents using capital + execution and earn fees/spreads.
 
-`Go Online` should continue to mean "I'm available to earn," but this MVP binds that to compute only. Liquidity solver mode must remain an explicit future opt-in and never activate automatically.
+`Go Online` should continue to mean "I'm available to earn," but this MVP binds that to compute only. Liquidity solver mode must remain an explicit future opt-in and never activate automatically. Provider online state should also require a fresh explicit click each app session; MVP should not auto-restore online mode on launch.
 
 Earn roadmap note: future liquidity solver earnings run through an OpenAgents-native solver market under Hydra, not third-party solver networks.
 
@@ -163,8 +163,8 @@ Responsibilities:
 
 - connect to relays, with the default OpenAgents-hosted Nexus as primary and a curated default public relay set as additional transport,
 - ingest and deduplicate NIP-90 requests from the full configured reachable relay set, not just the Nexus relay,
-- accept and execute supported jobs locally,
-- publish result/feedback events,
+- auto-accept matching jobs by default subject to policy/capacity and execute them locally,
+- publish capability, result, and feedback events to every healthy configured relay by default, using best-effort fanout rather than blocking on every relay ack,
 - settle payment to wallet,
 - render deterministic job/payment state.
 
@@ -173,6 +173,8 @@ Responsibilities:
 Purpose: bootstrap demand so first-run users reliably get a paid job.
 
 Initial deployment rule: this starter-demand loop runs on the OpenAgents-hosted Nexus only. A self-hosted Nexus should still participate in the open marketplace path and should be public/open by default. Closed/private Nexus modes can come later, but they are not near-term scope. A self-hosted Nexus should not be assumed to provide starter jobs unless that operator explicitly adds its own seed-demand service. The OpenAgents-hosted Nexus remains anon/open for general marketplace traffic, but OpenAgents starter jobs target Autopilot users only and are available only to providers connected to the OpenAgents-hosted Nexus itself.
+
+UI presentation rule: starter jobs should appear in the same normal provider job flow as any other job. In main earn surfaces they should be marked with a visible source indicator such as a badge, label, or star rather than split into a separate primary queue.
 
 Proof rule for starter-demand eligibility:
 
@@ -205,7 +207,7 @@ Use the in-repo NIP-90 model (`5000-5999` requests, `6000-6999` results, `7000` 
 Do not introduce custom `90/91/92/93` kinds for MVP.
 
 1. Buyer publishes job request (`kind: 5000-5999`, example `5050` or `5930`).
-2. Provider sees request and claims/starts work.
+2. Provider sees request and auto-accepts if policy and local capacity allow; otherwise it ignores or rejects.
 3. Provider emits feedback (`kind: 7000`) with `status=processing` (optional but recommended).
 4. Provider publishes result (`kind: request_kind + 1000`) with result payload.
 5. Buyer pays invoice.
@@ -217,6 +219,26 @@ Minimum tag expectations:
 - result: `e` (request id), `p` (customer), `amount` (+ `bolt11`), `status=success`
 - feedback: `status` (`processing`/`payment-required`/`success`/`error`)
 
+Contention model:
+
+- ordinary open-network NIP-90 jobs may be seen by many providers; MVP does not attempt a fake global lock across public relays,
+- providers should keep duplicate-work risk bounded with strict local admission controls (`max_inflight`, ttl freshness, minimum reward, per-buyer caps, cheap preflight); for MVP `max_inflight` means concurrent active jobs and should default to `1` until multi-job desktop execution is proven safe,
+- OpenAgents starter jobs should use a hosted-Nexus single-assignee lease with an aggressive start-confirm ttl (roughly `10-15s`) and reassignment on timeout, failed start, or lost heartbeat, while allowing a separate more forgiving execution window after work has clearly begun,
+- if OpenAgents later wants shared live visibility for those leases in Spacetime, that is a projection/coordination enhancement and should not be confused with current MVP authority.
+
+Buyer resolution modes:
+
+- `starter-lease`: OpenAgents starter jobs are not open race jobs. The OpenAgents-hosted Nexus assigns one provider at a time with a very short start-confirm lease and may reassign quickly if work does not begin. After start is confirmed, the provider gets a more forgiving execution window backed by heartbeat/lease renewal.
+- `race` (MVP default for public OpenAgents-posted jobs): first valid result wins, later duplicate results are unpaid. Use this for tiny deterministic jobs where verification is cheap and speed is an acceptable incentive. When the buyer can correlate slower or late duplicate results, it should emit explicit terminal unpaid feedback rather than silently doing nothing.
+- `windowed` (later): the job declares a submission window such as `5 minutes`; providers can submit during that window and the buyer evaluates after the deadline using an explicit policy. Use this when quality, diversity, or non-speed criteria matter more than raw latency.
+
+Important constraint:
+
+- a job poster can observe some partial coordination signals, such as `kind 7000` `processing` feedback, but cannot assume it has perfect visibility into all workers on all relays,
+- so open-market exclusivity should not be inferred from seeing one `processing` event,
+- and `windowed` mode should be treated as a buyer policy mode that tolerates concurrent work rather than trying to eliminate it.
+- for `race` mode, the preferred loser path is a terminal feedback event with an unpaid reason in `status_extra` (for example `lost-race` or `late-result-unpaid`) whenever the buyer can correlate the losing result.
+
 ## 7) Launch Job Types (Controlled By Buyer)
 
 | Job Type | Kind | Local task | Reward |
@@ -227,6 +249,8 @@ Minimum tag expectations:
 | 5s benchmark | `5930` | fixed compute loop for 5s | 20 sats |
 
 Start with deterministic jobs first (hash/json/benchmark), then add inference.
+
+Default buyer policy for those launch jobs is `race`. `windowed` evaluation is roadmap work for later job classes.
 
 ## 8) Seed Demand + Stress Strategy
 
@@ -290,6 +314,8 @@ MVP is ready when all are true:
 4. Increment is backed by real wallet receive evidence.
 5. User can withdraw from the built-in Spark wallet by paying an external Lightning invoice.
 6. Stats page reflects live economic activity.
+
+The user should be able to do that withdrawal while still online. Going offline is not a prerequisite for paying out from the built-in wallet.
 
 ## 13) Narrative Check (Launch Message)
 
@@ -395,13 +421,13 @@ Backroom review completed before this list. Relevant candidate restore sources i
     **Description:** Subscribe to configured request kind ranges (`5000-5999`) with stable filters, reconnect handling, and duplicate suppression.
 
 21. **Issue name:** `Job Admission and Capability Matching`  
-    **Description:** Evaluate request kind/params/cost/policy before accept, including buyer targeting rules such as preferring or requiring OpenAgents participants / Autopilot clients; expose deterministic reject reasons.
+    **Description:** Evaluate request kind/params/cost/policy before accept, auto-accept matching jobs by default when capacity allows, include buyer targeting rules such as preferring or requiring OpenAgents participants / Autopilot clients, and expose deterministic reject reasons.
 
 22. **Issue name:** `Starter Job Eligibility Proof`  
     **Description:** Enforce OpenAgents starter-job eligibility only for providers connected to the OpenAgents-hosted Nexus, using hosted-Nexus authenticated Autopilot session evidence and bound Nostr identity rather than optional Nostr client tags alone; defer stronger anti-spoofing attestation hardening to post-MVP follow-up.
 
 23. **Issue name:** `Feedback Event Pipeline (kind 7000)`  
-    **Description:** Publish `processing`, `payment-required`, `success`, and `error` feedback events with request linkage and timestamps.
+    **Description:** Publish `processing`, `payment-required`, `success`, and `error` feedback events with request linkage and timestamps, fanning out to every healthy configured relay by default without blocking job progression on universal relay success; include explicit terminal unpaid feedback for correlated losing/late `race` results when possible.
 
 24. **Issue name:** `Deterministic Job Executors (Hash/JSON/Benchmark)`  
     **Description:** Implement deterministic local executors for initial paid jobs with reproducible outputs and timing.
@@ -410,7 +436,7 @@ Backroom review completed before this list. Relevant candidate restore sources i
     **Description:** Add bounded local inference execution path for text-generation jobs with model/timeout controls.
 
 26. **Issue name:** `Result Publishing Pipeline (6000-6999)`  
-    **Description:** Publish NIP-90 result events with canonical `e/p/amount/status` tagging and payload integrity hashes.
+    **Description:** Publish NIP-90 result events with canonical `e/p/amount/status` tagging and payload integrity hashes, using broad healthy-relay fanout by default and surfacing partial publish failure states explicitly.
 
 27. **Issue name:** `Job Correlation Model (request-feedback-result-payment)`  
     **Description:** Enforce a single correlation key strategy across inbox, active job, history, and wallet reconciliation lanes.
@@ -453,7 +479,7 @@ Backroom review completed before this list. Relevant candidate restore sources i
 ### Seed Demand and Buyer Lane
 
 39. **Issue name:** `Seed Demand Buyer Service (MVP)`  
-    **Description:** Stand up minimal buyer loop service that posts paid NIP-90 jobs and settles provider invoices on cadence.
+    **Description:** Stand up minimal buyer loop service that posts paid NIP-90 jobs, assigns each starter job to a single eligible provider using a short-lived hosted-Nexus lease with aggressive start-confirm timeout and more forgiving execution lease semantics, and settles provider invoices on cadence.
 
 40. **Issue name:** `Seed Job Templates and Pricing Matrix`  
     **Description:** Define controlled starter job templates (hash/json/benchmark/inference) and sats pricing used by buyer loop.
@@ -462,13 +488,13 @@ Backroom review completed before this list. Relevant candidate restore sources i
     **Description:** Add configurable sats pool, spend limits, and immediate disable controls for safe launch operations.
 
 42. **Issue name:** `Starter vs Open-Network Labeling`  
-    **Description:** Label and track starter jobs distinctly from open-network demand in UI, metrics, and operator reports, including that OpenAgents starter jobs target Autopilot users only.
+    **Description:** Label and track starter jobs distinctly from open-network demand in UI, metrics, and operator reports, while keeping them in the normal job flow with a visible badge/marker rather than a separate primary user queue; include that OpenAgents starter jobs target Autopilot users only.
 
 43. **Issue name:** `First-Earnings SLA Monitor`  
     **Description:** Measure and alert on time-to-first-paid-job for newly online providers.
 
 44. **Issue name:** `Seed Demand Reliability Backpressure`  
-    **Description:** Add dispatch backpressure controls based on provider availability, payout success, and queue latency.
+    **Description:** Add dispatch backpressure controls based on provider availability, payout success, queue latency, aggressive starter-job start-confirm timeout health, and execution-lease reassignment health.
 
 45. **Issue name:** `Starter Jobs Availability Gating By Nexus`  
     **Description:** Make it explicit in UI and runtime that OpenAgents starter jobs are available only when connected to the OpenAgents-hosted Nexus, not through a third-party Nexus bridge, and that third-party operators must run their own seed-demand service if they want equivalent starter jobs.
