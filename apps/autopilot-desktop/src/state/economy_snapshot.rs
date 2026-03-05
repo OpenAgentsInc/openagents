@@ -21,6 +21,8 @@ const DRIFT_THRESHOLD_PAYOUT_SUCCESS_MIN: f64 = 0.80;
 const DRIFT_THRESHOLD_DISPUTE_CLAIM_SHARE_MAX: f64 = 0.08;
 const DRIFT_THRESHOLD_INCIDENT_SHARE_MAX: f64 = 0.05;
 const DRIFT_THRESHOLD_XA_MAX: f64 = 0.25;
+const REASON_CODE_DIGITAL_BORDER_BLOCK_UNCERTIFIED: &str = "DIGITAL_BORDER_BLOCK_UNCERTIFIED";
+const REASON_CODE_CERTIFICATION_REQUIRED: &str = "CERTIFICATION_REQUIRED";
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Ord, PartialOrd)]
 pub struct MetricKey {
@@ -66,6 +68,18 @@ pub struct SafetySignalBucketRow {
     pub drift_signals_24h: u64,
     pub adverse_signals_24h: u64,
     pub signal_rate: f64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct CertificationDistributionRow {
+    pub category: String,
+    pub tfb_class: FeedbackLatencyClass,
+    pub min_severity: SeverityClass,
+    pub max_severity: SeverityClass,
+    pub certification_level: String,
+    pub active_count: u64,
+    pub revoked_count: u64,
+    pub expired_count: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -132,6 +146,12 @@ pub struct EconomySnapshot {
     pub incident_buckets: Vec<IncidentBucketRow>,
     #[serde(default)]
     pub safety_signal_buckets: Vec<SafetySignalBucketRow>,
+    #[serde(default)]
+    pub certification_distribution: Vec<CertificationDistributionRow>,
+    #[serde(default)]
+    pub uncertified_block_count_24h: u64,
+    #[serde(default)]
+    pub uncertified_block_rate: f64,
     #[serde(default)]
     pub outcome_distribution: Vec<OutcomeDistributionRow>,
     #[serde(default)]
@@ -562,6 +582,13 @@ fn build_snapshot(
             .cmp(&rhs.taxonomy_code)
             .then_with(|| lhs.severity.cmp(&rhs.severity))
     });
+    let certification_distribution = build_certification_distribution(receipts, as_of_ms);
+    let uncertified_block_count_24h = terminal_receipts
+        .iter()
+        .copied()
+        .filter(|receipt| is_uncertified_border_block_receipt(receipt))
+        .count() as u64;
+    let uncertified_block_rate = ratio(uncertified_block_count_24h, total_work_units);
     let mut outcome_distribution_counts = BTreeMap::<
         (
             String,
@@ -799,6 +826,9 @@ fn build_snapshot(
         top_drift_signals.as_slice(),
         incident_buckets.as_slice(),
         safety_signal_buckets.as_slice(),
+        certification_distribution.as_slice(),
+        uncertified_block_count_24h,
+        uncertified_block_rate,
         outcome_distribution.as_slice(),
         outcome_key_rates.as_slice(),
         rollback_signal_count,
@@ -840,6 +870,9 @@ fn build_snapshot(
         top_drift_signals,
         incident_buckets,
         safety_signal_buckets,
+        certification_distribution,
+        uncertified_block_count_24h,
+        uncertified_block_rate,
         outcome_distribution,
         outcome_key_rates,
         rollback_attempts_24h: rollback_signal_count,
@@ -893,6 +926,264 @@ fn is_adverse_terminal_receipt(receipt: &Receipt) -> bool {
         normalized.contains("failed")
             || normalized.contains("withheld")
             || normalized.contains("rollback")
+    })
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum CertificationStateMeta {
+    Active,
+    Revoked,
+    Expired,
+    Unspecified,
+}
+
+#[derive(Clone)]
+struct CertificationScopeMeta {
+    category: String,
+    tfb_class: FeedbackLatencyClass,
+    min_severity: SeverityClass,
+    max_severity: SeverityClass,
+}
+
+#[derive(Clone)]
+struct CertificationObjectMeta {
+    certification_id: String,
+    revision: u32,
+    certification_level: String,
+    state: CertificationStateMeta,
+    valid_until_ms: i64,
+    scope: Vec<CertificationScopeMeta>,
+}
+
+fn build_certification_distribution(
+    receipts: &[Receipt],
+    as_of_ms: i64,
+) -> Vec<CertificationDistributionRow> {
+    let certifications = latest_certification_objects(receipts, as_of_ms);
+    let mut counts = BTreeMap::<
+        (
+            String,
+            FeedbackLatencyClass,
+            SeverityClass,
+            SeverityClass,
+            String,
+        ),
+        (u64, u64, u64),
+    >::new();
+    for certification in certifications {
+        let mut state = certification.state;
+        if state == CertificationStateMeta::Active && certification.valid_until_ms < as_of_ms {
+            state = CertificationStateMeta::Expired;
+        }
+        for scope in certification.scope {
+            let key = (
+                scope.category,
+                scope.tfb_class,
+                scope.min_severity,
+                scope.max_severity,
+                certification.certification_level.clone(),
+            );
+            let entry = counts.entry(key).or_insert((0, 0, 0));
+            match state {
+                CertificationStateMeta::Active => entry.0 = entry.0.saturating_add(1),
+                CertificationStateMeta::Revoked => entry.1 = entry.1.saturating_add(1),
+                CertificationStateMeta::Expired => entry.2 = entry.2.saturating_add(1),
+                CertificationStateMeta::Unspecified => {}
+            }
+        }
+    }
+    let mut rows = counts
+        .into_iter()
+        .map(
+            |(
+                (category, tfb_class, min_severity, max_severity, certification_level),
+                (active_count, revoked_count, expired_count),
+            )| CertificationDistributionRow {
+                category,
+                tfb_class,
+                min_severity,
+                max_severity,
+                certification_level,
+                active_count,
+                revoked_count,
+                expired_count,
+            },
+        )
+        .collect::<Vec<_>>();
+    rows.sort_by(|lhs, rhs| {
+        lhs.category
+            .cmp(&rhs.category)
+            .then_with(|| lhs.tfb_class.cmp(&rhs.tfb_class))
+            .then_with(|| lhs.min_severity.cmp(&rhs.min_severity))
+            .then_with(|| lhs.max_severity.cmp(&rhs.max_severity))
+            .then_with(|| lhs.certification_level.cmp(&rhs.certification_level))
+    });
+    rows
+}
+
+fn latest_certification_objects(receipts: &[Receipt], as_of_ms: i64) -> Vec<CertificationObjectMeta> {
+    let mut ordered = receipts
+        .iter()
+        .filter(|receipt| receipt.created_at_ms <= as_of_ms)
+        .collect::<Vec<_>>();
+    ordered.sort_by(|lhs, rhs| {
+        lhs.created_at_ms
+            .cmp(&rhs.created_at_ms)
+            .then_with(|| lhs.receipt_id.cmp(&rhs.receipt_id))
+    });
+    let mut latest = BTreeMap::<String, CertificationObjectMeta>::new();
+    for receipt in ordered {
+        let Some(candidate) = certification_object_from_receipt(receipt) else {
+            continue;
+        };
+        let keep_new = latest
+            .get(candidate.certification_id.as_str())
+            .is_none_or(|existing| {
+                candidate.revision > existing.revision
+                    || (candidate.revision == existing.revision
+                        && candidate.certification_level > existing.certification_level)
+            });
+        if keep_new {
+            latest.insert(candidate.certification_id.clone(), candidate);
+        }
+    }
+    latest.into_values().collect::<Vec<_>>()
+}
+
+fn certification_object_from_receipt(receipt: &Receipt) -> Option<CertificationObjectMeta> {
+    let evidence = receipt
+        .evidence
+        .iter()
+        .find(|evidence| evidence.kind == "certification_object_ref")?;
+    let certification_id = evidence
+        .meta
+        .get("certification_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?
+        .to_string();
+    let revision = evidence
+        .meta
+        .get("revision")
+        .and_then(Value::as_u64)
+        .unwrap_or(0)
+        .min(u32::MAX as u64) as u32;
+    let certification_level = evidence
+        .meta
+        .get("certification_level")
+        .and_then(Value::as_str)
+        .map(normalize_label)
+        .unwrap_or_else(|| "unknown".to_string());
+    let state = evidence
+        .meta
+        .get("state")
+        .and_then(Value::as_str)
+        .map(certification_state_from_label)
+        .unwrap_or(CertificationStateMeta::Unspecified);
+    let valid_until_ms = evidence
+        .meta
+        .get("valid_until_ms")
+        .and_then(Value::as_i64)
+        .unwrap_or(0)
+        .max(0);
+    let scope = evidence
+        .meta
+        .get("scope")
+        .and_then(Value::as_array)
+        .map(|rows| {
+            rows.iter()
+                .filter_map(Value::as_object)
+                .map(|row| CertificationScopeMeta {
+                    category: row
+                        .get("category")
+                        .and_then(Value::as_str)
+                        .map(normalize_label)
+                        .unwrap_or_else(|| "unknown".to_string()),
+                    tfb_class: row
+                        .get("tfb_class")
+                        .and_then(Value::as_str)
+                        .and_then(feedback_latency_from_label)
+                        .unwrap_or(FeedbackLatencyClass::FeedbackLatencyClassUnspecified),
+                    min_severity: row
+                        .get("min_severity")
+                        .and_then(Value::as_str)
+                        .and_then(severity_from_label_strict)
+                        .unwrap_or(SeverityClass::SeverityClassUnspecified),
+                    max_severity: row
+                        .get("max_severity")
+                        .and_then(Value::as_str)
+                        .and_then(severity_from_label_strict)
+                        .unwrap_or(SeverityClass::SeverityClassUnspecified),
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    Some(CertificationObjectMeta {
+        certification_id,
+        revision,
+        certification_level,
+        state,
+        valid_until_ms,
+        scope,
+    })
+}
+
+fn certification_state_from_label(value: &str) -> CertificationStateMeta {
+    match normalize_label(value).as_str() {
+        "active" => CertificationStateMeta::Active,
+        "revoked" => CertificationStateMeta::Revoked,
+        "expired" => CertificationStateMeta::Expired,
+        _ => CertificationStateMeta::Unspecified,
+    }
+}
+
+fn feedback_latency_from_label(value: &str) -> Option<FeedbackLatencyClass> {
+    match normalize_label(value).as_str() {
+        "instant" => Some(FeedbackLatencyClass::Instant),
+        "short" => Some(FeedbackLatencyClass::Short),
+        "medium" => Some(FeedbackLatencyClass::Medium),
+        "long" => Some(FeedbackLatencyClass::Long),
+        "unspecified" => Some(FeedbackLatencyClass::FeedbackLatencyClassUnspecified),
+        _ => None,
+    }
+}
+
+fn severity_from_label_strict(value: &str) -> Option<SeverityClass> {
+    match normalize_label(value).as_str() {
+        "low" => Some(SeverityClass::Low),
+        "medium" => Some(SeverityClass::Medium),
+        "high" => Some(SeverityClass::High),
+        "critical" => Some(SeverityClass::Critical),
+        "unspecified" => Some(SeverityClass::SeverityClassUnspecified),
+        _ => None,
+    }
+}
+
+fn normalize_label(value: &str) -> String {
+    value
+        .trim()
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('_')
+        .to_string()
+}
+
+fn is_uncertified_border_block_receipt(receipt: &Receipt) -> bool {
+    if receipt.receipt_type != "earn.job.withheld.v1" {
+        return false;
+    }
+    receipt.hints.reason_code.as_deref().is_some_and(|reason| {
+        matches!(
+            reason,
+            REASON_CODE_DIGITAL_BORDER_BLOCK_UNCERTIFIED | REASON_CODE_CERTIFICATION_REQUIRED
+        )
     })
 }
 
@@ -1154,6 +1445,9 @@ struct CanonicalSnapshotPayload<'a> {
     top_drift_signals: &'a [DriftSignalSummary],
     incident_buckets: &'a [IncidentBucketRow],
     safety_signal_buckets: &'a [SafetySignalBucketRow],
+    certification_distribution: &'a [CertificationDistributionRow],
+    uncertified_block_count_24h: u64,
+    uncertified_block_rate: f64,
     outcome_distribution: &'a [OutcomeDistributionRow],
     outcome_key_rates: &'a [OutcomeKeyRateRow],
     rollback_attempts_24h: u64,
@@ -1194,6 +1488,9 @@ fn snapshot_hash_for(
     top_drift_signals: &[DriftSignalSummary],
     incident_buckets: &[IncidentBucketRow],
     safety_signal_buckets: &[SafetySignalBucketRow],
+    certification_distribution: &[CertificationDistributionRow],
+    uncertified_block_count_24h: u64,
+    uncertified_block_rate: f64,
     outcome_distribution: &[OutcomeDistributionRow],
     outcome_key_rates: &[OutcomeKeyRateRow],
     rollback_attempts_24h: u64,
@@ -1232,6 +1529,9 @@ fn snapshot_hash_for(
         top_drift_signals,
         incident_buckets,
         safety_signal_buckets,
+        certification_distribution,
+        uncertified_block_count_24h,
+        uncertified_block_rate,
         outcome_distribution,
         outcome_key_rates,
         rollback_attempts_24h,
@@ -2053,6 +2353,61 @@ mod tests {
         receipt
     }
 
+    fn fixture_certification_receipt(
+        receipt_id: &str,
+        receipt_type: &str,
+        created_at_ms: i64,
+        certification_id: &str,
+        revision: u32,
+        state: &str,
+        valid_until_ms: i64,
+    ) -> Receipt {
+        let mut receipt = fixture_receipt(
+            receipt_id,
+            receipt_type,
+            created_at_ms,
+            "certification-work-unit",
+            false,
+        );
+        receipt.hints.category = Some("compute".to_string());
+        receipt.hints.tfb_class = Some(FeedbackLatencyClass::Short);
+        receipt.hints.severity = Some(SeverityClass::High);
+        let mut certification_ref = EvidenceRef::new(
+            "certification_object_ref",
+            format!("oa://economy/certifications/{certification_id}/revisions/{revision}"),
+            digest_for_text(format!("{certification_id}:{revision}:{state}").as_str()),
+        );
+        certification_ref.meta.insert(
+            "certification_id".to_string(),
+            serde_json::json!(certification_id),
+        );
+        certification_ref
+            .meta
+            .insert("revision".to_string(), serde_json::json!(revision));
+        certification_ref
+            .meta
+            .insert("state".to_string(), serde_json::json!(state));
+        certification_ref.meta.insert(
+            "certification_level".to_string(),
+            serde_json::json!("level_2"),
+        );
+        certification_ref.meta.insert(
+            "scope".to_string(),
+            serde_json::json!([{
+                "category": "compute",
+                "tfb_class": "short",
+                "min_severity": "high",
+                "max_severity": "critical"
+            }]),
+        );
+        certification_ref.meta.insert(
+            "valid_until_ms".to_string(),
+            serde_json::json!(valid_until_ms),
+        );
+        receipt.evidence.push(certification_ref);
+        receipt
+    }
+
     fn fixture_drift_alert_receipt(receipt_id: &str, created_at_ms: i64) -> Receipt {
         let mut receipt = fixture_receipt(
             receipt_id,
@@ -2503,6 +2858,93 @@ mod tests {
                 && bucket.drift_signals_24h == 0
                 && bucket.adverse_signals_24h == 1
         }));
+    }
+
+    #[test]
+    fn snapshot_aggregates_certification_distribution_and_uncertified_block_rate() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let path = temp_dir.path().join("snapshots-certification-distribution.json");
+        let mut state = EconomySnapshotState::from_snapshot_path_for_tests(path);
+        let paid = fixture_receipt(
+            "receipt-paid-certification-distribution",
+            "earn.job.settlement_observed.v1",
+            1_762_000_010_000,
+            "job-certification-distribution-1",
+            true,
+        );
+        let mut withheld = fixture_receipt(
+            "receipt-withheld-certification-distribution",
+            "earn.job.withheld.v1",
+            1_762_000_011_000,
+            "job-certification-distribution-2",
+            false,
+        );
+        withheld.hints.reason_code = Some(REASON_CODE_DIGITAL_BORDER_BLOCK_UNCERTIFIED.to_string());
+        let cert_active = fixture_certification_receipt(
+            "receipt-cert-active",
+            "economy.certification.issued.v1",
+            1_762_000_012_000,
+            "cert.active",
+            1,
+            "active",
+            1_762_010_000_000,
+        );
+        let cert_revoked = fixture_certification_receipt(
+            "receipt-cert-revoked",
+            "economy.certification.revoked.v1",
+            1_762_000_013_000,
+            "cert.revoked",
+            2,
+            "revoked",
+            1_762_010_000_000,
+        );
+        let cert_expired = fixture_certification_receipt(
+            "receipt-cert-expired",
+            "economy.certification.issued.v1",
+            1_762_000_014_000,
+            "cert.expired",
+            1,
+            "active",
+            1_762_000_040_000,
+        );
+
+        let snapshot = state
+            .compute_minute_snapshot(
+                1_762_000_120_000,
+                &[paid, withheld, cert_active, cert_revoked, cert_expired],
+            )
+            .expect("snapshot should compute")
+            .snapshot;
+        assert_eq!(snapshot.uncertified_block_count_24h, 1);
+        assert!((snapshot.uncertified_block_rate - 0.5).abs() < 1e-9);
+        assert!(
+            snapshot
+                .certification_distribution
+                .iter()
+                .any(|row| row.category == "compute"
+                    && row.tfb_class == FeedbackLatencyClass::Short
+                    && row.min_severity == SeverityClass::High
+                    && row.max_severity == SeverityClass::Critical
+                    && row.certification_level == "level_2")
+        );
+        let total_active = snapshot
+            .certification_distribution
+            .iter()
+            .map(|row| row.active_count)
+            .fold(0u64, u64::saturating_add);
+        let total_revoked = snapshot
+            .certification_distribution
+            .iter()
+            .map(|row| row.revoked_count)
+            .fold(0u64, u64::saturating_add);
+        let total_expired = snapshot
+            .certification_distribution
+            .iter()
+            .map(|row| row.expired_count)
+            .fold(0u64, u64::saturating_add);
+        assert_eq!(total_active, 1);
+        assert_eq!(total_revoked, 1);
+        assert_eq!(total_expired, 1);
     }
 
     #[test]
