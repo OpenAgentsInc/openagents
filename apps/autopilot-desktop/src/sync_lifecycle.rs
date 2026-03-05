@@ -1,3 +1,9 @@
+//! Sync lifecycle state for runtime-facing connectivity and replay health.
+//!
+//! This module tracks execution-adjacent liveness, replay progress, and reconnect
+//! posture for the embedded runtime. It does not define economic authority or
+//! settlement truth.
+
 use std::collections::HashMap;
 use std::time::Duration;
 

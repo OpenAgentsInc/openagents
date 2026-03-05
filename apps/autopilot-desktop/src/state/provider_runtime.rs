@@ -1,3 +1,9 @@
+//! Runtime-facing provider state for the embedded OpenAgents Runtime.
+//!
+//! This module models execution and operational health on the worker/client side.
+//! It is not economic authority: settlement truth, verification verdicts, and
+//! canonical receipts remain kernel- or wallet-authoritative elsewhere.
+
 use std::time::Instant;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
