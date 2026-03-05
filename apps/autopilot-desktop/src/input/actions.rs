@@ -4264,6 +4264,121 @@ fn is_synthetic_local_payment_pointer(pointer: &str) -> bool {
         || normalized.starts_with("pay-req-")
 }
 
+pub(super) fn run_open_network_paid_transition_reconciliation(
+    state: &mut crate::app_state::RenderState,
+    now: std::time::Instant,
+) -> bool {
+    let Some(job) = state.active_job.job.as_ref() else {
+        return false;
+    };
+    if job.stage != crate::app_state::JobLifecycleStage::Delivered {
+        return false;
+    }
+    if job.demand_source != crate::app_state::JobDemandSource::OpenNetwork {
+        return false;
+    }
+
+    let maybe_existing_pointer = state
+        .active_job
+        .job
+        .as_ref()
+        .and_then(|job| job.payment_id.clone());
+    let wallet_pointer = maybe_existing_pointer.or_else(|| {
+        resolve_wallet_settlement_pointer_for_open_network_job(
+            job,
+            state.job_history.rows.as_slice(),
+            state.spark_wallet.recent_payments.as_slice(),
+        )
+    });
+
+    let Some(wallet_pointer) = wallet_pointer else {
+        let missing_detail = format!(
+            "open-network delivered job {} is waiting for wallet-authoritative payment evidence",
+            job.request_id
+        );
+        if state.active_job.last_error.as_deref() != Some(missing_detail.as_str()) {
+            state.active_job.last_error = Some(missing_detail.clone());
+            state.active_job.load_state = crate::app_state::PaneLoadState::Error;
+            state.provider_runtime.last_result = Some(missing_detail);
+            state.provider_runtime.last_authoritative_error_class = Some(EarnFailureClass::Payment);
+        }
+        return false;
+    };
+
+    if let Some(active_job) = state.active_job.job.as_mut() {
+        active_job.payment_id = Some(wallet_pointer.clone());
+    }
+    state.active_job.append_event(format!(
+        "wallet-authoritative payment pointer {} observed for delivered open-network job",
+        wallet_pointer
+    ));
+
+    match state.active_job.advance_stage() {
+        Ok(crate::app_state::JobLifecycleStage::Paid) => {
+            state.provider_runtime.queue_depth =
+                state.provider_runtime.queue_depth.saturating_sub(1);
+            state.provider_runtime.last_completed_job_at = Some(now);
+            state.provider_runtime.last_result = Some(format!(
+                "open-network job paid with wallet pointer {}",
+                wallet_pointer
+            ));
+            if state.provider_runtime.last_authoritative_error_class
+                == Some(EarnFailureClass::Payment)
+            {
+                state.provider_runtime.last_authoritative_error_class = None;
+            }
+            if let Some(active_job) = state.active_job.job.as_ref() {
+                state.job_history.record_from_active_job(
+                    active_job,
+                    crate::app_state::JobHistoryStatus::Succeeded,
+                );
+                state.earn_job_lifecycle_projection.record_active_job_stage(
+                    active_job,
+                    crate::app_state::JobLifecycleStage::Paid,
+                    current_epoch_seconds(),
+                    "active_job.wallet_paid_transition",
+                );
+            }
+            true
+        }
+        Ok(_) => false,
+        Err(error) => {
+            let message = format!(
+                "wallet pointer {} found but paid transition failed: {}",
+                wallet_pointer, error
+            );
+            state.active_job.last_error = Some(message.clone());
+            state.active_job.load_state = crate::app_state::PaneLoadState::Error;
+            state.provider_runtime.last_result = Some(message);
+            state.provider_runtime.last_authoritative_error_class = Some(EarnFailureClass::Payment);
+            false
+        }
+    }
+}
+
+fn resolve_wallet_settlement_pointer_for_open_network_job(
+    job: &crate::app_state::ActiveJobRecord,
+    history_rows: &[crate::app_state::JobHistoryReceiptRow],
+    recent_payments: &[openagents_spark::PaymentSummary],
+) -> Option<String> {
+    let used_pointers = history_rows
+        .iter()
+        .map(|row| row.payment_pointer.clone())
+        .collect::<std::collections::HashSet<_>>();
+    recent_payments
+        .iter()
+        .filter(|payment| {
+            payment.direction.eq_ignore_ascii_case("receive")
+                && payment.status.eq_ignore_ascii_case("succeeded")
+                && !payment.id.trim().is_empty()
+                && !used_pointers.contains(payment.id.as_str())
+                && !is_synthetic_local_payment_pointer(payment.id.as_str())
+                && (job.quoted_price_sats == 0 || payment.amount_sats == job.quoted_price_sats)
+        })
+        .max_by(|left, right| left.timestamp.cmp(&right.timestamp))
+        .map(|payment| payment.id.clone())
+}
+
 pub(super) fn run_activity_feed_action(
     state: &mut crate::app_state::RenderState,
     action: ActivityFeedPaneAction,
@@ -5409,6 +5524,7 @@ mod tests {
         build_nip90_request_event_for_network_submission, classify_provider_failure,
         extract_target_provider_pubkeys, is_taxonomy_failure_detail, loop_integrity_alert_specs,
         nip90_request_kind_for_request_type, resolve_wallet_blink_env_from_secure_values,
+        resolve_wallet_settlement_pointer_for_open_network_job,
         stable_sats_period_convert_totals_from_receipts,
         stable_sats_real_round_phase_from_operation_count, taxonomy_failure_detail,
     };
@@ -5466,6 +5582,120 @@ mod tests {
             public_key_hex: "11".repeat(32),
             private_key_hex: "22".repeat(32),
         }
+    }
+
+    fn fixture_open_network_delivered_job(
+        quoted_price_sats: u64,
+    ) -> crate::app_state::ActiveJobRecord {
+        crate::app_state::ActiveJobRecord {
+            job_id: "job-open-network-001".to_string(),
+            request_id: "req-open-network-001".to_string(),
+            requester: "11".repeat(32),
+            demand_source: crate::app_state::JobDemandSource::OpenNetwork,
+            request_kind: nostr::nip90::KIND_JOB_TEXT_GENERATION,
+            capability: "text.generation".to_string(),
+            skill_scope_id: None,
+            skl_manifest_a: None,
+            skl_manifest_event_id: None,
+            sa_tick_request_event_id: Some("req-open-network-001".to_string()),
+            sa_tick_result_event_id: Some("result-open-network-001".to_string()),
+            sa_trajectory_session_id: Some("traj:req-open-network-001".to_string()),
+            ac_envelope_event_id: None,
+            ac_settlement_event_id: None,
+            ac_default_event_id: None,
+            quoted_price_sats,
+            stage: crate::app_state::JobLifecycleStage::Delivered,
+            invoice_id: None,
+            payment_id: None,
+            failure_reason: None,
+            events: vec![],
+        }
+    }
+
+    fn fixture_history_row(payment_pointer: &str) -> crate::app_state::JobHistoryReceiptRow {
+        crate::app_state::JobHistoryReceiptRow {
+            job_id: "job-history-001".to_string(),
+            status: crate::app_state::JobHistoryStatus::Succeeded,
+            demand_source: crate::app_state::JobDemandSource::OpenNetwork,
+            completed_at_epoch_seconds: 1_762_700_000,
+            skill_scope_id: None,
+            skl_manifest_a: None,
+            skl_manifest_event_id: None,
+            sa_tick_result_event_id: None,
+            sa_trajectory_session_id: None,
+            ac_envelope_event_id: None,
+            ac_settlement_event_id: None,
+            ac_default_event_id: None,
+            payout_sats: 10,
+            result_hash: "sha256:test".to_string(),
+            payment_pointer: payment_pointer.to_string(),
+            failure_reason: None,
+        }
+    }
+
+    #[test]
+    fn resolves_open_network_wallet_pointer_preferring_latest_matching_receive() {
+        let job = fixture_open_network_delivered_job(10);
+        let history_rows = vec![fixture_history_row("wallet-used-001")];
+        let payments = vec![
+            openagents_spark::PaymentSummary {
+                id: "wallet-send-001".to_string(),
+                direction: "send".to_string(),
+                status: "succeeded".to_string(),
+                amount_sats: 10,
+                timestamp: 1_762_700_001,
+            },
+            openagents_spark::PaymentSummary {
+                id: "wallet-failed-001".to_string(),
+                direction: "receive".to_string(),
+                status: "failed".to_string(),
+                amount_sats: 10,
+                timestamp: 1_762_700_002,
+            },
+            openagents_spark::PaymentSummary {
+                id: "wallet-wrong-amount-001".to_string(),
+                direction: "receive".to_string(),
+                status: "succeeded".to_string(),
+                amount_sats: 9,
+                timestamp: 1_762_700_003,
+            },
+            openagents_spark::PaymentSummary {
+                id: "pending:req-open-network-001".to_string(),
+                direction: "receive".to_string(),
+                status: "succeeded".to_string(),
+                amount_sats: 10,
+                timestamp: 1_762_700_004,
+            },
+            openagents_spark::PaymentSummary {
+                id: "wallet-used-001".to_string(),
+                direction: "receive".to_string(),
+                status: "succeeded".to_string(),
+                amount_sats: 10,
+                timestamp: 1_762_700_005,
+            },
+            openagents_spark::PaymentSummary {
+                id: "wallet-pointer-001".to_string(),
+                direction: "receive".to_string(),
+                status: "succeeded".to_string(),
+                amount_sats: 10,
+                timestamp: 1_762_700_006,
+            },
+            openagents_spark::PaymentSummary {
+                id: "wallet-pointer-002".to_string(),
+                direction: "receive".to_string(),
+                status: "succeeded".to_string(),
+                amount_sats: 10,
+                timestamp: 1_762_700_007,
+            },
+        ];
+
+        let pointer = resolve_wallet_settlement_pointer_for_open_network_job(
+            &job,
+            history_rows.as_slice(),
+            payments.as_slice(),
+        )
+        .expect("expected wallet pointer candidate");
+        assert_eq!(pointer, "wallet-pointer-002");
     }
 
     #[test]

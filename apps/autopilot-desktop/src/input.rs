@@ -491,6 +491,9 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     if run_auto_starter_demand_generator(state, now) {
         changed = true;
     }
+    if run_open_network_paid_transition_reconciliation(state, now) {
+        changed = true;
+    }
     if state.spacetime_presence.tick(state.provider_runtime.mode) {
         changed = true;
     }
