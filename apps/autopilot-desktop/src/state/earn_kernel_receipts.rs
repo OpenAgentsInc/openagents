@@ -10,6 +10,7 @@ use crate::state::job_inbox::JobInboxNetworkRequest;
 use bitcoin::hashes::{Hash, sha256};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 
 const EARN_KERNEL_RECEIPT_SCHEMA_VERSION: u16 = 1;
@@ -255,6 +256,10 @@ impl EarnKernelReceiptState {
                 digest_for_text(reason),
             ));
         }
+        self.append_receipt_reference_links(
+            &mut evidence,
+            active_job_link_candidate_receipt_ids(job, stage).as_slice(),
+        );
 
         let hints = ReceiptHints {
             category: Some(work_category_for_demand_source(job.demand_source).to_string()),
@@ -337,6 +342,9 @@ impl EarnKernelReceiptState {
         } else {
             None
         };
+        let request_id = infer_request_id_from_job_id(row.job_id.as_str());
+        let link_candidates =
+            history_row_link_candidate_receipt_ids(row, stage, request_id.as_str());
 
         let receipt = ReceiptBuilder::new(
             lifecycle_receipt_id(row.job_id.as_str(), stage, authority_key),
@@ -349,7 +357,7 @@ impl EarnKernelReceiptState {
             lifecycle_idempotency_key("history_receipt", row.job_id.as_str(), authority_key),
             trace_for_job(
                 row.job_id.as_str(),
-                Some(infer_request_id_from_job_id(row.job_id.as_str()).as_str()),
+                Some(request_id.as_str()),
                 row.sa_trajectory_session_id.as_deref(),
             ),
             current_policy_context(),
@@ -370,34 +378,38 @@ impl EarnKernelReceiptState {
             "wallet_settlement_authoritative": stage == JobLifecycleStage::Paid,
             "reason_code": reason_code,
         }))
-        .with_evidence(vec![
-            EvidenceRef::new(
-                "history_result_hash",
-                format!("oa://earn/jobs/{}/result", row.job_id),
-                normalize_digest(row.result_hash.as_str()),
-            ),
-            EvidenceRef::new(
-                if stage == JobLifecycleStage::Paid {
-                    "wallet_settlement_proof"
-                } else {
-                    "failure_reason"
-                },
-                if stage == JobLifecycleStage::Paid {
-                    format!("oa://wallet/payments/{}", row.payment_pointer)
-                } else {
-                    format!("oa://earn/jobs/{}/failure", row.job_id)
-                },
-                if stage == JobLifecycleStage::Paid {
-                    digest_for_text(row.payment_pointer.as_str())
-                } else {
-                    digest_for_text(
-                        row.failure_reason
-                            .as_deref()
-                            .unwrap_or("unknown_failure_reason"),
-                    )
-                },
-            ),
-        ])
+        .with_evidence({
+            let mut evidence = vec![
+                EvidenceRef::new(
+                    "history_result_hash",
+                    format!("oa://earn/jobs/{}/result", row.job_id),
+                    normalize_digest(row.result_hash.as_str()),
+                ),
+                EvidenceRef::new(
+                    if stage == JobLifecycleStage::Paid {
+                        "wallet_settlement_proof"
+                    } else {
+                        "failure_reason"
+                    },
+                    if stage == JobLifecycleStage::Paid {
+                        format!("oa://wallet/payments/{}", row.payment_pointer)
+                    } else {
+                        format!("oa://earn/jobs/{}/failure", row.job_id)
+                    },
+                    if stage == JobLifecycleStage::Paid {
+                        digest_for_text(row.payment_pointer.as_str())
+                    } else {
+                        digest_for_text(
+                            row.failure_reason
+                                .as_deref()
+                                .unwrap_or("unknown_failure_reason"),
+                        )
+                    },
+                ),
+            ];
+            self.append_receipt_reference_links(&mut evidence, link_candidates.as_slice());
+            evidence
+        })
         .with_hints(ReceiptHints {
             category: Some(work_category_for_demand_source(row.demand_source).to_string()),
             tfb_class: None,
@@ -427,6 +439,42 @@ impl EarnKernelReceiptState {
             .iter()
             .filter(|receipt| receipt.trace.work_unit_id.as_deref() == Some(job_id))
             .collect()
+    }
+
+    pub fn settlement_lineage_receipt_ids(
+        &self,
+        settlement_receipt_id: &str,
+    ) -> Result<Vec<String>, String> {
+        if settlement_receipt_id.trim().is_empty() {
+            return Err("settlement_receipt_id cannot be empty".to_string());
+        }
+        let mut queue = VecDeque::new();
+        let mut visited = HashSet::new();
+        queue.push_back(settlement_receipt_id.to_string());
+
+        while let Some(receipt_id) = queue.pop_front() {
+            if !visited.insert(receipt_id.clone()) {
+                continue;
+            }
+            let Some(receipt) = self.get_receipt(receipt_id.as_str()) else {
+                return Err(format!("missing linked receipt {receipt_id}"));
+            };
+            for evidence in &receipt.evidence {
+                if evidence.kind != "receipt_ref" {
+                    continue;
+                }
+                let Some(linked_receipt_id) = parse_receipt_ref_uri(evidence.uri.as_str()) else {
+                    continue;
+                };
+                if !visited.contains(linked_receipt_id) {
+                    queue.push_back(linked_receipt_id.to_string());
+                }
+            }
+        }
+
+        let mut ids: Vec<String> = visited.into_iter().collect();
+        ids.sort();
+        Ok(ids)
     }
 
     fn append_receipt(&mut self, receipt: Result<Receipt, String>, source_tag: &str) {
@@ -468,6 +516,33 @@ impl EarnKernelReceiptState {
             "Emitted {} via {} ({})",
             receipt.receipt_type, source_tag, receipt.receipt_id
         ));
+    }
+
+    fn append_receipt_reference_links(
+        &self,
+        evidence: &mut Vec<EvidenceRef>,
+        candidate_receipt_ids: &[String],
+    ) {
+        let mut seen = HashSet::<String>::new();
+        for candidate_id in candidate_receipt_ids {
+            if !seen.insert(candidate_id.clone()) {
+                continue;
+            }
+            let Some(linked_receipt) = self.get_receipt(candidate_id.as_str()) else {
+                continue;
+            };
+            let mut meta = std::collections::BTreeMap::new();
+            meta.insert(
+                "receipt_type".to_string(),
+                serde_json::Value::String(linked_receipt.receipt_type.clone()),
+            );
+            evidence.push(EvidenceRef {
+                kind: "receipt_ref".to_string(),
+                uri: format!("oa://receipts/{}", linked_receipt.receipt_id),
+                digest: linked_receipt.canonical_hash.clone(),
+                meta,
+            });
+        }
     }
 }
 
@@ -560,6 +635,76 @@ fn normalize_key(value: &str) -> String {
         .collect()
 }
 
+fn active_job_link_candidate_receipt_ids(
+    job: &ActiveJobRecord,
+    stage: JobLifecycleStage,
+) -> Vec<String> {
+    let ingress_id = lifecycle_receipt_id(
+        job.job_id.as_str(),
+        JobLifecycleStage::Received,
+        job.request_id.as_str(),
+    );
+    let accepted_id = lifecycle_receipt_id(
+        job.job_id.as_str(),
+        JobLifecycleStage::Accepted,
+        job.request_id.as_str(),
+    );
+    let running_authority = job
+        .sa_tick_request_event_id
+        .as_deref()
+        .unwrap_or(job.request_id.as_str());
+    let running_id = lifecycle_receipt_id(
+        job.job_id.as_str(),
+        JobLifecycleStage::Running,
+        running_authority,
+    );
+    let delivered_authority = job
+        .sa_tick_result_event_id
+        .as_deref()
+        .unwrap_or(job.request_id.as_str());
+    let delivered_id = lifecycle_receipt_id(
+        job.job_id.as_str(),
+        JobLifecycleStage::Delivered,
+        delivered_authority,
+    );
+
+    match stage {
+        JobLifecycleStage::Received => Vec::new(),
+        JobLifecycleStage::Accepted => vec![ingress_id],
+        JobLifecycleStage::Running => vec![accepted_id, ingress_id],
+        JobLifecycleStage::Delivered => vec![running_id, accepted_id, ingress_id],
+        JobLifecycleStage::Paid | JobLifecycleStage::Failed => {
+            vec![delivered_id, running_id, accepted_id, ingress_id]
+        }
+    }
+}
+
+fn history_row_link_candidate_receipt_ids(
+    row: &JobHistoryReceiptRow,
+    stage: JobLifecycleStage,
+    request_id: &str,
+) -> Vec<String> {
+    let ingress_id =
+        lifecycle_receipt_id(row.job_id.as_str(), JobLifecycleStage::Received, request_id);
+    let accepted_id =
+        lifecycle_receipt_id(row.job_id.as_str(), JobLifecycleStage::Accepted, request_id);
+    let running_id =
+        lifecycle_receipt_id(row.job_id.as_str(), JobLifecycleStage::Running, request_id);
+    let delivered_authority = row.sa_tick_result_event_id.as_deref().unwrap_or(request_id);
+    let delivered_id = lifecycle_receipt_id(
+        row.job_id.as_str(),
+        JobLifecycleStage::Delivered,
+        delivered_authority,
+    );
+
+    match stage {
+        JobLifecycleStage::Paid | JobLifecycleStage::Failed => {
+            vec![delivered_id, running_id, accepted_id, ingress_id]
+        }
+        _ => Vec::new(),
+    }
+}
+
 fn infer_request_id_from_job_id(job_id: &str) -> String {
     job_id
         .strip_prefix("job-")
@@ -582,6 +727,10 @@ fn normalize_digest(value: &str) -> String {
     } else {
         digest_for_text(value)
     }
+}
+
+fn parse_receipt_ref_uri(uri: &str) -> Option<&str> {
+    uri.strip_prefix("oa://receipts/")
 }
 
 fn is_wallet_authoritative_payment_pointer(pointer: Option<&str>) -> bool {
@@ -716,6 +865,32 @@ mod tests {
         }
     }
 
+    fn fixture_active_job(payment_pointer: &str) -> ActiveJobRecord {
+        ActiveJobRecord {
+            job_id: "job-req-123".to_string(),
+            request_id: "req-123".to_string(),
+            requester: "npub1abc".to_string(),
+            demand_source: JobDemandSource::OpenNetwork,
+            request_kind: 5000,
+            capability: "text_generation".to_string(),
+            skill_scope_id: Some("skill.scope".to_string()),
+            skl_manifest_a: None,
+            skl_manifest_event_id: None,
+            sa_tick_request_event_id: Some("request-evt".to_string()),
+            sa_tick_result_event_id: Some("result-evt".to_string()),
+            sa_trajectory_session_id: Some("traj:123".to_string()),
+            ac_envelope_event_id: Some("ac-env-1".to_string()),
+            ac_settlement_event_id: Some("fb-evt".to_string()),
+            ac_default_event_id: None,
+            quoted_price_sats: 42,
+            stage: JobLifecycleStage::Paid,
+            invoice_id: None,
+            payment_id: Some(payment_pointer.to_string()),
+            failure_reason: None,
+            events: Vec::new(),
+        }
+    }
+
     #[test]
     fn paid_history_receipt_requires_wallet_authoritative_pointer() {
         let temp_dir = tempfile::tempdir().expect("tempdir");
@@ -766,5 +941,59 @@ mod tests {
                 .iter()
                 .any(|evidence| evidence.kind == "wallet_settlement_proof")
         );
+    }
+
+    #[test]
+    fn settlement_receipt_contains_receipt_refs_and_transitive_lineage() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+
+        let ingress = fixture_ingress_request();
+        state.record_ingress_request(&ingress, 1_762_000_000, "test.ingress");
+        let job = fixture_active_job("wallet-payment-1");
+        state.record_active_job_stage(
+            &job,
+            JobLifecycleStage::Accepted,
+            1_762_000_001,
+            "test.accepted",
+        );
+        state.record_active_job_stage(
+            &job,
+            JobLifecycleStage::Running,
+            1_762_000_002,
+            "test.running",
+        );
+        state.record_active_job_stage(
+            &job,
+            JobLifecycleStage::Delivered,
+            1_762_000_003,
+            "test.delivered",
+        );
+        state.record_active_job_stage(&job, JobLifecycleStage::Paid, 1_762_000_004, "test.paid");
+
+        let settlement_receipt = state
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_type == "earn.job.settlement_observed.v1")
+            .expect("settlement receipt");
+        assert!(
+            settlement_receipt
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "receipt_ref")
+        );
+
+        let lineage = state
+            .settlement_lineage_receipt_ids(settlement_receipt.receipt_id.as_str())
+            .expect("lineage should resolve");
+        let ingress_receipt_id = lifecycle_receipt_id(
+            job.job_id.as_str(),
+            JobLifecycleStage::Received,
+            job.request_id.as_str(),
+        );
+        assert!(lineage.contains(&ingress_receipt_id));
+        assert!(lineage.contains(&settlement_receipt.receipt_id));
+        assert!(lineage.len() >= 4);
     }
 }
