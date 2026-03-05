@@ -26,7 +26,10 @@ pub enum RuntimeSyncDisconnectReason {
     StreamClosed,
     TokenRefreshDue,
     StaleCursor,
+    Expired,
+    NotYetValid,
     Unauthorized,
+    Revoked,
     Forbidden,
     Network,
     Unknown,
@@ -39,7 +42,10 @@ impl RuntimeSyncDisconnectReason {
             Self::StreamClosed => "stream_closed",
             Self::TokenRefreshDue => "token_refresh_due",
             Self::StaleCursor => "stale_cursor",
+            Self::Expired => "expired",
+            Self::NotYetValid => "not_yet_valid",
             Self::Unauthorized => "unauthorized",
+            Self::Revoked => "revoked",
             Self::Forbidden => "forbidden",
             Self::Network => "network",
             Self::Unknown => "unknown",
@@ -199,7 +205,10 @@ impl RuntimeSyncLifecycleManager {
             refresh_token: matches!(
                 reason,
                 RuntimeSyncDisconnectReason::TokenRefreshDue
+                    | RuntimeSyncDisconnectReason::Expired
+                    | RuntimeSyncDisconnectReason::NotYetValid
                     | RuntimeSyncDisconnectReason::Unauthorized
+                    | RuntimeSyncDisconnectReason::Revoked
                     | RuntimeSyncDisconnectReason::Forbidden
             ),
         }
@@ -269,8 +278,32 @@ pub fn classify_disconnect_reason(error: &str) -> RuntimeSyncDisconnectReason {
     if normalized.contains("token_refresh_due") || normalized.contains("token refresh due") {
         return RuntimeSyncDisconnectReason::TokenRefreshDue;
     }
+    if normalized.contains("sync_auth:expired")
+        || normalized.contains("token_expired")
+        || normalized.contains("expired")
+    {
+        return RuntimeSyncDisconnectReason::Expired;
+    }
+    if normalized.contains("sync_auth:not_yet_valid")
+        || normalized.contains("token_not_yet_valid")
+        || normalized.contains("not_yet_valid")
+        || normalized.contains("not yet valid")
+    {
+        return RuntimeSyncDisconnectReason::NotYetValid;
+    }
+    if normalized.contains("sync_auth:forbidden:token_revoked")
+        || normalized.contains("token_revoked")
+    {
+        return RuntimeSyncDisconnectReason::Revoked;
+    }
     if normalized.contains("stale_cursor") {
         return RuntimeSyncDisconnectReason::StaleCursor;
+    }
+    if normalized.contains("sync_auth:unauthorized") {
+        return RuntimeSyncDisconnectReason::Unauthorized;
+    }
+    if normalized.contains("sync_auth:forbidden") {
+        return RuntimeSyncDisconnectReason::Forbidden;
     }
     if normalized.contains("unauthorized")
         || normalized.contains(" 401")
@@ -417,6 +450,18 @@ mod tests {
         assert_eq!(
             classify_disconnect_reason("status=401 unauthorized"),
             RuntimeSyncDisconnectReason::Unauthorized
+        );
+        assert_eq!(
+            classify_disconnect_reason("sync_auth:expired:token_expired status=401"),
+            RuntimeSyncDisconnectReason::Expired
+        );
+        assert_eq!(
+            classify_disconnect_reason("sync_auth:not_yet_valid:token_not_yet_valid"),
+            RuntimeSyncDisconnectReason::NotYetValid
+        );
+        assert_eq!(
+            classify_disconnect_reason("sync_auth:forbidden:token_revoked status=403"),
+            RuntimeSyncDisconnectReason::Revoked
         );
         assert_eq!(
             classify_disconnect_reason("status=403 forbidden"),
