@@ -820,6 +820,12 @@ service OutcomesWorkService {
 
 This makes incident reporting proto-first and insurability-ready (versioned taxonomy + mandatory receipt/evidence linkage + outcome registry entries).
 
+Normative implementation notes:
+
+* Incident objects are append-only, hash-addressed revisions; updates/resolutions supersede prior digests, not overwrite them.
+* Taxonomy meaning is immutable for a `(taxonomy_id, taxonomy_version, code)` tuple.
+* Export surfaces MUST support at least `public` and `restricted` redaction tiers for incident audit packages.
+
 ```proto
 syntax = "proto3";
 
@@ -1166,6 +1172,8 @@ message IncidentBucket {
   openagents.common.v1.SeverityClass severity = 2;
   uint64 incidents_24h = 3;
   uint64 near_misses_24h = 4;
+  double incident_rate = 5;
+  double near_miss_rate = 6;
 }
 
 message DriftSignalRow {

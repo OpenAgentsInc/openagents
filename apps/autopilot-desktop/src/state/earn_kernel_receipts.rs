@@ -20,6 +20,8 @@ const EARN_KERNEL_RECEIPT_AUTHORITY: &str = "kernel.authority";
 const EARN_KERNEL_RECEIPT_ROW_LIMIT: usize = 2048;
 const EARN_WORK_UNIT_METADATA_ROW_LIMIT: usize = 2048;
 const EARN_IDEMPOTENCY_RECORD_ROW_LIMIT: usize = 4096;
+const INCIDENT_OBJECT_ROW_LIMIT: usize = 4096;
+const INCIDENT_TAXONOMY_ROW_LIMIT: usize = 1024;
 const REASON_CODE_JOB_FAILED: &str = "JOB_FAILED";
 const REASON_CODE_POLICY_PREFLIGHT_REJECTED: &str = "POLICY_PREFLIGHT_REJECTED";
 const REASON_CODE_PAYMENT_POINTER_NON_AUTHORITATIVE: &str = "PAYMENT_POINTER_NON_AUTHORITATIVE";
@@ -27,6 +29,9 @@ const REASON_CODE_AUTH_ASSURANCE_INSUFFICIENT: &str = "AUTH_ASSURANCE_INSUFFICIE
 const REASON_CODE_PROVENANCE_REQUIREMENTS_UNMET: &str = "PROVENANCE_REQUIREMENTS_UNMET";
 const REASON_CODE_IDEMPOTENCY_CONFLICT: &str = "IDEMPOTENCY_CONFLICT";
 const REASON_CODE_POLICY_THROTTLE_TRIGGERED: &str = "POLICY_THROTTLE_TRIGGERED";
+const REASON_CODE_INCIDENT_REPORTED: &str = "INCIDENT_REPORTED";
+const REASON_CODE_INCIDENT_UPDATED: &str = "INCIDENT_UPDATED";
+const REASON_CODE_INCIDENT_RESOLVED: &str = "INCIDENT_RESOLVED";
 const REASON_CODE_DRIFT_SIGNAL_EMITTED: &str = "DRIFT_SIGNAL_EMITTED";
 const REASON_CODE_DRIFT_ALERT_RAISED: &str = "DRIFT_ALERT_RAISED";
 const REASON_CODE_DRIFT_FALSE_POSITIVE_CONFIRMED: &str = "DRIFT_FALSE_POSITIVE_CONFIRMED";
@@ -254,6 +259,10 @@ struct EarnKernelReceiptDocumentV1 {
     work_units: Vec<WorkUnitMetadata>,
     #[serde(default)]
     idempotency_records: Vec<IdempotencyRecord>,
+    #[serde(default)]
+    incident_objects: Vec<IncidentObject>,
+    #[serde(default)]
+    incident_taxonomy_registry: Vec<IncidentTaxonomyEntry>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -263,6 +272,108 @@ pub struct WorkUnitMetadata {
     pub tfb_class: FeedbackLatencyClass,
     pub severity: SeverityClass,
     pub verification_budget_hint_sats: u64,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq, Ord, PartialOrd)]
+#[serde(rename_all = "snake_case")]
+pub enum IncidentKind {
+    IncidentKindUnspecified,
+    Incident,
+    NearMiss,
+    GroundTruthCase,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq, Ord, PartialOrd)]
+#[serde(rename_all = "snake_case")]
+pub enum IncidentStatus {
+    IncidentStatusUnspecified,
+    Open,
+    Resolved,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq, Ord, PartialOrd)]
+#[serde(rename_all = "snake_case")]
+pub enum IncidentExportRedactionTier {
+    Public,
+    Restricted,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct IncidentTaxonomyEntry {
+    pub taxonomy_id: String,
+    pub taxonomy_version: String,
+    pub code: String,
+    pub stable_meaning: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct IncidentObject {
+    pub incident_id: String,
+    pub incident_digest: String,
+    pub revision: u32,
+    pub incident_kind: IncidentKind,
+    pub incident_status: IncidentStatus,
+    pub taxonomy_id: String,
+    pub taxonomy_version: String,
+    pub taxonomy_code: String,
+    pub severity: SeverityClass,
+    pub summary: String,
+    pub reported_at_ms: i64,
+    pub updated_at_ms: i64,
+    pub policy_bundle_id: String,
+    pub policy_version: String,
+    pub linked_receipt_ids: Vec<String>,
+    pub rollback_receipt_ids: Vec<String>,
+    pub evidence_digests: Vec<String>,
+    pub supersedes_digest: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct IncidentReportDraft {
+    pub idempotency_key: String,
+    pub incident_kind: IncidentKind,
+    pub taxonomy_id: String,
+    pub taxonomy_version: String,
+    pub taxonomy_code: String,
+    pub severity: SeverityClass,
+    pub summary: String,
+    pub linked_receipt_ids: Vec<String>,
+    pub rollback_receipt_ids: Vec<String>,
+    pub evidence_digests: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct IncidentUpdateDraft {
+    pub incident_id: String,
+    pub idempotency_key: String,
+    pub summary: Option<String>,
+    pub linked_receipt_ids: Vec<String>,
+    pub rollback_receipt_ids: Vec<String>,
+    pub evidence_digests: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct IncidentResolutionDraft {
+    pub incident_id: String,
+    pub idempotency_key: String,
+    pub resolution_summary: Option<String>,
+    pub rollback_receipt_ids: Vec<String>,
+    pub evidence_digests: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct IncidentAuditPackage {
+    pub schema_version: u16,
+    pub generated_at_ms: i64,
+    pub stream_id: String,
+    pub authority: String,
+    pub redaction_tier: IncidentExportRedactionTier,
+    pub incident_count: usize,
+    pub taxonomy_count: usize,
+    pub incidents: Vec<IncidentObject>,
+    pub taxonomy_registry: Vec<IncidentTaxonomyEntry>,
+    pub incident_receipts: Vec<Receipt>,
+    pub package_hash: String,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
@@ -309,6 +420,8 @@ struct LoadedReceiptState {
     receipts: Vec<Receipt>,
     work_units: BTreeMap<String, WorkUnitMetadata>,
     idempotency_index: BTreeMap<String, IdempotencyRecord>,
+    incident_objects: Vec<IncidentObject>,
+    incident_taxonomy_registry: BTreeMap<String, IncidentTaxonomyEntry>,
 }
 
 pub struct EarnKernelReceiptState {
@@ -320,6 +433,8 @@ pub struct EarnKernelReceiptState {
     pub receipts: Vec<Receipt>,
     pub work_units: BTreeMap<String, WorkUnitMetadata>,
     pub idempotency_index: BTreeMap<String, IdempotencyRecord>,
+    pub incident_objects: Vec<IncidentObject>,
+    pub incident_taxonomy_registry: BTreeMap<String, IncidentTaxonomyEntry>,
     receipt_file_path: PathBuf,
 }
 
@@ -345,6 +460,8 @@ impl EarnKernelReceiptState {
                         receipts: Vec::new(),
                         work_units: BTreeMap::new(),
                         idempotency_index: BTreeMap::new(),
+                        incident_objects: Vec::new(),
+                        incident_taxonomy_registry: default_incident_taxonomy_registry(),
                     },
                     PaneLoadState::Error,
                     Some(error),
@@ -360,6 +477,8 @@ impl EarnKernelReceiptState {
             receipts: loaded.receipts,
             work_units: loaded.work_units,
             idempotency_index: loaded.idempotency_index,
+            incident_objects: loaded.incident_objects,
+            incident_taxonomy_registry: loaded.incident_taxonomy_registry,
             receipt_file_path,
         }
     }
@@ -2120,6 +2239,28 @@ impl EarnKernelReceiptState {
         rows
     }
 
+    fn normalized_incident_taxonomy_entries(&self) -> Vec<IncidentTaxonomyEntry> {
+        let mut rows = self
+            .incident_taxonomy_registry
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        rows.sort_by(|lhs, rhs| incident_taxonomy_key(lhs).cmp(&incident_taxonomy_key(rhs)));
+        rows.truncate(INCIDENT_TAXONOMY_ROW_LIMIT);
+        rows
+    }
+
+    fn persist_current_state(&mut self) -> Result<(), String> {
+        persist_earn_kernel_receipts(
+            self.receipt_file_path.as_path(),
+            self.receipts.as_slice(),
+            self.normalized_work_units().as_slice(),
+            self.normalized_idempotency_records().as_slice(),
+            self.incident_objects.as_slice(),
+            self.normalized_incident_taxonomy_entries().as_slice(),
+        )
+    }
+
     pub fn get_receipt(&self, receipt_id: &str) -> Option<&Receipt> {
         self.receipts
             .iter()
@@ -2197,6 +2338,517 @@ impl EarnKernelReceiptState {
         std::fs::rename(&temp_path, path)
             .map_err(|error| format!("Failed to persist receipt bundle: {error}"))?;
         Ok(bundle)
+    }
+
+    pub fn register_incident_taxonomy_entry(
+        &mut self,
+        entry: IncidentTaxonomyEntry,
+    ) -> Result<(), String> {
+        upsert_incident_taxonomy_entry(&mut self.incident_taxonomy_registry, entry)?;
+        if let Err(error) = self.persist_current_state() {
+            self.last_error = Some(error.clone());
+            self.last_action = Some("Incident taxonomy registry persist failed".to_string());
+            self.load_state = PaneLoadState::Error;
+            return Err(error);
+        }
+        self.last_error = None;
+        self.last_action = Some("Incident taxonomy entry registered".to_string());
+        self.load_state = PaneLoadState::Ready;
+        Ok(())
+    }
+
+    pub fn report_incident(
+        &mut self,
+        draft: IncidentReportDraft,
+        reported_at_ms: i64,
+        source_tag: &str,
+    ) -> Result<String, String> {
+        self.validate_incident_draft_linkage(
+            draft.linked_receipt_ids.as_slice(),
+            draft.rollback_receipt_ids.as_slice(),
+            true,
+        )?;
+        let taxonomy_key = taxonomy_lookup_key(
+            draft.taxonomy_id.as_str(),
+            draft.taxonomy_version.as_str(),
+            draft.taxonomy_code.as_str(),
+        );
+        if !self
+            .incident_taxonomy_registry
+            .contains_key(taxonomy_key.as_str())
+        {
+            return Err(format!(
+                "unknown incident taxonomy {}:{}:{}",
+                draft.taxonomy_id, draft.taxonomy_version, draft.taxonomy_code
+            ));
+        }
+        if draft.idempotency_key.trim().is_empty() {
+            return Err("incident report idempotency_key cannot be empty".to_string());
+        }
+        let incident_id = format!("incident:{}", normalize_key(draft.idempotency_key.as_str()));
+        let linked_receipt_ids = canonical_receipt_ids(draft.linked_receipt_ids.as_slice());
+        let rollback_receipt_ids = canonical_receipt_ids(draft.rollback_receipt_ids.as_slice());
+        let evidence_digests = canonical_evidence_digests(draft.evidence_digests.as_slice())?;
+        let policy = current_policy_context();
+        let incident = IncidentObject {
+            incident_id: incident_id.clone(),
+            incident_digest: incident_digest_for(
+                incident_id.as_str(),
+                1,
+                draft.incident_kind,
+                IncidentStatus::Open,
+                draft.taxonomy_id.as_str(),
+                draft.taxonomy_version.as_str(),
+                draft.taxonomy_code.as_str(),
+                draft.severity,
+                draft.summary.as_str(),
+                reported_at_ms.max(0),
+                reported_at_ms.max(0),
+                policy.policy_bundle_id.as_str(),
+                policy.policy_version.as_str(),
+                linked_receipt_ids.as_slice(),
+                rollback_receipt_ids.as_slice(),
+                evidence_digests.as_slice(),
+                None,
+            ),
+            revision: 1,
+            incident_kind: draft.incident_kind,
+            incident_status: IncidentStatus::Open,
+            taxonomy_id: draft.taxonomy_id,
+            taxonomy_version: draft.taxonomy_version,
+            taxonomy_code: draft.taxonomy_code,
+            severity: draft.severity,
+            summary: draft.summary,
+            reported_at_ms: reported_at_ms.max(0),
+            updated_at_ms: reported_at_ms.max(0),
+            policy_bundle_id: policy.policy_bundle_id.clone(),
+            policy_version: policy.policy_version.clone(),
+            linked_receipt_ids,
+            rollback_receipt_ids,
+            evidence_digests,
+            supersedes_digest: None,
+        };
+        if let Some(existing) = self.latest_incident_by_id(incident_id.as_str()) {
+            if existing.incident_digest == incident.incident_digest {
+                return Ok(incident_id);
+            }
+            return Err(format!("incident idempotency conflict for {}", incident_id));
+        }
+        self.emit_incident_receipt(
+            "economy.incident.reported.v1",
+            REASON_CODE_INCIDENT_REPORTED,
+            incident.clone(),
+            draft.idempotency_key.as_str(),
+            source_tag,
+        )?;
+        self.persist_incident_object(incident)?;
+        Ok(incident_id)
+    }
+
+    pub fn update_incident(
+        &mut self,
+        draft: IncidentUpdateDraft,
+        updated_at_ms: i64,
+        source_tag: &str,
+    ) -> Result<String, String> {
+        let latest = self
+            .latest_incident_by_id(draft.incident_id.as_str())
+            .cloned()
+            .ok_or_else(|| format!("unknown incident_id {}", draft.incident_id))?;
+        self.validate_incident_draft_linkage(
+            if draft.linked_receipt_ids.is_empty() {
+                latest.linked_receipt_ids.as_slice()
+            } else {
+                draft.linked_receipt_ids.as_slice()
+            },
+            if draft.rollback_receipt_ids.is_empty() {
+                latest.rollback_receipt_ids.as_slice()
+            } else {
+                draft.rollback_receipt_ids.as_slice()
+            },
+            true,
+        )?;
+        let linked_receipt_ids = if draft.linked_receipt_ids.is_empty() {
+            latest.linked_receipt_ids.clone()
+        } else {
+            canonical_receipt_ids(draft.linked_receipt_ids.as_slice())
+        };
+        let rollback_receipt_ids = if draft.rollback_receipt_ids.is_empty() {
+            latest.rollback_receipt_ids.clone()
+        } else {
+            canonical_receipt_ids(draft.rollback_receipt_ids.as_slice())
+        };
+        let evidence_digests = if draft.evidence_digests.is_empty() {
+            latest.evidence_digests.clone()
+        } else {
+            canonical_evidence_digests(draft.evidence_digests.as_slice())?
+        };
+        let summary = draft.summary.unwrap_or_else(|| latest.summary.clone());
+        let policy = current_policy_context();
+        let incident = IncidentObject {
+            incident_id: latest.incident_id.clone(),
+            incident_digest: incident_digest_for(
+                latest.incident_id.as_str(),
+                latest.revision.saturating_add(1),
+                latest.incident_kind,
+                latest.incident_status,
+                latest.taxonomy_id.as_str(),
+                latest.taxonomy_version.as_str(),
+                latest.taxonomy_code.as_str(),
+                latest.severity,
+                summary.as_str(),
+                latest.reported_at_ms,
+                updated_at_ms.max(0),
+                policy.policy_bundle_id.as_str(),
+                policy.policy_version.as_str(),
+                linked_receipt_ids.as_slice(),
+                rollback_receipt_ids.as_slice(),
+                evidence_digests.as_slice(),
+                Some(latest.incident_digest.as_str()),
+            ),
+            revision: latest.revision.saturating_add(1),
+            incident_kind: latest.incident_kind,
+            incident_status: latest.incident_status,
+            taxonomy_id: latest.taxonomy_id,
+            taxonomy_version: latest.taxonomy_version,
+            taxonomy_code: latest.taxonomy_code,
+            severity: latest.severity,
+            summary,
+            reported_at_ms: latest.reported_at_ms,
+            updated_at_ms: updated_at_ms.max(0),
+            policy_bundle_id: policy.policy_bundle_id.clone(),
+            policy_version: policy.policy_version.clone(),
+            linked_receipt_ids,
+            rollback_receipt_ids,
+            evidence_digests,
+            supersedes_digest: Some(latest.incident_digest),
+        };
+        self.emit_incident_receipt(
+            "economy.incident.updated.v1",
+            REASON_CODE_INCIDENT_UPDATED,
+            incident.clone(),
+            draft.idempotency_key.as_str(),
+            source_tag,
+        )?;
+        self.persist_incident_object(incident)?;
+        Ok(draft.incident_id)
+    }
+
+    pub fn resolve_incident(
+        &mut self,
+        draft: IncidentResolutionDraft,
+        resolved_at_ms: i64,
+        source_tag: &str,
+    ) -> Result<String, String> {
+        let latest = self
+            .latest_incident_by_id(draft.incident_id.as_str())
+            .cloned()
+            .ok_or_else(|| format!("unknown incident_id {}", draft.incident_id))?;
+        let rollback_receipt_ids = if draft.rollback_receipt_ids.is_empty() {
+            latest.rollback_receipt_ids.clone()
+        } else {
+            canonical_receipt_ids(draft.rollback_receipt_ids.as_slice())
+        };
+        self.validate_incident_draft_linkage(
+            latest.linked_receipt_ids.as_slice(),
+            rollback_receipt_ids.as_slice(),
+            false,
+        )?;
+        let evidence_digests = if draft.evidence_digests.is_empty() {
+            latest.evidence_digests.clone()
+        } else {
+            canonical_evidence_digests(draft.evidence_digests.as_slice())?
+        };
+        let summary = draft
+            .resolution_summary
+            .unwrap_or_else(|| latest.summary.clone());
+        let policy = current_policy_context();
+        let incident = IncidentObject {
+            incident_id: latest.incident_id.clone(),
+            incident_digest: incident_digest_for(
+                latest.incident_id.as_str(),
+                latest.revision.saturating_add(1),
+                latest.incident_kind,
+                IncidentStatus::Resolved,
+                latest.taxonomy_id.as_str(),
+                latest.taxonomy_version.as_str(),
+                latest.taxonomy_code.as_str(),
+                latest.severity,
+                summary.as_str(),
+                latest.reported_at_ms,
+                resolved_at_ms.max(0),
+                policy.policy_bundle_id.as_str(),
+                policy.policy_version.as_str(),
+                latest.linked_receipt_ids.as_slice(),
+                rollback_receipt_ids.as_slice(),
+                evidence_digests.as_slice(),
+                Some(latest.incident_digest.as_str()),
+            ),
+            revision: latest.revision.saturating_add(1),
+            incident_kind: latest.incident_kind,
+            incident_status: IncidentStatus::Resolved,
+            taxonomy_id: latest.taxonomy_id,
+            taxonomy_version: latest.taxonomy_version,
+            taxonomy_code: latest.taxonomy_code,
+            severity: latest.severity,
+            summary,
+            reported_at_ms: latest.reported_at_ms,
+            updated_at_ms: resolved_at_ms.max(0),
+            policy_bundle_id: policy.policy_bundle_id.clone(),
+            policy_version: policy.policy_version.clone(),
+            linked_receipt_ids: latest.linked_receipt_ids,
+            rollback_receipt_ids,
+            evidence_digests,
+            supersedes_digest: Some(latest.incident_digest),
+        };
+        self.emit_incident_receipt(
+            "economy.incident.resolved.v1",
+            REASON_CODE_INCIDENT_RESOLVED,
+            incident.clone(),
+            draft.idempotency_key.as_str(),
+            source_tag,
+        )?;
+        self.persist_incident_object(incident)?;
+        Ok(draft.incident_id)
+    }
+
+    pub fn export_incident_audit_package(
+        &self,
+        tier: IncidentExportRedactionTier,
+        generated_at_ms: i64,
+    ) -> Result<IncidentAuditPackage, String> {
+        let mut incidents = self.incident_objects.clone();
+        incidents = normalize_incident_objects(incidents);
+        if tier == IncidentExportRedactionTier::Public {
+            for incident in &mut incidents {
+                incident.summary = "[redacted]".to_string();
+                incident.linked_receipt_ids.clear();
+                incident.rollback_receipt_ids.clear();
+            }
+        }
+        let mut taxonomy_registry = self.normalized_incident_taxonomy_entries();
+        let mut incident_receipts = self
+            .receipts
+            .iter()
+            .filter(|receipt| receipt.receipt_type.starts_with("economy.incident."))
+            .cloned()
+            .collect::<Vec<_>>();
+        incident_receipts.sort_by(|lhs, rhs| {
+            lhs.created_at_ms
+                .cmp(&rhs.created_at_ms)
+                .then_with(|| lhs.receipt_id.cmp(&rhs.receipt_id))
+        });
+        if tier == IncidentExportRedactionTier::Public {
+            for receipt in &mut incident_receipts {
+                receipt.evidence.iter_mut().for_each(|evidence| {
+                    evidence.uri = "oa://redacted".to_string();
+                });
+            }
+        }
+        taxonomy_registry
+            .sort_by(|lhs, rhs| incident_taxonomy_key(lhs).cmp(&incident_taxonomy_key(rhs)));
+        let package_hash = digest_for_text(
+            format!(
+                "{}:{}:{}:{}",
+                incidents
+                    .iter()
+                    .map(|incident| incident.incident_digest.clone())
+                    .collect::<Vec<_>>()
+                    .join("|"),
+                taxonomy_registry
+                    .iter()
+                    .map(incident_taxonomy_key)
+                    .collect::<Vec<_>>()
+                    .join("|"),
+                incident_receipts
+                    .iter()
+                    .map(|receipt| receipt.canonical_hash.clone())
+                    .collect::<Vec<_>>()
+                    .join("|"),
+                match tier {
+                    IncidentExportRedactionTier::Public => "public",
+                    IncidentExportRedactionTier::Restricted => "restricted",
+                }
+            )
+            .as_str(),
+        );
+        Ok(IncidentAuditPackage {
+            schema_version: EARN_KERNEL_RECEIPT_SCHEMA_VERSION,
+            generated_at_ms: generated_at_ms.max(0),
+            stream_id: self.stream_id.clone(),
+            authority: self.authority.clone(),
+            redaction_tier: tier,
+            incident_count: incidents.len(),
+            taxonomy_count: taxonomy_registry.len(),
+            incidents,
+            taxonomy_registry,
+            incident_receipts,
+            package_hash,
+        })
+    }
+
+    fn latest_incident_by_id(&self, incident_id: &str) -> Option<&IncidentObject> {
+        self.incident_objects
+            .iter()
+            .filter(|incident| incident.incident_id == incident_id)
+            .max_by(|lhs, rhs| {
+                lhs.revision
+                    .cmp(&rhs.revision)
+                    .then_with(|| lhs.updated_at_ms.cmp(&rhs.updated_at_ms))
+            })
+    }
+
+    fn validate_incident_draft_linkage(
+        &self,
+        linked_receipt_ids: &[String],
+        rollback_receipt_ids: &[String],
+        require_linked_receipts: bool,
+    ) -> Result<(), String> {
+        let linked_ids = canonical_receipt_ids(linked_receipt_ids);
+        if require_linked_receipts && linked_ids.is_empty() {
+            return Err("incident linkage requires at least one linked receipt".to_string());
+        }
+        for receipt_id in linked_ids {
+            if self.get_receipt(receipt_id.as_str()).is_none() {
+                return Err(format!("linked receipt {receipt_id} not found"));
+            }
+        }
+        for receipt_id in canonical_receipt_ids(rollback_receipt_ids) {
+            let Some(receipt) = self.get_receipt(receipt_id.as_str()) else {
+                return Err(format!("rollback receipt {receipt_id} not found"));
+            };
+            let normalized_type = receipt.receipt_type.to_ascii_lowercase();
+            let rollback_like = normalized_type.contains("rollback")
+                || normalized_type.contains("compensating_action")
+                || receipt
+                    .hints
+                    .reason_code
+                    .as_deref()
+                    .is_some_and(|reason| reason.to_ascii_lowercase().contains("rollback"));
+            if !rollback_like {
+                return Err(format!(
+                    "receipt {receipt_id} is not rollback/compensating-action linked"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn persist_incident_object(&mut self, incident: IncidentObject) -> Result<(), String> {
+        if self
+            .incident_objects
+            .iter()
+            .any(|existing| existing.incident_digest == incident.incident_digest)
+        {
+            return Ok(());
+        }
+        self.incident_objects.push(incident);
+        self.incident_objects =
+            normalize_incident_objects(std::mem::take(&mut self.incident_objects));
+        if let Err(error) = self.persist_current_state() {
+            self.last_error = Some(error.clone());
+            self.last_action = Some("Incident object persist failed".to_string());
+            self.load_state = PaneLoadState::Error;
+            return Err(error);
+        }
+        self.last_error = None;
+        self.last_action = Some("Incident object persisted".to_string());
+        self.load_state = PaneLoadState::Ready;
+        Ok(())
+    }
+
+    fn emit_incident_receipt(
+        &mut self,
+        receipt_type: &str,
+        reason_code: &str,
+        incident: IncidentObject,
+        idempotency_key: &str,
+        source_tag: &str,
+    ) -> Result<(), String> {
+        if idempotency_key.trim().is_empty() {
+            return Err("incident receipt idempotency_key cannot be empty".to_string());
+        }
+        let mut evidence = vec![incident_object_evidence(&incident)];
+        self.append_receipt_reference_links(&mut evidence, incident.linked_receipt_ids.as_slice());
+        self.append_receipt_reference_links(
+            &mut evidence,
+            incident.rollback_receipt_ids.as_slice(),
+        );
+        let receipt = ReceiptBuilder::new(
+            format!(
+                "receipt.economy.incident:{}:{}:{}",
+                normalize_key(receipt_type),
+                normalize_key(incident.incident_id.as_str()),
+                incident.revision
+            ),
+            receipt_type,
+            incident.updated_at_ms.max(0),
+            format!(
+                "idemp.economy.incident:{}:{}",
+                normalize_key(receipt_type),
+                normalize_key(idempotency_key)
+            ),
+            TraceContext {
+                session_id: None,
+                trajectory_hash: None,
+                job_hash: None,
+                run_id: Some(format!(
+                    "economy_incident:{}:{}",
+                    incident.incident_id, incident.revision
+                )),
+                work_unit_id: incident.linked_receipt_ids.first().cloned(),
+                contract_id: None,
+                claim_id: None,
+            },
+            current_policy_context(),
+        )
+        .with_inputs_payload(json!({
+            "incident_id": incident.incident_id,
+            "incident_digest": incident.incident_digest,
+            "revision": incident.revision,
+            "incident_kind": incident.incident_kind.label(),
+            "incident_status": incident.incident_status.label(),
+            "taxonomy_id": incident.taxonomy_id,
+            "taxonomy_version": incident.taxonomy_version,
+            "taxonomy_code": incident.taxonomy_code,
+            "linked_receipt_ids": incident.linked_receipt_ids,
+            "rollback_receipt_ids": incident.rollback_receipt_ids,
+            "evidence_digests": incident.evidence_digests,
+        }))
+        .with_outputs_payload(json!({
+            "status": "recorded",
+            "incident_id": incident.incident_id,
+            "incident_digest": incident.incident_digest,
+            "revision": incident.revision,
+            "incident_status": incident.incident_status.label(),
+            "taxonomy_id": incident.taxonomy_id,
+            "taxonomy_version": incident.taxonomy_version,
+            "taxonomy_code": incident.taxonomy_code,
+            "source_tag": source_tag,
+        }))
+        .with_evidence(evidence)
+        .with_hints(ReceiptHints {
+            category: Some("compute".to_string()),
+            tfb_class: None,
+            severity: Some(incident.severity),
+            achieved_verification_tier: None,
+            verification_correlated: None,
+            provenance_grade: None,
+            auth_assurance_level: Some(AuthAssuranceLevel::Authenticated),
+            personhood_proved: Some(false),
+            reason_code: Some(reason_code.to_string()),
+            notional: None,
+            liability_premium: None,
+        })
+        .build();
+        self.append_receipt(receipt, source_tag);
+        if self.load_state == PaneLoadState::Error {
+            return Err(self
+                .last_error
+                .clone()
+                .unwrap_or_else(|| "incident receipt append failed".to_string()));
+        }
+        Ok(())
     }
 
     pub fn receipts_for_job(&self, job_id: &str) -> Vec<&Receipt> {
@@ -2459,6 +3111,8 @@ impl EarnKernelReceiptState {
                 self.receipts.as_slice(),
                 self.normalized_work_units().as_slice(),
                 self.normalized_idempotency_records().as_slice(),
+                self.incident_objects.as_slice(),
+                self.normalized_incident_taxonomy_entries().as_slice(),
             ) {
                 self.last_error = Some(error);
                 self.load_state = PaneLoadState::Error;
@@ -2493,6 +3147,8 @@ impl EarnKernelReceiptState {
             self.receipts.as_slice(),
             self.normalized_work_units().as_slice(),
             self.normalized_idempotency_records().as_slice(),
+            self.incident_objects.as_slice(),
+            self.normalized_incident_taxonomy_entries().as_slice(),
         ) {
             self.last_error = Some(error);
             self.load_state = PaneLoadState::Error;
@@ -3853,6 +4509,127 @@ fn extract_u64_meta(evidence: &EvidenceRef, key: &str) -> Option<u64> {
     evidence.meta.get(key).and_then(Value::as_u64)
 }
 
+fn taxonomy_lookup_key(taxonomy_id: &str, taxonomy_version: &str, taxonomy_code: &str) -> String {
+    incident_taxonomy_key(&IncidentTaxonomyEntry {
+        taxonomy_id: taxonomy_id.to_string(),
+        taxonomy_version: taxonomy_version.to_string(),
+        code: taxonomy_code.to_string(),
+        stable_meaning: "lookup".to_string(),
+    })
+}
+
+fn canonical_receipt_ids(values: &[String]) -> Vec<String> {
+    let mut rows = values
+        .iter()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+    rows.sort();
+    rows.dedup();
+    rows
+}
+
+fn canonical_evidence_digests(values: &[String]) -> Result<Vec<String>, String> {
+    let mut rows = values
+        .iter()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+    if rows.is_empty() {
+        return Err("incident evidence_digests cannot be empty".to_string());
+    }
+    rows.sort();
+    rows.dedup();
+    if rows.iter().any(|value| !value.starts_with("sha256:")) {
+        return Err("incident evidence_digests must be sha256 digests".to_string());
+    }
+    Ok(rows)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn incident_digest_for(
+    incident_id: &str,
+    revision: u32,
+    incident_kind: IncidentKind,
+    incident_status: IncidentStatus,
+    taxonomy_id: &str,
+    taxonomy_version: &str,
+    taxonomy_code: &str,
+    severity: SeverityClass,
+    summary: &str,
+    reported_at_ms: i64,
+    updated_at_ms: i64,
+    policy_bundle_id: &str,
+    policy_version: &str,
+    linked_receipt_ids: &[String],
+    rollback_receipt_ids: &[String],
+    evidence_digests: &[String],
+    supersedes_digest: Option<&str>,
+) -> String {
+    digest_for_text(
+        format!(
+            "{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
+            incident_id,
+            revision,
+            incident_kind.label(),
+            incident_status.label(),
+            taxonomy_id,
+            taxonomy_version,
+            taxonomy_code,
+            severity.label(),
+            summary,
+            reported_at_ms.max(0),
+            updated_at_ms.max(0),
+            policy_bundle_id,
+            policy_version,
+            linked_receipt_ids.join("|"),
+            rollback_receipt_ids.join("|"),
+            evidence_digests.join("|"),
+            supersedes_digest.unwrap_or("none")
+        )
+        .as_str(),
+    )
+}
+
+fn incident_object_evidence(incident: &IncidentObject) -> EvidenceRef {
+    let mut evidence = EvidenceRef::new(
+        "incident_object_ref",
+        format!(
+            "oa://economy/incidents/{}/revisions/{}",
+            incident.incident_id, incident.revision
+        ),
+        incident.incident_digest.clone(),
+    );
+    evidence.meta.insert(
+        "incident_id".to_string(),
+        json!(incident.incident_id.clone()),
+    );
+    evidence
+        .meta
+        .insert("revision".to_string(), json!(incident.revision));
+    evidence.meta.insert(
+        "incident_kind".to_string(),
+        json!(incident.incident_kind.label()),
+    );
+    evidence.meta.insert(
+        "incident_status".to_string(),
+        json!(incident.incident_status.label()),
+    );
+    evidence.meta.insert(
+        "taxonomy_id".to_string(),
+        json!(incident.taxonomy_id.clone()),
+    );
+    evidence.meta.insert(
+        "taxonomy_version".to_string(),
+        json!(incident.taxonomy_version.clone()),
+    );
+    evidence.meta.insert(
+        "taxonomy_code".to_string(),
+        json!(incident.taxonomy_code.clone()),
+    );
+    evidence
+}
+
 fn select_certification_rule<'a>(
     bundle: &'a PolicyBundleConfig,
     category: &str,
@@ -4113,6 +4890,27 @@ impl SeverityClass {
     }
 }
 
+impl IncidentKind {
+    fn label(self) -> &'static str {
+        match self {
+            IncidentKind::IncidentKindUnspecified => "unspecified",
+            IncidentKind::Incident => "incident",
+            IncidentKind::NearMiss => "near_miss",
+            IncidentKind::GroundTruthCase => "ground_truth_case",
+        }
+    }
+}
+
+impl IncidentStatus {
+    fn label(self) -> &'static str {
+        match self {
+            IncidentStatus::IncidentStatusUnspecified => "unspecified",
+            IncidentStatus::Open => "open",
+            IncidentStatus::Resolved => "resolved",
+        }
+    }
+}
+
 fn current_policy_context() -> PolicyContext {
     PolicyContext {
         policy_bundle_id: std::env::var("OPENAGENTS_EARN_POLICY_BUNDLE_ID")
@@ -4339,11 +5137,105 @@ fn normalize_idempotency_records(records: &mut BTreeMap<String, IdempotencyRecor
     }
 }
 
+fn normalize_incident_objects(mut incidents: Vec<IncidentObject>) -> Vec<IncidentObject> {
+    incidents.sort_by(|lhs, rhs| {
+        rhs.updated_at_ms
+            .cmp(&lhs.updated_at_ms)
+            .then_with(|| lhs.incident_id.cmp(&rhs.incident_id))
+            .then_with(|| lhs.revision.cmp(&rhs.revision))
+    });
+    incidents.truncate(INCIDENT_OBJECT_ROW_LIMIT);
+    incidents
+}
+
+fn normalize_incident_taxonomy_registry(registry: &mut BTreeMap<String, IncidentTaxonomyEntry>) {
+    if registry.len() <= INCIDENT_TAXONOMY_ROW_LIMIT {
+        return;
+    }
+    let mut keys = registry.keys().cloned().collect::<Vec<_>>();
+    keys.sort();
+    let to_remove = keys.len().saturating_sub(INCIDENT_TAXONOMY_ROW_LIMIT);
+    for key in keys.into_iter().take(to_remove) {
+        registry.remove(key.as_str());
+    }
+}
+
+fn incident_taxonomy_key(entry: &IncidentTaxonomyEntry) -> String {
+    format!(
+        "{}:{}:{}",
+        normalize_key(entry.taxonomy_id.as_str()),
+        normalize_key(entry.taxonomy_version.as_str()),
+        normalize_key(entry.code.as_str())
+    )
+}
+
+fn default_incident_taxonomy_registry() -> BTreeMap<String, IncidentTaxonomyEntry> {
+    let defaults = vec![
+        IncidentTaxonomyEntry {
+            taxonomy_id: "oa.incident.taxonomy".to_string(),
+            taxonomy_version: "2026.02".to_string(),
+            code: "ops.execution_failure".to_string(),
+            stable_meaning: "Execution failure with user-visible impact".to_string(),
+        },
+        IncidentTaxonomyEntry {
+            taxonomy_id: "oa.incident.taxonomy".to_string(),
+            taxonomy_version: "2026.02".to_string(),
+            code: "safety.near_miss".to_string(),
+            stable_meaning: "Near miss caught before external impact".to_string(),
+        },
+        IncidentTaxonomyEntry {
+            taxonomy_id: "oa.incident.taxonomy".to_string(),
+            taxonomy_version: "2026.02".to_string(),
+            code: "safety.ground_truth_case".to_string(),
+            stable_meaning: "Ground truth case for benchmark/simulation replay".to_string(),
+        },
+        IncidentTaxonomyEntry {
+            taxonomy_id: "oa.incident.taxonomy".to_string(),
+            taxonomy_version: "2026.02".to_string(),
+            code: "finance.claim_dispute".to_string(),
+            stable_meaning: "Claim or dispute event with financial impact".to_string(),
+        },
+    ];
+    let mut registry = BTreeMap::<String, IncidentTaxonomyEntry>::new();
+    for entry in defaults {
+        registry.insert(incident_taxonomy_key(&entry), entry);
+    }
+    registry
+}
+
+fn upsert_incident_taxonomy_entry(
+    registry: &mut BTreeMap<String, IncidentTaxonomyEntry>,
+    entry: IncidentTaxonomyEntry,
+) -> Result<(), String> {
+    if entry.taxonomy_id.trim().is_empty()
+        || entry.taxonomy_version.trim().is_empty()
+        || entry.code.trim().is_empty()
+        || entry.stable_meaning.trim().is_empty()
+    {
+        return Err("incident taxonomy entry fields must be non-empty".to_string());
+    }
+    let key = incident_taxonomy_key(&entry);
+    if let Some(existing) = registry.get(key.as_str()) {
+        if existing.stable_meaning != entry.stable_meaning {
+            return Err(format!(
+                "taxonomy meaning changed for {}:{}:{}",
+                entry.taxonomy_id, entry.taxonomy_version, entry.code
+            ));
+        }
+        return Ok(());
+    }
+    registry.insert(key, entry);
+    normalize_incident_taxonomy_registry(registry);
+    Ok(())
+}
+
 fn persist_earn_kernel_receipts(
     path: &Path,
     receipts: &[Receipt],
     work_units: &[WorkUnitMetadata],
     idempotency_records: &[IdempotencyRecord],
+    incident_objects: &[IncidentObject],
+    incident_taxonomy_registry: &[IncidentTaxonomyEntry],
 ) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
@@ -4357,6 +5249,8 @@ fn persist_earn_kernel_receipts(
         receipts: normalize_receipts(receipts.to_vec()),
         work_units: work_units.to_vec(),
         idempotency_records: idempotency_records.to_vec(),
+        incident_objects: normalize_incident_objects(incident_objects.to_vec()),
+        incident_taxonomy_registry: incident_taxonomy_registry.to_vec(),
     };
     let payload = serde_json::to_string_pretty(&document)
         .map_err(|error| format!("Failed to encode economy-kernel receipts: {error}"))?;
@@ -4376,6 +5270,8 @@ fn load_earn_kernel_receipts(path: &Path) -> Result<LoadedReceiptState, String> 
                 receipts: Vec::new(),
                 work_units: BTreeMap::new(),
                 idempotency_index: BTreeMap::new(),
+                incident_objects: Vec::new(),
+                incident_taxonomy_registry: default_incident_taxonomy_registry(),
             });
         }
         Err(error) => {
@@ -4423,10 +5319,18 @@ fn load_earn_kernel_receipts(path: &Path) -> Result<LoadedReceiptState, String> 
         })
         .collect::<BTreeMap<_, _>>();
     normalize_idempotency_records(&mut idempotency_index);
+    let incident_objects = normalize_incident_objects(document.incident_objects);
+    let mut incident_taxonomy_registry = default_incident_taxonomy_registry();
+    for entry in document.incident_taxonomy_registry {
+        upsert_incident_taxonomy_entry(&mut incident_taxonomy_registry, entry)?;
+    }
+    normalize_incident_taxonomy_registry(&mut incident_taxonomy_registry);
     Ok(LoadedReceiptState {
         receipts: normalize_receipts(document.receipts),
         work_units,
         idempotency_index,
+        incident_objects,
+        incident_taxonomy_registry,
     })
 }
 
@@ -4515,6 +5419,24 @@ mod tests {
             score: if alert { 0.2142857142857142 } else { 0.0 },
             alert,
         }]
+    }
+
+    fn fixture_incident_draft(
+        linked_receipt_id: &str,
+        idempotency_key: &str,
+    ) -> IncidentReportDraft {
+        IncidentReportDraft {
+            idempotency_key: idempotency_key.to_string(),
+            incident_kind: IncidentKind::Incident,
+            taxonomy_id: "oa.incident.taxonomy".to_string(),
+            taxonomy_version: "2026.02".to_string(),
+            taxonomy_code: "ops.execution_failure".to_string(),
+            severity: SeverityClass::High,
+            summary: "provider execution failed after acceptance".to_string(),
+            linked_receipt_ids: vec![linked_receipt_id.to_string()],
+            rollback_receipt_ids: vec![],
+            evidence_digests: vec!["sha256:evidence-1".to_string()],
+        }
     }
 
     #[test]
@@ -5064,6 +5986,217 @@ mod tests {
             receipt.idempotency_key,
             "idemp.economy.snapshot:1762000060000"
         );
+    }
+
+    #[test]
+    fn incident_reporting_is_idempotent_and_linkage_enforced() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        state.record_history_receipt(
+            &fixture_history_row("wallet-payment-incident"),
+            1_762_000_010,
+            "test.history",
+        );
+        let linked_receipt_id = state
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_type == "earn.job.settlement_observed.v1")
+            .expect("settlement receipt")
+            .receipt_id
+            .clone();
+
+        let first = state
+            .report_incident(
+                fixture_incident_draft(linked_receipt_id.as_str(), "incident-alpha"),
+                1_762_000_060_000,
+                "test.incident",
+            )
+            .expect("incident report should succeed");
+        let second = state
+            .report_incident(
+                fixture_incident_draft(linked_receipt_id.as_str(), "incident-alpha"),
+                1_762_000_060_000,
+                "test.incident.replay",
+            )
+            .expect("incident replay should be idempotent");
+        assert_eq!(first, second);
+        assert_eq!(state.incident_objects.len(), 1);
+        assert_eq!(
+            state
+                .receipts
+                .iter()
+                .filter(|receipt| receipt.receipt_type == "economy.incident.reported.v1")
+                .count(),
+            1
+        );
+
+        let missing_linkage = state.report_incident(
+            fixture_incident_draft("receipt.missing", "incident-missing"),
+            1_762_000_061_000,
+            "test.incident.missing",
+        );
+        assert!(missing_linkage.is_err());
+
+        let mut unknown_taxonomy =
+            fixture_incident_draft(linked_receipt_id.as_str(), "incident-unknown-taxonomy");
+        unknown_taxonomy.taxonomy_code = "unknown.code".to_string();
+        let unknown =
+            state.report_incident(unknown_taxonomy, 1_762_000_062_000, "test.incident.unknown");
+        assert!(unknown.is_err());
+    }
+
+    #[test]
+    fn incident_taxonomy_registry_enforces_stable_meaning() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        let entry = IncidentTaxonomyEntry {
+            taxonomy_id: "oa.incident.taxonomy".to_string(),
+            taxonomy_version: "2026.02".to_string(),
+            code: "custom.edge_case".to_string(),
+            stable_meaning: "Custom edge case for validation".to_string(),
+        };
+        state
+            .register_incident_taxonomy_entry(entry.clone())
+            .expect("first taxonomy insert");
+        state
+            .register_incident_taxonomy_entry(entry.clone())
+            .expect("same meaning should be idempotent");
+
+        let mut changed = entry;
+        changed.stable_meaning = "Changed meaning should be rejected".to_string();
+        let result = state.register_incident_taxonomy_entry(changed);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn incident_update_and_resolution_append_revisions_and_receipts() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        state.record_history_receipt(
+            &fixture_history_row("wallet-payment-update"),
+            1_762_000_010,
+            "test.history",
+        );
+        let linked_receipt_id = state
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_type == "earn.job.settlement_observed.v1")
+            .expect("settlement receipt")
+            .receipt_id
+            .clone();
+        let incident_id = state
+            .report_incident(
+                fixture_incident_draft(linked_receipt_id.as_str(), "incident-beta"),
+                1_762_000_060_000,
+                "test.incident.report",
+            )
+            .expect("incident report");
+
+        state
+            .update_incident(
+                IncidentUpdateDraft {
+                    incident_id: incident_id.clone(),
+                    idempotency_key: "incident-beta-update".to_string(),
+                    summary: Some("Updated summary after triage".to_string()),
+                    linked_receipt_ids: vec![linked_receipt_id.clone()],
+                    rollback_receipt_ids: vec![],
+                    evidence_digests: vec!["sha256:evidence-update".to_string()],
+                },
+                1_762_000_120_000,
+                "test.incident.update",
+            )
+            .expect("incident update");
+        state
+            .resolve_incident(
+                IncidentResolutionDraft {
+                    incident_id: incident_id.clone(),
+                    idempotency_key: "incident-beta-resolve".to_string(),
+                    resolution_summary: Some("Resolved after remediation".to_string()),
+                    rollback_receipt_ids: vec![],
+                    evidence_digests: vec!["sha256:evidence-resolve".to_string()],
+                },
+                1_762_000_180_000,
+                "test.incident.resolve",
+            )
+            .expect("incident resolve");
+
+        assert!(
+            state
+                .receipts
+                .iter()
+                .any(|receipt| receipt.receipt_type == "economy.incident.updated.v1")
+        );
+        assert!(
+            state
+                .receipts
+                .iter()
+                .any(|receipt| receipt.receipt_type == "economy.incident.resolved.v1")
+        );
+        let latest = state
+            .latest_incident_by_id(incident_id.as_str())
+            .expect("latest incident");
+        assert_eq!(latest.incident_status, IncidentStatus::Resolved);
+        assert_eq!(latest.revision, 3);
+        assert!(latest.supersedes_digest.is_some());
+    }
+
+    #[test]
+    fn incident_audit_export_supports_public_and_restricted_redaction_tiers() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        state.record_history_receipt(
+            &fixture_history_row("wallet-payment-export"),
+            1_762_000_010,
+            "test.history",
+        );
+        let linked_receipt_id = state
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_type == "earn.job.settlement_observed.v1")
+            .expect("settlement receipt")
+            .receipt_id
+            .clone();
+        state
+            .report_incident(
+                fixture_incident_draft(linked_receipt_id.as_str(), "incident-export"),
+                1_762_000_060_000,
+                "test.incident.report",
+            )
+            .expect("incident report");
+
+        let restricted = state
+            .export_incident_audit_package(
+                IncidentExportRedactionTier::Restricted,
+                1_762_000_200_000,
+            )
+            .expect("restricted export");
+        let public = state
+            .export_incident_audit_package(IncidentExportRedactionTier::Public, 1_762_000_200_000)
+            .expect("public export");
+        assert_eq!(restricted.incident_count, public.incident_count);
+        assert_ne!(restricted.package_hash, public.package_hash);
+        assert!(
+            restricted
+                .incidents
+                .iter()
+                .all(|incident| incident.summary != "[redacted]")
+        );
+        assert!(
+            public
+                .incidents
+                .iter()
+                .all(|incident| incident.summary == "[redacted]")
+        );
+        assert!(public.incident_receipts.iter().all(|receipt| {
+            receipt
+                .evidence
+                .iter()
+                .all(|evidence| evidence.uri == "oa://redacted")
+        }));
     }
 
     #[test]
