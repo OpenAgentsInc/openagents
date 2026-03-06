@@ -506,6 +506,8 @@ pub enum ManagedChatChannelRailRow {
         label: String,
         collapsed: bool,
         channel_count: usize,
+        unread_count: usize,
+        mention_count: usize,
     },
     Channel {
         channel_id: String,
@@ -864,10 +866,44 @@ impl AutopilotChatState {
                 }
             }
             ChatWorkspaceSelection::DirectMessages => {
-                self.selected_workspace = ChatWorkspaceSelection::DirectMessages;
-                self.reset_transcript_scroll();
-                self.last_error = None;
-                true
+                let room_id = self
+                    .direct_message_projection
+                    .local_state
+                    .selected_room_id
+                    .clone()
+                    .filter(|room_id| {
+                        self.direct_message_projection
+                            .snapshot
+                            .rooms
+                            .iter()
+                            .any(|room| room.room_id == *room_id)
+                    })
+                    .or_else(|| {
+                        self.direct_message_projection
+                            .snapshot
+                            .rooms
+                            .first()
+                            .map(|room| room.room_id.clone())
+                    });
+                if let Some(room_id) = room_id {
+                    match self.direct_message_projection.set_selected_room(&room_id) {
+                        Ok(()) => {
+                            self.selected_workspace = ChatWorkspaceSelection::DirectMessages;
+                            self.reset_transcript_scroll();
+                            self.last_error = None;
+                            true
+                        }
+                        Err(error) => {
+                            self.last_error = Some(error);
+                            false
+                        }
+                    }
+                } else {
+                    self.selected_workspace = ChatWorkspaceSelection::DirectMessages;
+                    self.reset_transcript_scroll();
+                    self.last_error = None;
+                    true
+                }
             }
             ChatWorkspaceSelection::Autopilot => {
                 self.selected_workspace = ChatWorkspaceSelection::Autopilot;
@@ -1020,6 +1056,46 @@ impl AutopilotChatState {
                             == category_id
                     })
                     .count();
+                let unread_count = active_group
+                    .channel_ids
+                    .iter()
+                    .filter_map(|channel_id| {
+                        self.managed_chat_projection
+                            .snapshot
+                            .channels
+                            .iter()
+                            .find(|channel| channel.channel_id == *channel_id)
+                    })
+                    .filter(|candidate| {
+                        candidate
+                            .hints
+                            .category_id
+                            .as_deref()
+                            .unwrap_or(MANAGED_CHAT_UNCATEGORIZED_CATEGORY_ID)
+                            == category_id
+                    })
+                    .map(|channel| channel.unread_count)
+                    .sum();
+                let mention_count = active_group
+                    .channel_ids
+                    .iter()
+                    .filter_map(|channel_id| {
+                        self.managed_chat_projection
+                            .snapshot
+                            .channels
+                            .iter()
+                            .find(|channel| channel.channel_id == *channel_id)
+                    })
+                    .filter(|candidate| {
+                        candidate
+                            .hints
+                            .category_id
+                            .as_deref()
+                            .unwrap_or(MANAGED_CHAT_UNCATEGORIZED_CATEGORY_ID)
+                            == category_id
+                    })
+                    .map(|channel| channel.mention_count)
+                    .sum();
                 rows.push(ManagedChatChannelRailRow::Category {
                     label: channel
                         .hints
@@ -1038,6 +1114,8 @@ impl AutopilotChatState {
                         .managed_chat_projection
                         .category_is_collapsed(&active_group.group_id, &category_id),
                     channel_count,
+                    unread_count,
+                    mention_count,
                 });
                 current_category_id = Some(category_id.clone());
             }
@@ -5145,7 +5223,14 @@ impl RenderState {
         })
     }
 
-    pub fn sync_direct_message_identity(&mut self) {
+    pub fn sync_chat_identities(&mut self) {
+        self.autopilot_chat
+            .managed_chat_projection
+            .set_local_pubkey(
+                self.nostr_identity
+                    .as_ref()
+                    .map(|identity| identity.public_key_hex.as_str()),
+            );
         self.autopilot_chat
             .direct_message_projection
             .set_identity(self.nostr_identity.as_ref());
