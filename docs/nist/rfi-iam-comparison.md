@@ -77,7 +77,7 @@ NIST guidance should explicitly recognize both paths to avoid de facto exclusion
 | **Authorization granularity** | Per-transaction approval or blanket limits | Per-scope (job, resource, skill) with cap + expiry |
 | **Spending enforcement** | Payment gateway checks account balance | Issuer checks envelope status, cap, expiry, scope |
 | **Auditability** | Transaction logs in payment system | Settlement receipts (kind:39244) with outcome artifact links |
-| **Refunds/disputes** | Chargeback process via payment network | Cryptographic proof of payment + outcome; arbitration via signed evidence |
+| **Refunds/disputes** | Chargeback process via payment network | Settlement reference + outcome artifact; arbitration via signed evidence |
 | **Multi-party payments** | Requires payment network coordination | Native: agent, issuer, provider, verifier via envelopes |
 | **Cross-domain payments** | Requires payment gateway integrations | Native: Lightning, Cashu, Fedimint rails |
 | **Budget constraints** | Set in payment system or approval workflow | Encoded in envelope (max, exp, scope tags) |
@@ -197,7 +197,7 @@ NIST guidance should explicitly recognize both paths to avoid de facto exclusion
 | **Can logs be tampered?** | Admin has full access to log storage | Events cryptographically signed; tampering detectable |
 | **Can logs be deleted?** | Admin can delete | Relays can delete, but operator can republish from backup |
 | **Forensic analysis** | Requires access to org's SIEM | Anyone with relay access can verify signed events |
-| **Dispute resolution** | Org provides logs (may be disputed) | Cryptographic proofs (signatures, payment preimages) |
+| **Dispute resolution** | Org provides logs (may be disputed) | Cryptographic evidence (signatures, settlement references) |
 
 **Key difference:** Enterprise IAM centralizes log ownership. Open protocols give agents sovereignty over their audit trails.
 
