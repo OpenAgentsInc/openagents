@@ -2,7 +2,7 @@
 
 Author: Codex
 Status: complete
-Scope: review of open PRs `#2978`, `#2932`, and `#2933` against the active MVP and broader economy-kernel source of truth
+Scope: review of open PRs `#2978`, `#2932`, and `#2933` against the active SA/SKL/AC NIP surface already written to power app features, with the broader economy-kernel docs treated as downstream integration targets rather than override authority for the NIPs
 
 ## Objective
 
@@ -10,7 +10,7 @@ Answer three questions:
 
 1. Which of the three currently open PRs can merge cleanly now?
 2. What should change in each PR before merge?
-3. How should SA/SKL/AC follow-on work sync with the broader vision in `docs/plans/economy-kernel.md` rather than drifting into a second economic model?
+3. How should SA/SKL/AC follow-on work stay coherent with the broader economy-kernel vision without forcing kernel assumptions over the established NIP suite?
 
 ## Sources Reviewed
 
@@ -20,8 +20,11 @@ Primary repo authority:
 - `docs/OWNERSHIP.md`
 - `docs/PROTOCOL_SURFACE.md`
 - `docs/NIP_SA_SKL_AC_IMPLEMENTATION_PLAN.md`
+- `crates/nostr/nips/SA.md`
+- `crates/nostr/nips/SKL.md`
+- `crates/nostr/nips/AC.md`
 
-Broader vision authority:
+Broader vision reference:
 
 - `docs/plans/economy-kernel.md`
 - `docs/plans/economy-kernel-proto.md`
@@ -38,27 +41,65 @@ Current in-repo protocol docs:
 - `crates/nostr/nips/SKL.md`
 - `crates/nostr/nips/AC.md`
 
+## Framing Correction
+
+This audit has been updated to reflect the intended hierarchy more accurately:
+
+1. The SA/SKL/AC NIPs in `crates/nostr/nips/` were written specifically to power parts of the app and are already partially implemented in `crates/nostr/core` and integrated in `apps/autopilot-desktop`.
+2. The default review posture should therefore be: hold the NIPs relatively stable, evaluate PRs primarily as changes to those established NIPs, and adapt economy-kernel planning downstream where possible.
+3. Nostr being a relay / websocket protocol is not itself a reason to reject NIP changes. The relevant review questions are whether a PR improves or degrades the NIP suite, whether it creates a coherent app-facing protocol surface, and what migration burden it imposes on the current implementation plan.
+
 ## Executive Recommendation
 
 | PR | Standalone? | Merge now? | Recommendation |
 | --- | --- | --- | --- |
-| `#2978` | Yes | Yes, after small doc-hygiene edits | Merge first. Keep it explicitly archival and non-normative. |
-| `#2932` | Only as a speculative profile | No | Do not merge into the active protocol surface as-is. Recast as a non-normative profile or redesign against kernel authority rules first. |
-| `#2933` | No | No | Split it. It currently mixes rail expansion, trust/auth changes, audit/delegation semantics, and an ecosystem-specific profile in a way that conflicts with the kernel source of truth. |
+| `#2978` | Yes | Yes | Merge first. The recommended cleanup has already been applied on the PR branch. |
+| `#2932` | Only as a targeted SA revision or clearly isolated profile | No | Do not merge into the active NIP surface as-is. Narrow it to a coherent SA delta, or isolate it as an explicit optional profile. |
+| `#2933` | No | No | Split it. It mixes several independent changes to the established NIPs and app-facing protocol surface in one branch. |
 
 ## Highest-Severity Findings
 
-1. `#2932` and `#2933` change normative SA/SKL/AC semantics without updating the repo's locked protocol-surface contract.
-2. Both protocol PRs use Nostr events as if they can directly carry authority for approvals, revocations, spend gating, and cancellation. The economy-kernel plan explicitly forbids that.
-3. `#2933` defines `kind:39250` audit entries as addressable, which makes a supposedly forensic audit stream mutable.
-4. Both protocol PRs move the repo toward multi-rail spending before the active MVP wallet lane and custody model are ready for that complexity.
-5. `#2978` is the only PR that is actually isolated from current implementation behavior, but it still needs framing so submission materials do not get mistaken for product or protocol source of truth.
+1. The repo's SA/SKL/AC NIPs are already app-facing protocol documents with partial implementation behind them, so `#2932` and `#2933` are protocol migrations, not greenfield exploration.
+2. `#2932` and `#2933` overlap and compete to redefine SA / AC behavior rather than presenting one coherent NIP delta.
+3. `#2933` defines `kind:39250` audit entries as addressable, which makes a supposedly forensic audit stream mutable even on its own Nostr-native terms.
+4. Both protocol PRs introduce new kinds and semantics without synchronizing `docs/PROTOCOL_SURFACE.md`, `docs/NIP_SA_SKL_AC_IMPLEMENTATION_PLAN.md`, and the obvious code/test follow-on work.
+5. Both protocol PRs expand alternative rails and settlement semantics well beyond the current MVP wallet integration, so merging them now would create a larger gap between the active protocol docs and the active app behavior.
 
 ## Alignment Rules From Current Source Of Truth
 
 These are the rules the protocol work needs to obey if it is going to stay aligned with the current repo direction.
 
-### 1. MVP payment truth is still Spark-first and Lightning-first
+### 1. SA/SKL/AC NIPs are already part of the app surface
+
+`docs/NIP_SA_SKL_AC_IMPLEMENTATION_PLAN.md` is explicit that:
+
+- SA, SKL, and AC modules exist in `crates/nostr/core`,
+- tests exist around those modules,
+- and `apps/autopilot-desktop` already includes typed SA/SKL/AC lanes.
+
+So changes to these NIPs should be reviewed first as changes to the app's established protocol layer.
+
+### 2. Hold the NIPs relatively stable and adapt the kernel downstream
+
+The default posture should be:
+
+- preserve the current NIP suite unless there is a strong protocol reason to change it,
+- evaluate proposed deltas in terms of whether they improve the NIPs and the app-facing surface,
+- and, once accepted, adapt the broader economy-kernel docs and proto plans to fit those accepted NIP shapes where possible.
+
+The kernel planning docs are still useful as integration targets, but they should not be treated as an automatic veto over the NIP suite.
+
+### 3. The protocol surface is currently frozen
+
+`docs/PROTOCOL_SURFACE.md` and `docs/NIP_SA_SKL_AC_IMPLEMENTATION_PLAN.md` together define a locked in-repo surface. New kinds or new required semantics need:
+
+- explicit protocol-surface updates,
+- implementation-plan updates,
+- and a credible code/test follow-on path.
+
+Neither protocol PR currently does that.
+
+### 4. MVP payment truth is still Spark-first and Lightning-first
 
 `docs/MVP.md` is explicit:
 
@@ -67,38 +108,11 @@ These are the rules the protocol work needs to obey if it is going to stay align
 - withdrawal flows through paying a Lightning invoice,
 - MVP online mode is compute-provider only.
 
-That means alternative rails may be future-compatible, but they are not current product truth.
+That does not make alternative rails invalid, but it does mean they should be merged carefully and usually as future-facing or profile-level expansions until the app actually supports them.
 
-### 2. Economy-kernel authority is HTTP-only
+### 5. Broader economy-kernel docs should be made to fit accepted NIP changes
 
-`docs/plans/economy-kernel.md` is explicit:
-
-- all authority mutations happen over authenticated HTTP,
-- Nostr and Spacetime are coordination/projection only,
-- receipts are the source of truth for settlement, underwriting, and incident replay,
-- wallet executor is the custody boundary.
-
-So any SA/SKL/AC artifact published on Nostr can be:
-
-- a coordination message,
-- a public artifact,
-- or evidence for a later authority action,
-
-but it cannot itself be the canonical mutation of money, credit, verdict, warranty, or liability state.
-
-### 3. Proto-first still applies
-
-The kernel plan says externally observable fields, states, and receipts must be added in proto first and only then reflected in markdown. `#2932` and `#2933` do the reverse.
-
-### 4. The protocol surface is currently frozen
-
-`docs/PROTOCOL_SURFACE.md` and `docs/NIP_SA_SKL_AC_IMPLEMENTATION_PLAN.md` together define a locked in-repo surface. New kinds or new required semantics need:
-
-- explicit protocol-surface updates,
-- implementation-plan updates,
-- and a credible code/test follow-on path.
-
-Neither protocol PR does that.
+Where the economy-kernel docs currently assume a different authority or settlement framing, that should generally be treated as a downstream integration problem unless there is a strong reason to change the NIP itself.
 
 ## PR-by-PR Analysis
 
@@ -110,40 +124,23 @@ Neither protocol PR does that.
 - It no longer carries the protocol-surface edits from `#2933`.
 - It is genuinely reviewable on its own.
 - Keeping the NIST submission bundle separate from live protocol debates is the right split.
+- The recommended cleanup has already been applied on the PR branch.
 
-### What should change before merge
+### Cleanup applied on the PR branch
 
-1. Rename the added files to normal markdown filenames.
+The following cleanup has already been applied:
 
-Current filenames have spaces and no `.md` suffix:
-
-- `docs/nist/rfi-executive summary`
-- `docs/nist/rfi-full-response`
-- `docs/nist/rfi-iam-comparison`
-- `docs/nist/technical-appendix`
-
-They should become something like:
-
-- `docs/nist/rfi-executive-summary.md`
-- `docs/nist/rfi-full-response.md`
-- `docs/nist/rfi-iam-comparison.md`
-- `docs/nist/technical-appendix.md`
-
-This matters for discoverability, consistent repo conventions, and GitHub rendering behavior.
-
-2. Add a short `docs/nist/README.md` or top-of-file disclaimer that says these are archival submission materials, not normative repo spec.
-
-Without that, readers can easily misread the bundle as current implementation or current protocol authority.
-
-3. Soften or contextualize claims like "actively being implemented and deployed."
-
-Those statements may be appropriate in a submitted RFI package, but inside this repo they should be read as submission-time claims, not as the current source of truth for the MVP repo.
+1. The files were renamed to normal markdown filenames:
+   - `docs/nist/rfi-executive-summary.md`
+   - `docs/nist/rfi-full-response.md`
+   - `docs/nist/rfi-iam-comparison.md`
+   - `docs/nist/technical-appendix.md`
+2. `docs/nist/README.md` was added to frame the bundle as archival submission material.
+3. Each document now carries a short archival/non-normative note.
 
 ### Merge recommendation
 
-Merge this one first after the small doc-hygiene edits above.
-
-If the goal is strict minimal churn, I would still consider it mergeable as-is because it is isolated from code and protocol behavior. But the rename + disclaimer pass is worth doing before merge.
+Merge this one first.
 
 ## PR `#2932` `Add SA-Cashu, SA-Fedimint, and SA-Guardian optional profiles`
 
@@ -155,7 +152,7 @@ If the goal is strict minimal churn, I would still consider it mergeable as-is b
 
 ### Why it should not merge as-is
 
-1. It expands the normative SA surface without updating the locked protocol-surface docs.
+1. It expands the established SA surface without updating the locked protocol-surface docs or implementation plan.
 
 It introduces new kinds and tags, but `docs/PROTOCOL_SURFACE.md` still freezes SA at:
 
@@ -172,21 +169,15 @@ It introduces new kinds and tags, but `docs/PROTOCOL_SURFACE.md` still freezes S
 
 If we merge `#2932` directly, the repo immediately becomes internally inconsistent.
 
-2. It treats guardian approval and envelope-linked spending as relay-native authority.
+2. It overlaps with `#2933` on guardian and envelope-related semantics, which means merging it independently would likely create two competing SA/AC stories.
 
 Examples:
 
-- tick requests carry `approval_required`,
-- runners must block on `kind:39213`,
-- envelope-linked budgets are enforced from SA-layer tags.
+- tick requests carry approval tags here,
+- `#2933` adds related guardian and envelope gating elsewhere,
+- both branches touch the SA/AC boundary.
 
-That is not aligned with the kernel direction. In the kernel source of truth:
-
-- approval thresholds,
-- envelope commit/settle/revoke,
-- and spend authorization effects
-
-must live in authenticated authority actions with receipts. A Nostr event can be evidence or coordination, but not the mutation itself.
+That needs one coherent protocol decision, not two partially overlapping ones.
 
 3. It mixes unit semantics in a way that will cause ambiguity.
 
@@ -218,18 +209,16 @@ The SA change also expands `kind:39220` payment proof semantics and introduces a
 
 If we want to preserve the work, the cleanest path is:
 
-1. Move it out of core `SA.md` and into a non-normative profile doc.
-2. Rephrase all guardian and envelope-linked behavior so Nostr events are coordination/evidence only.
-3. Add the authority mirror explicitly:
-   - approval receipt
-   - envelope commit receipt
-   - settlement receipt
-   - typed denial/withhold reasons
-4. Defer provider-facing multi-rail settlement semantics until the wallet-executor / TreasuryRouter model is ready for it.
+1. Decide explicitly which parts are true SA core changes and which parts are optional profiles.
+2. Reconcile it with `#2933` so there is one guardian / envelope / alternative-rail story across the NIP suite.
+3. Normalize budget amount and unit semantics before merging any of the new `budget` forms.
+4. Defer or clearly profile-gate provider-facing multi-rail settlement semantics until the app actually supports them.
 5. Only merge into the active protocol surface after:
    - `docs/PROTOCOL_SURFACE.md` is updated,
    - `docs/NIP_SA_SKL_AC_IMPLEMENTATION_PLAN.md` is updated,
-   - and the code/test plan exists.
+   - and the code/test follow-on plan exists.
+
+After that, any necessary economy-kernel planning changes should be made downstream to fit the accepted SA changes.
 
 ### Recommendation
 
@@ -238,8 +227,8 @@ Do not merge this PR as-is.
 If you want to keep momentum, recut it as:
 
 - a profile doc under `docs/` or a protocol appendix,
-- clearly marked non-normative,
-- with explicit kernel-authority caveats.
+- clearly marked non-normative if it is not intended as a core SA revision,
+- or a narrower SA-only protocol delta if it is intended to revise SA proper.
 
 ## PR `#2933` `[NIP-AC] Add Cashu spending rail, SKL safety label revocation trigger, and Guardian gate integration`
 
@@ -266,23 +255,7 @@ This branch currently combines at least four different design tracks:
 
 That makes review shallow and merge sequencing unsafe.
 
-2. It conflicts with the kernel authority model in multiple places.
-
-The clearest example is `kind:39246` Cancel Spend. In the PR, cancellation is a relay event published by a guardian or issuer during a hold window. In the kernel plan, cancellation, refund, withhold, and rollback are authority actions with explicit receipts, deadlines, and reason codes.
-
-The same problem appears in:
-
-- permission grants being treated as enforceable authorization contracts,
-- guardian gating being treated as relay-native spend control,
-- and sub-agent delegation carrying economic scope without kernel contract hooks.
-
-3. `kind:39250` as an addressable audit trail entry is the wrong storage shape.
-
-Audit history should be append-only. Making individual audit entries addressable means they can be replaced, which is the opposite of the kernel's receipt/evidence discipline.
-
-If audit artifacts are going to live on Nostr at all, they should be append-only and clearly separated from canonical authority receipts.
-
-4. It introduces new kinds and semantics with no protocol-surface synchronization.
+2. It introduces a large set of new kinds and semantics with no protocol-surface synchronization.
 
 Examples include:
 
@@ -295,41 +268,52 @@ Examples include:
 
 Those do not appear in the current frozen protocol surface or implementation plan.
 
+3. `kind:39250` as an addressable audit trail entry is the wrong storage shape.
+
+Audit history should be append-only. Making individual audit entries addressable means they can be replaced, which is a poor fit for the semantics the PR itself is trying to establish.
+
+4. It overlaps with `#2932` rather than cleanly superseding it.
+
+The branch touches SA, SKL, and AC at once, including guardian and rail semantics that are also being changed in `#2932`. That makes it hard to tell what the intended stable NIP suite actually is.
+
 5. It introduces trust-profile vocabulary that the active repo does not yet own.
 
 `docs/TRUE_NAME_INTEGRATION_PROFILE.md` is Satnam-specific and ecosystem-specific. Nothing else in the active MVP repo currently defines or implements that profile. In this pruned MVP repo, that belongs in backroom or in a clearly external profile package unless and until there is an active implementation owner.
 
-6. It overreaches the current custody model.
+6. It overreaches the current MVP integration state.
 
-The PR is trying to specify reversibility windows, permission grants, and sub-delegation economics before the kernel-side authority path exists in this repo. That is backwards relative to the current full-vision rule: proto and authority semantics first, relay artifacts second.
+The PR is trying to specify reversibility windows, permission grants, and sub-delegation economics before the app has a clear implementation plan for those semantics. That may still be worth doing, but it should be done as intentional NIP revision work with synchronized docs, tests, and lane planning.
 
 ### How to salvage it
 
 Split it into separate follow-ons:
 
-1. A docs-only trust-metadata/profile PR:
+1. An AC-focused PR:
+   - alternative spend rails,
+   - hold period / cancel semantics,
+   - and nothing else.
+
+2. A SKL-focused PR:
    - optional organizational identity metadata,
    - optional assurance-tier metadata,
    - optional challenge-response profile,
-   - all clearly non-authoritative.
+   - permission grants if they are truly part of SKL core.
 
-2. A kernel-alignment design PR:
-   - how hold periods, cancels, reversals, and revokes map to HTTP authority actions,
-   - which receipt families are needed,
-   - how Nostr artifacts reference those receipts instead of replacing them.
-
-3. A provenance/audit PR:
+3. An SA-focused PR:
    - how delegation, audit chain, and parent/child execution map to kernel evidence and contract lineage,
-   - whether any of that needs new Nostr kinds at all.
+   - whether any of that needs new Nostr kinds at all,
+   - and whether `39250` should be regular rather than addressable.
 
 4. A separate ecosystem-profile PR, if still desired:
    - keep `TRUE_NAME` / Satnam-specific conventions out of the core MVP docs unless there is explicit adoption and ownership.
+
+5. Once those NIP deltas are accepted, update the economy-kernel planning docs downstream to fit them.
 
 ### Recommendation
 
 Do not merge this PR as-is.
 
-It should be split, and the economic-state parts should be redesigned from the kernel authority model outward.
+It should be split, and the accepted pieces should be treated as intentional NIP revisions with synchronized app-facing follow-on work.
 
 ## Relationship Between `#2932` And `#2933`
 
@@ -343,52 +327,54 @@ Practical reading:
 So the right sequencing is not "merge both in order." The right sequencing is:
 
 1. merge `#2978`,
-2. decide which small, non-authoritative parts of `#2932` or `#2933` are worth salvaging,
-3. rewrite those pieces against the kernel authority model before they touch the active protocol surface.
+2. decide which intentional NIP deltas from `#2932` and `#2933` are actually wanted,
+3. reconcile overlaps so there is one coherent SA/SKL/AC story,
+4. update the app-facing protocol docs and follow-on plan,
+5. then adapt the economy-kernel planning docs downstream to match the accepted NIP changes.
 
 ## Concrete Change List By PR
 
 ## For `#2978`
 
-- Rename files to `.md` with no spaces.
-- Add `docs/nist/README.md`.
-- Add one sentence that these are archival submission materials, not repo source of truth.
-- Optionally add a note that protocol/product authority remains in `docs/MVP.md` and `docs/plans/economy-kernel.md`.
+- Cleanup is already applied on the PR branch.
+- Merge as the standalone docs-only PR.
 
 ## For `#2932`
 
-- Move profile semantics out of core `SA.md`, or explicitly label them non-normative.
-- Recast `kind:39212` / `kind:39213` as coordination/evidence rather than authority.
-- Remove or defer rail-specific payment-proof requirements that imply canonical settlement truth on Nostr.
+- Decide core-SA vs optional-profile status explicitly.
+- Reconcile guardian and envelope semantics with `#2933` before merging either branch.
+- Remove or defer rail-specific payment-proof requirements that the app does not yet consume.
 - Normalize amount-unit semantics across Lightning/Cashu/Fedimint.
 - Update `docs/PROTOCOL_SURFACE.md` and `docs/NIP_SA_SKL_AC_IMPLEMENTATION_PLAN.md` if any part becomes active surface.
+- Add the concrete code/test follow-on plan for any accepted SA changes.
 
 ## For `#2933`
 
 - Split the branch by concern.
 - Remove `docs/TRUE_NAME_INTEGRATION_PROFILE.md` from the MVP protocol merge path.
-- Redesign cancel/hold/revoke semantics as kernel authority actions plus receipts.
-- Redesign audit artifacts as append-only evidence, not addressable mutable entries.
+- Revisit `39250` storage semantics so audit entries are append-only if kept.
+- Decide whether permission grants and challenge/response are SKL core or optional profile material.
 - Update protocol-surface and implementation-plan docs before any new kinds become active.
+- Add the concrete code/test follow-on plan for each accepted NIP delta.
 
 ## Recommended Merge Order
 
-1. `#2978`, after the small doc-hygiene changes.
-2. No merge for `#2932` or `#2933` until there is a kernel-aligned redesign.
+1. `#2978`, with the already-applied cleanup.
+2. No merge for `#2932` or `#2933` until there is a coherent NIP-level redesign and synchronization pass.
 3. After that redesign, re-open smaller PRs in this order:
-   - doc framing / optional profile docs
+   - targeted NIP deltas
    - protocol-surface update
    - code/test support
+   - downstream economy-kernel doc updates
 
 ## Bottom Line
 
-The NIST PR is the only one that is truly standalone, and I would merge it first after a quick cleanup pass.
+The NIST PR is the only one that is truly standalone, and I would merge it first.
 
-The other two PRs are not wrong in spirit, but they are currently written as if Nostr markdown is the economic source of truth. The active repo and the broader economy-kernel plan say the opposite:
+The other two PRs are not wrong in spirit, but they are currently too broad and too overlapping to serve as clean revisions to the established SA/SKL/AC NIPs that already power parts of the app.
 
-- Nostr carries public artifacts, coordination, and evidence.
-- Authority lives in authenticated HTTP services.
-- Wallet executor is the custody boundary.
-- Receipts are the canonical economic truth.
+So the right move is not to reject them because they use Nostr transport. It is to:
 
-So the correct move is not to reject the ideas. It is to re-express them in that architecture before they land in the active protocol surface.
+- decide which NIP changes are actually wanted,
+- merge those as intentional, synchronized revisions to the active NIP suite,
+- and then adapt the broader economy-kernel planning docs downstream to fit the accepted NIP surface.
