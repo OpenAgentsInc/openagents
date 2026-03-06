@@ -1,14 +1,21 @@
 use openagents_kernel_core::authority::{
-    CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse, CreateCapacityLotRequest,
-    CreateCapacityLotResponse, CreateComputeProductRequest, CreateComputeProductResponse,
-    CreateContractRequest, CreateContractResponse, CreateWorkUnitRequest, CreateWorkUnitResponse,
-    FinalizeVerdictRequest, FinalizeVerdictResponse, PublishComputeIndexRequest,
+    AcceptAccessGrantRequest, AcceptAccessGrantResponse, CreateAccessGrantRequest,
+    CreateAccessGrantResponse, CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse,
+    CreateCapacityLotRequest, CreateCapacityLotResponse, CreateComputeProductRequest,
+    CreateComputeProductResponse, CreateContractRequest, CreateContractResponse,
+    CreateWorkUnitRequest, CreateWorkUnitResponse, FinalizeVerdictRequest, FinalizeVerdictResponse,
+    IssueDeliveryBundleRequest, IssueDeliveryBundleResponse, PublishComputeIndexRequest,
     PublishComputeIndexResponse, RecordDeliveryProofRequest, RecordDeliveryProofResponse,
-    SubmitOutputRequest, SubmitOutputResponse,
+    RegisterDataAssetRequest, RegisterDataAssetResponse, RevokeAccessGrantRequest,
+    RevokeAccessGrantResponse, SubmitOutputRequest, SubmitOutputResponse,
 };
 use openagents_kernel_core::compute::{
     CapacityInstrument, CapacityInstrumentStatus, CapacityLot, CapacityLotStatus,
     CapacityReserveState, ComputeIndex, ComputeProduct, ComputeProductStatus, DeliveryProof,
+};
+use openagents_kernel_core::data::{
+    AccessGrant, AccessGrantStatus, DataAsset, DeliveryBundle, DeliveryBundleStatus,
+    PermissionPolicy, RevocationReceipt, RevocationStatus,
 };
 use openagents_kernel_core::ids::{sha256_prefixed_bytes, sha256_prefixed_text};
 use openagents_kernel_core::labor::{
@@ -192,6 +199,10 @@ pub struct KernelState {
     capacity_instruments: HashMap<String, CapacityInstrumentRecord>,
     delivery_proofs: HashMap<String, DeliveryProofRecord>,
     compute_indices: HashMap<String, ComputeIndexRecord>,
+    data_assets: HashMap<String, DataAssetRecord>,
+    access_grants: HashMap<String, AccessGrantRecord>,
+    delivery_bundles: HashMap<String, DeliveryBundleRecord>,
+    revocations: HashMap<String, RevocationReceipt>,
     snapshots: BTreeMap<i64, EconomySnapshot>,
     next_projection_seq: u64,
 }
@@ -241,6 +252,24 @@ struct DeliveryProofRecord {
 #[derive(Debug, Clone)]
 struct ComputeIndexRecord {
     index: ComputeIndex,
+}
+
+#[derive(Debug, Clone)]
+struct DataAssetRecord {
+    asset: DataAsset,
+    receipt_id: String,
+}
+
+#[derive(Debug, Clone)]
+struct AccessGrantRecord {
+    grant: AccessGrant,
+    receipt_id: String,
+}
+
+#[derive(Debug, Clone)]
+struct DeliveryBundleRecord {
+    delivery_bundle: DeliveryBundle,
+    receipt_id: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1364,6 +1393,624 @@ impl KernelState {
         }
     }
 
+    pub fn register_data_asset(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: RegisterDataAssetRequest,
+    ) -> Result<MutationResult<RegisterDataAssetResponse>, String> {
+        let asset_id = normalize_required(req.asset.asset_id.as_str(), "data_asset_id_missing")?;
+        if req.asset.provider_id.trim().is_empty() {
+            req.asset.provider_id.clone_from(&context.caller_id);
+        }
+        normalize_required(
+            req.asset.provider_id.as_str(),
+            "data_asset_provider_id_missing",
+        )?;
+        normalize_required(req.asset.asset_kind.as_str(), "data_asset_kind_missing")?;
+        normalize_required(req.asset.title.as_str(), "data_asset_title_missing")?;
+        req.asset.asset_id.clone_from(&asset_id);
+        req.asset.created_at_ms =
+            normalize_created_at_ms(req.asset.created_at_ms, context.now_unix_ms);
+        if let Some(default_policy) = req.asset.default_policy.take() {
+            req.asset.default_policy = Some(normalize_permission_policy(
+                default_policy,
+                format!("asset.{asset_id}").as_str(),
+            ));
+        }
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let asset_payload = serde_json::to_value(&req.asset)
+            .map_err(|error| format!("kernel_data_asset_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.data.asset.register".to_string(),
+                created_at_ms: req.asset.created_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: asset_payload,
+                outputs_payload: json!({
+                    "asset_id": asset_id.clone(),
+                    "provider_id": req.asset.provider_id.clone(),
+                    "asset_kind": req.asset.asset_kind.clone(),
+                    "status": req.asset.status,
+                }),
+                evidence: req.evidence.clone(),
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.data.asset.register",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = RegisterDataAssetResponse {
+            asset: req.asset.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        self.data_assets.insert(
+            asset_id,
+            DataAssetRecord {
+                asset: req.asset.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.asset.created_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn create_access_grant(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: CreateAccessGrantRequest,
+    ) -> Result<MutationResult<CreateAccessGrantResponse>, String> {
+        let grant_id = normalize_required(req.grant.grant_id.as_str(), "access_grant_id_missing")?;
+        let asset_id = normalize_required(req.grant.asset_id.as_str(), "data_asset_id_missing")?;
+        let Some(asset_record) = self.data_assets.get(asset_id.as_str()).cloned() else {
+            return Err("data_asset_not_found".to_string());
+        };
+        if req.grant.provider_id.trim().is_empty() {
+            req.grant.provider_id = asset_record.asset.provider_id.clone();
+        }
+        if req.grant.provider_id != asset_record.asset.provider_id {
+            return Err("data_asset_provider_mismatch".to_string());
+        }
+        req.grant.grant_id.clone_from(&grant_id);
+        req.grant.asset_id.clone_from(&asset_id);
+        req.grant.created_at_ms =
+            normalize_created_at_ms(req.grant.created_at_ms, context.now_unix_ms);
+        if req.grant.permission_policy.allowed_scopes.is_empty() {
+            req.grant.permission_policy = asset_record
+                .asset
+                .default_policy
+                .clone()
+                .unwrap_or_else(|| req.grant.permission_policy.clone());
+        }
+        req.grant.permission_policy = normalize_permission_policy(
+            req.grant.permission_policy,
+            format!("grant.{grant_id}").as_str(),
+        );
+        if req.grant.permission_policy.allowed_scopes.is_empty() {
+            return Err("permission_policy_scope_missing".to_string());
+        }
+        if req.grant.expires_at_ms <= req.grant.created_at_ms {
+            return Err("access_grant_window_invalid".to_string());
+        }
+        req.grant.status = AccessGrantStatus::Offered;
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(asset_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        let grant_payload = serde_json::to_value(&req.grant)
+            .map_err(|error| format!("kernel_access_grant_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.data.grant.offer".to_string(),
+                created_at_ms: req.grant.created_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: grant_payload,
+                outputs_payload: json!({
+                    "grant_id": grant_id.clone(),
+                    "asset_id": asset_id.clone(),
+                    "provider_id": req.grant.provider_id.clone(),
+                    "policy_id": req.grant.permission_policy.policy_id.clone(),
+                    "status": req.grant.status,
+                    "asset_receipt_id": asset_record.receipt_id.clone(),
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.data.grant.offer",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = CreateAccessGrantResponse {
+            grant: req.grant.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        self.access_grants.insert(
+            grant_id,
+            AccessGrantRecord {
+                grant: req.grant.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.grant.created_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn accept_access_grant(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: AcceptAccessGrantRequest,
+    ) -> Result<MutationResult<AcceptAccessGrantResponse>, String> {
+        let grant_id = normalize_required(req.grant_id.as_str(), "access_grant_id_missing")?;
+        let consumer_id =
+            normalize_required(req.consumer_id.as_str(), "access_grant_consumer_id_missing")?;
+        let Some(grant_record) = self.access_grants.get(grant_id.as_str()).cloned() else {
+            return Err("access_grant_not_found".to_string());
+        };
+        let Some(asset_record) = self
+            .data_assets
+            .get(grant_record.grant.asset_id.as_str())
+            .cloned()
+        else {
+            return Err("data_asset_not_found".to_string());
+        };
+        if grant_record
+            .grant
+            .consumer_id
+            .as_deref()
+            .is_some_and(|existing| existing != consumer_id)
+        {
+            return Err("access_grant_consumer_mismatch".to_string());
+        }
+        if matches!(
+            grant_record.grant.status,
+            AccessGrantStatus::Revoked | AccessGrantStatus::Refunded | AccessGrantStatus::Expired
+        ) {
+            return Err("access_grant_not_accepting".to_string());
+        }
+        req.grant_id.clone_from(&grant_id);
+        req.consumer_id.clone_from(&consumer_id);
+        req.accepted_at_ms = normalize_created_at_ms(req.accepted_at_ms, context.now_unix_ms);
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(asset_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(grant_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.data.grant.accept".to_string(),
+                created_at_ms: req.accepted_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: serde_json::to_value(&req).map_err(|error| {
+                    format!("kernel_access_grant_accept_encode_failed: {error}")
+                })?,
+                outputs_payload: json!({
+                    "grant_id": grant_id.clone(),
+                    "asset_id": grant_record.grant.asset_id.clone(),
+                    "consumer_id": consumer_id.clone(),
+                    "status": AccessGrantStatus::Accepted,
+                    "asset_receipt_id": asset_record.receipt_id.clone(),
+                    "grant_receipt_id": grant_record.receipt_id.clone(),
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.data.grant.accept",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response_grant = {
+            let mut grant = grant_record.grant.clone();
+            grant.consumer_id = Some(consumer_id.clone());
+            grant.accepted_at_ms = Some(req.accepted_at_ms);
+            if let Some(settlement_price) = req.settlement_price.clone() {
+                grant.offer_price = Some(settlement_price);
+            }
+            if !req.metadata.is_null() {
+                grant.metadata = req.metadata.clone();
+            }
+            if grant.status == AccessGrantStatus::Offered {
+                grant.status = AccessGrantStatus::Accepted;
+            }
+            grant
+        };
+        let response = AcceptAccessGrantResponse {
+            grant: response_grant.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        if let Some(grant_record) = self.access_grants.get_mut(grant_id.as_str()) {
+            grant_record.grant = response_grant;
+        }
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.accepted_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn issue_delivery_bundle(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: IssueDeliveryBundleRequest,
+    ) -> Result<MutationResult<IssueDeliveryBundleResponse>, String> {
+        let delivery_bundle_id = normalize_required(
+            req.delivery_bundle.delivery_bundle_id.as_str(),
+            "delivery_bundle_id_missing",
+        )?;
+        normalize_required(
+            req.delivery_bundle.delivery_ref.as_str(),
+            "delivery_bundle_ref_missing",
+        )?;
+        let grant_id = normalize_required(
+            req.delivery_bundle.grant_id.as_str(),
+            "access_grant_id_missing",
+        )?;
+        let Some(grant_record) = self.access_grants.get(grant_id.as_str()).cloned() else {
+            return Err("access_grant_not_found".to_string());
+        };
+        if !matches!(
+            grant_record.grant.status,
+            AccessGrantStatus::Accepted | AccessGrantStatus::Delivered
+        ) {
+            return Err("access_grant_not_ready_for_delivery".to_string());
+        }
+        let Some(asset_record) = self
+            .data_assets
+            .get(grant_record.grant.asset_id.as_str())
+            .cloned()
+        else {
+            return Err("data_asset_not_found".to_string());
+        };
+        let Some(consumer_id) = grant_record.grant.consumer_id.clone() else {
+            return Err("access_grant_consumer_id_missing".to_string());
+        };
+        req.delivery_bundle
+            .delivery_bundle_id
+            .clone_from(&delivery_bundle_id);
+        req.delivery_bundle.grant_id.clone_from(&grant_id);
+        req.delivery_bundle.asset_id = grant_record.grant.asset_id.clone();
+        req.delivery_bundle.provider_id = grant_record.grant.provider_id.clone();
+        req.delivery_bundle.consumer_id = consumer_id;
+        req.delivery_bundle.created_at_ms =
+            normalize_created_at_ms(req.delivery_bundle.created_at_ms, context.now_unix_ms);
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(asset_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(grant_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        let delivery_payload = serde_json::to_value(&req.delivery_bundle)
+            .map_err(|error| format!("kernel_delivery_bundle_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.data.delivery.issue".to_string(),
+                created_at_ms: req.delivery_bundle.created_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: delivery_payload,
+                outputs_payload: json!({
+                    "delivery_bundle_id": delivery_bundle_id.clone(),
+                    "grant_id": grant_id.clone(),
+                    "asset_id": req.delivery_bundle.asset_id.clone(),
+                    "consumer_id": req.delivery_bundle.consumer_id.clone(),
+                    "status": req.delivery_bundle.status,
+                    "asset_receipt_id": asset_record.receipt_id.clone(),
+                    "grant_receipt_id": grant_record.receipt_id.clone(),
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.data.delivery.issue",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = IssueDeliveryBundleResponse {
+            delivery_bundle: req.delivery_bundle.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        self.delivery_bundles.insert(
+            delivery_bundle_id,
+            DeliveryBundleRecord {
+                delivery_bundle: req.delivery_bundle.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        if let Some(grant_record) = self.access_grants.get_mut(grant_id.as_str()) {
+            grant_record.grant.status = AccessGrantStatus::Delivered;
+        }
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.delivery_bundle.created_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn revoke_access_grant(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: RevokeAccessGrantRequest,
+    ) -> Result<MutationResult<RevokeAccessGrantResponse>, String> {
+        let revocation_id = normalize_required(
+            req.revocation.revocation_id.as_str(),
+            "revocation_id_missing",
+        )?;
+        let grant_id =
+            normalize_required(req.revocation.grant_id.as_str(), "access_grant_id_missing")?;
+        normalize_required(
+            req.revocation.reason_code.as_str(),
+            "revocation_reason_missing",
+        )?;
+        let Some(grant_record) = self.access_grants.get(grant_id.as_str()).cloned() else {
+            return Err("access_grant_not_found".to_string());
+        };
+        if matches!(
+            grant_record.grant.status,
+            AccessGrantStatus::Revoked | AccessGrantStatus::Refunded
+        ) {
+            return Err("access_grant_already_revoked".to_string());
+        }
+        let Some(asset_record) = self
+            .data_assets
+            .get(grant_record.grant.asset_id.as_str())
+            .cloned()
+        else {
+            return Err("data_asset_not_found".to_string());
+        };
+        let bundle_records = if req.revocation.revoked_delivery_bundle_ids.is_empty() {
+            self.delivery_bundles
+                .values()
+                .filter(|record| record.delivery_bundle.grant_id == grant_id)
+                .cloned()
+                .collect::<Vec<_>>()
+        } else {
+            req.revocation
+                .revoked_delivery_bundle_ids
+                .iter()
+                .map(|delivery_bundle_id| {
+                    let normalized_delivery_bundle_id = normalize_required(
+                        delivery_bundle_id.as_str(),
+                        "delivery_bundle_id_missing",
+                    )?;
+                    let Some(record) = self
+                        .delivery_bundles
+                        .get(normalized_delivery_bundle_id.as_str())
+                        .cloned()
+                    else {
+                        return Err("delivery_bundle_not_found".to_string());
+                    };
+                    if record.delivery_bundle.grant_id != grant_id {
+                        return Err("delivery_bundle_grant_mismatch".to_string());
+                    }
+                    Ok(record)
+                })
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        req.revocation.revocation_id.clone_from(&revocation_id);
+        req.revocation.grant_id.clone_from(&grant_id);
+        req.revocation.asset_id = grant_record.grant.asset_id.clone();
+        req.revocation.provider_id = grant_record.grant.provider_id.clone();
+        req.revocation.consumer_id = grant_record.grant.consumer_id.clone();
+        req.revocation.created_at_ms =
+            normalize_created_at_ms(req.revocation.created_at_ms, context.now_unix_ms);
+        if req.revocation.revoked_delivery_bundle_ids.is_empty() {
+            req.revocation.revoked_delivery_bundle_ids = bundle_records
+                .iter()
+                .map(|record| record.delivery_bundle.delivery_bundle_id.clone())
+                .collect();
+        }
+        req.revocation.status = if req.revocation.refund_amount.is_some() {
+            RevocationStatus::Refunded
+        } else {
+            RevocationStatus::Revoked
+        };
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(asset_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(grant_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        for record in &bundle_records {
+            push_receipt_evidence(
+                &mut evidence,
+                self.receipt_store
+                    .get_receipt(record.receipt_id.as_str())
+                    .as_ref(),
+            );
+        }
+        let revocation_payload = serde_json::to_value(&req.revocation)
+            .map_err(|error| format!("kernel_revocation_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.data.revocation.record".to_string(),
+                created_at_ms: req.revocation.created_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: revocation_payload,
+                outputs_payload: json!({
+                    "revocation_id": revocation_id.clone(),
+                    "grant_id": grant_id.clone(),
+                    "asset_id": req.revocation.asset_id.clone(),
+                    "status": req.revocation.status,
+                    "refund_amount": req.revocation.refund_amount.clone(),
+                    "asset_receipt_id": asset_record.receipt_id.clone(),
+                    "grant_receipt_id": grant_record.receipt_id.clone(),
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.data.revocation.record",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = RevokeAccessGrantResponse {
+            revocation: req.revocation.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        for record in &bundle_records {
+            if let Some(bundle_record) = self
+                .delivery_bundles
+                .get_mut(record.delivery_bundle.delivery_bundle_id.as_str())
+            {
+                bundle_record.delivery_bundle.status = DeliveryBundleStatus::Revoked;
+            }
+        }
+        if let Some(grant_record) = self.access_grants.get_mut(grant_id.as_str()) {
+            grant_record.grant.status = if req.revocation.refund_amount.is_some() {
+                AccessGrantStatus::Refunded
+            } else {
+                AccessGrantStatus::Revoked
+            };
+        }
+        self.revocations
+            .insert(revocation_id, req.revocation.clone());
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.revocation.created_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
     pub fn get_receipt(&self, receipt_id: &str) -> Option<Receipt> {
         self.receipt_store.get_receipt(receipt_id)
     }
@@ -1464,6 +2111,34 @@ fn normalized_policy(mut policy: PolicyContext, context: &KernelMutationContext)
         policy.approved_by.clone_from(&context.caller_id);
     }
     policy
+}
+
+fn normalize_permission_policy(
+    mut permission_policy: PermissionPolicy,
+    default_id: &str,
+) -> PermissionPolicy {
+    if permission_policy.policy_id.trim().is_empty() {
+        permission_policy.policy_id = format!("policy.{default_id}");
+    }
+    permission_policy.allowed_scopes = permission_policy
+        .allowed_scopes
+        .into_iter()
+        .map(|scope| scope.trim().to_string())
+        .filter(|scope| !scope.is_empty())
+        .collect();
+    permission_policy.allowed_tool_tags = permission_policy
+        .allowed_tool_tags
+        .into_iter()
+        .map(|tag| tag.trim().to_string())
+        .filter(|tag| !tag.is_empty())
+        .collect();
+    permission_policy.allowed_origins = permission_policy
+        .allowed_origins
+        .into_iter()
+        .map(|origin| origin.trim().to_string())
+        .filter(|origin| !origin.is_empty())
+        .collect();
+    permission_policy
 }
 
 fn contract_status_for_verdict(settlement_status: SettlementStatus) -> ContractStatus {

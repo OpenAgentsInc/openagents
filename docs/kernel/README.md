@@ -22,7 +22,7 @@ It is a layered system where machine compute, machine data, machine labor, machi
 | Surface | Status | Notes |
 | --- | --- | --- |
 | Compute Market | `implemented`, `local prototype` | The MVP ships a real compute-provider earn loop. Broader compute market instruments remain prototyped in docs only. |
-| Data Market | `planned` | The market is part of the architecture, but the repo does not yet implement authority flows or settlement for data access. |
+| Data Market | `implemented`, `planned` | `apps/nexus-control` and `openagents-kernel-core` now expose starter authority flows for assets, grants, deliveries, and revocations. Broader discovery, pricing, and product UX remain planned. |
 | Labor Market | `local prototype` | The repo has job lifecycle handling and kernel-shaped local models, but not a generalized authoritative labor market. |
 | Liquidity Market | `local prototype` | Wallet and payment-routing primitives exist, but there is no standalone liquidity market authority yet. |
 | Risk Market | `local prototype` | Prediction, coverage, and underwriting are modeled in docs and local kernel signals, not as a production authority surface. |
@@ -124,7 +124,8 @@ In many cases the valuable thing is not raw model capability, but access to a us
 
 Current status:
 
-- `planned`: no standalone data market authority or settlement path yet
+- `implemented`: starter authority flows for asset registration, access grants, grant acceptance, delivery bundles, and revocation receipts
+- `planned`: broader discovery, pricing, payout, and user-facing product integration
 
 ### 4. Labor Market
 

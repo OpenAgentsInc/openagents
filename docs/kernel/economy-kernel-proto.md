@@ -89,7 +89,7 @@ This proto plan should make all five explicit even when some packages remain thi
 | Market | Current or planned package roots | Core objects | Current repo status |
 | --- | --- | --- | --- |
 | `Compute` | `openagents.compute.v1`, `openagents.economy.v1`, `openagents.common.v1` | `ComputeProduct`, `CapacityLot`, `DeliveryProof`, `ComputeIndex`, `CapacityInstrument` | `implemented` MVP slice; `planned` broader proto surface |
-| `Data` | `openagents.data.v1`, `openagents.common.v1`, `openagents.economy.v1` | `DataAsset`, `AccessGrant`, `PermissionPolicy`, `DeliveryBundle`, `RevocationReceipt` | `planned` |
+| `Data` | `openagents.data.v1`, `openagents.common.v1`, `openagents.economy.v1` | `DataAsset`, `AccessGrant`, `PermissionPolicy`, `DeliveryBundle`, `RevocationReceipt` | `implemented` starter authority slice in `kernel-core` and `nexus-control`; `planned` broader proto surface |
 | `Labor` | `openagents.aegis.outcomes.v1` today; later `openagents.labor.v1` if a public market alias is useful | `WorkUnit`, `Contract`, `Submission`, `Verdict`, `Claim` | `local prototype`; `planned` authoritative proto surface |
 | `Liquidity` | `openagents.hydra.v1`, `openagents.liquidity.v1`, `openagents.common.v1`, `openagents.economy.v1` | `Quote`, `RoutePlan`, `Envelope`, `SettlementIntent`, `ReservePartition` | `local prototype`; `planned` authoritative proto surface |
 | `Risk` | `openagents.aegis.markets.v1`, `openagents.policy.v1`, `openagents.economy.v1` | `CoverageOffer`, `CoverageBinding`, `ClaimResolution`, `RiskSignal`, `CalibrationMetric` | `local prototype`; `planned` authoritative proto surface |
