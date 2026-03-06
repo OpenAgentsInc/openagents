@@ -135,20 +135,20 @@ This normative spec defines the shared kernel semantics that all five markets mu
 ### Status legend
 
 - `implemented`: shipped in the current MVP or repo entry points
-- `local prototype`: modeled in desktop-local kernel receipts, snapshots, or protocol notes, but not yet backed by authoritative backend services
+- `local prototype`: modeled in desktop-local kernel receipts, snapshots, or protocol notes, but not yet generalized into a full authoritative market surface
 - `planned`: target architecture, not yet shipped as a production market
 
 ### Market-to-object map
 
 | Market | Purpose | Kernel-facing objects | Current repo status |
 | --- | --- | --- | --- |
-| `Compute` | Allocate machine capacity. | `ComputeProduct`, `CapacityLot`, `DeliveryProof`, `ComputeIndex`, `CapacityInstrument` | `implemented` for the compute-provider earn slice; `local prototype` for richer compute-market semantics; `planned` for full commodity instruments |
+| `Compute` | Allocate machine capacity. | `ComputeProduct`, `CapacityLot`, `DeliveryProof`, `ComputeIndex`, `CapacityInstrument` | `implemented` for the compute-provider earn slice and starter compute authority flows; `local prototype` for richer compute-market semantics; `planned` for full commodity instruments |
 | `Data` | Price access to useful context under permission. | `DataAsset`, `AccessGrant`, `PermissionPolicy`, `DeliveryBundle`, `RevocationReceipt` | `implemented` for a starter authority slice in `kernel-core` and `nexus-control`; `planned` for a broader market surface |
-| `Labor` | Buy and sell machine work. | `WorkUnit`, `Contract`, `Submission`, `Verdict`, `Claim` | `local prototype` with a narrow MVP earn loop; `planned` as a generalized authoritative market |
+| `Labor` | Buy and sell machine work. | `WorkUnit`, `Contract`, `Submission`, `Verdict`, `Claim` | `implemented` for a starter authority slice in `kernel-core` and `nexus-control`; `local prototype` for broader receipt, policy, incident, and snapshot semantics; `planned` as a generalized market |
 | `Liquidity` | Move value between participants and rails. | `Quote`, `RoutePlan`, `Envelope`, `SettlementIntent`, `ReservePartition` | `implemented` for a starter authority slice in `kernel-core` and `nexus-control`; `planned` for a broader market surface |
 | `Risk` | Price failure probability, verification difficulty, and liability. | `CoverageOffer`, `CoverageBinding`, `Claim`, `RiskSignal`, `CalibrationMetric` | `implemented` for a starter authority slice in `kernel-core` and `nexus-control`; `planned` as a broader market surface |
 
-In current MVP terms, the visible product wedge is still compute-provider-first. Data, Liquidity, and Risk now have starter authority slices, but none is yet a full productized market. Labor exists today as a narrow paid machine-work loop plus desktop-local kernel modeling, not yet as a generalized authoritative market.
+In current MVP terms, the visible product wedge is still compute-provider-first. All five markets now have at least a starter authority slice in the repo, but only Compute is currently productized as the visible MVP lane. Data, Labor, Liquidity, and Risk remain thin authority layers rather than full end-user market surfaces.
 
 Section 8 goes deepest on Compute because that is the first detailed market extension in this spec set. Companion docs describe the Data, Labor, Liquidity, and Risk surfaces. Their thinner treatment here reflects current maturity, not exclusion from the five-market architecture.
 

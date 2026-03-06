@@ -1,5 +1,8 @@
 # 2026-02-27 Codex App-Server Full Integration Audit
 
+> Historical note: This audit is a point-in-time snapshot from its date. Current product and architecture authority lives in `README.md`, `docs/MVP.md`, `docs/OWNERSHIP.md`, and `docs/kernel/`. File paths, issue states, and implementation-status claims here may be superseded by later commits.
+
+
 ## Scope
 
 This audit evaluates current Codex integration in `/Users/christopherdavid/code/openagents` against the upstream app-server protocol in `/Users/christopherdavid/code/codex/codex-rs/app-server-protocol` and operational guidance in `/Users/christopherdavid/code/codex/codex-rs/app-server/README.md`.

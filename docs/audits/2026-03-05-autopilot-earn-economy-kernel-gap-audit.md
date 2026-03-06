@@ -1,5 +1,8 @@
 # Autopilot Earn × Economy Kernel Gap Audit (Docs-Driven)
 
+> Historical note: This audit is a point-in-time snapshot from its date. Current product and architecture authority lives in `README.md`, `docs/MVP.md`, `docs/OWNERSHIP.md`, and `docs/kernel/`. File paths, issue states, and implementation-status claims here may be superseded by later commits.
+
+
 Date: 2026-03-05  
 Author: Codex  
 Status: Complete (docs-driven; implementation evidence sourced from existing trackers/audits)

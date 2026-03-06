@@ -14,19 +14,20 @@ It is a layered system where machine compute, machine data, machine labor, machi
 ## Status legend
 
 - `implemented`: shipped in the current MVP or repo entry points
-- `local prototype`: modeled in desktop-local receipts, snapshots, or protocol notes, but not yet backed by authoritative backend services
+- `local prototype`: modeled in desktop-local receipts, snapshots, or protocol notes, but not yet generalized into a full authoritative market surface
 - `planned`: target architecture, not yet shipped as a production market
 
 ## Current implementation status
 
 | Surface | Status | Notes |
 | --- | --- | --- |
-| Compute Market | `implemented`, `local prototype` | The MVP ships a real compute-provider earn loop. Broader compute market instruments remain prototyped in docs only. |
+| Compute Market | `implemented`, `local prototype` | The MVP ships a real compute-provider earn loop plus starter authority flows for compute products, lots, instruments, delivery proofs, and indices. Broader commodity instruments remain planned. |
 | Data Market | `implemented`, `planned` | `apps/nexus-control` and `openagents-kernel-core` now expose starter authority flows for assets, grants, deliveries, and revocations. Broader discovery, pricing, and product UX remain planned. |
-| Labor Market | `local prototype` | The repo has job lifecycle handling and kernel-shaped local models, but not a generalized authoritative labor market. |
+| Labor Market | `implemented`, `local prototype`, `planned` | `apps/nexus-control` and `openagents-kernel-core` now expose starter authority flows for work units, contracts, submissions, and verdicts. The desktop still carries broader local receipt/policy/snapshot modeling, and fuller claim/dispute productization remains planned. |
 | Liquidity Market | `implemented`, `planned` | `apps/nexus-control` and `openagents-kernel-core` now expose starter quote, route, envelope, settlement, and reserve-partition authority flows. Broader routing, FX, and solver-market productization remain planned. |
 | Risk Market | `implemented`, `planned` | `apps/nexus-control` and `openagents-kernel-core` now expose a starter authority slice for coverage offers, coverage bindings, prediction positions, claims, and risk signals. Broader underwriting accounts, market depth, and product UX remain planned. |
-| Kernel authority | `local prototype` | `apps/nexus-control` has thin hosted endpoints, while the richer kernel receipts and snapshots still live primarily in desktop-local modeling. |
+| Kernel authority | `implemented`, `local prototype` | `apps/nexus-control` ships thin hosted HTTP mutations plus receipt/snapshot SSE projection routes. Richer kernel receipts, incidents, and minute snapshots still extend beyond the backend slice. |
+| Kernel proto wire layer | `implemented`, `planned` | The repo now includes a thin checked-in proto slice under `proto/openagents/{common,compute,economy,labor}/v1` plus generated Rust types in `crates/openagents-kernel-proto`. Data, Liquidity, Risk, and broader policy/audit packages remain planned. |
 
 ## The agents marketplace
 
@@ -101,7 +102,7 @@ If machine labor is going to scale, the capacity that powers that labor must als
 
 Current status:
 
-- `implemented`: compute-provider earn loop
+- `implemented`: compute-provider earn loop plus starter authority flows for products, lots, instruments, delivery proofs, and indices
 - `local prototype`: richer kernel receipts, snapshots, and compute commodity framing
 - `planned`: full spot, forward, and hedging instruments
 
@@ -149,8 +150,9 @@ In other words:
 
 Current status:
 
-- `local prototype`: job lifecycle, local receipts, and local snapshot modeling exist
-- `planned`: generalized authoritative WorkUnit, Contract, Submission, and Verdict services
+- `implemented`: starter authority flows for work units, contracts, submissions, and verdicts exist in `openagents-kernel-core` and `apps/nexus-control`
+- `local prototype`: broader claims, incidents, policy, and snapshot modeling still live in desktop-local receipts and snapshots
+- `planned`: generalized worker assignment, disputes, claims, and market-facing labor productization
 
 ### 5. Liquidity Market
 

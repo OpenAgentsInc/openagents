@@ -101,7 +101,7 @@ It requires explicit user opt-in because it introduces capital commitment and ro
 - `OpenAgents Runtime`: the provider-side execution environment in the desktop app where jobs run, local state advances, and provenance is produced.
 - `OpenAgents Kernel`: the authority layer that verifies outcomes, settles value, and emits canonical receipts.
 
-In the current MVP, the desktop embeds the runtime. Kernel authority is represented in the product by receipt/reconciliation semantics today, while the full server-side kernel remains planned infrastructure.
+In the current MVP, the desktop embeds the runtime. A thin backend kernel authority slice now exists in `apps/nexus-control` and `openagents-kernel-core`, and the desktop can consume hosted authority receipts and snapshot projections when configured. Richer kernel coverage and broader market surfaces remain in flight.
 
 ## What Is Authoritative
 

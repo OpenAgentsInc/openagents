@@ -1,5 +1,8 @@
 # Autopilot Earn Integration Audit and Gap Analysis
 
+> Historical note: This audit is a point-in-time snapshot from its date. Current product and architecture authority lives in `README.md`, `docs/MVP.md`, `docs/OWNERSHIP.md`, and `docs/kernel/`. File paths, issue states, and implementation-status claims here may be superseded by later commits.
+
+
 Date: 2026-03-04  
 Author: Codex  
 Status: Complete audit pass (docs + code + tests reviewed)

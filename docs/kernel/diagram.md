@@ -45,9 +45,9 @@ Five Markets on One Kernel
 
 Current repo status:
 
-- `implemented`: compute-provider earn loop
-- `local prototype`: richer labor, liquidity, and risk semantics in desktop-local receipts and snapshots
-- `planned`: data market, broader multi-market authority surfaces, and shared proto/backend layers
+- `implemented`: compute-provider earn loop, starter backend authority slices for all five markets, and a thin checked-in proto slice under `proto/openagents/{common,compute,economy,labor}/v1`
+- `local prototype`: richer receipts, incidents, calibration, and synthetic-practice semantics still live partly in desktop-local models
+- `planned`: broader data/liquidity/risk proto packages and fuller end-user market surfaces
 
 ---
 
