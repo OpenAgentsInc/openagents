@@ -15,15 +15,19 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use openagents_kernel_core::authority::{
-    AcceptAccessGrantRequest, AcceptAccessGrantResponse, CreateAccessGrantRequest,
-    CreateAccessGrantResponse, CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse,
-    CreateCapacityLotRequest, CreateCapacityLotResponse, CreateComputeProductRequest,
-    CreateComputeProductResponse, CreateContractRequest, CreateContractResponse,
-    CreateWorkUnitRequest, CreateWorkUnitResponse, FinalizeVerdictRequest, FinalizeVerdictResponse,
-    IssueDeliveryBundleRequest, IssueDeliveryBundleResponse, PublishComputeIndexRequest,
+    AcceptAccessGrantRequest, AcceptAccessGrantResponse, AdjustReservePartitionRequest,
+    AdjustReservePartitionResponse, CreateAccessGrantRequest, CreateAccessGrantResponse,
+    CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse, CreateCapacityLotRequest,
+    CreateCapacityLotResponse, CreateComputeProductRequest, CreateComputeProductResponse,
+    CreateContractRequest, CreateContractResponse, CreateLiquidityQuoteRequest,
+    CreateLiquidityQuoteResponse, CreateWorkUnitRequest, CreateWorkUnitResponse,
+    ExecuteSettlementIntentRequest, ExecuteSettlementIntentResponse, FinalizeVerdictRequest,
+    FinalizeVerdictResponse, IssueDeliveryBundleRequest, IssueDeliveryBundleResponse,
+    IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse, PublishComputeIndexRequest,
     PublishComputeIndexResponse, RecordDeliveryProofRequest, RecordDeliveryProofResponse,
-    RegisterDataAssetRequest, RegisterDataAssetResponse, RevokeAccessGrantRequest,
-    RevokeAccessGrantResponse, SubmitOutputRequest, SubmitOutputResponse,
+    RegisterDataAssetRequest, RegisterDataAssetResponse, RegisterReservePartitionRequest,
+    RegisterReservePartitionResponse, RevokeAccessGrantRequest, RevokeAccessGrantResponse,
+    SelectRoutePlanRequest, SelectRoutePlanResponse, SubmitOutputRequest, SubmitOutputResponse,
 };
 use openagents_kernel_core::receipts::Receipt;
 use openagents_kernel_core::snapshots::EconomySnapshot;
@@ -637,6 +641,30 @@ pub fn build_router(config: ServiceConfig) -> Router {
         .route(
             "/v1/kernel/data/grants/{grant_id}/revoke",
             post(revoke_kernel_access_grant),
+        )
+        .route(
+            "/v1/kernel/liquidity/quotes",
+            post(create_kernel_liquidity_quote),
+        )
+        .route(
+            "/v1/kernel/liquidity/routes",
+            post(select_kernel_route_plan),
+        )
+        .route(
+            "/v1/kernel/liquidity/envelopes",
+            post(issue_kernel_liquidity_envelope),
+        )
+        .route(
+            "/v1/kernel/liquidity/settlements",
+            post(execute_kernel_settlement_intent),
+        )
+        .route(
+            "/v1/kernel/liquidity/reserve_partitions",
+            post(register_kernel_reserve_partition),
+        )
+        .route(
+            "/v1/kernel/liquidity/reserve_partitions/{partition_id}/adjust",
+            post(adjust_kernel_reserve_partition),
         )
         .route(
             "/v1/kernel/snapshots/{minute_start_ms}",
@@ -1920,6 +1948,191 @@ async fn revoke_kernel_access_grant(
     Ok(Json(result.response))
 }
 
+async fn create_kernel_liquidity_quote(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<CreateLiquidityQuoteRequest>,
+) -> Result<Json<CreateLiquidityQuoteResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .create_liquidity_quote(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.liquidity.quote.created",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn select_kernel_route_plan(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<SelectRoutePlanRequest>,
+) -> Result<Json<SelectRoutePlanResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .select_route_plan(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.liquidity.route.selected",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn issue_kernel_liquidity_envelope(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<IssueLiquidityEnvelopeRequest>,
+) -> Result<Json<IssueLiquidityEnvelopeResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .issue_liquidity_envelope(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.liquidity.envelope.issued",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn execute_kernel_settlement_intent(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<ExecuteSettlementIntentRequest>,
+) -> Result<Json<ExecuteSettlementIntentResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .execute_settlement_intent(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.liquidity.settlement.executed",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn register_kernel_reserve_partition(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<RegisterReservePartitionRequest>,
+) -> Result<Json<RegisterReservePartitionResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .register_reserve_partition(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.liquidity.reserve_partition.registered",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn adjust_kernel_reserve_partition(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(partition_id): Path<String>,
+    Json(mut request): Json<AdjustReservePartitionRequest>,
+) -> Result<Json<AdjustReservePartitionResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let partition_id =
+        normalize_required_field(partition_id.as_str(), "reserve_partition_id_missing")?;
+    if !request.partition_id.trim().is_empty() && request.partition_id != partition_id {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            error: "conflict",
+            reason: "kernel_reserve_partition_id_mismatch".to_string(),
+        });
+    }
+    request.partition_id = partition_id;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .adjust_reserve_partition(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.liquidity.reserve_partition.adjusted",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
 async fn get_kernel_snapshot(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -2018,11 +2231,16 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "capacity_instrument_not_found"
         | "data_asset_not_found"
         | "access_grant_not_found"
-        | "delivery_bundle_not_found" => StatusCode::NOT_FOUND,
+        | "delivery_bundle_not_found"
+        | "liquidity_quote_not_found"
+        | "liquidity_route_plan_not_found"
+        | "liquidity_envelope_not_found"
+        | "reserve_partition_not_found" => StatusCode::NOT_FOUND,
         "kernel_idempotency_conflict"
         | "kernel_contract_id_mismatch"
         | "kernel_capacity_lot_id_mismatch"
         | "kernel_access_grant_id_mismatch"
+        | "kernel_reserve_partition_id_mismatch"
         | "compute_product_capacity_lot_mismatch"
         | "compute_product_capacity_instrument_mismatch"
         | "capacity_lot_instrument_mismatch"
@@ -2030,7 +2248,14 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "data_asset_provider_mismatch"
         | "access_grant_consumer_mismatch"
         | "access_grant_already_revoked"
-        | "delivery_bundle_grant_mismatch" => StatusCode::CONFLICT,
+        | "delivery_bundle_grant_mismatch"
+        | "liquidity_quote_requester_mismatch"
+        | "liquidity_quote_route_kind_mismatch"
+        | "liquidity_quote_not_selectable"
+        | "liquidity_quote_mismatch"
+        | "liquidity_route_plan_mismatch"
+        | "reserve_partition_asset_mismatch"
+        | "reserve_partition_insufficient_available" => StatusCode::CONFLICT,
         "work_unit_id_missing"
         | "contract_id_missing"
         | "receipt_id_missing"
@@ -2055,7 +2280,27 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "delivery_bundle_ref_missing"
         | "revocation_id_missing"
         | "revocation_reason_missing"
-        | "permission_policy_scope_missing" => StatusCode::BAD_REQUEST,
+        | "permission_policy_scope_missing"
+        | "liquidity_quote_id_missing"
+        | "liquidity_requester_id_missing"
+        | "liquidity_route_kind_missing"
+        | "liquidity_source_amount_missing"
+        | "liquidity_quote_window_invalid"
+        | "liquidity_route_plan_id_missing"
+        | "liquidity_solver_id_missing"
+        | "liquidity_route_plan_window_invalid"
+        | "liquidity_envelope_id_missing"
+        | "liquidity_envelope_owner_id_missing"
+        | "liquidity_envelope_reserved_amount_missing"
+        | "liquidity_envelope_window_invalid"
+        | "liquidity_route_plan_not_ready"
+        | "liquidity_settlement_intent_id_missing"
+        | "liquidity_settlement_proof_missing"
+        | "liquidity_settlement_amount_mismatch"
+        | "reserve_partition_id_missing"
+        | "reserve_partition_owner_id_missing"
+        | "reserve_partition_amount_invalid"
+        | "reserve_partition_reason_missing" => StatusCode::BAD_REQUEST,
         _ => StatusCode::BAD_REQUEST,
     };
     ApiError {
@@ -2508,6 +2753,7 @@ fn runtime_snapshot(
             },
         );
     let compute_metrics = store.kernel.compute_market_metrics(now_unix_ms as i64);
+    let liquidity_metrics = store.kernel.liquidity_market_metrics(now_unix_ms as i64);
     PublicRuntimeSnapshot {
         hosted_nexus_relay_url: config.hosted_nexus_relay_url.clone(),
         sessions_active: store.sessions_by_access_token.len(),
@@ -2523,6 +2769,12 @@ fn runtime_snapshot(
         compute_delivery_proofs_24h: compute_metrics.compute_delivery_proofs_24h,
         compute_delivery_quantity_24h: compute_metrics.compute_delivery_quantity_24h,
         compute_indices_published_24h: compute_metrics.compute_indices_published_24h,
+        liquidity_quotes_active: liquidity_metrics.liquidity_quotes_active,
+        liquidity_route_plans_active: liquidity_metrics.liquidity_route_plans_active,
+        liquidity_envelopes_open: liquidity_metrics.liquidity_envelopes_open,
+        liquidity_settlements_24h: liquidity_metrics.liquidity_settlements_24h,
+        liquidity_reserve_partitions_active: liquidity_metrics.liquidity_reserve_partitions_active,
+        liquidity_value_moved_24h: liquidity_metrics.liquidity_value_moved_24h,
     }
 }
 
@@ -2683,16 +2935,20 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use axum::response::Response;
     use openagents_kernel_core::authority::{
-        AcceptAccessGrantRequest, AcceptAccessGrantResponse, CreateAccessGrantRequest,
-        CreateAccessGrantResponse, CreateCapacityInstrumentRequest,
-        CreateCapacityInstrumentResponse, CreateCapacityLotRequest, CreateCapacityLotResponse,
-        CreateComputeProductRequest, CreateComputeProductResponse, CreateContractRequest,
-        CreateContractResponse, CreateWorkUnitRequest, CreateWorkUnitResponse,
+        AcceptAccessGrantRequest, AcceptAccessGrantResponse, AdjustReservePartitionRequest,
+        AdjustReservePartitionResponse, CreateAccessGrantRequest, CreateAccessGrantResponse,
+        CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse,
+        CreateCapacityLotRequest, CreateCapacityLotResponse, CreateComputeProductRequest,
+        CreateComputeProductResponse, CreateContractRequest, CreateContractResponse,
+        CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse, CreateWorkUnitRequest,
+        CreateWorkUnitResponse, ExecuteSettlementIntentRequest, ExecuteSettlementIntentResponse,
         FinalizeVerdictRequest, FinalizeVerdictResponse, IssueDeliveryBundleRequest,
-        IssueDeliveryBundleResponse, PublishComputeIndexRequest, PublishComputeIndexResponse,
-        RecordDeliveryProofRequest, RecordDeliveryProofResponse, RegisterDataAssetRequest,
-        RegisterDataAssetResponse, RevokeAccessGrantRequest, RevokeAccessGrantResponse,
-        SubmitOutputRequest, SubmitOutputResponse,
+        IssueDeliveryBundleResponse, IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse,
+        PublishComputeIndexRequest, PublishComputeIndexResponse, RecordDeliveryProofRequest,
+        RecordDeliveryProofResponse, RegisterDataAssetRequest, RegisterDataAssetResponse,
+        RegisterReservePartitionRequest, RegisterReservePartitionResponse,
+        RevokeAccessGrantRequest, RevokeAccessGrantResponse, SelectRoutePlanRequest,
+        SelectRoutePlanResponse, SubmitOutputRequest, SubmitOutputResponse,
     };
     use openagents_kernel_core::compute::{
         CapacityInstrument, CapacityInstrumentKind, CapacityInstrumentStatus, CapacityLot,
@@ -2706,6 +2962,10 @@ mod tests {
     use openagents_kernel_core::labor::{
         Contract, ContractStatus, SettlementLink, SettlementStatus, Submission, SubmissionStatus,
         Verdict, VerdictOutcome, WorkUnit, WorkUnitStatus,
+    };
+    use openagents_kernel_core::liquidity::{
+        Envelope, EnvelopeStatus, Quote, QuoteStatus, ReservePartition, ReservePartitionStatus,
+        RoutePlan, RoutePlanStatus, SettlementIntent, SettlementIntentStatus,
     };
     use openagents_kernel_core::receipts::{
         Asset, Money, MoneyAmount, PolicyContext, Receipt, ReceiptHints, TraceContext,
@@ -3296,6 +3556,235 @@ mod tests {
                     "remedy": "full_refund"
                 }),
             },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn reserve_partition_request(
+        partition_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> RegisterReservePartitionRequest {
+        RegisterReservePartitionRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            reserve_partition: ReservePartition {
+                partition_id: partition_id.to_string(),
+                owner_id: "treasury-router.alpha".to_string(),
+                created_at_ms,
+                updated_at_ms: created_at_ms,
+                total_amount: Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(10_000),
+                },
+                available_amount: Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(10_000),
+                },
+                reserved_amount: Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(0),
+                },
+                status: ReservePartitionStatus::Active,
+                metadata: json!({
+                    "rail": "lightning"
+                }),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn liquidity_quote_request(
+        quote_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> CreateLiquidityQuoteRequest {
+        CreateLiquidityQuoteRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            quote: Quote {
+                quote_id: quote_id.to_string(),
+                requester_id: "buyer.liquidity.alpha".to_string(),
+                solver_id: None,
+                route_kind: "lightning".to_string(),
+                created_at_ms,
+                expires_at_ms: created_at_ms + 300_000,
+                source_amount: Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(2_500),
+                },
+                expected_output: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(2_490),
+                }),
+                fee_ceiling: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(25),
+                }),
+                source_payment_pointer: Some("ln://payer.alpha".to_string()),
+                destination_payment_pointer: Some("ln://payee.alpha".to_string()),
+                status: QuoteStatus::Quoted,
+                metadata: json!({
+                    "lane": "earn"
+                }),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn route_plan_request(
+        route_plan_id: &str,
+        quote_id: &str,
+        idempotency_key: &str,
+        selected_at_ms: i64,
+    ) -> SelectRoutePlanRequest {
+        SelectRoutePlanRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            route_plan: RoutePlan {
+                route_plan_id: route_plan_id.to_string(),
+                quote_id: quote_id.to_string(),
+                requester_id: "buyer.liquidity.alpha".to_string(),
+                solver_id: "solver.lightning.alpha".to_string(),
+                route_kind: "lightning".to_string(),
+                selected_at_ms,
+                expires_at_ms: selected_at_ms + 300_000,
+                quoted_input: None,
+                quoted_output: None,
+                fee_ceiling: None,
+                route_hops: vec!["node-a".to_string(), "node-b".to_string()],
+                quote_receipt: None,
+                status: RoutePlanStatus::Selected,
+                metadata: json!({
+                    "selection": "best_fee"
+                }),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn liquidity_envelope_request(
+        envelope_id: &str,
+        route_plan_id: &str,
+        quote_id: &str,
+        partition_id: &str,
+        idempotency_key: &str,
+        issued_at_ms: i64,
+    ) -> IssueLiquidityEnvelopeRequest {
+        IssueLiquidityEnvelopeRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            envelope: Envelope {
+                envelope_id: envelope_id.to_string(),
+                route_plan_id: route_plan_id.to_string(),
+                quote_id: quote_id.to_string(),
+                reserve_partition_id: Some(partition_id.to_string()),
+                owner_id: "treasury-router.alpha".to_string(),
+                spend_limit: Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(2_500),
+                },
+                reserved_amount: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(2_500),
+                }),
+                fee_limit: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(25),
+                }),
+                allowed_destinations: vec!["ln://payee.alpha".to_string()],
+                issued_at_ms,
+                expires_at_ms: issued_at_ms + 300_000,
+                status: EnvelopeStatus::Issued,
+                metadata: json!({
+                    "policy": "bounded"
+                }),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn settlement_intent_request(
+        settlement_intent_id: &str,
+        route_plan_id: &str,
+        quote_id: &str,
+        envelope_id: &str,
+        partition_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> ExecuteSettlementIntentRequest {
+        ExecuteSettlementIntentRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            settlement_intent: SettlementIntent {
+                settlement_intent_id: settlement_intent_id.to_string(),
+                route_plan_id: route_plan_id.to_string(),
+                quote_id: quote_id.to_string(),
+                envelope_id: envelope_id.to_string(),
+                reserve_partition_id: Some(partition_id.to_string()),
+                created_at_ms,
+                executed_at_ms: Some(created_at_ms + 1_000),
+                source_amount: Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(2_500),
+                },
+                settled_amount: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(2_490),
+                }),
+                fee_paid: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(10),
+                }),
+                settlement_proof_ref: Some("oa://settlements/liquidity-alpha".to_string()),
+                reason_code: None,
+                status: SettlementIntentStatus::Settled,
+                metadata: json!({
+                    "rail": "lightning"
+                }),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn adjust_reserve_partition_request(
+        partition_id: &str,
+        idempotency_key: &str,
+        updated_at_ms: i64,
+    ) -> AdjustReservePartitionRequest {
+        AdjustReservePartitionRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            partition_id: partition_id.to_string(),
+            updated_at_ms,
+            total_amount: Money {
+                asset: Asset::Btc,
+                amount: MoneyAmount::AmountSats(7_990),
+            },
+            available_amount: Money {
+                asset: Asset::Btc,
+                amount: MoneyAmount::AmountSats(7_990),
+            },
+            reserved_amount: Money {
+                asset: Asset::Btc,
+                amount: MoneyAmount::AmountSats(0),
+            },
+            reason_code: "rebalance".to_string(),
+            metadata: json!({
+                "operator": "hydra"
+            }),
             evidence: Vec::new(),
             hints: ReceiptHints::default(),
         }
@@ -4362,6 +4851,236 @@ mod tests {
                 .recent_receipts
                 .iter()
                 .any(|receipt| { receipt.receipt_type == "kernel.data.revocation.recorded" })
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn liquidity_market_flow_receipts_quotes_routes_envelopes_and_settlement() -> Result<()> {
+        let app = build_router(test_config()?);
+        let session = create_session_token(&app).await?;
+        let minute_start_ms =
+            floor_to_minute_utc((super::now_unix_ms() as i64).saturating_sub(30_000));
+        let created_at_ms = minute_start_ms.saturating_add(12_000);
+
+        let partition = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/liquidity/reserve_partitions")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&reserve_partition_request(
+                        "reserve.alpha",
+                        "idemp.reserve.alpha",
+                        created_at_ms,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(partition.status(), StatusCode::OK);
+        let partition_payload: RegisterReservePartitionResponse = response_json(partition).await?;
+        assert_eq!(
+            partition_payload.receipt.receipt_type,
+            "kernel.liquidity.reserve.partition.register.v1"
+        );
+
+        let quote = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/liquidity/quotes")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&liquidity_quote_request(
+                        "quote.alpha",
+                        "idemp.quote.alpha",
+                        created_at_ms + 1_000,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(quote.status(), StatusCode::OK);
+        let quote_payload: CreateLiquidityQuoteResponse = response_json(quote).await?;
+        assert_eq!(
+            quote_payload.receipt.receipt_type,
+            "kernel.liquidity.quote.create.v1"
+        );
+
+        let route = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/liquidity/routes")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&route_plan_request(
+                        "route.alpha",
+                        "quote.alpha",
+                        "idemp.route.alpha",
+                        created_at_ms + 2_000,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(route.status(), StatusCode::OK);
+        let route_payload: SelectRoutePlanResponse = response_json(route).await?;
+        assert_eq!(
+            route_payload.receipt.receipt_type,
+            "kernel.liquidity.route.select.v1"
+        );
+        assert!(route_payload.route_plan.quote_receipt.is_some());
+
+        let envelope = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/liquidity/envelopes")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &liquidity_envelope_request(
+                            "envelope.alpha",
+                            "route.alpha",
+                            "quote.alpha",
+                            "reserve.alpha",
+                            "idemp.envelope.alpha",
+                            created_at_ms + 3_000,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(envelope.status(), StatusCode::OK);
+        let envelope_payload: IssueLiquidityEnvelopeResponse = response_json(envelope).await?;
+        assert_eq!(
+            envelope_payload.receipt.receipt_type,
+            "kernel.liquidity.envelope.issue.v1"
+        );
+
+        let settlement = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/liquidity/settlements")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&settlement_intent_request(
+                        "settlement.alpha",
+                        "route.alpha",
+                        "quote.alpha",
+                        "envelope.alpha",
+                        "reserve.alpha",
+                        "idemp.settlement.alpha",
+                        created_at_ms + 4_000,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(settlement.status(), StatusCode::OK);
+        let settlement_payload: ExecuteSettlementIntentResponse = response_json(settlement).await?;
+        assert_eq!(
+            settlement_payload.receipt.receipt_type,
+            "kernel.liquidity.settlement.execute.v1"
+        );
+        assert_eq!(
+            settlement_payload.settlement_intent.status,
+            SettlementIntentStatus::Settled
+        );
+
+        let adjusted = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/liquidity/reserve_partitions/reserve.alpha/adjust")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &adjust_reserve_partition_request(
+                            "reserve.alpha",
+                            "idemp.reserve.adjust.alpha",
+                            created_at_ms + 5_000,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(adjusted.status(), StatusCode::OK);
+        let adjusted_payload: AdjustReservePartitionResponse = response_json(adjusted).await?;
+        assert_eq!(
+            adjusted_payload.receipt.receipt_type,
+            "kernel.liquidity.reserve.partition.adjust.v1"
+        );
+        assert_eq!(
+            adjusted_payload.reserve_partition.status,
+            ReservePartitionStatus::Adjusted
+        );
+
+        let snapshot_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/kernel/snapshots/{minute_start_ms}"))
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(snapshot_response.status(), StatusCode::OK);
+        let snapshot: super::EconomySnapshot = response_json(snapshot_response).await?;
+        assert_eq!(snapshot.liquidity_quotes_active, 1);
+        assert_eq!(snapshot.liquidity_route_plans_active, 0);
+        assert_eq!(snapshot.liquidity_envelopes_open, 0);
+        assert_eq!(snapshot.liquidity_settlements_24h, 1);
+        assert_eq!(snapshot.liquidity_reserve_partitions_active, 1);
+        assert_eq!(snapshot.liquidity_value_moved_24h, 2_490);
+
+        let stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.liquidity_quotes_active, 1);
+        assert_eq!(stats.liquidity_route_plans_active, 0);
+        assert_eq!(stats.liquidity_envelopes_open, 0);
+        assert_eq!(stats.liquidity_settlements_24h, 1);
+        assert_eq!(stats.liquidity_reserve_partitions_active, 1);
+        assert_eq!(stats.liquidity_value_moved_24h, 2_490);
+        assert!(
+            stats
+                .recent_receipts
+                .iter()
+                .any(|receipt| receipt.receipt_type == "kernel.liquidity.quote.created")
+        );
+        assert!(
+            stats
+                .recent_receipts
+                .iter()
+                .any(|receipt| receipt.receipt_type == "kernel.liquidity.route.selected")
+        );
+        assert!(
+            stats
+                .recent_receipts
+                .iter()
+                .any(|receipt| receipt.receipt_type == "kernel.liquidity.envelope.issued")
+        );
+        assert!(
+            stats
+                .recent_receipts
+                .iter()
+                .any(|receipt| receipt.receipt_type == "kernel.liquidity.settlement.executed")
+        );
+        assert!(
+            stats.recent_receipts.iter().any(
+                |receipt| receipt.receipt_type == "kernel.liquidity.reserve_partition.adjusted"
+            )
         );
 
         Ok(())

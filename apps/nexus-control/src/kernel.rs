@@ -1,13 +1,17 @@
 use openagents_kernel_core::authority::{
-    AcceptAccessGrantRequest, AcceptAccessGrantResponse, CreateAccessGrantRequest,
-    CreateAccessGrantResponse, CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse,
-    CreateCapacityLotRequest, CreateCapacityLotResponse, CreateComputeProductRequest,
-    CreateComputeProductResponse, CreateContractRequest, CreateContractResponse,
-    CreateWorkUnitRequest, CreateWorkUnitResponse, FinalizeVerdictRequest, FinalizeVerdictResponse,
-    IssueDeliveryBundleRequest, IssueDeliveryBundleResponse, PublishComputeIndexRequest,
+    AcceptAccessGrantRequest, AcceptAccessGrantResponse, AdjustReservePartitionRequest,
+    AdjustReservePartitionResponse, CreateAccessGrantRequest, CreateAccessGrantResponse,
+    CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse, CreateCapacityLotRequest,
+    CreateCapacityLotResponse, CreateComputeProductRequest, CreateComputeProductResponse,
+    CreateContractRequest, CreateContractResponse, CreateLiquidityQuoteRequest,
+    CreateLiquidityQuoteResponse, CreateWorkUnitRequest, CreateWorkUnitResponse,
+    ExecuteSettlementIntentRequest, ExecuteSettlementIntentResponse, FinalizeVerdictRequest,
+    FinalizeVerdictResponse, IssueDeliveryBundleRequest, IssueDeliveryBundleResponse,
+    IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse, PublishComputeIndexRequest,
     PublishComputeIndexResponse, RecordDeliveryProofRequest, RecordDeliveryProofResponse,
-    RegisterDataAssetRequest, RegisterDataAssetResponse, RevokeAccessGrantRequest,
-    RevokeAccessGrantResponse, SubmitOutputRequest, SubmitOutputResponse,
+    RegisterDataAssetRequest, RegisterDataAssetResponse, RegisterReservePartitionRequest,
+    RegisterReservePartitionResponse, RevokeAccessGrantRequest, RevokeAccessGrantResponse,
+    SelectRoutePlanRequest, SelectRoutePlanResponse, SubmitOutputRequest, SubmitOutputResponse,
 };
 use openagents_kernel_core::compute::{
     CapacityInstrument, CapacityInstrumentStatus, CapacityLot, CapacityLotStatus,
@@ -22,9 +26,13 @@ use openagents_kernel_core::labor::{
     ClaimHook, Contract, ContractStatus, SettlementLink, SettlementStatus, Submission, Verdict,
     WorkUnit, WorkUnitStatus,
 };
+use openagents_kernel_core::liquidity::{
+    Envelope, EnvelopeStatus, Quote, QuoteStatus, ReservePartition, ReservePartitionStatus,
+    RoutePlan, RoutePlanStatus, SettlementIntent, SettlementIntentStatus,
+};
 use openagents_kernel_core::receipts::{
     Asset, EvidenceRef, Money, MoneyAmount, PolicyContext, Receipt, ReceiptBuilder, ReceiptHints,
-    TraceContext,
+    ReceiptRef, TraceContext,
 };
 use openagents_kernel_core::snapshots::EconomySnapshot;
 use openagents_kernel_core::time::{floor_to_minute_utc, snapshot_id_for_minute};
@@ -203,6 +211,11 @@ pub struct KernelState {
     access_grants: HashMap<String, AccessGrantRecord>,
     delivery_bundles: HashMap<String, DeliveryBundleRecord>,
     revocations: HashMap<String, RevocationReceipt>,
+    liquidity_quotes: HashMap<String, LiquidityQuoteRecord>,
+    route_plans: HashMap<String, RoutePlanRecord>,
+    liquidity_envelopes: HashMap<String, LiquidityEnvelopeRecord>,
+    settlement_intents: HashMap<String, SettlementIntentRecord>,
+    reserve_partitions: HashMap<String, ReservePartitionRecord>,
     snapshots: BTreeMap<i64, EconomySnapshot>,
     next_projection_seq: u64,
 }
@@ -272,6 +285,35 @@ struct DeliveryBundleRecord {
     receipt_id: String,
 }
 
+#[derive(Debug, Clone)]
+struct LiquidityQuoteRecord {
+    quote: Quote,
+    receipt_id: String,
+}
+
+#[derive(Debug, Clone)]
+struct RoutePlanRecord {
+    route_plan: RoutePlan,
+    receipt_id: String,
+}
+
+#[derive(Debug, Clone)]
+struct LiquidityEnvelopeRecord {
+    envelope: Envelope,
+    receipt_id: String,
+}
+
+#[derive(Debug, Clone)]
+struct SettlementIntentRecord {
+    settlement_intent: SettlementIntent,
+}
+
+#[derive(Debug, Clone)]
+struct ReservePartitionRecord {
+    reserve_partition: ReservePartition,
+    receipt_id: String,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ComputeMarketMetrics {
     pub compute_products_active: u64,
@@ -281,6 +323,16 @@ pub struct ComputeMarketMetrics {
     pub compute_delivery_proofs_24h: u64,
     pub compute_delivery_quantity_24h: u64,
     pub compute_indices_published_24h: u64,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct LiquidityMarketMetrics {
+    pub liquidity_quotes_active: u64,
+    pub liquidity_route_plans_active: u64,
+    pub liquidity_envelopes_open: u64,
+    pub liquidity_settlements_24h: u64,
+    pub liquidity_reserve_partitions_active: u64,
+    pub liquidity_value_moved_24h: u64,
 }
 
 struct KernelReceiptSpec {
@@ -634,8 +686,8 @@ impl KernelState {
             }
             hook
         });
-        req.settlement_link = settlement_link.clone();
-        req.claim_hook = claim_hook.clone();
+        req.settlement_link.clone_from(&settlement_link);
+        req.claim_hook.clone_from(&claim_hook);
         let request_hash = request_hash(&req)?;
         let mut evidence = req.evidence.clone();
         push_receipt_evidence(
@@ -1096,7 +1148,7 @@ impl KernelState {
         req.delivery_proof
             .capacity_lot_id
             .clone_from(&capacity_lot_id);
-        req.delivery_proof.product_id = product_id.clone();
+        req.delivery_proof.product_id.clone_from(&product_id);
         req.delivery_proof.created_at_ms =
             normalize_created_at_ms(req.delivery_proof.created_at_ms, context.now_unix_ms);
         req.policy = normalized_policy(req.policy, context);
@@ -1393,6 +1445,97 @@ impl KernelState {
         }
     }
 
+    pub fn liquidity_market_metrics(&self, as_of_ms: i64) -> LiquidityMarketMetrics {
+        let window_start_ms = as_of_ms.saturating_sub(SNAPSHOT_WINDOW_MS);
+        LiquidityMarketMetrics {
+            liquidity_quotes_active: self
+                .liquidity_quotes
+                .values()
+                .filter(|record| {
+                    matches!(
+                        record.quote.status,
+                        QuoteStatus::Quoted | QuoteStatus::Selected
+                    )
+                })
+                .count() as u64,
+            liquidity_route_plans_active: self
+                .route_plans
+                .values()
+                .filter(|record| {
+                    matches!(
+                        record.route_plan.status,
+                        RoutePlanStatus::Selected | RoutePlanStatus::Executing
+                    )
+                })
+                .count() as u64,
+            liquidity_envelopes_open: self
+                .liquidity_envelopes
+                .values()
+                .filter(|record| {
+                    matches!(
+                        record.envelope.status,
+                        EnvelopeStatus::Issued | EnvelopeStatus::Reserved
+                    )
+                })
+                .count() as u64,
+            liquidity_settlements_24h: self
+                .settlement_intents
+                .values()
+                .filter(|record| {
+                    record
+                        .settlement_intent
+                        .executed_at_ms
+                        .unwrap_or(record.settlement_intent.created_at_ms)
+                        >= window_start_ms
+                        && record
+                            .settlement_intent
+                            .executed_at_ms
+                            .unwrap_or(record.settlement_intent.created_at_ms)
+                            <= as_of_ms
+                })
+                .count() as u64,
+            liquidity_reserve_partitions_active: self
+                .reserve_partitions
+                .values()
+                .filter(|record| {
+                    matches!(
+                        record.reserve_partition.status,
+                        ReservePartitionStatus::Active
+                            | ReservePartitionStatus::Adjusted
+                            | ReservePartitionStatus::Exhausted
+                    )
+                })
+                .count() as u64,
+            liquidity_value_moved_24h: self
+                .settlement_intents
+                .values()
+                .filter(|record| {
+                    matches!(
+                        record.settlement_intent.status,
+                        SettlementIntentStatus::Settled
+                    ) && record
+                        .settlement_intent
+                        .executed_at_ms
+                        .unwrap_or(record.settlement_intent.created_at_ms)
+                        >= window_start_ms
+                        && record
+                            .settlement_intent
+                            .executed_at_ms
+                            .unwrap_or(record.settlement_intent.created_at_ms)
+                            <= as_of_ms
+                })
+                .fold(0u64, |total, record| {
+                    total.saturating_add(money_amount_value(
+                        record
+                            .settlement_intent
+                            .settled_amount
+                            .as_ref()
+                            .unwrap_or(&record.settlement_intent.source_amount),
+                    ))
+                }),
+        }
+    }
+
     pub fn register_data_asset(
         &mut self,
         context: &KernelMutationContext,
@@ -1490,7 +1633,9 @@ impl KernelState {
             return Err("data_asset_not_found".to_string());
         };
         if req.grant.provider_id.trim().is_empty() {
-            req.grant.provider_id = asset_record.asset.provider_id.clone();
+            req.grant
+                .provider_id
+                .clone_from(&asset_record.asset.provider_id);
         }
         if req.grant.provider_id != asset_record.asset.provider_id {
             return Err("data_asset_provider_mismatch".to_string());
@@ -1751,8 +1896,12 @@ impl KernelState {
             .delivery_bundle_id
             .clone_from(&delivery_bundle_id);
         req.delivery_bundle.grant_id.clone_from(&grant_id);
-        req.delivery_bundle.asset_id = grant_record.grant.asset_id.clone();
-        req.delivery_bundle.provider_id = grant_record.grant.provider_id.clone();
+        req.delivery_bundle
+            .asset_id
+            .clone_from(&grant_record.grant.asset_id);
+        req.delivery_bundle
+            .provider_id
+            .clone_from(&grant_record.grant.provider_id);
         req.delivery_bundle.consumer_id = consumer_id;
         req.delivery_bundle.created_at_ms =
             normalize_created_at_ms(req.delivery_bundle.created_at_ms, context.now_unix_ms);
@@ -1899,9 +2048,15 @@ impl KernelState {
         };
         req.revocation.revocation_id.clone_from(&revocation_id);
         req.revocation.grant_id.clone_from(&grant_id);
-        req.revocation.asset_id = grant_record.grant.asset_id.clone();
-        req.revocation.provider_id = grant_record.grant.provider_id.clone();
-        req.revocation.consumer_id = grant_record.grant.consumer_id.clone();
+        req.revocation
+            .asset_id
+            .clone_from(&grant_record.grant.asset_id);
+        req.revocation
+            .provider_id
+            .clone_from(&grant_record.grant.provider_id);
+        req.revocation
+            .consumer_id
+            .clone_from(&grant_record.grant.consumer_id);
         req.revocation.created_at_ms =
             normalize_created_at_ms(req.revocation.created_at_ms, context.now_unix_ms);
         if req.revocation.revoked_delivery_bundle_ids.is_empty() {
@@ -2011,6 +2166,887 @@ impl KernelState {
         })
     }
 
+    pub fn create_liquidity_quote(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: CreateLiquidityQuoteRequest,
+    ) -> Result<MutationResult<CreateLiquidityQuoteResponse>, String> {
+        let quote_id =
+            normalize_required(req.quote.quote_id.as_str(), "liquidity_quote_id_missing")?;
+        let requester_id = normalize_required(
+            req.quote.requester_id.as_str(),
+            "liquidity_requester_id_missing",
+        )?;
+        normalize_required(
+            req.quote.route_kind.as_str(),
+            "liquidity_route_kind_missing",
+        )?;
+        if money_amount_value(&req.quote.source_amount) == 0 {
+            return Err("liquidity_source_amount_missing".to_string());
+        }
+        if req.quote.expires_at_ms <= req.quote.created_at_ms {
+            return Err("liquidity_quote_window_invalid".to_string());
+        }
+        req.quote.quote_id.clone_from(&quote_id);
+        req.quote.requester_id.clone_from(&requester_id);
+        req.quote.created_at_ms =
+            normalize_created_at_ms(req.quote.created_at_ms, context.now_unix_ms);
+        req.quote.status = QuoteStatus::Quoted;
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let quote_payload = serde_json::to_value(&req.quote)
+            .map_err(|error| format!("kernel_liquidity_quote_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.liquidity.quote.create".to_string(),
+                created_at_ms: req.quote.created_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: quote_payload,
+                outputs_payload: json!({
+                    "quote_id": quote_id.clone(),
+                    "requester_id": requester_id.clone(),
+                    "route_kind": req.quote.route_kind.clone(),
+                    "status": req.quote.status,
+                }),
+                evidence: req.evidence.clone(),
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.liquidity.quote.create",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = CreateLiquidityQuoteResponse {
+            quote: req.quote.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        self.liquidity_quotes.insert(
+            quote_id,
+            LiquidityQuoteRecord {
+                quote: req.quote.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.quote.created_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn select_route_plan(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: SelectRoutePlanRequest,
+    ) -> Result<MutationResult<SelectRoutePlanResponse>, String> {
+        let route_plan_id = normalize_required(
+            req.route_plan.route_plan_id.as_str(),
+            "liquidity_route_plan_id_missing",
+        )?;
+        let quote_id = normalize_required(
+            req.route_plan.quote_id.as_str(),
+            "liquidity_quote_id_missing",
+        )?;
+        let requester_id = normalize_required(
+            req.route_plan.requester_id.as_str(),
+            "liquidity_requester_id_missing",
+        )?;
+        let solver_id = normalize_required(
+            req.route_plan.solver_id.as_str(),
+            "liquidity_solver_id_missing",
+        )?;
+        normalize_required(
+            req.route_plan.route_kind.as_str(),
+            "liquidity_route_kind_missing",
+        )?;
+        let Some(quote_record) = self.liquidity_quotes.get(quote_id.as_str()).cloned() else {
+            return Err("liquidity_quote_not_found".to_string());
+        };
+        if quote_record.quote.requester_id != requester_id {
+            return Err("liquidity_quote_requester_mismatch".to_string());
+        }
+        if quote_record.quote.route_kind != req.route_plan.route_kind {
+            return Err("liquidity_quote_route_kind_mismatch".to_string());
+        }
+        if matches!(
+            quote_record.quote.status,
+            QuoteStatus::Expired | QuoteStatus::Cancelled
+        ) {
+            return Err("liquidity_quote_not_selectable".to_string());
+        }
+        if req.route_plan.expires_at_ms <= req.route_plan.selected_at_ms {
+            return Err("liquidity_route_plan_window_invalid".to_string());
+        }
+        req.route_plan.route_plan_id.clone_from(&route_plan_id);
+        req.route_plan.quote_id.clone_from(&quote_id);
+        req.route_plan.requester_id.clone_from(&requester_id);
+        req.route_plan.solver_id.clone_from(&solver_id);
+        req.route_plan.selected_at_ms =
+            normalize_created_at_ms(req.route_plan.selected_at_ms, context.now_unix_ms);
+        if req.route_plan.quoted_input.is_none() {
+            req.route_plan.quoted_input = Some(quote_record.quote.source_amount.clone());
+        }
+        if req.route_plan.quoted_output.is_none() {
+            req.route_plan
+                .quoted_output
+                .clone_from(&quote_record.quote.expected_output);
+        }
+        if req.route_plan.fee_ceiling.is_none() {
+            req.route_plan
+                .fee_ceiling
+                .clone_from(&quote_record.quote.fee_ceiling);
+        }
+        req.route_plan.quote_receipt = self
+            .receipt_store
+            .get_receipt(quote_record.receipt_id.as_str())
+            .as_ref()
+            .map(receipt_ref_for);
+        req.route_plan.status = RoutePlanStatus::Selected;
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(quote_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        let route_payload = serde_json::to_value(&req.route_plan)
+            .map_err(|error| format!("kernel_route_plan_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.liquidity.route.select".to_string(),
+                created_at_ms: req.route_plan.selected_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: route_payload,
+                outputs_payload: json!({
+                    "route_plan_id": route_plan_id.clone(),
+                    "quote_id": quote_id.clone(),
+                    "solver_id": solver_id.clone(),
+                    "status": req.route_plan.status,
+                    "quote_receipt_id": quote_record.receipt_id.clone(),
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.liquidity.route.select",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = SelectRoutePlanResponse {
+            route_plan: req.route_plan.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        if let Some(quote_record) = self.liquidity_quotes.get_mut(quote_id.as_str()) {
+            quote_record.quote.status = QuoteStatus::Selected;
+            quote_record.quote.solver_id = Some(solver_id);
+        }
+        self.route_plans.insert(
+            route_plan_id,
+            RoutePlanRecord {
+                route_plan: req.route_plan.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.route_plan.selected_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn issue_liquidity_envelope(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: IssueLiquidityEnvelopeRequest,
+    ) -> Result<MutationResult<IssueLiquidityEnvelopeResponse>, String> {
+        let envelope_id = normalize_required(
+            req.envelope.envelope_id.as_str(),
+            "liquidity_envelope_id_missing",
+        )?;
+        let route_plan_id = normalize_required(
+            req.envelope.route_plan_id.as_str(),
+            "liquidity_route_plan_id_missing",
+        )?;
+        let quote_id =
+            normalize_required(req.envelope.quote_id.as_str(), "liquidity_quote_id_missing")?;
+        let owner_id = normalize_required(
+            req.envelope.owner_id.as_str(),
+            "liquidity_envelope_owner_id_missing",
+        )?;
+        let Some(route_plan_record) = self.route_plans.get(route_plan_id.as_str()).cloned() else {
+            return Err("liquidity_route_plan_not_found".to_string());
+        };
+        if route_plan_record.route_plan.quote_id != quote_id {
+            return Err("liquidity_quote_mismatch".to_string());
+        }
+        if !matches!(
+            route_plan_record.route_plan.status,
+            RoutePlanStatus::Selected | RoutePlanStatus::Executing
+        ) {
+            return Err("liquidity_route_plan_not_ready".to_string());
+        }
+        if req.envelope.expires_at_ms <= req.envelope.issued_at_ms {
+            return Err("liquidity_envelope_window_invalid".to_string());
+        }
+        let reserved_amount = req
+            .envelope
+            .reserved_amount
+            .clone()
+            .unwrap_or_else(|| req.envelope.spend_limit.clone());
+        if !money_assets_match(&reserved_amount, &req.envelope.spend_limit) {
+            return Err("reserve_partition_asset_mismatch".to_string());
+        }
+        req.envelope.envelope_id.clone_from(&envelope_id);
+        req.envelope.route_plan_id.clone_from(&route_plan_id);
+        req.envelope.quote_id.clone_from(&quote_id);
+        req.envelope.owner_id.clone_from(&owner_id);
+        req.envelope.issued_at_ms =
+            normalize_created_at_ms(req.envelope.issued_at_ms, context.now_unix_ms);
+        req.envelope.reserved_amount = Some(reserved_amount.clone());
+        req.envelope.status = EnvelopeStatus::Issued;
+
+        if let Some(partition_id) = req.envelope.reserve_partition_id.as_deref() {
+            let Some(partition_record) = self.reserve_partitions.get(partition_id).cloned() else {
+                return Err("reserve_partition_not_found".to_string());
+            };
+            if !money_assets_match(
+                &partition_record.reserve_partition.total_amount,
+                &reserved_amount,
+            ) {
+                return Err("reserve_partition_asset_mismatch".to_string());
+            }
+            let available =
+                money_amount_value(&partition_record.reserve_partition.available_amount);
+            let amount = money_amount_value(&reserved_amount);
+            if amount > available {
+                return Err("reserve_partition_insufficient_available".to_string());
+            }
+        }
+
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(route_plan_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        if let Some(partition_id) = req.envelope.reserve_partition_id.as_deref()
+            && let Some(partition_record) = self.reserve_partitions.get(partition_id)
+        {
+            push_receipt_evidence(
+                &mut evidence,
+                self.receipt_store
+                    .get_receipt(partition_record.receipt_id.as_str())
+                    .as_ref(),
+            );
+        }
+        let envelope_payload = serde_json::to_value(&req.envelope)
+            .map_err(|error| format!("kernel_liquidity_envelope_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.liquidity.envelope.issue".to_string(),
+                created_at_ms: req.envelope.issued_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: envelope_payload,
+                outputs_payload: json!({
+                    "envelope_id": envelope_id.clone(),
+                    "route_plan_id": route_plan_id.clone(),
+                    "quote_id": quote_id.clone(),
+                    "reserve_partition_id": req.envelope.reserve_partition_id.clone(),
+                    "status": req.envelope.status,
+                    "route_receipt_id": route_plan_record.receipt_id.clone(),
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.liquidity.envelope.issue",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = IssueLiquidityEnvelopeResponse {
+            envelope: req.envelope.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        let envelope_reserved_amount = req.envelope.reserved_amount.clone();
+        if let Some(partition_id) = req.envelope.reserve_partition_id.as_deref()
+            && let Some(partition_record) = self.reserve_partitions.get_mut(partition_id)
+        {
+            let amount = envelope_reserved_amount
+                .as_ref()
+                .map(money_amount_value)
+                .ok_or_else(|| "liquidity_envelope_reserved_amount_missing".to_string())?;
+            let available =
+                money_amount_value(&partition_record.reserve_partition.available_amount);
+            let reserved = money_amount_value(&partition_record.reserve_partition.reserved_amount);
+            set_money_amount(
+                &mut partition_record.reserve_partition.available_amount,
+                available.saturating_sub(amount),
+            );
+            set_money_amount(
+                &mut partition_record.reserve_partition.reserved_amount,
+                reserved.saturating_add(amount),
+            );
+            partition_record.reserve_partition.updated_at_ms = req.envelope.issued_at_ms;
+            partition_record.reserve_partition.status = if available == amount {
+                ReservePartitionStatus::Exhausted
+            } else {
+                ReservePartitionStatus::Adjusted
+            };
+        }
+        self.liquidity_envelopes.insert(
+            envelope_id,
+            LiquidityEnvelopeRecord {
+                envelope: req.envelope.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.envelope.issued_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn execute_settlement_intent(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: ExecuteSettlementIntentRequest,
+    ) -> Result<MutationResult<ExecuteSettlementIntentResponse>, String> {
+        let settlement_intent_id = normalize_required(
+            req.settlement_intent.settlement_intent_id.as_str(),
+            "liquidity_settlement_intent_id_missing",
+        )?;
+        let route_plan_id = normalize_required(
+            req.settlement_intent.route_plan_id.as_str(),
+            "liquidity_route_plan_id_missing",
+        )?;
+        let quote_id = normalize_required(
+            req.settlement_intent.quote_id.as_str(),
+            "liquidity_quote_id_missing",
+        )?;
+        let envelope_id = normalize_required(
+            req.settlement_intent.envelope_id.as_str(),
+            "liquidity_envelope_id_missing",
+        )?;
+        let Some(quote_record) = self.liquidity_quotes.get(quote_id.as_str()).cloned() else {
+            return Err("liquidity_quote_not_found".to_string());
+        };
+        let Some(route_plan_record) = self.route_plans.get(route_plan_id.as_str()).cloned() else {
+            return Err("liquidity_route_plan_not_found".to_string());
+        };
+        let Some(envelope_record) = self.liquidity_envelopes.get(envelope_id.as_str()).cloned()
+        else {
+            return Err("liquidity_envelope_not_found".to_string());
+        };
+        if route_plan_record.route_plan.quote_id != quote_id
+            || envelope_record.envelope.quote_id != quote_id
+        {
+            return Err("liquidity_quote_mismatch".to_string());
+        }
+        if envelope_record.envelope.route_plan_id != route_plan_id {
+            return Err("liquidity_route_plan_mismatch".to_string());
+        }
+        if matches!(
+            req.settlement_intent.status,
+            SettlementIntentStatus::Settled
+        ) && req
+            .settlement_intent
+            .settlement_proof_ref
+            .as_deref()
+            .is_none_or(str::is_empty)
+        {
+            return Err("liquidity_settlement_proof_missing".to_string());
+        }
+        if let Some(settled_amount) = req.settlement_intent.settled_amount.as_ref()
+            && !money_assets_match(&req.settlement_intent.source_amount, settled_amount)
+            && quote_record.quote.expected_output.is_none()
+        {
+            return Err("liquidity_settlement_amount_mismatch".to_string());
+        }
+        req.settlement_intent
+            .settlement_intent_id
+            .clone_from(&settlement_intent_id);
+        req.settlement_intent
+            .route_plan_id
+            .clone_from(&route_plan_id);
+        req.settlement_intent.quote_id.clone_from(&quote_id);
+        req.settlement_intent.envelope_id.clone_from(&envelope_id);
+        req.settlement_intent.created_at_ms =
+            normalize_created_at_ms(req.settlement_intent.created_at_ms, context.now_unix_ms);
+        if req.settlement_intent.executed_at_ms.is_none() {
+            req.settlement_intent.executed_at_ms = Some(req.settlement_intent.created_at_ms);
+        }
+        if req.settlement_intent.reserve_partition_id.is_none() {
+            req.settlement_intent
+                .reserve_partition_id
+                .clone_from(&envelope_record.envelope.reserve_partition_id);
+        }
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(quote_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(route_plan_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(envelope_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        if let Some(partition_id) = req.settlement_intent.reserve_partition_id.as_deref()
+            && let Some(partition_record) = self.reserve_partitions.get(partition_id)
+        {
+            push_receipt_evidence(
+                &mut evidence,
+                self.receipt_store
+                    .get_receipt(partition_record.receipt_id.as_str())
+                    .as_ref(),
+            );
+        }
+        let settlement_payload = serde_json::to_value(&req.settlement_intent)
+            .map_err(|error| format!("kernel_settlement_intent_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.liquidity.settlement.execute".to_string(),
+                created_at_ms: req
+                    .settlement_intent
+                    .executed_at_ms
+                    .unwrap_or(req.settlement_intent.created_at_ms),
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: settlement_payload,
+                outputs_payload: json!({
+                    "settlement_intent_id": settlement_intent_id.clone(),
+                    "route_plan_id": route_plan_id.clone(),
+                    "quote_id": quote_id.clone(),
+                    "envelope_id": envelope_id.clone(),
+                    "reserve_partition_id": req.settlement_intent.reserve_partition_id.clone(),
+                    "status": req.settlement_intent.status,
+                    "reason_code": req.settlement_intent.reason_code.clone(),
+                    "quote_receipt_id": quote_record.receipt_id.clone(),
+                    "route_receipt_id": route_plan_record.receipt_id.clone(),
+                    "envelope_receipt_id": envelope_record.receipt_id.clone(),
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.liquidity.settlement.execute",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = ExecuteSettlementIntentResponse {
+            settlement_intent: req.settlement_intent.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        if let Some(partition_id) = req.settlement_intent.reserve_partition_id.as_deref()
+            && let Some(partition_record) = self.reserve_partitions.get_mut(partition_id)
+        {
+            let reserved_amount = envelope_record
+                .envelope
+                .reserved_amount
+                .clone()
+                .unwrap_or_else(|| envelope_record.envelope.spend_limit.clone());
+            let reserved_value = money_amount_value(&reserved_amount);
+            let partition_reserved =
+                money_amount_value(&partition_record.reserve_partition.reserved_amount);
+            let partition_available =
+                money_amount_value(&partition_record.reserve_partition.available_amount);
+            let partition_total =
+                money_amount_value(&partition_record.reserve_partition.total_amount);
+            match req.settlement_intent.status {
+                SettlementIntentStatus::Settled => {
+                    let fee_paid = req
+                        .settlement_intent
+                        .fee_paid
+                        .as_ref()
+                        .map(money_amount_value)
+                        .unwrap_or(0);
+                    let actual_spend = money_amount_value(&req.settlement_intent.source_amount)
+                        .saturating_add(fee_paid);
+                    let released = reserved_value.saturating_sub(actual_spend);
+                    set_money_amount(
+                        &mut partition_record.reserve_partition.reserved_amount,
+                        partition_reserved.saturating_sub(reserved_value),
+                    );
+                    set_money_amount(
+                        &mut partition_record.reserve_partition.available_amount,
+                        partition_available.saturating_add(released),
+                    );
+                    set_money_amount(
+                        &mut partition_record.reserve_partition.total_amount,
+                        partition_total.saturating_sub(actual_spend),
+                    );
+                    partition_record.reserve_partition.status =
+                        if money_amount_value(&partition_record.reserve_partition.available_amount)
+                            == 0
+                        {
+                            ReservePartitionStatus::Exhausted
+                        } else {
+                            ReservePartitionStatus::Adjusted
+                        };
+                }
+                SettlementIntentStatus::Failed | SettlementIntentStatus::Refunded => {
+                    set_money_amount(
+                        &mut partition_record.reserve_partition.reserved_amount,
+                        partition_reserved.saturating_sub(reserved_value),
+                    );
+                    set_money_amount(
+                        &mut partition_record.reserve_partition.available_amount,
+                        partition_available.saturating_add(reserved_value),
+                    );
+                    partition_record.reserve_partition.status = ReservePartitionStatus::Adjusted;
+                }
+                SettlementIntentStatus::Pending | SettlementIntentStatus::Executing => {}
+            }
+            partition_record.reserve_partition.updated_at_ms = req
+                .settlement_intent
+                .executed_at_ms
+                .unwrap_or(req.settlement_intent.created_at_ms);
+        }
+        if let Some(route_plan_record) = self.route_plans.get_mut(route_plan_id.as_str()) {
+            route_plan_record.route_plan.status = match req.settlement_intent.status {
+                SettlementIntentStatus::Pending | SettlementIntentStatus::Executing => {
+                    RoutePlanStatus::Executing
+                }
+                SettlementIntentStatus::Settled => RoutePlanStatus::Settled,
+                SettlementIntentStatus::Failed => RoutePlanStatus::Failed,
+                SettlementIntentStatus::Refunded => RoutePlanStatus::Refunded,
+            };
+        }
+        if let Some(envelope_record) = self.liquidity_envelopes.get_mut(envelope_id.as_str()) {
+            envelope_record.envelope.status = match req.settlement_intent.status {
+                SettlementIntentStatus::Pending | SettlementIntentStatus::Executing => {
+                    EnvelopeStatus::Reserved
+                }
+                SettlementIntentStatus::Settled | SettlementIntentStatus::Refunded => {
+                    EnvelopeStatus::Consumed
+                }
+                SettlementIntentStatus::Failed => EnvelopeStatus::Cancelled,
+            };
+        }
+        self.settlement_intents.insert(
+            settlement_intent_id,
+            SettlementIntentRecord {
+                settlement_intent: req.settlement_intent.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(
+            req.settlement_intent
+                .executed_at_ms
+                .unwrap_or(req.settlement_intent.created_at_ms),
+        )?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn register_reserve_partition(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: RegisterReservePartitionRequest,
+    ) -> Result<MutationResult<RegisterReservePartitionResponse>, String> {
+        let partition_id = normalize_required(
+            req.reserve_partition.partition_id.as_str(),
+            "reserve_partition_id_missing",
+        )?;
+        let owner_id = normalize_required(
+            req.reserve_partition.owner_id.as_str(),
+            "reserve_partition_owner_id_missing",
+        )?;
+        if !money_assets_match(
+            &req.reserve_partition.total_amount,
+            &req.reserve_partition.available_amount,
+        ) || !money_assets_match(
+            &req.reserve_partition.total_amount,
+            &req.reserve_partition.reserved_amount,
+        ) {
+            return Err("reserve_partition_asset_mismatch".to_string());
+        }
+        let total_amount = money_amount_value(&req.reserve_partition.total_amount);
+        let available_amount = money_amount_value(&req.reserve_partition.available_amount);
+        let reserved_amount = money_amount_value(&req.reserve_partition.reserved_amount);
+        if total_amount != available_amount.saturating_add(reserved_amount) {
+            return Err("reserve_partition_amount_invalid".to_string());
+        }
+        req.reserve_partition.partition_id.clone_from(&partition_id);
+        req.reserve_partition.owner_id.clone_from(&owner_id);
+        req.reserve_partition.created_at_ms =
+            normalize_created_at_ms(req.reserve_partition.created_at_ms, context.now_unix_ms);
+        req.reserve_partition.updated_at_ms =
+            normalize_created_at_ms(req.reserve_partition.updated_at_ms, context.now_unix_ms);
+        req.reserve_partition.status = ReservePartitionStatus::Active;
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let partition_payload = serde_json::to_value(&req.reserve_partition)
+            .map_err(|error| format!("kernel_reserve_partition_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.liquidity.reserve.partition.register".to_string(),
+                created_at_ms: req.reserve_partition.updated_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: partition_payload,
+                outputs_payload: json!({
+                    "partition_id": partition_id.clone(),
+                    "owner_id": owner_id.clone(),
+                    "status": req.reserve_partition.status,
+                }),
+                evidence: req.evidence.clone(),
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.liquidity.reserve.partition.register",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = RegisterReservePartitionResponse {
+            reserve_partition: req.reserve_partition.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        self.reserve_partitions.insert(
+            partition_id,
+            ReservePartitionRecord {
+                reserve_partition: req.reserve_partition.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.reserve_partition.updated_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn adjust_reserve_partition(
+        &mut self,
+        context: &KernelMutationContext,
+        req: AdjustReservePartitionRequest,
+    ) -> Result<MutationResult<AdjustReservePartitionResponse>, String> {
+        let partition_id =
+            normalize_required(req.partition_id.as_str(), "reserve_partition_id_missing")?;
+        normalize_required(req.reason_code.as_str(), "reserve_partition_reason_missing")?;
+        if !money_assets_match(&req.total_amount, &req.available_amount)
+            || !money_assets_match(&req.total_amount, &req.reserved_amount)
+        {
+            return Err("reserve_partition_asset_mismatch".to_string());
+        }
+        let total_amount = money_amount_value(&req.total_amount);
+        let available_amount = money_amount_value(&req.available_amount);
+        let reserved_amount = money_amount_value(&req.reserved_amount);
+        if total_amount != available_amount.saturating_add(reserved_amount) {
+            return Err("reserve_partition_amount_invalid".to_string());
+        }
+        let Some(existing_record) = self.reserve_partitions.get(partition_id.as_str()).cloned()
+        else {
+            return Err("reserve_partition_not_found".to_string());
+        };
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(existing_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.liquidity.reserve.partition.adjust".to_string(),
+                created_at_ms: req.updated_at_ms,
+                trace: req.trace.clone(),
+                policy: normalized_policy(req.policy.clone(), context),
+                inputs_payload: serde_json::to_value(json!({
+                    "partition_id": partition_id.clone(),
+                    "total_amount": req.total_amount.clone(),
+                    "available_amount": req.available_amount.clone(),
+                    "reserved_amount": req.reserved_amount.clone(),
+                    "reason_code": req.reason_code.clone(),
+                    "metadata": req.metadata.clone(),
+                }))
+                .map_err(|error| format!("kernel_reserve_adjustment_encode_failed: {error}"))?,
+                outputs_payload: json!({
+                    "partition_id": partition_id.clone(),
+                    "owner_id": existing_record.reserve_partition.owner_id.clone(),
+                    "status": if available_amount == 0 && reserved_amount > 0 {
+                        ReservePartitionStatus::Exhausted
+                    } else {
+                        ReservePartitionStatus::Adjusted
+                    },
+                    "reason_code": req.reason_code.clone(),
+                    "partition_receipt_id": existing_record.receipt_id.clone(),
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.liquidity.reserve.partition.adjust",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let mut reserve_partition = existing_record.reserve_partition.clone();
+        reserve_partition.updated_at_ms =
+            normalize_created_at_ms(req.updated_at_ms, context.now_unix_ms);
+        reserve_partition.total_amount = req.total_amount.clone();
+        reserve_partition.available_amount = req.available_amount.clone();
+        reserve_partition.reserved_amount = req.reserved_amount.clone();
+        reserve_partition.status = if available_amount == 0 && reserved_amount > 0 {
+            ReservePartitionStatus::Exhausted
+        } else {
+            ReservePartitionStatus::Adjusted
+        };
+        if !req.metadata.is_null() {
+            reserve_partition.metadata = req.metadata.clone();
+        }
+        let response = AdjustReservePartitionResponse {
+            reserve_partition: reserve_partition.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        self.reserve_partitions.insert(
+            partition_id,
+            ReservePartitionRecord {
+                reserve_partition: reserve_partition.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(reserve_partition.updated_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
     pub fn get_receipt(&self, receipt_id: &str) -> Option<Receipt> {
         self.receipt_store.get_receipt(receipt_id)
     }
@@ -2036,7 +3072,14 @@ impl KernelState {
     fn compute_snapshot_for(&mut self, minute_start_ms: i64) -> EconomySnapshot {
         let receipts = self.receipt_store.list_receipts();
         let compute_metrics = self.compute_market_metrics(minute_start_ms.saturating_add(60_000));
-        let snapshot = build_snapshot(minute_start_ms, receipts.as_slice(), &compute_metrics);
+        let liquidity_metrics =
+            self.liquidity_market_metrics(minute_start_ms.saturating_add(60_000));
+        let snapshot = build_snapshot(
+            minute_start_ms,
+            receipts.as_slice(),
+            &compute_metrics,
+            &liquidity_metrics,
+        );
         self.snapshots.insert(minute_start_ms, snapshot.clone());
         snapshot
     }
@@ -2141,6 +3184,31 @@ fn normalize_permission_policy(
     permission_policy
 }
 
+fn money_amount_value(money: &Money) -> u64 {
+    match money.amount {
+        MoneyAmount::AmountMsats(value) | MoneyAmount::AmountSats(value) => value,
+    }
+}
+
+fn set_money_amount(money: &mut Money, value: u64) {
+    money.amount = match money.amount {
+        MoneyAmount::AmountMsats(_) => MoneyAmount::AmountMsats(value),
+        MoneyAmount::AmountSats(_) => MoneyAmount::AmountSats(value),
+    };
+}
+
+fn money_assets_match(lhs: &Money, rhs: &Money) -> bool {
+    lhs.asset == rhs.asset
+}
+
+fn receipt_ref_for(receipt: &Receipt) -> ReceiptRef {
+    ReceiptRef {
+        receipt_id: receipt.receipt_id.clone(),
+        receipt_type: receipt.receipt_type.clone(),
+        canonical_hash: receipt.canonical_hash.clone(),
+    }
+}
+
 fn contract_status_for_verdict(settlement_status: SettlementStatus) -> ContractStatus {
     match settlement_status {
         SettlementStatus::Pending => ContractStatus::Finalized,
@@ -2209,6 +3277,7 @@ fn build_snapshot(
     minute_start_ms: i64,
     receipts: &[Receipt],
     compute_metrics: &ComputeMarketMetrics,
+    liquidity_metrics: &LiquidityMarketMetrics,
 ) -> EconomySnapshot {
     let window_end_ms = minute_start_ms.saturating_add(60_000);
     let window_start_ms = window_end_ms.saturating_sub(SNAPSHOT_WINDOW_MS);
@@ -2321,6 +3390,12 @@ fn build_snapshot(
         compute_delivery_proofs_24h: compute_metrics.compute_delivery_proofs_24h,
         compute_delivery_quantity_24h: compute_metrics.compute_delivery_quantity_24h,
         compute_indices_published_24h: compute_metrics.compute_indices_published_24h,
+        liquidity_quotes_active: liquidity_metrics.liquidity_quotes_active,
+        liquidity_route_plans_active: liquidity_metrics.liquidity_route_plans_active,
+        liquidity_envelopes_open: liquidity_metrics.liquidity_envelopes_open,
+        liquidity_settlements_24h: liquidity_metrics.liquidity_settlements_24h,
+        liquidity_reserve_partitions_active: liquidity_metrics.liquidity_reserve_partitions_active,
+        liquidity_value_moved_24h: liquidity_metrics.liquidity_value_moved_24h,
         audit_package_public_digest: String::new(),
         audit_package_restricted_digest: String::new(),
         sv_breakdown: Vec::new(),

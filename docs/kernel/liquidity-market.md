@@ -36,6 +36,6 @@ This market should make it explicit:
 
 ## Current implementation status
 
-- `implemented`: none as a standalone market
-- `local prototype`: wallet and routing primitives exist alongside Hydra-oriented protocol notes
-- `planned`: quote, route selection, envelope issuance, reserve partitioning, and authoritative liquidity settlement
+- `implemented`: starter authority flows in `openagents-kernel-core` and `apps/nexus-control` for quotes, route plans, liquidity envelopes, settlement intents, and reserve partitions
+- `local prototype`: richer Hydra routing, solver economics, and operator policy still live mostly in docs and adjacent wallet primitives
+- `planned`: broader routing, FX, liquidity discovery, and product-facing solver UX

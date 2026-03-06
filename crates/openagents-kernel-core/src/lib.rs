@@ -3,6 +3,7 @@ pub mod compute;
 pub mod data;
 pub mod ids;
 pub mod labor;
+pub mod liquidity;
 pub mod receipts;
 pub mod snapshots;
 pub mod time;

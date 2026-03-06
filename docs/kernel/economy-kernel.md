@@ -145,10 +145,10 @@ This normative spec defines the shared kernel semantics that all five markets mu
 | `Compute` | Allocate machine capacity. | `ComputeProduct`, `CapacityLot`, `DeliveryProof`, `ComputeIndex`, `CapacityInstrument` | `implemented` for the compute-provider earn slice; `local prototype` for richer compute-market semantics; `planned` for full commodity instruments |
 | `Data` | Price access to useful context under permission. | `DataAsset`, `AccessGrant`, `PermissionPolicy`, `DeliveryBundle`, `RevocationReceipt` | `implemented` for a starter authority slice in `kernel-core` and `nexus-control`; `planned` for a broader market surface |
 | `Labor` | Buy and sell machine work. | `WorkUnit`, `Contract`, `Submission`, `Verdict`, `Claim` | `local prototype` with a narrow MVP earn loop; `planned` as a generalized authoritative market |
-| `Liquidity` | Move value between participants and rails. | `Quote`, `RoutePlan`, `Envelope`, `SettlementIntent`, `ReservePartition` | `local prototype`; `planned` as a production market |
+| `Liquidity` | Move value between participants and rails. | `Quote`, `RoutePlan`, `Envelope`, `SettlementIntent`, `ReservePartition` | `implemented` for a starter authority slice in `kernel-core` and `nexus-control`; `planned` for a broader market surface |
 | `Risk` | Price failure probability, verification difficulty, and liability. | `CoverageOffer`, `CoverageBinding`, `Claim`, `RiskSignal`, `CalibrationMetric` | `local prototype`; `planned` as a production market |
 
-In current MVP terms, the visible product wedge is still compute-provider-first. Data now has a starter authority slice for permissioned asset access, but it is not yet a full productized market. Liquidity and Risk remain architectural markets rather than shipped product surfaces. Labor exists today as a narrow paid machine-work loop plus desktop-local kernel modeling, not yet as a generalized authoritative market.
+In current MVP terms, the visible product wedge is still compute-provider-first. Data and Liquidity now have starter authority slices, but neither is yet a full productized market. Risk remains primarily architectural. Labor exists today as a narrow paid machine-work loop plus desktop-local kernel modeling, not yet as a generalized authoritative market.
 
 Section 8 goes deepest on Compute because that is the first detailed market extension in this spec set. Companion docs describe the Data, Labor, Liquidity, and Risk surfaces. Their thinner treatment here reflects current maturity, not exclusion from the five-market architecture.
 
