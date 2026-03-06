@@ -1,6 +1,16 @@
 use super::*;
 
 pub(super) fn run_chat_submit_action(state: &mut crate::app_state::RenderState) -> bool {
+    run_chat_submit_action_with_trigger(
+        state,
+        crate::labor_orchestrator::CodexRunTrigger::PersonalAgent,
+    )
+}
+
+pub(super) fn run_chat_submit_action_with_trigger(
+    state: &mut crate::app_state::RenderState,
+    trigger: crate::labor_orchestrator::CodexRunTrigger,
+) -> bool {
     focus_chat_composer(state);
     let prompt = state.chat_inputs.composer.get_value().trim().to_string();
     let prompt_chars = prompt.chars().count();
@@ -14,16 +24,24 @@ pub(super) fn run_chat_submit_action(state: &mut crate::app_state::RenderState) 
     };
 
     let classification = super::cad_turn_classifier::classify_chat_prompt(&prompt);
+    let submitted_at_epoch_ms = current_epoch_millis();
 
     state.chat_inputs.composer.set_value(String::new());
     state.autopilot_chat.submit_prompt(prompt.clone());
+    let orchestration_classification =
+        crate::labor_orchestrator::CodexRunClassification::from_trigger(trigger.clone());
     state.autopilot_chat.record_turn_submission_metadata(
         &thread_id,
+        orchestration_classification.clone(),
         classification.is_cad_turn,
         classification.reason.clone(),
-        current_epoch_millis(),
+        submitted_at_epoch_ms,
         Vec::new(),
     );
+    state.autopilot_chat.record_turn_timeline_event(format!(
+        "labor orchestrator: {}",
+        orchestration_classification.timeline_descriptor()
+    ));
     state.autopilot_chat.record_turn_timeline_event(format!(
         "cad-turn classifier: is_cad_turn={} reason={}",
         classification.is_cad_turn, classification.reason
@@ -126,28 +144,28 @@ pub(super) fn run_chat_submit_action(state: &mut crate::app_state::RenderState) 
     }
     let model_override = state.autopilot_chat.selected_model_override();
     let model_label = model_override.as_deref().unwrap_or("server-default");
-
-    let command = crate::codex_lane::CodexLaneCommand::TurnStart(TurnStartParams {
-        thread_id: thread_id.clone(),
-        input,
-        cwd: goal_scoped_turn_cwd(state).map(std::path::PathBuf::from),
-        approval_policy: cad_turn_approval_policy(classification.is_cad_turn),
-        sandbox_policy: goal_scoped_turn_sandbox_policy(state),
-        model: model_override.clone(),
-        effort: None,
-        summary: None,
-        personality: None,
-        output_schema: None,
-        collaboration_mode: None,
-    });
+    let plan = crate::labor_orchestrator::orchestrate_codex_turn(
+        crate::labor_orchestrator::CodexTurnExecutionRequest {
+            trigger,
+            thread_id: thread_id.clone(),
+            input,
+            cwd: goal_scoped_turn_cwd(state).map(std::path::PathBuf::from),
+            approval_policy: cad_turn_approval_policy(classification.is_cad_turn),
+            sandbox_policy: goal_scoped_turn_sandbox_policy(state),
+            model: model_override.clone(),
+        },
+    );
 
     tracing::info!(
-        "codex turn/start request thread_id={} model={} chars={}",
+        "codex turn/start request thread_id={} model={} chars={} class={} economic={} labor_bound={}",
         thread_id,
         model_label,
-        prompt_chars
+        prompt_chars,
+        plan.classification.label(),
+        plan.classification.is_economically_meaningful(),
+        plan.classification.is_labor_market_bound()
     );
-    match state.queue_codex_command(command) {
+    match state.queue_codex_command(plan.command) {
         Ok(seq) => {
             tracing::info!(
                 "codex turn/start queued seq={} thread_id={}",
