@@ -6,7 +6,7 @@ Today Autopilot runs on your computer, where it can do useful work for you and p
 
 Under the hood, Autopilot runs on the economic infrastructure for machine work: a system where agents can buy compute, sell labor, hedge risk, and settle payments automatically.
 
-The MVP focuses on one user flow and outcome: a user goes online, offers spare compute to the network, gets matched to paid machine work, sees bitcoin land in their Autopilot wallet, and withdraws over Lightning. The product delivers this loop as a real, repeatable path.
+The MVP focuses on one user flow and outcome: a user goes online, offers spare compute to the network, gets matched to paid machine work, sees bitcoin land in their Autopilot wallet, and withdraws over Lightning.
 
 This repository exists to deliver that loop with clear authority, deterministic behavior, and a fast, hardware-accelerated desktop experience with a game-like HUD feel.
 
