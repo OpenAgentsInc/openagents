@@ -56,6 +56,29 @@ impl Default for RelayConnectionsState {
 }
 
 impl RelayConnectionsState {
+    pub fn replace_configured_relays(&mut self, relay_urls: &[String]) {
+        let previous_selected = self.selected_url.clone();
+        self.relays = relay_urls
+            .iter()
+            .map(|relay_url| RelayConnectionRow {
+                url: relay_url.clone(),
+                status: RelayConnectionStatus::Disconnected,
+                latency_ms: None,
+                last_seen_seconds_ago: None,
+                last_error: None,
+            })
+            .collect();
+        self.selected_url = previous_selected.filter(|selected| {
+            self.relays
+                .iter()
+                .any(|relay| relay.url.as_str() == selected.as_str())
+        });
+        if self.selected_url.is_none() {
+            self.selected_url = self.relays.first().map(|relay| relay.url.clone());
+        }
+        self.pane_set_ready("Loaded configured relay bundle");
+    }
+
     pub fn select_by_index(&mut self, index: usize) -> bool {
         let Some(url) = self.relays.get(index).map(|row| row.url.clone()) else {
             return false;

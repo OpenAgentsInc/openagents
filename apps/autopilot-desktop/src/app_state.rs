@@ -2123,10 +2123,18 @@ fn load_activity_projection_rows(path: &Path) -> Result<Vec<ActivityEventRow>, S
     Ok(normalize_activity_projection_rows(document.rows))
 }
 
+const DEFAULT_NEXUS_PRIMARY_RELAY_URL: &str = "wss://relay.openagents.dev";
+const DEFAULT_PUBLIC_BACKUP_RELAY_URLS: [&str; 3] = [
+    "wss://relay.primal.net",
+    "wss://relay.damus.io",
+    "wss://relay.nostr.band",
+];
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SettingsDocumentV1 {
     pub schema_version: u16,
-    pub relay_url: String,
+    pub primary_relay_url: String,
+    pub backup_relay_urls: Vec<String>,
     pub identity_path: String,
     pub wallet_default_send_sats: u64,
     pub provider_max_queue_depth: u32,
@@ -2136,13 +2144,35 @@ pub struct SettingsDocumentV1 {
 impl Default for SettingsDocumentV1 {
     fn default() -> Self {
         Self {
-            schema_version: 1,
-            relay_url: "wss://relay.damus.io".to_string(),
+            schema_version: 2,
+            primary_relay_url: DEFAULT_NEXUS_PRIMARY_RELAY_URL.to_string(),
+            backup_relay_urls: DEFAULT_PUBLIC_BACKUP_RELAY_URLS
+                .iter()
+                .map(|value| value.to_string())
+                .collect(),
             identity_path: settings_identity_path(),
             wallet_default_send_sats: 1000,
             provider_max_queue_depth: 1,
             reconnect_required: false,
         }
+    }
+}
+
+impl SettingsDocumentV1 {
+    pub fn configured_relay_urls(&self) -> Vec<String> {
+        let mut relays = Vec::with_capacity(self.backup_relay_urls.len().saturating_add(1));
+        let primary = self.primary_relay_url.trim();
+        if !primary.is_empty() {
+            relays.push(primary.to_string());
+        }
+        relays.extend(
+            self.backup_relay_urls
+                .iter()
+                .map(|relay| relay.trim())
+                .filter(|relay| !relay.is_empty())
+                .map(ToString::to_string),
+        );
+        dedupe_relay_urls(relays)
     }
 }
 
@@ -2192,12 +2222,12 @@ impl SettingsState {
 
     pub fn apply_updates(
         &mut self,
-        relay_url: &str,
+        primary_relay_url: &str,
         wallet_default_send_sats: &str,
         provider_max_queue_depth: &str,
     ) -> Result<(), String> {
         self.apply_updates_internal(
-            relay_url,
+            primary_relay_url,
             wallet_default_send_sats,
             provider_max_queue_depth,
             true,
@@ -2206,16 +2236,16 @@ impl SettingsState {
 
     fn apply_updates_internal(
         &mut self,
-        relay_url: &str,
+        primary_relay_url: &str,
         wallet_default_send_sats: &str,
         provider_max_queue_depth: &str,
         persist: bool,
     ) -> Result<(), String> {
-        let relay_url = relay_url.trim();
-        if relay_url.is_empty() {
+        let primary_relay_url = primary_relay_url.trim();
+        if primary_relay_url.is_empty() {
             return Err(self.pane_set_error("Relay URL is required"));
         }
-        if !relay_url.starts_with("wss://") {
+        if !primary_relay_url.starts_with("wss://") {
             return Err(self.pane_set_error("Relay URL must start with wss://"));
         }
 
@@ -2239,9 +2269,18 @@ impl SettingsState {
             );
         }
 
-        let reconnect_required = relay_url != self.document.relay_url
+        let reconnect_required = primary_relay_url != self.document.primary_relay_url
             || provider_max_queue_depth != self.document.provider_max_queue_depth;
-        self.document.relay_url = relay_url.to_string();
+        if primary_relay_url != self.document.primary_relay_url {
+            let previous_primary = self.document.primary_relay_url.clone();
+            let mut backup_relay_urls = self.document.backup_relay_urls.clone();
+            backup_relay_urls.retain(|relay| relay != primary_relay_url);
+            if !previous_primary.trim().is_empty() && previous_primary != primary_relay_url {
+                backup_relay_urls.insert(0, previous_primary);
+            }
+            self.document.primary_relay_url = primary_relay_url.to_string();
+            self.document.backup_relay_urls = dedupe_relay_urls(backup_relay_urls);
+        }
         self.document.wallet_default_send_sats = wallet_default_send_sats;
         self.document.provider_max_queue_depth = provider_max_queue_depth;
         self.document.reconnect_required = reconnect_required;
@@ -2271,6 +2310,75 @@ impl SettingsState {
         Ok(())
     }
 
+    pub fn add_backup_relay(&mut self, relay_url: &str, persist: bool) -> Result<(), String> {
+        let relay_url = relay_url.trim();
+        if relay_url.is_empty() {
+            return Err(self.pane_set_error("Relay URL cannot be empty"));
+        }
+        if !relay_url.starts_with("wss://") {
+            return Err(self.pane_set_error("Relay URL must start with wss://"));
+        }
+        if relay_url == self.document.primary_relay_url {
+            return Err(self.pane_set_error("Relay is already configured as primary"));
+        }
+        if self
+            .document
+            .backup_relay_urls
+            .iter()
+            .any(|existing| existing == relay_url)
+        {
+            return Err(self.pane_set_error("Relay already configured"));
+        }
+
+        self.document.backup_relay_urls.push(relay_url.to_string());
+        self.document.backup_relay_urls =
+            dedupe_relay_urls(self.document.backup_relay_urls.clone());
+        self.document.reconnect_required = true;
+        if persist {
+            self.persist_to_disk()?;
+        }
+        self.pane_set_ready(format!("Added backup relay {relay_url}"));
+        Ok(())
+    }
+
+    pub fn remove_configured_relay(
+        &mut self,
+        relay_url: &str,
+        persist: bool,
+    ) -> Result<String, String> {
+        let relay_url = relay_url.trim();
+        if relay_url.is_empty() {
+            return Err(self.pane_set_error("Select a relay first"));
+        }
+
+        let message = if relay_url == self.document.primary_relay_url {
+            if self.document.backup_relay_urls.is_empty() {
+                return Err(self.pane_set_error("At least one relay must remain configured"));
+            }
+            let next_primary = self.document.backup_relay_urls.remove(0);
+            self.document.primary_relay_url = next_primary.clone();
+            format!("Removed primary relay {relay_url}; promoted {next_primary}")
+        } else {
+            let before = self.document.backup_relay_urls.len();
+            self.document
+                .backup_relay_urls
+                .retain(|relay| relay != relay_url);
+            if self.document.backup_relay_urls.len() == before {
+                return Err(self.pane_set_error("Selected relay no longer exists"));
+            }
+            format!("Removed backup relay {relay_url}")
+        };
+
+        self.document.backup_relay_urls =
+            dedupe_relay_urls(self.document.backup_relay_urls.clone());
+        self.document.reconnect_required = true;
+        if persist {
+            self.persist_to_disk()?;
+        }
+        self.pane_set_ready(message.clone());
+        Ok(message)
+    }
+
     fn persist_to_disk(&mut self) -> Result<(), String> {
         let path = settings_file_path();
         if let Some(parent) = path.parent() {
@@ -2287,7 +2395,7 @@ impl SettingsPaneInputs {
     pub fn from_state(settings: &SettingsState) -> Self {
         Self {
             relay_url: TextInput::new()
-                .value(settings.document.relay_url.clone())
+                .value(settings.document.primary_relay_url.clone())
                 .placeholder("wss://relay.example.com"),
             wallet_default_send_sats: TextInput::new()
                 .value(settings.document.wallet_default_send_sats.to_string())
@@ -2300,7 +2408,7 @@ impl SettingsPaneInputs {
 
     pub fn sync_from_state(&mut self, settings: &SettingsState) {
         self.relay_url
-            .set_value(settings.document.relay_url.clone());
+            .set_value(settings.document.primary_relay_url.clone());
         self.wallet_default_send_sats
             .set_value(settings.document.wallet_default_send_sats.to_string());
         self.provider_max_queue_depth
@@ -2324,9 +2432,10 @@ fn settings_identity_path() -> String {
 
 fn serialize_settings_document(document: &SettingsDocumentV1) -> String {
     format!(
-        "schema_version={}\nrelay_url={}\nidentity_path={}\nwallet_default_send_sats={}\nprovider_max_queue_depth={}\nreconnect_required={}\n",
+        "schema_version={}\nprimary_relay_url={}\nbackup_relay_urls={}\nidentity_path={}\nwallet_default_send_sats={}\nprovider_max_queue_depth={}\nreconnect_required={}\n",
         document.schema_version,
-        document.relay_url,
+        document.primary_relay_url,
+        document.backup_relay_urls.join(","),
         document.identity_path,
         document.wallet_default_send_sats,
         document.provider_max_queue_depth,
@@ -2336,6 +2445,7 @@ fn serialize_settings_document(document: &SettingsDocumentV1) -> String {
 
 fn parse_settings_document(raw: &str) -> Result<SettingsDocumentV1, String> {
     let mut document = SettingsDocumentV1::default();
+    let mut legacy_relay_url = None::<String>;
     for line in raw.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with('#') {
@@ -2351,7 +2461,16 @@ fn parse_settings_document(raw: &str) -> Result<SettingsDocumentV1, String> {
                     .parse::<u16>()
                     .map_err(|error| format!("Invalid schema version: {error}"))?;
             }
-            "relay_url" => document.relay_url = value.trim().to_string(),
+            "primary_relay_url" => document.primary_relay_url = value.trim().to_string(),
+            "backup_relay_urls" => {
+                document.backup_relay_urls = value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|relay| !relay.is_empty())
+                    .map(ToOwned::to_owned)
+                    .collect();
+            }
+            "relay_url" => legacy_relay_url = Some(value.trim().to_string()),
             "identity_path" => document.identity_path = value.trim().to_string(),
             "wallet_default_send_sats" => {
                 document.wallet_default_send_sats = value
@@ -2375,18 +2494,44 @@ fn parse_settings_document(raw: &str) -> Result<SettingsDocumentV1, String> {
         }
     }
 
-    if document.schema_version != 1 {
+    if document.schema_version == 1
+        && let Some(legacy_relay_url) = legacy_relay_url
+    {
+        document.primary_relay_url = legacy_relay_url;
+        document.backup_relay_urls.clear();
+        document.schema_version = 2;
+    }
+
+    if document.schema_version != 2 {
         return Err(format!(
-            "Unsupported schema version {}, expected 1",
+            "Unsupported schema version {}, expected 2",
             document.schema_version
         ));
     }
+
+    if document.primary_relay_url.trim().is_empty() {
+        document.primary_relay_url = DEFAULT_NEXUS_PRIMARY_RELAY_URL.to_string();
+    }
+    document
+        .backup_relay_urls
+        .retain(|relay| relay != &document.primary_relay_url);
+    document.backup_relay_urls = dedupe_relay_urls(document.backup_relay_urls);
 
     // Identity path authority is the resolved mnemonic path.
     document.identity_path = settings_identity_path();
     document.provider_max_queue_depth = 1;
 
     Ok(document)
+}
+
+fn dedupe_relay_urls(relays: Vec<String>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::<String>::new();
+    relays
+        .into_iter()
+        .map(|relay| relay.trim().to_string())
+        .filter(|relay| !relay.is_empty())
+        .filter(|relay| seen.insert(relay.clone()))
+        .collect()
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -3955,24 +4100,17 @@ impl RenderState {
     }
 
     pub fn configured_provider_relay_urls(&self) -> Vec<String> {
-        let mut relays = self
-            .relay_connections
-            .relays
-            .iter()
-            .map(|row| row.url.trim())
-            .filter(|url| !url.is_empty())
-            .map(ToString::to_string)
-            .collect::<Vec<_>>();
-
+        let relays = self.settings.document.configured_relay_urls();
         if relays.is_empty() {
-            let default_relay = self.settings.document.relay_url.trim();
-            if !default_relay.is_empty() {
-                relays.push(default_relay.to_string());
-            }
+            return self
+                .relay_connections
+                .relays
+                .iter()
+                .map(|row| row.url.trim())
+                .filter(|url| !url.is_empty())
+                .map(ToString::to_string)
+                .collect();
         }
-
-        let mut seen = std::collections::HashSet::<String>::new();
-        relays.retain(|relay| seen.insert(relay.clone()));
         relays
     }
 
@@ -6618,7 +6756,18 @@ mod tests {
         settings
             .apply_updates_internal("wss://relay.primal.net", "2500", "1", false)
             .expect("valid settings update should apply");
-        assert_eq!(settings.document.relay_url, "wss://relay.primal.net");
+        assert_eq!(
+            settings.document.primary_relay_url,
+            "wss://relay.primal.net"
+        );
+        assert_eq!(
+            settings
+                .document
+                .backup_relay_urls
+                .first()
+                .map(String::as_str),
+            Some(super::DEFAULT_NEXUS_PRIMARY_RELAY_URL)
+        );
         assert_eq!(settings.document.wallet_default_send_sats, 2500);
         assert_eq!(settings.document.provider_max_queue_depth, 1);
         assert!(settings.document.reconnect_required);
@@ -6632,6 +6781,11 @@ mod tests {
     fn settings_document_default_uses_identity_authority_path() {
         let document = super::SettingsDocumentV1::default();
         assert!(document.identity_path.contains("identity.mnemonic"));
+        assert_eq!(
+            document.primary_relay_url,
+            super::DEFAULT_NEXUS_PRIMARY_RELAY_URL
+        );
+        assert_eq!(document.backup_relay_urls.len(), 3);
     }
 
     #[test]
@@ -6641,6 +6795,29 @@ mod tests {
         assert_ne!(document.identity_path, "~/.openagents/nostr/identity.json");
         assert!(document.identity_path.contains("identity.mnemonic"));
         assert_eq!(document.provider_max_queue_depth, 1);
+        assert_eq!(document.primary_relay_url, "wss://relay.example");
+        assert!(document.backup_relay_urls.is_empty());
+    }
+
+    #[test]
+    fn settings_document_configured_relay_urls_keep_primary_first() {
+        let document = super::SettingsDocumentV1 {
+            primary_relay_url: "wss://relay.openagents.dev".to_string(),
+            backup_relay_urls: vec![
+                "wss://relay.primal.net".to_string(),
+                "wss://relay.openagents.dev".to_string(),
+                "wss://relay.damus.io".to_string(),
+            ],
+            ..super::SettingsDocumentV1::default()
+        };
+        assert_eq!(
+            document.configured_relay_urls(),
+            vec![
+                "wss://relay.openagents.dev".to_string(),
+                "wss://relay.primal.net".to_string(),
+                "wss://relay.damus.io".to_string()
+            ]
+        );
     }
 
     #[test]

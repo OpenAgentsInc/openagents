@@ -167,7 +167,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             crate::stablesats_blink_worker::StableSatsBlinkWorker::spawn();
         let settings = crate::app_state::SettingsState::load_from_disk();
         let settings_inputs = crate::app_state::SettingsPaneInputs::from_state(&settings);
-        let initial_relay_url = settings.document.relay_url.clone();
+        let initial_relay_urls = settings.document.configured_relay_urls();
         let credentials = crate::app_state::CredentialsState::load_from_disk();
         let credentials_inputs = crate::app_state::CredentialsPaneInputs::from_state(&credentials);
         let autopilot_goals = crate::state::autopilot_goals::AutopilotGoalsState::load_from_disk();
@@ -176,8 +176,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let sa_lane_worker = SaLaneWorker::spawn();
         let skl_lane_worker = SklLaneWorker::spawn();
         let ac_lane_worker = AcLaneWorker::spawn();
-        let provider_nip90_lane_worker =
-            ProviderNip90LaneWorker::spawn(vec![initial_relay_url.clone()]);
+        let provider_nip90_lane_worker = ProviderNip90LaneWorker::spawn(initial_relay_urls.clone());
         let simulation_panes_enabled = simulation_panes_enabled_from_env();
         let sync_apply_engine = match crate::sync_apply::SyncApplyEngine::load_or_new_default() {
             Ok(engine) => engine,
@@ -212,6 +211,9 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
 
         let mut event_context = wgpui::EventContext::new();
         configure_event_context_clipboard(&mut event_context);
+
+        let mut relay_connections = crate::app_state::RelayConnectionsState::default();
+        relay_connections.replace_configured_relays(initial_relay_urls.as_slice());
 
         let mut state = RenderState {
             window,
@@ -264,14 +266,14 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             sa_lane_worker,
             skl_lane_worker,
             ac_lane_worker,
-            provider_nip90_lane: ProviderNip90LaneSnapshot::with_relays(vec![initial_relay_url]),
+            provider_nip90_lane: ProviderNip90LaneSnapshot::with_relays(initial_relay_urls),
             provider_nip90_lane_worker,
             runtime_command_responses: Vec::new(),
             next_runtime_command_seq: 1,
             provider_runtime: crate::app_state::ProviderRuntimeState::default(),
             earnings_scoreboard: crate::app_state::EarningsScoreboardState::default(),
             network_aggregate_counters: crate::app_state::NetworkAggregateCountersState::default(),
-            relay_connections: crate::app_state::RelayConnectionsState::default(),
+            relay_connections,
             sync_health,
             sync_bootstrap_note: None,
             sync_bootstrap_error: None,

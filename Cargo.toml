@@ -11,7 +11,7 @@ members = [
     "crates/spark",
     "crates/wgpui-core",
     "crates/wgpui-render",
-    "crates/wgpui", "apps/nexus-control",
+    "crates/wgpui", "apps/nexus-control", "apps/nexus-relay",
 ]
 
 [workspace.lints.rust]
