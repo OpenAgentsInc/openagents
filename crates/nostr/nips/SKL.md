@@ -69,6 +69,13 @@ Optional discovery profile:
 |------|-----|------|
 | 5390 / 6390 | NIP-90 | Skill search request/result profile |
 
+Optional profile kinds:
+
+| Kind | Type | Description |
+|------|------|-------------|
+| 33410 | Ephemeral | Authentication Challenge |
+| 33411 | Ephemeral | Authentication Response |
+
 ---
 
 ## 1. Skill Identity
@@ -116,6 +123,24 @@ SKL core supports two signing profiles.
 - Because NIP-26 is marked unrecommended in the canonical NIPs repository, SKL does not require it for baseline interoperability.
 
 If delegated signing is used, clients SHOULD verify delegation constraints and expiry before trust elevation.
+
+### 1.5 Organizational Identity (NIP-05 Domain Verification)
+
+Agents MAY declare organizational affiliation using NIP-05 domain verification. An organization proves control over an agent by publishing a NIP-05 identifier where the domain is controlled by the organization:
+
+```text
+agent-name@example.com
+```
+
+The organization maintains a `/.well-known/nostr.json` file at `example.com` that maps the agent name to the agent's pubkey. This leverages the existing NIP-05 mechanism as the organizational identity binding — no new credential format is needed.
+
+Manifests MAY include a `nip05` tag:
+
+```json
+["nip05", "research-bot@openagents.com"]
+```
+
+Clients MAY verify the NIP-05 binding and display organizational affiliation, but MUST NOT require it for SKL core validity. This mechanism is OPTIONAL and non-normative.
 
 ---
 
@@ -244,6 +269,26 @@ Use `L=skill-security` and `l` values such as:
 
 Label interpretation and quorum policy are local runtime policy.
 
+### 4.3 Assurance Tier Tags
+
+Safety labels MAY include a structured `assurance_tier` tag that communicates the rigor of the agent's security evaluation:
+
+```json
+["assurance_tier", "<tier>", "<evaluator_pubkey>", "<attestation_event_id>"]
+```
+
+Defined tiers:
+
+| Tier | Meaning |
+|------|---------|
+| `self-assessed` | The agent operator self-declares compliance. No independent evaluation. |
+| `third-party-evaluated` | An independent evaluator has reviewed the agent and published a signed attestation. |
+| `red-team-tested` | The agent has undergone adversarial testing (e.g., prompt injection, hijacking). |
+
+The `evaluator_pubkey` and `attestation_event_id` fields are OPTIONAL for `self-assessed` and REQUIRED for `third-party-evaluated` and `red-team-tested`. When present, clients MAY fetch the referenced attestation event to verify the evaluator's claim.
+
+This tag is OPTIONAL and non-normative. Clients MAY use it to inform trust decisions but MUST NOT require it for SKL core validity.
+
 ---
 
 ## 5. Revocation And Safety
@@ -362,6 +407,57 @@ These profile tags MUST NOT change SKL core parsing/validation requirements.
 
 ---
 
+### 8.3 SKL-Auth Challenge Profile
+
+Some ecosystems may need proof-of-possession in addition to manifest publication. This optional profile reserves `kind:33410` and `kind:33411` as ephemeral challenge/response events. It is analogous to the live challenge pattern used in NIP-42, but it is scoped to agent or skill identity checks between participants rather than relay authentication.
+
+#### Challenge Event (`kind:33410`)
+
+A relying party (for example a marketplace, provider, or issuer) issues a challenge:
+
+```json
+{
+  "kind": 33410,
+  "pubkey": "<relying_party_pubkey>",
+  "created_at": 1740500000,
+  "tags": [
+    ["p", "<agent_or_skill_pubkey>"],
+    ["nonce", "<32-byte-hex-random>"],
+    ["exp", "1740500060"]
+  ],
+  "content": ""
+}
+```
+
+#### Response Event (`kind:33411`)
+
+The challenged party responds with a signed proof:
+
+```json
+{
+  "kind": 33411,
+  "pubkey": "<agent_or_skill_pubkey>",
+  "created_at": 1740500005,
+  "tags": [
+    ["e", "<challenge_event_id>", "<relay>"],
+    ["p", "<relying_party_pubkey>"],
+    ["nonce", "<same-32-byte-hex>"]
+  ],
+  "content": ""
+}
+```
+
+Verification: the relying party checks that the response `pubkey` matches the challenged pubkey, the `nonce` matches, the response `created_at` is within the declared `exp` window, and the event signature is valid.
+
+Normative requirements for this profile:
+
+- Implementations adopting this profile MUST treat `kind:33410` and `kind:33411` as ephemeral events rather than durable registry records.
+- Nonces MUST be unique per challenge.
+- Relying parties SHOULD reject replayed or out-of-window responses.
+- Clients that do not implement this profile MAY ignore these events.
+
+---
+
 ## 9. SA And AC Interop
 
 ### 9.1 SA Fulfillment Link
@@ -390,10 +486,20 @@ where `skill_scope_id` is the SKL canonical format.
 3. Revocation authority must respect NIP-09 pubkey semantics.
 4. Delegated-signing trust elevation must validate delegation constraints/expiry if used.
 5. Third-party kill signals should be labels with explicit local quorum policy.
+6. If the optional auth challenge profile is used, authentication challenges MUST use unique nonces and relying parties MUST reject replayed or out-of-window responses.
+7. Assurance tier claims from `self-assessed` sources carry no independent verification weight.
 
 ---
 
 ## Changelog
+
+**v4 (2026-03-05) — NIST AI Agent Standards Alignment**
+
+- Added Organizational Identity via NIP-05 domain verification (§1.5).
+- Added Assurance Tier Tags to safety labels for evaluation rigor signaling (§4.3).
+- Added optional SKL-Auth Challenge Profile (`kind:33410`/`kind:33411`) for proof-of-possession identity verification (§8.3).
+- Added security considerations for nonce replay and assurance tier interpretation.
+- Satisfies requirements from: NIST NCCoE AI Agent Identity Concept Paper (Feb 2026), CAISI RFI NIST-2025-0035 (Jan 2026), CAISI AI Agent Standards Initiative (Feb 2026).
 
 **v3 (2026-02-26)**
 
