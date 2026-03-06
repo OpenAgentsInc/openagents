@@ -5903,7 +5903,7 @@ pub(super) fn run_alerts_recovery_action(
                             "Identity regenerated. Secrets are hidden by default.".to_string(),
                         );
                         queue_spark_command(state, SparkWalletCommand::Refresh);
-                        state.sync_direct_message_identity();
+                        state.sync_chat_identities();
                         let _ = state.sync_provider_nip90_lane_identity();
                         crate::render::apply_spacetime_sync_bootstrap(state);
                         Ok("Identity lane recovered".to_string())
@@ -7565,6 +7565,7 @@ mod tests {
             message_ids: Vec::new(),
             root_message_ids: Vec::new(),
             unread_count: 0,
+            mention_count: 0,
             latest_message_id: None,
         };
         let target_message = crate::app_state::ManagedChatMessageProjection {

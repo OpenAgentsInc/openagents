@@ -45,6 +45,8 @@ struct ChatShellWorkspace {
     initials: String,
     accent: wgpui::Hsla,
     active: bool,
+    badge_count: usize,
+    badge_urgent: bool,
 }
 
 struct ChatShellChannelEntry {
@@ -53,6 +55,8 @@ struct ChatShellChannelEntry {
     active: bool,
     is_category: bool,
     collapsed: bool,
+    badge_count: usize,
+    badge_urgent: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -72,6 +76,62 @@ struct RichMessageAttachment {
     label: String,
     summary: String,
     detail: Option<String>,
+}
+
+fn notification_badge(unread_count: usize, mention_count: usize) -> Option<(usize, bool)> {
+    if mention_count > 0 {
+        Some((mention_count, true))
+    } else if unread_count > 0 {
+        Some((unread_count, false))
+    } else {
+        None
+    }
+}
+
+fn notification_badge_label(count: usize) -> String {
+    if count > 99 {
+        "99+".to_string()
+    } else {
+        count.to_string()
+    }
+}
+
+fn paint_notification_badge(
+    bounds: Bounds,
+    count: usize,
+    urgent: bool,
+    paint: &mut PaintContext,
+) {
+    let label = notification_badge_label(count);
+    let width = if label.len() >= 3 { 26.0 } else { 18.0 };
+    let badge_bounds = Bounds::new(
+        bounds.max_x() - width,
+        bounds.origin.y,
+        width,
+        16.0,
+    );
+    let background = if urgent {
+        theme::status::ERROR
+    } else {
+        theme::accent::PRIMARY
+    };
+    paint.scene.draw_quad(
+        Quad::new(badge_bounds)
+            .with_background(background)
+            .with_border(background.with_alpha(0.9), 1.0)
+            .with_corner_radius(8.0),
+    );
+    let text_x = if label.len() >= 3 {
+        badge_bounds.origin.x + 4.0
+    } else {
+        badge_bounds.origin.x + 6.0
+    };
+    paint.scene.draw_text(paint.text.layout_mono(
+        &label,
+        Point::new(text_x, badge_bounds.origin.y + 4.0),
+        9.0,
+        theme::bg::APP,
+    ));
 }
 
 fn paint_chat_send_button(bounds: Bounds, enabled: bool, paint: &mut PaintContext) {
@@ -1023,7 +1083,14 @@ fn managed_channel_label(channel: &ManagedChatChannelProjection) -> String {
 }
 
 fn managed_channel_subtitle(channel: &ManagedChatChannelProjection) -> String {
-    if channel.unread_count > 0 {
+    if channel.mention_count > 0 {
+        format!(
+            "{} mention{}  •  {} unread",
+            channel.mention_count,
+            if channel.mention_count == 1 { "" } else { "s" },
+            channel.unread_count
+        )
+    } else if channel.unread_count > 0 {
         format!("{} unread", channel.unread_count)
     } else if !channel.metadata.about.trim().is_empty() {
         compact_shell_label(&channel.metadata.about)
@@ -1169,10 +1236,18 @@ fn direct_room_subtitle(room: &DirectMessageRoomProjection) -> String {
         .values()
         .map(|relays| relays.len())
         .sum::<usize>();
-    let mut parts = vec![
-        format!("{} participant(s)", room.participant_pubkeys.len()),
-        format!("{} message(s)", room.message_ids.len()),
-    ];
+    let mut parts = Vec::new();
+    if room.mention_count > 0 {
+        parts.push(format!(
+            "{} direct ping{}",
+            room.mention_count,
+            if room.mention_count == 1 { "" } else { "s" }
+        ));
+    } else if room.unread_count > 0 {
+        parts.push(format!("{} unread", room.unread_count));
+    }
+    parts.push(format!("{} participant(s)", room.participant_pubkeys.len()));
+    parts.push(format!("{} message(s)", room.message_ids.len()));
     if relay_hint_count > 0 {
         parts.push(format!("{relay_hint_count} relay hint(s)"));
     }
@@ -1468,6 +1543,9 @@ fn shell_workspaces(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellWorkspa
                         .iter()
                         .find(|group| group.group_id == group_id)?;
                     let label = managed_group_label(group);
+                    let (badge_count, badge_urgent) =
+                        notification_badge(group.unread_count, group.mention_count)
+                            .unwrap_or((0, false));
                     Some(ChatShellWorkspace {
                         initials: shell_initials(&label),
                         label,
@@ -1476,14 +1554,34 @@ fn shell_workspaces(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellWorkspa
                             && autopilot_chat
                                 .active_managed_chat_group()
                                 .is_some_and(|active| active.group_id == group.group_id),
+                        badge_count,
+                        badge_urgent,
                     })
                 }
                 crate::app_state::ChatWorkspaceSelection::DirectMessages => {
+                    let direct_unread = autopilot_chat
+                        .direct_message_projection
+                        .snapshot
+                        .rooms
+                        .iter()
+                        .map(|room| room.unread_count)
+                        .sum();
+                    let direct_mentions = autopilot_chat
+                        .direct_message_projection
+                        .snapshot
+                        .rooms
+                        .iter()
+                        .map(|room| room.mention_count)
+                        .sum();
+                    let (badge_count, badge_urgent) =
+                        notification_badge(direct_unread, direct_mentions).unwrap_or((0, false));
                     Some(ChatShellWorkspace {
                         label: "Direct".to_string(),
                         initials: "DM".to_string(),
                         accent: theme::status::SUCCESS,
                         active: autopilot_chat.chat_browse_mode() == ChatBrowseMode::DirectMessages,
+                        badge_count,
+                        badge_urgent,
                     })
                 }
                 crate::app_state::ChatWorkspaceSelection::Autopilot => None,
@@ -1497,18 +1595,24 @@ fn shell_workspaces(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellWorkspa
             initials: "OA".to_string(),
             accent: theme::accent::PRIMARY,
             active: true,
+            badge_count: 0,
+            badge_urgent: false,
         },
         ChatShellWorkspace {
             label: "Direct".to_string(),
             initials: "DM".to_string(),
             accent: theme::status::SUCCESS,
             active: false,
+            badge_count: 0,
+            badge_urgent: false,
         },
         ChatShellWorkspace {
             label: "Ops".to_string(),
             initials: "OP".to_string(),
             accent: theme::status::WARNING,
             active: false,
+            badge_count: 0,
+            badge_urgent: false,
         },
     ]
 }
@@ -1527,13 +1631,25 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
                         label,
                         collapsed,
                         channel_count,
+                        unread_count,
+                        mention_count,
                         ..
                     } => Some(ChatShellChannelEntry {
                         title: format!("{} {}", if collapsed { "▸" } else { "▾" }, label),
-                        subtitle: format!("{channel_count} channel(s)"),
+                        subtitle: if unread_count > 0 {
+                            format!("{channel_count} channel(s)  •  {unread_count} unread")
+                        } else {
+                            format!("{channel_count} channel(s)")
+                        },
                         active: false,
                         is_category: true,
                         collapsed,
+                        badge_count: notification_badge(unread_count, mention_count)
+                            .map(|(count, _)| count)
+                            .unwrap_or(0),
+                        badge_urgent: notification_badge(unread_count, mention_count)
+                            .map(|(_, urgent)| urgent)
+                            .unwrap_or(false),
                     }),
                     crate::app_state::ManagedChatChannelRailRow::Channel { channel_id } => {
                         let channel = autopilot_chat
@@ -1542,12 +1658,19 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
                             .channels
                             .iter()
                             .find(|channel| channel.channel_id == channel_id)?;
+                        let (badge_count, badge_urgent) = notification_badge(
+                            channel.unread_count,
+                            channel.mention_count,
+                        )
+                        .unwrap_or((0, false));
                         Some(ChatShellChannelEntry {
                             title: format!("# {}", managed_channel_label(channel)),
                             subtitle: managed_channel_subtitle(channel),
                             active: active_channel_id == Some(channel.channel_id.as_str()),
                             is_category: false,
                             collapsed: false,
+                            badge_count,
+                            badge_urgent,
                         })
                     }
                 })
@@ -1560,15 +1683,22 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
             return autopilot_chat
                 .active_direct_message_rooms()
                 .into_iter()
-                .map(|room| ChatShellChannelEntry {
-                    title: direct_room_label(
-                        room,
-                        autopilot_chat.direct_message_projection.local_pubkey(),
-                    ),
-                    subtitle: direct_room_subtitle(room),
-                    active: active_room_id == Some(room.room_id.as_str()),
-                    is_category: false,
-                    collapsed: false,
+                .map(|room| {
+                    let (badge_count, badge_urgent) =
+                        notification_badge(room.unread_count, room.mention_count)
+                            .unwrap_or((0, false));
+                    ChatShellChannelEntry {
+                        title: direct_room_label(
+                            room,
+                            autopilot_chat.direct_message_projection.local_pubkey(),
+                        ),
+                        subtitle: direct_room_subtitle(room),
+                        active: active_room_id == Some(room.room_id.as_str()),
+                        is_category: false,
+                        collapsed: false,
+                        badge_count,
+                        badge_urgent,
+                    }
                 })
                 .collect();
         }
@@ -1581,6 +1711,8 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
         active: autopilot_chat.active_thread_id.is_none(),
         is_category: false,
         collapsed: false,
+        badge_count: 0,
+        badge_urgent: false,
     }];
 
     entries.extend(autopilot_chat.threads.iter().take(6).map(|thread_id| {
@@ -1600,6 +1732,8 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
             active: autopilot_chat.active_thread_id.as_deref() == Some(thread_id.as_str()),
             is_category: false,
             collapsed: false,
+            badge_count: 0,
+            badge_urgent: false,
         }
     }));
 
@@ -1614,6 +1748,8 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
         active: false,
         is_category: false,
         collapsed: false,
+        badge_count: 0,
+        badge_urgent: false,
     });
     entries
 }
@@ -1685,6 +1821,19 @@ fn paint_chat_shell(
             11.0,
             text_color,
         ));
+        if workspace.badge_count > 0 {
+            paint_notification_badge(
+                Bounds::new(
+                    avatar_bounds.max_x() - 10.0,
+                    avatar_bounds.origin.y - 4.0,
+                    26.0,
+                    16.0,
+                ),
+                workspace.badge_count,
+                workspace.badge_urgent,
+                paint,
+            );
+        }
         paint.scene.draw_text(paint.text.layout(
             &workspace.label,
             Point::new(
@@ -1780,6 +1929,19 @@ fn paint_chat_shell(
                 theme::text::MUTED
             },
         ));
+        if entry.badge_count > 0 {
+            paint_notification_badge(
+                Bounds::new(
+                    row_bounds.max_x() - 30.0,
+                    row_bounds.origin.y + 7.0,
+                    26.0,
+                    16.0,
+                ),
+                entry.badge_count,
+                entry.badge_urgent,
+                paint,
+            );
+        }
         row_y += CHAT_SHELL_ROW_HEIGHT + 6.0;
     }
 

@@ -103,6 +103,7 @@ pub struct ManagedChatChannelProjection {
     pub message_ids: Vec<String>,
     pub root_message_ids: Vec<String>,
     pub unread_count: usize,
+    pub mention_count: usize,
     pub latest_message_id: Option<String>,
 }
 
@@ -121,6 +122,7 @@ pub struct ManagedChatGroupProjection {
     pub members: Vec<ManagedChatMemberProjection>,
     pub channel_ids: Vec<String>,
     pub unread_count: usize,
+    pub mention_count: usize,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -151,6 +153,7 @@ pub struct ManagedChatProjectionState {
     pub outbound_messages: Vec<ManagedChatOutboundMessage>,
     pub local_state: ManagedChatLocalState,
     pub snapshot: ManagedChatProjectionSnapshot,
+    local_pubkey: Option<String>,
     projection_file_path: PathBuf,
 }
 
@@ -169,6 +172,7 @@ impl ManagedChatProjectionState {
                     &relay_events,
                     &outbound_messages,
                     &local_state,
+                    None,
                 );
                 Self {
                     load_state: PaneLoadState::Ready,
@@ -183,6 +187,7 @@ impl ManagedChatProjectionState {
                     outbound_messages,
                     local_state,
                     snapshot,
+                    local_pubkey: None,
                     projection_file_path,
                 }
             }
@@ -195,6 +200,7 @@ impl ManagedChatProjectionState {
                 outbound_messages: Vec::new(),
                 local_state: ManagedChatLocalState::default(),
                 snapshot: ManagedChatProjectionSnapshot::default(),
+                local_pubkey: None,
                 projection_file_path,
             },
         }
@@ -203,6 +209,14 @@ impl ManagedChatProjectionState {
     #[cfg(test)]
     pub(crate) fn from_projection_path_for_tests(projection_file_path: PathBuf) -> Self {
         Self::from_projection_file_path(projection_file_path)
+    }
+
+    pub fn set_local_pubkey(&mut self, local_pubkey: Option<&str>) {
+        self.local_pubkey = local_pubkey
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_ascii_lowercase);
+        self.refresh_projection("Configured managed chat identity");
     }
 
     pub fn record_relay_event(&mut self, event: Event) {
@@ -363,7 +377,9 @@ impl ManagedChatProjectionState {
         }
         self.local_state.selected_group_id = Some(group_id.to_string());
         self.local_state.selected_channel_id = Some(channel_id.to_string());
-        self.persist_current_state(format!("Selected managed chat channel {channel_id}"))
+        self.mark_channel_read(channel_id, None)?;
+        self.last_action = Some(format!("Selected managed chat channel {channel_id}"));
+        Ok(())
     }
 
     pub fn set_selected_group(&mut self, group_id: &str) -> Result<(), String> {
@@ -382,7 +398,13 @@ impl ManagedChatProjectionState {
             .iter()
             .find(|channel| channel.group_id == group_id)
             .map(|channel| channel.channel_id.clone());
-        self.persist_current_state(format!("Selected managed chat group {group_id}"))
+        if let Some(channel_id) = self.local_state.selected_channel_id.clone() {
+            self.mark_channel_read(channel_id.as_str(), None)?;
+            self.last_action = Some(format!("Selected managed chat group {group_id}"));
+            Ok(())
+        } else {
+            self.persist_current_state(format!("Selected managed chat group {group_id}"))
+        }
     }
 
     pub fn toggle_category_collapsed(
@@ -486,6 +508,7 @@ impl ManagedChatProjectionState {
             &self.relay_events,
             &self.outbound_messages,
             &self.local_state,
+            self.local_pubkey.as_deref(),
         );
         self.last_error = None;
         self.load_state = PaneLoadState::Ready;
@@ -507,6 +530,7 @@ impl ManagedChatProjectionState {
             &self.relay_events,
             &self.outbound_messages,
             &self.local_state,
+            self.local_pubkey.as_deref(),
         );
         let action = format!(
             "{} ({} relay events / {} outbound / {} channels)",
@@ -720,6 +744,7 @@ fn rebuild_managed_chat_projection(
     relay_events: &[Event],
     outbound_messages: &[ManagedChatOutboundMessage],
     local_state: &ManagedChatLocalState,
+    local_pubkey: Option<&str>,
 ) -> ManagedChatProjectionSnapshot {
     let deleted_event_ids = collect_deleted_event_ids(relay_events);
     let mut groups = BTreeMap::<String, MutableGroupProjection>::new();
@@ -1021,6 +1046,12 @@ fn rebuild_managed_chat_projection(
                 local_state.read_cursors.get(channel_id),
                 &messages,
             );
+            let mention_count = mention_count_for_channel(
+                &message_ids,
+                local_state.read_cursors.get(channel_id),
+                &messages,
+                local_pubkey,
+            );
             ManagedChatChannelProjection {
                 channel_id: channel_id.clone(),
                 group_id: channel.group_id.clone(),
@@ -1031,6 +1062,7 @@ fn rebuild_managed_chat_projection(
                 message_ids,
                 root_message_ids,
                 unread_count,
+                mention_count,
                 latest_message_id,
             }
         })
@@ -1106,6 +1138,11 @@ fn rebuild_managed_chat_projection(
                 .filter_map(|channel_id| channel_lookup.get(channel_id))
                 .map(|channel| channel.unread_count)
                 .sum();
+            let mention_count = channel_ids
+                .iter()
+                .filter_map(|channel_id| channel_lookup.get(channel_id))
+                .map(|channel| channel.mention_count)
+                .sum();
             let mut roles = group.roles;
             roles.sort_by(|left, right| left.name.cmp(&right.name));
             ManagedChatGroupProjection {
@@ -1115,6 +1152,7 @@ fn rebuild_managed_chat_projection(
                 members: finalize_group_members(group.members, group.admins),
                 channel_ids,
                 unread_count,
+                mention_count,
             }
         })
         .collect::<Vec<_>>();
@@ -1267,25 +1305,54 @@ fn unread_count_for_channel(
     cursor: Option<&ManagedChatReadCursor>,
     messages: &BTreeMap<String, ManagedChatMessageProjection>,
 ) -> usize {
-    let confirmed_message_ids = message_ids.iter().filter(|event_id| {
-        messages
-            .get(event_id.as_str())
-            .is_some_and(|message| message.delivery_state == ManagedChatDeliveryState::Confirmed)
-    });
+    unread_messages_for_channel(message_ids, cursor, messages).len()
+}
+
+fn mention_count_for_channel(
+    message_ids: &[String],
+    cursor: Option<&ManagedChatReadCursor>,
+    messages: &BTreeMap<String, ManagedChatMessageProjection>,
+    local_pubkey: Option<&str>,
+) -> usize {
+    let Some(local_pubkey) = local_pubkey else {
+        return 0;
+    };
+    unread_messages_for_channel(message_ids, cursor, messages)
+        .into_iter()
+        .filter(|message| {
+            message.author_pubkey != local_pubkey
+                && message
+                    .mention_pubkeys
+                    .iter()
+                    .any(|candidate| candidate == local_pubkey)
+        })
+        .count()
+}
+
+fn unread_messages_for_channel<'a>(
+    message_ids: &'a [String],
+    cursor: Option<&ManagedChatReadCursor>,
+    messages: &'a BTreeMap<String, ManagedChatMessageProjection>,
+) -> Vec<&'a ManagedChatMessageProjection> {
+    message_ids
+        .iter()
+        .filter_map(|event_id| messages.get(event_id.as_str()))
+        .filter(|message| message.delivery_state == ManagedChatDeliveryState::Confirmed)
+        .filter(|message| managed_chat_message_is_after_cursor(message, cursor))
+        .collect()
+}
+
+fn managed_chat_message_is_after_cursor(
+    message: &ManagedChatMessageProjection,
+    cursor: Option<&ManagedChatReadCursor>,
+) -> bool {
     let Some(cursor) = cursor else {
-        return confirmed_message_ids.count();
+        return true;
     };
     let read_created_at = cursor.last_read_created_at.unwrap_or(0);
     let read_event_id = cursor.last_read_event_id.as_deref().unwrap_or("");
-    confirmed_message_ids
-        .filter(|event_id| {
-            messages.get(event_id.as_str()).is_some_and(|message| {
-                message.created_at > read_created_at
-                    || (message.created_at == read_created_at
-                        && message.event_id.as_str() > read_event_id)
-            })
-        })
-        .count()
+    message.created_at > read_created_at
+        || (message.created_at == read_created_at && message.event_id.as_str() > read_event_id)
 }
 
 #[cfg(test)]
@@ -1298,7 +1365,7 @@ mod tests {
         ChannelMetadata, Event, GroupAdminsEvent, GroupMembersEvent, GroupMetadata,
         GroupMetadataEvent, GroupRole, GroupRolesEvent, ManagedChannelCreateEvent,
         ManagedChannelHints, ManagedChannelMessageEvent, ManagedChannelMetadataEvent,
-        ManagedChannelType, ModerationAction, ModerationEvent, TaggedPubkey,
+        ManagedChannelType, ManagedChatMention, ModerationAction, ModerationEvent, TaggedPubkey,
     };
     use tempfile::tempdir;
 
@@ -1457,6 +1524,33 @@ mod tests {
             created_at,
         )
         .unwrap();
+        signed_event(
+            id_ch,
+            pubkey_ch,
+            created_at,
+            42,
+            template.to_tags().unwrap(),
+            content.to_string(),
+        )
+    }
+
+    fn build_message_with_mentions_event(
+        id_ch: char,
+        pubkey_ch: char,
+        created_at: u64,
+        channel_create_event_id: &str,
+        content: &str,
+        mentions: Vec<ManagedChatMention>,
+    ) -> Event {
+        let template = ManagedChannelMessageEvent::new(
+            "oa-main",
+            channel_create_event_id,
+            "wss://relay.openagents.test",
+            content,
+            created_at,
+        )
+        .unwrap()
+        .with_mentions(mentions);
         signed_event(
             id_ch,
             pubkey_ch,
@@ -1761,6 +1855,44 @@ mod tests {
                 .and_then(|cursor| cursor.last_read_event_id.as_deref()),
             Some(message_three.id.as_str())
         );
+    }
+
+    #[test]
+    fn managed_chat_projection_tracks_mentions_for_local_identity() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("managed-chat.json");
+        let mut projection = ManagedChatProjectionState::from_projection_path_for_tests(path);
+
+        let channel_create = build_channel_create_event('a', 20, "ops");
+        let local_pubkey = repeated_hex('f', 64);
+        let message_one = build_message_with_mentions_event(
+            'b',
+            'a',
+            30,
+            &channel_create.id,
+            "heads up",
+            vec![ManagedChatMention::new(local_pubkey.clone()).unwrap()],
+        );
+        let message_two = build_message_event('c', 'b', 31, &channel_create.id, "plain");
+        projection.replace_relay_events(vec![
+            build_group_metadata_event('d', 10, "Ops"),
+            channel_create.clone(),
+            message_one.clone(),
+            message_two,
+        ]);
+
+        assert_eq!(projection.snapshot.channels[0].mention_count, 0);
+        projection.set_local_pubkey(Some(local_pubkey.as_str()));
+        assert_eq!(projection.snapshot.channels[0].unread_count, 2);
+        assert_eq!(projection.snapshot.channels[0].mention_count, 1);
+        assert_eq!(projection.snapshot.groups[0].mention_count, 1);
+
+        projection
+            .mark_channel_read(&channel_create.id, Some(&message_one.id))
+            .unwrap();
+        assert_eq!(projection.snapshot.channels[0].unread_count, 1);
+        assert_eq!(projection.snapshot.channels[0].mention_count, 0);
+        assert_eq!(projection.snapshot.groups[0].mention_count, 0);
     }
 
     #[test]

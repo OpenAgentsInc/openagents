@@ -18,6 +18,14 @@ fn direct_message_outbound_attempt_count_default() -> u32 {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DirectMessageLocalState {
     pub selected_room_id: Option<String>,
+    #[serde(default)]
+    pub read_cursors: BTreeMap<String, DirectMessageReadCursor>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DirectMessageReadCursor {
+    pub last_read_message_id: Option<String>,
+    pub last_read_created_at: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -71,6 +79,7 @@ pub struct DirectMessageRoomProjection {
     pub message_ids: Vec<String>,
     pub latest_message_id: Option<String>,
     pub unread_count: usize,
+    pub mention_count: usize,
     pub relay_hints: BTreeMap<String, Vec<String>>,
 }
 
@@ -316,7 +325,62 @@ impl DirectMessageProjectionState {
             return Err(format!("Unknown direct message room: {room_id}"));
         }
         self.local_state.selected_room_id = Some(room_id.to_string());
-        self.persist_current_state(format!("Selected direct message room {room_id}"))
+        self.mark_room_read(room_id, None)?;
+        self.last_action = Some(format!("Selected direct message room {room_id}"));
+        Ok(())
+    }
+
+    pub fn mark_room_read(
+        &mut self,
+        room_id: &str,
+        last_read_message_id: Option<&str>,
+    ) -> Result<(), String> {
+        let Some(room) = self
+            .snapshot
+            .rooms
+            .iter()
+            .find(|room| room.room_id == room_id)
+        else {
+            return Err(format!("Unknown direct message room: {room_id}"));
+        };
+
+        let cursor = match last_read_message_id {
+            Some(message_id) => {
+                let Some(message) = self.snapshot.messages.get(message_id) else {
+                    return Err(format!(
+                        "Unknown direct message for read cursor: {message_id}"
+                    ));
+                };
+                if message.room_id != room_id {
+                    return Err(format!(
+                        "Direct message {message_id} does not belong to room {room_id}"
+                    ));
+                }
+                DirectMessageReadCursor {
+                    last_read_message_id: Some(message.message_id.clone()),
+                    last_read_created_at: Some(message.created_at),
+                }
+            }
+            None => room
+                .latest_message_id
+                .as_ref()
+                .and_then(|message_id| self.snapshot.messages.get(message_id))
+                .map(|message| DirectMessageReadCursor {
+                    last_read_message_id: Some(message.message_id.clone()),
+                    last_read_created_at: Some(message.created_at),
+                })
+                .unwrap_or_default(),
+        };
+
+        if cursor.last_read_message_id.is_some() {
+            self.local_state
+                .read_cursors
+                .insert(room_id.to_string(), cursor);
+        } else {
+            self.local_state.read_cursors.remove(room_id);
+        }
+        self.refresh_projection(format!("Updated read cursor for direct message room {room_id}"));
+        Ok(())
     }
 
     pub fn reload_projection(&mut self) -> Result<(), String> {
@@ -554,7 +618,7 @@ fn load_direct_message_projection_document(
 fn rebuild_direct_message_projection(
     relay_events: &[nostr::Event],
     outbound_messages: &[DirectMessageOutboundMessage],
-    _local_state: &DirectMessageLocalState,
+    local_state: &DirectMessageLocalState,
     local_pubkey: Option<&str>,
     local_private_key_hex: Option<&str>,
 ) -> DirectMessageProjectionSnapshot {
@@ -683,6 +747,7 @@ fn rebuild_direct_message_projection(
                     message_ids: Vec::new(),
                     latest_message_id: None,
                     unread_count: 0,
+                    mention_count: 0,
                     relay_hints: BTreeMap::new(),
                 });
         room.message_ids.push(message.message_id.clone());
@@ -703,6 +768,13 @@ fn rebuild_direct_message_projection(
                 merge_relay_hints(&mut room.relay_hints, pubkey, relays.clone());
             }
         }
+    }
+
+    for room in rooms.values_mut() {
+        let cursor = local_state.read_cursors.get(room.room_id.as_str());
+        room.unread_count = unread_count_for_room(&room.message_ids, cursor, &messages);
+        room.mention_count =
+            mention_count_for_room(room, cursor, &messages, local_pubkey.as_deref());
     }
 
     let mut rooms = rooms.into_values().collect::<Vec<_>>();
@@ -727,6 +799,75 @@ fn rebuild_direct_message_projection(
         messages,
         relay_lists,
     }
+}
+
+fn unread_count_for_room(
+    message_ids: &[String],
+    cursor: Option<&DirectMessageReadCursor>,
+    messages: &BTreeMap<String, DirectMessageMessageProjection>,
+) -> usize {
+    unread_messages_for_room(message_ids, cursor, messages).len()
+}
+
+fn mention_count_for_room(
+    room: &DirectMessageRoomProjection,
+    cursor: Option<&DirectMessageReadCursor>,
+    messages: &BTreeMap<String, DirectMessageMessageProjection>,
+    local_pubkey: Option<&str>,
+) -> usize {
+    let Some(local_pubkey) = local_pubkey else {
+        return 0;
+    };
+    unread_messages_for_room(&room.message_ids, cursor, messages)
+        .into_iter()
+        .filter(|message| direct_message_is_priority_ping(message, room, messages, local_pubkey))
+        .count()
+}
+
+fn unread_messages_for_room<'a>(
+    message_ids: &'a [String],
+    cursor: Option<&DirectMessageReadCursor>,
+    messages: &'a BTreeMap<String, DirectMessageMessageProjection>,
+) -> Vec<&'a DirectMessageMessageProjection> {
+    message_ids
+        .iter()
+        .filter_map(|message_id| messages.get(message_id.as_str()))
+        .filter(|message| message.delivery_state == ManagedChatDeliveryState::Confirmed)
+        .filter(|message| direct_message_is_after_cursor(message, cursor))
+        .collect()
+}
+
+fn direct_message_is_after_cursor(
+    message: &DirectMessageMessageProjection,
+    cursor: Option<&DirectMessageReadCursor>,
+) -> bool {
+    let Some(cursor) = cursor else {
+        return true;
+    };
+    let read_created_at = cursor.last_read_created_at.unwrap_or(0);
+    let read_message_id = cursor.last_read_message_id.as_deref().unwrap_or("");
+    message.created_at > read_created_at
+        || (message.created_at == read_created_at
+            && message.message_id.as_str() > read_message_id)
+}
+
+fn direct_message_is_priority_ping(
+    message: &DirectMessageMessageProjection,
+    room: &DirectMessageRoomProjection,
+    messages: &BTreeMap<String, DirectMessageMessageProjection>,
+    local_pubkey: &str,
+) -> bool {
+    if message.author_pubkey == local_pubkey {
+        return false;
+    }
+    if room.participant_pubkeys.len() <= 2 {
+        return true;
+    }
+    message
+        .reply_to_event_id
+        .as_deref()
+        .and_then(|message_id| messages.get(message_id))
+        .is_some_and(|parent| parent.author_pubkey == local_pubkey)
 }
 
 fn merge_wrapped_event_ids(target: &mut Vec<String>, incoming: &[String]) {
@@ -1009,5 +1150,151 @@ mod tests {
             reloaded.local_state.selected_room_id.as_deref(),
             Some(room_id.as_str())
         );
+    }
+
+    #[test]
+    fn direct_message_projection_mark_room_read_tracks_unread_counts() {
+        let temp = tempdir().expect("tempdir");
+        let path = temp.path().join("direct-messages.json");
+        let mut projection =
+            DirectMessageProjectionState::from_projection_path_for_tests(path.clone());
+        let identity = fixture_identity();
+        projection.set_identity(Some(&identity));
+
+        let sender_secret = [8u8; 32];
+        let sender_pubkey = nostr::get_public_key_hex(&sender_secret).expect("sender pubkey");
+        let message_one = nostr::nip17::ChatMessage::new("first ping")
+            .add_recipient(identity.public_key_hex.clone(), None);
+        let message_two = nostr::nip17::ChatMessage::new("second ping")
+            .add_recipient(identity.public_key_hex.clone(), None);
+        let wrap_one = nostr::nip17::send_chat_message(
+            &message_one,
+            &sender_secret,
+            &identity.public_key_hex,
+            101,
+        )
+        .expect("wrap one");
+        let wrap_two = nostr::nip17::send_chat_message(
+            &message_two,
+            &sender_secret,
+            &identity.public_key_hex,
+            102,
+        )
+        .expect("wrap two");
+
+        projection.record_relay_events(vec![wrap_one.clone(), wrap_two.clone()]);
+
+        let room_id = direct_message_room_id(
+            None,
+            &[identity.public_key_hex.clone(), sender_pubkey.clone()],
+        );
+        let room = projection
+            .snapshot
+            .rooms
+            .iter()
+            .find(|room| room.room_id == room_id)
+            .expect("room");
+        assert_eq!(room.unread_count, 2);
+        assert_eq!(room.mention_count, 2);
+
+        let first_message_id = projection
+            .snapshot
+            .messages
+            .values()
+            .find(|message| message.content == "first ping")
+            .map(|message| message.message_id.clone())
+            .expect("first message id");
+        projection
+            .mark_room_read(&room_id, Some(first_message_id.as_str()))
+            .expect("mark first read");
+
+        let room = projection
+            .snapshot
+            .rooms
+            .iter()
+            .find(|room| room.room_id == room_id)
+            .expect("room after partial read");
+        assert_eq!(room.unread_count, 1);
+        assert_eq!(room.mention_count, 1);
+
+        let reloaded = {
+            let mut state = DirectMessageProjectionState::from_projection_path_for_tests(path);
+            state.set_identity(Some(&identity));
+            state
+        };
+        let room = reloaded
+            .snapshot
+            .rooms
+            .iter()
+            .find(|room| room.room_id == room_id)
+            .expect("reloaded room");
+        assert_eq!(room.unread_count, 1);
+        assert_eq!(room.mention_count, 1);
+        assert_eq!(
+            reloaded
+                .local_state
+                .read_cursors
+                .get(&room_id)
+                .and_then(|cursor| cursor.last_read_message_id.as_deref()),
+            Some(first_message_id.as_str())
+        );
+    }
+
+    #[test]
+    fn direct_message_projection_counts_side_room_mentions_for_replies_to_local_messages() {
+        let temp = tempdir().expect("tempdir");
+        let path = temp.path().join("direct-messages.json");
+        let mut projection = DirectMessageProjectionState::from_projection_path_for_tests(path);
+        let identity = fixture_identity();
+        projection.set_identity(Some(&identity));
+
+        let sender_secret = [9u8; 32];
+        let sender_pubkey = nostr::get_public_key_hex(&sender_secret).expect("sender pubkey");
+        let room_id = direct_message_room_id(
+            Some("War Room"),
+            &[identity.public_key_hex.clone(), sender_pubkey.clone()],
+        );
+        let local_message_id = "55".repeat(32);
+        projection
+            .queue_outbound_message(super::DirectMessageOutboundMessage {
+                room_id: room_id.clone(),
+                message_id: local_message_id.clone(),
+                author_pubkey: identity.public_key_hex.clone(),
+                participant_pubkeys: vec![identity.public_key_hex.clone(), sender_pubkey.clone()],
+                recipient_pubkeys: vec![sender_pubkey.clone()],
+                recipient_relay_hints: BTreeMap::new(),
+                content: "project status".to_string(),
+                created_at: 201,
+                reply_to_event_id: None,
+                subject: Some("War Room".to_string()),
+                wrapped_events: Vec::new(),
+                delivery_state: ManagedChatDeliveryState::Publishing,
+                attempt_count: 1,
+                last_error: None,
+            })
+            .expect("queue local side room message");
+
+        let reply_message = nostr::nip17::ChatMessage::new("ack")
+            .add_recipient(identity.public_key_hex.clone(), None)
+            .subject("War Room");
+        let reply_message = reply_message.reply_to(local_message_id);
+        let reply_wrap = nostr::nip17::send_chat_message(
+            &reply_message,
+            &sender_secret,
+            &identity.public_key_hex,
+            202,
+        )
+        .expect("reply wrap");
+
+        projection.record_relay_events(vec![reply_wrap]);
+
+        let room = projection
+            .snapshot
+            .rooms
+            .iter()
+            .find(|room| room.room_id == room_id)
+            .expect("side room");
+        assert_eq!(room.unread_count, 1);
+        assert_eq!(room.mention_count, 1);
     }
 }
