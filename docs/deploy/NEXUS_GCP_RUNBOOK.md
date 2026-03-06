@@ -24,6 +24,11 @@ Why this path:
 - the old Cloud Run-style stateless model is the wrong fit for a durable relay
 - this keeps Nexus as one Rust service while giving it a stateful disk and restart persistence
 
+Current deployment decision:
+
+- keep relay and authority in one deployed Nexus service
+- do not split them into separate deployed services unless later operational pressure justifies it
+
 This runbook does **not** claim that public DNS/TLS cutover is complete. That is handled in later staging/cutover work. The purpose here is to make the deployed runtime itself stateful and durable.
 
 ## 2) Baseline assumptions

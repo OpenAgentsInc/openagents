@@ -662,6 +662,18 @@ Why last:
 
 - this is hardening and scale work, not required for full integration of the migration itself
 
+Decision as of March 6, 2026:
+
+- defer the split
+- keep relay and authority in one deployed Nexus service
+- keep the split only as an internal code boundary and future operational option
+
+Reason:
+
+- the current VM + durable relay + in-process authority shape is working in production
+- splitting now would add infra complexity without solving a current operational bottleneck
+- the user-facing requirement is one Nexus host, and the current single-service deployment already satisfies it
+
 ## Acceptance Criteria
 
 This migration is successful when all of the following are true:
