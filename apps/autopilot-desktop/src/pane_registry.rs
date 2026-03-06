@@ -9,9 +9,9 @@ pub const HOTBAR_SLOT_NOSTR_IDENTITY: u8 = 2;
 pub const HOTBAR_SLOT_SPARK_WALLET: u8 = 3;
 pub const HOTBAR_SLOT_COMMAND_PALETTE: u8 = 4;
 
-pub const HOTBAR_COMMAND_PALETTE_ICON: &str = "K";
+pub const HOTBAR_COMMAND_PALETTE_ICON: &str = "4";
 pub const HOTBAR_COMMAND_PALETTE_TOOLTIP: &str = "Command palette";
-pub const HOTBAR_COMMAND_PALETTE_SHORTCUT: &str = "K";
+pub const HOTBAR_COMMAND_PALETTE_SHORTCUT: &str = "4";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PaneCommandSpec {

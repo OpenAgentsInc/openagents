@@ -296,19 +296,21 @@ impl Component for Hotbar {
                 } else {
                     item.shortcut.clone()
                 };
-                let text_width = shortcut_text.len() as f32 * number_font * 0.55;
-                let text_x =
-                    overlay_bounds.origin.x + (overlay_bounds.size.width - text_width) * 0.5;
-                let text_y =
-                    overlay_bounds.origin.y + overlay_bounds.size.height * 0.5 - number_font * 0.5;
-                let shortcut_run = cx.text.layout_styled_mono(
-                    &shortcut_text,
-                    Point::new(text_x, text_y),
-                    number_font,
-                    theme::text::MUTED,
-                    FontStyle::default(),
-                );
-                cx.scene.draw_text(shortcut_run);
+                if shortcut_text != item.icon {
+                    let text_width = shortcut_text.len() as f32 * number_font * 0.55;
+                    let text_x =
+                        overlay_bounds.origin.x + (overlay_bounds.size.width - text_width) * 0.5;
+                    let text_y = overlay_bounds.origin.y + overlay_bounds.size.height * 0.5
+                        - number_font * 0.5;
+                    let shortcut_run = cx.text.layout_styled_mono(
+                        &shortcut_text,
+                        Point::new(text_x, text_y),
+                        number_font,
+                        theme::text::MUTED,
+                        FontStyle::default(),
+                    );
+                    cx.scene.draw_text(shortcut_run);
+                }
             }
         }
     }

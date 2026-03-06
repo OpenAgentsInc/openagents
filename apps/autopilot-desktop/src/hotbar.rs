@@ -92,6 +92,7 @@ pub fn hotbar_slot_for_key(key: PhysicalKey) -> Option<u8> {
         PhysicalKey::Code(KeyCode::Digit1 | KeyCode::Numpad1) => Some(HOTBAR_SLOT_NEW_CHAT),
         PhysicalKey::Code(KeyCode::Digit2 | KeyCode::Numpad2) => Some(HOTBAR_SLOT_NOSTR_IDENTITY),
         PhysicalKey::Code(KeyCode::Digit3 | KeyCode::Numpad3) => Some(HOTBAR_SLOT_SPARK_WALLET),
+        PhysicalKey::Code(KeyCode::Digit4 | KeyCode::Numpad4) => Some(HOTBAR_SLOT_COMMAND_PALETTE),
         _ => None,
     }
 }
@@ -137,14 +138,17 @@ fn build_hotbar_items() -> Vec<HotbarSlot> {
 #[cfg(test)]
 mod tests {
     use super::{
-        HOTBAR_SLOT_NEW_CHAT, HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_SPARK_WALLET,
-        hotbar_slot_for_key,
+        HOTBAR_SLOT_COMMAND_PALETTE, HOTBAR_SLOT_NEW_CHAT, HOTBAR_SLOT_NOSTR_IDENTITY,
+        HOTBAR_SLOT_SPARK_WALLET, build_hotbar_items, hotbar_slot_for_key,
     };
-    use crate::pane_registry::{pane_kind_for_hotbar_slot, pane_specs};
+    use crate::pane_registry::{
+        HOTBAR_COMMAND_PALETTE_ICON, HOTBAR_COMMAND_PALETTE_SHORTCUT, pane_kind_for_hotbar_slot,
+        pane_specs,
+    };
     use winit::keyboard::{KeyCode, PhysicalKey};
 
     #[test]
-    fn numeric_hotbar_shortcuts_only_cover_one_two_three() {
+    fn numeric_hotbar_shortcuts_cover_one_through_four() {
         assert_eq!(
             hotbar_slot_for_key(PhysicalKey::Code(KeyCode::Digit1)),
             Some(HOTBAR_SLOT_NEW_CHAT)
@@ -159,11 +163,25 @@ mod tests {
         );
         assert_eq!(
             hotbar_slot_for_key(PhysicalKey::Code(KeyCode::Digit4)),
-            None
+            Some(HOTBAR_SLOT_COMMAND_PALETTE)
         );
         assert_eq!(
             hotbar_slot_for_key(PhysicalKey::Code(KeyCode::Numpad4)),
-            None
+            Some(HOTBAR_SLOT_COMMAND_PALETTE)
+        );
+    }
+
+    #[test]
+    fn command_palette_hotbar_item_surfaces_numeric_label() {
+        let command_palette_item = build_hotbar_items()
+            .into_iter()
+            .find(|item| item.slot == HOTBAR_SLOT_COMMAND_PALETTE)
+            .expect("command palette hotbar item");
+
+        assert_eq!(command_palette_item.icon, HOTBAR_COMMAND_PALETTE_ICON);
+        assert_eq!(
+            command_palette_item.shortcut,
+            HOTBAR_COMMAND_PALETTE_SHORTCUT
         );
     }
 
