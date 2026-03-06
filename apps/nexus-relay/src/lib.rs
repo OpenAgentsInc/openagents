@@ -20,10 +20,14 @@ use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router};
 use futures_util::{SinkExt, StreamExt};
-use nostr::Event;
+use nostr::{Event, nip01::classify_kind};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::{RwLock, mpsc};
+
+mod managed_groups;
+
+use managed_groups::{ManagedGroupsState, event_group_id};
 
 const ENV_LISTEN_ADDR: &str = "NEXUS_RELAY_LISTEN_ADDR";
 const ENV_MAX_STORED_EVENTS: &str = "NEXUS_RELAY_MAX_STORED_EVENTS";
@@ -34,6 +38,7 @@ const DEFAULT_MAX_STORED_EVENTS: usize = 5_000;
 pub struct RelayServiceConfig {
     pub listen_addr: SocketAddr,
     pub max_stored_events: usize,
+    pub relay_identity: RelayIdentity,
 }
 
 impl RelayServiceConfig {
@@ -57,10 +62,12 @@ impl RelayServiceConfig {
         if max_stored_events == 0 {
             return Err(format!("{ENV_MAX_STORED_EVENTS} must be greater than zero"));
         }
+        let relay_identity = load_relay_identity()?;
 
         Ok(Self {
             listen_addr,
             max_stored_events,
+            relay_identity,
         })
     }
 }
@@ -76,6 +83,7 @@ pub struct HealthResponse {
 #[derive(Clone)]
 struct AppState {
     config: RelayServiceConfig,
+    relay_identity: RelayIdentity,
     store: Arc<RwLock<RelayStore>>,
 }
 
@@ -84,6 +92,7 @@ struct RelayStore {
     next_client_id: u64,
     events: Vec<Event>,
     clients: HashMap<u64, ConnectedClient>,
+    managed_groups: ManagedGroupsState,
 }
 
 struct ConnectedClient {
@@ -91,8 +100,15 @@ struct ConnectedClient {
     subscriptions: HashMap<String, Vec<Value>>,
 }
 
+#[derive(Debug, Clone)]
+pub struct RelayIdentity {
+    pub public_key_hex: String,
+    pub secret_key: [u8; 32],
+}
+
 pub fn build_router(config: RelayServiceConfig) -> Router {
     let state = AppState {
+        relay_identity: config.relay_identity.clone(),
         config,
         store: Arc::new(RwLock::new(RelayStore::default())),
     };
@@ -238,42 +254,70 @@ async fn handle_event_frame(
     let event: Event = serde_json::from_value(frame[1].clone())
         .map_err(|error| format!("invalid_event:{error}"))?;
 
-    let (is_new, deliveries) = {
+    let (accepted, message, deliveries) = {
         let mut store = state.store.write().await;
-        let is_new = !store.events.iter().any(|existing| existing.id == event.id);
-        if is_new {
-            store.events.push(event.clone());
-            if store.events.len() > state.config.max_stored_events {
-                let overflow = store
-                    .events
-                    .len()
-                    .saturating_sub(state.config.max_stored_events);
-                store.events.drain(0..overflow);
-            }
-        }
+        if store.events.iter().any(|existing| existing.id == event.id) {
+            (false, "duplicate".to_string(), Vec::new())
+        } else {
+            let accepted_events = match store
+                .managed_groups
+                .apply_event(&state.relay_identity, &event)
+            {
+                Ok(Some(outcome)) => {
+                    apply_managed_group_prunes(&mut store.events, &outcome);
+                    outcome.accepted_events
+                }
+                Ok(None) => vec![event.clone()],
+                Err(error) => {
+                    drop(store);
+                    send_text(
+                        state,
+                        client_id,
+                        json!(["OK", event.id, false, error]).to_string(),
+                    )
+                    .await?;
+                    return Ok(());
+                }
+            };
 
-        let deliveries = store
-            .clients
-            .iter()
-            .flat_map(|(target_client_id, client)| {
-                let event = event.clone();
-                client
-                    .subscriptions
-                    .iter()
-                    .filter(move |(_, filters)| event_matches_filters(&event, filters.as_slice()))
-                    .map(move |(subscription_id, _)| (*target_client_id, subscription_id.clone()))
-            })
-            .collect::<Vec<_>>();
-        (is_new, deliveries)
+            for accepted_event in accepted_events.iter().cloned() {
+                upsert_event(
+                    &mut store.events,
+                    accepted_event,
+                    state.config.max_stored_events,
+                );
+            }
+
+            let deliveries = store
+                .clients
+                .iter()
+                .flat_map(|(target_client_id, client)| {
+                    accepted_events.iter().flat_map(move |accepted_event| {
+                        client
+                            .subscriptions
+                            .iter()
+                            .filter(move |(_, filters)| {
+                                event_matches_filters(accepted_event, filters.as_slice())
+                            })
+                            .map(move |(subscription_id, _)| {
+                                (
+                                    *target_client_id,
+                                    subscription_id.clone(),
+                                    accepted_event.clone(),
+                                )
+                            })
+                    })
+                })
+                .collect::<Vec<_>>();
+            (true, "accepted".to_string(), deliveries)
+        }
     };
 
-    for (target_client_id, subscription_id) in deliveries {
-        let payload = json!(["EVENT", subscription_id, event]).to_string();
+    for (target_client_id, subscription_id, delivery_event) in deliveries {
+        let payload = json!(["EVENT", subscription_id, delivery_event]).to_string();
         send_text(state, target_client_id, payload).await?;
     }
 
-    let accepted = is_new;
-    let message = if accepted { "accepted" } else { "duplicate" };
     send_text(
         state,
         client_id,
@@ -392,15 +436,16 @@ fn event_matches_filter(event: &Event, filter: &Value) -> bool {
     {
         return false;
     }
-    if let Some(tag_values) = object.get("#e").and_then(Value::as_array)
-        && !event_has_tag(event, "e", tag_values.as_slice())
+    for (key, tag_values) in object
+        .iter()
+        .filter(|(key, value)| key.starts_with('#') && value.is_array())
     {
-        return false;
-    }
-    if let Some(tag_values) = object.get("#p").and_then(Value::as_array)
-        && !event_has_tag(event, "p", tag_values.as_slice())
-    {
-        return false;
+        let Some(tag_values) = tag_values.as_array() else {
+            return false;
+        };
+        if !event_has_tag(event, &key[1..], tag_values.as_slice()) {
+            return false;
+        }
     }
 
     true
@@ -423,16 +468,114 @@ fn filter_limit(filter: &Value) -> Option<usize> {
         .map(|value| value as usize)
 }
 
+fn apply_managed_group_prunes(
+    events: &mut Vec<Event>,
+    outcome: &managed_groups::ManagedGroupOutcome,
+) {
+    if !outcome.removed_event_ids.is_empty() {
+        events.retain(|event| !outcome.removed_event_ids.iter().any(|id| id == &event.id));
+    }
+    if let Some(group_id) = &outcome.pruned_group_id {
+        events.retain(|event| event_group_id(event) != Some(group_id.as_str()));
+    }
+}
+
+fn upsert_event(events: &mut Vec<Event>, event: Event, max_stored_events: usize) {
+    match classify_kind(event.kind) {
+        nostr::KindClassification::Replaceable => {
+            if let Some(index) = events
+                .iter()
+                .position(|existing| existing.kind == event.kind && existing.pubkey == event.pubkey)
+            {
+                events.remove(index);
+            }
+        }
+        nostr::KindClassification::Addressable => {
+            let event_d = tag_value(event.tags.as_slice(), "d");
+            if let Some(index) = events.iter().position(|existing| {
+                existing.kind == event.kind
+                    && existing.pubkey == event.pubkey
+                    && tag_value(existing.tags.as_slice(), "d") == event_d
+            }) {
+                events.remove(index);
+            }
+        }
+        _ => {}
+    }
+
+    events.push(event);
+    if events.len() > max_stored_events {
+        let overflow = events.len().saturating_sub(max_stored_events);
+        events.drain(0..overflow);
+    }
+}
+
+fn tag_value<'a>(tags: &'a [Vec<String>], name: &str) -> Option<&'a str> {
+    tags.iter()
+        .find(|tag| tag.first().is_some_and(|candidate| candidate == name))
+        .and_then(|tag| tag.get(1))
+        .map(String::as_str)
+}
+
+fn load_relay_identity() -> Result<RelayIdentity, String> {
+    let identity = nostr::load_or_create_identity()
+        .map_err(|error| format!("failed to load relay identity: {error}"))?;
+    let secret_key_bytes = hex::decode(identity.private_key_hex)
+        .map_err(|error| format!("failed to decode relay private key: {error}"))?;
+    let secret_key: [u8; 32] = secret_key_bytes
+        .as_slice()
+        .try_into()
+        .map_err(|_| "relay private key must be 32 bytes".to_string())?;
+
+    Ok(RelayIdentity {
+        public_key_hex: identity.public_key_hex,
+        secret_key,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
     use futures_util::{SinkExt, StreamExt};
-    use nostr::Event;
+    use nostr::{
+        Event, EventTemplate, ModerationAction, ModerationEvent, finalize_event, get_public_key_hex,
+    };
     use serde_json::json;
     use tokio::time::{Duration, timeout};
     use tokio_tungstenite::{connect_async, tungstenite::Message as WsMessage};
 
     use super::{RelayServiceConfig, build_router, event_matches_filter, run_server};
+
+    fn relay_config() -> RelayServiceConfig {
+        let secret_key = [7u8; 32];
+        RelayServiceConfig {
+            listen_addr: "127.0.0.1:0".parse().expect("valid listen addr"),
+            max_stored_events: 128,
+            relay_identity: super::RelayIdentity {
+                public_key_hex: get_public_key_hex(&secret_key).expect("derive relay pubkey"),
+                secret_key,
+            },
+        }
+    }
+
+    fn sign_template(template: EventTemplate, secret_key: &[u8; 32]) -> Event {
+        finalize_event(&template, secret_key).expect("sign test event")
+    }
+
+    fn sign_moderation(event: ModerationEvent, secret_key: &[u8; 32], pubkey: &str) -> Event {
+        let unsigned = event
+            .to_unsigned_event(pubkey.to_string())
+            .expect("build moderation event");
+        sign_template(
+            EventTemplate {
+                created_at: unsigned.created_at,
+                kind: unsigned.kind,
+                tags: unsigned.tags,
+                content: unsigned.content,
+            },
+            secret_key,
+        )
+    }
 
     fn sample_event() -> Event {
         Event {
@@ -465,10 +608,7 @@ mod tests {
 
     #[tokio::test]
     async fn relay_replays_stored_events_and_broadcasts_new_events() -> Result<()> {
-        let config = RelayServiceConfig {
-            listen_addr: "127.0.0.1:0".parse()?,
-            max_stored_events: 128,
-        };
+        let config = relay_config();
         let listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
         let addr = listener.local_addr()?;
         let server = tokio::spawn(async move {
@@ -559,12 +699,120 @@ mod tests {
 
     #[tokio::test]
     async fn run_server_binds_real_listener() -> Result<()> {
-        let config = RelayServiceConfig {
-            listen_addr: "127.0.0.1:0".parse()?,
-            max_stored_events: 32,
-        };
+        let mut config = relay_config();
+        config.max_stored_events = 32;
         let server = tokio::spawn(async move { run_server(config).await });
         tokio::time::sleep(Duration::from_millis(25)).await;
+        server.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn relay_enforces_managed_group_membership_and_replays_snapshots() -> Result<()> {
+        let config = relay_config();
+        let listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
+        let addr = listener.local_addr()?;
+        let server = tokio::spawn(async move {
+            axum::serve(listener, build_router(config))
+                .await
+                .map_err(anyhow::Error::from)
+        });
+
+        let relay_url = format!("ws://{addr}/");
+        let admin_secret = [1u8; 32];
+        let admin_pubkey = get_public_key_hex(&admin_secret)?;
+        let member_secret = [2u8; 32];
+        let mut admin = connect_async(relay_url.as_str()).await?.0;
+        let mut observer = connect_async(relay_url.as_str()).await?.0;
+
+        observer
+            .send(WsMessage::Text(
+                json!(["REQ", "group-meta", {"kinds":[39000,39001,39002,39003], "#d":["oa-main"]}])
+                    .to_string()
+                    .into(),
+            ))
+            .await?;
+
+        let create_group = sign_moderation(
+            ModerationEvent::new("oa-main", ModerationAction::CreateGroup, 10)?,
+            &admin_secret,
+            admin_pubkey.as_str(),
+        );
+        admin
+            .send(WsMessage::Text(
+                json!(["EVENT", create_group]).to_string().into(),
+            ))
+            .await?;
+
+        let ok_after_create = timeout(Duration::from_secs(2), admin.next()).await;
+        let ok_after_create = ok_after_create
+            .ok()
+            .and_then(|value| value)
+            .ok_or_else(|| anyhow::anyhow!("expected OK after create group"))??;
+        let ok_after_create = match ok_after_create {
+            WsMessage::Text(text) => text.to_string(),
+            other => return Err(anyhow::anyhow!("unexpected create-group frame: {other:?}")),
+        };
+        assert!(ok_after_create.contains("\"accepted\""));
+
+        let mut snapshot_kinds = Vec::new();
+        while snapshot_kinds.len() < 4 {
+            let frame = timeout(Duration::from_secs(2), observer.next()).await;
+            let frame = frame
+                .ok()
+                .and_then(|value| value)
+                .ok_or_else(|| anyhow::anyhow!("expected snapshot event"))??;
+            let text = match frame {
+                WsMessage::Text(text) => text.to_string(),
+                other => return Err(anyhow::anyhow!("unexpected snapshot frame: {other:?}")),
+            };
+            if text.contains("\"EVENT\"") {
+                if text.contains("\"kind\":39000") {
+                    snapshot_kinds.push(39000);
+                } else if text.contains("\"kind\":39001") {
+                    snapshot_kinds.push(39001);
+                } else if text.contains("\"kind\":39002") {
+                    snapshot_kinds.push(39002);
+                } else if text.contains("\"kind\":39003") {
+                    snapshot_kinds.push(39003);
+                }
+            }
+        }
+        assert_eq!(snapshot_kinds.len(), 4);
+
+        let outsider_message = sign_template(
+            EventTemplate {
+                created_at: 11,
+                kind: 42,
+                tags: vec![
+                    vec!["h".to_string(), "oa-main".to_string()],
+                    vec![
+                        "e".to_string(),
+                        "a".repeat(64),
+                        relay_url.clone(),
+                        "root".to_string(),
+                    ],
+                ],
+                content: "blocked".to_string(),
+            },
+            &member_secret,
+        );
+        admin
+            .send(WsMessage::Text(
+                json!(["EVENT", outsider_message]).to_string().into(),
+            ))
+            .await?;
+        let blocked = timeout(Duration::from_secs(2), admin.next()).await;
+        let blocked = blocked
+            .ok()
+            .and_then(|value| value)
+            .ok_or_else(|| anyhow::anyhow!("expected membership rejection"))??;
+        let blocked_text = match blocked {
+            WsMessage::Text(text) => text.to_string(),
+            other => return Err(anyhow::anyhow!("unexpected membership frame: {other:?}")),
+        };
+        assert!(blocked_text.contains("membership_required"));
+
         server.abort();
         Ok(())
     }
