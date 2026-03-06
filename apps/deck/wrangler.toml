@@ -1,0 +1,16 @@
+name = "openagents-deck"
+main = "worker/build/index.js"
+compatibility_date = "2026-03-06"
+
+[build]
+command = "bun run build:assets && cargo install -q worker-build && cd worker && worker-build --release"
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = true
+
+[dev]
+port = 8787
+local_protocol = "http"

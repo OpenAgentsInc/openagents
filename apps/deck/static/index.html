@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>OpenAgents Deck</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background:
+          radial-gradient(circle at top, rgba(255, 245, 230, 0.05), transparent 38%),
+          linear-gradient(180deg, #020203 0%, #050505 100%);
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      body {
+        overflow: hidden;
+        font-family: Inter, sans-serif;
+        background: transparent;
+      }
+
+      #deck-root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+      }
+
+      #deck-canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+        outline: none;
+      }
+
+      #boot-status {
+        position: absolute;
+        inset: 0 auto auto 0;
+        margin: 24px;
+        max-width: min(560px, calc(100vw - 48px));
+        padding: 12px 14px;
+        border: 1px solid rgba(79, 209, 197, 0.42);
+        background: rgba(11, 15, 20, 0.9);
+        color: #e6edf3;
+        font: 14px/1.4 "JetBrains Mono", monospace;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <main id="deck-root">
+      <canvas
+        id="deck-canvas"
+        aria-label="OpenAgents deck canvas"
+        tabindex="0"
+      ></canvas>
+      <pre id="boot-status">Booting deck…</pre>
+    </main>
+    <script type="module">
+      import init from "./pkg/deck.js";
+
+      const status = document.getElementById("boot-status");
+
+      init().catch((error) => {
+        console.error(error);
+        if (status) {
+          status.hidden = false;
+          status.textContent = `Deck boot failed\n\n${String(error)}`;
+        }
+      });
+    </script>
+  </body>
+</html>
