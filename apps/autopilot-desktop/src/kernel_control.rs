@@ -5,9 +5,14 @@ use openagents_kernel_core::authority::{
     HttpKernelAuthorityClient, KernelAuthority, SubmitOutputRequest, canonical_kernel_endpoint,
 };
 use openagents_kernel_core::ids::sha256_prefixed_text;
+use openagents_kernel_core::labor::{
+    Contract, ContractStatus, SettlementLink, SettlementStatus, Submission, SubmissionStatus,
+    Verdict, VerdictOutcome, WorkUnit, WorkUnitStatus,
+};
 use openagents_kernel_core::receipts::{
-    AuthAssuranceLevel, EvidenceRef, FeedbackLatencyClass, Money, MoneyAmount, PolicyContext,
-    ProvenanceGrade, Receipt, ReceiptHints, SeverityClass, TraceContext, VerificationTier,
+    Asset, AuthAssuranceLevel, EvidenceRef, FeedbackLatencyClass, Money, MoneyAmount,
+    PolicyContext, ProvenanceGrade, Receipt, ReceiptHints, SeverityClass, TraceContext,
+    VerificationTier,
 };
 use openagents_kernel_core::snapshots::EconomySnapshot;
 use openagents_kernel_core::time::floor_to_minute_utc;
@@ -683,47 +688,70 @@ async fn sleep_until_retry(shutdown_rx: &mut watch::Receiver<bool>) -> bool {
 fn build_work_unit_request(state: &RenderState, request: &JobInboxRequest) -> CreateWorkUnitRequest {
     let work_unit_id = work_unit_id_for_request(request.request_id.as_str());
     CreateWorkUnitRequest {
-        work_unit_id,
-        created_at_ms: current_epoch_ms(),
         idempotency_key: format!("desktop.accept.work_unit:{}", request.request_id),
         trace: trace_context_for_request(request, true),
         policy: kernel_policy_context(state),
-        payload: json!({
-            "request_id": request.request_id.clone(),
-            "requester": request.requester.clone(),
-            "demand_source": request.demand_source.label(),
-            "request_kind": request.request_kind,
-            "capability": request.capability.clone(),
-            "execution_input": request.execution_input.clone(),
-            "price_sats": request.price_sats,
-            "ttl_seconds": request.ttl_seconds,
-            "skill_scope_id": request.skill_scope_id.clone(),
-            "skl_manifest_a": request.skl_manifest_a.clone(),
-            "skl_manifest_event_id": request.skl_manifest_event_id.clone(),
-        }),
-        evidence: request_evidence_refs(request.request_id.as_str(), request.skill_scope_id.as_deref()),
+        work_unit: WorkUnit {
+            work_unit_id,
+            external_request_id: Some(request.request_id.clone()),
+            requester_id: Some(request.requester.clone()),
+            provider_id: state
+                .nostr_identity
+                .as_ref()
+                .map(|identity| identity.npub.clone())
+                .or_else(|| Some("autopilot.desktop".to_string())),
+            capability: Some(request.capability.clone()),
+            demand_source: Some(request.demand_source.label().to_string()),
+            created_at_ms: current_epoch_ms(),
+            status: WorkUnitStatus::Created,
+            quoted_price: Some(btc_sats_money(request.price_sats)),
+            metadata: json!({
+                "request_kind": request.request_kind,
+                "execution_input": request.execution_input.clone(),
+                "ttl_seconds": request.ttl_seconds,
+                "skill_scope_id": request.skill_scope_id.clone(),
+                "skl_manifest_a": request.skl_manifest_a.clone(),
+                "skl_manifest_event_id": request.skl_manifest_event_id.clone(),
+            }),
+        },
+        evidence: request_evidence_refs(
+            request.request_id.as_str(),
+            request.skill_scope_id.as_deref(),
+        ),
         hints: receipt_hints_for_notional(request.price_sats),
     }
 }
 
 fn build_contract_request(state: &RenderState, request: &JobInboxRequest) -> CreateContractRequest {
     CreateContractRequest {
-        contract_id: contract_id_for_request(request.request_id.as_str()),
-        created_at_ms: current_epoch_ms(),
         idempotency_key: format!("desktop.accept.contract:{}", request.request_id),
         trace: trace_context_for_request(request, false),
         policy: kernel_policy_context(state),
-        payload: json!({
-            "contract_id": contract_id_for_request(request.request_id.as_str()),
-            "work_unit_id": work_unit_id_for_request(request.request_id.as_str()),
-            "request_id": request.request_id.clone(),
-            "requester": request.requester.clone(),
-            "demand_source": request.demand_source.label(),
-            "provider_job_id": format!("job-{}", request.request_id),
-            "price_sats": request.price_sats,
-            "ttl_seconds": request.ttl_seconds,
-        }),
-        evidence: request_evidence_refs(request.request_id.as_str(), request.skill_scope_id.as_deref()),
+        contract: Contract {
+            contract_id: contract_id_for_request(request.request_id.as_str()),
+            work_unit_id: work_unit_id_for_request(request.request_id.as_str()),
+            provider_id: state
+                .nostr_identity
+                .as_ref()
+                .map(|identity| identity.npub.clone())
+                .or_else(|| Some("autopilot.desktop".to_string())),
+            created_at_ms: current_epoch_ms(),
+            status: ContractStatus::Created,
+            settlement_asset: Some(Asset::Btc),
+            quoted_price: Some(btc_sats_money(request.price_sats)),
+            warranty_window_ms: Some((request.ttl_seconds as u64).saturating_mul(1_000)),
+            metadata: json!({
+                "request_id": request.request_id.clone(),
+                "requester": request.requester.clone(),
+                "demand_source": request.demand_source.label(),
+                "provider_job_id": format!("job-{}", request.request_id),
+                "ttl_seconds": request.ttl_seconds,
+            }),
+        },
+        evidence: request_evidence_refs(
+            request.request_id.as_str(),
+            request.skill_scope_id.as_deref(),
+        ),
         hints: receipt_hints_for_notional(request.price_sats),
     }
 }
@@ -737,23 +765,33 @@ fn build_submit_output_request(state: &RenderState, job: &ActiveJobRecord) -> Su
         .filter(|value| !value.is_empty())
         .unwrap_or("provider execution completed without explicit output");
     SubmitOutputRequest {
-        contract_id: contract_id_for_request(job.request_id.as_str()),
-        created_at_ms: current_epoch_ms(),
         idempotency_key: format!("desktop.submit.output:{}", job.request_id),
         trace: trace_context_for_job(job),
         policy: kernel_policy_context(state),
-        payload: json!({
-            "request_id": job.request_id.clone(),
-            "job_id": job.job_id.clone(),
-            "request_kind": job.request_kind,
-            "capability": job.capability.clone(),
-            "demand_source": job.demand_source.label(),
-            "input": job.execution_input.clone(),
-            "output": execution_output,
-            "provider_thread_id": state.active_job.execution_thread_id.clone(),
-            "provider_turn_id": state.active_job.execution_turn_id.clone(),
-            "result_event_id": job.sa_tick_result_event_id.clone(),
-        }),
+        submission: Submission {
+            submission_id: format!(
+                "submission.{}",
+                canonical_kernel_id_component(job.request_id.as_str())
+            ),
+            contract_id: contract_id_for_request(job.request_id.as_str()),
+            work_unit_id: work_unit_id_for_request(job.request_id.as_str()),
+            created_at_ms: current_epoch_ms(),
+            status: SubmissionStatus::Received,
+            output_ref: Some(format!("oa://autopilot/jobs/{}/output", job.job_id)),
+            provenance_digest: Some(sha256_prefixed_text(execution_output)),
+            metadata: json!({
+                "request_id": job.request_id.clone(),
+                "job_id": job.job_id.clone(),
+                "request_kind": job.request_kind,
+                "capability": job.capability.clone(),
+                "demand_source": job.demand_source.label(),
+                "input": job.execution_input.clone(),
+                "output": execution_output,
+                "provider_thread_id": state.active_job.execution_thread_id.clone(),
+                "provider_turn_id": state.active_job.execution_turn_id.clone(),
+                "result_event_id": job.sa_tick_result_event_id.clone(),
+            }),
+        },
         evidence: submission_evidence_refs(job, state.active_job.execution_output.as_deref()),
         hints: receipt_hints_for_notional(job.quoted_price_sats),
     }
@@ -763,22 +801,60 @@ fn build_finalize_verdict_request(
     state: &RenderState,
     job: &ActiveJobRecord,
 ) -> FinalizeVerdictRequest {
+    let verdict_id = format!(
+        "verdict.{}",
+        canonical_kernel_id_component(job.request_id.as_str())
+    );
+    let payment_pointer = job
+        .payment_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let settlement_status = if payment_pointer.is_some() {
+        SettlementStatus::Settled
+    } else {
+        SettlementStatus::Pending
+    };
     FinalizeVerdictRequest {
-        contract_id: contract_id_for_request(job.request_id.as_str()),
-        created_at_ms: current_epoch_ms(),
         idempotency_key: format!("desktop.finalize.verdict:{}", job.request_id),
         trace: trace_context_for_job(job),
         policy: kernel_policy_context(state),
-        verdict: json!({
-            "request_id": job.request_id.clone(),
-            "job_id": job.job_id.clone(),
-            "status": "pass",
-            "settlement": "paid",
-            "demand_source": job.demand_source.label(),
-            "payment_pointer": job.payment_id.clone(),
-            "quoted_price_sats": job.quoted_price_sats,
-            "result_event_id": job.sa_tick_result_event_id.clone(),
+        verdict: Verdict {
+            verdict_id: verdict_id.clone(),
+            contract_id: contract_id_for_request(job.request_id.as_str()),
+            work_unit_id: work_unit_id_for_request(job.request_id.as_str()),
+            created_at_ms: current_epoch_ms(),
+            outcome: VerdictOutcome::Pass,
+            verification_tier: Some(VerificationTier::TierOObjective),
+            settlement_status,
+            reason_code: Some("desktop.job.paid".to_string()),
+            metadata: json!({
+                "request_id": job.request_id.clone(),
+                "job_id": job.job_id.clone(),
+                "demand_source": job.demand_source.label(),
+                "quoted_price_sats": job.quoted_price_sats,
+                "result_event_id": job.sa_tick_result_event_id.clone(),
+            }),
+        },
+        settlement_link: payment_pointer.clone().map(|payment_pointer| SettlementLink {
+            settlement_id: format!(
+                "settlement.{}",
+                canonical_kernel_id_component(job.request_id.as_str())
+            ),
+            contract_id: contract_id_for_request(job.request_id.as_str()),
+            work_unit_id: work_unit_id_for_request(job.request_id.as_str()),
+            verdict_id,
+            created_at_ms: current_epoch_ms(),
+            payment_pointer: Some(payment_pointer),
+            settled_amount: Some(btc_sats_money(job.quoted_price_sats)),
+            status: SettlementStatus::Settled,
+            metadata: json!({
+                "job_id": job.job_id.clone(),
+                "demand_source": job.demand_source.label(),
+            }),
         }),
+        claim_hook: None,
         evidence: verdict_evidence_refs(job),
         hints: receipt_hints_for_notional(job.quoted_price_sats),
     }
@@ -887,6 +963,13 @@ fn receipt_hints_for_notional(notional_sats: u64) -> ReceiptHints {
             amount: MoneyAmount::AmountSats(notional_sats),
         }),
         liability_premium: None,
+    }
+}
+
+fn btc_sats_money(amount_sats: u64) -> Money {
+    Money {
+        asset: Asset::Btc,
+        amount: MoneyAmount::AmountSats(amount_sats),
     }
 }
 

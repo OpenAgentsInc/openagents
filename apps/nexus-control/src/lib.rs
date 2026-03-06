@@ -1469,14 +1469,14 @@ async fn submit_kernel_output(
 ) -> Result<Json<SubmitOutputResponse>, ApiError> {
     let session = authenticate_session(&state, &headers)?;
     let contract_id = normalize_required_field(contract_id.as_str(), "contract_id_missing")?;
-    if !request.contract_id.trim().is_empty() && request.contract_id != contract_id {
+    if !request.submission.contract_id.trim().is_empty() && request.submission.contract_id != contract_id {
         return Err(ApiError {
             status: StatusCode::CONFLICT,
             error: "conflict",
             reason: "kernel_contract_id_mismatch".to_string(),
         });
     }
-    request.contract_id = contract_id;
+    request.submission.contract_id = contract_id;
     let now = now_unix_ms();
     let result = {
         let mut store = state.store.write().map_err(|_| ApiError {
@@ -1508,14 +1508,14 @@ async fn finalize_kernel_verdict(
 ) -> Result<Json<FinalizeVerdictResponse>, ApiError> {
     let session = authenticate_session(&state, &headers)?;
     let contract_id = normalize_required_field(contract_id.as_str(), "contract_id_missing")?;
-    if !request.contract_id.trim().is_empty() && request.contract_id != contract_id {
+    if !request.verdict.contract_id.trim().is_empty() && request.verdict.contract_id != contract_id {
         return Err(ApiError {
             status: StatusCode::CONFLICT,
             error: "conflict",
             reason: "kernel_contract_id_mismatch".to_string(),
         });
     }
-    request.contract_id = contract_id;
+    request.verdict.contract_id = contract_id;
     let now = now_unix_ms();
     let result = {
         let mut store = state.store.write().map_err(|_| ApiError {
@@ -1629,7 +1629,7 @@ fn kernel_mutation_context(
 
 fn kernel_api_error(reason: String) -> ApiError {
     let status = match reason.as_str() {
-        "kernel_contract_not_found" => StatusCode::NOT_FOUND,
+        "kernel_contract_not_found" | "kernel_work_unit_not_found" => StatusCode::NOT_FOUND,
         "kernel_idempotency_conflict" | "kernel_contract_id_mismatch" => StatusCode::CONFLICT,
         "work_unit_id_missing" | "contract_id_missing" | "receipt_id_missing" => {
             StatusCode::BAD_REQUEST
@@ -2253,7 +2253,14 @@ mod tests {
         CreateWorkUnitResponse, FinalizeVerdictRequest, FinalizeVerdictResponse,
         SubmitOutputRequest, SubmitOutputResponse,
     };
-    use openagents_kernel_core::receipts::{PolicyContext, Receipt, ReceiptHints, TraceContext};
+    use openagents_kernel_core::labor::{
+        Contract, ContractStatus, SettlementLink, SettlementStatus, Submission, SubmissionStatus,
+        Verdict, VerdictOutcome, WorkUnit, WorkUnitStatus,
+    };
+    use openagents_kernel_core::receipts::{
+        Asset, Money, MoneyAmount, PolicyContext, Receipt, ReceiptHints, TraceContext,
+        VerificationTier,
+    };
     use openagents_kernel_core::time::floor_to_minute_utc;
     use serde_json::json;
     use tower::ServiceExt;
@@ -2356,15 +2363,26 @@ mod tests {
         created_at_ms: i64,
     ) -> CreateWorkUnitRequest {
         CreateWorkUnitRequest {
-            work_unit_id: work_unit_id.to_string(),
-            created_at_ms,
             idempotency_key: idempotency_key.to_string(),
             trace: kernel_trace(Some(work_unit_id), None),
             policy: kernel_policy(),
-            payload: json!({
-                "kind": "starter.compute.job",
-                "summary": "Run the provider earn loop job."
-            }),
+            work_unit: WorkUnit {
+                work_unit_id: work_unit_id.to_string(),
+                external_request_id: Some(format!("request.{work_unit_id}")),
+                requester_id: Some("buyer.alpha".to_string()),
+                provider_id: Some("desktop".to_string()),
+                capability: Some("starter.compute.job".to_string()),
+                demand_source: Some("starter_demand".to_string()),
+                created_at_ms,
+                status: WorkUnitStatus::Created,
+                quoted_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(21),
+                }),
+                metadata: json!({
+                    "summary": "Run the provider earn loop job."
+                }),
+            },
             evidence: Vec::new(),
             hints: ReceiptHints::default(),
         }
@@ -2377,15 +2395,25 @@ mod tests {
         created_at_ms: i64,
     ) -> CreateContractRequest {
         CreateContractRequest {
-            contract_id: contract_id.to_string(),
-            created_at_ms,
             idempotency_key: idempotency_key.to_string(),
             trace: kernel_trace(Some(work_unit_id), Some(contract_id)),
             policy: kernel_policy(),
-            payload: json!({
-                "provider": "desktop",
-                "settlement_asset": "btc"
-            }),
+            contract: Contract {
+                contract_id: contract_id.to_string(),
+                work_unit_id: work_unit_id.to_string(),
+                provider_id: Some("desktop".to_string()),
+                created_at_ms,
+                status: ContractStatus::Created,
+                settlement_asset: Some(Asset::Btc),
+                quoted_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(21),
+                }),
+                warranty_window_ms: Some(300_000),
+                metadata: json!({
+                    "provider": "desktop"
+                }),
+            },
             evidence: Vec::new(),
             hints: ReceiptHints::default(),
         }
@@ -2398,15 +2426,21 @@ mod tests {
         created_at_ms: i64,
     ) -> SubmitOutputRequest {
         SubmitOutputRequest {
-            contract_id: contract_id.to_string(),
-            created_at_ms,
             idempotency_key: idempotency_key.to_string(),
             trace: kernel_trace(Some(work_unit_id), Some(contract_id)),
             policy: kernel_policy(),
-            payload: json!({
-                "artifact_uri": "file://result.json",
-                "status": "completed"
-            }),
+            submission: Submission {
+                submission_id: format!("submission.{contract_id}"),
+                contract_id: contract_id.to_string(),
+                work_unit_id: work_unit_id.to_string(),
+                created_at_ms,
+                status: SubmissionStatus::Received,
+                output_ref: Some("file://result.json".to_string()),
+                provenance_digest: Some("sha256:submission.alpha".to_string()),
+                metadata: json!({
+                    "status": "completed"
+                }),
+            },
             evidence: Vec::new(),
             hints: ReceiptHints::default(),
         }
@@ -2418,16 +2452,41 @@ mod tests {
         idempotency_key: &str,
         created_at_ms: i64,
     ) -> FinalizeVerdictRequest {
+        let verdict_id = format!("verdict.{contract_id}");
         FinalizeVerdictRequest {
-            contract_id: contract_id.to_string(),
-            created_at_ms,
             idempotency_key: idempotency_key.to_string(),
             trace: kernel_trace(Some(work_unit_id), Some(contract_id)),
             policy: kernel_policy(),
-            verdict: json!({
-                "outcome": "pass",
-                "settlement": "approved"
+            verdict: Verdict {
+                verdict_id: verdict_id.clone(),
+                contract_id: contract_id.to_string(),
+                work_unit_id: work_unit_id.to_string(),
+                created_at_ms,
+                outcome: VerdictOutcome::Pass,
+                verification_tier: Some(VerificationTier::TierOObjective),
+                settlement_status: SettlementStatus::Settled,
+                reason_code: Some("starter.compute.accepted".to_string()),
+                metadata: json!({
+                    "settlement": "approved"
+                }),
+            },
+            settlement_link: Some(SettlementLink {
+                settlement_id: format!("settlement.{contract_id}"),
+                contract_id: contract_id.to_string(),
+                work_unit_id: work_unit_id.to_string(),
+                verdict_id,
+                created_at_ms,
+                payment_pointer: Some("wallet:receive:001".to_string()),
+                settled_amount: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(21),
+                }),
+                status: SettlementStatus::Settled,
+                metadata: json!({
+                    "source": "starter_demand"
+                }),
             }),
+            claim_hook: None,
             evidence: Vec::new(),
             hints: ReceiptHints {
                 verification_correlated: Some(false),
@@ -3003,6 +3062,7 @@ mod tests {
         assert_eq!(work_unit.status(), StatusCode::OK);
         let work_unit_payload: CreateWorkUnitResponse = response_json(work_unit).await?;
         assert_eq!(work_unit_payload.receipt.receipt_type, "kernel.work_unit.create.v1");
+        assert_eq!(work_unit_payload.work_unit.work_unit_id, "work_unit.alpha");
 
         let contract = app
             .clone()
@@ -3023,6 +3083,7 @@ mod tests {
         assert_eq!(contract.status(), StatusCode::OK);
         let contract_payload: CreateContractResponse = response_json(contract).await?;
         assert_eq!(contract_payload.receipt.receipt_type, "kernel.contract.create.v1");
+        assert_eq!(contract_payload.contract.contract_id, "contract.alpha");
 
         let submission = app
             .clone()
@@ -3043,6 +3104,10 @@ mod tests {
         assert_eq!(submission.status(), StatusCode::OK);
         let submission_payload: SubmitOutputResponse = response_json(submission).await?;
         assert_eq!(submission_payload.receipt.receipt_type, "kernel.output.submit.v1");
+        assert_eq!(
+            submission_payload.submission.submission_id,
+            "submission.contract.alpha"
+        );
 
         let verdict = app
             .clone()
@@ -3065,6 +3130,14 @@ mod tests {
         assert_eq!(
             verdict_payload.receipt.receipt_type,
             "kernel.verdict.finalize.v1"
+        );
+        assert_eq!(verdict_payload.verdict.verdict_id, "verdict.contract.alpha");
+        assert_eq!(
+            verdict_payload
+                .settlement_link
+                .as_ref()
+                .map(|settlement| settlement.settlement_id.as_str()),
+            Some("settlement.contract.alpha")
         );
 
         let receipt_response = app
@@ -3146,8 +3219,7 @@ mod tests {
         assert_eq!(replay.receipt.canonical_hash, first.receipt.canonical_hash);
 
         let mut conflicting = request.clone();
-        conflicting.payload = json!({
-            "kind": "starter.compute.job",
+        conflicting.work_unit.metadata = json!({
             "summary": "Changed payload with same idempotency key."
         });
         let conflict_response = app
