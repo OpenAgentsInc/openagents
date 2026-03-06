@@ -17,6 +17,13 @@ pub(crate) const OPENAGENTS_TOOL_TREASURY_RECEIPT: &str = "openagents_treasury_r
 pub(crate) const OPENAGENTS_TOOL_GOAL_SCHEDULER: &str = "openagents_goal_scheduler";
 pub(crate) const OPENAGENTS_TOOL_WALLET_CHECK: &str = "openagents_wallet_check";
 pub(crate) const OPENAGENTS_TOOL_PROVIDER_CONTROL: &str = "openagents_provider_control";
+pub(crate) const OPENAGENTS_TOOL_LABOR_SCOPE: &str = "openagents_labor_scope";
+pub(crate) const OPENAGENTS_TOOL_LABOR_REQUIREMENTS: &str = "openagents_labor_requirements";
+pub(crate) const OPENAGENTS_TOOL_LABOR_EVIDENCE_LIST: &str = "openagents_labor_evidence_list";
+pub(crate) const OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH: &str = "openagents_labor_evidence_attach";
+pub(crate) const OPENAGENTS_TOOL_LABOR_SUBMISSION_READY: &str = "openagents_labor_submission_ready";
+pub(crate) const OPENAGENTS_TOOL_LABOR_VERIFIER_REQUEST: &str = "openagents_labor_verifier_request";
+pub(crate) const OPENAGENTS_TOOL_LABOR_INCIDENT_ATTACH: &str = "openagents_labor_incident_attach";
 
 pub(crate) const OPENAGENTS_DYNAMIC_TOOL_NAMES: &[&str] = &[
     OPENAGENTS_TOOL_PANE_LIST,
@@ -35,6 +42,13 @@ pub(crate) const OPENAGENTS_DYNAMIC_TOOL_NAMES: &[&str] = &[
     OPENAGENTS_TOOL_GOAL_SCHEDULER,
     OPENAGENTS_TOOL_WALLET_CHECK,
     OPENAGENTS_TOOL_PROVIDER_CONTROL,
+    OPENAGENTS_TOOL_LABOR_SCOPE,
+    OPENAGENTS_TOOL_LABOR_REQUIREMENTS,
+    OPENAGENTS_TOOL_LABOR_EVIDENCE_LIST,
+    OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH,
+    OPENAGENTS_TOOL_LABOR_SUBMISSION_READY,
+    OPENAGENTS_TOOL_LABOR_VERIFIER_REQUEST,
+    OPENAGENTS_TOOL_LABOR_INCIDENT_ATTACH,
 ];
 
 pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
@@ -307,6 +321,105 @@ pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
                     }
                 },
                 "required": ["action"],
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_LABOR_SCOPE.to_string(),
+            description: "Fetch the active labor contract scope, ids, and safe artifact boundaries for the current turn."
+                .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "work_unit_id": { "type": "string" },
+                    "contract_id": { "type": "string" }
+                },
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_LABOR_REQUIREMENTS.to_string(),
+            description: "Inspect labor acceptance criteria, output requirements, and current evidence gaps."
+                .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "work_unit_id": { "type": "string" },
+                    "contract_id": { "type": "string" }
+                },
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_LABOR_EVIDENCE_LIST.to_string(),
+            description: "List current labor evidence, submission state, verdict state, and unresolved gaps."
+                .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "work_unit_id": { "type": "string" },
+                    "contract_id": { "type": "string" }
+                },
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH.to_string(),
+            description: "Attach an in-scope evidence reference to the active labor contract."
+                .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "work_unit_id": { "type": "string" },
+                    "contract_id": { "type": "string" },
+                    "kind": { "type": "string" },
+                    "uri": { "type": "string" },
+                    "digest": { "type": "string" }
+                },
+                "required": ["kind", "uri", "digest"],
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_LABOR_SUBMISSION_READY.to_string(),
+            description: "Mark the active labor submission ready once required evidence is present."
+                .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "work_unit_id": { "type": "string" },
+                    "contract_id": { "type": "string" }
+                },
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_LABOR_VERIFIER_REQUEST.to_string(),
+            description: "Request local verifier execution for the active labor submission."
+                .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "work_unit_id": { "type": "string" },
+                    "contract_id": { "type": "string" }
+                },
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_LABOR_INCIDENT_ATTACH.to_string(),
+            description: "Attach incident or dispute evidence to the active labor contract."
+                .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "work_unit_id": { "type": "string" },
+                    "contract_id": { "type": "string" },
+                    "kind": { "type": "string" },
+                    "uri": { "type": "string" },
+                    "digest": { "type": "string" }
+                },
+                "required": ["kind", "uri", "digest"],
                 "additionalProperties": false
             }),
         },

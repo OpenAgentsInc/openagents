@@ -5,7 +5,9 @@ use std::time::{Duration, Instant};
 use std::{cell::RefCell, rc::Rc};
 
 use nostr::NostrIdentity;
+use openagents_kernel_core::receipts::EvidenceRef;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use wgpui::components::TextInput;
 use wgpui::components::hud::{CommandPalette, Hotbar, PaneFrame, ResizablePane, ResizeEdge};
 use wgpui::renderer::Renderer;
@@ -1013,16 +1015,47 @@ impl AutopilotChatState {
             .or(self.last_submitted_turn_metadata.as_ref())
     }
 
-    pub fn turn_labor_submission_for(&self, turn_id: &str) -> Option<&CodexLaborSubmissionState> {
+    pub fn turn_labor_binding_for(&self, turn_id: &str) -> Option<&CodexLaborBinding> {
         self.turn_metadata_for(turn_id)
             .and_then(|metadata| metadata.labor_binding.as_ref())
+    }
+
+    pub fn turn_labor_submission_for(&self, turn_id: &str) -> Option<&CodexLaborSubmissionState> {
+        self.turn_labor_binding_for(turn_id)
             .and_then(|binding| binding.submission.as_ref())
     }
 
     pub fn turn_labor_verdict_for(&self, turn_id: &str) -> Option<&CodexLaborVerdictState> {
-        self.turn_metadata_for(turn_id)
-            .and_then(|metadata| metadata.labor_binding.as_ref())
+        self.turn_labor_binding_for(turn_id)
             .and_then(|binding| binding.verdict.as_ref())
+    }
+
+    pub fn turn_labor_scope_payload(&self, turn_id: &str) -> Option<Value> {
+        self.turn_labor_binding_for(turn_id)
+            .map(CodexLaborBinding::scope_payload)
+    }
+
+    pub fn turn_labor_requirements_payload(&self, turn_id: &str) -> Option<Value> {
+        self.turn_labor_binding_for(turn_id)
+            .map(CodexLaborBinding::requirements_payload)
+    }
+
+    pub fn turn_labor_evidence_payload(&self, turn_id: &str) -> Option<Value> {
+        self.turn_labor_binding_for(turn_id)
+            .map(CodexLaborBinding::evidence_payload)
+    }
+
+    pub fn attach_turn_labor_evidence(
+        &mut self,
+        turn_id: &str,
+        evidence: EvidenceRef,
+        incident: bool,
+    ) -> Result<Option<Value>, String> {
+        let Some(binding) = self.turn_labor_binding_mut(turn_id) else {
+            return Ok(None);
+        };
+        binding.attach_evidence_ref(evidence, incident)?;
+        Ok(Some(binding.evidence_payload()))
     }
 
     pub fn assemble_turn_labor_submission(
@@ -5222,6 +5255,82 @@ mod tests {
         );
         assert!(binding.verdict.is_none());
         assert_eq!(chat.turn_labor_settlement_ready("turn-1"), Some(false));
+    }
+
+    #[test]
+    fn labor_evidence_attachment_updates_scope_and_payload() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-1".to_string());
+        chat.submit_prompt("earn bitcoin".to_string());
+        chat.record_turn_submission_metadata(
+            "thread-1",
+            crate::labor_orchestrator::CodexRunClassification::AutonomousGoal {
+                goal_id: "goal-earn".to_string(),
+                goal_title: "Earn bitcoin".to_string(),
+            },
+            Some(fixture_goal_labor_binding()),
+            false,
+            "no-cad-signals",
+            1_000,
+            Vec::new(),
+        );
+        chat.mark_turn_started("turn-1".to_string());
+
+        let scope = chat
+            .turn_labor_scope_payload("turn-1")
+            .expect("scope should be available");
+        let artifact_scope_root = scope
+            .get("artifact_scope_root")
+            .and_then(|value| value.as_str())
+            .expect("artifact scope root should exist")
+            .to_string();
+
+        let payload = chat
+            .attach_turn_labor_evidence(
+                "turn-1",
+                openagents_kernel_core::receipts::EvidenceRef::new(
+                    "tool_log",
+                    format!("{artifact_scope_root}tool-log"),
+                    "sha256:tool-log",
+                ),
+                false,
+            )
+            .expect("evidence attach should succeed")
+            .expect("labor-bound turn should return payload");
+        assert_eq!(
+            payload
+                .get("attached")
+                .and_then(|value| value.as_array())
+                .map(Vec::len),
+            Some(1)
+        );
+
+        let incident_payload = chat
+            .attach_turn_labor_evidence(
+                "turn-1",
+                openagents_kernel_core::receipts::EvidenceRef::new(
+                    "incident_note",
+                    format!("{artifact_scope_root}incidents/note-1"),
+                    "sha256:incident-note",
+                ),
+                true,
+            )
+            .expect("incident attach should succeed")
+            .expect("labor-bound turn should return payload");
+        assert_eq!(
+            incident_payload
+                .get("incident")
+                .and_then(|value| value.as_array())
+                .map(Vec::len),
+            Some(1)
+        );
+        assert_eq!(
+            chat.turn_labor_requirements_payload("turn-1")
+                .and_then(|payload| payload.get("evidence_gaps").cloned())
+                .and_then(|value| value.as_array().cloned())
+                .map(|gaps| gaps.len()),
+            Some(2)
+        );
     }
 
     #[test]
