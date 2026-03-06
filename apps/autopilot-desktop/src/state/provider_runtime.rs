@@ -56,7 +56,7 @@ impl ProviderBlocker {
             Self::SkillTrustUnavailable => "SKL trust gate is not trusted",
             Self::CreditLaneUnavailable => "AC credit lane is not available",
             Self::OllamaUnavailable => "Local Ollama backend is unavailable",
-            Self::OllamaModelUnavailable => "Configured Ollama serving model is unavailable",
+            Self::OllamaModelUnavailable => "No local Ollama serving model is ready",
         }
     }
 }

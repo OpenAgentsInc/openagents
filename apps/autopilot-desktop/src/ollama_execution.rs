@@ -4,7 +4,7 @@ use reqwest::Url;
 use reqwest::blocking::Client;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
@@ -279,30 +279,40 @@ impl OllamaExecutionState {
                 self.snapshot.last_action =
                     Some("Refreshed local Ollama model inventory".to_string());
 
-                if let Some(configured_model) = self.config.configured_model.as_deref() {
-                    if self
-                        .snapshot
-                        .available_models
-                        .iter()
-                        .any(|candidate| candidate == configured_model)
-                    {
-                        match validate_model(&client, &base_url, configured_model) {
-                            Ok(()) => {
-                                self.snapshot.ready_model = Some(configured_model.to_string());
-                            }
-                            Err(error) => {
-                                self.snapshot.last_error = Some(error);
-                            }
+                let ordered_candidates = ordered_text_generation_model_candidates(
+                    self.config.configured_model.as_deref(),
+                    &self.snapshot.available_models,
+                    &self.snapshot.loaded_models,
+                );
+                let configured_model = self
+                    .config
+                    .configured_model
+                    .as_deref()
+                    .and_then(normalize_optional_text);
+
+                for candidate in ordered_candidates {
+                    match validate_model(&client, &base_url, candidate.as_str()) {
+                        Ok(()) => {
+                            self.snapshot.ready_model = Some(candidate.clone());
+                            self.snapshot.last_error = None;
+                            self.snapshot.last_action = Some(describe_model_selection(
+                                configured_model.as_deref(),
+                                candidate.as_str(),
+                                &self.snapshot.loaded_models,
+                            ));
+                            break;
                         }
-                    } else {
-                        self.snapshot.last_error = Some(format!(
-                            "Configured Ollama model '{}' is not installed locally",
-                            configured_model
-                        ));
+                        Err(error) => {
+                            self.snapshot.last_error = Some(error);
+                        }
                     }
-                } else {
-                    self.snapshot.last_error =
-                        Some("Set OPENAGENTS_OLLAMA_MODEL to serve kind 5050 jobs".to_string());
+                }
+
+                if self.snapshot.ready_model.is_none() {
+                    self.snapshot.last_error = Some(describe_missing_model_state(
+                        configured_model.as_deref(),
+                        &self.snapshot.available_models,
+                    ));
                 }
             }
             Err(error) => {
@@ -488,8 +498,10 @@ impl OllamaExecutionState {
             }
         };
         let Some(model) = self.selected_model_for_runtime() else {
-            self.snapshot.last_error =
-                Some("Set OPENAGENTS_OLLAMA_MODEL to serve kind 5050 jobs".to_string());
+            self.snapshot.last_error = Some(describe_missing_model_state(
+                self.snapshot.configured_model.as_deref(),
+                &self.snapshot.available_models,
+            ));
             self.snapshot.last_action = Some("Ollama warm-up skipped".to_string());
             self.snapshot.refreshed_at = Some(Instant::now());
             self.publish_snapshot(update_tx);
@@ -575,13 +587,15 @@ impl OllamaExecutionState {
     }
 
     fn selected_model_for_runtime(&self) -> Option<String> {
-        normalize_optional_text(
-            self.snapshot
-                .ready_model
-                .as_deref()
-                .or(self.snapshot.configured_model.as_deref())
-                .unwrap_or_default(),
-        )
+        self.snapshot.ready_model.clone().or_else(|| {
+            ordered_text_generation_model_candidates(
+                self.snapshot.configured_model.as_deref(),
+                &self.snapshot.available_models,
+                &self.snapshot.loaded_models,
+            )
+            .into_iter()
+            .next()
+        })
     }
 
     fn refresh_loaded_models(&mut self, client: &Client, base_url: &Url) {
@@ -646,6 +660,139 @@ fn normalize_prompt(raw: &str) -> String {
         .replace('\r', "\n")
         .trim()
         .to_string()
+}
+
+fn ordered_text_generation_model_candidates(
+    configured_model: Option<&str>,
+    available_models: &[String],
+    loaded_models: &[String],
+) -> Vec<String> {
+    let configured_model = configured_model.and_then(normalize_optional_text);
+    let mut seen = BTreeSet::<String>::new();
+    let mut candidates = available_models
+        .iter()
+        .filter_map(|model| normalize_optional_text(model.as_str()))
+        .filter(|model| looks_like_text_generation_model(model.as_str()))
+        .filter(|model| seen.insert(model.clone()))
+        .collect::<Vec<_>>();
+
+    candidates.sort_by(|left, right| {
+        let left_is_configured = configured_model.as_deref() == Some(left.as_str());
+        let right_is_configured = configured_model.as_deref() == Some(right.as_str());
+        right_is_configured
+            .cmp(&left_is_configured)
+            .then_with(|| {
+                model_preference_score(right.as_str(), loaded_models)
+                    .cmp(&model_preference_score(left.as_str(), loaded_models))
+            })
+            .then_with(|| left.cmp(right))
+    });
+
+    candidates
+}
+
+fn looks_like_text_generation_model(model: &str) -> bool {
+    let normalized = model.to_ascii_lowercase();
+    !["embed", "embedding", "rerank", "whisper"]
+        .iter()
+        .any(|needle| normalized.contains(needle))
+}
+
+fn model_preference_score(model: &str, loaded_models: &[String]) -> i32 {
+    let normalized = model.to_ascii_lowercase();
+    let mut score = 100;
+
+    if loaded_models.iter().any(|candidate| candidate == model) {
+        score += 1_000;
+    }
+
+    score += if normalized.contains("qwen3") {
+        320
+    } else if normalized.contains("qwen2.5") {
+        300
+    } else if normalized.contains("qwen") {
+        280
+    } else if normalized.contains("llama3.3") {
+        260
+    } else if normalized.contains("llama3.2") {
+        250
+    } else if normalized.contains("llama3") {
+        240
+    } else if normalized.contains("llama") {
+        220
+    } else if normalized.contains("ministral") {
+        210
+    } else if normalized.contains("mistral") {
+        200
+    } else if normalized.contains("deepseek-r1") {
+        190
+    } else if normalized.contains("deepseek") {
+        180
+    } else if normalized.contains("gemma3") {
+        170
+    } else if normalized.contains("gemma") {
+        160
+    } else if normalized.contains("phi4") {
+        150
+    } else if normalized.contains("phi") {
+        140
+    } else {
+        0
+    };
+
+    if normalized.contains("instruct") || normalized.contains("chat") {
+        score += 20;
+    }
+    if normalized.contains("vision") {
+        score -= 40;
+    }
+    if normalized.contains("coder") || normalized.contains(":code") {
+        score -= 10;
+    }
+
+    score
+}
+
+fn describe_model_selection(
+    configured_model: Option<&str>,
+    ready_model: &str,
+    loaded_models: &[String],
+) -> String {
+    if configured_model == Some(ready_model) {
+        format!(
+            "Refreshed local Ollama model inventory; using configured model '{}'",
+            ready_model
+        )
+    } else if loaded_models
+        .iter()
+        .any(|candidate| candidate == ready_model)
+    {
+        format!(
+            "Refreshed local Ollama model inventory; auto-selected loaded model '{}'",
+            ready_model
+        )
+    } else {
+        format!(
+            "Refreshed local Ollama model inventory; auto-selected local model '{}'",
+            ready_model
+        )
+    }
+}
+
+fn describe_missing_model_state(
+    configured_model: Option<&str>,
+    available_models: &[String],
+) -> String {
+    if available_models.is_empty() {
+        "No local Ollama text-generation models are installed".to_string()
+    } else if let Some(configured_model) = configured_model {
+        format!(
+            "Configured Ollama model '{}' is unavailable and no compatible local text-generation model was ready",
+            configured_model
+        )
+    } else {
+        "No compatible local Ollama text-generation model is ready".to_string()
+    }
 }
 
 fn validate_local_base_url(raw: &str) -> Result<Url, String> {
@@ -931,22 +1078,30 @@ mod tests {
     use super::{
         OllamaExecutionCommand, OllamaExecutionConfig, OllamaExecutionUpdate,
         OllamaExecutionWorker, build_generate_body, build_generate_options, normalize_prompt,
-        validate_local_base_url,
+        ordered_text_generation_model_candidates, validate_local_base_url,
     };
     use crate::state::job_inbox::JobExecutionParam;
     use openagents_kernel_core::ids::sha256_prefixed_text;
     use serde_json::Value;
-    use std::io::{Read, Write};
+    use std::io::{ErrorKind, Read, Write};
     use std::net::{TcpListener, TcpStream};
     use std::sync::{Arc, Mutex};
     use std::thread::JoinHandle;
     use std::time::{Duration, Instant};
 
     fn spawn_mock_ollama_server(
+        available_models: &[&str],
         loaded_models: &[&str],
     ) -> (String, Arc<Mutex<Vec<Value>>>, JoinHandle<()>) {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock ollama server");
+        listener
+            .set_nonblocking(true)
+            .expect("set mock ollama listener nonblocking");
         let address = listener.local_addr().expect("listener addr");
+        let available_models = available_models
+            .iter()
+            .map(|model| serde_json::json!({ "name": model }))
+            .collect::<Vec<_>>();
         let loaded_models = loaded_models
             .iter()
             .map(|model| serde_json::json!({ "name": model }))
@@ -955,15 +1110,23 @@ mod tests {
         let captured_requests = Arc::clone(&generate_requests);
 
         let handle = std::thread::spawn(move || {
-            // Worker startup and a single generation issue multiple refresh/validation calls
-            // before and after the generate request, so the mock server must outlive one
-            // full execution cycle.
-            for _ in 0..9 {
-                let (mut stream, _) = listener.accept().expect("accept mock ollama request");
+            let deadline = Instant::now() + Duration::from_secs(2);
+            loop {
+                let (mut stream, _) = match listener.accept() {
+                    Ok(value) => value,
+                    Err(error) if error.kind() == ErrorKind::WouldBlock => {
+                        if Instant::now() >= deadline {
+                            break;
+                        }
+                        std::thread::sleep(Duration::from_millis(10));
+                        continue;
+                    }
+                    Err(error) => panic!("accept mock ollama request: {error}"),
+                };
                 let (method, path, body) = read_http_request(&mut stream);
                 let response_body = match (method.as_str(), path.as_str()) {
                     ("GET", "/api/tags") => serde_json::json!({
-                        "models": [{ "name": "llama3.2:latest" }],
+                        "models": available_models,
                     })
                     .to_string(),
                     ("GET", "/api/ps") => serde_json::json!({
@@ -1143,7 +1306,7 @@ mod tests {
     #[test]
     fn worker_generate_emits_provenance_and_normalized_ollama_request() {
         let (base_url, captured_generate_requests, server_handle) =
-            spawn_mock_ollama_server(&["llama3.2:latest"]);
+            spawn_mock_ollama_server(&["llama3.2:latest"], &["llama3.2:latest"]);
         let mut worker = OllamaExecutionWorker::spawn_with_config(OllamaExecutionConfig {
             base_url: base_url.clone(),
             configured_model: Some("llama3.2:latest".to_string()),
@@ -1246,6 +1409,92 @@ mod tests {
         assert_eq!(generate_body["options"]["num_predict"], 64);
         assert_eq!(generate_body["options"]["top_k"], 16);
         assert_eq!(generate_body["options"]["top_p"], 0.95);
+
+        server_handle.join().expect("mock ollama thread");
+    }
+
+    #[test]
+    fn candidate_order_prefers_loaded_general_models_and_skips_embeddings() {
+        let ordered = ordered_text_generation_model_candidates(
+            None,
+            &[
+                "nomic-embed-text:latest".to_string(),
+                "llama3.2:latest".to_string(),
+                "qwen3:8b".to_string(),
+            ],
+            &["qwen3:8b".to_string()],
+        );
+
+        assert_eq!(ordered.first().map(String::as_str), Some("qwen3:8b"));
+        assert!(!ordered.iter().any(|model| model.contains("embed")));
+    }
+
+    #[test]
+    fn worker_auto_selects_loaded_model_when_no_env_model_is_set() {
+        let (base_url, _, server_handle) =
+            spawn_mock_ollama_server(&["llama3.2:latest", "qwen3:8b"], &["qwen3:8b"]);
+        let mut worker = OllamaExecutionWorker::spawn_with_config(OllamaExecutionConfig {
+            base_url,
+            configured_model: None,
+            refresh_interval: Duration::from_secs(60),
+        });
+
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut ready_model = None;
+        let mut last_error = None;
+        while Instant::now() < deadline {
+            for update in worker.drain_updates() {
+                if let OllamaExecutionUpdate::Snapshot(snapshot) = update {
+                    ready_model = snapshot.ready_model.clone();
+                    last_error = snapshot.last_error.clone();
+                    if ready_model.is_some() {
+                        break;
+                    }
+                }
+            }
+            if ready_model.is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+
+        assert_eq!(ready_model.as_deref(), Some("qwen3:8b"));
+        assert_eq!(last_error, None);
+
+        server_handle.join().expect("mock ollama thread");
+    }
+
+    #[test]
+    fn worker_falls_back_when_configured_model_is_missing_locally() {
+        let (base_url, _, server_handle) =
+            spawn_mock_ollama_server(&["llama3.2:latest", "qwen3:8b"], &["qwen3:8b"]);
+        let mut worker = OllamaExecutionWorker::spawn_with_config(OllamaExecutionConfig {
+            base_url,
+            configured_model: Some("not-installed:latest".to_string()),
+            refresh_interval: Duration::from_secs(60),
+        });
+
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut ready_model = None;
+        let mut last_error = None;
+        while Instant::now() < deadline {
+            for update in worker.drain_updates() {
+                if let OllamaExecutionUpdate::Snapshot(snapshot) = update {
+                    ready_model = snapshot.ready_model.clone();
+                    last_error = snapshot.last_error.clone();
+                    if ready_model.is_some() {
+                        break;
+                    }
+                }
+            }
+            if ready_model.is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+
+        assert_eq!(ready_model.as_deref(), Some("qwen3:8b"));
+        assert_eq!(last_error, None);
 
         server_handle.join().expect("mock ollama thread");
     }

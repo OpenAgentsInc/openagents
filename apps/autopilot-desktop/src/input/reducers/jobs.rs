@@ -1686,7 +1686,7 @@ fn ollama_request_accept_block_reason(
             ollama
                 .last_error
                 .clone()
-                .unwrap_or_else(|| "Configured Ollama serving model is unavailable".to_string()),
+                .unwrap_or_else(|| "No local Ollama serving model is ready".to_string()),
         );
     }
     None
@@ -1884,7 +1884,7 @@ mod tests {
         let snapshot = OllamaExecutionSnapshot {
             reachable: true,
             ready_model: None,
-            last_error: Some("Set OPENAGENTS_OLLAMA_MODEL to serve kind 5050 jobs".to_string()),
+            last_error: Some("No local Ollama text-generation models are installed".to_string()),
             ..OllamaExecutionSnapshot::default()
         };
         assert!(!snapshot.is_ready());

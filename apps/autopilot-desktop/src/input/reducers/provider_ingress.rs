@@ -102,8 +102,7 @@ pub(super) fn sync_provider_runtime_mode_from_provider_state(state: &mut RenderS
         state.provider_runtime.mode = ProviderMode::Degraded;
         state.provider_runtime.degraded_reason_code = Some("OLLAMA_MODEL_UNAVAILABLE".to_string());
         state.provider_runtime.last_error_detail = Some(
-            ollama_error
-                .unwrap_or_else(|| "Configured Ollama serving model is unavailable".to_string()),
+            ollama_error.unwrap_or_else(|| "No local Ollama serving model is ready".to_string()),
         );
         state.provider_runtime.last_authoritative_error_class = Some(EarnFailureClass::Execution);
         state.provider_runtime.last_result = state.provider_runtime.ollama.last_action.clone();
