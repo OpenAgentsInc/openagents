@@ -25,6 +25,8 @@ const ENV_CONTROL_BASE_URL: &str = "NEXUS_RELAY_CONTROL_BASE_URL";
 const ENV_UPSTREAM_LISTEN_ADDR: &str = "NEXUS_RELAY_UPSTREAM_LISTEN_ADDR";
 const ENV_DATA_DIR: &str = "NEXUS_RELAY_DATA_DIR";
 const ENV_PUBLIC_WS_URL: &str = "NEXUS_RELAY_PUBLIC_WS_URL";
+const ENV_UPSTREAM_CONFIG_FILE: &str = "NEXUS_RELAY_UPSTREAM_CONFIG_FILE";
+const ENV_ENABLE_NIP42_AUTH: &str = "NEXUS_RELAY_ENABLE_NIP42_AUTH";
 const DEFAULT_LISTEN_ADDR: &str = "127.0.0.1:42110";
 const DEFAULT_CONTROL_BASE_URL: &str = "http://127.0.0.1:42020";
 const DEFAULT_UPSTREAM_LISTEN_ADDR: &str = "127.0.0.1:42111";
@@ -38,6 +40,8 @@ pub struct DurableRelayConfig {
     pub upstream_listen_addr: SocketAddr,
     pub data_dir: PathBuf,
     pub public_ws_url: String,
+    pub upstream_config_file: Option<PathBuf>,
+    pub enable_nip42_auth: bool,
 }
 
 impl DurableRelayConfig {
@@ -67,6 +71,16 @@ impl DurableRelayConfig {
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
             .unwrap_or_else(|| format!("ws://127.0.0.1:{}/", listen_addr.port()));
+        let upstream_config_file = std::env::var(ENV_UPSTREAM_CONFIG_FILE)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from);
+        let enable_nip42_auth = std::env::var(ENV_ENABLE_NIP42_AUTH)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .map_or(Ok(true), |value| parse_bool_env(ENV_ENABLE_NIP42_AUTH, &value))?;
 
         Ok(Self {
             listen_addr,
@@ -74,6 +88,8 @@ impl DurableRelayConfig {
             upstream_listen_addr,
             data_dir,
             public_ws_url,
+            upstream_config_file,
+            enable_nip42_auth,
         })
     }
 
@@ -82,15 +98,22 @@ impl DurableRelayConfig {
         Ok(())
     }
 
-    fn build_upstream_settings(&self) -> nostr_rs_relay_upstream::config::Settings {
-        let mut settings = nostr_rs_relay_upstream::config::Settings::default();
+    fn build_upstream_settings(
+        &self,
+    ) -> Result<nostr_rs_relay_upstream::config::Settings, anyhow::Error> {
+        let mut settings = if let Some(path) = &self.upstream_config_file {
+            nostr_rs_relay_upstream::config::Settings::new(&Some(path.display().to_string()))
+                .map_err(|error| anyhow::anyhow!("failed to load upstream relay config: {error}"))?
+        } else {
+            nostr_rs_relay_upstream::config::Settings::default()
+        };
         settings.info.name = Some("OpenAgents Nexus".to_string());
         settings.info.relay_url = Some(self.public_ws_url.clone());
         settings.network.address = self.upstream_listen_addr.ip().to_string();
         settings.network.port = self.upstream_listen_addr.port();
         settings.database.data_directory = self.data_dir.display().to_string();
-        settings.authorization.nip42_auth = false;
-        settings
+        settings.authorization.nip42_auth = self.enable_nip42_auth;
+        Ok(settings)
     }
 
     fn upstream_http_url(&self) -> String {
@@ -99,6 +122,13 @@ impl DurableRelayConfig {
 
     fn upstream_ws_url(&self) -> String {
         format!("ws://{}/", self.upstream_listen_addr)
+    }
+
+    fn upstream_http_url_for_path(&self, path_and_query: &str) -> Result<Url, String> {
+        let base = Url::parse(self.upstream_http_url().as_str())
+            .map_err(|error| format!("invalid upstream base url: {error}"))?;
+        base.join(path_and_query)
+            .map_err(|error| format!("invalid upstream path: {error}"))
     }
 }
 
@@ -139,6 +169,7 @@ fn build_router(config: DurableRelayConfig) -> Router {
         .route("/ws", any(relay_websocket))
         .route("/api/{*path}", any(proxy_control_request))
         .route("/v1/{*path}", any(proxy_control_request))
+        .route("/metrics", get(proxy_upstream_metrics))
         .route("/healthz", get(healthz))
         .with_state(state)
 }
@@ -146,6 +177,9 @@ fn build_router(config: DurableRelayConfig) -> Router {
 async fn relay_root(State(state): State<AppState>, request: Request) -> Response {
     if is_websocket_upgrade_request(request.headers()) {
         return upgrade_websocket(state, request).await;
+    }
+    if is_nip11_request(request.headers()) {
+        return proxy_upstream_request(&state, request, true).await;
     }
     Html(render_homepage(&state.config)).into_response()
 }
@@ -163,6 +197,14 @@ async fn healthz(State(state): State<AppState>) -> impl IntoResponse {
         control_base_url: state.config.control_base_url.clone(),
         data_directory: state.config.data_dir.display().to_string(),
     })
+}
+
+async fn proxy_upstream_metrics(State(state): State<AppState>) -> Response {
+    let request = Request::builder()
+        .uri("/metrics")
+        .body(Body::empty())
+        .expect("metrics request");
+    proxy_upstream_request(&state, request, false).await
 }
 
 async fn proxy_control_request(State(state): State<AppState>, request: Request) -> Response {
@@ -210,6 +252,75 @@ async fn proxy_control_request(State(state): State<AppState>, request: Request) 
         Err(error) => {
             let mut response = Response::new(Body::from(format!(
                 "failed to build proxied response: {error}"
+            )));
+            *response.status_mut() = StatusCode::BAD_GATEWAY;
+            return response;
+        }
+    };
+    copy_proxy_response_headers(response.headers_mut(), &upstream_headers);
+    response
+}
+
+async fn proxy_upstream_request(
+    state: &AppState,
+    request: Request,
+    preserve_accept: bool,
+) -> Response {
+    let method = request.method().clone();
+    let uri = request.uri().clone();
+    let headers = request.headers().clone();
+    let body_bytes = match to_bytes(request.into_body(), MAX_PROXY_REQUEST_BYTES).await {
+        Ok(body) => body,
+        Err(error) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                format!("failed to read proxied upstream request body: {error}"),
+            )
+                .into_response();
+        }
+    };
+    let path_and_query = uri
+        .path_and_query()
+        .map_or_else(|| uri.path().to_string(), std::string::ToString::to_string);
+    let target = match state.config.upstream_http_url_for_path(path_and_query.as_str()) {
+        Ok(url) => url,
+        Err(error) => return (StatusCode::BAD_GATEWAY, error).into_response(),
+    };
+
+    let mut upstream_request = state.control_http_client.request(method, target);
+    for (name, value) in &headers {
+        if should_skip_proxy_request_header(name) {
+            continue;
+        }
+        if !preserve_accept && *name == header::ACCEPT {
+            continue;
+        }
+        upstream_request = upstream_request.header(name, value);
+    }
+    upstream_request = upstream_request.body(body_bytes.to_vec());
+
+    let upstream = match upstream_request.send().await {
+        Ok(response) => response,
+        Err(error) => {
+            return (
+                StatusCode::BAD_GATEWAY,
+                format!("failed to reach durable upstream relay: {error}"),
+            )
+                .into_response();
+        }
+    };
+
+    let status = upstream.status();
+    let upstream_headers = upstream.headers().clone();
+    let body_stream = upstream.bytes_stream().map_err(std::io::Error::other);
+    let mut response = match Response::builder()
+        .status(status)
+        .body(Body::from_stream(body_stream))
+    {
+        Ok(response) => response,
+        Err(error) => {
+            let mut response = Response::new(Body::from(format!(
+                "failed to build upstream relay response: {error}"
             )));
             *response.status_mut() = StatusCode::BAD_GATEWAY;
             return response;
@@ -380,6 +491,13 @@ fn is_websocket_upgrade_request(headers: &HeaderMap) -> bool {
     headers.contains_key(header::UPGRADE)
 }
 
+fn is_nip11_request(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::ACCEPT)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.contains("application/nostr+json"))
+}
+
 fn parse_socket_addr(name: &str, default: &str) -> Result<SocketAddr, String> {
     std::env::var(name)
         .ok()
@@ -390,6 +508,14 @@ fn parse_socket_addr(name: &str, default: &str) -> Result<SocketAddr, String> {
         .map_err(|error| format!("invalid {name}: {error}"))
 }
 
+fn parse_bool_env(name: &str, value: &str) -> Result<bool, String> {
+    match value.to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Ok(true),
+        "0" | "false" | "no" | "off" => Ok(false),
+        _ => Err(format!("invalid {name}: expected boolean value")),
+    }
+}
+
 #[cfg_attr(not(test), allow(dead_code))]
 struct UpstreamRelayHandle {
     shutdown_tx: SyncSender<()>,
@@ -398,7 +524,7 @@ struct UpstreamRelayHandle {
 
 impl UpstreamRelayHandle {
     async fn spawn(config: DurableRelayConfig) -> Result<Self, anyhow::Error> {
-        let settings = config.build_upstream_settings();
+        let settings = config.build_upstream_settings()?;
         let readiness_url = config.upstream_http_url();
         let (shutdown_tx, shutdown_rx) = mpsc::channel();
         let join = tokio::task::spawn_blocking(move || {
@@ -434,7 +560,7 @@ async fn wait_for_upstream_ready(url: &str) -> Result<(), anyhow::Error> {
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
-    use axum::http::StatusCode;
+    use axum::http::{StatusCode, header};
     use futures_util::{SinkExt, StreamExt};
     use serde_json::Value;
     use std::net::SocketAddr;
@@ -463,6 +589,8 @@ mod tests {
             upstream_listen_addr,
             data_dir: data_dir.to_path_buf(),
             public_ws_url: format!("ws://{listen_addr}/"),
+            upstream_config_file: None,
+            enable_nip42_auth: false,
         })
     }
 
@@ -543,6 +671,103 @@ mod tests {
         let health: Value = response.json().await?;
         assert_eq!(health["relay_backend"], "durable-upstream");
         assert_eq!(health["upstream_ws_url"], expected_upstream);
+
+        server.abort();
+        relay.shutdown().await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn durable_root_proxies_nip11_requests() -> Result<()> {
+        let tempdir = tempdir()?;
+        let mut config = durable_config(tempdir.path())?;
+        config.enable_nip42_auth = true;
+        let relay = UpstreamRelayHandle::spawn(config.clone()).await?;
+
+        let listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
+        let addr = listener.local_addr()?;
+        let server = tokio::spawn(async move {
+            axum::serve(listener, super::build_router(config))
+                .await
+                .map_err(anyhow::Error::from)
+        });
+
+        let client = reqwest::Client::new();
+        let response = client
+            .get(format!("http://{addr}/"))
+            .header(header::ACCEPT, "application/nostr+json")
+            .send()
+            .await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("application/nostr+json")
+        );
+        let body: Value = response.json().await?;
+        assert_eq!(body["name"], "OpenAgents Nexus");
+        assert!(body["supported_nips"]
+            .as_array()
+            .is_some_and(|nips| nips.iter().any(|value| value == 42)));
+
+        server.abort();
+        relay.shutdown().await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn durable_metrics_proxy_exposes_upstream_metrics() -> Result<()> {
+        let tempdir = tempdir()?;
+        let config = durable_config(tempdir.path())?;
+        let relay = UpstreamRelayHandle::spawn(config.clone()).await?;
+
+        let listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
+        let addr = listener.local_addr()?;
+        let server = tokio::spawn(async move {
+            axum::serve(listener, super::build_router(config))
+                .await
+                .map_err(anyhow::Error::from)
+        });
+
+        let response = reqwest::get(format!("http://{addr}/metrics")).await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.text().await?;
+        assert!(body.contains("nostr_connections"));
+        assert!(body.contains("nostr_cmd_event_total"));
+
+        server.abort();
+        relay.shutdown().await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn durable_websocket_proxies_nip42_auth_challenge() -> Result<()> {
+        let tempdir = tempdir()?;
+        let mut config = durable_config(tempdir.path())?;
+        config.enable_nip42_auth = true;
+        let relay = UpstreamRelayHandle::spawn(config.clone()).await?;
+
+        let listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
+        let addr = listener.local_addr()?;
+        let server = tokio::spawn(async move {
+            axum::serve(listener, super::build_router(config))
+                .await
+                .map_err(anyhow::Error::from)
+        });
+
+        let (mut socket, _) = connect_async(format!("ws://{addr}/")).await?;
+        let first = timeout(Duration::from_secs(2), socket.next()).await;
+        let first = first
+            .ok()
+            .and_then(|frame| frame)
+            .ok_or_else(|| anyhow::anyhow!("expected auth challenge"))??;
+        let first = match first {
+            WsMessage::Text(text) => text.to_string(),
+            other => return Err(anyhow::anyhow!("unexpected auth frame: {other:?}")),
+        };
+        assert!(first.contains("\"AUTH\""));
 
         server.abort();
         relay.shutdown().await?;
