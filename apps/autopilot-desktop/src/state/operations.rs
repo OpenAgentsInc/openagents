@@ -920,6 +920,7 @@ pub struct StarterJobsState {
     pub dispatch_interval_seconds: u64,
     pub max_inflight_jobs: usize,
     pub last_dispatched_at: Option<Instant>,
+    pub next_hosted_sync_due_at: Option<Instant>,
     next_dispatch_due_at: Option<Instant>,
     next_dispatch_seq: u64,
 }
@@ -938,6 +939,7 @@ impl Default for StarterJobsState {
             dispatch_interval_seconds: STARTER_DEMAND_DEFAULT_DISPATCH_INTERVAL_SECONDS,
             max_inflight_jobs: STARTER_DEMAND_DEFAULT_MAX_INFLIGHT_JOBS,
             last_dispatched_at: None,
+            next_hosted_sync_due_at: None,
             next_dispatch_due_at: None,
             next_dispatch_seq: 0,
         }
@@ -968,6 +970,90 @@ impl StarterJobsState {
         };
         self.pane_set_ready(format!("Starter demand kill switch {state}"));
         self.kill_switch_enabled
+    }
+
+    pub fn sync_hosted_offers(
+        &mut self,
+        jobs: Vec<StarterJobRow>,
+        budget_cap_sats: u64,
+        budget_allocated_sats: u64,
+        dispatch_interval_seconds: u64,
+        max_inflight_jobs: usize,
+        next_sync_due_at: Option<Instant>,
+        reason: &str,
+    ) {
+        let existing_by_job_id = self
+            .jobs
+            .iter()
+            .map(|job| (job.job_id.clone(), (job.status, job.payout_pointer.clone())))
+            .collect::<std::collections::HashMap<_, _>>();
+        self.jobs = jobs
+            .into_iter()
+            .map(|mut job| {
+                if let Some((status, payout_pointer)) = existing_by_job_id.get(job.job_id.as_str())
+                    && *status != StarterJobStatus::Queued
+                {
+                    job.status = *status;
+                    job.payout_pointer = payout_pointer.clone();
+                }
+                job
+            })
+            .collect();
+        self.budget_cap_sats = budget_cap_sats.max(1);
+        self.budget_allocated_sats = budget_allocated_sats.min(self.budget_cap_sats);
+        self.dispatch_interval_seconds = dispatch_interval_seconds.clamp(1, 3600);
+        self.max_inflight_jobs = max_inflight_jobs.clamp(1, 1);
+        self.next_hosted_sync_due_at = next_sync_due_at;
+        if let Some(selected_id) = self.selected_job_id.as_deref()
+            && !self.jobs.iter().any(|job| job.job_id == selected_id)
+        {
+            self.selected_job_id = self.jobs.first().map(|job| job.job_id.clone());
+        } else if self.selected_job_id.is_none() {
+            self.selected_job_id = self.jobs.first().map(|job| job.job_id.clone());
+        }
+        self.pane_set_ready(reason.to_string());
+    }
+
+    pub fn clear_hosted_offers(&mut self, reason: &str) -> bool {
+        let changed = !self.jobs.is_empty()
+            || self.selected_job_id.is_some()
+            || self.load_state != PaneLoadState::Ready
+            || self.last_action.as_deref() != Some(reason);
+        self.jobs.clear();
+        self.selected_job_id = None;
+        self.next_hosted_sync_due_at = None;
+        self.pane_set_ready(reason.to_string());
+        changed
+    }
+
+    pub fn mark_running(&mut self, job_id: &str) {
+        let updated_job_id = self
+            .jobs
+            .iter_mut()
+            .find(|job| job.job_id == job_id)
+            .map(|job| {
+                job.status = StarterJobStatus::Running;
+                job.job_id.clone()
+            });
+        if let Some(updated_job_id) = updated_job_id {
+            self.selected_job_id = Some(updated_job_id.clone());
+            self.pane_set_ready(format!("Hosted starter offer running {}", updated_job_id));
+        }
+    }
+
+    pub fn mark_completed(&mut self, job_id: &str, payment_pointer: &str) {
+        let updated_job_id = self
+            .jobs
+            .iter_mut()
+            .find(|job| job.job_id == job_id)
+            .map(|job| {
+                job.status = StarterJobStatus::Completed;
+                job.payout_pointer = Some(payment_pointer.to_string());
+                job.job_id.clone()
+            });
+        if let Some(updated_job_id) = updated_job_id {
+            self.pane_set_ready(format!("Hosted starter offer completed {}", updated_job_id));
+        }
     }
 
     pub fn apply_dispatch_controls(

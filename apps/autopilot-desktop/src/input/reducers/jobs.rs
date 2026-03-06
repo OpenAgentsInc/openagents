@@ -1024,6 +1024,9 @@ fn accept_request_by_id(
         request_id
     ));
     state.active_job.start_from_request(&selected_request);
+    if selected_request.demand_source == crate::app_state::JobDemandSource::StarterDemand {
+        state.starter_jobs.mark_running(request_id.as_str());
+    }
     sync_provider_runtime_queue_depth(state);
     if let Some(job) = state.active_job.job.as_ref() {
         state.earn_job_lifecycle_projection.record_active_job_stage(

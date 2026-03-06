@@ -2123,7 +2123,7 @@ fn load_activity_projection_rows(path: &Path) -> Result<Vec<ActivityEventRow>, S
     Ok(normalize_activity_projection_rows(document.rows))
 }
 
-const DEFAULT_NEXUS_PRIMARY_RELAY_URL: &str = "wss://relay.openagents.dev";
+pub(crate) const DEFAULT_NEXUS_PRIMARY_RELAY_URL: &str = "wss://relay.openagents.dev";
 const DEFAULT_PUBLIC_BACKUP_RELAY_URLS: [&str; 3] = [
     "wss://relay.primal.net",
     "wss://relay.damus.io",
@@ -3943,6 +3943,8 @@ pub struct RenderState {
     pub sync_health: SyncHealthState,
     pub sync_bootstrap_note: Option<String>,
     pub sync_bootstrap_error: Option<String>,
+    pub hosted_control_base_url: Option<String>,
+    pub hosted_control_bearer_token: Option<String>,
     pub sync_apply_engine: crate::sync_apply::SyncApplyEngine,
     pub sync_lifecycle_worker_id: String,
     pub sync_lifecycle: crate::sync_lifecycle::RuntimeSyncLifecycleManager,

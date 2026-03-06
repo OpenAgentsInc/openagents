@@ -277,6 +277,8 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             sync_health,
             sync_bootstrap_note: None,
             sync_bootstrap_error: None,
+            hosted_control_base_url: None,
+            hosted_control_bearer_token: None,
             sync_apply_engine,
             sync_lifecycle_worker_id: "desktopw:sync".to_string(),
             sync_lifecycle: crate::sync_lifecycle::RuntimeSyncLifecycleManager::default(),
@@ -340,6 +342,8 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
 fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
     state.sync_bootstrap_note = None;
     state.sync_bootstrap_error = None;
+    state.hosted_control_base_url = None;
+    state.hosted_control_bearer_token = None;
     let worker_id = state.sync_lifecycle_worker_id.clone();
     state.sync_lifecycle.mark_idle(worker_id.as_str());
     state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
@@ -365,6 +369,22 @@ fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
             return;
         }
     };
+
+    if let Ok(control_base_url) = crate::sync_bootstrap::resolve_control_base_url_from_env() {
+        state.hosted_control_base_url = Some(control_base_url.clone());
+        match crate::sync_bootstrap::resolve_control_bearer_auth_from_env(
+            &client,
+            control_base_url.as_str(),
+        ) {
+            Ok(Some(token)) => {
+                state.hosted_control_bearer_token = Some(token);
+            }
+            Ok(None) => {}
+            Err(error) => {
+                state.sync_bootstrap_error = Some(error.clone());
+            }
+        }
+    }
 
     match crate::sync_bootstrap::bootstrap_sync_session_from_env(&client) {
         Ok(Some(result)) => {
