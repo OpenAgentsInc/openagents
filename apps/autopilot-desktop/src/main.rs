@@ -7,6 +7,7 @@ mod credentials;
 mod economy_kernel_receipts;
 mod hotbar;
 mod input;
+mod kernel_control;
 mod logging;
 mod nip_sa_wallet_bridge;
 mod openagents_dynamic_tools;

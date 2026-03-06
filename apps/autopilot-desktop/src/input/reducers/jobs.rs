@@ -849,6 +849,27 @@ fn transition_active_job_to_delivered(
     };
     if let Some(job) = state.active_job.job.as_ref().cloned() {
         record_active_job_stage_transition(state, &job, stage, source);
+        match crate::kernel_control::submit_active_job_output(state) {
+            Ok(receipt_id) => {
+                state.active_job.append_event(format!(
+                    "submitted authoritative kernel output receipt {}",
+                    receipt_id
+                ));
+            }
+            Err(error) => {
+                state.active_job.append_event(format!(
+                    "kernel output submission failed; continuing with delivered state: {}",
+                    error
+                ));
+                state.provider_runtime.last_error_detail = Some(error.clone());
+                state.provider_runtime.last_authoritative_error_class =
+                    Some(EarnFailureClass::Execution);
+                state.provider_runtime.last_result = Some(format!(
+                    "provider execution delivered but kernel submission failed: {}",
+                    error
+                ));
+            }
+        }
     }
     Ok(stage)
 }
@@ -858,8 +879,14 @@ pub(super) fn transition_active_job_to_paid(
     source: &str,
     now: std::time::Instant,
 ) -> Result<JobLifecycleStage, String> {
+    if matches!(
+        state.active_job.job.as_ref().map(|job| job.stage),
+        Some(JobLifecycleStage::Paid)
+    ) {
+        return Ok(JobLifecycleStage::Paid);
+    }
+    let verdict_receipt_id = crate::kernel_control::finalize_paid_active_job(state)?;
     let stage = match state.active_job.job.as_ref().map(|job| job.stage) {
-        Some(JobLifecycleStage::Paid) => return Ok(JobLifecycleStage::Paid),
         Some(JobLifecycleStage::Delivered) => state.active_job.advance_stage()?,
         Some(other) => {
             return Err(format!(
@@ -897,8 +924,14 @@ pub(super) fn transition_active_job_to_paid(
     }
 
     sync_provider_runtime_queue_depth(state);
+    state.provider_runtime.last_error_detail = None;
+    state.provider_runtime.last_authoritative_error_class = None;
     state.provider_runtime.last_completed_job_at = Some(now);
     if let Some(job) = state.active_job.job.as_ref().cloned() {
+        state.active_job.append_event(format!(
+            "finalized authoritative kernel verdict receipt {}",
+            verdict_receipt_id
+        ));
         state
             .job_history
             .record_from_active_job(&job, JobHistoryStatus::Succeeded);
@@ -1161,6 +1194,25 @@ fn accept_request_by_id(
             "Accepted request no longer exists".to_string()
         })?;
 
+    if let Err(error) = crate::kernel_control::register_accepted_request_with_kernel(
+        state,
+        &selected_request,
+    ) {
+        crate::kernel_control::reset_request_decision_after_kernel_error(
+            state,
+            selected_request.request_id.as_str(),
+            error.as_str(),
+        );
+        if selected_request.demand_source == crate::app_state::JobDemandSource::StarterDemand {
+            release_hosted_starter_offer_if_configured(
+                state,
+                selected_request.request_id.as_str(),
+                "kernel_authority_acceptance_failed",
+            );
+        }
+        return Err(error);
+    }
+
     state.job_inbox.last_error = None;
     state.job_inbox.load_state = PaneLoadState::Ready;
     state.provider_runtime.last_result = Some(format!(
@@ -1173,6 +1225,9 @@ fn accept_request_by_id(
         request_id
     ));
     state.active_job.start_from_request(&selected_request);
+    state
+        .active_job
+        .append_event("provisioned authoritative kernel work unit and contract");
     if selected_request.demand_source == crate::app_state::JobDemandSource::StarterDemand
         && let Some(starter_ack) = starter_ack.as_ref()
     {

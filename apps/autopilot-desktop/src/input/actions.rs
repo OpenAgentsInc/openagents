@@ -5992,6 +5992,10 @@ pub(super) fn refresh_network_aggregate_counters(
         &state.spark_wallet,
     );
 
+    if !crate::kernel_control::should_compute_local_snapshots(state) {
+        return;
+    }
+
     let now_epoch_ms = current_epoch_millis().min(i64::MAX as u64) as i64;
     let computed_snapshot = {
         let receipts = state.earn_kernel_receipts.receipts.as_slice();
