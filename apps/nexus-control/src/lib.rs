@@ -586,6 +586,12 @@ impl IntoResponse for ApiError {
 }
 
 pub fn build_router(config: ServiceConfig) -> Router {
+    Router::new()
+        .route("/healthz", get(healthz))
+        .merge(build_api_router(config))
+}
+
+pub fn build_api_router(config: ServiceConfig) -> Router {
     let (kernel_receipt_tx, _) = broadcast::channel(256);
     let (kernel_snapshot_tx, _) = broadcast::channel(256);
     let state = AppState {
@@ -595,7 +601,6 @@ pub fn build_router(config: ServiceConfig) -> Router {
         kernel_snapshot_tx,
     };
     Router::new()
-        .route("/healthz", get(healthz))
         .route("/stats", get(public_stats))
         .route("/api/stats", get(public_stats))
         .route("/api/session/desktop", post(create_desktop_session))
