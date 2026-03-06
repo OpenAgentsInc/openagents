@@ -8,7 +8,7 @@ Date: 2026-03-06
 Replace the current in-repo in-memory Nexus relay with a durable, production-grade relay implementation while keeping:
 
 - one public Nexus surface at `nexus.openagents.com`
-- `nexus-control` as the OpenAgents authority/API service
+- one Rust Nexus service that can accept both websocket relay traffic and HTTP API traffic
 - OpenAgents-owned product behavior and branding
 
 The outcome should be:
@@ -24,12 +24,12 @@ Do not keep extending the current `apps/nexus-relay` into a production relay.
 Instead:
 
 1. fork or absorb `nostr-rs-relay` into this repo as the durable relay engine
-2. rename the owned surface to `nexus-relay`
+2. make Nexus a single Rust service that exposes both websocket relay routes and HTTP authority/API routes
 3. keep OpenAgents-specific behavior as thin Nexus-owned extensions around that engine
-4. keep `apps/nexus-control` as the separate authority/API service
+4. fold the current `nexus-control` responsibilities into that owned Nexus service over time
 5. keep one public host: `nexus.openagents.com`
 
-This preserves a single Nexus product and host while avoiding a ground-up relay rewrite.
+This preserves a single Nexus product, host, and service while avoiding a ground-up relay rewrite.
 
 ## Why This Is The Right Move
 
@@ -62,7 +62,6 @@ The correct trade is to absorb a real relay engine and make it ours, not to copy
 
 This migration should not:
 
-- merge `nexus-control` into the relay binary
 - turn Nexus into two public products
 - rebuild relay persistence/query logic from scratch
 - block Autopilot MVP progress on full five-market functionality
@@ -75,26 +74,23 @@ The desired production shape is:
 ```text
                         nexus.openagents.com
                                 |
-                     TLS / reverse proxy / edge
-                      /                         \
-                     /                           \
-            Nexus Relay Engine               Nexus Control
-         durable Nostr relay service      OpenAgents authority/API
-         websocket + NIP-11 + metrics     /api/* and /v1/*
-                     |                           |
-                     |                           |
-              durable event store         receipts / sessions /
-             sqlite first or postgres     starter demand / kernel
+                      Nexus Rust Service
+       durable relay engine + OpenAgents HTTP authority/API
+       websocket + NIP-11 + metrics + /api/* + /v1/*
+                                |
+                                |
+                durable event store + authority state
+                  sqlite first or postgres later
 ```
 
 Publicly, this is still one Nexus.
 
-Internally, it is two roles:
+Internally, it is still two roles:
 
 - relay engine
 - authority/API
 
-That split is desirable. Relay persistence and Nostr fanout are not the same job as OpenAgents authority mutations.
+That split remains desirable as a code boundary even if it is not a separate deployed service boundary. Relay persistence and Nostr fanout are not the same job as OpenAgents authority mutations.
 
 ## Repo Direction
 
@@ -102,7 +98,6 @@ Preferred repo target:
 
 ```text
 apps/
-  nexus-control/
   nexus-relay/
 
 crates/
@@ -110,11 +105,13 @@ crates/
   nexus-relay-config/       # optional extraction later
 ```
 
-Short term, keep the new relay as an app if that lands fastest.
+Short term, keep the new Nexus service as one app if that lands fastest.
 
 Do not start by over-modularizing it. First land a real durable relay in-repo. Extract crates only after the relay is stable.
 
 Do not restore archived backroom Nexus relay code wholesale. The backroom snapshot may still be useful for reference, but the migration target should be the durable relay engine from `nostr-rs-relay` plus thin Nexus-owned extensions in the current repo.
+
+The current `apps/nexus-control` should be treated as transitional. Its routes and responsibilities can be migrated into the owned Nexus service once the durable relay core is in place.
 
 ## What To Import From `nostr-rs-relay`
 
@@ -205,7 +202,7 @@ The current in-repo relay still contains Nexus-specific behavior worth preservin
 ### Keep conceptually
 
 - the Nexus homepage / landing copy
-- `/api/*` and `/v1/*` proxying pattern if we keep one public edge
+- the existing `/api/*` and `/v1/*` HTTP surface
 - OpenAgents relay identity wiring
 - managed-group requirements if they are still product-relevant
 - any OpenAgents-specific auth or routing affordances
@@ -214,7 +211,7 @@ The current in-repo relay still contains Nexus-specific behavior worth preservin
 
 - `apps/nexus-relay/src/managed_groups.rs`
 - Nexus HTML/branding layer
-- small edge-specific request routing
+- HTTP route wiring for authority endpoints
 
 ### Do not keep as the core relay engine
 
@@ -238,9 +235,9 @@ If a temporary compatibility layer remains, it should be clearly marked transiti
 
 ## Product Boundary
 
-After migration, the ownership split should be:
+After migration, the ownership split should be internal to the Nexus service:
 
-### `apps/nexus-relay`
+### Relay module
 
 Owns:
 
@@ -256,9 +253,9 @@ Must not own:
 - kernel authority mutations
 - wallet/session authority
 - starter-demand business logic
-- `/api/*` product workflows beyond proxy/edge routing
+- product workflows exposed through `/api/*` and `/v1/*`
 
-### `apps/nexus-control`
+### Authority/API module
 
 Owns:
 
@@ -273,39 +270,50 @@ Must not own:
 - durable relay query/persistence pipeline
 - websocket relay semantics
 
+This is a module boundary, not necessarily a service boundary.
+
 ## Deployment Recommendation
 
 ### Preferred
 
-Deploy the durable relay on stateful infra, not serverless stateless infra.
+Deploy one durable Nexus service on stateful infra, not serverless stateless infra.
 
 Best first production shape:
 
-- `nexus-relay` on a VM or stateful container host
+- one `nexus-relay` service on a VM or stateful container host
 - SQLite-backed durable storage on attached disk
-- reverse proxy in front of both services
-- `nexus-control` can remain on Cloud Run if desired
+- websocket relay routes and HTTP API routes served by the same Rust process
 
 Why:
 
 - a relay is fundamentally long-lived websocket + durable state infra
 - SQLite is a clean first production store if the host is stateful
+- one process keeps infra simple and matches the product intuition of "one Nexus"
 - this avoids forcing the relay into Cloud Run scaling semantics it does not naturally fit
 
 ### Acceptable alternative
 
-If we want to keep everything in Cloud Run, then switch the relay to Postgres and make that explicit from day one.
+If we want to keep the Nexus service in Cloud Run, then switch it to Postgres and make that explicit from day one.
 
 In that shape:
 
-- `nexus-relay` uses Postgres, not SQLite
+- the single Nexus service uses Postgres, not SQLite
 - Cloud Run instances remain stateless
-- reverse proxy or domain routing still keeps one public Nexus host
+- one public Nexus host still fronts both websocket and HTTP entrypoints
 
 What not to do:
 
 - Cloud Run + in-memory relay
 - Cloud Run + SQLite on ephemeral local filesystem
+
+### Optional later hardening
+
+If operations later demand it, we can still add:
+
+- a reverse proxy or edge in front of Nexus
+- a deployment split between relay and authority roles
+
+That should be treated as later hardening, not as the default target architecture.
 
 ## Migration Phases
 
@@ -337,12 +345,14 @@ Actions:
 - preserve license and attribution
 - compile it in this workspace
 - keep OpenAgents naming and config wrappers
+- keep the target shape as one Rust Nexus service
 
 Recommended implementation approach:
 
 1. import upstream relay code mostly intact
 2. get it compiling and running in this workspace
 3. only then begin Nexus-specific edits
+4. do not split service boundaries yet
 
 Exit criteria:
 
@@ -361,18 +371,19 @@ Actions:
 - restore Nexus landing page and branding
 - restore `nexus.openagents.com` operator identity
 - add OpenAgents relay defaults
-- decide whether `/api/*` and `/v1/*` proxying remains inside relay or moves to external proxy
+- move or inline current `nexus-control` HTTP routes into the owned Nexus service
 - reintroduce managed-group behavior if still needed
 
 Recommended rule:
 
-Keep custom Nexus behavior at the HTTP edge and event-admission boundaries. Do not fork deep repository logic unless necessary.
+Keep custom Nexus behavior at the HTTP route layer and event-admission boundaries. Do not fork deep repository logic unless necessary.
 
 Exit criteria:
 
 - local Nexus host works as one branded surface
 - relay remains durable
 - OpenAgents-specific extensions are thin and isolated
+- websocket and HTTP authority routes are both served by one Rust service
 
 ### Phase 3: Choose Final Storage And Hosting
 
@@ -413,7 +424,7 @@ Actions:
 - deploy durable relay behind staging host first
 - replay production-like websocket and event flow tests
 - verify Autopilot desktop compatibility
-- verify `nexus-control` integration
+- verify authority/API routes inside Nexus
 - cut production traffic
 - monitor connections, writes, query latency, and persistence
 
@@ -449,7 +460,7 @@ Exit criteria:
 
 - websocket relay
 - landing page
-- `/api/*` and `/v1/*` proxy
+- `/api/*` and `/v1/*` passthrough/proxy
 - in-memory event store
 - simple fanout
 - custom group logic
@@ -463,13 +474,9 @@ Exit criteria:
 - NIP-11
 - NIP-42
 - metrics
+- Nexus authority/API routes
 - optional Nexus-managed group extensions
-- optional proxy/edge logic
-
-`apps/nexus-control`
-
-- unchanged in role
-- remains authority/API layer
+- optional proxy/edge logic later only
 
 ## Exact First Engineering Tasks
 
@@ -484,35 +491,38 @@ Exit criteria:
    - NIP-11
    - NIP-42
    - metrics
-6. layer back Nexus branding and host behavior
-7. decide final production storage/hosting
-8. cut traffic
-9. remove old harness core
+6. inline current `nexus-control` routes into the Nexus service
+7. layer back Nexus branding and host behavior
+8. decide final production storage/hosting
+9. cut traffic
+10. remove old harness core
 
 ## Acceptance Criteria
 
 This migration is successful when all of the following are true:
 
 - `nexus.openagents.com` still presents as one Nexus host
+- websocket and HTTP authority traffic are both served by one Nexus Rust service
 - relay history survives restart
 - relay state is no longer instance-local memory
 - multi-instance or restart behavior is no longer lossy/fractured
 - Autopilot desktop connects without regressions
-- `nexus-control` remains the authority for `/api/*` and `/v1/*`
+- the authority/API module remains the owner of `/api/*` and `/v1/*`
 - the relay exposes real operator surfaces such as NIP-11 and metrics
 - the current in-memory relay core is retired
 
 ## Open Questions
 
-1. Do we want proxying to stay inside `nexus-relay`, or move to a dedicated reverse proxy?
+1. Do we rename the single service from `nexus-relay` to `nexus`, or keep the existing app name and just expand its role?
 2. Is managed-group behavior still a product requirement for near-term Nexus, or should it be deferred until after durable relay cutover?
 3. Do we want SQLite on stateful infra first, or Postgres to preserve Cloud Run symmetry?
 4. Do we want to preserve any upstream optional features such as NIP-05 verification or external admission hooks?
+5. If we later split infra, which module boundaries should become separate services first?
 
 ## Bottom Line
 
 Nexus should remain the product and host.
 
-The relay underneath Nexus should become a forked, OpenAgents-owned durable relay based on `nostr-rs-relay`, not the current in-memory harness and not an untouched upstream deployment.
+The Nexus service underneath `nexus.openagents.com` should become a single Rust service built around a forked, OpenAgents-owned durable relay based on `nostr-rs-relay`, not the current in-memory harness and not an untouched upstream deployment.
 
-That gives us one Nexus surface, one real relay, one authority API, and a path to production without pretending the current relay is already there.
+That gives us one Nexus surface, one real relay, one HTTP authority surface, and a path to production without pretending the current relay is already there.
