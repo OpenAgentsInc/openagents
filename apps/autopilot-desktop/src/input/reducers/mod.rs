@@ -132,6 +132,10 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
         }
     }
 
+    for update in state.ollama_execution_worker.drain_updates() {
+        changed |= jobs::apply_active_job_ollama_update(state, update);
+    }
+
     for update in state.codex_lane_worker.drain_updates() {
         changed = true;
         match update {

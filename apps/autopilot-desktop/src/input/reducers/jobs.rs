@@ -5,6 +5,9 @@ use crate::app_state::{
 use crate::codex_lane::{
     CodexLaneCommand, CodexLaneCommandResponse, CodexLaneCommandStatus, CodexLaneNotification,
 };
+use crate::ollama_execution::{
+    OllamaExecutionCommand, OllamaExecutionCompleted, OllamaExecutionFailed, OllamaExecutionStarted,
+};
 use crate::pane_system::{
     ActiveJobPaneAction, JobHistoryPaneAction, JobInboxPaneAction, PaneController,
 };
@@ -152,25 +155,48 @@ pub(super) fn run_active_job_execution_tick(state: &mut RenderState) -> bool {
         return true;
     }
 
-    if stage == JobLifecycleStage::Accepted && state.active_job.execution_thread_id.is_none() {
-        if state
-            .active_job
-            .execution_thread_start_command_seq
-            .is_some()
-        {
-            return false;
-        }
-        match queue_provider_execution_thread_start(state) {
-            Ok(()) => return true,
-            Err(error) => {
-                fail_active_job_execution(
-                    state,
-                    format!("failed to start provider execution thread: {error}"),
-                    "active_job.execution_thread_start_failed",
-                    true,
-                );
-                return true;
+    if stage == JobLifecycleStage::Accepted {
+        match provider_execution_backend_for_active_job(state) {
+            Some(ProviderExecutionBackend::Ollama) => {
+                if state.active_job.execution_backend_request_id.is_some() {
+                    return false;
+                }
+                match queue_provider_ollama_execution_start(state) {
+                    Ok(()) => return true,
+                    Err(error) => {
+                        fail_active_job_execution(
+                            state,
+                            format!("failed to start local Ollama execution: {error}"),
+                            "active_job.ollama_execution_start_failed",
+                            true,
+                        );
+                        return true;
+                    }
+                }
             }
+            Some(ProviderExecutionBackend::Codex) => {
+                if state.active_job.execution_thread_id.is_some()
+                    || state
+                        .active_job
+                        .execution_thread_start_command_seq
+                        .is_some()
+                {
+                    return false;
+                }
+                match queue_provider_execution_thread_start(state) {
+                    Ok(()) => return true,
+                    Err(error) => {
+                        fail_active_job_execution(
+                            state,
+                            format!("failed to start provider execution thread: {error}"),
+                            "active_job.execution_thread_start_failed",
+                            true,
+                        );
+                        return true;
+                    }
+                }
+            }
+            None => return false,
         }
     }
 
@@ -443,6 +469,27 @@ pub(super) fn apply_active_job_publish_outcome(
     }
 }
 
+pub(super) fn apply_active_job_ollama_update(
+    state: &mut RenderState,
+    update: crate::ollama_execution::OllamaExecutionUpdate,
+) -> bool {
+    match update {
+        crate::ollama_execution::OllamaExecutionUpdate::Snapshot(snapshot) => {
+            state.ollama_execution = *snapshot;
+            true
+        }
+        crate::ollama_execution::OllamaExecutionUpdate::Started(started) => {
+            apply_ollama_execution_started(state, started)
+        }
+        crate::ollama_execution::OllamaExecutionUpdate::Completed(completed) => {
+            apply_ollama_execution_completed(state, completed)
+        }
+        crate::ollama_execution::OllamaExecutionUpdate::Failed(failed) => {
+            apply_ollama_execution_failed(state, failed)
+        }
+    }
+}
+
 pub(super) fn run_active_job_action(state: &mut RenderState, action: ActiveJobPaneAction) -> bool {
     let now = std::time::Instant::now();
     match action {
@@ -521,8 +568,7 @@ fn queue_nip90_result_publish_for_active_job(state: &mut RenderState) -> Result<
         .unwrap_or("provider execution completed without explicit output");
     let visible_content = visible_result_content_for_job_kind(request_kind, execution_output);
 
-    let mut result =
-        JobResult::new(request_kind, request_id.clone(), requester, visible_content)
+    let mut result = JobResult::new(request_kind, request_id.clone(), requester, visible_content)
         .map_err(|error| format!("Cannot build NIP-90 result event: {error}"))?;
     if quoted_price_sats > 0 {
         result = result.with_amount(quoted_price_sats.saturating_mul(1000), None);
@@ -628,6 +674,30 @@ fn set_active_job_action_error(state: &mut RenderState, error: impl Into<String>
     state.provider_runtime.last_result = Some(format!("active job advance blocked: {error}"));
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ProviderExecutionBackend {
+    Codex,
+    Ollama,
+}
+
+fn provider_execution_backend_for_kind(request_kind: u16) -> ProviderExecutionBackend {
+    if request_kind == KIND_JOB_TEXT_GENERATION {
+        ProviderExecutionBackend::Ollama
+    } else {
+        ProviderExecutionBackend::Codex
+    }
+}
+
+fn provider_execution_backend_for_active_job(
+    state: &RenderState,
+) -> Option<ProviderExecutionBackend> {
+    state
+        .active_job
+        .job
+        .as_ref()
+        .map(|job| provider_execution_backend_for_kind(job.request_kind))
+}
+
 fn queue_provider_execution_thread_start(state: &mut RenderState) -> Result<(), String> {
     let Some(ttl_seconds) = state.active_job.job.as_ref().map(|job| job.ttl_seconds) else {
         return Err("Cannot start provider execution without an active job".to_string());
@@ -652,6 +722,35 @@ fn queue_provider_execution_thread_start(state: &mut RenderState) -> Result<(), 
     state
         .active_job
         .append_event(format!("queued provider execution thread start cmd#{seq}"));
+    Ok(())
+}
+
+fn queue_provider_ollama_execution_start(state: &mut RenderState) -> Result<(), String> {
+    let Some(job) = state.active_job.job.as_ref() else {
+        return Err("Cannot start Ollama execution without an active job".to_string());
+    };
+    let request_id = job.request_id.clone();
+    let prompt = job
+        .execution_prompt
+        .clone()
+        .ok_or_else(|| "Active job is missing normalized prompt input".to_string())?;
+    let requested_model = job.requested_model.clone();
+    let params = job.execution_params.clone();
+    let ttl_seconds = job.ttl_seconds;
+    state.queue_ollama_execution_command(OllamaExecutionCommand::Generate(
+        crate::ollama_execution::OllamaGenerateJob {
+            request_id: request_id.clone(),
+            prompt,
+            requested_model,
+            params,
+        },
+    ))?;
+    state.active_job.execution_backend_request_id = Some(request_id.clone());
+    state.active_job.execution_deadline_epoch_seconds =
+        Some(current_epoch_seconds().saturating_add(ttl_seconds));
+    state
+        .active_job
+        .append_event(format!("queued local Ollama generation for {}", request_id));
     Ok(())
 }
 
@@ -745,6 +844,13 @@ fn active_job_matches_execution_turn(state: &RenderState, thread_id: &str, turn_
         && state.active_job.execution_turn_id.as_deref() == Some(turn_id)
 }
 
+fn active_job_matches_ollama_request(state: &RenderState, request_id: &str) -> bool {
+    state.active_job.job.as_ref().is_some_and(|job| {
+        job.request_id == request_id
+            && state.active_job.execution_backend_request_id.as_deref() == Some(request_id)
+    })
+}
+
 fn store_execution_output(state: &mut RenderState, output: &str) {
     let trimmed = output.trim();
     if trimmed.is_empty() {
@@ -758,6 +864,71 @@ fn store_execution_output(state: &mut RenderState, output: &str) {
         "captured provider execution output (chars={})",
         trimmed.chars().count()
     ));
+}
+
+fn apply_ollama_execution_started(
+    state: &mut RenderState,
+    started: OllamaExecutionStarted,
+) -> bool {
+    if !active_job_matches_ollama_request(state, started.request_id.as_str()) {
+        return false;
+    }
+    state.provider_runtime.last_result = Some(format!(
+        "local Ollama execution started request={} model={}",
+        started.request_id, started.model
+    ));
+    state.active_job.append_event(format!(
+        "local Ollama generation started with model {}",
+        started.model
+    ));
+    if let Err(error) =
+        transition_active_job_to_running(state, "active_job.ollama_execution_started")
+    {
+        fail_active_job_execution(
+            state,
+            format!("failed to transition active Ollama job to running: {error}"),
+            "active_job.ollama_running_transition_failed",
+            true,
+        );
+    }
+    true
+}
+
+fn apply_ollama_execution_completed(
+    state: &mut RenderState,
+    completed: OllamaExecutionCompleted,
+) -> bool {
+    if !active_job_matches_ollama_request(state, completed.request_id.as_str()) {
+        return false;
+    }
+    state.active_job.execution_backend_request_id = None;
+    state.active_job.execution_turn_completed = true;
+    store_execution_output(state, completed.output.as_str());
+    state.provider_runtime.last_result = Some(format!(
+        "local Ollama execution completed request={} model={}",
+        completed.request_id, completed.model
+    ));
+    state.active_job.append_event(format!(
+        "local Ollama generation completed model={} prompt_eval={} eval={}",
+        completed.model,
+        completed.metrics.prompt_eval_count.unwrap_or(0),
+        completed.metrics.eval_count.unwrap_or(0)
+    ));
+    true
+}
+
+fn apply_ollama_execution_failed(state: &mut RenderState, failed: OllamaExecutionFailed) -> bool {
+    if !active_job_matches_ollama_request(state, failed.request_id.as_str()) {
+        return false;
+    }
+    state.active_job.execution_backend_request_id = None;
+    fail_active_job_execution(
+        state,
+        format!("local Ollama execution failed: {}", failed.error),
+        "active_job.ollama_execution_failed",
+        true,
+    );
+    true
 }
 
 fn turn_completed_failed(status: Option<&str>, error_message: Option<&str>) -> bool {
@@ -969,6 +1140,7 @@ fn fail_active_job_execution(
 
     state.active_job.result_publish_in_flight = false;
     state.active_job.execution_turn_completed = false;
+    state.active_job.execution_backend_request_id = None;
     state.active_job.execution_thread_start_command_seq = None;
     state.active_job.execution_turn_start_command_seq = None;
     state.active_job.execution_turn_interrupt_command_seq = None;
@@ -1326,6 +1498,26 @@ fn request_accept_block_reason(state: &RenderState, request_id: &str) -> Option<
         .requests
         .iter()
         .find(|request| request.request_id == request_id)?;
+    if request.request_kind == KIND_JOB_TEXT_GENERATION {
+        if !state.ollama_execution.reachable {
+            return Some(
+                state
+                    .ollama_execution
+                    .last_error
+                    .clone()
+                    .unwrap_or_else(|| "Local Ollama backend is unavailable".to_string()),
+            );
+        }
+        if state.ollama_execution.ready_model.is_none() && request.requested_model.is_none() {
+            return Some(
+                state
+                    .ollama_execution
+                    .last_error
+                    .clone()
+                    .unwrap_or_else(|| "No usable local Ollama model is configured".to_string()),
+            );
+        }
+    }
     match &request.validation {
         JobInboxValidation::Valid => {}
         JobInboxValidation::Pending => {
@@ -1425,12 +1617,14 @@ fn next_auto_accept_request_id_for(
 #[cfg(test)]
 mod tests {
     use super::{
-        next_auto_accept_request_id_for, next_invalid_request_rejection_for,
+        ProviderExecutionBackend, next_auto_accept_request_id_for,
+        next_invalid_request_rejection_for, provider_execution_backend_for_kind,
         turn_completed_failed, visible_result_content_for_job_kind,
     };
     use crate::app_state::{
         JobDemandSource, JobInboxDecision, JobInboxRequest, JobInboxValidation,
     };
+    use crate::ollama_execution::OllamaExecutionSnapshot;
     use crate::state::provider_runtime::ProviderMode;
     use nostr::nip90::KIND_JOB_TEXT_GENERATION;
 
@@ -1446,6 +1640,9 @@ mod tests {
             request_kind: 5050,
             capability: "summarize.text".to_string(),
             execution_input: Some(format!("Process request {request_id}")),
+            execution_prompt: Some(format!("Prompt for {request_id}")),
+            execution_params: Vec::new(),
+            requested_model: None,
             skill_scope_id: None,
             skl_manifest_a: None,
             skl_manifest_event_id: None,
@@ -1533,6 +1730,29 @@ mod tests {
 
         let non_text_content = visible_result_content_for_job_kind(5999, "  ok  ");
         assert_eq!(non_text_content, r#"{"output":"ok","status":"completed"}"#);
+    }
+
+    #[test]
+    fn text_generation_jobs_route_to_ollama_backend() {
+        assert_eq!(
+            provider_execution_backend_for_kind(KIND_JOB_TEXT_GENERATION),
+            ProviderExecutionBackend::Ollama
+        );
+        assert_eq!(
+            provider_execution_backend_for_kind(5999),
+            ProviderExecutionBackend::Codex
+        );
+    }
+
+    #[test]
+    fn ollama_snapshot_needs_ready_model_before_serving() {
+        let snapshot = OllamaExecutionSnapshot {
+            reachable: true,
+            ready_model: None,
+            last_error: Some("Set OPENAGENTS_OLLAMA_MODEL to serve kind 5050 jobs".to_string()),
+            ..OllamaExecutionSnapshot::default()
+        };
+        assert!(!snapshot.is_ready());
     }
 }
 

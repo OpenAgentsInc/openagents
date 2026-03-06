@@ -51,6 +51,12 @@ impl JobInboxDecision {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct JobExecutionParam {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct JobInboxRequest {
     pub request_id: String,
     pub requester: String,
@@ -58,6 +64,9 @@ pub struct JobInboxRequest {
     pub request_kind: u16,
     pub capability: String,
     pub execution_input: Option<String>,
+    pub execution_prompt: Option<String>,
+    pub execution_params: Vec<JobExecutionParam>,
+    pub requested_model: Option<String>,
     pub skill_scope_id: Option<String>,
     pub skl_manifest_a: Option<String>,
     pub skl_manifest_event_id: Option<String>,
@@ -93,6 +102,9 @@ pub struct JobInboxNetworkRequest {
     pub request_kind: u16,
     pub capability: String,
     pub execution_input: Option<String>,
+    pub execution_prompt: Option<String>,
+    pub execution_params: Vec<JobExecutionParam>,
+    pub requested_model: Option<String>,
     pub target_provider_pubkeys: Vec<String>,
     pub encrypted: bool,
     pub encrypted_payload: Option<String>,
@@ -151,6 +163,9 @@ impl JobInboxState {
             existing.request_kind = request.request_kind;
             existing.capability = request.capability;
             existing.execution_input = request.execution_input;
+            existing.execution_prompt = request.execution_prompt;
+            existing.execution_params = request.execution_params;
+            existing.requested_model = request.requested_model;
             existing.skill_scope_id = request.skill_scope_id;
             existing.skl_manifest_a = request.skl_manifest_a;
             existing.skl_manifest_event_id = request.skl_manifest_event_id;
@@ -172,6 +187,9 @@ impl JobInboxState {
             request_kind: request.request_kind,
             capability: request.capability,
             execution_input: request.execution_input,
+            execution_prompt: request.execution_prompt,
+            execution_params: request.execution_params,
+            requested_model: request.requested_model,
             skill_scope_id: request.skill_scope_id,
             skl_manifest_a: request.skl_manifest_a,
             skl_manifest_event_id: request.skl_manifest_event_id,
@@ -290,6 +308,9 @@ mod tests {
             request_kind: 5050,
             capability: "summarize.text".to_string(),
             execution_input: Some("Summarize the attached text payload.".to_string()),
+            execution_prompt: Some("Summarize the attached text payload.".to_string()),
+            execution_params: Vec::new(),
+            requested_model: Some("llama3.2:latest".to_string()),
             skill_scope_id: None,
             skl_manifest_a: None,
             skl_manifest_event_id: None,

@@ -10,6 +10,7 @@ mod input;
 mod kernel_control;
 mod logging;
 mod nip_sa_wallet_bridge;
+mod ollama_execution;
 mod openagents_dynamic_tools;
 mod pane_registry;
 mod pane_renderer;

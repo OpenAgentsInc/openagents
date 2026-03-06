@@ -1,4 +1,4 @@
-use crate::state::job_inbox::{JobInboxNetworkRequest, JobInboxValidation};
+use crate::state::job_inbox::{JobExecutionParam, JobInboxNetworkRequest, JobInboxValidation};
 use nostr::nip90::{
     InputType, JOB_REQUEST_KIND_MAX, JOB_REQUEST_KIND_MIN, JOB_RESULT_KIND_MAX,
     JOB_RESULT_KIND_MIN, JobRequest, JobResult, KIND_JOB_CODE_REVIEW, KIND_JOB_FEEDBACK,
@@ -1300,6 +1300,9 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
         encrypted,
         encrypted_payload,
         execution_input,
+        execution_prompt,
+        execution_params,
+        requested_model,
         validation,
         parsed_event_shape,
     ) = match parsed.as_ref() {
@@ -1354,6 +1357,12 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
                 encrypted,
                 encrypted_payload,
                 execution_input,
+                normalized_text_generation_prompt(request),
+                normalized_request_params(request)
+                    .into_iter()
+                    .map(|(key, value)| JobExecutionParam { key, value })
+                    .collect::<Vec<_>>(),
+                extract_param(request, "model"),
                 validation,
                 parsed_event_shape,
             )
@@ -1365,6 +1374,9 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
             Vec::new(),
             false,
             None,
+            None,
+            None,
+            Vec::new(),
             None,
             JobInboxValidation::Invalid(format!("invalid NIP-90 request tags: {error}")),
             Some(format!(
@@ -1381,6 +1393,9 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
         request_kind: event.kind,
         capability: capability_for_kind(event.kind),
         execution_input,
+        execution_prompt,
+        execution_params,
+        requested_model,
         target_provider_pubkeys,
         encrypted,
         encrypted_payload,
