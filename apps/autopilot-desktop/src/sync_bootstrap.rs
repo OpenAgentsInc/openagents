@@ -39,6 +39,7 @@ const LEGACY_SYNC_TOKEN_PATHS: [&str; 3] = [
     "/api/v1/sync/token",
 ];
 const REQUIRED_SYNC_SCOPE: &str = "sync.subscribe";
+const SYNC_TOKEN_CLOCK_SKEW_TOLERANCE_MS: u64 = 5_000;
 const DEFAULT_REQUIRED_STREAM_GRANTS: [&str; 2] = [
     "stream.activity_projection.v1",
     "stream.earn_job_lifecycle_projection.v1",
@@ -479,12 +480,13 @@ fn parse_sync_token_lease(
         }
     }
     if let Some(not_before) = not_before_unix_ms
-        && now_unix_ms < not_before
+        && now_unix_ms.saturating_add(SYNC_TOKEN_CLOCK_SKEW_TOLERANCE_MS) < not_before
     {
         return Err(auth_error_not_yet_valid("token_not_yet_valid"));
     }
     if let Some(expires_at) = expires_at_unix_ms
-        && now_unix_ms >= expires_at
+        && now_unix_ms
+            > expires_at.saturating_add(SYNC_TOKEN_CLOCK_SKEW_TOLERANCE_MS)
     {
         return Err(auth_error_expired("token_expired"));
     }
@@ -1119,8 +1121,8 @@ mod tests {
     "expires_at_unix_ms":1700000000000
   }
 }"#;
-        let error = parse_sync_token_lease(raw, 1_700_000_000_001, required_streams().as_slice())
-            .expect_err("expired token should fail");
+        let error = parse_sync_token_lease(raw, 1_700_000_006_000, required_streams().as_slice())
+            .expect_err("expired token beyond skew tolerance should fail");
         assert!(error.starts_with("sync_auth:expired:token_expired"));
     }
 
@@ -1133,13 +1135,31 @@ mod tests {
   "claims":{
     "scope":"sync.subscribe",
     "stream_grants":["stream.activity_projection.v1","stream.earn_job_lifecycle_projection.v1"],
-    "not_before_unix_ms":2000,
-    "expires_at_unix_ms":5000
+    "not_before_unix_ms":9000,
+    "expires_at_unix_ms":20000
   }
 }"#;
-        let error = parse_sync_token_lease(raw, 1_999, required_streams().as_slice())
-            .expect_err("not yet valid token should fail");
+        let error = parse_sync_token_lease(raw, 2_000, required_streams().as_slice())
+            .expect_err("not yet valid token beyond skew tolerance should fail");
         assert!(error.starts_with("sync_auth:not_yet_valid:token_not_yet_valid"));
+    }
+
+    #[test]
+    fn parse_sync_token_allows_small_not_before_skew() {
+        let raw = r#"{
+  "token":"sync-token",
+  "transport":"spacetime_ws",
+  "protocol_version":"spacetime.sync.v1",
+  "claims":{
+    "scope":"sync.subscribe",
+    "stream_grants":["stream.activity_projection.v1","stream.earn_job_lifecycle_projection.v1"],
+    "not_before_unix_ms":1700000005000,
+    "expires_at_unix_ms":1700000020000
+  }
+}"#;
+        let lease = parse_sync_token_lease(raw, 1_700_000_001_000, required_streams().as_slice())
+            .expect("small not_before skew should be tolerated");
+        assert_eq!(lease.token, "sync-token");
     }
 
     #[test]

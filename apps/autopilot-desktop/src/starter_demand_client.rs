@@ -323,8 +323,15 @@ mod tests {
     use super::{
         canonical_starter_demand_ack_endpoint, canonical_starter_demand_complete_endpoint,
         canonical_starter_demand_fail_endpoint, canonical_starter_demand_heartbeat_endpoint,
-        canonical_starter_demand_poll_endpoint,
+        canonical_starter_demand_poll_endpoint, StarterDemandPollRequest,
+        ack_starter_demand_offer_blocking, complete_starter_demand_offer_blocking,
+        heartbeat_starter_demand_offer_blocking, poll_starter_demand_blocking,
     };
+    use openagents_kernel_core::authority::{
+        HttpKernelAuthorityClient, KernelAuthority, canonical_kernel_endpoint,
+    };
+    use reqwest::blocking::Client;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     #[test]
     fn canonical_starter_demand_poll_endpoint_uses_canonical_path() {
@@ -386,5 +393,190 @@ mod tests {
             url.as_str(),
             "https://control.example.com/api/starter-demand/offers/starter-hosted-000001/complete"
         );
+    }
+
+    #[test]
+    #[ignore = "hits live nexus.openagents.com"]
+    fn live_nexus_desktop_control_smoke() {
+        let control_base_url = std::env::var("OPENAGENTS_LIVE_NEXUS_CONTROL_BASE_URL")
+            .unwrap_or_else(|_| "https://nexus.openagents.com".to_string());
+        let hosted_ws_url = std::env::var("OPENAGENTS_LIVE_NEXUS_WS_URL")
+            .unwrap_or_else(|_| "wss://nexus.openagents.com/".to_string());
+        let identity = nostr::regenerate_identity().expect("generate live smoke nostr identity");
+        let client = Client::builder()
+            .timeout(Duration::from_secs(10))
+            .user_agent("openagents-live-smoke")
+            .build()
+            .expect("build live smoke control client");
+        let suffix = unique_smoke_suffix();
+        let desktop_client_id = format!("autopilot-desktop-smoke-{suffix}");
+        let session = crate::sync_bootstrap::mint_control_session_blocking(
+            &client,
+            control_base_url.as_str(),
+            &crate::sync_bootstrap::DesktopSessionBootstrapRequest {
+                desktop_client_id: desktop_client_id.clone(),
+                device_name: Some("Codex Smoke".to_string()),
+                bound_nostr_pubkey: Some(identity.npub.clone()),
+                client_version: Some("live-nexus-smoke".to_string()),
+            },
+        )
+        .expect("mint live desktop session");
+        assert_eq!(session.desktop_client_id, desktop_client_id);
+
+        let token_lease = crate::sync_bootstrap::mint_sync_token_blocking(
+            &client,
+            control_base_url.as_str(),
+            Some(session.access_token.as_str()),
+        )
+        .expect("mint live sync token");
+        assert_eq!(token_lease.transport.as_deref(), Some("spacetime_ws"));
+        assert_eq!(
+            token_lease.protocol_version.as_deref(),
+            Some("spacetime.sync.v1")
+        );
+        assert!(
+            token_lease
+                .scopes
+                .iter()
+                .any(|scope| scope == "sync.subscribe"),
+            "expected sync.subscribe scope in live token lease: {:?}",
+            token_lease.scopes
+        );
+
+        let poll = poll_starter_demand_blocking(
+            &client,
+            control_base_url.as_str(),
+            session.access_token.as_str(),
+            &StarterDemandPollRequest {
+                provider_nostr_pubkey: Some(identity.npub.clone()),
+                primary_relay_url: Some(hosted_ws_url.clone()),
+            },
+        )
+        .expect("poll live starter demand");
+        assert!(
+            poll.eligible,
+            "expected live starter demand eligibility, got reason={:?}",
+            poll.reason
+        );
+        assert_eq!(poll.hosted_nexus_relay_url, hosted_ws_url);
+        assert!(
+            !poll.offers.is_empty(),
+            "expected at least one live starter-demand offer for a fresh desktop session"
+        );
+
+        let offer = &poll.offers[0];
+        let ack = ack_starter_demand_offer_blocking(
+            &client,
+            control_base_url.as_str(),
+            session.access_token.as_str(),
+            offer.request_id.as_str(),
+            Some(identity.npub.as_str()),
+        )
+        .expect("ack live starter demand offer");
+        assert_eq!(ack.request_id, offer.request_id);
+
+        let heartbeat = heartbeat_starter_demand_offer_blocking(
+            &client,
+            control_base_url.as_str(),
+            session.access_token.as_str(),
+            offer.request_id.as_str(),
+            Some(identity.npub.as_str()),
+        )
+        .expect("heartbeat live starter demand offer");
+        assert_eq!(heartbeat.request_id, offer.request_id);
+
+        let payment_pointer = format!("wallet:receive:smoke-{suffix}");
+        let completion = complete_starter_demand_offer_blocking(
+            &client,
+            control_base_url.as_str(),
+            session.access_token.as_str(),
+            offer.request_id.as_str(),
+            payment_pointer.as_str(),
+        )
+        .expect("complete live starter demand offer");
+        assert_eq!(completion.request_id, offer.request_id);
+        assert_eq!(completion.payment_pointer, payment_pointer);
+
+        let async_client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .user_agent("openagents-live-smoke")
+            .build()
+            .expect("build live smoke kernel client");
+        let authority = HttpKernelAuthorityClient::with_client(
+            async_client,
+            control_base_url.clone(),
+            Some(session.access_token.clone()),
+        );
+        let minute_start_ms = floor_to_minute_utc(current_epoch_ms());
+        let snapshot = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("build tokio runtime for live kernel snapshot")
+            .block_on(authority.get_snapshot(minute_start_ms))
+            .expect("fetch live kernel snapshot");
+        assert!(
+            !snapshot.snapshot_id.trim().is_empty(),
+            "expected non-empty live kernel snapshot id"
+        );
+
+        let stream_client = Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(20))
+            .user_agent("openagents-live-smoke")
+            .build()
+            .expect("build live smoke stream client");
+
+        let receipts_stream = stream_client
+            .get(
+                canonical_kernel_endpoint(control_base_url.as_str(), "/v1/kernel/stream/receipts")
+                    .expect("build live receipts stream endpoint"),
+            )
+            .bearer_auth(session.access_token.as_str())
+            .header(reqwest::header::ACCEPT, "text/event-stream")
+            .send()
+            .expect("open live kernel receipts stream");
+        assert!(receipts_stream.status().is_success());
+        assert_eq!(
+            receipts_stream
+                .headers()
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .map(|value| value.starts_with("text/event-stream")),
+            Some(true)
+        );
+
+        let snapshots_stream = stream_client
+            .get(
+                canonical_kernel_endpoint(control_base_url.as_str(), "/v1/kernel/stream/snapshots")
+                    .expect("build live snapshots stream endpoint"),
+            )
+            .bearer_auth(session.access_token.as_str())
+            .header(reqwest::header::ACCEPT, "text/event-stream")
+            .send()
+            .expect("open live kernel snapshots stream");
+        assert!(snapshots_stream.status().is_success());
+        assert_eq!(
+            snapshots_stream
+                .headers()
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .map(|value| value.starts_with("text/event-stream")),
+            Some(true)
+        );
+    }
+
+    fn unique_smoke_suffix() -> String {
+        format!("{:x}", current_epoch_ms())
+    }
+
+    fn current_epoch_ms() -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("current time should be after unix epoch")
+            .as_millis() as u64
+    }
+
+    fn floor_to_minute_utc(epoch_ms: u64) -> i64 {
+        (epoch_ms / 60_000 * 60_000) as i64
     }
 }
