@@ -657,8 +657,12 @@ fn managed_status_text(autopilot_chat: &AutopilotChatState) -> String {
     parts.join("  •  ")
 }
 
-fn managed_message_role_label(message: &ManagedChatMessageProjection) -> String {
-    let base = format!("[{}]", compact_hex_label(&message.author_pubkey, 8));
+fn managed_message_role_label(index: usize, message: &ManagedChatMessageProjection) -> String {
+    let base = format!(
+        "[#{}] [{}]",
+        index + 1,
+        compact_hex_label(&message.author_pubkey, 8)
+    );
     match message.delivery_state {
         ManagedChatDeliveryState::Confirmed => base,
         ManagedChatDeliveryState::Publishing => {
@@ -760,9 +764,10 @@ fn managed_chat_composer_hint(autopilot_chat: &AutopilotChatState, composer_valu
             .active_managed_chat_retryable_message()
             .is_some()
     {
-        return "Empty composer retries the latest failed publish in this channel.".to_string();
+        return "Use `reply <#|id> <text>` or `react <#|id> <emoji>`. Empty composer retries the latest failed publish."
+            .to_string();
     }
-    "Shift+Enter inserts a newline. Sends persist as local echo and fail honestly until relay publish is wired."
+    "Use `reply <#|id> <text>` or `react <#|id> <emoji>`. `@hexprefix` adds mention tags. Shift+Enter inserts a newline."
         .to_string()
 }
 
@@ -1295,9 +1300,9 @@ pub fn paint(
             ));
         }
 
-        for message in managed_messages {
+        for (index, message) in managed_messages.into_iter().enumerate() {
             paint.scene.draw_text(paint.text.layout_mono(
-                &managed_message_role_label(message),
+                &managed_message_role_label(index, message),
                 Point::new(transcript_scroll_clip.origin.x, y),
                 10.0,
                 managed_message_role_color(message),
