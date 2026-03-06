@@ -1,0 +1,70 @@
+[package]
+name = "nostr-rs-relay"
+version = "0.9.0"
+edition = "2021"
+authors = ["Greg Heartsfield <scsibug@imap.cc>"]
+description = "A relay implementation for the Nostr protocol"
+readme = "README.md"
+homepage = "https://sr.ht/~gheartsfield/nostr-rs-relay/"
+repository = "https://git.sr.ht/~gheartsfield/nostr-rs-relay"
+license = "MIT"
+keywords = ["nostr", "server"]
+categories = ["network-programming", "web-programming"]
+default-run = "nostr-rs-relay"
+
+[dependencies]
+clap = { version = "4.0.32", features = ["env", "default", "derive"]}
+tracing = "0.1.37"
+tracing-appender = "0.2.2"
+tracing-subscriber = "0.3.16"
+tokio = { version = "1", features = ["full", "tracing", "signal"] }
+prost = "0.11"
+tonic = "0.8.3"
+console-subscriber = "0.1.8"
+futures = "0.3"
+futures-util = "0.3"
+tokio-tungstenite = "0.17"
+tungstenite = "0.17"
+thiserror = "1"
+uuid = { version = "1.1.2", features = ["v4"] }
+config = { version = "0.12", features = ["toml"] }
+bitcoin_hashes = { version = "0.10", features = ["serde"] }
+secp256k1 = {version = "0.21", features = ["rand", "rand-std", "serde", "bitcoin_hashes"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = {version = "1.0", features = ["preserve_order"]}
+hex = "0.4"
+rusqlite = { version = "0.31", features = ["limits","bundled","modern_sqlite", "trace"]}
+r2d2 = "0.8"
+r2d2_sqlite = "0.24"
+lazy_static = "1.4"
+governor = "0.4"
+nonzero_ext = "0.3"
+hyper = { version="0.14", features=["client", "server","http1","http2","tcp"] }
+hyper-rustls = { version = "0.24" }
+http = { version = "0.2" }
+parse_duration = "2"
+rand = "0.8"
+const_format = "0.2.28"
+regex = "1"
+async-trait = "0.1.60"
+async-std = "1.12.0"
+sqlx = { version ="0.6.2", features=["runtime-tokio-rustls", "postgres", "chrono"]}
+chrono = "0.4.23"
+prometheus = "0.13.3"
+indicatif = "0.17.3"
+bech32 = "0.9.1"
+url = "2.3.1"
+qrcode = { version = "0.12.0", default-features = false, features = ["svg"] }
+nostr = { version = "0.18.0", default-features = false, features = ["base", "nip04", "nip19"] }
+log = "0.4"
+cln-rpc = "0.1.9"
+itertools = "0.14.0"
+
+[target.'cfg(all(not(target_env = "msvc"), not(target_os = "openbsd")))'.dependencies]
+tikv-jemallocator = "0.5"
+
+[dev-dependencies]
+anyhow = "1"
+
+[build-dependencies]
+tonic-build = { version="0.8.3", features = ["prost"] }
