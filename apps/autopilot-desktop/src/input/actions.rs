@@ -5,8 +5,7 @@ pub(super) fn run_chat_submit_action(state: &mut crate::app_state::RenderState) 
     let prompt = state.chat_inputs.composer.get_value().trim().to_string();
     let prompt_chars = prompt.chars().count();
     if prompt.is_empty() {
-        state.autopilot_chat.last_error = Some("Prompt cannot be empty".to_string());
-        return true;
+        return false;
     }
     let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() else {
         state.autopilot_chat.last_error =

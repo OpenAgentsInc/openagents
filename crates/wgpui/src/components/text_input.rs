@@ -142,6 +142,24 @@ impl TextInput {
         }
     }
 
+    /// Vertical scroll offset for overflowed multiline content.
+    /// Keeps the latest/cursor line visible when text exceeds input height.
+    fn vertical_scroll_offset(&self, bounds: Bounds, line_height: f32, line_count: usize) -> f32 {
+        let inner_height = (bounds.size.height - self.padding.1 * 2.0).max(line_height);
+        let content_height = line_height * line_count.max(1) as f32;
+        let max_scroll = (content_height - inner_height).max(0.0);
+        if max_scroll <= 0.0 {
+            return 0.0;
+        }
+
+        if self.focused {
+            let cursor_bottom = (self.cursor_line() + 1) as f32 * line_height;
+            (cursor_bottom - inner_height).clamp(0.0, max_scroll)
+        } else {
+            max_scroll
+        }
+    }
+
     pub fn with_id(mut self, id: ComponentId) -> Self {
         self.id = Some(id);
         self
@@ -483,7 +501,8 @@ impl Component for TextInput {
         cx.scene.draw_quad(
             Quad::new(bounds)
                 .with_background(self.background)
-                .with_border(border, 1.0),
+                .with_border(border, 1.0)
+                .with_corner_radius(6.0),
         );
 
         // Update max_width for wrapping calculations
@@ -503,6 +522,15 @@ impl Component for TextInput {
         } else {
             self.text_color
         };
+
+        // Clip text/cursor to input bounds so overflow never paints outside.
+        let text_clip_bounds = Bounds::new(
+            bounds.origin.x + 1.0,
+            bounds.origin.y + 1.0,
+            (bounds.size.width - 2.0).max(0.0),
+            (bounds.size.height - 2.0).max(0.0),
+        );
+        cx.scene.push_clip(text_clip_bounds);
 
         // Render each visual line (with wrapping)
         if !display_text.is_empty() {
@@ -602,6 +630,7 @@ impl Component for TextInput {
                 cx.scene.pop_clip();
             }
         }
+        cx.scene.pop_clip();
     }
 
     fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
