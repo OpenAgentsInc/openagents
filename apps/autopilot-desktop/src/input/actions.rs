@@ -78,6 +78,11 @@ enum ChatWalletComposerIntent {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+enum ChatSpacetimeComposerIntent {
+    Search { query: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct ChatWalletMessageSource {
     reference_label: String,
     message_id: String,
@@ -333,6 +338,14 @@ fn run_managed_chat_submit_action(state: &mut crate::app_state::RenderState) -> 
 
     match parse_chat_wallet_intent(&prompt) {
         Ok(Some(intent)) => return run_chat_wallet_action(state, intent),
+        Ok(None) => {}
+        Err(error) => {
+            state.autopilot_chat.last_error = Some(error);
+            return true;
+        }
+    }
+    match parse_chat_spacetime_intent(&prompt) {
+        Ok(Some(intent)) => return run_chat_spacetime_action(state, intent),
         Ok(None) => {}
         Err(error) => {
             state.autopilot_chat.last_error = Some(error);
@@ -680,6 +693,14 @@ fn run_direct_message_submit_action(
             return true;
         }
     }
+    match parse_chat_spacetime_intent(&prompt) {
+        Ok(Some(intent)) => return run_chat_spacetime_action(state, intent),
+        Ok(None) => {}
+        Err(error) => {
+            state.autopilot_chat.last_error = Some(error);
+            return true;
+        }
+    }
 
     let Some(identity) = state.nostr_identity.as_ref() else {
         state.autopilot_chat.last_error =
@@ -849,6 +870,68 @@ fn parse_chat_wallet_intent(prompt: &str) -> Result<Option<ChatWalletComposerInt
         "Wallet commands: `wallet pay <#|id>`, `wallet request <#|id> [description]`, `wallet copy-address <#|id>`, `wallet status <#|id>`"
             .to_string(),
     )
+}
+
+fn parse_chat_spacetime_intent(
+    prompt: &str,
+) -> Result<Option<ChatSpacetimeComposerIntent>, String> {
+    let trimmed = prompt.trim();
+    let Some(rest) = trimmed.strip_prefix("/search") else {
+        return Ok(None);
+    };
+    let query = rest.trim();
+    if query.is_empty() {
+        return Err("Search syntax is `/search <text>`".to_string());
+    }
+    Ok(Some(ChatSpacetimeComposerIntent::Search {
+        query: query.to_string(),
+    }))
+}
+
+fn run_chat_spacetime_action(
+    state: &mut crate::app_state::RenderState,
+    intent: ChatSpacetimeComposerIntent,
+) -> bool {
+    match intent {
+        ChatSpacetimeComposerIntent::Search { query } => {
+            let result = crate::chat_spacetime::search_active_chat_messages(
+                &state.autopilot_chat,
+                &query,
+                &state.spacetime_presence_snapshot,
+            );
+            let summary = if result.hit_count == 0 {
+                format!(
+                    "Search ({}) found no matches for `{query}`",
+                    result.source_tag
+                )
+            } else {
+                let preview = result
+                    .hits
+                    .iter()
+                    .take(3)
+                    .map(|hit| {
+                        format!(
+                            "{}{} {}",
+                            hit.reference_label,
+                            if hit.unread { " unread" } else { "" },
+                            hit.preview
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("  •  ");
+                format!(
+                    "Search ({}) {} hit(s): {}",
+                    result.source_tag, result.hit_count, preview
+                )
+            };
+            state.chat_inputs.composer.set_value(String::new());
+            state.autopilot_chat.last_error = None;
+            state
+                .autopilot_chat
+                .set_copy_notice(std::time::Instant::now(), summary);
+            true
+        }
+    }
 }
 
 fn run_chat_wallet_action(
@@ -8140,14 +8223,15 @@ pub(super) fn parse_positive_amount_str(raw: &str, label: &str) -> Result<u64, S
 #[cfg(test)]
 mod tests {
     use super::{
-        ChatWalletComposerIntent, ChatWalletMessagePayload, DirectMessageComposerIntent,
-        ManagedChatComposerIntent, build_direct_message_outbound_message,
-        build_managed_chat_join_request_event, build_managed_chat_leave_request_event,
-        build_managed_chat_moderation_event, build_managed_chat_outbound_message,
-        build_managed_chat_reaction_event, build_nip90_request_event_for_network_submission,
-        chat_wallet_payment_status_summary, classify_provider_failure, extract_chat_wallet_payload,
-        extract_target_provider_pubkeys, is_taxonomy_failure_detail, loop_integrity_alert_specs,
-        nip90_request_kind_for_request_type, parse_chat_wallet_intent,
+        ChatSpacetimeComposerIntent, ChatWalletComposerIntent, ChatWalletMessagePayload,
+        DirectMessageComposerIntent, ManagedChatComposerIntent,
+        build_direct_message_outbound_message, build_managed_chat_join_request_event,
+        build_managed_chat_leave_request_event, build_managed_chat_moderation_event,
+        build_managed_chat_outbound_message, build_managed_chat_reaction_event,
+        build_nip90_request_event_for_network_submission, chat_wallet_payment_status_summary,
+        classify_provider_failure, extract_chat_wallet_payload, extract_target_provider_pubkeys,
+        is_taxonomy_failure_detail, loop_integrity_alert_specs,
+        nip90_request_kind_for_request_type, parse_chat_spacetime_intent, parse_chat_wallet_intent,
         parse_direct_message_creation_intent, parse_direct_message_room_intent,
         parse_managed_chat_composer_intent, parse_managed_chat_mention_prefix,
         resolve_wallet_blink_env_from_secure_values,
@@ -8882,6 +8966,18 @@ mod tests {
                 message_reference: "abcdef".to_string(),
             })
         );
+    }
+
+    #[test]
+    fn chat_spacetime_search_command_uses_slash_syntax() {
+        assert_eq!(
+            parse_chat_spacetime_intent("/search deploy").unwrap(),
+            Some(ChatSpacetimeComposerIntent::Search {
+                query: "deploy".to_string(),
+            })
+        );
+        assert!(parse_chat_spacetime_intent("/search").is_err());
+        assert_eq!(parse_chat_spacetime_intent("deploy"), Ok(None));
     }
 
     #[test]

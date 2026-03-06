@@ -1550,6 +1550,7 @@ fn managed_chat_composer_hint(autopilot_chat: &AutopilotChatState, composer_valu
         return "No managed channel selected.".to_string();
     };
     let wallet_hint = "Wallet: `wallet pay <#|id>`, `wallet request <#|id>`, `wallet copy-address <#|id>`, `wallet status <#|id>`.";
+    let search_hint = "Search: `/search <text>` uses the optional Spacetime-derived index and falls back to canonical Nostr history.";
     let command_hint = if autopilot_chat.active_managed_chat_local_is_admin() {
         "Admin controls: `delete <#|id>`, `remove <pubkey>`, `invite <code>`, `meta key=value | ...`."
     } else if autopilot_chat.active_managed_chat_local_member().is_some() {
@@ -1559,7 +1560,7 @@ fn managed_chat_composer_hint(autopilot_chat: &AutopilotChatState, composer_valu
     };
     if channel.relay_url.is_none() {
         return format!(
-            "Channel relay target is unknown; publish waits for metadata or synced history. {wallet_hint} {command_hint}"
+            "Channel relay target is unknown; publish waits for metadata or synced history. {wallet_hint} {search_hint} {command_hint}"
         );
     }
     if composer_value.trim().is_empty()
@@ -1568,11 +1569,11 @@ fn managed_chat_composer_hint(autopilot_chat: &AutopilotChatState, composer_valu
             .is_some()
     {
         return format!(
-            "Use `reply <#|id> <text>` or `react <#|id> <emoji>`. Empty composer retries the latest failed publish. {wallet_hint} {command_hint}"
+            "Use `reply <#|id> <text>` or `react <#|id> <emoji>`. Empty composer retries the latest failed publish. {wallet_hint} {search_hint} {command_hint}"
         );
     }
     format!(
-        "Use `reply <#|id> <text>` or `react <#|id> <emoji>`. `@hexprefix` adds mention tags. Shift+Enter inserts a newline. {wallet_hint} {command_hint}"
+        "Use `reply <#|id> <text>` or `react <#|id> <emoji>`. `@hexprefix` adds mention tags. Shift+Enter inserts a newline. {wallet_hint} {search_hint} {command_hint}"
     )
 }
 
@@ -1581,17 +1582,18 @@ fn direct_message_composer_hint(
     composer_value: &str,
 ) -> String {
     let wallet_hint = "Wallet: `wallet pay <#|id>`, `wallet request <#|id>`, `wallet copy-address <#|id>`, `wallet status <#|id>`.";
+    let search_hint = "Search: `/search <text>` uses the optional Spacetime-derived index and falls back to canonical Nostr history.";
     if composer_value.trim().is_empty()
         && autopilot_chat
             .active_direct_message_retryable_message()
             .is_some()
     {
         return format!(
-            "Use `reply <#|id> <text>`, `dm <pubkey> <text>`, or `room <pubkey[,pubkey...]> | <subject> | <text>`. Empty composer retries the latest failed DM publish. {wallet_hint}"
+            "Use `reply <#|id> <text>`, `dm <pubkey> <text>`, or `room <pubkey[,pubkey...]> | <subject> | <text>`. Empty composer retries the latest failed DM publish. {wallet_hint} {search_hint}"
         );
     }
     format!(
-        "Use plain text in the selected room, `reply <#|id> <text>`, `dm <pubkey> <text>`, or `room <pubkey[,pubkey...]> | <subject> | <text>`. {wallet_hint}"
+        "Use plain text in the selected room, `reply <#|id> <text>`, `dm <pubkey> <text>`, or `room <pubkey[,pubkey...]> | <subject> | <text>`. {wallet_hint} {search_hint}"
     )
 }
 
@@ -1626,7 +1628,10 @@ fn active_thread_title(autopilot_chat: &AutopilotChatState) -> String {
         .unwrap_or_else(|| "Mission control".to_string())
 }
 
-fn active_thread_subtitle(autopilot_chat: &AutopilotChatState) -> String {
+fn active_thread_subtitle(
+    autopilot_chat: &AutopilotChatState,
+    spacetime_presence: &crate::spacetime_presence::SpacetimePresenceSnapshot,
+) -> String {
     match autopilot_chat.chat_browse_mode() {
         ChatBrowseMode::Managed => {
             if let (Some(group), Some(channel)) = (
@@ -1642,6 +1647,12 @@ fn active_thread_subtitle(autopilot_chat: &AutopilotChatState) -> String {
                 if let Some(local_delivery) = managed_local_delivery_summary(autopilot_chat) {
                     parts.push(local_delivery);
                 }
+                if let Some(presence) = crate::chat_spacetime::active_chat_presence_summary(
+                    autopilot_chat,
+                    spacetime_presence,
+                ) {
+                    parts.push(presence);
+                }
                 return parts.join("  •  ");
             }
         }
@@ -1653,6 +1664,12 @@ fn active_thread_subtitle(autopilot_chat: &AutopilotChatState) -> String {
                 ];
                 if let Some(local_delivery) = direct_local_delivery_summary(autopilot_chat) {
                     parts.push(local_delivery);
+                }
+                if let Some(presence) = crate::chat_spacetime::active_chat_presence_summary(
+                    autopilot_chat,
+                    spacetime_presence,
+                ) {
+                    parts.push(presence);
                 }
                 return parts.join("  •  ");
             }
@@ -1906,6 +1923,7 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
 fn paint_chat_shell(
     content_bounds: Bounds,
     autopilot_chat: &AutopilotChatState,
+    spacetime_presence: &crate::spacetime_presence::SpacetimePresenceSnapshot,
     paint: &mut PaintContext,
 ) {
     let workspace_bounds = chat_workspace_rail_bounds(content_bounds);
@@ -2113,7 +2131,7 @@ fn paint_chat_shell(
         theme::text::PRIMARY,
     ));
     paint.scene.draw_text(paint.text.layout_mono(
-        &active_thread_subtitle(autopilot_chat),
+        &active_thread_subtitle(autopilot_chat, spacetime_presence),
         Point::new(header_bounds.origin.x + 12.0, header_bounds.origin.y + 28.0),
         10.0,
         theme::text::MUTED,
@@ -2271,6 +2289,7 @@ fn paint_message_selection_highlight(
 pub fn paint(
     content_bounds: Bounds,
     autopilot_chat: &AutopilotChatState,
+    spacetime_presence: &crate::spacetime_presence::SpacetimePresenceSnapshot,
     chat_inputs: &mut ChatPaneInputs,
     paint: &mut PaintContext,
 ) {
@@ -2281,7 +2300,7 @@ pub fn paint(
         chat_transcript_body_bounds_with_height(content_bounds, composer_height);
     let composer_bounds = chat_composer_input_bounds_with_height(content_bounds, composer_height);
     let send_bounds = chat_send_button_bounds(content_bounds);
-    paint_chat_shell(content_bounds, autopilot_chat, paint);
+    paint_chat_shell(content_bounds, autopilot_chat, spacetime_presence, paint);
 
     let transcript_scroll_clip =
         transcript_scroll_clip_bounds_with_height(content_bounds, composer_height);
@@ -2605,6 +2624,19 @@ pub fn paint(
         } else {
             direct_message_composer_hint(autopilot_chat, &composer_value)
         };
+        if let Some(typing) = crate::chat_spacetime::active_chat_typing_summary(
+            autopilot_chat,
+            &composer_value,
+            spacetime_presence,
+        ) {
+            paint.scene.draw_text(paint.text.layout_mono(
+                &typing,
+                Point::new(transcript_body_bounds.origin.x, footer_y),
+                9.0,
+                theme::accent::PRIMARY,
+            ));
+            footer_y -= CHAT_TRANSCRIPT_LINE_HEIGHT;
+        }
         paint.scene.draw_text(paint.text.layout_mono(
             &hint,
             Point::new(transcript_body_bounds.origin.x, footer_y),
