@@ -16,6 +16,7 @@ use super::PaneLoadState;
 const MANAGED_CHAT_PROJECTION_SCHEMA_VERSION: u16 = 1;
 const MANAGED_CHAT_PROJECTION_STREAM_ID: &str = "stream.managed_chat_projection.v1";
 const MANAGED_CHAT_EVENT_LIMIT: usize = 8_192;
+pub const MANAGED_CHAT_UNCATEGORIZED_CATEGORY_ID: &str = "oa:uncategorized";
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -49,6 +50,8 @@ pub struct ManagedChatLocalState {
     pub selected_channel_id: Option<String>,
     #[serde(default)]
     pub read_cursors: BTreeMap<String, ManagedChatReadCursor>,
+    #[serde(default)]
+    pub collapsed_category_keys: BTreeSet<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -382,6 +385,41 @@ impl ManagedChatProjectionState {
         self.persist_current_state(format!("Selected managed chat group {group_id}"))
     }
 
+    pub fn toggle_category_collapsed(
+        &mut self,
+        group_id: &str,
+        category_id: &str,
+    ) -> Result<(), String> {
+        if !self
+            .snapshot
+            .groups
+            .iter()
+            .any(|group| group.group_id == group_id)
+        {
+            return Err(format!("Unknown managed chat group: {group_id}"));
+        }
+        if !self.snapshot.channels.iter().any(|channel| {
+            channel.group_id == group_id && managed_chat_channel_category_id(channel) == category_id
+        }) {
+            return Err(format!(
+                "Unknown managed chat category {category_id} in group {group_id}"
+            ));
+        }
+        let key = managed_chat_collapsed_category_key(group_id, category_id);
+        if !self.local_state.collapsed_category_keys.insert(key.clone()) {
+            self.local_state.collapsed_category_keys.remove(&key);
+        }
+        self.persist_current_state(format!(
+            "Toggled managed chat category {category_id} in group {group_id}"
+        ))
+    }
+
+    pub fn category_is_collapsed(&self, group_id: &str, category_id: &str) -> bool {
+        self.local_state
+            .collapsed_category_keys
+            .contains(&managed_chat_collapsed_category_key(group_id, category_id))
+    }
+
     pub fn mark_channel_read(
         &mut self,
         channel_id: &str,
@@ -561,6 +599,18 @@ fn normalize_managed_chat_relay_events(mut relay_events: Vec<Event>) -> Vec<Even
         relay_events = relay_events.split_off(relay_events.len() - MANAGED_CHAT_EVENT_LIMIT);
     }
     relay_events
+}
+
+fn managed_chat_channel_category_id(channel: &ManagedChatChannelProjection) -> &str {
+    channel
+        .hints
+        .category_id
+        .as_deref()
+        .unwrap_or(MANAGED_CHAT_UNCATEGORIZED_CATEGORY_ID)
+}
+
+fn managed_chat_collapsed_category_key(group_id: &str, category_id: &str) -> String {
+    format!("{group_id}:{category_id}")
 }
 
 fn normalize_managed_chat_outbound_messages(
@@ -1793,6 +1843,30 @@ mod tests {
             ManagedChatDeliveryState::Acked
         );
         assert_eq!(reloaded_message.attempt_count, 2);
+    }
+
+    #[test]
+    fn managed_chat_projection_persists_collapsed_category_state() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("managed-chat.json");
+        let mut projection =
+            ManagedChatProjectionState::from_projection_path_for_tests(path.clone());
+
+        let channel_create = build_channel_create_event('a', 20, "ops");
+        projection.replace_relay_events(vec![
+            build_group_metadata_event('b', 10, "Ops"),
+            build_channel_metadata_event('c', 21, &channel_create.id, "ops", 1),
+            channel_create,
+        ]);
+        assert!(!projection.category_is_collapsed("oa-main", "ops"));
+
+        projection
+            .toggle_category_collapsed("oa-main", "ops")
+            .unwrap();
+        assert!(projection.category_is_collapsed("oa-main", "ops"));
+
+        let reloaded = ManagedChatProjectionState::from_projection_path_for_tests(path);
+        assert!(reloaded.category_is_collapsed("oa-main", "ops"));
     }
 
     #[test]

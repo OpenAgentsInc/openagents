@@ -497,6 +497,19 @@ pub struct AutopilotThreadListEntry {
     pub path: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ManagedChatChannelRailRow {
+    Category {
+        category_id: String,
+        label: String,
+        collapsed: bool,
+        channel_count: usize,
+    },
+    Channel {
+        channel_id: String,
+    },
+}
+
 pub struct AutopilotChatState {
     pub connection_status: String,
     pub models: Vec<String>,
@@ -834,6 +847,75 @@ impl AutopilotChatState {
             .collect()
     }
 
+    pub fn active_managed_chat_channel_rail_rows(&self) -> Vec<ManagedChatChannelRailRow> {
+        let Some(active_group) = self.active_managed_chat_group() else {
+            return Vec::new();
+        };
+        let active_channels = self.active_managed_chat_channels();
+        let mut rows = Vec::new();
+        let mut current_category_id = None::<String>;
+
+        for channel in active_channels {
+            let category_id = channel
+                .hints
+                .category_id
+                .clone()
+                .unwrap_or_else(|| MANAGED_CHAT_UNCATEGORIZED_CATEGORY_ID.to_string());
+            if current_category_id.as_deref() != Some(category_id.as_str()) {
+                let channel_count = active_group
+                    .channel_ids
+                    .iter()
+                    .filter_map(|channel_id| {
+                        self.managed_chat_projection
+                            .snapshot
+                            .channels
+                            .iter()
+                            .find(|channel| channel.channel_id == *channel_id)
+                    })
+                    .filter(|candidate| {
+                        candidate
+                            .hints
+                            .category_id
+                            .as_deref()
+                            .unwrap_or(MANAGED_CHAT_UNCATEGORIZED_CATEGORY_ID)
+                            == category_id
+                    })
+                    .count();
+                rows.push(ManagedChatChannelRailRow::Category {
+                    label: channel
+                        .hints
+                        .category_label
+                        .clone()
+                        .filter(|value| !value.trim().is_empty())
+                        .unwrap_or_else(|| {
+                            if category_id == MANAGED_CHAT_UNCATEGORIZED_CATEGORY_ID {
+                                "General".to_string()
+                            } else {
+                                category_id.clone()
+                            }
+                        }),
+                    category_id: category_id.clone(),
+                    collapsed: self
+                        .managed_chat_projection
+                        .category_is_collapsed(&active_group.group_id, &category_id),
+                    channel_count,
+                });
+                current_category_id = Some(category_id.clone());
+            }
+
+            if !self
+                .managed_chat_projection
+                .category_is_collapsed(&active_group.group_id, &category_id)
+            {
+                rows.push(ManagedChatChannelRailRow::Channel {
+                    channel_id: channel.channel_id.clone(),
+                });
+            }
+        }
+
+        rows
+    }
+
     pub fn active_managed_chat_retryable_message(&self) -> Option<&ManagedChatMessageProjection> {
         self.active_managed_chat_messages()
             .into_iter()
@@ -894,6 +976,73 @@ impl AutopilotChatState {
         {
             Ok(()) => {
                 self.reset_transcript_scroll();
+                self.last_error = None;
+                true
+            }
+            Err(error) => {
+                self.last_error = Some(error);
+                false
+            }
+        }
+    }
+
+    pub fn select_managed_chat_channel_row_by_index(&mut self, index: usize) -> bool {
+        let Some(group_id) = self
+            .active_managed_chat_group()
+            .map(|group| group.group_id.clone())
+        else {
+            return false;
+        };
+        let Some(channel_id) = self
+            .active_managed_chat_channel_rail_rows()
+            .get(index)
+            .and_then(|row| match row {
+                ManagedChatChannelRailRow::Channel { channel_id } => Some(channel_id.clone()),
+                ManagedChatChannelRailRow::Category { .. } => None,
+            })
+        else {
+            return false;
+        };
+        match self
+            .managed_chat_projection
+            .set_selected_channel(&group_id, &channel_id)
+        {
+            Ok(()) => {
+                self.reset_transcript_scroll();
+                self.last_error = None;
+                true
+            }
+            Err(error) => {
+                self.last_error = Some(error);
+                false
+            }
+        }
+    }
+
+    pub fn toggle_managed_chat_category_by_row_index(&mut self, index: usize) -> bool {
+        let Some(group_id) = self
+            .active_managed_chat_group()
+            .map(|group| group.group_id.clone())
+        else {
+            return false;
+        };
+        let Some(category_id) = self
+            .active_managed_chat_channel_rail_rows()
+            .get(index)
+            .and_then(|row| match row {
+                ManagedChatChannelRailRow::Category { category_id, .. } => {
+                    Some(category_id.clone())
+                }
+                ManagedChatChannelRailRow::Channel { .. } => None,
+            })
+        else {
+            return false;
+        };
+        match self
+            .managed_chat_projection
+            .toggle_category_collapsed(&group_id, &category_id)
+        {
+            Ok(()) => {
                 self.last_error = None;
                 true
             }
@@ -6247,6 +6396,113 @@ mod tests {
             Some("beta")
         );
         assert_eq!(chat.active_managed_chat_messages().len(), 1);
+    }
+
+    #[test]
+    fn chat_state_groups_managed_channels_by_category_and_persists_collapse() {
+        fn repeated_hex(ch: char, len: usize) -> String {
+            std::iter::repeat_n(ch, len).collect()
+        }
+
+        fn signed_event(
+            id_ch: char,
+            pubkey_ch: char,
+            created_at: u64,
+            kind: u16,
+            tags: Vec<Vec<String>>,
+            content: String,
+        ) -> nostr::Event {
+            nostr::Event {
+                id: repeated_hex(id_ch, 64),
+                pubkey: repeated_hex(pubkey_ch, 64),
+                created_at,
+                kind,
+                tags,
+                content,
+                sig: repeated_hex('f', 128),
+            }
+        }
+
+        fn channel_event(
+            id_ch: char,
+            pubkey_ch: char,
+            created_at: u64,
+            name: &str,
+            category_id: &str,
+            category_label: &str,
+            position: u32,
+        ) -> nostr::Event {
+            let channel = nostr::ManagedChannelCreateEvent::new(
+                "oa-main",
+                nostr::ChannelMetadata::new(name, "", ""),
+                created_at,
+            )
+            .expect("channel")
+            .with_hints(
+                nostr::ManagedChannelHints::new()
+                    .with_channel_type(nostr::ManagedChannelType::Ops)
+                    .with_category_id(category_id)
+                    .with_category_label(category_label)
+                    .with_position(position),
+            )
+            .expect("channel hints");
+            signed_event(
+                id_ch,
+                pubkey_ch,
+                created_at,
+                40,
+                channel.to_tags().expect("channel tags"),
+                channel.content().expect("channel content"),
+            )
+        }
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("managed-chat.json");
+        let mut chat = AutopilotChatState::default();
+        chat.managed_chat_projection =
+            super::ManagedChatProjectionState::from_projection_path_for_tests(path);
+
+        let group_metadata = nostr::GroupMetadataEvent::new(
+            "oa-main",
+            nostr::GroupMetadata::new().with_name("Ops"),
+            10,
+        )
+        .expect("group metadata");
+        chat.managed_chat_projection.record_relay_events(vec![
+            signed_event('a', '1', 10, 39000, group_metadata.to_tags(), String::new()),
+            channel_event('b', '2', 20, "ops-alpha", "ops", "Operations", 1),
+            channel_event('c', '3', 21, "ops-beta", "ops", "Operations", 2),
+            channel_event('d', '4', 22, "dev-alpha", "dev", "Development", 1),
+        ]);
+
+        let rows = chat.active_managed_chat_channel_rail_rows();
+        assert_eq!(rows.len(), 5);
+        let ops_row_index = rows
+            .iter()
+            .position(|row| {
+                matches!(
+                    row,
+                    super::ManagedChatChannelRailRow::Category { category_id, .. }
+                        if category_id == "ops"
+                )
+            })
+            .expect("ops category row");
+
+        assert!(chat.toggle_managed_chat_category_by_row_index(ops_row_index));
+        let collapsed_rows = chat.active_managed_chat_channel_rail_rows();
+        assert_eq!(collapsed_rows.len(), 3);
+        assert!(matches!(
+            collapsed_rows.iter().find(|row| matches!(
+                row,
+                super::ManagedChatChannelRailRow::Category { category_id, .. }
+                    if category_id == "ops"
+            )),
+            Some(super::ManagedChatChannelRailRow::Category {
+                category_id,
+                collapsed,
+                ..
+            }) if category_id == "ops" && *collapsed
+        ));
     }
 
     #[test]

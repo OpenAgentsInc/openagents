@@ -45,6 +45,8 @@ struct ChatShellChannelEntry {
     title: String,
     subtitle: String,
     active: bool,
+    is_category: bool,
+    collapsed: bool,
 }
 
 fn paint_chat_send_button(bounds: Bounds, enabled: bool, paint: &mut PaintContext) {
@@ -877,12 +879,36 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
             .active_managed_chat_channel()
             .map(|channel| channel.channel_id.as_str());
         return autopilot_chat
-            .active_managed_chat_channels()
+            .active_managed_chat_channel_rail_rows()
             .into_iter()
-            .map(|channel| ChatShellChannelEntry {
-                title: format!("# {}", managed_channel_label(channel)),
-                subtitle: managed_channel_subtitle(channel),
-                active: active_channel_id == Some(channel.channel_id.as_str()),
+            .filter_map(|row| match row {
+                crate::app_state::ManagedChatChannelRailRow::Category {
+                    label,
+                    collapsed,
+                    channel_count,
+                    ..
+                } => Some(ChatShellChannelEntry {
+                    title: format!("{} {}", if collapsed { "▸" } else { "▾" }, label),
+                    subtitle: format!("{channel_count} channel(s)"),
+                    active: false,
+                    is_category: true,
+                    collapsed,
+                }),
+                crate::app_state::ManagedChatChannelRailRow::Channel { channel_id } => {
+                    let channel = autopilot_chat
+                        .managed_chat_projection
+                        .snapshot
+                        .channels
+                        .iter()
+                        .find(|channel| channel.channel_id == channel_id)?;
+                    Some(ChatShellChannelEntry {
+                        title: format!("# {}", managed_channel_label(channel)),
+                        subtitle: managed_channel_subtitle(channel),
+                        active: active_channel_id == Some(channel.channel_id.as_str()),
+                        is_category: false,
+                        collapsed: false,
+                    })
+                }
             })
             .collect();
     }
@@ -891,6 +917,8 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
         title: "# mission-control".to_string(),
         subtitle: "provider coordination".to_string(),
         active: autopilot_chat.active_thread_id.is_none(),
+        is_category: false,
+        collapsed: false,
     }];
 
     entries.extend(autopilot_chat.threads.iter().take(6).map(|thread_id| {
@@ -908,6 +936,8 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
             title: format!("# {title}"),
             subtitle,
             active: autopilot_chat.active_thread_id.as_deref() == Some(thread_id.as_str()),
+            is_category: false,
+            collapsed: false,
         }
     }));
 
@@ -920,6 +950,8 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
                 + autopilot_chat.pending_tool_calls.len()
         ),
         active: false,
+        is_category: false,
+        collapsed: false,
     });
     entries
 }
@@ -1038,38 +1070,48 @@ fn paint_chat_shell(
             (channel_bounds.size.width - 16.0).max(0.0),
             CHAT_SHELL_ROW_HEIGHT,
         );
+        let background = if entry.is_category {
+            theme::bg::APP.with_alpha(0.08)
+        } else if entry.active {
+            theme::accent::PRIMARY.with_alpha(0.16)
+        } else {
+            theme::bg::APP.with_alpha(0.26)
+        };
+        let border = if entry.is_category {
+            theme::border::DEFAULT.with_alpha(0.18)
+        } else if entry.active {
+            theme::accent::PRIMARY.with_alpha(0.45)
+        } else {
+            theme::border::DEFAULT.with_alpha(0.35)
+        };
         paint.scene.draw_quad(
             Quad::new(row_bounds)
-                .with_background(if entry.active {
-                    theme::accent::PRIMARY.with_alpha(0.16)
-                } else {
-                    theme::bg::APP.with_alpha(0.26)
-                })
-                .with_border(
-                    if entry.active {
-                        theme::accent::PRIMARY.with_alpha(0.45)
-                    } else {
-                        theme::border::DEFAULT.with_alpha(0.35)
-                    },
-                    1.0,
-                )
+                .with_background(background)
+                .with_border(border, 1.0)
                 .with_corner_radius(8.0),
         );
+        let title_color = if entry.is_category {
+            theme::text::MUTED
+        } else if entry.active {
+            theme::text::PRIMARY
+        } else {
+            theme::text::SECONDARY
+        };
         paint.scene.draw_text(paint.text.layout(
             &entry.title,
             Point::new(row_bounds.origin.x + 10.0, row_bounds.origin.y + 6.0),
             11.0,
-            if entry.active {
-                theme::text::PRIMARY
-            } else {
-                theme::text::SECONDARY
-            },
+            title_color,
         ));
         paint.scene.draw_text(paint.text.layout_mono(
             &entry.subtitle,
             Point::new(row_bounds.origin.x + 10.0, row_bounds.origin.y + 18.0),
             9.0,
-            theme::text::MUTED,
+            if entry.is_category {
+                theme::text::MUTED.with_alpha(0.85)
+            } else {
+                theme::text::MUTED
+            },
         ));
         row_y += CHAT_SHELL_ROW_HEIGHT + 6.0;
     }
