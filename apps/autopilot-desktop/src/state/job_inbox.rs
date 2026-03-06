@@ -248,6 +248,30 @@ impl JobInboxState {
             .to_string();
         self.decide_request(selected_id.as_str(), accepted, reason)
     }
+
+    pub fn remove_requests_by_demand_source(
+        &mut self,
+        demand_source: JobDemandSource,
+        keep_request_id: Option<&str>,
+    ) -> usize {
+        let original_len = self.requests.len();
+        self.requests.retain(|request| {
+            request.demand_source != demand_source
+                || keep_request_id.is_some_and(|keep| request.request_id == keep)
+        });
+        if let Some(selected_id) = self.selected_request_id.as_deref()
+            && !self
+                .requests
+                .iter()
+                .any(|request| request.request_id == selected_id)
+        {
+            self.selected_request_id = self
+                .requests
+                .first()
+                .map(|request| request.request_id.clone());
+        }
+        original_len.saturating_sub(self.requests.len())
+    }
 }
 
 #[cfg(test)]

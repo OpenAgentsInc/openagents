@@ -23,6 +23,7 @@ mod spacetime_presence;
 mod spark_pane;
 mod spark_wallet;
 mod stablesats_blink_worker;
+mod starter_demand_client;
 mod state;
 mod sync_apply;
 mod sync_bootstrap;

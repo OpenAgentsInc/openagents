@@ -3941,9 +3941,240 @@ const STARTER_DEMAND_BUDGET_SATS_ENV: &str = "OPENAGENTS_STARTER_DEMAND_BUDGET_S
 const STARTER_DEMAND_DISPATCH_INTERVAL_ENV: &str =
     "OPENAGENTS_STARTER_DEMAND_DISPATCH_INTERVAL_SECONDS";
 const STARTER_DEMAND_MAX_INFLIGHT_ENV: &str = "OPENAGENTS_STARTER_DEMAND_MAX_INFLIGHT";
+const STARTER_DEMAND_LOCAL_SIMULATOR_ENV: &str = "OPENAGENTS_ENABLE_LOCAL_STARTER_DEMAND_SIMULATOR";
 const STARTER_DEMAND_REQUEST_TIMEOUT_SECONDS: u64 = 75;
+const HOSTED_STARTER_DEMAND_POLL_INTERVAL_SECONDS: u64 = 3;
 
 pub(super) fn run_auto_starter_demand_generator(
+    state: &mut crate::app_state::RenderState,
+    now: std::time::Instant,
+) -> bool {
+    if starter_demand_local_simulator_enabled() {
+        return run_local_starter_demand_simulator(state, now);
+    }
+
+    run_hosted_starter_demand_sync(state, now)
+}
+
+fn run_hosted_starter_demand_sync(
+    state: &mut crate::app_state::RenderState,
+    now: std::time::Instant,
+) -> bool {
+    let active_starter_request_id = state
+        .active_job
+        .job
+        .as_ref()
+        .filter(|job| job.demand_source == crate::app_state::JobDemandSource::StarterDemand)
+        .map(|job| job.request_id.clone());
+    let clear_hosted_rows = |state: &mut crate::app_state::RenderState, reason: &str| {
+        let mut changed = state.starter_jobs.clear_hosted_offers(reason);
+        let removed = state.job_inbox.remove_requests_by_demand_source(
+            crate::app_state::JobDemandSource::StarterDemand,
+            active_starter_request_id.as_deref(),
+        );
+        changed |= removed > 0;
+        changed
+    };
+
+    if state.settings.document.primary_relay_url
+        != crate::app_state::DEFAULT_NEXUS_PRIMARY_RELAY_URL
+    {
+        return clear_hosted_rows(
+            state,
+            "Hosted starter jobs are only available on the OpenAgents Nexus relay.",
+        );
+    }
+    if !matches!(state.provider_runtime.mode, ProviderMode::Online)
+        || state.provider_nip90_lane.connected_relays == 0
+    {
+        return clear_hosted_rows(
+            state,
+            "Hosted starter jobs become available after Go Online on the OpenAgents Nexus.",
+        );
+    }
+    if state
+        .starter_jobs
+        .next_hosted_sync_due_at
+        .is_some_and(|next_due_at| now < next_due_at)
+    {
+        return false;
+    }
+
+    let Some(control_base_url) = state.hosted_control_base_url.clone() else {
+        return clear_hosted_rows(
+            state,
+            "Hosted starter jobs require an OpenAgents control base URL.",
+        );
+    };
+    let Some(bearer_auth) = state.hosted_control_bearer_token.clone() else {
+        return clear_hosted_rows(
+            state,
+            "Hosted starter jobs require an authenticated OpenAgents session.",
+        );
+    };
+
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+    {
+        Ok(client) => client,
+        Err(error) => {
+            let message = format!("starter demand client initialization failed: {error}");
+            state.starter_jobs.last_error = Some(message.clone());
+            state.starter_jobs.load_state = crate::app_state::PaneLoadState::Error;
+            state.provider_runtime.last_error_detail = Some(message.clone());
+            state.provider_runtime.last_result = Some(message);
+            return true;
+        }
+    };
+    let poll_request = crate::starter_demand_client::StarterDemandPollRequest {
+        provider_nostr_pubkey: state
+            .nostr_identity
+            .as_ref()
+            .map(|identity| identity.npub.clone()),
+        primary_relay_url: Some(state.settings.document.primary_relay_url.clone()),
+    };
+    let response = match crate::starter_demand_client::poll_starter_demand_blocking(
+        &client,
+        control_base_url.as_str(),
+        bearer_auth.as_str(),
+        &poll_request,
+    ) {
+        Ok(response) => response,
+        Err(error) => {
+            state.starter_jobs.next_hosted_sync_due_at = Some(
+                now + std::time::Duration::from_secs(HOSTED_STARTER_DEMAND_POLL_INTERVAL_SECONDS),
+            );
+            state.starter_jobs.last_error = Some(error.clone());
+            state.starter_jobs.load_state = crate::app_state::PaneLoadState::Error;
+            state.provider_runtime.last_error_detail = Some(error.clone());
+            state.provider_runtime.last_result =
+                Some(format!("hosted starter demand sync failed: {error}"));
+            return true;
+        }
+    };
+
+    if !response.eligible {
+        let reason = response
+            .reason
+            .as_deref()
+            .unwrap_or("Hosted starter jobs are not eligible for this session.");
+        return clear_hosted_rows(state, reason);
+    }
+
+    let hosted_jobs = response
+        .offers
+        .iter()
+        .map(|offer| crate::app_state::StarterJobRow {
+            job_id: offer.request_id.clone(),
+            summary: offer
+                .execution_input
+                .clone()
+                .unwrap_or_else(|| offer.capability.clone()),
+            payout_sats: offer.price_sats,
+            eligible: true,
+            status: crate::app_state::StarterJobStatus::Queued,
+            payout_pointer: None,
+        })
+        .collect::<Vec<_>>();
+    state.starter_jobs.sync_hosted_offers(
+        hosted_jobs,
+        response.budget_cap_sats,
+        response.budget_allocated_sats,
+        response.dispatch_interval_seconds,
+        response.max_active_offers_per_session,
+        Some(now + std::time::Duration::from_secs(HOSTED_STARTER_DEMAND_POLL_INTERVAL_SECONDS)),
+        "Synced hosted starter-demand offers from Nexus",
+    );
+
+    let keep_request_id = active_starter_request_id.clone().or_else(|| {
+        response
+            .offers
+            .first()
+            .map(|offer| offer.request_id.clone())
+    });
+    let removed = state.job_inbox.remove_requests_by_demand_source(
+        crate::app_state::JobDemandSource::StarterDemand,
+        keep_request_id.as_deref(),
+    );
+    let mut changed = removed > 0;
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs());
+
+    for offer in &response.offers {
+        let request = JobInboxNetworkRequest {
+            request_id: offer.request_id.clone(),
+            requester: offer.requester.clone(),
+            demand_source: crate::app_state::JobDemandSource::StarterDemand,
+            request_kind: offer.request_kind,
+            capability: offer.capability.clone(),
+            execution_input: offer.execution_input.clone(),
+            target_provider_pubkeys: Vec::new(),
+            encrypted: false,
+            encrypted_payload: None,
+            parsed_event_shape: Some(format!(
+                "starter.offer authority={} status={} ttl_seconds={}",
+                response.authority, offer.status, offer.ttl_seconds
+            )),
+            raw_event_json: None,
+            skill_scope_id: None,
+            skl_manifest_a: None,
+            skl_manifest_event_id: None,
+            sa_tick_request_event_id: Some(offer.request_id.clone()),
+            sa_tick_result_event_id: None,
+            ac_envelope_event_id: None,
+            price_sats: offer.price_sats,
+            ttl_seconds: offer.ttl_seconds,
+            validation: JobInboxValidation::Valid,
+        };
+        let is_new = !state
+            .job_inbox
+            .requests
+            .iter()
+            .any(|existing| existing.request_id == offer.request_id);
+        state.job_inbox.upsert_network_request(request.clone());
+        if is_new {
+            changed = true;
+            state.earn_job_lifecycle_projection.record_ingress_request(
+                &request,
+                now_epoch_seconds,
+                "starter.hosted.ingress",
+            );
+            state.earn_kernel_receipts.record_ingress_request(
+                &request,
+                now_epoch_seconds,
+                "starter.hosted.ingress",
+            );
+            state
+                .activity_feed
+                .upsert_event(crate::app_state::ActivityEventRow {
+                    event_id: format!("starter.hosted.offer:{}", offer.request_id),
+                    domain: crate::app_state::ActivityEventDomain::Network,
+                    source_tag: "starter.hosted".to_string(),
+                    summary: "Hosted starter offer arrived".to_string(),
+                    detail: format!(
+                        "request={} payout_sats={} authority={} relay={}",
+                        offer.request_id,
+                        offer.price_sats,
+                        response.authority,
+                        response.hosted_nexus_relay_url
+                    ),
+                    occurred_at_epoch_seconds: now_epoch_seconds,
+                });
+            state.activity_feed.load_state = crate::app_state::PaneLoadState::Ready;
+        }
+    }
+
+    state.provider_runtime.last_result = Some(format!(
+        "hosted starter demand synced ({} offer{})",
+        response.offers.len(),
+        if response.offers.len() == 1 { "" } else { "s" }
+    ));
+    changed
+}
+
+fn run_local_starter_demand_simulator(
     state: &mut crate::app_state::RenderState,
     now: std::time::Instant,
 ) -> bool {
@@ -4012,6 +4243,18 @@ pub(super) fn run_auto_starter_demand_generator(
             true
         }
     }
+}
+
+fn starter_demand_local_simulator_enabled() -> bool {
+    std::env::var(STARTER_DEMAND_LOCAL_SIMULATOR_ENV)
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
 }
 
 fn queue_starter_demand_request(
@@ -4564,6 +4807,14 @@ pub(super) fn run_starter_jobs_action(
             true
         }
         StarterJobsPaneAction::ToggleKillSwitch => {
+            if !starter_demand_local_simulator_enabled() {
+                state.starter_jobs.last_error = Some(
+                    "Hosted starter-demand controls live in Nexus; the desktop pane is read-only."
+                        .to_string(),
+                );
+                state.starter_jobs.load_state = crate::app_state::PaneLoadState::Error;
+                return true;
+            }
             let enabled = state.starter_jobs.toggle_kill_switch();
             state.provider_runtime.last_result = Some(if enabled {
                 "starter demand kill switch enabled".to_string()
@@ -4573,6 +4824,14 @@ pub(super) fn run_starter_jobs_action(
             true
         }
         StarterJobsPaneAction::CompleteSelected => {
+            if !starter_demand_local_simulator_enabled() {
+                state.starter_jobs.last_error = Some(
+                    "Hosted starter jobs settle through the normal provider execution path."
+                        .to_string(),
+                );
+                state.starter_jobs.load_state = crate::app_state::PaneLoadState::Error;
+                return true;
+            }
             match state.starter_jobs.start_selected_execution() {
                 Ok((job_id, payout_sats)) => {
                     let payout_pointer =
@@ -4763,6 +5022,13 @@ pub(super) fn run_open_network_paid_transition_reconciliation(
         now,
     ) {
         Ok(crate::app_state::JobLifecycleStage::Paid) => {
+            if demand_source == crate::app_state::JobDemandSource::StarterDemand {
+                complete_hosted_starter_offer_if_configured(
+                    state,
+                    request_id.as_str(),
+                    wallet_pointer.as_str(),
+                );
+            }
             state.provider_runtime.last_result = Some(format!(
                 "{} job paid with wallet pointer {}",
                 demand_source.label(),
@@ -4786,6 +5052,55 @@ pub(super) fn run_open_network_paid_transition_reconciliation(
             state.provider_runtime.last_result = Some(message);
             state.provider_runtime.last_authoritative_error_class = Some(EarnFailureClass::Payment);
             false
+        }
+    }
+}
+
+fn complete_hosted_starter_offer_if_configured(
+    state: &mut crate::app_state::RenderState,
+    request_id: &str,
+    payment_pointer: &str,
+) {
+    let Some(control_base_url) = state.hosted_control_base_url.clone() else {
+        return;
+    };
+    let Some(bearer_auth) = state.hosted_control_bearer_token.clone() else {
+        return;
+    };
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+    {
+        Ok(client) => client,
+        Err(error) => {
+            state.starter_jobs.last_error = Some(format!(
+                "starter demand completion client initialization failed: {error}"
+            ));
+            state.starter_jobs.load_state = crate::app_state::PaneLoadState::Error;
+            return;
+        }
+    };
+    match crate::starter_demand_client::complete_starter_demand_offer_blocking(
+        &client,
+        control_base_url.as_str(),
+        bearer_auth.as_str(),
+        request_id,
+        payment_pointer,
+    ) {
+        Ok(response) => {
+            state.starter_jobs.mark_completed(
+                response.request_id.as_str(),
+                response.payment_pointer.as_str(),
+            );
+            state.starter_jobs.budget_cap_sats = response.budget_cap_sats;
+            state.starter_jobs.budget_allocated_sats = response.budget_allocated_sats;
+            state.starter_jobs.next_hosted_sync_due_at = Some(std::time::Instant::now());
+        }
+        Err(error) => {
+            state.starter_jobs.last_error = Some(format!(
+                "hosted starter completion reconciliation failed: {error}"
+            ));
+            state.starter_jobs.load_state = crate::app_state::PaneLoadState::Error;
         }
     }
 }

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
 
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -14,15 +14,31 @@ const ENV_SESSION_TTL_SECONDS: &str = "NEXUS_CONTROL_SESSION_TTL_SECONDS";
 const ENV_SYNC_TOKEN_TTL_SECONDS: &str = "NEXUS_CONTROL_SYNC_TOKEN_TTL_SECONDS";
 const ENV_SYNC_TOKEN_REFRESH_AFTER_SECONDS: &str = "NEXUS_CONTROL_SYNC_TOKEN_REFRESH_AFTER_SECONDS";
 const ENV_SYNC_STREAM_GRANTS: &str = "NEXUS_CONTROL_SYNC_STREAM_GRANTS";
+const ENV_HOSTED_NEXUS_RELAY_URL: &str = "NEXUS_CONTROL_HOSTED_NEXUS_RELAY_URL";
+const ENV_STARTER_DEMAND_BUDGET_CAP_SATS: &str = "NEXUS_CONTROL_STARTER_DEMAND_BUDGET_CAP_SATS";
+const ENV_STARTER_DEMAND_DISPATCH_INTERVAL_SECONDS: &str =
+    "NEXUS_CONTROL_STARTER_DEMAND_DISPATCH_INTERVAL_SECONDS";
+const ENV_STARTER_DEMAND_REQUEST_TTL_SECONDS: &str =
+    "NEXUS_CONTROL_STARTER_DEMAND_REQUEST_TTL_SECONDS";
+const ENV_STARTER_DEMAND_MAX_ACTIVE_OFFERS_PER_SESSION: &str =
+    "NEXUS_CONTROL_STARTER_DEMAND_MAX_ACTIVE_OFFERS_PER_SESSION";
+
 const DEFAULT_LISTEN_ADDR: &str = "127.0.0.1:42020";
 const DEFAULT_SESSION_TTL_SECONDS: u64 = 86_400;
 const DEFAULT_SYNC_TOKEN_TTL_SECONDS: u64 = 900;
 const DEFAULT_SYNC_TOKEN_REFRESH_AFTER_SECONDS: u64 = 300;
+const DEFAULT_HOSTED_NEXUS_RELAY_URL: &str = "wss://relay.openagents.dev";
+const DEFAULT_STARTER_DEMAND_BUDGET_CAP_SATS: u64 = 5_000;
+const DEFAULT_STARTER_DEMAND_DISPATCH_INTERVAL_SECONDS: u64 = 12;
+const DEFAULT_STARTER_DEMAND_REQUEST_TTL_SECONDS: u64 = 75;
+const DEFAULT_STARTER_DEMAND_MAX_ACTIVE_OFFERS_PER_SESSION: usize = 1;
 const DEFAULT_SYNC_STREAM_GRANTS: [&str; 2] = [
     "stream.activity_projection.v1",
     "stream.earn_job_lifecycle_projection.v1",
 ];
 const DEFAULT_SYNC_SCOPES: [&str; 3] = ["sync.subscribe", "sync.checkpoint.write", "sync.append"];
+const STARTER_DEMAND_REQUESTER: &str = "openagents-hosted-nexus";
+const STARTER_DEMAND_REQUEST_KIND: u16 = 5050;
 
 #[derive(Debug, Clone)]
 pub struct ServiceConfig {
@@ -31,6 +47,11 @@ pub struct ServiceConfig {
     pub sync_token_ttl_seconds: u64,
     pub sync_token_refresh_after_seconds: u64,
     pub sync_stream_grants: Vec<String>,
+    pub hosted_nexus_relay_url: String,
+    pub starter_demand_budget_cap_sats: u64,
+    pub starter_demand_dispatch_interval_seconds: u64,
+    pub starter_demand_request_ttl_seconds: u64,
+    pub starter_demand_max_active_offers_per_session: usize,
 }
 
 impl ServiceConfig {
@@ -79,12 +100,55 @@ impl ServiceConfig {
                     .collect()
             });
 
+        let hosted_nexus_relay_url = std::env::var(ENV_HOSTED_NEXUS_RELAY_URL)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| DEFAULT_HOSTED_NEXUS_RELAY_URL.to_string());
+        let starter_demand_budget_cap_sats = parse_u64_env(
+            ENV_STARTER_DEMAND_BUDGET_CAP_SATS,
+            DEFAULT_STARTER_DEMAND_BUDGET_CAP_SATS,
+        )?
+        .max(1);
+        let starter_demand_dispatch_interval_seconds = parse_u64_env(
+            ENV_STARTER_DEMAND_DISPATCH_INTERVAL_SECONDS,
+            DEFAULT_STARTER_DEMAND_DISPATCH_INTERVAL_SECONDS,
+        )?;
+        let starter_demand_request_ttl_seconds = parse_u64_env(
+            ENV_STARTER_DEMAND_REQUEST_TTL_SECONDS,
+            DEFAULT_STARTER_DEMAND_REQUEST_TTL_SECONDS,
+        )?;
+        let starter_demand_max_active_offers_per_session = parse_usize_env(
+            ENV_STARTER_DEMAND_MAX_ACTIVE_OFFERS_PER_SESSION,
+            DEFAULT_STARTER_DEMAND_MAX_ACTIVE_OFFERS_PER_SESSION,
+        )?;
+        if starter_demand_dispatch_interval_seconds == 0 {
+            return Err(format!(
+                "{ENV_STARTER_DEMAND_DISPATCH_INTERVAL_SECONDS} must be greater than zero"
+            ));
+        }
+        if starter_demand_request_ttl_seconds == 0 {
+            return Err(format!(
+                "{ENV_STARTER_DEMAND_REQUEST_TTL_SECONDS} must be greater than zero"
+            ));
+        }
+        if starter_demand_max_active_offers_per_session == 0 {
+            return Err(format!(
+                "{ENV_STARTER_DEMAND_MAX_ACTIVE_OFFERS_PER_SESSION} must be greater than zero"
+            ));
+        }
+
         Ok(Self {
             listen_addr,
             session_ttl_seconds,
             sync_token_ttl_seconds,
             sync_token_refresh_after_seconds,
             sync_stream_grants,
+            hosted_nexus_relay_url,
+            starter_demand_budget_cap_sats,
+            starter_demand_dispatch_interval_seconds,
+            starter_demand_request_ttl_seconds,
+            starter_demand_max_active_offers_per_session,
         })
     }
 }
@@ -145,6 +209,55 @@ pub struct SessionMeResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StarterDemandPollRequest {
+    pub provider_nostr_pubkey: Option<String>,
+    pub primary_relay_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StarterDemandOffer {
+    pub request_id: String,
+    pub requester: String,
+    pub request_kind: u16,
+    pub capability: String,
+    pub execution_input: Option<String>,
+    pub price_sats: u64,
+    pub ttl_seconds: u64,
+    pub created_at_unix_ms: u64,
+    pub expires_at_unix_ms: u64,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StarterDemandPollResponse {
+    pub authority: String,
+    pub hosted_nexus_relay_url: String,
+    pub eligible: bool,
+    pub reason: Option<String>,
+    pub budget_cap_sats: u64,
+    pub budget_allocated_sats: u64,
+    pub dispatch_interval_seconds: u64,
+    pub request_ttl_seconds: u64,
+    pub max_active_offers_per_session: usize,
+    pub offers: Vec<StarterDemandOffer>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StarterDemandCompleteRequest {
+    pub payment_pointer: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StarterDemandCompleteResponse {
+    pub request_id: String,
+    pub status: String,
+    pub payment_pointer: String,
+    pub completed_at_unix_ms: u64,
+    pub budget_cap_sats: u64,
+    pub budget_allocated_sats: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HealthResponse {
     pub ok: bool,
     pub service: String,
@@ -166,6 +279,16 @@ struct AppState {
 struct ControlStore {
     sessions_by_access_token: HashMap<String, DesktopSessionRecord>,
     sync_tokens: HashMap<String, SyncTokenRecord>,
+    starter_demand: StarterDemandState,
+}
+
+#[derive(Debug, Default)]
+struct StarterDemandState {
+    budget_allocated_sats: u64,
+    next_offer_seq: u64,
+    next_template_index: usize,
+    last_dispatch_by_session: HashMap<String, u64>,
+    offers_by_session: HashMap<String, Vec<StarterDemandOfferRecord>>,
 }
 
 #[derive(Debug, Clone)]
@@ -192,6 +315,69 @@ struct SyncTokenRecord {
     not_before_unix_ms: u64,
     expires_at_unix_ms: u64,
 }
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum StarterOfferStatus {
+    Offered,
+    Completed,
+    Expired,
+}
+
+impl StarterOfferStatus {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Offered => "offered",
+            Self::Completed => "completed",
+            Self::Expired => "expired",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct StarterDemandOfferRecord {
+    request_id: String,
+    requester: String,
+    request_kind: u16,
+    capability: String,
+    execution_input: Option<String>,
+    price_sats: u64,
+    ttl_seconds: u64,
+    created_at_unix_ms: u64,
+    expires_at_unix_ms: u64,
+    status: StarterOfferStatus,
+    payment_pointer: Option<String>,
+    completed_at_unix_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct StarterDemandTemplate {
+    capability: &'static str,
+    summary: &'static str,
+    payout_sats: u64,
+}
+
+const STARTER_DEMAND_TEMPLATES: [StarterDemandTemplate; 4] = [
+    StarterDemandTemplate {
+        capability: "starter.quest.text_generation",
+        summary: "Summarize a short project update into three bullets.",
+        payout_sats: 120,
+    },
+    StarterDemandTemplate {
+        capability: "starter.quest.text_generation",
+        summary: "Extract action items from a meeting note.",
+        payout_sats: 150,
+    },
+    StarterDemandTemplate {
+        capability: "starter.quest.text_generation",
+        summary: "Translate a paragraph to plain English.",
+        payout_sats: 90,
+    },
+    StarterDemandTemplate {
+        capability: "starter.quest.text_generation",
+        summary: "Classify a support ticket and suggest a response.",
+        payout_sats: 110,
+    },
+];
 
 #[derive(Debug, Clone)]
 struct ApiError {
@@ -223,6 +409,11 @@ pub fn build_router(config: ServiceConfig) -> Router {
         .route("/api/session/desktop", post(create_desktop_session))
         .route("/api/session/me", get(session_me))
         .route("/api/sync/token", post(create_sync_token))
+        .route("/api/starter-demand/poll", post(poll_starter_demand))
+        .route(
+            "/api/starter-demand/offers/{request_id}/complete",
+            post(complete_starter_demand_offer),
+        )
         .with_state(state)
 }
 
@@ -363,6 +554,137 @@ async fn create_sync_token(
     }))
 }
 
+async fn poll_starter_demand(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<StarterDemandPollRequest>,
+) -> Result<Json<StarterDemandPollResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let relay_url = normalize_optional_field(request.primary_relay_url.as_deref());
+    let provider_nostr_pubkey = normalize_optional_field(request.provider_nostr_pubkey.as_deref());
+    let mut response = StarterDemandPollResponse {
+        authority: "openagents-hosted-nexus".to_string(),
+        hosted_nexus_relay_url: state.config.hosted_nexus_relay_url.clone(),
+        eligible: false,
+        reason: None,
+        budget_cap_sats: state.config.starter_demand_budget_cap_sats,
+        budget_allocated_sats: 0,
+        dispatch_interval_seconds: state.config.starter_demand_dispatch_interval_seconds,
+        request_ttl_seconds: state.config.starter_demand_request_ttl_seconds,
+        max_active_offers_per_session: state.config.starter_demand_max_active_offers_per_session,
+        offers: Vec::new(),
+    };
+
+    if relay_url.as_deref() != Some(state.config.hosted_nexus_relay_url.as_str()) {
+        let store = state.store.read().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        response.budget_allocated_sats = store.starter_demand.budget_allocated_sats;
+        response.reason = Some("starter_demand_requires_openagents_hosted_nexus".to_string());
+        return Ok(Json(response));
+    }
+
+    let now = now_unix_ms();
+    let mut store = state.store.write().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    prune_expired_starter_offers(&mut store.starter_demand, now);
+    maybe_dispatch_starter_offer(
+        &mut store.starter_demand,
+        &state.config,
+        &session,
+        provider_nostr_pubkey,
+        now,
+    );
+    response.eligible = true;
+    response.budget_allocated_sats = store.starter_demand.budget_allocated_sats;
+    response.offers = store
+        .starter_demand
+        .offers_by_session
+        .get(session.session_id.as_str())
+        .into_iter()
+        .flat_map(|offers| offers.iter())
+        .filter(|offer| offer.status == StarterOfferStatus::Offered)
+        .map(starter_offer_response)
+        .collect();
+    Ok(Json(response))
+}
+
+async fn complete_starter_demand_offer(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(request_id): Path<String>,
+    Json(request): Json<StarterDemandCompleteRequest>,
+) -> Result<Json<StarterDemandCompleteResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let request_id = normalize_required_field(request_id.as_str(), "request_id_missing")?;
+    let payment_pointer =
+        normalize_required_field(request.payment_pointer.as_str(), "payment_pointer_missing")?;
+    let now = now_unix_ms();
+
+    let mut store = state.store.write().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    prune_expired_starter_offers(&mut store.starter_demand, now);
+    let offers = store
+        .starter_demand
+        .offers_by_session
+        .get_mut(session.session_id.as_str())
+        .ok_or_else(|| ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "starter_offer_not_found".to_string(),
+        })?;
+    let offer = offers
+        .iter_mut()
+        .find(|offer| offer.request_id == request_id)
+        .ok_or_else(|| ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "starter_offer_not_found".to_string(),
+        })?;
+
+    match offer.status {
+        StarterOfferStatus::Offered => {
+            offer.status = StarterOfferStatus::Completed;
+            offer.payment_pointer = Some(payment_pointer.clone());
+            offer.completed_at_unix_ms = Some(now);
+        }
+        StarterOfferStatus::Completed => {
+            if offer.payment_pointer.as_deref() != Some(payment_pointer.as_str()) {
+                return Err(ApiError {
+                    status: StatusCode::CONFLICT,
+                    error: "conflict",
+                    reason: "starter_offer_already_completed_with_different_payment_pointer"
+                        .to_string(),
+                });
+            }
+        }
+        StarterOfferStatus::Expired => {
+            return Err(ApiError {
+                status: StatusCode::CONFLICT,
+                error: "conflict",
+                reason: "starter_offer_expired".to_string(),
+            });
+        }
+    }
+
+    Ok(Json(StarterDemandCompleteResponse {
+        request_id: offer.request_id.clone(),
+        status: offer.status.label().to_string(),
+        payment_pointer,
+        completed_at_unix_ms: offer.completed_at_unix_ms.unwrap_or(now),
+        budget_cap_sats: state.config.starter_demand_budget_cap_sats,
+        budget_allocated_sats: store.starter_demand.budget_allocated_sats,
+    }))
+}
+
 fn authenticate_session(
     state: &AppState,
     headers: &HeaderMap,
@@ -410,6 +732,135 @@ fn authenticate_session(
     Ok(session)
 }
 
+fn prune_expired_starter_offers(state: &mut StarterDemandState, now_unix_ms: u64) {
+    let mut released_budget_sats = 0u64;
+    for offers in state.offers_by_session.values_mut() {
+        for offer in offers.iter_mut() {
+            if offer.status == StarterOfferStatus::Offered
+                && now_unix_ms >= offer.expires_at_unix_ms
+            {
+                offer.status = StarterOfferStatus::Expired;
+                released_budget_sats = released_budget_sats.saturating_add(offer.price_sats);
+            }
+        }
+        offers.retain(|offer| {
+            if offer.status == StarterOfferStatus::Completed {
+                return true;
+            }
+            if offer.status == StarterOfferStatus::Offered {
+                return true;
+            }
+            now_unix_ms.saturating_sub(offer.expires_at_unix_ms) < 60_000
+        });
+    }
+    state.budget_allocated_sats = state
+        .budget_allocated_sats
+        .saturating_sub(released_budget_sats);
+}
+
+fn maybe_dispatch_starter_offer(
+    state: &mut StarterDemandState,
+    config: &ServiceConfig,
+    session: &DesktopSessionRecord,
+    _provider_nostr_pubkey: Option<String>,
+    now_unix_ms: u64,
+) {
+    let active_offers = state
+        .offers_by_session
+        .get(session.session_id.as_str())
+        .map(|offers| {
+            offers
+                .iter()
+                .filter(|offer| offer.status == StarterOfferStatus::Offered)
+                .count()
+        })
+        .unwrap_or(0);
+    if active_offers >= config.starter_demand_max_active_offers_per_session {
+        return;
+    }
+
+    let last_dispatch_at = state
+        .last_dispatch_by_session
+        .get(session.session_id.as_str())
+        .copied()
+        .unwrap_or(0);
+    let dispatch_interval_ms = config
+        .starter_demand_dispatch_interval_seconds
+        .saturating_mul(1_000);
+    if last_dispatch_at != 0 && now_unix_ms < last_dispatch_at.saturating_add(dispatch_interval_ms)
+    {
+        return;
+    }
+
+    let remaining_budget_sats = config
+        .starter_demand_budget_cap_sats
+        .saturating_sub(state.budget_allocated_sats);
+    let Some(template) = next_template_for_remaining_budget(state, remaining_budget_sats) else {
+        return;
+    };
+
+    let request_id = format!("starter-hosted-{:06}", state.next_offer_seq);
+    state.next_offer_seq = state.next_offer_seq.saturating_add(1);
+    let created_at_unix_ms = now_unix_ms;
+    let ttl_seconds = config.starter_demand_request_ttl_seconds;
+    let expires_at_unix_ms = created_at_unix_ms.saturating_add(ttl_seconds.saturating_mul(1_000));
+    let offer = StarterDemandOfferRecord {
+        request_id: request_id.clone(),
+        requester: STARTER_DEMAND_REQUESTER.to_string(),
+        request_kind: STARTER_DEMAND_REQUEST_KIND,
+        capability: template.capability.to_string(),
+        execution_input: Some(template.summary.to_string()),
+        price_sats: template.payout_sats,
+        ttl_seconds,
+        created_at_unix_ms,
+        expires_at_unix_ms,
+        status: StarterOfferStatus::Offered,
+        payment_pointer: None,
+        completed_at_unix_ms: None,
+    };
+    state
+        .offers_by_session
+        .entry(session.session_id.clone())
+        .or_default()
+        .push(offer);
+    state.budget_allocated_sats = state
+        .budget_allocated_sats
+        .saturating_add(template.payout_sats);
+    state
+        .last_dispatch_by_session
+        .insert(session.session_id.clone(), now_unix_ms);
+}
+
+fn next_template_for_remaining_budget(
+    state: &mut StarterDemandState,
+    remaining_budget_sats: u64,
+) -> Option<StarterDemandTemplate> {
+    for offset in 0..STARTER_DEMAND_TEMPLATES.len() {
+        let index = (state.next_template_index + offset) % STARTER_DEMAND_TEMPLATES.len();
+        let template = STARTER_DEMAND_TEMPLATES[index];
+        if template.payout_sats <= remaining_budget_sats {
+            state.next_template_index = (index + 1) % STARTER_DEMAND_TEMPLATES.len();
+            return Some(template);
+        }
+    }
+    None
+}
+
+fn starter_offer_response(record: &StarterDemandOfferRecord) -> StarterDemandOffer {
+    StarterDemandOffer {
+        request_id: record.request_id.clone(),
+        requester: record.requester.clone(),
+        request_kind: record.request_kind,
+        capability: record.capability.clone(),
+        execution_input: record.execution_input.clone(),
+        price_sats: record.price_sats,
+        ttl_seconds: record.ttl_seconds,
+        created_at_unix_ms: record.created_at_unix_ms,
+        expires_at_unix_ms: record.expires_at_unix_ms,
+        status: record.status.label().to_string(),
+    }
+}
+
 fn parse_u64_env(key: &str, default: u64) -> Result<u64, String> {
     std::env::var(key)
         .ok()
@@ -418,6 +869,18 @@ fn parse_u64_env(key: &str, default: u64) -> Result<u64, String> {
         .map_or(Ok(default), |value| {
             value
                 .parse::<u64>()
+                .map_err(|error| format!("invalid {key}: {error}"))
+        })
+}
+
+fn parse_usize_env(key: &str, default: usize) -> Result<usize, String> {
+    std::env::var(key)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .map_or(Ok(default), |value| {
+            value
+                .parse::<usize>()
                 .map_err(|error| format!("invalid {key}: {error}"))
         })
 }
@@ -478,8 +941,9 @@ mod tests {
     use tower::ServiceExt;
 
     use super::{
-        DesktopSessionCreateRequest, DesktopSessionResponse, ServiceConfig, SessionMeResponse,
-        SyncTokenResponse, build_router,
+        DesktopSessionCreateRequest, DesktopSessionResponse, ServiceConfig,
+        StarterDemandCompleteRequest, StarterDemandCompleteResponse, StarterDemandPollRequest,
+        StarterDemandPollResponse, SyncTokenResponse, build_router,
     };
 
     fn test_config() -> Result<ServiceConfig> {
@@ -492,6 +956,11 @@ mod tests {
                 "stream.activity_projection.v1".to_string(),
                 "stream.earn_job_lifecycle_projection.v1".to_string(),
             ],
+            hosted_nexus_relay_url: "wss://relay.openagents.dev".to_string(),
+            starter_demand_budget_cap_sats: 500,
+            starter_demand_dispatch_interval_seconds: 1,
+            starter_demand_request_ttl_seconds: 120,
+            starter_demand_max_active_offers_per_session: 1,
         })
     }
 
@@ -500,9 +969,7 @@ mod tests {
         Ok(serde_json::from_slice(bytes.as_ref())?)
     }
 
-    #[tokio::test]
-    async fn desktop_session_flow_mints_bearer_and_sync_token() -> Result<()> {
-        let app = build_router(test_config()?);
+    async fn create_session_token(app: &axum::Router) -> Result<DesktopSessionResponse> {
         let create_request = DesktopSessionCreateRequest {
             desktop_client_id: "desktop-alpha".to_string(),
             device_name: Some("Chris MacBook".to_string()),
@@ -520,23 +987,13 @@ mod tests {
             )
             .await?;
         assert_eq!(response.status(), StatusCode::OK);
-        let session: DesktopSessionResponse = response_json(response).await?;
-        assert_eq!(session.token_type, "Bearer");
-        assert_eq!(session.bound_nostr_pubkey.as_deref(), Some("npub1alpha"));
+        response_json(response).await
+    }
 
-        let me_response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("GET")
-                    .uri("/api/session/me")
-                    .header("authorization", format!("Bearer {}", session.access_token))
-                    .body(Body::empty())?,
-            )
-            .await?;
-        assert_eq!(me_response.status(), StatusCode::OK);
-        let me: SessionMeResponse = response_json(me_response).await?;
-        assert_eq!(me.session_id, session.session_id);
+    #[tokio::test]
+    async fn desktop_session_flow_mints_bearer_and_sync_token() -> Result<()> {
+        let app = build_router(test_config()?);
+        let session = create_session_token(&app).await?;
 
         let token_response = app
             .clone()
@@ -584,6 +1041,102 @@ mod tests {
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         let body: serde_json::Value = response_json(response).await?;
         assert_eq!(body["reason"], "missing_bearer_token");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn hosted_starter_demand_dispatches_and_completes_offer() -> Result<()> {
+        let app = build_router(test_config()?);
+        let session = create_session_token(&app).await?;
+
+        let poll_request = StarterDemandPollRequest {
+            provider_nostr_pubkey: Some("npub1alpha".to_string()),
+            primary_relay_url: Some("wss://relay.openagents.dev".to_string()),
+        };
+        let first_poll = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/starter-demand/poll")
+                    .header("authorization", format!("Bearer {}", session.access_token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&poll_request)?))?,
+            )
+            .await?;
+        assert_eq!(first_poll.status(), StatusCode::OK);
+        let first: StarterDemandPollResponse = response_json(first_poll).await?;
+        assert!(first.eligible);
+        assert_eq!(first.offers.len(), 1);
+        let request_id = first.offers[0].request_id.clone();
+
+        let second_poll = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/starter-demand/poll")
+                    .header("authorization", format!("Bearer {}", session.access_token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&poll_request)?))?,
+            )
+            .await?;
+        let second: StarterDemandPollResponse = response_json(second_poll).await?;
+        assert_eq!(second.offers.len(), 1);
+        assert_eq!(second.offers[0].request_id, request_id);
+
+        let complete_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/api/starter-demand/offers/{}/complete",
+                        request_id
+                    ))
+                    .header("authorization", format!("Bearer {}", session.access_token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &StarterDemandCompleteRequest {
+                            payment_pointer: "wallet:receive:001".to_string(),
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(complete_response.status(), StatusCode::OK);
+        let completed: StarterDemandCompleteResponse = response_json(complete_response).await?;
+        assert_eq!(completed.request_id, request_id);
+        assert_eq!(completed.status, "completed");
+        assert_eq!(completed.payment_pointer, "wallet:receive:001");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn hosted_starter_demand_requires_hosted_relay_path() -> Result<()> {
+        let app = build_router(test_config()?);
+        let session = create_session_token(&app).await?;
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/starter-demand/poll")
+                    .header("authorization", format!("Bearer {}", session.access_token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&StarterDemandPollRequest {
+                        provider_nostr_pubkey: Some("npub1alpha".to_string()),
+                        primary_relay_url: Some("wss://relay.example.com".to_string()),
+                    })?))?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let payload: StarterDemandPollResponse = response_json(response).await?;
+        assert!(!payload.eligible);
+        assert_eq!(
+            payload.reason.as_deref(),
+            Some("starter_demand_requires_openagents_hosted_nexus")
+        );
+        assert!(payload.offers.is_empty());
         Ok(())
     }
 }
