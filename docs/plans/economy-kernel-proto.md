@@ -1,14 +1,18 @@
-Below are the two implementation-facing rewrites:
+# OpenAgents Economy Kernel Proto Plan
+
+This document contains two implementation-facing rewrites:
 
 1. a **revised proto plan** (packages, file layout, and updated/added protos) that bakes in: `tfb`, severity, verification budget hints, provenance bundles, correlation groups, and **sv / Δm_hat / XA_hat** “metrics receipts” (minute snapshots).
 
 2. a **revised PolicyBundle schema** (proto + semantics) with the knobs needed to gate autonomy based on `sv`, `XA_hat`, and correlation risk.
 
-I’m keeping this aligned with your existing `openagents/*/v1` naming and with the kernel invariants (HTTP-only authority, deterministic receipts, idempotent).
+Sections 1 and 2 cover the core proto and policy work. Sections 3 through 6 describe the optional compute-market extension.
+
+Everything below stays aligned with your existing `openagents/*/v1` naming and with the kernel invariants (HTTP-only authority, deterministic receipts, idempotent).
 
 ---
 
-## 1) Proto plan rewrite
+## 1. Proto plan rewrite
 
 ### 1.1 Goals of the proto reshape
 
@@ -1505,7 +1509,7 @@ service LiabilityMarketService {
 
 ---
 
-## 2) PolicyBundle schema rewrite (proto + semantics)
+## 2. PolicyBundle schema rewrite (proto + semantics)
 
 You need a PolicyBundle that can **bind autonomy to sv/XA and correlation risk**, plus set default verification/provenance rules by `category`, `tfb`, and `severity`.
 
@@ -2051,9 +2055,9 @@ Verification services MUST enforce assignment semantics deterministically:
 
 ---
 
-Below are **additions to your proto plan** that introduce **compute market primitives** while staying consistent with the kernel invariants and your existing packages.
+The remaining sections introduce optional **compute market primitives** while staying consistent with the kernel invariants and your existing packages.
 
-I am **not modifying your previous files** — only **adding a new package and a few cross-references** so the system composes cleanly.
+These additions do **not** modify the previous files. They add a new package and a few cross-references so the system composes cleanly.
 
 This lets the Economy Kernel support:
 
@@ -2069,7 +2073,7 @@ while remaining **receipt-native and policy-bounded**.
 
 ---
 
-# 3. Compute Market Proto Additions
+## 3. Optional compute market proto additions
 
 New package:
 
@@ -2095,7 +2099,7 @@ They integrate with:
 
 ---
 
-# 3.1 Compute product definitions
+### 3.1 Compute product definitions
 
 `proto/openagents/compute/v1/compute_products.proto`
 
@@ -2171,7 +2175,7 @@ which become the **base layer for futures and indices**.
 
 ---
 
-# 3.2 Capacity lots (physical inventory)
+### 3.2 Capacity lots (physical inventory)
 
 `proto/openagents/compute/v1/compute_capacity.proto`
 
@@ -2235,7 +2239,7 @@ These lots back **physical settlement**.
 
 ---
 
-# 3.3 Compute financial instruments
+### 3.3 Compute financial instruments
 
 `proto/openagents/compute/v1/compute_instruments.proto`
 
@@ -2345,7 +2349,7 @@ strike: $2.50/gpu_hour
 
 ---
 
-# 3.4 Compute indices
+### 3.4 Compute indices
 
 `proto/openagents/compute/v1/compute_indices.proto`
 
@@ -2396,7 +2400,7 @@ market pricing signals
 
 ---
 
-# 3.5 Delivery proofs
+### 3.5 Delivery proofs
 
 `proto/openagents/compute/v1/compute_delivery.proto`
 
@@ -2445,9 +2449,9 @@ making delivery **verifiable and auditable**.
 
 ---
 
-# 4. Cross-package integrations
+## 4. Cross-package integrations
 
-## 4.1 WorkUnits referencing compute markets
+### 4.1 WorkUnits referencing compute markets
 
 `outcomes_work.proto` can reference compute instruments:
 
@@ -2463,7 +2467,7 @@ hedged compute → execution job
 
 ---
 
-## 4.2 Policy rules extended for compute markets
+### 4.2 Policy rules extended for compute markets
 
 Add fields to `PolicyBundle`:
 
@@ -2487,7 +2491,7 @@ message ComputeMarketRule {
 
 ---
 
-## 4.3 Economy snapshot additions
+### 4.3 Economy snapshot additions
 
 Add compute market metrics:
 
@@ -2500,7 +2504,7 @@ double hedged_compute_share = W;
 
 ---
 
-# 5. Resulting economic stack
+## 5. Resulting economic stack
 
 With these additions the kernel supports:
 
@@ -2533,7 +2537,7 @@ Compute price indices
 
 ---
 
-# 6. Why this architecture is powerful
+## 6. Why this architecture is powerful
 
 You now have **one unified substrate** for:
 
