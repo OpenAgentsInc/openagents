@@ -59,11 +59,10 @@ This audit has been updated to reflect the intended hierarchy more accurately:
 
 ## Highest-Severity Findings
 
-1. The repo's SA/SKL/AC NIPs are already app-facing protocol documents with partial implementation behind them, so `#2932` and `#2933` are protocol migrations, not greenfield exploration.
-2. `#2932` and `#2933` overlap and compete to redefine SA / AC behavior rather than presenting one coherent NIP delta.
-3. `#2933` defines `kind:39250` audit entries as addressable, which makes a supposedly forensic audit stream mutable even on its own Nostr-native terms.
-4. Both protocol PRs add multiple new kinds and semantics at once, which makes it hard to judge whether each addition actually improves the NIP suite on its own merits.
-5. Both protocol PRs expand alternative rails and settlement semantics well beyond the current MVP wallet integration, so merging them now would create a larger gap between the active protocol docs and the active app behavior.
+1. `#2932` and `#2933` overlap and compete to redefine SA / AC behavior rather than presenting one coherent NIP delta.
+2. `#2933` defines `kind:39250` audit entries as addressable, which makes a supposedly forensic audit stream mutable even on its own Nostr-native terms.
+3. Both protocol PRs add multiple new kinds and semantics at once, which makes it hard to judge whether each addition actually improves the NIP suite on its own merits.
+4. Both protocol PRs expand alternative rails and settlement semantics well beyond the current MVP wallet integration, so merging them now would create a larger gap between the active protocol docs and the active app behavior.
 
 ## Alignment Rules From Current Source Of Truth
 
