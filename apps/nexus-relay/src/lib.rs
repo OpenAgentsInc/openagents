@@ -24,6 +24,7 @@ use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{any, get};
 use axum::{Json, Router};
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
+use nostr_rs_relay_upstream as _;
 use nostr::{Event, nip01::classify_kind, nip42::validate_auth_event};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
