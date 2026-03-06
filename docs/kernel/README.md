@@ -9,7 +9,7 @@ The short version:
 Autopilot is the first product. It is the user-facing wedge into a broader machine economy.
 
 This is not a single marketplace with one matching engine.
-It is a layered system where machine labor, machine compute, machine risk, and machine liquidity all share the same core primitives for contracts, verification, settlement, liability, and receipts.
+It is a layered system where machine labor, machine compute, machine data, machine risk, and machine liquidity all share the same core primitives for contracts, verification, settlement, liability, and receipts.
 
 ## The agents marketplace
 
@@ -25,10 +25,12 @@ At a high level, Autopilot is the wedge into a broader economic system:
   - `Autopilot`
     - personal agent, wallet, desktop runtime, first earning loop
 - **Markets on one shared substrate**
-  - `Labor Market`
-    - buys and sells machine work
   - `Compute Market`
     - buys and sells machine capacity
+  - `Data Market`
+    - buys and sells access to datasets, artifacts, stored conversations, and local context
+  - `Labor Market`
+    - buys and sells machine work
   - `Risk Market`
     - prediction, coverage, and underwriting for failure probability, verification difficulty, and delivery risk
   - `Liquidity Market`
@@ -80,7 +82,24 @@ It allocates the compute that agents and workloads need in order to run:
 This layer exists because compute is becoming a scarce industrial input.
 If machine labor is going to scale, the capacity that powers that labor must also become tradable, measurable, and settleable.
 
-### 3. Labor Market
+### 3. Data Market
+
+This is the context market.
+
+It allocates access to useful information that can improve agent work:
+
+* datasets
+* user-owned artifacts
+* stored conversations
+* local project context
+* private knowledge bundles
+
+This layer matters because machine work does not run on compute alone.
+It also runs on context.
+
+In many cases the valuable thing is not raw model capability, but access to a user's past conversations, code history, research notes, or other locally held data. The data market is where that access becomes explicit, permissioned, priced, and receipted.
+
+### 4. Labor Market
 
 This is the execution market.
 
@@ -100,7 +119,7 @@ In other words:
 * labor produces outcomes
 * the kernel turns outcomes into verified economic events
 
-### 4. Risk Market
+### 5. Risk Market
 
 This is the information and underwriting layer.
 
@@ -123,7 +142,7 @@ In practice this can appear as:
 This layer does not replace verification.
 It helps decide how expensive verification, insurance, and risk capital should be.
 
-### 5. Liquidity Market
+### 6. Liquidity Market
 
 This is the value-movement layer.
 
@@ -143,7 +162,9 @@ They also need a deterministic way to move value across payment systems and mark
 The dependency order is:
 
 ```text
-Economic Kernel -> Compute Market -> Labor Market -> Risk overlays
+Economic Kernel -> Compute Market
+               -> Data Market
+               -> Labor Market -> Risk overlays
                -> Liquidity overlays
 ```
 
@@ -153,7 +174,8 @@ It means each higher layer depends on lower layers for trust and execution.
 More concretely:
 
 * the **compute market** supplies capacity
-* the **labor market** consumes capacity to produce work
+* the **data market** supplies context
+* the **labor market** consumes compute and data to produce work
 * the **risk market** prices uncertainty in both compute and labor
 * the **liquidity market** moves value between participants and rails
 * the **kernel** makes all of it replayable, auditable, and settleable
@@ -164,6 +186,7 @@ One useful mental model is:
 
 ```text
 compute powers labor
+data informs labor
 labor creates outcomes
 verification converts outcomes into trusted settlement
 risk markets price uncertainty around all of it
