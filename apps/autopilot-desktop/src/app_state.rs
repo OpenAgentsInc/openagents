@@ -103,10 +103,6 @@ pub enum PaneKind {
     SkillTrustRevocation,
     CreditDesk,
     CreditSettlementLedger,
-    AgentNetworkSimulation,
-    TreasuryExchangeSimulation,
-    RelaySecuritySimulation,
-    StableSatsSimulation,
     Calculator,
     CadDemo,
 }
@@ -4335,9 +4331,6 @@ impl_pane_status_access!(
     CadDemoPaneState,
     CreditDeskPaneState,
     CreditSettlementLedgerPaneState,
-    AgentNetworkSimulationPaneState,
-    TreasuryExchangeSimulationPaneState,
-    RelaySecuritySimulationPaneState,
     StableSatsSimulationPaneState,
 );
 
@@ -4414,7 +4407,6 @@ pub struct RenderState {
     pub sync_bootstrap_error: Option<String>,
     pub hosted_control_base_url: Option<String>,
     pub hosted_control_bearer_token: Option<String>,
-    pub kernel_local_authority: openagents_kernel_core::authority::LocalKernelAuthority,
     pub kernel_projection_worker: crate::kernel_control::KernelProjectionWorker,
     pub sync_apply_engine: crate::sync_apply::SyncApplyEngine,
     pub sync_lifecycle_worker_id: String,
@@ -4445,11 +4437,7 @@ pub struct RenderState {
     pub credit_desk: CreditDeskPaneState,
     pub credit_settlement_ledger: CreditSettlementLedgerPaneState,
     pub cad_demo: CadDemoPaneState,
-    pub agent_network_simulation: AgentNetworkSimulationPaneState,
-    pub treasury_exchange_simulation: TreasuryExchangeSimulationPaneState,
-    pub relay_security_simulation: RelaySecuritySimulationPaneState,
     pub stable_sats_simulation: StableSatsSimulationPaneState,
-    pub simulation_panes_enabled: bool,
     pub autopilot_goals: crate::state::autopilot_goals::AutopilotGoalsState,
     pub goal_loop_executor: crate::state::goal_loop_executor::GoalLoopExecutorState,
     pub goal_restart_recovery_ran: bool,
@@ -4646,23 +4634,22 @@ impl RenderState {
 mod tests {
     use super::{
         ActiveJobState, ActivityEventDomain, ActivityEventRow, ActivityFeedFilter,
-        ActivityFeedState, AgentNetworkSimulationPaneState, AlertDomain, AlertLifecycle,
-        AlertsRecoveryState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole,
-        BuyerResolutionMode, BuyerResolutionReason, CadBuildFailureClass, CadBuildSessionPhase,
-        CadCameraViewSnap, CadContextMenuTargetKind, CadDemoPaneState, CadDemoWarningState,
-        CadDrawingViewDirection, CadDrawingViewMode, CadHiddenLineMode, CadHotkeyAction,
-        CadProjectionMode, CadSectionAxis, CadSnapMode, CadThreeDMouseAxis, CadThreeDMouseMode,
-        CadThreeDMouseProfile, EarnJobLifecycleProjectionState, EarningsScoreboardState,
-        JobDemandSource, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
-        JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest, JobInboxState,
-        JobInboxValidation, JobLifecycleStage, NetworkAggregateCountersState, NetworkRequestStatus,
+        ActivityFeedState, AlertDomain, AlertLifecycle, AlertsRecoveryState, AutopilotChatState,
+        AutopilotMessageStatus, AutopilotRole, BuyerResolutionMode, BuyerResolutionReason,
+        CadBuildFailureClass, CadBuildSessionPhase, CadCameraViewSnap, CadContextMenuTargetKind,
+        CadDemoPaneState, CadDemoWarningState, CadDrawingViewDirection, CadDrawingViewMode,
+        CadHiddenLineMode, CadHotkeyAction, CadProjectionMode, CadSectionAxis, CadSnapMode,
+        CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile,
+        EarnJobLifecycleProjectionState, EarningsScoreboardState, JobDemandSource,
+        JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange,
+        JobInboxDecision, JobInboxNetworkRequest, JobInboxState, JobInboxValidation,
+        JobLifecycleStage, NetworkAggregateCountersState, NetworkRequestStatus,
         NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderMode,
         ProviderRuntimeState, ReciprocalLoopDirection, ReciprocalLoopFailureClass,
         ReciprocalLoopFailureDisposition, ReciprocalLoopState, RecoveryAlertRow,
-        RelayConnectionStatus, RelayConnectionsState, RelaySecuritySimulationPaneState,
-        SettingsState, SparkPaneState, StableSatsSimulationPaneState, StarterJobRow,
-        StarterJobStatus, StarterJobsState, SubmittedNetworkRequest, SyncHealthState,
-        SyncRecoveryPhase, TreasuryExchangeSimulationPaneState,
+        RelayConnectionStatus, RelayConnectionsState, SettingsState, SparkPaneState,
+        StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
+        SubmittedNetworkRequest, SyncHealthState, SyncRecoveryPhase,
     };
 
     fn fixture_inbox_request(
@@ -7135,128 +7122,6 @@ mod tests {
             .expect("request should exist");
         assert_eq!(request.observed_buyer_event_ids.len(), 1);
         assert!(request.duplicate_outcomes.is_empty());
-    }
-
-    #[test]
-    fn agent_network_simulation_rounds_generate_channel_skill_and_credit_events() {
-        let mut state = AgentNetworkSimulationPaneState::default();
-        state
-            .run_round(1_761_920_800)
-            .expect("first simulation round should succeed");
-        assert_eq!(state.rounds_run, 1);
-        assert!(state.channel_event_id.is_some());
-        assert!(state.total_transferred_sats > 0);
-        assert!(!state.learned_skills.is_empty());
-        assert!(state.events.iter().any(|event| event.protocol == "NIP-28"));
-        assert!(state.events.iter().any(|event| event.protocol == "NIP-SKL"));
-        assert!(state.events.iter().any(|event| event.protocol == "NIP-AC"));
-
-        state.reset();
-        assert_eq!(state.rounds_run, 0);
-        assert!(state.channel_event_id.is_none());
-        assert!(state.events.is_empty());
-    }
-
-    #[test]
-    fn treasury_exchange_simulation_rounds_generate_exchange_and_wallet_events() {
-        let mut state = TreasuryExchangeSimulationPaneState::default();
-        state
-            .run_round(1_761_920_900)
-            .expect("treasury simulation round should succeed");
-        assert_eq!(state.rounds_run, 1);
-        assert!(state.order_event_id.is_some());
-        assert!(state.mint_reference.is_some());
-        assert!(state.wallet_connect_url.is_some());
-        assert!(state.trade_volume_sats > 0);
-        assert!(state.events.iter().any(|event| event.protocol == "NIP-69"));
-        assert!(state.events.iter().any(|event| event.protocol == "NIP-60"));
-        assert!(state.events.iter().any(|event| event.protocol == "NIP-61"));
-
-        state.reset();
-        assert_eq!(state.rounds_run, 0);
-        assert!(state.events.is_empty());
-    }
-
-    #[test]
-    fn relay_security_simulation_rounds_generate_auth_privacy_and_sync_events() {
-        let mut state = RelaySecuritySimulationPaneState::default();
-        state
-            .run_round(1_761_921_000)
-            .expect("relay security simulation round should succeed");
-        assert_eq!(state.rounds_run, 1);
-        assert!(state.auth_event_id.is_some());
-        assert!(state.dm_relay_count >= 2);
-        assert!(state.sync_ranges > 0);
-        assert!(state.events.iter().any(|event| event.protocol == "NIP-42"));
-        assert!(state.events.iter().any(|event| event.protocol == "NIP-59"));
-        assert!(state.events.iter().any(|event| event.protocol == "NIP-77"));
-
-        state.reset();
-        assert_eq!(state.rounds_run, 0);
-        assert!(state.events.is_empty());
-    }
-
-    #[test]
-    fn stablesats_simulation_rounds_switch_agent_wallet_modes() {
-        let mut state = StableSatsSimulationPaneState::default();
-        let initial_modes: Vec<_> = state
-            .agents
-            .iter()
-            .map(|agent| agent.active_wallet)
-            .collect();
-        let initial_total_usd = state.total_usd_balance_cents();
-
-        state
-            .run_round(1_761_921_100)
-            .expect("stablesats simulation round should succeed");
-
-        assert_eq!(state.rounds_run, 1);
-        assert!(state.last_settlement_ref.is_some());
-        assert!(state.total_converted_sats > 0);
-        assert!(state.total_converted_usd_cents > 0);
-        assert_eq!(state.price_history_usd_cents_per_btc.len(), 1);
-        assert_eq!(state.converted_sats_history.len(), 1);
-        assert!(
-            state
-                .events
-                .iter()
-                .any(|event| event.protocol == "BLINK-PRICE")
-        );
-        assert!(
-            state
-                .events
-                .iter()
-                .any(|event| event.protocol == "BLINK-SWAP")
-        );
-        assert!(
-            state
-                .events
-                .iter()
-                .any(|event| event.protocol == "BLINK-LEDGER")
-        );
-        assert!(!state.transfer_ledger.is_empty());
-        assert!(
-            state
-                .transfer_ledger
-                .iter()
-                .all(|entry| entry.status == crate::app_state::StableSatsTransferStatus::Settled)
-        );
-
-        let next_modes: Vec<_> = state
-            .agents
-            .iter()
-            .map(|agent| agent.active_wallet)
-            .collect();
-        assert_ne!(initial_modes, next_modes);
-        assert_ne!(state.total_usd_balance_cents(), initial_total_usd);
-
-        state.reset();
-        assert_eq!(state.rounds_run, 0);
-        assert!(state.events.is_empty());
-        assert!(state.last_settlement_ref.is_none());
-        assert!(state.price_history_usd_cents_per_btc.is_empty());
-        assert!(state.converted_sats_history.is_empty());
-        assert!(state.transfer_ledger.is_empty());
     }
 
     #[test]

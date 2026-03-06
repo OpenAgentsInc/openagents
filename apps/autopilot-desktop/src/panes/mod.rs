@@ -6,6 +6,5 @@ pub mod chat;
 pub mod codex;
 pub mod credit;
 pub mod relay_connections;
-pub mod simulation;
 pub mod skill;
 pub mod wallet;

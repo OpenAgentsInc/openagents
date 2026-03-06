@@ -29,21 +29,18 @@ use crate::openagents_dynamic_tools::{
     OPENAGENTS_TOOL_TREASURY_CONVERT, OPENAGENTS_TOOL_TREASURY_RECEIPT,
     OPENAGENTS_TOOL_TREASURY_TRANSFER, OPENAGENTS_TOOL_WALLET_CHECK,
 };
-use crate::pane_registry::{
-    pane_enabled_in_runtime, pane_spec, pane_spec_by_command_id, pane_specs,
-};
+use crate::pane_registry::{pane_spec, pane_spec_by_command_id, pane_specs};
 use crate::pane_system::{
-    ActiveJobPaneAction, ActivityFeedPaneAction, AgentNetworkSimulationPaneAction,
-    AgentProfileStatePaneAction, AgentScheduleTickPaneAction, AlertsRecoveryPaneAction,
-    CadDemoPaneAction, CastControlPaneAction, CodexAccountPaneAction, CodexAppsPaneAction,
-    CodexConfigPaneAction, CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction,
-    CodexModelsPaneAction, CredentialsPaneAction, CreditDeskPaneAction,
+    ActiveJobPaneAction, ActivityFeedPaneAction, AgentProfileStatePaneAction,
+    AgentScheduleTickPaneAction, AlertsRecoveryPaneAction, CadDemoPaneAction,
+    CastControlPaneAction, CodexAccountPaneAction, CodexAppsPaneAction,
+    CodexConfigPaneAction, CodexDiagnosticsPaneAction, CodexLabsPaneAction,
+    CodexMcpPaneAction, CodexModelsPaneAction, CredentialsPaneAction, CreditDeskPaneAction,
     CreditSettlementLedgerPaneAction, EarningsScoreboardPaneAction, JobHistoryPaneAction,
     JobInboxPaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction,
-    ReciprocalLoopPaneAction, RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction,
-    SettingsPaneAction, SkillRegistryPaneAction, SkillTrustRevocationPaneAction,
-    StableSatsSimulationPaneAction, StarterJobsPaneAction, SyncHealthPaneAction,
-    TrajectoryAuditPaneAction, TreasuryExchangeSimulationPaneAction,
+    ReciprocalLoopPaneAction, RelayConnectionsPaneAction, SettingsPaneAction,
+    SkillRegistryPaneAction, SkillTrustRevocationPaneAction, StarterJobsPaneAction,
+    SyncHealthPaneAction, TrajectoryAuditPaneAction,
 };
 use crate::runtime_lanes::SaLifecycleCommand;
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
@@ -1632,7 +1629,6 @@ fn execute_pane_list(state: &RenderState) -> ToolBridgeResultEnvelope {
     let registered = pane_specs()
         .iter()
         .filter(|spec| spec.kind != PaneKind::Empty)
-        .filter(|spec| pane_enabled_in_runtime(spec.kind, state.simulation_panes_enabled))
         .map(|spec| {
             json!({
                 "kind": pane_kind_key(spec.kind),
@@ -1685,11 +1681,7 @@ fn execute_pane_list(state: &RenderState) -> ToolBridgeResultEnvelope {
 
 fn execute_pane_open(state: &mut RenderState, pane_ref: &str) -> ToolBridgeResultEnvelope {
     let Some(kind) = resolve_pane_kind(state, pane_ref) else {
-        return pane_resolution_error(
-            "OA-PANE-OPEN-NOT-FOUND",
-            pane_ref,
-            state.simulation_panes_enabled,
-        );
+        return pane_resolution_error("OA-PANE-OPEN-NOT-FOUND", pane_ref);
     };
     let pane_id = PaneController::create_for_kind(state, kind);
     ToolBridgeResultEnvelope::ok(
@@ -1705,11 +1697,7 @@ fn execute_pane_open(state: &mut RenderState, pane_ref: &str) -> ToolBridgeResul
 
 fn execute_pane_focus(state: &mut RenderState, pane_ref: &str) -> ToolBridgeResultEnvelope {
     let Some(kind) = resolve_pane_kind(state, pane_ref) else {
-        return pane_resolution_error(
-            "OA-PANE-FOCUS-NOT-FOUND",
-            pane_ref,
-            state.simulation_panes_enabled,
-        );
+        return pane_resolution_error("OA-PANE-FOCUS-NOT-FOUND", pane_ref);
     };
     let pane = state
         .panes
@@ -1741,11 +1729,7 @@ fn execute_pane_focus(state: &mut RenderState, pane_ref: &str) -> ToolBridgeResu
 
 fn execute_pane_close(state: &mut RenderState, pane_ref: &str) -> ToolBridgeResultEnvelope {
     let Some(kind) = resolve_pane_kind(state, pane_ref) else {
-        return pane_resolution_error(
-            "OA-PANE-CLOSE-NOT-FOUND",
-            pane_ref,
-            state.simulation_panes_enabled,
-        );
+        return pane_resolution_error("OA-PANE-CLOSE-NOT-FOUND", pane_ref);
     };
     let pane = state
         .panes
@@ -1780,11 +1764,7 @@ fn execute_pane_set_input(
     args: &PaneInputArgs,
 ) -> ToolBridgeResultEnvelope {
     let Some(kind) = resolve_pane_kind(state, args.pane.trim()) else {
-        return pane_resolution_error(
-            "OA-PANE-SET-INPUT-NOT-FOUND",
-            args.pane.trim(),
-            state.simulation_panes_enabled,
-        );
+        return pane_resolution_error("OA-PANE-SET-INPUT-NOT-FOUND", args.pane.trim());
     };
     let _ = PaneController::create_for_kind(state, kind);
     let field = normalize_key(&args.field);
@@ -1835,11 +1815,7 @@ fn execute_pane_set_input(
 
 fn execute_pane_action(state: &mut RenderState, args: &PaneActionArgs) -> ToolBridgeResultEnvelope {
     let Some(kind) = resolve_pane_kind(state, args.pane.trim()) else {
-        return pane_resolution_error(
-            "OA-PANE-ACTION-NOT-FOUND",
-            args.pane.trim(),
-            state.simulation_panes_enabled,
-        );
+        return pane_resolution_error("OA-PANE-ACTION-NOT-FOUND", args.pane.trim());
     };
     let _ = PaneController::create_for_kind(state, kind);
     let action_key = normalize_key(&args.action);
@@ -2450,48 +2426,6 @@ fn pane_action_to_hit_action(
             )),
             "emit_reputation_label" => Ok(PaneHitAction::CreditSettlementLedger(
                 CreditSettlementLedgerPaneAction::EmitReputationLabel,
-            )),
-            _ => unsupported(),
-        },
-        PaneKind::AgentNetworkSimulation => match action {
-            "run_round" => Ok(PaneHitAction::AgentNetworkSimulation(
-                AgentNetworkSimulationPaneAction::RunRound,
-            )),
-            "reset" => Ok(PaneHitAction::AgentNetworkSimulation(
-                AgentNetworkSimulationPaneAction::Reset,
-            )),
-            _ => unsupported(),
-        },
-        PaneKind::TreasuryExchangeSimulation => match action {
-            "run_round" => Ok(PaneHitAction::TreasuryExchangeSimulation(
-                TreasuryExchangeSimulationPaneAction::RunRound,
-            )),
-            "reset" => Ok(PaneHitAction::TreasuryExchangeSimulation(
-                TreasuryExchangeSimulationPaneAction::Reset,
-            )),
-            _ => unsupported(),
-        },
-        PaneKind::RelaySecuritySimulation => match action {
-            "run_round" => Ok(PaneHitAction::RelaySecuritySimulation(
-                RelaySecuritySimulationPaneAction::RunRound,
-            )),
-            "reset" => Ok(PaneHitAction::RelaySecuritySimulation(
-                RelaySecuritySimulationPaneAction::Reset,
-            )),
-            _ => unsupported(),
-        },
-        PaneKind::StableSatsSimulation => match action {
-            "run_round" => Ok(PaneHitAction::StableSatsSimulation(
-                StableSatsSimulationPaneAction::RunRound,
-            )),
-            "reset" => Ok(PaneHitAction::StableSatsSimulation(
-                StableSatsSimulationPaneAction::Reset,
-            )),
-            "set_mode_demo" => Ok(PaneHitAction::StableSatsSimulation(
-                StableSatsSimulationPaneAction::SetModeDemo,
-            )),
-            "set_mode_real" => Ok(PaneHitAction::StableSatsSimulation(
-                StableSatsSimulationPaneAction::SetModeReal,
             )),
             _ => unsupported(),
         },
@@ -5509,7 +5443,6 @@ fn cad_action_from_key(
 fn pane_resolution_error(
     code: &str,
     pane_ref: &str,
-    simulation_panes_enabled: bool,
 ) -> ToolBridgeResultEnvelope {
     ToolBridgeResultEnvelope::error(
         code,
@@ -5519,7 +5452,6 @@ fn pane_resolution_error(
             "supported_panes": pane_specs()
                 .iter()
                 .filter(|spec| spec.kind != PaneKind::Empty)
-                .filter(|spec| pane_enabled_in_runtime(spec.kind, simulation_panes_enabled))
                 .map(|spec| {
                     json!({
                         "kind": pane_kind_key(spec.kind),
@@ -5533,17 +5465,16 @@ fn pane_resolution_error(
 }
 
 fn resolve_pane_kind(state: &RenderState, raw: &str) -> Option<PaneKind> {
-    resolve_pane_kind_for_runtime(raw, state.simulation_panes_enabled)
+    let _ = state;
+    resolve_pane_kind_for_runtime(raw)
 }
 
-fn resolve_pane_kind_for_runtime(raw: &str, simulation_panes_enabled: bool) -> Option<PaneKind> {
+fn resolve_pane_kind_for_runtime(raw: &str) -> Option<PaneKind> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return None;
     }
-    if let Some(spec) = pane_spec_by_command_id(trimmed)
-        .filter(|spec| pane_enabled_in_runtime(spec.kind, simulation_panes_enabled))
-    {
+    if let Some(spec) = pane_spec_by_command_id(trimmed) {
         return Some(spec.kind);
     }
 
@@ -5555,7 +5486,6 @@ fn resolve_pane_kind_for_runtime(raw: &str, simulation_panes_enabled: bool) -> O
     pane_specs()
         .iter()
         .filter(|spec| spec.kind != PaneKind::Empty)
-        .filter(|spec| pane_enabled_in_runtime(spec.kind, simulation_panes_enabled))
         .find_map(|spec| {
             let title_key = normalize_key(spec.title);
             let kind_key = normalize_key(pane_kind_key(spec.kind));
@@ -5630,10 +5560,6 @@ fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::SkillTrustRevocation => "skill_trust_revocation",
         PaneKind::CreditDesk => "credit_desk",
         PaneKind::CreditSettlementLedger => "credit_settlement_ledger",
-        PaneKind::AgentNetworkSimulation => "agent_network_simulation",
-        PaneKind::TreasuryExchangeSimulation => "treasury_exchange_simulation",
-        PaneKind::RelaySecuritySimulation => "relay_security_simulation",
-        PaneKind::StableSatsSimulation => "stable_sats_simulation",
         PaneKind::CadDemo => "cad_demo",
     }
 }
@@ -5875,23 +5801,23 @@ mod tests {
     #[test]
     fn resolve_pane_kind_accepts_command_id_title_and_alias() {
         assert_eq!(
-            resolve_pane_kind_for_runtime("pane.wallet", false),
+            resolve_pane_kind_for_runtime("pane.wallet"),
             Some(PaneKind::SparkWallet)
         );
         assert_eq!(
-            resolve_pane_kind_for_runtime("Spark Lightning Wallet", false),
+            resolve_pane_kind_for_runtime("Spark Lightning Wallet"),
             Some(PaneKind::SparkWallet)
         );
         assert_eq!(
-            resolve_pane_kind_for_runtime("wallet", false),
+            resolve_pane_kind_for_runtime("wallet"),
             Some(PaneKind::SparkWallet)
         );
         assert_eq!(
-            resolve_pane_kind_for_runtime("pane.calculator", false),
+            resolve_pane_kind_for_runtime("pane.calculator"),
             Some(PaneKind::Calculator)
         );
         assert_eq!(
-            resolve_pane_kind_for_runtime("calc", false),
+            resolve_pane_kind_for_runtime("calc"),
             Some(PaneKind::Calculator)
         );
     }
@@ -5899,20 +5825,8 @@ mod tests {
     #[test]
     fn resolve_pane_kind_rejects_unknown_reference() {
         assert_eq!(
-            resolve_pane_kind_for_runtime("not-a-real-pane", false),
+            resolve_pane_kind_for_runtime("not-a-real-pane"),
             None
-        );
-    }
-
-    #[test]
-    fn resolve_pane_kind_gates_simulation_references() {
-        assert_eq!(
-            resolve_pane_kind_for_runtime("pane.agent_network_simulation", false),
-            None
-        );
-        assert_eq!(
-            resolve_pane_kind_for_runtime("pane.agent_network_simulation", true),
-            Some(PaneKind::AgentNetworkSimulation)
         );
     }
 

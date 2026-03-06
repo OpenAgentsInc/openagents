@@ -345,32 +345,6 @@ pub enum CreditSettlementLedgerPaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum AgentNetworkSimulationPaneAction {
-    RunRound,
-    Reset,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum TreasuryExchangeSimulationPaneAction {
-    RunRound,
-    Reset,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RelaySecuritySimulationPaneAction {
-    RunRound,
-    Reset,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum StableSatsSimulationPaneAction {
-    RunRound,
-    Reset,
-    SetModeDemo,
-    SetModeReal,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CadDemoPaneAction {
     Noop,
     CycleVariant,
@@ -728,10 +702,6 @@ pub enum PaneHitAction {
     SkillTrustRevocation(SkillTrustRevocationPaneAction),
     CreditDesk(CreditDeskPaneAction),
     CreditSettlementLedger(CreditSettlementLedgerPaneAction),
-    AgentNetworkSimulation(AgentNetworkSimulationPaneAction),
-    TreasuryExchangeSimulation(TreasuryExchangeSimulationPaneAction),
-    RelaySecuritySimulation(RelaySecuritySimulationPaneAction),
-    StableSatsSimulation(StableSatsSimulationPaneAction),
     CadDemo(CadDemoPaneAction),
     Spark(SparkPaneAction),
     SparkCreateInvoice(CreateInvoicePaneAction),
@@ -1180,10 +1150,6 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::SkillTrustRevocation
             | PaneKind::CreditDesk
             | PaneKind::CreditSettlementLedger
-            | PaneKind::AgentNetworkSimulation
-            | PaneKind::TreasuryExchangeSimulation
-            | PaneKind::RelaySecuritySimulation
-            | PaneKind::StableSatsSimulation
             | PaneKind::CadDemo => {}
         }
 
@@ -2626,102 +2592,6 @@ pub fn credit_settlement_reputation_button_bounds(content_bounds: Bounds) -> Bou
     )
 }
 
-pub fn agent_network_simulation_run_button_bounds(content_bounds: Bounds) -> Bounds {
-    Bounds::new(
-        content_bounds.origin.x + CHAT_PAD,
-        content_bounds.origin.y + CHAT_PAD,
-        (content_bounds.size.width * 0.28).clamp(180.0, 280.0),
-        JOB_INBOX_BUTTON_HEIGHT,
-    )
-}
-
-pub fn agent_network_simulation_reset_button_bounds(content_bounds: Bounds) -> Bounds {
-    let run = agent_network_simulation_run_button_bounds(content_bounds);
-    Bounds::new(
-        run.max_x() + JOB_INBOX_BUTTON_GAP,
-        run.origin.y,
-        (content_bounds.size.width * 0.22).clamp(140.0, 220.0),
-        run.size.height,
-    )
-}
-
-pub fn treasury_exchange_simulation_run_button_bounds(content_bounds: Bounds) -> Bounds {
-    Bounds::new(
-        content_bounds.origin.x + CHAT_PAD,
-        content_bounds.origin.y + CHAT_PAD,
-        (content_bounds.size.width * 0.26).clamp(180.0, 280.0),
-        JOB_INBOX_BUTTON_HEIGHT,
-    )
-}
-
-pub fn treasury_exchange_simulation_reset_button_bounds(content_bounds: Bounds) -> Bounds {
-    let run = treasury_exchange_simulation_run_button_bounds(content_bounds);
-    Bounds::new(
-        run.max_x() + JOB_INBOX_BUTTON_GAP,
-        run.origin.y,
-        (content_bounds.size.width * 0.22).clamp(140.0, 220.0),
-        run.size.height,
-    )
-}
-
-pub fn relay_security_simulation_run_button_bounds(content_bounds: Bounds) -> Bounds {
-    Bounds::new(
-        content_bounds.origin.x + CHAT_PAD,
-        content_bounds.origin.y + CHAT_PAD,
-        (content_bounds.size.width * 0.26).clamp(180.0, 280.0),
-        JOB_INBOX_BUTTON_HEIGHT,
-    )
-}
-
-pub fn relay_security_simulation_reset_button_bounds(content_bounds: Bounds) -> Bounds {
-    let run = relay_security_simulation_run_button_bounds(content_bounds);
-    Bounds::new(
-        run.max_x() + JOB_INBOX_BUTTON_GAP,
-        run.origin.y,
-        (content_bounds.size.width * 0.22).clamp(140.0, 220.0),
-        run.size.height,
-    )
-}
-
-pub fn stable_sats_simulation_run_button_bounds(content_bounds: Bounds) -> Bounds {
-    Bounds::new(
-        content_bounds.origin.x + CHAT_PAD,
-        content_bounds.origin.y + CHAT_PAD,
-        (content_bounds.size.width * 0.28).clamp(180.0, 280.0),
-        JOB_INBOX_BUTTON_HEIGHT,
-    )
-}
-
-pub fn stable_sats_simulation_reset_button_bounds(content_bounds: Bounds) -> Bounds {
-    let run = stable_sats_simulation_run_button_bounds(content_bounds);
-    Bounds::new(
-        run.max_x() + JOB_INBOX_BUTTON_GAP,
-        run.origin.y,
-        (content_bounds.size.width * 0.22).clamp(140.0, 220.0),
-        run.size.height,
-    )
-}
-
-pub fn stable_sats_simulation_mode_demo_button_bounds(content_bounds: Bounds) -> Bounds {
-    let reset = stable_sats_simulation_reset_button_bounds(content_bounds);
-    Bounds::new(
-        reset.max_x() + JOB_INBOX_BUTTON_GAP,
-        reset.origin.y,
-        (content_bounds.size.width * 0.14).clamp(88.0, 132.0),
-        reset.size.height,
-    )
-}
-
-pub fn stable_sats_simulation_mode_real_button_bounds(content_bounds: Bounds) -> Bounds {
-    let demo = stable_sats_simulation_mode_demo_button_bounds(content_bounds);
-    Bounds::new(
-        demo.max_x() + JOB_INBOX_BUTTON_GAP,
-        demo.origin.y,
-        (content_bounds.size.width * 0.14).clamp(88.0, 132.0),
-        demo.size.height,
-    )
-}
-
 struct CadDemoTopRowLayout {
     cycle: Bounds,
     jaw: Bounds,
@@ -3954,68 +3824,6 @@ fn pane_hit_action_for_pane(
             if credit_settlement_reputation_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::CreditSettlementLedger(
                     CreditSettlementLedgerPaneAction::EmitReputationLabel,
-                ));
-            }
-            None
-        }
-        PaneKind::AgentNetworkSimulation => {
-            if agent_network_simulation_run_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::AgentNetworkSimulation(
-                    AgentNetworkSimulationPaneAction::RunRound,
-                ));
-            }
-            if agent_network_simulation_reset_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::AgentNetworkSimulation(
-                    AgentNetworkSimulationPaneAction::Reset,
-                ));
-            }
-            None
-        }
-        PaneKind::TreasuryExchangeSimulation => {
-            if treasury_exchange_simulation_run_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::TreasuryExchangeSimulation(
-                    TreasuryExchangeSimulationPaneAction::RunRound,
-                ));
-            }
-            if treasury_exchange_simulation_reset_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::TreasuryExchangeSimulation(
-                    TreasuryExchangeSimulationPaneAction::Reset,
-                ));
-            }
-            None
-        }
-        PaneKind::RelaySecuritySimulation => {
-            if relay_security_simulation_run_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::RelaySecuritySimulation(
-                    RelaySecuritySimulationPaneAction::RunRound,
-                ));
-            }
-            if relay_security_simulation_reset_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::RelaySecuritySimulation(
-                    RelaySecuritySimulationPaneAction::Reset,
-                ));
-            }
-            None
-        }
-        PaneKind::StableSatsSimulation => {
-            if stable_sats_simulation_run_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::StableSatsSimulation(
-                    StableSatsSimulationPaneAction::RunRound,
-                ));
-            }
-            if stable_sats_simulation_reset_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::StableSatsSimulation(
-                    StableSatsSimulationPaneAction::Reset,
-                ));
-            }
-            if stable_sats_simulation_mode_demo_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::StableSatsSimulation(
-                    StableSatsSimulationPaneAction::SetModeDemo,
-                ));
-            }
-            if stable_sats_simulation_mode_real_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::StableSatsSimulation(
-                    StableSatsSimulationPaneAction::SetModeReal,
                 ));
             }
             None

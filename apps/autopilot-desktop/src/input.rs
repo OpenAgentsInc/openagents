@@ -46,17 +46,16 @@ use crate::hotbar::{
 };
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 use crate::ollama_execution::OllamaExecutionCommand;
-use crate::pane_registry::{pane_enabled_in_runtime, pane_spec_by_command_id};
+use crate::pane_registry::pane_spec_by_command_id;
 use crate::pane_system::{
-    ActivityFeedPaneAction, AgentNetworkSimulationPaneAction, AlertsRecoveryPaneAction,
-    CadDemoPaneAction, CastControlPaneAction, CodexAccountPaneAction, CodexAppsPaneAction,
-    CodexConfigPaneAction, CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction,
+    ActivityFeedPaneAction, AlertsRecoveryPaneAction, CadDemoPaneAction, CastControlPaneAction,
+    CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction,
+    CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction,
     CodexModelsPaneAction, CredentialsPaneAction, EarningsScoreboardPaneAction,
-    NetworkRequestsPaneAction, PaneController, PaneHitAction, PaneInput, ReciprocalLoopPaneAction,
-    RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction, SIDEBAR_DEFAULT_WIDTH,
-    SettingsPaneAction, StableSatsSimulationPaneAction, StarterJobsPaneAction,
-    SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction, cad_demo_context_menu_bounds,
-    cad_demo_context_menu_row_bounds, clamp_all_panes_to_window,
+    NetworkRequestsPaneAction, PaneController, PaneHitAction, PaneInput,
+    ReciprocalLoopPaneAction, RelayConnectionsPaneAction, SIDEBAR_DEFAULT_WIDTH,
+    SettingsPaneAction, StarterJobsPaneAction, SyncHealthPaneAction,
+    cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds, clamp_all_panes_to_window,
     dispatch_activity_feed_detail_scroll_event, dispatch_calculator_input_event,
     dispatch_chat_input_event, dispatch_chat_scroll_event, dispatch_create_invoice_input_event,
     dispatch_credentials_input_event, dispatch_job_history_input_event,
@@ -481,20 +480,6 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     }
     if run_auto_cast_control_loop(state, now) {
         changed = true;
-    }
-    if state.simulation_panes_enabled {
-        if run_auto_agent_network_simulation(state, now) {
-            changed = true;
-        }
-        if run_auto_treasury_exchange_simulation(state, now) {
-            changed = true;
-        }
-        if run_auto_relay_security_simulation(state, now) {
-            changed = true;
-        }
-        if run_auto_stable_sats_simulation(state, now) {
-            changed = true;
-        }
     }
     if run_auto_starter_demand_generator(state, now) {
         changed = true;
@@ -1605,22 +1590,6 @@ fn mirror_ui_errors_to_console(state: &crate::app_state::RenderState) {
         "credit.settlement.ledger",
         state.credit_settlement_ledger.last_error.as_deref(),
     );
-    mirror_ui_error(
-        "agent.network.sim",
-        state.agent_network_simulation.last_error.as_deref(),
-    );
-    mirror_ui_error(
-        "treasury.exchange.sim",
-        state.treasury_exchange_simulation.last_error.as_deref(),
-    );
-    mirror_ui_error(
-        "relay.security.sim",
-        state.relay_security_simulation.last_error.as_deref(),
-    );
-    mirror_ui_error(
-        "stable.sats.sim",
-        state.stable_sats_simulation.last_error.as_deref(),
-    );
 }
 
 fn dispatch_mouse_move(state: &mut crate::app_state::RenderState, point: Point) -> bool {
@@ -2713,42 +2682,6 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::CreditSettlementLedger(action) => {
             reducers::run_credit_settlement_ledger_action(state, action)
         }
-        PaneHitAction::AgentNetworkSimulation(action) => {
-            if !pane_enabled_in_runtime(
-                crate::app_state::PaneKind::AgentNetworkSimulation,
-                state.simulation_panes_enabled,
-            ) {
-                return simulation_pane_action_blocked(state, "agent_network_simulation");
-            }
-            run_agent_network_simulation_action(state, action)
-        }
-        PaneHitAction::TreasuryExchangeSimulation(action) => {
-            if !pane_enabled_in_runtime(
-                crate::app_state::PaneKind::TreasuryExchangeSimulation,
-                state.simulation_panes_enabled,
-            ) {
-                return simulation_pane_action_blocked(state, "treasury_exchange_simulation");
-            }
-            run_treasury_exchange_simulation_action(state, action)
-        }
-        PaneHitAction::RelaySecuritySimulation(action) => {
-            if !pane_enabled_in_runtime(
-                crate::app_state::PaneKind::RelaySecuritySimulation,
-                state.simulation_panes_enabled,
-            ) {
-                return simulation_pane_action_blocked(state, "relay_security_simulation");
-            }
-            run_relay_security_simulation_action(state, action)
-        }
-        PaneHitAction::StableSatsSimulation(action) => {
-            if !pane_enabled_in_runtime(
-                crate::app_state::PaneKind::StableSatsSimulation,
-                state.simulation_panes_enabled,
-            ) {
-                return simulation_pane_action_blocked(state, "stable_sats_simulation");
-            }
-            run_stable_sats_simulation_action(state, action)
-        }
         PaneHitAction::CadDemo(action) => reducers::run_cad_demo_action(state, action),
         PaneHitAction::Spark(action) => run_spark_action(state, action),
         PaneHitAction::SparkCreateInvoice(action) => run_create_invoice_action(state, action),
@@ -2785,17 +2718,6 @@ fn provider_go_online_block_reason(state: &crate::app_state::RenderState) -> Opt
             .collect::<Vec<_>>()
             .join("; ")
     ))
-}
-
-fn simulation_pane_action_blocked(
-    state: &mut crate::app_state::RenderState,
-    pane_key: &str,
-) -> bool {
-    state.provider_runtime.last_result = Some(format!(
-        "Simulation pane '{}' is disabled. Set OPENAGENTS_ENABLE_SIMULATION_PANES=1 for dev/test sessions.",
-        pane_key
-    ));
-    true
 }
 
 fn handle_chat_keyboard_input(
