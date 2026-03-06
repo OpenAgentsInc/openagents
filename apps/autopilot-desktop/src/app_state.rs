@@ -13,7 +13,8 @@ use wgpui::{Bounds, EventContext, Modifiers, Point, TextSystem, theme};
 use winit::window::Window;
 
 use crate::labor_orchestrator::{
-    CodexLaborApprovalEvent, CodexLaborBinding, CodexRunClassification,
+    CodexLaborApprovalEvent, CodexLaborBinding, CodexLaborSubmissionState, CodexLaborVerdictState,
+    CodexRunClassification,
 };
 use crate::ollama_execution::{
     OllamaExecutionCommand, OllamaExecutionProvenance, OllamaExecutionSnapshot,
@@ -402,7 +403,7 @@ pub struct AutopilotTurnPlanStep {
     pub status: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct AutopilotTurnMetadata {
     pub submission_seq: u64,
     pub thread_id: String,
@@ -1010,6 +1011,46 @@ impl AutopilotChatState {
             .as_deref()
             .and_then(|turn_id| self.turn_metadata_for(turn_id))
             .or(self.last_submitted_turn_metadata.as_ref())
+    }
+
+    pub fn turn_labor_submission_for(&self, turn_id: &str) -> Option<&CodexLaborSubmissionState> {
+        self.turn_metadata_for(turn_id)
+            .and_then(|metadata| metadata.labor_binding.as_ref())
+            .and_then(|binding| binding.submission.as_ref())
+    }
+
+    pub fn turn_labor_verdict_for(&self, turn_id: &str) -> Option<&CodexLaborVerdictState> {
+        self.turn_metadata_for(turn_id)
+            .and_then(|metadata| metadata.labor_binding.as_ref())
+            .and_then(|binding| binding.verdict.as_ref())
+    }
+
+    pub fn assemble_turn_labor_submission(
+        &mut self,
+        turn_id: &str,
+        created_at_epoch_ms: u64,
+    ) -> Result<Option<CodexLaborSubmissionState>, String> {
+        let Some(binding) = self.turn_labor_binding_mut(turn_id) else {
+            return Ok(None);
+        };
+        Ok(Some(binding.assemble_submission(created_at_epoch_ms)))
+    }
+
+    pub fn finalize_turn_labor_verdict(
+        &mut self,
+        turn_id: &str,
+        verified_at_epoch_ms: u64,
+    ) -> Result<Option<CodexLaborVerdictState>, String> {
+        let Some(binding) = self.turn_labor_binding_mut(turn_id) else {
+            return Ok(None);
+        };
+        binding.finalize_verdict(verified_at_epoch_ms).map(Some)
+    }
+
+    pub fn turn_labor_settlement_ready(&self, turn_id: &str) -> Option<bool> {
+        self.turn_metadata_for(turn_id)
+            .and_then(|metadata| metadata.labor_binding.as_ref())
+            .map(CodexLaborBinding::is_settlement_ready)
     }
 
     pub fn record_turn_command_approval_requested(
@@ -4830,6 +4871,29 @@ mod tests {
         );
     }
 
+    fn fixture_goal_labor_binding() -> crate::labor_orchestrator::CodexLaborBinding {
+        crate::labor_orchestrator::orchestrate_codex_turn(
+            crate::labor_orchestrator::CodexTurnExecutionRequest {
+                trigger: crate::labor_orchestrator::CodexRunTrigger::AutonomousGoal {
+                    goal_id: "goal-earn".to_string(),
+                    goal_title: "Earn bitcoin".to_string(),
+                },
+                submitted_at_epoch_ms: 1_000,
+                thread_id: "thread-1".to_string(),
+                input: vec![codex_client::UserInput::Text {
+                    text: "earn bitcoin".to_string(),
+                    text_elements: Vec::new(),
+                }],
+                cwd: Some(std::path::PathBuf::from("/repo")),
+                approval_policy: Some(codex_client::AskForApproval::Never),
+                sandbox_policy: Some(codex_client::SandboxPolicy::DangerFullAccess),
+                model: Some("gpt-5.2-codex".to_string()),
+            },
+        )
+        .labor_binding
+        .expect("goal runs should create labor binding")
+    }
+
     #[test]
     fn chat_state_updates_labor_binding_with_turn_and_output_provenance() {
         let mut chat = AutopilotChatState::default();
@@ -4976,6 +5040,188 @@ mod tests {
                 .as_deref(),
             Some("OK")
         );
+    }
+
+    #[test]
+    fn labor_submission_can_exist_without_verdict() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-1".to_string());
+        chat.submit_prompt("earn bitcoin".to_string());
+        chat.record_turn_submission_metadata(
+            "thread-1",
+            crate::labor_orchestrator::CodexRunClassification::AutonomousGoal {
+                goal_id: "goal-earn".to_string(),
+                goal_title: "Earn bitcoin".to_string(),
+            },
+            Some(fixture_goal_labor_binding()),
+            false,
+            "no-cad-signals",
+            1_000,
+            Vec::new(),
+        );
+        chat.mark_turn_started("turn-1".to_string());
+        chat.set_turn_message_for_turn("turn-1", "verified later");
+        chat.mark_turn_completed_for("turn-1");
+
+        let submission = chat
+            .assemble_turn_labor_submission("turn-1", 2_000)
+            .expect("submission assembly should not fail")
+            .expect("labor-bound turn should produce submission");
+
+        assert_eq!(
+            submission.submission.status,
+            openagents_kernel_core::labor::SubmissionStatus::Received
+        );
+        assert_eq!(
+            submission.verifier_path,
+            crate::labor_orchestrator::CodexLaborVerifierPath::DeterministicOutputGate
+        );
+        assert!(chat.turn_labor_submission_for("turn-1").is_some());
+        assert!(chat.turn_labor_verdict_for("turn-1").is_none());
+        assert_eq!(chat.turn_labor_settlement_ready("turn-1"), Some(false));
+    }
+
+    #[test]
+    fn labor_verdict_pass_marks_settlement_ready() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-1".to_string());
+        chat.submit_prompt("earn bitcoin".to_string());
+        chat.record_turn_submission_metadata(
+            "thread-1",
+            crate::labor_orchestrator::CodexRunClassification::AutonomousGoal {
+                goal_id: "goal-earn".to_string(),
+                goal_title: "Earn bitcoin".to_string(),
+            },
+            Some(fixture_goal_labor_binding()),
+            false,
+            "no-cad-signals",
+            1_000,
+            Vec::new(),
+        );
+        chat.mark_turn_started("turn-1".to_string());
+        chat.set_turn_message_for_turn("turn-1", "final answer");
+        chat.mark_turn_completed_for("turn-1");
+        chat.assemble_turn_labor_submission("turn-1", 2_000)
+            .expect("submission assembly should succeed");
+
+        let verdict = chat
+            .finalize_turn_labor_verdict("turn-1", 3_000)
+            .expect("verdict finalization should succeed")
+            .expect("labor-bound turn should produce verdict");
+
+        assert_eq!(verdict.outcome_label(), "pass");
+        assert!(verdict.settlement_ready);
+        assert_eq!(
+            chat.turn_labor_submission_for("turn-1")
+                .expect("submission should remain attached")
+                .submission
+                .status,
+            openagents_kernel_core::labor::SubmissionStatus::Accepted
+        );
+        assert_eq!(chat.turn_labor_settlement_ready("turn-1"), Some(true));
+    }
+
+    #[test]
+    fn labor_verdict_fail_withholds_settlement() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-1".to_string());
+        chat.submit_prompt("earn bitcoin".to_string());
+        chat.record_turn_submission_metadata(
+            "thread-1",
+            crate::labor_orchestrator::CodexRunClassification::AutonomousGoal {
+                goal_id: "goal-earn".to_string(),
+                goal_title: "Earn bitcoin".to_string(),
+            },
+            Some(fixture_goal_labor_binding()),
+            false,
+            "no-cad-signals",
+            1_000,
+            Vec::new(),
+        );
+        chat.mark_turn_started("turn-1".to_string());
+        chat.record_turn_tool_request(
+            "turn-1",
+            "request-1",
+            "call-1",
+            "openagents.files.write",
+            "{\"path\":\"README.md\"}",
+            1_050,
+        );
+        chat.record_turn_tool_result(
+            "turn-1",
+            "request-1",
+            "call-1",
+            "openagents.files.write",
+            "FAILED",
+            false,
+            "write denied",
+            1_060,
+        );
+        chat.set_turn_message_for_turn("turn-1", "attempted answer");
+        chat.mark_turn_completed_for("turn-1");
+        chat.assemble_turn_labor_submission("turn-1", 2_000)
+            .expect("submission assembly should succeed");
+
+        let verdict = chat
+            .finalize_turn_labor_verdict("turn-1", 3_000)
+            .expect("verdict finalization should succeed")
+            .expect("labor-bound turn should produce verdict");
+
+        assert_eq!(verdict.outcome_label(), "fail");
+        assert!(!verdict.settlement_ready);
+        assert_eq!(
+            chat.turn_labor_submission_for("turn-1")
+                .expect("submission should remain attached")
+                .submission
+                .status,
+            openagents_kernel_core::labor::SubmissionStatus::Rejected
+        );
+        assert_eq!(chat.turn_labor_settlement_ready("turn-1"), Some(false));
+    }
+
+    #[test]
+    fn labor_verifier_failure_blocks_settlement_ready() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-1".to_string());
+        chat.submit_prompt("earn bitcoin".to_string());
+        chat.record_turn_submission_metadata(
+            "thread-1",
+            crate::labor_orchestrator::CodexRunClassification::AutonomousGoal {
+                goal_id: "goal-earn".to_string(),
+                goal_title: "Earn bitcoin".to_string(),
+            },
+            Some(fixture_goal_labor_binding()),
+            false,
+            "no-cad-signals",
+            1_000,
+            Vec::new(),
+        );
+        chat.mark_turn_started("turn-1".to_string());
+        chat.mark_turn_completed_for("turn-1");
+        chat.assemble_turn_labor_submission("turn-1", 2_000)
+            .expect("submission assembly should succeed");
+
+        let error = chat
+            .finalize_turn_labor_verdict("turn-1", 3_000)
+            .expect_err("verifier should reject missing output evidence");
+
+        assert_eq!(
+            error,
+            "codex labor verifier requires a final output reference".to_string()
+        );
+        let binding = chat
+            .turn_metadata_for("turn-1")
+            .and_then(|metadata| metadata.labor_binding.as_ref())
+            .expect("labor binding should remain attached");
+        assert_eq!(
+            binding
+                .verifier_failure
+                .as_ref()
+                .map(|failure| failure.code.as_str()),
+            Some("codex_submission_output_missing")
+        );
+        assert!(binding.verdict.is_none());
+        assert_eq!(chat.turn_labor_settlement_ready("turn-1"), Some(false));
     }
 
     #[test]

@@ -2,8 +2,12 @@ use std::path::PathBuf;
 
 use codex_client::{AskForApproval, SandboxPolicy, TurnStartParams, UserInput};
 use openagents_kernel_core::ids::sha256_prefixed_text;
-use openagents_kernel_core::receipts::TraceContext;
+use openagents_kernel_core::labor::{
+    SettlementStatus, Submission, SubmissionStatus, Verdict, VerdictOutcome,
+};
+use openagents_kernel_core::receipts::{EvidenceRef, TraceContext, VerificationTier};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum CodexRunTrigger {
@@ -101,6 +105,12 @@ pub(crate) struct CodexLaborArtifactRef {
     pub kind: String,
     pub uri: String,
     pub digest: String,
+}
+
+impl CodexLaborArtifactRef {
+    fn as_evidence_ref(&self) -> EvidenceRef {
+        EvidenceRef::new(self.kind.clone(), self.uri.clone(), self.digest.clone())
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -319,13 +329,76 @@ impl CodexLaborProvenanceBundle {
     }
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum CodexLaborVerifierPath {
+    DeterministicOutputGate,
+}
+
+impl CodexLaborVerifierPath {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::DeterministicOutputGate => "deterministic_output_gate",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub(crate) struct CodexLaborSubmissionState {
+    pub submission: Submission,
+    #[serde(default)]
+    pub evidence_refs: Vec<EvidenceRef>,
+    pub verifier_path: CodexLaborVerifierPath,
+    pub verifier_id: String,
+    pub settlement_ready: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub(crate) struct CodexLaborVerdictState {
+    pub verdict: Verdict,
+    #[serde(default)]
+    pub evidence_refs: Vec<EvidenceRef>,
+    pub verifier_path: CodexLaborVerifierPath,
+    pub verifier_id: String,
+    #[serde(default)]
+    pub independence_note: Option<String>,
+    #[serde(default)]
+    pub correlation_note: Option<String>,
+    pub settlement_ready: bool,
+    #[serde(default)]
+    pub settlement_withheld_reason: Option<String>,
+}
+
+impl CodexLaborVerdictState {
+    pub(crate) fn outcome_label(&self) -> &'static str {
+        match self.verdict.outcome {
+            VerdictOutcome::Pass => "pass",
+            VerdictOutcome::Fail => "fail",
+            VerdictOutcome::Escalated => "escalated",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub(crate) struct CodexLaborVerifierFailure {
+    pub code: String,
+    pub message: String,
+    pub recorded_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub(crate) struct CodexLaborBinding {
     pub work_unit_id: String,
     pub contract_id: String,
     pub idempotency_key: String,
     pub trace: TraceContext,
     pub provenance: CodexLaborProvenanceBundle,
+    #[serde(default)]
+    pub submission: Option<CodexLaborSubmissionState>,
+    #[serde(default)]
+    pub verdict: Option<CodexLaborVerdictState>,
+    #[serde(default)]
+    pub verifier_failure: Option<CodexLaborVerifierFailure>,
 }
 
 impl CodexLaborBinding {
@@ -383,6 +456,292 @@ impl CodexLaborBinding {
     pub(crate) fn record_output_snapshot(&mut self, output: &str) {
         self.provenance
             .record_output_snapshot(self.work_unit_id.as_str(), output);
+    }
+
+    pub(crate) fn assemble_submission(
+        &mut self,
+        created_at_epoch_ms: u64,
+    ) -> CodexLaborSubmissionState {
+        if let Some(existing) = self.submission.clone() {
+            return existing;
+        }
+
+        let verifier_path = CodexLaborVerifierPath::DeterministicOutputGate;
+        let submission = CodexLaborSubmissionState {
+            submission: Submission {
+                submission_id: self.submission_id(),
+                contract_id: self.contract_id.clone(),
+                work_unit_id: self.work_unit_id.clone(),
+                created_at_ms: created_at_epoch_ms as i64,
+                status: SubmissionStatus::Received,
+                output_ref: self.final_output_ref(),
+                provenance_digest: Some(self.provenance.bundle_digest()),
+                metadata: json!({
+                    "thread_id": self.provenance.thread_id.clone(),
+                    "turn_id": self.provenance.turn_id.clone(),
+                    "selected_model_id": self.provenance.selected_model_id.clone(),
+                    "selected_skill_names": self.provenance.selected_skill_names.clone(),
+                    "cwd": self.provenance.cwd.clone(),
+                    "sandbox_policy": self.provenance.sandbox_policy.clone(),
+                    "approval_policy": self.provenance.approval_policy.clone(),
+                    "approval_events_count": self.provenance.approval_events.len(),
+                    "tool_invocations_count": self.provenance.tool_invocations.len(),
+                    "verifier_path": verifier_path.label(),
+                }),
+            },
+            evidence_refs: self.provenance_evidence_refs(),
+            verifier_path,
+            verifier_id: verifier_id_for_path(verifier_path).to_string(),
+            settlement_ready: false,
+        };
+        self.verifier_failure = None;
+        self.submission = Some(submission.clone());
+        submission
+    }
+
+    pub(crate) fn finalize_verdict(
+        &mut self,
+        verified_at_epoch_ms: u64,
+    ) -> Result<CodexLaborVerdictState, String> {
+        if let Some(existing) = self.verdict.clone() {
+            return Ok(existing);
+        }
+
+        let mut submission_state = self.assemble_submission(verified_at_epoch_ms);
+        let Some(output_ref) = submission_state.submission.output_ref.clone() else {
+            let message = self.record_verifier_failure(
+                "codex_submission_output_missing",
+                "codex labor verifier requires a final output reference",
+                verified_at_epoch_ms,
+            );
+            return Err(message);
+        };
+        let Some(final_output_digest) = self.provenance.final_output_digest.clone() else {
+            let message = self.record_verifier_failure(
+                "codex_verification_output_digest_missing",
+                "codex labor verifier requires a final output digest",
+                verified_at_epoch_ms,
+            );
+            return Err(message);
+        };
+        let Some(transcript_digest) = self.provenance.transcript_digest.clone() else {
+            let message = self.record_verifier_failure(
+                "codex_verification_transcript_digest_missing",
+                "codex labor verifier requires a transcript digest",
+                verified_at_epoch_ms,
+            );
+            return Err(message);
+        };
+
+        let denied_approval = self
+            .provenance
+            .approval_events
+            .iter()
+            .find(|event| approval_decision_is_negative(event.decision.as_deref()));
+        let failed_tool = self
+            .provenance
+            .tool_invocations
+            .iter()
+            .find(|invocation| invocation.success == Some(false));
+
+        let (outcome, reason_code, settlement_ready, settlement_status, settlement_withheld_reason) =
+            if let Some(event) = denied_approval {
+                (
+                    VerdictOutcome::Fail,
+                    "codex.verifier.approval_denied",
+                    false,
+                    SettlementStatus::Disputed,
+                    Some(format!("approval denied for item {}", event.item_id)),
+                )
+            } else if let Some(invocation) = failed_tool {
+                (
+                    VerdictOutcome::Fail,
+                    "codex.verifier.tool_failed",
+                    false,
+                    SettlementStatus::Disputed,
+                    Some(format!(
+                        "tool {} reported unsuccessful execution",
+                        invocation.tool_name
+                    )),
+                )
+            } else {
+                (
+                    VerdictOutcome::Pass,
+                    "codex.verifier.objective_pass",
+                    true,
+                    SettlementStatus::Pending,
+                    None,
+                )
+            };
+
+        submission_state.submission.status = if settlement_ready {
+            SubmissionStatus::Accepted
+        } else {
+            SubmissionStatus::Rejected
+        };
+
+        let verifier_path = submission_state.verifier_path;
+        let verifier_id = submission_state.verifier_id.clone();
+        let independence_note =
+            Some("deterministic verifier executed after worker completion".to_string());
+        let correlation_note = Some(
+            "local verifier shares runtime context with the worker and is not a separate model family"
+                .to_string(),
+        );
+        let mut evidence_refs = submission_state.evidence_refs.clone();
+        evidence_refs.push(EvidenceRef::new(
+            "codex_submission",
+            format!(
+                "oa://autopilot/codex/{}/submissions/{}",
+                self.work_unit_id, submission_state.submission.submission_id
+            ),
+            sha256_prefixed_text(
+                format!("{}:{output_ref}", submission_state.submission.submission_id).as_str(),
+            ),
+        ));
+        evidence_refs.push(EvidenceRef::new(
+            "codex_verifier_report",
+            format!(
+                "oa://autopilot/codex/{}/verifier/{}",
+                self.work_unit_id,
+                verifier_path.label()
+            ),
+            sha256_prefixed_text(
+                format!(
+                    "{}:{}:{}:{}",
+                    final_output_digest,
+                    transcript_digest,
+                    reason_code,
+                    verifier_path.label()
+                )
+                .as_str(),
+            ),
+        ));
+
+        let verdict = CodexLaborVerdictState {
+            verdict: Verdict {
+                verdict_id: self.verdict_id(),
+                contract_id: self.contract_id.clone(),
+                work_unit_id: self.work_unit_id.clone(),
+                created_at_ms: verified_at_epoch_ms as i64,
+                outcome,
+                verification_tier: Some(VerificationTier::TierOObjective),
+                settlement_status,
+                reason_code: Some(reason_code.to_string()),
+                metadata: json!({
+                    "submission_id": submission_state.submission.submission_id,
+                    "thread_id": self.provenance.thread_id.clone(),
+                    "turn_id": self.provenance.turn_id.clone(),
+                    "verifier_path": verifier_path.label(),
+                    "verifier_id": verifier_id.clone(),
+                    "independence_note": independence_note.clone(),
+                    "correlation_note": correlation_note.clone(),
+                    "output_ref": output_ref,
+                    "output_digest": final_output_digest,
+                    "transcript_digest": transcript_digest,
+                }),
+            },
+            evidence_refs,
+            verifier_path,
+            verifier_id,
+            independence_note,
+            correlation_note,
+            settlement_ready,
+            settlement_withheld_reason,
+        };
+
+        self.verifier_failure = None;
+        self.submission = Some(submission_state);
+        self.verdict = Some(verdict.clone());
+        Ok(verdict)
+    }
+
+    pub(crate) fn is_settlement_ready(&self) -> bool {
+        self.verdict
+            .as_ref()
+            .map(|verdict| verdict.settlement_ready)
+            .unwrap_or(false)
+    }
+
+    fn submission_id(&self) -> String {
+        let turn_material = self.provenance.turn_id.as_deref().unwrap_or("pending-turn");
+        format!(
+            "submission.codex.{}",
+            short_hash(
+                format!("{}:{}:{turn_material}", self.contract_id, self.work_unit_id).as_str()
+            )
+        )
+    }
+
+    fn verdict_id(&self) -> String {
+        let turn_material = self.provenance.turn_id.as_deref().unwrap_or("pending-turn");
+        format!(
+            "verdict.codex.{}",
+            short_hash(
+                format!(
+                    "{}:{}:{turn_material}",
+                    self.contract_id, self.provenance.bundle_id
+                )
+                .as_str()
+            )
+        )
+    }
+
+    fn final_output_ref(&self) -> Option<String> {
+        self.provenance
+            .produced_artifacts
+            .iter()
+            .find(|artifact| artifact.kind == "final_output")
+            .map(|artifact| artifact.uri.clone())
+    }
+
+    fn provenance_evidence_refs(&self) -> Vec<EvidenceRef> {
+        let mut evidence_refs = Vec::new();
+        evidence_refs.push(EvidenceRef::new(
+            "codex_thread",
+            format!("oa://autopilot/codex/threads/{}", self.provenance.thread_id),
+            sha256_prefixed_text(self.provenance.thread_id.as_str()),
+        ));
+        if let Some(turn_id) = self.provenance.turn_id.as_deref() {
+            evidence_refs.push(EvidenceRef::new(
+                "codex_turn",
+                format!("oa://autopilot/codex/turns/{turn_id}"),
+                sha256_prefixed_text(turn_id),
+            ));
+        }
+        evidence_refs.push(EvidenceRef::new(
+            "codex_provenance_bundle",
+            format!(
+                "oa://autopilot/codex/{}/bundles/{}",
+                self.work_unit_id, self.provenance.bundle_id
+            ),
+            self.provenance.bundle_digest(),
+        ));
+        if let Some(selected_model_id) = self.provenance.selected_model_id.as_deref() {
+            evidence_refs.push(EvidenceRef::new(
+                "codex_model",
+                format!("oa://autopilot/codex/models/{selected_model_id}"),
+                sha256_prefixed_text(selected_model_id),
+            ));
+        }
+        for artifact in &self.provenance.produced_artifacts {
+            evidence_refs.push(artifact.as_evidence_ref());
+        }
+        evidence_refs
+    }
+
+    fn record_verifier_failure(
+        &mut self,
+        code: &str,
+        message: &str,
+        recorded_at_epoch_ms: u64,
+    ) -> String {
+        self.verifier_failure = Some(CodexLaborVerifierFailure {
+            code: code.to_string(),
+            message: message.to_string(),
+            recorded_at_epoch_ms,
+        });
+        message.to_string()
     }
 }
 
@@ -509,6 +868,9 @@ fn local_labor_binding(
             final_output_digest: None,
             transcript_digest: None,
         },
+        submission: None,
+        verdict: None,
+        verifier_failure: None,
     })
 }
 
@@ -558,6 +920,23 @@ fn approval_policy_label(policy: Option<&AskForApproval>) -> Option<String> {
         AskForApproval::OnRequest => "on_request".to_string(),
         AskForApproval::Reject { .. } => "reject".to_string(),
         AskForApproval::Never => "never".to_string(),
+    })
+}
+
+fn verifier_id_for_path(path: CodexLaborVerifierPath) -> &'static str {
+    match path {
+        CodexLaborVerifierPath::DeterministicOutputGate => {
+            "autopilot.codex.verifier.deterministic_output_gate.v1"
+        }
+    }
+}
+
+fn approval_decision_is_negative(decision: Option<&str>) -> bool {
+    decision.is_some_and(|value| {
+        value.eq_ignore_ascii_case("deny")
+            || value.eq_ignore_ascii_case("decline")
+            || value.eq_ignore_ascii_case("rejected")
+            || value.eq_ignore_ascii_case("reject")
     })
 }
 
