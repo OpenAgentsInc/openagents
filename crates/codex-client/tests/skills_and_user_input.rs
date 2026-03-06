@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::panic)]
+
 use std::path::PathBuf;
 
 use codex_client::{

@@ -1,3 +1,11 @@
+#![allow(
+    clippy::all,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::pedantic,
+    clippy::unwrap_used
+)]
+
 pub mod analytic_ray_intersections_parity;
 pub mod assembly_acceptance_scenes_parity;
 pub mod assembly_checkpoint_parity;

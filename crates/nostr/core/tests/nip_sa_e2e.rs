@@ -1,3 +1,11 @@
+#![allow(
+    clippy::all,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::pedantic,
+    clippy::unwrap_used
+)]
+
 //! End-to-end integration tests for NIP-SA (Sovereign Agents Protocol)
 //!
 //! These tests verify that the complete NIP-SA stack works correctly, testing:

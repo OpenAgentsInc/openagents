@@ -1,3 +1,15 @@
+#![cfg_attr(
+    test,
+    allow(
+        clippy::all,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::panic_in_result_fn,
+        clippy::pedantic,
+        clippy::unwrap_used
+    )
+)]
+
 mod economy;
 mod kernel;
 

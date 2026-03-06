@@ -790,7 +790,7 @@ fn tool_response(text: String) -> CadMcpToolResponse {
 fn primitive_to_node_op(primitive: &CadMcpPrimitive) -> CadResult<CadMcpNodeOp> {
     match primitive.primitive_type {
         CadMcpPrimitiveType::Cube => {
-            let size = primitive.size.clone().unwrap_or(CadMcpVec3 {
+            let size = primitive.size.unwrap_or(CadMcpVec3 {
                 x: 10.0,
                 y: 10.0,
                 z: 10.0,
@@ -859,7 +859,7 @@ fn operation_to_node_op(
             }
             Ok(CadMcpNodeOp::Translate {
                 child: current,
-                offset: offset.clone(),
+                offset: *offset,
             })
         }
         CadMcpOperation::Rotate { angles } => {
@@ -871,7 +871,7 @@ fn operation_to_node_op(
             }
             Ok(CadMcpNodeOp::Rotate {
                 child: current,
-                angles: angles.clone(),
+                angles: *angles,
             })
         }
         CadMcpOperation::Scale { factor } => {
@@ -887,7 +887,7 @@ fn operation_to_node_op(
             }
             Ok(CadMcpNodeOp::Scale {
                 child: current,
-                factor: factor.clone(),
+                factor: *factor,
             })
         }
         CadMcpOperation::Union { primitive, at } => {
@@ -1535,7 +1535,7 @@ struct PrimitiveBounds {
 fn primitive_bbox(primitive: &CadMcpPrimitive) -> CadResult<PrimitiveBounds> {
     match primitive.primitive_type {
         CadMcpPrimitiveType::Cube => {
-            let size = primitive.size.clone().unwrap_or(CadMcpVec3 {
+            let size = primitive.size.unwrap_or(CadMcpVec3 {
                 x: 10.0,
                 y: 10.0,
                 z: 10.0,

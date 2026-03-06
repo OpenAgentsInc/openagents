@@ -174,11 +174,12 @@ impl FeatureControlFrame {
         if let Some(condition) = self.material_condition {
             frame.push_str(condition.dxf_text());
         }
-        for datum in [&self.datum_a, &self.datum_b, &self.datum_c] {
-            if let Some(datum) = datum {
-                frame.push('|');
-                frame.push_str(&datum.render_text());
-            }
+        for datum in [&self.datum_a, &self.datum_b, &self.datum_c]
+            .into_iter()
+            .flatten()
+        {
+            frame.push('|');
+            frame.push_str(&datum.render_text());
         }
         frame
     }

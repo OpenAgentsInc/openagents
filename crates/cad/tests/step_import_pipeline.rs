@@ -1,3 +1,5 @@
+#![allow(clippy::all, clippy::expect_used, clippy::panic, clippy::pedantic, clippy::print_stderr, clippy::print_stdout, clippy::unwrap_used)]
+
 use openagents_cad::export::export_step_from_mesh;
 use openagents_cad::format::ApcadDocumentEnvelope;
 use openagents_cad::keys::import_metadata as import_keys;

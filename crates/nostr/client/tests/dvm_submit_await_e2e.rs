@@ -1,3 +1,11 @@
+#![allow(
+    clippy::all,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::pedantic,
+    clippy::unwrap_used
+)]
+
 use futures_util::{SinkExt, StreamExt};
 use nostr::Event;
 use nostr_client::{ClientError, DvmClient, PoolConfig, RelayPool};
@@ -89,7 +97,7 @@ async fn spawn_mock_relay(send_result: bool) -> (String, JoinHandle<()>) {
                         .unwrap_or_else(|| "unknown-request".to_string());
                     let result = result_event("result-1", &request_event_id);
                     let payload = serde_json::json!(["EVENT", subscription_id, result]);
-                    ws.send(Message::Text(payload.to_string().into()))
+                    ws.send(Message::Text(payload.to_string()))
                         .await
                         .expect("send result event");
                 }

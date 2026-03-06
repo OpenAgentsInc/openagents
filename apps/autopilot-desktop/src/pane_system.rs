@@ -1432,7 +1432,10 @@ pub fn chat_composer_height_for_value(content_bounds: Bounds, value: &str) -> f3
         .clamp(CHAT_COMPOSER_MIN_HEIGHT, CHAT_COMPOSER_MAX_HEIGHT)
 }
 
-pub fn chat_composer_input_bounds_with_height(content_bounds: Bounds, composer_height: f32) -> Bounds {
+pub fn chat_composer_input_bounds_with_height(
+    content_bounds: Bounds,
+    composer_height: f32,
+) -> Bounds {
     let send_bounds = chat_send_button_bounds(content_bounds);
     let left = content_bounds.origin.x + CHAT_PAD;
     Bounds::new(

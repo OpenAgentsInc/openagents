@@ -1,3 +1,5 @@
+#![allow(clippy::all, clippy::pedantic, unfulfilled_lint_expectations)]
+
 //! Performance benchmarks for wgpui
 //!
 //! Tests rendering performance with large message counts.

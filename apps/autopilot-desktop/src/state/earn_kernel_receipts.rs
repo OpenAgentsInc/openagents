@@ -7210,7 +7210,10 @@ fn ollama_execution_receipt_tags(
         "execution.options_digest".to_string(),
         provenance.normalized_options_digest.clone(),
     );
-    tags.insert("execution.base_url".to_string(), provenance.base_url.clone());
+    tags.insert(
+        "execution.base_url".to_string(),
+        provenance.base_url.clone(),
+    );
     if let Some(warm_start) = provenance.warm_start {
         tags.insert(
             "execution.warm_start".to_string(),

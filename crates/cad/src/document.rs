@@ -16,24 +16,20 @@ pub enum CadUnits {
 }
 
 /// Drawing viewport mode persisted in the document schema.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub enum CadDrawingViewMode {
     #[serde(rename = "3d")]
+    #[default]
     ThreeD,
     #[serde(rename = "2d")]
     TwoD,
 }
 
-impl Default for CadDrawingViewMode {
-    fn default() -> Self {
-        Self::ThreeD
-    }
-}
-
 /// Drawing projection direction persisted in the document schema.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub enum CadDrawingViewDirection {
     #[serde(rename = "front")]
+    #[default]
     Front,
     #[serde(rename = "back")]
     Back,
@@ -47,12 +43,6 @@ pub enum CadDrawingViewDirection {
     Right,
     #[serde(rename = "isometric")]
     Isometric,
-}
-
-impl Default for CadDrawingViewDirection {
-    fn default() -> Self {
-        Self::Front
-    }
 }
 
 /// 2D pan offset in drawing coordinates.

@@ -1,3 +1,5 @@
+#![allow(clippy::all, clippy::pedantic, unfulfilled_lint_expectations)]
+
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use std::time::Duration;
 use wgpui::{Bounds, FontStyle, Hsla, Point, Quad, Scene, TextSystem};

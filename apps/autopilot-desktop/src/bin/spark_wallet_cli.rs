@@ -1,4 +1,8 @@
 #![allow(
+    clippy::exit,
+    reason = "CLI help flow exits immediately after printing usage."
+)]
+#![allow(
     clippy::print_stdout,
     reason = "CLI utility intentionally writes operational results to stdout."
 )]

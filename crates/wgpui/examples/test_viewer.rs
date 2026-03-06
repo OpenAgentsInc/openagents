@@ -1,3 +1,5 @@
+#![allow(clippy::all, clippy::pedantic, unfulfilled_lint_expectations)]
+
 //! E2E Test Live Viewer Demo
 //!
 //! Demonstrates the testing framework with a simple counter component.

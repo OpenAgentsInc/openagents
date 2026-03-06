@@ -1,3 +1,15 @@
+#![cfg_attr(
+    test,
+    allow(
+        clippy::all,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::panic_in_result_fn,
+        clippy::pedantic,
+        clippy::unwrap_used
+    )
+)]
+
 //! Reusable CAD domain foundation for OpenAgents.
 //!
 //! This crate intentionally starts with a minimal, product-agnostic API surface.

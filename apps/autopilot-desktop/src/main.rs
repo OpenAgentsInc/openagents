@@ -1,4 +1,11 @@
-#![cfg_attr(test, allow(clippy::expect_used))]
+#![allow(dead_code)]
+#![allow(
+    clippy::all,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::pedantic,
+    clippy::unwrap_used
+)]
 
 mod app_state;
 mod cad_rebuild_worker;

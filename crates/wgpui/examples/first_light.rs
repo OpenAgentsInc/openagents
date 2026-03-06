@@ -1,3 +1,5 @@
+#![allow(clippy::all, clippy::pedantic, unfulfilled_lint_expectations)]
+
 //! First Light - Full Component System Demo
 //!
 //! Demonstrates all wgpui components including:

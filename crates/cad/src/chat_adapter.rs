@@ -1,8 +1,8 @@
 use crate::intent::{
     AdjustParameterIntent, CadAdjustOperation, CadIntent, CadIntentValidationError,
     CompareVariantsIntent, CreateParallelJawGripperSpecIntent, CreateRackSpecIntent, ExportIntent,
-    PARALLEL_JAW_GRIPPER_DEFAULT_COMPLIANT_JOINT_COUNT, PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_COUNT,
-    PARALLEL_JAW_GRIPPER_DEFAULT_FLEXURE_THICKNESS_MM, PARALLEL_JAW_GRIPPER_DEFAULT_POSE_PRESET,
+    PARALLEL_JAW_GRIPPER_DEFAULT_FINGER_COUNT, PARALLEL_JAW_GRIPPER_DEFAULT_FLEXURE_THICKNESS_MM,
+    PARALLEL_JAW_GRIPPER_DEFAULT_POSE_PRESET,
     PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_BRACKET_THICKNESS_MM,
     PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_ENVELOPE_HEIGHT_MM,
     PARALLEL_JAW_GRIPPER_DEFAULT_SERVO_ENVELOPE_LENGTH_MM,
@@ -142,18 +142,20 @@ fn translate_phrase(input: &str) -> Option<CadIntent> {
         }));
     }
 
-    if lower.contains("vent") && lower.contains("hole") && lower.contains('%') {
-        if let Some(percent) = extract_percent_value(&lower) {
-            return Some(CadIntent::AdjustParameter(AdjustParameterIntent {
-                parameter: "vent_hole_radius_mm".to_string(),
-                operation: if lower.contains("reduce") || lower.contains("smaller") {
-                    CadAdjustOperation::Decrease
-                } else {
-                    CadAdjustOperation::Increase
-                },
-                value: percent,
-            }));
-        }
+    if lower.contains("vent")
+        && lower.contains("hole")
+        && lower.contains('%')
+        && let Some(percent) = extract_percent_value(&lower)
+    {
+        return Some(CadIntent::AdjustParameter(AdjustParameterIntent {
+            parameter: "vent_hole_radius_mm".to_string(),
+            operation: if lower.contains("reduce") || lower.contains("smaller") {
+                CadAdjustOperation::Decrease
+            } else {
+                CadAdjustOperation::Increase
+            },
+            value: percent,
+        }));
     }
 
     if lower.starts_with("set ") && lower.contains('=') {
@@ -282,7 +284,7 @@ fn translate_parallel_jaw_gripper_prompt(lower: &str) -> Option<CadIntent> {
     .any(|token| lower.contains(token));
     if requests_underactuated {
         spec.underactuated_mode = true;
-        spec.compliant_joint_count = PARALLEL_JAW_GRIPPER_DEFAULT_COMPLIANT_JOINT_COUNT.max(3);
+        spec.compliant_joint_count = 3;
         spec.flexure_thickness_mm = PARALLEL_JAW_GRIPPER_DEFAULT_FLEXURE_THICKNESS_MM;
         spec.single_servo_drive = true;
     }
@@ -613,10 +615,8 @@ fn extract_percent_value(input: &str) -> Option<f64> {
 
 fn extract_compliant_joint_count(lower: &str) -> Option<u8> {
     for token in lower.split_whitespace() {
-        if let Ok(value) = token.parse::<u8>() {
-            if value > 0 {
-                return Some(value);
-            }
+        if let Ok(value) = token.parse::<u8>() && value > 0 {
+            return Some(value);
         }
     }
     None
@@ -632,10 +632,11 @@ fn extract_finger_count(lower: &str) -> Option<u8> {
     }
     for token in lower.split_whitespace() {
         let trimmed = token.trim_matches(|ch: char| !ch.is_ascii_digit());
-        if let Ok(value) = trimmed.parse::<u8>() {
-            if (3..=5).contains(&value) && lower.contains("finger") {
-                return Some(value);
-            }
+        if let Ok(value) = trimmed.parse::<u8>()
+            && (3..=5).contains(&value)
+            && lower.contains("finger")
+        {
+            return Some(value);
         }
     }
     None

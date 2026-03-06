@@ -246,13 +246,13 @@ fn polyline_length_mm(path_points_mm: &[[f64; 3]]) -> f64 {
 }
 
 fn sample_path_point(path_points_mm: &[[f64; 3]], t: f64, total_length_mm: f64) -> [f64; 3] {
+    let last_index = path_points_mm.len() - 1;
+
     if t <= 0.0 {
         return path_points_mm[0];
     }
     if t >= 1.0 || total_length_mm <= MIN_PATH_LENGTH_MM {
-        return *path_points_mm
-            .last()
-            .expect("path should have at least one point");
+        return path_points_mm[last_index];
     }
 
     let target_distance = total_length_mm * t;
@@ -271,9 +271,7 @@ fn sample_path_point(path_points_mm: &[[f64; 3]], t: f64, total_length_mm: f64) 
         traversed += segment_length;
     }
 
-    *path_points_mm
-        .last()
-        .expect("path should have at least one endpoint")
+    path_points_mm[last_index]
 }
 
 fn distance_mm(a: [f64; 3], b: [f64; 3]) -> f64 {

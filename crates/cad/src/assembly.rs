@@ -707,7 +707,7 @@ impl CadAssemblySchema {
                 && joint
                     .parent_instance_id
                     .as_deref()
-                    .map_or(true, |parent_id| parent_id != instance_id)
+                    .is_none_or(|parent_id| parent_id != instance_id)
         });
         removed_joint_ids.sort();
         removed_joint_ids.dedup();

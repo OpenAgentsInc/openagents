@@ -1,3 +1,11 @@
+#![allow(
+    clippy::all,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::pedantic,
+    clippy::unwrap_used
+)]
+
 //! Integration test verifying that all NIP-SA types are publicly accessible
 
 use nostr::{

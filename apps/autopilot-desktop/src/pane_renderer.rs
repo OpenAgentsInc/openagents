@@ -1185,7 +1185,10 @@ fn paint_provider_status_pane(
     ));
     dep_y += 14.0;
     if let Some(metrics) = provider_runtime.ollama.last_metrics.as_ref() {
-        let total_ms = metrics.total_duration_ns.map(|ns| ns / 1_000_000).unwrap_or(0);
+        let total_ms = metrics
+            .total_duration_ns
+            .map(|ns| ns / 1_000_000)
+            .unwrap_or(0);
         let eval_tokens = metrics.eval_count.unwrap_or(0);
         paint.scene.draw_text(paint.text.layout_mono(
             &format!("last gen: total={}ms eval_tokens={}", total_ms, eval_tokens),

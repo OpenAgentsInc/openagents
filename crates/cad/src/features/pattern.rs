@@ -218,18 +218,21 @@ impl CircularPatternFeatureOp {
         Ok(radius_mm)
     }
 
-    fn normalized_axis_direction(&self) -> [f64; 3] {
-        vec_normalize(self.axis_direction_xyz)
-            .expect("circular axis direction should be non-zero after validate")
+    fn normalized_axis_direction(&self) -> CadResult<[f64; 3]> {
+        vec_normalize(self.axis_direction_xyz).ok_or_else(|| CadError::InvalidPrimitive {
+            reason: "circular pattern axis direction must not be a zero vector".to_string(),
+        })
     }
 
-    fn radial_basis(&self, axis: [f64; 3]) -> [f64; 3] {
+    fn radial_basis(&self, axis: [f64; 3]) -> CadResult<[f64; 3]> {
         let candidate = if axis[0].abs() < 0.9 {
             [1.0, 0.0, 0.0]
         } else {
             [0.0, 1.0, 0.0]
         };
-        vec_normalize(vec_cross(axis, candidate)).expect("candidate must produce radial basis")
+        vec_normalize(vec_cross(axis, candidate)).ok_or_else(|| CadError::InvalidPrimitive {
+            reason: "circular pattern axis basis must be resolvable".to_string(),
+        })
     }
 
     fn instance_hash(
@@ -322,8 +325,8 @@ pub fn evaluate_circular_pattern_feature(
     let count = op.resolve_count(params)?;
     let angle_deg = op.resolve_angle_deg(params)?;
     let radius_mm = op.resolve_radius_mm(params)?;
-    let axis = op.normalized_axis_direction();
-    let radial = op.radial_basis(axis);
+    let axis = op.normalized_axis_direction()?;
+    let radial = op.radial_basis(axis)?;
     let tangent = vec_cross(axis, radial);
 
     let mut instances = Vec::with_capacity(count as usize);

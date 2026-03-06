@@ -400,32 +400,28 @@ fn spawn_remote_projection_runtime(
                 }
             }
 
-            let receipt_url = match canonical_kernel_endpoint(
-                base_url.as_str(),
-                "/v1/kernel/stream/receipts",
-            ) {
-                Ok(url) => url,
-                Err(error) => {
-                    let _ = update_tx.send(KernelProjectionUpdate::StreamError {
-                        stream: "receipts",
-                        message: error.to_string(),
-                    });
-                    return;
-                }
-            };
-            let snapshot_url = match canonical_kernel_endpoint(
-                base_url.as_str(),
-                "/v1/kernel/stream/snapshots",
-            ) {
-                Ok(url) => url,
-                Err(error) => {
-                    let _ = update_tx.send(KernelProjectionUpdate::StreamError {
-                        stream: "snapshots",
-                        message: error.to_string(),
-                    });
-                    return;
-                }
-            };
+            let receipt_url =
+                match canonical_kernel_endpoint(base_url.as_str(), "/v1/kernel/stream/receipts") {
+                    Ok(url) => url,
+                    Err(error) => {
+                        let _ = update_tx.send(KernelProjectionUpdate::StreamError {
+                            stream: "receipts",
+                            message: error.to_string(),
+                        });
+                        return;
+                    }
+                };
+            let snapshot_url =
+                match canonical_kernel_endpoint(base_url.as_str(), "/v1/kernel/stream/snapshots") {
+                    Ok(url) => url,
+                    Err(error) => {
+                        let _ = update_tx.send(KernelProjectionUpdate::StreamError {
+                            stream: "snapshots",
+                            message: error.to_string(),
+                        });
+                        return;
+                    }
+                };
 
             let receipt_task = tokio::spawn(run_projection_stream::<ReceiptProjectionEnvelope, _>(
                 http_client.clone(),
@@ -624,7 +620,9 @@ where
             continue;
         }
         if let Some(value) = line.strip_prefix("data:") {
-            pending_event.data_lines.push(value.trim_start().to_string());
+            pending_event
+                .data_lines
+                .push(value.trim_start().to_string());
         }
     }
 
@@ -685,7 +683,10 @@ async fn sleep_until_retry(shutdown_rx: &mut watch::Receiver<bool>) -> bool {
     }
 }
 
-fn build_work_unit_request(state: &RenderState, request: &JobInboxRequest) -> CreateWorkUnitRequest {
+fn build_work_unit_request(
+    state: &RenderState,
+    request: &JobInboxRequest,
+) -> CreateWorkUnitRequest {
     let work_unit_id = work_unit_id_for_request(request.request_id.as_str());
     CreateWorkUnitRequest {
         idempotency_key: format!("desktop.accept.work_unit:{}", request.request_id),
@@ -841,23 +842,25 @@ fn build_finalize_verdict_request(
                 "result_event_id": job.sa_tick_result_event_id.clone(),
             }),
         },
-        settlement_link: payment_pointer.clone().map(|payment_pointer| SettlementLink {
-            settlement_id: format!(
-                "settlement.{}",
-                canonical_kernel_id_component(job.request_id.as_str())
-            ),
-            contract_id: contract_id_for_request(job.request_id.as_str()),
-            work_unit_id: work_unit_id_for_request(job.request_id.as_str()),
-            verdict_id,
-            created_at_ms: current_epoch_ms(),
-            payment_pointer: Some(payment_pointer),
-            settled_amount: Some(btc_sats_money(job.quoted_price_sats)),
-            status: SettlementStatus::Settled,
-            metadata: json!({
-                "job_id": job.job_id.clone(),
-                "demand_source": job.demand_source.label(),
+        settlement_link: payment_pointer
+            .clone()
+            .map(|payment_pointer| SettlementLink {
+                settlement_id: format!(
+                    "settlement.{}",
+                    canonical_kernel_id_component(job.request_id.as_str())
+                ),
+                contract_id: contract_id_for_request(job.request_id.as_str()),
+                work_unit_id: work_unit_id_for_request(job.request_id.as_str()),
+                verdict_id,
+                created_at_ms: current_epoch_ms(),
+                payment_pointer: Some(payment_pointer),
+                settled_amount: Some(btc_sats_money(job.quoted_price_sats)),
+                status: SettlementStatus::Settled,
+                metadata: json!({
+                    "job_id": job.job_id.clone(),
+                    "demand_source": job.demand_source.label(),
+                }),
             }),
-        }),
         claim_hook: None,
         evidence: verdict_evidence_refs(job),
         hints: receipt_hints_for_notional(job.quoted_price_sats),
@@ -883,7 +886,8 @@ fn trace_context_for_request(request: &JobInboxRequest, work_unit_only: bool) ->
         job_hash: Some(request.request_id.clone()),
         run_id: Some(format!("job-{}", request.request_id)),
         work_unit_id: Some(work_unit_id_for_request(request.request_id.as_str())),
-        contract_id: (!work_unit_only).then(|| contract_id_for_request(request.request_id.as_str())),
+        contract_id: (!work_unit_only)
+            .then(|| contract_id_for_request(request.request_id.as_str())),
         claim_id: None,
     }
 }
@@ -916,8 +920,12 @@ fn request_evidence_refs(request_id: &str, skill_scope_id: Option<&str>) -> Vec<
     evidence
 }
 
-fn submission_evidence_refs(job: &ActiveJobRecord, execution_output: Option<&str>) -> Vec<EvidenceRef> {
-    let mut evidence = request_evidence_refs(job.request_id.as_str(), job.skill_scope_id.as_deref());
+fn submission_evidence_refs(
+    job: &ActiveJobRecord,
+    execution_output: Option<&str>,
+) -> Vec<EvidenceRef> {
+    let mut evidence =
+        request_evidence_refs(job.request_id.as_str(), job.skill_scope_id.as_deref());
     if let Some(result_event_id) = job.sa_tick_result_event_id.as_deref() {
         evidence.push(evidence_ref(
             "nostr_event_ref",
@@ -925,7 +933,10 @@ fn submission_evidence_refs(job: &ActiveJobRecord, execution_output: Option<&str
             result_event_id,
         ));
     }
-    if let Some(output) = execution_output.map(str::trim).filter(|value| !value.is_empty()) {
+    if let Some(output) = execution_output
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         evidence.push(evidence_ref(
             "execution_output_ref",
             format!("oa://autopilot/jobs/{}/output", job.job_id),
@@ -963,7 +974,11 @@ fn submission_evidence_refs(job: &ActiveJobRecord, execution_output: Option<&str
 
 fn verdict_evidence_refs(job: &ActiveJobRecord) -> Vec<EvidenceRef> {
     let mut evidence = submission_evidence_refs(job, None);
-    if let Some(payment_id) = job.payment_id.as_deref().filter(|value| !value.trim().is_empty()) {
+    if let Some(payment_id) = job
+        .payment_id
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
         evidence.push(evidence_ref(
             "payment_pointer_ref",
             format!("oa://wallet/payments/{payment_id}"),
@@ -1031,7 +1046,9 @@ fn canonical_kernel_id_component(value: &str) -> String {
 fn current_epoch_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_millis().min(i64::MAX as u128) as i64)
+        .map_or(0, |duration| {
+            duration.as_millis().min(i64::MAX as u128) as i64
+        })
 }
 
 fn force_local_kernel_authority() -> bool {
@@ -1113,7 +1130,7 @@ mod tests {
                 requested_model: Some("llama3.2:latest".to_string()),
                 served_model: "llama3.2:latest".to_string(),
                 normalized_prompt_digest: "sha256:prompt".to_string(),
-                normalized_options_json: r#"{"num_predict":64}"#.to_string(),
+                normalized_options_json: "{\"num_predict\":64}".to_string(),
                 normalized_options_digest: "sha256:options".to_string(),
                 base_url: "http://127.0.0.1:11434".to_string(),
                 total_duration_ns: Some(1_000_000),
@@ -1143,10 +1160,8 @@ mod tests {
 
     #[test]
     fn resolve_kernel_authority_mode_uses_remote_when_complete_config_present() {
-        let mode = resolve_kernel_authority_mode(
-            Some("https://control.example.com"),
-            Some("token-123"),
-        );
+        let mode =
+            resolve_kernel_authority_mode(Some("https://control.example.com"), Some("token-123"));
         assert_eq!(
             mode,
             KernelAuthorityMode::Remote {
@@ -1196,25 +1211,29 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let mut pending_event = PendingSseEvent::default();
         let mut pending_buffer = format!(":keep-alive\n\nevent: receipt\ndata: {payload}\n");
-        assert!(consume_sse_buffer::<ReceiptProjectionEnvelope, _>(
-            &mut pending_buffer,
-            &mut pending_event,
-            "receipt",
-            &tx,
-            |envelope| super::KernelProjectionUpdate::Receipt(envelope.receipt),
-        )
-        .is_none());
+        assert!(
+            consume_sse_buffer::<ReceiptProjectionEnvelope, _>(
+                &mut pending_buffer,
+                &mut pending_event,
+                "receipt",
+                &tx,
+                |envelope| super::KernelProjectionUpdate::Receipt(envelope.receipt),
+            )
+            .is_none()
+        );
         assert!(rx.try_recv().is_err(), "blank line has not arrived yet");
 
         pending_buffer.push('\n');
-        assert!(consume_sse_buffer::<ReceiptProjectionEnvelope, _>(
-            &mut pending_buffer,
-            &mut pending_event,
-            "receipt",
-            &tx,
-            |envelope| super::KernelProjectionUpdate::Receipt(envelope.receipt),
-        )
-        .is_none());
+        assert!(
+            consume_sse_buffer::<ReceiptProjectionEnvelope, _>(
+                &mut pending_buffer,
+                &mut pending_event,
+                "receipt",
+                &tx,
+                |envelope| super::KernelProjectionUpdate::Receipt(envelope.receipt),
+            )
+            .is_none()
+        );
         match rx.try_recv().expect("receipt update") {
             super::KernelProjectionUpdate::Receipt(decoded) => {
                 assert_eq!(decoded.receipt_id, receipt.receipt_id);
@@ -1222,7 +1241,6 @@ mod tests {
             other => panic!("unexpected projection update: {other:?}"),
         }
     }
-
 
     #[test]
     fn submission_evidence_refs_include_ollama_provenance() {
@@ -1237,9 +1255,11 @@ mod tests {
             row.kind == "attestation:model_version"
                 && row.uri == "oa://autopilot/jobs/job-ollama-001/execution/model/llama3.2_latest"
         }));
-        assert!(evidence.iter().any(|row| {
-            row.kind == "execution_prompt_digest" && row.digest == "sha256:prompt"
-        }));
+        assert!(
+            evidence.iter().any(|row| {
+                row.kind == "execution_prompt_digest" && row.digest == "sha256:prompt"
+            })
+        );
         assert!(evidence.iter().any(|row| {
             row.kind == "execution_options_digest" && row.digest == "sha256:options"
         }));

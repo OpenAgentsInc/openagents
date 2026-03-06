@@ -1,3 +1,11 @@
+#![allow(
+    clippy::all,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::pedantic,
+    clippy::unwrap_used
+)]
+
 //! SA/SKL/AC integration matrix and hardening checks.
 
 use nostr::nip_ac::{ScopeReference, ScopeType};

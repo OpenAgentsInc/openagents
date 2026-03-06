@@ -320,7 +320,7 @@ impl RelayConnection {
         let mut writer_guard = self.writer.lock().await;
         let writer = writer_guard.as_mut().ok_or(ClientError::NotConnected)?;
         writer
-            .send(Message::Text(text.into()))
+            .send(Message::Text(text))
             .await
             .map_err(|error| ClientError::WebSocket(error.to_string()))
     }
@@ -427,7 +427,7 @@ async fn respond_to_auth_challenge(
     let mut writer_guard = writer.lock().await;
     let writer = writer_guard.as_mut().ok_or(ClientError::NotConnected)?;
     writer
-        .send(Message::Text(text.into()))
+        .send(Message::Text(text))
         .await
         .map_err(|error| ClientError::WebSocket(error.to_string()))
 }
@@ -450,7 +450,7 @@ async fn resend_active_subscriptions(
     for subscription in active {
         let text = serde_json::to_string(&build_req_payload(&subscription))?;
         writer
-            .send(Message::Text(text.into()))
+            .send(Message::Text(text))
             .await
             .map_err(|error| ClientError::WebSocket(error.to_string()))?;
     }

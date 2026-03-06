@@ -1,3 +1,11 @@
+#![allow(
+    clippy::all,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::pedantic,
+    clippy::unwrap_used
+)]
+
 //! Integration tests for NIP-44 encryption
 //!
 //! Tests the encrypt/decrypt roundtrip and compatibility with official NIP-44 test vectors.
