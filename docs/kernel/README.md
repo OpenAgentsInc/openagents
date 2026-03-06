@@ -11,6 +11,10 @@ Autopilot is the first product. It is the user-facing wedge into a broader machi
 This is not a single marketplace with one matching engine.
 It is a layered system where machine compute, machine data, machine labor, machine liquidity, and machine risk all share the same core primitives for contracts, verification, settlement, liability, and receipts.
 
+Supplementary coordination contracts that sit alongside the kernel docs:
+
+- [Nostr Managed Chat Contract](./nostr-managed-chat-contract.md)
+
 ## Status legend
 
 - `implemented`: shipped in the current MVP or repo entry points
