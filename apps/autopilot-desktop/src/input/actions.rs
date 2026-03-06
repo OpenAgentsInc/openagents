@@ -3681,6 +3681,7 @@ fn submit_signed_network_request(
         payload.as_str(),
         skill_scope_id.as_deref(),
         credit_envelope_ref.as_deref(),
+        crate::app_state::BuyerResolutionMode::Race,
         budget_sats,
         timeout_seconds,
         configured_relays.as_slice(),
@@ -3707,6 +3708,7 @@ fn submit_signed_network_request(
             request_id: Some(published_request_id.clone()),
             request_type,
             payload,
+            resolution_mode: crate::app_state::BuyerResolutionMode::Race,
             target_provider_pubkeys: target_provider_pubkeys.clone(),
             skill_scope_id,
             credit_envelope_ref,
@@ -3848,6 +3850,7 @@ fn build_nip90_request_event_for_network_submission(
     payload: &str,
     skill_scope_id: Option<&str>,
     credit_envelope_ref: Option<&str>,
+    resolution_mode: crate::app_state::BuyerResolutionMode,
     budget_sats: u64,
     timeout_seconds: u64,
     relay_urls: &[String],
@@ -3862,6 +3865,7 @@ fn build_nip90_request_event_for_network_submission(
         .map_err(|error| format!("Cannot build NIP-90 request: {error}"))?
         .add_input(nostr::nip90::JobInput::text(payload))
         .add_param("request_type", request_type)
+        .add_param("oa_resolution_mode", resolution_mode.label())
         .add_param("timeout_seconds", timeout_seconds.to_string())
         .with_bid(budget_sats.saturating_mul(1000));
     if let Some(scope_id) = skill_scope_id {
@@ -4408,6 +4412,7 @@ fn queue_starter_demand_request(
             request_id: None,
             request_type,
             payload,
+            resolution_mode: crate::app_state::BuyerResolutionMode::Race,
             target_provider_pubkeys: Vec::new(),
             skill_scope_id: None,
             credit_envelope_ref: state.ac_lane.envelope_event_id.clone(),
@@ -6739,6 +6744,7 @@ mod tests {
             "{\"prompt\":\"hello\"}",
             Some("scope-1"),
             Some("ac-env-1"),
+            crate::app_state::BuyerResolutionMode::Race,
             10,
             60,
             &["wss://relay.one".to_string(), "wss://relay.two".to_string()],
@@ -6764,6 +6770,12 @@ mod tests {
                 .filter(|p| p.key == "request_type")
                 .count(),
             1
+        );
+        assert!(
+            request
+                .params
+                .iter()
+                .any(|p| p.key == "oa_resolution_mode" && p.value == "race")
         );
     }
 

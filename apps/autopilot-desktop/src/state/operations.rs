@@ -399,12 +399,84 @@ impl NetworkRequestStatus {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BuyerResolutionMode {
+    Race,
+    Windowed,
+}
+
+impl BuyerResolutionMode {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Race => "race",
+            Self::Windowed => "windowed",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BuyerResolutionReason {
+    FirstValidResult,
+    LostRace,
+    LateResultUnpaid,
+}
+
+impl BuyerResolutionReason {
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::FirstValidResult => "first-valid-result",
+            Self::LostRace => "lost-race",
+            Self::LateResultUnpaid => "late-result-unpaid",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NetworkRequestDuplicateKind {
+    Feedback,
+    Result,
+}
+
+impl NetworkRequestDuplicateKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Feedback => "feedback",
+            Self::Result => "result",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NetworkRequestDuplicateOutcome {
+    pub provider_pubkey: String,
+    pub event_id: String,
+    pub kind: NetworkRequestDuplicateKind,
+    pub status: Option<String>,
+    pub status_extra: Option<String>,
+    pub reason_code: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NetworkRequestResolutionFeedback {
+    pub provider_pubkey: String,
+    pub feedback_event_id: String,
+    pub reason_code: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BuyerResolutionAction {
+    pub request_id: String,
+    pub provider_pubkey: String,
+    pub reason: BuyerResolutionReason,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SubmittedNetworkRequest {
     pub request_id: String,
     pub published_request_event_id: Option<String>,
     pub request_type: String,
     pub payload: String,
+    pub resolution_mode: BuyerResolutionMode,
     pub target_provider_pubkeys: Vec<String>,
     pub last_provider_pubkey: Option<String>,
     pub last_feedback_status: Option<String>,
@@ -426,6 +498,12 @@ pub struct SubmittedNetworkRequest {
     pub authority_status: Option<String>,
     pub authority_event_id: Option<String>,
     pub authority_error_class: Option<String>,
+    pub winning_provider_pubkey: Option<String>,
+    pub winning_result_event_id: Option<String>,
+    pub resolution_reason_code: Option<String>,
+    pub duplicate_outcomes: Vec<NetworkRequestDuplicateOutcome>,
+    pub resolution_feedbacks: Vec<NetworkRequestResolutionFeedback>,
+    pub observed_buyer_event_ids: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -433,6 +511,7 @@ pub struct NetworkRequestSubmission {
     pub request_id: Option<String>,
     pub request_type: String,
     pub payload: String,
+    pub resolution_mode: BuyerResolutionMode,
     pub target_provider_pubkeys: Vec<String>,
     pub skill_scope_id: Option<String>,
     pub credit_envelope_ref: Option<String>,
@@ -472,6 +551,7 @@ impl NetworkRequestsState {
             request_id,
             request_type,
             payload,
+            resolution_mode,
             target_provider_pubkeys,
             skill_scope_id,
             credit_envelope_ref,
@@ -521,6 +601,7 @@ impl NetworkRequestsState {
                 published_request_event_id: None,
                 request_type: request_type.to_string(),
                 payload: payload.to_string(),
+                resolution_mode,
                 target_provider_pubkeys,
                 last_provider_pubkey: None,
                 last_feedback_status: None,
@@ -542,6 +623,12 @@ impl NetworkRequestsState {
                 authority_status: None,
                 authority_event_id: None,
                 authority_error_class: None,
+                winning_provider_pubkey: None,
+                winning_result_event_id: None,
+                resolution_reason_code: None,
+                duplicate_outcomes: Vec::new(),
+                resolution_feedbacks: Vec::new(),
+                observed_buyer_event_ids: Vec::new(),
             },
         );
         self.pane_set_ready(format!(
@@ -596,14 +683,22 @@ impl NetworkRequestsState {
         event_id: &str,
         status: Option<&str>,
         status_extra: Option<&str>,
-    ) {
+    ) -> Option<BuyerResolutionAction> {
         let Some(request) = self
             .submitted
             .iter_mut()
             .find(|request| request.request_id == request_id)
         else {
-            return;
+            return None;
         };
+        if request
+            .observed_buyer_event_ids
+            .iter()
+            .any(|observed| observed == event_id)
+        {
+            return None;
+        };
+        request.observed_buyer_event_ids.push(event_id.to_string());
 
         request.last_provider_pubkey = Some(provider_pubkey.to_string());
         request.last_feedback_event_id = Some(event_id.to_string());
@@ -619,6 +714,13 @@ impl NetworkRequestsState {
             Some("error") => NetworkRequestStatus::Failed,
             _ => NetworkRequestStatus::Streaming,
         };
+        let resolution_action = maybe_race_resolution_action_for_feedback(
+            request,
+            provider_pubkey,
+            event_id,
+            status,
+            status_extra,
+        );
 
         let status_label = status.unwrap_or("unknown");
         let status_extra = status_extra.unwrap_or("none");
@@ -626,6 +728,7 @@ impl NetworkRequestsState {
             "Request {} feedback={} provider={} detail={}",
             request_id, status_label, provider_pubkey, status_extra
         ));
+        resolution_action
     }
 
     pub fn apply_nip90_buyer_result_event(
@@ -634,14 +737,22 @@ impl NetworkRequestsState {
         provider_pubkey: &str,
         event_id: &str,
         status: Option<&str>,
-    ) {
+    ) -> Option<BuyerResolutionAction> {
         let Some(request) = self
             .submitted
             .iter_mut()
             .find(|request| request.request_id == request_id)
         else {
-            return;
+            return None;
         };
+        if request
+            .observed_buyer_event_ids
+            .iter()
+            .any(|observed| observed == event_id)
+        {
+            return None;
+        };
+        request.observed_buyer_event_ids.push(event_id.to_string());
 
         request.last_provider_pubkey = Some(provider_pubkey.to_string());
         request.last_result_event_id = Some(event_id.to_string());
@@ -653,10 +764,41 @@ impl NetworkRequestsState {
             Some("error") => NetworkRequestStatus::Failed,
             _ => NetworkRequestStatus::ResultReceived,
         };
+        let resolution_action =
+            maybe_race_resolution_action_for_result(request, provider_pubkey, event_id, status);
         self.pane_set_ready(format!(
             "Request {} result event {} from provider {}",
             request_id, event_id, provider_pubkey
         ));
+        resolution_action
+    }
+
+    pub fn record_resolution_feedback(
+        &mut self,
+        request_id: &str,
+        provider_pubkey: &str,
+        feedback_event_id: &str,
+        reason: BuyerResolutionReason,
+    ) {
+        let Some(request) = self
+            .submitted
+            .iter_mut()
+            .find(|request| request.request_id == request_id)
+        else {
+            return;
+        };
+        if request.resolution_feedbacks.iter().any(|feedback| {
+            feedback.provider_pubkey == provider_pubkey && feedback.reason_code == reason.code()
+        }) {
+            return;
+        }
+        request
+            .resolution_feedbacks
+            .push(NetworkRequestResolutionFeedback {
+                provider_pubkey: provider_pubkey.to_string(),
+                feedback_event_id: feedback_event_id.to_string(),
+                reason_code: reason.code().to_string(),
+            });
     }
 
     pub fn prepare_auto_payment_attempt(
@@ -843,6 +985,113 @@ impl NetworkRequestsState {
         }
         let _ = self.pane_set_error(message.to_string());
     }
+}
+
+fn maybe_race_resolution_action_for_feedback(
+    request: &mut SubmittedNetworkRequest,
+    provider_pubkey: &str,
+    event_id: &str,
+    status: Option<&str>,
+    status_extra: Option<&str>,
+) -> Option<BuyerResolutionAction> {
+    if request.resolution_mode != BuyerResolutionMode::Race {
+        return None;
+    }
+    let Some(winner) = request.winning_provider_pubkey.as_deref() else {
+        return None;
+    };
+    if normalize_pubkey(provider_pubkey) == normalize_pubkey(winner) {
+        return None;
+    }
+    let status = status
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    let normalized_status = status.as_deref().map(str::to_ascii_lowercase);
+    if matches!(normalized_status.as_deref(), Some("error")) {
+        return None;
+    }
+    let reason = BuyerResolutionReason::LostRace;
+    if request.duplicate_outcomes.iter().any(|outcome| {
+        normalize_pubkey(outcome.provider_pubkey.as_str()) == normalize_pubkey(provider_pubkey)
+            && outcome.reason_code == reason.code()
+    }) {
+        return None;
+    }
+    request
+        .duplicate_outcomes
+        .push(NetworkRequestDuplicateOutcome {
+            provider_pubkey: provider_pubkey.to_string(),
+            event_id: event_id.to_string(),
+            kind: NetworkRequestDuplicateKind::Feedback,
+            status,
+            status_extra: status_extra.map(ToString::to_string),
+            reason_code: reason.code().to_string(),
+        });
+    Some(BuyerResolutionAction {
+        request_id: request.request_id.clone(),
+        provider_pubkey: provider_pubkey.to_string(),
+        reason,
+    })
+}
+
+fn maybe_race_resolution_action_for_result(
+    request: &mut SubmittedNetworkRequest,
+    provider_pubkey: &str,
+    event_id: &str,
+    status: Option<&str>,
+) -> Option<BuyerResolutionAction> {
+    if request.resolution_mode != BuyerResolutionMode::Race {
+        return None;
+    }
+    let normalized_status = status
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_ascii_lowercase);
+    if request.winning_result_event_id.is_none() {
+        if normalized_status.as_deref() != Some("error") {
+            request.winning_provider_pubkey = Some(provider_pubkey.to_string());
+            request.winning_result_event_id = Some(event_id.to_string());
+            request.resolution_reason_code =
+                Some(BuyerResolutionReason::FirstValidResult.code().to_string());
+        }
+        return None;
+    }
+    let Some(winner) = request.winning_provider_pubkey.as_deref() else {
+        return None;
+    };
+    if normalized_status.as_deref() == Some("error") {
+        return None;
+    }
+    if normalize_pubkey(provider_pubkey) == normalize_pubkey(winner) {
+        return None;
+    }
+    let reason = BuyerResolutionReason::LateResultUnpaid;
+    if request.duplicate_outcomes.iter().any(|outcome| {
+        normalize_pubkey(outcome.provider_pubkey.as_str()) == normalize_pubkey(provider_pubkey)
+            && outcome.reason_code == reason.code()
+    }) {
+        return None;
+    }
+    request
+        .duplicate_outcomes
+        .push(NetworkRequestDuplicateOutcome {
+            provider_pubkey: provider_pubkey.to_string(),
+            event_id: event_id.to_string(),
+            kind: NetworkRequestDuplicateKind::Result,
+            status: status.map(ToString::to_string),
+            status_extra: None,
+            reason_code: reason.code().to_string(),
+        });
+    Some(BuyerResolutionAction {
+        request_id: request.request_id.clone(),
+        provider_pubkey: provider_pubkey.to_string(),
+        reason,
+    })
+}
+
+fn normalize_pubkey(value: &str) -> String {
+    value.trim().to_ascii_lowercase()
 }
 
 fn msats_to_sats_ceil(msats: u64) -> u64 {

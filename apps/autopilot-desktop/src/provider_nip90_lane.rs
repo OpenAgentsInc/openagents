@@ -399,6 +399,10 @@ fn run_lane_loop(
         let outcome = runtime.block_on(poll_ingress(
             pool,
             state.tracked_buyer_request_ids.as_slice(),
+            state
+                .auth_identity
+                .as_ref()
+                .map(|identity| identity.public_key_hex.as_str()),
         ));
         apply_poll_outcome_telemetry(&mut state, &outcome);
         refresh_relay_health_snapshot(&runtime, &mut state);
@@ -1207,7 +1211,11 @@ struct PollOutcome {
     relay_latency_ms: Vec<(String, u32)>,
 }
 
-async fn poll_ingress(pool: Arc<RelayPool>, tracked_buyer_request_ids: &[String]) -> PollOutcome {
+async fn poll_ingress(
+    pool: Arc<RelayPool>,
+    tracked_buyer_request_ids: &[String],
+    local_pubkey_hex: Option<&str>,
+) -> PollOutcome {
     let relays = pool.relays().await;
     let mut requests = Vec::new();
     let mut buyer_events = Vec::new();
@@ -1238,9 +1246,11 @@ async fn poll_ingress(pool: Arc<RelayPool>, tracked_buyer_request_ids: &[String]
                     ));
                     if let Some(request) = event_to_inbox_request(&event) {
                         requests.push(request);
-                    } else if let Some(buyer_event) =
-                        event_to_buyer_response_event(&event, &tracked_buyer_request_ids)
-                    {
+                    } else if let Some(buyer_event) = event_to_buyer_response_event(
+                        &event,
+                        &tracked_buyer_request_ids,
+                        local_pubkey_hex,
+                    ) {
                         buyer_events.push(buyer_event);
                     }
                 }
@@ -1448,7 +1458,11 @@ fn execution_input_from_request(request: &JobRequest) -> Option<String> {
 fn event_to_buyer_response_event(
     event: &Event,
     tracked_buyer_request_ids: &HashSet<String>,
+    local_pubkey_hex: Option<&str>,
 ) -> Option<ProviderNip90BuyerResponseEvent> {
+    if local_pubkey_hex.is_some_and(|pubkey| pubkey == event.pubkey) {
+        return None;
+    }
     if is_job_feedback_kind(event.kind) {
         let feedback = parse_feedback_event(event)?;
         if !tracked_buyer_request_ids.contains(feedback.request_id.as_str()) {
@@ -1966,7 +1980,7 @@ mod tests {
         };
         let tracked = std::collections::HashSet::from(["req-001".to_string()]);
         let buyer_event =
-            event_to_buyer_response_event(&event, &tracked).expect("feedback should map");
+            event_to_buyer_response_event(&event, &tracked, None).expect("feedback should map");
         assert_eq!(buyer_event.kind, ProviderNip90BuyerResponseKind::Feedback);
         assert_eq!(buyer_event.request_id, "req-001");
         assert_eq!(buyer_event.status.as_deref(), Some("payment-required"));
@@ -1996,7 +2010,7 @@ mod tests {
         };
         let tracked = std::collections::HashSet::from(["req-001".to_string()]);
         let buyer_event =
-            event_to_buyer_response_event(&event, &tracked).expect("result should map");
+            event_to_buyer_response_event(&event, &tracked, None).expect("result should map");
         assert_eq!(buyer_event.kind, ProviderNip90BuyerResponseKind::Result);
         assert_eq!(buyer_event.request_id, "req-001");
         assert_eq!(buyer_event.status.as_deref(), Some("success"));
@@ -2020,8 +2034,32 @@ mod tests {
         };
         let tracked = std::collections::HashSet::from(["req-001".to_string()]);
         assert!(
-            event_to_buyer_response_event(&event, &tracked).is_none(),
+            event_to_buyer_response_event(&event, &tracked, None).is_none(),
             "untracked request ids should not emit buyer response events"
+        );
+    }
+
+    #[test]
+    fn ignores_self_authored_buyer_response_event() {
+        let identity = fixture_auth_identity();
+        let event = Event {
+            id: "feedback-self-authored".to_string(),
+            pubkey: identity.public_key_hex.clone(),
+            created_at: 1_760_000_133,
+            kind: 7000,
+            tags: vec![
+                vec!["status".to_string(), "success".to_string()],
+                vec!["e".to_string(), "req-001".to_string()],
+                vec!["p".to_string(), "33".repeat(32)],
+            ],
+            content: "resolved".to_string(),
+            sig: "88".repeat(64),
+        };
+        let tracked = std::collections::HashSet::from(["req-001".to_string()]);
+        assert!(
+            event_to_buyer_response_event(&event, &tracked, Some(identity.public_key_hex.as_str()))
+                .is_none(),
+            "self-authored buyer feedback should not be re-ingested as provider activity"
         );
     }
 

@@ -3,12 +3,15 @@ use crate::app_state::{
     RelayConnectionRow, RelayConnectionStatus, RenderState,
 };
 use crate::provider_nip90_lane::{
-    ProviderNip90BuyerResponseEvent, ProviderNip90BuyerResponseKind, ProviderNip90LaneMode,
-    ProviderNip90LaneSnapshot, ProviderNip90PublishOutcome, ProviderNip90PublishRole,
-    ProviderNip90RelayStatus,
+    ProviderNip90BuyerResponseEvent, ProviderNip90BuyerResponseKind, ProviderNip90LaneCommand,
+    ProviderNip90LaneMode, ProviderNip90LaneSnapshot, ProviderNip90PublishOutcome,
+    ProviderNip90PublishRole, ProviderNip90RelayStatus,
 };
 use crate::spark_wallet::SparkWalletCommand;
 use crate::state::job_inbox::{JobInboxNetworkRequest, JobInboxValidation};
+use crate::state::operations::{BuyerResolutionAction, BuyerResolutionReason};
+use nostr::nip90::{JobFeedback, JobStatus, create_job_feedback_event};
+use nostr::{Event, EventTemplate, NostrIdentity};
 
 pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: ProviderNip90LaneSnapshot) {
     let previous_mode = state.provider_nip90_lane.mode;
@@ -484,7 +487,7 @@ pub(super) fn apply_buyer_response_event(
     let now_epoch_seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs());
-    match event.kind {
+    let resolution_action = match event.kind {
         ProviderNip90BuyerResponseKind::Feedback => {
             state.network_requests.apply_nip90_buyer_feedback_event(
                 event.request_id.as_str(),
@@ -492,8 +495,7 @@ pub(super) fn apply_buyer_response_event(
                 event.event_id.as_str(),
                 event.status.as_deref(),
                 event.status_extra.as_deref(),
-            );
-            queue_auto_payment_for_feedback(state, &event, now_epoch_seconds);
+            )
         }
         ProviderNip90BuyerResponseKind::Result => {
             state.network_requests.apply_nip90_buyer_result_event(
@@ -501,8 +503,16 @@ pub(super) fn apply_buyer_response_event(
                 event.provider_pubkey.as_str(),
                 event.event_id.as_str(),
                 event.status.as_deref(),
-            );
+            )
         }
+    };
+    match event.kind {
+        ProviderNip90BuyerResponseKind::Feedback => {
+            if resolution_action.is_none() {
+                queue_auto_payment_for_feedback(state, &event, now_epoch_seconds);
+            }
+        }
+        ProviderNip90BuyerResponseKind::Result => {}
     }
 
     state.provider_runtime.last_result = Some(format!(
@@ -553,6 +563,11 @@ pub(super) fn apply_buyer_response_event(
     });
     state.activity_feed.load_state = PaneLoadState::Ready;
 
+    if let Some(action) = resolution_action {
+        emit_buyer_resolution_telemetry(state, &event, &action, now_epoch_seconds);
+        queue_buyer_resolution_feedback(state, &action, now_epoch_seconds);
+    }
+
     state.sync_health.last_applied_event_seq =
         state.sync_health.last_applied_event_seq.saturating_add(1);
     state.sync_health.cursor_last_advanced_seconds_ago = 0;
@@ -600,6 +615,202 @@ fn queue_auto_payment_for_feedback(
             now_epoch_seconds,
         );
     }
+}
+
+fn emit_buyer_resolution_telemetry(
+    state: &mut RenderState,
+    observed_event: &ProviderNip90BuyerResponseEvent,
+    action: &BuyerResolutionAction,
+    now_epoch_seconds: u64,
+) {
+    state.activity_feed.upsert_event(ActivityEventRow {
+        event_id: format!(
+            "buyer-resolution:{}:{}:{}",
+            action.reason.code(),
+            action.request_id,
+            observed_event.event_id
+        ),
+        domain: ActivityEventDomain::Network,
+        source_tag: "nip90.buyer_resolution".to_string(),
+        summary: format!(
+            "Request {} marked {} for provider {}",
+            action.request_id,
+            action.reason.code(),
+            action.provider_pubkey
+        ),
+        detail: format!(
+            "request={} provider={} observed_event={} observed_kind={} observed_status={} observed_status_extra={} resolution_mode=race",
+            action.request_id,
+            action.provider_pubkey,
+            observed_event.event_id,
+            observed_event.kind.label(),
+            observed_event.status.as_deref().unwrap_or("none"),
+            observed_event.status_extra.as_deref().unwrap_or("none"),
+        ),
+        occurred_at_epoch_seconds: now_epoch_seconds,
+    });
+    state.activity_feed.load_state = PaneLoadState::Ready;
+}
+
+fn queue_buyer_resolution_feedback(
+    state: &mut RenderState,
+    action: &BuyerResolutionAction,
+    now_epoch_seconds: u64,
+) {
+    let Some(identity) = state.nostr_identity.as_ref() else {
+        state.provider_runtime.last_error_detail = Some(
+            "Cannot publish buyer race-resolution feedback: Nostr identity unavailable".to_string(),
+        );
+        state.activity_feed.upsert_event(ActivityEventRow {
+            event_id: format!(
+                "buyer-resolution-feedback:error:{}:{}",
+                action.request_id, action.provider_pubkey
+            ),
+            domain: ActivityEventDomain::Network,
+            source_tag: "nip90.buyer_resolution".to_string(),
+            summary: format!(
+                "Failed buyer feedback {} for {}",
+                action.reason.code(),
+                action.provider_pubkey
+            ),
+            detail: "nostr identity unavailable".to_string(),
+            occurred_at_epoch_seconds: now_epoch_seconds,
+        });
+        return;
+    };
+
+    let event = match build_buyer_resolution_feedback_event(identity, action) {
+        Ok(event) => event,
+        Err(error) => {
+            state.provider_runtime.last_error_detail = Some(error.clone());
+            state.activity_feed.upsert_event(ActivityEventRow {
+                event_id: format!(
+                    "buyer-resolution-feedback:error:{}:{}",
+                    action.request_id, action.provider_pubkey
+                ),
+                domain: ActivityEventDomain::Network,
+                source_tag: "nip90.buyer_resolution".to_string(),
+                summary: format!(
+                    "Failed buyer feedback {} for {}",
+                    action.reason.code(),
+                    action.provider_pubkey
+                ),
+                detail: error,
+                occurred_at_epoch_seconds: now_epoch_seconds,
+            });
+            return;
+        }
+    };
+    let feedback_event_id = event.id.clone();
+    let queue_result =
+        state.queue_provider_nip90_lane_command(ProviderNip90LaneCommand::PublishEvent {
+            request_id: action.request_id.clone(),
+            role: ProviderNip90PublishRole::Feedback,
+            event: Box::new(event),
+        });
+    match queue_result {
+        Ok(_) => {
+            state.network_requests.record_resolution_feedback(
+                action.request_id.as_str(),
+                action.provider_pubkey.as_str(),
+                feedback_event_id.as_str(),
+                action.reason,
+            );
+            state.activity_feed.upsert_event(ActivityEventRow {
+                event_id: format!(
+                    "buyer-resolution-feedback:{}:{}:{}",
+                    action.reason.code(),
+                    action.request_id,
+                    feedback_event_id
+                ),
+                domain: ActivityEventDomain::Network,
+                source_tag: "nip90.buyer_resolution".to_string(),
+                summary: format!(
+                    "Queued buyer feedback {} for {}",
+                    action.reason.code(),
+                    action.provider_pubkey
+                ),
+                detail: format!(
+                    "request={} provider={} feedback_event_id={}",
+                    action.request_id, action.provider_pubkey, feedback_event_id
+                ),
+                occurred_at_epoch_seconds: now_epoch_seconds,
+            });
+        }
+        Err(error) => {
+            state.provider_runtime.last_error_detail = Some(error.clone());
+            state.activity_feed.upsert_event(ActivityEventRow {
+                event_id: format!(
+                    "buyer-resolution-feedback:error:{}:{}",
+                    action.request_id, action.provider_pubkey
+                ),
+                domain: ActivityEventDomain::Network,
+                source_tag: "nip90.buyer_resolution".to_string(),
+                summary: format!(
+                    "Failed buyer feedback {} for {}",
+                    action.reason.code(),
+                    action.provider_pubkey
+                ),
+                detail: error,
+                occurred_at_epoch_seconds: now_epoch_seconds,
+            });
+        }
+    }
+    state.activity_feed.load_state = PaneLoadState::Ready;
+}
+
+fn build_buyer_resolution_feedback_event(
+    identity: &NostrIdentity,
+    action: &BuyerResolutionAction,
+) -> Result<Event, String> {
+    let (status, status_extra, content) = match action.reason {
+        BuyerResolutionReason::LostRace => (
+            JobStatus::Success,
+            BuyerResolutionReason::LostRace.code(),
+            "Another provider already won this public race; stop work and do not expect payment.",
+        ),
+        BuyerResolutionReason::LateResultUnpaid => (
+            JobStatus::Success,
+            BuyerResolutionReason::LateResultUnpaid.code(),
+            "Another provider already won this public race; this late result was observed but will not be paid.",
+        ),
+        BuyerResolutionReason::FirstValidResult => {
+            return Err("first-valid-result does not emit loser feedback".to_string());
+        }
+    };
+    let template = create_job_feedback_event(
+        &JobFeedback::new(
+            status,
+            action.request_id.clone(),
+            action.provider_pubkey.clone(),
+        )
+        .with_status_extra(status_extra)
+        .with_content(content),
+    );
+    sign_nip90_feedback_template(identity, &template)
+}
+
+fn sign_nip90_feedback_template(
+    identity: &NostrIdentity,
+    template: &EventTemplate,
+) -> Result<Event, String> {
+    let private_key = parse_nostr_private_key_hex(identity.private_key_hex.as_str())?;
+    nostr::finalize_event(template, &private_key)
+        .map_err(|error| format!("Cannot sign buyer resolution feedback: {error}"))
+}
+
+fn parse_nostr_private_key_hex(private_key_hex: &str) -> Result<[u8; 32], String> {
+    let key_bytes = hex::decode(private_key_hex.trim())
+        .map_err(|error| format!("invalid identity private_key_hex: {error}"))?;
+    if key_bytes.len() != 32 {
+        return Err(format!(
+            "invalid identity private_key_hex length {}, expected 32 bytes",
+            key_bytes.len()
+        ));
+    }
+    let mut key = [0u8; 32];
+    key.copy_from_slice(key_bytes.as_slice());
+    Ok(key)
 }
 
 pub(super) fn apply_publish_outcome(state: &mut RenderState, outcome: ProviderNip90PublishOutcome) {

@@ -1400,9 +1400,10 @@ fn paint_network_requests_pane(
             NetworkRequestStatus::Failed => theme::status::ERROR,
         };
         let summary = format!(
-            "{} {} targets:{} scope:{} env:{} budget:{} timeout:{}s stream:{} published:{} feedback:{} result:{} provider:{} payment:{} required_at:{} sent_at:{} failed_at:{} pay_error:{} [{}|{}|{}|{}]",
+            "{} {} resolution:{} targets:{} scope:{} env:{} budget:{} timeout:{}s stream:{} published:{} feedback:{} result:{} provider:{} winner:{} winner_event:{} duplicates:{} loser_feedback:{} payment:{} required_at:{} sent_at:{} failed_at:{} pay_error:{} [{}|{}|{}|{}]",
             request.request_id,
             request.request_type,
+            request.resolution_mode.label(),
             if request.target_provider_pubkeys.is_empty() {
                 "any".to_string()
             } else {
@@ -1420,6 +1421,10 @@ fn paint_network_requests_pane(
             request.last_feedback_status.as_deref().unwrap_or("none"),
             request.last_result_event_id.as_deref().unwrap_or("none"),
             request.last_provider_pubkey.as_deref().unwrap_or("none"),
+            request.winning_provider_pubkey.as_deref().unwrap_or("none"),
+            request.winning_result_event_id.as_deref().unwrap_or("none"),
+            request.duplicate_outcomes.len(),
+            request.resolution_feedbacks.len(),
             request.last_payment_pointer.as_deref().unwrap_or("none"),
             request
                 .payment_required_at_epoch_seconds
