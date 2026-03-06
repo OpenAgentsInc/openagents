@@ -1,3 +1,4 @@
+use reqwest::Url;
 use wgpui::markdown::{MarkdownConfig, MarkdownParser, MarkdownRenderer};
 use wgpui::{Bounds, Component, InputEvent, PaintContext, Point, Quad, SvgQuad, theme};
 
@@ -26,6 +27,10 @@ const CHAT_ACTIVITY_ROW_LINE_HEIGHT: f32 = 12.0;
 const CHAT_ACTIVITY_MAX_ROWS: usize = 14;
 const CHAT_SHELL_ROW_HEIGHT: f32 = 30.0;
 const CHAT_WORKSPACE_AVATAR_SIZE: f32 = 36.0;
+const CHAT_ATTACHMENT_CARD_GAP: f32 = 6.0;
+const CHAT_ATTACHMENT_LABEL_LINE_HEIGHT: f32 = 10.0;
+const CHAT_ATTACHMENT_SUMMARY_LINE_HEIGHT: f32 = 12.0;
+const CHAT_ATTACHMENT_DETAIL_LINE_HEIGHT: f32 = 10.0;
 const CHAT_SEND_ICON_SVG_RAW: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path fill="#FFFFFF" d="M342.6 73.4C330.1 60.9 309.8 60.9 297.3 73.4L137.3 233.4C124.8 245.9 124.8 266.2 137.3 278.7C149.8 291.2 170.1 291.2 182.6 278.7L288 173.3L288 544C288 561.7 302.3 576 320 576C337.7 576 352 561.7 352 544L352 173.3L457.4 278.7C469.9 291.2 490.2 291.2 502.7 278.7C515.2 266.2 515.2 245.9 502.7 233.4L342.7 73.4z"/></svg>"##;
 
 #[derive(Clone, Copy, Debug)]
@@ -48,6 +53,25 @@ struct ChatShellChannelEntry {
     active: bool,
     is_category: bool,
     collapsed: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum RichMessageAttachmentKind {
+    Image,
+    Video,
+    Link,
+    Lightning,
+    Bitcoin,
+    NostrReference,
+    PaymentObject,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RichMessageAttachment {
+    kind: RichMessageAttachmentKind,
+    label: String,
+    summary: String,
+    detail: Option<String>,
 }
 
 fn paint_chat_send_button(bounds: Bounds, enabled: bool, paint: &mut PaintContext) {
@@ -119,6 +143,371 @@ fn chat_markdown_config() -> MarkdownConfig {
 
 fn markdown_body_width(transcript_scroll_clip: Bounds) -> f32 {
     (transcript_scroll_clip.size.width - 6.0).max(CHAT_MARKDOWN_MIN_WIDTH)
+}
+
+fn rich_message_attachment_key(attachment: &RichMessageAttachment) -> String {
+    format!(
+        "{}|{}|{}|{}",
+        rich_attachment_kind_label(&attachment.kind),
+        attachment.label,
+        attachment.summary,
+        attachment.detail.as_deref().unwrap_or("")
+    )
+}
+
+fn rich_attachment_kind_label(kind: &RichMessageAttachmentKind) -> &'static str {
+    match kind {
+        RichMessageAttachmentKind::Image => "image",
+        RichMessageAttachmentKind::Video => "video",
+        RichMessageAttachmentKind::Link => "link",
+        RichMessageAttachmentKind::Lightning => "lightning",
+        RichMessageAttachmentKind::Bitcoin => "bitcoin",
+        RichMessageAttachmentKind::NostrReference => "nostr",
+        RichMessageAttachmentKind::PaymentObject => "payment",
+    }
+}
+
+fn rich_attachment_colors(
+    kind: &RichMessageAttachmentKind,
+) -> (wgpui::Hsla, wgpui::Hsla, wgpui::Hsla) {
+    match kind {
+        RichMessageAttachmentKind::Image => (
+            theme::status::SUCCESS.with_alpha(0.12),
+            theme::status::SUCCESS.with_alpha(0.32),
+            theme::status::SUCCESS,
+        ),
+        RichMessageAttachmentKind::Video => (
+            theme::status::INFO.with_alpha(0.12),
+            theme::status::INFO.with_alpha(0.32),
+            theme::status::INFO,
+        ),
+        RichMessageAttachmentKind::Link => (
+            theme::accent::PRIMARY.with_alpha(0.12),
+            theme::accent::PRIMARY.with_alpha(0.32),
+            theme::accent::PRIMARY,
+        ),
+        RichMessageAttachmentKind::Lightning => (
+            theme::status::WARNING.with_alpha(0.12),
+            theme::status::WARNING.with_alpha(0.32),
+            theme::status::WARNING,
+        ),
+        RichMessageAttachmentKind::Bitcoin => (
+            theme::status::WARNING.with_alpha(0.12),
+            theme::status::WARNING.with_alpha(0.32),
+            theme::status::WARNING,
+        ),
+        RichMessageAttachmentKind::NostrReference => (
+            theme::bg::SURFACE.with_alpha(0.42),
+            theme::border::DEFAULT.with_alpha(0.42),
+            theme::text::SECONDARY,
+        ),
+        RichMessageAttachmentKind::PaymentObject => (
+            theme::accent::PRIMARY.with_alpha(0.12),
+            theme::accent::PRIMARY.with_alpha(0.32),
+            theme::accent::PRIMARY,
+        ),
+    }
+}
+
+fn compact_display_token(value: &str, max_chars: usize) -> String {
+    let trimmed = value.trim();
+    if trimmed.chars().count() <= max_chars {
+        trimmed.to_string()
+    } else {
+        format!(
+            "{}...",
+            trimmed
+                .chars()
+                .take(max_chars.saturating_sub(3))
+                .collect::<String>()
+        )
+    }
+}
+
+fn trim_rich_token(token: &str) -> &str {
+    token.trim_matches(|ch: char| {
+        matches!(
+            ch,
+            '"' | '\'' | '(' | ')' | '[' | ']' | '{' | '}' | '<' | '>' | ',' | ';'
+        )
+    })
+}
+
+fn is_image_url(url: &str) -> bool {
+    let lower = url.to_ascii_lowercase();
+    [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".avif"]
+        .iter()
+        .any(|suffix| lower.ends_with(suffix))
+}
+
+fn is_video_url(url: &str) -> bool {
+    let lower = url.to_ascii_lowercase();
+    [".mp4", ".mov", ".webm", ".m4v", ".ogg", ".3gp"]
+        .iter()
+        .any(|suffix| lower.ends_with(suffix))
+        || lower.contains("youtube.com/")
+        || lower.contains("youtu.be/")
+        || lower.contains("vimeo.com/")
+}
+
+fn describe_url_attachment(token: &str) -> Option<RichMessageAttachment> {
+    let parsed = Url::parse(token).ok()?;
+    if parsed.scheme() != "http" && parsed.scheme() != "https" {
+        return None;
+    }
+    let host = parsed.host_str().unwrap_or("link");
+    let summary = if parsed.path().trim_matches('/').is_empty() {
+        host.to_string()
+    } else {
+        compact_display_token(format!("{host}{}", parsed.path()).as_str(), 56)
+    };
+    let detail = Some(compact_display_token(token, 78));
+    let kind = if is_image_url(token) {
+        RichMessageAttachmentKind::Image
+    } else if is_video_url(token) {
+        RichMessageAttachmentKind::Video
+    } else {
+        RichMessageAttachmentKind::Link
+    };
+    let label = rich_attachment_kind_label(&kind).to_string();
+    Some(RichMessageAttachment {
+        kind,
+        label,
+        summary,
+        detail,
+    })
+}
+
+fn describe_lightning_attachment(token: &str) -> Option<RichMessageAttachment> {
+    let trimmed = trim_rich_token(token);
+    let normalized = trimmed
+        .strip_prefix("lightning:")
+        .unwrap_or(trimmed)
+        .to_ascii_lowercase();
+    if !normalized.starts_with("lnbc")
+        && !normalized.starts_with("lntb")
+        && !normalized.starts_with("lnbcrt")
+        && !normalized.starts_with("lnurl1")
+    {
+        return None;
+    }
+    let summary = if normalized.starts_with("lnurl1") {
+        "lnurl payment request".to_string()
+    } else {
+        "bolt11 invoice".to_string()
+    };
+    Some(RichMessageAttachment {
+        kind: RichMessageAttachmentKind::Lightning,
+        label: "lightning".to_string(),
+        summary,
+        detail: Some(compact_display_token(trimmed, 78)),
+    })
+}
+
+fn describe_bitcoin_attachment(token: &str) -> Option<RichMessageAttachment> {
+    let trimmed = trim_rich_token(token);
+    let normalized = trimmed.to_ascii_lowercase();
+    if !normalized.starts_with("bitcoin:") {
+        return None;
+    }
+    let payload = trimmed.trim_start_matches("bitcoin:");
+    let address = payload.split('?').next().unwrap_or(payload);
+    let amount = payload
+        .split('?')
+        .nth(1)
+        .and_then(|query| {
+            query
+                .split('&')
+                .find_map(|part| part.strip_prefix("amount=").map(str::to_string))
+        })
+        .map(|amount| format!("amount={amount}"));
+    Some(RichMessageAttachment {
+        kind: RichMessageAttachmentKind::Bitcoin,
+        label: "bitcoin".to_string(),
+        summary: compact_display_token(address, 42),
+        detail: amount.or_else(|| Some(compact_display_token(trimmed, 78))),
+    })
+}
+
+fn describe_nostr_reference_attachment(token: &str) -> Option<RichMessageAttachment> {
+    let trimmed = trim_rich_token(token);
+    let normalized = trimmed.to_ascii_lowercase();
+    let raw = normalized
+        .strip_prefix("nostr:")
+        .unwrap_or(normalized.as_str())
+        .to_string();
+    let label = if raw.starts_with("note1") || raw.starts_with("nevent1") {
+        Some("note reference")
+    } else if raw.starts_with("naddr1") {
+        Some("address reference")
+    } else if raw.starts_with("npub1") || raw.starts_with("nprofile1") {
+        Some("profile reference")
+    } else {
+        None
+    }?;
+    Some(RichMessageAttachment {
+        kind: RichMessageAttachmentKind::NostrReference,
+        label: "nostr".to_string(),
+        summary: label.to_string(),
+        detail: Some(compact_display_token(trimmed, 78)),
+    })
+}
+
+fn describe_payment_object_attachment(content: &str) -> Option<RichMessageAttachment> {
+    let value = serde_json::from_str::<serde_json::Value>(content.trim()).ok()?;
+    let object = value.as_object()?;
+    let payment_request = ["payment_request", "invoice", "bolt11"]
+        .into_iter()
+        .find_map(|key| object.get(key).and_then(serde_json::Value::as_str))
+        .map(str::to_string);
+    let payment_id = ["payment_id", "id", "request_id"]
+        .into_iter()
+        .find_map(|key| object.get(key).and_then(serde_json::Value::as_str))
+        .map(str::to_string);
+    let status = ["status", "payment_status"]
+        .into_iter()
+        .find_map(|key| object.get(key).and_then(serde_json::Value::as_str))
+        .map(str::to_string);
+    let amount = ["amount_sats", "amount_sat", "amount"]
+        .into_iter()
+        .find_map(|key| object.get(key))
+        .and_then(|value| {
+            value
+                .as_u64()
+                .map(|value| format!("{value} sats"))
+                .or_else(|| value.as_str().map(str::to_string))
+        });
+    if payment_request.is_none() && payment_id.is_none() && status.is_none() && amount.is_none() {
+        return None;
+    }
+
+    let summary = if let Some(payment_request) = payment_request.as_deref() {
+        if describe_lightning_attachment(payment_request).is_some() {
+            "lightning payment object".to_string()
+        } else if describe_bitcoin_attachment(payment_request).is_some() {
+            "bitcoin payment object".to_string()
+        } else {
+            "wallet payment object".to_string()
+        }
+    } else {
+        "wallet payment object".to_string()
+    };
+    let mut detail_parts = Vec::new();
+    if let Some(amount) = amount {
+        detail_parts.push(amount);
+    }
+    if let Some(status) = status {
+        detail_parts.push(status);
+    }
+    if let Some(payment_id) = payment_id {
+        detail_parts.push(compact_display_token(payment_id.as_str(), 32));
+    }
+    if let Some(payment_request) = payment_request {
+        detail_parts.push(compact_display_token(payment_request.as_str(), 48));
+    }
+
+    Some(RichMessageAttachment {
+        kind: RichMessageAttachmentKind::PaymentObject,
+        label: "payment".to_string(),
+        summary,
+        detail: (!detail_parts.is_empty()).then(|| detail_parts.join("  •  ")),
+    })
+}
+
+fn rich_message_attachments(content: &str) -> Vec<RichMessageAttachment> {
+    let mut attachments = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    if let Some(attachment) = describe_payment_object_attachment(content) {
+        seen.insert(rich_message_attachment_key(&attachment));
+        attachments.push(attachment);
+    }
+
+    for token in content.split_whitespace() {
+        let normalized = trim_rich_token(token);
+        if normalized.is_empty() {
+            continue;
+        }
+        let attachment = describe_url_attachment(normalized)
+            .or_else(|| describe_lightning_attachment(normalized))
+            .or_else(|| describe_bitcoin_attachment(normalized))
+            .or_else(|| describe_nostr_reference_attachment(normalized));
+        let Some(attachment) = attachment else {
+            continue;
+        };
+        let key = rich_message_attachment_key(&attachment);
+        if seen.insert(key) {
+            attachments.push(attachment);
+        }
+    }
+
+    attachments
+}
+
+fn rich_message_attachments_height(content: &str) -> f32 {
+    rich_message_attachments(content)
+        .into_iter()
+        .map(|attachment| {
+            CHAT_ATTACHMENT_LABEL_LINE_HEIGHT
+                + CHAT_ATTACHMENT_SUMMARY_LINE_HEIGHT
+                + if attachment.detail.is_some() {
+                    CHAT_ATTACHMENT_DETAIL_LINE_HEIGHT
+                } else {
+                    0.0
+                }
+                + 12.0
+                + CHAT_ATTACHMENT_CARD_GAP
+        })
+        .sum()
+}
+
+fn paint_rich_message_attachments(
+    content: &str,
+    x: f32,
+    mut y: f32,
+    width: f32,
+    paint: &mut PaintContext,
+) -> f32 {
+    let start_y = y;
+    for attachment in rich_message_attachments(content) {
+        let height = CHAT_ATTACHMENT_LABEL_LINE_HEIGHT
+            + CHAT_ATTACHMENT_SUMMARY_LINE_HEIGHT
+            + if attachment.detail.is_some() {
+                CHAT_ATTACHMENT_DETAIL_LINE_HEIGHT
+            } else {
+                0.0
+            }
+            + 12.0;
+        let bounds = Bounds::new(x, y, width.max(96.0), height);
+        let (background, border, accent) = rich_attachment_colors(&attachment.kind);
+        paint.scene.draw_quad(
+            Quad::new(bounds)
+                .with_background(background)
+                .with_border(border, 1.0)
+                .with_corner_radius(8.0),
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            &attachment.label,
+            Point::new(bounds.origin.x + 8.0, bounds.origin.y + 6.0),
+            9.0,
+            accent,
+        ));
+        paint.scene.draw_text(paint.text.layout(
+            &attachment.summary,
+            Point::new(bounds.origin.x + 8.0, bounds.origin.y + 18.0),
+            10.0,
+            theme::text::PRIMARY,
+        ));
+        if let Some(detail) = attachment.detail.as_deref() {
+            paint.scene.draw_text(paint.text.layout_mono(
+                detail,
+                Point::new(bounds.origin.x + 8.0, bounds.origin.y + 30.0),
+                9.0,
+                theme::text::MUTED,
+            ));
+        }
+        y += height + CHAT_ATTACHMENT_CARD_GAP;
+    }
+    y - start_y
 }
 
 fn message_markdown_source(message: &AutopilotMessage) -> String {
@@ -353,6 +742,7 @@ fn transcript_content_height(
                 let markdown_size =
                     markdown_renderer.measure(&markdown_document, markdown_width, text_system);
                 height += markdown_size.height.max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+                height += rich_message_attachments_height(&markdown_source);
                 if managed_message_reaction_summary(message).is_some() {
                     height += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
                 }
@@ -374,6 +764,7 @@ fn transcript_content_height(
                 let markdown_size =
                     markdown_renderer.measure(&markdown_document, markdown_width, text_system);
                 height += markdown_size.height.max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+                height += rich_message_attachments_height(&markdown_source);
                 if direct_message_delivery_note(message).is_some() {
                     height += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
                 }
@@ -391,6 +782,7 @@ fn transcript_content_height(
         let markdown_size =
             markdown_renderer.measure(&markdown_document, markdown_width, text_system);
         height += markdown_size.height.max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+        height += rich_message_attachments_height(&markdown_source);
         height += message_progress_height(message);
         height += 8.0;
     }
@@ -1650,6 +2042,13 @@ pub fn paint(
                     .height
                     .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
                 y += markdown_height;
+                y += paint_rich_message_attachments(
+                    &markdown_source,
+                    transcript_scroll_clip.origin.x,
+                    y,
+                    markdown_width,
+                    paint,
+                );
 
                 if let Some(reaction_summary) = managed_message_reaction_summary(message) {
                     paint.scene.draw_text(paint.text.layout_mono(
@@ -1730,6 +2129,13 @@ pub fn paint(
                     .height
                     .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
                 y += markdown_height;
+                y += paint_rich_message_attachments(
+                    &markdown_source,
+                    transcript_scroll_clip.origin.x,
+                    y,
+                    markdown_width,
+                    paint,
+                );
 
                 if let Some(delivery_note) = direct_message_delivery_note(message) {
                     paint.scene.draw_text(paint.text.layout_mono(
@@ -1820,6 +2226,13 @@ pub fn paint(
                     .height
                     .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
                 y += markdown_height;
+                y += paint_rich_message_attachments(
+                    &markdown_source,
+                    transcript_scroll_clip.origin.x,
+                    y,
+                    markdown_width,
+                    paint,
+                );
                 y += paint_message_progress_blocks(
                     message,
                     transcript_scroll_clip.origin.x,
@@ -2015,8 +2428,8 @@ fn sanitize_chat_text(text: &str) -> String {
 mod tests {
     use super::{
         byte_offset_for_char_index, chat_tool_activity_lines, clamp_to_char_boundary,
-        is_tool_activity_event, message_progress_height, progress_status_color, sanitize_chat_text,
-        wrap_transcript_text_lines,
+        is_tool_activity_event, message_progress_height, progress_status_color,
+        rich_message_attachments, sanitize_chat_text, wrap_transcript_text_lines,
     };
     use crate::app_state::{
         AutopilotChatState, AutopilotMessage, AutopilotMessageStatus, AutopilotProgressBlock,
@@ -2211,6 +2624,31 @@ mod tests {
         assert_eq!(progress_status_color("done"), theme::status::SUCCESS);
         assert_eq!(progress_status_color("failed"), theme::status::ERROR);
         assert_eq!(progress_status_color("rebuilding"), theme::accent::PRIMARY);
+    }
+
+    #[test]
+    fn rich_message_parser_detects_links_media_payment_objects_and_refs() {
+        let payment_attachments = rich_message_attachments(
+            r#"{"payment_request":"lnbc1invoiceexample","amount_sats":1500,"status":"pending"}"#,
+        );
+        assert!(
+            payment_attachments
+                .iter()
+                .any(|attachment| attachment.label == "payment")
+        );
+
+        let attachments = rich_message_attachments(
+            "https://cdn.example.com/cat.jpg https://youtu.be/demo note1deadbeef lnbc1invoiceexample bitcoin:bc1qexample?amount=0.001",
+        );
+        let labels = attachments
+            .iter()
+            .map(|attachment| attachment.label.as_str())
+            .collect::<Vec<_>>();
+        assert!(labels.contains(&"image"));
+        assert!(labels.contains(&"video"));
+        assert!(labels.contains(&"nostr"));
+        assert!(labels.contains(&"lightning"));
+        assert!(labels.contains(&"bitcoin"));
     }
 
     #[test]
