@@ -307,7 +307,7 @@ impl Default for ChatPaneInputs {
     fn default() -> Self {
         Self {
             composer: TextInput::new()
-                .placeholder("Describe a task, ask for analysis, or command your Autopilot...")
+                .placeholder("Write a message, ask for analysis, or command your Autopilot...")
                 .border_color_focused(theme::border::FOCUS),
         }
     }
@@ -832,6 +832,23 @@ impl AutopilotChatState {
                     .get(message_id)
             })
             .collect()
+    }
+
+    pub fn active_managed_chat_retryable_message(&self) -> Option<&ManagedChatMessageProjection> {
+        self.active_managed_chat_messages()
+            .into_iter()
+            .rev()
+            .find(|message| message.delivery_state.is_retryable())
+    }
+
+    pub fn managed_chat_can_send(&self, composer_value: &str) -> bool {
+        if !composer_value.trim().is_empty() {
+            return self
+                .active_managed_chat_channel()
+                .and_then(|channel| channel.relay_url.as_deref())
+                .is_some();
+        }
+        self.active_managed_chat_retryable_message().is_some()
     }
 
     pub fn select_managed_chat_group_by_index(&mut self, index: usize) -> bool {

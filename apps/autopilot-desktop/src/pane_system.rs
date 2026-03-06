@@ -1061,16 +1061,14 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
 
         match pane.kind {
             PaneKind::AutopilotChat => {
-                if !state.autopilot_chat.managed_chat_has_browseable_content() {
-                    let composer_height = chat_composer_height_for_value(
-                        content_bounds,
-                        state.chat_inputs.composer.get_value(),
-                    );
-                    if chat_composer_input_bounds_with_height(content_bounds, composer_height)
-                        .contains(point)
-                    {
-                        return CursorIcon::Text;
-                    }
+                let composer_height = chat_composer_height_for_value(
+                    content_bounds,
+                    state.chat_inputs.composer.get_value(),
+                );
+                if chat_composer_input_bounds_with_height(content_bounds, composer_height)
+                    .contains(point)
+                {
+                    return CursorIcon::Text;
                 }
             }
             PaneKind::Calculator => {
@@ -3262,8 +3260,13 @@ fn pane_hit_action_for_pane(
                     return Some(PaneHitAction::ChatSelectThread(index));
                 }
             }
-            let can_send = !state.autopilot_chat.managed_chat_has_browseable_content()
-                && !state.chat_inputs.composer.get_value().trim().is_empty();
+            let can_send = if state.autopilot_chat.managed_chat_has_browseable_content() {
+                state
+                    .autopilot_chat
+                    .managed_chat_can_send(state.chat_inputs.composer.get_value())
+            } else {
+                !state.chat_inputs.composer.get_value().trim().is_empty()
+            };
             if can_send && chat_send_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::ChatSend);
             }

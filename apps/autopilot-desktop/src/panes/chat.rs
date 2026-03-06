@@ -4,8 +4,8 @@ use wgpui::{Bounds, Component, InputEvent, PaintContext, Point, Quad, SvgQuad, t
 use crate::app_state::{
     AutopilotChatState, AutopilotMessage, AutopilotMessageStatus, AutopilotProgressBlock,
     AutopilotProgressRow, AutopilotRole, ChatPaneInputs, ChatTranscriptSelectionState,
-    ManagedChatChannelProjection, ManagedChatGroupProjection, ManagedChatMessageProjection,
-    PaneKind, RenderState,
+    ManagedChatChannelProjection, ManagedChatDeliveryState, ManagedChatGroupProjection,
+    ManagedChatMessageProjection, PaneKind, RenderState,
 };
 use crate::labor_orchestrator::CodexLaborBinding;
 use crate::pane_system::{
@@ -352,6 +352,9 @@ fn transcript_content_height(
             if managed_message_reaction_summary(message).is_some() {
                 height += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
             }
+            if managed_message_delivery_note(message).is_some() {
+                height += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+            }
             height += 8.0;
         }
         return height + 8.0;
@@ -609,7 +612,7 @@ fn managed_channel_subtitle(channel: &ManagedChatChannelProjection) -> String {
     } else if !channel.metadata.about.trim().is_empty() {
         compact_shell_label(&channel.metadata.about)
     } else {
-        format!("{}  •  read-only", channel.room_mode)
+        channel.room_mode.to_string()
     }
 }
 
@@ -621,11 +624,60 @@ fn managed_status_text(autopilot_chat: &AutopilotChatState) -> String {
         .channels
         .len();
     let cached_events = autopilot_chat.managed_chat_projection.relay_events.len();
-    format!("{server_count} server(s)  •  {channel_count} channel(s)  •  {cached_events} cached")
+    let mut parts = vec![
+        format!("{server_count} server(s)"),
+        format!("{channel_count} channel(s)"),
+        format!("{cached_events} cached"),
+    ];
+    let mut publishing = 0usize;
+    let mut acked = 0usize;
+    let mut failed = 0usize;
+    for message in autopilot_chat
+        .managed_chat_projection
+        .snapshot
+        .messages
+        .values()
+    {
+        match message.delivery_state {
+            ManagedChatDeliveryState::Publishing => publishing += 1,
+            ManagedChatDeliveryState::Acked => acked += 1,
+            ManagedChatDeliveryState::Failed => failed += 1,
+            ManagedChatDeliveryState::Confirmed => {}
+        }
+    }
+    if publishing > 0 {
+        parts.push(format!("{publishing} sending"));
+    }
+    if acked > 0 {
+        parts.push(format!("{acked} acked"));
+    }
+    if failed > 0 {
+        parts.push(format!("{failed} failed"));
+    }
+    parts.join("  •  ")
 }
 
 fn managed_message_role_label(message: &ManagedChatMessageProjection) -> String {
-    format!("[{}]", compact_hex_label(&message.author_pubkey, 8))
+    let base = format!("[{}]", compact_hex_label(&message.author_pubkey, 8));
+    match message.delivery_state {
+        ManagedChatDeliveryState::Confirmed => base,
+        ManagedChatDeliveryState::Publishing => {
+            format!("{base} [sending x{}]", message.attempt_count.max(1))
+        }
+        ManagedChatDeliveryState::Acked => format!("{base} [acked]"),
+        ManagedChatDeliveryState::Failed => {
+            format!("{base} [failed x{}]", message.attempt_count.max(1))
+        }
+    }
+}
+
+fn managed_message_role_color(message: &ManagedChatMessageProjection) -> wgpui::Hsla {
+    match message.delivery_state {
+        ManagedChatDeliveryState::Confirmed => theme::accent::PRIMARY,
+        ManagedChatDeliveryState::Publishing => theme::status::INFO,
+        ManagedChatDeliveryState::Acked => theme::status::SUCCESS,
+        ManagedChatDeliveryState::Failed => theme::status::ERROR,
+    }
 }
 
 fn managed_message_reply_label(message: &ManagedChatMessageProjection) -> Option<String> {
@@ -649,8 +701,69 @@ fn managed_message_reaction_summary(message: &ManagedChatMessageProjection) -> O
     )
 }
 
+fn managed_message_delivery_note(message: &ManagedChatMessageProjection) -> Option<String> {
+    match message.delivery_state {
+        ManagedChatDeliveryState::Confirmed => None,
+        ManagedChatDeliveryState::Publishing => Some(format!(
+            "publishing local echo attempt {}",
+            message.attempt_count.max(1)
+        )),
+        ManagedChatDeliveryState::Acked => {
+            Some("relay acknowledged local echo; waiting for sync".to_string())
+        }
+        ManagedChatDeliveryState::Failed => Some(match message.delivery_error.as_deref() {
+            Some(error) => format!("publish failed: {error}"),
+            None => format!("publish failed on attempt {}", message.attempt_count.max(1)),
+        }),
+    }
+}
+
 fn managed_message_markdown_source(message: &ManagedChatMessageProjection) -> String {
     sanitize_chat_text(&message.content)
+}
+
+fn managed_local_delivery_summary(autopilot_chat: &AutopilotChatState) -> Option<String> {
+    let mut publishing = 0usize;
+    let mut acked = 0usize;
+    let mut failed = 0usize;
+    for message in autopilot_chat.active_managed_chat_messages() {
+        match message.delivery_state {
+            ManagedChatDeliveryState::Publishing => publishing += 1,
+            ManagedChatDeliveryState::Acked => acked += 1,
+            ManagedChatDeliveryState::Failed => failed += 1,
+            ManagedChatDeliveryState::Confirmed => {}
+        }
+    }
+    let mut parts = Vec::new();
+    if publishing > 0 {
+        parts.push(format!("{publishing} sending"));
+    }
+    if acked > 0 {
+        parts.push(format!("{acked} acked"));
+    }
+    if failed > 0 {
+        parts.push(format!("{failed} failed local"));
+    }
+    (!parts.is_empty()).then(|| parts.join("  •  "))
+}
+
+fn managed_chat_composer_hint(autopilot_chat: &AutopilotChatState, composer_value: &str) -> String {
+    let Some(channel) = autopilot_chat.active_managed_chat_channel() else {
+        return "No managed channel selected.".to_string();
+    };
+    if channel.relay_url.is_none() {
+        return "Channel relay target is unknown; publish waits for metadata or synced history."
+            .to_string();
+    }
+    if composer_value.trim().is_empty()
+        && autopilot_chat
+            .active_managed_chat_retryable_message()
+            .is_some()
+    {
+        return "Empty composer retries the latest failed publish in this channel.".to_string();
+    }
+    "Shift+Enter inserts a newline. Sends persist as local echo and fail honestly until relay publish is wired."
+        .to_string()
 }
 
 fn active_thread_title(autopilot_chat: &AutopilotChatState) -> String {
@@ -678,11 +791,15 @@ fn active_thread_subtitle(autopilot_chat: &AutopilotChatState) -> String {
         autopilot_chat.active_managed_chat_group(),
         autopilot_chat.active_managed_chat_channel(),
     ) {
-        return format!(
-            "{}  •  {} message(s)  •  read-only",
+        let mut parts = vec![
             managed_group_label(group),
-            channel.message_ids.len()
-        );
+            format!("{} message(s)", channel.message_ids.len()),
+            channel.room_mode.to_string(),
+        ];
+        if let Some(local_delivery) = managed_local_delivery_summary(autopilot_chat) {
+            parts.push(local_delivery);
+        }
+        return parts.join("  •  ");
     }
 
     let status = autopilot_chat
@@ -998,27 +1115,6 @@ fn paint_chat_shell(
     ));
 }
 
-fn paint_managed_chat_composer_placeholder(bounds: Bounds, paint: &mut PaintContext) {
-    paint.scene.draw_quad(
-        Quad::new(bounds)
-            .with_background(theme::bg::SURFACE.with_alpha(0.78))
-            .with_border(theme::border::DEFAULT.with_alpha(0.45), 1.0)
-            .with_corner_radius(8.0),
-    );
-    paint.scene.draw_text(paint.text.layout(
-        "Read-only managed channel",
-        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 7.0),
-        11.0,
-        theme::text::PRIMARY,
-    ));
-    paint.scene.draw_text(paint.text.layout_mono(
-        "Send, retry, and publish state land in issue #3025.",
-        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 19.0),
-        9.0,
-        theme::text::MUTED,
-    ));
-}
-
 pub fn transcript_message_byte_offset_at_point(
     state: &mut RenderState,
     point: Point,
@@ -1154,12 +1250,8 @@ pub fn paint(
     paint: &mut PaintContext,
 ) {
     let managed_chat_browse = autopilot_chat.managed_chat_has_browseable_content();
-    let composer_height = if managed_chat_browse {
-        30.0
-    } else {
-        let composer_value = chat_inputs.composer.get_value().to_string();
-        chat_composer_height_for_value(content_bounds, &composer_value)
-    };
+    let composer_value = chat_inputs.composer.get_value().to_string();
+    let composer_height = chat_composer_height_for_value(content_bounds, &composer_value);
     let transcript_body_bounds =
         chat_transcript_body_bounds_with_height(content_bounds, composer_height);
     let composer_bounds = chat_composer_input_bounds_with_height(content_bounds, composer_height);
@@ -1208,7 +1300,7 @@ pub fn paint(
                 &managed_message_role_label(message),
                 Point::new(transcript_scroll_clip.origin.x, y),
                 10.0,
-                theme::accent::PRIMARY,
+                managed_message_role_color(message),
             ));
             y += CHAT_TRANSCRIPT_LINE_HEIGHT;
 
@@ -1245,130 +1337,135 @@ pub fn paint(
                 ));
                 y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
             }
+            if let Some(delivery_note) = managed_message_delivery_note(message) {
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &delivery_note,
+                    Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                    9.0,
+                    managed_message_role_color(message),
+                ));
+                y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+            }
             y += 8.0;
         }
 
         paint.scene.pop_clip();
-
-        if let Some(error) = autopilot_chat.last_error.as_deref() {
+    } else {
+        if autopilot_chat.messages.is_empty() {
+            let empty_state = "Ask me to do anything...";
+            let empty_state_font_size = 18.0;
+            let empty_state_width = paint.text.measure(empty_state, empty_state_font_size);
+            let empty_state_x = transcript_scroll_clip.origin.x
+                + (transcript_scroll_clip.size.width - empty_state_width) * 0.5;
+            let empty_state_y = transcript_scroll_clip.origin.y
+                + transcript_scroll_clip.size.height * 0.5
+                - empty_state_font_size * 0.5;
             paint.scene.draw_text(paint.text.layout(
-                error,
+                empty_state,
                 Point::new(
-                    transcript_body_bounds.origin.x,
-                    transcript_body_bounds.max_y() - 12.0,
+                    empty_state_x.max(transcript_scroll_clip.origin.x),
+                    empty_state_y,
                 ),
-                11.0,
-                theme::status::ERROR,
-            ));
-        }
-        paint_managed_chat_composer_placeholder(composer_bounds, paint);
-        return;
-    }
-
-    if autopilot_chat.messages.is_empty() {
-        let empty_state = "Ask me to do anything...";
-        let empty_state_font_size = 18.0;
-        let empty_state_width = paint.text.measure(empty_state, empty_state_font_size);
-        let empty_state_x = transcript_scroll_clip.origin.x
-            + (transcript_scroll_clip.size.width - empty_state_width) * 0.5;
-        let empty_state_y = transcript_scroll_clip.origin.y
-            + transcript_scroll_clip.size.height * 0.5
-            - empty_state_font_size * 0.5;
-        paint.scene.draw_text(paint.text.layout(
-            empty_state,
-            Point::new(
-                empty_state_x.max(transcript_scroll_clip.origin.x),
-                empty_state_y,
-            ),
-            empty_state_font_size,
-            theme::text::MUTED,
-        ));
-    }
-
-    for message in &autopilot_chat.messages {
-        let message_text_origin_y = y + CHAT_TRANSCRIPT_LINE_HEIGHT;
-        let status = match message.status {
-            AutopilotMessageStatus::Queued => "thinking",
-            AutopilotMessageStatus::Running => "running",
-            AutopilotMessageStatus::Done => "done",
-            AutopilotMessageStatus::Error => "error",
-        };
-        let role = match message.role {
-            AutopilotRole::User => "you",
-            AutopilotRole::Codex => "autopilot",
-        };
-        let status_color = match message.status {
-            AutopilotMessageStatus::Queued => theme::text::MUTED,
-            AutopilotMessageStatus::Running => theme::accent::PRIMARY,
-            AutopilotMessageStatus::Done => theme::status::SUCCESS,
-            AutopilotMessageStatus::Error => theme::status::ERROR,
-        };
-        let role_label = if status == "done" {
-            format!("[{role}]")
-        } else {
-            format!("[{role}] [{status}]")
-        };
-
-        paint.scene.draw_text(paint.text.layout_mono(
-            &role_label,
-            Point::new(transcript_scroll_clip.origin.x, y),
-            10.0,
-            status_color,
-        ));
-        y += CHAT_TRANSCRIPT_LINE_HEIGHT;
-
-        let markdown_source = message_markdown_source(message);
-        if let Some(selection) = autopilot_chat.transcript_selection
-            && selection.message_id == message.id
-        {
-            paint_message_selection_highlight(
-                &markdown_source,
-                selection,
-                Point::new(transcript_scroll_clip.origin.x, message_text_origin_y),
-                markdown_width,
-                paint,
-            );
-        }
-        let markdown_document = markdown_parser.parse(&markdown_source);
-        let markdown_height = markdown_renderer
-            .render(
-                &markdown_document,
-                Point::new(transcript_scroll_clip.origin.x, y),
-                markdown_width,
-                paint.text,
-                paint.scene,
-            )
-            .height
-            .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
-        y += markdown_height;
-        y += paint_message_progress_blocks(message, transcript_scroll_clip.origin.x, y, paint);
-        y += 8.0;
-    }
-
-    let activity_lines = chat_tool_activity_lines(autopilot_chat);
-    if !activity_lines.is_empty() {
-        paint.scene.draw_text(paint.text.layout_mono(
-            "[activity]",
-            Point::new(transcript_scroll_clip.origin.x, y),
-            10.0,
-            theme::accent::PRIMARY,
-        ));
-        y += CHAT_ACTIVITY_HEADER_LINE_HEIGHT;
-
-        for line in activity_lines {
-            let line = sanitize_chat_text(&line);
-            paint.scene.draw_text(paint.text.layout(
-                &line,
-                Point::new(transcript_scroll_clip.origin.x + 6.0, y),
-                10.0,
+                empty_state_font_size,
                 theme::text::MUTED,
             ));
-            y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
         }
+
+        for message in &autopilot_chat.messages {
+            let message_text_origin_y = y + CHAT_TRANSCRIPT_LINE_HEIGHT;
+            let status = match message.status {
+                AutopilotMessageStatus::Queued => "thinking",
+                AutopilotMessageStatus::Running => "running",
+                AutopilotMessageStatus::Done => "done",
+                AutopilotMessageStatus::Error => "error",
+            };
+            let role = match message.role {
+                AutopilotRole::User => "you",
+                AutopilotRole::Codex => "autopilot",
+            };
+            let status_color = match message.status {
+                AutopilotMessageStatus::Queued => theme::text::MUTED,
+                AutopilotMessageStatus::Running => theme::accent::PRIMARY,
+                AutopilotMessageStatus::Done => theme::status::SUCCESS,
+                AutopilotMessageStatus::Error => theme::status::ERROR,
+            };
+            let role_label = if status == "done" {
+                format!("[{role}]")
+            } else {
+                format!("[{role}] [{status}]")
+            };
+
+            paint.scene.draw_text(paint.text.layout_mono(
+                &role_label,
+                Point::new(transcript_scroll_clip.origin.x, y),
+                10.0,
+                status_color,
+            ));
+            y += CHAT_TRANSCRIPT_LINE_HEIGHT;
+
+            let markdown_source = message_markdown_source(message);
+            if let Some(selection) = autopilot_chat.transcript_selection
+                && selection.message_id == message.id
+            {
+                paint_message_selection_highlight(
+                    &markdown_source,
+                    selection,
+                    Point::new(transcript_scroll_clip.origin.x, message_text_origin_y),
+                    markdown_width,
+                    paint,
+                );
+            }
+            let markdown_document = markdown_parser.parse(&markdown_source);
+            let markdown_height = markdown_renderer
+                .render(
+                    &markdown_document,
+                    Point::new(transcript_scroll_clip.origin.x, y),
+                    markdown_width,
+                    paint.text,
+                    paint.scene,
+                )
+                .height
+                .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+            y += markdown_height;
+            y += paint_message_progress_blocks(message, transcript_scroll_clip.origin.x, y, paint);
+            y += 8.0;
+        }
+
+        let activity_lines = chat_tool_activity_lines(autopilot_chat);
+        if !activity_lines.is_empty() {
+            paint.scene.draw_text(paint.text.layout_mono(
+                "[activity]",
+                Point::new(transcript_scroll_clip.origin.x, y),
+                10.0,
+                theme::accent::PRIMARY,
+            ));
+            y += CHAT_ACTIVITY_HEADER_LINE_HEIGHT;
+
+            for line in activity_lines {
+                let line = sanitize_chat_text(&line);
+                paint.scene.draw_text(paint.text.layout(
+                    &line,
+                    Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                    10.0,
+                    theme::text::MUTED,
+                ));
+                y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+            }
+        }
+        paint.scene.pop_clip();
     }
-    paint.scene.pop_clip();
 
     let mut footer_y = transcript_body_bounds.max_y() - 12.0;
+    if managed_chat_browse {
+        let hint = managed_chat_composer_hint(autopilot_chat, &composer_value);
+        paint.scene.draw_text(paint.text.layout_mono(
+            &hint,
+            Point::new(transcript_body_bounds.origin.x, footer_y),
+            9.0,
+            theme::text::MUTED,
+        ));
+        footer_y -= CHAT_TRANSCRIPT_LINE_HEIGHT;
+    }
     if let Some(error) = autopilot_chat.last_error.as_deref() {
         paint.scene.draw_text(paint.text.layout(
             error,
@@ -1391,14 +1488,15 @@ pub fn paint(
         .composer
         .set_max_width(composer_bounds.size.width);
     chat_inputs.composer.paint(composer_bounds, paint);
-    let can_send = !chat_inputs.composer.get_value().trim().is_empty();
+    let can_send = if managed_chat_browse {
+        autopilot_chat.managed_chat_can_send(chat_inputs.composer.get_value())
+    } else {
+        !chat_inputs.composer.get_value().trim().is_empty()
+    };
     paint_chat_send_button(send_bounds, can_send, paint);
 }
 
 pub fn dispatch_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
-    if state.autopilot_chat.managed_chat_has_browseable_content() {
-        return false;
-    }
     let top_chat = state
         .panes
         .iter()
