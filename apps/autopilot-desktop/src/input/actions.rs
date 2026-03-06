@@ -60,6 +60,41 @@ enum DirectMessageComposerIntent {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ChatWalletComposerIntent {
+    PayInvoice {
+        message_reference: String,
+    },
+    RequestInvoice {
+        message_reference: String,
+        description: Option<String>,
+    },
+    CopyAddress {
+        message_reference: String,
+    },
+    InspectPaymentStatus {
+        message_reference: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ChatWalletMessageSource {
+    reference_label: String,
+    message_id: String,
+    content: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct ChatWalletMessagePayload {
+    payment_request: Option<String>,
+    payment_id: Option<String>,
+    chat_reported_status: Option<String>,
+    amount_sats: Option<u64>,
+    copy_address: Option<String>,
+    copy_address_label: Option<&'static str>,
+    description: Option<String>,
+}
+
 pub(super) fn run_chat_submit_action(state: &mut crate::app_state::RenderState) -> bool {
     run_chat_submit_action_with_trigger(
         state,
@@ -296,6 +331,15 @@ fn run_managed_chat_submit_action(state: &mut crate::app_state::RenderState) -> 
         return true;
     }
 
+    match parse_chat_wallet_intent(&prompt) {
+        Ok(Some(intent)) => return run_chat_wallet_action(state, intent),
+        Ok(None) => {}
+        Err(error) => {
+            state.autopilot_chat.last_error = Some(error);
+            return true;
+        }
+    }
+
     let intent = match parse_managed_chat_composer_intent(&prompt) {
         Ok(intent) => intent,
         Err(error) => {
@@ -498,7 +542,8 @@ fn run_managed_chat_submit_action(state: &mut crate::app_state::RenderState) -> 
             member_reference,
             reason,
         } => {
-            let Some(member) = resolve_managed_chat_member_reference(&group, &member_reference) else {
+            let Some(member) = resolve_managed_chat_member_reference(&group, &member_reference)
+            else {
                 state.autopilot_chat.last_error = Some(format!(
                     "Unknown managed chat member reference: {member_reference}"
                 ));
@@ -627,6 +672,15 @@ fn run_direct_message_submit_action(
         return true;
     }
 
+    match parse_chat_wallet_intent(&prompt) {
+        Ok(Some(intent)) => return run_chat_wallet_action(state, intent),
+        Ok(None) => {}
+        Err(error) => {
+            state.autopilot_chat.last_error = Some(error);
+            return true;
+        }
+    }
+
     let Some(identity) = state.nostr_identity.as_ref() else {
         state.autopilot_chat.last_error =
             Some("No Nostr identity is loaded for direct message publishing.".to_string());
@@ -737,6 +791,220 @@ fn run_direct_message_submit_action(
     true
 }
 
+fn parse_chat_wallet_intent(prompt: &str) -> Result<Option<ChatWalletComposerIntent>, String> {
+    let trimmed = prompt.trim();
+    let Some(rest) = trimmed.strip_prefix("wallet ") else {
+        return Ok(None);
+    };
+    let rest = rest.trim();
+    if let Some(reference) = rest.strip_prefix("pay ") {
+        let reference = reference.trim();
+        if reference.is_empty() {
+            return Err("Wallet pay syntax is `wallet pay <message-number|id-prefix>`".to_string());
+        }
+        return Ok(Some(ChatWalletComposerIntent::PayInvoice {
+            message_reference: reference.to_string(),
+        }));
+    }
+    if let Some(rest) = rest
+        .strip_prefix("request ")
+        .or_else(|| rest.strip_prefix("invoice "))
+    {
+        let (message_reference, description) = parse_reference_with_optional_reason(
+            rest,
+            "Wallet request syntax is `wallet request <message-number|id-prefix> [description]`",
+        )?;
+        return Ok(Some(ChatWalletComposerIntent::RequestInvoice {
+            message_reference,
+            description,
+        }));
+    }
+    if let Some(reference) = rest
+        .strip_prefix("copy-address ")
+        .or_else(|| rest.strip_prefix("copy "))
+    {
+        let reference = reference.trim();
+        if reference.is_empty() {
+            return Err(
+                "Wallet copy syntax is `wallet copy-address <message-number|id-prefix>`"
+                    .to_string(),
+            );
+        }
+        return Ok(Some(ChatWalletComposerIntent::CopyAddress {
+            message_reference: reference.to_string(),
+        }));
+    }
+    if let Some(reference) = rest.strip_prefix("status ") {
+        let reference = reference.trim();
+        if reference.is_empty() {
+            return Err(
+                "Wallet status syntax is `wallet status <message-number|id-prefix>`".to_string(),
+            );
+        }
+        return Ok(Some(ChatWalletComposerIntent::InspectPaymentStatus {
+            message_reference: reference.to_string(),
+        }));
+    }
+    Err(
+        "Wallet commands: `wallet pay <#|id>`, `wallet request <#|id> [description]`, `wallet copy-address <#|id>`, `wallet status <#|id>`"
+            .to_string(),
+    )
+}
+
+fn run_chat_wallet_action(
+    state: &mut crate::app_state::RenderState,
+    intent: ChatWalletComposerIntent,
+) -> bool {
+    let message_reference = match &intent {
+        ChatWalletComposerIntent::PayInvoice { message_reference }
+        | ChatWalletComposerIntent::RequestInvoice {
+            message_reference, ..
+        }
+        | ChatWalletComposerIntent::CopyAddress { message_reference }
+        | ChatWalletComposerIntent::InspectPaymentStatus { message_reference } => {
+            message_reference.as_str()
+        }
+    };
+    let Some(source) = resolve_active_chat_wallet_message(&state.autopilot_chat, message_reference)
+    else {
+        state.autopilot_chat.last_error = Some(format!(
+            "Unknown chat message reference for wallet action: {message_reference}"
+        ));
+        return true;
+    };
+    let payload = extract_chat_wallet_payload(&source.content);
+
+    match intent {
+        ChatWalletComposerIntent::PayInvoice { .. } => {
+            let Some(payment_request) = payload.payment_request.as_deref() else {
+                state.autopilot_chat.last_error = Some(format!(
+                    "{} does not contain a Lightning payment request.",
+                    source.reference_label
+                ));
+                return true;
+            };
+            let payment_request = match validate_lightning_payment_request(payment_request) {
+                Ok(payment_request) => payment_request,
+                Err(error) => {
+                    state.autopilot_chat.last_error = Some(error);
+                    return true;
+                }
+            };
+            focus_or_create_pane_kind(state, crate::app_state::PaneKind::SparkPayInvoice);
+            state.chat_inputs.composer.set_value(String::new());
+            state
+                .pay_invoice_inputs
+                .payment_request
+                .set_value(payment_request.clone());
+            if chat_wallet_request_supports_amount_override(&payment_request) {
+                state.pay_invoice_inputs.amount_sats.set_value(
+                    payload
+                        .amount_sats
+                        .map_or_else(String::new, |value| value.to_string()),
+                );
+            } else {
+                state
+                    .pay_invoice_inputs
+                    .amount_sats
+                    .set_value(String::new());
+            }
+            state.autopilot_chat.last_error = None;
+            state.autopilot_chat.set_copy_notice(
+                std::time::Instant::now(),
+                format!("Prepared Spark pay pane from {}", source.reference_label),
+            );
+            true
+        }
+        ChatWalletComposerIntent::RequestInvoice { description, .. } => {
+            let amount_sats = payload
+                .amount_sats
+                .unwrap_or(state.settings.document.wallet_default_send_sats);
+            let description = description
+                .and_then(|value| normalize_optional_text(&value))
+                .or_else(|| payload.description.clone())
+                .unwrap_or_else(|| format!("Chat invoice from {}", source.reference_label));
+            focus_or_create_pane_kind(state, crate::app_state::PaneKind::SparkCreateInvoice);
+            state.chat_inputs.composer.set_value(String::new());
+            state
+                .create_invoice_inputs
+                .amount_sats
+                .set_value(amount_sats.to_string());
+            state
+                .create_invoice_inputs
+                .description
+                .set_value(description.clone());
+            if state
+                .create_invoice_inputs
+                .expiry_seconds
+                .get_value()
+                .trim()
+                .is_empty()
+            {
+                state
+                    .create_invoice_inputs
+                    .expiry_seconds
+                    .set_value("3600".to_string());
+            }
+            state.autopilot_chat.last_error = None;
+            state.autopilot_chat.set_copy_notice(
+                std::time::Instant::now(),
+                format!(
+                    "Prepared Spark invoice pane from {} for {}",
+                    source.reference_label,
+                    format_sats_amount(amount_sats)
+                ),
+            );
+            true
+        }
+        ChatWalletComposerIntent::CopyAddress { .. } => {
+            let Some(address) = payload.copy_address.as_deref() else {
+                state.autopilot_chat.last_error = Some(format!(
+                    "{} does not contain a copyable receive address.",
+                    source.reference_label
+                ));
+                return true;
+            };
+            match copy_to_clipboard(address) {
+                Ok(()) => {
+                    state.chat_inputs.composer.set_value(String::new());
+                    state.autopilot_chat.last_error = None;
+                    state.autopilot_chat.set_copy_notice(
+                        std::time::Instant::now(),
+                        format!(
+                            "Copied {} address from {}",
+                            payload.copy_address_label.unwrap_or("wallet"),
+                            source.reference_label
+                        ),
+                    );
+                }
+                Err(error) => {
+                    state.autopilot_chat.last_error =
+                        Some(format!("Failed to copy wallet address: {error}"));
+                }
+            }
+            true
+        }
+        ChatWalletComposerIntent::InspectPaymentStatus { .. } => {
+            let Some(summary) = chat_wallet_payment_status_summary(&payload, &state.spark_wallet)
+            else {
+                state.autopilot_chat.last_error = Some(format!(
+                    "{} does not include payment metadata that Spark can inspect yet.",
+                    source.reference_label
+                ));
+                return true;
+            };
+            focus_or_create_pane_kind(state, crate::app_state::PaneKind::SparkWallet);
+            state.chat_inputs.composer.set_value(String::new());
+            queue_spark_command(state, SparkWalletCommand::Refresh);
+            state.autopilot_chat.last_error = None;
+            state
+                .autopilot_chat
+                .set_copy_notice(std::time::Instant::now(), summary);
+            true
+        }
+    }
+}
+
 fn parse_managed_chat_composer_intent(prompt: &str) -> Result<ManagedChatComposerIntent, String> {
     let trimmed = prompt.trim();
     if let Some(rest) = trimmed.strip_prefix("reply ") {
@@ -800,16 +1068,13 @@ fn parse_managed_chat_composer_intent(prompt: &str) -> Result<ManagedChatCompose
         });
     }
     if let Some(rest) = trimmed.strip_prefix("invite ") {
-        let (code, reason) = parse_code_with_optional_reason(
-            rest,
-            "Invite syntax is `invite <code> [reason]`",
-        )?;
+        let (code, reason) =
+            parse_code_with_optional_reason(rest, "Invite syntax is `invite <code> [reason]`")?;
         return Ok(ManagedChatComposerIntent::Invite { code, reason });
     }
     if trimmed == "join" || trimmed.starts_with("join ") {
-        let (invite_code, reason) = parse_join_command(
-            trimmed.strip_prefix("join").unwrap_or_default(),
-        )?;
+        let (invite_code, reason) =
+            parse_join_command(trimmed.strip_prefix("join").unwrap_or_default())?;
         return Ok(ManagedChatComposerIntent::Join {
             invite_code,
             reason,
@@ -824,7 +1089,9 @@ fn parse_managed_chat_composer_intent(prompt: &str) -> Result<ManagedChatCompose
                 .map(ToString::to_string),
         });
     }
-    if let Some(rest) = trimmed.strip_prefix("meta ").or_else(|| trimmed.strip_prefix("metadata "))
+    if let Some(rest) = trimmed
+        .strip_prefix("meta ")
+        .or_else(|| trimmed.strip_prefix("metadata "))
     {
         let (changes, summary) = parse_managed_chat_metadata_changes(rest)?;
         return Ok(ManagedChatComposerIntent::EditMetadata { changes, summary });
@@ -852,6 +1119,277 @@ fn parse_managed_chat_composer_intent(prompt: &str) -> Result<ManagedChatCompose
     Ok(ManagedChatComposerIntent::ChannelMessage {
         content: trimmed.to_string(),
         reply_reference: None,
+    })
+}
+
+fn resolve_active_chat_wallet_message(
+    autopilot_chat: &crate::app_state::AutopilotChatState,
+    reference: &str,
+) -> Option<ChatWalletMessageSource> {
+    match autopilot_chat.chat_browse_mode() {
+        crate::app_state::ChatBrowseMode::Managed => {
+            let message = resolve_managed_chat_message_reference(autopilot_chat, reference)?;
+            let position = autopilot_chat
+                .active_managed_chat_messages()
+                .into_iter()
+                .position(|candidate| candidate.event_id == message.event_id)
+                .map(|index| index + 1)
+                .unwrap_or(0);
+            Some(ChatWalletMessageSource {
+                reference_label: format!("#{}", position.max(1)),
+                message_id: message.event_id.clone(),
+                content: message.content.clone(),
+            })
+        }
+        crate::app_state::ChatBrowseMode::DirectMessages => {
+            let message = resolve_direct_message_reference(autopilot_chat, reference)?;
+            let position = autopilot_chat
+                .active_direct_message_messages()
+                .into_iter()
+                .position(|candidate| candidate.message_id == message.message_id)
+                .map(|index| index + 1)
+                .unwrap_or(0);
+            Some(ChatWalletMessageSource {
+                reference_label: format!("#{}", position.max(1)),
+                message_id: message.message_id.clone(),
+                content: message.content.clone(),
+            })
+        }
+        crate::app_state::ChatBrowseMode::Autopilot => None,
+    }
+}
+
+fn extract_chat_wallet_payload(content: &str) -> ChatWalletMessagePayload {
+    let mut payload = ChatWalletMessagePayload::default();
+
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(content.trim())
+        && let Some(object) = value.as_object()
+    {
+        if let Some(candidate) = ["payment_request", "invoice", "bolt11"]
+            .into_iter()
+            .find_map(|key| object.get(key).and_then(serde_json::Value::as_str))
+        {
+            if looks_like_lightning_payment_request(candidate) {
+                payload.payment_request = Some(candidate.trim().to_string());
+            } else if let Some(address) = extract_copyable_wallet_address(candidate) {
+                payload.copy_address = Some(address.0);
+                payload.copy_address_label = Some(address.1);
+            }
+        }
+        payload.payment_id = ["payment_id", "id", "request_id"]
+            .into_iter()
+            .find_map(|key| object.get(key).and_then(serde_json::Value::as_str))
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
+        payload.chat_reported_status = ["status", "payment_status"]
+            .into_iter()
+            .find_map(|key| object.get(key).and_then(serde_json::Value::as_str))
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
+        payload.amount_sats = ["amount_sats", "amount_sat", "amount"]
+            .into_iter()
+            .find_map(|key| object.get(key))
+            .and_then(parse_chat_wallet_amount);
+        payload.description = ["description", "memo", "note", "message"]
+            .into_iter()
+            .find_map(|key| object.get(key).and_then(serde_json::Value::as_str))
+            .and_then(normalize_optional_text);
+
+        if payload.copy_address.is_none()
+            && let Some(candidate) = [
+                "bitcoin_address",
+                "btc_address",
+                "onchain_address",
+                "spark_address",
+                "address",
+            ]
+            .into_iter()
+            .find_map(|key| object.get(key).and_then(serde_json::Value::as_str))
+            && let Some((address, label)) = extract_copyable_wallet_address(candidate)
+        {
+            payload.copy_address = Some(address);
+            payload.copy_address_label = Some(label);
+        }
+    }
+
+    for token in content.split_whitespace() {
+        let token = trim_chat_wallet_token(token);
+        if token.is_empty() {
+            continue;
+        }
+        if payload.payment_request.is_none() && looks_like_lightning_payment_request(token) {
+            payload.payment_request = Some(token.to_string());
+            continue;
+        }
+        if payload.copy_address.is_none()
+            && let Some((address, label)) = extract_copyable_wallet_address(token)
+        {
+            payload.copy_address = Some(address);
+            payload.copy_address_label = Some(label);
+        }
+    }
+
+    payload
+}
+
+fn trim_chat_wallet_token(token: &str) -> &str {
+    token.trim_matches(|ch: char| {
+        matches!(
+            ch,
+            '"' | '\'' | '(' | ')' | '[' | ']' | '{' | '}' | '<' | '>' | ',' | ';'
+        )
+    })
+}
+
+fn looks_like_lightning_payment_request(value: &str) -> bool {
+    let normalized = value.trim().to_ascii_lowercase();
+    normalized.starts_with("ln")
+        || normalized.starts_with("lightning:ln")
+        || normalized.starts_with("lightning://ln")
+}
+
+fn extract_copyable_wallet_address(value: &str) -> Option<(String, &'static str)> {
+    let trimmed = trim_chat_wallet_token(value).trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let normalized = trimmed.to_ascii_lowercase();
+    if let Some(uri) = normalized.strip_prefix("bitcoin:") {
+        let raw_address = uri.split('?').next().unwrap_or(uri).trim();
+        if raw_address.is_empty() {
+            return None;
+        }
+        let original_address = trimmed
+            .trim_start_matches("bitcoin:")
+            .split('?')
+            .next()
+            .unwrap_or(trimmed)
+            .trim();
+        return Some((original_address.to_string(), "bitcoin"));
+    }
+
+    if normalized.starts_with("bc1")
+        || normalized.starts_with("tb1")
+        || normalized.starts_with("bcrt1")
+        || (normalized.starts_with('1') && trimmed.len() >= 26)
+        || (normalized.starts_with('3') && trimmed.len() >= 26)
+    {
+        return Some((trimmed.to_string(), "bitcoin"));
+    }
+
+    if trimmed.contains('@') {
+        return Some((trimmed.to_string(), "spark"));
+    }
+
+    None
+}
+
+fn parse_chat_wallet_amount(value: &serde_json::Value) -> Option<u64> {
+    match value {
+        serde_json::Value::Number(number) => number.as_u64(),
+        serde_json::Value::String(raw) => raw
+            .chars()
+            .filter(|ch| ch.is_ascii_digit())
+            .collect::<String>()
+            .parse::<u64>()
+            .ok()
+            .filter(|value| *value > 0),
+        _ => None,
+    }
+}
+
+fn focus_or_create_pane_kind(
+    state: &mut crate::app_state::RenderState,
+    kind: crate::app_state::PaneKind,
+) {
+    if let Some(pane_id) = state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == kind)
+        .max_by_key(|pane| pane.z_index)
+        .map(|pane| pane.id)
+    {
+        crate::pane_system::PaneController::bring_to_front(state, pane_id);
+    } else {
+        crate::pane_system::PaneController::create_for_kind(state, kind);
+    }
+}
+
+fn chat_wallet_request_supports_amount_override(payment_request: &str) -> bool {
+    let normalized = payment_request.trim().to_ascii_lowercase();
+    normalized.starts_with("lnurl1")
+        || normalized.starts_with("lightning:lnurl1")
+        || normalized.starts_with("lightning://lnurl1")
+}
+
+fn compact_chat_wallet_identifier(value: &str, prefix_chars: usize) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return "unknown".to_string();
+    }
+    if trimmed.chars().count() <= prefix_chars {
+        return trimmed.to_string();
+    }
+    format!(
+        "{}…",
+        trimmed.chars().take(prefix_chars).collect::<String>()
+    )
+}
+
+fn chat_wallet_payment_status_summary(
+    payload: &ChatWalletMessagePayload,
+    spark_wallet: &crate::spark_wallet::SparkPaneState,
+) -> Option<String> {
+    if let Some(payment_id) = payload.payment_id.as_deref() {
+        if let Some(payment) = spark_wallet
+            .recent_payments
+            .iter()
+            .find(|candidate| candidate.id == payment_id)
+        {
+            let mut summary = format!(
+                "Spark confirms in the current wallet snapshot: {} {} {} ({})",
+                payment.direction,
+                payment.status,
+                compact_chat_wallet_identifier(payment.id.as_str(), 10),
+                format_sats_amount(payment.amount_sats)
+            );
+            if let Some(reported_status) = payload
+                .chat_reported_status
+                .as_deref()
+                .filter(|reported| !reported.eq_ignore_ascii_case(payment.status.as_str()))
+            {
+                summary.push_str(format!("; chat reported {reported_status}").as_str());
+            }
+            return Some(summary);
+        }
+
+        if let Some(reported_status) = payload.chat_reported_status.as_deref() {
+            return Some(format!(
+                "Chat reports {} for payment {}, but Spark has not confirmed it in the current wallet snapshot.",
+                reported_status,
+                compact_chat_wallet_identifier(payment_id, 10)
+            ));
+        }
+
+        return Some(format!(
+            "Message references payment {}, but Spark has no matching payment in the current wallet snapshot yet.",
+            compact_chat_wallet_identifier(payment_id, 10)
+        ));
+    }
+
+    if let Some(reported_status) = payload.chat_reported_status.as_deref() {
+        return Some(format!(
+            "Chat reports {}, but Spark needs a wallet payment id before settlement can be confirmed.",
+            reported_status
+        ));
+    }
+
+    payload.payment_request.as_ref().map(|_| {
+        "Message contains a payment request, but Spark needs a wallet payment id before settlement can be confirmed."
+            .to_string()
     })
 }
 
@@ -898,7 +1436,10 @@ fn parse_join_command(raw: &str) -> Result<(Option<String>, Option<String>), Str
     }
     let mut parts = trimmed.splitn(2, '|').map(str::trim);
     let left = parts.next().unwrap_or_default();
-    let right = parts.next().map(str::trim).filter(|value| !value.is_empty());
+    let right = parts
+        .next()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
     let invite_code = if left.is_empty() {
         None
     } else if left.contains(char::is_whitespace) {
@@ -912,9 +1453,7 @@ fn parse_join_command(raw: &str) -> Result<(Option<String>, Option<String>), Str
     Ok((invite_code, reason))
 }
 
-fn parse_managed_chat_metadata_changes(
-    raw: &str,
-) -> Result<(Vec<Vec<String>>, String), String> {
+fn parse_managed_chat_metadata_changes(raw: &str) -> Result<(Vec<Vec<String>>, String), String> {
     let mut changes = Vec::new();
     let mut summaries = Vec::new();
     for segment in raw.split('|') {
@@ -7601,15 +8140,16 @@ pub(super) fn parse_positive_amount_str(raw: &str, label: &str) -> Result<u64, S
 #[cfg(test)]
 mod tests {
     use super::{
-        DirectMessageComposerIntent, ManagedChatComposerIntent,
-        build_direct_message_outbound_message, build_managed_chat_join_request_event,
-        build_managed_chat_leave_request_event, build_managed_chat_moderation_event,
-        build_managed_chat_outbound_message, build_managed_chat_reaction_event,
-        build_nip90_request_event_for_network_submission, classify_provider_failure,
+        ChatWalletComposerIntent, ChatWalletMessagePayload, DirectMessageComposerIntent,
+        ManagedChatComposerIntent, build_direct_message_outbound_message,
+        build_managed_chat_join_request_event, build_managed_chat_leave_request_event,
+        build_managed_chat_moderation_event, build_managed_chat_outbound_message,
+        build_managed_chat_reaction_event, build_nip90_request_event_for_network_submission,
+        chat_wallet_payment_status_summary, classify_provider_failure, extract_chat_wallet_payload,
         extract_target_provider_pubkeys, is_taxonomy_failure_detail, loop_integrity_alert_specs,
-        nip90_request_kind_for_request_type, parse_direct_message_creation_intent,
-        parse_direct_message_room_intent, parse_managed_chat_composer_intent,
-        parse_managed_chat_mention_prefix,
+        nip90_request_kind_for_request_type, parse_chat_wallet_intent,
+        parse_direct_message_creation_intent, parse_direct_message_room_intent,
+        parse_managed_chat_composer_intent, parse_managed_chat_mention_prefix,
         resolve_wallet_blink_env_from_secure_values,
         resolve_wallet_settlement_pointer_for_open_network_job,
         stable_sats_period_convert_totals_from_receipts,
@@ -8238,17 +8778,15 @@ mod tests {
         )
         .expect("join request");
         assert_eq!(join.kind, nostr::nip29::KIND_JOIN_REQUEST);
-        assert!(join
-            .tags
-            .iter()
-            .any(|tag| tag.first().map(String::as_str) == Some("code")));
+        assert!(
+            join.tags
+                .iter()
+                .any(|tag| tag.first().map(String::as_str) == Some("code"))
+        );
 
-        let leave = build_managed_chat_leave_request_event(
-            &identity,
-            "oa-main",
-            Some("done for today"),
-        )
-        .expect("leave request");
+        let leave =
+            build_managed_chat_leave_request_event(&identity, "oa-main", Some("done for today"))
+                .expect("leave request");
         assert_eq!(leave.kind, nostr::nip29::KIND_LEAVE_REQUEST);
 
         let moderation = build_managed_chat_moderation_event(
@@ -8265,18 +8803,24 @@ mod tests {
         )
         .expect("moderation event");
         assert_eq!(moderation.kind, nostr::nip29::KIND_EDIT_METADATA);
-        assert!(moderation
-            .tags
-            .iter()
-            .any(|tag| tag.first().map(String::as_str) == Some("name")));
-        assert!(moderation
-            .tags
-            .iter()
-            .any(|tag| tag.first().map(String::as_str) == Some("private")));
-        assert!(moderation
-            .tags
-            .iter()
-            .any(|tag| tag.first().map(String::as_str) == Some("open")));
+        assert!(
+            moderation
+                .tags
+                .iter()
+                .any(|tag| tag.first().map(String::as_str) == Some("name"))
+        );
+        assert!(
+            moderation
+                .tags
+                .iter()
+                .any(|tag| tag.first().map(String::as_str) == Some("private"))
+        );
+        assert!(
+            moderation
+                .tags
+                .iter()
+                .any(|tag| tag.first().map(String::as_str) == Some("open"))
+        );
     }
 
     #[test]
@@ -8309,6 +8853,96 @@ mod tests {
                 reply_reference: Some("#2".to_string()),
             }
         );
+    }
+
+    #[test]
+    fn chat_wallet_commands_parse_explicit_message_actions() {
+        assert_eq!(
+            parse_chat_wallet_intent("wallet pay #2").unwrap(),
+            Some(ChatWalletComposerIntent::PayInvoice {
+                message_reference: "#2".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_wallet_intent("wallet request abcd1234 bug bounty").unwrap(),
+            Some(ChatWalletComposerIntent::RequestInvoice {
+                message_reference: "abcd1234".to_string(),
+                description: Some("bug bounty".to_string()),
+            })
+        );
+        assert_eq!(
+            parse_chat_wallet_intent("wallet copy-address #4").unwrap(),
+            Some(ChatWalletComposerIntent::CopyAddress {
+                message_reference: "#4".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_wallet_intent("wallet status abcdef").unwrap(),
+            Some(ChatWalletComposerIntent::InspectPaymentStatus {
+                message_reference: "abcdef".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn chat_wallet_payload_extracts_payment_requests_addresses_and_status() {
+        let payload = extract_chat_wallet_payload(
+            r#"{"payment_request":"lnbc1invoiceexample","amount_sats":"2100","status":"succeeded","payment_id":"pay-001","bitcoin_address":"bc1qwalletchat","description":"Bounty payout"}"#,
+        );
+        assert_eq!(
+            payload,
+            ChatWalletMessagePayload {
+                payment_request: Some("lnbc1invoiceexample".to_string()),
+                payment_id: Some("pay-001".to_string()),
+                chat_reported_status: Some("succeeded".to_string()),
+                amount_sats: Some(2100),
+                copy_address: Some("bc1qwalletchat".to_string()),
+                copy_address_label: Some("bitcoin"),
+                description: Some("Bounty payout".to_string()),
+            }
+        );
+
+        let token_payload = extract_chat_wallet_payload(
+            "please settle bitcoin:bc1qexample?amount=0.001 or ping me at builder@spark.example",
+        );
+        assert_eq!(token_payload.copy_address.as_deref(), Some("bc1qexample"));
+        assert_eq!(token_payload.copy_address_label, Some("bitcoin"));
+    }
+
+    #[test]
+    fn chat_wallet_status_summary_distinguishes_chat_reported_and_wallet_confirmed() {
+        let payload = ChatWalletMessagePayload {
+            payment_id: Some("wallet-payment-001".to_string()),
+            chat_reported_status: Some("succeeded".to_string()),
+            ..ChatWalletMessagePayload::default()
+        };
+        let mut spark_wallet = crate::spark_wallet::SparkPaneState::default();
+        spark_wallet
+            .recent_payments
+            .push(openagents_spark::PaymentSummary {
+                id: "wallet-payment-001".to_string(),
+                direction: "send".to_string(),
+                status: "pending".to_string(),
+                amount_sats: 1500,
+                timestamp: 1_762_700_100,
+            });
+        let summary =
+            chat_wallet_payment_status_summary(&payload, &spark_wallet).expect("status summary");
+        assert!(summary.contains("Spark confirms"));
+        assert!(summary.contains("pending"));
+        assert!(summary.contains("chat reported succeeded"));
+
+        let unconfirmed = chat_wallet_payment_status_summary(
+            &ChatWalletMessagePayload {
+                payment_id: Some("wallet-payment-404".to_string()),
+                chat_reported_status: Some("succeeded".to_string()),
+                ..ChatWalletMessagePayload::default()
+            },
+            &crate::spark_wallet::SparkPaneState::default(),
+        )
+        .expect("unconfirmed summary");
+        assert!(unconfirmed.contains("Chat reports succeeded"));
+        assert!(unconfirmed.contains("has not confirmed"));
     }
 
     #[test]
