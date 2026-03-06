@@ -97,19 +97,19 @@ This NIP defines these tags:
 
   * `zap` (NIP-57)
   * `bolt11` (invoice string hash pointer)
-  * `bolt12` (offer string hash pointer)
+  * `bolt12` (offer or settlement reference)
   * `cashu` (mint url + token event id)
-  * `fedimint` (federation-id@domain + ecash redemption hash)
+  * `fedimint` (federation-id@domain + redemption reference)
   * `internal` (off-chain accounting, discouraged unless explicitly trusted)
-* `["spend_rail", "<rail>", "<reference>"]` ΓÇö provider-facing spending rail (distinct from `repay`)
+* `["spend_rail", "<rail>", "<reference>"]` — provider-facing spending rail (distinct from `repay`)
   rails:
 
-  * `lightning` (bare default; implies bolt11 when `spend_rail` is absent ΓÇö backwards compatible)
+  * `lightning` (bare default; implies bolt11 when `spend_rail` is absent — backwards compatible)
   * `bolt11` (explicit: invoice hash pointer)
-  * `bolt12` (offer hash pointer)
+  * `bolt12` (offer or settlement reference)
   * `cashu` (mint url)
   * `fedimint` (federation-id@domain)
-* `["spend_rail_keyset", "<keyset-id>"]` — optional keyset pin for `cashu` or `fedimint` spend rails
+* `["spend_cashu_keyset", "<keyset-id>"]` — optional keyset pin when `spend_rail=cashu`
 * `["guardian", "<pubkey>"]` — guardian pubkey required to co-approve high-spend ticks (SA-Guardian Profile)
 * `["approval_threshold", "<sats>"]` — spend amount in sats above which `guardian` approval is required at the envelope level
 * `["revoke_reason", "<reason>", "<detail>"]` — machine-readable reason for envelope revocation (e.g., `skl-safety-label`)
@@ -135,7 +135,7 @@ An agent requests credit for a specific scope.
     ["provider", "<preferred_provider_pubkey>"],
 
     // optional: declare preferred spending rail
-    ["spend_rail", "lightning"],              // default ΓÇö implies bolt11
+    ["spend_rail", "lightning"],              // default — implies bolt11
     // or: ["spend_rail", "bolt11", "<invoice-hash-pointer>"]  // explicit bolt11
     // or: ["spend_rail", "bolt12", "<offer-hash-pointer>"]
     // or: ["spend_rail", "cashu", "<mint-url>"]
@@ -197,26 +197,22 @@ An **addressable** event that defines the enforceable credit capability.
 
     // optional: provider-facing spending rail
     ["spend_rail", "cashu", "<mint-url>"],
-    ["spend_rail_keyset", "<keyset-id>"]
+    ["spend_cashu_keyset", "<keyset-id>"]
   ]
 }
 ```
 
-Issuers MAY include `spend_rail` and (optionally) `spend_rail_keyset` tags in the envelope to declare the provider-facing spending rail. This is distinct from `repay`, which defines the agent's repayment rail back to the issuer or LP. When `spend_rail` is absent, implementations SHOULD assume `lightning` (bolt11).
+Issuers MAY include `spend_rail` and (optionally, when `spend_rail=cashu`) `spend_cashu_keyset` tags in the envelope to declare the provider-facing spending rail. This is distinct from `repay`, which defines the agent's repayment rail back to the issuer or LP. When `spend_rail` is absent, implementations SHOULD assume `lightning` (bolt11). Detailed proof construction for non-Lightning rails is intentionally out of AC core scope; `repay` and `spend_rail` tags SHOULD carry stable, rail-appropriate references agreed by participating implementations.
 
-### Conditional Reversibility (Hold Period)
+### Conditional Reversibility (Cancel Window)
 
-Envelopes MAY include a `hold_period_secs` tag to create a reversibility window for consequential spends:
+Envelopes MAY include a `cancel_until` tag to create a reversibility window for consequential spends:
 
 ```jsonc
-["hold_period_secs", "300"]
+["cancel_until", "1703003300"]
 ```
 
-When present, credit spends against this envelope follow a two-phase commit:
-
-1. **Hold phase:** After a `kind:39243` Spend Authorization is published, the spend is **committed but not finalized** for `hold_period_secs` seconds. During this window, the guardian or issuer MAY publish a `kind:39246` Cancel Spend event to reclaim the committed tokens.
-
-2. **Finalization:** After the hold period expires without cancellation, the spend is final and irreversible.
+When present, credit spends against this envelope are committed but not final until `cancel_until`. During this window, the guardian or issuer MAY publish a `kind:39246` Cancel Spend event to reclaim the committed tokens. If `cancel_until` is absent, or if it has already passed when the spend authorization is processed, the spend is final immediately.
 
 #### Cancel Spend Event (`kind:39246`)
 
@@ -234,14 +230,14 @@ When present, credit spends against this envelope follow a two-phase commit:
 }
 ```
 
-The cancel event MUST be published before `spend_authorization.created_at + hold_period_secs`. Providers MUST NOT deliver resources during the hold period unless they accept the risk of cancellation. After the hold period expires, cancel events MUST be ignored.
+The cancel event MUST be published before `cancel_until`. Providers SHOULD treat canceled spends as void. After `cancel_until`, cancel events MUST be ignored.
 
 #### Normative Requirements
 
-- Envelopes with `max` above a locally configurable threshold SHOULD include `hold_period_secs`.
-- Providers receiving spend authorizations against hold-period envelopes SHOULD wait for the hold period to expire before delivering irreversible resources.
-- Guardians and issuers MAY publish `kind:39246` cancel events during the hold window.
-- Implementations MUST treat the hold period as a soft escrow — the tokens are committed (deducted from remaining cap) but not transferred until finalization.
+- Envelopes that use reversible spending SHOULD include `cancel_until`.
+- Providers receiving spend authorizations against cancel-window envelopes SHOULD wait until `cancel_until` before delivering irreversible resources.
+- Guardians and issuers MAY publish `kind:39246` cancel events before `cancel_until`.
+- Implementations MUST treat the cancel window as a soft escrow — the tokens are committed (deducted from remaining cap) but not transferred until finalization.
 
 Acceptance / revocation rules:
 
@@ -302,9 +298,9 @@ Receipts SHOULD link:
 
     // repayment rails (use one per receipt):
     ["repay", "bolt11", "<invoice-hash-pointer>"],
-    // or: ["repay", "bolt12", "<offer-hash-pointer>"]          // computed per Appendix C
+    // or: ["repay", "bolt12", "<offer-or-settlement-reference>"]
     // or: ["repay", "cashu", "<mint-url>", "<token-event-id>"]
-    // or: ["repay", "fedimint", "<federation-id>@<domain>", "<ecash-redemption-hash>"]  // computed per Appendix C
+    // or: ["repay", "fedimint", "<federation-id>@<domain>", "<redemption-reference>"]
     ["status", "settled"]
   ]
 }
@@ -543,20 +539,16 @@ Optional constraint tags (include when applicable):
 * `["guardian","<pubkey>"]` — SA-Guardian Profile co-approver
 * `["approval_threshold","<sats>"]` — envelope-level spend threshold above which guardian approval fires
 * `["spend_rail","<rail>"]` — provider-facing payment rail (defaults to `lightning` / bolt11 when absent)
+* `["spend_cashu_keyset","<keyset-id>"]` — optional Cashu-only keyset pin when `spend_rail=cashu`
 * `["revoke_reason","<reason>","<detail>"]` — include on replacement event when revoking
-* `["hold_period_secs","<seconds>"]` — reversibility window for consequential spends (see §Conditional Reversibility)
-
-## Appendix C: Canonical Proof Hashes
-
-* `fedimint` ecash redemption proof: SHA-256 of `(federation_id, ecash_note_id, amount_msats, spend_timestamp)` in deterministic JSON (stable key ordering, no whitespace). This provides a canonical proof reference that can be verified against the federation's public keysets without revealing the ecash note itself. Use this value for the `<ecash-redemption-hash>` element in `repay` fedimint tags and for `payment_proof` in `kind:39220` Skill License events (see NIP-SA).
-* `bolt12` payment proof: SHA-256 of the canonical offer bytes as defined in BOLT 12. Use this value for the `<offer-hash-pointer>` element in `repay` bolt12 tags and for `payment_proof` in `kind:39220` Skill License events (see NIP-SA).
+* `["cancel_until","<unix_ts>"]` — reversibility window for consequential spends (see §Conditional Reversibility)
 
 ## Changelog
 
 **v4 (2026-03-05) — NIST AI Agent Standards Alignment**
 
-- Added Conditional Reversibility / Hold Period (`hold_period_secs` tag, `kind:39246` Cancel Spend event) for two-phase commit on consequential spends (§Conditional Reversibility).
-- Added `hold_period_secs` to Appendix B optional tag checklist.
+- Added Conditional Reversibility / Cancel Window (`cancel_until` tag, `kind:39246` Cancel Spend event) for reversible consequential spends (§Conditional Reversibility).
+- Added `cancel_until` and `spend_cashu_keyset` to Appendix B optional tag checklist.
 - Satisfies requirements from: CAISI RFI NIST-2025-0035 (Jan 2026) — rollback/undo for unwanted agent actions.
 
 ## References
