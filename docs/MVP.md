@@ -89,6 +89,8 @@ By default, the app should come preconfigured to use the OpenAgents-hosted Nexus
 
 The first “ah ha” moment should happen within 30-60 seconds. For the MVP, it is appropriate for that moment to be earning-shaped rather than task-shaped: the user goes online, receives a real paid job, and sees sats land in the wallet. Task success can reinforce the product later, but it is not required before the earn loop.
 
+Even before the user goes online, the app should not feel empty. It should show live observed market activity from Nexus and the configured relay set so the user immediately sees that real jobs exist. Those rows are preview-only while offline: they create demand visibility and trust, but the provider does not become eligible to accept work until the user explicitly clicks `Go Online`.
+
 ### 5.2 Main screen and “game feel”
 
 The primary surface is a single desktop app built in WGPUI that always shows the user the three things that matter:
@@ -211,12 +213,15 @@ When the user flips it off, the provider must stop cleanly. There must be no zom
 As a provider, the app must be able to:
 
 * Receive NIP-90 requests for at least one supported job class (text generation is the baseline)
+* Surface observed market activity even while offline so the user can browse demand before opting into provider mode
 * Auto-accept matching jobs by default based on configuration, capacity, and health; manual per-job approval is not part of the primary earn loop
 * Execute deterministically enough that failures are attributable and recoverable
 * Publish feedback/results back to the network in the correct response format, fanning out to every healthy configured relay by default
 * Track job telemetry locally in a way the UI can display: job count, sats earned, failures with reasons
 
 Relay fanout should be treated as best-effort transport, not as a global blocking quorum. In MVP, the provider should try to publish job feedback/results broadly across healthy configured relays, but one slow or failing relay must not stall execution, settlement, or truthful completion state. Relay publish failures should surface in diagnostics and history rather than silently disappear.
+
+Offline preview must be clearly distinguished from active provider intake. While offline, the app may show recently observed or currently reachable job demand in the same job surfaces, but those rows should be read-only and visibly marked as preview/unclaimable until the user turns provider mode on.
 
 Open-market contention is part of the protocol. If a public NIP-90 request is visible on public relays, Autopilot cannot guarantee it is the only provider that starts work on that request. MVP should not pretend there is a global cross-relay lock. Instead, the provider should keep waste bounded with strict local admission controls: low `max_inflight`, ttl freshness checks, minimum reward thresholds, per-buyer limits, and cheap preflight validation before expensive execution. For MVP, `max_inflight` means the number of active jobs the provider may work at once, and the default should be `1` until the desktop runtime and Codex execution lane are proven to handle safe concurrent job execution.
 
@@ -322,6 +327,8 @@ When something breaks, the app must say:
 3. whether earnings are currently possible.
 
 If the user is online but there are no jobs, the UI must not look dead. It should communicate “online and waiting,” show uptime, show network health, and (if seed demand exists) show “starter jobs queued” or “quests available.”
+
+If the user is offline, the UI should still show current or recently observed market activity so first launch immediately feels alive. The key distinction is not “visible vs invisible,” it is “previewing demand” vs “available to accept work.”
 
 The MVP must also include replay-safe reconnect behavior. If the user disconnects and reconnects, they should not see duplicate jobs, duplicate earnings, or confusing resets. If the cursor is stale, the app must rebootstrap deterministically and visibly.
 

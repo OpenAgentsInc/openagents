@@ -676,7 +676,7 @@ flowchart TB
 - **Autopilot’s local state**
   The app keeps an **earn kernel receipt stream** (load/save from a local file), an **economy snapshot** state (snapshots loaded/saved and/or **computed from receipts** at UTC minute boundaries), and an **earn job lifecycle projection** (derived from the same events for the job/earnings UI). Job inbox, active job, job history, and provider ingress feed into both the projection and the receipt state.
 
-- **Authority path (intended)**  
+- **Authority path (intended)**
   TreasuryRouter and the Kernel Authority API run as **server-side services** (backend), not on the user’s machine and not on Nostr/Spacetime. User actions (create work, create contract, fund, submit, etc.) are sent over **authenticated HTTPS to TreasuryRouter**, which talks to the Kernel Authority API. The kernel writes to the canonical **Receipt Stream** and **EconomySnapshot Store**. The app does not mutate kernel state except via these commands.
 
 - **How the app gets kernel data**

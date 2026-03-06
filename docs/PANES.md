@@ -82,6 +82,7 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Source badge is projection stream id (`stream.activity_projection.v1`), replay-safe and deduplicated.
   - Event rows carry stable event IDs and deterministic source tags to avoid duplicate replay rows.
   - Filters by domain (`all`, `chat`, `job`, `wallet`, `network`, `sync`) with selected-row details.
+  - Continues to show observed network/job activity while offline so the app feels live before provider mode is enabled.
   - Explicit pane state machine: `loading`, `ready`, `error`.
 - `Alerts and Recovery`
   - Deterministic incident queue across identity, wallet, relay, provider, and sync domains.
@@ -101,7 +102,9 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Actions: refresh metrics and stale-state visibility.
 - `Job Inbox`
   - Deterministic intake pane for incoming NIP-90 requests with stable request IDs and replay-safe ordering.
+  - Remains visible while offline in preview mode so the user can see reachable market activity before opting into provider mode.
   - Shows requester, capability, demand source (`open-network` vs `starter-demand`) with a visible source badge or star, price, ttl, validation state, and decision state per request.
+  - Offline rows are read-only and visibly marked as preview/unclaimable until the user clicks `Go Online`.
   - Auto-accept is the default provider policy for matching jobs while online.
   - Actions: select request, view why it auto-accepted/rejected, and apply manual accept/reject override only for debug, hold, or policy-tuning cases.
 - `Active Job`

@@ -79,8 +79,12 @@ Your Earnings
 Today: 0 sats
 Total: 0 sats
 
-Recent Jobs
-(empty)
+Market Activity
+Job #8123  AI Inference   50 sats   Open
+Job #8119  JSON Repair    20 sats   Open
+Job #8111  Starter Job    15 sats   OpenAgents
+
+You are browsing live demand. Go Online to start accepting jobs.
 
 Wallet: Connected
 ```
@@ -128,6 +132,8 @@ Total: 50 sats
 - No onboarding maze on first run.
 - No settings-first interaction.
 - One primary action button (`Go Online`/`Go Offline`).
+- Offline mode should still show live or recently observed market activity; the list should not look empty just because provider mode is off.
+- Offline market rows are preview-only. They must be visibly read-only until the user explicitly goes online.
 - Advanced panes may remain available via command palette, but not required for first earnings loop.
 - Future provider modes may be added later, but compute remains the default active lane for this MVP.
 - First sats milestones should be visibly celebrated. Initial milestone set: `10`, `25`, `50`, `100`.
@@ -163,6 +169,7 @@ Responsibilities:
 
 - connect to relays, with the default OpenAgents-hosted Nexus as primary and a curated default public relay set as additional transport,
 - ingest and deduplicate NIP-90 requests from the full configured reachable relay set, not just the Nexus relay,
+- surface observable market activity to the desktop even before provider mode is enabled,
 - auto-accept matching jobs by default subject to policy/capacity and execute them locally,
 - publish capability, result, and feedback events to every healthy configured relay by default, using best-effort fanout rather than blocking on every relay ack,
 - settle payment to wallet,
@@ -406,172 +413,175 @@ Backroom review completed before this list. Relevant candidate restore sources i
 16. **Issue name:** `First Sats Milestone Celebration`  
     **Description:** Celebrate first earnings milestones (`10/25/50/100` sats initially) with truthful wallet-backed UI states and no synthetic progress.
 
-17. **Issue name:** `Default Nexus Primary Relay Configuration`  
+17. **Issue name:** `Offline Market Preview`  
+    **Description:** Show live or recently observed job activity in Mission Control and job surfaces before the user goes online, with clear preview-only/read-only state until provider mode is enabled.
+
+18. **Issue name:** `Default Nexus Primary Relay Configuration`  
     **Description:** Preconfigure the desktop to use the OpenAgents-hosted Nexus as the primary Nostr relay plus a curated default public relay set selected from relays with meaningful recent NIP-90 job activity; allow full override to a user-run Nexus and custom relay set, while starter jobs remain tied to the OpenAgents-hosted Nexus initially.
 
-18. **Issue name:** `Public-Open Nexus Default Posture`  
+19. **Issue name:** `Public-Open Nexus Default Posture`  
     **Description:** Treat both OpenAgents-hosted and self-hosted Nexus deployments as public/open relays by default; defer closed/private Nexus modes to later roadmap work.
 
 ### Provider Runtime and NIP-90 Execution
 
-19. **Issue name:** `Provider Runtime Promotion: Simulated to Relay-Backed`  
+20. **Issue name:** `Provider Runtime Promotion: Simulated to Relay-Backed`  
     **Description:** Replace simulated provider lifecycle updates with real relay-backed status and event correlation.
 
-20. **Issue name:** `NIP-90 Request Subscription Layer`  
+21. **Issue name:** `NIP-90 Request Subscription Layer`  
     **Description:** Subscribe to configured request kind ranges (`5000-5999`) with stable filters, reconnect handling, and duplicate suppression.
 
-21. **Issue name:** `Job Admission and Capability Matching`  
+22. **Issue name:** `Job Admission and Capability Matching`  
     **Description:** Evaluate request kind/params/cost/policy before accept, auto-accept matching jobs by default when capacity allows, include buyer targeting rules such as preferring or requiring OpenAgents participants / Autopilot clients, and expose deterministic reject reasons.
 
-22. **Issue name:** `Starter Job Eligibility Proof`  
+23. **Issue name:** `Starter Job Eligibility Proof`  
     **Description:** Enforce OpenAgents starter-job eligibility only for providers connected to the OpenAgents-hosted Nexus, using hosted-Nexus authenticated Autopilot session evidence and bound Nostr identity rather than optional Nostr client tags alone; defer stronger anti-spoofing attestation hardening to post-MVP follow-up.
 
-23. **Issue name:** `Feedback Event Pipeline (kind 7000)`  
+24. **Issue name:** `Feedback Event Pipeline (kind 7000)`  
     **Description:** Publish `processing`, `payment-required`, `success`, and `error` feedback events with request linkage and timestamps, fanning out to every healthy configured relay by default without blocking job progression on universal relay success; include explicit terminal unpaid feedback for correlated losing/late `race` results when possible.
 
-24. **Issue name:** `Deterministic Job Executors (Hash/JSON/Benchmark)`  
+25. **Issue name:** `Deterministic Job Executors (Hash/JSON/Benchmark)`  
     **Description:** Implement deterministic local executors for initial paid jobs with reproducible outputs and timing.
 
-25. **Issue name:** `Minimal Inference Executor (kind 5050)`  
+26. **Issue name:** `Minimal Inference Executor (kind 5050)`  
     **Description:** Add bounded local inference execution path for text-generation jobs with model/timeout controls.
 
-26. **Issue name:** `Result Publishing Pipeline (6000-6999)`  
+27. **Issue name:** `Result Publishing Pipeline (6000-6999)`  
     **Description:** Publish NIP-90 result events with canonical `e/p/amount/status` tagging and payload integrity hashes, using broad healthy-relay fanout by default and surfacing partial publish failure states explicitly.
 
-27. **Issue name:** `Job Correlation Model (request-feedback-result-payment)`  
+28. **Issue name:** `Job Correlation Model (request-feedback-result-payment)`  
     **Description:** Enforce a single correlation key strategy across inbox, active job, history, and wallet reconciliation lanes.
 
-28. **Issue name:** `Active Job Pane Authority Wiring`  
+29. **Issue name:** `Active Job Pane Authority Wiring`  
     **Description:** Source active-job stage transitions from runtime events, not local manual stage stepping.
 
-29. **Issue name:** `Job History Receipt Authority Wiring`  
+30. **Issue name:** `Job History Receipt Authority Wiring`  
     **Description:** Source history rows from authoritative runtime/wallet settlement evidence and keep immutable receipt metadata.
 
-30. **Issue name:** `Remove Synthetic Success Paths for Earnings`  
+31. **Issue name:** `Remove Synthetic Success Paths for Earnings`  
     **Description:** Eliminate any path where local-only state can mark a paid success without wallet-confirmed settlement.
 
 ### Lightning Settlement and Wallet Authority
 
-31. **Issue name:** `Per-Job Invoice Contract`  
+32. **Issue name:** `Per-Job Invoice Contract`  
     **Description:** Define and enforce invoice generation contract per accepted job, including amount, expiry, and correlation metadata.
 
-32. **Issue name:** `Buyer Invoice Payment Worker`  
+33. **Issue name:** `Buyer Invoice Payment Worker`  
     **Description:** Implement buyer-side payment worker that settles provider invoices and records payment outcomes with retries.
 
-33. **Issue name:** `Wallet Receive Confirmation Ingestion`  
+34. **Issue name:** `Wallet Receive Confirmation Ingestion`  
     **Description:** Ingest receive confirmations into desktop state so payout status can be derived from wallet evidence.
 
-34. **Issue name:** `Wallet-Job Reconciliation Projection`  
+35. **Issue name:** `Wallet-Job Reconciliation Projection`  
     **Description:** Build deterministic reconciliation between job receipts and wallet receives, including mismatch reason codes.
 
-35. **Issue name:** `Authoritative Payout Gate Enforcement`  
+36. **Issue name:** `Authoritative Payout Gate Enforcement`  
     **Description:** Enforce payout-complete only when reconciliation confirms wallet receipt linkage for the corresponding job.
 
-36. **Issue name:** `Withdrawal Flow Hardening`  
+37. **Issue name:** `Withdrawal Flow Hardening`  
     **Description:** Improve pay-invoice withdraw UX with clear terminal states, retry guidance, and deterministic status refresh.
 
-37. **Issue name:** `Payment Failure Lifecycle`  
+38. **Issue name:** `Payment Failure Lifecycle`  
     **Description:** Add payment timeout, retry budget, and terminal-failure handling with user-visible reason codes.
 
-38. **Issue name:** `Synthetic Payment Pointer Hard Gate`  
+39. **Issue name:** `Synthetic Payment Pointer Hard Gate`  
     **Description:** Reject synthetic pointers (`pay:*`, pending placeholders) at ingest and UI layers for completed payout claims.
 
 ### Seed Demand and Buyer Lane
 
-39. **Issue name:** `Seed Demand Buyer Service (MVP)`  
+40. **Issue name:** `Seed Demand Buyer Service (MVP)`  
     **Description:** Stand up minimal buyer loop service that posts paid NIP-90 jobs, assigns each starter job to a single eligible provider using a short-lived hosted-Nexus lease with aggressive start-confirm timeout and more forgiving execution lease semantics, and settles provider invoices on cadence.
 
-40. **Issue name:** `Seed Job Templates and Pricing Matrix`  
+41. **Issue name:** `Seed Job Templates and Pricing Matrix`  
     **Description:** Define controlled starter job templates (hash/json/benchmark/inference) and sats pricing used by buyer loop.
 
-41. **Issue name:** `Seed Pool Budget and Kill Switch Controls`  
+42. **Issue name:** `Seed Pool Budget and Kill Switch Controls`  
     **Description:** Add configurable sats pool, spend limits, and immediate disable controls for safe launch operations.
 
-42. **Issue name:** `Starter vs Open-Network Labeling`  
+43. **Issue name:** `Starter vs Open-Network Labeling`  
     **Description:** Label and track starter jobs distinctly from open-network demand in UI, metrics, and operator reports, while keeping them in the normal job flow with a visible badge/marker rather than a separate primary user queue; include that OpenAgents starter jobs target Autopilot users only.
 
-43. **Issue name:** `First-Earnings SLA Monitor`  
+44. **Issue name:** `First-Earnings SLA Monitor`  
     **Description:** Measure and alert on time-to-first-paid-job for newly online providers.
 
-44. **Issue name:** `Seed Demand Reliability Backpressure`  
+45. **Issue name:** `Seed Demand Reliability Backpressure`  
     **Description:** Add dispatch backpressure controls based on provider availability, payout success, queue latency, aggressive starter-job start-confirm timeout health, and execution-lease reassignment health.
 
-45. **Issue name:** `Starter Jobs Availability Gating By Nexus`  
+46. **Issue name:** `Starter Jobs Availability Gating By Nexus`  
     **Description:** Make it explicit in UI and runtime that OpenAgents starter jobs are available only when connected to the OpenAgents-hosted Nexus, not through a third-party Nexus bridge, and that third-party operators must run their own seed-demand service if they want equivalent starter jobs.
 
 ### Metrics, Stats, and Public Beacon
 
-46. **Issue name:** `Canonical Earn Metrics Schema`  
+47. **Issue name:** `Canonical Earn Metrics Schema`  
     **Description:** Define canonical metrics for providers online, jobs posted/completed, completion latency, sats paid, and failures.
 
-47. **Issue name:** `Metrics Emission from Desktop and Buyer`  
+48. **Issue name:** `Metrics Emission from Desktop and Buyer`  
     **Description:** Emit structured telemetry from provider app and buyer service using stable metric names and dimensions.
 
-48. **Issue name:** `Stats Aggregation Service Contract`  
+49. **Issue name:** `Stats Aggregation Service Contract`  
     **Description:** Implement aggregation/storage contract for live and historical market metrics powering public stats.
 
-49. **Issue name:** `openagents.com/stats Implementation`  
+50. **Issue name:** `openagents.com/stats Implementation`  
     **Description:** Implement public stats endpoint/page showing live beacon metrics for ecosystem visibility.
 
-50. **Issue name:** `In-App Network Stats Hydration`  
+51. **Issue name:** `In-App Network Stats Hydration`  
     **Description:** Hydrate Mission Control network stats from aggregator with stale/error handling.
 
-51. **Issue name:** `Global Earnings Today Computation`  
+52. **Issue name:** `Global Earnings Today Computation`  
     **Description:** Compute and cache global daily sats paid with deterministic rollup boundaries and correction logic.
 
-52. **Issue name:** `Metric Integrity Checks`  
+53. **Issue name:** `Metric Integrity Checks`  
     **Description:** Add consistency checks between wallet-confirmed payout totals and stats aggregation outputs.
 
 ### Reliability, Sync, and Operations
 
-53. **Issue name:** `Replay-Safe Apply for Job/Payment Events`  
+54. **Issue name:** `Replay-Safe Apply for Job/Payment Events`  
     **Description:** Extend retained apply engine for idempotent replay-safe processing of job and settlement events.
 
-54. **Issue name:** `Duplicate Suppression Keys`  
+55. **Issue name:** `Duplicate Suppression Keys`  
     **Description:** Define deterministic duplicate keys for request/result/feedback/payment events and enforce them in projections.
 
-55. **Issue name:** `Stale Cursor Rebootstrap for Earn Lanes`  
+56. **Issue name:** `Stale Cursor Rebootstrap for Earn Lanes`  
     **Description:** Ensure stale cursor recovery for job and wallet projections with no duplicate earnings side effects.
 
-56. **Issue name:** `Crash Recovery for In-Flight Jobs`  
+57. **Issue name:** `Crash Recovery for In-Flight Jobs`  
     **Description:** Recover in-flight jobs after restart with explicit resumed/failed states and no double settlement.
 
-57. **Issue name:** `Relay Outage Degraded Mode UX`  
+58. **Issue name:** `Relay Outage Degraded Mode UX`  
     **Description:** Improve degraded-mode transparency and actionable recovery guidance during relay/network incidents.
 
-58. **Issue name:** `Payout Mismatch Incident Runbook`  
+59. **Issue name:** `Payout Mismatch Incident Runbook`  
     **Description:** Add runbook for payout mismatch triage, evidence capture, containment, and user-facing status updates.
 
-59. **Issue name:** `Rollout Flags and Cohort Controls for Earn`  
+60. **Issue name:** `Rollout Flags and Cohort Controls for Earn`  
     **Description:** Add staged rollout controls, health thresholds, and rollback actions specific to Mission Control earn loop.
 
 ### Test Matrix and Launch Gates
 
-60. **Issue name:** `NIP-90 Builder/Parser Unit Coverage`  
+61. **Issue name:** `NIP-90 Builder/Parser Unit Coverage`  
     **Description:** Add/expand unit tests for request/result/feedback serialization and validation in canonical kind ranges.
 
-61. **Issue name:** `Integration Test: Request to Result to Payment`  
+62. **Issue name:** `Integration Test: Request to Result to Payment`  
     **Description:** Add integration test proving end-to-end request handling, execution, result publish, invoice pay, and wallet confirmation.
 
-62. **Issue name:** `Desktop Mission Control State Tests`  
+63. **Issue name:** `Desktop Mission Control State Tests`  
     **Description:** Add deterministic tests for offline/connecting/online/degraded transitions and earnings UI updates.
 
-63. **Issue name:** `E2E Test: First Sats Moment`  
+64. **Issue name:** `E2E Test: First Sats Moment`  
     **Description:** Add full end-to-end test that validates first-run flow through wallet-increment proof.
 
-64. **Issue name:** `Chaos Test: Relay Loss + Recovery`  
+65. **Issue name:** `Chaos Test: Relay Loss + Recovery`  
     **Description:** Validate replay-safe reconnect behavior under relay disconnects and ensure no duplicate receipts.
 
-65. **Issue name:** `Chaos Test: Wallet Error + Recovery`  
+66. **Issue name:** `Chaos Test: Wallet Error + Recovery`  
     **Description:** Validate payout-gate behavior and UI degradation/recovery when wallet operations fail.
 
-66. **Issue name:** `Stress Harness: 3-Second Job Cadence`  
+67. **Issue name:** `Stress Harness: 3-Second Job Cadence`  
     **Description:** Add load harness for seed-demand cadence with latency, failure, and settlement success reporting.
 
-67. **Issue name:** `Earn MVP Merge Gate Script`  
+68. **Issue name:** `Earn MVP Merge Gate Script`  
     **Description:** Add deterministic test/lint gate script covering critical earn-loop acceptance checks.
 
-68. **Issue name:** `Launch Rehearsal and Production Signoff`  
+69. **Issue name:** `Launch Rehearsal and Production Signoff`  
     **Description:** Run staged rehearsal with fixed sats pool and publish signoff evidence before broad enablement.
 
 ### Existing Issues To Reuse/Extend
