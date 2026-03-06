@@ -2050,3 +2050,529 @@ Verification services MUST enforce assignment semantics deterministically:
 * Outcome registry public exports remain aggregate-safe; restricted exports carry linkage needed for independent audit replay.
 
 ---
+
+Below are **additions to your proto plan** that introduce **compute market primitives** while staying consistent with the kernel invariants and your existing packages.
+
+I am **not modifying your previous files** — only **adding a new package and a few cross-references** so the system composes cleanly.
+
+This lets the Economy Kernel support:
+
+* spot compute markets
+* forward capacity sales
+* GPU futures
+* compute options
+* delivery proofs
+* compute indices
+* hedging instruments
+
+while remaining **receipt-native and policy-bounded**.
+
+---
+
+# 3. Compute Market Proto Additions
+
+New package:
+
+```
+proto/
+  openagents/
+    compute/v1/
+      compute_products.proto
+      compute_capacity.proto
+      compute_instruments.proto
+      compute_indices.proto
+      compute_delivery.proto
+```
+
+These packages implement the **Section 8 compute commodity market spec**.
+
+They integrate with:
+
+* `common/v1`
+* `policy/v1`
+* `economy/v1`
+* `aegis/outcomes/v1`
+
+---
+
+# 3.1 Compute product definitions
+
+`proto/openagents/compute/v1/compute_products.proto`
+
+This defines **standardized compute commodities**.
+
+```proto
+syntax = "proto3";
+
+package openagents.compute.v1;
+
+import "openagents/common/v1/common.proto";
+
+option java_multiple_files = true;
+
+enum ResourceClass {
+  RESOURCE_CLASS_UNSPECIFIED = 0;
+
+  GPU_A100 = 1;
+  GPU_H100 = 2;
+  GPU_B200 = 3;
+
+  GPU_GENERIC_HIGHMEM = 10;
+  GPU_GENERIC_STANDARD = 11;
+
+  CPU_STANDARD = 20;
+  CPU_HIGHMEM = 21;
+
+  STORAGE_IO = 30;
+}
+
+enum SettlementMode {
+  SETTLEMENT_MODE_UNSPECIFIED = 0;
+  PHYSICAL_DELIVERY = 1;
+  CASH_SETTLED = 2;
+  BUYER_ELECTION = 3;
+}
+
+message ComputeProduct {
+
+  string product_id = 1;
+
+  ResourceClass resource_class = 2;
+
+  string capacity_unit = 3;
+  // e.g. "gpu_hour", "gpu_second", "gpu_month"
+
+  string region_spec = 4;
+  // e.g. "any", "us-east", "europe"
+
+  string performance_band = 5;
+  // e.g. memory / bandwidth / accelerator spec band
+
+  openagents.common.v1.CostAttestationLevel min_cost_attestation = 6;
+
+  bool index_eligible = 7;
+
+  SettlementMode settlement_mode = 8;
+
+  int64 version = 20;
+
+  map<string,string> tags = 30;
+}
+```
+
+This allows the kernel to standardize products like:
+
+```
+GPU_H100_US_GPU_HOUR
+GPU_GENERIC_HIGHMEM_GLOBAL_GPU_SECOND
+```
+
+which become the **base layer for futures and indices**.
+
+---
+
+# 3.2 Capacity lots (physical inventory)
+
+`proto/openagents/compute/v1/compute_capacity.proto`
+
+Represents **actual compute inventory offered into the market**.
+
+```proto
+syntax = "proto3";
+
+package openagents.compute.v1;
+
+import "openagents/common/v1/common.proto";
+
+option java_multiple_files = true;
+
+enum CapacityLotState {
+  CAPACITY_LOT_STATE_UNSPECIFIED = 0;
+  OFFERED = 1;
+  RESERVED = 2;
+  ASSIGNED = 3;
+  DELIVERING = 4;
+  COMPLETED = 5;
+  CANCELLED = 6;
+}
+
+message CapacityLot {
+
+  string lot_id = 1;
+
+  string provider_id = 2;
+
+  string product_id = 3;
+
+  uint64 quantity = 4;
+
+  int64 delivery_start_ms = 5;
+  int64 delivery_end_ms = 6;
+
+  openagents.common.v1.Money min_price = 7;
+
+  string region_override = 8;
+
+  openagents.common.v1.CostAttestationLevel attestation_level = 9;
+
+  CapacityLotState state = 10;
+
+  map<string,string> tags = 20;
+}
+```
+
+Example:
+
+```
+lot_id: "lot_h100_cluster_0123"
+product_id: "GPU_H100_US_GPU_HOUR"
+quantity: 10,000
+delivery_start: 2026-06-01
+delivery_end: 2026-06-30
+```
+
+These lots back **physical settlement**.
+
+---
+
+# 3.3 Compute financial instruments
+
+`proto/openagents/compute/v1/compute_instruments.proto`
+
+Defines **spot, forwards, futures, options**.
+
+```proto
+syntax = "proto3";
+
+package openagents.compute.v1;
+
+import "openagents/common/v1/common.proto";
+
+option java_multiple_files = true;
+
+enum InstrumentType {
+
+  INSTRUMENT_TYPE_UNSPECIFIED = 0;
+
+  SPOT = 1;
+
+  FORWARD_PHYSICAL = 2;
+
+  FUTURE_CASH = 3;
+
+  FUTURE_PHYSICAL = 4;
+
+  CALL_OPTION_RESERVATION = 5;
+
+  PUT_OPTION_RELEASE = 6;
+
+  SWAP_FIXED_FLOATING = 7;
+
+  STRIP = 8;
+}
+
+enum InstrumentState {
+
+  INSTRUMENT_STATE_UNSPECIFIED = 0;
+
+  CREATED = 1;
+
+  OPEN = 2;
+
+  FILLED = 3;
+
+  ACTIVE = 4;
+
+  DELIVERING = 5;
+
+  CASH_SETTLING = 6;
+
+  SETTLED = 7;
+
+  DEFAULTED = 8;
+
+  EXPIRED = 9;
+
+  CANCELLED = 10;
+}
+
+message CapacityInstrument {
+
+  string instrument_id = 1;
+
+  InstrumentType type = 2;
+
+  string product_id = 3;
+
+  uint64 quantity = 4;
+
+  openagents.common.v1.Money strike_price = 5;
+
+  int64 delivery_start_ms = 6;
+
+  int64 delivery_end_ms = 7;
+
+  SettlementMode settlement_mode = 8;
+
+  string buyer_id = 9;
+
+  string seller_id = 10;
+
+  InstrumentState state = 11;
+
+  string compute_index_id = 12;
+
+  string capacity_lot_id = 13;
+
+  map<string,string> tags = 20;
+}
+```
+
+Examples:
+
+```
+type: FUTURE_CASH
+product: GPU_H100_US_GPU_HOUR
+delivery_month: 2027-01
+```
+
+or
+
+```
+type: CALL_OPTION_RESERVATION
+strike: $2.50/gpu_hour
+```
+
+---
+
+# 3.4 Compute indices
+
+`proto/openagents/compute/v1/compute_indices.proto`
+
+Used for **cash settlement and `/stats` pricing**.
+
+```proto
+syntax = "proto3";
+
+package openagents.compute.v1;
+
+import "openagents/common/v1/common.proto";
+
+option java_multiple_files = true;
+
+message ComputeIndex {
+
+  string index_id = 1;
+
+  string product_id = 2;
+
+  int64 observation_start_ms = 3;
+
+  int64 observation_end_ms = 4;
+
+  double price_p50 = 5;
+
+  double price_p95 = 6;
+
+  uint64 observation_count = 7;
+
+  double quality_score = 8;
+
+  string methodology_version = 9;
+
+  string index_hash = 10;
+
+  map<string,string> tags = 20;
+}
+```
+
+This index powers:
+
+```
+cash-settled GPU futures
+swap floating legs
+market pricing signals
+```
+
+---
+
+# 3.5 Delivery proofs
+
+`proto/openagents/compute/v1/compute_delivery.proto`
+
+Physical settlement proof.
+
+```proto
+syntax = "proto3";
+
+package openagents.compute.v1;
+
+import "openagents/common/v1/common.proto";
+
+option java_multiple_files = true;
+
+message DeliveryProof {
+
+  string delivery_id = 1;
+
+  string instrument_id = 2;
+
+  string capacity_lot_id = 3;
+
+  uint64 delivered_quantity = 4;
+
+  int64 delivery_start_ms = 5;
+
+  int64 delivery_end_ms = 6;
+
+  openagents.common.v1.EvidenceRef cost_proof_bundle = 7;
+
+  openagents.common.v1.EvidenceRef runtime_attestation = 8;
+
+  bool accepted = 9;
+
+  openagents.common.v1.TraceContext trace = 10;
+}
+```
+
+This links:
+
+```
+CapacityInstrument → CapacityLot → DeliveryProof → CostProofBundle
+```
+
+making delivery **verifiable and auditable**.
+
+---
+
+# 4. Cross-package integrations
+
+## 4.1 WorkUnits referencing compute markets
+
+`outcomes_work.proto` can reference compute instruments:
+
+```
+string compute_instrument_id = N;
+```
+
+This allows:
+
+```
+hedged compute → execution job
+```
+
+---
+
+## 4.2 Policy rules extended for compute markets
+
+Add fields to `PolicyBundle`:
+
+```
+message ComputeMarketRule {
+
+  string product_id = 1;
+
+  uint64 max_open_interest = 2;
+
+  double max_paper_to_physical_ratio = 3;
+
+  double min_deliverable_coverage_ratio = 4;
+
+  bool allow_cash_settlement = 5;
+
+  bool allow_options = 6;
+
+}
+```
+
+---
+
+## 4.3 Economy snapshot additions
+
+Add compute market metrics:
+
+```
+double compute_open_interest = X;
+double paper_to_physical_ratio = Y;
+double deliverable_coverage_ratio = Z;
+double hedged_compute_share = W;
+```
+
+---
+
+# 5. Resulting economic stack
+
+With these additions the kernel supports:
+
+### Base layer
+
+WorkUnits
+Contracts
+Verification
+Settlement
+
+### Risk layer
+
+Bonds
+Warranties
+Claims
+
+### Market layer
+
+Coverage markets
+Prediction signals
+
+### Compute commodity layer
+
+Spot compute
+Forward capacity
+GPU futures
+Options on compute
+Delivery proofs
+Compute price indices
+
+---
+
+# 6. Why this architecture is powerful
+
+You now have **one unified substrate** for:
+
+1. **AI labor markets**
+
+```
+agent work
+verification
+liability
+```
+
+2. **Compute markets**
+
+```
+GPU supply
+capacity futures
+price discovery
+```
+
+3. **Risk markets**
+
+```
+coverage
+prediction
+insurance
+```
+
+All share:
+
+```
+policy bundles
+receipts
+identity assurance
+provenance
+evidence
+```
+
+So the system becomes something very unusual:
+
+> a **general economic kernel for machine work**
+
+not just a marketplace.
