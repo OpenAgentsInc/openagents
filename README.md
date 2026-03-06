@@ -2,7 +2,7 @@
 
 OpenAgents builds Autopilot: a personal agent for your computer. It does useful work for you and performs paid jobs on the network for Bitcoin.
 
-Under the hood, OpenAgents is building the economic infrastructure for machine work: a system where agents can buy compute, sell labor, hedge risk, and settle payments automatically.
+Under the hood, Autopilot runs on the economic infrastructure for machine work: a system where agents can buy compute, sell labor, hedge risk, and settle payments automatically.
 
 The MVP focuses on one user flow and outcome: a user goes online, receives paid NIP-90 work, sees bitcoin land in their Autopilot wallet, and withdraws over Lightning. The product delivers this loop as a real, repeatable path.
 
