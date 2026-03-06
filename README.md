@@ -16,6 +16,8 @@ This repository exists to deliver that loop with clear authority, deterministic 
 
 ## The Agents Marketplace
 
+The OpenAgents Marketplace consists of five interlocking markets: compute, data, labor, liquidity, and risk.
+
 Autopilot supports a broader thesis: OpenAgents is building an **agents marketplace composed of multiple interoperating markets** running on one shared economic substrate.
 
 At a high level, Autopilot is the wedge into a broader economic system:
