@@ -278,13 +278,14 @@ pub fn resolve_control_bearer_auth(
 pub fn resolve_control_bearer_auth_from_env(
     client: &Client,
     control_base_url: &str,
+    bound_nostr_pubkey_override: Option<&str>,
 ) -> Result<Option<String>, String> {
     let static_bearer_auth = ENV_CONTROL_BEARER_TOKEN_KEYS
         .iter()
         .find_map(|key| std::env::var(key).ok())
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
-    let session_bootstrap_request = session_bootstrap_request_from_env();
+    let session_bootstrap_request = session_bootstrap_request_from_env(bound_nostr_pubkey_override);
     resolve_control_bearer_auth(
         client,
         control_base_url,
@@ -326,13 +327,18 @@ pub fn mint_sync_token_blocking(
 
 pub fn bootstrap_sync_session_from_env(
     client: &Client,
+    bound_nostr_pubkey_override: Option<&str>,
 ) -> Result<Option<SyncBootstrapResult>, String> {
     if !spacetime_sync_enabled_from_env() {
         return Ok(None);
     }
 
     let control_base_url = resolve_control_base_url_from_env()?;
-    let bearer_auth = resolve_control_bearer_auth_from_env(client, control_base_url.as_str())?;
+    let bearer_auth = resolve_control_bearer_auth_from_env(
+        client,
+        control_base_url.as_str(),
+        bound_nostr_pubkey_override,
+    )?;
     let target = resolve_subscribe_target_from_env()?;
     let result = bootstrap_sync_session(
         client,
@@ -750,7 +756,9 @@ fn truncate_body(value: &str) -> String {
     format!("{prefix}...")
 }
 
-fn session_bootstrap_request_from_env() -> Option<DesktopSessionBootstrapRequest> {
+pub fn session_bootstrap_request_from_env(
+    bound_nostr_pubkey_override: Option<&str>,
+) -> Option<DesktopSessionBootstrapRequest> {
     if !env_flag_enabled(ENV_ENABLE_CONTROL_SESSION_BOOTSTRAP) {
         return None;
     }
@@ -760,7 +768,8 @@ fn session_bootstrap_request_from_env() -> Option<DesktopSessionBootstrapRequest
             .unwrap_or_else(default_desktop_client_id),
         device_name: resolve_optional_env_any(&ENV_CONTROL_DEVICE_NAME_KEYS)
             .or_else(default_device_name),
-        bound_nostr_pubkey: resolve_optional_env_any(&ENV_CONTROL_BOUND_NOSTR_PUBKEY_KEYS),
+        bound_nostr_pubkey: resolve_optional_env_any(&ENV_CONTROL_BOUND_NOSTR_PUBKEY_KEYS)
+            .or_else(|| bound_nostr_pubkey_override.map(str::to_string)),
         client_version: resolve_optional_env_any(&ENV_CONTROL_CLIENT_VERSION_KEYS),
     })
 }

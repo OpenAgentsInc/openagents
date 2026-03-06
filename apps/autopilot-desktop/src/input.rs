@@ -2334,6 +2334,7 @@ pub(super) fn run_pane_hit_action(
                         "Identity regenerated. Secrets are hidden by default.".to_string(),
                     );
                     queue_spark_command(state, SparkWalletCommand::Refresh);
+                    crate::render::apply_spacetime_sync_bootstrap(state);
                 }
                 Err(err) => {
                     state.nostr_identity_error = Some(err.to_string());
