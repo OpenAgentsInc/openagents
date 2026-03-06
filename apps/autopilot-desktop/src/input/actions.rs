@@ -28,20 +28,6 @@ pub(super) fn run_chat_submit_action_with_trigger(
 
     state.chat_inputs.composer.set_value(String::new());
     state.autopilot_chat.submit_prompt(prompt.clone());
-    let orchestration_classification =
-        crate::labor_orchestrator::CodexRunClassification::from_trigger(trigger.clone());
-    state.autopilot_chat.record_turn_submission_metadata(
-        &thread_id,
-        orchestration_classification.clone(),
-        classification.is_cad_turn,
-        classification.reason.clone(),
-        submitted_at_epoch_ms,
-        Vec::new(),
-    );
-    state.autopilot_chat.record_turn_timeline_event(format!(
-        "labor orchestrator: {}",
-        orchestration_classification.timeline_descriptor()
-    ));
     state.autopilot_chat.record_turn_timeline_event(format!(
         "cad-turn classifier: is_cad_turn={} reason={}",
         classification.is_cad_turn, classification.reason
@@ -120,9 +106,6 @@ pub(super) fn run_chat_submit_action_with_trigger(
         .iter()
         .map(|skill| skill.name.clone())
         .collect::<Vec<_>>();
-    state
-        .autopilot_chat
-        .set_last_pending_turn_selected_skills(selected_skill_names);
 
     log_chat_prompt_to_console(&thread_id, &prompt);
     let (input, skill_error) = assemble_chat_turn_input(prompt, turn_skill_attachments);
@@ -147,6 +130,7 @@ pub(super) fn run_chat_submit_action_with_trigger(
     let plan = crate::labor_orchestrator::orchestrate_codex_turn(
         crate::labor_orchestrator::CodexTurnExecutionRequest {
             trigger,
+            submitted_at_epoch_ms,
             thread_id: thread_id.clone(),
             input,
             cwd: goal_scoped_turn_cwd(state).map(std::path::PathBuf::from),
@@ -155,6 +139,28 @@ pub(super) fn run_chat_submit_action_with_trigger(
             model: model_override.clone(),
         },
     );
+    state.autopilot_chat.record_turn_submission_metadata(
+        &thread_id,
+        plan.classification.clone(),
+        plan.labor_binding.clone(),
+        classification.is_cad_turn,
+        classification.reason.clone(),
+        submitted_at_epoch_ms,
+        Vec::new(),
+    );
+    state
+        .autopilot_chat
+        .set_last_pending_turn_selected_skills(selected_skill_names);
+    state.autopilot_chat.record_turn_timeline_event(format!(
+        "labor orchestrator: {}",
+        plan.classification.timeline_descriptor()
+    ));
+    if let Some(binding) = plan.labor_binding.as_ref() {
+        state.autopilot_chat.record_turn_timeline_event(format!(
+            "labor binding: work_unit_id={} contract_id={} bundle_id={}",
+            binding.work_unit_id, binding.contract_id, binding.provenance.bundle_id
+        ));
+    }
 
     tracing::info!(
         "codex turn/start request thread_id={} model={} chars={} class={} economic={} labor_bound={}",
@@ -807,6 +813,7 @@ pub(super) fn run_chat_approval_response_action(
     decision: ApprovalDecision,
 ) -> bool {
     if let Some(request) = state.autopilot_chat.pop_command_approval() {
+        let decision_label = format!("{:?}", decision);
         let command = crate::codex_lane::CodexLaneCommand::ServerRequestCommandApprovalRespond {
             request_id: request.request_id.clone(),
             response: CommandExecutionRequestApprovalResponse {
@@ -820,14 +827,22 @@ pub(super) fn run_chat_approval_response_action(
                 .insert(0, request);
             state.autopilot_chat.last_error = Some(error);
         } else {
-            state
-                .autopilot_chat
-                .record_turn_timeline_event(format!("command approval response: {:?}", decision));
+            state.autopilot_chat.record_turn_timeline_event(format!(
+                "command approval response: {}",
+                decision_label
+            ));
+            state.autopilot_chat.record_turn_command_approval_response(
+                request.turn_id.as_str(),
+                request.item_id.as_str(),
+                decision_label.as_str(),
+                current_epoch_millis(),
+            );
         }
         return true;
     }
 
     if let Some(request) = state.autopilot_chat.pop_file_change_approval() {
+        let decision_label = format!("{:?}", decision);
         let command = crate::codex_lane::CodexLaneCommand::ServerRequestFileApprovalRespond {
             request_id: request.request_id.clone(),
             response: FileChangeRequestApprovalResponse { decision },
@@ -842,6 +857,14 @@ pub(super) fn run_chat_approval_response_action(
             state
                 .autopilot_chat
                 .record_turn_timeline_event("file-change approval response submitted");
+            state
+                .autopilot_chat
+                .record_turn_file_change_approval_response(
+                    request.turn_id.as_str(),
+                    request.item_id.as_str(),
+                    decision_label.as_str(),
+                    current_epoch_millis(),
+                );
         }
         return true;
     }
@@ -861,13 +884,23 @@ pub(super) fn run_chat_tool_call_response_action(
     let request_id = request.request_id.clone();
     let tool_name = request.tool.clone();
     let call_id = request.call_id.clone();
-    let response = if super::tool_bridge::is_openagents_tool_namespace(&tool_name) {
+    let labor_result = if super::tool_bridge::is_openagents_tool_namespace(&tool_name) {
         let envelope = super::tool_bridge::execute_openagents_tool_request(state, &request);
         state.autopilot_chat.record_turn_timeline_event(format!(
             "tool call auto-executed tool={} code={} success={}",
             tool_name, envelope.code, envelope.success
         ));
-        envelope.to_response()
+        Some((
+            envelope.code.clone(),
+            envelope.success,
+            envelope.message.clone(),
+            envelope.to_response(),
+        ))
+    } else {
+        None
+    };
+    let response = if let Some((_, _, _, response)) = labor_result.as_ref() {
+        response.clone()
     } else {
         DynamicToolCallResponse {
             content_items: vec![DynamicToolCallOutputContentItem::InputText {
@@ -891,6 +924,29 @@ pub(super) fn run_chat_tool_call_response_action(
         state
             .autopilot_chat
             .record_turn_timeline_event("tool call response submitted");
+        if let Some((response_code, success, response_message, _)) = labor_result {
+            state.autopilot_chat.record_turn_tool_result(
+                request.turn_id.as_str(),
+                format!("{:?}", request.request_id).as_str(),
+                request.call_id.as_str(),
+                request.tool.as_str(),
+                response_code.as_str(),
+                success,
+                response_message.as_str(),
+                current_epoch_millis(),
+            );
+        } else {
+            state.autopilot_chat.record_turn_tool_result(
+                request.turn_id.as_str(),
+                format!("{:?}", request.request_id).as_str(),
+                request.call_id.as_str(),
+                request.tool.as_str(),
+                "manual_response_submitted",
+                true,
+                "manual tool response submitted",
+                current_epoch_millis(),
+            );
+        }
     }
     true
 }

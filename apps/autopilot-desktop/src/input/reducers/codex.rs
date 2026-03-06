@@ -8,6 +8,13 @@ use codex_client::{SkillsListExtraRootsForCwd, SkillsListParams, ThreadStartPara
 
 const CAD_TOOL_RESPONSE_SUBMIT_RETRY_LIMIT: u8 = 2;
 
+fn current_epoch_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0)
+}
+
 fn cad_failure_class_from_tool_response(
     envelope: &super::super::tool_bridge::ToolBridgeResultEnvelope,
 ) -> CadBuildFailureClass {
@@ -1456,25 +1463,34 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 request_id,
                 request,
             } => {
+                let approval_request = crate::app_state::AutopilotApprovalRequest {
+                    request_id,
+                    thread_id: request.thread_id,
+                    turn_id: request.turn_id,
+                    item_id: request.item_id,
+                    reason: request.reason,
+                    command: request.command,
+                    cwd: request.cwd,
+                };
                 tracing::info!(
                     "codex command/approval requested thread_id={} turn_id={} item_id={} request_id={:?} active_thread={:?}",
-                    request.thread_id,
-                    request.turn_id,
-                    request.item_id,
-                    request_id,
+                    approval_request.thread_id,
+                    approval_request.turn_id,
+                    approval_request.item_id,
+                    approval_request.request_id,
                     state.autopilot_chat.active_thread_id
                 );
-                state.autopilot_chat.enqueue_command_approval(
-                    crate::app_state::AutopilotApprovalRequest {
-                        request_id,
-                        thread_id: request.thread_id,
-                        turn_id: request.turn_id,
-                        item_id: request.item_id,
-                        reason: request.reason,
-                        command: request.command,
-                        cwd: request.cwd,
-                    },
+                state.autopilot_chat.record_turn_command_approval_requested(
+                    approval_request.turn_id.as_str(),
+                    approval_request.item_id.as_str(),
+                    approval_request.reason.as_deref(),
+                    approval_request.command.as_deref(),
+                    approval_request.cwd.as_deref(),
+                    current_epoch_millis(),
                 );
+                state
+                    .autopilot_chat
+                    .enqueue_command_approval(approval_request);
                 state
                     .autopilot_chat
                     .record_turn_timeline_event("command approval requested");
@@ -1483,16 +1499,26 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 request_id,
                 request,
             } => {
-                state.autopilot_chat.enqueue_file_change_approval(
-                    crate::app_state::AutopilotFileChangeApprovalRequest {
-                        request_id,
-                        thread_id: request.thread_id,
-                        turn_id: request.turn_id,
-                        item_id: request.item_id,
-                        reason: request.reason,
-                        grant_root: request.grant_root,
-                    },
-                );
+                let approval_request = crate::app_state::AutopilotFileChangeApprovalRequest {
+                    request_id,
+                    thread_id: request.thread_id,
+                    turn_id: request.turn_id,
+                    item_id: request.item_id,
+                    reason: request.reason,
+                    grant_root: request.grant_root,
+                };
+                state
+                    .autopilot_chat
+                    .record_turn_file_change_approval_requested(
+                        approval_request.turn_id.as_str(),
+                        approval_request.item_id.as_str(),
+                        approval_request.reason.as_deref(),
+                        approval_request.grant_root.as_deref(),
+                        current_epoch_millis(),
+                    );
+                state
+                    .autopilot_chat
+                    .enqueue_file_change_approval(approval_request);
                 state
                     .autopilot_chat
                     .record_turn_timeline_event("file-change approval requested");
@@ -1518,6 +1544,14 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     pending.arguments.chars().count(),
                     pending.request_id,
                     state.autopilot_chat.active_thread_id
+                );
+                state.autopilot_chat.record_turn_tool_request(
+                    pending.turn_id.as_str(),
+                    format!("{:?}", pending.request_id).as_str(),
+                    pending.call_id.as_str(),
+                    pending.tool.as_str(),
+                    pending.arguments.as_str(),
+                    current_epoch_millis(),
                 );
 
                 if super::super::tool_bridge::is_openagents_tool_namespace(&pending.tool) {
@@ -1561,6 +1595,16 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                         envelope.success,
                         envelope.message.as_str(),
                         recorded_at_epoch_seconds,
+                    );
+                    state.autopilot_chat.record_turn_tool_result(
+                        pending.turn_id.as_str(),
+                        format!("{:?}", pending.request_id).as_str(),
+                        pending.call_id.as_str(),
+                        pending.tool.as_str(),
+                        envelope.code.as_str(),
+                        envelope.success,
+                        envelope.message.as_str(),
+                        current_epoch_millis(),
                     );
                     if is_cad_intent_tool {
                         state.cad_demo.record_agent_build_tool_result(
