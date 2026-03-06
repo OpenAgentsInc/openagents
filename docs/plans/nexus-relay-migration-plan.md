@@ -497,6 +497,156 @@ Exit criteria:
 9. cut traffic
 10. remove old harness core
 
+## Proposed GitHub Issue Sequence
+
+These issues should be executed in order. Later issues assume the earlier ones are already merged.
+
+### Issue 1: Import `nostr-rs-relay` into the Nexus workspace
+
+Summary:
+
+- vendor or fork the upstream relay source into this repo
+- preserve licensing and attribution
+- make it compile in the OpenAgents workspace
+- do not apply Nexus-specific behavioral changes yet
+
+Why first:
+
+- everything else depends on having a real durable relay engine in-repo
+
+### Issue 2: Replace the in-memory relay core with the durable repository path
+
+Summary:
+
+- remove `RelayStore` as the authoritative event store
+- wire the imported relay to SQLite-backed persistence first
+- prove publish, replay, and restart persistence locally
+
+Why second:
+
+- this is the actual migration away from the MVP harness
+
+### Issue 3: Expose the canonical relay operator surfaces
+
+Summary:
+
+- enable NIP-11 relay info
+- enable NIP-42 auth behavior
+- expose `/metrics`
+- add production-worthy relay config loading instead of the current minimal env-only shape
+
+Why third:
+
+- once the relay is durable, it needs real protocol and operator posture before Nexus-specific UI work
+
+### Issue 4: Convert Nexus into one Rust service with both websocket and HTTP routes
+
+Summary:
+
+- inline current `nexus-control` HTTP routes into the owned Nexus service
+- keep relay and authority as internal module boundaries
+- preserve existing `/api/*` and `/v1/*` semantics
+
+Why fourth:
+
+- this lands the desired single-service architecture before branding and cutover work
+
+### Issue 5: Reapply Nexus branding and product defaults on top of the new core
+
+Summary:
+
+- restore the Nexus landing page and operator identity
+- keep `nexus.openagents.com` behavior product-consistent
+- retain the correct default relay URL and host assumptions for desktop clients
+
+Why fifth:
+
+- once the service shape is right, the user-visible surface can be made Nexus-native again
+
+### Issue 6: Port or redesign managed-group behavior on the durable relay
+
+Summary:
+
+- evaluate `apps/nexus-relay/src/managed_groups.rs` against the imported relay
+- either port it cleanly as a thin extension or explicitly defer it
+- avoid forking deep repository/query internals just to preserve current MVP group behavior
+
+Why sixth:
+
+- managed-group behavior is important, but it should sit on top of the durable relay, not distort the migration order
+
+### Issue 7: Add production deployment config for the single Nexus service
+
+Summary:
+
+- choose the first real hosting path
+- preferred: VM or stateful container host + SQLite
+- alternative: Cloud Run + Postgres
+- add runbooks/config/scripts for the chosen path
+
+Why seventh:
+
+- after the binary is real, the deployment model has to stop pretending stateless infra is enough
+
+### Issue 8: Stand up a staging Nexus and run protocol + desktop compatibility validation
+
+Summary:
+
+- deploy the durable single-service Nexus behind a staging host
+- test websocket relay flow, replay, restart persistence, NIP-11, NIP-42, and desktop connectivity
+- verify authority/API routes still work end-to-end
+
+Why eighth:
+
+- this is the last safe place to find integration breakage before traffic moves
+
+### Issue 9: Cut over `nexus.openagents.com` to the durable Nexus service
+
+Summary:
+
+- deploy the new Nexus service to the production hostname
+- monitor live connections, event writes, replay, metrics, and API traffic
+- verify persistence through restart or rollout
+
+Why ninth:
+
+- production cutover should happen only after the staging validation issue is complete
+
+### Issue 10: Remove the legacy in-memory relay paths and transitional compatibility code
+
+Summary:
+
+- delete old in-memory event storage and custom replay logic
+- remove obsolete proxy-only harness assumptions
+- update docs and runbooks to match the new architecture
+
+Why tenth:
+
+- cleanup belongs after the cutover is proven, not before
+
+### Issue 11: Harden the production relay with policy, limits, and maintenance operations
+
+Summary:
+
+- finalize rate limits and abuse controls
+- validate backup/restore and retention procedures
+- document operator maintenance for the chosen storage backend
+
+Why eleventh:
+
+- this closes the gap between “working production relay” and “operable production relay”
+
+### Issue 12: Optional later split of relay and authority into separate services
+
+Summary:
+
+- only if operational pressure justifies it, split the internal relay and authority modules into separate deployed services
+- keep one public Nexus host even if deployment splits later
+
+Why last:
+
+- this is hardening and scale work, not required for full integration of the migration itself
+
 ## Acceptance Criteria
 
 This migration is successful when all of the following are true:
