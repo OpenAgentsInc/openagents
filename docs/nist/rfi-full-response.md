@@ -7,6 +7,8 @@
 **Date:** March 4, 2026  
 **Submitted via:** www.regulations.gov
 
+> Archival note: this document preserves submission materials prepared for NIST RFI `NIST-2025-0035` on March 4, 2026. It is not the normative source of truth for current OpenAgents product or protocol behavior.
+
 ---
 
 ## Executive Summary
@@ -15,7 +17,7 @@ AI agents will increasingly act as long-lived software principals capable of pla
 
 OpenAgents urges NIST to **explicitly recognize open, permissionless identity and authorization protocols as valid compliance paths** alongside enterprise IAM patterns, because agent ecosystems will include open-source agents, small developers, and individuals who cannot operate inside centralized identity registries. The technical proposals below (NIP-SA, NIP-SKL, NIP-AC) demonstrate a practical, auditable, least-privilege approach for agent identity, delegation, capability restriction, and payment authorization using cryptographic keys and signed event logs.
 
-**Supporting materials attached:**
+**Supporting materials in this directory:**
 - NIP-AC: Agent Credit (Outcome-Scoped Credit Envelopes)
 - NIP-SKL: Agent Skill Identity, Manifest, and Trust Registry
 - Technical Appendix with event schemas and examples

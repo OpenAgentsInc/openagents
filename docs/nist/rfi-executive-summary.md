@@ -3,6 +3,8 @@
 **Submitter:** OpenAgents  
 **Date:** March 4, 2026
 
+> Archival note: this document preserves submission materials prepared for NIST RFI `NIST-2025-0035` on March 4, 2026. It is not the normative source of truth for current OpenAgents product or protocol behavior.
+
 ---
 
 ## Core Message
@@ -93,7 +95,7 @@ If NIST guidance assumes centralized identity registries and enterprise IAM as t
 
 **Contact:** OpenAgents is available to provide implementation examples, test vectors, and open-source reference code.
 
-**Supporting materials:**
+**Supporting materials in this directory:**
 - NIP-AC: Agent Credit (Outcome-Scoped Credit Envelopes)
 - NIP-SKL: Agent Skill Identity, Manifest, and Trust Registry
-- Full response with technical appendix (attached)
+- Full response and technical appendix
