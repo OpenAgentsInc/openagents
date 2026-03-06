@@ -14,7 +14,7 @@ The MVP is intentionally narrow. One user goes online, offers spare compute to t
 
 This repository exists to deliver that loop with clear authority, deterministic behavior, and a fast, hardware-accelerated desktop experience with a game-like HUD feel.
 
-## The OpenAgents Marketplace
+## Marketplace
 
 Autopilot supports a broader thesis: the OpenAgents Marketplace consists of five interlocking markets running on one shared economic substrate: compute, data, labor, liquidity, and risk.
 
@@ -64,7 +64,7 @@ The product authority is [docs/MVP.md](docs/MVP.md).
 Ownership boundaries are defined in [docs/OWNERSHIP.md](docs/OWNERSHIP.md).
 Docs are indexed in [docs/README.md](docs/README.md).
 
-## Autopilot Earn — the Wedge
+## Earn
 
 Autopilot Earn starts with spare compute. You run the desktop app, press `Go Online`, and offer idle CPU/GPU capacity into the network. Buyers purchase machine work, your machine executes it locally, and settlement happens over Lightning.
 
@@ -78,7 +78,7 @@ For setup expectations, current limitations, and source-of-truth behavior, see t
 For canonical implementation status, see: [docs/autopilot-earn/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md](docs/autopilot-earn/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md).
 The broader Autopilot Earn doc set is consolidated under `docs/autopilot-earn/`.
 
-## Economy Kernel
+## Kernel
 
 ### What it is
 
