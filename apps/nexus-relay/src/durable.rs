@@ -30,6 +30,8 @@ const DEFAULT_LISTEN_ADDR: &str = "127.0.0.1:42110";
 const DEFAULT_UPSTREAM_LISTEN_ADDR: &str = "127.0.0.1:42111";
 const DEFAULT_DATA_DIR: &str = ".nexus-relay-data";
 const MAX_PROXY_REQUEST_BYTES: usize = 8 * 1024 * 1024;
+const NEXUS_PRODUCT_NAME: &str = "OpenAgents Nexus";
+const NEXUS_PRODUCT_DESCRIPTION: &str = "The OpenAgents relay and authority host for Autopilot.";
 
 #[derive(Debug, Clone)]
 pub struct DurableRelayConfig {
@@ -100,8 +102,10 @@ impl DurableRelayConfig {
         } else {
             nostr_rs_relay_upstream::config::Settings::default()
         };
-        settings.info.name = Some("OpenAgents Nexus".to_string());
+        settings.info.name = Some(NEXUS_PRODUCT_NAME.to_string());
+        settings.info.description = Some(NEXUS_PRODUCT_DESCRIPTION.to_string());
         settings.info.relay_url = Some(self.public_ws_url.clone());
+        settings.info.relay_page = self.public_http_url();
         settings.network.address = self.upstream_listen_addr.ip().to_string();
         settings.network.port = self.upstream_listen_addr.port();
         settings.database.data_directory = self.data_dir.display().to_string();
@@ -115,6 +119,16 @@ impl DurableRelayConfig {
 
     fn upstream_ws_url(&self) -> String {
         format!("ws://{}/", self.upstream_listen_addr)
+    }
+
+    fn public_http_url(&self) -> Option<String> {
+        let mut url = Url::parse(self.public_ws_url.as_str()).ok()?;
+        match url.scheme() {
+            "ws" => url.set_scheme("http").ok()?,
+            "wss" => url.set_scheme("https").ok()?,
+            _ => return None,
+        }
+        Some(url.to_string())
     }
 
     fn upstream_http_url_for_path(&self, path_and_query: &str) -> Result<Url, String> {
@@ -374,10 +388,16 @@ fn upstream_message_to_client(message: UpstreamMessage) -> Option<Message> {
 }
 
 fn render_homepage(config: &DurableRelayConfig) -> String {
+    let public_http_url = config
+        .public_http_url()
+        .unwrap_or_else(|| "http://127.0.0.1/".to_string());
     format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><title>OpenAgents Nexus Relay</title></head><body><h1>OpenAgents Nexus Relay</h1><p>Durable relay and in-process authority routes are running.</p><ul><li>Relay websocket: {}</li><li>Authority routes: /api/* and /v1/*</li><li>Data dir: {}</li></ul></body></html>",
-        config.public_ws_url,
-        config.data_dir.display(),
+        "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>{name}</title><style>body{{margin:0;background:#050b16;color:#d6dfec;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}}main{{max-width:880px;margin:0 auto;padding:56px 24px 80px}}h1{{margin:0;font-size:40px;line-height:1.05;color:#f8fbff}}p{{line-height:1.65;color:#93a4ba}}code{{background:#0e1828;color:#a9d7ff;padding:2px 6px;border-radius:6px}}.lede{{max-width:60ch;margin-top:12px}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:28px}}.panel{{padding:18px 20px;border-radius:14px;border:1px solid #1c3553;background:#091120;box-shadow:0 10px 30px rgba(0,0,0,.25)}}.label{{display:block;margin-bottom:8px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#6f89a8}}.value{{font-size:14px;line-height:1.55;color:#f1f6fd;word-break:break-word}}ul{{margin:0;padding-left:18px}}li+li{{margin-top:8px}}</style></head><body><main><h1>{name}</h1><p class=\"lede\">{description} Autopilot uses this host as its default Nexus for relay transport, hosted starter jobs, and kernel authority APIs.</p><div class=\"grid\"><section class=\"panel\"><span class=\"label\">Autopilot Default Relay</span><div class=\"value\"><code>{relay_ws}</code></div></section><section class=\"panel\"><span class=\"label\">Hosted Authority</span><div class=\"value\"><code>{relay_http}api/*</code><br><code>{relay_http}v1/*</code></div></section><section class=\"panel\"><span class=\"label\">Nostr Entry Points</span><div class=\"value\"><ul><li><code>{relay_ws}</code> websocket + NIP-11</li><li><code>{relay_http}ws</code> websocket alias</li><li><code>{relay_http}metrics</code> operator metrics</li></ul></div></section><section class=\"panel\"><span class=\"label\">Durable Storage</span><div class=\"value\"><code>{data_dir}</code></div></section></div></main></body></html>",
+        name = NEXUS_PRODUCT_NAME,
+        description = NEXUS_PRODUCT_DESCRIPTION,
+        relay_ws = config.public_ws_url,
+        relay_http = public_http_url,
+        data_dir = config.data_dir.display(),
     )
 }
 
@@ -620,6 +640,10 @@ mod tests {
         let tempdir = tempdir()?;
         let mut config = durable_config(tempdir.path())?;
         config.enable_nip42_auth = true;
+        let expected_relay_url = config.public_ws_url.clone();
+        let expected_relay_page = config
+            .public_http_url()
+            .ok_or_else(|| anyhow::anyhow!("expected public http url"))?;
         let relay = UpstreamRelayHandle::spawn(config.clone()).await?;
         let (addr, server) = start_shell_server(config).await?;
 
@@ -638,12 +662,52 @@ mod tests {
             Some("application/nostr+json")
         );
         let body: Value = response.json().await?;
-        assert_eq!(body["name"], "OpenAgents Nexus");
+        assert_eq!(body["name"], super::NEXUS_PRODUCT_NAME);
+        assert_eq!(body["description"], super::NEXUS_PRODUCT_DESCRIPTION);
+        assert_eq!(body["id"], expected_relay_url);
+        assert_eq!(
+            body["software"],
+            "https://git.sr.ht/~gheartsfield/nostr-rs-relay"
+        );
+        assert!(body["version"].as_str().is_some_and(|value| !value.is_empty()));
+        assert_eq!(body["supported_nips"].as_array().map(Vec::len), Some(12));
+        assert_eq!(body["limitation"]["payment_required"], false);
+        assert_eq!(body["limitation"]["restricted_writes"], false);
+        assert!(body.get("payment_url").is_none());
+        assert!(body.get("fees").is_none());
+        assert!(expected_relay_page.starts_with("http://"));
         assert!(
             body["supported_nips"]
                 .as_array()
                 .is_some_and(|nips| nips.iter().any(|value| value == 42))
         );
+
+        server.abort();
+        relay.shutdown().await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn durable_root_renders_nexus_branding() -> Result<()> {
+        let tempdir = tempdir()?;
+        let config = durable_config(tempdir.path())?;
+        let expected_relay_url = config.public_ws_url.clone();
+        let expected_http_url = config
+            .public_http_url()
+            .ok_or_else(|| anyhow::anyhow!("expected public http url"))?;
+        let relay = UpstreamRelayHandle::spawn(config.clone()).await?;
+        let (addr, server) = start_shell_server(config).await?;
+
+        let response = reqwest::get(format!("http://{addr}/")).await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.text().await?;
+        assert!(body.contains(super::NEXUS_PRODUCT_NAME));
+        assert!(body.contains(super::NEXUS_PRODUCT_DESCRIPTION));
+        assert!(body.contains(expected_relay_url.as_str()));
+        assert!(body.contains(expected_http_url.as_str()));
+        assert!(body.contains("Autopilot Default Relay"));
+        assert!(body.contains("Hosted Authority"));
+        assert!(body.contains("kernel authority APIs"));
 
         server.abort();
         relay.shutdown().await?;
