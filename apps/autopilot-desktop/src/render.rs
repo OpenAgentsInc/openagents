@@ -20,6 +20,7 @@ use crate::codex_lane::{CodexLaneConfig, CodexLaneSnapshot, CodexLaneWorker};
 use crate::hotbar::{configure_hotbar, hotbar_bounds, new_hotbar};
 use crate::input::bootstrap_startup_cad_mesh;
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
+use crate::ollama_execution::{OllamaExecutionSnapshot, OllamaExecutionWorker};
 use crate::pane_registry::{
     pane_enabled_in_runtime, pane_specs, simulation_panes_enabled_from_env, startup_pane_kinds,
 };
@@ -195,6 +196,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let skl_lane_worker = SklLaneWorker::spawn();
         let ac_lane_worker = AcLaneWorker::spawn();
         let provider_nip90_lane_worker = ProviderNip90LaneWorker::spawn(initial_relay_urls.clone());
+        let ollama_execution_worker = OllamaExecutionWorker::spawn();
         let simulation_panes_enabled = simulation_panes_enabled_from_env();
         let sync_apply_engine = match crate::sync_apply::SyncApplyEngine::load_or_new_default() {
             Ok(engine) => engine,
@@ -286,6 +288,8 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             ac_lane_worker,
             provider_nip90_lane: ProviderNip90LaneSnapshot::with_relays(initial_relay_urls),
             provider_nip90_lane_worker,
+            ollama_execution: OllamaExecutionSnapshot::default(),
+            ollama_execution_worker,
             runtime_command_responses: Vec::new(),
             next_runtime_command_seq: 1,
             provider_runtime: crate::app_state::ProviderRuntimeState::default(),

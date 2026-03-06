@@ -12,6 +12,9 @@ use wgpui::renderer::Renderer;
 use wgpui::{Bounds, EventContext, Modifiers, Point, TextSystem, theme};
 use winit::window::Window;
 
+use crate::ollama_execution::{
+    OllamaExecutionCommand, OllamaExecutionSnapshot, OllamaExecutionWorker,
+};
 use crate::provider_nip90_lane::{
     ProviderNip90AuthIdentity, ProviderNip90LaneCommand, ProviderNip90LaneSnapshot,
     ProviderNip90LaneWorker,
@@ -2578,6 +2581,9 @@ pub struct ActiveJobRecord {
     pub request_kind: u16,
     pub capability: String,
     pub execution_input: Option<String>,
+    pub execution_prompt: Option<String>,
+    pub execution_params: Vec<crate::state::job_inbox::JobExecutionParam>,
+    pub requested_model: Option<String>,
     pub skill_scope_id: Option<String>,
     pub skl_manifest_a: Option<String>,
     pub skl_manifest_event_id: Option<String>,
@@ -2605,6 +2611,7 @@ pub struct ActiveJobState {
     pub execution_turn_id: Option<String>,
     pub execution_output: Option<String>,
     pub execution_turn_completed: bool,
+    pub execution_backend_request_id: Option<String>,
     pub execution_thread_start_command_seq: Option<u64>,
     pub execution_turn_start_command_seq: Option<u64>,
     pub execution_turn_interrupt_command_seq: Option<u64>,
@@ -2625,6 +2632,7 @@ impl Default for ActiveJobState {
             execution_turn_id: None,
             execution_output: None,
             execution_turn_completed: false,
+            execution_backend_request_id: None,
             execution_thread_start_command_seq: None,
             execution_turn_start_command_seq: None,
             execution_turn_interrupt_command_seq: None,
@@ -2654,6 +2662,9 @@ impl ActiveJobState {
             request_kind: request.request_kind,
             capability: request.capability.clone(),
             execution_input: request.execution_input.clone(),
+            execution_prompt: request.execution_prompt.clone(),
+            execution_params: request.execution_params.clone(),
+            requested_model: request.requested_model.clone(),
             skill_scope_id: request.skill_scope_id.clone(),
             skl_manifest_a: request.skl_manifest_a.clone(),
             skl_manifest_event_id: request.skl_manifest_event_id.clone(),
@@ -2677,6 +2688,7 @@ impl ActiveJobState {
         self.execution_turn_id = None;
         self.execution_output = None;
         self.execution_turn_completed = false;
+        self.execution_backend_request_id = None;
         self.execution_thread_start_command_seq = None;
         self.execution_turn_start_command_seq = None;
         self.execution_turn_interrupt_command_seq = None;
@@ -3936,6 +3948,8 @@ pub struct RenderState {
     pub ac_lane_worker: AcLaneWorker,
     pub provider_nip90_lane: ProviderNip90LaneSnapshot,
     pub provider_nip90_lane_worker: ProviderNip90LaneWorker,
+    pub ollama_execution: OllamaExecutionSnapshot,
+    pub ollama_execution_worker: OllamaExecutionWorker,
     pub runtime_command_responses: Vec<RuntimeCommandResponse>,
     pub next_runtime_command_seq: u64,
     pub provider_runtime: ProviderRuntimeState,
@@ -4109,6 +4123,13 @@ impl RenderState {
         self.provider_nip90_lane_worker.enqueue(command)
     }
 
+    pub fn queue_ollama_execution_command(
+        &mut self,
+        command: OllamaExecutionCommand,
+    ) -> Result<(), String> {
+        self.ollama_execution_worker.enqueue(command)
+    }
+
     pub fn configured_provider_relay_urls(&self) -> Vec<String> {
         let relays = self.settings.document.configured_relay_urls();
         if relays.is_empty() {
@@ -4220,6 +4241,9 @@ mod tests {
             execution_input: Some(format!(
                 "Execute capability `{capability}` for request `{request_id}`."
             )),
+            execution_prompt: Some(format!("Prompt for {request_id}")),
+            execution_params: Vec::new(),
+            requested_model: Some("llama3.2:latest".to_string()),
             target_provider_pubkeys: Vec::new(),
             encrypted: false,
             encrypted_payload: None,
