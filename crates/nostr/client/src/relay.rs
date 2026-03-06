@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use std::sync::OnceLock;
 use tokio::net::TcpStream;
 use tokio::sync::{Mutex, RwLock, mpsc};
 use tokio::time::timeout;
@@ -123,6 +124,8 @@ impl RelayConnection {
 
     /// Connect to relay and start background receive loop.
     pub async fn connect(&self) -> Result<()> {
+        ensure_rustls_crypto_provider()?;
+
         let mut state_guard = self.state.write().await;
         if *state_guard == ConnectionState::Connected {
             return Err(ClientError::AlreadyConnected);
@@ -345,6 +348,25 @@ impl RelayConnection {
     }
 }
 
+fn ensure_rustls_crypto_provider() -> Result<()> {
+    static RUSTLS_PROVIDER_INIT: OnceLock<std::result::Result<(), String>> = OnceLock::new();
+
+    if rustls::crypto::CryptoProvider::get_default().is_some() {
+        return Ok(());
+    }
+
+    match RUSTLS_PROVIDER_INIT.get_or_init(|| {
+        rustls::crypto::ring::default_provider()
+            .install_default()
+            .map_err(|_| "process-level provider already installed".to_string())
+    }) {
+        Ok(()) => Ok(()),
+        Err(error) => Err(ClientError::Connection(format!(
+            "failed to install rustls crypto provider: {error}"
+        ))),
+    }
+}
+
 /// Parse relay protocol JSON text message into typed relay message.
 pub fn parse_relay_message(text: &str) -> Result<Option<RelayMessage>> {
     let value: Value = serde_json::from_str(text)?;
@@ -423,8 +445,8 @@ pub fn parse_relay_message(text: &str) -> Result<Option<RelayMessage>> {
         "NEG-MSG" => {
             let message = NegMsg::from_json(&value)
                 .map_err(|error| ClientError::Protocol(format!("invalid NEG-MSG: {error}")))?;
-            let negentropy = NegentropyMessage::decode_hex(message.message.as_str())
-                .map_err(|error| {
+            let negentropy =
+                NegentropyMessage::decode_hex(message.message.as_str()).map_err(|error| {
                     ClientError::Protocol(format!("invalid NEG-MSG payload: {error}"))
                 })?;
             Ok(Some(RelayMessage::NegMsg(
@@ -507,8 +529,8 @@ fn parse_private_key_hex(private_key_hex: &str) -> Result<[u8; 32]> {
 mod tests {
     use super::*;
     use futures_util::{SinkExt, StreamExt};
-    use nostr::nip77::{Bound, NegentropyMessage, Range};
     use nostr::nip42::validate_auth_event;
+    use nostr::nip77::{Bound, NegentropyMessage, Range};
     use tokio::net::TcpListener;
     use tokio_tungstenite::accept_async;
     use tokio_tungstenite::tungstenite::Message;
