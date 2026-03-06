@@ -12,6 +12,7 @@ anyhow.workspace = true
 axum = { version = "0.8", features = ["ws"] }
 futures-util = "0.3"
 hex.workspace = true
+nexus-control = { path = "../nexus-control" }
 nostr-rs-relay-upstream = { package = "nostr-rs-relay", path = "../../third_party/nostr-rs-relay" }
 nostr = { path = "../../crates/nostr/core" }
 reqwest.workspace = true

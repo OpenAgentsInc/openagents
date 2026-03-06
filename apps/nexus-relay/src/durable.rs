@@ -8,7 +8,7 @@ use axum::extract::FromRequestParts;
 use axum::extract::Request;
 use axum::extract::State;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
-use axum::http::{HeaderMap, StatusCode, Uri, header};
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{any, get};
 use axum::{Json, Router};
@@ -21,14 +21,12 @@ use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::{self, Message as UpstreamMessage};
 
 const ENV_LISTEN_ADDR: &str = "NEXUS_RELAY_LISTEN_ADDR";
-const ENV_CONTROL_BASE_URL: &str = "NEXUS_RELAY_CONTROL_BASE_URL";
 const ENV_UPSTREAM_LISTEN_ADDR: &str = "NEXUS_RELAY_UPSTREAM_LISTEN_ADDR";
 const ENV_DATA_DIR: &str = "NEXUS_RELAY_DATA_DIR";
 const ENV_PUBLIC_WS_URL: &str = "NEXUS_RELAY_PUBLIC_WS_URL";
 const ENV_UPSTREAM_CONFIG_FILE: &str = "NEXUS_RELAY_UPSTREAM_CONFIG_FILE";
 const ENV_ENABLE_NIP42_AUTH: &str = "NEXUS_RELAY_ENABLE_NIP42_AUTH";
 const DEFAULT_LISTEN_ADDR: &str = "127.0.0.1:42110";
-const DEFAULT_CONTROL_BASE_URL: &str = "http://127.0.0.1:42020";
 const DEFAULT_UPSTREAM_LISTEN_ADDR: &str = "127.0.0.1:42111";
 const DEFAULT_DATA_DIR: &str = ".nexus-relay-data";
 const MAX_PROXY_REQUEST_BYTES: usize = 8 * 1024 * 1024;
@@ -36,7 +34,6 @@ const MAX_PROXY_REQUEST_BYTES: usize = 8 * 1024 * 1024;
 #[derive(Debug, Clone)]
 pub struct DurableRelayConfig {
     pub listen_addr: SocketAddr,
-    pub control_base_url: String,
     pub upstream_listen_addr: SocketAddr,
     pub data_dir: PathBuf,
     pub public_ws_url: String,
@@ -55,11 +52,6 @@ impl DurableRelayConfig {
             ));
         }
 
-        let control_base_url = std::env::var(ENV_CONTROL_BASE_URL)
-            .ok()
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| DEFAULT_CONTROL_BASE_URL.to_string());
         let data_dir = std::env::var(ENV_DATA_DIR)
             .ok()
             .map(|value| value.trim().to_string())
@@ -80,11 +72,12 @@ impl DurableRelayConfig {
             .ok()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
-            .map_or(Ok(true), |value| parse_bool_env(ENV_ENABLE_NIP42_AUTH, &value))?;
+            .map_or(Ok(true), |value| {
+                parse_bool_env(ENV_ENABLE_NIP42_AUTH, &value)
+            })?;
 
         Ok(Self {
             listen_addr,
-            control_base_url,
             upstream_listen_addr,
             data_dir,
             public_ws_url,
@@ -138,40 +131,43 @@ pub struct HealthResponse {
     pub service: String,
     pub relay_backend: String,
     pub upstream_ws_url: String,
-    pub control_base_url: String,
+    pub authority_mode: String,
     pub data_directory: String,
 }
 
 #[derive(Clone)]
 struct AppState {
     config: DurableRelayConfig,
-    control_http_client: reqwest::Client,
+    http_client: reqwest::Client,
 }
 
 pub async fn run_server(config: DurableRelayConfig) -> Result<(), anyhow::Error> {
     config.ensure_data_dir()?;
     let _upstream = UpstreamRelayHandle::spawn(config.clone()).await?;
+    let authority_config = build_authority_config(&config)?;
 
     let listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
     let local_addr = listener.local_addr()?;
     tracing::info!("nexus-relay durable shell listening on {}", local_addr);
-    axum::serve(listener, build_router(config)).await?;
+    axum::serve(listener, build_router(config, authority_config)).await?;
     Ok(())
 }
 
-fn build_router(config: DurableRelayConfig) -> Router {
+fn build_router(
+    config: DurableRelayConfig,
+    authority_config: nexus_control::ServiceConfig,
+) -> Router {
     let state = AppState {
-        control_http_client: reqwest::Client::new(),
+        http_client: reqwest::Client::new(),
         config,
     };
-    Router::new()
+    let shell_router = Router::new()
         .route("/", any(relay_root))
         .route("/ws", any(relay_websocket))
-        .route("/api/{*path}", any(proxy_control_request))
-        .route("/v1/{*path}", any(proxy_control_request))
         .route("/metrics", get(proxy_upstream_metrics))
         .route("/healthz", get(healthz))
-        .with_state(state)
+        .with_state(state);
+    shell_router.merge(nexus_control::build_api_router(authority_config))
 }
 
 async fn relay_root(State(state): State<AppState>, request: Request) -> Response {
@@ -194,7 +190,7 @@ async fn healthz(State(state): State<AppState>) -> impl IntoResponse {
         service: "nexus-relay".to_string(),
         relay_backend: "durable-upstream".to_string(),
         upstream_ws_url: state.config.upstream_ws_url(),
-        control_base_url: state.config.control_base_url.clone(),
+        authority_mode: "in-process".to_string(),
         data_directory: state.config.data_dir.display().to_string(),
     })
 }
@@ -205,60 +201,6 @@ async fn proxy_upstream_metrics(State(state): State<AppState>) -> Response {
         .body(Body::empty())
         .expect("metrics request");
     proxy_upstream_request(&state, request, false).await
-}
-
-async fn proxy_control_request(State(state): State<AppState>, request: Request) -> Response {
-    let method = request.method().clone();
-    let uri = request.uri().clone();
-    let headers = request.headers().clone();
-    let body_bytes = match to_bytes(request.into_body(), MAX_PROXY_REQUEST_BYTES).await {
-        Ok(body) => body,
-        Err(error) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                format!("failed to read proxied request body: {error}"),
-            )
-                .into_response();
-        }
-    };
-    let target = match proxy_target_url(state.config.control_base_url.as_str(), &uri) {
-        Ok(url) => url,
-        Err(error) => return (StatusCode::BAD_GATEWAY, error).into_response(),
-    };
-
-    let mut upstream_request = state.control_http_client.request(method, target);
-    upstream_request = copy_proxy_request_headers(upstream_request, &headers);
-    upstream_request = upstream_request.body(body_bytes.to_vec());
-
-    let upstream = match upstream_request.send().await {
-        Ok(response) => response,
-        Err(error) => {
-            return (
-                StatusCode::BAD_GATEWAY,
-                format!("failed to reach nexus-control upstream: {error}"),
-            )
-                .into_response();
-        }
-    };
-
-    let status = upstream.status();
-    let upstream_headers = upstream.headers().clone();
-    let body_stream = upstream.bytes_stream().map_err(std::io::Error::other);
-    let mut response = match Response::builder()
-        .status(status)
-        .body(Body::from_stream(body_stream))
-    {
-        Ok(response) => response,
-        Err(error) => {
-            let mut response = Response::new(Body::from(format!(
-                "failed to build proxied response: {error}"
-            )));
-            *response.status_mut() = StatusCode::BAD_GATEWAY;
-            return response;
-        }
-    };
-    copy_proxy_response_headers(response.headers_mut(), &upstream_headers);
-    response
 }
 
 async fn proxy_upstream_request(
@@ -282,12 +224,15 @@ async fn proxy_upstream_request(
     let path_and_query = uri
         .path_and_query()
         .map_or_else(|| uri.path().to_string(), std::string::ToString::to_string);
-    let target = match state.config.upstream_http_url_for_path(path_and_query.as_str()) {
+    let target = match state
+        .config
+        .upstream_http_url_for_path(path_and_query.as_str())
+    {
         Ok(url) => url,
         Err(error) => return (StatusCode::BAD_GATEWAY, error).into_response(),
     };
 
-    let mut upstream_request = state.control_http_client.request(method, target);
+    let mut upstream_request = state.http_client.request(method, target);
     for (name, value) in &headers {
         if should_skip_proxy_request_header(name) {
             continue;
@@ -405,12 +350,12 @@ fn client_message_to_upstream(message: Message) -> UpstreamMessage {
         Message::Binary(bytes) => UpstreamMessage::Binary(bytes.to_vec()),
         Message::Ping(bytes) => UpstreamMessage::Ping(bytes.to_vec()),
         Message::Pong(bytes) => UpstreamMessage::Pong(bytes.to_vec()),
-        Message::Close(frame) => UpstreamMessage::Close(frame.map(|frame| {
-            tungstenite::protocol::CloseFrame {
+        Message::Close(frame) => {
+            UpstreamMessage::Close(frame.map(|frame| tungstenite::protocol::CloseFrame {
                 code: CloseCode::from(u16::from(frame.code)),
                 reason: frame.reason.to_string().into(),
-            }
-        })),
+            }))
+        }
     }
 }
 
@@ -430,33 +375,10 @@ fn upstream_message_to_client(message: UpstreamMessage) -> Option<Message> {
 
 fn render_homepage(config: &DurableRelayConfig) -> String {
     format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><title>OpenAgents Nexus Relay</title></head><body><h1>OpenAgents Nexus Relay</h1><p>Durable relay proxy is running.</p><ul><li>Relay websocket: {}</li><li>Control upstream: {}</li><li>Data dir: {}</li></ul></body></html>",
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>OpenAgents Nexus Relay</title></head><body><h1>OpenAgents Nexus Relay</h1><p>Durable relay and in-process authority routes are running.</p><ul><li>Relay websocket: {}</li><li>Authority routes: /api/* and /v1/*</li><li>Data dir: {}</li></ul></body></html>",
         config.public_ws_url,
-        config.control_base_url,
         config.data_dir.display(),
     )
-}
-
-fn proxy_target_url(base_url: &str, uri: &Uri) -> Result<Url, String> {
-    let base = Url::parse(base_url).map_err(|error| format!("invalid control base url: {error}"))?;
-    let path_and_query = uri
-        .path_and_query()
-        .map_or_else(|| uri.path().to_string(), std::string::ToString::to_string);
-    base.join(path_and_query.as_str())
-        .map_err(|error| format!("invalid proxied path: {error}"))
-}
-
-fn copy_proxy_request_headers(
-    mut request: reqwest::RequestBuilder,
-    headers: &HeaderMap,
-) -> reqwest::RequestBuilder {
-    for (name, value) in headers {
-        if should_skip_proxy_request_header(name) {
-            continue;
-        }
-        request = request.header(name, value);
-    }
-    request
 }
 
 fn copy_proxy_response_headers(target: &mut HeaderMap, source: &HeaderMap) {
@@ -471,19 +393,14 @@ fn copy_proxy_response_headers(target: &mut HeaderMap, source: &HeaderMap) {
 fn should_skip_proxy_request_header(name: &header::HeaderName) -> bool {
     matches!(
         name,
-        &header::HOST
-            | &header::CONNECTION
-            | &header::CONTENT_LENGTH
-            | &header::TRANSFER_ENCODING
+        &header::HOST | &header::CONNECTION | &header::CONTENT_LENGTH | &header::TRANSFER_ENCODING
     )
 }
 
 fn should_skip_proxy_response_header(name: &header::HeaderName) -> bool {
     matches!(
         name,
-        &header::CONNECTION
-            | &header::CONTENT_LENGTH
-            | &header::TRANSFER_ENCODING
+        &header::CONNECTION | &header::CONTENT_LENGTH | &header::TRANSFER_ENCODING
     )
 }
 
@@ -514,6 +431,15 @@ fn parse_bool_env(name: &str, value: &str) -> Result<bool, String> {
         "0" | "false" | "no" | "off" => Ok(false),
         _ => Err(format!("invalid {name}: expected boolean value")),
     }
+}
+
+fn build_authority_config(
+    config: &DurableRelayConfig,
+) -> Result<nexus_control::ServiceConfig, anyhow::Error> {
+    let mut authority_config = nexus_control::ServiceConfig::from_env()
+        .map_err(|error| anyhow::anyhow!("failed to load in-process authority config: {error}"))?;
+    authority_config.hosted_nexus_relay_url = config.public_ws_url.clone();
+    Ok(authority_config)
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -569,7 +495,7 @@ mod tests {
     use tokio::time::{Duration, timeout};
     use tokio_tungstenite::{connect_async, tungstenite::Message as WsMessage};
 
-    use super::{DurableRelayConfig, UpstreamRelayHandle};
+    use super::{DurableRelayConfig, UpstreamRelayHandle, build_authority_config, build_router};
 
     const SAMPLE_EVENT: &str = r#"["EVENT", {"content": "hello world","created_at": 1691239763,"id":"f3ce6798d70e358213ebbeba4886bbdfacf1ecfd4f65ee5323ef5f404de32b86","kind": 1,"pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","sig": "30ca29e8581eeee75bf838171dec818af5e6de2b74f5337de940f5cc91186534c0b20d6cf7ad1043a2c51dbd60b979447720a471d346322103c83f6cb66e4e98","tags": []}]"#;
 
@@ -585,13 +511,29 @@ mod tests {
         let upstream_listen_addr = unused_socket_addr()?;
         Ok(DurableRelayConfig {
             listen_addr,
-            control_base_url: "http://127.0.0.1:42020".to_string(),
             upstream_listen_addr,
             data_dir: data_dir.to_path_buf(),
             public_ws_url: format!("ws://{listen_addr}/"),
             upstream_config_file: None,
             enable_nip42_auth: false,
         })
+    }
+
+    async fn start_shell_server(
+        config: DurableRelayConfig,
+    ) -> Result<(
+        SocketAddr,
+        tokio::task::JoinHandle<Result<(), anyhow::Error>>,
+    )> {
+        let authority_config = build_authority_config(&config)?;
+        let listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
+        let addr = listener.local_addr()?;
+        let server = tokio::spawn(async move {
+            axum::serve(listener, build_router(config, authority_config))
+                .await
+                .map_err(anyhow::Error::from)
+        });
+        Ok((addr, server))
     }
 
     #[tokio::test]
@@ -621,7 +563,9 @@ mod tests {
         let restarted = UpstreamRelayHandle::spawn(config.clone()).await?;
         let (mut subscriber, _) = connect_async(relay_url.as_str()).await?;
         subscriber
-            .send(WsMessage::Text(r#"["REQ", "durable-check", {}]"#.to_string().into()))
+            .send(WsMessage::Text(
+                r#"["REQ", "durable-check", {}]"#.to_string().into(),
+            ))
             .await?;
 
         let first = timeout(Duration::from_secs(2), subscriber.next()).await;
@@ -657,20 +601,14 @@ mod tests {
         let config = durable_config(tempdir.path())?;
         let expected_upstream = config.upstream_ws_url();
         let relay = UpstreamRelayHandle::spawn(config.clone()).await?;
-
-        let listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
-        let addr = listener.local_addr()?;
-        let server = tokio::spawn(async move {
-            axum::serve(listener, super::build_router(config))
-                .await
-                .map_err(anyhow::Error::from)
-        });
+        let (addr, server) = start_shell_server(config).await?;
 
         let response = reqwest::get(format!("http://{addr}/healthz")).await?;
         assert_eq!(response.status(), StatusCode::OK);
         let health: Value = response.json().await?;
         assert_eq!(health["relay_backend"], "durable-upstream");
         assert_eq!(health["upstream_ws_url"], expected_upstream);
+        assert_eq!(health["authority_mode"], "in-process");
 
         server.abort();
         relay.shutdown().await?;
@@ -683,14 +621,7 @@ mod tests {
         let mut config = durable_config(tempdir.path())?;
         config.enable_nip42_auth = true;
         let relay = UpstreamRelayHandle::spawn(config.clone()).await?;
-
-        let listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
-        let addr = listener.local_addr()?;
-        let server = tokio::spawn(async move {
-            axum::serve(listener, super::build_router(config))
-                .await
-                .map_err(anyhow::Error::from)
-        });
+        let (addr, server) = start_shell_server(config).await?;
 
         let client = reqwest::Client::new();
         let response = client
@@ -708,9 +639,11 @@ mod tests {
         );
         let body: Value = response.json().await?;
         assert_eq!(body["name"], "OpenAgents Nexus");
-        assert!(body["supported_nips"]
-            .as_array()
-            .is_some_and(|nips| nips.iter().any(|value| value == 42)));
+        assert!(
+            body["supported_nips"]
+                .as_array()
+                .is_some_and(|nips| nips.iter().any(|value| value == 42))
+        );
 
         server.abort();
         relay.shutdown().await?;
@@ -722,14 +655,7 @@ mod tests {
         let tempdir = tempdir()?;
         let config = durable_config(tempdir.path())?;
         let relay = UpstreamRelayHandle::spawn(config.clone()).await?;
-
-        let listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
-        let addr = listener.local_addr()?;
-        let server = tokio::spawn(async move {
-            axum::serve(listener, super::build_router(config))
-                .await
-                .map_err(anyhow::Error::from)
-        });
+        let (addr, server) = start_shell_server(config).await?;
 
         let response = reqwest::get(format!("http://{addr}/metrics")).await?;
         assert_eq!(response.status(), StatusCode::OK);
@@ -748,14 +674,7 @@ mod tests {
         let mut config = durable_config(tempdir.path())?;
         config.enable_nip42_auth = true;
         let relay = UpstreamRelayHandle::spawn(config.clone()).await?;
-
-        let listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
-        let addr = listener.local_addr()?;
-        let server = tokio::spawn(async move {
-            axum::serve(listener, super::build_router(config))
-                .await
-                .map_err(anyhow::Error::from)
-        });
+        let (addr, server) = start_shell_server(config).await?;
 
         let (mut socket, _) = connect_async(format!("ws://{addr}/")).await?;
         let first = timeout(Duration::from_secs(2), socket.next()).await;
@@ -768,6 +687,46 @@ mod tests {
             other => return Err(anyhow::anyhow!("unexpected auth frame: {other:?}")),
         };
         assert!(first.contains("\"AUTH\""));
+
+        server.abort();
+        relay.shutdown().await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn durable_shell_serves_in_process_authority_routes() -> Result<()> {
+        let tempdir = tempdir()?;
+        let config = durable_config(tempdir.path())?;
+        let relay = UpstreamRelayHandle::spawn(config.clone()).await?;
+        let (addr, server) = start_shell_server(config).await?;
+
+        let client = reqwest::Client::new();
+        let session = client
+            .post(format!("http://{addr}/api/session/desktop"))
+            .json(&serde_json::json!({
+                "desktop_client_id": "autopilot-desktop:test",
+                "device_name": "integration"
+            }))
+            .send()
+            .await?;
+        assert_eq!(session.status(), StatusCode::OK);
+        let session: Value = session.json().await?;
+        let access_token = session["access_token"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("missing access token"))?;
+
+        let stats = client
+            .get(format!("http://{addr}/api/stats"))
+            .send()
+            .await?;
+        assert_eq!(stats.status(), StatusCode::OK);
+
+        let snapshot = client
+            .get(format!("http://{addr}/v1/kernel/snapshots/0"))
+            .header(header::AUTHORIZATION, format!("Bearer {access_token}"))
+            .send()
+            .await?;
+        assert_eq!(snapshot.status(), StatusCode::OK);
 
         server.abort();
         relay.shutdown().await?;
