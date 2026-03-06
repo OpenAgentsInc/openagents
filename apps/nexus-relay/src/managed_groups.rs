@@ -9,6 +9,7 @@ use nostr::{
     KIND_REMOVE_USER, LeaveRequestEvent, ManagedChannelCreateEvent, ManagedChannelMessageEvent,
     ManagedChannelMetadataEvent, ModerationAction, ModerationEvent, TaggedPubkey, finalize_event,
 };
+use serde_json::Value;
 
 use crate::RelayIdentity;
 
@@ -240,6 +241,79 @@ impl ManagedGroup {
 }
 
 impl ManagedGroupsState {
+    pub(crate) fn can_read_event(&self, event: &Event, authenticated_pubkey: Option<&str>) -> bool {
+        let Some(group_id) = event_group_id(event) else {
+            return true;
+        };
+        let Some(group) = self.groups.get(group_id) else {
+            return true;
+        };
+        if !group_requires_auth(group) {
+            return true;
+        }
+        authenticated_pubkey.is_some_and(|pubkey| group.is_member(pubkey))
+    }
+
+    pub(crate) fn subscription_auth_message(
+        &self,
+        filters: &[Value],
+        authenticated_pubkey: Option<&str>,
+    ) -> Option<String> {
+        let group_ids = filters
+            .iter()
+            .flat_map(filter_group_ids)
+            .collect::<BTreeSet<_>>();
+
+        for group_id in group_ids {
+            let Some(group) = self.groups.get(group_id.as_str()) else {
+                continue;
+            };
+            if !group_requires_auth(group) {
+                continue;
+            }
+            let Some(pubkey) = authenticated_pubkey else {
+                return Some(nostr::nip42::create_auth_required_message(
+                    "managed group subscription requires relay authentication",
+                ));
+            };
+            if !group.is_member(pubkey) {
+                return Some(nostr::nip42::create_restricted_message(
+                    "managed group subscription is not permitted",
+                ));
+            }
+        }
+
+        None
+    }
+
+    pub(crate) fn publish_auth_message(
+        &self,
+        event: &Event,
+        authenticated_pubkey: Option<&str>,
+    ) -> Option<String> {
+        let group_id = event_group_id(event)?;
+        let group = self.groups.get(group_id)?;
+        if !group_requires_auth(group) {
+            return None;
+        }
+        let Some(pubkey) = authenticated_pubkey else {
+            return Some(nostr::nip42::create_auth_required_message(
+                "managed group write requires relay authentication",
+            ));
+        };
+        if pubkey != event.pubkey {
+            return Some(nostr::nip42::create_restricted_message(
+                "authenticated pubkey does not match event pubkey",
+            ));
+        }
+        match nostr::verify_event(event) {
+            Ok(true) => None,
+            Ok(false) | Err(_) => Some(nostr::nip42::create_restricted_message(
+                "managed group event signature is invalid",
+            )),
+        }
+    }
+
     pub(crate) fn apply_event(
         &mut self,
         relay_identity: &RelayIdentity,
@@ -493,6 +567,32 @@ pub(crate) fn event_group_id(event: &Event) -> Option<&str> {
     None
 }
 
+fn filter_group_ids(filter: &Value) -> Vec<String> {
+    let Some(object) = filter.as_object() else {
+        return Vec::new();
+    };
+
+    let mut group_ids = BTreeSet::new();
+    if let Some(tag_values) = object.get("#h").and_then(Value::as_array) {
+        for group_id in tag_values.iter().filter_map(Value::as_str) {
+            group_ids.insert(group_id.to_string());
+        }
+    }
+    if let Some(tag_values) = object.get("#d").and_then(Value::as_array) {
+        for group_id in tag_values.iter().filter_map(Value::as_str) {
+            group_ids.insert(group_id.to_string());
+        }
+    }
+    group_ids.into_iter().collect()
+}
+
+fn group_requires_auth(group: &ManagedGroup) -> bool {
+    group.metadata.private
+        || group.metadata.restricted
+        || group.metadata.hidden
+        || group.metadata.closed
+}
+
 fn sign_unsigned_event(
     relay_identity: &RelayIdentity,
     unsigned: nostr::UnsignedEvent,
@@ -513,6 +613,7 @@ mod tests {
         EventTemplate, KIND_CREATE_GROUP, KIND_GROUP_METADATA, KIND_JOIN_REQUEST,
         KIND_LEAVE_REQUEST, ModerationAction, ModerationEvent, finalize_event, get_public_key_hex,
     };
+    use serde_json::json;
 
     use super::{ManagedGroupsState, RelayIdentity, event_group_id};
 
@@ -752,5 +853,66 @@ mod tests {
             "managed_group:membership_required"
         );
         assert_eq!(joiner_pubkey.len(), 64);
+    }
+
+    #[test]
+    fn managed_group_auth_helpers_require_membership_for_restricted_reads_and_writes() {
+        let relay = relay_identity();
+        let admin_secret = secret_key(5);
+        let admin_pubkey = get_public_key_hex(&admin_secret).unwrap();
+        let mut groups = ManagedGroupsState::default();
+
+        let create = sign_moderation(
+            ModerationEvent::new("oa-main", ModerationAction::CreateGroup, 30).unwrap(),
+            &admin_secret,
+            admin_pubkey.as_str(),
+        );
+        groups.apply_event(&relay, &create).unwrap();
+
+        let restrict = sign_moderation(
+            ModerationEvent::new(
+                "oa-main",
+                ModerationAction::EditMetadata {
+                    changes: vec![vec!["restricted".to_string()]],
+                },
+                31,
+            )
+            .unwrap(),
+            &admin_secret,
+            admin_pubkey.as_str(),
+        );
+        groups.apply_event(&relay, &restrict).unwrap();
+
+        let read_message =
+            groups.subscription_auth_message(&[json!({"kinds":[39000], "#d":["oa-main"]})], None);
+        assert!(
+            read_message
+                .expect("auth-required message")
+                .starts_with(nostr::nip42::AUTH_REQUIRED_PREFIX)
+        );
+
+        let write_event = sign_template(
+            EventTemplate {
+                created_at: 32,
+                kind: nostr::KIND_CHANNEL_CREATION,
+                tags: vec![
+                    vec!["h".to_string(), "oa-main".to_string()],
+                    vec!["oa-room-mode".to_string(), "managed-channel".to_string()],
+                ],
+                content: "{\"name\":\"ops\",\"about\":\"\",\"picture\":\"\"}".to_string(),
+            },
+            &admin_secret,
+        );
+        let write_message = groups.publish_auth_message(&write_event, None);
+        assert!(
+            write_message
+                .expect("auth-required write message")
+                .starts_with(nostr::nip42::AUTH_REQUIRED_PREFIX)
+        );
+        assert!(
+            groups
+                .publish_auth_message(&write_event, Some(admin_pubkey.as_str()))
+                .is_none()
+        );
     }
 }

@@ -3700,6 +3700,7 @@ dependencies = [
  "futures-util",
  "hex",
  "nostr 0.1.0",
+ "nostr-client",
  "serde",
  "serde_json",
  "tokio",
