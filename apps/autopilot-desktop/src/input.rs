@@ -20,6 +20,8 @@ use openagents_cad::query::{
     CadPickCameraPose, CadPickEntityKind, CadPickProjectionMode, CadPickQuery, CadPickViewport,
     pick_mesh_hit,
 };
+use openagents_kernel_core::ids::sha256_prefixed_text;
+use openagents_kernel_core::receipts::EvidenceRef;
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -76,8 +78,8 @@ use crate::runtime_lanes::{
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
 use crate::spark_wallet::SparkWalletCommand;
 use crate::state::autopilot_goals::{
-    GoalAttemptAuditReceipt, GoalExecutionReceipt, GoalLifecycleEvent, GoalLifecycleStatus,
-    GoalPayoutEvidence, GoalRunAuditReceipt, GoalToolInvocationAudit,
+    GoalAttemptAuditReceipt, GoalExecutionReceipt, GoalLaborLinkage, GoalLifecycleEvent,
+    GoalLifecycleStatus, GoalPayoutEvidence, GoalRunAuditReceipt, GoalToolInvocationAudit,
 };
 use crate::state::goal_conditions::{ConditionEvaluation, GoalProgressSnapshot};
 use crate::state::goal_loop_executor::{
@@ -912,16 +914,24 @@ fn run_autonomous_goal_loop(state: &mut crate::app_state::RenderState) -> bool {
     let pending_after = state.autopilot_chat.pending_turn_metadata.len();
 
     if pending_after > pending_before && state.autopilot_chat.last_error.is_none() {
-        let selected_skills = state
+        let (selected_skills, labor) = state
             .autopilot_chat
             .pending_turn_metadata
             .back()
-            .map(|metadata| metadata.selected_skill_names.clone())
-            .unwrap_or_default();
+            .map(|metadata| {
+                let labor = metadata
+                    .labor_binding
+                    .as_ref()
+                    .map(goal_labor_linkage_from_binding)
+                    .unwrap_or_default();
+                (metadata.selected_skill_names.clone(), labor)
+            })
+            .unwrap_or_else(|| (Vec::new(), GoalLaborLinkage::default()));
         state.goal_loop_executor.mark_attempt_submitted(
             now_epoch_seconds,
             state.autopilot_chat.active_thread_id.clone(),
             selected_skills,
+            labor,
         );
         if let Some(run) = state.goal_loop_executor.active_run.as_ref() {
             let attempt_index = run.attempts.len();
@@ -1128,6 +1138,173 @@ fn goal_loop_prompt_for_goal(goal: &crate::state::autopilot_goals::GoalRecord) -
     prompt
 }
 
+fn goal_labor_linkage_from_binding(
+    binding: &crate::labor_orchestrator::CodexLaborBinding,
+) -> GoalLaborLinkage {
+    GoalLaborLinkage {
+        work_unit_id: Some(binding.work_unit_id.clone()),
+        contract_id: Some(binding.contract_id.clone()),
+        submission_id: binding
+            .submission
+            .as_ref()
+            .map(|submission| submission.submission.submission_id.clone()),
+        verdict_id: binding
+            .verdict
+            .as_ref()
+            .map(|verdict| verdict.verdict.verdict_id.clone()),
+        claim_id: binding.trace.claim_id.clone(),
+        settlement_id: None,
+        settlement_ready: Some(binding.is_settlement_ready()),
+        tool_evidence_refs: Vec::new(),
+        submission_evidence_refs: binding
+            .submission
+            .as_ref()
+            .map(|submission| submission.evidence_refs.clone())
+            .unwrap_or_default(),
+        verdict_evidence_refs: binding
+            .verdict
+            .as_ref()
+            .map(|verdict| verdict.evidence_refs.clone())
+            .unwrap_or_default(),
+        settlement_evidence_refs: Vec::new(),
+    }
+}
+
+fn resolve_attempt_labor_linkage(
+    chat: &crate::app_state::AutopilotChatState,
+    attempt: &crate::state::goal_loop_executor::GoalLoopAttemptRecord,
+) -> GoalLaborLinkage {
+    let mut labor = attempt.labor.clone();
+    if let Some(turn_id) = attempt.turn_id.as_deref()
+        && let Some(binding_labor) = chat.turn_labor_linkage_for(turn_id)
+    {
+        labor.merge_from(&binding_labor);
+    }
+    labor
+}
+
+fn build_goal_attempt_audit_receipts(
+    chat: &crate::app_state::AutopilotChatState,
+    attempts: &[crate::state::goal_loop_executor::GoalLoopAttemptRecord],
+) -> Vec<GoalAttemptAuditReceipt> {
+    attempts
+        .iter()
+        .map(|attempt| GoalAttemptAuditReceipt {
+            attempt_index: attempt.attempt_index,
+            submitted_at_epoch_seconds: attempt.submitted_at_epoch_seconds,
+            finished_at_epoch_seconds: attempt.finished_at_epoch_seconds,
+            thread_id: attempt.thread_id.clone(),
+            turn_id: attempt.turn_id.clone(),
+            selected_skills: attempt.selected_skills.clone(),
+            turn_status: attempt.turn_status.clone(),
+            error: attempt.error.clone(),
+            condition_goal_complete: attempt.condition_goal_complete,
+            condition_should_continue: attempt.condition_should_continue,
+            condition_completion_reasons: attempt.condition_completion_reasons.clone(),
+            condition_stop_reasons: attempt.condition_stop_reasons.clone(),
+            labor: resolve_attempt_labor_linkage(chat, attempt),
+            tool_invocations: attempt
+                .tool_invocations
+                .iter()
+                .map(|tool| GoalToolInvocationAudit {
+                    request_id: tool.request_id.clone(),
+                    call_id: tool.call_id.clone(),
+                    tool_name: tool.tool_name.clone(),
+                    response_code: tool.response_code.clone(),
+                    success: tool.success,
+                    response_message: tool.response_message.clone(),
+                    recorded_at_epoch_seconds: tool.recorded_at_epoch_seconds,
+                    evidence_refs: tool.evidence_refs.clone(),
+                })
+                .collect::<Vec<_>>(),
+        })
+        .collect::<Vec<_>>()
+}
+
+fn terminal_goal_labor_linkage(attempts: &[GoalAttemptAuditReceipt]) -> GoalLaborLinkage {
+    attempts
+        .iter()
+        .rev()
+        .map(|attempt| attempt.labor.clone())
+        .find(|labor| !labor.is_empty())
+        .unwrap_or_default()
+}
+
+fn build_goal_payout_evidence(
+    reconciliation: &crate::state::wallet_reconciliation::WalletReconciliationReport,
+    terminal_attempt: Option<&GoalAttemptAuditReceipt>,
+) -> Vec<GoalPayoutEvidence> {
+    let Some(terminal_attempt) = terminal_attempt else {
+        return Vec::new();
+    };
+    let terminal_labor = terminal_attempt.labor.clone();
+    reconciliation
+        .events
+        .iter()
+        .filter(|event| event.kind == WalletLedgerEventKind::EarnPayout)
+        .filter_map(|event| {
+            let Some(job_id) = event.job_id.clone() else {
+                return None;
+            };
+            let Some(payment_pointer) = event.payment_pointer.clone() else {
+                return None;
+            };
+            let settlement_id = terminal_labor.verdict_id.as_deref().map(|verdict_id| {
+                let digest = sha256_prefixed_text(
+                    format!("{verdict_id}:{}:{}", event.event_id, payment_pointer).as_str(),
+                );
+                format!("settlement.goal.{}", digest.replace(':', "."))
+            });
+            let settlement_evidence_refs = settlement_id
+                .as_deref()
+                .map(|settlement_id| {
+                    vec![goal_settlement_evidence_ref(
+                        settlement_id,
+                        payment_pointer.as_str(),
+                        event.event_id.as_str(),
+                    )]
+                })
+                .unwrap_or_default();
+            let mut labor = terminal_labor.clone();
+            labor.settlement_id = settlement_id;
+            labor.settlement_evidence_refs = settlement_evidence_refs;
+            Some(GoalPayoutEvidence {
+                event_id: event.event_id.clone(),
+                occurred_at_epoch_seconds: event.occurred_at_epoch_seconds,
+                job_id,
+                payment_pointer,
+                payout_sats: event.sats_delta.max(0) as u64,
+                attempt_index: Some(terminal_attempt.attempt_index),
+                turn_id: terminal_attempt.turn_id.clone(),
+                labor,
+            })
+        })
+        .collect::<Vec<_>>()
+}
+
+fn goal_settlement_evidence_ref(
+    settlement_id: &str,
+    payment_pointer: &str,
+    event_id: &str,
+) -> EvidenceRef {
+    let digest =
+        sha256_prefixed_text(format!("{settlement_id}:{payment_pointer}:{event_id}").as_str());
+    let mut evidence = EvidenceRef::new(
+        "goal_settlement",
+        format!("oa://autopilot/goals/settlements/{settlement_id}"),
+        digest,
+    );
+    evidence.meta.insert(
+        "payment_pointer".to_string(),
+        serde_json::Value::String(payment_pointer.to_string()),
+    );
+    evidence.meta.insert(
+        "event_id".to_string(),
+        serde_json::Value::String(event_id.to_string()),
+    );
+    evidence
+}
+
 fn finalize_goal_loop_run(
     state: &mut crate::app_state::RenderState,
     active_run: &ActiveGoalLoopRun,
@@ -1190,6 +1367,13 @@ fn finalize_goal_loop_run(
         ));
     }
 
+    let attempts = build_goal_attempt_audit_receipts(&state.autopilot_chat, &run_snapshot.attempts);
+    let terminal_attempt = attempts
+        .iter()
+        .rev()
+        .find(|attempt| !attempt.labor.is_empty());
+    let mut terminal_labor = terminal_goal_labor_linkage(&attempts);
+
     let receipt_id = format!("goal-loop-receipt-{}-{}", goal_id, now_epoch_seconds);
     let receipt = GoalExecutionReceipt {
         receipt_id: receipt_id.clone(),
@@ -1205,6 +1389,7 @@ fn finalize_goal_loop_run(
         notes: notes.clone(),
         recovered_from_restart: run_snapshot.recovered_from_restart,
         policy_snapshot: goal.constraints.policy_snapshot(),
+        terminal_labor: terminal_labor.clone(),
     };
     if let Err(error) = state.autopilot_goals.record_receipt(receipt) {
         state.autopilot_goals.last_error = Some(error);
@@ -1223,26 +1408,10 @@ fn finalize_goal_loop_run(
         &state.spark_wallet,
         &state.autopilot_goals.document.swap_execution_receipts,
     );
-    let payout_evidence = reconciliation
-        .events
-        .iter()
-        .filter(|event| event.kind == WalletLedgerEventKind::EarnPayout)
-        .filter_map(|event| {
-            let Some(job_id) = event.job_id.clone() else {
-                return None;
-            };
-            let Some(payment_pointer) = event.payment_pointer.clone() else {
-                return None;
-            };
-            Some(GoalPayoutEvidence {
-                event_id: event.event_id.clone(),
-                occurred_at_epoch_seconds: event.occurred_at_epoch_seconds,
-                job_id,
-                payment_pointer,
-                payout_sats: event.sats_delta.max(0) as u64,
-            })
-        })
-        .collect::<Vec<_>>();
+    let payout_evidence = build_goal_payout_evidence(&reconciliation, terminal_attempt);
+    if let Some(first_payout) = payout_evidence.first() {
+        terminal_labor.merge_from(&first_payout.labor);
+    }
 
     let swap_quote_evidence = state
         .autopilot_goals
@@ -1269,37 +1438,6 @@ fn finalize_goal_loop_run(
         .cloned()
         .collect::<Vec<_>>();
 
-    let attempts = run_snapshot
-        .attempts
-        .iter()
-        .map(|attempt| GoalAttemptAuditReceipt {
-            attempt_index: attempt.attempt_index,
-            submitted_at_epoch_seconds: attempt.submitted_at_epoch_seconds,
-            finished_at_epoch_seconds: attempt.finished_at_epoch_seconds,
-            thread_id: attempt.thread_id.clone(),
-            turn_id: attempt.turn_id.clone(),
-            selected_skills: attempt.selected_skills.clone(),
-            turn_status: attempt.turn_status.clone(),
-            error: attempt.error.clone(),
-            condition_goal_complete: attempt.condition_goal_complete,
-            condition_should_continue: attempt.condition_should_continue,
-            condition_completion_reasons: attempt.condition_completion_reasons.clone(),
-            condition_stop_reasons: attempt.condition_stop_reasons.clone(),
-            tool_invocations: attempt
-                .tool_invocations
-                .iter()
-                .map(|tool| GoalToolInvocationAudit {
-                    request_id: tool.request_id.clone(),
-                    call_id: tool.call_id.clone(),
-                    tool_name: tool.tool_name.clone(),
-                    response_code: tool.response_code.clone(),
-                    success: tool.success,
-                    response_message: tool.response_message.clone(),
-                    recorded_at_epoch_seconds: tool.recorded_at_epoch_seconds,
-                })
-                .collect::<Vec<_>>(),
-        })
-        .collect::<Vec<_>>();
     let mut selected_skills = attempts
         .iter()
         .flat_map(|attempt| attempt.selected_skills.clone())
@@ -1321,6 +1459,7 @@ fn finalize_goal_loop_run(
         terminal_status_reason,
         selected_skills,
         attempts,
+        terminal_labor,
         condition_goal_complete: condition_evaluation
             .as_ref()
             .map(|value| value.goal_complete),
@@ -3012,20 +3151,29 @@ where
 mod tests {
     use super::{
         TurnSkillAttachment, TurnSkillSource, assemble_chat_turn_input,
-        build_create_invoice_command, build_pay_invoice_command, build_spark_command_for_action,
+        build_create_invoice_command, build_goal_attempt_audit_receipts,
+        build_goal_payout_evidence, build_pay_invoice_command, build_spark_command_for_action,
         cad_hit_action_blocks_camera_zoom, cad_hotkey_action_matrix, cad_pick_kind_label,
         cad_pick_kind_to_selection_kind, cad_policy_skill_candidates_for_turn,
-        cad_turn_approval_policy, is_command_palette_shortcut, is_toggle_fullscreen_shortcut,
-        parse_positive_amount_str, resolve_turn_skill_by_name, resolve_turn_skill_by_path,
-        should_open_command_palette, validate_lightning_payment_request,
+        cad_turn_approval_policy, goal_labor_linkage_from_binding, is_command_palette_shortcut,
+        is_toggle_fullscreen_shortcut, parse_positive_amount_str, resolve_turn_skill_by_name,
+        resolve_turn_skill_by_path, should_open_command_palette, terminal_goal_labor_linkage,
+        validate_lightning_payment_request,
     };
     use crate::app_state::SkillRegistryDiscoveredSkill;
+    use crate::labor_orchestrator::{
+        CodexRunTrigger, CodexTurnExecutionRequest, orchestrate_codex_turn,
+    };
     use crate::pane_system::cad_palette_command_specs;
     use crate::spark_pane::{
         CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction, hit_action, layout,
     };
     use crate::spark_wallet::SparkWalletCommand;
-    use codex_client::UserInput;
+    use crate::state::goal_loop_executor::GoalLoopExecutorState;
+    use crate::state::wallet_reconciliation::{
+        WalletLedgerEvent, WalletLedgerEventKind, WalletReconciliationReport,
+    };
+    use codex_client::{AskForApproval, SandboxPolicy, UserInput};
     use openagents_cad::contracts::CadSelectionKind;
     use openagents_cad::query::CadPickEntityKind;
     use std::collections::BTreeSet;
@@ -3400,6 +3548,158 @@ mod tests {
             &input[2],
             UserInput::Skill { name, .. } if name == "pane-control"
         ));
+    }
+
+    #[test]
+    fn goal_attempt_receipts_link_labor_ids_and_settlement_evidence() {
+        let mut chat = crate::app_state::AutopilotChatState::default();
+        chat.ensure_thread("thread-1".to_string());
+        chat.submit_prompt("complete the earning task".to_string());
+
+        let plan = orchestrate_codex_turn(CodexTurnExecutionRequest {
+            trigger: CodexRunTrigger::AutonomousGoal {
+                goal_id: "goal-1".to_string(),
+                goal_title: "Earn sats".to_string(),
+            },
+            submitted_at_epoch_ms: 1_700_000_000_000,
+            thread_id: "thread-1".to_string(),
+            input: vec![
+                UserInput::Text {
+                    text: "complete the earning task".to_string(),
+                    text_elements: Vec::new(),
+                },
+                UserInput::Skill {
+                    name: "blink".to_string(),
+                    path: PathBuf::from("/repo/skills/blink/SKILL.md"),
+                },
+            ],
+            cwd: Some(PathBuf::from("/repo")),
+            approval_policy: Some(AskForApproval::Never),
+            sandbox_policy: Some(SandboxPolicy::WorkspaceWrite {
+                writable_roots: vec!["/repo".to_string()],
+                network_access: false,
+                exclude_tmpdir_env_var: false,
+                exclude_slash_tmp: false,
+            }),
+            model: Some("gpt-5".to_string()),
+        });
+        let initial_labor = goal_labor_linkage_from_binding(
+            plan.labor_binding
+                .as_ref()
+                .expect("autonomous goal is labor bound"),
+        );
+        let expected_work_unit_id = initial_labor.work_unit_id.clone();
+        let expected_contract_id = initial_labor.contract_id.clone();
+        chat.record_turn_submission_metadata(
+            "thread-1",
+            plan.classification,
+            plan.labor_binding,
+            false,
+            "autonomous-goal",
+            1_700_000_000_000,
+            vec!["blink".to_string()],
+        );
+        chat.mark_turn_started("turn-1".to_string());
+        chat.record_turn_tool_request(
+            "turn-1",
+            "req-1",
+            "call-1",
+            "openagents_labor_scope",
+            "{\"turn_id\":\"turn-1\"}",
+            1_700_000_000_100,
+        );
+        chat.record_turn_tool_result(
+            "turn-1",
+            "req-1",
+            "call-1",
+            "openagents_labor_scope",
+            "OA-LABOR-SCOPE-OK",
+            true,
+            "scope delivered",
+            1_700_000_000_200,
+        );
+        chat.set_turn_message_for_turn("turn-1", "final answer");
+        chat.mark_turn_completed_for("turn-1");
+        chat.assemble_turn_labor_submission("turn-1", 1_700_000_000_300)
+            .expect("submission should assemble");
+        chat.finalize_turn_labor_verdict("turn-1", 1_700_000_000_400)
+            .expect("verdict should finalize");
+
+        let mut executor = GoalLoopExecutorState::default();
+        assert!(executor.begin_run("goal-1", 1_700_000_000, 0, false));
+        executor.mark_attempt_submitted(
+            1_700_000_000,
+            Some("thread-1".to_string()),
+            vec!["blink".to_string()],
+            initial_labor,
+        );
+        executor.bind_attempt_turn_id("turn-1");
+        executor.record_tool_invocation(
+            "req-1",
+            "call-1",
+            "openagents_labor_scope",
+            "OA-LABOR-SCOPE-OK",
+            true,
+            "scope delivered",
+            1_700_000_001,
+        );
+        executor.merge_attempt_labor_linkage(
+            Some("turn-1"),
+            chat.turn_labor_linkage_for("turn-1")
+                .expect("turn labor linkage available"),
+        );
+
+        let attempts = build_goal_attempt_audit_receipts(
+            &chat,
+            &executor.active_run.as_ref().expect("run active").attempts,
+        );
+        assert_eq!(attempts.len(), 1);
+        assert_eq!(attempts[0].labor.work_unit_id, expected_work_unit_id);
+        assert_eq!(attempts[0].labor.contract_id, expected_contract_id);
+        assert!(attempts[0].labor.submission_id.is_some());
+        assert!(attempts[0].labor.verdict_id.is_some());
+        assert_eq!(attempts[0].labor.settlement_ready, Some(true));
+        assert_eq!(attempts[0].tool_invocations.len(), 1);
+        assert_eq!(attempts[0].tool_invocations[0].evidence_refs.len(), 1);
+
+        let mut terminal_labor = terminal_goal_labor_linkage(&attempts);
+        let payout_evidence = build_goal_payout_evidence(
+            &WalletReconciliationReport {
+                wallet_delta_sats_raw: 1_000,
+                wallet_delta_excluding_swaps_sats: 1_000,
+                earned_wallet_delta_sats: 1_000,
+                swap_converted_out_sats: 0,
+                swap_converted_in_sats: 0,
+                swap_fee_sats: 0,
+                non_swap_spend_sats: 0,
+                unattributed_receive_sats: 0,
+                total_swap_cents: 0,
+                events: vec![WalletLedgerEvent {
+                    event_id: "earn:job-1:wallet:pay:job-1".to_string(),
+                    occurred_at_epoch_seconds: 1_700_000_002,
+                    kind: WalletLedgerEventKind::EarnPayout,
+                    sats_delta: 1_000,
+                    cents_delta: 0,
+                    job_id: Some("job-1".to_string()),
+                    payment_pointer: Some("wallet:pay:job-1".to_string()),
+                    quote_id: None,
+                    transaction_id: None,
+                    note: None,
+                }],
+            },
+            attempts.first(),
+        );
+        assert_eq!(payout_evidence.len(), 1);
+        terminal_labor.merge_from(&payout_evidence[0].labor);
+        assert_eq!(payout_evidence[0].attempt_index, Some(1));
+        assert_eq!(payout_evidence[0].turn_id.as_deref(), Some("turn-1"));
+        assert_eq!(
+            payout_evidence[0].labor.work_unit_id,
+            attempts[0].labor.work_unit_id
+        );
+        assert!(payout_evidence[0].labor.settlement_id.is_some());
+        assert_eq!(payout_evidence[0].labor.settlement_evidence_refs.len(), 1);
+        assert!(terminal_labor.settlement_id.is_some());
     }
 
     #[test]

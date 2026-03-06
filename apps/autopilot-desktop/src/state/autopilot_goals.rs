@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use openagents_kernel_core::receipts::EvidenceRef;
 use serde::{Deserialize, Serialize};
 
 use crate::app_state::{JobHistoryState, SkillRegistryDiscoveredSkill};
@@ -290,6 +291,102 @@ pub struct GoalExecutionReceipt {
     pub recovered_from_restart: bool,
     #[serde(default)]
     pub policy_snapshot: GoalPolicySnapshot,
+    #[serde(default)]
+    pub terminal_labor: GoalLaborLinkage,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct GoalLaborLinkage {
+    #[serde(default)]
+    pub work_unit_id: Option<String>,
+    #[serde(default)]
+    pub contract_id: Option<String>,
+    #[serde(default)]
+    pub submission_id: Option<String>,
+    #[serde(default)]
+    pub verdict_id: Option<String>,
+    #[serde(default)]
+    pub claim_id: Option<String>,
+    #[serde(default)]
+    pub settlement_id: Option<String>,
+    #[serde(default)]
+    pub settlement_ready: Option<bool>,
+    #[serde(default)]
+    pub tool_evidence_refs: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub submission_evidence_refs: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub verdict_evidence_refs: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub settlement_evidence_refs: Vec<EvidenceRef>,
+}
+
+impl GoalLaborLinkage {
+    pub fn is_empty(&self) -> bool {
+        self.work_unit_id.is_none()
+            && self.contract_id.is_none()
+            && self.submission_id.is_none()
+            && self.verdict_id.is_none()
+            && self.claim_id.is_none()
+            && self.settlement_id.is_none()
+            && self.settlement_ready.is_none()
+            && self.tool_evidence_refs.is_empty()
+            && self.submission_evidence_refs.is_empty()
+            && self.verdict_evidence_refs.is_empty()
+            && self.settlement_evidence_refs.is_empty()
+    }
+
+    pub fn merge_from(&mut self, other: &Self) {
+        if other.work_unit_id.is_some() {
+            self.work_unit_id = other.work_unit_id.clone();
+        }
+        if other.contract_id.is_some() {
+            self.contract_id = other.contract_id.clone();
+        }
+        if other.submission_id.is_some() {
+            self.submission_id = other.submission_id.clone();
+        }
+        if other.verdict_id.is_some() {
+            self.verdict_id = other.verdict_id.clone();
+        }
+        if other.claim_id.is_some() {
+            self.claim_id = other.claim_id.clone();
+        }
+        if other.settlement_id.is_some() {
+            self.settlement_id = other.settlement_id.clone();
+        }
+        if other.settlement_ready.is_some() {
+            self.settlement_ready = other.settlement_ready;
+        }
+        merge_evidence_refs(&mut self.tool_evidence_refs, &other.tool_evidence_refs);
+        merge_evidence_refs(
+            &mut self.submission_evidence_refs,
+            &other.submission_evidence_refs,
+        );
+        merge_evidence_refs(
+            &mut self.verdict_evidence_refs,
+            &other.verdict_evidence_refs,
+        );
+        merge_evidence_refs(
+            &mut self.settlement_evidence_refs,
+            &other.settlement_evidence_refs,
+        );
+    }
+}
+
+fn merge_evidence_refs(target: &mut Vec<EvidenceRef>, incoming: &[EvidenceRef]) {
+    for evidence in incoming {
+        if target.iter().any(|existing| existing == evidence) {
+            continue;
+        }
+        target.push(evidence.clone());
+    }
+    target.sort_by(|left, right| {
+        left.kind
+            .cmp(&right.kind)
+            .then_with(|| left.uri.cmp(&right.uri))
+            .then_with(|| left.digest.cmp(&right.digest))
+    });
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -301,6 +398,8 @@ pub struct GoalToolInvocationAudit {
     pub success: bool,
     pub response_message: String,
     pub recorded_at_epoch_seconds: u64,
+    #[serde(default)]
+    pub evidence_refs: Vec<EvidenceRef>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -322,6 +421,8 @@ pub struct GoalAttemptAuditReceipt {
     #[serde(default)]
     pub condition_stop_reasons: Vec<String>,
     #[serde(default)]
+    pub labor: GoalLaborLinkage,
+    #[serde(default)]
     pub tool_invocations: Vec<GoalToolInvocationAudit>,
 }
 
@@ -332,6 +433,12 @@ pub struct GoalPayoutEvidence {
     pub job_id: String,
     pub payment_pointer: String,
     pub payout_sats: u64,
+    #[serde(default)]
+    pub attempt_index: Option<u32>,
+    #[serde(default)]
+    pub turn_id: Option<String>,
+    #[serde(default)]
+    pub labor: GoalLaborLinkage,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -346,6 +453,8 @@ pub struct GoalRunAuditReceipt {
     pub terminal_status_reason: String,
     pub selected_skills: Vec<String>,
     pub attempts: Vec<GoalAttemptAuditReceipt>,
+    #[serde(default)]
+    pub terminal_labor: GoalLaborLinkage,
     pub condition_goal_complete: Option<bool>,
     pub condition_should_continue: Option<bool>,
     #[serde(default)]
@@ -2128,11 +2237,11 @@ mod tests {
 
     use super::{
         AutopilotGoalsState, GoalAttemptAuditReceipt, GoalConstraints, GoalExecutionReceipt,
-        GoalLifecycleEvent, GoalLifecycleStatus, GoalMissedRunPolicy, GoalObjective,
-        GoalPayoutEvidence, GoalPolicySnapshot, GoalRecord, GoalRetryPolicy, GoalRolloutConfig,
-        GoalRolloutHardeningChecklist, GoalRolloutRollbackPolicy, GoalRolloutStage,
-        GoalRunAuditReceipt, GoalScheduleConfig, GoalScheduleKind, GoalStopCondition,
-        GoalToolInvocationAudit,
+        GoalLaborLinkage, GoalLifecycleEvent, GoalLifecycleStatus, GoalMissedRunPolicy,
+        GoalObjective, GoalPayoutEvidence, GoalPolicySnapshot, GoalRecord, GoalRetryPolicy,
+        GoalRolloutConfig, GoalRolloutHardeningChecklist, GoalRolloutRollbackPolicy,
+        GoalRolloutStage, GoalRunAuditReceipt, GoalScheduleConfig, GoalScheduleKind,
+        GoalStopCondition, GoalToolInvocationAudit,
     };
     use crate::app_state::{
         JobHistoryReceiptRow, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
@@ -2201,6 +2310,7 @@ mod tests {
                 notes: Some("partial progress".to_string()),
                 recovered_from_restart: false,
                 policy_snapshot: GoalPolicySnapshot::default(),
+                terminal_labor: GoalLaborLinkage::default(),
             })
             .expect("record receipt should persist");
         state
@@ -2643,6 +2753,12 @@ mod tests {
                 lifecycle_status: GoalLifecycleStatus::Succeeded,
                 terminal_status_reason: "goal conditions satisfied".to_string(),
                 selected_skills: vec!["blink".to_string(), "l402".to_string()],
+                terminal_labor: GoalLaborLinkage {
+                    work_unit_id: Some("work-unit-1".to_string()),
+                    contract_id: Some("contract-1".to_string()),
+                    verdict_id: Some("verdict-1".to_string()),
+                    ..GoalLaborLinkage::default()
+                },
                 attempts: vec![GoalAttemptAuditReceipt {
                     attempt_index: 1,
                     submitted_at_epoch_seconds: 1_700_000_005,
@@ -2658,6 +2774,14 @@ mod tests {
                         "wallet delta reached 1000 sats".to_string(),
                     ],
                     condition_stop_reasons: Vec::new(),
+                    labor: GoalLaborLinkage {
+                        work_unit_id: Some("work-unit-1".to_string()),
+                        contract_id: Some("contract-1".to_string()),
+                        submission_id: Some("submission-1".to_string()),
+                        verdict_id: Some("verdict-1".to_string()),
+                        settlement_ready: Some(true),
+                        ..GoalLaborLinkage::default()
+                    },
                     tool_invocations: vec![GoalToolInvocationAudit {
                         request_id: "req-1".to_string(),
                         call_id: "call-1".to_string(),
@@ -2666,6 +2790,7 @@ mod tests {
                         success: true,
                         response_message: "wallet snapshot collected".to_string(),
                         recorded_at_epoch_seconds: 1_700_000_030,
+                        evidence_refs: Vec::new(),
                     }],
                 }],
                 condition_goal_complete: Some(true),
@@ -2678,6 +2803,15 @@ mod tests {
                     job_id: "job-1".to_string(),
                     payment_pointer: "wallet:pay:job-1".to_string(),
                     payout_sats: 1_000,
+                    attempt_index: Some(1),
+                    turn_id: Some("turn-1".to_string()),
+                    labor: GoalLaborLinkage {
+                        work_unit_id: Some("work-unit-1".to_string()),
+                        contract_id: Some("contract-1".to_string()),
+                        verdict_id: Some("verdict-1".to_string()),
+                        settlement_id: Some("settlement-1".to_string()),
+                        ..GoalLaborLinkage::default()
+                    },
                 }],
                 swap_quote_evidence: Vec::new(),
                 swap_execution_evidence: Vec::new(),
@@ -3453,6 +3587,7 @@ mod tests {
                 lifecycle_status: GoalLifecycleStatus::Succeeded,
                 terminal_status_reason: "goal conditions satisfied".to_string(),
                 selected_skills: vec!["blink".to_string()],
+                terminal_labor: GoalLaborLinkage::default(),
                 attempts: vec![GoalAttemptAuditReceipt {
                     attempt_index: 1,
                     submitted_at_epoch_seconds: 1_700_000_001,
@@ -3468,6 +3603,7 @@ mod tests {
                         "wallet delta reached 1000 sats".to_string(),
                     ],
                     condition_stop_reasons: Vec::new(),
+                    labor: GoalLaborLinkage::default(),
                     tool_invocations: Vec::new(),
                 }],
                 condition_goal_complete: Some(true),
@@ -3491,6 +3627,7 @@ mod tests {
                 lifecycle_status: GoalLifecycleStatus::Succeeded,
                 terminal_status_reason: "goal conditions satisfied".to_string(),
                 selected_skills: vec!["blink".to_string(), "l402".to_string()],
+                terminal_labor: GoalLaborLinkage::default(),
                 attempts: vec![GoalAttemptAuditReceipt {
                     attempt_index: 1,
                     submitted_at_epoch_seconds: 1_700_000_101,
@@ -3506,6 +3643,7 @@ mod tests {
                         "wallet delta reached 1000 sats".to_string(),
                     ],
                     condition_stop_reasons: Vec::new(),
+                    labor: GoalLaborLinkage::default(),
                     tool_invocations: Vec::new(),
                 }],
                 condition_goal_complete: Some(true),
@@ -3518,6 +3656,9 @@ mod tests {
                     job_id: "job-2".to_string(),
                     payment_pointer: "wallet:pay:job-2".to_string(),
                     payout_sats: 1_000,
+                    attempt_index: Some(1),
+                    turn_id: Some("turn-2".to_string()),
+                    labor: GoalLaborLinkage::default(),
                 }],
                 swap_quote_evidence: Vec::new(),
                 swap_execution_evidence: Vec::new(),
@@ -3535,6 +3676,7 @@ mod tests {
                 lifecycle_status: GoalLifecycleStatus::Aborted,
                 terminal_status_reason: "kill switch engaged".to_string(),
                 selected_skills: vec!["blink".to_string()],
+                terminal_labor: GoalLaborLinkage::default(),
                 attempts: Vec::new(),
                 condition_goal_complete: Some(false),
                 condition_should_continue: Some(false),
