@@ -333,6 +333,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         };
         apply_spacetime_sync_bootstrap(&mut state);
         bootstrap_runtime_lanes(&mut state);
+        let _ = state.sync_provider_nip90_lane_identity();
         let _ = state.sync_provider_nip90_lane_relays();
         open_startup_panes(&mut state);
         Ok(state)

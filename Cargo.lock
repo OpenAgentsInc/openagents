@@ -3772,6 +3772,7 @@ name = "nostr-client"
 version = "0.1.0"
 dependencies = [
  "futures-util",
+ "hex",
  "nostr 0.1.0",
  "serde",
  "serde_json",

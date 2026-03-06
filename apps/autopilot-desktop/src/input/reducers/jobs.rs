@@ -405,6 +405,7 @@ pub(super) fn apply_active_job_publish_outcome(
     }
 
     match outcome.role {
+        ProviderNip90PublishRole::Capability => {}
         ProviderNip90PublishRole::Result => {
             state.active_job.result_publish_in_flight = false;
             if outcome.accepted_relays == 0 {

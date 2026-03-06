@@ -1,5 +1,4 @@
 use crate::state::job_inbox::{JobInboxNetworkRequest, JobInboxValidation};
-use nostr::Event;
 use nostr::nip90::{
     JOB_REQUEST_KIND_MAX, JOB_REQUEST_KIND_MIN, JOB_RESULT_KIND_MAX, JOB_RESULT_KIND_MIN,
     JobRequest, JobResult, KIND_JOB_CODE_REVIEW, KIND_JOB_FEEDBACK, KIND_JOB_IMAGE_GENERATION,
@@ -8,7 +7,10 @@ use nostr::nip90::{
     KIND_JOB_TEXT_GENERATION, KIND_JOB_TRANSLATION, is_job_feedback_kind, is_job_request_kind,
     is_job_result_kind,
 };
-use nostr_client::{ConnectionState, PoolConfig, RelayMessage, RelayPool};
+use nostr::{Event, EventTemplate};
+use nostr_client::{
+    ConnectionState, PoolConfig, RelayAuthIdentity, RelayConfig, RelayMessage, RelayPool,
+};
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -20,6 +22,10 @@ const RELAY_RECV_TIMEOUT: Duration = Duration::from_millis(4);
 const MAX_MESSAGES_PER_RELAY_POLL: usize = 6;
 const SUBSCRIPTION_ID: &str = "autopilot-provider-nip90-ingress";
 const DEFAULT_TTL_SECONDS: u64 = 60;
+const NIP89_HANDLER_KIND: u16 = 31_990;
+const HANDLER_PUBLISH_RETRY: Duration = Duration::from_secs(10);
+const HANDLER_METADATA_NAME: &str = "Autopilot";
+const HANDLER_METADATA_ABOUT: &str = "OpenAgents Autopilot compute provider for open NIP-90 jobs.";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProviderNip90LaneMode {
@@ -113,6 +119,9 @@ impl Default for ProviderNip90LaneSnapshot {
 
 #[derive(Clone, Debug)]
 pub enum ProviderNip90LaneCommand {
+    ConfigureIdentity {
+        identity: Option<ProviderNip90AuthIdentity>,
+    },
     ConfigureRelays {
         relays: Vec<String>,
     },
@@ -131,6 +140,7 @@ pub enum ProviderNip90LaneCommand {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProviderNip90PublishRole {
+    Capability,
     Request,
     Feedback,
     Result,
@@ -139,11 +149,28 @@ pub enum ProviderNip90PublishRole {
 impl ProviderNip90PublishRole {
     pub const fn label(self) -> &'static str {
         match self {
+            Self::Capability => "capability",
             Self::Request => "request",
             Self::Feedback => "feedback",
             Self::Result => "result",
         }
     }
+
+    pub const fn protocol_label(self) -> &'static str {
+        match self {
+            Self::Capability => "NIP-89 handler",
+            Self::Request => "NIP-90 request",
+            Self::Feedback => "NIP-90 feedback",
+            Self::Result => "NIP-90 result",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProviderNip90AuthIdentity {
+    pub npub: String,
+    pub public_key_hex: String,
+    pub private_key_hex: String,
 }
 
 #[derive(Clone, Debug)]
@@ -232,6 +259,9 @@ struct ProviderNip90LaneState {
     snapshot: ProviderNip90LaneSnapshot,
     wants_online: bool,
     pool: Option<Arc<RelayPool>>,
+    auth_identity: Option<ProviderNip90AuthIdentity>,
+    handler_info_published: bool,
+    next_handler_publish_retry_at: Option<Instant>,
     tracked_buyer_request_ids: Vec<String>,
     relay_last_seen: HashMap<String, Instant>,
     relay_latency_ms: HashMap<String, u32>,
@@ -297,6 +327,9 @@ fn run_lane_loop(
         snapshot: ProviderNip90LaneSnapshot::with_relays(initial_relays),
         wants_online: false,
         pool: None,
+        auth_identity: None,
+        handler_info_published: false,
+        next_handler_publish_retry_at: None,
         tracked_buyer_request_ids: Vec::new(),
         relay_last_seen: HashMap::new(),
         relay_latency_ms: HashMap::new(),
@@ -312,7 +345,8 @@ fn run_lane_loop(
         match command_rx.recv_timeout(LANE_POLL) {
             Ok(command) => {
                 match command {
-                    ProviderNip90LaneCommand::ConfigureRelays { .. }
+                    ProviderNip90LaneCommand::ConfigureIdentity { .. }
+                    | ProviderNip90LaneCommand::ConfigureRelays { .. }
                     | ProviderNip90LaneCommand::SetOnline { .. }
                     | ProviderNip90LaneCommand::TrackBuyerRequestIds { .. } => {
                         handle_command(&runtime, &mut state, command);
@@ -407,6 +441,8 @@ fn run_lane_loop(
             )));
         }
 
+        maybe_publish_handler_info(&runtime, &mut state, &update_tx);
+
         for request in outcome.requests {
             state.snapshot.last_request_event_id = Some(request.request_id.clone());
             state.snapshot.last_request_at = Some(Instant::now());
@@ -443,6 +479,24 @@ fn handle_command(
     command: ProviderNip90LaneCommand,
 ) {
     match command {
+        ProviderNip90LaneCommand::ConfigureIdentity { identity } => {
+            if identity == state.auth_identity {
+                return;
+            }
+            state.auth_identity = identity;
+            state.handler_info_published = false;
+            state.next_handler_publish_retry_at = None;
+            state.snapshot.last_action = Some("Updated provider relay identity".to_string());
+            if state.pool.is_some() {
+                disconnect_pool(runtime, state);
+                if state.connection_expected() {
+                    state.snapshot.mode = ProviderNip90LaneMode::Connecting;
+                    state.snapshot.last_action =
+                        Some("Rebinding provider relay identity".to_string());
+                }
+            }
+            refresh_relay_health_snapshot(runtime, state);
+        }
         ProviderNip90LaneCommand::ConfigureRelays { relays } => {
             let normalized = normalize_relays(relays);
             if normalized == state.snapshot.configured_relays {
@@ -450,6 +504,8 @@ fn handle_command(
             }
 
             state.snapshot.configured_relays = normalized;
+            state.handler_info_published = false;
+            state.next_handler_publish_retry_at = None;
             state.snapshot.connected_relays = 0;
             prune_relay_observation_maps(state);
             state.snapshot.relay_health = relay_health_rows_for(
@@ -470,6 +526,8 @@ fn handle_command(
         }
         ProviderNip90LaneCommand::SetOnline { online } => {
             state.wants_online = online;
+            state.handler_info_published = false;
+            state.next_handler_publish_retry_at = None;
             if online {
                 state.snapshot.mode = ProviderNip90LaneMode::Connecting;
                 state.snapshot.last_action = Some("Connecting provider relay ingress".to_string());
@@ -524,13 +582,16 @@ fn handle_publish_event(
     request_id: String,
     role: ProviderNip90PublishRole,
     event: Event,
-) {
+) -> bool {
     let event_id = event.id.clone();
     let parsed_event_shape = Some(format_generic_event_shape(&event));
     let raw_event_json = serde_json::to_string_pretty(&event).ok();
 
     if !state.wants_online {
-        let message = "Cannot publish NIP-90 event while provider lane is offline".to_string();
+        let message = format!(
+            "Cannot publish {} while provider lane is offline",
+            role.protocol_label()
+        );
         state.snapshot.mode = ProviderNip90LaneMode::Degraded;
         state.snapshot.last_error = Some(message.clone());
         state.snapshot.last_action = Some(format!("publish {} failed: offline", role.label()));
@@ -546,7 +607,7 @@ fn handle_publish_event(
                 raw_event_json,
             },
         ));
-        return;
+        return false;
     }
 
     if ensure_connected_pool(runtime, state).is_err() {
@@ -567,11 +628,14 @@ fn handle_publish_event(
                 raw_event_json,
             },
         ));
-        return;
+        return false;
     }
 
     let Some(pool) = state.pool.as_ref().cloned() else {
-        let message = "Cannot publish NIP-90 event: relay pool unavailable".to_string();
+        let message = format!(
+            "Cannot publish {}: relay pool unavailable",
+            role.protocol_label()
+        );
         state.snapshot.mode = ProviderNip90LaneMode::Degraded;
         state.snapshot.last_error = Some(message.clone());
         state.snapshot.last_action =
@@ -588,7 +652,7 @@ fn handle_publish_event(
                 raw_event_json,
             },
         ));
-        return;
+        return false;
     };
 
     match runtime.block_on(pool.publish(&event)) {
@@ -628,9 +692,10 @@ fn handle_publish_event(
                     raw_event_json,
                 },
             ));
+            accepted_relays > 0
         }
         Err(error) => {
-            let message = format!("Failed publishing {} event: {error}", role.label());
+            let message = format!("Failed publishing {}: {error}", role.protocol_label());
             state.snapshot.mode = ProviderNip90LaneMode::Degraded;
             state.snapshot.last_error = Some(message.clone());
             state.snapshot.last_action = Some(format!("publish {} failed", role.label()));
@@ -646,6 +711,7 @@ fn handle_publish_event(
                     raw_event_json,
                 },
             ));
+            false
         }
     }
 }
@@ -721,7 +787,7 @@ fn ensure_connected_pool(
 
     let mut first_error: Option<String> = None;
     let mut connected_relays = 0usize;
-    let pool = Arc::new(RelayPool::new(PoolConfig::default()));
+    let pool = Arc::new(RelayPool::new(pool_config_for(state)));
 
     runtime.block_on(async {
         for relay in &state.snapshot.configured_relays {
@@ -847,6 +913,21 @@ fn ensure_connected_pool(
     Ok(())
 }
 
+fn pool_config_for(state: &ProviderNip90LaneState) -> PoolConfig {
+    PoolConfig {
+        relay_config: RelayConfig {
+            nip42_identity: state
+                .auth_identity
+                .as_ref()
+                .map(|identity| RelayAuthIdentity {
+                    private_key_hex: identity.private_key_hex.clone(),
+                }),
+            ..RelayConfig::default()
+        },
+        ..PoolConfig::default()
+    }
+}
+
 fn reconnect_disconnected_relays(
     runtime: &tokio::runtime::Runtime,
     state: &mut ProviderNip90LaneState,
@@ -925,6 +1006,49 @@ fn resubscribe_ingress_filters(
             }
         }
     });
+}
+
+fn maybe_publish_handler_info(
+    runtime: &tokio::runtime::Runtime,
+    state: &mut ProviderNip90LaneState,
+    update_tx: &Sender<ProviderNip90LaneUpdate>,
+) {
+    if !state.wants_online || state.handler_info_published || state.snapshot.connected_relays == 0 {
+        return;
+    }
+    if state
+        .next_handler_publish_retry_at
+        .is_some_and(|retry_at| Instant::now() < retry_at)
+    {
+        return;
+    }
+    let Some(identity) = state.auth_identity.clone() else {
+        return;
+    };
+
+    let event = match build_provider_handler_event(&identity) {
+        Ok(event) => event,
+        Err(error) => {
+            state.snapshot.last_error = Some(error.clone());
+            state.snapshot.last_action = Some("provider handler publish failed".to_string());
+            state.next_handler_publish_retry_at = Some(Instant::now() + HANDLER_PUBLISH_RETRY);
+            return;
+        }
+    };
+    let published = handle_publish_event(
+        runtime,
+        state,
+        update_tx,
+        handler_request_id(identity.public_key_hex.as_str()),
+        ProviderNip90PublishRole::Capability,
+        event,
+    );
+    if published {
+        state.handler_info_published = true;
+        state.next_handler_publish_retry_at = None;
+    } else {
+        state.next_handler_publish_retry_at = Some(Instant::now() + HANDLER_PUBLISH_RETRY);
+    }
 }
 
 fn build_ingress_filters(tracked_buyer_request_ids: &[String]) -> Vec<serde_json::Value> {
@@ -1550,6 +1674,74 @@ fn summarize_string_list(values: &[String], max_items: usize) -> String {
     }
 }
 
+fn build_provider_handler_event(identity: &ProviderNip90AuthIdentity) -> Result<Event, String> {
+    let created_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| format!("failed reading system clock for handler event: {error}"))?
+        .as_secs();
+    let d_tag = format!(
+        "autopilot-provider-{}",
+        identity.public_key_hex.chars().take(12).collect::<String>()
+    );
+    let mut tags = vec![
+        vec!["d".to_string(), d_tag],
+        vec!["t".to_string(), "autopilot".to_string()],
+        vec!["t".to_string(), "openagents".to_string()],
+    ];
+    for kind in supported_handler_kinds() {
+        tags.push(vec!["k".to_string(), kind.to_string()]);
+    }
+    let content = serde_json::json!({
+        "name": HANDLER_METADATA_NAME,
+        "about": HANDLER_METADATA_ABOUT,
+    })
+    .to_string();
+    let template = EventTemplate {
+        created_at,
+        kind: NIP89_HANDLER_KIND,
+        tags,
+        content,
+    };
+    let private_key = parse_private_key_hex(identity.private_key_hex.as_str())?;
+    nostr::finalize_event(&template, &private_key)
+        .map_err(|error| format!("failed signing provider handler event: {error}"))
+}
+
+fn supported_handler_kinds() -> &'static [u16] {
+    &[
+        KIND_JOB_TEXT_GENERATION,
+        KIND_JOB_SUMMARIZATION,
+        KIND_JOB_TRANSLATION,
+        KIND_JOB_TEXT_EXTRACTION,
+        KIND_JOB_PATCH_GEN,
+        KIND_JOB_CODE_REVIEW,
+        KIND_JOB_REPO_INDEX,
+        KIND_JOB_SANDBOX_RUN,
+        KIND_JOB_RLM_SUBQUERY,
+    ]
+}
+
+fn handler_request_id(public_key_hex: &str) -> String {
+    format!(
+        "handler:{}",
+        public_key_hex.chars().take(12).collect::<String>()
+    )
+}
+
+fn parse_private_key_hex(private_key_hex: &str) -> Result<[u8; 32], String> {
+    let key_bytes = hex::decode(private_key_hex.trim())
+        .map_err(|error| format!("invalid identity private_key_hex: {error}"))?;
+    if key_bytes.len() != 32 {
+        return Err(format!(
+            "invalid identity private_key_hex length {}, expected 32 bytes",
+            key_bytes.len()
+        ));
+    }
+    let mut key = [0u8; 32];
+    key.copy_from_slice(key_bytes.as_slice());
+    Ok(key)
+}
+
 fn extract_param(request: &JobRequest, key: &str) -> Option<String> {
     request
         .params
@@ -1622,9 +1814,10 @@ fn normalize_relays(relays: Vec<String>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ProviderNip90BuyerResponseKind, ProviderNip90LaneCommand, ProviderNip90LaneUpdate,
-        ProviderNip90LaneWorker, ProviderNip90PublishRole, ProviderNip90RelayStatus,
-        event_to_buyer_response_event, event_to_inbox_request, execution_input_from_request,
+        ProviderNip90AuthIdentity, ProviderNip90BuyerResponseKind, ProviderNip90LaneCommand,
+        ProviderNip90LaneUpdate, ProviderNip90LaneWorker, ProviderNip90PublishRole,
+        ProviderNip90RelayStatus, event_to_buyer_response_event, event_to_inbox_request,
+        execution_input_from_request,
     };
     use crate::app_state::{
         ActiveJobState, EarningsScoreboardState, JobHistoryState, JobHistoryStatus, JobInboxState,
@@ -1641,6 +1834,21 @@ mod tests {
     use tokio::task::JoinHandle;
     use tokio_tungstenite::accept_async;
     use tokio_tungstenite::tungstenite::Message;
+
+    fn fixture_auth_identity() -> ProviderNip90AuthIdentity {
+        ProviderNip90AuthIdentity {
+            npub: "npub1autopilotprovider".to_string(),
+            public_key_hex: nostr::get_public_key_hex(
+                &hex::decode("d217c1ff2f8a65c3e3a1740db3b9f58b8c848bb45e26d00ed4714e4a0f4ceecf")
+                    .expect("decode fixture key")
+                    .try_into()
+                    .expect("fixture key length"),
+            )
+            .expect("derive fixture pubkey"),
+            private_key_hex: "d217c1ff2f8a65c3e3a1740db3b9f58b8c848bb45e26d00ed4714e4a0f4ceecf"
+                .to_string(),
+        }
+    }
 
     #[test]
     fn maps_nip90_request_event_to_job_inbox_request() {
@@ -2031,6 +2239,73 @@ mod tests {
     }
 
     #[test]
+    fn worker_publishes_nip89_handler_info_when_online_with_identity() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("build tokio runtime for relay harness");
+        let (relay_url, relay_task, published_rx) =
+            runtime.block_on(spawn_mock_relay_for_publish());
+
+        let mut worker = ProviderNip90LaneWorker::spawn(vec![relay_url]);
+        worker
+            .enqueue(ProviderNip90LaneCommand::ConfigureIdentity {
+                identity: Some(fixture_auth_identity()),
+            })
+            .expect("queue identity command");
+        worker
+            .enqueue(ProviderNip90LaneCommand::SetOnline { online: true })
+            .expect("queue online command");
+
+        let publish_deadline = Instant::now() + Duration::from_secs(4);
+        let mut capability_outcome_seen = false;
+        while Instant::now() < publish_deadline {
+            for update in worker.drain_updates() {
+                if let ProviderNip90LaneUpdate::PublishOutcome(outcome) = update
+                    && outcome.role == ProviderNip90PublishRole::Capability
+                {
+                    assert!(outcome.accepted_relays >= 1);
+                    capability_outcome_seen = true;
+                }
+            }
+            if capability_outcome_seen {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+
+        assert!(
+            capability_outcome_seen,
+            "expected capability publish outcome after going online"
+        );
+        let published = published_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("relay should receive handler event");
+        assert_eq!(published.kind, 31_990);
+        assert!(
+            published
+                .tags
+                .iter()
+                .any(|tag| tag.first().is_some_and(|value| value == "d")),
+            "expected addressable d-tag on handler event"
+        );
+        assert!(
+            published.tags.iter().any(|tag| {
+                tag.first().is_some_and(|value| value == "k")
+                    && tag.get(1).is_some_and(|value| value == "5050")
+            }),
+            "expected text generation handler kind tag"
+        );
+        let metadata: serde_json::Value =
+            serde_json::from_str(published.content.as_str()).expect("parse handler metadata");
+        assert_eq!(metadata["name"], "Autopilot");
+
+        let _ = worker.enqueue(ProviderNip90LaneCommand::SetOnline { online: false });
+        relay_task.abort();
+    }
+
+    #[test]
     fn desktop_earn_harness_relay_execute_publish_wallet_confirm_end_to_end() {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -2156,6 +2431,7 @@ mod tests {
                         outcome.accepted_relays
                     );
                     match outcome.role {
+                        ProviderNip90PublishRole::Capability => {}
                         ProviderNip90PublishRole::Request => {}
                         ProviderNip90PublishRole::Feedback => feedback_outcome_seen = true,
                         ProviderNip90PublishRole::Result => result_outcome_seen = true,

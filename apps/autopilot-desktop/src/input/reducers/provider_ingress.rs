@@ -629,9 +629,9 @@ pub(super) fn apply_publish_outcome(state: &mut RenderState, outcome: ProviderNi
         "failed to publish"
     };
     state.provider_runtime.last_result = Some(format!(
-        "{} {} event {} (accepted={}, rejected={})",
+        "{} {} {} (accepted={}, rejected={})",
         publish_label,
-        outcome.role.label(),
+        outcome.role.protocol_label(),
         outcome.event_id,
         outcome.accepted_relays,
         outcome.rejected_relays
@@ -642,6 +642,7 @@ pub(super) fn apply_publish_outcome(state: &mut RenderState, outcome: ProviderNi
     {
         if publish_succeeded {
             match outcome.role {
+                ProviderNip90PublishRole::Capability => {}
                 ProviderNip90PublishRole::Request => {}
                 ProviderNip90PublishRole::Result => {
                     if job.sa_tick_result_event_id.is_none() {
@@ -661,9 +662,9 @@ pub(super) fn apply_publish_outcome(state: &mut RenderState, outcome: ProviderNi
             }
         }
         state.active_job.append_event(format!(
-            "{} {} event {} (accepted={}, rejected={})",
+            "{} {} {} (accepted={}, rejected={})",
             publish_label,
-            outcome.role.label(),
+            outcome.role.protocol_label(),
             outcome.event_id,
             outcome.accepted_relays,
             outcome.rejected_relays
@@ -686,13 +687,17 @@ pub(super) fn apply_publish_outcome(state: &mut RenderState, outcome: ProviderNi
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs());
     state.activity_feed.upsert_event(ActivityEventRow {
-        event_id: format!("nip90:{}:{}", outcome.role.label(), outcome.event_id),
+        event_id: format!("nostr:{}:{}", outcome.role.label(), outcome.event_id),
         domain: ActivityEventDomain::Network,
-        source_tag: "nip90.publish".to_string(),
-        summary: if publish_succeeded {
-            format!("Published NIP-90 {} event", outcome.role.label())
+        source_tag: if outcome.role == ProviderNip90PublishRole::Capability {
+            "nip89.publish".to_string()
         } else {
-            format!("Failed NIP-90 {} publish", outcome.role.label())
+            "nip90.publish".to_string()
+        },
+        summary: if publish_succeeded {
+            format!("Published {}", outcome.role.protocol_label())
+        } else {
+            format!("Failed {} publish", outcome.role.protocol_label())
         },
         detail: format!(
             "request={} event_id={} accepted_relays={} rejected_relays={} error={}\n\nshape:\n{}\n\nraw_event_json:\n{}",

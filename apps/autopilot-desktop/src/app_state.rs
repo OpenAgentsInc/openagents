@@ -13,7 +13,8 @@ use wgpui::{Bounds, EventContext, Modifiers, Point, TextSystem};
 use winit::window::Window;
 
 use crate::provider_nip90_lane::{
-    ProviderNip90LaneCommand, ProviderNip90LaneSnapshot, ProviderNip90LaneWorker,
+    ProviderNip90AuthIdentity, ProviderNip90LaneCommand, ProviderNip90LaneSnapshot,
+    ProviderNip90LaneWorker,
 };
 use crate::runtime_lanes::{
     AcCreditCommand, AcLaneSnapshot, AcLaneWorker, RuntimeCommandResponse, SaLaneSnapshot,
@@ -4119,6 +4120,20 @@ impl RenderState {
     pub fn sync_provider_nip90_lane_relays(&mut self) -> Result<(), String> {
         let relays = self.configured_provider_relay_urls();
         self.queue_provider_nip90_lane_command(ProviderNip90LaneCommand::ConfigureRelays { relays })
+    }
+
+    pub fn sync_provider_nip90_lane_identity(&mut self) -> Result<(), String> {
+        let identity = self
+            .nostr_identity
+            .as_ref()
+            .map(|identity| ProviderNip90AuthIdentity {
+                npub: identity.npub.clone(),
+                public_key_hex: identity.public_key_hex.clone(),
+                private_key_hex: identity.private_key_hex.clone(),
+            });
+        self.queue_provider_nip90_lane_command(ProviderNip90LaneCommand::ConfigureIdentity {
+            identity,
+        })
     }
 
     pub fn record_runtime_command_response(&mut self, response: RuntimeCommandResponse) {
