@@ -16,7 +16,10 @@ use crate::app_state::{
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 use crate::openagents_dynamic_tools::{
     OPENAGENTS_DYNAMIC_TOOL_NAMES, OPENAGENTS_TOOL_CAD_ACTION, OPENAGENTS_TOOL_CAD_INTENT,
-    OPENAGENTS_TOOL_GOAL_SCHEDULER, OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH,
+    OPENAGENTS_TOOL_GOAL_SCHEDULER, OPENAGENTS_TOOL_LABOR_CLAIM_DENY,
+    OPENAGENTS_TOOL_LABOR_CLAIM_OPEN, OPENAGENTS_TOOL_LABOR_CLAIM_REMEDY,
+    OPENAGENTS_TOOL_LABOR_CLAIM_RESOLVE, OPENAGENTS_TOOL_LABOR_CLAIM_REVIEW,
+    OPENAGENTS_TOOL_LABOR_CLAIM_STATUS, OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH,
     OPENAGENTS_TOOL_LABOR_EVIDENCE_LIST, OPENAGENTS_TOOL_LABOR_INCIDENT_ATTACH,
     OPENAGENTS_TOOL_LABOR_REQUIREMENTS, OPENAGENTS_TOOL_LABOR_SCOPE,
     OPENAGENTS_TOOL_LABOR_SUBMISSION_READY, OPENAGENTS_TOOL_LABOR_VERIFIER_REQUEST,
@@ -444,6 +447,51 @@ struct LaborEvidenceAttachArgs {
     digest: String,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+struct LaborClaimOpenArgs {
+    #[serde(default)]
+    work_unit_id: Option<String>,
+    #[serde(default)]
+    contract_id: Option<String>,
+    #[serde(default)]
+    reason_code: Option<String>,
+    #[serde(default)]
+    note: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct LaborClaimTransitionArgs {
+    #[serde(default)]
+    work_unit_id: Option<String>,
+    #[serde(default)]
+    contract_id: Option<String>,
+    #[serde(default)]
+    note: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct LaborClaimRemedyArgs {
+    #[serde(default)]
+    work_unit_id: Option<String>,
+    #[serde(default)]
+    contract_id: Option<String>,
+    outcome: String,
+    #[serde(default)]
+    note: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct LaborClaimDenyArgs {
+    #[serde(default)]
+    work_unit_id: Option<String>,
+    #[serde(default)]
+    contract_id: Option<String>,
+    #[serde(default)]
+    reason_code: Option<String>,
+    #[serde(default)]
+    note: Option<String>,
+}
+
 const BLINK_SKILL_NAME: &str = "blink";
 const BLINK_SWAP_QUOTE_SCRIPT: &str = "swap_quote.js";
 const BLINK_SWAP_EXECUTE_SCRIPT: &str = "swap_execute.js";
@@ -530,6 +578,48 @@ pub(super) fn execute_openagents_tool_request(
                 &args,
                 true,
             );
+        }
+        OPENAGENTS_TOOL_LABOR_CLAIM_STATUS => {
+            let args = match decoded.decode_arguments::<LaborScopeArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            return execute_labor_claim_status_tool(state, request.turn_id.as_str(), &args);
+        }
+        OPENAGENTS_TOOL_LABOR_CLAIM_OPEN => {
+            let args = match decoded.decode_arguments::<LaborClaimOpenArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            return execute_labor_claim_open_tool(state, request.turn_id.as_str(), &args);
+        }
+        OPENAGENTS_TOOL_LABOR_CLAIM_REVIEW => {
+            let args = match decoded.decode_arguments::<LaborClaimTransitionArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            return execute_labor_claim_review_tool(state, request.turn_id.as_str(), &args);
+        }
+        OPENAGENTS_TOOL_LABOR_CLAIM_REMEDY => {
+            let args = match decoded.decode_arguments::<LaborClaimRemedyArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            return execute_labor_claim_remedy_tool(state, request.turn_id.as_str(), &args);
+        }
+        OPENAGENTS_TOOL_LABOR_CLAIM_DENY => {
+            let args = match decoded.decode_arguments::<LaborClaimDenyArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            return execute_labor_claim_deny_tool(state, request.turn_id.as_str(), &args);
+        }
+        OPENAGENTS_TOOL_LABOR_CLAIM_RESOLVE => {
+            let args = match decoded.decode_arguments::<LaborClaimTransitionArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            return execute_labor_claim_resolve_tool(state, request.turn_id.as_str(), &args);
         }
         _ => {}
     }
@@ -792,6 +882,12 @@ fn is_labor_tool(tool: &str) -> bool {
             | LEGACY_OPENAGENTS_TOOL_LABOR_VERIFIER_REQUEST
             | OPENAGENTS_TOOL_LABOR_INCIDENT_ATTACH
             | LEGACY_OPENAGENTS_TOOL_LABOR_INCIDENT_ATTACH
+            | OPENAGENTS_TOOL_LABOR_CLAIM_STATUS
+            | OPENAGENTS_TOOL_LABOR_CLAIM_OPEN
+            | OPENAGENTS_TOOL_LABOR_CLAIM_REVIEW
+            | OPENAGENTS_TOOL_LABOR_CLAIM_REMEDY
+            | OPENAGENTS_TOOL_LABOR_CLAIM_DENY
+            | OPENAGENTS_TOOL_LABOR_CLAIM_RESOLVE
     )
 }
 
@@ -877,6 +973,15 @@ fn current_epoch_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis() as u64)
         .unwrap_or_default()
+}
+
+fn sync_goal_attempt_labor_linkage(state: &mut RenderState, turn_id: &str) {
+    let Some(labor) = state.autopilot_chat.turn_labor_linkage_for(turn_id) else {
+        return;
+    };
+    state
+        .goal_loop_executor
+        .merge_attempt_labor_linkage(Some(turn_id), labor);
 }
 
 fn execute_labor_scope_tool(
@@ -1118,6 +1223,13 @@ fn execute_labor_verifier_request_tool(
             );
         }
         Err(error) => {
+            let _ = state.autopilot_chat.open_turn_labor_claim(
+                turn_id,
+                verified_at_epoch_ms,
+                None,
+                Some(error.as_str()),
+            );
+            sync_goal_attempt_labor_linkage(state, turn_id);
             return ToolBridgeResultEnvelope::error(
                 "OA-LABOR-VERIFIER-BLOCKED",
                 error,
@@ -1132,6 +1244,16 @@ fn execute_labor_verifier_request_tool(
         }
     };
 
+    if !verdict.settlement_ready {
+        let _ = state.autopilot_chat.open_turn_labor_claim(
+            turn_id,
+            verified_at_epoch_ms,
+            verdict.verdict.reason_code.as_deref(),
+            verdict.settlement_withheld_reason.as_deref(),
+        );
+    }
+    sync_goal_attempt_labor_linkage(state, turn_id);
+
     ToolBridgeResultEnvelope::ok(
         "OA-LABOR-VERIFIER-OK",
         "Verifier completed for the active labor submission",
@@ -1141,8 +1263,309 @@ fn execute_labor_verifier_request_tool(
             "requested_contract_id": args.contract_id,
             "submission": state.autopilot_chat.turn_labor_submission_for(turn_id),
             "verdict": verdict,
+            "claim": state.autopilot_chat.turn_labor_claim_payload(turn_id),
             "evidence": state.autopilot_chat.turn_labor_evidence_payload(turn_id),
             "settlement_ready": state.autopilot_chat.turn_labor_settlement_ready(turn_id),
+        }),
+    )
+}
+
+fn execute_labor_claim_status_tool(
+    state: &RenderState,
+    turn_id: &str,
+    args: &LaborScopeArgs,
+) -> ToolBridgeResultEnvelope {
+    let Some(claim) = state.autopilot_chat.turn_labor_claim_payload(turn_id) else {
+        return ToolBridgeResultEnvelope::error(
+            "OA-LABOR-SCOPE-NOT-ACTIVE",
+            "Labor claim status requested outside an active labor-bound turn",
+            json!({
+                "turn_id": turn_id,
+            }),
+        );
+    };
+
+    ToolBridgeResultEnvelope::ok(
+        "OA-LABOR-CLAIM-STATUS-OK",
+        "Fetched labor claim and remedy state",
+        json!({
+            "turn_id": turn_id,
+            "requested_work_unit_id": args.work_unit_id,
+            "requested_contract_id": args.contract_id,
+            "claim": claim,
+        }),
+    )
+}
+
+fn execute_labor_claim_open_tool(
+    state: &mut RenderState,
+    turn_id: &str,
+    args: &LaborClaimOpenArgs,
+) -> ToolBridgeResultEnvelope {
+    let claim = match state.autopilot_chat.open_turn_labor_claim(
+        turn_id,
+        current_epoch_ms(),
+        args.reason_code.as_deref(),
+        args.note.as_deref(),
+    ) {
+        Ok(Some(claim)) => claim,
+        Ok(None) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-LABOR-SCOPE-NOT-ACTIVE",
+                "Labor claim requested outside an active labor-bound turn",
+                json!({
+                    "turn_id": turn_id,
+                }),
+            );
+        }
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-LABOR-CLAIM-OPEN-FAILED",
+                error,
+                json!({
+                    "turn_id": turn_id,
+                    "requested_work_unit_id": args.work_unit_id,
+                    "requested_contract_id": args.contract_id,
+                    "submission": state.autopilot_chat.turn_labor_submission_for(turn_id),
+                    "verdict": state.autopilot_chat.turn_labor_verdict_for(turn_id),
+                    "evidence": state.autopilot_chat.turn_labor_evidence_payload(turn_id),
+                }),
+            );
+        }
+    };
+    sync_goal_attempt_labor_linkage(state, turn_id);
+    state.autopilot_chat.record_turn_timeline_event(format!(
+        "labor claim opened: claim_id={} state={}",
+        claim.claim.claim_id,
+        claim.status_label()
+    ));
+
+    ToolBridgeResultEnvelope::ok(
+        "OA-LABOR-CLAIM-OPEN-OK",
+        "Opened a claim against the active labor contract",
+        json!({
+            "turn_id": turn_id,
+            "requested_work_unit_id": args.work_unit_id,
+            "requested_contract_id": args.contract_id,
+            "claim": state.autopilot_chat.turn_labor_claim_payload(turn_id),
+        }),
+    )
+}
+
+fn execute_labor_claim_review_tool(
+    state: &mut RenderState,
+    turn_id: &str,
+    args: &LaborClaimTransitionArgs,
+) -> ToolBridgeResultEnvelope {
+    let claim = match state.autopilot_chat.review_turn_labor_claim(
+        turn_id,
+        current_epoch_ms(),
+        args.note.as_deref(),
+    ) {
+        Ok(Some(claim)) => claim,
+        Ok(None) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-LABOR-SCOPE-NOT-ACTIVE",
+                "Labor claim review requested outside an active labor-bound turn",
+                json!({
+                    "turn_id": turn_id,
+                }),
+            );
+        }
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-LABOR-CLAIM-REVIEW-FAILED",
+                error,
+                json!({
+                    "turn_id": turn_id,
+                    "requested_work_unit_id": args.work_unit_id,
+                    "requested_contract_id": args.contract_id,
+                    "claim": state.autopilot_chat.turn_labor_claim_payload(turn_id),
+                }),
+            );
+        }
+    };
+    sync_goal_attempt_labor_linkage(state, turn_id);
+    state.autopilot_chat.record_turn_timeline_event(format!(
+        "labor claim under review: claim_id={} state={}",
+        claim.claim.claim_id,
+        claim.status_label()
+    ));
+
+    ToolBridgeResultEnvelope::ok(
+        "OA-LABOR-CLAIM-REVIEW-OK",
+        "Moved the active labor claim into review",
+        json!({
+            "turn_id": turn_id,
+            "requested_work_unit_id": args.work_unit_id,
+            "requested_contract_id": args.contract_id,
+            "claim": state.autopilot_chat.turn_labor_claim_payload(turn_id),
+        }),
+    )
+}
+
+fn execute_labor_claim_remedy_tool(
+    state: &mut RenderState,
+    turn_id: &str,
+    args: &LaborClaimRemedyArgs,
+) -> ToolBridgeResultEnvelope {
+    let claim = match state.autopilot_chat.issue_turn_labor_remedy(
+        turn_id,
+        current_epoch_ms(),
+        args.outcome.as_str(),
+        args.note.as_deref(),
+    ) {
+        Ok(Some(claim)) => claim,
+        Ok(None) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-LABOR-SCOPE-NOT-ACTIVE",
+                "Labor claim remedy requested outside an active labor-bound turn",
+                json!({
+                    "turn_id": turn_id,
+                }),
+            );
+        }
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-LABOR-CLAIM-REMEDY-FAILED",
+                error,
+                json!({
+                    "turn_id": turn_id,
+                    "requested_work_unit_id": args.work_unit_id,
+                    "requested_contract_id": args.contract_id,
+                    "claim": state.autopilot_chat.turn_labor_claim_payload(turn_id),
+                }),
+            );
+        }
+    };
+    sync_goal_attempt_labor_linkage(state, turn_id);
+    state.autopilot_chat.record_turn_timeline_event(format!(
+        "labor remedy issued: claim_id={} outcome={}",
+        claim.claim.claim_id,
+        claim
+            .remedy
+            .as_ref()
+            .map(|remedy| remedy.outcome.as_str())
+            .unwrap_or("unknown")
+    ));
+
+    ToolBridgeResultEnvelope::ok(
+        "OA-LABOR-CLAIM-REMEDY-OK",
+        "Issued a remedy for the active labor claim",
+        json!({
+            "turn_id": turn_id,
+            "requested_work_unit_id": args.work_unit_id,
+            "requested_contract_id": args.contract_id,
+            "claim": state.autopilot_chat.turn_labor_claim_payload(turn_id),
+        }),
+    )
+}
+
+fn execute_labor_claim_deny_tool(
+    state: &mut RenderState,
+    turn_id: &str,
+    args: &LaborClaimDenyArgs,
+) -> ToolBridgeResultEnvelope {
+    let claim = match state.autopilot_chat.deny_turn_labor_claim(
+        turn_id,
+        current_epoch_ms(),
+        args.reason_code.as_deref(),
+        args.note.as_deref(),
+    ) {
+        Ok(Some(claim)) => claim,
+        Ok(None) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-LABOR-SCOPE-NOT-ACTIVE",
+                "Labor claim denial requested outside an active labor-bound turn",
+                json!({
+                    "turn_id": turn_id,
+                }),
+            );
+        }
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-LABOR-CLAIM-DENY-FAILED",
+                error,
+                json!({
+                    "turn_id": turn_id,
+                    "requested_work_unit_id": args.work_unit_id,
+                    "requested_contract_id": args.contract_id,
+                    "claim": state.autopilot_chat.turn_labor_claim_payload(turn_id),
+                }),
+            );
+        }
+    };
+    sync_goal_attempt_labor_linkage(state, turn_id);
+    state.autopilot_chat.record_turn_timeline_event(format!(
+        "labor claim denied: claim_id={} reason={}",
+        claim.claim.claim_id,
+        claim
+            .claim
+            .reason_code
+            .as_deref()
+            .unwrap_or("codex.claim.denied")
+    ));
+
+    ToolBridgeResultEnvelope::ok(
+        "OA-LABOR-CLAIM-DENY-OK",
+        "Denied the active labor claim",
+        json!({
+            "turn_id": turn_id,
+            "requested_work_unit_id": args.work_unit_id,
+            "requested_contract_id": args.contract_id,
+            "claim": state.autopilot_chat.turn_labor_claim_payload(turn_id),
+        }),
+    )
+}
+
+fn execute_labor_claim_resolve_tool(
+    state: &mut RenderState,
+    turn_id: &str,
+    args: &LaborClaimTransitionArgs,
+) -> ToolBridgeResultEnvelope {
+    let claim = match state.autopilot_chat.resolve_turn_labor_claim(
+        turn_id,
+        current_epoch_ms(),
+        args.note.as_deref(),
+    ) {
+        Ok(Some(claim)) => claim,
+        Ok(None) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-LABOR-SCOPE-NOT-ACTIVE",
+                "Labor claim resolution requested outside an active labor-bound turn",
+                json!({
+                    "turn_id": turn_id,
+                }),
+            );
+        }
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-LABOR-CLAIM-RESOLVE-FAILED",
+                error,
+                json!({
+                    "turn_id": turn_id,
+                    "requested_work_unit_id": args.work_unit_id,
+                    "requested_contract_id": args.contract_id,
+                    "claim": state.autopilot_chat.turn_labor_claim_payload(turn_id),
+                }),
+            );
+        }
+    };
+    sync_goal_attempt_labor_linkage(state, turn_id);
+    state.autopilot_chat.record_turn_timeline_event(format!(
+        "labor claim resolved: claim_id={} state={}",
+        claim.claim.claim_id,
+        claim.status_label()
+    ));
+
+    ToolBridgeResultEnvelope::ok(
+        "OA-LABOR-CLAIM-RESOLVE-OK",
+        "Resolved the active labor claim",
+        json!({
+            "turn_id": turn_id,
+            "requested_work_unit_id": args.work_unit_id,
+            "requested_contract_id": args.contract_id,
+            "claim": state.autopilot_chat.turn_labor_claim_payload(turn_id),
         }),
     )
 }

@@ -1153,6 +1153,12 @@ fn goal_labor_linkage_from_binding(
             .as_ref()
             .map(|verdict| verdict.verdict.verdict_id.clone()),
         claim_id: binding.trace.claim_id.clone(),
+        claim_state: binding.claim_runtime_state_label().map(str::to_string),
+        remedy_kind: binding
+            .claim
+            .as_ref()
+            .and_then(|claim| claim.remedy.as_ref())
+            .map(|remedy| remedy.outcome.clone()),
         settlement_id: None,
         settlement_ready: Some(binding.is_settlement_ready()),
         tool_evidence_refs: Vec::new(),
@@ -1165,6 +1171,18 @@ fn goal_labor_linkage_from_binding(
             .verdict
             .as_ref()
             .map(|verdict| verdict.evidence_refs.clone())
+            .unwrap_or_default(),
+        claim_evidence_refs: binding
+            .claim
+            .as_ref()
+            .map(|claim| claim.evidence_refs.clone())
+            .unwrap_or_default(),
+        incident_evidence_refs: binding.incident_evidence_refs.clone(),
+        remedy_evidence_refs: binding
+            .claim
+            .as_ref()
+            .and_then(|claim| claim.remedy.as_ref())
+            .map(|remedy| remedy.evidence_refs.clone())
             .unwrap_or_default(),
         settlement_evidence_refs: Vec::new(),
     }
@@ -3176,6 +3194,7 @@ mod tests {
     use codex_client::{AskForApproval, SandboxPolicy, UserInput};
     use openagents_cad::contracts::CadSelectionKind;
     use openagents_cad::query::CadPickEntityKind;
+    use openagents_kernel_core::receipts::EvidenceRef;
     use std::collections::BTreeSet;
     use std::path::PathBuf;
     use wgpui::{Bounds, Modifiers, Point};
@@ -3700,6 +3719,134 @@ mod tests {
         assert!(payout_evidence[0].labor.settlement_id.is_some());
         assert_eq!(payout_evidence[0].labor.settlement_evidence_refs.len(), 1);
         assert!(terminal_labor.settlement_id.is_some());
+    }
+
+    #[test]
+    fn goal_attempt_receipts_capture_claim_and_remedy_linkage() {
+        let mut chat = crate::app_state::AutopilotChatState::default();
+        chat.ensure_thread("thread-claim".to_string());
+        chat.submit_prompt("execute disputed work".to_string());
+
+        let plan = orchestrate_codex_turn(CodexTurnExecutionRequest {
+            trigger: CodexRunTrigger::AutonomousGoal {
+                goal_id: "goal-claim".to_string(),
+                goal_title: "Handle disputes".to_string(),
+            },
+            submitted_at_epoch_ms: 1_700_000_100_000,
+            thread_id: "thread-claim".to_string(),
+            input: vec![UserInput::Text {
+                text: "execute disputed work".to_string(),
+                text_elements: Vec::new(),
+            }],
+            cwd: Some(PathBuf::from("/repo")),
+            approval_policy: Some(AskForApproval::Never),
+            sandbox_policy: Some(SandboxPolicy::DangerFullAccess),
+            model: Some("gpt-5".to_string()),
+        });
+        let initial_labor = goal_labor_linkage_from_binding(
+            plan.labor_binding
+                .as_ref()
+                .expect("autonomous goal is labor bound"),
+        );
+        chat.record_turn_submission_metadata(
+            "thread-claim",
+            plan.classification,
+            plan.labor_binding,
+            false,
+            "autonomous-goal",
+            1_700_000_100_000,
+            Vec::new(),
+        );
+        chat.mark_turn_started("turn-claim".to_string());
+        chat.record_turn_tool_request(
+            "turn-claim",
+            "req-claim",
+            "call-claim",
+            "openagents.files.write",
+            "{\"path\":\"README.md\"}",
+            1_700_000_100_050,
+        );
+        chat.record_turn_tool_result(
+            "turn-claim",
+            "req-claim",
+            "call-claim",
+            "openagents.files.write",
+            "FAILED",
+            false,
+            "write denied",
+            1_700_000_100_060,
+        );
+        chat.set_turn_message_for_turn("turn-claim", "candidate answer");
+        chat.mark_turn_completed_for("turn-claim");
+        let artifact_scope_root = chat
+            .turn_labor_binding_for("turn-claim")
+            .expect("labor binding should exist")
+            .artifact_scope_root();
+        chat.attach_turn_labor_evidence(
+            "turn-claim",
+            EvidenceRef::new(
+                "incident_note",
+                format!("{artifact_scope_root}incidents/note-1"),
+                "sha256:incident-note",
+            ),
+            true,
+        )
+        .expect("incident evidence should attach");
+        chat.assemble_turn_labor_submission("turn-claim", 1_700_000_100_100)
+            .expect("submission should assemble");
+        chat.finalize_turn_labor_verdict("turn-claim", 1_700_000_100_200)
+            .expect("verdict should finalize");
+        chat.open_turn_labor_claim(
+            "turn-claim",
+            1_700_000_100_220,
+            None,
+            Some("operator requested review"),
+        )
+        .expect("claim should open");
+        chat.review_turn_labor_claim("turn-claim", 1_700_000_100_230, Some("checking failure"))
+            .expect("claim review should succeed");
+        chat.issue_turn_labor_remedy(
+            "turn-claim",
+            1_700_000_100_240,
+            "rework_credit",
+            Some("issue credit"),
+        )
+        .expect("remedy issuance should succeed");
+        chat.resolve_turn_labor_claim("turn-claim", 1_700_000_100_250, Some("claim closed"))
+            .expect("claim resolution should succeed");
+
+        let mut executor = GoalLoopExecutorState::default();
+        assert!(executor.begin_run("goal-claim", 1_700_000_100, 0, false));
+        executor.mark_attempt_submitted(
+            1_700_000_100,
+            Some("thread-claim".to_string()),
+            vec!["blink".to_string()],
+            initial_labor,
+        );
+        executor.bind_attempt_turn_id("turn-claim");
+        executor.merge_attempt_labor_linkage(
+            Some("turn-claim"),
+            chat.turn_labor_linkage_for("turn-claim")
+                .expect("turn labor linkage available"),
+        );
+
+        let attempts = build_goal_attempt_audit_receipts(
+            &chat,
+            &executor.active_run.as_ref().expect("run active").attempts,
+        );
+        assert_eq!(attempts.len(), 1);
+        assert!(attempts[0].labor.claim_id.is_some());
+        assert_eq!(
+            attempts[0].labor.claim_state.as_deref(),
+            Some("claim_resolved")
+        );
+        assert_eq!(
+            attempts[0].labor.remedy_kind.as_deref(),
+            Some("rework_credit")
+        );
+        assert!(!attempts[0].labor.claim_evidence_refs.is_empty());
+        assert_eq!(attempts[0].labor.incident_evidence_refs.len(), 1);
+        assert_eq!(attempts[0].labor.remedy_evidence_refs.len(), 1);
     }
 
     #[test]

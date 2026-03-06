@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use codex_client::{AskForApproval, SandboxPolicy, TurnStartParams, UserInput};
 use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_kernel_core::labor::{
-    SettlementStatus, Submission, SubmissionStatus, Verdict, VerdictOutcome,
+    ClaimHook, ClaimHookStatus, SettlementStatus, Submission, SubmissionStatus, Verdict,
+    VerdictOutcome,
 };
 use openagents_kernel_core::receipts::{EvidenceRef, TraceContext, VerificationTier};
 use serde::{Deserialize, Serialize};
@@ -383,6 +384,43 @@ impl CodexLaborVerdictState {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub(crate) struct CodexLaborRemedyState {
+    pub remedy_id: String,
+    pub outcome: String,
+    pub issued_at_epoch_ms: u64,
+    #[serde(default)]
+    pub note: Option<String>,
+    #[serde(default)]
+    pub evidence_refs: Vec<EvidenceRef>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub(crate) struct CodexLaborClaimState {
+    pub claim: ClaimHook,
+    #[serde(default)]
+    pub evidence_refs: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub status_note: Option<String>,
+    #[serde(default)]
+    pub reviewed_at_epoch_ms: Option<u64>,
+    #[serde(default)]
+    pub resolved_at_epoch_ms: Option<u64>,
+    #[serde(default)]
+    pub remedy: Option<CodexLaborRemedyState>,
+}
+
+impl CodexLaborClaimState {
+    pub(crate) fn status_label(&self) -> &'static str {
+        match self.claim.status {
+            ClaimHookStatus::Open => "open",
+            ClaimHookStatus::UnderReview => "under_review",
+            ClaimHookStatus::Resolved => "resolved",
+            ClaimHookStatus::Rejected => "rejected",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub(crate) struct CodexLaborVerifierFailure {
     pub code: String,
@@ -407,6 +445,8 @@ pub(crate) struct CodexLaborBinding {
     pub submission: Option<CodexLaborSubmissionState>,
     #[serde(default)]
     pub verdict: Option<CodexLaborVerdictState>,
+    #[serde(default)]
+    pub claim: Option<CodexLaborClaimState>,
     #[serde(default)]
     pub verifier_failure: Option<CodexLaborVerifierFailure>,
 }
@@ -472,6 +512,46 @@ impl CodexLaborBinding {
             .record_output_snapshot(self.work_unit_id.as_str(), output);
     }
 
+    pub(crate) fn claim_runtime_state_label(&self) -> Option<&'static str> {
+        if let Some(claim) = self.claim.as_ref() {
+            if claim.remedy.is_some()
+                && !matches!(
+                    claim.claim.status,
+                    ClaimHookStatus::Resolved | ClaimHookStatus::Rejected
+                )
+            {
+                return Some("remedy_issued");
+            }
+            return Some(match claim.claim.status {
+                ClaimHookStatus::Open => "disputed",
+                ClaimHookStatus::UnderReview => "under_review",
+                ClaimHookStatus::Resolved => "claim_resolved",
+                ClaimHookStatus::Rejected => "claim_denied",
+            });
+        }
+        if self.verifier_failure.is_some()
+            || self.verdict.as_ref().is_some_and(|verdict| {
+                verdict.verdict.settlement_status == SettlementStatus::Disputed
+                    || !verdict.settlement_ready
+            })
+        {
+            return Some("disputed");
+        }
+        None
+    }
+
+    pub(crate) fn claim_payload(&self) -> serde_json::Value {
+        json!({
+            "claim_state": self.claim_runtime_state_label(),
+            "claim_id": self.trace.claim_id,
+            "claim": self.claim,
+            "submission_id": self.submission.as_ref().map(|submission| submission.submission.submission_id.clone()),
+            "verdict_id": self.verdict.as_ref().map(|verdict| verdict.verdict.verdict_id.clone()),
+            "settlement_ready": self.is_settlement_ready(),
+            "incident_evidence_refs": self.incident_evidence_refs,
+        })
+    }
+
     pub(crate) fn scope_payload(&self) -> serde_json::Value {
         json!({
             "work_unit_id": self.work_unit_id,
@@ -485,6 +565,8 @@ impl CodexLaborBinding {
                 "transcript": format!("{}transcript", self.artifact_scope_root()),
             },
             "verifier_path": CodexLaborVerifierPath::DeterministicOutputGate.label(),
+            "claim_state": self.claim_runtime_state_label(),
+            "claim": self.claim_payload(),
         })
     }
 
@@ -525,8 +607,267 @@ impl CodexLaborBinding {
             "evidence_gaps": self.required_evidence_gap_objects(),
             "submission": self.submission,
             "verdict": self.verdict,
+            "claim_state": self.claim_runtime_state_label(),
+            "claim": self.claim_payload(),
             "verifier_failure": self.verifier_failure,
         })
+    }
+
+    pub(crate) fn open_claim(
+        &mut self,
+        opened_at_epoch_ms: u64,
+        reason_code: Option<&str>,
+        note: Option<&str>,
+    ) -> Result<CodexLaborClaimState, String> {
+        if let Some(existing) = self.claim.clone() {
+            return Ok(existing);
+        }
+        let verdict = self.verdict.as_ref();
+        if verdict.is_none()
+            && self.verifier_failure.is_none()
+            && self.incident_evidence_refs.is_empty()
+        {
+            return Err(
+                "claim requires a disputed verdict, verifier failure, or incident evidence"
+                    .to_string(),
+            );
+        }
+
+        let reason_code = trimmed_optional_text(reason_code)
+            .map(str::to_string)
+            .or_else(|| {
+                verdict
+                    .and_then(|verdict| verdict.verdict.reason_code.as_deref().map(str::to_string))
+            })
+            .or_else(|| {
+                self.verifier_failure
+                    .as_ref()
+                    .map(|failure| failure.code.clone())
+            })
+            .unwrap_or_else(|| "codex.claim.review_requested".to_string());
+        let claim_id = self.claim_id(reason_code.as_str());
+        let status_note = trimmed_optional_text(note).map(str::to_string);
+        let claim = CodexLaborClaimState {
+            claim: ClaimHook {
+                claim_id: claim_id.clone(),
+                contract_id: self.contract_id.clone(),
+                work_unit_id: self.work_unit_id.clone(),
+                created_at_ms: opened_at_epoch_ms as i64,
+                status: ClaimHookStatus::Open,
+                reason_code: Some(reason_code.clone()),
+                metadata: json!({
+                    "submission_id": self
+                        .submission
+                        .as_ref()
+                        .map(|submission| submission.submission.submission_id.clone()),
+                    "verdict_id": verdict
+                        .map(|verdict| verdict.verdict.verdict_id.clone()),
+                    "verdict_outcome": verdict.map(|verdict| verdict.outcome_label()),
+                    "settlement_withheld_reason": verdict
+                        .and_then(|verdict| verdict.settlement_withheld_reason.clone()),
+                    "verifier_failure": self.verifier_failure,
+                    "opened_from_runtime_state": self.claim_runtime_state_label().unwrap_or("disputed"),
+                    "note": status_note.clone(),
+                }),
+            },
+            evidence_refs: self.claim_evidence_refs(
+                claim_id.as_str(),
+                reason_code.as_str(),
+                status_note.as_deref(),
+                opened_at_epoch_ms,
+            ),
+            status_note,
+            reviewed_at_epoch_ms: None,
+            resolved_at_epoch_ms: None,
+            remedy: None,
+        };
+        self.trace.claim_id = Some(claim_id);
+        self.claim = Some(claim.clone());
+        Ok(claim)
+    }
+
+    pub(crate) fn move_claim_under_review(
+        &mut self,
+        reviewed_at_epoch_ms: u64,
+        note: Option<&str>,
+    ) -> Result<CodexLaborClaimState, String> {
+        let review_note = trimmed_optional_text(note).map(str::to_string);
+        let work_unit_id = self.work_unit_id.clone();
+        let Some(claim) = self.claim.as_mut() else {
+            return Err("claim review requested before a claim was opened".to_string());
+        };
+        claim.claim.status = ClaimHookStatus::UnderReview;
+        claim.reviewed_at_epoch_ms = Some(reviewed_at_epoch_ms);
+        if review_note.is_some() {
+            claim.status_note = review_note.clone();
+        }
+        if let Some(note) = review_note.as_deref() {
+            append_evidence_ref(
+                &mut claim.evidence_refs,
+                claim_transition_evidence_ref(
+                    "codex_claim_review",
+                    work_unit_id.as_str(),
+                    claim.claim.claim_id.as_str(),
+                    "review",
+                    note,
+                    reviewed_at_epoch_ms,
+                ),
+            );
+        }
+        let status_label = claim.status_label().to_string();
+        let metadata = ensure_object(&mut claim.claim.metadata);
+        metadata.insert(
+            "reviewed_at_epoch_ms".to_string(),
+            serde_json::Value::from(reviewed_at_epoch_ms),
+        );
+        metadata.insert(
+            "status".to_string(),
+            serde_json::Value::String(status_label),
+        );
+        if let Some(note) = review_note {
+            metadata.insert("review_note".to_string(), serde_json::Value::String(note));
+        }
+        Ok(claim.clone())
+    }
+
+    pub(crate) fn issue_claim_remedy(
+        &mut self,
+        issued_at_epoch_ms: u64,
+        outcome: &str,
+        note: Option<&str>,
+    ) -> Result<CodexLaborClaimState, String> {
+        let Some(outcome) = trimmed_optional_text(Some(outcome)) else {
+            return Err("claim remedy outcome must not be empty".to_string());
+        };
+        let remedy_note = trimmed_optional_text(note).map(str::to_string);
+        let work_unit_id = self.work_unit_id.clone();
+        let Some(claim) = self.claim.as_mut() else {
+            return Err("claim remedy requested before a claim was opened".to_string());
+        };
+        let remedy_id = claim_remedy_id(claim.claim.claim_id.as_str(), outcome, issued_at_epoch_ms);
+        let remedy_evidence = claim_transition_evidence_ref(
+            "codex_claim_remedy",
+            work_unit_id.as_str(),
+            claim.claim.claim_id.as_str(),
+            outcome,
+            remedy_note.as_deref().unwrap_or("remedy_issued"),
+            issued_at_epoch_ms,
+        );
+        let mut remedy = CodexLaborRemedyState {
+            remedy_id,
+            outcome: outcome.to_string(),
+            issued_at_epoch_ms,
+            note: remedy_note.clone(),
+            evidence_refs: vec![remedy_evidence.clone()],
+        };
+        sort_evidence_refs(&mut remedy.evidence_refs);
+        append_evidence_ref(&mut claim.evidence_refs, remedy_evidence);
+        claim.remedy = Some(remedy);
+        let metadata = ensure_object(&mut claim.claim.metadata);
+        metadata.insert(
+            "remedy".to_string(),
+            json!({
+                "outcome": outcome,
+                "issued_at_epoch_ms": issued_at_epoch_ms,
+                "note": remedy_note,
+            }),
+        );
+        Ok(claim.clone())
+    }
+
+    pub(crate) fn deny_claim(
+        &mut self,
+        denied_at_epoch_ms: u64,
+        reason_code: Option<&str>,
+        note: Option<&str>,
+    ) -> Result<CodexLaborClaimState, String> {
+        let denial_reason = trimmed_optional_text(reason_code)
+            .map(str::to_string)
+            .unwrap_or_else(|| "codex.claim.denied".to_string());
+        let denial_note = trimmed_optional_text(note).map(str::to_string);
+        let work_unit_id = self.work_unit_id.clone();
+        let Some(claim) = self.claim.as_mut() else {
+            return Err("claim denial requested before a claim was opened".to_string());
+        };
+        claim.claim.status = ClaimHookStatus::Rejected;
+        claim.claim.reason_code = Some(denial_reason.clone());
+        claim.resolved_at_epoch_ms = Some(denied_at_epoch_ms);
+        if denial_note.is_some() {
+            claim.status_note = denial_note.clone();
+        }
+        append_evidence_ref(
+            &mut claim.evidence_refs,
+            claim_transition_evidence_ref(
+                "codex_claim_resolution",
+                work_unit_id.as_str(),
+                claim.claim.claim_id.as_str(),
+                denial_reason.as_str(),
+                denial_note.as_deref().unwrap_or("claim_denied"),
+                denied_at_epoch_ms,
+            ),
+        );
+        let status_label = claim.status_label().to_string();
+        let metadata = ensure_object(&mut claim.claim.metadata);
+        metadata.insert(
+            "status".to_string(),
+            serde_json::Value::String(status_label),
+        );
+        metadata.insert(
+            "resolved_at_epoch_ms".to_string(),
+            serde_json::Value::from(denied_at_epoch_ms),
+        );
+        if let Some(note) = denial_note {
+            metadata.insert(
+                "resolution_note".to_string(),
+                serde_json::Value::String(note),
+            );
+        }
+        Ok(claim.clone())
+    }
+
+    pub(crate) fn resolve_claim(
+        &mut self,
+        resolved_at_epoch_ms: u64,
+        note: Option<&str>,
+    ) -> Result<CodexLaborClaimState, String> {
+        let resolution_note = trimmed_optional_text(note).map(str::to_string);
+        let work_unit_id = self.work_unit_id.clone();
+        let Some(claim) = self.claim.as_mut() else {
+            return Err("claim resolution requested before a claim was opened".to_string());
+        };
+        claim.claim.status = ClaimHookStatus::Resolved;
+        claim.resolved_at_epoch_ms = Some(resolved_at_epoch_ms);
+        if resolution_note.is_some() {
+            claim.status_note = resolution_note.clone();
+        }
+        append_evidence_ref(
+            &mut claim.evidence_refs,
+            claim_transition_evidence_ref(
+                "codex_claim_resolution",
+                work_unit_id.as_str(),
+                claim.claim.claim_id.as_str(),
+                "resolved",
+                resolution_note.as_deref().unwrap_or("claim_resolved"),
+                resolved_at_epoch_ms,
+            ),
+        );
+        let status_label = claim.status_label().to_string();
+        let metadata = ensure_object(&mut claim.claim.metadata);
+        metadata.insert(
+            "status".to_string(),
+            serde_json::Value::String(status_label),
+        );
+        metadata.insert(
+            "resolved_at_epoch_ms".to_string(),
+            serde_json::Value::from(resolved_at_epoch_ms),
+        );
+        if let Some(note) = resolution_note {
+            metadata.insert(
+                "resolution_note".to_string(),
+                serde_json::Value::String(note),
+            );
+        }
+        Ok(claim.clone())
     }
 
     pub(crate) fn required_evidence_gaps(&self) -> Vec<String> {
@@ -894,6 +1235,157 @@ impl CodexLaborBinding {
         });
         message.to_string()
     }
+
+    fn claim_id(&self, reason_code: &str) -> String {
+        let basis = self
+            .verdict
+            .as_ref()
+            .map(|verdict| verdict.verdict.verdict_id.as_str())
+            .or_else(|| {
+                self.submission
+                    .as_ref()
+                    .map(|submission| submission.submission.submission_id.as_str())
+            })
+            .or_else(|| {
+                self.verifier_failure
+                    .as_ref()
+                    .map(|failure| failure.code.as_str())
+            })
+            .unwrap_or(self.contract_id.as_str());
+        format!(
+            "claim.codex.{}",
+            short_hash(
+                format!(
+                    "{}:{}:{}:{}",
+                    self.contract_id, self.work_unit_id, basis, reason_code
+                )
+                .as_str()
+            )
+        )
+    }
+
+    fn claim_evidence_refs(
+        &self,
+        claim_id: &str,
+        reason_code: &str,
+        note: Option<&str>,
+        recorded_at_epoch_ms: u64,
+    ) -> Vec<EvidenceRef> {
+        let mut evidence_refs = self.provenance_evidence_refs();
+        if let Some(submission) = self.submission.as_ref() {
+            merge_evidence_refs(&mut evidence_refs, &submission.evidence_refs);
+        }
+        if let Some(verdict) = self.verdict.as_ref() {
+            merge_evidence_refs(&mut evidence_refs, &verdict.evidence_refs);
+        }
+        merge_evidence_refs(&mut evidence_refs, &self.incident_evidence_refs);
+        if let Some(verifier_failure) = self.verifier_failure.as_ref() {
+            append_evidence_ref(
+                &mut evidence_refs,
+                verifier_failure_evidence_ref(
+                    self.work_unit_id.as_str(),
+                    verifier_failure,
+                    recorded_at_epoch_ms,
+                ),
+            );
+        }
+        if let Some(note) = note {
+            append_evidence_ref(
+                &mut evidence_refs,
+                claim_transition_evidence_ref(
+                    "codex_claim_note",
+                    self.work_unit_id.as_str(),
+                    claim_id,
+                    reason_code,
+                    note,
+                    recorded_at_epoch_ms,
+                ),
+            );
+        }
+        evidence_refs
+    }
+}
+
+fn trimmed_optional_text<'a>(value: Option<&'a str>) -> Option<&'a str> {
+    value.map(str::trim).filter(|value| !value.is_empty())
+}
+
+fn claim_remedy_id(claim_id: &str, outcome: &str, issued_at_epoch_ms: u64) -> String {
+    format!(
+        "remedy.codex.{}",
+        short_hash(format!("{claim_id}:{outcome}:{issued_at_epoch_ms}").as_str())
+    )
+}
+
+fn claim_transition_evidence_ref(
+    kind: &str,
+    work_unit_id: &str,
+    claim_id: &str,
+    discriminator: &str,
+    note: &str,
+    recorded_at_epoch_ms: u64,
+) -> EvidenceRef {
+    EvidenceRef::new(
+        kind.to_string(),
+        format!("oa://autopilot/codex/{work_unit_id}/claims/{claim_id}/{kind}"),
+        sha256_prefixed_text(
+            format!("{claim_id}:{discriminator}:{note}:{recorded_at_epoch_ms}").as_str(),
+        ),
+    )
+}
+
+fn verifier_failure_evidence_ref(
+    work_unit_id: &str,
+    verifier_failure: &CodexLaborVerifierFailure,
+    recorded_at_epoch_ms: u64,
+) -> EvidenceRef {
+    EvidenceRef::new(
+        "codex_verifier_failure".to_string(),
+        format!("oa://autopilot/codex/{work_unit_id}/verifier/failure"),
+        sha256_prefixed_text(
+            format!(
+                "{}:{}:{}",
+                verifier_failure.code, verifier_failure.message, recorded_at_epoch_ms
+            )
+            .as_str(),
+        ),
+    )
+}
+
+fn ensure_object(value: &mut serde_json::Value) -> &mut serde_json::Map<String, serde_json::Value> {
+    if !value.is_object() {
+        *value = serde_json::Value::Object(serde_json::Map::new());
+    }
+    match value {
+        serde_json::Value::Object(map) => map,
+        _ => unreachable!("value was normalized to an object"),
+    }
+}
+
+fn append_evidence_ref(target: &mut Vec<EvidenceRef>, evidence: EvidenceRef) {
+    if !target.iter().any(|existing| existing == &evidence) {
+        target.push(evidence);
+    }
+    sort_evidence_refs(target);
+}
+
+fn merge_evidence_refs(target: &mut Vec<EvidenceRef>, incoming: &[EvidenceRef]) {
+    for evidence in incoming {
+        if target.iter().any(|existing| existing == evidence) {
+            continue;
+        }
+        target.push(evidence.clone());
+    }
+    sort_evidence_refs(target);
+}
+
+fn sort_evidence_refs(target: &mut Vec<EvidenceRef>) {
+    target.sort_by(|left, right| {
+        left.kind
+            .cmp(&right.kind)
+            .then_with(|| left.uri.cmp(&right.uri))
+            .then_with(|| left.digest.cmp(&right.digest))
+    });
 }
 
 #[derive(Clone, Debug)]
@@ -1024,6 +1516,7 @@ fn local_labor_binding(
         incident_evidence_refs: Vec::new(),
         submission: None,
         verdict: None,
+        claim: None,
         verifier_failure: None,
     })
 }
@@ -1134,6 +1627,8 @@ mod tests {
     use std::path::PathBuf;
 
     use codex_client::{AskForApproval, SandboxPolicy, UserInput};
+    use openagents_kernel_core::labor::SubmissionStatus;
+    use openagents_kernel_core::receipts::EvidenceRef;
 
     use super::{
         CodexLaborApprovalEvent, CodexRunClassification, CodexRunTrigger,
@@ -1395,5 +1890,122 @@ mod tests {
                 .iter()
                 .any(|artifact| artifact.kind == "transcript")
         );
+    }
+
+    #[test]
+    fn disputed_labor_outcomes_can_open_review_and_resolve_claims() {
+        let mut binding = orchestrate_codex_turn(CodexTurnExecutionRequest {
+            trigger: CodexRunTrigger::AutonomousGoal {
+                goal_id: "goal-claim".to_string(),
+                goal_title: "Handle disputes".to_string(),
+            },
+            submitted_at_epoch_ms: 1_700_000_002_000,
+            thread_id: "thread-claim".to_string(),
+            input: vec![UserInput::Text {
+                text: "execute disputed work".to_string(),
+                text_elements: Vec::new(),
+            }],
+            cwd: Some(PathBuf::from("/repo")),
+            approval_policy: Some(AskForApproval::Never),
+            sandbox_policy: Some(SandboxPolicy::DangerFullAccess),
+            model: Some("gpt-5.2-codex".to_string()),
+        })
+        .labor_binding
+        .expect("goal run should bind labor");
+
+        binding.record_turn_started("turn-claim");
+        binding.record_tool_request(
+            "request-1",
+            "call-1",
+            "openagents.files.write",
+            "{\"path\":\"README.md\"}",
+            1_700_000_002_010,
+        );
+        binding.record_tool_result(
+            "request-1",
+            "call-1",
+            "openagents.files.write",
+            "FAILED",
+            false,
+            "write denied",
+            1_700_000_002_020,
+        );
+        binding.record_output_snapshot("candidate answer");
+        binding
+            .attach_evidence_ref(
+                EvidenceRef::new(
+                    "incident_note",
+                    format!("{}incidents/operator-note", binding.artifact_scope_root()),
+                    "sha256:incident-1",
+                ),
+                true,
+            )
+            .expect("incident evidence should attach");
+
+        let submission = binding.assemble_submission(1_700_000_002_100);
+        assert_eq!(submission.submission.status, SubmissionStatus::Received);
+        let verdict = binding
+            .finalize_verdict(1_700_000_002_200)
+            .expect("verdict should finalize");
+        assert_eq!(verdict.outcome_label(), "fail");
+        assert_eq!(binding.claim_runtime_state_label(), Some("disputed"));
+
+        let claim = binding
+            .open_claim(
+                1_700_000_002_250,
+                None,
+                Some("operator requested manual review"),
+            )
+            .expect("claim should open");
+        assert_eq!(
+            binding.trace.claim_id.as_deref(),
+            Some(claim.claim.claim_id.as_str())
+        );
+        assert!(
+            claim
+                .evidence_refs
+                .iter()
+                .any(|evidence| evidence.kind == "codex_submission")
+        );
+        assert!(
+            claim
+                .evidence_refs
+                .iter()
+                .any(|evidence| evidence.kind == "codex_verifier_report")
+        );
+        assert!(
+            claim
+                .evidence_refs
+                .iter()
+                .any(|evidence| evidence.kind == "incident_note")
+        );
+
+        let reviewed = binding
+            .move_claim_under_review(1_700_000_002_300, Some("checking failure details"))
+            .expect("claim review should succeed");
+        assert_eq!(reviewed.status_label(), "under_review");
+        assert_eq!(binding.claim_runtime_state_label(), Some("under_review"));
+
+        let remedied = binding
+            .issue_claim_remedy(
+                1_700_000_002_350,
+                "rework_credit",
+                Some("issue rework credit"),
+            )
+            .expect("remedy issuance should succeed");
+        assert_eq!(binding.claim_runtime_state_label(), Some("remedy_issued"));
+        assert_eq!(
+            remedied
+                .remedy
+                .as_ref()
+                .map(|remedy| remedy.outcome.as_str()),
+            Some("rework_credit")
+        );
+
+        let resolved = binding
+            .resolve_claim(1_700_000_002_400, Some("claim closed"))
+            .expect("claim resolution should succeed");
+        assert_eq!(resolved.status_label(), "resolved");
+        assert_eq!(binding.claim_runtime_state_label(), Some("claim_resolved"));
     }
 }

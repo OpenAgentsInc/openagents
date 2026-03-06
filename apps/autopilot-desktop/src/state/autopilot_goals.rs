@@ -308,6 +308,10 @@ pub struct GoalLaborLinkage {
     #[serde(default)]
     pub claim_id: Option<String>,
     #[serde(default)]
+    pub claim_state: Option<String>,
+    #[serde(default)]
+    pub remedy_kind: Option<String>,
+    #[serde(default)]
     pub settlement_id: Option<String>,
     #[serde(default)]
     pub settlement_ready: Option<bool>,
@@ -317,6 +321,12 @@ pub struct GoalLaborLinkage {
     pub submission_evidence_refs: Vec<EvidenceRef>,
     #[serde(default)]
     pub verdict_evidence_refs: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub claim_evidence_refs: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub incident_evidence_refs: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub remedy_evidence_refs: Vec<EvidenceRef>,
     #[serde(default)]
     pub settlement_evidence_refs: Vec<EvidenceRef>,
 }
@@ -328,11 +338,16 @@ impl GoalLaborLinkage {
             && self.submission_id.is_none()
             && self.verdict_id.is_none()
             && self.claim_id.is_none()
+            && self.claim_state.is_none()
+            && self.remedy_kind.is_none()
             && self.settlement_id.is_none()
             && self.settlement_ready.is_none()
             && self.tool_evidence_refs.is_empty()
             && self.submission_evidence_refs.is_empty()
             && self.verdict_evidence_refs.is_empty()
+            && self.claim_evidence_refs.is_empty()
+            && self.incident_evidence_refs.is_empty()
+            && self.remedy_evidence_refs.is_empty()
             && self.settlement_evidence_refs.is_empty()
     }
 
@@ -352,6 +367,12 @@ impl GoalLaborLinkage {
         if other.claim_id.is_some() {
             self.claim_id = other.claim_id.clone();
         }
+        if other.claim_state.is_some() {
+            self.claim_state = other.claim_state.clone();
+        }
+        if other.remedy_kind.is_some() {
+            self.remedy_kind = other.remedy_kind.clone();
+        }
         if other.settlement_id.is_some() {
             self.settlement_id = other.settlement_id.clone();
         }
@@ -367,6 +388,12 @@ impl GoalLaborLinkage {
             &mut self.verdict_evidence_refs,
             &other.verdict_evidence_refs,
         );
+        merge_evidence_refs(&mut self.claim_evidence_refs, &other.claim_evidence_refs);
+        merge_evidence_refs(
+            &mut self.incident_evidence_refs,
+            &other.incident_evidence_refs,
+        );
+        merge_evidence_refs(&mut self.remedy_evidence_refs, &other.remedy_evidence_refs);
         merge_evidence_refs(
             &mut self.settlement_evidence_refs,
             &other.settlement_evidence_refs,

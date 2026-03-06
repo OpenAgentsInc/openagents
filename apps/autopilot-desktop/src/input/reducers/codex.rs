@@ -66,12 +66,54 @@ fn advance_completed_turn_labor_pipeline(state: &mut RenderState, turn_id: &str)
                 verdict.settlement_ready,
                 verdict.verifier_id
             ));
+            if !verdict.settlement_ready {
+                match state.autopilot_chat.open_turn_labor_claim(
+                    turn_id,
+                    current_epoch_millis(),
+                    verdict.verdict.reason_code.as_deref(),
+                    verdict.settlement_withheld_reason.as_deref(),
+                ) {
+                    Ok(Some(claim)) => {
+                        state.autopilot_chat.record_turn_timeline_event(format!(
+                            "labor claim opened: claim_id={} state={}",
+                            claim.claim.claim_id,
+                            claim.status_label()
+                        ));
+                    }
+                    Ok(None) => {}
+                    Err(error) => {
+                        state.autopilot_chat.record_turn_timeline_event(format!(
+                            "labor claim open failed: {error}"
+                        ));
+                    }
+                }
+            }
         }
         Ok(Some(_)) | Ok(None) => {}
         Err(error) => {
             state
                 .autopilot_chat
                 .record_turn_timeline_event(format!("labor verifier blocked settlement: {error}"));
+            match state.autopilot_chat.open_turn_labor_claim(
+                turn_id,
+                current_epoch_millis(),
+                None,
+                Some(error.as_str()),
+            ) {
+                Ok(Some(claim)) => {
+                    state.autopilot_chat.record_turn_timeline_event(format!(
+                        "labor claim opened: claim_id={} state={}",
+                        claim.claim.claim_id,
+                        claim.status_label()
+                    ));
+                }
+                Ok(None) => {}
+                Err(claim_error) => {
+                    state.autopilot_chat.record_turn_timeline_event(format!(
+                        "labor claim open failed: {claim_error}"
+                    ));
+                }
+            }
         }
     }
 }

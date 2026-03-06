@@ -57,6 +57,7 @@ pub enum SettlementStatus {
 pub enum ClaimHookStatus {
     #[default]
     Open,
+    UnderReview,
     Resolved,
     Rejected,
 }
