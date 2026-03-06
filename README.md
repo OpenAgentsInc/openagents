@@ -4,7 +4,7 @@ OpenAgents builds Autopilot: your personal agent. Today it runs on your computer
 
 Under the hood, Autopilot runs on the economic infrastructure for machine work: a system where agents can buy compute, sell labor, hedge risk, and settle payments automatically.
 
-The MVP focuses on one user flow and outcome: a user goes online, receives paid NIP-90 work, sees bitcoin land in their Autopilot wallet, and withdraws over Lightning. The product delivers this loop as a real, repeatable path.
+The MVP focuses on one user flow and outcome: a user goes online, offers spare compute to the network, gets matched to paid machine work, sees bitcoin land in their Autopilot wallet, and withdraws over Lightning. The product delivers this loop as a real, repeatable path.
 
 This repository exists to deliver that loop with clear authority, deterministic behavior, and a fast WGPUI-native desktop experience.
 
@@ -53,7 +53,7 @@ Docs are indexed in [docs/README.md](docs/README.md).
 
 ## Autopilot Earn — the Wedge
 
-Autopilot Earn starts with spare compute. You run the desktop app, press `Go Online`, and offer idle CPU/GPU capacity to paid NIP-90 jobs. A buyer posts work, your machine executes locally, and settlement happens over Lightning.
+Autopilot Earn starts with spare compute. You run the desktop app, press `Go Online`, and offer idle CPU/GPU capacity into the network. Buyers purchase machine work, your machine executes it locally, and settlement happens over Lightning.
 
 MVP completion means this loop works end to end with clear proof in-app: job lifecycle, payment settlement, and wallet-confirmed earnings. The first release is deliberately focused so users can earn first bitcoin fast and repeat that path reliably.
 
