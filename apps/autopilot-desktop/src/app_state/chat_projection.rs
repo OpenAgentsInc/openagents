@@ -17,6 +17,26 @@ const MANAGED_CHAT_PROJECTION_SCHEMA_VERSION: u16 = 1;
 const MANAGED_CHAT_PROJECTION_STREAM_ID: &str = "stream.managed_chat_projection.v1";
 const MANAGED_CHAT_EVENT_LIMIT: usize = 8_192;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ManagedChatDeliveryState {
+    Confirmed,
+    #[default]
+    Publishing,
+    Acked,
+    Failed,
+}
+
+impl ManagedChatDeliveryState {
+    pub fn is_retryable(self) -> bool {
+        matches!(self, Self::Failed)
+    }
+}
+
+fn managed_chat_outbound_attempt_count_default() -> u32 {
+    1
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ManagedChatReadCursor {
     pub last_read_event_id: Option<String>,
@@ -29,6 +49,20 @@ pub struct ManagedChatLocalState {
     pub selected_channel_id: Option<String>,
     #[serde(default)]
     pub read_cursors: BTreeMap<String, ManagedChatReadCursor>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ManagedChatOutboundMessage {
+    pub event: Event,
+    pub group_id: String,
+    pub channel_id: String,
+    pub relay_url: String,
+    #[serde(default)]
+    pub delivery_state: ManagedChatDeliveryState,
+    #[serde(default = "managed_chat_outbound_attempt_count_default")]
+    pub attempt_count: u32,
+    #[serde(default)]
+    pub last_error: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,6 +84,9 @@ pub struct ManagedChatMessageProjection {
     pub mention_pubkeys: Vec<String>,
     pub reaction_summaries: Vec<ManagedChatReactionSummary>,
     pub reply_child_ids: Vec<String>,
+    pub delivery_state: ManagedChatDeliveryState,
+    pub delivery_error: Option<String>,
+    pub attempt_count: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -97,6 +134,8 @@ struct ManagedChatProjectionDocumentV1 {
     #[serde(default)]
     relay_events: Vec<Event>,
     #[serde(default)]
+    outbound_messages: Vec<ManagedChatOutboundMessage>,
+    #[serde(default)]
     local_state: ManagedChatLocalState,
 }
 
@@ -106,6 +145,7 @@ pub struct ManagedChatProjectionState {
     pub last_action: Option<String>,
     pub stream_id: String,
     pub relay_events: Vec<Event>,
+    pub outbound_messages: Vec<ManagedChatOutboundMessage>,
     pub local_state: ManagedChatLocalState,
     pub snapshot: ManagedChatProjectionSnapshot,
     projection_file_path: PathBuf,
@@ -120,17 +160,24 @@ impl Default for ManagedChatProjectionState {
 impl ManagedChatProjectionState {
     fn from_projection_file_path(projection_file_path: PathBuf) -> Self {
         match load_managed_chat_projection_document(projection_file_path.as_path()) {
-            Ok((relay_events, local_state)) => {
-                let snapshot = rebuild_managed_chat_projection(&relay_events, &local_state);
+            Ok((relay_events, mut outbound_messages, local_state)) => {
+                reconcile_outbound_messages_against_relays(&mut outbound_messages, &relay_events);
+                let snapshot = rebuild_managed_chat_projection(
+                    &relay_events,
+                    &outbound_messages,
+                    &local_state,
+                );
                 Self {
                     load_state: PaneLoadState::Ready,
                     last_error: None,
                     last_action: Some(format!(
-                        "Loaded managed chat projection stream ({} relay events)",
-                        relay_events.len()
+                        "Loaded managed chat projection stream ({} relay events / {} outbound)",
+                        relay_events.len(),
+                        outbound_messages.len()
                     )),
                     stream_id: MANAGED_CHAT_PROJECTION_STREAM_ID.to_string(),
                     relay_events,
+                    outbound_messages,
                     local_state,
                     snapshot,
                     projection_file_path,
@@ -142,6 +189,7 @@ impl ManagedChatProjectionState {
                 last_action: Some("Managed chat projection stream load failed".to_string()),
                 stream_id: MANAGED_CHAT_PROJECTION_STREAM_ID.to_string(),
                 relay_events: Vec::new(),
+                outbound_messages: Vec::new(),
                 local_state: ManagedChatLocalState::default(),
                 snapshot: ManagedChatProjectionSnapshot::default(),
                 projection_file_path,
@@ -170,6 +218,130 @@ impl ManagedChatProjectionState {
     pub fn replace_relay_events(&mut self, relay_events: Vec<Event>) {
         self.relay_events = relay_events;
         self.refresh_projection("Rebuilt managed chat projection");
+    }
+
+    pub fn queue_outbound_message(
+        &mut self,
+        mut outbound_message: ManagedChatOutboundMessage,
+    ) -> Result<(), String> {
+        let parsed = ManagedChannelMessageEvent::from_event(&outbound_message.event)
+            .map_err(|error| format!("Invalid managed chat outbound event: {error}"))?;
+        if parsed.group_id != outbound_message.group_id {
+            return Err(format!(
+                "Managed chat outbound group mismatch: {} != {}",
+                parsed.group_id, outbound_message.group_id
+            ));
+        }
+        if parsed.channel_create_event_id != outbound_message.channel_id {
+            return Err(format!(
+                "Managed chat outbound channel mismatch: {} != {}",
+                parsed.channel_create_event_id, outbound_message.channel_id
+            ));
+        }
+        if parsed.relay_url != outbound_message.relay_url {
+            return Err(format!(
+                "Managed chat outbound relay mismatch: {} != {}",
+                parsed.relay_url, outbound_message.relay_url
+            ));
+        }
+        let Some(channel) = self
+            .snapshot
+            .channels
+            .iter()
+            .find(|channel| channel.channel_id == outbound_message.channel_id)
+        else {
+            return Err(format!(
+                "Unknown managed chat outbound channel: {}",
+                outbound_message.channel_id
+            ));
+        };
+        if channel.group_id != outbound_message.group_id {
+            return Err(format!(
+                "Managed chat outbound channel {} does not belong to group {}",
+                outbound_message.channel_id, outbound_message.group_id
+            ));
+        }
+
+        outbound_message.attempt_count = outbound_message.attempt_count.max(1);
+        self.outbound_messages
+            .retain(|candidate| candidate.event.id != outbound_message.event.id);
+        self.outbound_messages.push(outbound_message);
+        let event_id = self
+            .outbound_messages
+            .last()
+            .map(|message| message.event.id.clone())
+            .unwrap_or_default();
+        self.refresh_projection(format!("Queued managed chat local echo {event_id}"));
+        Ok(())
+    }
+
+    pub fn fail_outbound_message(
+        &mut self,
+        event_id: &str,
+        error: impl Into<String>,
+    ) -> Result<(), String> {
+        let Some(index) = self
+            .outbound_messages
+            .iter()
+            .position(|message| message.event.id == event_id)
+        else {
+            return Err(format!("Unknown managed chat outbound message: {event_id}"));
+        };
+        self.outbound_messages[index].delivery_state = ManagedChatDeliveryState::Failed;
+        self.outbound_messages[index].attempt_count =
+            self.outbound_messages[index].attempt_count.max(1);
+        self.outbound_messages[index].last_error = Some(error.into());
+        self.refresh_projection(format!("Marked managed chat outbound {event_id} failed"));
+        Ok(())
+    }
+
+    pub fn ack_outbound_message(&mut self, event_id: &str) -> Result<(), String> {
+        let Some(index) = self
+            .outbound_messages
+            .iter()
+            .position(|message| message.event.id == event_id)
+        else {
+            return Err(format!("Unknown managed chat outbound message: {event_id}"));
+        };
+        self.outbound_messages[index].delivery_state = ManagedChatDeliveryState::Acked;
+        self.outbound_messages[index].attempt_count =
+            self.outbound_messages[index].attempt_count.max(1);
+        self.outbound_messages[index].last_error = None;
+        self.refresh_projection(format!("Acknowledged managed chat outbound {event_id}"));
+        Ok(())
+    }
+
+    pub fn retry_outbound_message(&mut self, event_id: &str) -> Result<(), String> {
+        let Some(index) = self
+            .outbound_messages
+            .iter()
+            .position(|message| message.event.id == event_id)
+        else {
+            return Err(format!("Unknown managed chat outbound message: {event_id}"));
+        };
+        self.outbound_messages[index].delivery_state = ManagedChatDeliveryState::Publishing;
+        self.outbound_messages[index].attempt_count = self.outbound_messages[index]
+            .attempt_count
+            .max(1)
+            .saturating_add(1);
+        self.outbound_messages[index].last_error = None;
+        self.refresh_projection(format!("Retried managed chat outbound {event_id}"));
+        Ok(())
+    }
+
+    pub fn latest_retryable_outbound_event_id(&self, channel_id: &str) -> Option<String> {
+        self.outbound_messages
+            .iter()
+            .filter(|message| {
+                message.channel_id == channel_id && message.delivery_state.is_retryable()
+            })
+            .max_by(|left, right| {
+                left.event
+                    .created_at
+                    .cmp(&right.event.created_at)
+                    .then_with(|| left.event.id.cmp(&right.event.id))
+            })
+            .map(|message| message.event.id.clone())
     }
 
     pub fn set_selected_channel(&mut self, group_id: &str, channel_id: &str) -> Result<(), String> {
@@ -266,16 +438,23 @@ impl ManagedChatProjectionState {
     }
 
     pub fn reload_projection(&mut self) -> Result<(), String> {
-        let (relay_events, local_state) =
+        let (relay_events, mut outbound_messages, local_state) =
             load_managed_chat_projection_document(self.projection_file_path.as_path())?;
         self.relay_events = relay_events;
+        reconcile_outbound_messages_against_relays(&mut outbound_messages, &self.relay_events);
+        self.outbound_messages = outbound_messages;
         self.local_state = local_state;
-        self.snapshot = rebuild_managed_chat_projection(&self.relay_events, &self.local_state);
+        self.snapshot = rebuild_managed_chat_projection(
+            &self.relay_events,
+            &self.outbound_messages,
+            &self.local_state,
+        );
         self.last_error = None;
         self.load_state = PaneLoadState::Ready;
         self.last_action = Some(format!(
-            "Managed chat projection reloaded ({} relay events)",
-            self.relay_events.len()
+            "Managed chat projection reloaded ({} relay events / {} outbound)",
+            self.relay_events.len(),
+            self.outbound_messages.len()
         ));
         Ok(())
     }
@@ -283,16 +462,25 @@ impl ManagedChatProjectionState {
     fn refresh_projection(&mut self, action: impl Into<String>) {
         self.relay_events =
             normalize_managed_chat_relay_events(std::mem::take(&mut self.relay_events));
-        self.snapshot = rebuild_managed_chat_projection(&self.relay_events, &self.local_state);
+        self.outbound_messages =
+            normalize_managed_chat_outbound_messages(std::mem::take(&mut self.outbound_messages));
+        reconcile_outbound_messages_against_relays(&mut self.outbound_messages, &self.relay_events);
+        self.snapshot = rebuild_managed_chat_projection(
+            &self.relay_events,
+            &self.outbound_messages,
+            &self.local_state,
+        );
         let action = format!(
-            "{} ({} relay events / {} channels)",
+            "{} ({} relay events / {} outbound / {} channels)",
             action.into(),
             self.relay_events.len(),
+            self.outbound_messages.len(),
             self.snapshot.channels.len()
         );
         if let Err(error) = persist_managed_chat_projection_document(
             self.projection_file_path.as_path(),
             &self.relay_events,
+            &self.outbound_messages,
             &self.local_state,
         ) {
             self.last_error = Some(error);
@@ -309,6 +497,7 @@ impl ManagedChatProjectionState {
         persist_managed_chat_projection_document(
             self.projection_file_path.as_path(),
             &self.relay_events,
+            &self.outbound_messages,
             &self.local_state,
         )?;
         self.last_error = None;
@@ -374,9 +563,45 @@ fn normalize_managed_chat_relay_events(mut relay_events: Vec<Event>) -> Vec<Even
     relay_events
 }
 
+fn normalize_managed_chat_outbound_messages(
+    outbound_messages: Vec<ManagedChatOutboundMessage>,
+) -> Vec<ManagedChatOutboundMessage> {
+    let mut deduped = BTreeMap::<String, ManagedChatOutboundMessage>::new();
+    for mut outbound_message in outbound_messages {
+        outbound_message.attempt_count = outbound_message.attempt_count.max(1);
+        deduped.insert(outbound_message.event.id.clone(), outbound_message);
+    }
+    let mut normalized = deduped.into_values().collect::<Vec<_>>();
+    normalized.sort_by(|left, right| {
+        left.event
+            .created_at
+            .cmp(&right.event.created_at)
+            .then_with(|| left.event.id.cmp(&right.event.id))
+    });
+    normalized
+}
+
+fn reconcile_outbound_messages_against_relays(
+    outbound_messages: &mut [ManagedChatOutboundMessage],
+    relay_events: &[Event],
+) {
+    let relay_event_ids = relay_events
+        .iter()
+        .map(|event| event.id.as_str())
+        .collect::<BTreeSet<_>>();
+    for outbound_message in outbound_messages {
+        if relay_event_ids.contains(outbound_message.event.id.as_str()) {
+            outbound_message.delivery_state = ManagedChatDeliveryState::Acked;
+            outbound_message.last_error = None;
+            outbound_message.attempt_count = outbound_message.attempt_count.max(1);
+        }
+    }
+}
+
 fn persist_managed_chat_projection_document(
     path: &Path,
     relay_events: &[Event],
+    outbound_messages: &[ManagedChatOutboundMessage],
     local_state: &ManagedChatLocalState,
 ) -> Result<(), String> {
     if let Some(parent) = path.parent() {
@@ -387,6 +612,7 @@ fn persist_managed_chat_projection_document(
         schema_version: MANAGED_CHAT_PROJECTION_SCHEMA_VERSION,
         stream_id: MANAGED_CHAT_PROJECTION_STREAM_ID.to_string(),
         relay_events: normalize_managed_chat_relay_events(relay_events.to_vec()),
+        outbound_messages: normalize_managed_chat_outbound_messages(outbound_messages.to_vec()),
         local_state: local_state.clone(),
     };
     let payload = serde_json::to_string_pretty(&document)
@@ -401,11 +627,18 @@ fn persist_managed_chat_projection_document(
 
 fn load_managed_chat_projection_document(
     path: &Path,
-) -> Result<(Vec<Event>, ManagedChatLocalState), String> {
+) -> Result<
+    (
+        Vec<Event>,
+        Vec<ManagedChatOutboundMessage>,
+        ManagedChatLocalState,
+    ),
+    String,
+> {
     let raw = match std::fs::read_to_string(path) {
         Ok(raw) => raw,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Ok((Vec::new(), ManagedChatLocalState::default()));
+            return Ok((Vec::new(), Vec::new(), ManagedChatLocalState::default()));
         }
         Err(error) => {
             return Err(format!("Failed to read managed chat projection: {error}"));
@@ -428,12 +661,14 @@ fn load_managed_chat_projection_document(
     }
     Ok((
         normalize_managed_chat_relay_events(document.relay_events),
+        normalize_managed_chat_outbound_messages(document.outbound_messages),
         document.local_state,
     ))
 }
 
 fn rebuild_managed_chat_projection(
     relay_events: &[Event],
+    outbound_messages: &[ManagedChatOutboundMessage],
     local_state: &ManagedChatLocalState,
 ) -> ManagedChatProjectionSnapshot {
     let deleted_event_ids = collect_deleted_event_ids(relay_events);
@@ -545,6 +780,9 @@ fn rebuild_managed_chat_projection(
                             mention_pubkeys,
                             reaction_summaries: Vec::new(),
                             reply_child_ids: Vec::new(),
+                            delivery_state: ManagedChatDeliveryState::Confirmed,
+                            delivery_error: None,
+                            attempt_count: 0,
                         },
                     );
                 }
@@ -600,6 +838,54 @@ fn rebuild_managed_chat_projection(
             .get(&message.channel_id)
             .is_some_and(|channel| channel.group_id == message.group_id)
     });
+
+    let relay_message_ids = messages.keys().cloned().collect::<BTreeSet<_>>();
+    for outbound_message in outbound_messages {
+        if relay_message_ids.contains(&outbound_message.event.id) {
+            continue;
+        }
+        if !live_channels
+            .get(&outbound_message.channel_id)
+            .is_some_and(|channel| channel.group_id == outbound_message.group_id)
+        {
+            continue;
+        }
+        let Ok(parsed) = ManagedChannelMessageEvent::from_event(&outbound_message.event) else {
+            continue;
+        };
+        if parsed.group_id != outbound_message.group_id
+            || parsed.channel_create_event_id != outbound_message.channel_id
+        {
+            continue;
+        }
+
+        let mut mention_pubkeys = parsed
+            .mentions
+            .into_iter()
+            .map(|mention| mention.pubkey)
+            .collect::<Vec<_>>();
+        mention_pubkeys.sort();
+        mention_pubkeys.dedup();
+
+        messages.insert(
+            outbound_message.event.id.clone(),
+            ManagedChatMessageProjection {
+                event_id: outbound_message.event.id.clone(),
+                group_id: parsed.group_id,
+                channel_id: parsed.channel_create_event_id,
+                author_pubkey: outbound_message.event.pubkey.clone(),
+                content: parsed.content,
+                created_at: outbound_message.event.created_at,
+                reply_to_event_id: parsed.reply_to.map(|reply| reply.event_id),
+                mention_pubkeys,
+                reaction_summaries: Vec::new(),
+                reply_child_ids: Vec::new(),
+                delivery_state: outbound_message.delivery_state,
+                delivery_error: outbound_message.last_error.clone(),
+                attempt_count: outbound_message.attempt_count.max(1),
+            },
+        );
+    }
 
     let mut reaction_map = BTreeMap::<String, BTreeMap<String, BTreeSet<String>>>::new();
     for candidate in reaction_candidates {
@@ -931,13 +1217,17 @@ fn unread_count_for_channel(
     cursor: Option<&ManagedChatReadCursor>,
     messages: &BTreeMap<String, ManagedChatMessageProjection>,
 ) -> usize {
+    let confirmed_message_ids = message_ids.iter().filter(|event_id| {
+        messages
+            .get(event_id.as_str())
+            .is_some_and(|message| message.delivery_state == ManagedChatDeliveryState::Confirmed)
+    });
     let Some(cursor) = cursor else {
-        return message_ids.len();
+        return confirmed_message_ids.count();
     };
     let read_created_at = cursor.last_read_created_at.unwrap_or(0);
     let read_event_id = cursor.last_read_event_id.as_deref().unwrap_or("");
-    message_ids
-        .iter()
+    confirmed_message_ids
         .filter(|event_id| {
             messages.get(event_id.as_str()).is_some_and(|message| {
                 message.created_at > read_created_at
@@ -951,7 +1241,8 @@ fn unread_count_for_channel(
 #[cfg(test)]
 mod tests {
     use super::{
-        ManagedChatProjectionState, ManagedChatReadCursor, tag_value, unread_count_for_channel,
+        ManagedChatDeliveryState, ManagedChatOutboundMessage, ManagedChatProjectionState,
+        ManagedChatReadCursor, tag_value, unread_count_for_channel,
     };
     use nostr::{
         ChannelMetadata, Event, GroupAdminsEvent, GroupMembersEvent, GroupMetadata,
@@ -1423,6 +1714,151 @@ mod tests {
     }
 
     #[test]
+    fn managed_chat_projection_persists_outbound_failure_retry_and_ack_state() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("managed-chat.json");
+        let mut projection =
+            ManagedChatProjectionState::from_projection_path_for_tests(path.clone());
+
+        let channel_create = build_channel_create_event('a', 20, "ops");
+        projection.replace_relay_events(vec![
+            build_group_metadata_event('b', 10, "Ops"),
+            build_channel_metadata_event('c', 21, &channel_create.id, "ops", 1),
+            channel_create.clone(),
+        ]);
+
+        let outbound_event = build_message_event('d', 'a', 30, &channel_create.id, "queued");
+        projection
+            .queue_outbound_message(ManagedChatOutboundMessage {
+                event: outbound_event.clone(),
+                group_id: "oa-main".to_string(),
+                channel_id: channel_create.id.clone(),
+                relay_url: "wss://relay.openagents.test".to_string(),
+                delivery_state: ManagedChatDeliveryState::Publishing,
+                attempt_count: 1,
+                last_error: None,
+            })
+            .unwrap();
+
+        let queued = projection
+            .snapshot
+            .messages
+            .get(&outbound_event.id)
+            .unwrap();
+        assert_eq!(queued.delivery_state, ManagedChatDeliveryState::Publishing);
+        assert_eq!(queued.attempt_count, 1);
+        assert_eq!(projection.snapshot.channels[0].unread_count, 0);
+
+        projection
+            .fail_outbound_message(&outbound_event.id, "transport offline")
+            .unwrap();
+        let failed = projection
+            .snapshot
+            .messages
+            .get(&outbound_event.id)
+            .unwrap();
+        assert_eq!(failed.delivery_state, ManagedChatDeliveryState::Failed);
+        assert_eq!(failed.attempt_count, 1);
+        assert_eq!(failed.delivery_error.as_deref(), Some("transport offline"));
+
+        projection
+            .retry_outbound_message(&outbound_event.id)
+            .unwrap();
+        let retrying = projection
+            .snapshot
+            .messages
+            .get(&outbound_event.id)
+            .unwrap();
+        assert_eq!(
+            retrying.delivery_state,
+            ManagedChatDeliveryState::Publishing
+        );
+        assert_eq!(retrying.attempt_count, 2);
+        assert_eq!(retrying.delivery_error, None);
+
+        projection.ack_outbound_message(&outbound_event.id).unwrap();
+        let acked = projection
+            .snapshot
+            .messages
+            .get(&outbound_event.id)
+            .unwrap();
+        assert_eq!(acked.delivery_state, ManagedChatDeliveryState::Acked);
+        assert_eq!(acked.attempt_count, 2);
+        assert_eq!(acked.delivery_error, None);
+
+        let reloaded = ManagedChatProjectionState::from_projection_path_for_tests(path);
+        let reloaded_message = reloaded.snapshot.messages.get(&outbound_event.id).unwrap();
+        assert_eq!(
+            reloaded_message.delivery_state,
+            ManagedChatDeliveryState::Acked
+        );
+        assert_eq!(reloaded_message.attempt_count, 2);
+    }
+
+    #[test]
+    fn managed_chat_projection_reconciles_outbound_local_echo_when_relay_echo_arrives() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("managed-chat.json");
+        let mut projection = ManagedChatProjectionState::from_projection_path_for_tests(path);
+
+        let channel_create = build_channel_create_event('a', 20, "ops");
+        let outbound_event = build_message_event('b', 'a', 30, &channel_create.id, "hello");
+        projection.replace_relay_events(vec![
+            build_group_metadata_event('c', 10, "Ops"),
+            build_channel_metadata_event('d', 21, &channel_create.id, "ops", 1),
+            channel_create.clone(),
+        ]);
+        projection
+            .queue_outbound_message(ManagedChatOutboundMessage {
+                event: outbound_event.clone(),
+                group_id: "oa-main".to_string(),
+                channel_id: channel_create.id.clone(),
+                relay_url: "wss://relay.openagents.test".to_string(),
+                delivery_state: ManagedChatDeliveryState::Publishing,
+                attempt_count: 1,
+                last_error: None,
+            })
+            .unwrap();
+        projection
+            .fail_outbound_message(&outbound_event.id, "transport offline")
+            .unwrap();
+        assert_eq!(
+            projection
+                .snapshot
+                .messages
+                .get(&outbound_event.id)
+                .unwrap()
+                .delivery_state,
+            ManagedChatDeliveryState::Failed
+        );
+
+        projection.record_relay_event(outbound_event.clone());
+
+        let confirmed = projection
+            .snapshot
+            .messages
+            .get(&outbound_event.id)
+            .unwrap();
+        assert_eq!(
+            confirmed.delivery_state,
+            ManagedChatDeliveryState::Confirmed
+        );
+        assert_eq!(
+            projection.snapshot.channels[0].message_ids,
+            vec![outbound_event.id.clone()]
+        );
+        assert_eq!(projection.snapshot.channels[0].unread_count, 1);
+        assert_eq!(
+            projection
+                .outbound_messages
+                .iter()
+                .find(|message| message.event.id == outbound_event.id)
+                .map(|message| message.delivery_state),
+            Some(ManagedChatDeliveryState::Acked)
+        );
+    }
+
+    #[test]
     fn managed_chat_helpers_handle_read_cursors_with_unknown_event_ids() {
         let message_ids = vec!["a".to_string(), "b".to_string()];
         let mut messages = std::collections::BTreeMap::new();
@@ -1439,6 +1875,9 @@ mod tests {
                 mention_pubkeys: Vec::new(),
                 reaction_summaries: Vec::new(),
                 reply_child_ids: Vec::new(),
+                delivery_state: ManagedChatDeliveryState::Confirmed,
+                delivery_error: None,
+                attempt_count: 0,
             },
         );
         messages.insert(
@@ -1454,6 +1893,9 @@ mod tests {
                 mention_pubkeys: Vec::new(),
                 reaction_summaries: Vec::new(),
                 reply_child_ids: Vec::new(),
+                delivery_state: ManagedChatDeliveryState::Confirmed,
+                delivery_error: None,
+                attempt_count: 0,
             },
         );
         let cursor = ManagedChatReadCursor {

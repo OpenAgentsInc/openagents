@@ -1,6 +1,9 @@
 use super::*;
 use crate::bitcoin_display::format_sats_amount;
 
+const MANAGED_CHAT_PUBLISH_TRANSPORT_UNWIRED: &str =
+    "Managed chat relay publish transport is not wired yet; local echo saved for retry.";
+
 pub(super) fn run_chat_submit_action(state: &mut crate::app_state::RenderState) -> bool {
     run_chat_submit_action_with_trigger(
         state,
@@ -13,6 +16,9 @@ pub(super) fn run_chat_submit_action_with_trigger(
     trigger: crate::labor_orchestrator::CodexRunTrigger,
 ) -> bool {
     focus_chat_composer(state);
+    if state.autopilot_chat.managed_chat_has_browseable_content() {
+        return run_managed_chat_submit_action(state);
+    }
     let prompt = state.chat_inputs.composer.get_value().trim().to_string();
     let prompt_chars = prompt.chars().count();
     if prompt.is_empty() {
@@ -187,6 +193,140 @@ pub(super) fn run_chat_submit_action_with_trigger(
         }
     }
     true
+}
+
+fn run_managed_chat_submit_action(state: &mut crate::app_state::RenderState) -> bool {
+    let prompt = state.chat_inputs.composer.get_value().trim().to_string();
+    if prompt.is_empty() {
+        let Some(event_id) = state
+            .autopilot_chat
+            .active_managed_chat_retryable_message()
+            .map(|message| message.event_id.clone())
+        else {
+            return false;
+        };
+        if let Err(error) = state
+            .autopilot_chat
+            .managed_chat_projection
+            .retry_outbound_message(&event_id)
+        {
+            state.autopilot_chat.last_error = Some(error);
+            return true;
+        }
+        state.autopilot_chat.reset_transcript_scroll();
+        if let Err(error) = state
+            .autopilot_chat
+            .managed_chat_projection
+            .fail_outbound_message(&event_id, MANAGED_CHAT_PUBLISH_TRANSPORT_UNWIRED)
+        {
+            state.autopilot_chat.last_error = Some(error);
+            return true;
+        }
+        state.autopilot_chat.last_error = Some(MANAGED_CHAT_PUBLISH_TRANSPORT_UNWIRED.to_string());
+        return true;
+    }
+
+    let Some(identity) = state.nostr_identity.as_ref() else {
+        state.autopilot_chat.last_error =
+            Some("No Nostr identity is loaded for managed chat publishing.".to_string());
+        return true;
+    };
+    let Some(group_id) = state
+        .autopilot_chat
+        .active_managed_chat_group()
+        .map(|group| group.group_id.clone())
+    else {
+        state.autopilot_chat.last_error = Some("No managed chat group is selected.".to_string());
+        return true;
+    };
+    let Some(channel) = state.autopilot_chat.active_managed_chat_channel().cloned() else {
+        state.autopilot_chat.last_error = Some("No managed chat channel is selected.".to_string());
+        return true;
+    };
+
+    let outbound_message =
+        match build_managed_chat_outbound_message(identity, &group_id, &channel, &prompt) {
+            Ok(outbound_message) => outbound_message,
+            Err(error) => {
+                state.autopilot_chat.last_error = Some(error);
+                return true;
+            }
+        };
+    let event_id = outbound_message.event.id.clone();
+
+    state.chat_inputs.composer.set_value(String::new());
+    if let Err(error) = state
+        .autopilot_chat
+        .managed_chat_projection
+        .queue_outbound_message(outbound_message)
+    {
+        state.autopilot_chat.last_error = Some(error);
+        return true;
+    }
+    state.autopilot_chat.reset_transcript_scroll();
+    if let Err(error) = state
+        .autopilot_chat
+        .managed_chat_projection
+        .fail_outbound_message(&event_id, MANAGED_CHAT_PUBLISH_TRANSPORT_UNWIRED)
+    {
+        state.autopilot_chat.last_error = Some(error);
+        return true;
+    }
+    state.autopilot_chat.last_error = Some(MANAGED_CHAT_PUBLISH_TRANSPORT_UNWIRED.to_string());
+    true
+}
+
+fn build_managed_chat_outbound_message(
+    identity: &nostr::NostrIdentity,
+    group_id: &str,
+    channel: &crate::app_state::ManagedChatChannelProjection,
+    content: &str,
+) -> Result<crate::app_state::ManagedChatOutboundMessage, String> {
+    let relay_url = channel.relay_url.as_deref().ok_or_else(|| {
+        format!(
+            "Managed chat channel {} does not advertise a relay target yet.",
+            channel.channel_id
+        )
+    })?;
+    let now_ms = current_epoch_millis();
+    let created_at = (now_ms / 1_000).max(1);
+    let mut tags = nostr::ManagedChannelMessageEvent::new(
+        group_id,
+        &channel.channel_id,
+        relay_url,
+        content,
+        created_at,
+    )
+    .map_err(|error| format!("Failed to build managed chat message: {error}"))?
+    .to_tags()
+    .map_err(|error| format!("Failed to encode managed chat message tags: {error}"))?;
+    tags.push(vec!["nonce".to_string(), now_ms.to_string()]);
+
+    let secret_key_bytes = hex::decode(&identity.private_key_hex)
+        .map_err(|error| format!("Invalid Nostr private key hex: {error}"))?;
+    let secret_key = secret_key_bytes
+        .try_into()
+        .map_err(|_| "Invalid Nostr private key length".to_string())?;
+    let event = nostr::finalize_event(
+        &nostr::EventTemplate {
+            created_at,
+            kind: 42,
+            tags,
+            content: content.to_string(),
+        },
+        &secret_key,
+    )
+    .map_err(|error| format!("Failed to sign managed chat message: {error}"))?;
+
+    Ok(crate::app_state::ManagedChatOutboundMessage {
+        group_id: group_id.to_string(),
+        channel_id: channel.channel_id.clone(),
+        relay_url: relay_url.to_string(),
+        event,
+        delivery_state: crate::app_state::ManagedChatDeliveryState::Publishing,
+        attempt_count: 1,
+        last_error: None,
+    })
 }
 
 fn log_chat_prompt_to_console(thread_id: &str, prompt: &str) {
