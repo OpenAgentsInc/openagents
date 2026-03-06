@@ -95,7 +95,7 @@ This is how verification scales without relying on a collapsing human pipeline.
 
 ---
 
-# Sections 1–7 (Normative)
+Sections 1–7 below are the core normative kernel. Section 8 is a supplemental compute-market extension that extends, rather than replaces, the core.
 
 ## 1. Invariants (Non-Negotiable)
 
@@ -127,7 +127,7 @@ These invariants apply to all modules, flows, and extensions.
 * `policy_version`
 * `trace context (session_id, trajectory_hash, job_hash, etc.)`
 
-#### 1.X Proto-first source of truth
+#### 1.1.1 Proto-first source of truth
 
 The **normative wire contract** for the Economy Kernel is the proto schema under `proto/openagents/**/v1/` (and generated artifacts derived from it).
 This markdown document defines **normative semantics** (state machines, invariants, receipt linkage, and required behaviors), but it MUST NOT become a second schema source of truth.
@@ -172,7 +172,7 @@ Rules:
 3. **Policy evaluation MUST be explainable.**
    Receipts MUST include policy notes as hash-bound fields and/or hash-bound `EvidenceRef` / `ReceiptRef` sufficient to explain why an action was allowed, denied, or withheld.
 
-#### 1.X PolicyBundle minimum capabilities and flapping control
+#### 1.3.1 PolicyBundle minimum capabilities and flapping control
 
 PolicyBundles are not cosmetic. At minimum, a PolicyBundle MUST be able to express:
 
@@ -211,7 +211,7 @@ PolicyBundles are not cosmetic. At minimum, a PolicyBundle MUST be able to expre
 
 All policy-triggered mode changes, breaker transitions, and throttles MUST be receipted and visible in `/stats`.
 
-#### 1.X PolicyBundle deterministic evaluation semantics (normative)
+#### 1.3.2 PolicyBundle deterministic evaluation semantics
 
 To prevent divergent “compliant” implementations, policy evaluation MUST be deterministic.
 
@@ -271,7 +271,7 @@ Implementations MUST enforce deterministic policy evaluation guardrails, includi
 * measured loss/claim signals
   (See §2.4 and §6.8.)
 
-#### 1.X Outcome resolution-path invariant
+#### 1.5.1 Outcome resolution-path invariant
 
 No outcome may become “settled truth” (i.e., unlock settlement, warranty issuance, or finalization) without an explicit resolution path: **objective harness**, **declared adjudication policy**, or **explicit human underwriting**. If resolution is ambiguous or long-latency, that ambiguity MUST be disclosed in the contract terms and priced via stricter tiers, collateral, or warranty exclusions.
 
@@ -281,7 +281,7 @@ No outcome may become “settled truth” (i.e., unlock settlement, warranty iss
 2. `/stats` MUST be computed once per minute and cached (same view for all).
 3. UI delivery MUST be subscription-driven via the system’s realtime sync mechanism (server-pushed updates), not polling.
 
-#### 1.7 Non-goals (Normative)
+### 1.7 Non-goals
 
 The Economy Kernel MUST NOT evolve into any of the following:
 
@@ -291,7 +291,7 @@ The Economy Kernel MUST NOT evolve into any of the following:
 4. **Client-side custody.** Client/UI code MUST NOT be entrusted with authority to move pooled funds; custody boundaries remain server-side and receipt-driven.
 5. **Unscoped credit lines.** Credit remains bounded envelopes only (see §1.4 / §4.2).
 
-#### 1.8 Normative language
+### 1.8 Normative language
 
 The keywords **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, and **MAY** are to be interpreted as normative requirements (RFC 2119-style). When in conflict, **MUST/MUST NOT** take precedence over **SHOULD/SHOULD NOT**.
 
@@ -647,6 +647,8 @@ Policy MUST be able to require:
 * “Tier 2 must include ≥2 distinct checker lineages”
 * “Tier 1 cannot unlock warranty issuance above X”
 * “LONG tfb + HIGH/CRITICAL severity requires Tier 4 unless objective harness exists”
+
+The remaining sections in §4 are optional extensions. Core kernel implementations do not require §4.6 or §4.7.
 
 ### 4.6 Optional Extension: Solver / Cross-Rail Routing (Intent → Match → Settle)
 
@@ -1432,11 +1434,11 @@ If a metric cannot be derived from receipts/snapshots (or cannot be explained by
 * Columns may be added; existing columns must not change meaning without versioning.
 * If incompatible changes are required, bump snapshot schema version and publish both formats for a transition period.
 
-Below is a **supplemental normative section** you can append to the Economy Kernel spec. I wrote it to extend, not replace, the existing kernel. It treats GPU/compute markets as a first-class economic surface built on the same primitives you already defined: WorkUnits, Contracts, receipts, bounded credit, bonds, verification, liability, `/stats`, and policy-gated authority.
+The following supplemental normative section extends, rather than replaces, the core kernel. It treats GPU/compute markets as a first-class economic surface built on the same primitives already defined: WorkUnits, Contracts, receipts, bounded credit, bonds, verification, liability, `/stats`, and policy-gated authority.
 
 ---
 
-# 8. Supplemental Spec — Compute Commodities, Capacity Markets, and Derivatives
+## 8. Supplemental Spec — Compute Commodities, Capacity Markets, and Derivatives
 
 This section defines how the OpenAgents Economy Kernel extends into a full compute market: spot capacity, forward capacity sales, futures-style instruments, options-style reservation rights, structured hedges, indices, and settlement semantics for physical or cash-settled compute products.
 
@@ -1448,7 +1450,7 @@ The system’s design principle remains unchanged:
 
 This means compute markets in OpenAgents are not abstract financial toys. They are bounded claims on measurable capacity, delivery quality, and liability windows.
 
-## 8.1 Goals
+### 8.1 Goals
 
 This extension exists to support five classes of economic behavior:
 
@@ -1462,7 +1464,7 @@ Fourth, the system needs market-native price discovery so `/stats`, routing, und
 
 Fifth, all of the above must remain bounded by the same kernel invariants: authenticated HTTP authority, deterministic receipts, explicit failure, policy-gated risk, no hidden insolvency, and no resolution without a declared path.
 
-## 8.2 Non-goals
+### 8.2 Non-goals
 
 This extension MUST NOT introduce unbounded leverage, open-ended margin lending, token-dependent clearing, or opaque off-ledger obligations.
 
@@ -1472,7 +1474,7 @@ It MUST NOT allow “paper” compute exposure to silently exceed policy-defined
 
 It MUST NOT bypass verification, cost-proof, or liability requirements simply because an instrument is financially settled.
 
-## 8.3 Compute as a commodity domain
+### 8.3 Compute as a commodity domain
 
 For the purposes of the kernel, compute is modeled as a commodity domain composed of standardized slices of capacity and quality. A tradable compute product MUST be defined in terms precise enough that a buyer, provider, verifier, underwriter, and adjudicator can all answer the same question: what exactly was promised?
 
@@ -1490,11 +1492,11 @@ Every tradable compute product MUST bind at minimum:
 
 This product definition is the foundation for spot, forwards, futures-style contracts, options-style reservation rights, and indices.
 
-## 8.4 Core compute-market objects
+### 8.4 Core compute-market objects
 
 This extension introduces additional kernel-native objects.
 
-### 8.4.1 ComputeProduct
+#### 8.4.1 ComputeProduct
 
 A `ComputeProduct` is a standardized definition of a tradable compute slice.
 
@@ -1515,7 +1517,7 @@ A ComputeProduct MUST include:
 
 Examples of `resource_class` include GPU model families, GPU-memory bands, mixed accelerator pools, CPU pools, storage-IO classes, or bundled training/inference classes. The kernel does not require one universal taxonomy, but any active product taxonomy MUST be versioned, explicit, and policy-bound.
 
-### 8.4.2 CapacityLot
+#### 8.4.2 CapacityLot
 
 A `CapacityLot` is a concrete offered inventory unit for a ComputeProduct during a specific delivery interval.
 
@@ -1534,7 +1536,7 @@ A CapacityLot MUST include:
 
 A CapacityLot may back a spot offer, a forward sale, a futures delivery obligation, or an option exercise.
 
-### 8.4.3 ComputeIndex
+#### 8.4.3 ComputeIndex
 
 A `ComputeIndex` is a deterministic reference price or reference condition used for cash settlement, policy, routing, or observability.
 
@@ -1551,7 +1553,7 @@ A ComputeIndex MUST define:
 
 A ComputeIndex is not merely informational. It may become part of a `ResolutionRef` for financially settled instruments.
 
-### 8.4.4 DeliveryProof
+#### 8.4.4 DeliveryProof
 
 A `DeliveryProof` is the canonical evidence object for physical delivery of compute.
 
@@ -1569,7 +1571,7 @@ A DeliveryProof MUST link:
 
 DeliveryProofs are content-addressed evidence and MUST participate in receipt linkage the same way verdict evidence does elsewhere in the kernel.
 
-### 8.4.5 CapacityInstrument
+#### 8.4.5 CapacityInstrument
 
 A `CapacityInstrument` is a market-tradable obligation or right referencing compute capacity. Minimum supported classes are:
 
@@ -1584,9 +1586,9 @@ A `CapacityInstrument` is a market-tradable obligation or right referencing comp
 
 Each instrument MUST declare whether it resolves by physical delivery, cash settlement, or buyer election under declared rules.
 
-## 8.5 Instrument families
+### 8.5 Instrument families
 
-### 8.5.1 Spot capacity
+#### 8.5.1 Spot capacity
 
 Spot is immediate or near-immediate compute procurement. It is the closest extension of the existing marketplace model.
 
@@ -1601,7 +1603,7 @@ Spot instruments MUST bind:
 
 Spot settlement MAY use the existing WorkUnit/Contract path directly, but when standardized spot lots are traded through a book or auction, they MUST also emit market receipts for listing, match, allocation, and delivery.
 
-### 8.5.2 Forward physical contracts
+#### 8.5.2 Forward physical contracts
 
 A forward physical contract is a bilateral agreement to deliver compute capacity in a future window at a fixed agreed price.
 
@@ -1623,7 +1625,7 @@ A forward physical contract MUST include:
 
 A forward physical contract MUST be backed by explicit provider collateral, buyer prepayment or credit posture, or both, as policy requires.
 
-### 8.5.3 Futures-style physical contracts
+#### 8.5.3 Futures-style physical contracts
 
 A futures-style physical contract is a more standardized forward that clears under deterministic market rules. It may be traded before expiry and may settle by allocating physical delivery at expiry.
 
@@ -1641,7 +1643,7 @@ Physical futures MUST define:
 * margin/collateral rules if enabled
 * breaker posture when deliverability deteriorates
 
-### 8.5.4 Futures-style cash-settled contracts
+#### 8.5.4 Futures-style cash-settled contracts
 
 A cash-settled compute future resolves against a ComputeIndex rather than actual delivery. This is the simplest way to let market participants hedge future GPU prices without fully resolving exact machine assignment in advance.
 
@@ -1660,7 +1662,7 @@ They MUST include:
 
 Cash settlement MUST occur only through authenticated HTTP authority actions and MUST emit deterministic receipts. Index publication alone is not settlement.
 
-### 8.5.5 Options-style reservation rights
+#### 8.5.5 Options-style reservation rights
 
 A call-style reservation right gives the holder the right, but not the obligation, to secure capacity at a fixed strike or capped rate within a defined future window.
 
@@ -1680,7 +1682,7 @@ A reservation option MUST declare:
 
 Exercising a reservation right MUST become an authority mutation that either creates a physical delivery obligation or mints a settlement entitlement under declared terms.
 
-### 8.5.6 Swaps and strips
+#### 8.5.6 Swaps and strips
 
 A fixed-floating compute swap lets one party pay a fixed rate and receive floating index exposure, or vice versa, over one or more delivery windows.
 
@@ -1690,11 +1692,11 @@ These instruments are appropriate when a provider wants to pre-sell long arcs of
 
 All swaps and strips MUST be decomposable into a deterministic set of underlying instrument legs for receipting, exposure tracking, and dispute replay.
 
-## 8.6 Market structure modes
+### 8.6 Market structure modes
 
 The kernel MAY support multiple market structure modes, each policy-gated.
 
-### 8.6.1 Bilateral RFQ mode
+#### 8.6.1 Bilateral RFQ mode
 
 This is the simplest mode and fits your existing kernel style best.
 
@@ -1702,19 +1704,19 @@ A buyer asks for quotes for a future capacity slice. Providers respond. Treasury
 
 This mode is recommended for early deployment.
 
-### 8.6.2 Deterministic auction mode
+#### 8.6.2 Deterministic auction mode
 
 Providers and buyers submit offers into a time-bounded auction. Clearing occurs at a deterministic batch boundary. Clearing receipts allocate quantities and prices.
 
 This mode is appropriate for spot lots, forward auctions, and initial coverage of standardized monthly strips.
 
-### 8.6.3 Central book / periodic clearing mode
+#### 8.6.3 Central book / periodic clearing mode
 
 For more mature products, the kernel MAY maintain a central order book or periodic batch book. Continuous matching is allowed only if deterministic ordering, replay, and tie-break rules are explicit and auditable.
 
 Recommended default remains periodic batch clearing because it is easier to replay and less vulnerable to hidden microstructure divergence.
 
-## 8.7 Instrument lifecycle semantics
+### 8.7 Instrument lifecycle semantics
 
 Every capacity instrument MUST follow a canonical lifecycle. Implementations MAY expose instrument-specific derived states, but the minimum state machine is:
 
@@ -1722,13 +1724,13 @@ Every capacity instrument MUST follow a canonical lifecycle. Implementations MAY
 
 Where margin-like collateral is enabled, additional collateral states MAY exist, but they MUST remain explicit and receipted.
 
-### 8.7.1 Listing and quote states
+#### 8.7.1 Listing and quote states
 
 Instrument creation and listing are distinct.
 
 A proposed instrument or quote is not yet a binding obligation until it passes all required policy, collateral, and identity checks and transitions into an active bound state.
 
-### 8.7.2 Activation
+#### 8.7.2 Activation
 
 An instrument becomes `ACTIVE` only when all preconditions have been met, including:
 
@@ -1739,13 +1741,13 @@ An instrument becomes `ACTIVE` only when all preconditions have been met, includ
 * delivery rules binding
 * idempotency and replay checks
 
-### 8.7.3 Settlement fork
+#### 8.7.3 Settlement fork
 
 At maturity or exercise, the lifecycle forks into either physical delivery or cash settlement.
 
 That fork MUST already be specified in the instrument terms. It MUST NOT be improvised later except where buyer election is explicitly allowed and receipted within a bounded election window.
 
-## 8.8 Physical delivery semantics
+### 8.8 Physical delivery semantics
 
 Physical delivery in this domain means provision of actual compute capacity consistent with the instrument’s product definition.
 
@@ -1760,7 +1762,7 @@ Physical settlement MUST produce:
 
 Physical delivery MAY settle directly into WorkUnits if the buyer immediately uses the capacity for kernel-native work. In that case, the instrument’s delivery proof and the WorkUnit’s runtime/cost proof SHOULD be linked so the system can trace a line from market hedge to actual executed work.
 
-### 8.8.1 Substitution and deliverability
+#### 8.8.1 Substitution and deliverability
 
 Because compute is heterogeneous, physical settlement MUST explicitly address substitution.
 
@@ -1774,7 +1776,7 @@ Every product or instrument MUST state whether substitution is:
 
 Hidden substitution is forbidden.
 
-### 8.8.2 Curtailment and interruption
+#### 8.8.2 Curtailment and interruption
 
 Providers may fail to deliver full capacity because of facility outages, hardware failures, geopolitical restrictions, network isolation, or internal overcommitment.
 
@@ -1787,7 +1789,7 @@ Curtailment semantics MUST be explicit and include:
 * bond draw or insurance trigger
 * whether the event qualifies as ordinary failure or force-majeure-like exclusion under policy
 
-## 8.9 Cash settlement semantics
+### 8.9 Cash settlement semantics
 
 Cash-settled instruments resolve against a deterministic reference and settle the difference between contracted terms and market-observed terms.
 
@@ -1806,11 +1808,11 @@ A cash-settlement receipt MUST include:
 
 The reference value MUST come from a receipted, immutable ComputeIndex publication or a specific index snapshot hash.
 
-## 8.10 Compute indices and index governance
+### 8.10 Compute indices and index governance
 
 The system’s financial layer depends heavily on trustworthy indices. Therefore ComputeIndex objects are first-class kernel objects, not informal dashboard numbers.
 
-### 8.10.1 Eligible observations
+#### 8.10.1 Eligible observations
 
 An index MUST define exactly which observations are eligible, such as:
 
@@ -1823,7 +1825,7 @@ An index MUST define exactly which observations are eligible, such as:
 
 The kernel SHOULD favor observations backed by actual fills and actual delivery over mere indicative quotes.
 
-### 8.10.2 Manipulation resistance
+#### 8.10.2 Manipulation resistance
 
 Index methodology MUST define how it mitigates thin-market and manipulation risk, including:
 
@@ -1836,19 +1838,19 @@ Index methodology MUST define how it mitigates thin-market and manipulation risk
 
 If an index window fails minimum quality thresholds, cash-settled instruments referencing that window MUST follow predetermined fallback rules. They MUST NOT silently use ad hoc operator judgment.
 
-### 8.10.3 Publication and corrections
+#### 8.10.3 Publication and corrections
 
 Index publication MUST be receipted and append-only. If an index is corrected, the correction MUST be a new publication with supersession linkage.
 
 Already-settled instruments MUST follow predeclared correction rules. In many cases, correction after final settlement SHOULD NOT retroactively mutate prior receipts; instead it MAY affect future confidence, policy, or reserve accounting.
 
-## 8.11 Collateral, margin-like controls, and bounded leverage
+### 8.11 Collateral, margin-like controls, and bounded leverage
 
 The kernel does not support unbounded leverage. However, some standardized contracts may require periodic mark-to-market or bounded variation collateral to keep obligations credible.
 
 This section therefore permits bounded collateral adjustment, but only under strict policy.
 
-### 8.11.1 Allowed collateral postures
+#### 8.11.1 Allowed collateral postures
 
 The following collateral postures MAY exist:
 
@@ -1859,15 +1861,15 @@ The following collateral postures MAY exist:
 
 Any enabled posture MUST declare maximum leverage, maximum collateral call frequency, default handling, and breaker triggers.
 
-### 8.11.2 Variation settlement
+#### 8.11.2 Variation settlement
 
 When allowed, variation settlement MUST be explicit authority actions with receipts. It MUST NOT happen as an invisible internal accounting drift.
 
-### 8.11.3 Portfolio netting
+#### 8.11.3 Portfolio netting
 
 Netting is permitted only within explicit clearing partitions defined by policy and only when replay remains deterministic. Hidden cross-partition subsidy is prohibited.
 
-## 8.12 Default, closeout, and failure semantics
+### 8.12 Default, closeout, and failure semantics
 
 Compute market instruments MUST define what happens when a party fails to perform.
 
@@ -1891,7 +1893,7 @@ Recommended remedy order is:
 4. escalate to claim/dispute path
 5. emit default closure receipt and update `/stats`
 
-## 8.13 Relationship to WorkUnits and Contracts
+### 8.13 Relationship to WorkUnits and Contracts
 
 This extension does not replace WorkUnits. It adds a market layer above them.
 
@@ -1912,13 +1914,13 @@ The kernel MUST make this relationship explicit so `/stats` can distinguish:
 * financially hedged compute
 * compute actually consumed in WorkUnits
 
-## 8.14 Relationship to verification and CostProofBundle
+### 8.14 Relationship to verification and CostProofBundle
 
 This extension depends heavily on your existing Cost Integrity module.
 
 For compute-market products, CostProofBundle semantics become part of delivery and dispute resolution, not just observability.
 
-### 8.14.1 Delivery verification
+#### 8.14.1 Delivery verification
 
 Where physical delivery occurs, policy MAY require DeliveryProof to include or reference CostProofBundle evidence sufficient to confirm:
 
@@ -1929,7 +1931,7 @@ Where physical delivery occurs, policy MAY require DeliveryProof to include or r
 * attestation posture
 * anomaly detection results
 
-### 8.14.2 Cash vs physical divergence
+#### 8.14.2 Cash vs physical divergence
 
 The system MUST keep separate notions of:
 
@@ -1941,7 +1943,7 @@ The system MUST keep separate notions of:
 
 This matters because a market can clear at one number while actual delivered cost integrity tells a different story. Both signals are valuable; neither should erase the other.
 
-### 8.14.3 Fraud and wash prevention
+#### 8.14.3 Fraud and wash prevention
 
 If a provider attempts to manipulate spot or index prices using self-crossing, fake fills, fake capacity, or misleading metering, the kernel MUST be able to surface this through:
 
@@ -1953,7 +1955,7 @@ If a provider attempts to manipulate spot or index prices using self-crossing, f
 
 All such actions MUST be receipted.
 
-## 8.15 Relationship to liability markets and underwriting
+### 8.15 Relationship to liability markets and underwriting
 
 This extension and Section 6.9 are deeply connected.
 
@@ -1976,7 +1978,7 @@ A compute instrument MAY bind optional coverage for:
 
 Each coverage product MUST remain bounded and receipted just like other liability instruments.
 
-## 8.16 Safe-harbor use of market signals
+### 8.16 Safe-harbor use of market signals
 
 Market prices contain information, but they are not truth. Therefore market signals MAY influence policy only in bounded ways.
 
@@ -1993,49 +1995,49 @@ The kernel MUST NOT treat price alone as delivery proof or verification proof.
 
 Policy may define safe-harbor relaxations based on market depth, delivery history, cost-integrity posture, and coverage quality. Any such relaxation MUST reference a specific snapshot and MUST be receipted.
 
-## 8.17 Additional state variables for compute markets
+### 8.17 Additional state variables for compute markets
 
 The kernel SHOULD maintain the following compute-market state variables.
 
-### 8.17.1 `compute_open_interest`
+#### 8.17.1 `compute_open_interest`
 
 Outstanding notional exposure by product slice and maturity window.
 
-### 8.17.2 `deliverable_coverage_ratio`
+#### 8.17.2 `deliverable_coverage_ratio`
 
 Ratio of physically credible deliverable supply to outstanding physical obligations in a slice.
 
-### 8.17.3 `hedged_share`
+#### 8.17.3 `hedged_share`
 
 Fraction of compute consumption or future planned consumption that is hedged by active instruments.
 
-### 8.17.4 `paper_to_physical_ratio`
+#### 8.17.4 `paper_to_physical_ratio`
 
 Ratio of financial notional exposure to physically deliverable capacity. Policy SHOULD gate this aggressively.
 
-### 8.17.5 `index_quality_score`
+#### 8.17.5 `index_quality_score`
 
 A machine-legible index integrity score derived from depth, diversity, realized delivery linkage, and manipulation signals.
 
-### 8.17.6 `delivery_default_rate`
+#### 8.17.6 `delivery_default_rate`
 
 Rolling default rate by provider, product slice, and maturity bucket.
 
-### 8.17.7 `curve_shape`
+#### 8.17.7 `curve_shape`
 
 Term-structure summary for compute prices: contango, backwardation, or flat, by slice.
 
-### 8.17.8 `replacement_cost_gap`
+#### 8.17.8 `replacement_cost_gap`
 
 Observed difference between contracted delivery price and replacement procurement price after delivery failure.
 
 These variables SHOULD be published in `/stats` and SHOULD influence policy in a bounded, transparent way.
 
-## 8.18 Additional `/stats` requirements for compute markets
+### 8.18 Additional `/stats` requirements for compute markets
 
 If this extension is enabled, `/stats` MUST add a compute-markets surface with stable tables.
 
-### A) Spot market table
+#### A) Spot market table
 
 Must include by major slice:
 
@@ -2047,7 +2049,7 @@ Must include by major slice:
 * attestation mix
 * cost anomaly rate
 
-### B) Forward/futures table
+#### B) Forward/futures table
 
 Must include by maturity bucket and slice:
 
@@ -2059,7 +2061,7 @@ Must include by maturity bucket and slice:
 * curve shape
 * top concentration metrics
 
-### C) Delivery integrity table
+#### C) Delivery integrity table
 
 Must include:
 
@@ -2070,7 +2072,7 @@ Must include:
 * replacement cost gap p50/p95
 * top stable reason codes for delivery failure
 
-### D) Index integrity table
+#### D) Index integrity table
 
 Must include:
 
@@ -2082,7 +2084,7 @@ Must include:
 * manipulation flags
 * correction count
 
-### E) Hedging posture table
+#### E) Hedging posture table
 
 Must include:
 
@@ -2092,7 +2094,7 @@ Must include:
 * average premium / carry by horizon
 * buyer concentration and provider concentration
 
-## 8.19 Market policy requirements
+### 8.19 Market policy requirements
 
 If compute markets are enabled, PolicyBundles MUST be able to express at least:
 
@@ -2113,7 +2115,7 @@ If compute markets are enabled, PolicyBundles MUST be able to express at least:
 
 All policy-triggered market halts, contract disables, maturity restrictions, or collateral hikes MUST be receipted and visible in `/stats`.
 
-## 8.20 Breakers specific to compute markets
+### 8.20 Breakers specific to compute markets
 
 In addition to general kernel breakers, the following compute-market breakers SHOULD exist where relevant:
 
@@ -2134,7 +2136,7 @@ When triggered, policy MAY:
 * disable safe-harbor relaxations
 * require human approvals
 
-## 8.21 Deterministic clearing requirements
+### 8.21 Deterministic clearing requirements
 
 Where books or auctions are used, clearing MUST be deterministic.
 
@@ -2152,7 +2154,7 @@ At minimum, clearing rules MUST define:
 
 Clearing decisions MUST be represented by explicit clearing receipts that are replayable from submitted offers and the declared rules.
 
-## 8.22 Receipt requirements for compute instruments
+### 8.22 Receipt requirements for compute instruments
 
 The following receipt families SHOULD exist if this extension is implemented:
 
@@ -2178,7 +2180,7 @@ The following receipt families SHOULD exist if this extension is implemented:
 
 All such receipts MUST obey the same hashing, idempotency, linkage, and evidence rules as the rest of the kernel.
 
-## 8.23 ResolutionRef requirements for compute instruments
+### 8.23 ResolutionRef requirements for compute instruments
 
 Every compute instrument MUST declare one of the following resolution classes:
 
@@ -2195,7 +2197,7 @@ For cash-settled contracts, the bound ComputeIndex snapshot is authoritative unl
 
 For exceptional/manual lanes, the human-underwritten exception MUST still be receipted and bounded by explicit policy.
 
-## 8.24 Interoperability posture
+### 8.24 Interoperability posture
 
 This market extension SHOULD be interoperable with external cloud providers, neo-clouds, exchanges, and broker/dealer-like orchestration layers, but interoperability MUST never weaken kernel authority semantics.
 
@@ -2203,7 +2205,7 @@ External systems MAY contribute offers, fills, delivery evidence, or index data 
 
 The kernel remains the source of truth for its own economic state, even when external venues are involved.
 
-## 8.25 Recommended rollout order
+### 8.25 Recommended rollout order
 
 Normatively, all instrument classes are possible. Practically, the rollout should be staged.
 
@@ -2217,7 +2219,7 @@ Phase four MAY add options-style reservation rights and swap/strip products.
 
 Belief-market overlays, more expressive clearing partitions, and broader portfolio collateral SHOULD come later, not earlier.
 
-## 8.26 Normative design thesis
+### 8.26 Normative design thesis
 
 This extension exists because compute is becoming scarce enough, important enough, and financeable enough to need market structure. But the kernel’s thesis is not merely that compute should be tradeable.
 
@@ -2240,7 +2242,7 @@ That gives you a path to build not just a compute marketplace, but a full **comp
 
 ---
 
-## 8.A Optional Appendix — concise mapping to existing sections
+### 8.A Optional Appendix — concise mapping to existing sections
 
 This supplemental section plugs into the existing spec as follows.
 
