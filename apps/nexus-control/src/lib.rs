@@ -16,17 +16,21 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use openagents_kernel_core::authority::{
     AcceptAccessGrantRequest, AcceptAccessGrantResponse, AdjustReservePartitionRequest,
-    AdjustReservePartitionResponse, CreateAccessGrantRequest, CreateAccessGrantResponse,
-    CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse, CreateCapacityLotRequest,
-    CreateCapacityLotResponse, CreateComputeProductRequest, CreateComputeProductResponse,
-    CreateContractRequest, CreateContractResponse, CreateLiquidityQuoteRequest,
-    CreateLiquidityQuoteResponse, CreateWorkUnitRequest, CreateWorkUnitResponse,
+    AdjustReservePartitionResponse, BindCoverageRequest, BindCoverageResponse,
+    CreateAccessGrantRequest, CreateAccessGrantResponse, CreateCapacityInstrumentRequest,
+    CreateCapacityInstrumentResponse, CreateCapacityLotRequest, CreateCapacityLotResponse,
+    CreateComputeProductRequest, CreateComputeProductResponse, CreateContractRequest,
+    CreateContractResponse, CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse,
+    CreatePredictionPositionRequest, CreatePredictionPositionResponse, CreateRiskClaimRequest,
+    CreateRiskClaimResponse, CreateWorkUnitRequest, CreateWorkUnitResponse,
     ExecuteSettlementIntentRequest, ExecuteSettlementIntentResponse, FinalizeVerdictRequest,
     FinalizeVerdictResponse, IssueDeliveryBundleRequest, IssueDeliveryBundleResponse,
-    IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse, PublishComputeIndexRequest,
-    PublishComputeIndexResponse, RecordDeliveryProofRequest, RecordDeliveryProofResponse,
-    RegisterDataAssetRequest, RegisterDataAssetResponse, RegisterReservePartitionRequest,
-    RegisterReservePartitionResponse, RevokeAccessGrantRequest, RevokeAccessGrantResponse,
+    IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse, PlaceCoverageOfferRequest,
+    PlaceCoverageOfferResponse, PublishComputeIndexRequest, PublishComputeIndexResponse,
+    PublishRiskSignalRequest, PublishRiskSignalResponse, RecordDeliveryProofRequest,
+    RecordDeliveryProofResponse, RegisterDataAssetRequest, RegisterDataAssetResponse,
+    RegisterReservePartitionRequest, RegisterReservePartitionResponse, ResolveRiskClaimRequest,
+    ResolveRiskClaimResponse, RevokeAccessGrantRequest, RevokeAccessGrantResponse,
     SelectRoutePlanRequest, SelectRoutePlanResponse, SubmitOutputRequest, SubmitOutputResponse,
 };
 use openagents_kernel_core::receipts::Receipt;
@@ -666,6 +670,24 @@ pub fn build_router(config: ServiceConfig) -> Router {
             "/v1/kernel/liquidity/reserve_partitions/{partition_id}/adjust",
             post(adjust_kernel_reserve_partition),
         )
+        .route(
+            "/v1/kernel/risk/coverage_offers",
+            post(place_kernel_coverage_offer),
+        )
+        .route(
+            "/v1/kernel/risk/coverage_bindings",
+            post(bind_kernel_coverage),
+        )
+        .route(
+            "/v1/kernel/risk/positions",
+            post(create_kernel_prediction_position),
+        )
+        .route("/v1/kernel/risk/claims", post(create_kernel_risk_claim))
+        .route(
+            "/v1/kernel/risk/claims/{claim_id}/resolve",
+            post(resolve_kernel_risk_claim),
+        )
+        .route("/v1/kernel/risk/signals", post(publish_kernel_risk_signal))
         .route(
             "/v1/kernel/snapshots/{minute_start_ms}",
             get(get_kernel_snapshot),
@@ -2133,6 +2155,190 @@ async fn adjust_kernel_reserve_partition(
     Ok(Json(result.response))
 }
 
+async fn place_kernel_coverage_offer(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<PlaceCoverageOfferRequest>,
+) -> Result<Json<PlaceCoverageOfferResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .place_coverage_offer(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.risk.coverage_offer.placed",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn bind_kernel_coverage(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<BindCoverageRequest>,
+) -> Result<Json<BindCoverageResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .bind_coverage(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.risk.coverage_binding.bound",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn create_kernel_prediction_position(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<CreatePredictionPositionRequest>,
+) -> Result<Json<CreatePredictionPositionResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .create_prediction_position(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.risk.position.created",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn create_kernel_risk_claim(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<CreateRiskClaimRequest>,
+) -> Result<Json<CreateRiskClaimResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .create_risk_claim(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.risk.claim.created",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn resolve_kernel_risk_claim(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(claim_id): Path<String>,
+    Json(mut request): Json<ResolveRiskClaimRequest>,
+) -> Result<Json<ResolveRiskClaimResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let claim_id = normalize_required_field(claim_id.as_str(), "risk_claim_id_missing")?;
+    if !request.claim_id.trim().is_empty() && request.claim_id != claim_id {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            error: "conflict",
+            reason: "kernel_risk_claim_id_mismatch".to_string(),
+        });
+    }
+    request.claim_id = claim_id;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .resolve_risk_claim(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.risk.claim.resolved",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn publish_kernel_risk_signal(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<PublishRiskSignalRequest>,
+) -> Result<Json<PublishRiskSignalResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .publish_risk_signal(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.risk.signal.published",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
 async fn get_kernel_snapshot(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -2235,12 +2441,16 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "liquidity_quote_not_found"
         | "liquidity_route_plan_not_found"
         | "liquidity_envelope_not_found"
-        | "reserve_partition_not_found" => StatusCode::NOT_FOUND,
+        | "reserve_partition_not_found"
+        | "coverage_offer_not_found"
+        | "coverage_binding_not_found"
+        | "risk_claim_not_found" => StatusCode::NOT_FOUND,
         "kernel_idempotency_conflict"
         | "kernel_contract_id_mismatch"
         | "kernel_capacity_lot_id_mismatch"
         | "kernel_access_grant_id_mismatch"
         | "kernel_reserve_partition_id_mismatch"
+        | "kernel_risk_claim_id_mismatch"
         | "compute_product_capacity_lot_mismatch"
         | "compute_product_capacity_instrument_mismatch"
         | "capacity_lot_instrument_mismatch"
@@ -2255,7 +2465,9 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "liquidity_quote_mismatch"
         | "liquidity_route_plan_mismatch"
         | "reserve_partition_asset_mismatch"
-        | "reserve_partition_insufficient_available" => StatusCode::CONFLICT,
+        | "reserve_partition_insufficient_available"
+        | "risk_outcome_ref_mismatch"
+        | "risk_market_asset_mismatch" => StatusCode::CONFLICT,
         "work_unit_id_missing"
         | "contract_id_missing"
         | "receipt_id_missing"
@@ -2300,7 +2512,30 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "reserve_partition_id_missing"
         | "reserve_partition_owner_id_missing"
         | "reserve_partition_amount_invalid"
-        | "reserve_partition_reason_missing" => StatusCode::BAD_REQUEST,
+        | "reserve_partition_reason_missing"
+        | "coverage_offer_id_missing"
+        | "coverage_underwriter_id_missing"
+        | "coverage_cap_missing"
+        | "coverage_premium_missing"
+        | "coverage_offer_window_invalid"
+        | "coverage_binding_id_missing"
+        | "coverage_binding_offer_missing"
+        | "prediction_position_id_missing"
+        | "prediction_participant_id_missing"
+        | "prediction_position_not_bounded"
+        | "prediction_position_window_invalid"
+        | "risk_claim_id_missing"
+        | "risk_claimant_id_missing"
+        | "risk_claim_reason_missing"
+        | "risk_claim_payout_exceeds_coverage"
+        | "risk_resolution_ref_missing"
+        | "risk_claim_approved_payout_missing"
+        | "risk_claim_payout_exceeds_request"
+        | "risk_signal_id_missing"
+        | "risk_outcome_ref_missing"
+        | "risk_implied_fail_probability_invalid"
+        | "risk_calibration_score_invalid"
+        | "risk_concentration_invalid" => StatusCode::BAD_REQUEST,
         _ => StatusCode::BAD_REQUEST,
     };
     ApiError {
@@ -2754,6 +2989,7 @@ fn runtime_snapshot(
         );
     let compute_metrics = store.kernel.compute_market_metrics(now_unix_ms as i64);
     let liquidity_metrics = store.kernel.liquidity_market_metrics(now_unix_ms as i64);
+    let risk_metrics = store.kernel.risk_market_metrics(now_unix_ms as i64);
     PublicRuntimeSnapshot {
         hosted_nexus_relay_url: config.hosted_nexus_relay_url.clone(),
         sessions_active: store.sessions_by_access_token.len(),
@@ -2775,6 +3011,14 @@ fn runtime_snapshot(
         liquidity_settlements_24h: liquidity_metrics.liquidity_settlements_24h,
         liquidity_reserve_partitions_active: liquidity_metrics.liquidity_reserve_partitions_active,
         liquidity_value_moved_24h: liquidity_metrics.liquidity_value_moved_24h,
+        risk_coverage_offers_open: risk_metrics.risk_coverage_offers_open,
+        risk_coverage_bindings_active: risk_metrics.risk_coverage_bindings_active,
+        risk_prediction_positions_open: risk_metrics.risk_prediction_positions_open,
+        risk_claims_open: risk_metrics.risk_claims_open,
+        risk_signals_active: risk_metrics.risk_signals_active,
+        risk_implied_fail_probability_bps: risk_metrics.risk_implied_fail_probability_bps,
+        risk_calibration_score: risk_metrics.risk_calibration_score,
+        risk_coverage_concentration_hhi: risk_metrics.risk_coverage_concentration_hhi,
     }
 }
 
@@ -2936,19 +3180,22 @@ mod tests {
     use axum::response::Response;
     use openagents_kernel_core::authority::{
         AcceptAccessGrantRequest, AcceptAccessGrantResponse, AdjustReservePartitionRequest,
-        AdjustReservePartitionResponse, CreateAccessGrantRequest, CreateAccessGrantResponse,
-        CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse,
-        CreateCapacityLotRequest, CreateCapacityLotResponse, CreateComputeProductRequest,
-        CreateComputeProductResponse, CreateContractRequest, CreateContractResponse,
-        CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse, CreateWorkUnitRequest,
-        CreateWorkUnitResponse, ExecuteSettlementIntentRequest, ExecuteSettlementIntentResponse,
-        FinalizeVerdictRequest, FinalizeVerdictResponse, IssueDeliveryBundleRequest,
-        IssueDeliveryBundleResponse, IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse,
-        PublishComputeIndexRequest, PublishComputeIndexResponse, RecordDeliveryProofRequest,
+        AdjustReservePartitionResponse, BindCoverageRequest, BindCoverageResponse,
+        CreateAccessGrantRequest, CreateAccessGrantResponse, CreateCapacityInstrumentRequest,
+        CreateCapacityInstrumentResponse, CreateCapacityLotRequest, CreateCapacityLotResponse,
+        CreateComputeProductRequest, CreateComputeProductResponse, CreateContractRequest,
+        CreateContractResponse, CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse,
+        CreatePredictionPositionRequest, CreatePredictionPositionResponse, CreateRiskClaimRequest,
+        CreateRiskClaimResponse, CreateWorkUnitRequest, CreateWorkUnitResponse,
+        ExecuteSettlementIntentRequest, ExecuteSettlementIntentResponse, FinalizeVerdictRequest,
+        FinalizeVerdictResponse, IssueDeliveryBundleRequest, IssueDeliveryBundleResponse,
+        IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse, PlaceCoverageOfferRequest,
+        PlaceCoverageOfferResponse, PublishComputeIndexRequest, PublishComputeIndexResponse,
+        PublishRiskSignalRequest, PublishRiskSignalResponse, RecordDeliveryProofRequest,
         RecordDeliveryProofResponse, RegisterDataAssetRequest, RegisterDataAssetResponse,
-        RegisterReservePartitionRequest, RegisterReservePartitionResponse,
-        RevokeAccessGrantRequest, RevokeAccessGrantResponse, SelectRoutePlanRequest,
-        SelectRoutePlanResponse, SubmitOutputRequest, SubmitOutputResponse,
+        RegisterReservePartitionRequest, RegisterReservePartitionResponse, ResolveRiskClaimRequest,
+        ResolveRiskClaimResponse, RevokeAccessGrantRequest, RevokeAccessGrantResponse,
+        SelectRoutePlanRequest, SelectRoutePlanResponse, SubmitOutputRequest, SubmitOutputResponse,
     };
     use openagents_kernel_core::compute::{
         CapacityInstrument, CapacityInstrumentKind, CapacityInstrumentStatus, CapacityLot,
@@ -2970,6 +3217,11 @@ mod tests {
     use openagents_kernel_core::receipts::{
         Asset, Money, MoneyAmount, PolicyContext, Receipt, ReceiptHints, TraceContext,
         VerificationTier,
+    };
+    use openagents_kernel_core::risk::{
+        CoverageBinding, CoverageBindingStatus, CoverageOffer, CoverageOfferStatus,
+        PredictionPosition, PredictionPositionStatus, PredictionSide, RiskClaim, RiskClaimStatus,
+        RiskSignal, RiskSignalStatus,
     };
     use openagents_kernel_core::time::floor_to_minute_utc;
     use serde_json::json;
@@ -3785,6 +4037,205 @@ mod tests {
             metadata: json!({
                 "operator": "hydra"
             }),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn coverage_offer_request(
+        offer_id: &str,
+        outcome_ref: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> PlaceCoverageOfferRequest {
+        PlaceCoverageOfferRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            coverage_offer: CoverageOffer {
+                offer_id: offer_id.to_string(),
+                outcome_ref: outcome_ref.to_string(),
+                contract_id: Some("contract.alpha".to_string()),
+                underwriter_id: "underwriter.alpha".to_string(),
+                created_at_ms,
+                expires_at_ms: created_at_ms + 300_000,
+                coverage_cap: Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(1_500),
+                },
+                premium: Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(120),
+                },
+                deductible: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(50),
+                }),
+                status: CoverageOfferStatus::Open,
+                metadata: json!({
+                    "lane": "risk"
+                }),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn coverage_binding_request(
+        binding_id: &str,
+        outcome_ref: &str,
+        offer_ids: Vec<String>,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> BindCoverageRequest {
+        BindCoverageRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            coverage_binding: CoverageBinding {
+                binding_id: binding_id.to_string(),
+                outcome_ref: outcome_ref.to_string(),
+                contract_id: Some("contract.alpha".to_string()),
+                offer_ids,
+                created_at_ms,
+                warranty_window_end_ms: Some(created_at_ms + 600_000),
+                total_coverage: Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(0),
+                },
+                premium_total: Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(0),
+                },
+                status: CoverageBindingStatus::Active,
+                metadata: json!({
+                    "policy_bundle": "policy.nexus.default"
+                }),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn prediction_position_request(
+        position_id: &str,
+        outcome_ref: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> CreatePredictionPositionRequest {
+        CreatePredictionPositionRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            prediction_position: PredictionPosition {
+                position_id: position_id.to_string(),
+                outcome_ref: outcome_ref.to_string(),
+                participant_id: "agent.predictor.alpha".to_string(),
+                side: PredictionSide::Fail,
+                created_at_ms,
+                expires_at_ms: created_at_ms + 300_000,
+                collateral: Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(600),
+                },
+                max_payout: Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(600),
+                },
+                status: PredictionPositionStatus::Open,
+                metadata: json!({
+                    "earning_lane": "bet_outcomes"
+                }),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn risk_claim_request(
+        claim_id: &str,
+        binding_id: &str,
+        outcome_ref: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> CreateRiskClaimRequest {
+        CreateRiskClaimRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            risk_claim: RiskClaim {
+                claim_id: claim_id.to_string(),
+                binding_id: binding_id.to_string(),
+                outcome_ref: outcome_ref.to_string(),
+                claimant_id: "buyer.alpha".to_string(),
+                created_at_ms,
+                requested_payout: Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(900),
+                },
+                approved_payout: None,
+                resolution_ref: None,
+                reason_code: "delivery_failed".to_string(),
+                status: RiskClaimStatus::Open,
+                metadata: json!({
+                    "severity": "high"
+                }),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn resolve_risk_claim_request(
+        claim_id: &str,
+        idempotency_key: &str,
+        resolved_at_ms: i64,
+    ) -> ResolveRiskClaimRequest {
+        ResolveRiskClaimRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            claim_id: claim_id.to_string(),
+            resolved_at_ms,
+            status: RiskClaimStatus::Paid,
+            approved_payout: Some(Money {
+                asset: Asset::Btc,
+                amount: MoneyAmount::AmountSats(900),
+            }),
+            resolution_ref: "oa://claims/risk-alpha-resolution".to_string(),
+            metadata: json!({
+                "resolver": "kernel"
+            }),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn risk_signal_request(
+        signal_id: &str,
+        outcome_ref: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> PublishRiskSignalRequest {
+        PublishRiskSignalRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            risk_signal: RiskSignal {
+                signal_id: signal_id.to_string(),
+                outcome_ref: outcome_ref.to_string(),
+                created_at_ms,
+                implied_fail_probability_bps: 6_200,
+                calibration_score: 0.55,
+                coverage_concentration_hhi: 0.45,
+                verification_tier_floor: None,
+                collateral_multiplier_bps: 0,
+                autonomy_mode: String::new(),
+                status: RiskSignalStatus::Active,
+                metadata: json!({
+                    "source": "prediction_book"
+                }),
+            },
             evidence: Vec::new(),
             hints: ReceiptHints::default(),
         }
@@ -5081,6 +5532,266 @@ mod tests {
             stats.recent_receipts.iter().any(
                 |receipt| receipt.receipt_type == "kernel.liquidity.reserve_partition.adjusted"
             )
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn risk_market_flow_receipts_offers_positions_claims_and_signals() -> Result<()> {
+        let app = build_router(test_config()?);
+        let session = create_session_token(&app).await?;
+        let minute_start_ms =
+            floor_to_minute_utc((super::now_unix_ms() as i64).saturating_sub(30_000));
+        let created_at_ms = minute_start_ms.saturating_add(14_000);
+        let outcome_ref = "outcome.compute.alpha";
+
+        let offer = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/risk/coverage_offers")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&coverage_offer_request(
+                        "coverage_offer.alpha",
+                        outcome_ref,
+                        "idemp.coverage_offer.alpha",
+                        created_at_ms,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(offer.status(), StatusCode::OK);
+        let offer_payload: PlaceCoverageOfferResponse = response_json(offer).await?;
+        assert_eq!(
+            offer_payload.receipt.receipt_type,
+            "kernel.risk.coverage_offer.place.v1"
+        );
+
+        let binding = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/risk/coverage_bindings")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&coverage_binding_request(
+                        "coverage_binding.alpha",
+                        outcome_ref,
+                        vec!["coverage_offer.alpha".to_string()],
+                        "idemp.coverage_binding.alpha",
+                        created_at_ms + 1_000,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(binding.status(), StatusCode::OK);
+        let binding_payload: BindCoverageResponse = response_json(binding).await?;
+        assert_eq!(
+            binding_payload.receipt.receipt_type,
+            "kernel.risk.coverage_binding.bind.v1"
+        );
+        assert_eq!(
+            binding_payload.coverage_binding.total_coverage.amount,
+            MoneyAmount::AmountSats(1_500)
+        );
+
+        let position = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/risk/positions")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &prediction_position_request(
+                            "position.alpha",
+                            outcome_ref,
+                            "idemp.position.alpha",
+                            created_at_ms + 2_000,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(position.status(), StatusCode::OK);
+        let position_payload: CreatePredictionPositionResponse = response_json(position).await?;
+        assert_eq!(
+            position_payload.receipt.receipt_type,
+            "kernel.risk.position.create.v1"
+        );
+        assert_eq!(
+            position_payload.prediction_position.side,
+            PredictionSide::Fail
+        );
+
+        let claim = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/risk/claims")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&risk_claim_request(
+                        "claim.alpha",
+                        "coverage_binding.alpha",
+                        outcome_ref,
+                        "idemp.claim.alpha",
+                        created_at_ms + 3_000,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(claim.status(), StatusCode::OK);
+        let claim_payload: CreateRiskClaimResponse = response_json(claim).await?;
+        assert_eq!(
+            claim_payload.receipt.receipt_type,
+            "kernel.risk.claim.create.v1"
+        );
+
+        let resolved_claim = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/risk/claims/claim.alpha/resolve")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &resolve_risk_claim_request(
+                            "claim.alpha",
+                            "idemp.claim.resolve.alpha",
+                            created_at_ms + 4_000,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(resolved_claim.status(), StatusCode::OK);
+        let resolved_claim_payload: ResolveRiskClaimResponse =
+            response_json(resolved_claim).await?;
+        assert_eq!(
+            resolved_claim_payload.receipt.receipt_type,
+            "kernel.risk.claim.resolve.v1"
+        );
+        assert_eq!(
+            resolved_claim_payload.risk_claim.status,
+            RiskClaimStatus::Paid
+        );
+
+        let signal = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/risk/signals")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&risk_signal_request(
+                        "signal.alpha",
+                        outcome_ref,
+                        "idemp.signal.alpha",
+                        created_at_ms + 5_000,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(signal.status(), StatusCode::OK);
+        let signal_payload: PublishRiskSignalResponse = response_json(signal).await?;
+        assert_eq!(
+            signal_payload.receipt.receipt_type,
+            "kernel.risk.signal.publish.v1"
+        );
+        assert_eq!(
+            signal_payload.risk_signal.verification_tier_floor,
+            Some(VerificationTier::Tier2Heterogeneous)
+        );
+        assert_eq!(signal_payload.risk_signal.collateral_multiplier_bps, 15_000);
+        assert_eq!(signal_payload.risk_signal.autonomy_mode, "guarded");
+
+        let snapshot_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/kernel/snapshots/{minute_start_ms}"))
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(snapshot_response.status(), StatusCode::OK);
+        let snapshot: super::EconomySnapshot = response_json(snapshot_response).await?;
+        assert_eq!(snapshot.risk_coverage_offers_open, 0);
+        assert_eq!(snapshot.risk_coverage_bindings_active, 0);
+        assert_eq!(snapshot.risk_prediction_positions_open, 1);
+        assert_eq!(snapshot.risk_claims_open, 0);
+        assert_eq!(snapshot.risk_signals_active, 1);
+        assert_eq!(snapshot.risk_implied_fail_probability_bps, 6_200);
+        assert_eq!(snapshot.risk_calibration_score, 0.55);
+        assert_eq!(snapshot.risk_coverage_concentration_hhi, 1.0);
+        assert_eq!(
+            snapshot.liability_premiums_collected_24h.amount,
+            MoneyAmount::AmountSats(120)
+        );
+        assert_eq!(
+            snapshot.claims_paid_24h.amount,
+            MoneyAmount::AmountSats(900)
+        );
+        assert_eq!(snapshot.loss_ratio, 7.5);
+
+        let stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.risk_coverage_offers_open, 0);
+        assert_eq!(stats.risk_coverage_bindings_active, 0);
+        assert_eq!(stats.risk_prediction_positions_open, 1);
+        assert_eq!(stats.risk_claims_open, 0);
+        assert_eq!(stats.risk_signals_active, 1);
+        assert_eq!(stats.risk_implied_fail_probability_bps, 6_200);
+        assert_eq!(stats.risk_calibration_score, 0.55);
+        assert_eq!(stats.risk_coverage_concentration_hhi, 1.0);
+        assert!(
+            stats
+                .recent_receipts
+                .iter()
+                .any(|receipt| receipt.receipt_type == "kernel.risk.coverage_offer.placed")
+        );
+        assert!(
+            stats
+                .recent_receipts
+                .iter()
+                .any(|receipt| receipt.receipt_type == "kernel.risk.coverage_binding.bound")
+        );
+        assert!(
+            stats
+                .recent_receipts
+                .iter()
+                .any(|receipt| receipt.receipt_type == "kernel.risk.position.created")
+        );
+        assert!(
+            stats
+                .recent_receipts
+                .iter()
+                .any(|receipt| receipt.receipt_type == "kernel.risk.claim.created")
+        );
+        assert!(
+            stats
+                .recent_receipts
+                .iter()
+                .any(|receipt| receipt.receipt_type == "kernel.risk.claim.resolved")
+        );
+        assert!(
+            stats
+                .recent_receipts
+                .iter()
+                .any(|receipt| receipt.receipt_type == "kernel.risk.signal.published")
         );
 
         Ok(())

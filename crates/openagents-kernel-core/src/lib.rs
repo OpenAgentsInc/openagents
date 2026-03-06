@@ -5,5 +5,6 @@ pub mod ids;
 pub mod labor;
 pub mod liquidity;
 pub mod receipts;
+pub mod risk;
 pub mod snapshots;
 pub mod time;
