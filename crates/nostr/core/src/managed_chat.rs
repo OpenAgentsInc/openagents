@@ -81,8 +81,9 @@ pub type ManagedChatResult<T> = std::result::Result<T, ManagedChatError>;
 type Result<T> = ManagedChatResult<T>;
 
 /// Supported room transports in the desktop room model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ManagedRoomMode {
+    #[default]
     ManagedChannel,
     Dm,
     SecureGroup,
@@ -95,12 +96,6 @@ impl ManagedRoomMode {
             Self::Dm => "dm",
             Self::SecureGroup => "secure-group",
         }
-    }
-}
-
-impl Default for ManagedRoomMode {
-    fn default() -> Self {
-        Self::ManagedChannel
     }
 }
 
@@ -695,7 +690,7 @@ pub fn compare_managed_channel_index(
         .as_deref()
         .unwrap_or(UNCATEGORIZED_BUCKET)
         .cmp(
-            &right
+            right
                 .hints
                 .category_id
                 .as_deref()
