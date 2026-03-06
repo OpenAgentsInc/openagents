@@ -14,14 +14,18 @@ use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use axum::body::{Body, to_bytes};
+use axum::extract::FromRequestParts;
+use axum::extract::Request;
 use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::http::{HeaderMap, header::HOST};
-use axum::response::IntoResponse;
-use axum::routing::get;
+use axum::http::{HeaderMap, StatusCode, Uri, header, header::HOST};
+use axum::response::{Html, IntoResponse, Response};
+use axum::routing::{any, get};
 use axum::{Json, Router};
-use futures_util::{SinkExt, StreamExt};
+use futures_util::{SinkExt, StreamExt, TryStreamExt};
 use nostr::{Event, nip01::classify_kind, nip42::validate_auth_event};
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::{RwLock, mpsc};
@@ -32,13 +36,17 @@ use managed_groups::{ManagedGroupsState, event_group_id};
 
 const ENV_LISTEN_ADDR: &str = "NEXUS_RELAY_LISTEN_ADDR";
 const ENV_MAX_STORED_EVENTS: &str = "NEXUS_RELAY_MAX_STORED_EVENTS";
+const ENV_CONTROL_BASE_URL: &str = "NEXUS_RELAY_CONTROL_BASE_URL";
 const DEFAULT_LISTEN_ADDR: &str = "127.0.0.1:42110";
 const DEFAULT_MAX_STORED_EVENTS: usize = 5_000;
+const DEFAULT_CONTROL_BASE_URL: &str = "http://127.0.0.1:42020";
+const MAX_PROXY_REQUEST_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct RelayServiceConfig {
     pub listen_addr: SocketAddr,
     pub max_stored_events: usize,
+    pub control_base_url: String,
     pub relay_identity: RelayIdentity,
 }
 
@@ -63,11 +71,17 @@ impl RelayServiceConfig {
         if max_stored_events == 0 {
             return Err(format!("{ENV_MAX_STORED_EVENTS} must be greater than zero"));
         }
+        let control_base_url = std::env::var(ENV_CONTROL_BASE_URL)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| DEFAULT_CONTROL_BASE_URL.to_string());
         let relay_identity = load_relay_identity()?;
 
         Ok(Self {
             listen_addr,
             max_stored_events,
+            control_base_url,
             relay_identity,
         })
     }
@@ -85,6 +99,7 @@ pub struct HealthResponse {
 struct AppState {
     config: RelayServiceConfig,
     relay_identity: RelayIdentity,
+    control_http_client: reqwest::Client,
     store: Arc<RwLock<RelayStore>>,
 }
 
@@ -113,11 +128,15 @@ pub struct RelayIdentity {
 pub fn build_router(config: RelayServiceConfig) -> Router {
     let state = AppState {
         relay_identity: config.relay_identity.clone(),
+        control_http_client: reqwest::Client::new(),
         config,
         store: Arc::new(RwLock::new(RelayStore::default())),
     };
     Router::new()
-        .route("/", get(relay_websocket))
+        .route("/", any(relay_root))
+        .route("/ws", any(relay_websocket))
+        .route("/api/{*path}", any(proxy_control_request))
+        .route("/v1/{*path}", any(proxy_control_request))
         .route("/healthz", get(healthz))
         .with_state(state)
 }
@@ -140,13 +159,85 @@ async fn healthz(State(state): State<AppState>) -> impl IntoResponse {
     })
 }
 
-async fn relay_websocket(
-    ws: WebSocketUpgrade,
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> impl IntoResponse {
-    let relay_url = relay_url_from_headers(&headers);
-    ws.on_upgrade(move |socket| handle_socket(state, socket, relay_url))
+async fn relay_root(State(state): State<AppState>, request: Request) -> Response {
+    if is_websocket_upgrade_request(request.headers()) {
+        return upgrade_websocket(state, request).await;
+    }
+
+    Html(render_homepage(&state)).into_response()
+}
+
+async fn relay_websocket(State(state): State<AppState>, request: Request) -> Response {
+    upgrade_websocket(state, request).await
+}
+
+async fn upgrade_websocket(state: AppState, request: Request) -> Response {
+    let relay_url = relay_url_from_headers(request.headers());
+    let (mut parts, _body) = request.into_parts();
+    match WebSocketUpgrade::from_request_parts(&mut parts, &state).await {
+        Ok(ws) => ws
+            .on_upgrade(move |socket| handle_socket(state, socket, relay_url))
+            .into_response(),
+        Err(rejection) => rejection.into_response(),
+    }
+}
+
+async fn proxy_control_request(State(state): State<AppState>, request: Request) -> Response {
+    let method = request.method().clone();
+    let uri = request.uri().clone();
+    let headers = request.headers().clone();
+    let body_bytes = match to_bytes(request.into_body(), MAX_PROXY_REQUEST_BYTES).await {
+        Ok(body) => body,
+        Err(error) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                format!("failed to read proxied request body: {error}"),
+            )
+                .into_response();
+        }
+    };
+    let target = match proxy_target_url(state.config.control_base_url.as_str(), &uri) {
+        Ok(url) => url,
+        Err(error) => return (StatusCode::BAD_GATEWAY, error).into_response(),
+    };
+
+    let mut upstream_request = state.control_http_client.request(method.clone(), target);
+    upstream_request = copy_proxy_request_headers(upstream_request, &headers);
+    if body_bytes.is_empty() {
+        upstream_request = upstream_request.body(Vec::new());
+    } else {
+        upstream_request = upstream_request.body(body_bytes.to_vec());
+    }
+
+    let upstream = match upstream_request.send().await {
+        Ok(response) => response,
+        Err(error) => {
+            return (
+                StatusCode::BAD_GATEWAY,
+                format!("failed to reach nexus-control upstream: {error}"),
+            )
+                .into_response();
+        }
+    };
+
+    let status = upstream.status();
+    let upstream_headers = upstream.headers().clone();
+    let body_stream = upstream.bytes_stream().map_err(std::io::Error::other);
+    let mut response = match Response::builder()
+        .status(status)
+        .body(Body::from_stream(body_stream))
+    {
+        Ok(response) => response,
+        Err(error) => {
+            let mut response = Response::new(Body::from(format!(
+                "failed to build proxied response: {error}"
+            )));
+            *response.status_mut() = StatusCode::BAD_GATEWAY;
+            return response;
+        }
+    };
+    copy_proxy_response_headers(response.headers_mut(), &upstream_headers);
+    response
 }
 
 async fn handle_socket(state: AppState, socket: WebSocket, relay_url: String) {
@@ -676,6 +767,84 @@ fn relay_url_from_headers(headers: &HeaderMap) -> String {
     format!("{scheme}://{host}/")
 }
 
+fn render_homepage(state: &AppState) -> String {
+    format!(
+        "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Nexus Relay</title><style>body{{margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#030712;color:#d1d5db}}main{{max-width:880px;margin:0 auto;padding:56px 24px}}h1{{margin:0 0 12px;font-size:36px;color:#f9fafb}}p{{line-height:1.6;color:#9ca3af}}code{{background:#111827;padding:2px 6px;border-radius:4px;color:#93c5fd}}.panel{{margin-top:24px;padding:18px 20px;border:1px solid #1f2937;border-radius:12px;background:#0b1220}}.label{{display:block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#6b7280;margin-bottom:6px}}</style></head><body><main><h1>OpenAgents Nexus Relay</h1><p>This host runs the current-repo Nexus relay surface and forwards hosted authority API traffic to <code>{control_base}</code>.</p><div class=\"panel\"><span class=\"label\">Relay websocket</span><code>/</code> and <code>/ws</code></div><div class=\"panel\"><span class=\"label\">Hosted API</span><code>/api/*</code> and <code>/v1/*</code> are forwarded to Nexus Control</div><div class=\"panel\"><span class=\"label\">Relay pubkey</span><code>{pubkey}</code></div></main></body></html>",
+        control_base = state.config.control_base_url,
+        pubkey = state.relay_identity.public_key_hex
+    )
+}
+
+fn is_websocket_upgrade_request(headers: &HeaderMap) -> bool {
+    header_contains(headers, header::CONNECTION, "upgrade")
+        && header_eq(headers, header::UPGRADE, "websocket")
+        && header_eq(headers, header::SEC_WEBSOCKET_VERSION, "13")
+}
+
+fn header_eq(headers: &HeaderMap, key: header::HeaderName, value: &'static str) -> bool {
+    headers
+        .get(key)
+        .is_some_and(|header| header.as_bytes().eq_ignore_ascii_case(value.as_bytes()))
+}
+
+fn header_contains(headers: &HeaderMap, key: header::HeaderName, value: &'static str) -> bool {
+    let Some(header) = headers.get(key) else {
+        return false;
+    };
+    std::str::from_utf8(header.as_bytes())
+        .map(|header| header.to_ascii_lowercase().contains(value))
+        .unwrap_or(false)
+}
+
+fn proxy_target_url(base_url: &str, uri: &Uri) -> Result<Url, String> {
+    let mut url =
+        Url::parse(base_url).map_err(|error| format!("invalid control base url: {error}"))?;
+    url.set_path(uri.path());
+    url.set_query(uri.query());
+    url.set_fragment(None);
+    Ok(url)
+}
+
+fn copy_proxy_request_headers(
+    mut builder: reqwest::RequestBuilder,
+    headers: &HeaderMap,
+) -> reqwest::RequestBuilder {
+    for (name, value) in headers {
+        if should_skip_proxy_request_header(name) {
+            continue;
+        }
+        builder = builder.header(name, value);
+    }
+    builder
+}
+
+fn copy_proxy_response_headers(target: &mut HeaderMap, headers: &HeaderMap) {
+    for (name, value) in headers {
+        if should_skip_proxy_response_header(name) {
+            continue;
+        }
+        target.insert(name, value.clone());
+    }
+}
+
+fn should_skip_proxy_request_header(name: &header::HeaderName) -> bool {
+    matches!(
+        *name,
+        header::HOST
+            | header::CONNECTION
+            | header::UPGRADE
+            | header::CONTENT_LENGTH
+            | header::TRANSFER_ENCODING
+    )
+}
+
+fn should_skip_proxy_response_header(name: &header::HeaderName) -> bool {
+    matches!(
+        *name,
+        header::CONNECTION | header::CONTENT_LENGTH | header::TRANSFER_ENCODING
+    )
+}
+
 fn generate_auth_challenge() -> String {
     hex::encode(nostr::generate_secret_key())
 }
@@ -699,12 +868,15 @@ fn load_relay_identity() -> Result<RelayIdentity, String> {
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
+    use axum::http::{HeaderMap, StatusCode, header};
+    use axum::routing::{get, post};
+    use axum::{Json, Router};
     use futures_util::{SinkExt, StreamExt};
     use nostr::{
         Event, EventTemplate, ModerationAction, ModerationEvent, finalize_event, get_public_key_hex,
     };
     use nostr_client::{RelayAuthIdentity, RelayConfig, RelayConnection, RelayMessage};
-    use serde_json::json;
+    use serde_json::{Value, json};
     use tokio::time::{Duration, timeout};
     use tokio_tungstenite::{connect_async, tungstenite::Message as WsMessage};
 
@@ -715,6 +887,7 @@ mod tests {
         RelayServiceConfig {
             listen_addr: "127.0.0.1:0".parse().expect("valid listen addr"),
             max_stored_events: 128,
+            control_base_url: "http://127.0.0.1:42020".to_string(),
             relay_identity: super::RelayIdentity {
                 public_key_hex: get_public_key_hex(&secret_key).expect("derive relay pubkey"),
                 secret_key,
@@ -790,6 +963,96 @@ mod tests {
             &event,
             &json!({"kinds":[5050], "#e":["req-2"]})
         ));
+    }
+
+    #[tokio::test]
+    async fn relay_root_serves_html_when_not_upgrading() -> Result<()> {
+        let config = relay_config();
+        let listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
+        let addr = listener.local_addr()?;
+        let server = tokio::spawn(async move {
+            axum::serve(listener, build_router(config))
+                .await
+                .map_err(anyhow::Error::from)
+        });
+
+        let response = reqwest::get(format!("http://{addr}/")).await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.text().await?;
+        assert!(body.contains("OpenAgents Nexus Relay"));
+        assert!(body.contains("/api/*"));
+
+        server.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn relay_proxies_control_api_requests() -> Result<()> {
+        let control_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let control_addr = control_listener.local_addr()?;
+        let control_server = tokio::spawn(async move {
+            let app = Router::new()
+                .route(
+                    "/api/sync/token",
+                    post(
+                        |headers: HeaderMap, Json(payload): Json<Value>| async move {
+                            let auth = headers
+                                .get(header::AUTHORIZATION)
+                                .and_then(|value| value.to_str().ok())
+                                .unwrap_or_default()
+                                .to_string();
+                            (
+                                StatusCode::CREATED,
+                                Json(json!({
+                                    "authorization": auth,
+                                    "payload": payload,
+                                })),
+                            )
+                        },
+                    ),
+                )
+                .route(
+                    "/api/stats",
+                    get(|| async { Json(json!({"ok": true, "service": "nexus-control"})) }),
+                );
+            axum::serve(control_listener, app)
+                .await
+                .map_err(anyhow::Error::from)
+        });
+
+        let mut config = relay_config();
+        config.control_base_url = format!("http://{control_addr}");
+        let relay_listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
+        let relay_addr = relay_listener.local_addr()?;
+        let relay_server = tokio::spawn(async move {
+            axum::serve(relay_listener, build_router(config))
+                .await
+                .map_err(anyhow::Error::from)
+        });
+
+        let client = reqwest::Client::new();
+        let response = client
+            .post(format!("http://{relay_addr}/api/sync/token"))
+            .header(header::AUTHORIZATION, "Bearer audit-token")
+            .json(&json!({"scope":"sync.subscribe"}))
+            .send()
+            .await?;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let body: Value = response.json().await?;
+        assert_eq!(body["authorization"], "Bearer audit-token");
+        assert_eq!(body["payload"]["scope"], "sync.subscribe");
+
+        let stats = client
+            .get(format!("http://{relay_addr}/api/stats"))
+            .send()
+            .await?;
+        assert_eq!(stats.status(), StatusCode::OK);
+        let stats_body: Value = stats.json().await?;
+        assert_eq!(stats_body["service"], "nexus-control");
+
+        relay_server.abort();
+        control_server.abort();
+        Ok(())
     }
 
     #[tokio::test]

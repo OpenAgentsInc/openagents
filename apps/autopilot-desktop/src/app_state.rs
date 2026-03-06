@@ -2573,7 +2573,7 @@ fn load_activity_projection_rows(path: &Path) -> Result<Vec<ActivityEventRow>, S
     Ok(normalize_activity_projection_rows(document.rows))
 }
 
-pub(crate) const DEFAULT_NEXUS_PRIMARY_RELAY_URL: &str = "wss://relay.openagents.dev";
+pub(crate) const DEFAULT_NEXUS_PRIMARY_RELAY_URL: &str = "wss://nexus.openagents.com/";
 const DEFAULT_PUBLIC_BACKUP_RELAY_URLS: [&str; 3] = [
     "wss://relay.primal.net",
     "wss://relay.damus.io",
@@ -7948,10 +7948,10 @@ mod tests {
     #[test]
     fn settings_document_configured_relay_urls_keep_primary_first() {
         let document = super::SettingsDocumentV1 {
-            primary_relay_url: "wss://relay.openagents.dev".to_string(),
+            primary_relay_url: "wss://nexus.openagents.com/".to_string(),
             backup_relay_urls: vec![
                 "wss://relay.primal.net".to_string(),
-                "wss://relay.openagents.dev".to_string(),
+                "wss://nexus.openagents.com/".to_string(),
                 "wss://relay.damus.io".to_string(),
             ],
             ..super::SettingsDocumentV1::default()
@@ -7959,7 +7959,7 @@ mod tests {
         assert_eq!(
             document.configured_relay_urls(),
             vec![
-                "wss://relay.openagents.dev".to_string(),
+                "wss://nexus.openagents.com/".to_string(),
                 "wss://relay.primal.net".to_string(),
                 "wss://relay.damus.io".to_string()
             ]

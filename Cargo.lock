@@ -3701,6 +3701,7 @@ dependencies = [
  "hex",
  "nostr 0.1.0",
  "nostr-client",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
