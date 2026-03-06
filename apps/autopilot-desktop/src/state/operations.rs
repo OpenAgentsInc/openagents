@@ -801,6 +801,28 @@ impl NetworkRequestsState {
             });
     }
 
+    pub fn mark_direct_authority_ready(
+        &mut self,
+        request_id: &str,
+        authority_status: &str,
+        authority_event_id: Option<&str>,
+    ) {
+        let Some(request) = self
+            .submitted
+            .iter_mut()
+            .find(|request| request.request_id == request_id)
+        else {
+            return;
+        };
+        request.authority_status = Some(authority_status.to_string());
+        request.authority_event_id = authority_event_id.map(ToString::to_string);
+        request.authority_error_class = None;
+        self.pane_set_ready(format!(
+            "Request {} attached to direct authority path {}",
+            request_id, authority_status
+        ));
+    }
+
     pub fn prepare_auto_payment_attempt(
         &mut self,
         request_id: &str,

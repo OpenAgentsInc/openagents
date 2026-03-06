@@ -18,8 +18,7 @@ use crate::provider_nip90_lane::{
 };
 use crate::runtime_lanes::{
     AcCreditCommand, AcLaneSnapshot, AcLaneWorker, RuntimeCommandResponse, SaLaneSnapshot,
-    SaLaneWorker, SaLifecycleCommand, SkillTrustTier, SklDiscoveryTrustCommand, SklLaneSnapshot,
-    SklLaneWorker,
+    SaLaneWorker, SaLifecycleCommand, SklDiscoveryTrustCommand, SklLaneSnapshot, SklLaneWorker,
 };
 use crate::{
     codex_lane::{
@@ -4001,6 +4000,10 @@ impl RenderState {
         seq
     }
 
+    pub fn reserve_runtime_command_seq(&mut self) -> u64 {
+        self.allocate_runtime_command_seq()
+    }
+
     pub fn queue_sa_command(&mut self, command: SaLifecycleCommand) -> Result<u64, String> {
         let seq = self.allocate_runtime_command_seq();
         self.sa_lane_worker.enqueue(seq, command).map(|()| seq)
@@ -4151,12 +4154,6 @@ impl RenderState {
         }
         if self.spark_wallet.last_error.is_some() {
             blockers.push(ProviderBlocker::WalletError);
-        }
-        if self.skl_lane.trust_tier != SkillTrustTier::Trusted {
-            blockers.push(ProviderBlocker::SkillTrustUnavailable);
-        }
-        if !self.ac_lane.credit_available {
-            blockers.push(ProviderBlocker::CreditLaneUnavailable);
         }
         blockers
     }
