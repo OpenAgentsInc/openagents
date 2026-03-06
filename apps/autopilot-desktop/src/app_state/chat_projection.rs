@@ -191,6 +191,25 @@ impl ManagedChatProjectionState {
         self.persist_current_state(format!("Selected managed chat channel {channel_id}"))
     }
 
+    pub fn set_selected_group(&mut self, group_id: &str) -> Result<(), String> {
+        if !self
+            .snapshot
+            .groups
+            .iter()
+            .any(|group| group.group_id == group_id)
+        {
+            return Err(format!("Unknown managed chat group: {group_id}"));
+        }
+        self.local_state.selected_group_id = Some(group_id.to_string());
+        self.local_state.selected_channel_id = self
+            .snapshot
+            .channels
+            .iter()
+            .find(|channel| channel.group_id == group_id)
+            .map(|channel| channel.channel_id.clone());
+        self.persist_current_state(format!("Selected managed chat group {group_id}"))
+    }
+
     pub fn mark_channel_read(
         &mut self,
         channel_id: &str,

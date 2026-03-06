@@ -763,6 +763,12 @@ pub(super) fn run_chat_select_thread_action(
     state: &mut crate::app_state::RenderState,
     index: usize,
 ) -> bool {
+    if state.autopilot_chat.managed_chat_has_browseable_content() {
+        return state
+            .autopilot_chat
+            .select_managed_chat_channel_by_index(index);
+    }
+
     let Some(target) = state.autopilot_chat.select_thread_by_index(index) else {
         return false;
     };
@@ -807,6 +813,18 @@ pub(super) fn run_chat_select_thread_action(
         }
     }
     true
+}
+
+pub(super) fn run_chat_select_workspace_action(
+    state: &mut crate::app_state::RenderState,
+    index: usize,
+) -> bool {
+    if !state.autopilot_chat.managed_chat_has_browseable_content() {
+        return false;
+    }
+    state
+        .autopilot_chat
+        .select_managed_chat_group_by_index(index)
 }
 
 pub(super) fn run_chat_approval_response_action(

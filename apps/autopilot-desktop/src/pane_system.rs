@@ -30,6 +30,7 @@ const PANE_BOTTOM_RESERVED: f32 =
     HOTBAR_HEIGHT + HOTBAR_FLOAT_GAP + PANE_MARGIN + PANE_HOTBAR_CLEARANCE;
 const CHAT_PAD: f32 = 12.0;
 const CHAT_WORKSPACE_RAIL_WIDTH: f32 = 68.0;
+const CHAT_WORKSPACE_SLOT_HEIGHT: f32 = 52.0;
 const CHAT_THREAD_RAIL_WIDTH: f32 = 208.0;
 const CHAT_COLUMN_GAP: f32 = 10.0;
 const CHAT_TRANSCRIPT_HEADER_HEIGHT: f32 = 68.0;
@@ -677,6 +678,7 @@ pub enum PaneHitAction {
     ChatRespondToolCall,
     ChatRespondToolUserInput,
     ChatRespondAuthRefresh,
+    ChatSelectWorkspace(usize),
     ChatSelectThread(usize),
     GoOnlineToggle,
     CodexAccount(CodexAccountPaneAction),
@@ -1059,14 +1061,16 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
 
         match pane.kind {
             PaneKind::AutopilotChat => {
-                let composer_height = chat_composer_height_for_value(
-                    content_bounds,
-                    state.chat_inputs.composer.get_value(),
-                );
-                if chat_composer_input_bounds_with_height(content_bounds, composer_height)
-                    .contains(point)
-                {
-                    return CursorIcon::Text;
+                if !state.autopilot_chat.managed_chat_has_browseable_content() {
+                    let composer_height = chat_composer_height_for_value(
+                        content_bounds,
+                        state.chat_inputs.composer.get_value(),
+                    );
+                    if chat_composer_input_bounds_with_height(content_bounds, composer_height)
+                        .contains(point)
+                    {
+                        return CursorIcon::Text;
+                    }
                 }
             }
             PaneKind::Calculator => {
@@ -1190,6 +1194,32 @@ pub fn chat_workspace_rail_bounds(content_bounds: Bounds) -> Bounds {
         CHAT_WORKSPACE_RAIL_WIDTH,
         (content_bounds.size.height - CHAT_PAD * 2.0).max(120.0),
     )
+}
+
+pub fn chat_workspace_row_bounds(content_bounds: Bounds, index: usize) -> Bounds {
+    let workspace = chat_workspace_rail_bounds(content_bounds);
+    Bounds::new(
+        workspace.origin.x + 4.0,
+        workspace.origin.y + 28.0 + index as f32 * CHAT_WORKSPACE_SLOT_HEIGHT,
+        (workspace.size.width - 8.0).max(32.0),
+        CHAT_WORKSPACE_SLOT_HEIGHT,
+    )
+}
+
+pub fn chat_visible_workspace_row_count(content_bounds: Bounds, total_workspaces: usize) -> usize {
+    if total_workspaces == 0 {
+        return 0;
+    }
+
+    let first_row = chat_workspace_row_bounds(content_bounds, 0);
+    let rail = chat_workspace_rail_bounds(content_bounds);
+    let available_height = (rail.max_y() - first_row.origin.y).max(0.0);
+    if available_height < CHAT_WORKSPACE_SLOT_HEIGHT {
+        return 0;
+    }
+
+    let max_fit = (available_height / CHAT_WORKSPACE_SLOT_HEIGHT).floor() as usize;
+    total_workspaces.min(max_fit.max(1))
 }
 
 pub fn chat_thread_rail_bounds(content_bounds: Bounds) -> Bounds {
@@ -3205,7 +3235,35 @@ fn pane_hit_action_for_pane(
             None
         }
         PaneKind::AutopilotChat => {
-            let can_send = !state.chat_inputs.composer.get_value().trim().is_empty();
+            if state.autopilot_chat.managed_chat_has_browseable_content() {
+                let workspace_count = chat_visible_workspace_row_count(
+                    content_bounds,
+                    state
+                        .autopilot_chat
+                        .managed_chat_projection
+                        .snapshot
+                        .groups
+                        .len(),
+                );
+                for index in 0..workspace_count {
+                    if chat_workspace_row_bounds(content_bounds, index).contains(point) {
+                        return Some(PaneHitAction::ChatSelectWorkspace(index));
+                    }
+                }
+            }
+            let channel_count = if state.autopilot_chat.managed_chat_has_browseable_content() {
+                state.autopilot_chat.active_managed_chat_channels().len()
+            } else {
+                state.autopilot_chat.threads.len()
+            };
+            let visible_rows = chat_visible_thread_row_count(content_bounds, channel_count);
+            for index in 0..visible_rows {
+                if chat_thread_row_bounds(content_bounds, index).contains(point) {
+                    return Some(PaneHitAction::ChatSelectThread(index));
+                }
+            }
+            let can_send = !state.autopilot_chat.managed_chat_has_browseable_content()
+                && !state.chat_inputs.composer.get_value().trim().is_empty();
             if can_send && chat_send_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::ChatSend);
             }

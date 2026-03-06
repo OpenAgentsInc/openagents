@@ -3,8 +3,9 @@ use wgpui::{Bounds, Component, InputEvent, PaintContext, Point, Quad, SvgQuad, t
 
 use crate::app_state::{
     AutopilotChatState, AutopilotMessage, AutopilotMessageStatus, AutopilotProgressBlock,
-    AutopilotProgressRow, AutopilotRole, ChatPaneInputs, ChatTranscriptSelectionState, PaneKind,
-    RenderState,
+    AutopilotProgressRow, AutopilotRole, ChatPaneInputs, ChatTranscriptSelectionState,
+    ManagedChatChannelProjection, ManagedChatGroupProjection, ManagedChatMessageProjection,
+    PaneKind, RenderState,
 };
 use crate::labor_orchestrator::CodexLaborBinding;
 use crate::pane_system::{
@@ -34,8 +35,8 @@ struct WrappedTranscriptLine {
 }
 
 struct ChatShellWorkspace {
-    label: &'static str,
-    initials: &'static str,
+    label: String,
+    initials: String,
     accent: wgpui::Hsla,
     active: bool,
 }
@@ -337,6 +338,25 @@ fn transcript_content_height(
     let markdown_parser = MarkdownParser::new();
     let markdown_renderer = MarkdownRenderer::with_config(chat_markdown_config());
 
+    if autopilot_chat.managed_chat_has_browseable_content() {
+        for message in autopilot_chat.active_managed_chat_messages() {
+            height += CHAT_TRANSCRIPT_LINE_HEIGHT;
+            if managed_message_reply_label(message).is_some() {
+                height += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+            }
+            let markdown_source = managed_message_markdown_source(message);
+            let markdown_document = markdown_parser.parse(&markdown_source);
+            let markdown_size =
+                markdown_renderer.measure(&markdown_document, markdown_width, text_system);
+            height += markdown_size.height.max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+            if managed_message_reaction_summary(message).is_some() {
+                height += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+            }
+            height += 8.0;
+        }
+        return height + 8.0;
+    }
+
     for message in &autopilot_chat.messages {
         height += CHAT_TRANSCRIPT_LINE_HEIGHT;
         let markdown_source = message_markdown_source(message);
@@ -454,6 +474,9 @@ fn transcript_message_layouts(
     composer_height: f32,
 ) -> Vec<(u64, Bounds)> {
     let autopilot_chat = &state.autopilot_chat;
+    if autopilot_chat.managed_chat_has_browseable_content() {
+        return Vec::new();
+    }
     let transcript_scroll_clip =
         transcript_scroll_clip_bounds_with_height(content_bounds, composer_height);
     let transcript_content_height = transcript_content_height(
@@ -531,7 +554,110 @@ fn compact_shell_label(value: &str) -> String {
     format!("{prefix}…{suffix}")
 }
 
+fn compact_hex_label(value: &str, prefix_chars: usize) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return "unknown".to_string();
+    }
+    let prefix = trimmed
+        .chars()
+        .take(prefix_chars.max(1))
+        .collect::<String>();
+    if trimmed.chars().count() <= prefix_chars.max(1) {
+        prefix
+    } else {
+        format!("{prefix}…")
+    }
+}
+
+fn shell_initials(value: &str) -> String {
+    let mut initials = value
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .take(2)
+        .collect::<String>()
+        .to_ascii_uppercase();
+    if initials.is_empty() {
+        initials.push_str("OA");
+    }
+    initials
+}
+
+fn managed_group_label(group: &ManagedChatGroupProjection) -> String {
+    group
+        .metadata
+        .name
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .map(compact_shell_label)
+        .unwrap_or_else(|| compact_shell_label(&group.group_id))
+}
+
+fn managed_channel_label(channel: &ManagedChatChannelProjection) -> String {
+    if !channel.metadata.name.trim().is_empty() {
+        compact_shell_label(&channel.metadata.name)
+    } else if let Some(slug) = channel.hints.slug.as_deref() {
+        compact_shell_label(slug)
+    } else {
+        compact_shell_label(&channel.channel_id)
+    }
+}
+
+fn managed_channel_subtitle(channel: &ManagedChatChannelProjection) -> String {
+    if channel.unread_count > 0 {
+        format!("{} unread", channel.unread_count)
+    } else if !channel.metadata.about.trim().is_empty() {
+        compact_shell_label(&channel.metadata.about)
+    } else {
+        format!("{}  •  read-only", channel.room_mode)
+    }
+}
+
+fn managed_status_text(autopilot_chat: &AutopilotChatState) -> String {
+    let server_count = autopilot_chat.managed_chat_projection.snapshot.groups.len();
+    let channel_count = autopilot_chat
+        .managed_chat_projection
+        .snapshot
+        .channels
+        .len();
+    let cached_events = autopilot_chat.managed_chat_projection.relay_events.len();
+    format!("{server_count} server(s)  •  {channel_count} channel(s)  •  {cached_events} cached")
+}
+
+fn managed_message_role_label(message: &ManagedChatMessageProjection) -> String {
+    format!("[{}]", compact_hex_label(&message.author_pubkey, 8))
+}
+
+fn managed_message_reply_label(message: &ManagedChatMessageProjection) -> Option<String> {
+    message
+        .reply_to_event_id
+        .as_deref()
+        .map(|reply_id| format!("reply {}", compact_hex_label(reply_id, 8)))
+}
+
+fn managed_message_reaction_summary(message: &ManagedChatMessageProjection) -> Option<String> {
+    if message.reaction_summaries.is_empty() {
+        return None;
+    }
+    Some(
+        message
+            .reaction_summaries
+            .iter()
+            .map(|reaction| format!("{} x{}", reaction.content, reaction.count))
+            .collect::<Vec<_>>()
+            .join("  "),
+    )
+}
+
+fn managed_message_markdown_source(message: &ManagedChatMessageProjection) -> String {
+    sanitize_chat_text(&message.content)
+}
+
 fn active_thread_title(autopilot_chat: &AutopilotChatState) -> String {
+    if let Some(channel) = autopilot_chat.active_managed_chat_channel() {
+        return managed_channel_label(channel);
+    }
+
     autopilot_chat
         .active_thread_id
         .as_ref()
@@ -548,6 +674,17 @@ fn active_thread_title(autopilot_chat: &AutopilotChatState) -> String {
 }
 
 fn active_thread_subtitle(autopilot_chat: &AutopilotChatState) -> String {
+    if let (Some(group), Some(channel)) = (
+        autopilot_chat.active_managed_chat_group(),
+        autopilot_chat.active_managed_chat_channel(),
+    ) {
+        return format!(
+            "{}  •  {} message(s)  •  read-only",
+            managed_group_label(group),
+            channel.message_ids.len()
+        );
+    }
+
     let status = autopilot_chat
         .active_thread_id
         .as_ref()
@@ -561,23 +698,51 @@ fn active_thread_subtitle(autopilot_chat: &AutopilotChatState) -> String {
     )
 }
 
-fn shell_workspaces() -> [ChatShellWorkspace; 3] {
-    [
+fn shell_workspaces(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellWorkspace> {
+    if autopilot_chat.managed_chat_has_browseable_content() {
+        let accents = [
+            theme::accent::PRIMARY,
+            theme::status::SUCCESS,
+            theme::status::WARNING,
+            theme::status::INFO,
+        ];
+        let active_group_id = autopilot_chat
+            .active_managed_chat_group()
+            .map(|group| group.group_id.as_str());
+        return autopilot_chat
+            .managed_chat_projection
+            .snapshot
+            .groups
+            .iter()
+            .enumerate()
+            .map(|(index, group)| {
+                let label = managed_group_label(group);
+                ChatShellWorkspace {
+                    initials: shell_initials(&label),
+                    label,
+                    accent: accents[index % accents.len()],
+                    active: active_group_id == Some(group.group_id.as_str()),
+                }
+            })
+            .collect();
+    }
+
+    vec![
         ChatShellWorkspace {
-            label: "OpenAgents",
-            initials: "OA",
+            label: "OpenAgents".to_string(),
+            initials: "OA".to_string(),
             accent: theme::accent::PRIMARY,
             active: true,
         },
         ChatShellWorkspace {
-            label: "Direct",
-            initials: "DM",
+            label: "Direct".to_string(),
+            initials: "DM".to_string(),
             accent: theme::status::SUCCESS,
             active: false,
         },
         ChatShellWorkspace {
-            label: "Ops",
-            initials: "OP",
+            label: "Ops".to_string(),
+            initials: "OP".to_string(),
             accent: theme::status::WARNING,
             active: false,
         },
@@ -585,6 +750,21 @@ fn shell_workspaces() -> [ChatShellWorkspace; 3] {
 }
 
 fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellChannelEntry> {
+    if autopilot_chat.managed_chat_has_browseable_content() {
+        let active_channel_id = autopilot_chat
+            .active_managed_chat_channel()
+            .map(|channel| channel.channel_id.as_str());
+        return autopilot_chat
+            .active_managed_chat_channels()
+            .into_iter()
+            .map(|channel| ChatShellChannelEntry {
+                title: format!("# {}", managed_channel_label(channel)),
+                subtitle: managed_channel_subtitle(channel),
+                active: active_channel_id == Some(channel.channel_id.as_str()),
+            })
+            .collect();
+    }
+
     let mut entries = vec![ChatShellChannelEntry {
         title: "# mission-control".to_string(),
         subtitle: "provider coordination".to_string(),
@@ -652,7 +832,7 @@ fn paint_chat_shell(
         9.0,
         theme::text::MUTED,
     ));
-    for (index, workspace) in shell_workspaces().iter().enumerate() {
+    for (index, workspace) in shell_workspaces(autopilot_chat).iter().enumerate() {
         let avatar_bounds = Bounds::new(
             workspace_bounds.origin.x
                 + (workspace_bounds.size.width - CHAT_WORKSPACE_AVATAR_SIZE) * 0.5,
@@ -684,13 +864,13 @@ fn paint_chat_shell(
                 .with_corner_radius(CHAT_WORKSPACE_AVATAR_SIZE * 0.5),
         );
         paint.scene.draw_text(paint.text.layout_mono(
-            workspace.initials,
+            &workspace.initials,
             Point::new(avatar_bounds.origin.x + 8.0, avatar_bounds.origin.y + 11.0),
             11.0,
             text_color,
         ));
         paint.scene.draw_text(paint.text.layout(
-            workspace.label,
+            &workspace.label,
             Point::new(
                 workspace_bounds.origin.x + 10.0,
                 avatar_bounds.max_y() + 4.0,
@@ -796,16 +976,20 @@ fn paint_chat_shell(
         10.0,
         theme::text::MUTED,
     ));
-    let status_text = format!(
-        "{}  •  {} model{}",
-        autopilot_chat.connection_status.trim(),
-        autopilot_chat.models.len(),
-        if autopilot_chat.models.len() == 1 {
-            ""
-        } else {
-            "s"
-        }
-    );
+    let status_text = if autopilot_chat.managed_chat_has_browseable_content() {
+        managed_status_text(autopilot_chat)
+    } else {
+        format!(
+            "{}  •  {} model{}",
+            autopilot_chat.connection_status.trim(),
+            autopilot_chat.models.len(),
+            if autopilot_chat.models.len() == 1 {
+                ""
+            } else {
+                "s"
+            }
+        )
+    };
     paint.scene.draw_text(paint.text.layout_mono(
         &status_text,
         Point::new(header_bounds.max_x() - 150.0, header_bounds.origin.y + 18.0),
@@ -814,10 +998,34 @@ fn paint_chat_shell(
     ));
 }
 
+fn paint_managed_chat_composer_placeholder(bounds: Bounds, paint: &mut PaintContext) {
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(theme::bg::SURFACE.with_alpha(0.78))
+            .with_border(theme::border::DEFAULT.with_alpha(0.45), 1.0)
+            .with_corner_radius(8.0),
+    );
+    paint.scene.draw_text(paint.text.layout(
+        "Read-only managed channel",
+        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 7.0),
+        11.0,
+        theme::text::PRIMARY,
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        "Send, retry, and publish state land in issue #3025.",
+        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 19.0),
+        9.0,
+        theme::text::MUTED,
+    ));
+}
+
 pub fn transcript_message_byte_offset_at_point(
     state: &mut RenderState,
     point: Point,
 ) -> Option<(u64, usize)> {
+    if state.autopilot_chat.managed_chat_has_browseable_content() {
+        return None;
+    }
     let content_bounds = top_chat_content_bounds(state)?;
     let composer_value = state.chat_inputs.composer.get_value().to_string();
     let composer_height = chat_composer_height_for_value(content_bounds, &composer_value);
@@ -859,6 +1067,9 @@ pub fn transcript_message_byte_offset_at_point(
 }
 
 pub fn transcript_message_copy_text_by_id(state: &RenderState, message_id: u64) -> Option<String> {
+    if state.autopilot_chat.managed_chat_has_browseable_content() {
+        return None;
+    }
     state
         .autopilot_chat
         .messages
@@ -871,6 +1082,9 @@ pub fn transcript_selection_text(
     state: &RenderState,
     selection: ChatTranscriptSelectionState,
 ) -> Option<String> {
+    if state.autopilot_chat.managed_chat_has_browseable_content() {
+        return None;
+    }
     let message_text = transcript_message_copy_text_by_id(state, selection.message_id)?;
     let start = clamp_to_char_boundary(&message_text, selection.start_byte_offset);
     let end = clamp_to_char_boundary(&message_text, selection.end_byte_offset);
@@ -939,8 +1153,13 @@ pub fn paint(
     chat_inputs: &mut ChatPaneInputs,
     paint: &mut PaintContext,
 ) {
-    let composer_value = chat_inputs.composer.get_value().to_string();
-    let composer_height = chat_composer_height_for_value(content_bounds, &composer_value);
+    let managed_chat_browse = autopilot_chat.managed_chat_has_browseable_content();
+    let composer_height = if managed_chat_browse {
+        30.0
+    } else {
+        let composer_value = chat_inputs.composer.get_value().to_string();
+        chat_composer_height_for_value(content_bounds, &composer_value)
+    };
     let transcript_body_bounds =
         chat_transcript_body_bounds_with_height(content_bounds, composer_height);
     let composer_bounds = chat_composer_input_bounds_with_height(content_bounds, composer_height);
@@ -961,6 +1180,90 @@ pub fn paint(
 
     paint.scene.push_clip(transcript_scroll_clip);
     let mut y = transcript_scroll_clip.origin.y + 8.0 - transcript_scroll_offset;
+
+    if managed_chat_browse {
+        let managed_messages = autopilot_chat.active_managed_chat_messages();
+        if managed_messages.is_empty() {
+            let empty_state = "No managed channel history backfilled yet.";
+            let empty_state_font_size = 18.0;
+            let empty_state_width = paint.text.measure(empty_state, empty_state_font_size);
+            let empty_state_x = transcript_scroll_clip.origin.x
+                + (transcript_scroll_clip.size.width - empty_state_width) * 0.5;
+            let empty_state_y = transcript_scroll_clip.origin.y
+                + transcript_scroll_clip.size.height * 0.5
+                - empty_state_font_size * 0.5;
+            paint.scene.draw_text(paint.text.layout(
+                empty_state,
+                Point::new(
+                    empty_state_x.max(transcript_scroll_clip.origin.x),
+                    empty_state_y,
+                ),
+                empty_state_font_size,
+                theme::text::MUTED,
+            ));
+        }
+
+        for message in managed_messages {
+            paint.scene.draw_text(paint.text.layout_mono(
+                &managed_message_role_label(message),
+                Point::new(transcript_scroll_clip.origin.x, y),
+                10.0,
+                theme::accent::PRIMARY,
+            ));
+            y += CHAT_TRANSCRIPT_LINE_HEIGHT;
+
+            if let Some(reply_label) = managed_message_reply_label(message) {
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &reply_label,
+                    Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+                y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+            }
+
+            let markdown_source = managed_message_markdown_source(message);
+            let markdown_document = markdown_parser.parse(&markdown_source);
+            let markdown_height = markdown_renderer
+                .render(
+                    &markdown_document,
+                    Point::new(transcript_scroll_clip.origin.x, y),
+                    markdown_width,
+                    paint.text,
+                    paint.scene,
+                )
+                .height
+                .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+            y += markdown_height;
+
+            if let Some(reaction_summary) = managed_message_reaction_summary(message) {
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &reaction_summary,
+                    Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+                y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+            }
+            y += 8.0;
+        }
+
+        paint.scene.pop_clip();
+
+        if let Some(error) = autopilot_chat.last_error.as_deref() {
+            paint.scene.draw_text(paint.text.layout(
+                error,
+                Point::new(
+                    transcript_body_bounds.origin.x,
+                    transcript_body_bounds.max_y() - 12.0,
+                ),
+                11.0,
+                theme::status::ERROR,
+            ));
+        }
+        paint_managed_chat_composer_placeholder(composer_bounds, paint);
+        return;
+    }
 
     if autopilot_chat.messages.is_empty() {
         let empty_state = "Ask me to do anything...";
@@ -1093,6 +1396,9 @@ pub fn paint(
 }
 
 pub fn dispatch_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
+    if state.autopilot_chat.managed_chat_has_browseable_content() {
+        return false;
+    }
     let top_chat = state
         .panes
         .iter()
