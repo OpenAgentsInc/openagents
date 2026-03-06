@@ -3,6 +3,8 @@ use crate::bitcoin_display::format_sats_amount;
 
 const MANAGED_CHAT_PUBLISH_TRANSPORT_UNWIRED: &str =
     "Managed chat relay publish transport is not wired yet; local echo saved for retry.";
+const MANAGED_CHAT_CONTROL_TRANSPORT_UNWIRED: &str =
+    "Managed chat relay control transport is not wired yet; no server state changed.";
 const DIRECT_MESSAGE_PUBLISH_TRANSPORT_UNWIRED: &str =
     "Direct message relay publish transport is not wired yet; local echo saved for retry.";
 
@@ -15,6 +17,33 @@ enum ManagedChatComposerIntent {
     Reaction {
         message_reference: String,
         reaction: String,
+    },
+    DeleteMessage {
+        message_reference: String,
+        reason: Option<String>,
+    },
+    RemoveUser {
+        member_reference: String,
+        reason: Option<String>,
+    },
+    Invite {
+        code: String,
+        reason: Option<String>,
+    },
+    Join {
+        invite_code: Option<String>,
+        reason: Option<String>,
+    },
+    Leave {
+        reason: Option<String>,
+    },
+    EditMetadata {
+        changes: Vec<Vec<String>>,
+        summary: String,
+    },
+    MuteMember {
+        member_reference: String,
+        muted: bool,
     },
 }
 
@@ -267,19 +296,6 @@ fn run_managed_chat_submit_action(state: &mut crate::app_state::RenderState) -> 
         return true;
     }
 
-    let Some(identity) = state.nostr_identity.as_ref() else {
-        state.autopilot_chat.last_error =
-            Some("No Nostr identity is loaded for managed chat publishing.".to_string());
-        return true;
-    };
-    let Some(group) = state.autopilot_chat.active_managed_chat_group().cloned() else {
-        state.autopilot_chat.last_error = Some("No managed chat group is selected.".to_string());
-        return true;
-    };
-    let Some(channel) = state.autopilot_chat.active_managed_chat_channel().cloned() else {
-        state.autopilot_chat.last_error = Some("No managed chat channel is selected.".to_string());
-        return true;
-    };
     let intent = match parse_managed_chat_composer_intent(&prompt) {
         Ok(intent) => intent,
         Err(error) => {
@@ -287,6 +303,69 @@ fn run_managed_chat_submit_action(state: &mut crate::app_state::RenderState) -> 
             return true;
         }
     };
+    let Some(group) = state.autopilot_chat.active_managed_chat_group().cloned() else {
+        state.autopilot_chat.last_error = Some("No managed chat group is selected.".to_string());
+        return true;
+    };
+
+    if let ManagedChatComposerIntent::MuteMember {
+        member_reference,
+        muted,
+    } = &intent
+    {
+        let Some(member) = resolve_managed_chat_member_reference(&group, member_reference) else {
+            state.autopilot_chat.last_error = Some(format!(
+                "Unknown managed chat member reference: {member_reference}"
+            ));
+            return true;
+        };
+        if let Err(error) = state
+            .autopilot_chat
+            .managed_chat_projection
+            .set_pubkey_muted(&member.pubkey, *muted)
+        {
+            state.autopilot_chat.last_error = Some(error);
+            return true;
+        }
+        state.chat_inputs.composer.set_value(String::new());
+        state.autopilot_chat.last_error = None;
+        state.autopilot_chat.set_copy_notice(
+            std::time::Instant::now(),
+            if *muted {
+                format!(
+                    "Locally muted {}. Relay membership and permissions are unchanged.",
+                    compact_member_reference(&member.pubkey)
+                )
+            } else {
+                format!(
+                    "Removed local mute for {}.",
+                    compact_member_reference(&member.pubkey)
+                )
+            },
+        );
+        return true;
+    }
+
+    let Some(identity) = state.nostr_identity.as_ref() else {
+        state.autopilot_chat.last_error =
+            Some("No Nostr identity is loaded for managed chat publishing.".to_string());
+        return true;
+    };
+
+    if matches!(
+        &intent,
+        ManagedChatComposerIntent::DeleteMessage { .. }
+            | ManagedChatComposerIntent::RemoveUser { .. }
+            | ManagedChatComposerIntent::Invite { .. }
+            | ManagedChatComposerIntent::EditMetadata { .. }
+    ) && !state.autopilot_chat.active_managed_chat_local_is_admin()
+    {
+        state.autopilot_chat.last_error = Some(
+            "Managed relay moderation commands require an admin role in the active group."
+                .to_string(),
+        );
+        return true;
+    }
 
     match intent {
         ManagedChatComposerIntent::Reaction {
@@ -299,6 +378,11 @@ fn run_managed_chat_submit_action(state: &mut crate::app_state::RenderState) -> 
                 state.autopilot_chat.last_error = Some(format!(
                     "Unknown managed chat message reference for reaction: {message_reference}"
                 ));
+                return true;
+            };
+            let Some(channel) = state.autopilot_chat.active_managed_chat_channel().cloned() else {
+                state.autopilot_chat.last_error =
+                    Some("No managed chat channel is selected.".to_string());
                 return true;
             };
             if let Err(error) = build_managed_chat_reaction_event(
@@ -322,6 +406,11 @@ fn run_managed_chat_submit_action(state: &mut crate::app_state::RenderState) -> 
             content,
             reply_reference,
         } => {
+            let Some(channel) = state.autopilot_chat.active_managed_chat_channel().cloned() else {
+                state.autopilot_chat.last_error =
+                    Some("No managed chat channel is selected.".to_string());
+                return true;
+            };
             let reply_target = match reply_reference.as_deref() {
                 Some(reference) => {
                     let Some(target_message) =
@@ -375,6 +464,131 @@ fn run_managed_chat_submit_action(state: &mut crate::app_state::RenderState) -> 
                 Some(MANAGED_CHAT_PUBLISH_TRANSPORT_UNWIRED.to_string());
             true
         }
+        ManagedChatComposerIntent::DeleteMessage {
+            message_reference,
+            reason,
+        } => {
+            let Some(target_message) =
+                resolve_managed_chat_message_reference(&state.autopilot_chat, &message_reference)
+            else {
+                state.autopilot_chat.last_error = Some(format!(
+                    "Unknown managed chat message reference for delete: {message_reference}"
+                ));
+                return true;
+            };
+            if let Err(error) = build_managed_chat_moderation_event(
+                identity,
+                &group.group_id,
+                nostr::ModerationAction::DeleteEvent {
+                    event_id: target_message.event_id.clone(),
+                },
+                reason.as_deref(),
+            ) {
+                state.autopilot_chat.last_error = Some(error);
+                return true;
+            }
+            state.chat_inputs.composer.set_value(String::new());
+            state.autopilot_chat.last_error = Some(format!(
+                "{MANAGED_CHAT_CONTROL_TRANSPORT_UNWIRED} Delete request for {} was not published.",
+                target_message.event_id
+            ));
+            true
+        }
+        ManagedChatComposerIntent::RemoveUser {
+            member_reference,
+            reason,
+        } => {
+            let Some(member) = resolve_managed_chat_member_reference(&group, &member_reference) else {
+                state.autopilot_chat.last_error = Some(format!(
+                    "Unknown managed chat member reference: {member_reference}"
+                ));
+                return true;
+            };
+            if let Err(error) = build_managed_chat_moderation_event(
+                identity,
+                &group.group_id,
+                nostr::ModerationAction::RemoveUser {
+                    pubkey: member.pubkey.clone(),
+                },
+                reason.as_deref(),
+            ) {
+                state.autopilot_chat.last_error = Some(error);
+                return true;
+            }
+            state.chat_inputs.composer.set_value(String::new());
+            state.autopilot_chat.last_error = Some(format!(
+                "{MANAGED_CHAT_CONTROL_TRANSPORT_UNWIRED} Remove-user request for {} was not published.",
+                member.pubkey
+            ));
+            true
+        }
+        ManagedChatComposerIntent::Invite { code, reason } => {
+            if let Err(error) = build_managed_chat_moderation_event(
+                identity,
+                &group.group_id,
+                nostr::ModerationAction::CreateInvite { code: code.clone() },
+                reason.as_deref(),
+            ) {
+                state.autopilot_chat.last_error = Some(error);
+                return true;
+            }
+            state.chat_inputs.composer.set_value(String::new());
+            state.autopilot_chat.last_error = Some(format!(
+                "{MANAGED_CHAT_CONTROL_TRANSPORT_UNWIRED} Invite code `{code}` was not published."
+            ));
+            true
+        }
+        ManagedChatComposerIntent::Join {
+            invite_code,
+            reason,
+        } => {
+            if let Err(error) = build_managed_chat_join_request_event(
+                identity,
+                &group.group_id,
+                invite_code.as_deref(),
+                reason.as_deref(),
+            ) {
+                state.autopilot_chat.last_error = Some(error);
+                return true;
+            }
+            state.chat_inputs.composer.set_value(String::new());
+            state.autopilot_chat.last_error = Some(format!(
+                "{MANAGED_CHAT_CONTROL_TRANSPORT_UNWIRED} Join request for {} was not published.",
+                group.group_id
+            ));
+            true
+        }
+        ManagedChatComposerIntent::Leave { reason } => {
+            if let Err(error) =
+                build_managed_chat_leave_request_event(identity, &group.group_id, reason.as_deref())
+            {
+                state.autopilot_chat.last_error = Some(error);
+                return true;
+            }
+            state.chat_inputs.composer.set_value(String::new());
+            state.autopilot_chat.last_error = Some(format!(
+                "{MANAGED_CHAT_CONTROL_TRANSPORT_UNWIRED} Leave request for {} was not published.",
+                group.group_id
+            ));
+            true
+        }
+        ManagedChatComposerIntent::EditMetadata { changes, summary } => {
+            if let Err(error) = build_managed_chat_moderation_event(
+                identity,
+                &group.group_id,
+                nostr::ModerationAction::EditMetadata { changes },
+                None,
+            ) {
+                state.autopilot_chat.last_error = Some(error);
+                return true;
+            }
+            state.chat_inputs.composer.set_value(String::new());
+            state.autopilot_chat.last_error = Some(format!(
+                "{MANAGED_CHAT_CONTROL_TRANSPORT_UNWIRED} Metadata edit `{summary}` was not published."
+            ));
+            true
+        }
+        ManagedChatComposerIntent::MuteMember { .. } => unreachable!(),
     }
 }
 
@@ -565,10 +779,237 @@ fn parse_managed_chat_composer_intent(prompt: &str) -> Result<ManagedChatCompose
             reaction: reaction.to_string(),
         });
     }
+    if let Some(rest) = trimmed.strip_prefix("delete ") {
+        let (message_reference, reason) = parse_reference_with_optional_reason(
+            rest,
+            "Delete syntax is `delete <message-number|id-prefix> [reason]`",
+        )?;
+        return Ok(ManagedChatComposerIntent::DeleteMessage {
+            message_reference,
+            reason,
+        });
+    }
+    if let Some(rest) = trimmed.strip_prefix("remove ") {
+        let (member_reference, reason) = parse_reference_with_optional_reason(
+            rest,
+            "Remove syntax is `remove <member-pubkey-prefix> [reason]`",
+        )?;
+        return Ok(ManagedChatComposerIntent::RemoveUser {
+            member_reference,
+            reason,
+        });
+    }
+    if let Some(rest) = trimmed.strip_prefix("invite ") {
+        let (code, reason) = parse_code_with_optional_reason(
+            rest,
+            "Invite syntax is `invite <code> [reason]`",
+        )?;
+        return Ok(ManagedChatComposerIntent::Invite { code, reason });
+    }
+    if trimmed == "join" || trimmed.starts_with("join ") {
+        let (invite_code, reason) = parse_join_command(
+            trimmed.strip_prefix("join").unwrap_or_default(),
+        )?;
+        return Ok(ManagedChatComposerIntent::Join {
+            invite_code,
+            reason,
+        });
+    }
+    if trimmed == "leave" || trimmed.starts_with("leave ") {
+        return Ok(ManagedChatComposerIntent::Leave {
+            reason: trimmed
+                .strip_prefix("leave")
+                .map(str::trim)
+                .filter(|reason| !reason.is_empty())
+                .map(ToString::to_string),
+        });
+    }
+    if let Some(rest) = trimmed.strip_prefix("meta ").or_else(|| trimmed.strip_prefix("metadata "))
+    {
+        let (changes, summary) = parse_managed_chat_metadata_changes(rest)?;
+        return Ok(ManagedChatComposerIntent::EditMetadata { changes, summary });
+    }
+    if let Some(rest) = trimmed.strip_prefix("mute ") {
+        let reference = rest.trim();
+        if reference.is_empty() {
+            return Err("Mute syntax is `mute <member-pubkey-prefix>`".to_string());
+        }
+        return Ok(ManagedChatComposerIntent::MuteMember {
+            member_reference: reference.to_string(),
+            muted: true,
+        });
+    }
+    if let Some(rest) = trimmed.strip_prefix("unmute ") {
+        let reference = rest.trim();
+        if reference.is_empty() {
+            return Err("Unmute syntax is `unmute <member-pubkey-prefix>`".to_string());
+        }
+        return Ok(ManagedChatComposerIntent::MuteMember {
+            member_reference: reference.to_string(),
+            muted: false,
+        });
+    }
     Ok(ManagedChatComposerIntent::ChannelMessage {
         content: trimmed.to_string(),
         reply_reference: None,
     })
+}
+
+fn parse_reference_with_optional_reason(
+    raw: &str,
+    syntax: &str,
+) -> Result<(String, Option<String>), String> {
+    let mut parts = raw.trim().splitn(2, char::is_whitespace);
+    let reference = parts
+        .next()
+        .map(str::trim)
+        .filter(|reference| !reference.is_empty())
+        .ok_or_else(|| syntax.to_string())?;
+    let reason = parts
+        .next()
+        .map(str::trim)
+        .filter(|reason| !reason.is_empty())
+        .map(ToString::to_string);
+    Ok((reference.to_string(), reason))
+}
+
+fn parse_code_with_optional_reason(
+    raw: &str,
+    syntax: &str,
+) -> Result<(String, Option<String>), String> {
+    let mut parts = raw.trim().splitn(2, char::is_whitespace);
+    let code = parts
+        .next()
+        .map(str::trim)
+        .filter(|code| !code.is_empty())
+        .ok_or_else(|| syntax.to_string())?;
+    let reason = parts
+        .next()
+        .map(str::trim)
+        .filter(|reason| !reason.is_empty())
+        .map(ToString::to_string);
+    Ok((code.to_string(), reason))
+}
+
+fn parse_join_command(raw: &str) -> Result<(Option<String>, Option<String>), String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok((None, None));
+    }
+    let mut parts = trimmed.splitn(2, '|').map(str::trim);
+    let left = parts.next().unwrap_or_default();
+    let right = parts.next().map(str::trim).filter(|value| !value.is_empty());
+    let invite_code = if left.is_empty() {
+        None
+    } else if left.contains(char::is_whitespace) {
+        return Ok((None, Some(left.to_string())));
+    } else {
+        Some(left.to_string())
+    };
+    let reason = right
+        .map(ToString::to_string)
+        .or_else(|| (invite_code.is_none() && !left.is_empty()).then(|| left.to_string()));
+    Ok((invite_code, reason))
+}
+
+fn parse_managed_chat_metadata_changes(
+    raw: &str,
+) -> Result<(Vec<Vec<String>>, String), String> {
+    let mut changes = Vec::new();
+    let mut summaries = Vec::new();
+    for segment in raw.split('|') {
+        let segment = segment.trim();
+        if segment.is_empty() {
+            continue;
+        }
+        let mut parts = segment.splitn(2, '=');
+        let key = parts
+            .next()
+            .map(str::trim)
+            .filter(|key| !key.is_empty())
+            .ok_or_else(|| {
+                "Metadata syntax is `meta name=<...> | about=<...> | private=<true|false> | restricted=<true|false> | hidden=<true|false> | closed=<true|false> | picture=<url>`".to_string()
+            })?
+            .to_ascii_lowercase();
+        let value = parts
+            .next()
+            .map(str::trim)
+            .ok_or_else(|| {
+                "Metadata syntax is `meta name=<...> | about=<...> | private=<true|false> | restricted=<true|false> | hidden=<true|false> | closed=<true|false> | picture=<url>`".to_string()
+            })?;
+        match key.as_str() {
+            "name" | "about" | "picture" => {
+                changes.push(vec![key.clone(), value.to_string()]);
+                summaries.push(format!("{key}={value}"));
+            }
+            "private" | "restricted" | "hidden" | "closed" => {
+                let enabled = parse_bool_flag(value).ok_or_else(|| {
+                    format!("Metadata flag `{key}` expects true/false, on/off, or yes/no.")
+                })?;
+                let tag = match (key.as_str(), enabled) {
+                    ("private", true) => "private",
+                    ("private", false) => "public",
+                    ("restricted", true) => "restricted",
+                    ("restricted", false) => "unrestricted",
+                    ("hidden", true) => "hidden",
+                    ("hidden", false) => "visible",
+                    ("closed", true) => "closed",
+                    ("closed", false) => "open",
+                    _ => unreachable!(),
+                };
+                changes.push(vec![tag.to_string()]);
+                summaries.push(format!("{key}={enabled}"));
+            }
+            _ => {
+                return Err(format!(
+                    "Unsupported metadata field `{key}`. Use name, about, picture, private, restricted, hidden, or closed."
+                ));
+            }
+        }
+    }
+    if changes.is_empty() {
+        return Err(
+            "Metadata syntax is `meta name=<...> | about=<...> | private=<true|false> | restricted=<true|false> | hidden=<true|false> | closed=<true|false> | picture=<url>`".to_string(),
+        );
+    }
+    Ok((changes, summaries.join(" | ")))
+}
+
+fn parse_bool_flag(raw: &str) -> Option<bool> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "true" | "yes" | "on" | "1" => Some(true),
+        "false" | "no" | "off" | "0" => Some(false),
+        _ => None,
+    }
+}
+
+fn resolve_managed_chat_member_reference<'a>(
+    group: &'a crate::app_state::ManagedChatGroupProjection,
+    reference: &str,
+) -> Option<&'a crate::app_state::ManagedChatMemberProjection> {
+    let normalized = reference
+        .trim()
+        .trim_start_matches('@')
+        .trim_start_matches('#')
+        .to_ascii_lowercase();
+    if normalized.is_empty() {
+        return None;
+    }
+    let matches = group
+        .members
+        .iter()
+        .filter(|member| member.pubkey.starts_with(&normalized))
+        .collect::<Vec<_>>();
+    (matches.len() == 1).then_some(matches[0])
+}
+
+fn compact_member_reference(pubkey: &str) -> String {
+    let trimmed = pubkey.trim();
+    if trimmed.len() <= 8 {
+        trimmed.to_string()
+    } else {
+        trimmed.chars().take(8).collect()
+    }
 }
 
 fn resolve_managed_chat_message_reference<'a>(
@@ -742,6 +1183,106 @@ fn build_managed_chat_outbound_message(
         attempt_count: 1,
         last_error: None,
     })
+}
+
+fn finalize_signed_nostr_event(
+    identity: &nostr::NostrIdentity,
+    kind: u16,
+    created_at: u64,
+    tags: Vec<Vec<String>>,
+    content: String,
+) -> Result<nostr::Event, String> {
+    let secret_key_bytes = hex::decode(&identity.private_key_hex)
+        .map_err(|error| format!("Invalid Nostr private key hex: {error}"))?;
+    let secret_key = secret_key_bytes
+        .try_into()
+        .map_err(|_| "Invalid Nostr private key length".to_string())?;
+    nostr::finalize_event(
+        &nostr::EventTemplate {
+            created_at,
+            kind,
+            tags,
+            content,
+        },
+        &secret_key,
+    )
+    .map_err(|error| format!("Failed to sign managed chat control event: {error}"))
+}
+
+fn build_managed_chat_moderation_event(
+    identity: &nostr::NostrIdentity,
+    group_id: &str,
+    action: nostr::ModerationAction,
+    reason: Option<&str>,
+) -> Result<nostr::Event, String> {
+    let now_ms = current_epoch_millis();
+    let created_at = (now_ms / 1_000).max(1);
+    let mut event = nostr::ModerationEvent::new(group_id, action, created_at)
+        .map_err(|error| format!("Failed to build managed chat moderation event: {error}"))?;
+    if let Some(reason) = reason.map(str::trim).filter(|reason| !reason.is_empty()) {
+        event = event.with_reason(reason);
+    }
+    let mut tags = event
+        .to_tags()
+        .map_err(|error| format!("Failed to encode managed chat moderation tags: {error}"))?;
+    tags.push(vec!["nonce".to_string(), now_ms.to_string()]);
+    finalize_signed_nostr_event(
+        identity,
+        event.kind(),
+        created_at,
+        tags,
+        event.reason.unwrap_or_default(),
+    )
+}
+
+fn build_managed_chat_join_request_event(
+    identity: &nostr::NostrIdentity,
+    group_id: &str,
+    invite_code: Option<&str>,
+    reason: Option<&str>,
+) -> Result<nostr::Event, String> {
+    let now_ms = current_epoch_millis();
+    let created_at = (now_ms / 1_000).max(1);
+    let mut event = nostr::JoinRequestEvent::new(group_id, created_at)
+        .map_err(|error| format!("Failed to build join request: {error}"))?;
+    if let Some(code) = invite_code.map(str::trim).filter(|code| !code.is_empty()) {
+        event = event.with_invite_code(code);
+    }
+    if let Some(reason) = reason.map(str::trim).filter(|reason| !reason.is_empty()) {
+        event = event.with_reason(reason);
+    }
+    let mut tags = event.to_tags();
+    tags.push(vec!["nonce".to_string(), now_ms.to_string()]);
+    finalize_signed_nostr_event(
+        identity,
+        nostr::nip29::KIND_JOIN_REQUEST,
+        created_at,
+        tags,
+        event.reason.unwrap_or_default(),
+    )
+}
+
+fn build_managed_chat_leave_request_event(
+    identity: &nostr::NostrIdentity,
+    group_id: &str,
+    reason: Option<&str>,
+) -> Result<nostr::Event, String> {
+    let now_ms = current_epoch_millis();
+    let created_at = (now_ms / 1_000).max(1);
+    let mut event = nostr::LeaveRequestEvent::new(group_id, created_at)
+        .map_err(|error| format!("Failed to build leave request: {error}"))?;
+    if let Some(reason) = reason.map(str::trim).filter(|reason| !reason.is_empty()) {
+        event = event.with_reason(reason);
+    }
+    let mut tags = event.to_tags();
+    tags.push(vec!["nonce".to_string(), now_ms.to_string()]);
+    finalize_signed_nostr_event(
+        identity,
+        nostr::nip29::KIND_LEAVE_REQUEST,
+        created_at,
+        tags,
+        event.reason.unwrap_or_default(),
+    )
 }
 
 fn parse_direct_message_creation_intent(
@@ -7061,12 +7602,14 @@ pub(super) fn parse_positive_amount_str(raw: &str, label: &str) -> Result<u64, S
 mod tests {
     use super::{
         DirectMessageComposerIntent, ManagedChatComposerIntent,
-        build_direct_message_outbound_message, build_managed_chat_outbound_message,
-        build_managed_chat_reaction_event, build_nip90_request_event_for_network_submission,
-        classify_provider_failure, extract_target_provider_pubkeys, is_taxonomy_failure_detail,
-        loop_integrity_alert_specs, nip90_request_kind_for_request_type,
-        parse_direct_message_creation_intent, parse_direct_message_room_intent,
-        parse_managed_chat_composer_intent, parse_managed_chat_mention_prefix,
+        build_direct_message_outbound_message, build_managed_chat_join_request_event,
+        build_managed_chat_leave_request_event, build_managed_chat_moderation_event,
+        build_managed_chat_outbound_message, build_managed_chat_reaction_event,
+        build_nip90_request_event_for_network_submission, classify_provider_failure,
+        extract_target_provider_pubkeys, is_taxonomy_failure_detail, loop_integrity_alert_specs,
+        nip90_request_kind_for_request_type, parse_direct_message_creation_intent,
+        parse_direct_message_room_intent, parse_managed_chat_composer_intent,
+        parse_managed_chat_mention_prefix,
         resolve_wallet_blink_env_from_secure_values,
         resolve_wallet_settlement_pointer_for_open_network_job,
         stable_sats_period_convert_totals_from_receipts,
@@ -7544,6 +8087,65 @@ mod tests {
     }
 
     #[test]
+    fn managed_chat_composer_intent_parses_admin_join_and_local_mute_commands() {
+        assert_eq!(
+            parse_managed_chat_composer_intent("delete #4 spam").unwrap(),
+            ManagedChatComposerIntent::DeleteMessage {
+                message_reference: "#4".to_string(),
+                reason: Some("spam".to_string()),
+            }
+        );
+        assert_eq!(
+            parse_managed_chat_composer_intent("remove abcd1234 abuse").unwrap(),
+            ManagedChatComposerIntent::RemoveUser {
+                member_reference: "abcd1234".to_string(),
+                reason: Some("abuse".to_string()),
+            }
+        );
+        assert_eq!(
+            parse_managed_chat_composer_intent("invite launchcode staged rollout").unwrap(),
+            ManagedChatComposerIntent::Invite {
+                code: "launchcode".to_string(),
+                reason: Some("staged rollout".to_string()),
+            }
+        );
+        assert_eq!(
+            parse_managed_chat_composer_intent("join beta42 | let me in").unwrap(),
+            ManagedChatComposerIntent::Join {
+                invite_code: Some("beta42".to_string()),
+                reason: Some("let me in".to_string()),
+            }
+        );
+        assert_eq!(
+            parse_managed_chat_composer_intent("leave stepping out").unwrap(),
+            ManagedChatComposerIntent::Leave {
+                reason: Some("stepping out".to_string()),
+            }
+        );
+        assert_eq!(
+            parse_managed_chat_composer_intent("mute deadbeef").unwrap(),
+            ManagedChatComposerIntent::MuteMember {
+                member_reference: "deadbeef".to_string(),
+                muted: true,
+            }
+        );
+        assert_eq!(
+            parse_managed_chat_composer_intent("unmute deadbeef").unwrap(),
+            ManagedChatComposerIntent::MuteMember {
+                member_reference: "deadbeef".to_string(),
+                muted: false,
+            }
+        );
+        assert!(matches!(
+            parse_managed_chat_composer_intent(
+                "meta name=Ops | private=true | restricted=false | closed=false"
+            )
+            .unwrap(),
+            ManagedChatComposerIntent::EditMetadata { .. }
+        ));
+    }
+
+    #[test]
     fn managed_chat_mention_prefix_parser_requires_hex_prefixes() {
         assert_eq!(
             parse_managed_chat_mention_prefix("@abcd1234,"),
@@ -7622,6 +8224,59 @@ mod tests {
             tag.first().map(String::as_str) == Some("p")
                 && tag.get(1).map(String::as_str) == Some(target_message.author_pubkey.as_str())
         }));
+    }
+
+    #[test]
+    fn managed_chat_event_builders_cover_join_leave_and_moderation_controls() {
+        let identity = fixture_identity();
+
+        let join = build_managed_chat_join_request_event(
+            &identity,
+            "oa-main",
+            Some("launchcode"),
+            Some("request access"),
+        )
+        .expect("join request");
+        assert_eq!(join.kind, nostr::nip29::KIND_JOIN_REQUEST);
+        assert!(join
+            .tags
+            .iter()
+            .any(|tag| tag.first().map(String::as_str) == Some("code")));
+
+        let leave = build_managed_chat_leave_request_event(
+            &identity,
+            "oa-main",
+            Some("done for today"),
+        )
+        .expect("leave request");
+        assert_eq!(leave.kind, nostr::nip29::KIND_LEAVE_REQUEST);
+
+        let moderation = build_managed_chat_moderation_event(
+            &identity,
+            "oa-main",
+            nostr::ModerationAction::EditMetadata {
+                changes: vec![
+                    vec!["name".to_string(), "Ops".to_string()],
+                    vec!["private".to_string()],
+                    vec!["open".to_string()],
+                ],
+            },
+            Some("tighten access"),
+        )
+        .expect("moderation event");
+        assert_eq!(moderation.kind, nostr::nip29::KIND_EDIT_METADATA);
+        assert!(moderation
+            .tags
+            .iter()
+            .any(|tag| tag.first().map(String::as_str) == Some("name")));
+        assert!(moderation
+            .tags
+            .iter()
+            .any(|tag| tag.first().map(String::as_str) == Some("private")));
+        assert!(moderation
+            .tags
+            .iter()
+            .any(|tag| tag.first().map(String::as_str) == Some("open")));
     }
 
     #[test]

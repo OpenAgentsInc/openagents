@@ -52,6 +52,8 @@ pub struct ManagedChatLocalState {
     pub read_cursors: BTreeMap<String, ManagedChatReadCursor>,
     #[serde(default)]
     pub collapsed_category_keys: BTreeSet<String>,
+    #[serde(default)]
+    pub muted_pubkeys: BTreeSet<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -217,6 +219,33 @@ impl ManagedChatProjectionState {
             .filter(|value| !value.is_empty())
             .map(str::to_ascii_lowercase);
         self.refresh_projection("Configured managed chat identity");
+    }
+
+    pub fn local_pubkey(&self) -> Option<&str> {
+        self.local_pubkey.as_deref()
+    }
+
+    pub fn is_pubkey_muted(&self, pubkey: &str) -> bool {
+        self.local_state
+            .muted_pubkeys
+            .contains(&pubkey.trim().to_ascii_lowercase())
+    }
+
+    pub fn set_pubkey_muted(&mut self, pubkey: &str, muted: bool) -> Result<(), String> {
+        let normalized = pubkey.trim().to_ascii_lowercase();
+        if normalized.len() != 64 || !normalized.chars().all(|ch| ch.is_ascii_hexdigit()) {
+            return Err(format!("Invalid Nostr public key hex: {pubkey}"));
+        }
+        if muted {
+            self.local_state.muted_pubkeys.insert(normalized.clone());
+        } else {
+            self.local_state.muted_pubkeys.remove(&normalized);
+        }
+        self.persist_current_state(if muted {
+            format!("Muted managed chat member {normalized}")
+        } else {
+            format!("Unmuted managed chat member {normalized}")
+        })
     }
 
     pub fn record_relay_event(&mut self, event: Event) {
@@ -1247,9 +1276,13 @@ fn apply_group_metadata_changes(metadata: &mut GroupMetadata, changes: &[Vec<Str
                 metadata.about = change.get(1).cloned();
             }
             Some("private") => metadata.private = true,
+            Some("public") => metadata.private = false,
             Some("restricted") => metadata.restricted = true,
+            Some("unrestricted") => metadata.restricted = false,
             Some("hidden") => metadata.hidden = true,
+            Some("visible") => metadata.hidden = false,
             Some("closed") => metadata.closed = true,
+            Some("open") => metadata.closed = false,
             _ => {}
         }
     }
@@ -1677,6 +1710,27 @@ mod tests {
         )
     }
 
+    fn build_edit_metadata_event(
+        id_ch: char,
+        created_at: u64,
+        changes: Vec<Vec<String>>,
+    ) -> Event {
+        let template = ModerationEvent::new(
+            "oa-main",
+            ModerationAction::EditMetadata { changes },
+            created_at,
+        )
+        .unwrap();
+        signed_event(
+            id_ch,
+            '5',
+            created_at,
+            template.kind(),
+            template.to_tags().unwrap(),
+            "edit metadata".to_string(),
+        )
+    }
+
     #[test]
     fn managed_chat_projection_rebuild_is_deterministic_across_arrival_order_and_reload() {
         let temp = tempdir().unwrap();
@@ -1808,6 +1862,50 @@ mod tests {
                 .iter()
                 .any(|member| member.pubkey == repeated_hex('b', 64))
         );
+    }
+
+    #[test]
+    fn managed_chat_projection_applies_metadata_toggle_changes_from_moderation_events() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("managed-chat.json");
+        let mut projection = ManagedChatProjectionState::from_projection_path_for_tests(path);
+
+        let metadata_event = signed_event(
+            'a',
+            '1',
+            10,
+            39000,
+            GroupMetadataEvent::new(
+                "oa-main",
+                GroupMetadata::new()
+                    .with_name("Ops")
+                    .with_private(true)
+                    .with_restricted(true)
+                    .with_hidden(true)
+                    .with_closed(true),
+                10,
+            )
+            .unwrap()
+            .to_tags(),
+            String::new(),
+        );
+        let edit_metadata = build_edit_metadata_event(
+            'b',
+            11,
+            vec![
+                vec!["public".to_string()],
+                vec!["unrestricted".to_string()],
+                vec!["visible".to_string()],
+                vec!["open".to_string()],
+            ],
+        );
+        projection.replace_relay_events(vec![metadata_event, edit_metadata]);
+
+        let metadata = &projection.snapshot.groups[0].metadata;
+        assert!(!metadata.private);
+        assert!(!metadata.restricted);
+        assert!(!metadata.hidden);
+        assert!(!metadata.closed);
     }
 
     #[test]
@@ -1999,6 +2097,23 @@ mod tests {
 
         let reloaded = ManagedChatProjectionState::from_projection_path_for_tests(path);
         assert!(reloaded.category_is_collapsed("oa-main", "ops"));
+    }
+
+    #[test]
+    fn managed_chat_projection_persists_local_muted_members() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("managed-chat.json");
+        let mut projection =
+            ManagedChatProjectionState::from_projection_path_for_tests(path.clone());
+        let muted_pubkey = repeated_hex('a', 64);
+
+        projection
+            .set_pubkey_muted(&muted_pubkey, true)
+            .expect("mute member");
+        assert!(projection.is_pubkey_muted(&muted_pubkey));
+
+        let reloaded = ManagedChatProjectionState::from_projection_path_for_tests(path);
+        assert!(reloaded.is_pubkey_muted(&muted_pubkey));
     }
 
     #[test]
