@@ -2525,6 +2525,7 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::ChatRespondToolCall => run_chat_tool_call_response_action(state),
         PaneHitAction::ChatRespondToolUserInput => run_chat_tool_user_input_response_action(state),
         PaneHitAction::ChatRespondAuthRefresh => run_chat_auth_refresh_response_action(state),
+        PaneHitAction::ChatSelectWorkspace(index) => run_chat_select_workspace_action(state, index),
         PaneHitAction::ChatSelectThread(index) => run_chat_select_thread_action(state, index),
         PaneHitAction::GoOnlineToggle => {
             let wants_online = matches!(

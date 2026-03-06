@@ -750,6 +750,143 @@ impl AutopilotChatState {
         self.connection_status = status.into();
     }
 
+    pub fn managed_chat_has_browseable_content(&self) -> bool {
+        !self.managed_chat_projection.snapshot.groups.is_empty()
+            && !self.managed_chat_projection.snapshot.channels.is_empty()
+    }
+
+    pub fn active_managed_chat_group(&self) -> Option<&ManagedChatGroupProjection> {
+        if let Some(selected_group_id) = self
+            .managed_chat_projection
+            .local_state
+            .selected_group_id
+            .as_deref()
+            && let Some(group) = self
+                .managed_chat_projection
+                .snapshot
+                .groups
+                .iter()
+                .find(|group| group.group_id == selected_group_id)
+        {
+            return Some(group);
+        }
+        self.managed_chat_projection.snapshot.groups.first()
+    }
+
+    pub fn active_managed_chat_channel(&self) -> Option<&ManagedChatChannelProjection> {
+        let active_group = self.active_managed_chat_group()?;
+        if let Some(selected_channel_id) = self
+            .managed_chat_projection
+            .local_state
+            .selected_channel_id
+            .as_deref()
+            && let Some(channel) =
+                self.managed_chat_projection
+                    .snapshot
+                    .channels
+                    .iter()
+                    .find(|channel| {
+                        channel.channel_id == selected_channel_id
+                            && channel.group_id == active_group.group_id
+                    })
+        {
+            return Some(channel);
+        }
+        active_group.channel_ids.first().and_then(|channel_id| {
+            self.managed_chat_projection
+                .snapshot
+                .channels
+                .iter()
+                .find(|channel| channel.channel_id == *channel_id)
+        })
+    }
+
+    pub fn active_managed_chat_channels(&self) -> Vec<&ManagedChatChannelProjection> {
+        let Some(active_group) = self.active_managed_chat_group() else {
+            return Vec::new();
+        };
+        active_group
+            .channel_ids
+            .iter()
+            .filter_map(|channel_id| {
+                self.managed_chat_projection
+                    .snapshot
+                    .channels
+                    .iter()
+                    .find(|channel| channel.channel_id == *channel_id)
+            })
+            .collect()
+    }
+
+    pub fn active_managed_chat_messages(&self) -> Vec<&ManagedChatMessageProjection> {
+        let Some(active_channel) = self.active_managed_chat_channel() else {
+            return Vec::new();
+        };
+        active_channel
+            .message_ids
+            .iter()
+            .filter_map(|message_id| {
+                self.managed_chat_projection
+                    .snapshot
+                    .messages
+                    .get(message_id)
+            })
+            .collect()
+    }
+
+    pub fn select_managed_chat_group_by_index(&mut self, index: usize) -> bool {
+        let Some(group_id) = self
+            .managed_chat_projection
+            .snapshot
+            .groups
+            .get(index)
+            .map(|group| group.group_id.clone())
+        else {
+            return false;
+        };
+        match self.managed_chat_projection.set_selected_group(&group_id) {
+            Ok(()) => {
+                self.reset_transcript_scroll();
+                self.last_error = None;
+                true
+            }
+            Err(error) => {
+                self.last_error = Some(error);
+                false
+            }
+        }
+    }
+
+    pub fn select_managed_chat_channel_by_index(&mut self, index: usize) -> bool {
+        let Some(group_id) = self
+            .active_managed_chat_group()
+            .map(|group| group.group_id.clone())
+        else {
+            return false;
+        };
+        let Some(channel_id) = self
+            .active_managed_chat_channels()
+            .get(index)
+            .map(|channel| channel.channel_id.clone())
+        else {
+            return false;
+        };
+        match self
+            .managed_chat_projection
+            .set_selected_channel(&group_id, &channel_id)
+        {
+            Ok(()) => {
+                self.reset_transcript_scroll();
+                self.last_error = None;
+                true
+            }
+            Err(error) => {
+                self.last_error = Some(error);
+                false
+            }
+        }
+    }
+
     pub fn set_thread_entries(&mut self, entries: Vec<AutopilotThreadListEntry>) {
         let previous_active_thread_id = self.active_thread_id.clone();
         let previous_metadata = self.thread_metadata.clone();
@@ -5974,6 +6111,125 @@ mod tests {
         assert_eq!(params.model_providers, Some(vec!["openai".to_string()]));
         assert_eq!(params.search_term.as_deref(), Some("alpha"));
         assert_eq!(params.cwd.as_deref(), Some("/workspace"));
+    }
+
+    #[test]
+    fn chat_state_browses_managed_chat_projection_channels_read_only() {
+        fn repeated_hex(ch: char, len: usize) -> String {
+            std::iter::repeat_n(ch, len).collect()
+        }
+
+        fn signed_event(
+            id_ch: char,
+            pubkey_ch: char,
+            created_at: u64,
+            kind: u16,
+            tags: Vec<Vec<String>>,
+            content: String,
+        ) -> nostr::Event {
+            nostr::Event {
+                id: repeated_hex(id_ch, 64),
+                pubkey: repeated_hex(pubkey_ch, 64),
+                created_at,
+                kind,
+                tags,
+                content,
+                sig: repeated_hex('f', 128),
+            }
+        }
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("managed-chat.json");
+        let mut chat = AutopilotChatState::default();
+        chat.managed_chat_projection =
+            super::ManagedChatProjectionState::from_projection_path_for_tests(path);
+
+        let group_metadata = nostr::GroupMetadataEvent::new(
+            "oa-main",
+            nostr::GroupMetadata::new().with_name("Ops"),
+            10,
+        )
+        .expect("group metadata");
+        let channel_alpha = nostr::ManagedChannelCreateEvent::new(
+            "oa-main",
+            nostr::ChannelMetadata::new("alpha", "", ""),
+            20,
+        )
+        .expect("channel alpha")
+        .with_hints(
+            nostr::ManagedChannelHints::new()
+                .with_channel_type(nostr::ManagedChannelType::Ops)
+                .with_position(1),
+        )
+        .expect("alpha hints");
+        let channel_beta = nostr::ManagedChannelCreateEvent::new(
+            "oa-main",
+            nostr::ChannelMetadata::new("beta", "", ""),
+            21,
+        )
+        .expect("channel beta")
+        .with_hints(
+            nostr::ManagedChannelHints::new()
+                .with_channel_type(nostr::ManagedChannelType::Ops)
+                .with_position(2),
+        )
+        .expect("beta hints");
+        let beta_message = nostr::ManagedChannelMessageEvent::new(
+            "oa-main",
+            repeated_hex('c', 64),
+            "wss://relay.openagents.test",
+            "history",
+            30,
+        )
+        .expect("beta message");
+
+        chat.managed_chat_projection.record_relay_events(vec![
+            signed_event('a', '1', 10, 39000, group_metadata.to_tags(), String::new()),
+            signed_event(
+                'b',
+                '2',
+                20,
+                40,
+                channel_alpha.to_tags().expect("alpha tags"),
+                channel_alpha.content().expect("alpha content"),
+            ),
+            signed_event(
+                'c',
+                '3',
+                21,
+                40,
+                channel_beta.to_tags().expect("beta tags"),
+                channel_beta.content().expect("beta content"),
+            ),
+            signed_event(
+                'd',
+                '4',
+                30,
+                42,
+                beta_message.to_tags().expect("beta message tags"),
+                "history".to_string(),
+            ),
+        ]);
+
+        assert!(chat.managed_chat_has_browseable_content());
+        assert_eq!(
+            chat.active_managed_chat_group()
+                .map(|group| group.group_id.as_str()),
+            Some("oa-main")
+        );
+        assert_eq!(
+            chat.active_managed_chat_channel()
+                .map(|channel| channel.metadata.name.as_str()),
+            Some("alpha")
+        );
+
+        assert!(chat.select_managed_chat_channel_by_index(1));
+        assert_eq!(
+            chat.active_managed_chat_channel()
+                .map(|channel| channel.metadata.name.as_str()),
+            Some("beta")
+        );
+        assert_eq!(chat.active_managed_chat_messages().len(), 1);
     }
 
     #[test]
