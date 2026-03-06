@@ -1,4 +1,5 @@
 use super::*;
+use crate::Event;
 use std::str::FromStr;
 
 // =========================================================================
@@ -94,10 +95,12 @@ fn test_input_type_from_str() {
     assert!(matches!(InputType::from_str("event"), Ok(InputType::Event)));
     assert!(matches!(InputType::from_str("job"), Ok(InputType::Job)));
     assert!(matches!(InputType::from_str("text"), Ok(InputType::Text)));
+    assert!(matches!(InputType::from_str("prompt"), Ok(InputType::Text)));
 
     // Case insensitive
     assert!(matches!(InputType::from_str("URL"), Ok(InputType::Url)));
     assert!(matches!(InputType::from_str("Text"), Ok(InputType::Text)));
+    assert!(matches!(InputType::from_str("Prompt"), Ok(InputType::Text)));
 
     // Invalid
     assert!(InputType::from_str("invalid").is_err());
@@ -199,6 +202,11 @@ fn test_job_input_to_tag() {
 #[test]
 fn test_job_input_from_tag() {
     let tag = vec!["i".to_string(), "Hello".to_string(), "text".to_string()];
+    let input = JobInput::from_tag(&tag).unwrap();
+    assert_eq!(input.data, "Hello");
+    assert_eq!(input.input_type, InputType::Text);
+
+    let tag = vec!["i".to_string(), "Hello".to_string(), "prompt".to_string()];
     let input = JobInput::from_tag(&tag).unwrap();
     assert_eq!(input.data, "Hello");
     assert_eq!(input.input_type, InputType::Text);
@@ -325,6 +333,34 @@ fn test_job_request_to_tags() {
         tags.iter()
             .any(|t| t[0] == "relays" && t.contains(&"wss://relay1.com".to_string()))
     );
+}
+
+#[test]
+fn test_text_generation_request_accepts_prompt_alias_from_event() {
+    let event = Event {
+        id: "request-5050".to_string(),
+        pubkey: "customer456".to_string(),
+        created_at: 1_762_000_000,
+        kind: KIND_JOB_TEXT_GENERATION,
+        tags: vec![
+            vec![
+                "i".to_string(),
+                "hello world".to_string(),
+                "prompt".to_string(),
+            ],
+            vec!["param".to_string(), "top-k".to_string(), "20".to_string()],
+            vec!["bid".to_string(), "1000".to_string()],
+        ],
+        content: String::new(),
+        sig: "f".repeat(128),
+    };
+
+    let request = JobRequest::from_event(&event).expect("prompt alias should parse");
+    assert_eq!(request.kind, KIND_JOB_TEXT_GENERATION);
+    assert_eq!(request.inputs.len(), 1);
+    assert_eq!(request.inputs[0].input_type, InputType::Text);
+    assert_eq!(request.inputs[0].data, "hello world");
+    assert_eq!(request.params[0].key, "top-k");
 }
 
 // =========================================================================

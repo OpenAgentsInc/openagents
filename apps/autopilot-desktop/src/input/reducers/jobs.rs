@@ -12,7 +12,8 @@ use crate::provider_nip90_lane::{
     ProviderNip90LaneCommand, ProviderNip90PublishOutcome, ProviderNip90PublishRole,
 };
 use nostr::nip90::{
-    JobFeedback, JobResult, JobStatus, create_job_feedback_event, create_job_result_event,
+    JobFeedback, JobResult, JobStatus, KIND_JOB_TEXT_GENERATION, create_job_feedback_event,
+    create_job_result_event,
 };
 use nostr::{Event, EventTemplate, NostrIdentity};
 
@@ -518,21 +519,10 @@ fn queue_nip90_result_publish_for_active_job(state: &mut RenderState) -> Result<
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .unwrap_or("provider execution completed without explicit output");
-    let payload = serde_json::json!({
-        "request_id": request_id,
-        "job_id": job.job_id,
-        "capability": job.capability,
-        "demand_source": job.demand_source.label(),
-        "status": "completed",
-        "source": "desktop.execution.lane",
-        "input": job.execution_input.clone(),
-        "output": execution_output,
-        "provider_thread_id": state.active_job.execution_thread_id.clone(),
-        "provider_turn_id": state.active_job.execution_turn_id.clone()
-    })
-    .to_string();
+    let visible_content = visible_result_content_for_job_kind(request_kind, execution_output);
 
-    let mut result = JobResult::new(request_kind, request_id.clone(), requester, payload)
+    let mut result =
+        JobResult::new(request_kind, request_id.clone(), requester, visible_content)
         .map_err(|error| format!("Cannot build NIP-90 result event: {error}"))?;
     if quoted_price_sats > 0 {
         result = result.with_amount(quoted_price_sats.saturating_mul(1000), None);
@@ -550,6 +540,17 @@ fn queue_nip90_result_publish_for_active_job(state: &mut RenderState) -> Result<
         .map_err(|error| format!("Cannot queue NIP-90 result publish: {error}"))?;
 
     Ok(event_id)
+}
+
+fn visible_result_content_for_job_kind(request_kind: u16, execution_output: &str) -> String {
+    if request_kind == KIND_JOB_TEXT_GENERATION {
+        return execution_output.trim().to_string();
+    }
+    serde_json::json!({
+        "status": "completed",
+        "output": execution_output.trim(),
+    })
+    .to_string()
 }
 
 fn queue_nip90_feedback_for_active_job(
@@ -1424,12 +1425,14 @@ fn next_auto_accept_request_id_for(
 #[cfg(test)]
 mod tests {
     use super::{
-        next_auto_accept_request_id_for, next_invalid_request_rejection_for, turn_completed_failed,
+        next_auto_accept_request_id_for, next_invalid_request_rejection_for,
+        turn_completed_failed, visible_result_content_for_job_kind,
     };
     use crate::app_state::{
         JobDemandSource, JobInboxDecision, JobInboxRequest, JobInboxValidation,
     };
     use crate::state::provider_runtime::ProviderMode;
+    use nostr::nip90::KIND_JOB_TEXT_GENERATION;
 
     fn fixture_request(
         request_id: &str,
@@ -1520,6 +1523,16 @@ mod tests {
         assert!(turn_completed_failed(Some("interrupted"), None));
         assert!(!turn_completed_failed(Some("completed"), None));
         assert!(!turn_completed_failed(None, None));
+    }
+
+    #[test]
+    fn text_generation_results_publish_plain_text_content() {
+        let content =
+            visible_result_content_for_job_kind(KIND_JOB_TEXT_GENERATION, "  hello world  ");
+        assert_eq!(content, "hello world");
+
+        let non_text_content = visible_result_content_for_job_kind(5999, "  ok  ");
+        assert_eq!(non_text_content, r#"{"output":"ok","status":"completed"}"#);
     }
 }
 
