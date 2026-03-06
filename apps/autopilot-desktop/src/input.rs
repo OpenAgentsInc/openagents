@@ -12,7 +12,7 @@ use codex_client::{
     ThreadRealtimeAppendTextParams, ThreadRealtimeStartParams, ThreadRealtimeStopParams,
     ThreadResumeParams, ThreadRollbackParams, ThreadSetNameParams, ThreadStartParams,
     ThreadUnarchiveParams, ThreadUnsubscribeParams, ToolRequestUserInputAnswer,
-    ToolRequestUserInputResponse, TurnStartParams, UserInput, WindowsSandboxSetupStartParams,
+    ToolRequestUserInputResponse, UserInput, WindowsSandboxSetupStartParams,
 };
 use nostr::regenerate_identity;
 use openagents_cad::contracts::CadSelectionKind;
@@ -902,7 +902,13 @@ fn run_autonomous_goal_loop(state: &mut crate::app_state::RenderState) -> bool {
     let prompt = goal_loop_prompt_for_goal(&goal);
     let pending_before = state.autopilot_chat.pending_turn_metadata.len();
     state.chat_inputs.composer.set_value(prompt);
-    let _ = run_chat_submit_action(state);
+    let _ = run_chat_submit_action_with_trigger(
+        state,
+        crate::labor_orchestrator::CodexRunTrigger::AutonomousGoal {
+            goal_id: goal.goal_id.clone(),
+            goal_title: goal.title.clone(),
+        },
+    );
     let pending_after = state.autopilot_chat.pending_turn_metadata.len();
 
     if pending_after > pending_before && state.autopilot_chat.last_error.is_none() {
@@ -2247,7 +2253,11 @@ fn handle_sidebar_mouse_down(
     let logical = logical_size(&state.config, state.scale_factor);
     let min_sidebar_width = 220.0;
     let max_sidebar_width = (logical.width * 0.5).max(min_sidebar_width);
-    state.sidebar.drag_start_width = state.sidebar.width.max(min_sidebar_width).min(max_sidebar_width);
+    state.sidebar.drag_start_width = state
+        .sidebar
+        .width
+        .max(min_sidebar_width)
+        .min(max_sidebar_width);
     true
 }
 

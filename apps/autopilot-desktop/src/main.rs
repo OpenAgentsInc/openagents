@@ -8,6 +8,7 @@ mod economy_kernel_receipts;
 mod hotbar;
 mod input;
 mod kernel_control;
+mod labor_orchestrator;
 mod logging;
 mod nip_sa_wallet_bridge;
 mod ollama_execution;

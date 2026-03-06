@@ -12,6 +12,7 @@ use wgpui::renderer::Renderer;
 use wgpui::{Bounds, EventContext, Modifiers, Point, TextSystem, theme};
 use winit::window::Window;
 
+use crate::labor_orchestrator::CodexRunClassification;
 use crate::ollama_execution::{
     OllamaExecutionCommand, OllamaExecutionProvenance, OllamaExecutionSnapshot,
     OllamaExecutionWorker,
@@ -403,6 +404,7 @@ pub struct AutopilotTurnPlanStep {
 pub struct AutopilotTurnMetadata {
     pub submission_seq: u64,
     pub thread_id: String,
+    pub run_classification: CodexRunClassification,
     pub is_cad_turn: bool,
     pub classifier_reason: String,
     pub submitted_at_epoch_ms: u64,
@@ -941,6 +943,7 @@ impl AutopilotChatState {
     pub fn record_turn_submission_metadata(
         &mut self,
         thread_id: &str,
+        run_classification: CodexRunClassification,
         is_cad_turn: bool,
         classifier_reason: impl Into<String>,
         submitted_at_epoch_ms: u64,
@@ -956,6 +959,7 @@ impl AutopilotChatState {
         let metadata = AutopilotTurnMetadata {
             submission_seq: self.next_turn_submission_seq,
             thread_id: thread_id.to_string(),
+            run_classification,
             is_cad_turn,
             classifier_reason: classifier_reason.into(),
             submitted_at_epoch_ms,
@@ -4567,6 +4571,7 @@ mod tests {
         chat.submit_prompt("design a rack".to_string());
         chat.record_turn_submission_metadata(
             "thread-1",
+            crate::labor_orchestrator::CodexRunClassification::PersonalAgent,
             true,
             "keyword-pair:design+rack",
             1000,
@@ -4576,6 +4581,10 @@ mod tests {
         let pending = chat
             .active_turn_metadata()
             .expect("latest submitted metadata should be available");
+        assert_eq!(
+            pending.run_classification,
+            crate::labor_orchestrator::CodexRunClassification::PersonalAgent
+        );
         assert!(pending.is_cad_turn);
         assert_eq!(pending.classifier_reason, "keyword-pair:design+rack");
 
@@ -4583,6 +4592,10 @@ mod tests {
         let bound = chat
             .turn_metadata_for("turn-1")
             .expect("turn metadata should bind when turn starts");
+        assert_eq!(
+            bound.run_classification,
+            crate::labor_orchestrator::CodexRunClassification::PersonalAgent
+        );
         assert!(bound.is_cad_turn);
         assert_eq!(bound.classifier_reason, "keyword-pair:design+rack");
         assert_eq!(chat.active_turn_metadata(), Some(bound));
@@ -4593,7 +4606,17 @@ mod tests {
         let mut chat = AutopilotChatState::default();
         chat.ensure_thread("thread-1".to_string());
         chat.submit_prompt("earn bitcoin".to_string());
-        chat.record_turn_submission_metadata("thread-1", false, "no-cad-signals", 1000, Vec::new());
+        chat.record_turn_submission_metadata(
+            "thread-1",
+            crate::labor_orchestrator::CodexRunClassification::AutonomousGoal {
+                goal_id: "goal-earn".to_string(),
+                goal_title: "Earn bitcoin".to_string(),
+            },
+            false,
+            "no-cad-signals",
+            1000,
+            Vec::new(),
+        );
 
         chat.set_last_pending_turn_selected_skills(vec![
             "blink".to_string(),
@@ -4606,6 +4629,13 @@ mod tests {
             .back()
             .expect("pending metadata should remain queued");
         assert_eq!(
+            pending.run_classification,
+            crate::labor_orchestrator::CodexRunClassification::AutonomousGoal {
+                goal_id: "goal-earn".to_string(),
+                goal_title: "Earn bitcoin".to_string(),
+            }
+        );
+        assert_eq!(
             pending.selected_skill_names,
             vec!["blink".to_string(), "l402".to_string()]
         );
@@ -4617,10 +4647,21 @@ mod tests {
         chat.ensure_thread("thread-1".to_string());
 
         chat.submit_prompt("summarize commits".to_string());
-        chat.record_turn_submission_metadata("thread-1", false, "no-cad-signals", 1010, Vec::new());
+        chat.record_turn_submission_metadata(
+            "thread-1",
+            crate::labor_orchestrator::CodexRunClassification::PersonalAgent,
+            false,
+            "no-cad-signals",
+            1010,
+            Vec::new(),
+        );
         chat.submit_prompt("design wall mount bracket".to_string());
         chat.record_turn_submission_metadata(
             "thread-1",
+            crate::labor_orchestrator::CodexRunClassification::LaborMarket {
+                work_unit_id: "wu-2".to_string(),
+                contract_id: Some("contract-2".to_string()),
+            },
             true,
             "keyword-pair:design+bracket",
             1020,
@@ -4633,12 +4674,23 @@ mod tests {
         let first = chat
             .turn_metadata_for("turn-a")
             .expect("first turn metadata should bind");
+        assert_eq!(
+            first.run_classification,
+            crate::labor_orchestrator::CodexRunClassification::PersonalAgent
+        );
         assert!(!first.is_cad_turn);
         assert_eq!(first.classifier_reason, "no-cad-signals");
 
         let second = chat
             .turn_metadata_for("turn-b")
             .expect("second turn metadata should bind");
+        assert_eq!(
+            second.run_classification,
+            crate::labor_orchestrator::CodexRunClassification::LaborMarket {
+                work_unit_id: "wu-2".to_string(),
+                contract_id: Some("contract-2".to_string()),
+            }
+        );
         assert!(second.is_cad_turn);
         assert_eq!(second.classifier_reason, "keyword-pair:design+bracket");
     }
@@ -4650,6 +4702,7 @@ mod tests {
         chat.submit_prompt("design fixture".to_string());
         chat.record_turn_submission_metadata(
             "thread-1",
+            crate::labor_orchestrator::CodexRunClassification::PersonalAgent,
             true,
             "keyword-pair:design+fixture",
             1200,
