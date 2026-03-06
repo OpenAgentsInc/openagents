@@ -47,7 +47,7 @@ This audit has been updated to reflect the intended hierarchy more accurately:
 
 1. The SA/SKL/AC NIPs in `crates/nostr/nips/` were written specifically to power parts of the app and are already partially implemented in `crates/nostr/core` and integrated in `apps/autopilot-desktop`.
 2. The default review posture should therefore be: hold the NIPs relatively stable, evaluate PRs primarily as changes to those established NIPs, and adapt economy-kernel planning downstream where possible.
-3. Nostr being a relay / websocket protocol is not itself a reason to reject NIP changes. The relevant review questions are whether a PR improves or degrades the NIP suite, whether it creates a coherent app-facing protocol surface, and what migration burden it imposes on the current implementation plan.
+3. Nostr being a relay / websocket protocol is not itself a reason to reject NIP changes. The relevant review questions are whether a PR improves or degrades the NIP suite and whether it creates a coherent protocol surface across SA, SKL, and AC.
 
 ## Executive Recommendation
 
@@ -62,7 +62,7 @@ This audit has been updated to reflect the intended hierarchy more accurately:
 1. The repo's SA/SKL/AC NIPs are already app-facing protocol documents with partial implementation behind them, so `#2932` and `#2933` are protocol migrations, not greenfield exploration.
 2. `#2932` and `#2933` overlap and compete to redefine SA / AC behavior rather than presenting one coherent NIP delta.
 3. `#2933` defines `kind:39250` audit entries as addressable, which makes a supposedly forensic audit stream mutable even on its own Nostr-native terms.
-4. Both protocol PRs introduce new kinds and semantics without synchronizing `docs/PROTOCOL_SURFACE.md`, `docs/NIP_SA_SKL_AC_IMPLEMENTATION_PLAN.md`, and the obvious code/test follow-on work.
+4. Both protocol PRs add multiple new kinds and semantics at once, which makes it hard to judge whether each addition actually improves the NIP suite on its own merits.
 5. Both protocol PRs expand alternative rails and settlement semantics well beyond the current MVP wallet integration, so merging them now would create a larger gap between the active protocol docs and the active app behavior.
 
 ## Alignment Rules From Current Source Of Truth
@@ -89,17 +89,7 @@ The default posture should be:
 
 The kernel planning docs are still useful as integration targets, but they should not be treated as an automatic veto over the NIP suite.
 
-### 3. The protocol surface is currently frozen
-
-`docs/PROTOCOL_SURFACE.md` and `docs/NIP_SA_SKL_AC_IMPLEMENTATION_PLAN.md` together define a locked in-repo surface. New kinds or new required semantics need:
-
-- explicit protocol-surface updates,
-- implementation-plan updates,
-- and a credible code/test follow-on path.
-
-Neither protocol PR currently does that.
-
-### 4. MVP payment truth is still Spark-first and Lightning-first
+### 3. MVP payment truth is still Spark-first and Lightning-first
 
 `docs/MVP.md` is explicit:
 
@@ -110,7 +100,7 @@ Neither protocol PR currently does that.
 
 That does not make alternative rails invalid, but it does mean they should be merged carefully and usually as future-facing or profile-level expansions until the app actually supports them.
 
-### 5. Broader economy-kernel docs should be made to fit accepted NIP changes
+### 4. Broader economy-kernel docs should be made to fit accepted NIP changes
 
 Where the economy-kernel docs currently assume a different authority or settlement framing, that should generally be treated as a downstream integration problem unless there is a strong reason to change the NIP itself.
 
@@ -152,9 +142,9 @@ Merge this one first.
 
 ### Why it should not merge as-is
 
-1. It expands the established SA surface without updating the locked protocol-surface docs or implementation plan.
+1. It expands the established SA surface very broadly in one pass.
 
-It introduces new kinds and tags, but `docs/PROTOCOL_SURFACE.md` still freezes SA at:
+It introduces new kinds and tags beyond the current SA kind table:
 
 - `39200`
 - `39201`
@@ -167,7 +157,7 @@ It introduces new kinds and tags, but `docs/PROTOCOL_SURFACE.md` still freezes S
 - `39230`
 - `39231`
 
-If we merge `#2932` directly, the repo immediately becomes internally inconsistent.
+That is not automatically wrong, but it is a large SA revision and should be justified as one coherent protocol move.
 
 2. It overlaps with `#2933` on guardian and envelope-related semantics, which means merging it independently would likely create two competing SA/AC stories.
 
@@ -190,16 +180,9 @@ The same `budget` tag is described as:
 
 If the rail changes the denomination or unit semantics, the tag schema needs an explicit amount/unit model. Otherwise the same numeric field means different things in different rails.
 
-4. It pushes multi-rail provider settlement ahead of the current MVP wallet truth model.
+4. It pushes multi-rail provider settlement semantics much further than the current core SA text.
 
-The active MVP is:
-
-- Spark wallet first,
-- truthful wallet-backed UI,
-- Lightning withdraw path,
-- compute-provider lane only.
-
-The PR is useful as future design input, but not as current normative behavior.
+That may be a valid future direction, but in NIP terms it argues for profile-gating or narrower scope unless we explicitly want SA core to absorb that complexity now.
 
 5. It adds more than the title suggests.
 
@@ -213,10 +196,7 @@ If we want to preserve the work, the cleanest path is:
 2. Reconcile it with `#2933` so there is one guardian / envelope / alternative-rail story across the NIP suite.
 3. Normalize budget amount and unit semantics before merging any of the new `budget` forms.
 4. Defer or clearly profile-gate provider-facing multi-rail settlement semantics until the app actually supports them.
-5. Only merge into the active protocol surface after:
-   - `docs/PROTOCOL_SURFACE.md` is updated,
-   - `docs/NIP_SA_SKL_AC_IMPLEMENTATION_PLAN.md` is updated,
-   - and the code/test follow-on plan exists.
+5. Only merge after the core-vs-profile boundary is made explicit in the NIP text itself.
 
 After that, any necessary economy-kernel planning changes should be made downstream to fit the accepted SA changes.
 
@@ -255,7 +235,7 @@ This branch currently combines at least four different design tracks:
 
 That makes review shallow and merge sequencing unsafe.
 
-2. It introduces a large set of new kinds and semantics with no protocol-surface synchronization.
+2. It introduces a large set of new kinds and semantics in one branch.
 
 Examples include:
 
@@ -266,7 +246,7 @@ Examples include:
 - `39250`
 - `39260`
 
-Those do not appear in the current frozen protocol surface or implementation plan.
+That breadth makes it hard to evaluate whether each new kind belongs in SKL, SA, or AC core.
 
 3. `kind:39250` as an addressable audit trail entry is the wrong storage shape.
 
@@ -280,9 +260,9 @@ The branch touches SA, SKL, and AC at once, including guardian and rail semantic
 
 `docs/TRUE_NAME_INTEGRATION_PROFILE.md` is Satnam-specific and ecosystem-specific. Nothing else in the active MVP repo currently defines or implements that profile. In this pruned MVP repo, that belongs in backroom or in a clearly external profile package unless and until there is an active implementation owner.
 
-6. It overreaches the current MVP integration state.
+6. It overreaches the scope of a clean single NIP revision.
 
-The PR is trying to specify reversibility windows, permission grants, and sub-delegation economics before the app has a clear implementation plan for those semantics. That may still be worth doing, but it should be done as intentional NIP revision work with synchronized docs, tests, and lane planning.
+The PR is trying to specify reversibility windows, permission grants, and sub-delegation economics all at once. Those may each be worthwhile, but they should be justified independently rather than bundled together.
 
 ### How to salvage it
 
@@ -329,8 +309,7 @@ So the right sequencing is not "merge both in order." The right sequencing is:
 1. merge `#2978`,
 2. decide which intentional NIP deltas from `#2932` and `#2933` are actually wanted,
 3. reconcile overlaps so there is one coherent SA/SKL/AC story,
-4. update the app-facing protocol docs and follow-on plan,
-5. then adapt the economy-kernel planning docs downstream to match the accepted NIP changes.
+4. then adapt the economy-kernel planning docs downstream to match the accepted NIP changes.
 
 ## Concrete Change List By PR
 
@@ -345,8 +324,7 @@ So the right sequencing is not "merge both in order." The right sequencing is:
 - Reconcile guardian and envelope semantics with `#2933` before merging either branch.
 - Remove or defer rail-specific payment-proof requirements that the app does not yet consume.
 - Normalize amount-unit semantics across Lightning/Cashu/Fedimint.
-- Update `docs/PROTOCOL_SURFACE.md` and `docs/NIP_SA_SKL_AC_IMPLEMENTATION_PLAN.md` if any part becomes active surface.
-- Add the concrete code/test follow-on plan for any accepted SA changes.
+- Keep the resulting SA delta narrow enough that it reads as one coherent revision.
 
 ## For `#2933`
 
@@ -354,8 +332,7 @@ So the right sequencing is not "merge both in order." The right sequencing is:
 - Remove `docs/TRUE_NAME_INTEGRATION_PROFILE.md` from the MVP protocol merge path.
 - Revisit `39250` storage semantics so audit entries are append-only if kept.
 - Decide whether permission grants and challenge/response are SKL core or optional profile material.
-- Update protocol-surface and implementation-plan docs before any new kinds become active.
-- Add the concrete code/test follow-on plan for each accepted NIP delta.
+- Keep each accepted NIP delta narrow enough to justify itself on content, not bundle momentum.
 
 ## Recommended Merge Order
 
@@ -363,8 +340,6 @@ So the right sequencing is not "merge both in order." The right sequencing is:
 2. No merge for `#2932` or `#2933` until there is a coherent NIP-level redesign and synchronization pass.
 3. After that redesign, re-open smaller PRs in this order:
    - targeted NIP deltas
-   - protocol-surface update
-   - code/test support
    - downstream economy-kernel doc updates
 
 ## Bottom Line
