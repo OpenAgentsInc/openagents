@@ -297,6 +297,8 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             sync_bootstrap_error: None,
             hosted_control_base_url: None,
             hosted_control_bearer_token: None,
+            kernel_local_authority: openagents_kernel_core::authority::LocalKernelAuthority::new(),
+            kernel_projection_worker: crate::kernel_control::KernelProjectionWorker::default(),
             sync_apply_engine,
             sync_lifecycle_worker_id: "desktopw:sync".to_string(),
             sync_lifecycle: crate::sync_lifecycle::RuntimeSyncLifecycleManager::default(),
@@ -386,6 +388,7 @@ pub(crate) fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
             );
             state.sync_health.last_action = Some("Spacetime bootstrap failed".to_string());
             state.sync_health.last_error = Some(message);
+            crate::kernel_control::sync_kernel_authority_mode(state);
             return;
         }
     };
@@ -495,6 +498,7 @@ pub(crate) fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
             state.sync_health.last_error = Some(error);
         }
     }
+    crate::kernel_control::sync_kernel_authority_mode(state);
 }
 
 fn hydrate_remote_sync_checkpoints(

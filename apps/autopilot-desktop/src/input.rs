@@ -126,6 +126,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 let _ = process.child.wait();
             }
             state.codex_lane_worker.shutdown_async();
+            state.kernel_projection_worker.shutdown_async();
             event_loop.exit();
         }
         WindowEvent::Resized(new_size) => {
@@ -446,6 +447,9 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
         changed = true;
     }
     if reducers::drain_runtime_lane_updates(state) {
+        changed = true;
+    }
+    if crate::kernel_control::drain_kernel_projection_updates(state) {
         changed = true;
     }
     if reducers::run_cad_demo_action(state, CadDemoPaneAction::Noop) {

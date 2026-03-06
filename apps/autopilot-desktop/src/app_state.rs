@@ -3947,6 +3947,8 @@ pub struct RenderState {
     pub sync_bootstrap_error: Option<String>,
     pub hosted_control_base_url: Option<String>,
     pub hosted_control_bearer_token: Option<String>,
+    pub kernel_local_authority: openagents_kernel_core::authority::LocalKernelAuthority,
+    pub kernel_projection_worker: crate::kernel_control::KernelProjectionWorker,
     pub sync_apply_engine: crate::sync_apply::SyncApplyEngine,
     pub sync_lifecycle_worker_id: String,
     pub sync_lifecycle: crate::sync_lifecycle::RuntimeSyncLifecycleManager,

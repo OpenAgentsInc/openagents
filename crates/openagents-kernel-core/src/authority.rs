@@ -3,6 +3,7 @@ use crate::receipts::{
 };
 use crate::snapshots::EconomySnapshot;
 use anyhow::{Result, anyhow};
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -102,6 +103,81 @@ pub struct FinalizeVerdictRequest {
 pub struct FinalizeVerdictResponse {
     pub contract_id: String,
     pub receipt: Receipt,
+}
+
+#[derive(Clone)]
+pub struct HttpKernelAuthorityClient {
+    client: reqwest::Client,
+    base_url: String,
+    bearer_auth: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AuthorityErrorResponse {
+    #[serde(default)]
+    error: Option<String>,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+impl HttpKernelAuthorityClient {
+    pub fn new(base_url: impl Into<String>, bearer_auth: Option<String>) -> Result<Self> {
+        let client = reqwest::Client::builder()
+            .build()
+            .map_err(|error| anyhow!("kernel authority client initialization failed: {error}"))?;
+        Ok(Self::with_client(client, base_url, bearer_auth))
+    }
+
+    pub fn with_client(
+        client: reqwest::Client,
+        base_url: impl Into<String>,
+        bearer_auth: Option<String>,
+    ) -> Self {
+        Self {
+            client,
+            base_url: base_url.into(),
+            bearer_auth: bearer_auth
+                .map(|token| token.trim().to_string())
+                .filter(|token| !token.is_empty()),
+        }
+    }
+
+    pub fn canonical_endpoint(&self, path: &str) -> Result<Url> {
+        canonical_kernel_endpoint(self.base_url.as_str(), path)
+    }
+
+    async fn post_json<Request, Response>(&self, path: &str, body: &Request) -> Result<Response>
+    where
+        Request: Serialize + ?Sized,
+        Response: for<'de> Deserialize<'de>,
+    {
+        let endpoint = self.canonical_endpoint(path)?;
+        let mut request = self.client.post(endpoint).json(body);
+        if let Some(token) = self.bearer_auth.as_deref() {
+            request = request.bearer_auth(token);
+        }
+        let response = request
+            .send()
+            .await
+            .map_err(|error| anyhow!("kernel authority request failed: {error}"))?;
+        decode_authority_response(response).await
+    }
+
+    async fn get_json<Response>(&self, path: &str) -> Result<Response>
+    where
+        Response: for<'de> Deserialize<'de>,
+    {
+        let endpoint = self.canonical_endpoint(path)?;
+        let mut request = self.client.get(endpoint);
+        if let Some(token) = self.bearer_auth.as_deref() {
+            request = request.bearer_auth(token);
+        }
+        let response = request
+            .send()
+            .await
+            .map_err(|error| anyhow!("kernel authority request failed: {error}"))?;
+        decode_authority_response(response).await
+    }
 }
 
 #[derive(Default)]
@@ -332,5 +408,153 @@ impl KernelAuthority for LocalKernelAuthority {
             .get(&minute_start_ms)
             .cloned()
             .ok_or_else(|| anyhow!("snapshot for minute {minute_start_ms} not found"))
+    }
+}
+
+impl KernelAuthority for HttpKernelAuthorityClient {
+    async fn create_work_unit(&self, req: CreateWorkUnitRequest) -> Result<CreateWorkUnitResponse> {
+        self.post_json("/v1/kernel/work_units", &req).await
+    }
+
+    async fn create_contract(&self, req: CreateContractRequest) -> Result<CreateContractResponse> {
+        self.post_json("/v1/kernel/contracts", &req).await
+    }
+
+    async fn submit_output(&self, req: SubmitOutputRequest) -> Result<SubmitOutputResponse> {
+        let path = format!("/v1/kernel/contracts/{}/submit", req.contract_id.trim());
+        self.post_json(path.as_str(), &req).await
+    }
+
+    async fn finalize_verdict(
+        &self,
+        req: FinalizeVerdictRequest,
+    ) -> Result<FinalizeVerdictResponse> {
+        let path = format!(
+            "/v1/kernel/contracts/{}/verdict/finalize",
+            req.contract_id.trim()
+        );
+        self.post_json(path.as_str(), &req).await
+    }
+
+    async fn get_snapshot(&self, minute_start_ms: i64) -> Result<EconomySnapshot> {
+        let path = format!("/v1/kernel/snapshots/{minute_start_ms}");
+        self.get_json(path.as_str()).await
+    }
+}
+
+pub fn canonical_kernel_endpoint(base_url: &str, path: &str) -> Result<Url> {
+    let normalized_base = normalize_http_base_url(base_url)?;
+    let normalized_path = path.trim();
+    if !normalized_path.starts_with('/') {
+        return Err(anyhow!(
+            "kernel authority path must start with '/': {normalized_path}"
+        ));
+    }
+    let mut url = Url::parse(normalized_base.as_str())
+        .map_err(|error| anyhow!("invalid kernel authority base url: {error}"))?;
+    url.set_path(normalized_path);
+    url.set_query(None);
+    url.set_fragment(None);
+    Ok(url)
+}
+
+fn normalize_http_base_url(base_url: &str) -> Result<String> {
+    let trimmed = base_url.trim();
+    if trimmed.is_empty() {
+        return Err(anyhow!("kernel authority base url cannot be empty"));
+    }
+    let mut url =
+        Url::parse(trimmed).map_err(|error| anyhow!("invalid kernel authority base url: {error}"))?;
+    if url.scheme() != "http" && url.scheme() != "https" {
+        return Err(anyhow!(
+            "kernel authority base url must use http or https"
+        ));
+    }
+    let normalized_path = url.path().trim_end_matches('/').to_string();
+    if normalized_path.is_empty() {
+        url.set_path("/");
+    } else {
+        url.set_path(normalized_path.as_str());
+    }
+    url.set_query(None);
+    url.set_fragment(None);
+    Ok(url.to_string())
+}
+
+async fn decode_authority_response<Response>(response: reqwest::Response) -> Result<Response>
+where
+    Response: for<'de> Deserialize<'de>,
+{
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .unwrap_or_else(|_| "<unreadable-body>".to_string());
+    if !status.is_success() {
+        return Err(anyhow!(
+            "kernel authority request failed: {}",
+            format_authority_error(status, body.as_str())
+        ));
+    }
+    serde_json::from_str(body.as_str())
+        .map_err(|error| anyhow!("invalid kernel authority response: {error}"))
+}
+
+fn format_authority_error(status: reqwest::StatusCode, body: &str) -> String {
+    if let Ok(payload) = serde_json::from_str::<AuthorityErrorResponse>(body) {
+        if let Some(reason) = payload.reason.as_deref().filter(|value| !value.is_empty()) {
+            if let Some(error) = payload.error.as_deref().filter(|value| !value.is_empty()) {
+                return format!("status={} error={} reason={reason}", status.as_u16(), error);
+            }
+            return format!("status={} reason={reason}", status.as_u16());
+        }
+        if let Some(error) = payload.error.as_deref().filter(|value| !value.is_empty()) {
+            return format!("status={} error={error}", status.as_u16());
+        }
+    }
+    format!(
+        "status={} body={}",
+        status.as_u16(),
+        truncate_response_body(body)
+    )
+}
+
+fn truncate_response_body(body: &str) -> String {
+    const LIMIT: usize = 256;
+    let trimmed = body.trim();
+    if trimmed.len() <= LIMIT {
+        trimmed.to_string()
+    } else {
+        format!("{}...", &trimmed[..LIMIT])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::canonical_kernel_endpoint;
+
+    #[test]
+    fn canonical_endpoint_strips_query_and_joins_path() {
+        let endpoint = canonical_kernel_endpoint(
+            "https://control.example.com/base?foo=bar",
+            "/v1/kernel/work_units",
+        )
+        .expect("endpoint");
+        assert_eq!(
+            endpoint.as_str(),
+            "https://control.example.com/v1/kernel/work_units"
+        );
+    }
+
+    #[test]
+    fn canonical_endpoint_rejects_relative_path() {
+        let error = canonical_kernel_endpoint("https://control.example.com", "v1/kernel/work_units")
+            .expect_err("relative paths should fail");
+        assert!(
+            error
+                .to_string()
+                .contains("path must start with '/'"),
+            "unexpected error: {error}"
+        );
     }
 }

@@ -152,6 +152,45 @@ impl EconomySnapshotState {
         Some(result)
     }
 
+    pub fn apply_authoritative_snapshot(
+        &mut self,
+        snapshot: EconomySnapshot,
+        source_tag: &str,
+    ) -> bool {
+        let changed = self
+            .snapshots
+            .iter()
+            .find(|existing| existing.snapshot_id == snapshot.snapshot_id)
+            .is_none_or(|existing| existing.snapshot_hash != snapshot.snapshot_hash);
+
+        self.snapshots.retain(|existing| {
+            existing.snapshot_id != snapshot.snapshot_id
+                || existing.snapshot_hash == snapshot.snapshot_hash
+        });
+        if changed {
+            self.snapshots.push(snapshot.clone());
+            self.snapshots = normalize_snapshots(std::mem::take(&mut self.snapshots));
+            if let Err(error) = persist_economy_snapshots(
+                self.snapshot_file_path.as_path(),
+                self.snapshots.as_slice(),
+            ) {
+                self.last_error = Some(error);
+                self.last_action = Some("Economy snapshot persist failed".to_string());
+                self.load_state = PaneLoadState::Error;
+                return false;
+            }
+        }
+
+        self.set_latest(snapshot.clone(), changed);
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Projected authoritative snapshot {} via {}",
+            snapshot.snapshot_id, source_tag
+        ));
+        self.load_state = PaneLoadState::Ready;
+        changed
+    }
+
     fn set_latest(&mut self, snapshot: EconomySnapshot, from_new_compute: bool) {
         let changed = self
             .latest_snapshot
@@ -171,11 +210,12 @@ fn build_snapshot(
     as_of_ms: i64,
     receipts: &[Receipt],
 ) -> Result<EconomySnapshot, String> {
-    let window_start_ms = as_of_ms.saturating_sub(ECONOMY_SNAPSHOT_WINDOW_MS);
+    let window_end_ms = as_of_ms.saturating_add(60_000);
+    let window_start_ms = window_end_ms.saturating_sub(ECONOMY_SNAPSHOT_WINDOW_MS);
     let mut scoped_receipts = receipts
         .iter()
         .filter(|receipt| {
-            receipt.created_at_ms <= as_of_ms && receipt.created_at_ms > window_start_ms
+            receipt.created_at_ms < window_end_ms && receipt.created_at_ms >= window_start_ms
         })
         .collect::<Vec<_>>();
     scoped_receipts.sort_by(|lhs, rhs| {

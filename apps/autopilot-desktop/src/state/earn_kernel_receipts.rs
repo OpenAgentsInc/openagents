@@ -933,6 +933,10 @@ impl Default for EarnKernelReceiptState {
 }
 
 impl EarnKernelReceiptState {
+    pub fn apply_authoritative_receipt(&mut self, receipt: Receipt, source_tag: &str) {
+        self.append_receipt(Ok(receipt), source_tag);
+    }
+
     fn from_receipt_file_path(receipt_file_path: PathBuf) -> Self {
         let (loaded, load_state, last_error, last_action) =
             match load_earn_kernel_receipts(receipt_file_path.as_path()) {
