@@ -620,7 +620,7 @@ impl Default for SidebarState {
     fn default() -> Self {
         Self {
             width: 300.0,
-            is_open: true,
+            is_open: false,
             is_pressed: false,
             is_dragging: false,
             drag_start_x: 0.0,
@@ -4647,10 +4647,17 @@ mod tests {
         NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderMode,
         ProviderRuntimeState, ReciprocalLoopDirection, ReciprocalLoopFailureClass,
         ReciprocalLoopFailureDisposition, ReciprocalLoopState, RecoveryAlertRow,
-        RelayConnectionStatus, RelayConnectionsState, SettingsState, SparkPaneState,
+        RelayConnectionStatus, RelayConnectionsState, SettingsState, SidebarState, SparkPaneState,
         StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
         SubmittedNetworkRequest, SyncHealthState, SyncRecoveryPhase,
     };
+
+    #[test]
+    fn sidebar_defaults_to_collapsed() {
+        let sidebar = SidebarState::default();
+        assert!(!sidebar.is_open);
+        assert_eq!(sidebar.width, 300.0);
+    }
 
     fn fixture_inbox_request(
         request_id: &str,
