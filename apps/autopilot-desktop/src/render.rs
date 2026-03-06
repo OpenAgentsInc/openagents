@@ -339,7 +339,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
     })
 }
 
-fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
+pub(crate) fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
     state.sync_bootstrap_note = None;
     state.sync_bootstrap_error = None;
     state.hosted_control_base_url = None;
@@ -369,12 +369,17 @@ fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
             return;
         }
     };
+    let bound_nostr_pubkey = state
+        .nostr_identity
+        .as_ref()
+        .map(|identity| identity.npub.as_str());
 
     if let Ok(control_base_url) = crate::sync_bootstrap::resolve_control_base_url_from_env() {
         state.hosted_control_base_url = Some(control_base_url.clone());
         match crate::sync_bootstrap::resolve_control_bearer_auth_from_env(
             &client,
             control_base_url.as_str(),
+            bound_nostr_pubkey,
         ) {
             Ok(Some(token)) => {
                 state.hosted_control_bearer_token = Some(token);
@@ -386,7 +391,7 @@ fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
         }
     }
 
-    match crate::sync_bootstrap::bootstrap_sync_session_from_env(&client) {
+    match crate::sync_bootstrap::bootstrap_sync_session_from_env(&client, bound_nostr_pubkey) {
         Ok(Some(result)) => {
             let note = format!(
                 "Minted sync token via {} and prepared subscribe target {}",

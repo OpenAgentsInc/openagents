@@ -5385,6 +5385,7 @@ pub(super) fn run_alerts_recovery_action(
                             "Identity regenerated. Secrets are hidden by default.".to_string(),
                         );
                         queue_spark_command(state, SparkWalletCommand::Refresh);
+                        crate::render::apply_spacetime_sync_bootstrap(state);
                         Ok("Identity lane recovered".to_string())
                     }
                     Err(error) => Err(format!("Identity recovery failed: {error}")),

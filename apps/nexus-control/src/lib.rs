@@ -45,6 +45,7 @@ const DEFAULT_SYNC_STREAM_GRANTS: [&str; 2] = [
 const DEFAULT_SYNC_SCOPES: [&str; 3] = ["sync.subscribe", "sync.checkpoint.write", "sync.append"];
 const STARTER_DEMAND_REQUESTER: &str = "openagents-hosted-nexus";
 const STARTER_DEMAND_REQUEST_KIND: u16 = 5050;
+const AUTOPILOT_DESKTOP_CLIENT_ID_PREFIX: &str = "autopilot-desktop";
 
 #[derive(Debug, Clone)]
 pub struct ServiceConfig {
@@ -705,6 +706,18 @@ async fn poll_starter_demand(
         response.reason = Some("starter_demand_requires_openagents_hosted_nexus".to_string());
         return Ok(Json(response));
     }
+    if let Some(reason) =
+        starter_demand_provider_proof_reason(&session, provider_nostr_pubkey.as_deref())
+    {
+        let store = state.store.read().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        response.budget_allocated_sats = store.starter_demand.budget_allocated_sats;
+        response.reason = Some(reason);
+        return Ok(Json(response));
+    }
 
     let now = now_unix_ms();
     let mut store = state.store.write().map_err(|_| ApiError {
@@ -713,13 +726,7 @@ async fn poll_starter_demand(
         reason: "session_store_poisoned".to_string(),
     })?;
     prune_expired_starter_offers(&mut store.starter_demand, &state.config, now);
-    maybe_dispatch_starter_offer(
-        &mut store.starter_demand,
-        &state.config,
-        &session,
-        provider_nostr_pubkey,
-        now,
-    );
+    maybe_dispatch_starter_offer(&mut store.starter_demand, &state.config, &session, now);
     response.eligible = true;
     response.budget_allocated_sats = store.starter_demand.budget_allocated_sats;
     response.offers = store
@@ -743,10 +750,20 @@ async fn ack_starter_demand_offer(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(request_id): Path<String>,
-    Json(_request): Json<StarterDemandAckRequest>,
+    Json(request): Json<StarterDemandAckRequest>,
 ) -> Result<Json<StarterDemandAckResponse>, ApiError> {
     let session = authenticate_session(&state, &headers)?;
     let request_id = normalize_required_field(request_id.as_str(), "request_id_missing")?;
+    if let Some(reason) = starter_demand_provider_proof_reason(
+        &session,
+        normalize_optional_field(request.provider_nostr_pubkey.as_deref()).as_deref(),
+    ) {
+        return Err(ApiError {
+            status: StatusCode::FORBIDDEN,
+            error: "forbidden",
+            reason,
+        });
+    }
     let now = now_unix_ms();
 
     let mut store = state.store.write().map_err(|_| ApiError {
@@ -833,10 +850,20 @@ async fn heartbeat_starter_demand_offer(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(request_id): Path<String>,
-    Json(_request): Json<StarterDemandHeartbeatRequest>,
+    Json(request): Json<StarterDemandHeartbeatRequest>,
 ) -> Result<Json<StarterDemandHeartbeatResponse>, ApiError> {
     let session = authenticate_session(&state, &headers)?;
     let request_id = normalize_required_field(request_id.as_str(), "request_id_missing")?;
+    if let Some(reason) = starter_demand_provider_proof_reason(
+        &session,
+        normalize_optional_field(request.provider_nostr_pubkey.as_deref()).as_deref(),
+    ) {
+        return Err(ApiError {
+            status: StatusCode::FORBIDDEN,
+            error: "forbidden",
+            reason,
+        });
+    }
     let now = now_unix_ms();
 
     let mut store = state.store.write().map_err(|_| ApiError {
@@ -1217,7 +1244,6 @@ fn maybe_dispatch_starter_offer(
     state: &mut StarterDemandState,
     config: &ServiceConfig,
     session: &DesktopSessionRecord,
-    _provider_nostr_pubkey: Option<String>,
     now_unix_ms: u64,
 ) {
     let active_offers = state
@@ -1300,6 +1326,33 @@ fn maybe_dispatch_starter_offer(
     state
         .last_dispatch_by_session
         .insert(session.session_id.clone(), now_unix_ms);
+}
+
+fn starter_demand_provider_proof_reason(
+    session: &DesktopSessionRecord,
+    provider_nostr_pubkey: Option<&str>,
+) -> Option<String> {
+    if !session
+        .desktop_client_id
+        .starts_with(AUTOPILOT_DESKTOP_CLIENT_ID_PREFIX)
+    {
+        return Some("starter_demand_requires_autopilot_desktop_session".to_string());
+    }
+    let Some(bound_nostr_pubkey) = session
+        .bound_nostr_pubkey
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    else {
+        return Some("starter_demand_requires_bound_nostr_identity".to_string());
+    };
+    let Some(provider_nostr_pubkey) = provider_nostr_pubkey.filter(|value| !value.is_empty())
+    else {
+        return Some("starter_demand_provider_nostr_pubkey_missing".to_string());
+    };
+    if bound_nostr_pubkey != provider_nostr_pubkey {
+        return Some("starter_demand_provider_nostr_pubkey_mismatch".to_string());
+    }
+    None
 }
 
 fn starter_demand_heartbeat_interval_seconds(config: &ServiceConfig) -> u64 {
@@ -1524,18 +1577,18 @@ mod tests {
     }
 
     async fn create_session_token(app: &axum::Router) -> Result<DesktopSessionResponse> {
-        create_session_token_for(app, "desktop-alpha", "npub1alpha").await
+        create_session_token_for(app, "autopilot-desktop-alpha", Some("npub1alpha")).await
     }
 
     async fn create_session_token_for(
         app: &axum::Router,
         desktop_client_id: &str,
-        bound_nostr_pubkey: &str,
+        bound_nostr_pubkey: Option<&str>,
     ) -> Result<DesktopSessionResponse> {
         let create_request = DesktopSessionCreateRequest {
             desktop_client_id: desktop_client_id.to_string(),
             device_name: Some("Chris MacBook".to_string()),
-            bound_nostr_pubkey: Some(bound_nostr_pubkey.to_string()),
+            bound_nostr_pubkey: bound_nostr_pubkey.map(str::to_string),
             client_version: Some("mvp".to_string()),
         };
         let response = app
@@ -1718,8 +1771,10 @@ mod tests {
     #[tokio::test]
     async fn hosted_starter_demand_reissues_after_start_confirm_timeout() -> Result<()> {
         let app = build_router(test_config_with_leases(1, 10, 3)?);
-        let session_alpha = create_session_token_for(&app, "desktop-alpha", "npub1alpha").await?;
-        let session_beta = create_session_token_for(&app, "desktop-beta", "npub1beta").await?;
+        let session_alpha =
+            create_session_token_for(&app, "autopilot-desktop-alpha", Some("npub1alpha")).await?;
+        let session_beta =
+            create_session_token_for(&app, "autopilot-desktop-beta", Some("npub1beta")).await?;
 
         let alpha_poll = app
             .clone()
@@ -1772,8 +1827,10 @@ mod tests {
     #[tokio::test]
     async fn hosted_starter_demand_reissues_after_heartbeat_timeout() -> Result<()> {
         let app = build_router(test_config_with_leases(1, 10, 1)?);
-        let session_alpha = create_session_token_for(&app, "desktop-alpha", "npub1alpha").await?;
-        let session_beta = create_session_token_for(&app, "desktop-beta", "npub1beta").await?;
+        let session_alpha =
+            create_session_token_for(&app, "autopilot-desktop-alpha", Some("npub1alpha")).await?;
+        let session_beta =
+            create_session_token_for(&app, "autopilot-desktop-beta", Some("npub1beta")).await?;
 
         let alpha_poll = app
             .clone()
@@ -1868,6 +1925,104 @@ mod tests {
             Some("starter_demand_requires_openagents_hosted_nexus")
         );
         assert!(payload.offers.is_empty());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn hosted_starter_demand_requires_autopilot_desktop_session() -> Result<()> {
+        let app = build_router(test_config()?);
+        let session = create_session_token_for(&app, "desktop-alpha", Some("npub1alpha")).await?;
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/starter-demand/poll")
+                    .header("authorization", format!("Bearer {}", session.access_token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&StarterDemandPollRequest {
+                        provider_nostr_pubkey: Some("npub1alpha".to_string()),
+                        primary_relay_url: Some("wss://relay.openagents.dev".to_string()),
+                    })?))?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let payload: StarterDemandPollResponse = response_json(response).await?;
+        assert!(!payload.eligible);
+        assert_eq!(
+            payload.reason.as_deref(),
+            Some("starter_demand_requires_autopilot_desktop_session")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn hosted_starter_demand_requires_bound_nostr_identity() -> Result<()> {
+        let app = build_router(test_config()?);
+        let session = create_session_token_for(&app, "autopilot-desktop-alpha", None).await?;
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/starter-demand/poll")
+                    .header("authorization", format!("Bearer {}", session.access_token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&StarterDemandPollRequest {
+                        provider_nostr_pubkey: Some("npub1alpha".to_string()),
+                        primary_relay_url: Some("wss://relay.openagents.dev".to_string()),
+                    })?))?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let payload: StarterDemandPollResponse = response_json(response).await?;
+        assert!(!payload.eligible);
+        assert_eq!(
+            payload.reason.as_deref(),
+            Some("starter_demand_requires_bound_nostr_identity")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn hosted_starter_demand_requires_matching_provider_nostr_pubkey() -> Result<()> {
+        let app = build_router(test_config()?);
+        let session = create_session_token(&app).await?;
+
+        let poll_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/starter-demand/poll")
+                    .header("authorization", format!("Bearer {}", session.access_token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&StarterDemandPollRequest {
+                        provider_nostr_pubkey: Some("npub1alpha".to_string()),
+                        primary_relay_url: Some("wss://relay.openagents.dev".to_string()),
+                    })?))?,
+            )
+            .await?;
+        assert_eq!(poll_response.status(), StatusCode::OK);
+        let payload: StarterDemandPollResponse = response_json(poll_response).await?;
+        let request_id = payload.offers[0].request_id.clone();
+
+        let ack_response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/starter-demand/offers/{request_id}/ack"))
+                    .header("authorization", format!("Bearer {}", session.access_token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&StarterDemandAckRequest {
+                        provider_nostr_pubkey: Some("npub1mismatch".to_string()),
+                    })?))?,
+            )
+            .await?;
+        assert_eq!(ack_response.status(), StatusCode::FORBIDDEN);
+        let body: serde_json::Value = response_json(ack_response).await?;
+        assert_eq!(
+            body["reason"].as_str(),
+            Some("starter_demand_provider_nostr_pubkey_mismatch")
+        );
         Ok(())
     }
 }
